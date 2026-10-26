@@ -171,3 +171,8 @@ func TestContractCalls_AreReportedWithWhetherLocksWereHeld(t *testing.T) {
 		t.Errorf("an empty batch of names reported %v, want no call at all", outside)
 	}
 }
+
+// ProjectsByStatus answers nothing: no test here lists projects by status.
+func (silentDirectory) ProjectsByStatus(context.Context, []string) ([]contracts.ProjectEntry, error) {
+	return nil, nil
+}

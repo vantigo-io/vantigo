@@ -791,3 +791,8 @@ func TestOverview_AFailingContractFailsTheWholeRequest(t *testing.T) {
 		})
 	}
 }
+
+// ProjectsByStatus answers nothing: no test here lists projects by status.
+func (*fakeProjects) ProjectsByStatus(context.Context, []string) ([]contracts.ProjectEntry, error) {
+	return nil, nil
+}

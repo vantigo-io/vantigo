@@ -11,13 +11,16 @@ import (
 )
 
 // workforce is this module's contracts.Workforce (staff competence design
-// S15, §4 "The contract"; plan reading 7): the catalogue, and who holds
-// what, valid on a date, read by another module — Staffing — through
-// Deps.Workforce. It is its own gatekeeper (module-boundaries rule 12): the
-// Colleague rule, staff:view and the person active today, applied to the
-// principal in ctx through contracts.HasPermission — the request's caller,
-// or the user contracts.AsUser names — and nothing, never an error, for
-// anyone else. A context with neither answers nothing.
+// S15, §4 "The contract"; plan reading 7; planning design S8): the
+// catalogue, who holds what valid on a date, the people in employment over
+// a window with their capacity and days away, and the caller's own person,
+// read by another module — Planning — through Deps.Workforce. It is its own
+// gatekeeper (module-boundaries rule 12): the Colleague rule — staff:view,
+// and the person in employment on today or on a later day of the window or
+// date asked — or, for Self, the Self rule, applied to the principal in ctx
+// through contracts.HasPermission — the request's caller, or the user
+// contracts.AsUser names — and nothing, never an error, for anyone else. A
+// context with neither answers nothing.
 type workforce struct {
 	q        *store.Queries
 	access   contracts.Access
@@ -65,10 +68,11 @@ func (w *workforce) Competences(ctx context.Context) ([]contracts.CompetenceEntr
 	return out, nil
 }
 
-// HeldCompetences is, for staff:view, each of personIDs active today with
-// the competences they hold valid on on: the current row, within its
-// validity — a declared certificate not, a declared skill with Verified
-// false. A person not active today is absent; so is one who holds nothing.
+// HeldCompetences is, for staff:view, each of personIDs in employment on
+// on — on today, for a past on (planning design S8) — with the competences
+// they hold valid on on: the current row, within its validity — a declared
+// certificate not, a declared skill with Verified false. Anyone else is
+// absent; so is one who holds nothing.
 func (w *workforce) HeldCompetences(ctx context.Context, on time.Time, personIDs []int64) (map[int64][]contracts.HeldCompetence, error) {
 	if !contracts.HasPermission(ctx, w.access, permView) {
 		return nil, nil
@@ -77,9 +81,14 @@ func (w *workforce) HeldCompetences(ctx context.Context, on time.Time, personIDs
 	if err != nil {
 		return nil, fmt.Errorf("staff: read the business time zone: %w", err)
 	}
-	activeIDs, err := w.q.PeopleActiveOn(ctx, dayParam(civilToday(w.clock(), zone)))
+	day := civilDay(on)
+	activeOn := civilToday(w.clock(), zone)
+	if day.After(activeOn) {
+		activeOn = day
+	}
+	activeIDs, err := w.q.PeopleActiveOn(ctx, dayParam(activeOn))
 	if err != nil {
-		return nil, fmt.Errorf("staff: read the people active today: %w", err)
+		return nil, fmt.Errorf("staff: read the people in employment: %w", err)
 	}
 	active := make(map[int64]bool, len(activeIDs))
 	for _, id := range activeIDs {
@@ -95,7 +104,6 @@ func (w *workforce) HeldCompetences(ctx context.Context, on time.Time, personIDs
 	if len(asked) == 0 {
 		return out, nil
 	}
-	day := time.Date(on.Year(), on.Month(), on.Day(), 0, 0, 0, 0, time.UTC)
 	rows, err := w.q.HeldCompetencesOn(ctx, store.HeldCompetencesOnParams{PersonIds: asked, Day: dayParam(day)})
 	if err != nil {
 		return nil, fmt.Errorf("staff: read the competences held: %w", err)

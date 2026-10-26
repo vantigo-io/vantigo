@@ -865,8 +865,8 @@ func TestLoad_TrustedProxyHopsRequireCIDRsOutsideDevelopment(t *testing.T) {
 }
 
 func TestLoad_Modules(t *testing.T) {
-	if cfg := mustLoad(t, validEnv()); !slices.Equal(cfg.Modules, []string{"customers", "products", "energy", "communications", "projects", "time", "expenses", "invoices", "staff", "calendar", "entra"}) {
-		t.Errorf("Modules = %v, want the default customers,products,energy,communications,projects,time,expenses,invoices,staff,calendar,entra when MODULES is unset", cfg.Modules)
+	if cfg := mustLoad(t, validEnv()); !slices.Equal(cfg.Modules, []string{"customers", "products", "energy", "communications", "projects", "time", "expenses", "invoices", "staff", "planning", "calendar", "entra"}) {
+		t.Errorf("Modules = %v, want the default customers,products,energy,communications,projects,time,expenses,invoices,staff,planning,calendar,entra when MODULES is unset", cfg.Modules)
 	}
 
 	cfg := mustLoad(t, with(validEnv(), "MODULES", " Customers ,, ENERGY,products "))
@@ -874,7 +874,7 @@ func TestLoad_Modules(t *testing.T) {
 		t.Errorf("Modules = %v, want trimmed, lower-cased entries with empties dropped", cfg.Modules)
 	}
 
-	if msg := loadError(t, with(validEnv(), "MODULES", "customers,widgets")); !strings.Contains(msg, `"widgets" is not a known module`) || !strings.Contains(msg, "customers, products, energy, communications, projects, time, expenses, invoices, staff, calendar, entra") {
+	if msg := loadError(t, with(validEnv(), "MODULES", "customers,widgets")); !strings.Contains(msg, `"widgets" is not a known module`) || !strings.Contains(msg, "customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, calendar, entra") {
 		t.Errorf("error = %q, want it to name the bad value and the known set", msg)
 	}
 
@@ -941,6 +941,20 @@ func TestLoad_Modules(t *testing.T) {
 	cfg = mustLoad(t, with(validEnv(), "MODULES", "staff,entra"))
 	if !slices.Equal(cfg.Modules, []string{"staff", "entra"}) {
 		t.Errorf("Modules = %v, want exactly staff,entra", cfg.Modules)
+	}
+
+	// planning books Staff's people on Projects' projects (planning design
+	// S25): without either it is refused, naming the one missing, and beside
+	// customers, projects and staff it is valid.
+	if msg := loadError(t, with(validEnv(), "MODULES", "customers,staff,planning")); !strings.Contains(msg, "MODULES: planning requires projects") {
+		t.Errorf("error = %q, want planning without projects named", msg)
+	}
+	if msg := loadError(t, with(validEnv(), "MODULES", "customers,projects,planning")); !strings.Contains(msg, "MODULES: planning requires staff") {
+		t.Errorf("error = %q, want planning without staff named", msg)
+	}
+	cfg = mustLoad(t, with(validEnv(), "MODULES", "customers,projects,staff,planning"))
+	if !slices.Equal(cfg.Modules, []string{"customers", "projects", "staff", "planning"}) {
+		t.Errorf("Modules = %v, want exactly customers,projects,staff,planning", cfg.Modules)
 	}
 }
 

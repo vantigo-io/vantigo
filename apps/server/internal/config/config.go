@@ -1695,8 +1695,11 @@ var defaultModules = knownModules
 // from contracts.CustomerDirectory). entra depends on staff: it is
 // contracts.IdentityProvisioner's provider, and Staff's accounts worker is
 // the only caller of the slot, so entra without staff would hold a tenant's
-// credential that nothing ever uses (Entra design D11). Identity is always
-// mounted and is never listed here.
+// credential that nothing ever uses (Entra design D11). planning depends on
+// projects and on staff (planning design S25): it books Staff's people on
+// Projects' projects, reading both through their contracts
+// (contracts.ProjectDirectory and contracts.Workforce), and Customers comes
+// with Projects. Identity is always mounted and is never listed here.
 func modules(p *problems, env map[string]string) []string {
 	v := env["MODULES"]
 	if v == "" {
@@ -1733,6 +1736,12 @@ func modules(p *problems, env map[string]string) []string {
 	}
 	if slices.Contains(out, "entra") && !slices.Contains(out, "staff") {
 		p.add("MODULES", "entra requires staff")
+	}
+	if slices.Contains(out, "planning") && !slices.Contains(out, "projects") {
+		p.add("MODULES", "planning requires projects")
+	}
+	if slices.Contains(out, "planning") && !slices.Contains(out, "staff") {
+		p.add("MODULES", "planning requires staff")
 	}
 
 	return out

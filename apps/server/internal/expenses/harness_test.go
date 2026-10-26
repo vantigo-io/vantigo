@@ -2139,3 +2139,8 @@ func forbidden(t *testing.T, c *modtest.Client, method, path string, body any) {
 		t.Errorf("%s %s: status %d body %s, want 403", method, path, r.Status, r.Body)
 	}
 }
+
+// ProjectsByStatus answers nothing: no test here lists projects by status.
+func (*fakeProjects) ProjectsByStatus(context.Context, []string) ([]contracts.ProjectEntry, error) {
+	return nil, nil
+}

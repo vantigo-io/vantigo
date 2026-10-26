@@ -180,7 +180,7 @@ func (q *Queries) DirectoryOpenTasksForUser(ctx context.Context, assigneeUserID 
 
 const directoryProject = `-- name: DirectoryProject :one
 
-SELECT id, code, name, customer_id, status, billing_type, currency, default_bill_rate
+SELECT id, code, name, customer_id, status, billing_type, currency, default_bill_rate, start_date, end_date
 FROM projects.projects
 WHERE id = $1
 `
@@ -194,6 +194,8 @@ type DirectoryProjectRow struct {
 	BillingType     string
 	Currency        *string
 	DefaultBillRate pgtype.Numeric
+	StartDate       pgtype.Date
+	EndDate         pgtype.Date
 }
 
 // Directory queries back contracts.ProjectDirectory (directory.go), the one
@@ -218,12 +220,14 @@ func (q *Queries) DirectoryProject(ctx context.Context, id int32) (DirectoryProj
 		&i.BillingType,
 		&i.Currency,
 		&i.DefaultBillRate,
+		&i.StartDate,
+		&i.EndDate,
 	)
 	return i, err
 }
 
 const directoryProjectByCode = `-- name: DirectoryProjectByCode :one
-SELECT id, code, name, customer_id, status, billing_type, currency, default_bill_rate
+SELECT id, code, name, customer_id, status, billing_type, currency, default_bill_rate, start_date, end_date
 FROM projects.projects
 WHERE code = $1
 `
@@ -237,6 +241,8 @@ type DirectoryProjectByCodeRow struct {
 	BillingType     string
 	Currency        *string
 	DefaultBillRate pgtype.Numeric
+	StartDate       pgtype.Date
+	EndDate         pgtype.Date
 }
 
 // DirectoryProjectByCode is contracts.ProjectDirectory.ProjectByCode's row.
@@ -254,12 +260,14 @@ func (q *Queries) DirectoryProjectByCode(ctx context.Context, code string) (Dire
 		&i.BillingType,
 		&i.Currency,
 		&i.DefaultBillRate,
+		&i.StartDate,
+		&i.EndDate,
 	)
 	return i, err
 }
 
 const directoryProjects = `-- name: DirectoryProjects :many
-SELECT id, code, name, customer_id, status, billing_type, currency, default_bill_rate
+SELECT id, code, name, customer_id, status, billing_type, currency, default_bill_rate, start_date, end_date
 FROM projects.projects
 WHERE id = ANY($1::integer[])
 ORDER BY code, id
@@ -274,6 +282,8 @@ type DirectoryProjectsRow struct {
 	BillingType     string
 	Currency        *string
 	DefaultBillRate pgtype.Numeric
+	StartDate       pgtype.Date
+	EndDate         pgtype.Date
 }
 
 // DirectoryProjects is contracts.ProjectDirectory.Projects' rows: every
@@ -298,6 +308,70 @@ func (q *Queries) DirectoryProjects(ctx context.Context, ids []int32) ([]Directo
 			&i.BillingType,
 			&i.Currency,
 			&i.DefaultBillRate,
+			&i.StartDate,
+			&i.EndDate,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const directoryProjectsByStatus = `-- name: DirectoryProjectsByStatus :many
+SELECT id, code, name, customer_id, status, billing_type, currency, default_bill_rate, start_date, end_date
+FROM projects.projects
+WHERE status = ANY($1::text[])
+ORDER BY code, id
+LIMIT $2::integer
+`
+
+type DirectoryProjectsByStatusParams struct {
+	Statuses    []string
+	MaxProjects int32
+}
+
+type DirectoryProjectsByStatusRow struct {
+	ID              int32
+	Code            string
+	Name            string
+	CustomerID      *int32
+	Status          string
+	BillingType     string
+	Currency        *string
+	DefaultBillRate pgtype.Numeric
+	StartDate       pgtype.Date
+	EndDate         pgtype.Date
+}
+
+// DirectoryProjectsByStatus is contracts.ProjectDirectory.ProjectsByStatus'
+// rows: every project whose status is one of @statuses, by code, and no more
+// than the caller's cap (contracts.MaxDirectoryProjects, passed in so the
+// number lives in one place). ix_projects_status (00008) serves the WHERE; an
+// unknown status simply matches no row.
+func (q *Queries) DirectoryProjectsByStatus(ctx context.Context, arg DirectoryProjectsByStatusParams) ([]DirectoryProjectsByStatusRow, error) {
+	rows, err := q.db.Query(ctx, directoryProjectsByStatus, arg.Statuses, arg.MaxProjects)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []DirectoryProjectsByStatusRow
+	for rows.Next() {
+		var i DirectoryProjectsByStatusRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Code,
+			&i.Name,
+			&i.CustomerID,
+			&i.Status,
+			&i.BillingType,
+			&i.Currency,
+			&i.DefaultBillRate,
+			&i.StartDate,
+			&i.EndDate,
 		); err != nil {
 			return nil, err
 		}
@@ -310,7 +384,7 @@ func (q *Queries) DirectoryProjects(ctx context.Context, ids []int32) ([]Directo
 }
 
 const directoryProjectsForCustomer = `-- name: DirectoryProjectsForCustomer :many
-SELECT id, code, name, customer_id, status, billing_type, currency, default_bill_rate
+SELECT id, code, name, customer_id, status, billing_type, currency, default_bill_rate, start_date, end_date
 FROM projects.projects
 WHERE customer_id = $1::integer
 ORDER BY id
@@ -331,6 +405,8 @@ type DirectoryProjectsForCustomerRow struct {
 	BillingType     string
 	Currency        *string
 	DefaultBillRate pgtype.Numeric
+	StartDate       pgtype.Date
+	EndDate         pgtype.Date
 }
 
 // DirectoryProjectsForCustomer is contracts.ProjectDirectory.ProjectsForCustomer's
@@ -358,6 +434,8 @@ func (q *Queries) DirectoryProjectsForCustomer(ctx context.Context, arg Director
 			&i.BillingType,
 			&i.Currency,
 			&i.DefaultBillRate,
+			&i.StartDate,
+			&i.EndDate,
 		); err != nil {
 			return nil, err
 		}
@@ -370,7 +448,7 @@ func (q *Queries) DirectoryProjectsForCustomer(ctx context.Context, arg Director
 }
 
 const directoryProjectsForUser = `-- name: DirectoryProjectsForUser :many
-SELECT p.id, p.code, p.name, p.customer_id, p.status, p.billing_type, p.currency, p.default_bill_rate
+SELECT p.id, p.code, p.name, p.customer_id, p.status, p.billing_type, p.currency, p.default_bill_rate, p.start_date, p.end_date
 FROM projects.projects p
 JOIN projects.project_roles r ON r.project_id = p.id
 WHERE r.user_id = $1
@@ -386,6 +464,8 @@ type DirectoryProjectsForUserRow struct {
 	BillingType     string
 	Currency        *string
 	DefaultBillRate pgtype.Numeric
+	StartDate       pgtype.Date
+	EndDate         pgtype.Date
 }
 
 // DirectoryProjectsForUser is contracts.ProjectDirectory.ProjectsForUser's
@@ -410,6 +490,8 @@ func (q *Queries) DirectoryProjectsForUser(ctx context.Context, userID uuid.UUID
 			&i.BillingType,
 			&i.Currency,
 			&i.DefaultBillRate,
+			&i.StartDate,
+			&i.EndDate,
 		); err != nil {
 			return nil, err
 		}

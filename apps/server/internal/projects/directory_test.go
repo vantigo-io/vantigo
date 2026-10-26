@@ -2,6 +2,7 @@ package projects_test
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"slices"
 	"testing"
@@ -714,5 +715,150 @@ func TestDirectory_WorkTypes(t *testing.T) {
 	empty := createProject(t, c, map[string]any{"code": "DIR1103"})
 	if none, err := dir.WorkTypes(ctx, empty.Id); err != nil || len(none) != 0 {
 		t.Errorf("WorkTypes(none) = %v, %v, want an empty answer", none, err)
+	}
+}
+
+// projectCodes is each entry's code, in the order answered.
+func projectCodes(entries []contracts.ProjectEntry) []string {
+	codes := make([]string, 0, len(entries))
+	for _, e := range entries {
+		codes = append(codes, e.Code)
+	}
+	return codes
+}
+
+// TestDirectory_ProjectsByStatus is planning design S9's listing: every
+// project in any of the statuses asked, by code, whatever roles the caller
+// holds (it is consumer-gated); an unknown status matches nothing and no
+// statuses answer an empty result, never an error.
+func TestDirectory_ProjectsByStatus(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, _ := signIn(t, h, "projects:create")
+	createProject(t, c, map[string]any{"code": "PBS3000"})
+	active := createProject(t, c, map[string]any{"code": "PBS1000"})
+	setStatus(t, c, active.Id, "active")
+	createProject(t, c, map[string]any{"code": "PBS2000"})
+	held := createProject(t, c, map[string]any{"code": "PBS0500"})
+	setStatus(t, c, held.Id, "on-hold")
+	done := createProject(t, c, map[string]any{"code": "PBS0100"})
+	setStatus(t, c, done.Id, "completed")
+	dir := newDirectory(t, h)
+	ctx := context.Background()
+
+	for _, tc := range []struct {
+		name     string
+		statuses []string
+		want     []string
+	}{
+		{"one status", []string{"planned"}, []string{"PBS2000", "PBS3000"}},
+		{"two statuses, by code", []string{"planned", "active"}, []string{"PBS1000", "PBS2000", "PBS3000"}},
+		{"three statuses", []string{"on-hold", "planned", "active"}, []string{"PBS0500", "PBS1000", "PBS2000", "PBS3000"}},
+		{"an unknown status", []string{"archived"}, []string{}},
+		{"no statuses", nil, []string{}},
+	} {
+		got, err := dir.ProjectsByStatus(ctx, tc.statuses)
+		if err != nil {
+			t.Fatalf("%s: ProjectsByStatus: %v", tc.name, err)
+		}
+		if codes := projectCodes(got); !slices.Equal(codes, tc.want) {
+			t.Errorf("%s: ProjectsByStatus = %v, want %v", tc.name, codes, tc.want)
+		}
+	}
+	got, err := dir.ProjectsByStatus(ctx, []string{"active"})
+	if err != nil || len(got) != 1 || got[0].ID != active.Id || !got[0].OpenForWork || got[0].Status != "active" {
+		t.Errorf("ProjectsByStatus(active) = %+v, %v, want the active project, open for work", got, err)
+	}
+}
+
+// TestDirectory_ProjectsByStatusIsCapped proves the cap: one project more
+// than contracts.MaxDirectoryProjects answers exactly the cap, the first by
+// code — the signal a consumer reads as "there are more".
+func TestDirectory_ProjectsByStatusIsCapped(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	h.Exec(t, `
+		INSERT INTO projects.projects (code, name, status, billing_type, created_by_user_id, created_at, updated_at)
+		SELECT 'CAP' || lpad(n::text, 5, '0'), 'Capped ' || n, 'planned', 'time-and-materials', $1, $2, $2
+		FROM generate_series(1, $3::integer) AS n`, uuid.New(), h.Now(), contracts.MaxDirectoryProjects+1)
+
+	got, err := newDirectory(t, h).ProjectsByStatus(context.Background(), []string{"planned"})
+	if err != nil {
+		t.Fatalf("ProjectsByStatus: %v", err)
+	}
+	if len(got) != contracts.MaxDirectoryProjects || got[0].Code != "CAP00001" ||
+		got[len(got)-1].Code != fmt.Sprintf("CAP%05d", contracts.MaxDirectoryProjects) {
+		t.Errorf("ProjectsByStatus answered %d projects, first %q; want the cap, by code", len(got), got[0].Code)
+	}
+}
+
+// TestDirectory_ProjectDates proves every directory read carries the
+// project's planned dates as civil dates at midnight UTC (planning design
+// S9), and nil for a project without them.
+func TestDirectory_ProjectDates(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, user := signIn(t, h, "projects:create")
+	dated := createProject(t, c, map[string]any{"code": "DAT1000", "startDate": "2026-03-01", "endDate": "2026-09-30"})
+	undated := createProject(t, c, map[string]any{"code": "DAT2000"})
+	dir := newDirectory(t, h)
+	ctx := context.Background()
+	start := time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2026, 9, 30, 0, 0, 0, 0, time.UTC)
+
+	wantDated := func(name string, e *contracts.ProjectEntry) {
+		t.Helper()
+		if e == nil || e.StartDate == nil || !e.StartDate.Equal(start) || e.StartDate.Location() != time.UTC ||
+			e.EndDate == nil || !e.EndDate.Equal(end) {
+			t.Errorf("%s: dated project = %+v, want 2026-03-01..2026-09-30 at midnight UTC", name, e)
+		}
+	}
+	wantUndated := func(name string, e *contracts.ProjectEntry) {
+		t.Helper()
+		if e == nil || e.StartDate != nil || e.EndDate != nil {
+			t.Errorf("%s: undated project = %+v, want nil dates", name, e)
+		}
+	}
+
+	got, err := dir.Project(ctx, dated.Id)
+	if err != nil {
+		t.Fatalf("Project: %v", err)
+	}
+	wantDated("Project", got)
+	got, err = dir.Project(ctx, undated.Id)
+	if err != nil {
+		t.Fatalf("Project: %v", err)
+	}
+	wantUndated("Project", got)
+	got, err = dir.ProjectByCode(ctx, "dat1000")
+	if err != nil {
+		t.Fatalf("ProjectByCode: %v", err)
+	}
+	wantDated("ProjectByCode", got)
+
+	lists := map[string]func() ([]contracts.ProjectEntry, error){
+		"Projects":         func() ([]contracts.ProjectEntry, error) { return dir.Projects(ctx, []int32{dated.Id, undated.Id}) },
+		"ProjectsByStatus": func() ([]contracts.ProjectEntry, error) { return dir.ProjectsByStatus(ctx, []string{"planned"}) },
+		"ProjectsForUser":  func() ([]contracts.ProjectEntry, error) { return dir.ProjectsForUser(ctx, user) },
+		"ProjectsForCustomer": func() ([]contracts.ProjectEntry, error) {
+			return dir.ProjectsForCustomer(ctx, *dated.CustomerId)
+		},
+	}
+	for name, list := range lists {
+		entries, err := list()
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		for i := range entries {
+			switch entries[i].ID {
+			case dated.Id:
+				wantDated(name, &entries[i])
+			case undated.Id:
+				wantUndated(name, &entries[i])
+			}
+		}
+		if !slices.ContainsFunc(entries, func(e contracts.ProjectEntry) bool { return e.ID == dated.Id }) {
+			t.Errorf("%s: %v does not list the dated project", name, projectCodes(entries))
+		}
 	}
 }
