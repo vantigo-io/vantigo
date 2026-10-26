@@ -248,10 +248,8 @@ func parseSpotFeedDay(body []byte, area string, day time.Time, zone *time.Locati
 	if len(entries) == 0 {
 		return nil, spotFeedEmpty
 	}
-	midnight := time.Date(day.Year(), day.Month(), day.Day(), 0, 0, 0, 0, zone)
-	next := time.Date(day.Year(), day.Month(), day.Day()+1, 0, 0, 0, 0, zone)
 	rows := make([]spotPriceRow, 0, len(entries))
-	for i, e := range entries {
+	for _, e := range entries {
 		start, errStart := time.Parse(time.RFC3339, e.TimeStart)
 		end, errEnd := time.Parse(time.RFC3339, e.TimeEnd)
 		switch {
@@ -259,10 +257,6 @@ func parseSpotFeedDay(body []byte, area string, day time.Time, zone *time.Locati
 			return nil, spotFeedBadTime
 		case !end.After(start):
 			return nil, spotFeedBackwards
-		case i == 0 && !start.Equal(midnight):
-			return nil, spotFeedLateStart
-		case i > 0 && !start.Equal(rows[i-1].End):
-			return nil, spotFeedNotContiguous
 		case e.NokPerKwh == nil:
 			return nil, spotFeedNoPrice
 		case !storablePrice(e.NokPerKwh) || !storablePrice(e.EurPerKwh) || !storablePrice(e.Exr):
@@ -273,8 +267,8 @@ func parseSpotFeedDay(body []byte, area string, day time.Time, zone *time.Locati
 			NokPerKwh: *e.NokPerKwh, EurPerKwh: e.EurPerKwh, ExchangeRate: e.Exr,
 		})
 	}
-	if !rows[len(rows)-1].End.Equal(next) {
-		return nil, spotFeedEarlyEnd
+	if failure := judgeSpotPriceDay(rows, day, zone); failure != "" {
+		return nil, failure
 	}
 	return rows, ""
 }

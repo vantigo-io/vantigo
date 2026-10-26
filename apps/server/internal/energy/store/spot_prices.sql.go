@@ -12,20 +12,62 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const deleteSpotPricesByIDs = `-- name: DeleteSpotPricesByIDs :exec
+DELETE FROM energy.spot_prices WHERE id = ANY($1::bigint[])
+`
+
+// DeleteSpotPricesByIDs removes a fetched day's rows that a fetched day at
+// another resolution replaces (spot-price service design S6), inside the
+// write's transaction and under the area's lock.
+func (q *Queries) DeleteSpotPricesByIDs(ctx context.Context, ids []int64) error {
+	_, err := q.db.Exec(ctx, deleteSpotPricesByIDs, ids)
+	return err
+}
+
+const getSpotPriceHistory = `-- name: GetSpotPriceHistory :one
+SELECT price_area, cursor_day, floor_day, days_skipped, attempts, last_error, next_attempt_at, updated_at
+FROM energy.spot_price_history
+WHERE price_area = $1
+`
+
+// GetSpotPriceHistory is one area's walk back through the service's
+// history (spot-price service design S5).
+func (q *Queries) GetSpotPriceHistory(ctx context.Context, priceArea string) (EnergySpotPriceHistory, error) {
+	row := q.db.QueryRow(ctx, getSpotPriceHistory, priceArea)
+	var i EnergySpotPriceHistory
+	err := row.Scan(
+		&i.PriceArea,
+		&i.CursorDay,
+		&i.FloorDay,
+		&i.DaysSkipped,
+		&i.Attempts,
+		&i.LastError,
+		&i.NextAttemptAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const insertSpotPrice = `-- name: InsertSpotPrice :exec
-INSERT INTO energy.spot_prices (price_area, "start", "end", nok_per_kwh, eur_per_kwh, exchange_rate, source, received_at)
-VALUES ($1, $2::timestamptz, $3::timestamptz, $4, $5, $6, $7, $8::timestamptz)
+INSERT INTO energy.spot_prices (price_area, "start", "end", nok_per_kwh, eur_per_kwh, exchange_rate, source, received_at,
+                                 state, upstream, rate_source, upstream_version)
+VALUES ($1, $2::timestamptz, $3::timestamptz, $4, $5, $6, $7, $8::timestamptz,
+        $9, $10, $11, $12)
 `
 
 type InsertSpotPriceParams struct {
-	PriceArea    string
-	Start        time.Time
-	EndAt        time.Time
-	NokPerKwh    pgtype.Numeric
-	EurPerKwh    pgtype.Numeric
-	ExchangeRate pgtype.Numeric
-	Source       string
-	ReceivedAt   time.Time
+	PriceArea       string
+	Start           time.Time
+	EndAt           time.Time
+	NokPerKwh       pgtype.Numeric
+	EurPerKwh       pgtype.Numeric
+	ExchangeRate    pgtype.Numeric
+	Source          string
+	ReceivedAt      time.Time
+	State           string
+	Upstream        *string
+	RateSource      *string
+	UpstreamVersion *int32
 }
 
 func (q *Queries) InsertSpotPrice(ctx context.Context, arg InsertSpotPriceParams) error {
@@ -38,8 +80,48 @@ func (q *Queries) InsertSpotPrice(ctx context.Context, arg InsertSpotPriceParams
 		arg.ExchangeRate,
 		arg.Source,
 		arg.ReceivedAt,
+		arg.State,
+		arg.Upstream,
+		arg.RateSource,
+		arg.UpstreamVersion,
 	)
 	return err
+}
+
+const latestSpotPriceWindowRead = `-- name: LatestSpotPriceWindowRead :many
+SELECT fetched_at::timestamptz AS fetched_at
+FROM energy.spot_price_fetches
+WHERE price_area = $1 AND day >= $2::date AND fetched_at IS NOT NULL
+ORDER BY fetched_at DESC
+LIMIT 1
+`
+
+type LatestSpotPriceWindowReadParams struct {
+	PriceArea string
+	FromDay   pgtype.Date
+}
+
+// LatestSpotPriceWindowRead is when an area's live window was last read:
+// the newest fetched_at of its days from from_day on, none when it never
+// was. Every read of the window stamps every day it judged.
+func (q *Queries) LatestSpotPriceWindowRead(ctx context.Context, arg LatestSpotPriceWindowReadParams) ([]time.Time, error) {
+	rows, err := q.db.Query(ctx, latestSpotPriceWindowRead, arg.PriceArea, arg.FromDay)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []time.Time
+	for rows.Next() {
+		var fetched_at time.Time
+		if err := rows.Scan(&fetched_at); err != nil {
+			return nil, err
+		}
+		items = append(items, fetched_at)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listLatestSpotPriceFetches = `-- name: ListLatestSpotPriceFetches :many
@@ -70,6 +152,39 @@ func (q *Queries) ListLatestSpotPriceFetches(ctx context.Context) ([]EnergySpotP
 			&i.FetchedAt,
 			&i.NextAttemptAt,
 		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listLatestSpotPriceResolutions = `-- name: ListLatestSpotPriceResolutions :many
+SELECT DISTINCT ON (price_area) price_area, extract(epoch FROM "end" - "start")::bigint AS seconds
+FROM energy.spot_prices
+ORDER BY price_area, "start" DESC
+`
+
+type ListLatestSpotPriceResolutionsRow struct {
+	PriceArea string
+	Seconds   int64
+}
+
+// ListLatestSpotPriceResolutions is, per area, the length of the latest
+// stored interval in seconds: the coverage's resolution.
+func (q *Queries) ListLatestSpotPriceResolutions(ctx context.Context) ([]ListLatestSpotPriceResolutionsRow, error) {
+	rows, err := q.db.Query(ctx, listLatestSpotPriceResolutions)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListLatestSpotPriceResolutionsRow
+	for rows.Next() {
+		var i ListLatestSpotPriceResolutionsRow
+		if err := rows.Scan(&i.PriceArea, &i.Seconds); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -234,8 +349,45 @@ func (q *Queries) ListSpotPriceFetches(ctx context.Context, arg ListSpotPriceFet
 	return items, nil
 }
 
+const listSpotPriceHistory = `-- name: ListSpotPriceHistory :many
+SELECT price_area, cursor_day, floor_day, days_skipped, attempts, last_error, next_attempt_at, updated_at
+FROM energy.spot_price_history
+ORDER BY price_area
+`
+
+// ListSpotPriceHistory is every area's walk, for the coverage read.
+func (q *Queries) ListSpotPriceHistory(ctx context.Context) ([]EnergySpotPriceHistory, error) {
+	rows, err := q.db.Query(ctx, listSpotPriceHistory)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []EnergySpotPriceHistory
+	for rows.Next() {
+		var i EnergySpotPriceHistory
+		if err := rows.Scan(
+			&i.PriceArea,
+			&i.CursorDay,
+			&i.FloorDay,
+			&i.DaysSkipped,
+			&i.Attempts,
+			&i.LastError,
+			&i.NextAttemptAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listSpotPrices = `-- name: ListSpotPrices :many
-SELECT id, price_area, "start", "end", nok_per_kwh, eur_per_kwh, exchange_rate, source, received_at
+SELECT id, price_area, "start", "end", nok_per_kwh, eur_per_kwh, exchange_rate, source, received_at,
+       state, upstream, rate_source, upstream_version
 FROM energy.spot_prices
 WHERE price_area = $1 AND "start" >= $2::timestamptz AND "start" < $3::timestamptz
 ORDER BY "start"
@@ -268,6 +420,10 @@ func (q *Queries) ListSpotPrices(ctx context.Context, arg ListSpotPricesParams) 
 			&i.ExchangeRate,
 			&i.Source,
 			&i.ReceivedAt,
+			&i.State,
+			&i.Upstream,
+			&i.RateSource,
+			&i.UpstreamVersion,
 		); err != nil {
 			return nil, err
 		}
@@ -281,7 +437,8 @@ func (q *Queries) ListSpotPrices(ctx context.Context, arg ListSpotPricesParams) 
 
 const listSpotPricesByStarts = `-- name: ListSpotPricesByStarts :many
 
-SELECT id, price_area, "start", "end", nok_per_kwh, eur_per_kwh, exchange_rate, source, received_at
+SELECT id, price_area, "start", "end", nok_per_kwh, eur_per_kwh, exchange_rate, source, received_at,
+       state, upstream, rate_source, upstream_version
 FROM energy.spot_prices
 WHERE price_area = $1 AND "start" = ANY($2::timestamptz[])
 ORDER BY "start"
@@ -319,6 +476,10 @@ func (q *Queries) ListSpotPricesByStarts(ctx context.Context, arg ListSpotPrices
 			&i.ExchangeRate,
 			&i.Source,
 			&i.ReceivedAt,
+			&i.State,
+			&i.Upstream,
+			&i.RateSource,
+			&i.UpstreamVersion,
 		); err != nil {
 			return nil, err
 		}
@@ -331,7 +492,8 @@ func (q *Queries) ListSpotPricesByStarts(ctx context.Context, arg ListSpotPrices
 }
 
 const listSpotPricesOverlapping = `-- name: ListSpotPricesOverlapping :many
-SELECT id, price_area, "start", "end", nok_per_kwh, eur_per_kwh, exchange_rate, source, received_at
+SELECT id, price_area, "start", "end", nok_per_kwh, eur_per_kwh, exchange_rate, source, received_at,
+       state, upstream, rate_source, upstream_version
 FROM energy.spot_prices
 WHERE price_area = $1 AND tstzrange("start", "end", '[)') && tstzrange($2::timestamptz, $3::timestamptz, '[)')
 ORDER BY "start"
@@ -366,6 +528,10 @@ func (q *Queries) ListSpotPricesOverlapping(ctx context.Context, arg ListSpotPri
 			&i.ExchangeRate,
 			&i.Source,
 			&i.ReceivedAt,
+			&i.State,
+			&i.Upstream,
+			&i.RateSource,
+			&i.UpstreamVersion,
 		); err != nil {
 			return nil, err
 		}
@@ -419,21 +585,26 @@ func (q *Queries) RecordSpotPriceFetch(ctx context.Context, arg RecordSpotPriceF
 const updateSpotPrice = `-- name: UpdateSpotPrice :exec
 UPDATE energy.spot_prices
 SET nok_per_kwh = $1, eur_per_kwh = $2, exchange_rate = $3,
-    source = $4, received_at = $5::timestamptz
-WHERE id = $6
+    source = $4, received_at = $5::timestamptz,
+    state = $6, upstream = $7, rate_source = $8, upstream_version = $9
+WHERE id = $10
 `
 
 type UpdateSpotPriceParams struct {
-	NokPerKwh    pgtype.Numeric
-	EurPerKwh    pgtype.Numeric
-	ExchangeRate pgtype.Numeric
-	Source       string
-	ReceivedAt   time.Time
-	ID           int64
+	NokPerKwh       pgtype.Numeric
+	EurPerKwh       pgtype.Numeric
+	ExchangeRate    pgtype.Numeric
+	Source          string
+	ReceivedAt      time.Time
+	State           string
+	Upstream        *string
+	RateSource      *string
+	UpstreamVersion *int32
+	ID              int64
 }
 
 // UpdateSpotPrice replaces the figures of an interval already stored with
-// the same start and end.
+// the same start and end, its state and its provenance with them.
 func (q *Queries) UpdateSpotPrice(ctx context.Context, arg UpdateSpotPriceParams) error {
 	_, err := q.db.Exec(ctx, updateSpotPrice,
 		arg.NokPerKwh,
@@ -441,7 +612,51 @@ func (q *Queries) UpdateSpotPrice(ctx context.Context, arg UpdateSpotPriceParams
 		arg.ExchangeRate,
 		arg.Source,
 		arg.ReceivedAt,
+		arg.State,
+		arg.Upstream,
+		arg.RateSource,
+		arg.UpstreamVersion,
 		arg.ID,
+	)
+	return err
+}
+
+const upsertSpotPriceHistory = `-- name: UpsertSpotPriceHistory :exec
+INSERT INTO energy.spot_price_history (price_area, cursor_day, floor_day, days_skipped, attempts, last_error, next_attempt_at, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8::timestamptz)
+ON CONFLICT (price_area) DO UPDATE SET
+    cursor_day = EXCLUDED.cursor_day,
+    floor_day = EXCLUDED.floor_day,
+    days_skipped = EXCLUDED.days_skipped,
+    attempts = EXCLUDED.attempts,
+    last_error = EXCLUDED.last_error,
+    next_attempt_at = EXCLUDED.next_attempt_at,
+    updated_at = EXCLUDED.updated_at
+`
+
+type UpsertSpotPriceHistoryParams struct {
+	PriceArea     string
+	CursorDay     pgtype.Date
+	FloorDay      pgtype.Date
+	DaysSkipped   int32
+	Attempts      int32
+	LastError     *string
+	NextAttemptAt *time.Time
+	UpdatedAt     time.Time
+}
+
+// UpsertSpotPriceHistory writes an area's walk as the sync decided it:
+// the cursor, the floor, the skipped days and the backoff, whole.
+func (q *Queries) UpsertSpotPriceHistory(ctx context.Context, arg UpsertSpotPriceHistoryParams) error {
+	_, err := q.db.Exec(ctx, upsertSpotPriceHistory,
+		arg.PriceArea,
+		arg.CursorDay,
+		arg.FloorDay,
+		arg.DaysSkipped,
+		arg.Attempts,
+		arg.LastError,
+		arg.NextAttemptAt,
+		arg.UpdatedAt,
 	)
 	return err
 }

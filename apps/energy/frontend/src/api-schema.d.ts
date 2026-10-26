@@ -926,9 +926,11 @@ export interface components {
             installedAt: string | null;
             meterNumber: string | null;
         };
-        /** @description What the installation holds of day-ahead prices, per price area (energy consumption billing design D2), for the Prices page — every area a metering point with a supply period is in, and every area already priced. */
+        /** @description What the installation holds of day-ahead prices, per price area (energy consumption billing design D2), for the Prices page — every area a metering point with a supply period is in, every area already priced and, with the spot-price service as the source, every area the service follows (spot-price service design S4). source is where the installation's worker fetches prices from — service (the shared spot-price service), feed (the public feed) or none (files only). */
         SpotPriceCoverage: {
             areas: components["schemas"]["SpotPriceCoverageArea"][];
+            /** @description service, feed or none. */
+            source: string;
         };
         /** @description One area's coverage. firstStart and lastEnd bound what is stored and are absent for an area with no prices; daysMissingLast30 counts the civil days (Europe/Oslo) among the last thirty, today included, with no price interval starting in them; lastFetch is the feed worker's most recent attempt for the area, absent when the worker never tried it. */
         SpotPriceCoverageArea: {
@@ -940,8 +942,24 @@ export interface components {
             intervalCount: number;
             /** Format: date-time */
             lastEnd?: string;
+            /** @description With the spot-price service as the source, whether the service follows the area, as its last answer said; absent with another source or before the worker has asked. */
+            followedByService?: boolean;
+            history?: components["schemas"]["SpotPriceHistory"];
             lastFetch?: components["schemas"]["SpotPriceFetch"];
             priceArea: string;
+            /** @description The length of the area's latest stored interval as an ISO 8601 duration, PT15M or PT60M; absent for an area with no prices. */
+            resolution?: string;
+        };
+        /** @description The spot-price service sync's walk back through an area's history (spot-price service design S5): cursorDay is the oldest civil day (Europe/Oslo) copied so far, floorDay the oldest the service holds; complete once the cursor has reached the floor. daysSkipped counts the days the service held incompletely, without a NOK price, or over an imported day at another resolution — left for a file. error is the last failed request's sentence while the walk waits to retry. */
+        SpotPriceHistory: {
+            complete: boolean;
+            /** Format: date */
+            cursorDay?: string;
+            /** Format: int32 */
+            daysSkipped: number;
+            error?: string;
+            /** Format: date */
+            floorDay?: string;
         };
         /** @description The feed worker's record of one area and civil day: ok once the day's prices are stored; pending while today's or tomorrow's are not yet published; missing for a past day the feed has no file for; failed for anything else, with the failure's sentence in error (never the response's body). attempts counts the requests made since the record last changed status, so a day pending for hours and then missing starts its seven missing attempts from one. */
         SpotPriceFetch: {
@@ -990,7 +1008,7 @@ export interface components {
             /** Format: int32 */
             rows: number;
         };
-        /** @description One day-ahead price interval of a price area, half-open [start, end), at the resolution the source gave (hourly from the public feed today). nokPerKwh is the price a settlement uses; eurPerKwh and exchangeRate are present when the source gave them. source is Feed (the worker) or Import (a file). */
+        /** @description One day-ahead price interval of a price area, half-open [start, end), at the resolution the source gave (hourly from the public feed, a quarter of an hour from the spot-price service since 2025-10-01). nokPerKwh is the price a settlement uses; eurPerKwh and exchangeRate are present when the source gave them. source is Feed (the public feed), Service (the spot-price service) or Import (a file). state is final or preliminary — a settlement prices only from final intervals. upstream, rateSource and upstreamVersion are the service's provenance for a Service interval — its own source (nordpool_portal, entsoe, hks), whose EUR/NOK rate gave the NOK figure (nordpool, norges_bank) and its version of the interval. */
         SpotPriceInterval: {
             /** Format: date-time */
             end: string;
@@ -1003,10 +1021,16 @@ export interface components {
             /** Format: double */
             nokPerKwh: number;
             priceArea: string;
-            /** @description Feed or Import. */
+            rateSource?: string;
+            /** @description Feed, Service or Import. */
             source: string;
             /** Format: date-time */
             start: string;
+            /** @description final or preliminary. */
+            state: string;
+            upstream?: string;
+            /** Format: int32 */
+            upstreamVersion?: number;
         };
         SupplyPeriodResponse: {
             /** Format: int32 */
