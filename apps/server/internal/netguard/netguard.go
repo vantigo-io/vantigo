@@ -196,6 +196,66 @@ func embeddedIPv4(b [16]byte) (embedded [4]byte, ok bool) {
 // address tried is the one that decided the destination as a whole is
 // unreachable.
 func DialContext(resolver Resolver, dial func(ctx context.Context, network, addr string) (net.Conn, error)) func(ctx context.Context, network, address string) (net.Conn, error) {
+	return guardedDial(resolver, dial, func(host string, addr netip.Addr) error {
+		if Disallowed(addr) {
+			return fmt.Errorf(
+				"%w: %q resolves to %s, a private, link-local, loopback, or reserved address",
+				ErrDisallowed, host, addr)
+		}
+		return nil
+	})
+}
+
+// PrivateNetwork reports whether addr is in a private network an operator
+// runs: RFC 1918 IPv4 (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16) or RFC
+// 4193 unique-local IPv6 (fc00::/7), an IPv4-mapped form unwrapped first.
+// Nothing else — not loopback, link-local (the 169.254.169.254 metadata
+// address), carrier-grade NAT or any reserved range — and an address merely
+// embedded in a NAT64, 6to4 or IPv4-compatible IPv6 address is not seen
+// through: a private address reached through a translator is not the
+// operator's own network. It is the one exception a caller may ask for, by
+// name, through DialContextAllowingPrivate; Disallowed itself has none.
+func PrivateNetwork(addr netip.Addr) bool {
+	if !addr.IsValid() {
+		return false
+	}
+	candidate := addr.Unmap()
+	if candidate.Is4() {
+		b := candidate.As4()
+		return b[0] == 10 || (b[0] == 172 && b[1] >= 16 && b[1] <= 31) || (b[0] == 192 && b[1] == 168)
+	}
+	b := candidate.As16()
+	return b[0]&0xfe == 0xfc
+}
+
+// DialContextAllowingPrivate is DialContext for the one kind of caller that
+// must reach a service on the operator's own private network — the energy
+// module's client for the shared spot-price service (spot-price service
+// design S7): an address PrivateNetwork accepts is allowed, every other
+// address Disallowed refuses is still refused. With requirePrivate every
+// resolved address must be private, so a caller speaking plain http with a
+// secret never sends it to a public address. Resolution, the check of every
+// address before any dial and the dial by the checked address are
+// DialContext's, so the DNS-rebinding defence holds.
+func DialContextAllowingPrivate(resolver Resolver, dial func(ctx context.Context, network, addr string) (net.Conn, error), requirePrivate bool) func(ctx context.Context, network, address string) (net.Conn, error) {
+	return guardedDial(resolver, dial, func(host string, addr netip.Addr) error {
+		private := PrivateNetwork(addr)
+		switch {
+		case requirePrivate && !private:
+			return fmt.Errorf("%w: %q resolves to %s, which is not a private network address", ErrDisallowed, host, addr)
+		case !private && Disallowed(addr):
+			return fmt.Errorf(
+				"%w: %q resolves to %s, a link-local, loopback, or reserved address",
+				ErrDisallowed, host, addr)
+		}
+		return nil
+	})
+}
+
+// guardedDial is the dialler both guards share: split, resolve, check every
+// address with check before any dial, then dial each checked address in
+// order until one connects (DialContext's comment has the why).
+func guardedDial(resolver Resolver, dial func(ctx context.Context, network, addr string) (net.Conn, error), check func(host string, addr netip.Addr) error) func(ctx context.Context, network, address string) (net.Conn, error) {
 	return func(ctx context.Context, network, address string) (net.Conn, error) {
 		host, port, err := net.SplitHostPort(address)
 		if err != nil {
@@ -214,10 +274,8 @@ func DialContext(resolver Resolver, dial func(ctx context.Context, network, addr
 		}
 
 		for _, addr := range addrs {
-			if Disallowed(addr) {
-				return nil, fmt.Errorf(
-					"%w: %q resolves to %s, a private, link-local, loopback, or reserved address",
-					ErrDisallowed, host, addr)
+			if err := check(host, addr); err != nil {
+				return nil, err
 			}
 		}
 
