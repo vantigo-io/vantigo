@@ -497,6 +497,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/energy/spot-prices/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Summarise spot prices of a price area per hour, day, week or month
+         * @description One price area's day-ahead prices summarised per civil hour, day, ISO week or month in Europe/Oslo (spot-price service design S8): the time-weighted average — Σ(price × length) / Σ(length), since history before 2025-10-01 is hourly and after it quarter-hourly — the lowest and the highest interval, the minutes the stored intervals cover and whether any of them is preliminary. A bucket with no interval is absent, not zero. from and to must fall on the bucket's boundaries in Europe/Oslo (an hour; a local midnight; a Monday's local midnight; the first of a month's local midnight), and the window is at most 35 days for hour, 400 days for day, 5 years (1 830 days) for week and 30 years (10 980 days) for month.
+         */
+        get: operations["getEnergySpotPricesSummary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/energy/stats/attention": {
         parameters: {
             query?: never;
@@ -1031,6 +1051,30 @@ export interface components {
             upstream?: string;
             /** Format: int32 */
             upstreamVersion?: number;
+        };
+        /** @description One price area's prices summarised per bucket (spot-price service design S8). timeZone is the zone the buckets are civil periods of, Europe/Oslo. */
+        SpotPriceSummary: {
+            /** @description hour, day, week or month. */
+            bucket: string;
+            buckets: components["schemas"]["SpotPriceSummaryBucket"][];
+            priceArea: string;
+            timeZone: string;
+        };
+        /** @description One civil hour, day, ISO week or month [start, end) of an area's prices. avgNokPerKwh is time-weighted over the stored intervals starting in it; minNokPerKwh and maxNokPerKwh are the lowest and highest of them; coveredMinutes is the minutes they cover, less than the bucket's length where days are missing; preliminary is true when any of them is preliminary. */
+        SpotPriceSummaryBucket: {
+            /** Format: double */
+            avgNokPerKwh: number;
+            /** Format: int32 */
+            coveredMinutes: number;
+            /** Format: date-time */
+            end: string;
+            /** Format: double */
+            maxNokPerKwh: number;
+            /** Format: double */
+            minNokPerKwh: number;
+            preliminary: boolean;
+            /** Format: date-time */
+            start: string;
         };
         SupplyPeriodResponse: {
             /** Format: int32 */
@@ -2952,6 +2996,62 @@ export interface operations {
             429: {
                 headers: {
                     "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    getEnergySpotPricesSummary: {
+        parameters: {
+            query: {
+                /** @description The price area, as a metering point carries it (NO1–NO5). */
+                area: string;
+                /** @description hour, day, week or month. */
+                bucket: string;
+                /** @description Inclusive; on a bucket boundary in Europe/Oslo. */
+                from: string;
+                /** @description Exclusive; on a bucket boundary in Europe/Oslo, within the bucket's window of from. */
+                to: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SpotPriceSummary"];
+                };
+            };
+            /** @description Bad Request — area not two letters and one or two digits, a bucket that is none of the four, from or to off the bucket's boundaries, from not before to, or the window wider than the bucket allows. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
                     [name: string]: unknown;
                 };
                 content: {

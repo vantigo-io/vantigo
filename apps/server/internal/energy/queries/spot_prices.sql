@@ -161,3 +161,28 @@ FROM energy.spot_price_fetches
 WHERE price_area = @price_area AND day >= @from_day::date AND fetched_at IS NOT NULL
 ORDER BY fetched_at DESC
 LIMIT 1;
+
+-- name: SummariseSpotPrices :many
+-- SummariseSpotPrices is the read behind GET /energy/spot-prices/summary
+-- (spot-price service design S8): an area's intervals starting inside
+-- [from, to) grouped per civil hour, day, ISO week or month in Europe/Oslo.
+-- bucket_local is the bucket's local start, converted to an instant in Go.
+-- An hour is truncated on the UTC instant instead: Oslo's offset is whole
+-- hours, so it is the same hour, and the autumn's repeated 02:00 stays two
+-- buckets where a truncated local timestamp would merge them. The average is
+-- time-weighted, Σ(price × seconds) / Σ(seconds), since history is hourly
+-- before 2025-10-01 and quarter-hourly after; a bucket with no interval is
+-- absent.
+SELECT (CASE WHEN @bucket::text = 'hour'
+             THEN date_trunc('hour', "start" AT TIME ZONE 'UTC')
+             ELSE date_trunc(@bucket::text, "start" AT TIME ZONE 'Europe/Oslo')
+        END)::timestamp AS bucket_local,
+       round(sum(nok_per_kwh * extract(epoch FROM "end" - "start")) / sum(extract(epoch FROM "end" - "start")), 6)::numeric AS avg_nok_per_kwh,
+       min(nok_per_kwh)::numeric AS min_nok_per_kwh,
+       max(nok_per_kwh)::numeric AS max_nok_per_kwh,
+       (sum(extract(epoch FROM "end" - "start")) / 60)::integer AS covered_minutes,
+       bool_or(state = 'preliminary')::boolean AS preliminary
+FROM energy.spot_prices
+WHERE price_area = @price_area AND "start" >= @from_ts::timestamptz AND "start" < @to_ts::timestamptz
+GROUP BY 1
+ORDER BY 1;

@@ -588,6 +588,26 @@ type SpotPriceInterval struct {
 	UpstreamVersion *int32  `json:"upstreamVersion,omitempty"`
 }
 
+// SpotPriceSummary One price area's prices summarised per bucket (spot-price service design S8). timeZone is the zone the buckets are civil periods of, Europe/Oslo.
+type SpotPriceSummary struct {
+	// Bucket hour, day, week or month.
+	Bucket    string                   `json:"bucket"`
+	Buckets   []SpotPriceSummaryBucket `json:"buckets"`
+	PriceArea string                   `json:"priceArea"`
+	TimeZone  string                   `json:"timeZone"`
+}
+
+// SpotPriceSummaryBucket One civil hour, day, ISO week or month [start, end) of an area's prices. avgNokPerKwh is time-weighted over the stored intervals starting in it; minNokPerKwh and maxNokPerKwh are the lowest and highest of them; coveredMinutes is the minutes they cover, less than the bucket's length where days are missing; preliminary is true when any of them is preliminary.
+type SpotPriceSummaryBucket struct {
+	AvgNokPerKwh   float64   `json:"avgNokPerKwh"`
+	CoveredMinutes int32     `json:"coveredMinutes"`
+	End            time.Time `json:"end"`
+	MaxNokPerKwh   float64   `json:"maxNokPerKwh"`
+	MinNokPerKwh   float64   `json:"minNokPerKwh"`
+	Preliminary    bool      `json:"preliminary"`
+	Start          time.Time `json:"start"`
+}
+
 // SupplyPeriodResponse defines model for SupplyPeriodResponse.
 type SupplyPeriodResponse struct {
 	CustomerId      int32      `json:"customerId"`
@@ -703,6 +723,21 @@ type PostEnergySpotPricesImportMultipartBody struct {
 type PostEnergySpotPricesImportParams struct {
 	// DryRun true (the default) checks the file and writes nothing; false writes every row, or nothing when any row has an error.
 	DryRun *bool `form:"dryRun,omitempty" json:"dryRun,omitempty"`
+}
+
+// GetEnergySpotPricesSummaryParams defines parameters for GetEnergySpotPricesSummary.
+type GetEnergySpotPricesSummaryParams struct {
+	// Area The price area, as a metering point carries it (NO1–NO5).
+	Area string `form:"area" json:"area"`
+
+	// Bucket hour, day, week or month.
+	Bucket string `form:"bucket" json:"bucket"`
+
+	// From Inclusive; on a bucket boundary in Europe/Oslo.
+	From time.Time `form:"from" json:"from"`
+
+	// To Exclusive; on a bucket boundary in Europe/Oslo, within the bucket's window of from.
+	To time.Time `form:"to" json:"to"`
 }
 
 // GetEnergyStatsSummaryParams defines parameters for GetEnergyStatsSummary.
@@ -855,6 +890,9 @@ type ServerInterface interface {
 	// PostEnergySpotPricesImport Import spot prices from a file
 	// (POST /api/v1/energy/spot-prices/import)
 	PostEnergySpotPricesImport(w http.ResponseWriter, r *http.Request, params PostEnergySpotPricesImportParams)
+	// GetEnergySpotPricesSummary Summarise spot prices of a price area per hour, day, week or month
+	// (GET /api/v1/energy/spot-prices/summary)
+	GetEnergySpotPricesSummary(w http.ResponseWriter, r *http.Request, params GetEnergySpotPricesSummaryParams)
 	// GetEnergyStatsAttention Get energy dashboard attention items
 	// (GET /api/v1/energy/stats/attention)
 	GetEnergyStatsAttention(w http.ResponseWriter, r *http.Request)
@@ -2034,6 +2072,78 @@ func (siw *ServerInterfaceWrapper) PostEnergySpotPricesImport(w http.ResponseWri
 	handler.ServeHTTP(w, r)
 }
 
+// GetEnergySpotPricesSummary operation middleware
+func (siw *ServerInterfaceWrapper) GetEnergySpotPricesSummary(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetEnergySpotPricesSummaryParams
+
+	// ------------- Required query parameter "area" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "area", r.URL.Query(), &params.Area, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "area"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "area", Err: err})
+		}
+		return
+	}
+
+	// ------------- Required query parameter "bucket" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "bucket", r.URL.Query(), &params.Bucket, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "bucket"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "bucket", Err: err})
+		}
+		return
+	}
+
+	// ------------- Required query parameter "from" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "from", r.URL.Query(), &params.From, runtime.BindQueryParameterOptions{Type: "string", Format: "date-time"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "from"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "from", Err: err})
+		}
+		return
+	}
+
+	// ------------- Required query parameter "to" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "to", r.URL.Query(), &params.To, runtime.BindQueryParameterOptions{Type: "string", Format: "date-time"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "to"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "to", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetEnergySpotPricesSummary(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetEnergyStatsAttention operation middleware
 func (siw *ServerInterfaceWrapper) GetEnergyStatsAttention(w http.ResponseWriter, r *http.Request) {
 
@@ -2305,6 +2415,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/energy/spot-prices", wrapper.GetEnergySpotPrices)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/energy/spot-prices/coverage", wrapper.GetEnergySpotPricesCoverage)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/energy/spot-prices/import", wrapper.PostEnergySpotPricesImport)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/energy/spot-prices/summary", wrapper.GetEnergySpotPricesSummary)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/energy/stats/attention", wrapper.GetEnergyStatsAttention)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/energy/stats/summary", wrapper.GetEnergyStatsSummary)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/energy/stats/timeseries", wrapper.GetEnergyStatsTimeseries)
@@ -4656,6 +4767,70 @@ func (response PostEnergySpotPricesImport429JSONResponse) VisitPostEnergySpotPri
 	return err
 }
 
+type GetEnergySpotPricesSummaryRequestObject struct {
+	Params GetEnergySpotPricesSummaryParams
+}
+
+type GetEnergySpotPricesSummaryResponseObject interface {
+	VisitGetEnergySpotPricesSummaryResponse(w http.ResponseWriter) error
+}
+
+type GetEnergySpotPricesSummary200JSONResponse SpotPriceSummary
+
+func (response GetEnergySpotPricesSummary200JSONResponse) VisitGetEnergySpotPricesSummaryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetEnergySpotPricesSummary400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response GetEnergySpotPricesSummary400ApplicationProblemPlusJSONResponse) VisitGetEnergySpotPricesSummaryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetEnergySpotPricesSummary401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetEnergySpotPricesSummary401JSONResponse) VisitGetEnergySpotPricesSummaryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetEnergySpotPricesSummary403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetEnergySpotPricesSummary403JSONResponse) VisitGetEnergySpotPricesSummaryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetEnergyStatsAttentionRequestObject struct {
 }
 
@@ -4931,6 +5106,9 @@ type StrictServerInterface interface {
 	// PostEnergySpotPricesImport Import spot prices from a file
 	// (POST /api/v1/energy/spot-prices/import)
 	PostEnergySpotPricesImport(ctx context.Context, request PostEnergySpotPricesImportRequestObject) (PostEnergySpotPricesImportResponseObject, error)
+	// GetEnergySpotPricesSummary Summarise spot prices of a price area per hour, day, week or month
+	// (GET /api/v1/energy/spot-prices/summary)
+	GetEnergySpotPricesSummary(ctx context.Context, request GetEnergySpotPricesSummaryRequestObject) (GetEnergySpotPricesSummaryResponseObject, error)
 	// GetEnergyStatsAttention Get energy dashboard attention items
 	// (GET /api/v1/energy/stats/attention)
 	GetEnergyStatsAttention(ctx context.Context, request GetEnergyStatsAttentionRequestObject) (GetEnergyStatsAttentionResponseObject, error)
@@ -5902,6 +6080,32 @@ func (sh *strictHandler) PostEnergySpotPricesImport(w http.ResponseWriter, r *ht
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PostEnergySpotPricesImportResponseObject); ok {
 		if err := validResponse.VisitPostEnergySpotPricesImportResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetEnergySpotPricesSummary operation middleware
+func (sh *strictHandler) GetEnergySpotPricesSummary(w http.ResponseWriter, r *http.Request, params GetEnergySpotPricesSummaryParams) {
+	var request GetEnergySpotPricesSummaryRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetEnergySpotPricesSummary(ctx, request.(GetEnergySpotPricesSummaryRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetEnergySpotPricesSummary")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetEnergySpotPricesSummaryResponseObject); ok {
+		if err := validResponse.VisitGetEnergySpotPricesSummaryResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

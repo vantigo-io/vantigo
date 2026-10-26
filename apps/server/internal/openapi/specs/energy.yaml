@@ -1050,6 +1050,58 @@ components:
                 - source
                 - state
             type: object
+        SpotPriceSummary:
+            description: One price area's prices summarised per bucket (spot-price service design S8). timeZone is the zone the buckets are civil periods of, Europe/Oslo.
+            properties:
+                bucket:
+                    description: hour, day, week or month.
+                    type: string
+                buckets:
+                    items:
+                        $ref: '#/components/schemas/SpotPriceSummaryBucket'
+                    type: array
+                priceArea:
+                    type: string
+                timeZone:
+                    type: string
+            required:
+                - priceArea
+                - bucket
+                - timeZone
+                - buckets
+            type: object
+        SpotPriceSummaryBucket:
+            description: One civil hour, day, ISO week or month [start, end) of an area's prices. avgNokPerKwh is time-weighted over the stored intervals starting in it; minNokPerKwh and maxNokPerKwh are the lowest and highest of them; coveredMinutes is the minutes they cover, less than the bucket's length where days are missing; preliminary is true when any of them is preliminary.
+            properties:
+                avgNokPerKwh:
+                    format: double
+                    type: number
+                coveredMinutes:
+                    format: int32
+                    type: integer
+                end:
+                    format: date-time
+                    type: string
+                maxNokPerKwh:
+                    format: double
+                    type: number
+                minNokPerKwh:
+                    format: double
+                    type: number
+                preliminary:
+                    type: boolean
+                start:
+                    format: date-time
+                    type: string
+            required:
+                - start
+                - end
+                - avgNokPerKwh
+                - minNokPerKwh
+                - maxNokPerKwh
+                - coveredMinutes
+                - preliminary
+            type: object
         SupplyPeriodResponse:
             properties:
                 customerId:
@@ -2686,6 +2738,66 @@ paths:
             tags:
                 - EnergySpotPricesEndpoints
             x-vantigo-access: permission:energy:prices-manage+energy:prices-view
+    /api/v1/energy/spot-prices/summary:
+        get:
+            description: "One price area's day-ahead prices summarised per civil hour, day, ISO week or month in Europe/Oslo (spot-price service design S8): the time-weighted average — Σ(price × length) / Σ(length), since history before 2025-10-01 is hourly and after it quarter-hourly — the lowest and the highest interval, the minutes the stored intervals cover and whether any of them is preliminary. A bucket with no interval is absent, not zero. from and to must fall on the bucket's boundaries in Europe/Oslo (an hour; a local midnight; a Monday's local midnight; the first of a month's local midnight), and the window is at most 35 days for hour, 400 days for day, 5 years (1 830 days) for week and 30 years (10 980 days) for month."
+            operationId: getEnergySpotPricesSummary
+            parameters:
+                - description: The price area, as a metering point carries it (NO1–NO5).
+                  in: query
+                  name: area
+                  required: true
+                  schema:
+                    type: string
+                - description: hour, day, week or month.
+                  in: query
+                  name: bucket
+                  required: true
+                  schema:
+                    type: string
+                - description: Inclusive; on a bucket boundary in Europe/Oslo.
+                  in: query
+                  name: from
+                  required: true
+                  schema:
+                    format: date-time
+                    type: string
+                - description: Exclusive; on a bucket boundary in Europe/Oslo, within the bucket's window of from.
+                  in: query
+                  name: to
+                  required: true
+                  schema:
+                    format: date-time
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/SpotPriceSummary'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request — area not two letters and one or two digits, a bucket that is none of the four, from or to off the bucket's boundaries, from not before to, or the window wider than the bucket allows.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+            summary: Summarise spot prices of a price area per hour, day, week or month
+            tags:
+                - EnergySpotPricesEndpoints
+            x-vantigo-access: permission:energy:prices-view
     /api/v1/energy/stats/attention:
         get:
             operationId: getEnergyStatsAttention
