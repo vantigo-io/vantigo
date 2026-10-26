@@ -191,6 +191,8 @@ const staffAccountAttentionTypes = [
   "licenceUnavailable",
   "passUnrevealed",
   "managerNotInEntra",
+  // The photo the directory refused (photo sync design §4), read from the provider link too.
+  "photoNotWritten",
 ];
 
 /** Staff's installation items: entityId the literal 'settings', dealt with in Settings. */
@@ -417,6 +419,7 @@ const staffAttentionTitleKeys: Record<string, string> = {
   licenceUnavailable: "dashboard.staffLicenceUnavailable",
   passUnrevealed: "dashboard.staffPassUnrevealed",
   managerNotInEntra: "dashboard.staffManagerNotInEntra",
+  photoNotWritten: "dashboard.staffPhotoNotWritten",
   entraNotConnected: "dashboard.staffEntraNotConnected",
   entraFailing: "dashboard.staffEntraFailing",
   secretExpiring: "dashboard.staffSecretExpiring",

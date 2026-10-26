@@ -789,6 +789,8 @@ describe("the dashboard's staff account attention items", () => {
     "licenceUnavailable",
     "passUnrevealed",
     "managerNotInEntra",
+    // The photo the directory refused (photo sync design §4).
+    "photoNotWritten",
   ];
   const installationTypes = [
     "employeeRoleMissing",
@@ -820,6 +822,17 @@ describe("the dashboard's staff account attention items", () => {
       expect(sentence, lng).not.toBe(key);
       expect(sentence, lng).toContain("Kari Nordmann");
     }
+  });
+
+  it("names Microsoft Entra ID and the person for a photo the directory refused, as its siblings do", () => {
+    const key = attentionTitleKey({ module: "staff", type: "photoNotWritten" }) as string;
+    expect(key).toBe("dashboard.staffPhotoNotWritten");
+    expect(i18n.t(key, { ns: "host", lng: "en", name: "Kari Nordmann" })).toBe(
+      "Microsoft Entra ID refused the photo of Kari Nordmann",
+    );
+    expect(i18n.t(key, { ns: "host", lng: "nb", name: "Kari Nordmann" })).toBe(
+      "Microsoft Entra ID avviste bildet av Kari Nordmann",
+    );
   });
 
   // A group a provider could not sync (Entra delivery D): one item per group,

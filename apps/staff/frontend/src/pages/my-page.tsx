@@ -57,8 +57,8 @@ export const MyPage = () => {
 
   const header = (
     <Group gap="md" wrap="nowrap" align="center">
-      {/* My own photo, mine to change (person-glance design S1). */}
-      {me.data && <PersonAvatar person={me.data} size="lg" editable />}
+      {/* My own picture: my Vantigo avatar to change, unless HR's photo stands (photo sync design S2). */}
+      {me.data && <PersonAvatar person={me.data} size="lg" self />}
       <div style={{ flex: 1, minWidth: 0 }}>
         <PageHeader title={t("navMyPage")} description={t("myPageDescription")} />
       </div>

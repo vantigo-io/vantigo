@@ -1,7 +1,8 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { PROFILE_QUERY_KEY } from "@vantigo/frontend-shell";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { withErased } from "../test/fixtures";
+import { peopleWithRecords, withErased } from "../test/fixtures";
 import { renderRoute } from "../test/route-tree";
 import { type StaffStub, stubStaffApi } from "../test/server";
 
@@ -10,6 +11,23 @@ const photoWrites = (fetchMock: StaffStub, method: string) =>
   fetchMock.actualCalls
     .filter(([url, init]) => (init?.method ?? "GET") === method && /\/people\/\d+\/photo$/.test(String(url)))
     .map(([url, init]) => ({ url: String(url), form: init?.body as FormData | undefined }));
+
+/** The writes to identity's account avatar the fake received, with their multipart bodies. */
+const avatarWrites = (fetchMock: StaffStub, method: string) =>
+  fetchMock.actualCalls
+    .filter(([url, init]) => (init?.method ?? "GET") === method && /\/identity\/account\/avatar$/.test(String(url)))
+    .map(([url, init]) => ({ url: String(url), form: init?.body as FormData | undefined }));
+
+/** Grace's user, whose own avatar the fixtures hold. */
+const GRACE_USER = "8d5c6a3e-0000-4000-8000-000000000102";
+
+/** The directory with Grace linked to her user, so her own avatar is her picture. */
+const graceLinked = () =>
+  peopleWithRecords().map((one) =>
+    one.id === 102
+      ? { ...one, record: { ...one.record, user: { id: GRACE_USER, displayName: "Grace at Fjord", active: true } } }
+      : one,
+  );
 
 /** Opens the menu on the person's avatar and picks one of its items. */
 const fromMenu = async (item: string, name = "Grace Hopper") => {
@@ -111,38 +129,187 @@ describe("The person's photo", () => {
     expect(screen.queryByRole("button", { name: /^Photo of / })).not.toBeInTheDocument();
   });
 
-  it("lets the person change their own photo on My page", async () => {
+  it("shows HR the user's own avatar when HR has set no photo, and offers no Remove photo of it", async () => {
+    stubStaffApi({ role: "manage", people: graceLinked() });
+    renderRoute("/staff/people/102");
+
+    const grace = await screen.findByRole("img", { name: "Grace Hopper" });
+    expect(grace.tagName).toBe("IMG");
+    expect(grace).toHaveAttribute("src", expect.stringContaining("/people/102/photo?v=2026-08-15"));
+    await userEvent.click(screen.getByRole("button", { name: "Photo of Grace Hopper" }));
+    expect(await screen.findByRole("menuitem", { name: "Change photo" })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Remove photo" })).not.toBeInTheDocument();
+  });
+
+  it("lets HR set its photo over the user's own avatar", async () => {
+    const fetchMock = stubStaffApi({ role: "manage", people: graceLinked() });
+    renderRoute("/staff/people/102");
+
+    await fromMenu("Change photo");
+    await userEvent.upload(
+      screen.getByLabelText("Choose a file"),
+      new File(["\x89PNG a photo"], "grace.png", { type: "image/png" }),
+    );
+
+    await waitFor(() => expect(photoWrites(fetchMock, "PUT")).toHaveLength(1));
+    expect(avatarWrites(fetchMock, "POST")).toHaveLength(0);
+    expect(fetchMock.state.photos[102]).toMatchObject({ contentType: "image/png" });
+    // The user's own avatar is kept aside, not overwritten.
+    expect(fetchMock.state.avatars[GRACE_USER]).toBeDefined();
+    await waitFor(() =>
+      expect(screen.getByRole("img", { name: "Grace Hopper" })).toHaveAttribute(
+        "src",
+        expect.stringContaining("/people/102/photo?v=2026-10-11T09"),
+      ),
+    );
+  });
+
+  it("says Set by HR on My page while HR's photo stands, and offers nothing to change", async () => {
     stubStaffApi({ role: "access", me: 101 });
     renderRoute("/staff/me");
 
     const menu = await screen.findByRole("button", { name: "Photo of Ada Lovelace" });
     expect(within(menu).getByRole("img", { name: "Ada Lovelace" })).toBeInTheDocument();
+    await userEvent.click(menu);
+    const setByHr = await screen.findByRole("menuitem", { name: /Set by HR/ });
+    expect(setByHr).toHaveAttribute("aria-disabled", "true");
+    expect(setByHr).toHaveTextContent("Ask HR to change it");
+    expect(screen.queryByRole("menuitem", { name: "Change photo" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Remove photo" })).not.toBeInTheDocument();
   });
 
-  it("sends the person's own photo from My page to their record", async () => {
+  it("lets the keyboard reach Set by HR, which does nothing", async () => {
     const fetchMock = stubStaffApi({ role: "access", me: 101 });
     renderRoute("/staff/me");
 
-    await fromMenu("Change photo", "Ada Lovelace");
-    const photo = new File(["\x89PNG a photo"], "ada.png", { type: "image/png" });
+    const menu = await screen.findByRole("button", { name: "Photo of Ada Lovelace" });
+    menu.focus();
+    await userEvent.keyboard("{Enter}");
+    const setByHr = await screen.findByRole("menuitem", { name: /Set by HR/ });
+    await userEvent.keyboard("{ArrowDown}");
+    await waitFor(() => expect(setByHr).toHaveFocus());
+    expect(setByHr).toHaveAttribute("aria-disabled", "true");
+    await userEvent.keyboard("{Enter}");
+    // The menu stays open, saying why, and nothing is sent.
+    expect(screen.getByRole("menuitem", { name: /Set by HR/ })).toBeInTheDocument();
+    expect(avatarWrites(fetchMock, "POST")).toHaveLength(0);
+    expect(avatarWrites(fetchMock, "DELETE")).toHaveLength(0);
+  });
+
+  it("offers the person no menu on their own person page, only on My page", async () => {
+    stubStaffApi({ role: "access", me: 101 });
+    renderRoute("/staff/people/101");
+
+    expect(await screen.findByRole("img", { name: "Ada Lovelace" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Photo of / })).not.toBeInTheDocument();
+  });
+
+  it("sends the person's own photo from My page to their Vantigo avatar", async () => {
+    const fetchMock = stubStaffApi({ role: "access", me: 102, people: graceLinked() });
+    renderRoute("/staff/me");
+
+    const before = await screen.findByRole("img", { name: "Grace Hopper" });
+    expect(before).toHaveAttribute("src", expect.stringContaining("/people/102/photo?v=2026-08-15"));
+    await fromMenu("Change photo");
+    const photo = new File(["\x89PNG a photo"], "grace.png", { type: "image/png" });
     await userEvent.upload(screen.getByLabelText("Choose a file"), photo);
 
-    await waitFor(() => expect(photoWrites(fetchMock, "PUT")).toHaveLength(1));
-    expect(photoWrites(fetchMock, "PUT")[0].url).toMatch(/\/api\/v1\/staff\/people\/101\/photo$/);
-    expect(fetchMock.state.photos[101]).toMatchObject({ contentType: "image/png" });
+    await waitFor(() => expect(avatarWrites(fetchMock, "POST")).toHaveLength(1));
+    const [{ url, form }] = avatarWrites(fetchMock, "POST");
+    expect(url).toMatch(/\/api\/v1\/identity\/account\/avatar$/);
+    expect(((form as FormData).get("avatar") as File).name).toBe("grace.png");
+    expect(photoWrites(fetchMock, "PUT")).toHaveLength(0);
+    expect(fetchMock.state.photos[102]).toBeUndefined();
+    expect(fetchMock.state.avatars[GRACE_USER]).toMatchObject({ contentType: "image/png", version: 2 });
+    expect(await screen.findByText("Photo changed")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByRole("img", { name: "Grace Hopper" })).toHaveAttribute(
+        "src",
+        expect.stringContaining("/people/102/photo?v=2026-10-11T10"),
+      ),
+    );
+  });
+
+  it("removes the person's own avatar from My page, the initials back in its place", async () => {
+    const fetchMock = stubStaffApi({ role: "access", me: 102, people: graceLinked() });
+    renderRoute("/staff/me");
+
+    await fromMenu("Remove photo");
+    const dialog = await screen.findByRole("dialog", { name: "Remove photo" });
+    await userEvent.click(within(dialog).getByRole("button", { name: "Remove" }));
+
+    await waitFor(() => expect(avatarWrites(fetchMock, "DELETE")).toHaveLength(1));
+    expect(photoWrites(fetchMock, "DELETE")).toHaveLength(0);
+    expect(fetchMock.state.avatars[GRACE_USER]).toBeUndefined();
+    await waitFor(() => expect(screen.getByRole("img", { name: "Grace Hopper" })).toHaveTextContent("GH"));
+  });
+
+  it("offers the person Change photo and no Remove photo when they have no picture", async () => {
+    stubStaffApi({ role: "access", me: 102, people: graceLinked(), avatars: {} });
+    renderRoute("/staff/me");
+
+    await userEvent.click(await screen.findByRole("button", { name: "Photo of Grace Hopper" }));
+    expect(await screen.findByRole("menuitem", { name: "Change photo" })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Remove photo" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: /Set by HR/ })).not.toBeInTheDocument();
+  });
+
+  it("reads the person and the shell's profile again after the person's own photo changed", async () => {
+    stubStaffApi({ role: "access", me: 102, people: graceLinked() });
+    const { queryClient } = renderRoute("/staff/me");
+    const invalidate = vi.spyOn(queryClient, "invalidateQueries");
+
+    await fromMenu("Change photo");
+    await userEvent.upload(
+      screen.getByLabelText("Choose a file"),
+      new File(["\x89PNG a photo"], "grace.png", { type: "image/png" }),
+    );
+
+    expect(await screen.findByText("Photo changed")).toBeInTheDocument();
+    // The header's avatar is the host's profile query, under the shell's prefix.
+    await waitFor(() => expect(invalidate).toHaveBeenCalledWith({ queryKey: PROFILE_QUERY_KEY }));
+  });
+
+  it("says Set by HR when HR's photo was set meanwhile, and the menu then says so too", async () => {
+    const fetchMock = stubStaffApi({ role: "access", me: 102, people: graceLinked() });
+    const { queryClient } = renderRoute("/staff/me");
+    const invalidate = vi.spyOn(queryClient, "invalidateQueries");
+
+    await fromMenu("Change photo");
+    // HR sets its photo while the person picks theirs: identity refuses.
+    fetchMock.state.photos[102] = { contentType: "image/png", updatedAt: "2026-10-11T09:30:00Z" };
+    await userEvent.upload(
+      screen.getByLabelText("Choose a file"),
+      new File(["\x89PNG a photo"], "grace.png", { type: "image/png" }),
+    );
+
+    expect(await screen.findByText("Ask HR to change it")).toBeInTheDocument();
+    expect(screen.queryByText("Your photo is kept by Staff and cannot be changed here.")).not.toBeInTheDocument();
+    expect(avatarWrites(fetchMock, "POST")).toHaveLength(1);
+    expect(fetchMock.state.avatars[GRACE_USER]).toMatchObject({ version: 1 });
+    await waitFor(() => expect(invalidate).toHaveBeenCalledWith({ queryKey: PROFILE_QUERY_KEY }));
+    await waitFor(() =>
+      expect(screen.getByRole("img", { name: "Grace Hopper" })).toHaveAttribute(
+        "src",
+        expect.stringContaining("/people/102/photo?v=2026-10-11T09%3A30"),
+      ),
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Photo of Grace Hopper" }));
+    expect(await screen.findByRole("menuitem", { name: /Set by HR/ })).toHaveAttribute("aria-disabled", "true");
+    expect(screen.queryByRole("menuitem", { name: "Change photo" })).not.toBeInTheDocument();
   });
 
   it("sends no DELETE when the remove is cancelled", async () => {
-    const fetchMock = stubStaffApi({ role: "access", me: 101 });
+    const fetchMock = stubStaffApi({ role: "access", me: 102, people: graceLinked() });
     renderRoute("/staff/me");
 
-    await fromMenu("Remove photo", "Ada Lovelace");
+    await fromMenu("Remove photo");
     const dialog = await screen.findByRole("dialog", { name: "Remove photo" });
     await userEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
 
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "Remove photo" })).not.toBeInTheDocument());
-    expect(photoWrites(fetchMock, "DELETE")).toHaveLength(0);
-    expect(fetchMock.state.photos[101]).toBeDefined();
+    expect(avatarWrites(fetchMock, "DELETE")).toHaveLength(0);
+    expect(fetchMock.state.avatars[GRACE_USER]).toBeDefined();
   });
 });
 

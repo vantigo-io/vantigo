@@ -1,3 +1,4 @@
+import { PROFILE_QUERY_KEY } from "@vantigo/frontend-shell";
 import { request } from "./request";
 import { creationOptions, credentialJson, requestOptions, webAuthnAvailable } from "./webauthn";
 
@@ -7,6 +8,8 @@ export interface PersonalProfile {
   email: string | null;
   preferredLanguage: Language;
   avatarUrl: string | null;
+  /** "staff" while Staff's photo is the picture and the avatar cannot be changed here; null otherwise. */
+  avatarManagedBy: "staff" | null;
   /** The user's own time zone, an IANA name; null follows the workspace's business time zone. */
   timeZone: string | null;
 }
@@ -15,13 +18,15 @@ interface AccountResponse {
   email: string | null;
   preferredLanguage: string | null;
   avatarUrl: string | null;
+  avatarManagedBy?: "staff" | null;
   timeZone?: string | null;
 }
 export interface PersonalMfaStatus {
   twoFactorEnabled: boolean;
   mfaEnrollmentRequired: boolean;
 }
-export const profileQueryKey = (userId: string) => ["account", "profile", userId] as const;
+/** The signed-in user's profile, under the shell's prefix, which Staff's My page invalidates after an avatar change. */
+export const profileQueryKey = (userId: string) => [...PROFILE_QUERY_KEY, userId] as const;
 export interface MfaSetup {
   sharedKey: string | null;
   authenticatorUri: string | null;
@@ -78,6 +83,7 @@ const toProfile = (value: AccountResponse): PersonalProfile => ({
       : value.preferredLanguage?.trim().toLowerCase() === "nb"
         ? "nb"
         : "auto",
+  avatarManagedBy: value.avatarManagedBy ?? null,
   timeZone: value.timeZone ?? null,
 });
 const account = "/api/v1/identity/account";

@@ -52,6 +52,19 @@ function ProfileForm() {
     },
   });
   const businessTimeZone = session.data?.businessTimeZone ?? "";
+  /**
+   * A photo write refused: identity's 409 `avatar_managed` (Staff's photo was
+   * set meanwhile) is said in the page's words, and the profile read again so
+   * the controls close; any other refusal as the server words it.
+   */
+  const photoRefused = (title: string, e: unknown) => {
+    if ((e as { code?: string }).code !== "avatar_managed") {
+      notify(title, e, t("requestCouldNotComplete"));
+      return;
+    }
+    notifications.show({ title, message: t("photoManagedByStaff"), color: "red" });
+    if (userId) void qc.invalidateQueries({ queryKey: profileQueryKey(userId) });
+  };
   const upload = useMutation({
     mutationFn: uploadProfilePhoto,
     onSuccess: () => {
@@ -60,7 +73,7 @@ function ProfileForm() {
       void qc.invalidateQueries({ queryKey: sessionQueryKey });
       notifications.show({ title: t("saved"), message: t("photoUpdated"), color: "teal" });
     },
-    onError: (e) => notify(t("photoCouldNotUpload"), e, t("requestCouldNotComplete")),
+    onError: (e) => photoRefused(t("photoCouldNotUpload"), e),
   });
   const remove = useMutation({
     mutationFn: removeProfilePhoto,
@@ -69,7 +82,7 @@ function ProfileForm() {
       void qc.invalidateQueries({ queryKey: sessionQueryKey });
       notifications.show({ title: t("saved"), message: t("photoRemoved"), color: "teal" });
     },
-    onError: (e) => notify(t("photoCouldNotRemove"), e, t("requestCouldNotComplete")),
+    onError: (e) => photoRefused(t("photoCouldNotRemove"), e),
   });
   if (query.isPending) return <ContentSkeleton rows={4} rowHeight={52} />;
   if (query.isError)
@@ -79,6 +92,8 @@ function ProfileForm() {
       </Alert>
     );
   const value = query.data;
+  // While Staff's photo is the picture, identity refuses a change here (409 avatar_managed): say who to ask.
+  const managed = value.avatarManagedBy === "staff";
   return (
     <Stack gap="lg">
       <Card withBorder>
@@ -98,15 +113,24 @@ function ProfileForm() {
             <FileInput
               flex={1}
               label={t("choosePhoto")}
+              // Said on the field itself, so a screen reader hears why it is closed.
+              description={managed ? t("photoManagedByStaff") : undefined}
               accept="image/jpeg,image/png"
               value={file}
               onChange={setFile}
+              disabled={managed}
             />
-            <Button disabled={!file} loading={upload.isPending} onClick={() => file && upload.mutate(file)}>
+            <Button disabled={!file || managed} loading={upload.isPending} onClick={() => file && upload.mutate(file)}>
               {t("uploadPhoto")}
             </Button>
             {value.avatarUrl && (
-              <Button color="red" variant="subtle" loading={remove.isPending} onClick={() => remove.mutate()}>
+              <Button
+                color="red"
+                variant="subtle"
+                disabled={managed}
+                loading={remove.isPending}
+                onClick={() => remove.mutate()}
+              >
                 {t("remove")}
               </Button>
             )}
