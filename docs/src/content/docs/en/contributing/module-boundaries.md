@@ -283,7 +283,14 @@ Communications' outbox is the working example.
     external provider will create for a person (`Expect`) or withdraws that
     announcement (`Unexpect`), so the user the provider's SCIM push or the person's
     first sign-in creates is adopted as Staff-managed and numbered on arrival, with no
-    Owner in between. **The kind travels on the call**: `AccountSpec.Kind` and
+    Owner in between — and sets or clears a linked user's **managed avatar**
+    (`SetManagedAvatar`), HR's photo standing in front of the user's own avatar, which
+    identity keeps aside and shows again on the clear; it applies whether or not Staff
+    manages the account, is never set for an Owner or a SystemAdmin
+    (`ErrAccountPrivileged`; a clear is always allowed), and identity judges the image as
+    an upload (`ErrAvatarInvalid`). It stays the one
+    write direction into identity: the avatar travels on it, not on a contract of its
+    own. **The kind travels on the call**: `AccountSpec.Kind` and
     `ActivateOpts.Kind` carry the person's account kind — `contracts.AccountKindLocal`,
     `AccountKindExternal` or `AccountKindEntra` — and that, never the installation's
     mode alone, decides what identity creates, gives and invites: `Prepare` creates a
@@ -419,8 +426,11 @@ Communications' outbox is the working example.
     untrusted, written to only once its adoption is confirmed on the provider's side,
     and answered `ErrExternalUnconfirmed` until then —, `Activate`, `Deactivate`, `Update`,
     `Delete` (a soft delete; `ErrExternalEnabled` on an enabled account), `Account`
-    (a read that writes nothing), `RevealPass` (once, then `ErrPassGone`), and the
-    group calls — `GroupTraits(ctx)`, the traits a group may carry, which Staff renders
+    (a read that writes nothing), `RevealPass` (once, then `ErrPassGone`), `SetPhoto`
+    and `ClearPhoto` — the account's photo, which the provider converts to what its
+    directory takes and answers a refusal of — the picture's or its removal's — as the
+    reported `ReportedPhotoNotWritten`, not an error, and whose clear is done when there
+    is none — and the group calls — `GroupTraits(ctx)`, the traits a group may carry, which Staff renders
     and stores without naming one; `EnsureGroup`, which makes or adopts the group with
     the provider's own identity among its owners and answers a refused value as a
     `GroupTraitError` keyed by the trait, and what it could not do yet as
@@ -647,6 +657,17 @@ the user's address for **mailing that holder and nothing else**: a consumer neve
 it on its own wire, in a log, an event or an error, and a directory's or identity
 provider's placeholder address, which no mail reaches, is answered empty. That one
 address stays for Staff's one use; **no other method hands an address over**.
+
+`UserDirectory.Avatar(userID)` reads a user's **effective avatar** — the managed one
+while it stands, else the user's own, `nil` when there is none — with its type, its
+bytes, `ManagedBy` (`staff` or empty), `UpdatedAt` and a `Stamp`, `managed:<stamp>` or
+`own:<version>@<epoch>`, by which a caller tells whether the picture changed without
+comparing bytes; `UserDirectory.AvatarInfo(userID)` answers the same without the bytes,
+for a caller that only compares or shows when it changed. Staff is its consumer: it shows the user's own avatar on the person's page when
+HR has set no photo, and pushes the effective picture to the provider's directory. A
+consumer streams the bytes to a caller already allowed the picture and never logs them.
+**The picture flows one way** — Staff's photo → identity's managed avatar → the
+provider's directory — and is never read back from the directory.
 
 **Mail them, do not hand the value over.** A module that must mail a colleague calls
 `UserDirectory.Notify(ctx, userID, contracts.Notice)`: the module composes the mail in

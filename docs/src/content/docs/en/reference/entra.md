@@ -1,6 +1,6 @@
 ---
 title: "Microsoft Entra ID module"
-description: "Microsoft Entra ID as Staff's identity provider: the connection to one tenant, its client secrets in the plural and the connection test; the status and its reasons, read by Staff with no network call; the account rules; the guarded Graph client and its limits; the user lifecycle per step — prepared disabled, enabled on the day with the hire date, the licences and a Temporary Access Pass, kept in step, disabled with the leaver's steps, soft-deleted — with the Graph calls and the codes; the address rule; the pass; the sensitive actions and role_missing; Staff's groups in the tenant — the six traits and the cached licences, the create, or the adoption an entra:manage holder confirms, with the service principal as an owner, the team, the members by $ref, the delete or the retirement; the events, the permission, the refusals and the endpoints."
+description: "Microsoft Entra ID as Staff's identity provider: the connection to one tenant, its client secrets in the plural and the connection test; the status and its reasons, read by Staff with no network call; the account rules; the guarded Graph client and its limits; the user lifecycle per step — prepared disabled, enabled on the day with the hire date, the licences and a Temporary Access Pass, kept in step, disabled with the leaver's steps, soft-deleted — with the Graph calls and the codes; the account's photo, converted to Graph's JPEG and written or cleared; the address rule; the pass; the sensitive actions and role_missing; Staff's groups in the tenant — the six traits and the cached licences, the create, or the adoption an entra:manage holder confirms, with the service principal as an owner, the team, the members by $ref, the delete or the retirement; the events, the permission, the refusals and the endpoints."
 sources:
   - apps/server/internal/entra
   - apps/entra/frontend
@@ -276,7 +276,7 @@ module needs, which the test compares with the token's `roles`:
 
 | Permission | For |
 | --- | --- |
-| `User.ReadWrite.All` | Finding a user by employee id, creating, updating, enabling and disabling, the manager, deleting |
+| `User.ReadWrite.All` | Finding a user by employee id, creating, updating, enabling and disabling, the manager, the photo, deleting |
 | `User-LifeCycleInfo.ReadWrite.All` | `employeeHireDate` and `employeeLeaveDateTime` |
 | `User.RevokeSessions.All` | Revoking a leaver's sessions |
 | `UserAuthMethod-TAP.ReadWrite.All` | The Temporary Access Pass |
@@ -394,6 +394,9 @@ Staff's worker calls:
   acts, are retried on them as on any call.
 - **A 401 drops the cached token** and the call is retried once with a fresh one.
 - **Every response body is read through a 1 MiB cap**; a larger one is refused.
+- **Bodies are JSON** (`get`, `post`, `patch`, `put`, `del`) but for the photo's, which
+  `putRaw` sends as it is with its own media type (`image/jpeg`), under the same rules —
+  the throttle, the one retry of a 5xx, the 401's fresh token.
 - **Graph's errors** (`{ error: { code, message, details } }`) are mapped to a
   sentinel or a reported code by the status, the code and the first detail's code (a
   taken UPN is `ObjectConflict` there); of the message the client reads one fact
@@ -414,7 +417,7 @@ The module's `IdentityProvisioner` executes Staff's steps. Every write checks it
 first (`contracts.ErrInvalidActor` for one that is neither a user nor a system).
 **An account the module did not create is written to only once its adoption is
 confirmed** ([adopted accounts](#adopted-accounts)).
-**`Prepare`, `Activate`, `Update` and `Delete` need the status `connected`**, as
+**`Prepare`, `Activate`, `Update`, `Delete`, `SetPhoto` and `ClearPhoto` need the status `connected`**, as
 `Provider` answers it, and answer `contracts.ErrProviderUnavailable` otherwise.
 **`Deactivate` and `Account` run whatever the status**, on any secret that fetches a
 token. For all of them a connection with no tenant or client, or no secret that fetches
@@ -433,6 +436,7 @@ shows on the person's Account tab:
 | `pass_forbidden` | The tenant refused the pass's create alone with a 403; the account is enabled without a pass. Not a privileged refusal, and not counted in the sensitive streak. |
 | `adoption_unconfirmed` | The account is one the module found, not created, and nobody has confirmed its adoption; nothing is written to it ([adopted accounts](#adopted-accounts)). |
 | `manager_not_found` | The manager's account was not found in the tenant, or Staff named no valid object id. |
+| `photo_not_written` | Graph refused the photo or its removal (400, 403 or 413; a 404 on the `PUT`), or the picture could not be decoded or brought under 4 MB; reported until a photo is written or cleared ([SetPhoto](#setphoto-and-clearphoto)). |
 | `privileged` | A sensitive action was refused ([below](#the-sensitive-actions-and-role_missing)). |
 | `leaver_step_failed:<step>` | A leaver's step after the disable failed — `revoke_sessions`, `leave_date`, `strip_licences` or `remove_groups` — and the steps after it were not tried ([Deactivate](#deactivate)). |
 
@@ -443,7 +447,7 @@ link ([the provider link](/en/reference/staff/#the-provider-link)):
 | --- | --- |
 | `ErrExternalAmbiguous` | Two users in the tenant hold the employee number, or the module's row for the number names another user the tenant still holds. |
 | `ErrExternalAddressTaken` | The work email, or every suffix up to 99, is another user's UPN. |
-| `ErrExternalSyncedOnPremises` | The user is synchronised from on-premises Active Directory (`onPremisesSyncEnabled`), which Graph will not write. Checked on every write to a user. |
+| `ErrExternalSyncedOnPremises` | The user is synchronised from on-premises Active Directory (`onPremisesSyncEnabled`), which Graph will not write. Checked on every write to a user but the photo's. |
 | `ErrExternalPrivileged` | A sensitive action was refused 403. |
 | `ErrExternalEnabled` | A delete of an account that is still enabled. |
 | `ErrExternalUnconfirmed` | The account is one the module found, not created, and its adoption is not confirmed; nothing was written. |
@@ -657,6 +661,45 @@ no call to the tenant, so it needs no connection. Recorded as the event
 `entra.pass.revealed` with the actor, the object id and `expires_at:<instant>`, never
 the pass.
 
+### SetPhoto and ClearPhoto
+
+The account's photo (`photo.go`; Staff photo sync design §4, reading 4): the picture
+Staff's worker pushes — HR's photo, or the user's own Vantigo avatar
+([the directory's photo](/en/reference/staff/#the-directorys-photo)) — written as Graph
+takes it. Both need the status `connected`, find the user by its object id
+(`GET /users/{id}`) and write nothing to an adoption nobody confirmed
+(`ErrExternalUnconfirmed`, recorded `refused:adoption_unconfirmed`). A user synchronised
+from on-premises is not refused up front: Graph's own answer decides.
+
+- **The conversion.** Whatever its content type says, the bytes are decoded as a JPEG or
+  a PNG — the header first, and a picture over 4096 px a side, more than Staff and
+  identity admit, is not decoded at all — scaled with Catmull-Rom so the longer side is
+  at most **1024 px** (a smaller one keeps its size), drawn over white (a PNG's
+  transparency has no place in a JPEG) and encoded as a **JPEG** at quality 85, then 70,
+  then 55, the first under **4,000,000 bytes** (Graph's "4 MB", read as decimal). Every
+  photo is re-encoded, so nothing of the original's metadata reaches the tenant, even
+  had Staff's stripping missed something.
+- **SetPhoto** then sends `PUT /users/{id}/photo/$value` as `image/jpeg`, under the
+  [Graph client's](#the-graph-client) rules. Each call writes: Staff's stamp decides
+  when a push is due. A photo written clears `photo_not_written` and is recorded as
+  `entra.user.photo_set` with the code `photo_written`. **A refusal of the picture
+  itself** — Graph's 400, 403 or 413, a 404 (the user was read a moment before, so it is
+  the photo's or the mailbox's: a user without an Exchange mailbox), a picture that does
+  not decode, or one still over the limit at quality 55 — answers nil: nothing (more) is
+  written, the reason is logged at Info, the account reports `photo_not_written` and the
+  event carries `refused:photo_not_written`. Anything else — a throttled call, a 5xx
+  after its retry, the network — is a plain error, which Staff counts and retries.
+- **ClearPhoto** sends `DELETE /users/{id}/photo/$value`; a 404 — no photo — is done.
+  It clears `photo_not_written` and is recorded as `entra.user.photo_cleared` with the
+  code `photo_cleared`. A 400, 403 or 413 on the delete is a refusal as on the `PUT`:
+  nil, `photo_not_written` reported, `refused:photo_not_written` on the event. Anything
+  else is a plain error Staff retries.
+- **The state** is left as it was: the account's row keeps `enabled`, `disabled` or
+  `deleted` as Graph and the row say, and neither call touches anything but the photo.
+
+The permission is `User.ReadWrite.All`, among the eight already consented: no new
+consent.
+
 ## The address
 
 The UPN — and `mailNickname`, its local part, at most 64 characters — is made once, at
@@ -751,7 +794,9 @@ A user whose `onPremisesSyncEnabled` is true is mastered by on-premises Active D
 and Graph refuses to write it. The module reads the flag on the user before every
 write to it — the user `Prepare` finds, and the user of an `Activate`, an `Update`, a
 `Deactivate` or a `Delete` — and stops with `ErrExternalSyncedOnPremises` before
-changing anything; a hybrid tenant is not supported in this release.
+changing anything; a hybrid tenant is not supported in this release. The photo is the
+exception: `SetPhoto` and `ClearPhoto` do not read the flag, and Graph's answer decides —
+a refusal of the picture is `photo_not_written`.
 
 ## Groups in the tenant
 
@@ -1035,6 +1080,7 @@ limit outside that is a 400) on the **Status** card:
 | `entra.settings.changed` | `PUT /connection/settings` |
 | `entra.credential.added`, `entra.credential.revoked` | the two secret operations |
 | `entra.user.prepared`, `entra.user.activated`, `entra.user.deactivated`, `entra.user.updated`, `entra.user.deleted` | the lifecycle |
+| `entra.user.photo_set`, `entra.user.photo_cleared` | [the photo](#setphoto-and-clearphoto) |
 | `entra.pass.issued`, `entra.pass.revealed` | the pass |
 | `entra.account.adoption_confirmed` | `POST /accounts/{objectId}/confirm` |
 | `entra.group.created`, `entra.group.adopted`, `entra.group.updated`, `entra.group.team_created`, `entra.group.members_set`, `entra.group.deleted`, `entra.group.retired` | [the groups](#groups-in-the-tenant), with the group's `objectId` — none on a refusal before the module had one — and no UPN |
@@ -1046,7 +1092,7 @@ A lifecycle write the tenant refused is recorded under its own action with
 `found`, `changed:<property>`, `enabled`, `hire_date_written`, `licences_assigned:<n>`,
 `licences_removed:<n>`, `licences_not_removed`, `pass_issued`, `disabled`,
 `sessions_revoked`, `leave_date_written`, `licences_stripped`, `groups_removed`, `gone`,
-and for a group `type:<type>`, `changed:<property>`, `owners:<n>`, `owners_added:<n>`,
+`photo_written`, `photo_cleared`, and for a group `type:<type>`, `changed:<property>`, `owners:<n>`, `owners_added:<n>`,
 `owners_removed:<n>`, `team_pending`, `added:<n>`, `removed:<n>`, `failed:<n>`, `failed`
 (a write that failed after it changed something), `gone`, `kept_not_ours`,
 `security_kept` and `refused:<code>` (`refused:adoption_unconfirmed` among them) — and
@@ -1095,7 +1141,8 @@ included) and the 429 (`entra-owner`, `entra-skus`) are the router's.
 The module's tests run against a **fake Graph**, `internal/entra/graphtest`: an
 `http.RoundTripper` that answers both hosts — the token endpoint, the organisation, the
 domains, the SKUs with their seats, users (create, filter by employee id, patch, soft
-delete, the manager, sessions, licences, the pass), groups — the create with
+delete, the manager, sessions, licences, the pass, the photo — a JPEG of at most 4 MB,
+413 beyond, 400 for another type, 403 when told the photo is denied), groups — the create with
 `owners@odata.bind`, the nickname filter, owners and members by `$ref`, paged members,
 `$batch` of twenty, the team after a delay, and a trap that fails a test when a member's
 removal lacks `/$ref` — and can be told to throttle, fail the next call, refuse a sensitive action for a privileged user

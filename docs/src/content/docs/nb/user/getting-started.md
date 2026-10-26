@@ -114,7 +114,11 @@ installasjonen; se øktlevetid og tilbakekalling i
 
 - **Profilbilde** — **Velg et bilde** (JPEG eller PNG, opptil 5 MB) og **Last opp
   bilde**. **Fjern** tar det bort igjen. Bildet vises i avatar-menyen og der kolleger
-  ser deg.
+  ser deg, også i appen Ansatte og i Microsoft Entra ID når du er registrert i Ansatte.
+  Når HR har lagt inn et bilde av deg i Ansatte, er det bildet ditt: bildekontrollene er
+  nedtonet med *Bildet ditt holdes av Ansatte. Be HR om å bytte det.* Ditt eget bilde
+  beholdes og kommer tilbake når HR fjerner sitt
+  ([Bildet ditt](/nb/user/staff/#bildet-ditt) i Ansatte).
 - **Navn** — visningsnavnet ditt.
 - **E-post** — vises, men kan ikke endres her: "E-postadressen din administreres av
   innloggingsleverandøren." En eier endrer den fra arbeidsområdets brukerliste.

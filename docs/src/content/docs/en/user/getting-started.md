@@ -114,7 +114,11 @@ Open the avatar menu at the top right and choose **Settings**. The **Profile** p
 
 - **Profile photo** — **Choose a photo** (JPEG or PNG, up to 5 MB) and **Upload
   photo**. **Remove** takes it away again. The photo shows in the avatar menu and
-  wherever colleagues see you.
+  wherever colleagues see you, the Staff app's pages and Microsoft Entra ID included
+  when you are in Staff. When HR has set a photo of you in Staff, that photo is your
+  picture: the photo controls are greyed out with *Your photo is kept by Staff. Ask HR
+  to change it.* Your own photo is kept and comes back when HR removes theirs
+  ([Your photo](/en/user/staff/#your-photo) in Staff).
 - **Name** — your display name.
 - **Email** — shown but not editable here: "Your email is managed by your sign-in
   provider." An Owner changes it from the workspace's user list.

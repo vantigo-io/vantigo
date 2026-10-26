@@ -7,6 +7,7 @@ sources:
   - apps/server/internal/identity
   - apps/server/internal/config
   - apps/server/cmd/vantigo
+  - apps/server/internal/db/migrations/00070_identity_managed_avatars.sql
 ---
 Vantigo authenticates the browser SPA and the same-origin API with an application
 cookie issued by the identity module. The API answers JSON `401`/`403` problems
@@ -293,6 +294,7 @@ link-only path for a person whose account Staff has an external provider create 
 | Deactivate | Disables the user as Staff's (`disabledBy: staff`) — also one the directory already deactivated — ends their sessions and reset links, and revokes their open invitations `deactivated` | The same | The same | `user.staff-deactivated` |
 | Update | Writes the display name, the language and the employee number; the address only while the user is pending and no invitation naming them has been delivered yet, which revokes their invitations `email_changed` and an Owner's open invitations to the new address `replaced` (named in the audit) | Writes the language and the employee number only | The same as `external` | `user.staff-updated` |
 | Erase | Deletes the disabled Staff-managed user (with their sessions, credentials, invitations, SCIM mapping, any unconsumed announcement for the employee number and the delegations they granted, while delegations to them keep their row with `delegate_user_id` cleared) and pseudonymises the `actor_snapshot` and `target_snapshot` of the audit rows naming them (`displayName: "Erased user"`, `email` and `employeeNumber` empty) | The same | The same | `user.staff-erased` |
+| Managed avatar (`SetManagedAvatar`) | Sets or clears the linked user's [managed avatar](#the-managed-avatar), HR's photo in front of the user's own — whether or not Staff manages the user | The same | The same | `user.avatar-managed`, `user.avatar-unmanaged` |
 | Expect | — | — | Records or replaces the [announcement](#the-announced-account) for the employee number | `account.expected` |
 | Unexpect | — | — | Withdraws an announcement nobody fulfilled | `account.unexpected` |
 
@@ -335,6 +337,7 @@ out and Staff reports their account disabled by the directory. What it refuses:
 | Address taken | Another user holds the person's address, or an Owner has invited someone to become an Owner at it and the invitation is still open | Give the person another address in Staff, or resolve the other account or the invitation |
 | Employee number taken | A user Staff does not manage holds the number | Adopt that user, or correct the number in Staff |
 | Not found | `external` or `entra`: no Staff-managed user holds the number yet | `external`: let the identity provider create the account, then adopt it; `entra`: the account arrives by SCIM or the person's first sign-in and is adopted by its announcement |
+| Avatar invalid | `SetManagedAvatar`: the picture is not a PNG or a JPEG, is over 5 MiB or 4096 px a side, or its source is not `staff` | Staff's photos always pass; a refusal is a fault to report |
 | Mode mismatch | Reported only by a worker still on the release before the Single sign-on card, during a rolling upgrade (refused for every step but deactivation) | Finish the upgrade |
 
 ### The announced account
@@ -635,6 +638,54 @@ invitation, and — while SCIM is configured — a user the directory deactivate
 an Owner, hold nothing. A lockout is temporary and does not change who holds a
 permission. To make someone a holder, give them a role carrying the permission, or map
 one to a group they belong to.
+
+### The managed avatar
+
+When HR sets a person's photo in [Staff](/en/reference/staff/#the-photo), Staff's
+provisioning makes it the linked user's **managed avatar** (`SetManagedAvatar`): a second
+picture, kept in `identity.managed_avatars` beside the user's own avatar
+(`identity.profile_avatars`), never over it. The **effective avatar** is the managed one
+while it stands, else the user's own. It is what `GET /api/v1/identity/account/avatar`,
+an Owner's `GET /api/v1/identity/owner/users/{id}/avatar`, the user list's avatar and
+the reads other modules make (`UserDirectory.Avatar`, and `AvatarInfo` — the stamp and
+the time without the bytes) all answer. When HR removes the photo, Staff clears the
+managed avatar and the user's own picture shows again, with nobody uploading it anew.
+
+- **Who sets it.** Only Staff, through the contract — there is no endpoint for it — with
+  the HR user who saved the photo, or `system:staff-accounts` when the accounts worker
+  puts it right. It applies to any user a person's self-service link names, whether or
+  not Staff manages the account. The source must be `staff`, and the image is judged as
+  an upload is — a PNG or a JPEG whose bytes are what it declares, at most 5 MiB and
+  4096 px a side — or the call is refused (*Avatar invalid*). The same picture again
+  (the same stamp, type and bytes), or a clear with none standing, writes nothing and
+  audits nothing.
+- **Never set for an Owner or a SystemAdmin.** A set is refused *Privileged*: the people
+  who run the installation keep their own picture, and Staff logs it and raises nothing.
+  A clear is always allowed, so a user promoted after HR set a photo is freed of it — the
+  accounts worker clears it at the person's next run.
+- **The user's own avatar while it stands.** `POST`, `PUT` and `DELETE
+  /api/v1/identity/account/avatar` answer **409** `avatar_managed`, *Your photo is kept by
+  Staff and cannot be changed here.*, judged before an upload's body is read; the user's
+  own avatar is left as it is. `GET /api/v1/identity/account`, and the profile writes'
+  answers, carry **`avatarManagedBy`** — `staff` while the managed avatar stands, null
+  otherwise — and `avatarUrl` points to the effective avatar. **Settings › Profile**
+  then disables the photo controls with *Your photo is kept by Staff. Ask HR to change
+  it.*
+- **The stamp.** The contract's read answers which picture stands: `managed:<stamp>`,
+  Staff's own stamp for its photo, or `own:<version>@<epoch>` for the user's own — the
+  avatar's version and when it was stored, so an avatar removed and uploaded again never
+  repeats a stamp. Staff compares it to know when to write the directory's photo.
+- **The audit.** A set is `user.avatar-managed`, a clear `user.avatar-unmanaged`, with
+  the actor and the target user; before and after record the source, the stamp, the
+  content type and the size in bytes — never the bytes.
+- **Gone with the user.** The managed avatar is deleted with the user
+  (`ON DELETE CASCADE`), by an Owner's delete or Staff's erase.
+
+Migration `00070_identity_managed_avatars.sql` adds `identity.managed_avatars` — one row
+per user: the bytes, the type (`image/jpeg` or `image/png`, the CHECK `profile_avatars`
+has), `source`, `source_stamp`, a `version` bumped on every write, and `updated_at`. Its
+Down drops the table: every user's own avatar is their picture again, and once the
+release is back Staff's accounts worker sets HR's photos anew at each person's next run.
 
 ## MFA
 
