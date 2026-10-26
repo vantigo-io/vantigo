@@ -17,10 +17,11 @@ import (
 // person's name is never written; the actor's is, as it read when they wrote.
 
 // The entity kinds an event is about: an allocation (delivery A), a request
-// (B); a wish arrives with C.
+// (B), a wish (C).
 const (
 	entityAllocation = "allocation"
 	entityRequest    = "request"
+	entityWish       = "wish"
 )
 
 const (
@@ -136,4 +137,17 @@ const (
 	eventRequestFilled    = "request_filled"
 	eventRequestReopened  = "request_reopened"
 	eventRequestWithdrawn = "request_withdrawn"
+)
+
+// The kinds of delivery C's events (S23): the terms set and cleared are the
+// allocation's, with the fields before and after; a wish's four keep the
+// kind, the project id and the date, never more, and are the planners' to
+// read.
+const (
+	eventTermsSet      = "terms_set"
+	eventTermsCleared  = "terms_cleared"
+	eventWishCreated   = "wish_created"
+	eventWishSeen      = "wish_seen"
+	eventWishResolved  = "wish_resolved"
+	eventWishWithdrawn = "wish_withdrawn"
 )

@@ -10,7 +10,8 @@ import (
 )
 
 // The record read (design S23): the events of the writes, filtered by
-// person, project or allocation, newest first. Each carries the actor as
+// person, project or allocation, newest first, a wish's and the terms' to
+// planning:manage alone. Each carries the actor as
 // snapshotted when they wrote, so the read asks nobody outside the module.
 
 // maxEvents is the most events one read answers.
@@ -19,10 +20,13 @@ const maxEvents = 500
 // ListPlanningEvents List events
 // (GET /api/v1/planning/events)
 //
-// planning:view.
+// planning:view. A wish's events and the terms' (terms_set, terms_cleared)
+// are planning:manage's (S23, S21, S14, amendment 89): a caller without it
+// never reads one, whatever the filter.
 func (s *server) ListPlanningEvents(ctx context.Context, req gen.ListPlanningEventsRequestObject) (gen.ListPlanningEventsResponseObject, error) {
 	rows, err := store.New(s.deps.Pool).ListEvents(ctx, store.ListEventsParams{
-		PersonID: req.Params.PersonId, ProjectID: req.Params.ProjectId, AllocationID: req.Params.AllocationId, MaxEvents: maxEvents,
+		IncludeManageOnly: s.has(ctx, permManage),
+		PersonID:          req.Params.PersonId, ProjectID: req.Params.ProjectId, AllocationID: req.Params.AllocationId, MaxEvents: maxEvents,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("planning: read the events: %w", err)

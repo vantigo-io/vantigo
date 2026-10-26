@@ -30,12 +30,24 @@ const (
 // The refusal codes of delivery B (§4.7, S16).
 const codeRequestNotOpen = "request_not_open"
 
+// The refusal codes of delivery C (§4.7, S17.3, S21): the non-compete on a
+// confirmed row, and the wishes' three.
+const (
+	codeNonCompete    = "non_compete"
+	codeWishExists    = "wish_exists"
+	codeWishLimit     = "wish_limit"
+	codeWishNoBooking = "wish_no_booking"
+)
+
 // The warning codes a write answers beside its row (rule 6, §4.6). overbooked
 // is both: a warning under the setting warn, a refusal under refuse (S7).
 const (
 	warnOverbooked          = codeOverbooked
 	warnBookedWhileAway     = "booked_while_away"
 	warnOutsideProjectDates = "outside_project_dates"
+	// warnNonCompete is the non-compete on a tentative row (S17.3): the same
+	// case that refuses a confirmed one.
+	warnNonCompete = codeNonCompete
 )
 
 // The titles this module's validation problems carry, one per thing a request

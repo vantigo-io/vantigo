@@ -3,6 +3,7 @@ package planning_test
 import (
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/vantigo-io/vantigo/server/internal/planning/gen"
 )
@@ -45,5 +46,27 @@ func TestMe_NoPerson(t *testing.T) {
 	getJSON(t, h.SignIn(t, "planning:access", "planning:manage"), mePath, http.StatusNotFound, &p)
 	if p.Code == nil || *p.Code != "no_person" {
 		t.Errorf("GET /me without a person = %+v, want no_person", p)
+	}
+}
+
+// TestMe_Wishes is S21 on My planning: the caller's open wishes, oldest
+// first, the project named — never a colleague's.
+func TestMe_Wishes(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, user := signIn(t, h)
+	h.workforce.link(user, personKari)
+	newer := seedOpenWish(t, h, personKari, "new", nil, "2026-11-01", time.Hour)
+	older := seedOpenWish(t, h, personKari, "off", ptr(projectActive), "2026-10-01", 0)
+	seedOpenWish(t, h, personOla, "new", nil, "2026-10-01", 0)
+
+	var me gen.PlanningMe
+	getJSON(t, c, mePath, http.StatusOK, &me)
+	if ids := wishIDs(me.Wishes); len(ids) != 2 || ids[0] != older || ids[1] != newer {
+		t.Fatalf("wishes = %v, want Kari's two, oldest first", ids)
+	}
+	if w := me.Wishes[0]; w.Project == nil || w.Project.Code == nil || *w.Project.Code != "KVEM1000" ||
+		w.Person.DisplayName == nil || *w.Person.DisplayName != "Kari Nordmann" {
+		t.Errorf("the off wish = %+v, want the project and Kari named", w)
 	}
 }

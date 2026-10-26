@@ -213,3 +213,125 @@ func TestCandidates_Refusals(t *testing.T) {
 	}
 	getJSON(t, h.SignIn(t, "planning:access", "planning:view"), requestPath(filled)+"/candidates", http.StatusForbidden, nil)
 }
+
+// TestCandidates_TermsAndWishes is S17's points 3 to 5 and the sort's second
+// key, over a request for 10 hours a week on a Kraft-Verket project through
+// October 2026:
+//
+//   - Kari's confirmed row bars Kraft-Verket until the request's first day:
+//     not listed, with includePartial too;
+//   - Ola's confirmed row on Hydro keeps him until 30 November, with a
+//     fortnight's handover and the customer's approval for a replacement:
+//     release_after_start and needs_customer_approval naming the row; his
+//     other row with terms releases him before the first day and flags
+//     nothing;
+//   - Nils wishes for something new from 1 October (his wish from November
+//     is too late to count), Anne to leave INTERN, her current project (her
+//     wish off Hydro, which she is not on, counts for nothing), and the
+//     second Anne for something new from the first day itself;
+//   - Berit wishes nothing and is bound by nothing: the one who covers.
+//
+// The willing come first — Anne before Berit although Berit has more free
+// hours — the two Annes tied on everything but their id.
+func TestCandidates_TermsAndWishes(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := planner(t, h)
+	w := h.workforce
+	w.addPerson(personNils, "Nils Dekker", "A-1005", date("2026-01-01"), date("2029-12-31"), 37.5)
+	w.addPerson(personAnne, "Anne Aas", "A-1007", date("2026-01-01"), date("2029-12-31"), 37.5)
+	w.addPerson(personBerit, "Berit Berg", "A-1008", date("2026-01-01"), date("2029-12-31"), 37.5)
+	w.addPerson(personAnne2, "Anne Aas", "A-1009", date("2026-01-01"), date("2029-12-31"), 37.5)
+
+	barring := seedAllocation(t, h, seedRow{person: personKari, project: projectInternal, from: "2026-09-01", to: "2026-09-30", load: 20})
+	seedTerms(t, h, barring, seedTerm{nonCompeteUntil: "2026-10-05", customers: []int32{customerHydro, customerKraftVerket}})
+	keeping := seedAllocation(t, h, seedRow{person: personOla, project: projectHydro, from: "2026-09-01", to: "2026-10-16", load: 50})
+	seedTerms(t, h, keeping, seedTerm{minimumUntil: "2026-11-30", handoverDays: ptr(int16(14)), approval: true})
+	released := seedAllocation(t, h, seedRow{person: personOla, project: projectInternal, from: "2026-09-01", to: "2026-09-18", load: 10})
+	seedTerms(t, h, released, seedTerm{minimumUntil: "2026-10-02", approval: true})
+	seedOpenWish(t, h, personNils, "new", nil, "2026-10-01", 0)
+	seedOpenWish(t, h, personNils, "new", nil, "2026-11-01", 0)
+	for _, anne := range []int64{personAnne, personAnne2} {
+		seedAllocation(t, h, seedRow{person: anne, project: projectInternal, from: "2026-09-01", to: "2026-12-31", load: 20})
+	}
+	seedOpenWish(t, h, personAnne, "off", ptr(projectInternal), "2026-09-20", 0)
+	seedOpenWish(t, h, personAnne, "off", ptr(projectHydro), "2026-09-20", 0)
+	seedOpenWish(t, h, personAnne2, "new", nil, "2026-10-05", 0)
+	id := seedRequest(t, h, seedReq{project: projectActive, from: "2026-10-05", to: "2026-10-30", hours: 10})
+
+	list := getCandidates(t, c, id, false)
+	want := []int64{personNils, personAnne, personAnne2, personBerit, personOla}
+	if got := candidateIDs(list.Candidates); !slices.Equal(got, want) {
+		t.Fatalf("candidates = %v, want %v: the willing first, Kari barred", got, want)
+	}
+	if got := candidateIDs(getCandidates(t, c, id, true).Candidates); slices.Contains(got, personKari) {
+		t.Errorf("with partial matches = %v, want Kari still barred", got)
+	}
+
+	ola := candidateOf(t, list, personOla)
+	if len(ola.Flags) != 2 || ola.Covers || ola.Availability != gen.Fits {
+		t.Fatalf("Ola = %+v, want fits, two flags, not covering", ola)
+	}
+	release, approval := ola.Flags[0], ola.Flags[1]
+	if release.Code != gen.PlanningCandidateFlagCodeReleaseAfterStart || release.Date == nil || release.Date.String() != "2026-11-30" ||
+		release.HandoverFrom == nil || release.HandoverFrom.String() != "2026-11-16" || release.AllocationId == nil || *release.AllocationId != keeping {
+		t.Errorf("Ola's release = %+v, want 2026-11-30 with the handover from 2026-11-16 on row %d", release, keeping)
+	}
+	if approval.Code != gen.PlanningCandidateFlagCodeNeedsCustomerApproval || approval.AllocationId == nil || *approval.AllocationId != keeping {
+		t.Errorf("Ola's approval = %+v, want needs_customer_approval on row %d", approval, keeping)
+	}
+
+	for person, wish := range map[int64]struct {
+		kind gen.PlanningWishKind
+		date string
+	}{personNils: {gen.New, "2026-10-01"}, personAnne: {gen.Off, "2026-09-20"}, personAnne2: {gen.New, "2026-10-05"}} {
+		got := candidateOf(t, list, person)
+		if len(got.Flags) != 1 || got.Flags[0].Code != gen.PlanningCandidateFlagCodeWishes || got.Flags[0].WishKind == nil ||
+			*got.Flags[0].WishKind != wish.kind || got.Flags[0].Date == nil || got.Flags[0].Date.String() != wish.date || got.Covers {
+			t.Errorf("person %d's flags = %+v, want one wishes flag %s from %s, not covering", person, got.Flags, wish.kind, wish.date)
+		}
+	}
+	if berit := candidateOf(t, list, personBerit); !berit.Covers || len(berit.Flags) != 0 {
+		t.Errorf("Berit = %+v, want covering with no flag", berit)
+	}
+
+	// The row filling the request binds nothing on it: Ola's Hydro terms
+	// moved onto the row that fills the request flag nothing.
+	h.Exec(t, `UPDATE planning.allocations SET request_id = $1 WHERE id = $2`, id, keeping)
+	if ola := candidateOf(t, getCandidates(t, c, id, false), personOla); len(ola.Flags) != 0 {
+		t.Errorf("Ola on the request his row fills = %+v, want no flag", ola.Flags)
+	}
+}
+
+// TestCandidates_NonCompeteLimits is S17.3's filter at its edges: a
+// non-compete that ended before the request's first day, one on a
+// tentative row (reading 8) and any non-compete against a request whose
+// project has no customer exclude nobody; the same terms on a confirmed row
+// still in force exclude Kari.
+func TestCandidates_NonCompeteLimits(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := planner(t, h)
+	binding := seedAllocation(t, h, seedRow{person: personKari, project: projectInternal, from: "2026-09-01", to: "2026-09-30", load: 20})
+	seedTerms(t, h, binding, seedTerm{nonCompeteUntil: "2026-10-04", customers: []int32{customerKraftVerket}})
+	kraftVerket := seedRequest(t, h, seedReq{project: projectActive, from: "2026-10-05", to: "2026-10-30", hours: 10})
+	internal := seedRequest(t, h, seedReq{project: projectInternal, from: "2026-10-05", to: "2026-10-30", hours: 10})
+	listed := func(id int64) bool {
+		return slices.Contains(candidateIDs(getCandidates(t, c, id, false).Candidates), personKari)
+	}
+
+	if !listed(kraftVerket) {
+		t.Errorf("a non-compete ended the day before the request excluded Kari")
+	}
+	h.Exec(t, `UPDATE planning.allocation_terms SET non_compete_until = '2027-06-30' WHERE allocation_id = $1`, binding)
+	if listed(kraftVerket) {
+		t.Errorf("a non-compete in force on a confirmed row did not exclude Kari")
+	}
+	if !listed(internal) {
+		t.Errorf("a request on a project with no customer excluded Kari")
+	}
+	h.Exec(t, `UPDATE planning.allocations SET status = 'tentative', confirmed_at = NULL WHERE id = $1`, binding)
+	if !listed(kraftVerket) {
+		t.Errorf("a non-compete on a tentative row excluded Kari")
+	}
+}

@@ -29,7 +29,15 @@ components:
                 createdAt:
                     format: date-time
                     type: string
+                earliestRelease:
+                    description: 'The earliest day the person can be released (S15), derived on read: the latest of toDate, the terms'' minimumUntil, and noticeGivenOn plus the notice period when notice is given — toDate alone when no term binds.'
+                    format: date
+                    type: string
                 fromDate:
+                    format: date
+                    type: string
+                handoverStart:
+                    description: The earliest release less the terms' handoverDays, the day a successor should begin so the two overlap (S15); absent when no handover is set.
                     format: date
                     type: string
                 id:
@@ -57,6 +65,8 @@ components:
                     type: integer
                 status:
                     $ref: '#/components/schemas/PlanningAllocationStatus'
+                terms:
+                    $ref: '#/components/schemas/PlanningTerms'
                 title:
                     description: The role as the project names it, at most 100 characters.
                     type: string
@@ -76,6 +86,7 @@ components:
                 - loadUnit
                 - load
                 - status
+                - earliestRelease
                 - revision
                 - createdAt
                 - updatedAt
@@ -244,23 +255,34 @@ components:
             type: object
         PlanningCandidateFlag:
             additionalProperties: false
-            description: 'Something the planner should know about a candidate (S17): certificate_expires — a certificate a requirement needs, held, but expiring before the request''s last day; date is its validTo and competenceKey the competence.'
+            description: 'Something the planner should know about a candidate (S17): certificate_expires — a certificate a requirement needs, held, but expiring before the request''s last day; date is its validTo and competenceKey the competence. release_after_start — a confirmed row of the person with terms (an assignment) whose earliest release (S15) is after the request''s first day; date is that release, handoverFrom its handover start when the terms set one, allocationId the row. needs_customer_approval — that row''s terms say a replacement needs the customer''s approval; allocationId the row. wishes — an open wish of the person, new or off their current project, from on or before the request''s first day; wishKind and date are the kind and the date, nothing more.'
             properties:
+                allocationId:
+                    format: int64
+                    type: integer
                 code:
                     enum:
                         - certificate_expires
+                        - release_after_start
+                        - needs_customer_approval
+                        - wishes
                     type: string
                 competenceKey:
                     type: string
                 date:
                     format: date
                     type: string
+                handoverFrom:
+                    format: date
+                    type: string
+                wishKind:
+                    $ref: '#/components/schemas/PlanningWishKind'
             required:
                 - code
             type: object
         PlanningCandidateList:
             additionalProperties: false
-            description: 'The candidates, sorted: fits first, then fit score descending, then free hours descending, then the longest on their current project first, then by name.'
+            description: 'The candidates, sorted: fits first, then those who wish — a wishes flag — first, then fit score descending, then free hours descending, then the longest on their current project first, then by name. A person under a non-compete in force toward the request''s project''s customer is not listed (S17.3).'
             properties:
                 candidates:
                     items:
@@ -395,6 +417,7 @@ components:
                     enum:
                         - allocation
                         - request
+                        - wish
                     type: string
                 id:
                     format: int64
@@ -411,6 +434,12 @@ components:
                         - request_filled
                         - request_reopened
                         - request_withdrawn
+                        - terms_set
+                        - terms_cleared
+                        - wish_created
+                        - wish_seen
+                        - wish_resolved
+                        - wish_withdrawn
                     type: string
                 occurredAt:
                     format: date-time
@@ -549,9 +578,15 @@ components:
                     type: array
                 person:
                     $ref: '#/components/schemas/PlanningPerson'
+                wishes:
+                    description: The caller's open wishes, oldest first (S21).
+                    items:
+                        $ref: '#/components/schemas/PlanningWish'
+                    type: array
             required:
                 - person
                 - allocations
+                - wishes
             type: object
         PlanningMeta:
             additionalProperties: false
@@ -583,6 +618,13 @@ components:
                 - workforceVisible
                 - loadUnits
             type: object
+        PlanningNoticeUnit:
+            description: The unit of a notice period (S14), as Staff's terms carry notice.
+            enum:
+                - days
+                - weeks
+                - months
+            type: string
         PlanningOverbooking:
             description: 'warn: a write that overbooks a week is written with the warning overbooked. refuse: a write that makes a week''s excess grow is the 409 overbooked (S7).'
             enum:
@@ -642,7 +684,7 @@ components:
                 - id
             type: object
         PlanningProblem:
-            description: 'An RFC 9457 problem with this module''s refusal code (planning design §4.7). code names the rule that refused and is what a client keys off, never the words: outside_employment (409: a day of the period lies outside the person''s employment as Staff answers it), project_closed (409: the project is completed or cancelled and takes no new row and no change but deletion), overbooked (409: under the setting overbooking refuse, the write would make a week''s confirmed excess over capacity grow; weeks are named in detail), period_too_long (400, a field error on toDate: more than 1096 days), window_out_of_bounds (400, a field error on from, to, fromDate or toDate: the window lies outside Staff''s bound, the Monday thirteen weeks before today to three years after it), request_not_open (409: the request is filled or withdrawn and takes no fill, no change and no withdrawal), revision_conflict (409: the If-Match revision has moved on, or the row kept changing under a DELETE or a confirm), no_person (404: the caller is nobody''s person in Staff) and dependency_unavailable (503: a module Planning reads is not composed). errors carries the field errors of a 400, keyed by the request''s camelCase field; a field error without a code is a plain validation failure. A request the server could not decode answers a bare 400 with neither.'
+            description: 'An RFC 9457 problem with this module''s refusal code (planning design §4.7). code names the rule that refused and is what a client keys off, never the words: outside_employment (409: a day of the period lies outside the person''s employment as Staff answers it), project_closed (409: the project is completed or cancelled and takes no new row and no change but deletion), overbooked (409: under the setting overbooking refuse, the write would make a week''s confirmed excess over capacity grow; weeks are named in detail), period_too_long (400, a field error on toDate: more than 1096 days), window_out_of_bounds (400, a field error on from, to, fromDate or toDate: the window lies outside Staff''s bound, the Monday thirteen weeks before today to three years after it), request_not_open (409: the request is filled or withdrawn and takes no fill, no change and no withdrawal), non_compete (409: the write would place a confirmed row of the person on a project of a customer their non-compete in force names, S17.3), wish_exists (409: the person already wishes off that project), wish_limit (409: the person has five open wishes), wish_no_booking (409: an off wish names a project the person has no confirmed row on today or later), revision_conflict (409: the If-Match revision has moved on, or the row kept changing under a DELETE or a confirm), no_person (404: the caller is nobody''s person in Staff) and dependency_unavailable (503: a module Planning reads is not composed). errors carries the field errors of a 400, keyed by the request''s camelCase field; a field error without a code is a plain validation failure. A request the server could not decode answers a bare 400 with neither.'
             properties:
                 code:
                     nullable: true
@@ -1070,14 +1112,14 @@ components:
             type: object
         PlanningStatsAttentionItem:
             additionalProperties: false
-            description: 'One thing the dashboard wants a human to look at, in the shape every module''s /stats/attention shares (S22). unbooked (planning:view): a person under the threshold within the horizon. overbooked (planning:view): a person with a week in the horizon whose confirmed booked exceeds capacity. endingWithoutFollowOn (planning:manage): a confirmed row ending within endingLeadWeeks where the person has no confirmed row starting on or before that end plus seven days. certificatesExpiring (planning:view): a held certificate expiring inside a confirmed row within the horizon. requestsOpen (planning:manage): an open request starting within requestLeadDays, or already started. A caller with neither role gets an empty list.'
+            description: 'One thing the dashboard wants a human to look at, in the shape every module''s /stats/attention shares (S22). unbooked (planning:view): a person under the threshold within the horizon. overbooked (planning:view): a person with a week in the horizon whose confirmed booked exceeds capacity. endingWithoutFollowOn (planning:manage): a confirmed row ending within endingLeadWeeks where the person has no confirmed row starting on or before that end plus seven days. certificatesExpiring (planning:view): a held certificate expiring inside a confirmed row within the horizon. requestsOpen (planning:manage): an open request starting within requestLeadDays, or already started. wishesUnseen (planning:manage): one item standing for every open wish no planner has stamped seen, count how many. A caller with neither role gets an empty list.'
             properties:
                 count:
                     description: How many the item stands for, when it stands for more than one.
                     format: int32
                     type: integer
                 entityId:
-                    description: The person's id, the allocation's for endingWithoutFollowOn, or the request's for requestsOpen.
+                    description: The person's id, the allocation's for endingWithoutFollowOn, the request's for requestsOpen, or the oldest unseen wish's for wishesUnseen.
                     type: string
                 id:
                     type: string
@@ -1093,6 +1135,7 @@ components:
                         - endingWithoutFollowOn
                         - certificatesExpiring
                         - requestsOpen
+                        - wishesUnseen
                     type: string
             required:
                 - id
@@ -1100,6 +1143,90 @@ components:
                 - title
                 - occurredAt
                 - entityId
+            type: object
+        PlanningTerms:
+            additionalProperties: false
+            description: 'The terms of an allocation that is also a contract with the customer (S14), planning:manage''s alone: the notice as a count and a unit, when notice was given, the day before which the customer need not release, whether a replacement needs the customer''s approval, the handover overlap in days, the non-compete toward named customers until a date, and the contract''s reference. Set on a tentative row they bind once the row is confirmed (reading 8). The dates derived from them are on the allocation (earliestRelease, handoverStart).'
+            properties:
+                createdAt:
+                    format: date-time
+                    type: string
+                handoverDays:
+                    format: int32
+                    type: integer
+                minimumUntil:
+                    format: date
+                    type: string
+                nonCompeteCustomers:
+                    description: The customers the non-compete names, each read through the customer directory; empty when there is no non-compete.
+                    items:
+                        $ref: '#/components/schemas/PlanningCustomerRef'
+                    type: array
+                nonCompeteUntil:
+                    format: date
+                    type: string
+                noticeCount:
+                    format: int32
+                    type: integer
+                noticeGivenOn:
+                    format: date
+                    type: string
+                noticeUnit:
+                    $ref: '#/components/schemas/PlanningNoticeUnit'
+                reference:
+                    type: string
+                replacementNeedsApproval:
+                    type: boolean
+                revision:
+                    description: Send it back as If-Match on PUT /allocations/{id}/terms.
+                    format: int32
+                    type: integer
+                updatedAt:
+                    format: date-time
+                    type: string
+            required:
+                - replacementNeedsApproval
+                - nonCompeteCustomers
+                - revision
+                - createdAt
+                - updatedAt
+            type: object
+        PlanningTermsInput:
+            additionalProperties: false
+            description: 'The terms whole, on set and on replace (S14): a field left out is cleared. noticeCount and noticeUnit both or neither; nonCompeteUntil required when any customer id is given; each id read from the customer directory, an unknown one a field error on nonCompeteCustomerIds.'
+            properties:
+                handoverDays:
+                    description: 0 to 90.
+                    format: int32
+                    type: integer
+                minimumUntil:
+                    format: date
+                    type: string
+                nonCompeteCustomerIds:
+                    description: At most 20, Customers' ids.
+                    items:
+                        format: int32
+                        type: integer
+                    maxItems: 20
+                    type: array
+                nonCompeteUntil:
+                    format: date
+                    type: string
+                noticeCount:
+                    description: 1 to 365.
+                    format: int32
+                    type: integer
+                noticeGivenOn:
+                    format: date
+                    type: string
+                noticeUnit:
+                    $ref: '#/components/schemas/PlanningNoticeUnit'
+                reference:
+                    maxLength: 200
+                    type: string
+                replacementNeedsApproval:
+                    description: Defaults to false.
+                    type: boolean
             type: object
         PlanningTimeline:
             additionalProperties: false
@@ -1124,12 +1251,18 @@ components:
                     type: array
                 person:
                     $ref: '#/components/schemas/PlanningPerson'
+                wishes:
+                    description: The person's open wishes, to planning:manage and to the person themself; empty to anyone else (S21).
+                    items:
+                        $ref: '#/components/schemas/PlanningWish'
+                    type: array
             required:
                 - person
                 - employed
                 - away
                 - allocations
                 - flags
+                - wishes
             type: object
         PlanningTimelineFlag:
             additionalProperties: false
@@ -1189,13 +1322,20 @@ components:
             type: object
         PlanningWarning:
             additionalProperties: false
-            description: A consequence of a write that did not stop it (rule 6).
+            description: 'A consequence of a write that did not stop it (rule 6). non_compete, on a tentative row alone: the person''s non-compete in force names the project''s customer; allocationId is the confirmed row whose terms bind and date its nonCompeteUntil — the same case refuses a confirmed row (S17.3).'
             properties:
+                allocationId:
+                    format: int64
+                    type: integer
                 code:
                     enum:
                         - overbooked
                         - booked_while_away
                         - outside_project_dates
+                        - non_compete
+                    type: string
+                date:
+                    format: date
                     type: string
                 detail:
                     type: string
@@ -1260,6 +1400,69 @@ components:
                 - tentative
                 - free
                 - away
+            type: object
+        PlanningWish:
+            additionalProperties: false
+            description: 'A person''s wish (S21): off a named project from a date, or for something new from a date — no free text. Open wishes only; a resolved or withdrawn wish is deleted and its event keeps the kind, the project id and the date.'
+            properties:
+                createdAt:
+                    format: date-time
+                    type: string
+                fromDate:
+                    format: date
+                    type: string
+                id:
+                    format: int64
+                    type: integer
+                kind:
+                    $ref: '#/components/schemas/PlanningWishKind'
+                person:
+                    $ref: '#/components/schemas/PlanningPersonRef'
+                project:
+                    $ref: '#/components/schemas/PlanningProjectRef'
+                seenAt:
+                    description: When a planner stamped it seen; absent until then.
+                    format: date-time
+                    type: string
+            required:
+                - id
+                - person
+                - kind
+                - fromDate
+                - createdAt
+            type: object
+        PlanningWishInput:
+            additionalProperties: false
+            description: 'A new wish of the caller''s (S21): off needs projectId, a project the caller has a confirmed row on today or later; new takes none. fromDate on or after today.'
+            properties:
+                fromDate:
+                    format: date
+                    type: string
+                kind:
+                    $ref: '#/components/schemas/PlanningWishKind'
+                projectId:
+                    format: int32
+                    type: integer
+            required:
+                - kind
+                - fromDate
+            type: object
+        PlanningWishKind:
+            description: 'off: the person wants off the named project from the date. new: the person wants something new from the date.'
+            enum:
+                - off
+                - new
+            type: string
+        PlanningWishList:
+            additionalProperties: false
+            description: Open wishes, oldest first.
+            properties:
+                wishes:
+                    items:
+                        $ref: '#/components/schemas/PlanningWish'
+                    type: array
+            required:
+                - wishes
             type: object
 info:
     title: Vantigo Planning API
@@ -1379,7 +1582,7 @@ paths:
                         application/problem+json:
                             schema:
                                 $ref: '#/components/schemas/PlanningProblem'
-                    description: Conflict — outside_employment, project_closed, or overbooked under refuse.
+                    description: Conflict — outside_employment, project_closed, non_compete (a confirmed row on a project of a customer the person's non-compete names), or overbooked under refuse.
                 "503":
                     content:
                         application/problem+json:
@@ -1535,7 +1738,7 @@ paths:
                         application/problem+json:
                             schema:
                                 $ref: '#/components/schemas/PlanningProblem'
-                    description: Conflict — revision_conflict, outside_employment, project_closed, or overbooked under refuse.
+                    description: Conflict — revision_conflict, outside_employment, project_closed, non_compete (a confirmed row on a project of a customer the person's non-compete names), or overbooked under refuse.
                 "503":
                     content:
                         application/problem+json:
@@ -1589,7 +1792,7 @@ paths:
                         application/problem+json:
                             schema:
                                 $ref: '#/components/schemas/PlanningProblem'
-                    description: Conflict — revision_conflict (the row kept changing while it was being confirmed), outside_employment, project_closed, or overbooked under refuse.
+                    description: Conflict — revision_conflict (the row kept changing while it was being confirmed), outside_employment, project_closed, non_compete (a confirmed row on a project of a customer the person's non-compete names), or overbooked under refuse.
                 "503":
                     content:
                         application/problem+json:
@@ -1597,6 +1800,103 @@ paths:
                                 $ref: '#/components/schemas/PlanningProblem'
                     description: 'Service Unavailable — dependency_unavailable: a module Planning reads through a contract is not composed. Nothing was changed.'
             summary: Confirm an allocation
+            tags:
+                - Planning
+            x-vantigo-access: permission:planning:access+planning:manage
+    /api/v1/planning/allocations/{id}/terms:
+        delete:
+            description: Clears the allocation's terms (S14); a row with none is left as it is. The derived dates fall back to the row's toDate.
+            operationId: deletePlanningAllocationTerms
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            responses:
+                "204":
+                    description: No Content
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such allocation. The body is empty.
+            summary: Clear an allocation's terms
+            tags:
+                - Planning
+            x-vantigo-access: permission:planning:access+planning:manage
+        put:
+            description: 'Sets the allocation''s terms whole (S14), guarded by If-Match: the terms'' revision when the row has terms, left out to set terms on a row that has none; either way a mismatch is revision_conflict. Terms on a tentative row bind once it is confirmed. Answers the allocation with its terms and the derived dates.'
+            operationId: putPlanningAllocationTerms
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+                - description: The terms' revision the row was read at, bare (3) or quoted ("3"); left out when the row has no terms yet. A revision that has moved on, a header on a row with no terms, or no header on a row with terms is a 409 revision_conflict.
+                  in: header
+                  name: If-Match
+                  required: false
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/PlanningTermsInput'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/PlanningAllocation'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PlanningProblem'
+                    description: Bad Request — field errors on the body, or an If-Match that is not a revision.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such allocation. The body is empty.
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PlanningProblem'
+                    description: Conflict — revision_conflict or project_closed (the row's project is completed or cancelled).
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PlanningProblem'
+                    description: 'Service Unavailable — dependency_unavailable: a module Planning reads through a contract is not composed. Nothing was changed.'
+            summary: Set an allocation's terms
             tags:
                 - Planning
             x-vantigo-access: permission:planning:access+planning:manage
@@ -1731,7 +2031,7 @@ paths:
             x-vantigo-access: permission:planning:access+planning:view
     /api/v1/planning/events:
         get:
-            description: The record of writes (S23), newest first, at most 500, filtered by person, project or allocation.
+            description: The record of writes (S23), newest first, at most 500, filtered by person, project or allocation. A wish's events and the terms' (terms_set, terms_cleared) are answered to planning:manage alone, whatever the filter.
             operationId: listPlanningEvents
             parameters:
                 - description: Only this person's.
@@ -1813,7 +2113,7 @@ paths:
             x-vantigo-access: permission:planning:access+planning:view
     /api/v1/planning/me:
         get:
-            description: The caller's person and their confirmed allocations from today on (S19). A caller who is nobody's person is the 404 no_person.
+            description: The caller's person, their confirmed allocations from today on (S19) and their open wishes (S21). A caller who is nobody's person is the 404 no_person.
             operationId: getPlanningMe
             responses:
                 "200":
@@ -1847,6 +2147,105 @@ paths:
                                 $ref: '#/components/schemas/PlanningProblem'
                     description: 'Service Unavailable — dependency_unavailable: a module Planning reads through a contract is not composed. Nothing was changed.'
             summary: My planning
+            tags:
+                - Planning
+            x-vantigo-access: permission:planning:access
+    /api/v1/planning/me/wishes:
+        post:
+            description: 'Files a wish of the caller''s own (S21): off a project the caller has a confirmed row on today or later (else wish_no_booking), or new. At most five open wishes (wish_limit); one off wish a project (wish_exists). Every planning:manage holder is mailed once. No free text.'
+            operationId: createPlanningMyWish
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/PlanningWishInput'
+                required: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/PlanningWish'
+                    description: Created
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PlanningProblem'
+                    description: Bad Request — field errors on kind, projectId or fromDate.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PlanningProblem'
+                    description: 'Not Found — no_person: Staff answers no person for the caller.'
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PlanningProblem'
+                    description: Conflict — wish_no_booking, wish_limit or wish_exists.
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PlanningProblem'
+                    description: 'Service Unavailable — dependency_unavailable: a module Planning reads through a contract is not composed. Nothing was changed.'
+            summary: File a wish
+            tags:
+                - Planning
+            x-vantigo-access: permission:planning:access
+    /api/v1/planning/me/wishes/{id}:
+        delete:
+            description: Withdraws a wish of the caller's own (S21); the row is deleted and the event keeps the kind, the project id and the date.
+            operationId: deletePlanningMyWish
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            responses:
+                "204":
+                    description: No Content
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PlanningProblem'
+                    description: 'Not Found — no such wish of the caller''s, or no_person: Staff answers no person for the caller.'
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PlanningProblem'
+                    description: 'Service Unavailable — dependency_unavailable: a module Planning reads through a contract is not composed. Nothing was changed.'
+            summary: Withdraw a wish
             tags:
                 - Planning
             x-vantigo-access: permission:planning:access
@@ -2453,7 +2852,7 @@ paths:
                         application/problem+json:
                             schema:
                                 $ref: '#/components/schemas/PlanningProblem'
-                    description: Conflict — request_not_open, outside_employment, project_closed, or overbooked under refuse.
+                    description: Conflict — request_not_open, outside_employment, project_closed, non_compete (a confirmed row on a project of a customer the person's non-compete names), or overbooked under refuse.
                 "503":
                     content:
                         application/problem+json:
@@ -2691,5 +3090,124 @@ paths:
             tags:
                 - Planning
             x-vantigo-access: permission:planning:access+planning:view
+    /api/v1/planning/wishes:
+        get:
+            description: 'Every open wish, oldest first (S21), for the planners; an open wish of a person Staff no longer answers is deleted on this read (S26). personId narrows to one person.'
+            operationId: listPlanningWishes
+            parameters:
+                - in: query
+                  name: personId
+                  schema:
+                    format: int64
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/PlanningWishList'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PlanningProblem'
+                    description: 'Service Unavailable — dependency_unavailable: a module Planning reads through a contract is not composed. Nothing was changed.'
+            summary: List the open wishes
+            tags:
+                - Planning
+            x-vantigo-access: permission:planning:access+planning:manage
+    /api/v1/planning/wishes/{id}/resolve:
+        post:
+            description: Resolves a wish (S21); the row is deleted and the event keeps the kind, the project id and the date.
+            operationId: resolvePlanningWish
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            responses:
+                "204":
+                    description: No Content
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such wish. The body is empty.
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PlanningProblem'
+                    description: 'Service Unavailable — dependency_unavailable: a module Planning reads through a contract is not composed. Nothing was changed.'
+            summary: Resolve a wish
+            tags:
+                - Planning
+            x-vantigo-access: permission:planning:access+planning:manage
+    /api/v1/planning/wishes/{id}/seen:
+        post:
+            description: Stamps a wish seen by the caller (S21); a wish already stamped is answered as it is.
+            operationId: markPlanningWishSeen
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/PlanningWish'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such wish. The body is empty.
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PlanningProblem'
+                    description: 'Service Unavailable — dependency_unavailable: a module Planning reads through a contract is not composed. Nothing was changed.'
+            summary: Stamp a wish seen
+            tags:
+                - Planning
+            x-vantigo-access: permission:planning:access+planning:manage
 servers:
     - url: /

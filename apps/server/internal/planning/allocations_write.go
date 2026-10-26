@@ -127,6 +127,60 @@ func judgeOverbooking(ctx context.Context, txq *store.Queries, rule string, pers
 	return o, nil
 }
 
+// judgeNonCompete is S17.3 under personID's lock (plan reading 8): the first
+// of the person's confirmed rows other than exceptRowID whose terms name
+// customerID — the target project's customer, read before the transaction —
+// with a non-compete until from or later; nil when there is none, or when
+// the project has no customer. The terms store the customers they name, so
+// no other row's project is asked about.
+func judgeNonCompete(ctx context.Context, txq *store.Queries, personID, exceptRowID int64, customerID *int32, from time.Time) (*nonCompeteHit, error) {
+	if customerID == nil {
+		return nil, nil
+	}
+	rows, err := txq.PersonNonCompetes(ctx, store.PersonNonCompetesParams{PersonID: personID, FromDate: dayParam(from)})
+	if err != nil {
+		return nil, fmt.Errorf("planning: read person %d's non-competes: %w", personID, err)
+	}
+	for _, r := range rows {
+		if r.ID != exceptRowID && slices.Contains(r.NonCompeteCustomerIds, *customerID) {
+			return &nonCompeteHit{ID: r.ID, Until: civil(r.NonCompeteUntil)}, nil
+		}
+	}
+	return nil, nil
+}
+
+// judgeWrite is a row's judgements under the person's lock before it is
+// written as status on project over candidate (S7, S17.3): the non-compete
+// first — a confirmed row the write places refused, a tentative one or a
+// confirmed one the write does not place warned (amendment 90) — then, for a
+// confirmed row, the overbooking with previous the row's own weight before
+// the write. rowID is the row's own id (0 for a new row), which neither
+// judgement counts against it.
+func judgeWrite(ctx context.Context, txq *store.Queries, rule, status string, places bool, personID, rowID int64, project *contracts.ProjectEntry,
+	capacity contracts.PersonCapacity, previous, candidate *capacityRow) (verdict, error) {
+	var v verdict
+	var customerID *int32
+	if project != nil {
+		customerID = project.CustomerID
+	}
+	hit, err := judgeNonCompete(ctx, txq, personID, rowID, customerID, candidate.From)
+	if err != nil {
+		return verdict{}, err
+	}
+	if status != statusConfirmed {
+		v.nonCompete = hit
+		return v, nil
+	}
+	if hit != nil && places {
+		return verdict{}, refuseNonCompete(hit)
+	}
+	v.nonCompete = hit
+	if v.overbooking, err = judgeOverbooking(ctx, txq, rule, personID, rowID, capacity, previous, candidate); err != nil {
+		return verdict{}, err
+	}
+	return v, nil
+}
+
 // fieldRefusal is the 400 of one field's fault.
 func fieldRefusal(field, message string) error {
 	return refuseInvalid(invalidAllocationTitle, fieldErrors{errs: fieldError(field, message)})
@@ -198,16 +252,16 @@ func (s *server) create(ctx context.Context, body gen.PlanningAllocationInput) (
 	}
 	var (
 		row store.PlanningAllocation
-		o   overbooking
+		v   verdict
 	)
 	err = s.withPersonLock(ctx, fields.personID, func(ctx context.Context, txq *store.Queries) error {
-		row, o, err = s.insertAllocation(ctx, txq, c, who, w, nil)
+		row, v, err = s.insertAllocation(ctx, txq, c, who, w, nil)
 		return err
 	})
 	if err != nil {
 		return gen.PlanningAllocationWritten{}, err
 	}
-	return s.created(ctx, c, w, row, o), nil
+	return s.created(ctx, c, w, row, v)
 }
 
 // newRow is what a new allocation's write read before its transaction
@@ -268,18 +322,15 @@ func (s *server) readCreate(ctx context.Context, c *callerContext, fields alloca
 	return newRow{fields: fields, status: status, project: project, person: person, staff: staff, rules: rules}, nil
 }
 
-// insertAllocation is a new row's write under the person's lock: S7's
-// overbooking judged on the person's confirmed rows when the row is
-// confirmed, the row inserted — naming requestID when a fill writes it —
-// and allocation_created recorded.
-func (s *server) insertAllocation(ctx context.Context, txq *store.Queries, c *callerContext, who actor, w newRow, requestID *int64) (store.PlanningAllocation, overbooking, error) {
-	var o overbooking
-	if w.status == statusConfirmed {
-		candidate := capacityRowOf(w.fields)
-		var err error
-		if o, err = judgeOverbooking(ctx, txq, w.rules.Overbooking, w.fields.personID, 0, w.staff.capacity, nil, &candidate); err != nil {
-			return store.PlanningAllocation{}, overbooking{}, err
-		}
+// insertAllocation is a new row's write under the person's lock: S17.3's
+// non-compete and, when the row is confirmed, S7's overbooking judged on the
+// person's confirmed rows (judgeWrite), the row inserted — naming requestID
+// when a fill writes it — and allocation_created recorded.
+func (s *server) insertAllocation(ctx context.Context, txq *store.Queries, c *callerContext, who actor, w newRow, requestID *int64) (store.PlanningAllocation, verdict, error) {
+	candidate := capacityRowOf(w.fields)
+	v, err := judgeWrite(ctx, txq, w.rules.Overbooking, w.status, true, w.fields.personID, 0, w.project, w.staff.capacity, nil, &candidate)
+	if err != nil {
+		return store.PlanningAllocation{}, verdict{}, err
 	}
 	now := s.deps.Clock()
 	params := store.InsertAllocationParams{
@@ -293,24 +344,34 @@ func (s *server) insertAllocation(ctx context.Context, txq *store.Queries, c *ca
 	}
 	row, err := txq.InsertAllocation(ctx, params)
 	if err != nil {
-		return store.PlanningAllocation{}, overbooking{}, fmt.Errorf("planning: create an allocation: %w", err)
+		return store.PlanningAllocation{}, verdict{}, fmt.Errorf("planning: create an allocation: %w", err)
 	}
 	if err := s.recordChanges(ctx, txq, who, allocationEvent(row, eventAllocationCreated), changesOf(nil, &row, false)); err != nil {
-		return store.PlanningAllocation{}, overbooking{}, err
+		return store.PlanningAllocation{}, verdict{}, err
 	}
-	return row, o, nil
+	return row, v, nil
 }
 
 // created is a new row's answer after its commit, the person mailed when it
-// is confirmed (S19).
-func (s *server) created(ctx context.Context, c *callerContext, w newRow, row store.PlanningAllocation, o overbooking) gen.PlanningAllocationWritten {
+// is confirmed (S19), the derived dates set (S15) and the warnings rule 6
+// names.
+func (s *server) created(ctx context.Context, c *callerContext, w newRow, row store.PlanningAllocation, v verdict) (gen.PlanningAllocationWritten, error) {
 	if w.status == statusConfirmed {
 		s.sendNotices(ctx, noticeTo(noticePlanned, w.person, row, w.project))
 	}
-	return gen.PlanningAllocationWritten{
-		Allocation: allocationResponse(row, w.person, w.project, c.Manage),
-		Warnings:   allocationWarnings(o, w.project, w.fields.from, w.fields.to),
+	return s.writtenAnswer(ctx, c, row, w.person, w.project, verdictWarnings(v, w.project, w.fields.from, w.fields.to))
+}
+
+// writtenAnswer is a write's answer after its commit: row as the contract
+// answers it with its derived dates and, to planning:manage, its terms
+// (applyTerms), beside warnings.
+func (s *server) writtenAnswer(ctx context.Context, c *callerContext, row store.PlanningAllocation, person *contracts.PersonEntry,
+	project *contracts.ProjectEntry, warnings []gen.PlanningWarning) (gen.PlanningAllocationWritten, error) {
+	out := []gen.PlanningAllocation{allocationResponse(row, person, project, c.Manage)}
+	if err := s.applyTerms(ctx, out, c.Manage); err != nil {
+		return gen.PlanningAllocationWritten{}, err
 	}
+	return gen.PlanningAllocationWritten{Allocation: out[0], Warnings: warnings}, nil
 }
 
 // PutPlanningAllocation Change an allocation
@@ -417,7 +478,7 @@ func (s *server) replace(ctx context.Context, id int64, revision int32, body gen
 	now := s.deps.Clock()
 	var (
 		before, row store.PlanningAllocation
-		o           overbooking
+		v           verdict
 	)
 	err = s.withLocks(ctx, locks, func(ctx context.Context, txq *store.Queries) error {
 		if before, err = lockedAllocation(ctx, txq, id); err != nil {
@@ -433,16 +494,23 @@ func (s *server) replace(ctx context.Context, id int64, revision int32, body gen
 			row = before
 			return nil
 		}
-		if status == statusConfirmed {
-			var previous *capacityRow
-			if before.PersonID == fields.personID && before.Status == statusConfirmed {
-				p := rowOf(before)
-				previous = &p
-			}
-			candidate := capacityRowOf(fields)
-			if o, err = judgeOverbooking(ctx, txq, rules.Overbooking, fields.personID, id, staff.capacity, previous, &candidate); err != nil {
-				return err
-			}
+		// Judged on the person and the project the row is left on (amendment
+		// 20): moving a row off a person is never judged for them.
+		var previous *capacityRow
+		if before.PersonID == fields.personID && before.Status == statusConfirmed {
+			p := rowOf(before)
+			previous = &p
+		}
+		// The non-compete refuses a PUT only when it places the row
+		// (S17.3, amendment 90): on another person or project, confirmed
+		// from tentative, or starting earlier than it did — when a
+		// non-compete ending between the two first days newly holds. Any
+		// other change to a confirmed row is written with the warning.
+		places := before.PersonID != fields.personID || before.ProjectID != fields.projectID ||
+			before.Status != statusConfirmed || fields.from.Before(civil(before.FromDate))
+		candidate := capacityRowOf(fields)
+		if v, err = judgeWrite(ctx, txq, rules.Overbooking, status, places, fields.personID, id, project, staff.capacity, previous, &candidate); err != nil {
+			return err
 		}
 		if row, err = txq.UpdateAllocation(ctx, params); err != nil {
 			return fmt.Errorf("planning: change allocation %d: %w", id, err)
@@ -456,10 +524,7 @@ func (s *server) replace(ctx context.Context, id int64, revision int32, body gen
 		return gen.PlanningAllocationWritten{}, err
 	}
 	s.sendNotices(ctx, replaceNotices(before, row, previousPerson, person, previousProject, project)...)
-	return gen.PlanningAllocationWritten{
-		Allocation: allocationResponse(row, person, project, c.Manage),
-		Warnings:   allocationWarnings(o, project, fields.from, fields.to),
-	}, nil
+	return s.writtenAnswer(ctx, c, row, person, project, verdictWarnings(v, project, fields.from, fields.to))
 }
 
 // replacement is the row fields replace before with: every field as the
@@ -676,9 +741,9 @@ func (s *server) ConfirmPlanningAllocation(ctx context.Context, req gen.ConfirmP
 
 // confirm is POST /allocations/{id}/confirm (S3, amendment 6): a confirmed
 // row answered as it is, with no event and no mail; a tentative one changed
-// to confirmed as a PUT would change it — refused on a closed project and
-// outside the employment, judged for overbooking — recorded as
-// allocation_confirmed, and the person told.
+// to confirmed as a PUT would change it — refused on a closed project,
+// outside the employment and under a non-compete (S17.3), judged for
+// overbooking — recorded as allocation_confirmed, and the person told.
 func (s *server) confirm(ctx context.Context, id int64) (gen.PlanningAllocationWritten, error) {
 	c, err := s.callerFor(ctx)
 	if err != nil {
@@ -702,10 +767,7 @@ func (s *server) confirm(ctx context.Context, id int64) (gen.PlanningAllocationW
 		if err != nil {
 			return gen.PlanningAllocationWritten{}, err
 		}
-		return gen.PlanningAllocationWritten{
-			Allocation: allocationResponse(current, personIn(staff.people, current.PersonID), project, c.Manage),
-			Warnings:   []gen.PlanningWarning{},
-		}, nil
+		return s.writtenAnswer(ctx, c, current, personIn(staff.people, current.PersonID), project, []gen.PlanningWarning{})
 	}
 	if projectClosed(project) {
 		return gen.PlanningAllocationWritten{}, refuseProjectClosed(project)
@@ -730,7 +792,7 @@ func (s *server) confirm(ctx context.Context, id int64) (gen.PlanningAllocationW
 	now := s.deps.Clock()
 	var (
 		row store.PlanningAllocation
-		o   overbooking
+		v   verdict
 	)
 	err = s.withPersonLock(ctx, current.PersonID, func(ctx context.Context, txq *store.Queries) error {
 		before, err := lockedAllocation(ctx, txq, id)
@@ -741,7 +803,7 @@ func (s *server) confirm(ctx context.Context, id int64) (gen.PlanningAllocationW
 			return errRowMoved
 		}
 		candidate := rowOf(before)
-		if o, err = judgeOverbooking(ctx, txq, rules.Overbooking, before.PersonID, id, staff.capacity, nil, &candidate); err != nil {
+		if v, err = judgeWrite(ctx, txq, rules.Overbooking, statusConfirmed, true, before.PersonID, id, project, staff.capacity, nil, &candidate); err != nil {
 			return err
 		}
 		if row, err = txq.UpdateAllocation(ctx, store.UpdateAllocationParams{
@@ -757,10 +819,7 @@ func (s *server) confirm(ctx context.Context, id int64) (gen.PlanningAllocationW
 		return gen.PlanningAllocationWritten{}, err
 	}
 	s.sendNotices(ctx, noticeTo(noticePlanned, person, row, project))
-	return gen.PlanningAllocationWritten{
-		Allocation: allocationResponse(row, person, project, c.Manage),
-		Warnings:   allocationWarnings(o, project, from, to),
-	}, nil
+	return s.writtenAnswer(ctx, c, row, person, project, verdictWarnings(v, project, from, to))
 }
 
 // recordStatusChange records allocation_confirmed when before was tentative

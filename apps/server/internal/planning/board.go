@@ -112,6 +112,9 @@ func (s *server) board(ctx context.Context, p gen.GetPlanningBoardParams) (gen.P
 		From: apiDate(from), To: apiDate(to), Weeks: []gen.PlanningWeek{}, Rows: []gen.PlanningBoardRow{},
 		Allocations: allocationsView(listed, peopleByID(people), projects, c.Manage),
 	}
+	if err := s.applyTerms(ctx, out.Allocations, c.Manage); err != nil {
+		return gen.PlanningBoard{}, err
+	}
 	for _, m := range mondaysOf(from, to) {
 		out.Weeks = append(out.Weeks, gen.PlanningWeek{Monday: apiDate(m)})
 	}

@@ -103,6 +103,9 @@ func (s *server) projectPlan(ctx context.Context, projectID int32, p gen.GetPlan
 		Requests:    requests,
 		Weeks:       make([]gen.PlanningProjectPlanWeek, 0, len(mondays)),
 	}
+	if err := s.applyTerms(ctx, out.Allocations, c.Manage); err != nil {
+		return gen.PlanningProjectPlan{}, err
+	}
 	for i, m := range mondays {
 		out.Weeks = append(out.Weeks, gen.PlanningProjectPlanWeek{
 			Monday: apiDate(m), Booked: roundHours(booked[i]), Tentative: roundHours(tentative[i]),

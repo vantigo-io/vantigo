@@ -7,6 +7,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
+	"github.com/vantigo-io/vantigo/server/internal/planning/store"
 )
 
 // TestNoticeTexts is S19's wording, in both languages, per kind: the
@@ -81,5 +82,52 @@ func TestNoticeTo(t *testing.T) {
 	}
 	if n := noticeTo(noticePlanned, nil, row, nil); n != nil {
 		t.Errorf("a person Staff did not answer = %+v, want nobody", n)
+	}
+}
+
+// TestWishNoticeTexts is S21's mail to the planners, in both languages: the
+// wisher's name, the kind, the project's code and name on one line — or its
+// id — and the date, the link to the Wishes page when there is an origin.
+func TestWishNoticeTexts(t *testing.T) {
+	project := int32(2001)
+	person := &contracts.PersonEntry{ID: 1001, DisplayName: "Kari Nordmann"}
+	off := store.PlanningWish{ID: 1001, PersonID: 1001, Kind: "off", ProjectID: &project, FromDate: dayParam(day("2026-10-01"))}
+	entry := &contracts.ProjectEntry{ID: 2001, Code: "KVEM1000", Name: "Kraft-Verket\nmodernisering"}
+	link := "https://vantigo.example/planning/wishes"
+
+	texts := wishNoticeTexts(wishNotice{person: person, wish: off, project: entry}, link)
+	if en := texts["en"]; en.Subject != "Kari Nordmann wishes off KVEM1000 Kraft-Verket modernisering from 1 October 2026" ||
+		en.Body != en.Subject+".\n\nOpen the wishes: "+link+"\n" {
+		t.Errorf("en = %+v", en)
+	}
+	if nb := texts["nb"]; nb.Subject != "Kari Nordmann ønsker seg av KVEM1000 Kraft-Verket modernisering fra 1. oktober 2026" ||
+		nb.Body != nb.Subject+".\n\nÅpne ønskene: "+link+"\n" {
+		t.Errorf("nb = %+v", nb)
+	}
+
+	texts = wishNoticeTexts(wishNotice{person: person, wish: off}, "")
+	if en := texts["en"]; en.Body != "Kari Nordmann wishes off project 2001 from 1 October 2026.\n" {
+		t.Errorf("en without the project or an origin = %q", en.Body)
+	}
+	fresh := off
+	fresh.Kind, fresh.ProjectID = "new", nil
+	texts = wishNoticeTexts(wishNotice{person: person, wish: fresh}, "")
+	if texts["en"].Subject != "Kari Nordmann wishes for something new from 1 October 2026" ||
+		texts["nb"].Subject != "Kari Nordmann ønsker noe nytt fra 1. oktober 2026" {
+		t.Errorf("a new wish = %+v", texts)
+	}
+}
+
+// TestWishRecipients is reading 6: every holder once, by id, but the caller
+// and the user the wisher's person is linked to.
+func TestWishRecipients(t *testing.T) {
+	caller, linked, a, b := uuid.New(), uuid.New(), uuid.New(), uuid.New()
+	holders := []contracts.Holder{{ID: a}, {ID: caller}, {ID: b}, {ID: a}, {ID: linked}}
+	got := wishRecipients(holders, caller, &contracts.PersonEntry{ID: 1001, UserID: &linked})
+	if len(got) != 2 || got[0] != a || got[1] != b {
+		t.Errorf("recipients = %v, want %v and %v once each", got, a, b)
+	}
+	if got := wishRecipients(nil, caller, &contracts.PersonEntry{ID: 1001}); len(got) != 0 {
+		t.Errorf("no holders = %v", got)
 	}
 }

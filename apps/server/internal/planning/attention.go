@@ -16,7 +16,7 @@ import (
 
 // The attention items (design S22), computed on read, each to its audience:
 // unbooked, overbooked and certificatesExpiring to planning:view,
-// endingWithoutFollowOn and requestsOpen to planning:manage. A caller with
+// endingWithoutFollowOn, requestsOpen and wishesUnseen to planning:manage. A caller with
 // neither role gets an empty list, never a 403: the host asks every module it
 // shows.
 
@@ -95,6 +95,11 @@ func (s *server) attention(ctx context.Context) ([]gen.PlanningStatsAttentionIte
 			return nil, err
 		}
 		items = append(items, open...)
+		unseen, err := s.unseenWishesItem(ctx, w)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, unseen...)
 	}
 	slices.SortFunc(items, func(a, b gen.PlanningStatsAttentionItem) int {
 		return cmp.Or(a.OccurredAt.Compare(b.OccurredAt), cmp.Compare(a.Type, b.Type), cmp.Compare(a.Id, b.Id))
@@ -222,4 +227,28 @@ func (s *server) requestItems(ctx context.Context, today time.Time, leadDays int
 			r.ID, fmt.Sprintf("%s — %s", code, r.Title), civil(r.FromDate)))
 	}
 	return out, nil
+}
+
+// unseenWishesItem is S22's wishesUnseen: one item when any open wish has no
+// seen stamp, counting them (plan reading 9) — about the oldest, dated on
+// its creation, titled with its person's name as the window's people give
+// it, or their id when Staff does not answer them. The Wishes page is the
+// answer, not a list of names on the dashboard.
+func (s *server) unseenWishesItem(ctx context.Context, w *window) ([]gen.PlanningStatsAttentionItem, error) {
+	rows, err := store.New(s.deps.Pool).UnseenWishes(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("planning: read the unseen wishes: %w", err)
+	}
+	if len(rows) == 0 {
+		return nil, nil
+	}
+	oldest := rows[0]
+	title := strconv.FormatInt(oldest.PersonID, 10)
+	if p := peopleByID(w.People)[oldest.PersonID]; p != nil {
+		title = p.DisplayName
+	}
+	count := int32(len(rows))
+	item := attentionItem(gen.PlanningStatsAttentionItemTypeWishesUnseen, "all", oldest.ID, title, oldest.CreatedAt)
+	item.Count = &count
+	return []gen.PlanningStatsAttentionItem{item}, nil
 }

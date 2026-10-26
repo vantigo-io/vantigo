@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
+	"github.com/vantigo-io/vantigo/server/internal/modtest"
 	"github.com/vantigo-io/vantigo/server/internal/planning/gen"
 )
 
@@ -115,4 +116,36 @@ func TestTimeline_ViewWithoutStaff(t *testing.T) {
 		t.Errorf("allocations = %+v, want the confirmed row alone", tl.Allocations)
 	}
 	getJSON(t, c, timelinePath(personOla), http.StatusNotFound, nil)
+}
+
+// TestTimeline_Wishes is S21 on the timeline: the person's open wishes to
+// planning:manage, to the person themself — in the self shape and on the
+// planner's path — and to nobody else holding planning:view.
+func TestTimeline_Wishes(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	id := seedOpenWish(t, h, personKari, "off", ptr(projectActive), "2026-10-01", 0)
+	seedOpenWish(t, h, personOla, "new", nil, "2026-10-01", 0)
+
+	wishesOf := func(c *modtest.Client) []int64 {
+		var tl gen.PlanningTimeline
+		getJSON(t, c, timelinePath(personKari), http.StatusOK, &tl)
+		return wishIDs(tl.Wishes)
+	}
+	if ids := wishesOf(planner(t, h)); len(ids) != 1 || ids[0] != id {
+		t.Errorf("to manage = %v, want Kari's", ids)
+	}
+	if ids := wishesOf(h.SignIn(t, "planning:access", "planning:view")); len(ids) != 0 {
+		t.Errorf("to view alone = %v, want none", ids)
+	}
+	self, user := signIn(t, h)
+	h.workforce.link(user, personKari)
+	if ids := wishesOf(self); len(ids) != 1 || ids[0] != id {
+		t.Errorf("to Kari herself = %v, want hers", ids)
+	}
+	viewer, other := signIn(t, h, "planning:view")
+	h.workforce.link(other, personKari)
+	if ids := wishesOf(viewer); len(ids) != 1 || ids[0] != id {
+		t.Errorf("to Kari holding planning:view = %v, want hers", ids)
+	}
 }

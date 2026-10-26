@@ -117,16 +117,18 @@ func TestFakeWorkforce_PreferenceFits(t *testing.T) {
 }
 
 // TestFakeProjects_AnswersAsProjectsDoes pins the fake directory's rules: the
-// listing by status by code then id, an unknown id answering nothing, and a
-// project a test adds.
+// listing by status by code then id, an unknown id answering nothing, a
+// project a test adds, the second customer's project, and a customer a test
+// adds.
 func TestFakeProjects_AnswersAsProjectsDoes(t *testing.T) {
 	t.Parallel()
 	p := newFakeProjects()
 	ctx := context.Background()
 
 	listed, err := p.ProjectsByStatus(ctx, []string{"planned", "active"})
-	if err != nil || len(listed) != 3 || listed[0].ID != projectInternal || listed[1].ID != projectActive || listed[2].ID != projectPlanned {
-		t.Errorf("planned and active = %+v, %v; want INTERN, KVEM1000, KVEM2000", listed, err)
+	if err != nil || len(listed) != 4 || listed[0].ID != projectHydro || listed[1].ID != projectInternal ||
+		listed[2].ID != projectActive || listed[3].ID != projectPlanned {
+		t.Errorf("planned and active = %+v, %v; want HYDRO100, INTERN, KVEM1000, KVEM2000", listed, err)
 	}
 	if e, err := p.Project(ctx, projectUnknown); e != nil || err != nil {
 		t.Errorf("an unknown project = %+v, %v; want nil, nil", e, err)
@@ -141,6 +143,9 @@ func TestFakeProjects_AnswersAsProjectsDoes(t *testing.T) {
 	if own, _ := p.ProjectsForCustomer(ctx, customerKraftVerket); len(own) != 3 {
 		t.Errorf("Kraft-Verket's projects = %+v, want three", own)
 	}
+	if own, _ := p.ProjectsForCustomer(ctx, customerHydro); len(own) != 1 || own[0].ID != projectHydro || own[0].Status != "active" {
+		t.Errorf("Hydro's projects = %+v, want HYDRO100, active", own)
+	}
 
 	c := newFakeCustomers()
 	if names, _ := c.Customers(ctx, []int32{customerKraftVerket, customerKraftVerket, 3999}); len(names) != 1 || names[0].Name != "Kraft-Verket AS" {
@@ -148,5 +153,9 @@ func TestFakeProjects_AnswersAsProjectsDoes(t *testing.T) {
 	}
 	if one, _ := c.Customer(ctx, 3999); one != nil {
 		t.Errorf("an unknown customer = %+v, want nil", one)
+	}
+	c.set(3999, "Ny kunde AS")
+	if names, _ := c.Customers(ctx, []int32{3999, customerHydro}); len(names) != 2 || names[0].Name != "Hydro ASA" || names[1].Name != "Ny kunde AS" {
+		t.Errorf("Customers after set = %+v, want Hydro ASA, Ny kunde AS", names)
 	}
 }

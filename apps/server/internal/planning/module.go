@@ -42,13 +42,14 @@ import (
 // Both are sensitive. planning:view reveals the whole project portfolio, bids
 // included, which Projects otherwise reserves for projects:view-all (S9,
 // reading 3), with every person's plan; planning:manage writes the plan and
-// reads the planners' notes. A planner also needs staff:view, without which
+// reads the planners' notes, the terms of a customer contract and the
+// person's wishes. A planner also needs staff:view, without which
 // the Workforce reads answer nobody (reading 14). All three are delegable, as
 // every other module's are.
 var permissions = []contracts.Permission{
 	{
 		Key: "planning:access", Display: "Use Planning",
-		Description: "Use the Planning app: My planning, your own confirmed bookings.",
+		Description: "Use the Planning app: My planning, your own confirmed bookings and wishes, and your bookings on the Calendar.",
 		Category:    "Planning", Sensitive: false, Delegable: true,
 	},
 	{
@@ -58,7 +59,7 @@ var permissions = []contracts.Permission{
 	},
 	{
 		Key: "planning:manage", Display: "Plan",
-		Description: "Create, change, confirm and delete allocations, read the planners' notes, and change the Planning settings.",
+		Description: "Create, change, confirm and delete allocations and their terms, create, change, fill and withdraw requests, read the planners' notes, the candidates and the wishes, and change the Planning settings.",
 		Category:    "Planning", Sensitive: true, Delegable: true,
 	},
 }
@@ -69,13 +70,16 @@ var limits = map[string]ratelimit.Policy{}
 
 // Module is planning as a platform module: its contract mounted under
 // /api/v1/planning/ and its three permissions in the composed catalog. It
-// provides no contract and fills no slot in delivery A, and has no
-// background worker (design S22: computed on read, no digest).
+// provides no contract and has no background worker (design S22: computed on
+// read, no digest). From delivery C it fills the many-provider
+// CalendarSources slot with the caller's own confirmed allocations (S24),
+// when the calendar module is on (S25, calendar_source.go).
 func Module() module.Module {
 	return module.Module{
-		Name:        "planning",
-		Permissions: permissions,
-		Mount:       mount,
+		Name:           "planning",
+		Permissions:    permissions,
+		Mount:          mount,
+		CalendarSource: newCalendarSource,
 	}
 }
 

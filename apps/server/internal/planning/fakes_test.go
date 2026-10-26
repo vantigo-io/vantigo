@@ -316,16 +316,19 @@ func earliest(a, b time.Time) time.Time {
 
 // The projects the fake directory knows: an active project of Kraft-Verket
 // with dates, a planned bid of the same customer (tentative by default, S3),
-// a completed one (project_closed), and an internal project with no
-// customer and no dates.
+// a completed one (project_closed), an internal project with no customer
+// and no dates, and an active project of a second customer, Hydro — what a
+// non-compete toward Kraft-Verket does not bar (S17.3).
 const (
 	projectActive    = int32(2001)
 	projectPlanned   = int32(2002)
 	projectCompleted = int32(2003)
 	projectInternal  = int32(2004)
+	projectHydro     = int32(2005)
 	projectUnknown   = int32(2999)
 
 	customerKraftVerket = int32(3001)
+	customerHydro       = int32(3002)
 )
 
 // fakeProjects is contracts.ProjectDirectory over a map a test may add to
@@ -339,7 +342,7 @@ type fakeProjects struct {
 var _ contracts.ProjectDirectory = (*fakeProjects)(nil)
 
 func newFakeProjects() *fakeProjects {
-	customer := customerKraftVerket
+	customer, hydro := customerKraftVerket, customerHydro
 	return &fakeProjects{projects: map[int32]contracts.ProjectEntry{
 		projectActive: {ID: projectActive, Code: "KVEM1000", Name: "Kraft-Verket modernisering", CustomerID: &customer,
 			Status: "active", OpenForWork: true, BillingType: "time-and-materials",
@@ -350,6 +353,8 @@ func newFakeProjects() *fakeProjects {
 			Status: "completed", BillingType: "time-and-materials"},
 		projectInternal: {ID: projectInternal, Code: "INTERN", Name: "Internt arbeid",
 			Status: "active", OpenForWork: true, BillingType: "non-billable"},
+		projectHydro: {ID: projectHydro, Code: "HYDRO100", Name: "Hydro drift", CustomerID: &hydro,
+			Status: "active", OpenForWork: true, BillingType: "time-and-materials"},
 	}}
 }
 
@@ -468,16 +473,34 @@ type fakeCustomers struct {
 	contracts.CustomerDirectory
 	mu    sync.Mutex
 	names map[int32]string
+	err   error // answered by Customers when set
 }
 
 func newFakeCustomers() *fakeCustomers {
-	return &fakeCustomers{names: map[int32]string{customerKraftVerket: "Kraft-Verket AS"}}
+	return &fakeCustomers{names: map[int32]string{customerKraftVerket: "Kraft-Verket AS", customerHydro: "Hydro ASA"}}
+}
+
+// set adds or renames a customer.
+func (c *fakeCustomers) set(id int32, name string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.names[id] = name
+}
+
+// fail makes Customers answer err (nil restores it).
+func (c *fakeCustomers) fail(err error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.err = err
 }
 
 func (c *fakeCustomers) Customers(ctx context.Context, ids []int32) ([]contracts.CustomerEntry, error) {
 	lockedContractCalls.note(ctx, "fake Directory.Customers")
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if c.err != nil {
+		return nil, c.err
+	}
 	out := []contracts.CustomerEntry{}
 	for _, id := range slices.Compact(slices.Sorted(slices.Values(ids))) {
 		if name, ok := c.names[id]; ok {
