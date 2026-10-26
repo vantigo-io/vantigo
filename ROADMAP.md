@@ -530,8 +530,23 @@ source, each area's resolution and the history copied. See
 and the
 [design](docs/superpowers/specs/2026-10-26-energy-spot-price-service-design.md).
 
-What remains: **A3** price history — the Prices page over weeks, months, years and a
-range, comparing areas, from a time-weighted summary read — then **B** tariffs and the
+**Delivery A3: price history (done)** — the prices over time. A summary read,
+`GET /spot-prices/summary`, answers an area's prices per civil hour, day, ISO week or
+month in Europe/Oslo — the hour by its UTC hour, so the autumn's repeated hour stays
+two — each bucket's time-weighted average (history is hourly before 2025-10-01 and
+quarter-hourly after), its lowest and highest price, the minutes covered and whether
+any price in it is preliminary, from one SQL statement over the installation's own
+rows, its window bounded per bucket. The **Prices** page charts a day or a week
+interval by interval and a month, a year or a range of months as averages on a
+lowest–highest band — *Month* now shows daily averages, *Week* every interval —,
+compares up to five areas, gives the first area's average, lowest and highest with
+when, draws preliminary prices dashed under a badge, and keeps the view in the URL.
+See
+[`docs/src/content/docs/en/reference/energy.md`](docs/src/content/docs/en/reference/energy.md#prices-over-time-the-summary)
+and the
+[design](docs/superpowers/specs/2026-10-26-energy-spot-price-service-design.md).
+
+What remains: **B** tariffs and the
 metering point's billing facts, **C** settlements
 and the `contracts.ConsumptionProvider` contract (Energy phase 4 done), then Invoices
 phase 5's **D** invoices from consumption (the wizard) and **E** billing runs.

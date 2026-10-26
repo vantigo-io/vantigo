@@ -348,47 +348,139 @@ merged, the supply periods of the absorbed customer move to the surviving one.
 
 **Prices** holds the day-ahead spot prices of each price area: the price per kWh for
 every hour, or quarter of an hour, that consumption on a spot contract is priced by.
-Prices come in two ways. A background job fetches each day's prices from a public price
-feed, when your administrator has switched it on
-([Background workers and scaling](/en/admin/installation/#background-workers-and-scaling));
-and prices can be imported from a file, which is also how days older than a week, or
-days the feed lacks, are filled in.
+Prices come from one source your administrator has chosen
+([Background workers and scaling](/en/admin/installation/#background-workers-and-scaling)):
+the **spot-price service** our hosted environments run, which a background job copies
+from, the years of history included; or a **public price feed**, which the job asks for
+each day's prices; or neither. Prices can always be imported from a file as well, which
+is also how days the source lacks are filled in.
 
 Open **Energy** → **Prices**. The page needs `energy:prices-view`. Prices are market
 figures, not a customer's, so the page shows no customer data.
 
 ### Read the coverage
 
-The first card, **Coverage**, has one row per price area: every area a metering point
-with a non-cancelled supply period is in, and every area that already has prices. **No price areas
-yet** means neither exists. Each row shows:
+The first card, **Coverage**, says in a badge beside its title where the prices come
+from: **Spot-price service**, **Public feed**, or **Files only** when no source is set
+and prices come by import alone. It has one row per price area: every area a metering
+point with a non-cancelled supply period is in, every area that already has prices
+and, with the spot-price service, every area the service follows — so the card fills
+before the first metering point exists. **No price areas yet** means there is no such
+area. Each row shows:
 
 - **First** and **Last**: the start of the first price held and the end of the last;
+- **Resolution**: the length of the latest price held, **15 min** or **1 hour**. The
+  day-ahead market moved from hours to quarter-hours on 1 October 2025, so an area with
+  history before then holds both;
 - **Intervals**: how many prices are held;
 - **Days without prices, last 30**: the days among the last 30, today included, in
   which no price starts — **Complete** when there are none;
-- **Last fetch**: the day the background job asked the feed about most recently, and
-  how it went. **Fetched**: the day's prices are stored. **Not yet published**: today's or
-  tomorrow's prices are not out yet; the day-ahead auction publishes them around 13:00
-  Norwegian time, and the job asks again every hour. **Missing**: the feed has no prices
-  for that past day; the job asks again once a day, up to seven times in a row, after
-  which you import the day from a file. **Failed**: the reason is shown under it, and the job tries again later,
-  waiting longer each time, at most six hours. **Not fetched** means the job has never
-  tried the area, as when it is switched off.
+- **History**, only with the spot-price service: how far back the job has copied the
+  area's prices. **Copying… back to** *a date*: the copy is under way, going backwards
+  from two weeks ago, and has reached that day; while it copies, the job works every
+  minute, and five areas back to 2015 take about half an hour. **Complete from** *a
+  date*: everything the service holds for the area from that day on is copied — the
+  oldest day it holds, or a later day your administrator chose. **Waiting for the
+  service's coverage**: the copy has not started, because the service has not yet said
+  how far back it holds the area. Under the text, *N days skipped* counts days the
+  service did not hold whole, which the job leaves for you to import from a file, and
+  the last failure, when there is one, is shown in a sentence; the job tries again
+  later on its own. **Not followed by the spot-price service** marks an area listed
+  here that the service does not collect: the job does not ask for
+  it, and its prices must be imported. An area the service stops following keeps the
+  prices and the history already copied;
+- **Last fetch**: the day the background job asked about most recently, and how it
+  went. **Fetched**: the day's prices are stored. **Not yet published**: today's or
+  tomorrow's prices are not out yet — the day-ahead auction publishes them around 13:00
+  Norwegian time — or, from the spot-price service, the day is stored but some of its
+  prices are still preliminary ([below](#preliminary-prices)); the job asks again every
+  hour. **Missing**: the source has no prices for that past day; the job asks again
+  once a day, up to seven times in a row, after which you import the day from a file.
+  **Failed**: the reason is shown under it, and the job tries again later, waiting
+  longer each time, at most six hours. **Not fetched** means the job has never tried
+  the area, as when it is switched off.
 
-The job only fetches the last seven days and tomorrow. A day missing further back must
-be imported.
+From the public feed, the job only fetches the last seven days and tomorrow; a day
+missing further back must be imported. From the spot-price service, it reads the last
+fourteen days and tomorrow again and again, picking up the service's corrections, and
+copies the history once.
 
-### Look at an area's prices
+### Look at the prices of a day or a week
 
-The card **Spot prices** shows one area's prices as a stepped line in NOK/kWh, each
-price drawn from its interval's start in Norwegian time and held until the next (a
-day also marks each interval with a dot). It opens on today in the first area. Choose the **Price area**, then **Day** or
-**Month** and the day or the month. A day has 24 hourly prices (23 or 25 on the nights
-the clocks change), or 96 quarter-hours when prices come at that resolution. On the
-autumn night the hour from 02:00 comes twice, and the chart labels each run with its
-UTC offset, *02:00 +02* and *02:00 +01*. A period without prices says *No prices for
-this period.*
+The card **Spot prices** shows prices as a line in NOK/kWh, read in Norwegian time. It
+opens on today in the first area. Choose the period in the row of buttons — **Day**,
+**Week**, **Month**, **Year** or **Range** — and then the time it covers.
+
+- **Day**, with the day in **Day**: every price of the day as a stepped line, each
+  drawn from its interval's start and held until the next, with a dot on each. A day
+  has 24 hourly prices (23 or 25 on the nights the clocks change), or 96 quarter-hours
+  at that resolution. On the autumn night the hour from 02:00 comes twice, and the
+  chart labels each run with its UTC offset, *02:00 +02* and *02:00 +01*.
+- **Week**, with any day of it in **Day**: every price of the week, Monday to Sunday,
+  as a stepped line without dots, labelled with the weekday and the time.
+
+To see every price of a month, look at it a week at a time with **Week**: **Month**
+shows daily averages ([below](#look-at-a-month-a-year-or-a-range)).
+
+### Look at a month, a year or a range
+
+A month or more is too many prices to draw one by one, so these periods show
+**averages**: a line through each day's, week's or month's average price, on a shaded
+band from that day's lowest to its highest price (**Lowest–highest**). Pointing at the
+chart shows the average and the band's two ends.
+
+- **Month**, chosen in **Month**: one average per day of the month. This changed:
+  **Month** used to draw every price of the month, and now draws daily averages; use
+  **Week** for every price.
+- **Year**, chosen in **Year**: one average per day of the year.
+- **Range**, from **From month** to **To month**, both included: one average per week
+  for a range of up to two years — whole weeks, Monday to Sunday, so the first and the
+  last week may reach into the months on either side — and one per month for a longer
+  one, up to thirty years (a longer range keeps its last thirty). It opens on the last
+  twelve months.
+
+An average weighs each price by how long it held, so a day with hourly prices and a day
+with quarter-hours count alike. A day, a week or a month without any price is left out
+of the line rather than drawn as zero, and one with only some of its prices is averaged
+over those. A period without prices says *No prices for this period.*
+
+### Compare areas
+
+In **Compare areas**, choose up to five price areas. Each gets its own line in its own
+colour, with a legend, the first area chosen in the first colour. The
+lowest–highest band is drawn only when one area is shown, since several bands would
+hide each other. At least one area is always chosen.
+
+### Read the figures
+
+Above the chart, three figures sum up the period for the **first** area in **Compare
+areas** — when you compare, each label names it, as *Average · NO1*:
+
+- **Average**: the period's average price, each price weighed by how long it held;
+- **Lowest** and **Highest**: the period's lowest and highest price, with when it held:
+  the interval (and, for a week, its day) for **Day** and **Week**, or the day, the
+  week or the month it fell in for the longer periods.
+
+### Preliminary prices
+
+From the spot-price service, tomorrow's prices are published as soon as the auction is
+done, while their NOK figure is still **preliminary**: it uses a provisional exchange
+rate until the day's official one is out. The job stores them as they are and replaces
+them when they turn final, so a preliminary price may still change slightly. When any
+price in view is preliminary, a **Preliminary** badge appears beside **Spot prices**,
+and the preliminary part of each line is drawn **dashed**, with its own entry in the
+legend (*NO1 (preliminary)*). For the longer periods, a day, week or month with any
+preliminary price is drawn dashed. Prices from the public feed or from a file are
+always final.
+
+### Share a link to a view
+
+The page keeps what you are looking at — the areas, the period, the day and the months
+of a range — in its address, as in
+`/energy/prices?areas=NO1,NO2&period=range&from=2024-01&to=2025-12`. Copy the address to
+send someone the same view, bookmark it, or reload the page without losing it. A value
+in the address the page does not recognise is ignored, and the page shows its default
+instead; so is an area the page does not list.
 
 ### Import prices from a file
 

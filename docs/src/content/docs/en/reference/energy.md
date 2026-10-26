@@ -932,6 +932,64 @@ column, absent for a problem with the row as a whole; and `areas`, per area of t
 file over the rows without an error, `{priceArea, inserted, replaced, unchanged,
 rangeStart, rangeEnd}`.
 
+### Prices over time: the summary
+
+Years of quarter-hours are too many to chart or to send, so the Prices page reads a
+month, a year or a range from a summary instead of the intervals
+(`spot_prices_summary.go`, design S8).
+`GET spot-prices/summary?area&bucket&from&to` (`getEnergySpotPricesSummary`, rule
+`permission:energy:prices-view`) answers one area's intervals **starting** in
+`[from, to)` grouped per bucket, ascending:
+`{priceArea, bucket, timeZone: "Europe/Oslo", buckets: [{start, end, avgNokPerKwh,
+minNokPerKwh, maxNokPerKwh, coveredMinutes, preliminary}]}`.
+
+- **The buckets** are civil periods in **Europe/Oslo**, whatever the area: `day` from
+  one local midnight to the next, so a clock-change day is 23 or 25 hours; `week` the
+  ISO week from Monday's midnight; `month` from the first's midnight. `hour` is
+  truncated on the **UTC** hour instead: Oslo's offset is whole hours, so it is the
+  same hour, and the autumn night's 02:00, which comes twice, stays **two** buckets
+  where a truncated local time would merge them. `start` and `end` are instants, the
+  bucket's `[start, end)`.
+- **The average is time-weighted**: `Σ(nok_per_kwh × length) / Σ(length)` over the
+  bucket's intervals, rounded to six decimals. History before 2025-10-01 is hourly and
+  after it quarter-hourly, and a plain mean would weigh each newer quarter-hour as much
+  as an older hour. `minNokPerKwh` and `maxNokPerKwh` are the bucket's lowest and
+  highest interval price.
+- **`coveredMinutes`** is the minutes the bucket's intervals cover, less than the
+  bucket's length where prices are missing, so a reader can mark an incomplete bucket.
+  A bucket with no interval is **absent**, not zero.
+- **`preliminary`** is true when any interval in the bucket is `preliminary`
+  ([the model](#the-model)).
+- One SQL statement over `energy.spot_prices`, grouped by
+  `date_trunc(<bucket>, "start" AT TIME ZONE 'Europe/Oslo')` (`'UTC'` for `hour`); the
+  unique index on `(price_area, "start")` serves the range.
+
+**The checks**, every failing one reported at once in a `400` validation problem,
+keyed by the field:
+
+| Field | Refused when | Sentence |
+| --- | --- | --- |
+| `area` | not two uppercase letters and one or two digits | "Price area must contain two uppercase letters followed by one or two digits." |
+| `bucket` | none of `hour`, `day`, `week`, `month` | "The bucket must be hour, day, week or month." |
+| `from` | off the bucket's boundary (checked with a valid bucket) | "The from field must be a whole hour." (`hour`), "… a midnight in Europe/Oslo." (`day`), "… a Monday's midnight in Europe/Oslo." (`week`), "… the first of a month's midnight in Europe/Oslo." (`month`) |
+| `to` | off the bucket's boundary, as `from`; else not after `from`; else wider than the bucket allows | the boundary's sentence; "The to field must be later than from."; "The to field must be at most *N* days after from for the *bucket* bucket." |
+
+The window is measured in civil days on Oslo's calendar, so one across a clock change
+is not a day short or long: `hour` at most **35** days, `day` **400**, `week` **1 830**
+(five years) and `month` **10 980** (thirty years).
+
+**On the page.** **Day** and **Week** read the intervals; **Month** and **Year** read
+`day` buckets; **Range** reads `week` buckets for up to 24 months, widened to whole ISO
+weeks, and `month` buckets beyond, at most 360 months. One request per compared area,
+up to five. The figures above the chart are the first area's: the average weighs each
+bucket's average by its `coveredMinutes`, which is the period's time-weighted average,
+and the lowest and highest are the lowest `minNokPerKwh` and the highest
+`maxNokPerKwh` with their bucket. The view — `areas` (a comma list of up to five),
+`period` (`day|week|month|year|range`), `date` (`YYYY-MM-DD`), `from` and `to`
+(`YYYY-MM`) — is the host route's search parameters
+([`apps/host/frontend/src/routes/energy/prices.tsx`](https://github.com/vantigo-io/vantigo/blob/main/apps/host/frontend/src/routes/energy/prices.tsx));
+a value that does not parse is dropped.
+
 ### Endpoints
 
 All under `/api/v1/energy/`.
@@ -940,6 +998,7 @@ All under `/api/v1/energy/`.
 | --- | --- | --- |
 | `GET spot-prices?area&from&to` | `permission:energy:prices-view` | The intervals of one area with `start ≥ from` and `start < to`, ascending, each with `id`, `priceArea`, `start`, `end`, `nokPerKwh`, `eurPerKwh` and `exchangeRate` when stored, `source` (`Feed`, `Service` or `Import`), `state` (`final` or `preliminary`) and, for a `Service` interval, `upstream`, `rateSource` and `upstreamVersion`. `area` must be two uppercase letters and one or two digits, `from` before `to`, and `to − from` at most **35 days** — a month at a quarter-hour resolution is one answer — otherwise a `400` (a window too long on `to`). |
 | `GET spot-prices/coverage` | `permission:energy:prices-view` | `source` — where the worker fetches from: `service` when `ENERGY_SPOT_PRICE_SERVICE_URL` is set, `feed` when `ENERGY_SPOT_PRICE_FEED_ENABLED` is on, `none` (files only) otherwise — and `areas`: per area in use or already priced, and with the service every area it follows (those with a history row), in area order: `priceArea`, `firstStart` and `lastEnd` (absent with no prices), `intervalCount` (the intervals stored, `0` with none), `daysMissingLast30` — the Europe/Oslo days among the last thirty, today included, with no interval starting in them, `30` with no prices — `lastFetch`, the fetch record of the worker's most recent attempt for the area, by `attemptedAt` (`day`, `status`, `attempts`, `attemptedAt`, `nextAttemptAt`, `error`), absent when it never tried one, and `resolution`, the length of the area's latest stored interval as an ISO 8601 duration (`PT15M`, `PT60M`), absent with no prices. With the service as the source, once the sync has written any history row: `followedByService`, whether the area has one marked `active` (false for no row, or a row the service stopped following), and for an area with a row, active or not, `history` — what was copied stays visible after the service stops following the area — with `floorDay` and `cursorDay` (absent until known), `complete` (the cursor at or before the floor; false while no floor is known, as before the service has answered a coverage for the area, which the Prices page shows as waiting for the service's coverage), `daysSkipped` and `error`, the last failed window's sentence, kept after a skipped window until the next window is answered. Before the sync's first cycle, and with another source, both are absent. |
+| `GET spot-prices/summary?area&bucket&from&to` | `permission:energy:prices-view` | One area's prices per civil hour, day, ISO week or month in Europe/Oslo — each bucket's time-weighted average, lowest, highest, covered minutes and whether it holds a preliminary price — over a window on the bucket's boundaries and within its limit ([above](#prices-over-time-the-summary)); otherwise a `400` naming the field. |
 | `POST spot-prices/import?dryRun` | `permission:energy:prices-manage+energy:prices-view` | Imports a file of prices ([above](#importing-prices)). |
 
 The coverage is read from the database alone, so the API process answers it the same
