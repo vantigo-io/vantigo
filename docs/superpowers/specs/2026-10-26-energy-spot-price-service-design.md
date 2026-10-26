@@ -14,9 +14,9 @@ repositories have shipped the other half:
   and serves them behind a bearer key (`openapi/spotprices.yaml`).
 - **[vantigo-infra](https://github.com/vantigo-io/vantigo-infra)** (read at `801b54a`):
   one `vantigo-spotprices` container per host on an internal Docker network `spotprices`
-  every tenant joins; no tunnel rule, no host port. `vantigo add` writes a per-tenant
-  `SPOTPRICES_API_KEY` into the tenant's `.env`; the tenant is meant to call
-  `http://vantigo-spotprices:8080`.
+  every tenant joins; no tunnel rule, no host port. `vantigo add` writes
+  `SPOTPRICES_URL` (`http://vantigo-spotprices:8080`) and a per-tenant
+  `SPOTPRICES_API_KEY` into the tenant's `.env`.
 
 Nothing in Vantigo reads the service yet. This design makes it Vantigo's spot-price
 source in our hosted environments, and uses the history it holds to let a person look at
@@ -112,19 +112,22 @@ is the poll for either source; it is renamed in neither code nor documentation, 
 admin page says it applies to both.
 
 **The names.** Vantigo's settings are module-prefixed and documented in one table
-(`A/authentication.md`). infra's `SPOTPRICES_API_KEY` is not, and infra never writes
-the URL: `SPOTPRICES_URL` exists only inside its CLI. So infra adopts Vantigo's two
-names (S9) rather than Vantigo reading infra's.
+(`A/authentication.md`). infra's `SPOTPRICES_URL` and `SPOTPRICES_API_KEY` are not, and
+its `.env.example` already calls them inert until the application's source ships. So
+infra adopts Vantigo's two names (S9) rather than Vantigo reading infra's.
 
 ### S4 — Which areas are followed
 
-With the service as the source, an area is followed when it is **in use** (delivery A's
-rule: a metering point with a non-cancelled supply period, or prices already stored) **or
-active in the service** (`GET /api/v1/areas`, `active: true`; NO1–NO5 on our hosts). The
-Prices page is useful on a fresh tenant with no metering points yet, which is the
-point of the page for someone looking at prices over time. An area in use that the
-service does not follow is shown in the coverage table as "Not followed by the
-spot-price service" and gets no fetch rows.
+With the service as the source, an area is followed when it is **active in the
+service** (`GET /api/v1/areas`, `active: true`; NO1–NO5 on our hosts), whether or not it
+is in use. The Prices page is useful on a fresh tenant with no metering points yet,
+which is the point of the page for someone looking at prices over time. An area in use
+that the service does not follow is shown in the coverage table as "Not followed by the
+spot-price service" and gets no request and no fetch rows. Only when `/api/v1/areas`
+cannot be asked does the live window run for the areas in use (delivery A's rule: a
+metering point with a non-cancelled supply period, or prices already stored).
+*(Amended while building delivery 1: the first text said "in use or active", which
+contradicted its own last sentence.)*
 
 With the feed, delivery A's rule is unchanged: in use only, because the feed is a third
 party's courtesy.
@@ -200,7 +203,11 @@ The write extends delivery A's plan/apply helper (`srv/energy/spot_prices_write.
   `failed` with delivery A's sentence "the day's intervals overlap stored prices of
   another length", or adds to `days_skipped` in history. An operator's file is not
   overwritten silently; deleting the file's rows is the operator's call (open question
-  Q2).
+  Q2);
+- **the same interval over an `Import` row**: left as it is and counted unchanged, so a
+  file wins over the service at its own resolution too. *(Amended while building
+  delivery 1: the first text guarded only another resolution, and the general rule
+  above would have replaced an imported figure.)*
 
 Nothing is ever written that the exclusion constraint would refuse, so a day is all or
 nothing.
@@ -306,7 +313,7 @@ One pull request in `vantigo-infra`, landing before or with S1's release:
 
 - `vantigo add` and `vantigo spotprices key` write `ENERGY_SPOT_PRICE_SERVICE_URL`
   (`$SPOTPRICES_URL`) and `ENERGY_SPOT_PRICE_SERVICE_KEY` into the tenant's `.env`,
-  instead of `SPOTPRICES_API_KEY`. `vantigo spotprices init`, rerun on a host, moves an
+  instead of `SPOTPRICES_URL` and `SPOTPRICES_API_KEY`. `vantigo spotprices init`, rerun on a host, moves an
   existing `SPOTPRICES_API_KEY` to the new name. The rotation stays gap-free: write,
   restart, revoke;
 - `vantigo show` and the template's comment name the new settings;
@@ -411,8 +418,8 @@ built on `state` from the start.
 - Keys are rate-limited to 600 requests a minute and are for revocation, not data
   separation: every tenant sees the same rows (spotprices README, "The API").
 - infra creates the `spotprices` network `--internal`, joins every tenant to it
-  (`template/compose.yaml:88-94`), writes only `SPOTPRICES_API_KEY` into `.env`
-  (`bin/vantigo:637`), and keeps the URL as a CLI default (`bin/vantigo:64`).
+  (`template/compose.yaml:88-94`), and writes `SPOTPRICES_URL` and `SPOTPRICES_API_KEY`
+  into `.env` (`bin/vantigo:636-637`, the URL defaulting to `bin/vantigo:64`).
 - Delivery A's feed transport refuses every private address through
   `netguard.DialContext` (`srv/energy/spot_prices_feed.go:112-140`,
   `srv/netguard/netguard.go:198-241`); `netguard.Disallowed` has no allowlist by design

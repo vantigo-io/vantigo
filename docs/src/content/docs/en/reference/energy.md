@@ -7,6 +7,10 @@ sources:
   - apps/server/internal/db/migrations/00005_energy_baseline.sql
   - apps/server/internal/db/migrations/00049_energy_imports.sql
   - apps/server/internal/db/migrations/00065_energy_spot_prices.sql
+  - apps/server/internal/db/migrations/00075_energy_spot_price_service.sql
+  - apps/server/internal/energy/spot_price_service_client.go
+  - apps/server/internal/energy/spot_price_service_sync.go
+  - apps/server/internal/netguard
 ---
 The Energy module keeps the metering points an energy supplier supplies: where each
 one is, which meter sits on it, which customer it is supplied to and for how long, and
@@ -419,62 +423,128 @@ loser is a `409`.
 ## Spot prices
 
 The price dimension consumption is billed by: the day-ahead price of each price area,
-stored as intervals, fetched every day by a worker from a configured feed or imported
-from a file, and read by the Prices page. The design is D2 of
-[`docs/superpowers/specs/2026-10-24-energy-consumption-billing-design.md`](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-10-24-energy-consumption-billing-design.md).
+stored as intervals in the installation's own database, filled by the
+`energy-spot-prices` worker from **one** source — the shared spot-price service or a
+public feed — or imported from a file, and read by the Prices page. The design is D2 of
+[`docs/superpowers/specs/2026-10-24-energy-consumption-billing-design.md`](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-10-24-energy-consumption-billing-design.md),
+and for the service
+[`docs/superpowers/specs/2026-10-26-energy-spot-price-service-design.md`](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-10-26-energy-spot-price-service-design.md).
 Prices are market data, not a customer's: they are read without a supply-period gate
 and are in no customer's export.
 
+The service collects and the installation keeps what it bills by: with the service as
+its source the worker **copies** its prices into `energy.spot_prices`, with their
+provenance, and never reads through to it. Every read — the Prices page, the coverage
+and the settlements to come — reads the installation's own rows, which are in its own
+backups.
+
 ### The model
 
-- **Spot price** — `energy.spot_prices` (migration `00065_energy_spot_prices.sql`):
-  `price_area` (as a metering point carries it, such as `NO1`), `start` and `end`
-  (half-open `[start, end)`, `end` after `start`), `nok_per_kwh` (`numeric(12,6)`, the
-  price a settlement uses), `eur_per_kwh` and `exchange_rate` (`numeric(12,6)`, kept for
-  the record when the source gives them), `source` (`Feed` for the worker, `Import` for
-  a file) and `received_at`. One row is one interval at whatever resolution the source
-  gives — hourly from the public feed today, a quarter of an hour when the day-ahead
-  market's 15-minute unit reaches it — exactly as consumption intervals are.
+- **Spot price** — `energy.spot_prices` (migration `00065_energy_spot_prices.sql`,
+  widened by `00075_energy_spot_price_service.sql`): `price_area` (as a metering point
+  carries it, such as `NO1`), `start` and `end` (half-open `[start, end)`, `end` after
+  `start`), `nok_per_kwh` (`numeric(12,6)`, the price a settlement uses), `eur_per_kwh`
+  and `exchange_rate` (`numeric(12,6)`, kept for the record when the source gives
+  them), `source` (`Feed` for the public feed, `Service` for the spot-price service,
+  `Import` for a file; `ck_spot_prices_source`) and `received_at`. One row is one
+  interval at whatever resolution the source gives — hourly from the public feed, a
+  quarter of an hour from the service since the day-ahead market moved to it on
+  2025-10-01 and an hour before — exactly as consumption intervals are.
+- **State and provenance.** `state` is `final` or `preliminary`
+  (`ck_spot_prices_state`, default `final`). A `Feed` or `Import` row is always
+  `final`: the feed publishes a day once, and a file is the operator's say-so. A
+  `Service` row is `preliminary` while the service says so — it has tomorrow as soon as
+  the auction publishes it, and Nord Pool's NOK figure stays preliminary until the
+  day's exchange rate is final. A settlement prices only from `final` intervals (billing
+  design D5 as amended). `upstream` (the service's own source, such as
+  `nordpool_portal`, `entsoe` or `hks`), `rate_source` (whose EUR/NOK rate gave the NOK
+  figure, such as `nordpool` or `norges_bank`) and `upstream_version` (the service's
+  version of the interval) are a `Service` row's provenance, null on the others.
+  `upstream` is not CHECKed, since the service may add a source.
 - **No two overlapping.** `(price_area, start)` is unique, and the GiST exclusion
   `spot_prices_no_overlap` on `(price_area, tstzrange(start, end, '[)'))` refuses two
   intervals of one area that overlap: a day answered in quarter-hours over a day stored
-  in hours is refused, not doubled.
+  in hours is never doubled. The service sync replaces a fetched day at another
+  resolution whole ([Judging a day and writing it](#judging-a-day-and-writing-it)); the
+  feed and the file import are refused.
 - **Replaced, not revisioned.** An interval written again with the same area, start
-  and end and other figures has its figures overwritten, `source` and `received_at`
-  with them, and counts as `replaced`; the same figures, compared at the column's six
-  decimals, count as `unchanged` and write nothing. No history row is kept: a
-  settlement built on the old figure keeps it, and the next settlement carries the
-  difference.
-- **Fetch record** — `energy.spot_price_fetches`, the feed worker's record of one
-  `(price_area, day)`, the day a civil day in Europe/Oslo: `status` (`ok` once the
-  day's prices are stored, `pending` while today's or tomorrow's are not yet
-  published, `missing` for a past day the feed has no file for, `failed` for anything
-  else), `attempts` (the requests made since the record last changed status — a day
-  pending for hours and then missing starts its missing attempts from one), `last_error` (the sentence
-  of the failure when the last request failed, cleared by any other answer; never the
-  response's body), `attempted_at`, `fetched_at` (the last time the day was stored,
-  kept through later attempts) and `next_attempt_at` (when the worker may ask again;
-  absent once it never will).
+  and end and other figures, another `state` or other provenance has them overwritten,
+  `source` and `received_at` with them, and counts as `replaced` — a correction, or a
+  preliminary price turning final; the same figures, compared at the column's six
+  decimals, and the same state and provenance count as `unchanged` and write nothing.
+  A file written over a `Service` interval leaves it `Import`, `final` and without
+  provenance. No history row is kept: a settlement built on the old figure keeps it,
+  and the next settlement carries the difference.
+- **Fetch record** — `energy.spot_price_fetches`, the worker's record of one
+  `(price_area, day)` of its live window, whichever source fills it, the day a civil
+  day in Europe/Oslo: `status` (`ok` once the day's prices are stored — from the
+  service, a whole day with every interval `final` — `pending` while today's or
+  tomorrow's are not yet published or, from the service, not yet whole, and while a
+  day the service wrote still has a `preliminary` interval, `missing` for a past day
+  the source does not have, `failed` for anything else), `attempts` (the requests made
+  since the record last changed status — a day pending for hours and then missing
+  starts its missing attempts from one), `last_error` (the sentence of the failure when
+  the last request failed and, from the service, the reason a `missing` day was not
+  written; cleared by any other answer; never the response's body), `attempted_at`,
+  `fetched_at` (from the feed, the last time the day was stored; from the service, the
+  last read of the live window that recorded the day, whatever its status; kept through
+  a failed request) and `next_attempt_at` (when the worker may ask again; absent once it
+  never will).
+- **History record** — `energy.spot_price_history` (migration
+  `00075_energy_spot_price_service.sql`), one row per area the service sync follows,
+  written in the first cycle the service answers the area `active`:
+  `cursor_day` (the oldest civil day read so far, null before the first window),
+  `floor_day` (the effective floor: the later of the Europe/Oslo day of the service's
+  first interval for the area and `ENERGY_SPOT_PRICE_HISTORY_FROM`, set again each time
+  the service answers the area; kept as it was while the service's coverage of the area
+  is null, and null until it is first known),
+  `days_skipped` (the days left for a file, [below](#the-history-walk)), `attempts`,
+  `last_error` and `next_attempt_at` (the backoff of a failed request), and
+  `updated_at`. The walk is complete once `cursor_day` is at or before `floor_day`.
 
-### The feed worker: `energy-spot-prices`
+### The sources
 
 The worker is **off by default**: fetching prices is an outbound call an installation
-opts into. Without it, prices come by file ([below](#importing-prices)).
+opts into. Without it, prices come by file ([below](#importing-prices)). It has one
+source, chosen by the settings:
 
 | Setting | Default | Meaning |
 | --- | --- | --- |
-| `ENERGY_SPOT_PRICE_FEED_ENABLED` | `0` | `1` hands the worker to the runner; `0` leaves it out; any other value stops the start-up |
+| `ENERGY_SPOT_PRICE_SERVICE_URL` | unset | The spot-price service's base URL, `http://vantigo-spotprices:8080` in our hosted environments. Set, it hands the worker to the runner with the service as its source. An absolute `http` or `https` URL with a host; a user, a query, a fragment or a path other than `/` stops the start-up ("must be the service's base URL, with no user, path, query or fragment"). An `http` URL is dialled only to a private address ([The service client](#the-service-client-and-its-guard)) |
+| `ENERGY_SPOT_PRICE_SERVICE_KEY` | unset | The installation's bearer key for the service. Required with the URL, refused without it; at most 200 bytes of printable characters with no space. Redacted wherever the configuration is printed, and never in a problem, a log line or an error sentence |
+| `ENERGY_SPOT_PRICE_HISTORY_FROM` | unset | The oldest civil day the service sync copies, `YYYY-MM-DD`; anything else stops the start-up. Unset copies everything the service holds for the area |
+| `ENERGY_SPOT_PRICE_FEED_ENABLED` | `0` | `1` hands the worker to the runner with the public feed as its source; `0` leaves the feed out; any other value stops the start-up |
 | `ENERGY_SPOT_PRICE_FEED_URL` | `https://www.hvakosterstrommen.no/api/v1/prices/{year}/{month}-{day}_{area}.json` | The feed as a template: an absolute `https` URL carrying `{year}`, `{month}`, `{day}` and `{area}`, rendered per area and day with the month and the day zero-padded (`…/2026/03-29_NO1.json`). A template that is not `https` or lacks a placeholder stops the start-up, as an invalid setting does — even with the worker off |
-| `ENERGY_SPOT_PRICE_FEED_POLL` | `15m` | How often a cycle runs: a Go duration of at least `1m`; a shorter one, or one that does not parse, stops the start-up — even with the worker off |
+| `ENERGY_SPOT_PRICE_FEED_POLL` | `15m` | How often a cycle runs, **with either source**: a Go duration of at least `1m`; a shorter one, or one that does not parse, stops the start-up — even with the worker off. While the service sync is still copying history, the next cycle comes after a minute instead ([The budget](#the-budget-and-the-cadence)) |
 
-A cycle:
+**One source per installation.** `ENERGY_SPOT_PRICE_SERVICE_URL` together with
+`ENERGY_SPOT_PRICE_FEED_ENABLED=1` stops the start-up, on the service's URL: "set one
+spot price source: the service or ENERGY_SPOT_PRICE_FEED_ENABLED, not both". Two
+writers of one area would make `source` meaningless and race the exclusion constraint.
+The file import is not a source in this sense: it is always there, beside either.
 
-1. **The lease.** The cycle runs under a PostgreSQL advisory lock taken with
-   `pg_try_advisory_lock`, key `ENRGSPT1` (`0x454E524753505431`); a cycle that finds it
-   held by another instance does nothing, so one replica fetches.
-2. **The areas in use**: the distinct `price_area` of the metering points with a supply
-   period that is not `Cancelled`, and every area already in `energy.spot_prices`. An
-   installation with no such point fetches nothing.
+Both sources share the cycle's frame:
+
+- **The lease.** The cycle runs under a PostgreSQL advisory lock taken with
+  `pg_try_advisory_lock`, key `ENRGSPT1` (`0x454E524753505431`); a cycle that finds it
+  held by another instance does nothing, so one replica fetches.
+- **The areas in use**: the distinct `price_area` of the metering points with a supply
+  period that is not `Cancelled`, and every area already in `energy.spot_prices`. With
+  the feed these are the areas followed, and an installation with no such point
+  fetches nothing; with the service, the areas followed are those the service answers
+  `active`, and the areas in use stand in for them only when it cannot be asked
+  ([The areas followed](#the-areas-followed)).
+- **The write**: every source's day goes through the one write the file import uses,
+  under the area's advisory lock, and is judged by the one day judgement
+  ([Judging a day and writing it](#judging-a-day-and-writing-it)).
+
+### The feed worker: `energy-spot-prices`
+
+With `ENERGY_SPOT_PRICE_FEED_ENABLED=1` the worker reads the public feed a day at a
+time. A cycle:
+
+1. **The lease**, as above.
+2. **The areas in use**, as above, and no other.
 3. **The days.** For each area, the civil days in Europe/Oslo from seven days before
    today to tomorrow in which no stored interval of the area starts — a day a file
    filled is not asked for, whatever its fetch record says — and that are due: the day
@@ -519,6 +589,211 @@ replaced and unchanged counts; a `404` for a past day at info, with the attempts
 whether the worker gave up; one for today or tomorrow at debug; a failure at
 warning with the area, the day, the feed's host — never the address's path or query,
 nor the body — the attempts and the sentence; a cycle the database ended at error.
+
+### The service sync
+
+With `ENERGY_SPOT_PRICE_SERVICE_URL` set the worker copies from
+[vantigo-spotprices](https://github.com/vantigo-io/vantigo-spotprices), the shared
+service our hosted environments run beside their tenants: it polls Nord Pool's data
+portal, backfills history from ENTSO-E and the community feed on the operator's
+request, and serves every interval with its state, source, version and exchange-rate
+source. Every tenant sees the same rows; the key is for revocation, not for separating
+data. The sync reads two of its operations, `GET /api/v1/areas` and
+`GET /api/v1/prices`. A cycle, under the lease, does three things.
+
+#### The areas followed
+
+1. **The areas.** `GET /api/v1/areas` once. An area is **followed** when the service
+   answers it `active` — NO1–NO5 on our hosts — whether or not it is in use, so the
+   Prices page fills on a fresh installation with no metering point yet. A code that is
+   not one of the Nordic price areas (`^(NO[1-5]|SE[1-4]|DK[12]|FI)$`) is ignored. Each
+   followed area gets its history row in that cycle; its floor is the later of the
+   Europe/Oslo day of its `coverage.firstStart` and `ENERGY_SPOT_PRICE_HISTORY_FROM`,
+   and while its `coverage` is null the floor it had is kept. A floor on or after the
+   live window's first day leaves nothing to walk, and the walk is complete at once.
+   An area **in use that the service does not follow** gets no request, no fetch record
+   and no history row, and the coverage says so (`followedByService: false`, "Not
+   followed by the spot-price service" on the Prices page).
+   When the `/areas` request fails, nothing is known of what the service follows: the
+   failure is recorded, with the backoff below, on every existing history row
+   (`attempts`, `last_error`, `next_attempt_at`), no history window is read that cycle,
+   and the live window runs instead for the areas in use whose code is a Nordic price
+   area. A `429` on `/areas` ends the cycle's requests there
+   ([The budget](#the-budget-and-the-cadence)).
+
+#### The live window
+
+2. **The live window**, per followed area: the civil days in Europe/Oslo from fourteen
+   days before today to tomorrow — fourteen because the service re-checks Nord Pool's
+   corrections that far back. A day is **due** when it has no fetch record, or its
+   `next_attempt_at` has come — an `ok` record, or a `missing` one given up on, has
+   none. The window is **due** when any of its days is, or when its last read — the
+   newest `fetched_at` among its days — is absent or more than **24 hours** old, to pick
+   up a correction's new version. A window that is not due costs no request. A due
+   window is **one request**:
+   `GET /api/v1/prices?area=<area>&from=<today−14, 00:00 Oslo>&to=<today+2, 00:00 Oslo>&currency=EUR`,
+   both instants in UTC. `currency=EUR` is deliberate: asked for NOK, the service
+   refuses the whole window when one day has no exchange rate, while the NOK figure is
+   answered whenever it is known anyway. The answer is split into civil days and each
+   day judged on its own ([below](#judging-a-day-and-writing-it)). A day **written** is
+   recorded on every read, due or not — a correction or a day turning final can come
+   early — with `fetched_at` the read's time. A day **not written** is recorded only
+   when it is due, so a missing day is asked for daily however often the window is
+   read; it too gets `fetched_at` the read's time. The days written are written
+   together in one transaction under the area's lock, with their records.
+
+| Day | Status | Asked again |
+| --- | --- | --- |
+| Whole, every interval with a NOK price, every interval `final` | `ok`, the day written | never on its own; it is read again with the window |
+| Whole, every interval with a NOK price, some interval `preliminary` | `pending`, the day written | in an hour |
+| Today or tomorrow, not written — absent, not whole or without a NOK price (and due) | `pending`, nothing of the day written | in an hour, as the feed's `pending` |
+| A past day not written — absent, not whole or without a NOK price (and due) | `missing`, nothing of the day written, the reason in `last_error`: "the spot-price service holds no prices for the day", "the spot-price service holds no NOK price for the day" or the judgement's sentence | in a day, given up after the seventh `missing` in a row, as the feed's |
+| A day with an interval Vantigo cannot take — an unknown source or state, no version, a figure it cannot store (and due) | `failed`, nothing of the day written, with the interval's sentence | after `min(6 h, 15 min × 2^(attempts − 1))`, as the feed's |
+| A day the write refuses — over an imported day at another resolution (and due) | `failed`, nothing of the day written, with "the day's intervals overlap stored prices of another length" | as any `failed` |
+| The request failed — a refused key, rate limiting, another status, a network error or a timeout, an address the guard refuses, a body too large, one that is not a list of prices, or an interval whose time Vantigo cannot read or that does not end after it starts | `failed`, the **due** days only, with the request's sentence; the others are left as they are, and `fetched_at` is kept | after `min(6 h, 15 min × 2^(attempts − 1))`, or at a `429`'s `Retry-After` when that is later |
+
+#### The history walk
+
+3. **History**, per followed area in area order, with what the cycle's request budget
+   leaves, and only when `/areas` answered. An area walks while its floor is known, its
+   cursor (or, before the first window, the live window's first day) is after the
+   floor, and no backoff is pending; with no floor known no walk starts. The walk
+   starts at the day before the live window (fifteen days before today) and goes
+   **backwards** in windows of **35 civil days**, one request a window, never past the
+   floor (`floor_day`, [the model](#the-model)). The service refuses a window longer
+   than 35 × 24 hours, so a window across the autumn clock change, 35 civil days of 841
+   hours, is shortened to **34 days**. Each window's days are judged as the live
+   window's are and written, with the history row's new cursor (the window's first
+   day), in **one transaction** per window, so an interrupted walk resumes where it
+   stopped; a window answered resets `attempts`, `last_error` and `next_attempt_at`. A
+   history window records no fetch records: a day that is not whole, has no NOK price,
+   has an interval Vantigo cannot take or lies over an imported day at another
+   resolution adds to `days_skipped`, is not asked for again, and is left for a file.
+   The walk is complete once `cursor_day` is at or before `floor_day`; when the floor
+   moves earlier — the operator ran another backfill on the service — the walk resumes
+   from its cursor down to the new floor. A failed request counts in the history row's
+   `attempts`, records its sentence in `last_error` and sets `next_attempt_at` by the
+   live window's backoff (or a `429`'s `Retry-After` when later), without moving the
+   cursor.
+
+#### The budget and the cadence
+
+A cycle makes **at most twenty requests**, the `/areas` request included, shared by
+every area: `/areas` first, then the live windows that are due, in area order, then
+history. A `429` — on any of them — ends the cycle's requests; the failure is recorded
+as above and the rest waits for the next cycle. While, at the end of a cycle, any
+followed area's walk can go on — a floor known, the cursor after it and no backoff
+pending — the next cycle comes **one minute** after this one instead of after
+`ENERGY_SPOT_PRICE_FEED_POLL`; once every walk is complete or backed off, or `/areas`
+failed, the poll paces the worker again. That cadence is the worker's own in-memory
+state, set by each cycle it runs, not a column: an instance whose cycle found the
+lease held by another replica waits the poll. Five areas from 2015 are about 600 requests, so a first copy takes roughly
+half an hour. The service allows 600 requests a minute per key.
+
+#### Judging a day and writing it
+
+Every source judges a day with one function, `judgeSpotPriceDay`: a day is
+**complete** when its intervals, ascending, are contiguous, the first starting at the
+day's local midnight and the last ending at the next — 24 hours, or 23 and 25 on the
+DST nights, at any resolution — and otherwise fails with the feed's own sentences
+(above). From the service a day is written only when it is complete, every interval
+is one Vantigo can take and every interval carries a NOK price. Its figures:
+`nok_per_kwh` is the service's `priceNokPerKwh`, `eur_per_kwh` its `priceEurPerMwh`
+divided by 1 000, and `exchange_rate` its `exchangeRate`, each decoded from the JSON
+number's own text and scaled by moving its decimal point, never through a binary
+division, then rounded to six decimals as the column stores them; each must be less
+than 1 000 000 in size once rounded, as the feed's are. `priceEurPerMwh` is required;
+`priceNokPerKwh` and `exchangeRate` may be null — a null NOK price leaves the day
+unwritten, not failed. Every interval must carry a `version`, an integer; `state`
+must be `final` or `preliminary`; the service's `source` and `rateSource` must be a
+lower-case letter followed by at most nineteen lower-case letters, digits and
+underscores (`^[a-z][a-z0-9_]{0,19}$`), `rateSource` only when given. An interval that
+breaks one of these fails its **day** with its sentence
+([below](#the-service-client-and-its-guard)): in the live window the day is `failed`
+and backed off, in the history walk it is skipped. An interval whose `start` or `end`
+is not an RFC 3339 time, or that does not end after it starts, fails the **whole
+answer** instead, as a failed request.
+
+The write is the file import's ([the model](#the-model)), with one addition for the
+service (`planSpotPriceDaysWrite`): when a day's rows conflict with stored rows of
+**another resolution**, for example the service's quarter-hours over the feed's hours,
+and **every** stored row touching that day is fetched (`Feed` or `Service`), the
+stored rows of the day are **deleted and the day inserted**, deletes first, in one
+transaction under the area's lock. A fetched source is replaced by a better fetched
+source. When any stored row touching the day is an `Import`, the day stays a conflict
+and nothing of it is written — the sync leaves that day out and writes the others: an
+operator's file is never overwritten, and removing the file's rows is the operator's
+call. Nor is an imported interval of the **same** start and end: it stands, whatever
+the service says of it, and is counted `unchanged`, so a file wins over the service
+at any resolution. Nothing is ever written that the exclusion constraint would refuse,
+so a day is all or nothing.
+
+### The service client and its guard
+
+The service is reached at a private address — `http://vantigo-spotprices:8080` on an
+internal Docker network on our hosts — which the platform's outbound guard refuses to
+every other caller. The client is separate from the feed's, and the exception it uses
+is as narrow as it can be:
+
+- **The dialler** is `netguard.DialContextAllowingPrivate`: the host is resolved and
+  every address checked before any dial, and the connection made to the address
+  checked, as for every guarded client — but an address `netguard.PrivateNetwork`
+  accepts is allowed. That is RFC 1918 IPv4 (`10.0.0.0/8`, `172.16.0.0/12`,
+  `192.168.0.0/16`) and RFC 4193 unique-local IPv6 (`fc00::/7`), an IPv4-mapped form
+  unwrapped first, and nothing else: loopback, link-local and the `169.254.169.254`
+  metadata address, carrier-grade NAT and every reserved range stay refused, and a
+  private address embedded in a NAT64, 6to4 or IPv4-compatible IPv6 address is not
+  seen through.
+- **`http` only to a private address.** When the URL is `http` every address the host
+  resolves to must be private, so the bearer key is never sent in the clear to a
+  public address; over `https` a public or a private address is allowed.
+- **Host-only.** A round-tripper refuses any request whose scheme and host are not the
+  configured ones, before anything is dialled, so the exception cannot be reached
+  through a redirect or by any other caller; such a refusal is recorded as an address
+  the guard refuses.
+- **No proxy, no redirect followed** (a `3xx` is a failure), a body of at most
+  **1 MiB** once decompressed (the transport asks for gzip and decodes it), the feed's
+  timeouts — **twenty seconds** for the whole request, within it ten to dial, ten for
+  the TLS handshake and fifteen for the response's headers — and, unlike the feed,
+  **kept connections** (at most four idle, for 90 seconds): the service is asked many
+  times a cycle while history is copied. The transport is built per worker, since it
+  carries the URL's scheme rule.
+- **The key** goes as `Authorization: Bearer <key>` on every request, with
+  `User-Agent: vantigo/<version>` and `Accept: application/json`. It is never in a log
+  line, a problem or an error sentence.
+
+A failure's sentence in `last_error` never quotes the body, the key or the address's
+query. A failed request's sentence goes on the due days of the live window it asked
+for, or on the history row of the walk or, for `/areas`, of every area; an interval's
+sentence goes on its day alone:
+
+| Failure | Sentence |
+| --- | --- |
+| `401` | the spot-price service refused the key |
+| `429` | the spot-price service is rate limiting this installation — the cycle makes no further request, and its `Retry-After`, in seconds (at most a day) or as an HTTP date, is the next attempt when it is later than the backoff |
+| An `http` URL whose host resolves to a public address | the spot-price service's address is public; use https |
+| Any other address the guard refuses | the spot-price service's address is not one Vantigo may fetch |
+| A redirect | the spot-price service redirects; set ENERGY_SPOT_PRICE_SERVICE_URL to the address it serves |
+| A timeout | the spot-price service did not answer in time |
+| A network error | the spot-price service could not be reached |
+| A body over 1 MiB | the spot-price service's answer is larger than 1 MiB |
+| Another status | the spot-price service answered *status* *text*, such as `503 Service Unavailable` |
+| An answer that is not a list of prices, or of areas | the spot-price service did not answer a list of prices (… of areas) |
+| An interval whose `start` or `end` is not an RFC 3339 time, or that does not end after it starts (the whole answer) | an interval's time is not an RFC 3339 time with an offset (… an interval does not end after it starts) |
+| An interval whose `source` or `rateSource` is not such a word, whose `state` is neither, or without an integer `version` (its day) | the spot-price service answered an unknown source (… an unknown state, … an interval without a version) |
+| An interval without `priceEurPerMwh`, or with a figure Vantigo cannot store (its day) | an interval's price is not a number Vantigo can store |
+
+The service's problem `detail` on a `400` is logged at debug level only, with the
+request's path and never its query, and never stored.
+
+**The log.** A live window read is logged at info with the area, its first and last
+day, the days written and the inserted, replaced, unchanged and deleted counts; a
+history window at info with the area, its first and last day, the area's
+`days_skipped` so far and the same counts. A failed request is logged at warning
+("the spot-price service could not be read") with the area — empty for `/areas` —,
+the service's host and the sentence, never the address's query, the key or the body;
+a day of the live window recorded `failed` at warning with the area, the day and the
+sentence. A cycle the database ended is logged at error.
 
 ### Importing prices
 
@@ -609,9 +884,12 @@ All under `/api/v1/energy/`.
 
 | Operation | Rule | What it does |
 | --- | --- | --- |
-| `GET spot-prices?area&from&to` | `permission:energy:prices-view` | The intervals of one area with `start ≥ from` and `start < to`, ascending. `area` must be two uppercase letters and one or two digits, `from` before `to`, and `to − from` at most **35 days** — a month at a quarter-hour resolution is one answer — otherwise a `400` (a window too long on `to`). |
-| `GET spot-prices/coverage` | `permission:energy:prices-view` | Per area in use or already priced, in area order: `priceArea`, `firstStart` and `lastEnd` (absent with no prices), `intervalCount` (the intervals stored, `0` with none), `daysMissingLast30` — the Europe/Oslo days among the last thirty, today included, with no interval starting in them, `30` with no prices — and `lastFetch`, the fetch record of the worker's most recent attempt for the area, by `attemptedAt` (`day`, `status`, `attempts`, `attemptedAt`, `nextAttemptAt`, `error`), absent when it never tried one. |
+| `GET spot-prices?area&from&to` | `permission:energy:prices-view` | The intervals of one area with `start ≥ from` and `start < to`, ascending, each with `id`, `priceArea`, `start`, `end`, `nokPerKwh`, `eurPerKwh` and `exchangeRate` when stored, `source` (`Feed`, `Service` or `Import`), `state` (`final` or `preliminary`) and, for a `Service` interval, `upstream`, `rateSource` and `upstreamVersion`. `area` must be two uppercase letters and one or two digits, `from` before `to`, and `to − from` at most **35 days** — a month at a quarter-hour resolution is one answer — otherwise a `400` (a window too long on `to`). |
+| `GET spot-prices/coverage` | `permission:energy:prices-view` | `source` — where the worker fetches from: `service` when `ENERGY_SPOT_PRICE_SERVICE_URL` is set, `feed` when `ENERGY_SPOT_PRICE_FEED_ENABLED` is on, `none` (files only) otherwise — and `areas`: per area in use or already priced, and with the service every area it follows (those with a history row), in area order: `priceArea`, `firstStart` and `lastEnd` (absent with no prices), `intervalCount` (the intervals stored, `0` with none), `daysMissingLast30` — the Europe/Oslo days among the last thirty, today included, with no interval starting in them, `30` with no prices — `lastFetch`, the fetch record of the worker's most recent attempt for the area, by `attemptedAt` (`day`, `status`, `attempts`, `attemptedAt`, `nextAttemptAt`, `error`), absent when it never tried one, and `resolution`, the length of the area's latest stored interval as an ISO 8601 duration (`PT15M`, `PT60M`), absent with no prices. With the service as the source, once the sync has written any history row: `followedByService`, whether the area has one, and for a followed area `history` — `floorDay` and `cursorDay` (absent until known), `complete` (the cursor at or before the floor), `daysSkipped` and `error`, the last failed request's sentence. Before the sync's first cycle, and with another source, both are absent. |
 | `POST spot-prices/import?dryRun` | `permission:energy:prices-manage+energy:prices-view` | Imports a file of prices ([above](#importing-prices)). |
+
+The coverage is read from the database alone, so the API process answers it the same
+in a split deployment, where the worker runs elsewhere.
 
 ## Permissions
 
@@ -641,4 +919,4 @@ Prices page needs `energy:prices-view`, and its **Import prices** also
 | Worker | What it does |
 | --- | --- |
 | `energy-import` | Checks, runs and attaches metering-point imports; sweeps old ones ([above](#the-worker-energy-import)) |
-| `energy-spot-prices` | Fetches the day-ahead prices of the areas in use from the configured feed, when `ENERGY_SPOT_PRICE_FEED_ENABLED` is on ([above](#the-feed-worker-energy-spot-prices)) |
+| `energy-spot-prices` | Copies the day-ahead prices and their history from the spot-price service when `ENERGY_SPOT_PRICE_SERVICE_URL` is set ([above](#the-service-sync)), or fetches those of the areas in use from the public feed when `ENERGY_SPOT_PRICE_FEED_ENABLED` is on ([above](#the-feed-worker-energy-spot-prices)) — never both |

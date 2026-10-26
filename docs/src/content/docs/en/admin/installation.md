@@ -274,7 +274,7 @@ GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA identity, customers, products, en
 The single-container default hosts every enabled module's background workers (outbox
 delivery, retention, attachment cleanup, the customers registry workers, the
 customers import worker `customers-import`, the energy import worker `energy-import`, the energy spot price worker
-`energy-spot-prices` when `ENERGY_SPOT_PRICE_FEED_ENABLED=1`, the invoices EHF workers `invoices-ehf` and `invoices-ehf-events` when
+`energy-spot-prices` when `ENERGY_SPOT_PRICE_SERVICE_URL` is set or `ENERGY_SPOT_PRICE_FEED_ENABLED=1`, the invoices EHF workers `invoices-ehf` and `invoices-ehf-events` when
 `INVOICES_EHF_ENABLED` is on, the invoices reminder worker `invoices-reminders`,
 always, the invoices payments worker `invoices-payments` when
 `INVOICES_VIPPS_ENABLED` is on, the calendar cancellations worker
@@ -335,20 +335,71 @@ they wrote stay. In worker mode it reads customers through the customers module,
 run it with `customers` among the `MODULES` when imports name customers. See
 [Importing metering points](/en/reference/energy/#importing-metering-points).
 
-The energy spot price worker `energy-spot-prices` fetches the day-ahead prices of each
-price area in use — that of a metering point with a non-cancelled supply period, or one
-already priced — from seven days back to tomorrow, from
+The energy spot price worker `energy-spot-prices` fills the day-ahead prices of each
+price area from **one** source: the shared spot-price service, or a public feed. It is
+an outbound call the installation opts into, so it is **off** unless one of them is
+set; without either, prices are imported from a file on the Prices page. Setting both
+`ENERGY_SPOT_PRICE_SERVICE_URL` and `ENERGY_SPOT_PRICE_FEED_ENABLED=1` stops the
+start-up ("set one spot price source"). `ENERGY_SPOT_PRICE_FEED_POLL` (15 minutes by
+default, at least `1m`) paces either source, and either runs under the same advisory
+lock, so one instance fetches, with at most twenty requests a cycle.
+
+**With the spot-price service** (`ENERGY_SPOT_PRICE_SERVICE_URL` and
+`ENERGY_SPOT_PRICE_SERVICE_KEY`, the installation's bearer key — on our hosts
+`http://vantigo-spotprices:8080` and the key the host's tooling writes), the worker
+copies into the installation's own database the prices of every area the service
+follows (NO1–NO5 on our hosts), so the Prices page fills before the first metering
+point exists; an area in use that the service does not follow is not asked for (see
+below). Each cycle first asks the service which areas it follows, then reads each
+area's live window — fourteen days back to tomorrow — in one request, when one of its
+days is due or the window was last read more than a day ago, then walks each area's
+history backwards, 35 days a request (34 across the autumn clock change), down to the
+oldest day the service holds, or to `ENERGY_SPOT_PRICE_HISTORY_FROM` when that is
+later. The twenty requests include the one for the areas. **While history is being
+copied the worker runs a cycle every minute** rather than every poll; five areas from
+2015 take about half an hour, after which the poll paces it again. Prices the service
+marks preliminary (tomorrow's NOK figure until the exchange rate is final) are stored as
+preliminary, asked for again every hour, and replaced when they turn final. The service
+never overwrites a price imported from a file. The service is reached at a private
+address through the outbound guard's one exception
+([Transport security](/en/admin/transport-security/#the-private-network-exception)):
+an `http` URL only to a private address, `https` to any routable one, and never a
+redirect, a proxy or another host.
+
+To verify, open the Prices page: the Coverage card's title says **Spot-price service**,
+each area shows its resolution, and the History column says how far back it has
+copied ("Copying… back to …", then "Complete from …"). Or ask
+`GET /api/v1/energy/spot-prices/coverage` with a session holding `energy:prices-view`:
+it answers `"source": "service"`, and per area `followedByService` and `history`
+once the first cycle has run.
+
+What can go wrong — the live window's failure is shown in the Coverage card's **Last
+fetch** column, the history's under **History**, and either is logged at warning:
+
+- **"the spot-price service refused the key"** — a `401`: the key is wrong, revoked or
+  rotated without restarting Vantigo. Set the current key and restart.
+- **"the spot-price service's address is public; use https"** — the URL is `http` and
+  its host resolves to a public address. Use the internal address, or `https`.
+- **"the spot-price service is rate limiting this installation"** — a `429`: the
+  cycle makes no further request, and the next attempt waits for the backoff or the
+  service's `Retry-After`, whichever is later.
+- **An area in use the service does not follow** — a metering point in, say, `SE3` on a
+  host whose service follows NO1–NO5 only. The History column says "Not followed by
+  the spot-price service" and the worker asks nothing for it: ask the service's operator to
+  follow the area, or import its prices from a file.
+- **Days skipped** — a day the service holds incompletely or without a NOK price, or one
+  over a day imported from a file at another resolution, is counted in the History
+  column and left for a file; the worker never overwrites an imported price.
+
+**With the public feed** (`ENERGY_SPOT_PRICE_FEED_ENABLED=1`), the worker fetches the
+prices of each price area in use — that of a metering point with a non-cancelled supply
+period, or one already priced — from seven days back to tomorrow, from
 `ENERGY_SPOT_PRICE_FEED_URL` — by default the public feed at `www.hvakosterstrommen.no`.
-It is an outbound call the installation opts into, so it is **off** unless
-`ENERGY_SPOT_PRICE_FEED_ENABLED=1`; without it, prices are imported from a file on the
-Prices page, which is also how a day older than a week is filled in. The default feed
+A day older than a week is filled in from a file on the Prices page. The default feed
 serves the Norwegian areas NO1–NO5 only: a metering point in another area (a Swedish
 `SE3`, say) makes the worker ask for days the feed never has, so give it a feed that
-serves them or import that area's prices from a file. It runs every
-`ENERGY_SPOT_PRICE_FEED_POLL` (15 minutes by default, at least `1m`) under an advisory
-lock of its own, so one instance fetches, and makes at most twenty requests a cycle.
-The feed is fetched through the outbound address guard, as the calendar subscriptions
-are: `https` only, no proxy, no redirect, at most 1 MiB, and never a host that resolves
+serves them or import that area's prices from a file. The feed is fetched through the
+outbound address guard, as the calendar subscriptions are: `https` only, no proxy, no redirect, at most 1 MiB, and never a host that resolves
 to a private, loopback, link-local, carrier-grade NAT, cloud metadata or otherwise
 non-routable address — so the API or worker container needs outbound https to the
 feed's host, without a proxy. A bad `ENERGY_SPOT_PRICE_FEED_URL` or an `ENERGY_SPOT_PRICE_FEED_POLL` under `1m`

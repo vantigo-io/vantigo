@@ -512,7 +512,27 @@ fetch, and a day's or a month's prices as a chart, behind `energy:prices-view` a
 `energy:prices-manage`. See
 [`docs/src/content/docs/en/reference/energy.md`](docs/src/content/docs/en/reference/energy.md#spot-prices).
 
-What remains: **B** tariffs and the metering point's billing facts, **C** settlements
+**Delivery A2: the spot-price service (done)** — the shared service as a third source.
+In our hosted environments the private `vantigo-spotprices` service collects the
+prices; with `ENERGY_SPOT_PRICE_SERVICE_URL` and its key set, the `energy-spot-prices`
+worker copies them into the installation's own `energy.spot_prices` — the one store
+every read and every later settlement uses — with their state (`final` or
+`preliminary`) and provenance, never reading through. One source per installation:
+the service or the public feed, never both. A cycle reads each followed area's live
+window, fourteen days back to tomorrow, in one request, then walks its history
+backwards in 35-day windows to what the service holds, a cycle a minute while it
+copies; a fetched day at another resolution is replaced whole, an imported one never.
+The client reaches the service at a private address through the outbound guard's one
+exception, `netguard.DialContextAllowingPrivate` — RFC 1918 and unique-local only,
+`http` only to a private address, the configured host only. The Prices page shows the
+source, each area's resolution and the history copied. See
+[`docs/src/content/docs/en/reference/energy.md`](docs/src/content/docs/en/reference/energy.md#the-service-sync)
+and the
+[design](docs/superpowers/specs/2026-10-26-energy-spot-price-service-design.md).
+
+What remains: **A3** price history — the Prices page over weeks, months, years and a
+range, comparing areas, from a time-weighted summary read — then **B** tariffs and the
+metering point's billing facts, **C** settlements
 and the `contracts.ConsumptionProvider` contract (Energy phase 4 done), then Invoices
 phase 5's **D** invoices from consumption (the wizard) and **E** billing runs.
 

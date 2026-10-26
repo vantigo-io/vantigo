@@ -43,8 +43,12 @@ Communications' outbox is the working example.
    counts working days and Calendar marks the holidays beside a person's items — `internal/netguard`
    — the shared table of addresses the guarded outbound clients refuse to
    dial (today `internal/mail`'s SMTP guard, `internal/peppol`'s SMP
-   client and the calendar's fetch of the calendars a person subscribes to;
-   Brreg, OIDC and the AI client use `http.DefaultTransport`) —
+   client, the calendar's fetch of the calendars a person subscribes to and the
+   energy module's spot-price feed; Brreg, OIDC and the AI client use
+   `http.DefaultTransport`), and its one exception, `DialContextAllowingPrivate`,
+   which also admits RFC 1918 and unique-local addresses and has exactly one
+   caller, the energy module's client for the shared spot-price service
+   ([The service client and its guard](/en/reference/energy/#the-service-client-and-its-guard)) —
    `internal/payments` — the payments port, shared by Invoices and a later Point of
    sale, with its Vipps MobilePay adapter `internal/payments/vipps`; interfaces,
    values and the adapter only, no SQL, so each consumer keeps its own tables

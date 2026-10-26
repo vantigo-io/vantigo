@@ -1,6 +1,6 @@
 ---
 title: "Transport security and browser hardening"
-description: "The operator's https, PostgreSQL TLS or Unix socket and SMTP TLS choices, HSTS, host filtering and the content security policy."
+description: "The operator's https, PostgreSQL TLS or Unix socket and SMTP TLS choices, the outbound guard's private-network exception, HSTS, host filtering and the content security policy."
 sidebar:
   order: 30
 sources:
@@ -114,6 +114,38 @@ what defeats DNS rebinding. This applies whatever `SMTP_TLS` says. The same guar
 the same table, holds for the Peppol lookup and for Calendar's fetch of the calendars
 people subscribe to, which also follows no redirect and uses no proxy
 ([Calendar](/en/admin/calendar/#what-vantigo-fetches-from-the-internet)).
+
+## The private-network exception
+
+The guard has one exception, and one caller may use it: the energy module's client for
+the shared spot-price service, which on our hosts runs as a container on an internal
+Docker network beside the tenants and is reached at a private address
+(`http://vantigo-spotprices:8080`). Nothing else is opened by it.
+
+- **The setting that opens it** is `ENERGY_SPOT_PRICE_SERVICE_URL`
+  ([Configuration](/en/admin/authentication/)). Unset — the default — no client uses the
+  exception and the guard refuses every private address as before.
+- **The ranges** it allows are the private networks an operator runs: RFC 1918 IPv4
+  (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`) and RFC 4193 unique-local IPv6
+  (`fc00::/7`), an IPv4-mapped IPv6 form read as the IPv4 address it carries. Nothing
+  else: loopback, link-local and the `169.254.169.254` cloud-metadata address,
+  carrier-grade NAT (`100.64.0.0/10`), unspecified, multicast and reserved addresses
+  stay refused for this client too. A private address embedded in a NAT64 (`64:ff9b::/96`),
+  6to4 or IPv4-compatible IPv6 address is **not** seen through: a private address
+  reached through a translator is not your network.
+- **The host only.** The client sends requests to the configured host and refuses any
+  other before it dials, so the exception cannot be reached through a redirect — none
+  is followed — or by anything else in the process. The host is still resolved and every
+  address checked before the connection is made to the address checked, so DNS
+  rebinding is defeated as for every other guarded client. No proxy is used.
+- **`http` only to a private address.** The client sends the installation's key as a
+  bearer token on every request. An `http` URL is therefore accepted only when **every**
+  address its host resolves to is private, so the key never travels in the clear to a
+  public address; a request to such a host is refused before anything is sent and
+  recorded as "the spot-price service's address is public; use https" (in the
+  Coverage card's **Last fetch** and **History**). Over `https` a public or a private address is allowed, the
+  certificate protecting the key. An `http` URL on a network you do not control end to
+  end costs what an `http` `APP_URL` costs: anyone on the path reads the key.
 
 ## Upgrading from the fail-closed rules
 
