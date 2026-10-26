@@ -8,12 +8,13 @@ export type PlanningStats = Schemas["PlanningStats"];
 export type PlanningAttentionItem = Schemas["PlanningStatsAttentionItem"];
 export type PlanningAttentionType = PlanningAttentionItem["type"];
 
-/** The attention items of delivery A (S22). */
+/** The attention items (S22): delivery A's four, and B's open requests. */
 export const attentionTypes: readonly PlanningAttentionType[] = [
   "unbooked",
   "overbooked",
   "endingWithoutFollowOn",
   "certificatesExpiring",
+  "requestsOpen",
 ];
 
 /** The dashboard card's figures (S22). */

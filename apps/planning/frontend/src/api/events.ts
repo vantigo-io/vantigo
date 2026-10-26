@@ -7,12 +7,21 @@ type Schemas = components["schemas"];
 export type PlanningEvent = Schemas["PlanningEvent"];
 export type PlanningEventKind = PlanningEvent["kind"];
 
+export type PlanningEventEntityKind = PlanningEvent["entityKind"];
+
+export const eventEntityKinds: readonly PlanningEventEntityKind[] = ["allocation", "request"];
+
 export const eventKinds: readonly PlanningEventKind[] = [
   "allocation_created",
   "allocation_changed",
   "allocation_confirmed",
   "allocation_unconfirmed",
   "allocation_deleted",
+  "request_created",
+  "request_changed",
+  "request_filled",
+  "request_reopened",
+  "request_withdrawn",
 ];
 
 export interface PlanningEventsFilter {

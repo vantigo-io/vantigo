@@ -365,8 +365,10 @@ export const attentionHref = (item: { module: ModuleKey; type: string; entityId:
   if (item.module === "planning") {
     // The person's items carry their id and open their timeline; an ending
     // row carries the allocation's id, which no page is addressed by, so it
-    // opens the board, where the row is seen beside what follows it.
+    // opens the board, where the row is seen beside what follows it. An open
+    // request opens the open requests, where it is filled.
     if (item.type === "unbooked") return "/planning/unbooked";
+    if (item.type === "requestsOpen") return "/planning/requests?status=open";
     if (item.type === "overbooked" || item.type === "certificatesExpiring")
       return `/planning/people/${encodeURIComponent(item.entityId)}`;
     return "/planning";
@@ -377,13 +379,15 @@ export const attentionHref = (item: { module: ModuleKey; type: string; entityId:
 /**
  * Planning's sentences (planning design S22): the server's title is the
  * person's name with the week, the certificate or the project's code after
- * it, so the sentence around it is worded here, in the reader's language.
+ * it — an open request's is the project's code and the request's title — so
+ * the sentence around it is worded here, in the reader's language.
  */
 const planningAttentionTitleKeys: Record<string, string> = {
   unbooked: "dashboard.planningUnbooked",
   overbooked: "dashboard.planningOverbooked",
   endingWithoutFollowOn: "dashboard.planningEndingWithoutFollowOn",
   certificatesExpiring: "dashboard.planningCertificateExpiring",
+  requestsOpen: "dashboard.planningRequestOpen",
 };
 
 /**
@@ -753,9 +757,9 @@ export const staffKpi = (
 /**
  * The Planning card's figures (planning design S22): the people with a
  * confirmed booking this week, and as the hint the confirmed load this week
- * with the tentative named after it, and the people on the unbooked list. A
- * load is left out when the server sends none — nobody has capacity this week.
- * Open requests arrive with delivery B.
+ * with the tentative named after it, the open requests, and the people on
+ * the unbooked list. A load is left out when the server sends none — nobody
+ * has capacity this week.
  */
 export const planningKpi = (
   stats: PlanningStats | undefined,
@@ -771,6 +775,7 @@ export const planningKpi = (
     stats.tentativeLoadPercentThisWeek === undefined
       ? undefined
       : t("dashboard.planningTentativeHint", { load: percent(stats.tentativeLoadPercentThisWeek) }),
+    t("dashboard.planningOpenRequestsHint", { count: stats.openRequests }),
     t("dashboard.planningUnbookedHint", { count: stats.unbooked }),
   ]
     .filter(Boolean)

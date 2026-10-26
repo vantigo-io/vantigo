@@ -1,8 +1,8 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
-import { allocation, allocations } from "../test/fixtures";
-import { retype, sent } from "../test/helpers";
+import { allocation, allocations, week, weekEnd } from "../test/fixtures";
+import { choose, retype, sent } from "../test/helpers";
 import { renderRoute } from "../test/route-tree";
 import { planningProblem, stubPlanningApi } from "../test/server";
 
@@ -136,5 +136,122 @@ describe("ProjectPlanPage — a project's plan", () => {
     await userEvent.click(within(sheet).getByRole("button", { name: "Confirm" }));
     await waitFor(() => expect(sent(fetchMock, "POST", /\/allocations\/502\/confirm$/)).toHaveLength(1));
     expect(await screen.findByText("The allocation is confirmed")).toBeInTheDocument();
+  });
+});
+
+describe("ProjectPlan — the requests and the demand", () => {
+  it("adds the open requests' hours a week as demand, a partial first week by its weekdays", async () => {
+    stubPlanningApi({ role: "view" });
+    renderRoute("/planning/projects/200");
+    const weekly = await screen.findByRole("table", { name: "Hours per week" });
+    const demand = within(weekly).getByRole("rowheader", { name: "Demand" }).closest("tr") as HTMLElement;
+    const cells = within(demand).getAllByRole("cell");
+    // From Wednesday: 3 of 5 days of 30 h, then whole weeks.
+    expect(cells[0]).toHaveTextContent("18 h");
+    expect(cells[1]).toHaveTextContent("30 h");
+    expect(screen.getByRole("list", { name: "Requests of P-200 Tender bid" })).toBeInTheDocument();
+    const requests = screen.getByRole("table", { name: "Requests" });
+    expect(within(requests).getByText("Backend developer").closest("tr")).toHaveTextContent("Open");
+    expect(screen.queryByRole("button", { name: "New request" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Candidates for Backend developer" })).not.toBeInTheDocument();
+  });
+
+  it("shows a view holder no request note", async () => {
+    stubPlanningApi({ role: "view" });
+    renderRoute("/planning/projects/200");
+    const requests = await screen.findByRole("table", { name: "Requests" });
+    expect(within(requests).getByText("Backend developer").closest("tr")).not.toHaveTextContent(
+      "Bergen office preferred",
+    );
+  });
+
+  it("shows a planner the request's note", async () => {
+    stubPlanningApi();
+    renderRoute("/planning/projects/200");
+    const requests = await screen.findByRole("table", { name: "Requests" });
+    expect(within(requests).getByText("Backend developer").closest("tr")).toHaveTextContent("Bergen office preferred");
+  });
+
+  it("opens a filled request read-only from its menu", async () => {
+    stubPlanningApi();
+    renderRoute("/planning/projects/100");
+    await userEvent.click(await screen.findByRole("button", { name: "Actions for Tester" }));
+    expect(screen.queryByRole("menuitem", { name: "Edit" })).not.toBeInTheDocument();
+    await userEvent.click(await screen.findByRole("menuitem", { name: "Open" }));
+    const sheet = await screen.findByRole("dialog", { name: "Change request" });
+    expect(await within(sheet).findByText(/A filled or withdrawn request takes no change/)).toBeInTheDocument();
+    expect(within(sheet).queryByRole("button", { name: "Save" })).not.toBeInTheDocument();
+  });
+
+  it("lists a filled request with its person and no demand", async () => {
+    stubPlanningApi({ role: "view" });
+    renderRoute("/planning/projects/100");
+    const requests = await screen.findByRole("table", { name: "Requests" });
+    expect(within(requests).getByText("Tester").closest("tr")).toHaveTextContent("Filled by Grace Hopper");
+    expect(within(requests).queryByText("Designer")).not.toBeInTheDocument();
+    const weekly = screen.getByRole("table", { name: "Hours per week" });
+    expect(within(weekly).getByRole("rowheader", { name: "Demand" }).closest("tr")).toHaveTextContent("0 h");
+  });
+
+  it("files a new request on the project over the plan's weeks", async () => {
+    const fetchMock = stubPlanningApi();
+    renderRoute("/planning/projects/200");
+    await userEvent.click(await screen.findByRole("button", { name: "New request" }));
+    const sheet = await screen.findByRole("dialog", { name: "New request" });
+    expect(within(sheet).getByRole("combobox", { name: "Project" })).toHaveValue("P-200 Tender bid");
+
+    await userEvent.type(within(sheet).getByRole("textbox", { name: "Title" }), "Data engineer");
+    await userEvent.type(within(sheet).getByRole("textbox", { name: "Hours per week" }), "37.5");
+    await userEvent.click(within(sheet).getByRole("button", { name: "Add requirement" }));
+    await choose(sheet, "Requirement 1", "React");
+    await choose(sheet, "Lowest level", "experienced");
+    await userEvent.click(within(sheet).getByRole("button", { name: "Save" }));
+
+    expect(await screen.findByText("The request is saved")).toBeInTheDocument();
+    const [post] = sent(fetchMock, "POST", /\/planning\/requests$/);
+    expect(post.body).toEqual({
+      projectId: 200,
+      title: "Data engineer",
+      fromDate: week(0),
+      toDate: weekEnd(11),
+      hoursPerWeek: 37.5,
+      requirements: [{ competenceId: 40, minLevel: 3 }],
+    });
+  });
+
+  it("asks for a competence on a requirement row left empty", async () => {
+    const fetchMock = stubPlanningApi();
+    renderRoute("/planning/projects/200");
+    await userEvent.click(await screen.findByRole("button", { name: "New request" }));
+    const sheet = await screen.findByRole("dialog", { name: "New request" });
+    await userEvent.type(within(sheet).getByRole("textbox", { name: "Title" }), "Data engineer");
+    await userEvent.type(within(sheet).getByRole("textbox", { name: "Hours per week" }), "10");
+    await userEvent.click(within(sheet).getByRole("button", { name: "Add requirement" }));
+    await userEvent.click(within(sheet).getByRole("button", { name: "Save" }));
+    expect(await within(sheet).findByText("Pick a competence")).toBeInTheDocument();
+    expect(sent(fetchMock, "POST", /\/planning\/requests$/)).toHaveLength(0);
+  });
+
+  it("opens a request's candidates and withdraws one from the plan", async () => {
+    const fetchMock = stubPlanningApi();
+    renderRoute("/planning/projects/200");
+    await userEvent.click(await screen.findByRole("button", { name: "Candidates for Backend developer" }));
+    const panel = await screen.findByRole("dialog", { name: "Candidates — Backend developer" });
+    expect(await within(panel).findByRole("listitem", { name: "Ada Lovelace" })).toBeInTheDocument();
+    await userEvent.click(within(panel).getByRole("button", { name: "Close" }));
+
+    await userEvent.click(screen.getByRole("button", { name: "Actions for Backend developer" }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: "Withdraw" }));
+    const ask = await screen.findByRole("dialog", { name: "Withdraw this request?" });
+    await userEvent.click(within(ask).getByRole("button", { name: "Withdraw" }));
+    await waitFor(() => expect(sent(fetchMock, "POST", /\/requests\/801\/withdraw$/)).toHaveLength(1));
+  });
+
+  it("renders on the host's project tab without the page's header", async () => {
+    stubPlanningApi({ role: "view" });
+    renderRoute("/projects/100/planning");
+    expect(await screen.findByRole("table", { name: "Hours per week" })).toBeInTheDocument();
+    expect(screen.getByRole("table", { name: "Requests" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: /P-100 Harbour app/ })).not.toBeInTheDocument();
   });
 });

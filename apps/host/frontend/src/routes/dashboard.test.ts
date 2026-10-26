@@ -1036,7 +1036,7 @@ describe("the dashboard's planning card", () => {
     expect(metrics.some((metric) => (metric.module as string) === "planning")).toBe(false);
   });
 
-  it("shows the people planned this week, the confirmed and tentative load, and the unbooked", () => {
+  it("shows the people planned this week, the confirmed and tentative load, the open requests and the unbooked", () => {
     const t = (key: string, values?: Record<string, unknown>) => `${key}:${JSON.stringify(values)}`;
     const formatNumber = (value: number, options?: Intl.NumberFormatOptions) =>
       new Intl.NumberFormat("en-US", options).format(value);
@@ -1045,13 +1045,13 @@ describe("the dashboard's planning card", () => {
       loadPercentThisWeek: 82.4,
       tentativeLoadPercentThisWeek: 11,
       unbooked: 3,
-      openRequests: 0,
+      openRequests: 2,
     };
 
     expect(planningKpi(undefined, formatNumber, t)).toEqual({ value: "—", hint: undefined });
     expect(planningKpi(stats, formatNumber, t)).toEqual({
       value: 9,
-      hint: 'dashboard.planningLoadHint:{"load":"82%"} · dashboard.planningTentativeHint:{"load":"11%"} · dashboard.planningUnbookedHint:{"count":3}',
+      hint: 'dashboard.planningLoadHint:{"load":"82%"} · dashboard.planningTentativeHint:{"load":"11%"} · dashboard.planningOpenRequestsHint:{"count":2} · dashboard.planningUnbookedHint:{"count":3}',
     });
     // Nobody with capacity this week: the server sends no load, and none is named.
     expect(
@@ -1060,15 +1060,17 @@ describe("the dashboard's planning card", () => {
         formatNumber,
         t,
       ).hint,
-    ).toBe('dashboard.planningUnbookedHint:{"count":3}');
+    ).toBe('dashboard.planningOpenRequestsHint:{"count":2} · dashboard.planningUnbookedHint:{"count":3}');
   });
 
   it("has the card's words in English and Norwegian", () => {
     for (const lng of ["en", "nb"]) {
       expect(i18n.t("dashboard.planningLoadHint", { ns: "host", lng, load: "82 %" })).toContain("82 %");
       expect(i18n.t("dashboard.planningTentativeHint", { ns: "host", lng, load: "11 %" })).toContain("11 %");
-      for (const count of [0, 1, 3])
+      for (const count of [0, 1, 3]) {
+        expect(i18n.t("dashboard.planningOpenRequestsHint", { ns: "host", lng, count })).toContain(String(count));
         expect(i18n.t("dashboard.planningUnbookedHint", { ns: "host", lng, count })).toContain(String(count));
+      }
     }
   });
 });
@@ -1076,8 +1078,9 @@ describe("the dashboard's planning card", () => {
 /**
  * Planning's attention items (planning design S22): the person's open their
  * timeline, the unbooked the list, an ending row — whose id is the
- * allocation's — the board. The server's title is the person's name with the
- * week, the certificate or the project after it, so the sentence is the host's.
+ * allocation's — the board, an open request the requests. The server's title
+ * is the person's name with the week, the certificate or the project after it
+ * (a request's is the project's code and its title), so the sentence is the host's.
  */
 describe("the dashboard's planning attention items", () => {
   it("opens the screen that answers each, and words it in the reader's language", () => {
@@ -1102,12 +1105,13 @@ describe("the dashboard's planning attention items", () => {
     const types = [
       ...block.slice(0, block.indexOf("                    type: string")).matchAll(/^ {24}- (\w+)$/gm),
     ].map((match) => match[1]);
-    expect(types).toEqual(["unbooked", "overbooked", "endingWithoutFollowOn", "certificatesExpiring"]);
+    expect(types).toEqual(["unbooked", "overbooked", "endingWithoutFollowOn", "certificatesExpiring", "requestsOpen"]);
     const hrefs = {
       unbooked: "/planning/unbooked",
       overbooked: "/planning/people/101",
       endingWithoutFollowOn: "/planning",
       certificatesExpiring: "/planning/people/101",
+      requestsOpen: "/planning/requests?status=open",
     } as Record<string, string>;
     for (const type of types) {
       const entityId = type === "endingWithoutFollowOn" ? "7001" : "101";

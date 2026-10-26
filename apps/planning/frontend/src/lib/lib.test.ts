@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { visiblePlanningNavItems } from "./navigation";
-import { validateBoardSearch, validateWindowSearch } from "./search";
+import { validateBoardSearch, validateRequestsSearch, validateWindowSearch } from "./search";
 import { addWeeks, isIsoDate, isoWeek, mondayOf, weeksBetween } from "./weeks";
 
 describe("weeks", () => {
@@ -42,6 +42,16 @@ describe("the search validators", () => {
     expect(validateBoardSearch({ groupBy: "people", create: "request" })).toEqual({});
     expect(validateWindowSearch({ from: "2026-13-01", to: "2026-11-01" })).toEqual({ to: "2026-11-01" });
   });
+
+  it("keeps the requests page's filters and the spotlight's new=1, and drops the rest", () => {
+    expect(validateRequestsSearch({ status: "open", projectId: "200", new: "1" })).toEqual({
+      status: "open",
+      projectId: 200,
+      new: 1,
+    });
+    expect(validateRequestsSearch({ status: "all" })).toEqual({ status: "all" });
+    expect(validateRequestsSearch({ status: "closed", projectId: "-3", new: "yes" })).toEqual({});
+  });
 });
 
 describe("the sidebar", () => {
@@ -49,10 +59,12 @@ describe("the sidebar", () => {
     expect(visiblePlanningNavItems(["planning:access"]).map((item) => item.key)).toEqual(["myPlanning"]);
     expect(visiblePlanningNavItems(["planning:access", "planning:view"]).map((item) => item.key)).toEqual([
       "board",
+      "requests",
+      "intake",
       "unbooked",
       "myPlanning",
     ]);
-    expect(visiblePlanningNavItems(["*"])).toHaveLength(4);
+    expect(visiblePlanningNavItems(["*"])).toHaveLength(6);
     expect(visiblePlanningNavItems(undefined)).toEqual([]);
   });
 });

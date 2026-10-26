@@ -1,4 +1,11 @@
-import { BOARD_ROUTE_PATH, MY_PLANNING_ROUTE_PATH, PLANNING_SETTINGS_ROUTE_PATH, UNBOOKED_ROUTE_PATH } from "./routes";
+import {
+  BOARD_ROUTE_PATH,
+  INTAKE_ROUTE_PATH,
+  MY_PLANNING_ROUTE_PATH,
+  PLANNING_SETTINGS_ROUTE_PATH,
+  REQUESTS_ROUTE_PATH,
+  UNBOOKED_ROUTE_PATH,
+} from "./routes";
 
 /**
  * One destination of the Planning app's sidebar (design §7), as the host
@@ -6,11 +13,11 @@ import { BOARD_ROUTE_PATH, MY_PLANNING_ROUTE_PATH, PLANNING_SETTINGS_ROUTE_PATH,
  * the part that is the module's to say — where each destination is, which
  * permission offers it, and the label in this package's catalog — so the
  * host's entry and this package's own gate cannot disagree. The project's
- * plan and the person's timeline are no sidebar entries: the board leads to
- * them.
+ * plan and the person's timeline are no sidebar entries: the board, the
+ * requests and the intake lead to them.
  */
 export interface PlanningNavItem {
-  key: "board" | "unbooked" | "myPlanning" | "settings";
+  key: "board" | "requests" | "intake" | "unbooked" | "myPlanning" | "settings";
   /** A key in the `planning` catalog. */
   label: string;
   to: string;
@@ -20,6 +27,8 @@ export interface PlanningNavItem {
 
 export const planningNavItems: readonly PlanningNavItem[] = [
   { key: "board", label: "navBoard", to: BOARD_ROUTE_PATH, requiredPermissions: ["planning:view"] },
+  { key: "requests", label: "navRequests", to: REQUESTS_ROUTE_PATH, requiredPermissions: ["planning:view"] },
+  { key: "intake", label: "navIntake", to: INTAKE_ROUTE_PATH, requiredPermissions: ["planning:view"] },
   { key: "unbooked", label: "navUnbooked", to: UNBOOKED_ROUTE_PATH, requiredPermissions: ["planning:view"] },
   { key: "myPlanning", label: "navMyPlanning", to: MY_PLANNING_ROUTE_PATH, requiredPermissions: ["planning:access"] },
   { key: "settings", label: "navSettings", to: PLANNING_SETTINGS_ROUTE_PATH, requiredPermissions: ["planning:manage"] },

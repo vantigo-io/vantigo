@@ -135,7 +135,7 @@ export interface PlanningStats {
   /** The same for tentative rows. */
   tentativeLoadPercentThisWeek?: number;
   unbooked: number;
-  /** Open requests; 0 until delivery B. */
+  /** The open requests (planning design S16), wherever they start. */
   openRequests: number;
 }
 

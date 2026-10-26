@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 import planningYaml from "../../../../openapi/planning.yaml?raw";
 import { allocationStatuses, warningCodes } from "./api/allocations";
-import { eventKinds } from "./api/events";
+import { competenceKinds, competenceLevels } from "./api/competences";
+import { eventEntityKinds, eventKinds } from "./api/events";
+import { coverages, intakeFlags } from "./api/intake";
 import { projectStatuses } from "./api/projects";
+import { candidateAvailabilities, candidateFlagCodes, preferenceKinds, requestStatuses } from "./api/requests";
 import { attentionTypes } from "./api/stats";
 import { timelineFlagCodes } from "./api/timeline";
 import { planningCatalog } from "./i18n";
@@ -25,11 +28,12 @@ const enumOf = (schema: string, property?: string): string[] => {
   return values;
 };
 
-/** The refusal codes the module answers in delivery A (§4.7 and amendments 7–8). */
+/** The refusal codes the module answers (§4.7 and amendments 7–8; delivery B's request_not_open). */
 const refusalCodes = [
   "overbooked",
   "outside_employment",
   "project_closed",
+  "request_not_open",
   "period_too_long",
   "revision_conflict",
   "no_person",
@@ -69,6 +73,14 @@ describe("the planning catalog", () => {
       ...timelineFlagCodes.map((value) => `flag_${value}`),
       ...attentionTypes.map((value) => `attention_${value}`),
       ...["warn", "refuse"].map((value) => `overbooking_${value}`),
+      ...requestStatuses.map((value) => `requestStatus_${value}`),
+      ...candidateAvailabilities.map((value) => `availability_${value}`),
+      ...candidateFlagCodes.map((value) => `candidateFlag_${value}`),
+      ...preferenceKinds.map((value) => `preferenceKind_${value}`),
+      ...coverages.map((value) => `coverage_${value}`),
+      ...intakeFlags.map((value) => `intakeFlag_${value}`),
+      ...competenceKinds.map((value) => `competenceKind_${value}`),
+      ...competenceLevels.map((value) => `level_${value}`),
       ...planningNavItems.map((item) => item.label),
     ];
     for (const [language, catalog] of Object.entries(planningCatalog))
@@ -85,6 +97,13 @@ describe("the planning catalog", () => {
     expect([...timelineFlagCodes].sort()).toEqual(enumOf("PlanningTimelineFlag", "code").sort());
     expect([...attentionTypes].sort()).toEqual(enumOf("PlanningStatsAttentionItem", "type").sort());
     expect([...eventKinds].sort()).toEqual(enumOf("PlanningEvent", "kind").sort());
+    expect([...eventEntityKinds].sort()).toEqual(enumOf("PlanningEvent", "entityKind").sort());
+    expect([...requestStatuses].sort()).toEqual(enumOf("PlanningRequestStatus").sort());
+    expect([...candidateAvailabilities].sort()).toEqual(enumOf("PlanningCandidate", "availability").sort());
+    expect([...candidateFlagCodes].sort()).toEqual(enumOf("PlanningCandidateFlag", "code").sort());
+    expect([...coverages].sort()).toEqual(enumOf("PlanningCoverage").sort());
+    expect([...intakeFlags].sort()).toEqual(enumOf("PlanningIntakeRequest", "flags").sort());
+    expect([...competenceKinds].sort()).toEqual(enumOf("PlanningCompetence", "kind").sort());
   });
 
   it("words every refusal the contract names", () => {

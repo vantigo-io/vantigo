@@ -1,4 +1,5 @@
 import {
+  IconCalendarStats,
   IconClock,
   IconCoin,
   IconFileInvoice,
@@ -32,7 +33,16 @@ interface ProjectDetailGate {
   capability?: keyof ProjectCapabilities;
 }
 
-type ProjectDetailView = "overview" | "tasks" | "people" | "billing" | "economy" | "time" | "expenses" | "invoicing";
+type ProjectDetailView =
+  | "overview"
+  | "tasks"
+  | "people"
+  | "billing"
+  | "economy"
+  | "time"
+  | "expenses"
+  | "invoicing"
+  | "planning";
 
 interface ProjectDetailTab extends ProjectDetailGate {
   value: ProjectDetailView;
@@ -44,7 +54,8 @@ interface ProjectDetailTab extends ProjectDetailGate {
     | "project.economyTab"
     | "project.timeTab"
     | "project.expensesTab"
-    | "project.invoicingTab";
+    | "project.invoicingTab"
+    | "project.planningTab";
   icon: typeof IconLayoutDashboard;
   to:
     | "/projects/$projectId"
@@ -54,7 +65,8 @@ interface ProjectDetailTab extends ProjectDetailGate {
     | "/projects/$projectId/economy"
     | "/projects/$projectId/time"
     | "/projects/$projectId/expenses"
-    | "/projects/$projectId/invoicing";
+    | "/projects/$projectId/invoicing"
+    | "/projects/$projectId/planning";
 }
 
 /**
@@ -147,6 +159,19 @@ export const projectDetailTabs: ProjectDetailTab[] = [
     module: "invoices",
     // The API asks both: invoices:access for the app, invoices:create for the view.
     allPermissions: ["invoices:access", "invoices:create"],
+  },
+  {
+    // The fourth tab from another module (planning design §7): the project's
+    // plan — its people week by week, its requests and the demand they make —
+    // from the Planning package's own component. Every Planning call needs
+    // planning:access and the plan needs planning:view, which planning:manage
+    // does not imply, so the tab asks both, and the module must be mounted.
+    value: "planning",
+    labelKey: "project.planningTab",
+    icon: IconCalendarStats,
+    to: "/projects/$projectId/planning",
+    module: "planning",
+    allPermissions: ["planning:access", "planning:view"],
   },
 ];
 
