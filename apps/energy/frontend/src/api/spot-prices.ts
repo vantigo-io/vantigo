@@ -123,6 +123,52 @@ export const spotPricesQueryOptions = (area: string, from: string, to: string) =
       }),
   });
 
+export type SpotPriceSummaryBucketSize = "hour" | "day" | "week" | "month";
+
+/**
+ * One civil hour, day, ISO week or month [start, end) on the market's clock:
+ * the time-weighted average of the intervals starting in it, their lowest
+ * and highest, the minutes they cover, and whether any is preliminary.
+ */
+export interface SpotPriceSummaryBucket {
+  start: string;
+  end: string;
+  avgNokPerKwh: number;
+  minNokPerKwh: number;
+  maxNokPerKwh: number;
+  coveredMinutes: number;
+  preliminary: boolean;
+}
+
+/** An area's prices per bucket; a bucket with no interval is absent. */
+export interface SpotPriceSummary {
+  priceArea: string;
+  bucket: SpotPriceSummaryBucketSize;
+  timeZone: string;
+  buckets: SpotPriceSummaryBucket[];
+}
+
+/**
+ * `GET /energy/spot-prices/summary`: one area's prices per bucket in
+ * [from, to). `from` and `to` are instants on the bucket's boundaries in
+ * Europe/Oslo, at most 35 days apart for `hour`, 400 for `day`, 1830 for
+ * `week` and 10980 for `month`. Needs `energy:prices-view`.
+ */
+export const spotPriceSummaryQueryOptions = (
+  area: string,
+  bucket: SpotPriceSummaryBucketSize,
+  from: string,
+  to: string,
+) =>
+  queryOptions({
+    queryKey: [...spotPricesQueryKey, "summary", { area, bucket, from, to }],
+    queryFn: ({ signal }) =>
+      request<SpotPriceSummary>(
+        `/api/v1/energy/spot-prices/summary?${new URLSearchParams({ area, bucket, from, to })}`,
+        { signal },
+      ),
+  });
+
 /**
  * `POST /energy/spot-prices/import`: the file as the one part named `file`.
  * `dryRun` checks it and writes nothing; `dryRun: false` writes every row in

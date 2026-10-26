@@ -2,18 +2,28 @@ import { LineChart } from "@mantine/charts";
 import { useI18n } from "@vantigo/frontend-shell";
 import type { SpotPriceInterval } from "../api/spot-prices";
 import { MARKET_TIME_ZONE, marketUtcOffset } from "../lib/market-time";
+import { AREA_COLORS, formatPrice, PRELIMINARY_DASH, preliminaryKey } from "../lib/spot-price-view";
 import "../i18n";
 
+export interface AreaIntervals {
+  area: string;
+  intervals: SpotPriceInterval[];
+}
+
 /**
- * One area's spot prices as a line of NOK/kWh per interval start, read on
- * the market's clock: the hours of a day, or every interval of a month. A
- * price holds for its whole interval, hence the steps.
+ * The spot prices of one or more areas as lines of NOK/kWh per interval
+ * start, read on the market's clock: the intervals of a day, with a dot on
+ * each, or of a week. A price holds for its whole interval, hence the
+ * steps. A preliminary interval is drawn dashed.
  */
-export const PriceChart = ({ intervals, period }: { intervals: SpotPriceInterval[]; period: "day" | "month" }) => {
+export const PriceChart = ({ areas, period }: { areas: AreaIntervals[]; period: "day" | "week" }) => {
   const { t, formatters } = useI18n("energy");
-  const labels = intervals.map((item) =>
-    formatters.formatDate(item.start, {
-      ...(period === "month" ? { day: "numeric", month: "short" } : {}),
+  const starts = [...new Set(areas.flatMap((item) => item.intervals.map((interval) => interval.start)))].sort(
+    (a, b) => Date.parse(a) - Date.parse(b),
+  );
+  const labels = starts.map((start) =>
+    formatters.formatDate(start, {
+      ...(period === "week" ? { weekday: "short" } : {}),
       hour: "2-digit",
       minute: "2-digit",
       timeZone: MARKET_TIME_ZONE,
@@ -23,19 +33,54 @@ export const PriceChart = ({ intervals, period }: { intervals: SpotPriceInterval
   // carries the interval's UTC offset, so each run of the hour is its own point.
   const counts = new Map<string, number>();
   for (const label of labels) counts.set(label, (counts.get(label) ?? 0) + 1);
-  const data = intervals.map((item, index) => ({
-    start: (counts.get(labels[index]) ?? 0) > 1 ? `${labels[index]} ${marketUtcOffset(item.start)}` : labels[index],
-    nokPerKwh: item.nokPerKwh,
+  const rows: Array<Record<string, string | number | null>> = starts.map((start, index) => ({
+    start: (counts.get(labels[index]) ?? 0) > 1 ? `${labels[index]} ${marketUtcOffset(start)}` : labels[index],
   }));
+  const rowOf = new Map(starts.map((start, index) => [start, rows[index]]));
+
+  const series = areas.flatMap(({ area, intervals }, index) => {
+    const color = AREA_COLORS[index % AREA_COLORS.length];
+    const hasPreliminary = intervals.some((item) => item.state === "preliminary");
+    for (const row of rows) {
+      row[area] = null;
+      if (hasPreliminary) row[preliminaryKey(area)] = null;
+    }
+    intervals.forEach((item, position) => {
+      const row = rowOf.get(item.start);
+      if (!row) return;
+      const previousFinal = position > 0 && intervals[position - 1].state !== "preliminary";
+      // The solid line runs up to the first preliminary interval, so the last
+      // final price's step reaches it; from there the dashed line takes over.
+      if (item.state !== "preliminary" || previousFinal) row[area] = item.nokPerKwh;
+      if (item.state === "preliminary") row[preliminaryKey(area)] = item.nokPerKwh;
+    });
+    return [
+      { name: area, label: area, color },
+      ...(hasPreliminary
+        ? [
+            {
+              name: preliminaryKey(area),
+              label: t("pricesPreliminarySeries", { area }),
+              color,
+              strokeDasharray: PRELIMINARY_DASH,
+            },
+          ]
+        : []),
+    ];
+  });
+
   return (
     <LineChart
       h={280}
-      data={data}
+      data={rows}
       dataKey="start"
-      series={[{ name: "nokPerKwh", label: t("chartNokPerKwh"), color: "blue.6" }]}
+      series={series}
       curveType="stepAfter"
+      connectNulls={false}
       withDots={period === "day"}
-      valueFormatter={(value) => formatters.formatNumber(value, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
+      withLegend={areas.length > 1}
+      yAxisLabel={t("chartNokPerKwh")}
+      valueFormatter={formatPrice(formatters.formatNumber)}
     />
   );
 };

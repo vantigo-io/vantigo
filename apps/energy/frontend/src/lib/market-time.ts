@@ -70,3 +70,25 @@ export const nextMarketMonth = (day: string): string => {
   const [year, month] = day.split("-").map(Number);
   return new Date(Date.UTC(year, month, 1)).toISOString().slice(0, 10);
 };
+
+/** The civil day `months` months after `day`'s month starts, `YYYY-MM-01`. */
+export const addMarketMonths = (day: string, months: number): string => {
+  const [year, month] = day.split("-").map(Number);
+  return new Date(Date.UTC(year, month - 1 + months, 1)).toISOString().slice(0, 10);
+};
+
+/** The Monday that starts the ISO week holding `day`, `YYYY-MM-DD`. */
+export const marketWeekStart = (day: string): string => {
+  const [year, month, date] = day.split("-").map(Number);
+  const weekday = new Date(Date.UTC(year, month - 1, date)).getUTCDay();
+  return addMarketDays(day, -((weekday + 6) % 7));
+};
+
+/** The ISO week of `day` (`YYYY-MM-DD`) and the year it belongs to, which near New Year may be the next or the last. */
+export const isoWeek = (day: string): { year: number; week: number } => {
+  // The week belongs to the year its Thursday is in.
+  const thursday = addMarketDays(marketWeekStart(day), 3);
+  const year = Number(thursday.slice(0, 4));
+  const ordinal = (Date.parse(thursday) - Date.UTC(year, 0, 1)) / 86_400_000;
+  return { year, week: Math.floor(ordinal / 7) + 1 };
+};
