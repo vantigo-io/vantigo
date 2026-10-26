@@ -45,24 +45,37 @@ const (
 	// maxSpotServiceProblem is the most of a 400's problem document read for
 	// the debug log.
 	maxSpotServiceProblem = 64 << 10
+	// maxSpotServiceAreas is the most of GET /api/v1/areas read once decoded:
+	// twelve zones are a few KiB.
+	maxSpotServiceAreas = 1 << 20
+	// maxSpotServicePrices is the most of GET /api/v1/prices read once
+	// decoded. A 35-day window at quarter-hours is 3 364 intervals; with
+	// every field the contract has (start, end, priceEurPerMwh,
+	// priceNokPerKwh, exchangeRate, rateSource, state, source, version) at
+	// its widest — negative figures with six decimals, a 20-character
+	// source, a six-digit version — it measured 787 KB compact and 1.02 MB
+	// indented with offsets, over the 1 MiB the areas get. 4 MiB is four
+	// times the indented answer, five the compact one.
+	maxSpotServicePrices = 4 << 20
 )
 
 // The sentences a failed request records as last_error (design S7). They
 // name the service and never quote its answer.
 const (
-	spotServiceRefusedKey   = "the spot-price service refused the key"
-	spotServiceRateLimited  = "the spot-price service is rate limiting this installation"
-	spotServicePublic       = "the spot-price service's address is public; use https"
-	spotServiceDisallowed   = "the spot-price service's address is not one Vantigo may fetch"
-	spotServiceTimedOut     = "the spot-price service did not answer in time"
-	spotServiceUnreachable  = "the spot-price service could not be reached"
-	spotServiceTooLarge     = "the spot-price service's answer is larger than 1 MiB"
-	spotServiceRedirects    = "the spot-price service redirects; set ENERGY_SPOT_PRICE_SERVICE_URL to the address it serves"
-	spotServiceNotAList     = "the spot-price service did not answer a list of prices"
-	spotServiceNotAreas     = "the spot-price service did not answer a list of areas"
-	spotServiceUnknownSrc   = "the spot-price service answered an unknown source"
-	spotServiceUnknownState = "the spot-price service answered an unknown state"
-	spotServiceNoVersion    = "the spot-price service answered an interval without a version"
+	spotServiceRefusedKey     = "the spot-price service refused the key"
+	spotServiceRateLimited    = "the spot-price service is rate limiting this installation"
+	spotServicePublic         = "the spot-price service's address is public; use https"
+	spotServiceDisallowed     = "the spot-price service's address is not one Vantigo may fetch"
+	spotServiceTimedOut       = "the spot-price service did not answer in time"
+	spotServiceUnreachable    = "the spot-price service could not be reached"
+	spotServiceAreasTooLarge  = "the spot-price service's answer is larger than 1 MiB"
+	spotServicePricesTooLarge = "the spot-price service's answer is larger than 4 MiB"
+	spotServiceRedirects      = "the spot-price service redirects; set ENERGY_SPOT_PRICE_SERVICE_URL to the address it serves"
+	spotServiceNotAList       = "the spot-price service did not answer a list of prices"
+	spotServiceNotAreas       = "the spot-price service did not answer a list of areas"
+	spotServiceUnknownSrc     = "the spot-price service answered an unknown source"
+	spotServiceUnknownState   = "the spot-price service answered an unknown state"
+	spotServiceNoVersion      = "the spot-price service answered an interval without a version"
 )
 
 // spotServiceProvenance is what upstream and rateSource must look like to be
@@ -185,25 +198,45 @@ func (h spotServiceHostOnly) RoundTrip(req *http.Request) (*http.Response, error
 
 // spotServiceFailure is a request that answered nothing usable: its
 // sentence and, for a 429, the instant its Retry-After allows the next
-// request (zero when it gave none).
+// request (zero when it gave none). permanent is a failure asking again
+// does not mend: the service refused the request itself (400), or answered
+// what Vantigo cannot read — not a list, a time it cannot parse, an interval
+// that does not end after it starts, more than the cap. Transport failures,
+// timeouts, 401, 429 and 5xx are transient.
 type spotServiceFailure struct {
 	sentence    string
 	retryAt     time.Time
 	rateLimited bool
+	permanent   bool
 }
 
 func (f spotServiceFailure) failed() bool { return f.sentence != "" }
 
+// spotServicePermanentSentence is whether a recorded last_error is the
+// sentence of a permanent failure: the history row keeps the sentence, not
+// the failure, and every permanent sentence is one of these.
+func spotServicePermanentSentence(sentence *string) bool {
+	if sentence == nil {
+		return false
+	}
+	switch *sentence {
+	case spotServiceAnswered(http.StatusBadRequest), spotServiceNotAList, spotServiceNotAreas,
+		spotServiceAreasTooLarge, spotServicePricesTooLarge, spotFeedBadTime, spotFeedBackwards:
+		return true
+	}
+	return false
+}
+
 // get is one GET of path with query under ctx, answering the body of a 200
-// of at most 1 MiB once decoded.
-func (c *spotServiceClient) get(ctx context.Context, path string, query url.Values) ([]byte, spotServiceFailure) {
+// of at most limit bytes once decoded, tooLarge the sentence past it.
+func (c *spotServiceClient) get(ctx context.Context, path string, query url.Values, limit int, tooLarge string) ([]byte, spotServiceFailure) {
 	target := *c.base
 	target.Path = path
 	target.RawQuery = query.Encode()
-	return c.getURL(ctx, target.String())
+	return c.getURL(ctx, target.String(), limit, tooLarge)
 }
 
-func (c *spotServiceClient) getURL(ctx context.Context, target string) ([]byte, spotServiceFailure) {
+func (c *spotServiceClient) getURL(ctx context.Context, target string, limit int, tooLarge string) ([]byte, spotServiceFailure) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
 	if err != nil {
 		return nil, spotServiceFailure{sentence: spotServiceUnreachable}
@@ -226,16 +259,16 @@ func (c *spotServiceClient) getURL(ctx context.Context, target string) ([]byte, 
 		return nil, spotServiceFailure{sentence: spotServiceRedirects}
 	case resp.StatusCode == http.StatusBadRequest:
 		c.logProblem(resp.Body, req.URL.Path)
-		return nil, spotServiceFailure{sentence: spotServiceAnswered(resp.StatusCode)}
+		return nil, spotServiceFailure{sentence: spotServiceAnswered(resp.StatusCode), permanent: true}
 	case resp.StatusCode < 200 || resp.StatusCode >= 300:
 		return nil, spotServiceFailure{sentence: spotServiceAnswered(resp.StatusCode)}
 	}
-	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxSpotFeedBody+1))
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, int64(limit)+1))
 	if err != nil {
 		return nil, spotServiceFailure{sentence: spotServiceTransportFailure(err)}
 	}
-	if len(raw) > maxSpotFeedBody {
-		return nil, spotServiceFailure{sentence: spotServiceTooLarge}
+	if len(raw) > limit {
+		return nil, spotServiceFailure{sentence: tooLarge, permanent: true}
 	}
 	return raw, spotServiceFailure{}
 }
@@ -254,9 +287,13 @@ func (c *spotServiceClient) logProblem(body io.Reader, path string) {
 	c.logger().Debug("the spot-price service refused a request", "worker", spotPriceWorkerName, "path", path, "detail", problem.Detail)
 }
 
+// maxSpotServiceRetryAfter is the longest a 429's Retry-After is honoured,
+// in either form.
+const maxSpotServiceRetryAfter = 24 * time.Hour
+
 // spotServiceRetryAt is when a 429's Retry-After allows the next request:
-// delay-seconds or an HTTP date (RFC 9110 §10.2.3), zero when absent or
-// unreadable.
+// delay-seconds or an HTTP date (RFC 9110 §10.2.3), at most a day after
+// now, zero when absent or unreadable.
 func spotServiceRetryAt(header string, now time.Time) time.Time {
 	header = strings.TrimSpace(header)
 	if header == "" {
@@ -266,9 +303,12 @@ func spotServiceRetryAt(header string, now time.Time) time.Time {
 		if seconds < 0 {
 			return time.Time{}
 		}
-		return now.Add(time.Duration(min(seconds, int64(24*time.Hour/time.Second))) * time.Second)
+		return now.Add(time.Duration(min(seconds, int64(maxSpotServiceRetryAfter/time.Second))) * time.Second)
 	}
 	if at, err := http.ParseTime(header); err == nil {
+		if limit := now.Add(maxSpotServiceRetryAfter); at.After(limit) {
+			return limit.UTC()
+		}
 		return at.UTC()
 	}
 	return time.Time{}
@@ -311,7 +351,7 @@ type spotServiceArea struct {
 
 // areas is GET /api/v1/areas.
 func (c *spotServiceClient) areas(ctx context.Context) ([]spotServiceArea, spotServiceFailure) {
-	raw, fail := c.get(ctx, "/api/v1/areas", nil)
+	raw, fail := c.get(ctx, "/api/v1/areas", nil, maxSpotServiceAreas, spotServiceAreasTooLarge)
 	if fail.failed() {
 		return nil, fail
 	}
@@ -323,7 +363,7 @@ func (c *spotServiceClient) areas(ctx context.Context) ([]spotServiceArea, spotS
 		} `json:"coverage"`
 	}
 	if !bytes.HasPrefix(bytes.TrimSpace(raw), []byte("[")) || json.Unmarshal(raw, &entries) != nil {
-		return nil, spotServiceFailure{sentence: spotServiceNotAreas}
+		return nil, spotServiceFailure{sentence: spotServiceNotAreas, permanent: true}
 	}
 	out := make([]spotServiceArea, 0, len(entries))
 	for _, e := range entries {
@@ -373,7 +413,7 @@ func (c *spotServiceClient) prices(ctx context.Context, area string, from, to ti
 		"from":     {from.UTC().Format(time.RFC3339)},
 		"to":       {to.UTC().Format(time.RFC3339)},
 		"currency": {"EUR"},
-	})
+	}, maxSpotServicePrices, spotServicePricesTooLarge)
 	if fail.failed() {
 		return nil, fail
 	}
@@ -381,7 +421,7 @@ func (c *spotServiceClient) prices(ctx context.Context, area string, from, to ti
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.UseNumber()
 	if !bytes.HasPrefix(bytes.TrimSpace(raw), []byte("[")) || dec.Decode(&entries) != nil {
-		return nil, spotServiceFailure{sentence: spotServiceNotAList}
+		return nil, spotServiceFailure{sentence: spotServiceNotAList, permanent: true}
 	}
 	out := make([]spotServiceInterval, 0, len(entries))
 	for _, e := range entries {
@@ -389,9 +429,9 @@ func (c *spotServiceClient) prices(ctx context.Context, area string, from, to ti
 		end, errEnd := time.Parse(time.RFC3339, e.End)
 		switch {
 		case errStart != nil || errEnd != nil:
-			return nil, spotServiceFailure{sentence: spotFeedBadTime}
+			return nil, spotServiceFailure{sentence: spotFeedBadTime, permanent: true}
 		case !end.After(start):
-			return nil, spotServiceFailure{sentence: spotFeedBackwards}
+			return nil, spotServiceFailure{sentence: spotFeedBackwards, permanent: true}
 		}
 		out = append(out, decodeSpotServiceEntry(e, area, start.UTC(), end.UTC()))
 	}

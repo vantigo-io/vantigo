@@ -178,6 +178,34 @@ The service allows 600 requests a minute per key, and the worker makes at most t
 compresses). It does not keep ETags: a live window changes daily, and a history window
 is read once.
 
+*(Amended while building delivery 1, after review.)*
+
+- **The gap after a downtime.** The walk only goes back from its cursor and the live
+  window reaches back fourteen days, so a worker away longer left days never read. The
+  history row gains `live_through`, the last day of the most recent live window read
+  whole (tomorrow at that read). Before an area's live window, when `live_through` is
+  before `today − 15`, the days after it up to `today − 15` are read forward, oldest
+  first, as history windows (35 days, 34 across the autumn change; days not whole,
+  without NOK or over an import add to `days_skipped`), each moving `live_through` in
+  its own transaction, within the budget and before the walk. A live window read while
+  a gap is left (the gap backed off) does not move `live_through` past it, and the
+  walk's first window, before any live window was read whole, sets it to the day before
+  the live window.
+- **The active flag.** The history row gains `active`, set by every answer of
+  `/api/v1/areas` on every row: false for an area the service no longer follows. The
+  coverage's `followedByService` is that flag; an inactive row keeps its `history`,
+  since it is still what was copied, and is not walked.
+- **The skip.** A failure is permanent (a `400`, or an answer Vantigo cannot read: not
+  a list, a time it cannot parse, an interval ending before it starts, over the cap)
+  or transient (anything else). A history or gap window that failed permanently three
+  times in a row is skipped: its days added to `days_skipped`, the cursor (or
+  `live_through`) moved past it, its sentence kept until the next window is answered.
+  Transient failures never skip. The body cap for `/prices` is 4 MiB (a 35-day
+  quarter-hour window measured about 1 MB indented), `/areas` keeps 1 MiB.
+- **An `/areas` failure** is logged and leaves the history rows alone, rather than
+  recording `failed` on each: the rows' backoff and error are their windows' alone, so
+  an answer later has nothing stale to clear. Nothing walks that cycle.
+
 ### S6 — Judging a day and writing it
 
 A day of an answer is **complete** when its intervals tile the civil day from local
@@ -231,7 +259,7 @@ range. The exception is as narrow as it can be:
     over `https` a public or private address is allowed;
   - a round-tripper refuses any request whose host is not the configured host, so the
     exception cannot be reached through a redirect, a template or a future caller;
-  - no proxy, no redirect followed, 1 MiB body cap after gzip, 20 s budget, keep-alives
+  - no proxy, no redirect followed, 1 MiB body cap after gzip (4 MiB for `/prices`, amended in S5), 20 s budget, keep-alives
     **on**: unlike the feed, the service is asked several times a cycle while history
     runs;
   - `Authorization: Bearer <key>` on every request; `User-Agent: vantigo/<version>`.

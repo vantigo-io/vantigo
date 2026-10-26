@@ -498,8 +498,12 @@ backups.
   first interval for the area and `ENERGY_SPOT_PRICE_HISTORY_FROM`, set again each time
   the service answers the area; kept as it was while the service's coverage of the area
   is null, and null until it is first known),
+  `live_through` (the last day of the most recent live window read whole for the area —
+  tomorrow at that read — null before the first; [the gap](#the-gap-after-a-downtime)),
+  `active` (whether the service followed the area when `/areas` last answered; a row
+  whose area the service stops following is kept, inactive),
   `days_skipped` (the days left for a file, [below](#the-history-walk)), `attempts`,
-  `last_error` and `next_attempt_at` (the backoff of a failed request), and
+  `last_error` and `next_attempt_at` (the backoff of a failed window), and
   `updated_at`. The walk is complete once `cursor_day` is at or before `floor_day`.
 
 ### The sources
@@ -599,7 +603,9 @@ portal, backfills history from ENTSO-E and the community feed on the operator's
 request, and serves every interval with its state, source, version and exchange-rate
 source. Every tenant sees the same rows; the key is for revocation, not for separating
 data. The sync reads two of its operations, `GET /api/v1/areas` and
-`GET /api/v1/prices`. A cycle, under the lease, does three things.
+`GET /api/v1/prices`. A cycle, under the lease, does three things — and, after the
+worker was away longer than the live window reaches back, a fourth
+([the gap](#the-gap-after-a-downtime)).
 
 #### The areas followed
 
@@ -611,14 +617,20 @@ data. The sync reads two of its operations, `GET /api/v1/areas` and
    Europe/Oslo day of its `coverage.firstStart` and `ENERGY_SPOT_PRICE_HISTORY_FROM`,
    and while its `coverage` is null the floor it had is kept. A floor on or after the
    live window's first day leaves nothing to walk, and the walk is complete at once.
-   An area **in use that the service does not follow** gets no request, no fetch record
-   and no history row, and the coverage says so (`followedByService: false`, "Not
-   followed by the spot-price service" on the Prices page).
+   Every answer sets each history row's `active`: true for an area the service answers
+   `active`, false for any other. A row whose area the service stops following is
+   kept, with what it copied, and is no longer read; answered `active` again, it is
+   followed again, and [the gap](#the-gap-after-a-downtime) reads what it missed.
+   An area **in use that the service does not follow** — no history row, or an inactive
+   one — gets no request and no fetch record, and the coverage says so
+   (`followedByService: false`, "Not followed by the spot-price service" on the Prices
+   page).
    When the `/areas` request fails, nothing is known of what the service follows: the
-   failure is recorded, with the backoff below, on every existing history row
-   (`attempts`, `last_error`, `next_attempt_at`), no history window is read that cycle,
-   and the live window runs instead for the areas in use whose code is a Nordic price
-   area. A `429` on `/areas` ends the cycle's requests there
+   failure is logged, the history rows are **left as they are** — their `attempts`,
+   `last_error` and `next_attempt_at` are their windows' alone, so the next answer has
+   nothing of the failure to clear —, no history or gap window is read that cycle, and
+   the live window runs instead for the areas in use whose code is a Nordic price area.
+   A `429` on `/areas` ends the cycle's requests there
    ([The budget](#the-budget-and-the-cadence)).
 
 #### The live window
@@ -640,7 +652,11 @@ data. The sync reads two of its operations, `GET /api/v1/areas` and
    early — with `fetched_at` the read's time. A day **not written** is recorded only
    when it is due, so a missing day is asked for daily however often the window is
    read; it too gets `fetched_at` the read's time. The days written are written
-   together in one transaction under the area's lock, with their records.
+   together in one transaction under the area's lock, with their records, and with
+   the area's history row's `live_through` set to tomorrow — unless a gap is left
+   before the window, which [the gap's](#the-gap-after-a-downtime) windows read
+   first. A window re-read with no day due whose request fails records nothing — no day
+   was due to fail — and is asked again the next cycle, not after a backoff.
 
 | Day | Status | Asked again |
 | --- | --- | --- |
@@ -674,16 +690,44 @@ data. The sync reads two of its operations, `GET /api/v1/areas` and
    from its cursor down to the new floor. A failed request counts in the history row's
    `attempts`, records its sentence in `last_error` and sets `next_attempt_at` by the
    live window's backoff (or a `429`'s `Retry-After` when later), without moving the
-   cursor.
+   cursor. `attempts` counts failures of one kind in a row — **permanent** or
+   **transient** ([the client](#the-service-client-and-its-guard)) — and starts again
+   from one when the kind changes. A window that failed **permanently three times in a
+   row** — the service answered `400`, or an answer Vantigo cannot read — is
+   **skipped**: its days are added to `days_skipped`, the cursor moves past it,
+   `attempts` and `next_attempt_at` are cleared and the walk goes on, while its sentence
+   stays in `last_error` until the next window is answered. A transient failure never
+   skips a window, however often it repeats. The walk's first window, when no live
+   window has been read whole yet, also sets `live_through` to the day before the live
+   window, so a live window that fails for days leaves a gap the next answer closes.
+
+#### The gap after a downtime
+
+The live window reaches back fourteen days and the walk only goes back from its cursor,
+so a worker away longer than that would leave days nobody reads. Before an area's live
+window, per followed area, when its `live_through` is before **fifteen days before
+today** (the day before the live window), the days from the day after `live_through`
+to that day are read **forward, oldest first**, in history windows: 35 civil days a
+request, 34 across the autumn clock change, never past the day before the live window.
+Each window's days are judged and written as the walk's are — no fetch records; a day
+not whole, without a NOK price, with an interval Vantigo cannot take or over an
+imported day at another resolution adds to `days_skipped` — and each window moves
+`live_through` to its last day, in one transaction. The gap shares the cycle's budget
+and the history row's backoff with the walk, and its windows are skipped after three
+permanent failures in a row as the walk's are. The live window read after the gap
+closes moves `live_through` on to tomorrow; one read while a gap is left (the gap backed
+off) leaves it, so no day is lost. A row with no `live_through` (none read yet) has no
+gap: its first live window sets it.
 
 #### The budget and the cadence
 
 A cycle makes **at most twenty requests**, the `/areas` request included, shared by
-every area: `/areas` first, then the live windows that are due, in area order, then
-history. A `429` — on any of them — ends the cycle's requests; the failure is recorded
-as above and the rest waits for the next cycle. While, at the end of a cycle, any
-followed area's walk can go on — a floor known, the cursor after it and no backoff
-pending — the next cycle comes **one minute** after this one instead of after
+every area: `/areas` first, then per area in area order its gap's windows and its live
+window when due, then history. A `429` — on any of them — ends the cycle's requests;
+the failure is recorded as above and the rest waits for the next cycle. While, at the
+end of a cycle, any followed area's walk or gap can go on — for the walk a floor known,
+the cursor after it; for the gap `live_through` before the day before the live window;
+and no backoff pending — the next cycle comes **one minute** after this one instead of after
 `ENERGY_SPOT_PRICE_FEED_POLL`; once every walk is complete or backed off, or `/areas`
 failed, the poll paces the worker again. That cadence is the worker's own in-memory
 state, set by each cycle it runs, not a column: an instance whose cycle found the
@@ -752,7 +796,10 @@ is as narrow as it can be:
   through a redirect or by any other caller; such a refusal is recorded as an address
   the guard refuses.
 - **No proxy, no redirect followed** (a `3xx` is a failure), a body of at most
-  **1 MiB** once decompressed (the transport asks for gzip and decodes it), the feed's
+  **1 MiB** for `/areas` and **4 MiB** for `/prices` once decompressed (the transport
+  asks for gzip and decodes it) — a 35-day window at quarter-hours is 3 364 intervals,
+  about 0.8 MB compact and 1 MB indented with every field at its widest, so 4 MiB is
+  about four times the largest answer —, the feed's
   timeouts — **twenty seconds** for the whole request, within it ten to dial, ten for
   the TLS handshake and fifteen for the response's headers — and, unlike the feed,
   **kept connections** (at most four idle, for 90 seconds): the service is asked many
@@ -764,19 +811,24 @@ is as narrow as it can be:
 
 A failure's sentence in `last_error` never quotes the body, the key or the address's
 query. A failed request's sentence goes on the due days of the live window it asked
-for, or on the history row of the walk or, for `/areas`, of every area; an interval's
-sentence goes on its day alone:
+for, or on the history row of the walk or the gap; for `/areas` it is logged only; an
+interval's sentence goes on its day alone. A failure is **permanent** when asking again
+cannot mend it — a `400`, a body over the cap, an answer that is not a list, an
+interval whose time Vantigo cannot read or that does not end after it starts — and
+**transient** otherwise: a refused key, rate limiting, any other status, a network
+error, a timeout, an address the guard refuses, a redirect. Only a history or gap
+window is ever skipped for a permanent failure; the live window backs off on both.
 
 | Failure | Sentence |
 | --- | --- |
 | `401` | the spot-price service refused the key |
-| `429` | the spot-price service is rate limiting this installation — the cycle makes no further request, and its `Retry-After`, in seconds (at most a day) or as an HTTP date, is the next attempt when it is later than the backoff |
+| `429` | the spot-price service is rate limiting this installation — the cycle makes no further request, and its `Retry-After`, in seconds or as an HTTP date, either at most a day ahead, is the next attempt when it is later than the backoff |
 | An `http` URL whose host resolves to a public address | the spot-price service's address is public; use https |
 | Any other address the guard refuses | the spot-price service's address is not one Vantigo may fetch |
 | A redirect | the spot-price service redirects; set ENERGY_SPOT_PRICE_SERVICE_URL to the address it serves |
 | A timeout | the spot-price service did not answer in time |
 | A network error | the spot-price service could not be reached |
-| A body over 1 MiB | the spot-price service's answer is larger than 1 MiB |
+| A body over the cap | the spot-price service's answer is larger than 1 MiB (`/areas`) or … larger than 4 MiB (`/prices`) |
 | Another status | the spot-price service answered *status* *text*, such as `503 Service Unavailable` |
 | An answer that is not a list of prices, or of areas | the spot-price service did not answer a list of prices (… of areas) |
 | An interval whose `start` or `end` is not an RFC 3339 time, or that does not end after it starts (the whole answer) | an interval's time is not an RFC 3339 time with an offset (… an interval does not end after it starts) |
@@ -788,8 +840,10 @@ request's path and never its query, and never stored.
 
 **The log.** A live window read is logged at info with the area, its first and last
 day, the days written and the inserted, replaced, unchanged and deleted counts; a
-history window at info with the area, its first and last day, the area's
-`days_skipped` so far and the same counts. A failed request is logged at warning
+history or gap window at info with the area, which of the two, its first and last
+day, the area's `days_skipped` so far and the same counts; a window skipped after its
+third permanent failure at warning ("a window the spot-price service cannot answer was
+skipped") with the area, which of the two, its days and the sentence. A failed request is logged at warning
 ("the spot-price service could not be read") with the area — empty for `/areas` —,
 the service's host and the sentence, never the address's query, the key or the body;
 a day of the live window recorded `failed` at warning with the area, the day and the
@@ -885,7 +939,7 @@ All under `/api/v1/energy/`.
 | Operation | Rule | What it does |
 | --- | --- | --- |
 | `GET spot-prices?area&from&to` | `permission:energy:prices-view` | The intervals of one area with `start ≥ from` and `start < to`, ascending, each with `id`, `priceArea`, `start`, `end`, `nokPerKwh`, `eurPerKwh` and `exchangeRate` when stored, `source` (`Feed`, `Service` or `Import`), `state` (`final` or `preliminary`) and, for a `Service` interval, `upstream`, `rateSource` and `upstreamVersion`. `area` must be two uppercase letters and one or two digits, `from` before `to`, and `to − from` at most **35 days** — a month at a quarter-hour resolution is one answer — otherwise a `400` (a window too long on `to`). |
-| `GET spot-prices/coverage` | `permission:energy:prices-view` | `source` — where the worker fetches from: `service` when `ENERGY_SPOT_PRICE_SERVICE_URL` is set, `feed` when `ENERGY_SPOT_PRICE_FEED_ENABLED` is on, `none` (files only) otherwise — and `areas`: per area in use or already priced, and with the service every area it follows (those with a history row), in area order: `priceArea`, `firstStart` and `lastEnd` (absent with no prices), `intervalCount` (the intervals stored, `0` with none), `daysMissingLast30` — the Europe/Oslo days among the last thirty, today included, with no interval starting in them, `30` with no prices — `lastFetch`, the fetch record of the worker's most recent attempt for the area, by `attemptedAt` (`day`, `status`, `attempts`, `attemptedAt`, `nextAttemptAt`, `error`), absent when it never tried one, and `resolution`, the length of the area's latest stored interval as an ISO 8601 duration (`PT15M`, `PT60M`), absent with no prices. With the service as the source, once the sync has written any history row: `followedByService`, whether the area has one, and for a followed area `history` — `floorDay` and `cursorDay` (absent until known), `complete` (the cursor at or before the floor), `daysSkipped` and `error`, the last failed request's sentence. Before the sync's first cycle, and with another source, both are absent. |
+| `GET spot-prices/coverage` | `permission:energy:prices-view` | `source` — where the worker fetches from: `service` when `ENERGY_SPOT_PRICE_SERVICE_URL` is set, `feed` when `ENERGY_SPOT_PRICE_FEED_ENABLED` is on, `none` (files only) otherwise — and `areas`: per area in use or already priced, and with the service every area it follows (those with a history row), in area order: `priceArea`, `firstStart` and `lastEnd` (absent with no prices), `intervalCount` (the intervals stored, `0` with none), `daysMissingLast30` — the Europe/Oslo days among the last thirty, today included, with no interval starting in them, `30` with no prices — `lastFetch`, the fetch record of the worker's most recent attempt for the area, by `attemptedAt` (`day`, `status`, `attempts`, `attemptedAt`, `nextAttemptAt`, `error`), absent when it never tried one, and `resolution`, the length of the area's latest stored interval as an ISO 8601 duration (`PT15M`, `PT60M`), absent with no prices. With the service as the source, once the sync has written any history row: `followedByService`, whether the area has one marked `active` (false for no row, or a row the service stopped following), and for an area with a row, active or not, `history` — what was copied stays visible after the service stops following the area — with `floorDay` and `cursorDay` (absent until known), `complete` (the cursor at or before the floor; false while no floor is known, as before the service has answered a coverage for the area, which the Prices page shows as waiting for the service's coverage), `daysSkipped` and `error`, the last failed window's sentence, kept after a skipped window until the next window is answered. Before the sync's first cycle, and with another source, both are absent. |
 | `POST spot-prices/import?dryRun` | `permission:energy:prices-manage+energy:prices-view` | Imports a file of prices ([above](#importing-prices)). |
 
 The coverage is read from the database alone, so the API process answers it the same

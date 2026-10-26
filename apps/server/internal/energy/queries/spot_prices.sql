@@ -118,24 +118,27 @@ ON CONFLICT (price_area, day) DO UPDATE SET
 -- name: GetSpotPriceHistory :one
 -- GetSpotPriceHistory is one area's walk back through the service's
 -- history (spot-price service design S5).
-SELECT price_area, cursor_day, floor_day, days_skipped, attempts, last_error, next_attempt_at, updated_at
+SELECT price_area, cursor_day, floor_day, live_through, active, days_skipped, attempts, last_error, next_attempt_at, updated_at
 FROM energy.spot_price_history
 WHERE price_area = @price_area;
 
 -- name: ListSpotPriceHistory :many
 -- ListSpotPriceHistory is every area's walk, for the coverage read.
-SELECT price_area, cursor_day, floor_day, days_skipped, attempts, last_error, next_attempt_at, updated_at
+SELECT price_area, cursor_day, floor_day, live_through, active, days_skipped, attempts, last_error, next_attempt_at, updated_at
 FROM energy.spot_price_history
 ORDER BY price_area;
 
 -- name: UpsertSpotPriceHistory :exec
 -- UpsertSpotPriceHistory writes an area's walk as the sync decided it:
--- the cursor, the floor, the skipped days and the backoff, whole.
-INSERT INTO energy.spot_price_history (price_area, cursor_day, floor_day, days_skipped, attempts, last_error, next_attempt_at, updated_at)
-VALUES (@price_area, @cursor_day, @floor_day, @days_skipped, @attempts, @last_error, @next_attempt_at, @updated_at::timestamptz)
+-- the cursor, the floor, the last live day read, whether the service
+-- follows the area, the skipped days and the backoff, whole.
+INSERT INTO energy.spot_price_history (price_area, cursor_day, floor_day, live_through, active, days_skipped, attempts, last_error, next_attempt_at, updated_at)
+VALUES (@price_area, @cursor_day, @floor_day, @live_through, @active, @days_skipped, @attempts, @last_error, @next_attempt_at, @updated_at::timestamptz)
 ON CONFLICT (price_area) DO UPDATE SET
     cursor_day = EXCLUDED.cursor_day,
     floor_day = EXCLUDED.floor_day,
+    live_through = EXCLUDED.live_through,
+    active = EXCLUDED.active,
     days_skipped = EXCLUDED.days_skipped,
     attempts = EXCLUDED.attempts,
     last_error = EXCLUDED.last_error,

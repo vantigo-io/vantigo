@@ -20,7 +20,8 @@ const energySpotPriceServiceVersion = 75
 // applies, rolls back and re-applies cleanly, and pins what the sync rests
 // on: a Service row with its provenance, a row stored before the migration
 // final, the two states and the three sources the CHECKs allow, and one
-// history row per area.
+// history row per area — active unless told otherwise, with the last live
+// day read.
 func TestEnergySpotPriceService_AppliesAndIsIdempotent(t *testing.T) {
 	url := testdb.URL(t)
 	applyUpDownUp(t, url, energySpotPriceServiceVersion)
@@ -64,6 +65,18 @@ func TestEnergySpotPriceService_AppliesAndIsIdempotent(t *testing.T) {
 	if _, err := pool.Exec(ctx, `
 		INSERT INTO energy.spot_price_history (price_area, cursor_day, floor_day, updated_at) VALUES ('NO1', '2026-09-01', '2015-01-01', now())`); err != nil {
 		t.Errorf("record a history walk: %v", err)
+	}
+	var active bool
+	var liveThrough *string
+	if err := pool.QueryRow(ctx, `SELECT active, live_through::text FROM energy.spot_price_history WHERE price_area = 'NO1'`).Scan(&active, &liveThrough); err != nil ||
+		!active || liveThrough != nil {
+		t.Errorf("a new history row: active %v, live_through %v, err %v; want active with no live day read", active, liveThrough, err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE energy.spot_price_history SET live_through = '2026-10-27', active = false WHERE price_area = 'NO1'`); err != nil {
+		t.Errorf("record the live day read and the area inactive: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE energy.spot_price_history SET active = NULL WHERE price_area = 'NO1'`); err == nil {
+		t.Error("a null active: updated, want refused")
 	}
 	for name, sql := range map[string]string{
 		"a second row for the area": `INSERT INTO energy.spot_price_history (price_area, updated_at) VALUES ('NO1', now())`,

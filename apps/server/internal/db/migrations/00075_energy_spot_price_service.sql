@@ -27,11 +27,19 @@ ALTER TABLE energy.spot_prices
 -- incompletely, without a NOK figure, or over an imported day at another
 -- resolution (left for a file), and the backoff of a failed request. The
 -- walk is complete when cursor_day reaches floor_day; a floor that moves
--- earlier resumes it.
+-- earlier resumes it. live_through is the last day of the most recent live
+-- window read whole for the area (tomorrow at that read), null before the
+-- first: when the worker was away longer than the live window reaches back,
+-- the days after it are read forward as history before the walk goes on.
+-- active is whether the service followed the area when /api/v1/areas last
+-- answered: a row is kept, with what it copied, after the service stops
+-- following its area.
 CREATE TABLE energy.spot_price_history (
     price_area      varchar(4)   PRIMARY KEY,
     cursor_day      date,
     floor_day       date,
+    live_through    date,
+    active          boolean      NOT NULL DEFAULT true,
     days_skipped    integer      NOT NULL DEFAULT 0,
     attempts        integer      NOT NULL DEFAULT 0,
     last_error      varchar(500),

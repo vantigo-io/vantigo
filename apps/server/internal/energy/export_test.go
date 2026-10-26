@@ -187,15 +187,16 @@ func NewGuardedSpotServiceClientForTest(resolver netguard.Resolver, dial func(ct
 	return &SpotServiceClientForTest{c: c}, err
 }
 
-// SpotServiceFailure is a failed request: its sentence, and a 429's
-// Retry-After as an instant.
+// SpotServiceFailure is a failed request: its sentence, a 429's
+// Retry-After as an instant, and whether asking again cannot mend it.
 type SpotServiceFailure struct {
-	Sentence string
-	RetryAt  time.Time
+	Sentence  string
+	RetryAt   time.Time
+	Permanent bool
 }
 
 func spotServiceFailureForTest(f spotServiceFailure) SpotServiceFailure {
-	return SpotServiceFailure{Sentence: f.sentence, RetryAt: f.retryAt}
+	return SpotServiceFailure{Sentence: f.sentence, RetryAt: f.retryAt, Permanent: f.permanent}
 }
 
 // SpotServiceArea is one zone of GET /api/v1/areas.
@@ -218,7 +219,7 @@ func (c *SpotServiceClientForTest) Areas(ctx context.Context) ([]SpotServiceArea
 // Get is a GET of any address through the client, as a later caller might
 // make one.
 func (c *SpotServiceClientForTest) Get(ctx context.Context, target string) SpotServiceFailure {
-	_, fail := c.c.getURL(ctx, target)
+	_, fail := c.c.getURL(ctx, target, maxSpotServiceAreas, spotServiceAreasTooLarge)
 	return spotServiceFailureForTest(fail)
 }
 

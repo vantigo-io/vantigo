@@ -19,17 +19,27 @@ import (
 // service is the source (spot-price service design S4–S6, plan readings
 // 8–11): ENERGY_SPOT_PRICE_SERVICE_URL set, under delivery A's lease
 // ENRGSPT1, every request through spot_price_service_client.go. A cycle
-// does three things, at most twenty requests between them, in this order:
+// does four things, at most twenty requests between them, in this order:
 //
 //  1. Areas. GET /api/v1/areas once. The areas followed are those the
 //     service is active for (design S4: an area in use that it does not
-//     follow gets no fetch rows; the coverage says so); they each keep a row in energy.spot_price_history, its floor the Oslo
-//     day of the service's first interval, raised to
-//     ENERGY_SPOT_PRICE_HISTORY_FROM when that is later, and kept as it was
-//     while the service's coverage is null. When the request fails, every
-//     history row records the failure and backs off, and the live window
-//     still runs for the areas in use: it needs nothing the answer gives.
-//  2. The live window, per followed area: the civil days in Europe/Oslo from
+//     follow gets no fetch rows; the coverage says so); they each keep a row
+//     in energy.spot_price_history, its floor the Oslo day of the service's
+//     first interval, raised to ENERGY_SPOT_PRICE_HISTORY_FROM when that is
+//     later, and kept as it was while the service's coverage is null. Every
+//     row records whether its area is active, so a row whose area the service
+//     stopped following is kept, inactive and no longer walked. When the
+//     request fails the history rows are left as they are — the failure is
+//     logged, nothing walks this cycle, and nothing is left to clear when
+//     the next answer comes — and the live window still runs for the areas
+//     in use: it needs nothing the answer gives.
+//  2. The gap, per active area before its live window: when the last live
+//     window read whole (live_through) ended before today − 15 — the worker
+//     was away longer than the live window reaches back —, the days after it
+//     up to today − 15 are read forward, oldest first, in history windows,
+//     each moving live_through on in its own transaction. A live window read
+//     while a gap is left does not move live_through past it.
+//  3. The live window, per followed area: the civil days in Europe/Oslo from
 //     today − 14 to tomorrow, read in one request when any of them is due —
 //     no fetch row yet, or its next_attempt_at come — or when the window was
 //     last read more than a day ago, so a correction's version bump arrives.
@@ -40,16 +50,22 @@ import (
 //     day (daily, given up after the seventh); over an imported day of
 //     another resolution it is failed with delivery A's sentence. A failed
 //     request fails every due day, backed off as delivery A does, or until
-//     a 429's Retry-After when that is later.
-//  3. History, with what the budget leaves, per active area while its walk
+//     a 429's Retry-After when that is later. A re-read with no day due that
+//     fails records nothing, and is asked again the next cycle.
+//  4. History, with what the budget leaves, per active area while its walk
 //     is not complete and not backing off: 35 civil days a request, from the
 //     day before the live window backwards to the floor, each window written
 //     in one transaction with the walk's row. A window's days that cannot be
 //     written are counted in days_skipped and left for the file import; no
 //     fetch row is recorded for them. A failed request backs the walk off
-//     without losing its cursor; a floor moved earlier resumes it.
+//     without losing its cursor; a floor moved earlier resumes it. A window
+//     (of the walk or the gap) the service failed permanently three times
+//     in a row — a 400, or an answer Vantigo cannot read — is skipped: its
+//     days are counted in days_skipped, the walk moves past it and its error
+//     stays on the row until the next window is read. A transient failure
+//     never skips a window.
 //
-// While any active area's walk can go on, the worker's next cycle comes
+// While any active area's walk or gap can go on, the worker's next cycle comes
 // after a minute instead of the poll (design S5), so history copies in
 // about half an hour rather than days. A 429 ends the cycle's requests.
 
@@ -71,6 +87,9 @@ const (
 	// spotServiceCopyingWait is the wait between cycles while history is
 	// being copied.
 	spotServiceCopyingWait = time.Minute
+	// maxSpotServicePermanentFailures is how many times in a row a history
+	// or gap window may fail permanently before it is skipped.
+	maxSpotServicePermanentFailures = 3
 )
 
 // The sentences of a day the service holds nothing writable of.
@@ -255,9 +274,23 @@ func (w *SpotPriceWorker) serviceCycle(ctx context.Context, conn *pgxpool.Conn) 
 	}
 	slices.Sort(followed)
 	stop := fail.rateLimited
+	spent := func() bool { return stop || requests >= maxSpotPriceFetchesPerCycle || ctx.Err() != nil }
 	for _, area := range followed {
-		if stop || requests >= maxSpotPriceFetchesPerCycle || ctx.Err() != nil {
+		if spent() {
 			break
+		}
+		// The gap first, so the live window read after it can move
+		// live_through on.
+		if h := history[area]; h != nil && slices.Contains(active, area) {
+			for !spent() && spotServiceGapDue(*h, w.now(), today) {
+				requests++
+				if stop, err = w.readGapWindow(ctx, conn, h, today); err != nil {
+					return requests, err
+				}
+			}
+			if spent() {
+				break
+			}
 		}
 		days, due, err := w.liveWindow(ctx, q, area, today)
 		if err != nil {
@@ -267,13 +300,13 @@ func (w *SpotPriceWorker) serviceCycle(ctx context.Context, conn *pgxpool.Conn) 
 			continue
 		}
 		requests++
-		if stop, err = w.readLiveWindow(ctx, conn, area, days, today); err != nil {
+		if stop, err = w.readLiveWindow(ctx, conn, area, days, today, history[area]); err != nil {
 			return requests, err
 		}
 	}
 	for _, area := range active {
 		h := history[area]
-		for !stop && requests < maxSpotPriceFetchesPerCycle && ctx.Err() == nil && spotServiceWalkable(*h, w.now(), today) {
+		for !spent() && spotServiceWalkable(*h, w.now(), today) {
 			requests++
 			if stop, err = w.readHistoryWindow(ctx, conn, h, today); err != nil {
 				return requests, err
@@ -283,26 +316,23 @@ func (w *SpotPriceWorker) serviceCycle(ctx context.Context, conn *pgxpool.Conn) 
 
 	copying := false
 	for _, area := range active {
-		copying = copying || spotServiceWalkable(*history[area], w.now(), today)
+		h := *history[area]
+		copying = copying || spotServiceWalkable(h, w.now(), today) || spotServiceGapDue(h, w.now(), today)
 	}
 	w.copying.Store(copying)
 	return requests, nil
 }
 
 // recordAreas writes what GET /api/v1/areas answered on the history rows
-// and answers the active areas, sorted. On a failure every existing row
-// records it and backs off, and none is active.
+// and answers the active areas, sorted: each active area's row created or
+// updated, and every other row marked inactive. On a failure it is logged,
+// no row is touched and none is active — the rows' attempts, error and
+// backoff are their windows' alone, so an answer later has nothing of the
+// failure to clear.
 func (w *SpotPriceWorker) recordAreas(ctx context.Context, q *store.Queries, history map[string]*store.EnergySpotPriceHistory, areas []spotServiceArea, fail spotServiceFailure, today time.Time) ([]string, error) {
 	now := w.now()
 	if fail.failed() {
 		w.logFailure("", fail.sentence)
-		for _, h := range history {
-			h.Attempts++
-			spotServiceBackOff(h, fail, now)
-			if err := w.saveHistory(ctx, q, *h, now); err != nil {
-				return nil, err
-			}
-		}
 		return nil, nil
 	}
 	var active []string
@@ -316,6 +346,7 @@ func (w *SpotPriceWorker) recordAreas(ctx context.Context, q *store.Queries, his
 			h = &store.EnergySpotPriceHistory{PriceArea: a.code}
 			history[a.code] = h
 		}
+		h.Active = true
 		if a.firstStart != nil {
 			y, m, d := a.firstStart.In(w.zone).Date()
 			h.FloorDay = pgtype.Date{Time: time.Date(y, m, d, 0, 0, 0, 0, time.UTC), Valid: true}
@@ -330,6 +361,14 @@ func (w *SpotPriceWorker) recordAreas(ctx context.Context, q *store.Queries, his
 		}
 		if err := w.saveHistory(ctx, q, *h, now); err != nil {
 			return nil, err
+		}
+	}
+	for area, h := range history {
+		if h.Active && !slices.Contains(active, area) {
+			h.Active = false
+			if err := w.saveHistory(ctx, q, *h, now); err != nil {
+				return nil, err
+			}
 		}
 	}
 	slices.Sort(active)
@@ -352,6 +391,23 @@ func spotServiceWalkable(h store.EnergySpotPriceHistory, now, today time.Time) b
 		return false
 	}
 	return spotServiceWalkEnd(h, today).After(h.FloorDay.Time)
+}
+
+// spotServiceLiveStart is the live window's first day.
+func spotServiceLiveStart(today time.Time) time.Time {
+	return today.AddDate(0, 0, -spotServiceLiveBackDays)
+}
+
+// spotServiceGapOpen is whether days lie unread between h's last live window
+// read whole and today's: live_through before today − 15.
+func spotServiceGapOpen(h store.EnergySpotPriceHistory, today time.Time) bool {
+	return h.LiveThrough.Valid && h.LiveThrough.Time.Before(spotServiceLiveStart(today).AddDate(0, 0, -1))
+}
+
+// spotServiceGapDue is whether h's gap can take its next window now: open,
+// the area active and no backoff pending.
+func spotServiceGapDue(h store.EnergySpotPriceHistory, now, today time.Time) bool {
+	return h.Active && spotServiceGapOpen(h, today) && (h.NextAttemptAt == nil || !h.NextAttemptAt.After(now))
 }
 
 // spotServiceWalkEnd is the day after the next history window: the cursor,
@@ -383,7 +439,7 @@ func spotServiceNextAttempt(now time.Time, attempts int32, fail spotServiceFailu
 
 func (w *SpotPriceWorker) saveHistory(ctx context.Context, q *store.Queries, h store.EnergySpotPriceHistory, now time.Time) error {
 	if err := q.UpsertSpotPriceHistory(ctx, store.UpsertSpotPriceHistoryParams{
-		PriceArea: h.PriceArea, CursorDay: h.CursorDay, FloorDay: h.FloorDay, DaysSkipped: h.DaysSkipped,
+		PriceArea: h.PriceArea, CursorDay: h.CursorDay, FloorDay: h.FloorDay, LiveThrough: h.LiveThrough, Active: h.Active, DaysSkipped: h.DaysSkipped,
 		Attempts: h.Attempts, LastError: h.LastError, NextAttemptAt: h.NextAttemptAt, UpdatedAt: now,
 	}); err != nil {
 		return fmt.Errorf("energy: record the spot price history of %s: %w", h.PriceArea, err)
@@ -419,8 +475,11 @@ func (w *SpotPriceWorker) liveWindow(ctx context.Context, q *store.Queries, area
 // readLiveWindow is the live window's one request and its record, answering
 // whether the service is rate limiting. A caller gone before the answer (a
 // shutdown) records nothing; the record itself runs past it, within
-// spotFeedWriteBudget, as delivery A's fetchDay does.
-func (w *SpotPriceWorker) readLiveWindow(ctx context.Context, conn *pgxpool.Conn, area string, days []spotServiceWindowDay, today time.Time) (bool, error) {
+// spotFeedWriteBudget, as delivery A's fetchDay does. With the area's
+// history row h (nil when it has none), a window that answered moves
+// live_through to tomorrow in the same transaction — unless a gap is left
+// before the window, which the gap's windows read first.
+func (w *SpotPriceWorker) readLiveWindow(ctx context.Context, conn *pgxpool.Conn, area string, days []spotServiceWindowDay, today time.Time, h *store.EnergySpotPriceHistory) (bool, error) {
 	first, last := days[0].day, days[len(days)-1].day
 	budget, cancel := context.WithTimeout(ctx, spotFeedFetchBudget)
 	intervals, fail := w.service.prices(budget, area, w.osloMidnight(first), w.osloMidnight(last.AddDate(0, 0, 1)))
@@ -450,6 +509,10 @@ func (w *SpotPriceWorker) readLiveWindow(ctx context.Context, conn *pgxpool.Conn
 	judged := judgeSpotServiceDays(intervals, first, last, w.zone)
 	var counts spotServiceWriteCounts
 	written := 0
+	var history store.EnergySpotPriceHistory
+	if h != nil {
+		history = *h
+	}
 	err := db.WithTx(write, conn, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		if err := lockSpotPriceAreas(write, tx, []string{area}); err != nil {
 			return err
@@ -470,10 +533,17 @@ func (w *SpotPriceWorker) readLiveWindow(ctx context.Context, conn *pgxpool.Conn
 				return err
 			}
 		}
-		return nil
+		if h == nil || spotServiceGapOpen(history, today) {
+			return nil
+		}
+		history.LiveThrough = pgtype.Date{Time: last, Valid: true}
+		return w.saveHistory(write, tq, history, now)
 	})
 	if err != nil {
 		return false, fmt.Errorf("energy: store the spot prices of %s from the spot-price service: %w", area, err)
+	}
+	if h != nil {
+		*h = history
 	}
 	w.logger().Info("spot prices read from the spot-price service", "worker", spotPriceWorkerName, "area", area,
 		"from", spotFeedDayText(first), "to", spotFeedDayText(last), "daysWritten", written,
@@ -526,8 +596,10 @@ func (w *SpotPriceWorker) recordLiveFailed(ctx context.Context, q *store.Queries
 // readHistoryWindow is one history window of h's walk (reading 10): the 35
 // civil days before its end, never before the floor and a day fewer when
 // they are longer than the service allows, read, written and the walk's row
-// moved in one transaction. It answers whether the service is rate
-// limiting. h is updated as recorded.
+// moved in one transaction. The walk's first window also marks the day
+// before the live window as read through when no live window has been yet,
+// so the gap reaches back to it should the live window fail for days. It
+// answers whether the service is rate limiting. h is updated as recorded.
 func (w *SpotPriceWorker) readHistoryWindow(ctx context.Context, conn *pgxpool.Conn, h *store.EnergySpotPriceHistory, today time.Time) (bool, error) {
 	end := spotServiceWalkEnd(*h, today)
 	start := end.AddDate(0, 0, -spotServiceHistoryDays)
@@ -537,6 +609,41 @@ func (w *SpotPriceWorker) readHistoryWindow(ctx context.Context, conn *pgxpool.C
 	if w.osloMidnight(end).Sub(w.osloMidnight(start)) > maxSpotServiceWindow {
 		start = start.AddDate(0, 0, 1)
 	}
+	return w.readServiceWindow(ctx, conn, h, start, end, "history", func(next *store.EnergySpotPriceHistory) {
+		if !h.CursorDay.Valid && !next.LiveThrough.Valid {
+			next.LiveThrough = pgtype.Date{Time: end.AddDate(0, 0, -1), Valid: true}
+		}
+		next.CursorDay = pgtype.Date{Time: start, Valid: true}
+	})
+}
+
+// readGapWindow is one window of h's gap: from the day after live_through,
+// oldest first, 35 civil days — a day fewer when they are longer than the
+// service allows — and never past today − 15, the day before the live
+// window. It is read and written as a history window, and moves
+// live_through to its last day.
+func (w *SpotPriceWorker) readGapWindow(ctx context.Context, conn *pgxpool.Conn, h *store.EnergySpotPriceHistory, today time.Time) (bool, error) {
+	start := h.LiveThrough.Time.AddDate(0, 0, 1)
+	end := start.AddDate(0, 0, spotServiceHistoryDays)
+	if liveStart := spotServiceLiveStart(today); end.After(liveStart) {
+		end = liveStart
+	}
+	if w.osloMidnight(end).Sub(w.osloMidnight(start)) > maxSpotServiceWindow {
+		end = end.AddDate(0, 0, -1)
+	}
+	return w.readServiceWindow(ctx, conn, h, start, end, "gap", func(next *store.EnergySpotPriceHistory) {
+		next.LiveThrough = pgtype.Date{Time: end.AddDate(0, 0, -1), Valid: true}
+	})
+}
+
+// readServiceWindow reads the civil days [start, end) of h's area as
+// history: written as they can be, the rest counted in days_skipped, and
+// advance applied to the row, all in one transaction. A failed request backs
+// the row off; the third permanent failure in a row skips the window — its
+// days counted, advance applied, its error kept — so a window the service
+// will never answer does not hold the walk. It answers whether the service
+// is rate limiting; h is updated as recorded.
+func (w *SpotPriceWorker) readServiceWindow(ctx context.Context, conn *pgxpool.Conn, h *store.EnergySpotPriceHistory, start, end time.Time, kind string, advance func(next *store.EnergySpotPriceHistory)) (bool, error) {
 	budget, cancel := context.WithTimeout(ctx, spotFeedFetchBudget)
 	intervals, fail := w.service.prices(budget, h.PriceArea, w.osloMidnight(start), w.osloMidnight(end))
 	cancel()
@@ -546,14 +653,37 @@ func (w *SpotPriceWorker) readHistoryWindow(ctx context.Context, conn *pgxpool.C
 	write, cancelWrite := context.WithTimeout(context.WithoutCancel(ctx), spotFeedWriteBudget)
 	defer cancelWrite()
 	now := w.now()
+	last := end.AddDate(0, 0, -1)
 	if fail.failed() {
 		w.logFailure(h.PriceArea, fail.sentence)
-		h.Attempts++
-		spotServiceBackOff(h, fail, now)
-		return fail.rateLimited, w.saveHistory(write, store.New(conn), *h, now)
+		next := *h
+		// Attempts count failures of one kind in a row, from one again when
+		// the kind changes, as a fetch row's count while its status stays.
+		if h.Attempts > 0 && spotServicePermanentSentence(h.LastError) != fail.permanent {
+			next.Attempts = 1
+		} else {
+			next.Attempts++
+		}
+		if fail.permanent && next.Attempts >= maxSpotServicePermanentFailures {
+			sentence := fail.sentence
+			for d := start; d.Before(end); d = d.AddDate(0, 0, 1) {
+				next.DaysSkipped++
+			}
+			next.Attempts, next.LastError, next.NextAttemptAt = 0, &sentence, nil
+			advance(&next)
+			w.logger().Warn("a window the spot-price service cannot answer was skipped", "worker", spotPriceWorkerName,
+				"area", h.PriceArea, "kind", kind, "from", spotFeedDayText(start), "to", spotFeedDayText(last), "error", sentence)
+		} else {
+			spotServiceBackOff(&next, fail, now)
+		}
+		if err := w.saveHistory(write, store.New(conn), next, now); err != nil {
+			return false, err
+		}
+		*h = next
+		return fail.rateLimited, nil
 	}
 
-	judged := judgeSpotServiceDays(intervals, start, end.AddDate(0, 0, -1), w.zone)
+	judged := judgeSpotServiceDays(intervals, start, last, w.zone)
 	next := *h
 	var counts spotServiceWriteCounts
 	err := db.WithTx(write, conn, pgx.TxOptions{}, func(tx pgx.Tx) error {
@@ -571,17 +701,17 @@ func (w *SpotPriceWorker) readHistoryWindow(ctx context.Context, conn *pgxpool.C
 				skipped++
 			}
 		}
-		next.CursorDay = pgtype.Date{Time: start, Valid: true}
+		advance(&next)
 		next.DaysSkipped += skipped
 		next.Attempts, next.LastError, next.NextAttemptAt = 0, nil, nil
 		return w.saveHistory(write, store.New(tx), next, now)
 	})
 	if err != nil {
-		return false, fmt.Errorf("energy: store the spot price history of %s from the spot-price service: %w", h.PriceArea, err)
+		return false, fmt.Errorf("energy: store the spot price %s of %s from the spot-price service: %w", kind, h.PriceArea, err)
 	}
 	*h = next
 	w.logger().Info("spot price history copied from the spot-price service", "worker", spotPriceWorkerName, "area", h.PriceArea,
-		"from", spotFeedDayText(start), "to", spotFeedDayText(end.AddDate(0, 0, -1)), "daysSkipped", h.DaysSkipped,
+		"kind", kind, "from", spotFeedDayText(start), "to", spotFeedDayText(last), "daysSkipped", h.DaysSkipped,
 		"inserted", counts.inserted, "replaced", counts.replaced, "unchanged", counts.unchanged, "deleted", counts.deleted)
 	return false, nil
 }

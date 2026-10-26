@@ -173,13 +173,16 @@ func (s *server) GetEnergySpotPricesCoverage(ctx context.Context, _ gen.GetEnerg
 			r := spotPriceResolution(seconds)
 			item.Resolution = &r
 		}
-		// The sync keeps a history row for every area the service follows,
-		// so once it has run (any row at all) an area without one is an
-		// area in use the service does not follow.
+		// The sync keeps a history row for every area the service has
+		// followed, marked active while the service still does, so once it
+		// has run (any row at all) an area without a row, or with an
+		// inactive one, is an area the service does not follow. An inactive
+		// row keeps its history: it is still what was copied.
 		if source == spotPriceCoverageService && len(historyOf) > 0 {
-			h, followed := historyOf[area]
+			h, held := historyOf[area]
+			followed := held && h.Active
 			item.FollowedByService = &followed
-			if followed {
+			if held {
 				item.History = spotPriceHistoryOf(h)
 			}
 		}
@@ -219,7 +222,8 @@ func spotPriceResolution(seconds int64) string {
 }
 
 // spotPriceHistoryOf is an area's history walk as the coverage answers it:
-// complete once the cursor has reached the floor.
+// complete once the cursor has reached the floor. Before the service has
+// answered a floor for the area the walk has none and is not complete.
 func spotPriceHistoryOf(h store.EnergySpotPriceHistory) *gen.SpotPriceHistory {
 	out := &gen.SpotPriceHistory{DaysSkipped: h.DaysSkipped, Error: h.LastError}
 	if h.CursorDay.Valid {

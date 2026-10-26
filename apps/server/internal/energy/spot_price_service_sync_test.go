@@ -24,8 +24,10 @@ import (
 // an httptest server playing the service to its contract: the areas
 // followed and the history rows kept, the live window's one request and
 // each day's status, the history walk across cycles and its resumption
-// when the floor moves, the twenty-request budget with live windows first,
-// the one-minute cadence while copying, failures and the lease. The
+// when the floor moves, the gap read after a downtime, the active flag, the
+// twenty-request budget with live windows first, the one-minute cadence
+// while copying, failures — a window skipped after three permanent ones,
+// never for transient ones — and the lease. The
 // harness clock starts at 2026-09-12 14:00 in Oslo, so the live window is
 // 2026-08-29 to 2026-09-13 and history walks back from 2026-08-28.
 
@@ -45,11 +47,13 @@ type fakeService struct {
 	areasStatus int
 	status      map[string]int // area → a status for its every prices request
 	historyFail map[string]int // area → a status for its history requests only
-	retryAfter  string
-	absent      map[string]bool // "AREA YYYY-MM-DD"
-	preliminary map[string]bool
-	withoutNok  map[string]bool
-	gap         map[string]bool
+	// windowStatus is a status for one window's request, by its hit.
+	windowStatus map[string]int
+	retryAfter   string
+	absent       map[string]bool // "AREA YYYY-MM-DD"
+	preliminary  map[string]bool
+	withoutNok   map[string]bool
+	gap          map[string]bool
 	// held, when set, is the only days the service holds of an area: the
 	// rest of a window is absent.
 	held map[string]bool
@@ -67,7 +71,7 @@ type serviceAreaJSON struct {
 
 func newFakeService(t *testing.T) *fakeService {
 	t.Helper()
-	fs := &fakeService{status: map[string]int{}, historyFail: map[string]int{}, absent: map[string]bool{},
+	fs := &fakeService{status: map[string]int{}, historyFail: map[string]int{}, windowStatus: map[string]int{}, absent: map[string]bool{},
 		preliminary: map[string]bool{}, withoutNok: map[string]bool{}, gap: map[string]bool{}}
 	fs.srv = httptest.NewServer(http.HandlerFunc(fs.serve))
 	t.Cleanup(fs.srv.Close)
@@ -103,6 +107,9 @@ func (fs *fakeService) serve(w http.ResponseWriter, r *http.Request) {
 		fs.hits = append(fs.hits, area+" "+first+".."+last)
 		status := fs.status[area]
 		if fail := fs.historyFail[area]; fail != 0 && first != "2026-08-29" {
+			status = fail
+		}
+		if fail := fs.windowStatus[area+" "+first+".."+last]; fail != 0 {
 			status = fail
 		}
 		if status != 0 {
@@ -246,6 +253,8 @@ const liveWindow = "2026-08-29..2026-09-13"
 
 type historyRecord struct {
 	Cursor, Floor *string
+	LiveThrough   *string
+	Active        bool
 	DaysSkipped   int32
 	Attempts      int32
 	LastError     *string
@@ -256,9 +265,9 @@ func historyOf(t *testing.T, h *modtest.Harness, area string) historyRecord {
 	t.Helper()
 	var r historyRecord
 	if err := h.Pool().QueryRow(context.Background(),
-		`SELECT cursor_day::text, floor_day::text, days_skipped, attempts, last_error, next_attempt_at
+		`SELECT cursor_day::text, floor_day::text, live_through::text, active, days_skipped, attempts, last_error, next_attempt_at
 		   FROM energy.spot_price_history WHERE price_area = $1`, area).
-		Scan(&r.Cursor, &r.Floor, &r.DaysSkipped, &r.Attempts, &r.LastError, &r.NextAttempt); err != nil {
+		Scan(&r.Cursor, &r.Floor, &r.LiveThrough, &r.Active, &r.DaysSkipped, &r.Attempts, &r.LastError, &r.NextAttempt); err != nil {
 		t.Fatalf("the history row of %s: %v", area, err)
 	}
 	return r
@@ -589,7 +598,7 @@ func TestSpotPriceService_FollowsTheActiveAreasOnly(t *testing.T) {
 	}
 }
 
-func TestSpotPriceService_AnAreasFailureBacksTheWalksOffAndStillReadsTheAreasInUse(t *testing.T) {
+func TestSpotPriceService_AnAreasFailureLeavesTheWalksAloneAndStillReadsTheAreasInUse(t *testing.T) {
 	t.Parallel()
 	fs := newFakeService(t)
 	fs.setAreas(map[string]string{"NO1": "2026-06-01", "NO3": "2026-06-01"})
@@ -604,10 +613,14 @@ func TestSpotPriceService_AnAreasFailureBacksTheWalksOffAndStillReadsTheAreasInU
 	if hits := fs.takeHits(); !slices.Equal(hits, []string{"areas", "NO3 " + liveWindow}) {
 		t.Errorf("asked for %v, want the areas, then only the area in use", hits)
 	}
+	// The rows' attempts, error and backoff are their windows' alone: the
+	// failure is logged, and nothing walks while the areas are unknown.
 	hr := historyOf(t, h, "NO1")
-	if text(hr.Cursor) != "2026-07-01" || hr.Attempts != 1 || text(hr.LastError) != "the spot-price service answered 500 Internal Server Error" ||
-		!sameInstant(hr.NextAttempt, h.Now().Add(15*time.Minute)) {
-		t.Errorf("NO1's walk = %+v (%s), want the failure recorded, backed off 15 minutes, its cursor kept", hr, text(hr.LastError))
+	if text(hr.Cursor) != "2026-07-01" || hr.Attempts != 0 || hr.LastError != nil || hr.NextAttempt != nil {
+		t.Errorf("NO1's walk = %+v (%s), want it untouched, its cursor kept", hr, text(hr.LastError))
+	}
+	if !strings.Contains(h.Logs(), "the spot-price service answered 500 Internal Server Error") {
+		t.Error("the areas' failure was not logged")
 	}
 	if got := energy.SpotPriceNextWaitForTest(w); got != 15*time.Minute {
 		t.Errorf("after the failure the next cycle is in %v, want the poll", got)
@@ -724,5 +737,251 @@ func TestSpotPriceService_HistoryFromRaisesTheFloor(t *testing.T) {
 	}
 	if hr := historyOf(t, h, "NO1"); text(hr.Floor) != "2026-08-01" || text(hr.Cursor) != "2026-08-01" {
 		t.Errorf("the walk = %+v, want complete at the setting's day", hr)
+	}
+}
+
+// serviceCoverageArea is one area of the coverage as the service sync
+// shapes it.
+type serviceCoverageArea struct {
+	PriceArea         string `json:"priceArea"`
+	FollowedByService *bool  `json:"followedByService"`
+	History           *struct {
+		Complete    bool    `json:"complete"`
+		CursorDay   *string `json:"cursorDay"`
+		FloorDay    *string `json:"floorDay"`
+		DaysSkipped int32   `json:"daysSkipped"`
+		Error       *string `json:"error"`
+	} `json:"history"`
+}
+
+func serviceCoverageOf(t *testing.T, h *modtest.Harness, area string) serviceCoverageArea {
+	t.Helper()
+	r := h.SignIn(t, "energy:prices-view").Do(http.MethodGet, "/api/v1/energy/spot-prices/coverage", nil)
+	if r.Status != http.StatusOK {
+		t.Fatalf("coverage: status %d body %s", r.Status, r.Body)
+	}
+	var coverage struct {
+		Areas []serviceCoverageArea `json:"areas"`
+	}
+	r.JSON(&coverage)
+	for _, a := range coverage.Areas {
+		if a.PriceArea == area {
+			return a
+		}
+	}
+	t.Fatalf("the coverage has no %s: %s", area, r.Body)
+	return serviceCoverageArea{}
+}
+
+// TestSpotPriceService_ReadsTheDaysMissedWhileTheWorkerWasAway pins the gap:
+// a worker away longer than the live window reaches back reads the days
+// between its last live window and today's forward, as history, before the
+// live window — and a live window read while the gap is left does not move
+// live_through past it.
+func TestSpotPriceService_ReadsTheDaysMissedWhileTheWorkerWasAway(t *testing.T) {
+	t.Parallel()
+	fs := newFakeService(t)
+	fs.setAreas(map[string]string{"NO1": "2026-06-01"})
+	h := serviceHarness(t, fs)
+	w := energy.NewSpotPriceWorker(h.Deps())
+	runSpotPriceCycle(t, w)
+	fs.takeHits()
+	if hr := historyOf(t, h, "NO1"); text(hr.Cursor) != "2026-06-01" || text(hr.LiveThrough) != "2026-09-13" {
+		t.Fatalf("after the first cycle the walk = %+v (live through %s), want complete and the live window read through tomorrow", hr, text(hr.LiveThrough))
+	}
+
+	// Twenty days away: today is 2026-10-02 and its live window starts on
+	// 2026-09-18, so 2026-09-14 to 2026-09-17 were never read. The gap's
+	// first request fails; the live window is read regardless and leaves
+	// live_through where it was.
+	h.Advance(20 * 24 * time.Hour)
+	fs.set(func(fs *fakeService) { fs.windowStatus["NO1 2026-09-14..2026-09-17"] = http.StatusServiceUnavailable })
+	if hits := fs.takeHits(); len(hits) != 0 {
+		t.Fatalf("stray hits %v", hits)
+	}
+	runSpotPriceCycle(t, w)
+	if hits := fs.takeHits(); !slices.Equal(hits, []string{"areas", "NO1 2026-09-14..2026-09-17", "NO1 2026-09-18..2026-10-03"}) {
+		t.Errorf("asked for %v, want the areas, the gap, then the live window", hits)
+	}
+	if hr := historyOf(t, h, "NO1"); text(hr.LiveThrough) != "2026-09-13" || hr.Attempts != 1 || hr.NextAttempt == nil {
+		t.Errorf("after the gap failed the walk = %+v (live through %s), want live_through kept and the gap backed off", hr, text(hr.LiveThrough))
+	}
+	if got := energy.SpotPriceNextWaitForTest(w); got != 15*time.Minute {
+		t.Errorf("while the gap backs off the next cycle is in %v, want the poll", got)
+	}
+
+	fs.set(func(fs *fakeService) { delete(fs.windowStatus, "NO1 2026-09-14..2026-09-17") })
+	h.Advance(15 * time.Minute)
+	runSpotPriceCycle(t, w)
+	if hits := fs.takeHits(); !slices.Equal(hits, []string{"areas", "NO1 2026-09-14..2026-09-17"}) {
+		t.Errorf("asked for %v, want the areas and the gap, the live window read a quarter ago", hits)
+	}
+	for _, day := range windowDays("2026-09-14", "2026-09-17") {
+		if n := dayCount(t, h, "NO1", day, "Service"); n != 96 {
+			t.Errorf("%s: %d intervals, want the day read after the downtime", day, n)
+		}
+	}
+	if n := h.Count(t, `SELECT count(*) FROM energy.spot_price_fetches WHERE day BETWEEN '2026-09-14' AND '2026-09-17'`); n != 0 {
+		t.Errorf("%d fetch rows recorded for the gap's days, want none: they are history", n)
+	}
+	if hr := historyOf(t, h, "NO1"); text(hr.LiveThrough) != "2026-09-17" || hr.Attempts != 0 || hr.LastError != nil || hr.DaysSkipped != 0 {
+		t.Errorf("after the gap the walk = %+v (live through %s), want it through the day before the live window", hr, text(hr.LiveThrough))
+	}
+}
+
+// TestSpotPriceService_AnAreasFailureLeavesNoErrorOnceTheyAnswer pins that
+// one failed /api/v1/areas leaves nothing on the coverage once it answers.
+func TestSpotPriceService_AnAreasFailureLeavesNoErrorOnceTheyAnswer(t *testing.T) {
+	t.Parallel()
+	fs := newFakeService(t)
+	fs.setAreas(map[string]string{"NO1": "2026-08-29"})
+	h := serviceHarness(t, fs)
+	w := energy.NewSpotPriceWorker(h.Deps())
+	runSpotPriceCycle(t, w)
+	fs.set(func(fs *fakeService) { fs.areasStatus = http.StatusInternalServerError })
+	h.Advance(time.Minute)
+	runSpotPriceCycle(t, w)
+	fs.set(func(fs *fakeService) { fs.areasStatus = 0 })
+	h.Advance(time.Minute)
+	runSpotPriceCycle(t, w)
+	if hr := historyOf(t, h, "NO1"); hr.Attempts != 0 || hr.LastError != nil || hr.NextAttempt != nil {
+		t.Errorf("the walk = %+v (%s), want no failure left", hr, text(hr.LastError))
+	}
+	c := serviceCoverageOf(t, h, "NO1")
+	if c.History == nil || !c.History.Complete || c.History.Error != nil || c.FollowedByService == nil || !*c.FollowedByService {
+		t.Errorf("the coverage = %+v, want followed and complete with no error", c)
+	}
+}
+
+// TestSpotPriceService_AnAreaTheServiceStopsFollowingIsNotFollowed pins the
+// active flag: an area the service deactivates is answered as not followed,
+// keeps what it copied and is no longer read; reactivated, it is again.
+func TestSpotPriceService_AnAreaTheServiceStopsFollowingIsNotFollowed(t *testing.T) {
+	t.Parallel()
+	fs := newFakeService(t)
+	fs.setAreas(map[string]string{"NO1": "2026-08-29", "NO2": "2026-08-29"})
+	h := serviceHarness(t, fs)
+	w := energy.NewSpotPriceWorker(h.Deps())
+	runSpotPriceCycle(t, w)
+	fs.takeHits()
+	fs.setAreas(map[string]string{"NO1": "2026-08-29"}, "NO2")
+	h.Advance(25 * time.Hour) // every window due for its re-read
+	runSpotPriceCycle(t, w)
+	if hits := fs.takeHits(); slices.ContainsFunc(hits, func(hit string) bool { return strings.HasPrefix(hit, "NO2 ") }) {
+		t.Errorf("asked for %v, want nothing of NO2 once it is inactive", hits)
+	}
+	if hr := historyOf(t, h, "NO2"); hr.Active || text(hr.Cursor) != "2026-08-29" {
+		t.Errorf("NO2's row = %+v, want it kept, inactive", hr)
+	}
+	no2 := serviceCoverageOf(t, h, "NO2")
+	if no2.FollowedByService == nil || *no2.FollowedByService || no2.History == nil || !no2.History.Complete {
+		t.Errorf("NO2's coverage = %+v, want not followed, its history kept", no2)
+	}
+	if no1 := serviceCoverageOf(t, h, "NO1"); no1.FollowedByService == nil || !*no1.FollowedByService {
+		t.Errorf("NO1's coverage = %+v, want followed", no1)
+	}
+
+	fs.setAreas(map[string]string{"NO1": "2026-08-29", "NO2": "2026-08-29"})
+	h.Advance(time.Minute)
+	runSpotPriceCycle(t, w)
+	if c := serviceCoverageOf(t, h, "NO2"); c.FollowedByService == nil || !*c.FollowedByService || !historyOf(t, h, "NO2").Active {
+		t.Errorf("NO2 active again: coverage %+v, want followed", c)
+	}
+}
+
+// TestSpotPriceService_SkipsAWindowTheServiceRefusesThreeTimes pins the
+// permanent failure: a history window the service answers 400 to three
+// times in a row is skipped, its days counted, the walk moved past it and
+// its error kept until the next window is read.
+func TestSpotPriceService_SkipsAWindowTheServiceRefusesThreeTimes(t *testing.T) {
+	t.Parallel()
+	fs := newFakeService(t)
+	fs.setAreas(map[string]string{"NO1": "2026-07-25"})
+	fs.windowStatus["NO1 2026-07-25..2026-08-28"] = http.StatusBadRequest
+	h := serviceHarness(t, fs)
+	w := energy.NewSpotPriceWorker(h.Deps())
+	const refused = "the spot-price service answered 400 Bad Request"
+	for i, wait := range []time.Duration{0, 15 * time.Minute, 30 * time.Minute} {
+		h.Advance(wait)
+		runSpotPriceCycle(t, w)
+		hr := historyOf(t, h, "NO1")
+		if i < 2 && (hr.Cursor != nil || hr.Attempts != int32(i+1) || text(hr.LastError) != refused || hr.NextAttempt == nil) {
+			t.Errorf("after refusal %d the walk = %+v (%s), want it backed off with no cursor", i+1, hr, text(hr.LastError))
+		}
+	}
+	if hits := fs.takeHits(); len(slices.DeleteFunc(hits, func(hit string) bool { return hit != "NO1 2026-07-25..2026-08-28" })) != 3 {
+		t.Errorf("the refused window was asked %d times, want 3", len(hits))
+	}
+	hr := historyOf(t, h, "NO1")
+	if text(hr.Cursor) != "2026-07-25" || hr.DaysSkipped != 35 || hr.Attempts != 0 || hr.NextAttempt != nil || text(hr.LastError) != refused {
+		t.Errorf("after the third refusal the walk = %+v (%s), want it past the window, its 35 days skipped and the error kept", hr, text(hr.LastError))
+	}
+	if c := serviceCoverageOf(t, h, "NO1"); c.History == nil || !c.History.Complete || text(c.History.Error) != refused || c.History.DaysSkipped != 35 {
+		t.Errorf("the coverage = %+v, want complete with the skip and its error", c.History)
+	}
+
+	// The floor moves earlier: the next window is read and clears the error.
+	fs.setAreas(map[string]string{"NO1": "2026-07-01"})
+	h.Advance(time.Minute)
+	runSpotPriceCycle(t, w)
+	if hr := historyOf(t, h, "NO1"); text(hr.Cursor) != "2026-07-01" || hr.LastError != nil || hr.DaysSkipped != 35 {
+		t.Errorf("after the next window the walk = %+v (%s), want it complete and the error gone", hr, text(hr.LastError))
+	}
+}
+
+// TestSpotPriceService_NeverSkipsAWindowForATransientFailure pins the other
+// side: a window failing with 503 four times in a row is backed off and
+// asked again, never skipped.
+func TestSpotPriceService_NeverSkipsAWindowForATransientFailure(t *testing.T) {
+	t.Parallel()
+	fs := newFakeService(t)
+	fs.setAreas(map[string]string{"NO1": "2026-07-25"})
+	fs.windowStatus["NO1 2026-07-25..2026-08-28"] = http.StatusServiceUnavailable
+	h := serviceHarness(t, fs)
+	w := energy.NewSpotPriceWorker(h.Deps())
+	for _, wait := range []time.Duration{0, 15 * time.Minute, 30 * time.Minute, time.Hour} {
+		h.Advance(wait)
+		runSpotPriceCycle(t, w)
+	}
+	hr := historyOf(t, h, "NO1")
+	if hr.Cursor != nil || hr.DaysSkipped != 0 || hr.Attempts != 4 || text(hr.LastError) != "the spot-price service answered 503 Service Unavailable" ||
+		!sameInstant(hr.NextAttempt, h.Now().Add(2*time.Hour)) {
+		t.Errorf("after four 503s the walk = %+v (%s), want it backed off two hours with no cursor and nothing skipped", hr, text(hr.LastError))
+	}
+}
+
+// TestSpotPriceService_AWalkBegunBeforeAnyLiveWindowLeavesNoGap pins the
+// walk's first window marking the day before the live window as read
+// through: should the live window fail for days while history copies, the
+// days between where the walk began and the live window once it answers
+// are read as the gap.
+func TestSpotPriceService_AWalkBegunBeforeAnyLiveWindowLeavesNoGap(t *testing.T) {
+	t.Parallel()
+	fs := newFakeService(t)
+	fs.setAreas(map[string]string{"NO1": "2026-07-25"})
+	fs.windowStatus["NO1 "+liveWindow] = http.StatusServiceUnavailable
+	h := serviceHarness(t, fs)
+	w := energy.NewSpotPriceWorker(h.Deps())
+	runSpotPriceCycle(t, w)
+	if hits := fs.takeHits(); !slices.Equal(hits, []string{"areas", "NO1 " + liveWindow, "NO1 2026-07-25..2026-08-28"}) {
+		t.Errorf("asked for %v, want the failed live window, then the walk", hits)
+	}
+	if hr := historyOf(t, h, "NO1"); text(hr.LiveThrough) != "2026-08-28" || text(hr.Cursor) != "2026-07-25" {
+		t.Errorf("the walk = %+v (live through %s), want it complete and read through the day before the live window", hr, text(hr.LiveThrough))
+	}
+	// Two days on the live window answers: 2026-08-29 and 2026-08-30 are
+	// behind it now, and read first.
+	h.Advance(48 * time.Hour)
+	runSpotPriceCycle(t, w)
+	if hits := fs.takeHits(); !slices.Equal(hits, []string{"areas", "NO1 2026-08-29..2026-08-30", "NO1 2026-08-31..2026-09-15"}) {
+		t.Errorf("asked for %v, want the gap, then the live window", hits)
+	}
+	if hr := historyOf(t, h, "NO1"); text(hr.LiveThrough) != "2026-09-15" {
+		t.Errorf("live through %s, want tomorrow", text(hr.LiveThrough))
+	}
+	for _, day := range []string{"2026-08-29", "2026-08-30"} {
+		if n := dayCount(t, h, "NO1", day, "Service"); n != 96 {
+			t.Errorf("%s: %d intervals, want the day read", day, n)
+		}
 	}
 }
