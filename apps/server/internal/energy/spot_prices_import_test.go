@@ -348,10 +348,11 @@ func TestSpotPriceImport_RowErrors(t *testing.T) {
 		[]string{"NO2", "2026-01-01 00:00", "2027-01-01 00:00", "1"},
 	), "true"), http.StatusOK)
 	want = strings.Join([]string{
+		"3/2: An interval of an hour must start on the hour",
 		"3/-: The row overlaps row 2 (2026-01-12 00:00 +01:00 to 2026-01-12 01:00 +01:00)",
 		"4/-: The row starts before row 2; the rows of an area must be in time order",
 		"5/2: The end must be after the start",
-		"6/2: An interval may be at most an hour long",
+		"6/2: The interval must be a quarter of an hour or an hour",
 	}, "\n")
 	if got := spotPriceErrors(ends); got != want {
 		t.Errorf("errors =\n%s\nwant\n%s", got, want)
@@ -360,6 +361,76 @@ func TestSpotPriceImport_RowErrors(t *testing.T) {
 	if a := ends.Areas[1]; a.PriceArea != "NO2" || a.Inserted != 0 || a.RangeStart != nil {
 		t.Errorf("NO2 = %+v, want its one row refused, nothing counted", a)
 	}
+}
+
+func TestSpotPriceImport_AnIntervalIsAQuarterOfAnHourOrAnHourOnTheHour(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := h.SignIn(t, spotPricePermissions...)
+
+	// Each refused file is one area's rows, so no row's error is another's.
+	for _, tc := range []struct {
+		name string
+		file []byte
+		want string
+	}{
+		{"an hour off the hour", fileOf([]string{"area", "start", "end", "price"},
+			[]string{"NO1", "2026-01-12 00:30", "2026-01-12 01:30", "1"}),
+			"1/2: An interval of an hour must start on the hour"},
+		{"a quarter off the quarter-hour", fileOf([]string{"area", "start", "end", "price"},
+			[]string{"NO1", "2026-01-12 00:10", "2026-01-12 00:25", "1"}),
+			"1/1: The start must be on the quarter-hour: minute 00, 15, 30 or 45"},
+		{"half an hour", fileOf([]string{"area", "start", "end", "price"},
+			[]string{"NO1", "2026-01-12 02:00", "2026-01-12 02:30", "1"}),
+			"1/2: The interval must be a quarter of an hour or an hour"},
+		{"a start with seconds", fileOf([]string{"area", "start", "end", "price"},
+			[]string{"NO1", "2026-01-12T02:00:30+01:00", "2026-01-12T02:15:30+01:00", "1"}),
+			"1/1: The start must be on the quarter-hour: minute 00, 15, 30 or 45"},
+		{"half hours without an end column", fileOf([]string{"area", "start", "price"},
+			[]string{"NO1", "2026-01-12 00:00", "1"},
+			[]string{"NO1", "2026-01-12 00:30", "1"},
+			[]string{"NO1", "2026-01-12 01:00", "1"}),
+			strings.Join([]string{
+				"1/-: The interval must be a quarter of an hour or an hour",
+				"2/-: The interval must be a quarter of an hour or an hour",
+				"3/-: The interval must be a quarter of an hour or an hour",
+			}, "\n")},
+		{"hours off the hour without an end column", fileOf([]string{"area", "start", "price"},
+			[]string{"NO1", "2026-01-12 00:30", "1"},
+			[]string{"NO1", "2026-01-12 01:30", "1"}),
+			strings.Join([]string{
+				"1/-: An interval of an hour must start on the hour",
+				"2/-: An interval of an hour must start on the hour",
+			}, "\n")},
+	} {
+		r := postSpotPriceImport(t, c, tc.file, "false")
+		if r.Status != http.StatusUnprocessableEntity {
+			t.Errorf("%s: status %d body %s, want 422", tc.name, r.Status, r.Body)
+			continue
+		}
+		var result spotPriceImportJSON
+		r.JSON(&result)
+		if got := spotPriceErrors(result); got != tc.want || result.Imported {
+			t.Errorf("%s: imported %v, errors =\n%s\nwant\n%s", tc.name, result.Imported, got, tc.want)
+		}
+	}
+	if n := h.Count(t, `SELECT count(*) FROM energy.spot_prices`); n != 0 {
+		t.Fatalf("refused files wrote %d prices", n)
+	}
+
+	// A quarter-hour and an hour on the hour are each the market's unit, in
+	// one file or, without an end column, closed by the next row.
+	quarters := importSpotPrices(t, c, fileOf([]string{"area", "start", "end", "price"},
+		[]string{"NO1", "2026-01-12 00:00", "2026-01-12 01:00", "1"},
+		[]string{"NO1", "2026-01-12 01:15", "2026-01-12 01:30", "1"},
+		[]string{"NO1", "2026-01-12 01:45", "2026-01-12 02:00", "1"}))
+	wantArea(t, quarters.Areas[0], "NO1", 3, 0, 0, utc(2026, time.January, 11, 23), utc(2026, time.January, 12, 1))
+	hours := importSpotPrices(t, c, fileOf([]string{"area", "start", "price"},
+		[]string{"NO2", "2026-01-12 00:00", "1"},
+		[]string{"NO2", "2026-01-12 01:00", "1"},
+		[]string{"NO2", "2026-01-12 01:15", "1"},
+		[]string{"NO2", "2026-01-12 01:30", "1"}))
+	wantArea(t, hours.Areas[0], "NO2", 4, 0, 0, utc(2026, time.January, 11, 23), utc(2026, time.January, 12, 0).Add(45*time.Minute))
 }
 
 func TestSpotPriceImport_AFigureTheColumnCannotHoldIsTheRowsError(t *testing.T) {

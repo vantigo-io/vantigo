@@ -8,6 +8,8 @@ import "../i18n";
 export interface AreaIntervals {
   area: string;
   intervals: SpotPriceInterval[];
+  /** The area's place among those chosen, which picks its colour; its index here when absent. */
+  slot?: number;
 }
 
 /**
@@ -36,22 +38,28 @@ export const PriceChart = ({ areas, period }: { areas: AreaIntervals[]; period: 
   const rows: Array<Record<string, string | number | null>> = starts.map((start, index) => ({
     start: (counts.get(labels[index]) ?? 0) > 1 ? `${labels[index]} ${marketUtcOffset(start)}` : labels[index],
   }));
-  const rowOf = new Map(starts.map((start, index) => [start, rows[index]]));
 
-  const series = areas.flatMap(({ area, intervals }, index) => {
-    const color = AREA_COLORS[index % AREA_COLORS.length];
+  const series = areas.flatMap(({ area, intervals, slot }, index) => {
+    const color = AREA_COLORS[(slot ?? index) % AREA_COLORS.length];
     const hasPreliminary = intervals.some((item) => item.state === "preliminary");
     for (const row of rows) {
       row[area] = null;
       if (hasPreliminary) row[preliminaryKey(area)] = null;
     }
-    intervals.forEach((item, position) => {
-      const row = rowOf.get(item.start);
-      if (!row) return;
+    // Compared areas may differ in resolution: an hour holds on every
+    // quarter-hour row another area adds, up to its own end, so a row no
+    // interval of the area covers stays a gap.
+    let position = 0;
+    starts.forEach((start, index) => {
+      const at = Date.parse(start);
+      while (position < intervals.length && Date.parse(intervals[position].end) <= at) position++;
+      const item = intervals[position];
+      if (!item || Date.parse(item.start) > at) return;
+      const row = rows[index];
       const previousFinal = position > 0 && intervals[position - 1].state !== "preliminary";
       // The solid line runs up to the first preliminary interval, so the last
       // final price's step reaches it; from there the dashed line takes over.
-      if (item.state !== "preliminary" || previousFinal) row[area] = item.nokPerKwh;
+      if (item.state !== "preliminary" || (previousFinal && start === item.start)) row[area] = item.nokPerKwh;
       if (item.state === "preliminary") row[preliminaryKey(area)] = item.nokPerKwh;
     });
     return [

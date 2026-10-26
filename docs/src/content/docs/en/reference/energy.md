@@ -901,13 +901,21 @@ the file's `400`, since which one is meant cannot be told. The header words:
   reads an end, and gaps between an area's rows are allowed, so one file may fill
   several separate days; a row that starts before the area's row before it in the
   file, or inside that row's interval, is the row's error, and an end not after the
-  start, or more than an hour after it (the market's resolutions are an hour and a
-  quarter of an hour, and a longer interval would block the feed's days), is the
-  end's. Without one, an interval closes at the next row's start **of the same
-  area**, in file order, and an area's last row takes the length of the row before it
-  (an hour when the area has a single row). A row is then the row's error when it is
-  out of order, or when the next row of its area starts more than the previous
-  interval's length — at most an hour — after it.
+  start is the end's. Without one, an interval closes at the next row's start **of
+  the same area**, in file order, and an area's last row takes the length of the row
+  before it (an hour when the area has a single row). A row is then the row's error
+  when it is out of order, or when the next row of its area starts more than the
+  previous interval's length after it.
+- **On the market's grid.** With or without an end column, every interval is a
+  quarter of an hour or an hour, as the market's are, starting on the quarter-hour,
+  and an hour starts on the hour — so an interval never crosses an hour, a day or a
+  month, which the summary's buckets rely on, and never blocks the feed's days. A
+  start off the quarter-hour (minute 00, 15, 30 or 45, no seconds) is the start's
+  error, "The start must be on the quarter-hour: minute 00, 15, 30 or 45", and the
+  row gets no other; an interval of another length is "The interval must be a quarter
+  of an hour or an hour", and an hour off the hour "An interval of an hour must start
+  on the hour" — the end's error with an end column, the row's without one (where a
+  wrong step also reaches the area's last row, which takes its length).
 - **Several areas** may share a file; each area's rows are judged on their own.
 - **Against what is stored**: judged and written under an advisory lock per area
   (`pg_advisory_xact_lock` on a hash of the area's name, areas in sorted order), which
@@ -949,7 +957,10 @@ minNokPerKwh, maxNokPerKwh, coveredMinutes, preliminary}]}`.
   truncated on the **UTC** hour instead: Oslo's offset is whole hours, so it is the
   same hour, and the autumn night's 02:00, which comes twice, stays **two** buckets
   where a truncated local time would merge them. `start` and `end` are instants, the
-  bucket's `[start, end)`.
+  bucket's `[start, end)`, every bucket's written with Oslo's offset (the repeated
+  hour's two as `02:00+02:00` and `02:00+01:00`). An interval belongs to the bucket
+  it starts in; since every interval lies on the market's grid (the import refuses
+  any other, see [Importing prices](#importing-prices)), none crosses a bucket.
 - **The average is time-weighted**: `Σ(nok_per_kwh × length) / Σ(length)` over the
   bucket's intervals, rounded to six decimals. History before 2025-10-01 is hourly and
   after it quarter-hourly, and a plain mean would weigh each newer quarter-hour as much

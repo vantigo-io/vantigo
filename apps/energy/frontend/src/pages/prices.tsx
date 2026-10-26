@@ -178,14 +178,32 @@ export const PricesPage = ({
         : [],
   });
   const reads = view.read === "intervals" ? intervalReads : summaryReads;
-  const failed = reads.find((read) => read.isError);
-  const pending = reads.some((read) => read.isPending);
-  const intervalAreas = compared.map((area, index) => ({ area, intervals: intervalReads[index]?.data ?? [] }));
-  const summaryAreas = compared.map((area, index) => ({ area, buckets: summaryReads[index]?.data?.buckets ?? [] }));
+  // An area that fails is named and left out; the others are charted. Until
+  // one area has answered, the card waits.
+  const failures = compared.flatMap((area, index) => {
+    const read = reads[index];
+    return read?.isError ? [{ area, message: read.error.message }] : [];
+  });
+  const loaded = (index: number) => reads[index]?.data !== undefined;
+  const pending = !reads.some((_, index) => loaded(index)) && reads.some((read) => read.isPending);
+  // An area keeps the colour of its place among those chosen when another fails.
+  const intervalAreas = compared.map((area, index) => ({
+    area,
+    intervals: intervalReads[index]?.data ?? [],
+    slot: index,
+  }));
+  const summaryAreas = compared.map((area, index) => ({
+    area,
+    buckets: summaryReads[index]?.data?.buckets ?? [],
+    slot: index,
+  }));
+  const chartedIntervals = intervalAreas.filter((_, index) => loaded(index));
+  const chartedSummaries = summaryAreas.filter((_, index) => loaded(index));
+  const charted = view.read === "intervals" ? chartedIntervals.length : chartedSummaries.length;
   const empty =
     view.read === "intervals"
-      ? intervalAreas.every((item) => item.intervals.length === 0)
-      : summaryAreas.every((item) => item.buckets.length === 0);
+      ? chartedIntervals.every((item) => item.intervals.length === 0)
+      : chartedSummaries.every((item) => item.buckets.length === 0);
   const preliminary =
     view.read === "intervals"
       ? intervalAreas.some((item) => item.intervals.some((interval) => interval.state === "preliminary"))
@@ -456,14 +474,19 @@ export const PricesPage = ({
                 </>
               )}
             </Group>
-            {failed?.error && (
-              <Alert color="red" icon={<IconAlertCircle size={16} />} title={t("failedToLoadPrices")}>
-                {failed.error.message}
+            {failures.map(({ area, message }) => (
+              <Alert
+                key={area}
+                color="red"
+                icon={<IconAlertCircle size={16} />}
+                title={t("failedToLoadPricesFor", { area })}
+              >
+                {message}
               </Alert>
-            )}
-            {!failed && pending && <ContentSkeleton rows={1} rowHeight={280} />}
-            {!failed &&
-              !pending &&
+            ))}
+            {pending && <ContentSkeleton rows={1} rowHeight={280} />}
+            {!pending &&
+              charted > 0 &&
               (empty ? (
                 <EmptyState size="sm" title={t("noPricesForPeriod")} />
               ) : (
@@ -494,9 +517,9 @@ export const PricesPage = ({
                     </SimpleGrid>
                   )}
                   {view.read === "intervals" ? (
-                    <PriceChart areas={intervalAreas} period={view.period} />
+                    <PriceChart areas={chartedIntervals} period={view.period} />
                   ) : (
-                    <PriceSummaryChart areas={summaryAreas} bucket={view.bucket} />
+                    <PriceSummaryChart areas={chartedSummaries} bucket={view.bucket} />
                   )}
                 </>
               ))}

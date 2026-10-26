@@ -1,5 +1,5 @@
 import { CompositeChart, type CompositeChartSeries } from "@mantine/charts";
-import { ColorSwatch, Group, Paper, Stack, Text, useMantineTheme } from "@mantine/core";
+import { ColorSwatch, Group, getThemeColor, Paper, Stack, Text, useMantineTheme } from "@mantine/core";
 import { useI18n } from "@vantigo/frontend-shell";
 import type { ReactNode } from "react";
 import type { SpotPriceSummaryBucket } from "../api/spot-prices";
@@ -16,6 +16,8 @@ import "../i18n";
 export interface AreaBuckets {
   area: string;
   buckets: SpotPriceSummaryBucket[];
+  /** The area's place among those chosen, which picks its colour; its index here when absent. */
+  slot?: number;
 }
 
 type Row = Record<string, string | number | null | [number, number]>;
@@ -45,9 +47,11 @@ export const PriceSummaryChart = ({ areas, bucket }: { areas: AreaBuckets[]; buc
   );
   const rows: Row[] = starts.map((start) => ({ start: bucketLabel(start, bucket) }));
   const rowOf = new Map(starts.map((start, index) => [start, rows[index]]));
+  // Each row's bucket per area, for what the tooltip says of its coverage.
+  const bucketsOf = new Map<Row, Map<string, SpotPriceSummaryBucket>>(rows.map((row) => [row, new Map()]));
 
-  const lines = areas.flatMap(({ area, buckets }, index): CompositeChartSeries[] => {
-    const color = AREA_COLORS[index % AREA_COLORS.length];
+  const lines = areas.flatMap(({ area, buckets, slot }, index): CompositeChartSeries[] => {
+    const color = AREA_COLORS[(slot ?? index) % AREA_COLORS.length];
     const hasPreliminary = buckets.some((entry) => entry.preliminary);
     for (const row of rows) {
       row[area] = null;
@@ -56,6 +60,7 @@ export const PriceSummaryChart = ({ areas, bucket }: { areas: AreaBuckets[]; buc
     buckets.forEach((entry, position) => {
       const row = rowOf.get(entry.start);
       if (!row) return;
+      bucketsOf.get(row)?.set(area, entry);
       if (withBand) row[BAND] = [entry.minNokPerKwh, entry.maxNokPerKwh];
       // The dashed line starts at the last final bucket, so the two lines join.
       const nextPreliminary = buckets[position + 1]?.preliminary ?? false;
@@ -81,6 +86,22 @@ export const PriceSummaryChart = ({ areas, bucket }: { areas: AreaBuckets[]; buc
     ? [{ name: BAND, label: t("pricesBand"), color: lines[0]?.color ?? AREA_COLORS[0], type: "area" }, ...lines]
     : lines;
 
+  // With no dots, a point whose neighbours are both gaps (a lone day between
+  // missing ones, a lone preliminary bucket) draws nothing: it gets a dot.
+  const lone = (key: string, index: number) =>
+    typeof rows[index]?.[key] === "number" &&
+    typeof rows[index - 1]?.[key] !== "number" &&
+    typeof rows[index + 1]?.[key] !== "number";
+  const lineProps = (item: CompositeChartSeries) => ({
+    dot: ({ cx, cy, index }: { cx?: number; cy?: number; index?: number }) => {
+      const key = `${item.name}-dot-${index}`;
+      if (index === undefined || cx === undefined || cy === undefined || !lone(item.name, index))
+        return <g key={key} />;
+      const color = getThemeColor(item.color, theme);
+      return <circle key={key} cx={cx} cy={cy} r={3} fill={color} stroke={color} />;
+    },
+  });
+
   // The tooltip is the page's own: Mantine's would show a band as its width.
   const tooltip = ({ label, payload }: { label?: ReactNode; payload?: ReadonlyArray<{ payload?: unknown }> }) => {
     const row = payload?.[0]?.payload as Row | undefined;
@@ -92,18 +113,28 @@ export const PriceSummaryChart = ({ areas, bucket }: { areas: AreaBuckets[]; buc
           <Text size="sm" fw={500}>
             {label}
           </Text>
-          {areas.map(({ area }, index) => {
+          {areas.map(({ area, slot }, index) => {
             const value = row[area] ?? row[preliminaryKey(area)];
             if (typeof value !== "number") return null;
-            const color = AREA_COLORS[index % AREA_COLORS.length];
+            const color = AREA_COLORS[(slot ?? index) % AREA_COLORS.length];
             const [name, shade] = color.split(".");
+            const entry = bucketsOf.get(row)?.get(area);
+            const minutes = entry ? (Date.parse(entry.end) - Date.parse(entry.start)) / 60_000 : 0;
+            const hours = (count: number) => formatters.formatNumber(count / 60, { maximumFractionDigits: 1 });
             return (
-              <Group key={area} gap="xs" wrap="nowrap">
-                <ColorSwatch color={theme.colors[name][Number(shade)]} size={10} withShadow={false} />
-                <Text size="sm">
-                  {area}: {price(value)} {t("chartNokPerKwh")}
-                </Text>
-              </Group>
+              <Stack key={area} gap={0}>
+                <Group gap="xs" wrap="nowrap">
+                  <ColorSwatch color={theme.colors[name][Number(shade)]} size={10} withShadow={false} />
+                  <Text size="sm">
+                    {area}: {price(value)} {t("chartNokPerKwh")}
+                  </Text>
+                </Group>
+                {entry && entry.coveredMinutes < minutes && (
+                  <Text size="xs" c="dimmed">
+                    {t("pricesIncomplete", { hours: hours(entry.coveredMinutes), total: hours(minutes) })}
+                  </Text>
+                )}
+              </Stack>
             );
           })}
           {Array.isArray(band) && (
@@ -128,6 +159,7 @@ export const PriceSummaryChart = ({ areas, bucket }: { areas: AreaBuckets[]; buc
       withLegend={areas.length > 1}
       yAxisLabel={t("chartNokPerKwh")}
       areaProps={{ strokeWidth: 0 }}
+      lineProps={lineProps}
       valueFormatter={price}
       tooltipProps={{ content: tooltip }}
     />

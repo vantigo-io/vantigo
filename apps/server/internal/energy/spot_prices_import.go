@@ -51,8 +51,9 @@ const spotPriceFigureLimit = 1e6
 
 // spotPriceMaxInterval is the longest interval a row may have (the plan's
 // reading 10): the day-ahead market's unit is an hour or a quarter of one, so
-// in a file without an end column a longer step is a missing row, and with
-// one a longer interval is the row's error.
+// in a file without an end column a longer step is a missing row, and any
+// interval but a quarter of an hour or an hour on the hour is the row's error
+// (spotPriceIntervalRefusal).
 const spotPriceMaxInterval = time.Hour
 
 const invalidSpotPriceImportUploadMessage = "A spot price import is one CSV file of at most 10 MB, sent as the multipart part named 'file'"
@@ -225,8 +226,9 @@ func (e *spotPriceEvaluation) fail(row, column int, message string) {
 // evaluateSpotPriceFile checks every row of a file under l, local clock
 // times in loc (Europe/Oslo: the market's day, whatever the area). Each cell
 // is read first; then each area's rows, in file order, are held to one
-// another (the plan's reading 10): with an end column a row's interval is at
-// most an hour, and a row may not start before the row before it nor inside
+// another (the plan's reading 10): a row starts on the quarter-hour, its
+// interval — read or derived — is a quarter of an hour or an hour starting
+// on the hour; with an end column a row may not start before the row before it nor inside
 // its interval — a gap is allowed, so one file may fill several separate
 // days; without one each row closes at the
 // next row's start, the last as long as the row before it (an hour when it
@@ -269,14 +271,20 @@ func evaluateSpotPriceFile(file fileimport.File, l spotPriceLayout, loc *time.Lo
 		} else {
 			start, startOK = e.readStart(record.Row, l.start, cell(l.start), loc, zone, map[time.Time]int{})
 		}
+		startOnGrid := startOK && onSpotPriceQuarterHour(start)
+		if startOK && !startOnGrid {
+			e.fail(record.Row, l.start, "The start must be on the quarter-hour: minute 00, 15, 30 or 45")
+		}
 		if l.end >= 0 {
 			end, endOK := e.readEnd(record.Row, l.end, cell(l.end), start, startOK, loc, zone)
 			switch {
 			case !startOK || !endOK:
 			case !end.After(start):
 				e.fail(record.Row, l.end, "The end must be after the start")
-			case end.Sub(start) > spotPriceMaxInterval:
-				e.fail(record.Row, l.end, "An interval may be at most an hour long")
+			case startOnGrid:
+				if message := spotPriceIntervalRefusal(start, end); message != "" {
+					e.fail(record.Row, l.end, message)
+				}
 			}
 			r.price.End = end
 		}
@@ -379,6 +387,7 @@ func (e *spotPriceEvaluation) closeWithoutEnds(rows []*spotPriceImportRow, start
 				prev.failed = true
 			} else {
 				step = interval
+				e.holdToGrid(prev)
 			}
 		}
 		prev = r
@@ -389,7 +398,42 @@ func (e *spotPriceEvaluation) closeWithoutEnds(rows []*spotPriceImportRow, start
 	// only row (step starts at an hour).
 	if prev != nil {
 		prev.price.End = prev.price.Start.Add(step)
+		e.holdToGrid(prev)
 	}
+}
+
+// holdToGrid holds a row's derived interval to the market's grid as an end
+// column's is held (spotPriceIntervalRefusal): the row's error, as the file
+// has no end cell to name. A start off the quarter-hour is already its error.
+func (e *spotPriceEvaluation) holdToGrid(r *spotPriceImportRow) {
+	if !onSpotPriceQuarterHour(r.price.Start) {
+		return
+	}
+	if message := spotPriceIntervalRefusal(r.price.Start, r.price.End); message != "" {
+		e.fail(r.row, -1, message)
+		r.failed = true
+	}
+}
+
+// onSpotPriceQuarterHour is whether t starts a quarter of an hour. Oslo's
+// offset is whole hours, so the instant's minute is the local one.
+func onSpotPriceQuarterHour(t time.Time) bool {
+	u := t.UTC()
+	return u.Minute()%15 == 0 && u.Second() == 0 && u.Nanosecond() == 0
+}
+
+// spotPriceIntervalRefusal is the sentence refusing an interval starting on
+// the quarter-hour that is not the market's unit — a quarter of an hour, or
+// an hour starting on the hour — so every stored interval lies inside one
+// hour of the summary's buckets; "" when it is one.
+func spotPriceIntervalRefusal(start, end time.Time) string {
+	switch d := end.Sub(start); {
+	case d != 15*time.Minute && d != time.Hour:
+		return "The interval must be a quarter of an hour or an hour"
+	case d == time.Hour && start.UTC().Minute() != 0:
+		return "An interval of an hour must start on the hour"
+	}
+	return ""
 }
 
 // readStart reads a row's start as the consumption import does

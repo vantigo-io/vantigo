@@ -88,11 +88,11 @@ func (s *server) GetEnergySpotPricesSummary(ctx context.Context, req gen.GetEner
 // query answers an hour as its UTC wall clock, so the autumn's two 02:00
 // hours stay apart, and the other buckets as their local start in Oslo; a
 // day, a week or a month ends at the next one's local midnight, so a DST day
-// is 23 or 25 hours.
+// is 23 or 25 hours. Every bound is in Oslo, so each carries its offset.
 func spotPriceSummaryBucketBounds(local time.Time, bucket string, loc *time.Location) (time.Time, time.Time) {
 	if bucket == "hour" {
 		start := time.Date(local.Year(), local.Month(), local.Day(), local.Hour(), 0, 0, 0, time.UTC)
-		return start, start.Add(time.Hour)
+		return start.In(loc), start.Add(time.Hour).In(loc)
 	}
 	start := time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, loc)
 	switch bucket {
