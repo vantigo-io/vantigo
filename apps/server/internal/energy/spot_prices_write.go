@@ -159,6 +159,8 @@ func planSpotPriceWrite(ctx context.Context, q *store.Queries, area string, rows
 // that day are deleted and the day's rows inserted. A conflict with any
 // imported row stays a conflict: an operator's file is not overwritten.
 // The conflicts a caller sees are of the days that could not be replaced.
+// An imported interval with the row's very start and end is left as it is
+// and counted unchanged, so a file wins over the service at any resolution.
 func planSpotPriceDaysWrite(ctx context.Context, q *store.Queries, area string, rows []spotPriceRow, zone *time.Location) (spotPriceWritePlan, error) {
 	return planSpotPriceWriteIn(ctx, q, area, rows, zone)
 }
@@ -202,6 +204,11 @@ func planSpotPriceWriteIn(ctx context.Context, q *store.Queries, area string, ro
 		case same == nil:
 			plan.inserts = append(plan.inserts, r)
 		case sameSpotPriceFigures(*same, r):
+			plan.unchanged++
+		case dayZone != nil && same.Source == spotPriceSourceImport:
+			// The service never overwrites an operator's file (spot-price
+			// service design S6): an imported interval of the same length
+			// stands, whatever the service says of it.
 			plan.unchanged++
 		default:
 			plan.replaces = append(plan.replaces, spotPriceReplace{id: same.ID, row: r})

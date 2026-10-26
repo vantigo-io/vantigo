@@ -110,7 +110,8 @@ func TestModule_DeclaresItsPermissionCatalog(t *testing.T) {
 // TestModule_ContributesItsWorkers asserts the module's workers exactly: the
 // import worker (energy import design D6) when ENERGY_IMPORT_ENABLED is on,
 // the default, and the spot price worker (energy consumption billing design
-// D2) when ENERGY_SPOT_PRICE_FEED_ENABLED is, off by default — a worker added
+// D2) when ENERGY_SPOT_PRICE_FEED_ENABLED is or ENERGY_SPOT_PRICE_SERVICE_URL
+// is set (spot-price service design S3), off by default — a worker added
 // without its name here fails rather than silently never running in
 // production.
 func TestModule_ContributesItsWorkers(t *testing.T) {
@@ -125,6 +126,12 @@ func TestModule_ContributesItsWorkers(t *testing.T) {
 		{name: "the spot price feed turned on adds its worker", env: map[string]string{"ENERGY_SPOT_PRICE_FEED_ENABLED": "1"},
 			want: []string{"energy-import", "energy-spot-prices"}},
 		{name: "the spot price feed alone", env: map[string]string{"ENERGY_IMPORT_ENABLED": "0", "ENERGY_SPOT_PRICE_FEED_ENABLED": "1"},
+			want: []string{"energy-spot-prices"}},
+		{name: "the spot-price service adds the same worker", env: map[string]string{
+			"ENERGY_SPOT_PRICE_SERVICE_URL": "http://vantigo-spotprices:8080", "ENERGY_SPOT_PRICE_SERVICE_KEY": "sp_test"},
+			want: []string{"energy-import", "energy-spot-prices"}},
+		{name: "the spot-price service alone", env: map[string]string{"ENERGY_IMPORT_ENABLED": "0",
+			"ENERGY_SPOT_PRICE_SERVICE_URL": "http://vantigo-spotprices:8080", "ENERGY_SPOT_PRICE_SERVICE_KEY": "sp_test"},
 			want: []string{"energy-spot-prices"}},
 	}
 	for _, tc := range cases {

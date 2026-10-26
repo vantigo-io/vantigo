@@ -93,12 +93,14 @@ func Module() module.Module {
 // workers is this module's background work: the import worker (energy import
 // design D6), which checks, runs and attaches the metering-point files people
 // upload, and the spot price worker (energy consumption billing design D2),
-// which fetches each day's day-ahead prices from the configured feed. Each is
-// registered only when its switch is on, as the customers import worker is:
-// off means this process never hands it to the runner — an import queues and
-// waits, and prices come by file only. The spot price feed's switch is off by
-// default, since it is an outbound call the installation opts in to; a Deps
-// with no Config runs neither. TestModule_ContributesItsWorkers asserts the
+// which fetches each day's day-ahead prices from the configured feed or, with
+// ENERGY_SPOT_PRICE_SERVICE_URL set, copies them from the shared spot-price
+// service (spot-price service design S3). Each is registered only when its
+// switch is on, as the customers import worker is: off means this process
+// never hands it to the runner — an import queues and waits, and prices come
+// by file only. Both spot price sources are off by default, since each is an
+// outbound call the installation opts in to; a Deps with no Config runs
+// neither. TestModule_ContributesItsWorkers asserts the
 // set.
 func workers(d module.Deps) []worker.Worker {
 	if d.Config == nil {
@@ -108,7 +110,7 @@ func workers(d module.Deps) []worker.Worker {
 	if d.Config.EnergyImportEnabled {
 		ws = append(ws, NewImportWorker(d))
 	}
-	if d.Config.EnergySpotPriceFeedEnabled {
+	if d.Config.EnergySpotPriceFeedEnabled || d.Config.EnergySpotPriceServiceURL != "" {
 		ws = append(ws, NewSpotPriceWorker(d))
 	}
 	return ws

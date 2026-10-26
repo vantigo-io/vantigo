@@ -2,9 +2,18 @@ package energy
 
 import (
 	"context"
+	"log/slog"
+	"net"
+	"net/http"
+	"net/url"
 	"time"
 
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/vantigo-io/vantigo/server/internal/db"
 	"github.com/vantigo-io/vantigo/server/internal/energy/store"
+	"github.com/vantigo-io/vantigo/server/internal/netguard"
 )
 
 // SetImportRunHook makes f run inside every import run the worker starts,
@@ -120,3 +129,153 @@ func mustSpotFeedZone() *time.Location {
 	}
 	return zone
 }
+
+// SpotPriceRow is one interval as the write takes it.
+type SpotPriceRow = spotPriceRow
+
+// SpotPriceWriteCounts is what one write of the spot-price service's days
+// did: the plan's counts, and the conflicts that stopped it.
+type SpotPriceWriteCounts struct {
+	Inserted, Replaced, Unchanged, Deleted, Conflicts int
+}
+
+// WriteSpotPriceDaysForTest is the spot-price service's write of rows, whole
+// civil days of area in Europe/Oslo, at now: in one transaction under the
+// area's lock, planned by planSpotPriceDaysWrite and applied with the Service
+// source — or, when a conflict is left, nothing written.
+func WriteSpotPriceDaysForTest(ctx context.Context, pool *pgxpool.Pool, area string, rows []SpotPriceRow, now time.Time) (SpotPriceWriteCounts, error) {
+	var out SpotPriceWriteCounts
+	err := db.WithTx(ctx, pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
+		if err := lockSpotPriceAreas(ctx, tx, []string{area}); err != nil {
+			return err
+		}
+		plan, err := planSpotPriceDaysWrite(ctx, store.New(tx), area, rows, mustSpotFeedZone())
+		if err != nil {
+			return err
+		}
+		out.Inserted, out.Replaced, out.Unchanged = plan.Counts()
+		out.Deleted, out.Conflicts = plan.Deleted(), len(plan.conflicts)
+		if out.Conflicts > 0 {
+			return nil
+		}
+		return applySpotPriceWrite(ctx, tx, plan, spotPriceSourceService, now)
+	})
+	return out, err
+}
+
+// SpotServiceClientForTest is the spot-price service's client as a test
+// drives it, below the worker.
+type SpotServiceClientForTest struct{ c *spotServiceClient }
+
+// NewSpotServiceClientForTest is the client over rt (wrapped in the
+// host-only round-tripper, as with modtest.WithTransport), logging to
+// logger, its clock now.
+func NewSpotServiceClientForTest(rt http.RoundTripper, base, key string, logger *slog.Logger, now func() time.Time) (*SpotServiceClientForTest, error) {
+	c, err := newSpotServiceClient(base, key, rt, func() *slog.Logger { return logger }, now)
+	return &SpotServiceClientForTest{c: c}, err
+}
+
+// NewGuardedSpotServiceClientForTest is the client over the production
+// transport, resolving through resolver and dialling through dial.
+func NewGuardedSpotServiceClientForTest(resolver netguard.Resolver, dial func(ctx context.Context, network, address string) (net.Conn, error), base, key string) (*SpotServiceClientForTest, error) {
+	u, err := url.Parse(base)
+	if err != nil {
+		return nil, err
+	}
+	rt := spotServiceGuardedTransport(resolver, dial, u.Scheme == "http")
+	c, err := newSpotServiceClient(base, key, rt, slog.Default, time.Now)
+	return &SpotServiceClientForTest{c: c}, err
+}
+
+// SpotServiceFailure is a failed request: its sentence, and a 429's
+// Retry-After as an instant.
+type SpotServiceFailure struct {
+	Sentence string
+	RetryAt  time.Time
+}
+
+func spotServiceFailureForTest(f spotServiceFailure) SpotServiceFailure {
+	return SpotServiceFailure{Sentence: f.sentence, RetryAt: f.retryAt}
+}
+
+// SpotServiceArea is one zone of GET /api/v1/areas.
+type SpotServiceArea struct {
+	Code       string
+	Active     bool
+	FirstStart *time.Time
+}
+
+// Areas is GET /api/v1/areas.
+func (c *SpotServiceClientForTest) Areas(ctx context.Context) ([]SpotServiceArea, SpotServiceFailure) {
+	areas, fail := c.c.areas(ctx)
+	out := make([]SpotServiceArea, 0, len(areas))
+	for _, a := range areas {
+		out = append(out, SpotServiceArea{Code: a.code, Active: a.active, FirstStart: a.firstStart})
+	}
+	return out, spotServiceFailureForTest(fail)
+}
+
+// Get is a GET of any address through the client, as a later caller might
+// make one.
+func (c *SpotServiceClientForTest) Get(ctx context.Context, target string) SpotServiceFailure {
+	_, fail := c.c.getURL(ctx, target)
+	return spotServiceFailureForTest(fail)
+}
+
+// SpotServiceDay is one civil day of an answer as the sync judges it:
+// Verdict "" when it would be written.
+type SpotServiceDay struct {
+	Day         string
+	Intervals   int
+	Verdict     string
+	Failed      bool
+	Preliminary bool
+	Rows        []SpotPriceRow
+}
+
+// Days is GET /api/v1/prices for area over the Oslo days from first to last
+// (YYYY-MM-DD, inclusive), split into days and judged.
+func (c *SpotServiceClientForTest) Days(ctx context.Context, area, first, last string) ([]SpotServiceDay, SpotServiceFailure) {
+	zone := mustSpotFeedZone()
+	from, to := mustSpotFeedDay(first), mustSpotFeedDay(last)
+	intervals, fail := c.c.prices(ctx, area,
+		time.Date(from.Year(), from.Month(), from.Day(), 0, 0, 0, 0, zone),
+		time.Date(to.Year(), to.Month(), to.Day()+1, 0, 0, 0, 0, zone))
+	if fail.failed() {
+		return nil, spotServiceFailureForTest(fail)
+	}
+	counts := map[string]int{}
+	for _, iv := range intervals {
+		counts[iv.row.Start.In(zone).Format(time.DateOnly)]++
+	}
+	var out []SpotServiceDay
+	for _, d := range judgeSpotServiceDays(intervals, from, to, zone) {
+		day := spotFeedDayText(d.day)
+		out = append(out, SpotServiceDay{Day: day, Intervals: counts[day], Verdict: d.verdict, Failed: d.failed, Preliminary: d.preliminary, Rows: d.rows})
+	}
+	return out, SpotServiceFailure{}
+}
+
+// SpotServiceWindowDay is one day of the live window as the planner sees it.
+type SpotServiceWindowDay struct {
+	Day string
+	Due bool
+}
+
+// PlanSpotServiceWindowForTest is the live window's planner at now over
+// fetches, the window last read at lastRead.
+func PlanSpotServiceWindowForTest(now time.Time, fetches []store.EnergySpotPriceFetch, lastRead *time.Time) ([]SpotServiceWindowDay, bool) {
+	m := map[string]store.EnergySpotPriceFetch{}
+	for _, f := range fetches {
+		m[spotFeedDayText(f.Day.Time)] = f
+	}
+	days, due := planSpotServiceWindow(now, spotFeedToday(now, mustSpotFeedZone()), "NO1", m, lastRead)
+	out := make([]SpotServiceWindowDay, 0, len(days))
+	for _, d := range days {
+		out = append(out, SpotServiceWindowDay{Day: spotFeedDayText(d.day), Due: d.due})
+	}
+	return out, due
+}
+
+// SpotPriceNextWaitForTest is the worker's wait after its last cycle.
+func SpotPriceNextWaitForTest(w *SpotPriceWorker) time.Duration { return w.nextWait() }

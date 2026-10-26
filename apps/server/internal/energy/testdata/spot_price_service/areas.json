@@ -1,0 +1,65 @@
+[
+  { "code": "DK1", "active": false, "timeZone": "Europe/Copenhagen", "coverage": null },
+  { "code": "DK2", "active": false, "timeZone": "Europe/Copenhagen", "coverage": null },
+  { "code": "FI", "active": false, "timeZone": "Europe/Helsinki", "coverage": null },
+  {
+    "code": "NO1",
+    "active": true,
+    "timeZone": "Europe/Oslo",
+    "coverage": {
+      "firstStart": "2014-12-31T23:00:00Z",
+      "lastEnd": "2026-09-13T22:00:00Z",
+      "resolution": "PT15M",
+      "missingDaysLast400": 0,
+      "refreshedAt": "2026-09-12T11:00:00Z"
+    },
+    "lastLiveFetch": { "day": "2026-09-13", "status": "ok", "at": "2026-09-12T11:15:30Z" }
+  },
+  {
+    "code": "NO2",
+    "active": true,
+    "timeZone": "Europe/Oslo",
+    "coverage": {
+      "firstStart": "2021-11-30T23:00:00Z",
+      "lastEnd": "2026-09-13T22:00:00Z",
+      "resolution": "PT15M",
+      "missingDaysLast400": 0,
+      "refreshedAt": "2026-09-12T11:00:00Z"
+    },
+    "lastLiveFetch": { "day": "2026-09-13", "status": "ok", "at": "2026-09-12T11:15:31Z" }
+  },
+  {
+    "code": "NO3",
+    "active": true,
+    "timeZone": "Europe/Oslo",
+    "coverage": { "missingDaysLast400": 400, "refreshedAt": "2026-09-12T11:00:00Z" }
+  },
+  { "code": "NO4", "active": true, "timeZone": "Europe/Oslo", "coverage": null },
+  {
+    "code": "NO5",
+    "active": true,
+    "timeZone": "Europe/Oslo",
+    "coverage": {
+      "firstStart": "2026-06-30T22:00:00Z",
+      "lastEnd": "2026-09-13T22:00:00Z",
+      "resolution": "PT15M",
+      "missingDaysLast400": 330,
+      "refreshedAt": "2026-09-12T11:00:00Z"
+    }
+  },
+  {
+    "code": "SE1",
+    "active": false,
+    "timeZone": "Europe/Stockholm",
+    "coverage": {
+      "firstStart": "2015-01-01T23:00:00Z",
+      "lastEnd": "2024-12-31T23:00:00Z",
+      "resolution": "PT60M",
+      "missingDaysLast400": 400,
+      "refreshedAt": "2026-09-12T11:00:00Z"
+    }
+  },
+  { "code": "SE2", "active": false, "timeZone": "Europe/Stockholm", "coverage": null },
+  { "code": "SE3", "active": false, "timeZone": "Europe/Stockholm", "coverage": null },
+  { "code": "SE4", "active": false, "timeZone": "Europe/Stockholm", "coverage": null }
+]
