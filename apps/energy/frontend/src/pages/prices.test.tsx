@@ -1,6 +1,6 @@
 import { MantineProvider } from "@mantine/core";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { stubFetch } from "../test/fetch";
@@ -19,6 +19,7 @@ const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 
 const coverage = {
+  source: "feed",
   areas: [
     {
       priceArea: "NO1",
@@ -48,6 +49,7 @@ const intervals = [
     end: "2026-03-29T00:00:00Z",
     nokPerKwh: 0.8123,
     source: "Feed",
+    state: "final",
   },
   {
     id: 2,
@@ -56,6 +58,7 @@ const intervals = [
     end: "2026-03-29T01:00:00Z",
     nokPerKwh: 0.7,
     source: "Feed",
+    state: "final",
   },
 ];
 
@@ -97,7 +100,15 @@ describe("PricesPage", () => {
       within(no1)
         .getAllByRole("cell")
         .map((cell) => cell.textContent),
-    ).toEqual(["NO1", "Jan 2, 2026, 12:00 AM", "Mar 30, 2026, 12:00 AM", "2,160", "Complete", "FetchedMar 29, 2026"]);
+    ).toEqual([
+      "NO1",
+      "Jan 2, 2026, 12:00 AM",
+      "Mar 30, 2026, 12:00 AM",
+      "—",
+      "2,160",
+      "Complete",
+      "FetchedMar 29, 2026",
+    ]);
     const no2 = screen.getByRole("row", { name: /^NO2/ });
     expect(within(no2).getByText("3 days")).toBeInTheDocument();
     expect(within(no2).getByText("Failed")).toBeInTheDocument();
@@ -105,6 +116,77 @@ describe("PricesPage", () => {
     const no4 = screen.getByRole("row", { name: /^NO4/ });
     expect(within(no4).getByText("30 days")).toBeInTheDocument();
     expect(within(no4).getByText("Not fetched")).toBeInTheDocument();
+  });
+
+  it("names the source of the prices on the coverage card", async () => {
+    for (const [source, label] of [
+      ["service", "Spot-price service"],
+      ["feed", "Public feed"],
+      ["none", "Files only"],
+    ] as const) {
+      renderPage({}, (url) => (url.pathname.endsWith("/coverage") ? json({ ...coverage, source }) : json([])));
+      expect(await screen.findByText(label)).toBeInTheDocument();
+      cleanup();
+    }
+  });
+
+  describe("with the spot-price service", () => {
+    const serviceCoverage = {
+      source: "service",
+      areas: [
+        {
+          priceArea: "NO1",
+          intervalCount: 10,
+          daysMissingLast30: 0,
+          resolution: "PT15M",
+          history: { floorDay: "2025-01-01", complete: true, daysSkipped: 0 },
+        },
+        {
+          priceArea: "NO2",
+          intervalCount: 10,
+          daysMissingLast30: 0,
+          resolution: "PT60M",
+          history: {
+            floorDay: "2025-01-01",
+            cursorDay: "2025-06-15",
+            complete: false,
+            daysSkipped: 3,
+            error: "the service answered 503",
+          },
+        },
+        { priceArea: "NO3", intervalCount: 10, daysMissingLast30: 0, followedByService: false },
+        { priceArea: "NO4", intervalCount: 0, daysMissingLast30: 30 },
+      ],
+    };
+    const serve = (url: URL) => (url.pathname.endsWith("/coverage") ? json(serviceCoverage) : json([]));
+
+    it("shows the resolution and the history per area", async () => {
+      renderPage({}, serve);
+      const no1 = await screen.findByRole("row", { name: /^NO1/ });
+      expect(screen.getByRole("columnheader", { name: "History" })).toBeInTheDocument();
+      expect(within(no1).getByText("15 min")).toBeInTheDocument();
+      expect(within(no1).getByText("Complete from Jan 1, 2025")).toBeInTheDocument();
+      const no2 = screen.getByRole("row", { name: /^NO2/ });
+      expect(within(no2).getByText("1 hour")).toBeInTheDocument();
+      expect(within(no2).getByText("Copying… back to Jun 15, 2025")).toBeInTheDocument();
+      expect(within(no2).getByText("3 days skipped")).toBeInTheDocument();
+      expect(within(no2).getByText("the service answered 503")).toBeInTheDocument();
+      expect(within(screen.getByRole("columnheader", { name: "History" })).queryByText("x")).toBeNull();
+    });
+
+    it("flags an area the service does not follow, and shows a dash where there is no history", async () => {
+      renderPage({}, serve);
+      const no3 = await screen.findByRole("row", { name: /^NO3/ });
+      expect(within(no3).getByText("Not followed by the spot-price service")).toBeInTheDocument();
+      const no4 = screen.getByRole("row", { name: /^NO4/ });
+      expect(within(no4).queryByText("Not followed by the spot-price service")).toBeNull();
+    });
+  });
+
+  it("hides the History column unless the service is the source", async () => {
+    renderPage({});
+    await screen.findByRole("row", { name: /^NO1/ });
+    expect(screen.queryByRole("columnheader", { name: "History" })).toBeNull();
   });
 
   it("charts the first area's prices for the market's today", async () => {
@@ -147,7 +229,7 @@ describe("PricesPage", () => {
   });
 
   it("says so when no area is priced or in use, and shows no chart", async () => {
-    const { priceCalls } = renderPage({}, () => json({ areas: [] }));
+    const { priceCalls } = renderPage({}, () => json({ source: "none", areas: [] }));
     expect(await screen.findByText("No price areas yet")).toBeInTheDocument();
     expect(screen.queryByText("Spot prices")).not.toBeInTheDocument();
     expect(priceCalls()).toEqual([]);
@@ -156,7 +238,7 @@ describe("PricesPage", () => {
   it("says so when the prices cannot be read", async () => {
     renderPage({}, (url) =>
       url.pathname.endsWith("/coverage")
-        ? json({ areas: [coverage.areas[0]] })
+        ? json({ ...coverage, areas: [coverage.areas[0]] })
         : json({ title: "Bad Request", detail: "to is more than 35 days after from" }, 400),
     );
     expect(await screen.findByText("Failed to load the prices")).toBeInTheDocument();
@@ -180,6 +262,7 @@ describe("PriceChart", () => {
         end: new Date(start.getTime() + 3_600_000).toISOString(),
         nokPerKwh: index,
         source: "Feed" as const,
+        state: "final" as const,
       };
     });
   const labels = () =>

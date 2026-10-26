@@ -7,7 +7,9 @@ import { request } from "./request";
  * installation holds of them per area, and the file import.
  */
 
-export type SpotPriceSource = "Feed" | "Import";
+export type SpotPriceSource = "Feed" | "Import" | "Service";
+export type SpotPriceState = "final" | "preliminary";
+export type SpotPriceCoverageSource = "service" | "feed" | "none";
 export type SpotPriceFetchStatus = "ok" | "pending" | "missing" | "failed";
 
 /** One price interval, half-open [start, end), at the resolution its source gave. */
@@ -20,6 +22,10 @@ export interface SpotPriceInterval {
   eurPerKwh?: number;
   exchangeRate?: number;
   source: SpotPriceSource;
+  state: SpotPriceState;
+  upstream?: string;
+  rateSource?: string;
+  upstreamVersion?: string;
 }
 
 /** The feed worker's record of one area and civil day (`day` is `YYYY-MM-DD`). */
@@ -32,6 +38,18 @@ export interface SpotPriceFetch {
   error?: string;
 }
 
+/**
+ * How far the spot-price service's history copy has come for one area
+ * (`floorDay`, `cursorDay` are `YYYY-MM-DD`): `complete` once it reached the floor.
+ */
+export interface SpotPriceHistory {
+  floorDay?: string;
+  cursorDay?: string;
+  complete: boolean;
+  daysSkipped: number;
+  error?: string;
+}
+
 /** One area's coverage: `firstStart`/`lastEnd` are absent while the area holds no prices. */
 export interface SpotPriceCoverageArea {
   priceArea: string;
@@ -40,9 +58,15 @@ export interface SpotPriceCoverageArea {
   firstStart?: string;
   lastEnd?: string;
   lastFetch?: SpotPriceFetch;
+  /** False when the sync keeps no history for the area; absent until the sync has run or when the source is not the service. */
+  followedByService?: boolean;
+  /** ISO 8601 duration of the stored intervals: `PT15M`, `PT60M`. */
+  resolution?: string;
+  history?: SpotPriceHistory;
 }
 
 export interface SpotPriceCoverage {
+  source: SpotPriceCoverageSource;
   areas: SpotPriceCoverageArea[];
 }
 
