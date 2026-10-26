@@ -349,48 +349,141 @@ leveranseperiodene til den oppslukte kunden over til den som består.
 
 **Priser** holder spotprisene fra døgnmarkedet for hvert prisområde: prisen per kWh for
 hver time, eller hvert kvarter, som forbruk på en spotavtale prises etter. Prisene
-kommer inn på to måter. En bakgrunnsjobb henter hver dags priser fra en offentlig
-priskilde, når administratoren har slått den på
-([Bakgrunnsjobber og skalering](/nb/admin/installation/#bakgrunnsjobber-og-skalering));
-og priser kan importeres fra en fil, som også er måten å fylle inn dager eldre enn en
-uke, eller dager priskilden mangler.
+kommer fra én kilde administratoren har valgt
+([Bakgrunnsjobber og skalering](/nb/admin/installation/#bakgrunnsjobber-og-skalering)):
+**spotpristjenesten** våre driftsmiljøer kjører, som en bakgrunnsjobb kopierer fra,
+årene med historikk medregnet; eller en **offentlig priskilde**, som jobben spør om hver
+dags priser; eller ingen av dem. Priser kan dessuten alltid importeres fra en fil, som
+også er måten å fylle inn dager kilden mangler.
 
 Åpne **Energi** → **Priser**. Siden krever `energy:prices-view`. Priser er markedstall,
 ikke en kundes, så siden viser ingen kundedata.
 
 ### Les dekningen
 
-Det første kortet, **Dekning**, har én rad per prisområde: hvert område et målepunkt med
-en ikke-kansellert leveranseperiode ligger i, og hvert område som allerede har priser. **Ingen
-prisområder ennå** betyr at ingen av delene finnes. Hver rad viser:
+Det første kortet, **Dekning**, sier i et merke ved tittelen hvor prisene kommer fra:
+**Spotpristjenesten**, **Offentlig feed**, eller **Bare filer** når ingen kilde er satt
+og prisene bare kommer ved import. Det har én rad per prisområde: hvert område et
+målepunkt med en ikke-kansellert leveranseperiode ligger i, hvert område som allerede
+har priser og, med spotpristjenesten, hvert område tjenesten følger — så kortet fylles
+før det første målepunktet finnes. **Ingen prisområder ennå** betyr at det ikke finnes
+noe slikt område. Hver rad viser:
 
 - **Første** og **Siste**: starten på den første prisen som finnes, og slutten på den
   siste;
+- **Oppløsning**: lengden på den siste prisen som finnes, **15 min** eller **1 time**.
+  Døgnmarkedet gikk fra timer til kvarter 1. oktober 2025, så et område med historikk
+  fra før da har begge;
 - **Intervaller**: hvor mange priser som finnes;
 - **Dager uten priser siste 30**: dagene blant de siste 30, i dag medregnet, der ingen
   pris starter — **Komplett** når det ikke er noen;
-- **Siste henting**: dagen bakgrunnsjobben sist spurte priskilden om, og hvordan det
-  gikk. **Hentet**: dagens priser er lagret. **Ikke publisert ennå**: dagens eller
-  morgendagens priser er ikke ute ennå; døgnmarkedets auksjon publiserer dem rundt
-  klokken 13 norsk tid, og jobben spør igjen hver time. **Mangler**: priskilden har
-  ingen priser for den tidligere dagen; jobben spør igjen én gang i døgnet, høyst sju
-  ganger på rad, og deretter importerer du dagen fra en fil. **Feilet**: årsaken vises under, og jobben prøver igjen senere og venter
+- **Historikk**, bare med spotpristjenesten: hvor langt tilbake jobben har kopiert
+  områdets priser. **Kopierer… tilbake til** *en dato*: kopieringen pågår, bakover fra
+  for to uker siden, og har kommet til den dagen; mens den kopierer, arbeider jobben
+  hvert minutt, og fem områder tilbake til 2015 tar omtrent en halvtime. **Komplett
+  fra** *en dato*: alt tjenesten har for området fra den dagen av er kopiert — den
+  eldste dagen den har, eller en senere dag administratoren valgte. **Venter på
+  tjenestens dekning**: kopieringen har ikke begynt, fordi tjenesten ennå ikke har sagt
+  hvor langt tilbake den har området. Under teksten teller *N dager hoppet over* dager
+  tjenesten ikke hadde hele, som jobben lar være igjen til du importerer dem fra en fil,
+  og den siste feilen, når det er en, vises i en setning; jobben prøver igjen senere av
+  seg selv. **Følges ikke av spotpristjenesten** merker et område i listen som
+  tjenesten ikke samler inn: jobben spør ikke etter det, og prisene må importeres. Et
+  område tjenesten slutter å følge, beholder prisene og historikken som allerede er
+  kopiert;
+- **Siste henting**: dagen bakgrunnsjobben sist spurte om, og hvordan det gikk.
+  **Hentet**: dagens priser er lagret. **Ikke publisert ennå**: dagens eller
+  morgendagens priser er ikke ute ennå — døgnmarkedets auksjon publiserer dem rundt
+  klokken 13 norsk tid — eller, fra spotpristjenesten, dagen er lagret, men noen av
+  prisene er fortsatt foreløpige ([nedenfor](#foreløpige-priser)); jobben spør igjen
+  hver time. **Mangler**: kilden har ingen priser for den tidligere dagen; jobben spør
+  igjen én gang i døgnet, høyst sju ganger på rad, og deretter importerer du dagen fra
+  en fil. **Feilet**: årsaken vises under, og jobben prøver igjen senere og venter
   lenger hver gang, høyst seks timer. **Ikke hentet** betyr at jobben aldri har prøvd
   området, som når den er slått av.
 
-Jobben henter bare de siste sju dagene og morgendagen. En dag som mangler lenger
-tilbake, må importeres.
+Fra den offentlige priskilden henter jobben bare de siste sju dagene og morgendagen; en
+dag som mangler lenger tilbake, må importeres. Fra spotpristjenesten leser den de siste
+fjorten dagene og morgendagen om og om igjen, så tjenestens rettelser kommer med, og
+kopierer historikken én gang.
 
-### Se et områdes priser
+### Se prisene for en dag eller en uke
 
-Kortet **Spotpriser** viser ett områdes priser som en trappelinje i kr/kWh, hver pris
-tegnet fra intervallets start i norsk tid og holdt til den neste (en dag markerer også
-hvert intervall med et punkt). Det åpner på dagens dato i det første området. Velg **Prisområde**, deretter **Dag** eller
-**Måned** og dagen eller måneden. En dag har 24 timepriser (23 eller 25 de nettene
-klokkene stilles), eller 96 kvarter når prisene kommer med den oppløsningen. Høstnatten
-kommer timen fra 02:00 to ganger, og diagrammet merker hver av dem med UTC-forskyvningen,
-*02:00 +02* og *02:00 +01*. En periode uten priser sier *Ingen priser for denne
-perioden.*
+Kortet **Spotpriser** viser prisene som en linje i kr/kWh, lest i norsk tid. Det åpner
+på dagens dato i det første området. Velg perioden i knapperaden — **Dag**, **Uke**,
+**Måned**, **År** eller **Tidsrom** — og deretter tiden den dekker.
+
+- **Dag**, med dagen i **Dag**: hver pris den dagen som en trappelinje, hver tegnet fra
+  intervallets start og holdt til den neste, med et punkt på hver. En dag har 24
+  timepriser (23 eller 25 de nettene klokkene stilles), eller 96 kvarter med den
+  oppløsningen. Høstnatten kommer timen fra 02:00 to ganger, og diagrammet merker hver
+  av dem med UTC-forskyvningen, *02:00 +02* og *02:00 +01*.
+- **Uke**, med en hvilken som helst dag i uken i **Dag**: hver pris i uken, mandag til
+  søndag, som en trappelinje uten punkter, merket med ukedag og klokkeslett.
+
+For å se hver pris i en måned, se på den en uke om gangen med **Uke**: **Måned** viser
+gjennomsnitt per dag ([nedenfor](#se-en-måned-et-år-eller-et-tidsrom)).
+
+### Se en måned, et år eller et tidsrom
+
+En måned eller mer er for mange priser til å tegne én og én, så disse periodene viser
+**gjennomsnitt**: en linje gjennom hver dags, ukes eller måneds gjennomsnittspris, på et
+skyggelagt bånd fra den dagens laveste til dens høyeste pris (**Lavest–høyest**). Når du
+peker på diagrammet, vises gjennomsnittet og båndets to ytterpunkter.
+
+- **Måned**, valgt i **Måned**: ett gjennomsnitt per dag i måneden. Dette er endret:
+  **Måned** tegnet tidligere hver pris i måneden, og tegner nå gjennomsnitt per dag;
+  bruk **Uke** for hver pris.
+- **År**, valgt i **År**: ett gjennomsnitt per dag i året.
+- **Tidsrom**, fra **Fra måned** til **Til måned**, begge medregnet: ett gjennomsnitt
+  per uke for et tidsrom på opptil to år — hele uker, mandag til søndag, så den første
+  og den siste uken kan strekke seg inn i månedene på hver side — og ett per måned for
+  et lengre, opptil tretti år (et lengre tidsrom beholder de siste tretti). Det åpner
+  på de siste tolv månedene.
+
+Et gjennomsnitt vekter hver pris etter hvor lenge den gjaldt, så en dag med timepriser
+og en dag med kvarterpriser teller likt. En dag, en uke eller en måned uten noen pris
+utelates fra linjen i stedet for å tegnes som null, og en med bare noen av prisene får
+gjennomsnittet av dem. En periode uten priser sier *Ingen priser for denne perioden.*
+
+### Sammenlign områder
+
+I **Sammenlign områder** velger du opptil fem prisområder. Hvert får sin egen linje i
+sin egen farge, med en forklaring, og det første området du valgte får den første
+fargen. Båndet lavest–høyest tegnes bare når ett område vises, siden flere bånd ville
+skjule hverandre. Minst ett område er alltid valgt.
+
+### Les tallene
+
+Over diagrammet oppsummerer tre tall perioden for det **første** området i
+**Sammenlign områder** — når du sammenligner, navngir hver etikett det, som
+*Gjennomsnitt · NO1*:
+
+- **Gjennomsnitt**: periodens gjennomsnittspris, hver pris vektet etter hvor lenge den
+  gjaldt;
+- **Lavest** og **Høyest**: periodens laveste og høyeste pris, med når den gjaldt:
+  intervallet (og, for en uke, dagen) for **Dag** og **Uke**, eller dagen, uken eller
+  måneden den falt i for de lengre periodene.
+
+### Foreløpige priser
+
+Fra spotpristjenesten publiseres morgendagens priser så snart auksjonen er ferdig, mens
+kronebeløpet fortsatt er **foreløpig**: det bruker en midlertidig valutakurs til dagens
+offisielle kurs er ute. Jobben lagrer dem som de er og erstatter dem når de blir
+endelige, så en foreløpig pris kan fortsatt endre seg litt. Når en pris i visningen er
+foreløpig, vises merket **Foreløpig** ved **Spotpriser**, og den foreløpige delen av
+hver linje tegnes **stiplet**, med en egen oppføring i forklaringen (*NO1
+(foreløpig)*). For de lengre periodene tegnes en dag, uke eller måned med en foreløpig
+pris stiplet. Priser fra den offentlige priskilden eller fra en fil er alltid endelige.
+
+### Del en lenke til en visning
+
+Siden holder det du ser på — områdene, perioden, dagen og månedene i et tidsrom — i
+adressen sin, som i
+`/energy/prices?areas=NO1,NO2&period=range&from=2024-01&to=2025-12`. Kopier adressen
+for å sende noen den samme visningen, lagre den som bokmerke, eller last inn siden på
+nytt uten å miste den. En verdi i adressen siden ikke kjenner igjen, ignoreres, og
+siden viser standardvisningen i stedet; det samme gjelder et område siden ikke viser.
 
 ### Importer priser fra en fil
 
