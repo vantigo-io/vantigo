@@ -360,7 +360,11 @@ finnes; et område i bruk som tjenesten ikke følger, spørres det ikke etter (s
 nedenfor). Hver runde spør først tjenesten hvilke områder den følger, leser deretter
 hvert områdes løpende vindu — fjorten dager tilbake til i morgen — med én
 forespørsel, når en av dagene er forfalt eller vinduet sist ble lest for mer enn et
-døgn siden, og går så bakover gjennom hvert områdes historikk, 35 dager per
+døgn siden (en ny lesing uten forfalte dager som feiler, registrerer ingenting og
+prøves igjen neste runde). Har jobben vært borte i mer enn to uker, leser den først
+dagene den gikk glipp av mellom det forrige løpende vinduet og dagens, eldste først,
+som historikk, så et avbrudd ikke etterlater hull. Deretter går den bakover gjennom
+hvert områdes historikk, 35 dager per
 forespørsel (34 over høstens klokkeskifte), ned til den eldste dagen tjenesten har,
 eller til `ENERGY_SPOT_PRICE_HISTORY_FROM` når den er senere. De tjue forespørslene
 omfatter den om områdene. **Mens historikken kopieres, kjører jobben en runde hvert
@@ -391,11 +395,25 @@ Hva som kan gå galt — feilen i det løpende vinduet vises i **Dekning**-korte
   verten slås opp til en offentlig adresse. Bruk den interne adressen, eller `https`.
 - **«the spot-price service is rate limiting this installation»** — en `429`: runden
   gjør ingen flere forespørsler, og neste forsøk venter den vanlige ventetiden etter en
-  feil eller til tjenestens `Retry-After`, det som er senest.
+  feil eller til tjenestens `Retry-After`, det som er senest, men aldri mer enn et
+  døgn.
+- **«the spot-price service answered 400 Bad Request»**, **«… did not answer a list of
+  prices»**, **«… larger than 4 MiB»** eller et intervalltidspunkt den ikke kan lese —
+  tjenesten avviste et historikkvindu eller svarte noe Vantigo ikke kan lese. Et slikt
+  vindu spørres tre ganger, med ventetid mellom; etter den tredje **hoppes det over**,
+  dagene telles som hoppet over, og gjennomgangen fortsetter, mens setningen blir stående
+  under **Historikk** til neste vindu er kopiert. Fyll de dagene fra en fil. Et
+  tidsavbrudd, en `5xx`, en `401` eller en `429` hopper aldri over et vindu: jobben venter
+  og spør igjen.
+- **Tjenestens områder kan ikke leses** — logges som advarsel med tomt område;
+  **Historikk**-kolonnen blir stående som den var, ingenting av historikken kopieres den
+  runden, og det løpende vinduet kjører fortsatt for områdene i bruk.
 - **Et område i bruk som tjenesten ikke følger** — et målepunkt i for eksempel `SE3` på
   en vert der tjenesten bare følger NO1–NO5. **Historikk**-kolonnen sier «Følges ikke av
   spotpristjenesten», og jobben spør ikke etter noe for det: be tjenestens operatør
-  følge området, eller importer områdets priser fra en fil.
+  følge området, eller importer områdets priser fra en fil. Et område tjenesten
+  **slutter** å følge, sier det samme fra neste runde og beholder det som er kopiert;
+  når det følges igjen, leses dagene det gikk glipp av i mellomtiden som over.
 - **Dager hoppet over** — en dag tjenesten har ufullstendig eller uten NOK-pris, eller
   en som ligger over en dag importert fra en fil med en annen oppløsning, telles i
   **Historikk**-kolonnen og overlates til en fil; jobben overskriver aldri en importert

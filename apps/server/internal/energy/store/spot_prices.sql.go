@@ -25,7 +25,7 @@ func (q *Queries) DeleteSpotPricesByIDs(ctx context.Context, ids []int64) error 
 }
 
 const getSpotPriceHistory = `-- name: GetSpotPriceHistory :one
-SELECT price_area, cursor_day, floor_day, days_skipped, attempts, last_error, next_attempt_at, updated_at
+SELECT price_area, cursor_day, floor_day, live_through, active, days_skipped, attempts, last_error, next_attempt_at, updated_at
 FROM energy.spot_price_history
 WHERE price_area = $1
 `
@@ -39,6 +39,8 @@ func (q *Queries) GetSpotPriceHistory(ctx context.Context, priceArea string) (En
 		&i.PriceArea,
 		&i.CursorDay,
 		&i.FloorDay,
+		&i.LiveThrough,
+		&i.Active,
 		&i.DaysSkipped,
 		&i.Attempts,
 		&i.LastError,
@@ -350,7 +352,7 @@ func (q *Queries) ListSpotPriceFetches(ctx context.Context, arg ListSpotPriceFet
 }
 
 const listSpotPriceHistory = `-- name: ListSpotPriceHistory :many
-SELECT price_area, cursor_day, floor_day, days_skipped, attempts, last_error, next_attempt_at, updated_at
+SELECT price_area, cursor_day, floor_day, live_through, active, days_skipped, attempts, last_error, next_attempt_at, updated_at
 FROM energy.spot_price_history
 ORDER BY price_area
 `
@@ -369,6 +371,8 @@ func (q *Queries) ListSpotPriceHistory(ctx context.Context) ([]EnergySpotPriceHi
 			&i.PriceArea,
 			&i.CursorDay,
 			&i.FloorDay,
+			&i.LiveThrough,
+			&i.Active,
 			&i.DaysSkipped,
 			&i.Attempts,
 			&i.LastError,
@@ -622,11 +626,13 @@ func (q *Queries) UpdateSpotPrice(ctx context.Context, arg UpdateSpotPriceParams
 }
 
 const upsertSpotPriceHistory = `-- name: UpsertSpotPriceHistory :exec
-INSERT INTO energy.spot_price_history (price_area, cursor_day, floor_day, days_skipped, attempts, last_error, next_attempt_at, updated_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8::timestamptz)
+INSERT INTO energy.spot_price_history (price_area, cursor_day, floor_day, live_through, active, days_skipped, attempts, last_error, next_attempt_at, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::timestamptz)
 ON CONFLICT (price_area) DO UPDATE SET
     cursor_day = EXCLUDED.cursor_day,
     floor_day = EXCLUDED.floor_day,
+    live_through = EXCLUDED.live_through,
+    active = EXCLUDED.active,
     days_skipped = EXCLUDED.days_skipped,
     attempts = EXCLUDED.attempts,
     last_error = EXCLUDED.last_error,
@@ -638,6 +644,8 @@ type UpsertSpotPriceHistoryParams struct {
 	PriceArea     string
 	CursorDay     pgtype.Date
 	FloorDay      pgtype.Date
+	LiveThrough   pgtype.Date
+	Active        bool
 	DaysSkipped   int32
 	Attempts      int32
 	LastError     *string
@@ -646,12 +654,15 @@ type UpsertSpotPriceHistoryParams struct {
 }
 
 // UpsertSpotPriceHistory writes an area's walk as the sync decided it:
-// the cursor, the floor, the skipped days and the backoff, whole.
+// the cursor, the floor, the last live day read, whether the service
+// follows the area, the skipped days and the backoff, whole.
 func (q *Queries) UpsertSpotPriceHistory(ctx context.Context, arg UpsertSpotPriceHistoryParams) error {
 	_, err := q.db.Exec(ctx, upsertSpotPriceHistory,
 		arg.PriceArea,
 		arg.CursorDay,
 		arg.FloorDay,
+		arg.LiveThrough,
+		arg.Active,
 		arg.DaysSkipped,
 		arg.Attempts,
 		arg.LastError,

@@ -942,7 +942,7 @@ export interface components {
             intervalCount: number;
             /** Format: date-time */
             lastEnd?: string;
-            /** @description With the spot-price service as the source, whether the service follows the area, as its last answer said; absent with another source or before the worker has asked. */
+            /** @description With the spot-price service as the source, whether the service follows the area, as its last answer of its areas said; absent with another source or before the worker has asked. */
             followedByService?: boolean;
             history?: components["schemas"]["SpotPriceHistory"];
             lastFetch?: components["schemas"]["SpotPriceFetch"];
@@ -950,7 +950,7 @@ export interface components {
             /** @description The length of the area's latest stored interval as an ISO 8601 duration, PT15M or PT60M; absent for an area with no prices. */
             resolution?: string;
         };
-        /** @description The spot-price service sync's walk back through an area's history (spot-price service design S5): cursorDay is the oldest civil day (Europe/Oslo) copied so far, floorDay the oldest the service holds; complete once the cursor has reached the floor. daysSkipped counts the days the service held incompletely, without a NOK price, or over an imported day at another resolution — left for a file. error is the last failed request's sentence while the walk waits to retry. */
+        /** @description The spot-price service sync's walk back through an area's history (spot-price service design S5): cursorDay is the oldest civil day (Europe/Oslo) copied so far, floorDay the oldest the service holds; complete once the cursor has reached the floor. daysSkipped counts the days the service held incompletely, without a NOK price, or over an imported day at another resolution, and the days of a window it failed permanently three times in a row — left for a file. error is the last failed window's sentence while the walk waits to retry, or after a skipped window until the next window is copied. It is kept for an area the service no longer follows. */
         SpotPriceHistory: {
             complete: boolean;
             /** Format: date */

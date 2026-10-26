@@ -149,7 +149,9 @@ func gzipped(t *testing.T, b []byte) []byte {
 func TestSpotServiceClient_DecodesGzipAndCapsTheDecodedBody(t *testing.T) {
 	t.Parallel()
 	areas := readServiceFixture(t, "areas.json")
-	huge := append(append([]byte("["), bytes.Repeat([]byte(" "), 2<<20)...), ']')
+	// Past each cap once decoded: the areas' 1 MiB, the prices' 4 MiB.
+	big := append(append([]byte("["), bytes.Repeat([]byte(" "), 2<<20)...), ']')
+	huge := append(append([]byte("["), bytes.Repeat([]byte(" "), 5<<20)...), ']')
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
 			http.Error(w, "no gzip asked for", http.StatusBadRequest)
@@ -157,8 +159,15 @@ func TestSpotServiceClient_DecodesGzipAndCapsTheDecodedBody(t *testing.T) {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Content-Encoding", "gzip")
-		if r.URL.Path == "/api/v1/prices" {
-			_, _ = w.Write(gzipped(t, huge)) // a few KiB on the wire, 2 MiB decoded
+		switch {
+		case r.URL.Path == "/api/v1/prices" && r.URL.Query().Get("area") == "NO2":
+			_, _ = w.Write(gzipped(t, big)) // 2 MiB decoded: within the prices' cap
+			return
+		case r.URL.Path == "/api/v1/prices":
+			_, _ = w.Write(gzipped(t, huge)) // a few KiB on the wire, 5 MiB decoded
+			return
+		case r.URL.Path == "/big":
+			_, _ = w.Write(gzipped(t, big))
 			return
 		}
 		_, _ = w.Write(gzipped(t, areas))
@@ -175,8 +184,14 @@ func TestSpotServiceClient_DecodesGzipAndCapsTheDecodedBody(t *testing.T) {
 	if got[6].Code != "NO4" || got[6].FirstStart != nil || got[5].FirstStart != nil {
 		t.Errorf("NO3 %+v and NO4 %+v, want no first start for coverage without one or null", got[5], got[6])
 	}
-	if _, fail := c.Days(context.Background(), "NO1", "2026-09-10", "2026-09-10"); fail.Sentence != "the spot-price service's answer is larger than 1 MiB" {
-		t.Errorf("2 MiB once decoded answered %q, want the cap's sentence", fail.Sentence)
+	if _, fail := c.Days(context.Background(), "NO1", "2026-09-10", "2026-09-10"); fail.Sentence != "the spot-price service's answer is larger than 4 MiB" || !fail.Permanent {
+		t.Errorf("prices of 5 MiB once decoded answered %+v, want the prices cap's sentence, permanent", fail)
+	}
+	if _, fail := c.Days(context.Background(), "NO2", "2026-09-10", "2026-09-10"); fail.Sentence != "" {
+		t.Errorf("prices of 2 MiB once decoded answered %q, want them read", fail.Sentence)
+	}
+	if fail := c.Get(context.Background(), srv.URL+"/big"); fail.Sentence != "the spot-price service's answer is larger than 1 MiB" {
+		t.Errorf("an answer of 2 MiB under the areas' cap answered %q, want the cap's sentence", fail.Sentence)
 	}
 }
 
@@ -196,6 +211,21 @@ func TestSpotServiceClient_AnswersEachStatusWithItsSentenceAndNeverTheKey(t *tes
 		case "NO3":
 			w.Header().Set("Retry-After", now.Add(2*time.Hour).Format(http.TimeFormat))
 			w.WriteHeader(http.StatusTooManyRequests)
+		case "NO5":
+			w.Header().Set("Retry-After", now.Add(72*time.Hour).Format(http.TimeFormat))
+			w.WriteHeader(http.StatusTooManyRequests)
+		case "SE1":
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"prices":[]}`))
+		case "SE2":
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`[{"start":"yesterday","end":"2026-09-10T00:15:00Z"}]`))
+		case "SE3":
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`[{"start":"2026-09-10T00:15:00Z","end":"2026-09-10T00:00:00Z"}]`))
 		case "NO4":
 			w.WriteHeader(http.StatusServiceUnavailable)
 			_, _ = w.Write([]byte(`the service's own words ` + r.Header.Get("Authorization")))
@@ -206,21 +236,28 @@ func TestSpotServiceClient_AnswersEachStatusWithItsSentenceAndNeverTheKey(t *tes
 	}))
 	t.Cleanup(srv.Close)
 	c, logs := serviceClient(t, srv, now)
+	// permanent: asking again cannot mend it — a 400, or an answer Vantigo
+	// cannot read. The key refused, a rate limit and a 5xx are transient.
 	cases := []struct {
-		area     string
-		sentence string
-		retryAt  time.Time
+		area      string
+		sentence  string
+		retryAt   time.Time
+		permanent bool
 	}{
-		{"NO1", "the spot-price service refused the key", time.Time{}},
-		{"NO2", "the spot-price service is rate limiting this installation", now.Add(120 * time.Second)},
-		{"NO3", "the spot-price service is rate limiting this installation", now.Add(2 * time.Hour)},
-		{"NO4", "the spot-price service answered 503 Service Unavailable", time.Time{}},
-		{"NO6", "the spot-price service answered 400 Bad Request", time.Time{}},
+		{"NO1", "the spot-price service refused the key", time.Time{}, false},
+		{"NO2", "the spot-price service is rate limiting this installation", now.Add(120 * time.Second), false},
+		{"NO3", "the spot-price service is rate limiting this installation", now.Add(2 * time.Hour), false},
+		{"NO5", "the spot-price service is rate limiting this installation", now.Add(24 * time.Hour), false}, // an HTTP date three days on, clamped to a day
+		{"NO4", "the spot-price service answered 503 Service Unavailable", time.Time{}, false},
+		{"NO6", "the spot-price service answered 400 Bad Request", time.Time{}, true},
+		{"SE1", "the spot-price service did not answer a list of prices", time.Time{}, true},
+		{"SE2", "an interval's time is not an RFC 3339 time with an offset", time.Time{}, true},
+		{"SE3", "an interval does not end after it starts", time.Time{}, true},
 	}
 	for _, tc := range cases {
 		_, fail := c.Days(context.Background(), tc.area, "2026-09-10", "2026-09-10")
-		if fail.Sentence != tc.sentence || !fail.RetryAt.Equal(tc.retryAt) {
-			t.Errorf("%s answered %+v, want %q retrying at %v", tc.area, fail, tc.sentence, tc.retryAt)
+		if fail.Sentence != tc.sentence || !fail.RetryAt.Equal(tc.retryAt) || fail.Permanent != tc.permanent {
+			t.Errorf("%s answered %+v, want %q retrying at %v, permanent %v", tc.area, fail, tc.sentence, tc.retryAt, tc.permanent)
 		}
 		if strings.Contains(fail.Sentence, testServiceKey) {
 			t.Errorf("%s's sentence carries the key", tc.area)

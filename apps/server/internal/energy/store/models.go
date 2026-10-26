@@ -127,6 +127,8 @@ type EnergySpotPriceHistory struct {
 	PriceArea     string
 	CursorDay     pgtype.Date
 	FloorDay      pgtype.Date
+	LiveThrough   pgtype.Date
+	Active        bool
 	DaysSkipped   int32
 	Attempts      int32
 	LastError     *string

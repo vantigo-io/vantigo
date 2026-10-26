@@ -352,7 +352,11 @@ follows (NO1–NO5 on our hosts), so the Prices page fills before the first mete
 point exists; an area in use that the service does not follow is not asked for (see
 below). Each cycle first asks the service which areas it follows, then reads each
 area's live window — fourteen days back to tomorrow — in one request, when one of its
-days is due or the window was last read more than a day ago, then walks each area's
+days is due or the window was last read more than a day ago (a re-read that fails with
+no day due records nothing and is tried again the next cycle). When the worker was
+away for more than two weeks, it first reads the days it missed between the last live
+window and today's, oldest first, as history, so a downtime leaves no hole. It then
+walks each area's
 history backwards, 35 days a request (34 across the autumn clock change), down to the
 oldest day the service holds, or to `ENERGY_SPOT_PRICE_HISTORY_FROM` when that is
 later. The twenty requests include the one for the areas. **While history is being
@@ -382,11 +386,23 @@ fetch** column, the history's under **History**, and either is logged at warning
   its host resolves to a public address. Use the internal address, or `https`.
 - **"the spot-price service is rate limiting this installation"** — a `429`: the
   cycle makes no further request, and the next attempt waits for the backoff or the
-  service's `Retry-After`, whichever is later.
+  service's `Retry-After`, whichever is later, but never more than a day.
+- **"the spot-price service answered 400 Bad Request"**, **"… did not answer a list of
+  prices"**, **"… larger than 4 MiB"** or an interval time it cannot read — the service
+  refused a history window or answered one Vantigo cannot read. Such a window is asked
+  three times, backed off between; after the third it is **skipped**, its days counted
+  as skipped, and the walk goes on, the sentence staying under History until the next
+  window is copied. Fill those days from a file. A timeout, a `5xx`, a `401` or a `429`
+  never skips a window: the walk waits and asks again.
+- **The service's areas cannot be read** — logged at warning with an empty area; the
+  History column is left as it was, nothing of history is copied that cycle, and the
+  live window still runs for the areas in use.
 - **An area in use the service does not follow** — a metering point in, say, `SE3` on a
   host whose service follows NO1–NO5 only. The History column says "Not followed by
   the spot-price service" and the worker asks nothing for it: ask the service's operator to
-  follow the area, or import its prices from a file.
+  follow the area, or import its prices from a file. An area the service **stops**
+  following says the same from the next cycle and keeps what was copied; once it is
+  followed again, the days it missed meanwhile are read as above.
 - **Days skipped** — a day the service holds incompletely or without a NOK price, or one
   over a day imported from a file at another resolution, is counted in the History
   column and left for a file; the worker never overwrites an imported price.
