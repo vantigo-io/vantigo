@@ -352,6 +352,10 @@ func WithIdentityProvisioners(providers ...contracts.IdentityProvisioner) Option
 // fake register without composing Staff beside it. module.Compose and
 // module.Workers keep a value set here when no enabled module provides the
 // slot; a composed Staff's own replaces it.
+//
+// It also lists "staff" in the harness's MODULES (see modulesEnv), as
+// WithProjects lists "projects": config.go rejects "planning" without
+// "staff", and the fake is what stands in for it here.
 func WithWorkforce(w contracts.Workforce) Option {
 	return func(s *setup) { s.workforce = w }
 }
@@ -511,12 +515,13 @@ func WithEnv(key, value string) Option {
 // stubbed names the modules a harness stands in for with a fake contract
 // rather than composing — "projects" when WithProjects was given, because
 // config.go rejects "time" without "projects" and a time harness supplies a
-// fake contracts.ProjectDirectory instead of the module. A stubbed name is
-// listed as enabled but never mounted: enabledModules only ever filters the
-// modules actually passed to Compose. The result is sorted and comma-joined,
-// with no duplicates even when "customers" is itself one of mods, a name
-// repeats across more than one WithModule call, or a stubbed name is also
-// composed.
+// fake contracts.ProjectDirectory instead of the module, and "staff" when
+// WithWorkforce was given, because it rejects "planning" without "staff". A
+// stubbed name is listed as enabled but never mounted: enabledModules only
+// ever filters the modules actually passed to Compose. The result is sorted
+// and comma-joined, with no duplicates even when "customers" is itself one
+// of mods, a name repeats across more than one WithModule call, or a stubbed
+// name is also composed.
 func modulesEnv(mods []module.Module, stubbed ...string) string {
 	moduleSet := map[string]bool{"customers": true}
 	for _, m := range mods {
@@ -578,6 +583,9 @@ func New(t *testing.T, opts ...Option) *Harness {
 	var stubbed []string
 	if s.projects != nil {
 		stubbed = append(stubbed, "projects")
+	}
+	if s.workforce != nil {
+		stubbed = append(stubbed, "staff")
 	}
 	env["MODULES"] = modulesEnv(s.modules, stubbed...)
 

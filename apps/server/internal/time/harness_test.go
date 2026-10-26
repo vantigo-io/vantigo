@@ -1034,3 +1034,8 @@ func setDisplayName(t *testing.T, h *harness, userID uuid.UUID, name string) {
 	t.Helper()
 	h.Exec(t, `UPDATE identity.users SET display_name = $2 WHERE id = $1`, userID, name)
 }
+
+// ProjectsByStatus answers nothing: no test here lists projects by status.
+func (*fakeProjects) ProjectsByStatus(context.Context, []string) ([]contracts.ProjectEntry, error) {
+	return nil, nil
+}

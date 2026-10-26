@@ -10,7 +10,7 @@
 -- DirectoryProject is contracts.ProjectDirectory.Project's row: a project of
 -- any status, cancelled and completed included, since a consumer holding a
 -- historical reference (a logged hour, say) must still be able to name it.
-SELECT id, code, name, customer_id, status, billing_type, currency, default_bill_rate
+SELECT id, code, name, customer_id, status, billing_type, currency, default_bill_rate, start_date, end_date
 FROM projects.projects
 WHERE id = @id;
 
@@ -19,7 +19,7 @@ WHERE id = @id;
 -- project in ids, in any status, ordered by code. An id in ids that does not
 -- exist simply has no matching row, which is what makes an unknown id
 -- "omitted" rather than an error.
-SELECT id, code, name, customer_id, status, billing_type, currency, default_bill_rate
+SELECT id, code, name, customer_id, status, billing_type, currency, default_bill_rate, start_date, end_date
 FROM projects.projects
 WHERE id = ANY(@ids::integer[])
 ORDER BY code, id;
@@ -28,7 +28,7 @@ ORDER BY code, id;
 -- DirectoryProjectByCode is contracts.ProjectDirectory.ProjectByCode's row.
 -- The caller upper-cases code before calling, matching how codes are stored
 -- (validateProjectCode); this query does not itself normalize case.
-SELECT id, code, name, customer_id, status, billing_type, currency, default_bill_rate
+SELECT id, code, name, customer_id, status, billing_type, currency, default_bill_rate, start_date, end_date
 FROM projects.projects
 WHERE code = @code;
 
@@ -54,7 +54,7 @@ WHERE id = @id AND project_id = @project_id;
 -- rows: every project userID holds any role on, whatever its status, ordered
 -- by code. project_roles' primary key (project_id, user_id) keeps this to one
 -- row per project.
-SELECT p.id, p.code, p.name, p.customer_id, p.status, p.billing_type, p.currency, p.default_bill_rate
+SELECT p.id, p.code, p.name, p.customer_id, p.status, p.billing_type, p.currency, p.default_bill_rate, p.start_date, p.end_date
 FROM projects.projects p
 JOIN projects.project_roles r ON r.project_id = p.id
 WHERE r.user_id = @user_id
@@ -68,10 +68,22 @@ ORDER BY p.code, p.id;
 -- neighbours: the LIMIT has to cut somewhere stable, and the oldest projects
 -- are the ones a customer page can least afford to lose. ix_projects_customer_id
 -- (00008) serves the WHERE; the casts keep both parameters non-null int32.
-SELECT id, code, name, customer_id, status, billing_type, currency, default_bill_rate
+SELECT id, code, name, customer_id, status, billing_type, currency, default_bill_rate, start_date, end_date
 FROM projects.projects
 WHERE customer_id = @customer_id::integer
 ORDER BY id
+LIMIT @max_projects::integer;
+
+-- name: DirectoryProjectsByStatus :many
+-- DirectoryProjectsByStatus is contracts.ProjectDirectory.ProjectsByStatus'
+-- rows: every project whose status is one of @statuses, by code, and no more
+-- than the caller's cap (contracts.MaxDirectoryProjects, passed in so the
+-- number lives in one place). ix_projects_status (00008) serves the WHERE; an
+-- unknown status simply matches no row.
+SELECT id, code, name, customer_id, status, billing_type, currency, default_bill_rate, start_date, end_date
+FROM projects.projects
+WHERE status = ANY(@statuses::text[])
+ORDER BY code, id
 LIMIT @max_projects::integer;
 
 -- name: DirectoryBillingLines :many

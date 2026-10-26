@@ -1025,3 +1025,8 @@ func (f *fakeProjects) Projects(_ context.Context, ids []int32) ([]contracts.Pro
 	}
 	return out, nil
 }
+
+// ProjectsByStatus answers nothing: no test here lists projects by status.
+func (*fakeProjects) ProjectsByStatus(context.Context, []string) ([]contracts.ProjectEntry, error) {
+	return nil, nil
+}

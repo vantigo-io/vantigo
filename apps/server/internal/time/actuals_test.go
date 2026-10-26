@@ -970,3 +970,8 @@ func TestActualsReportsEveryWorkTypeInTheProjectsCurrency(t *testing.T) {
 		t.Errorf("batch total = %+v, want the single read's %+v", batch[projectKraftVerket].Total, nok.Totals.Total)
 	}
 }
+
+// ProjectsByStatus answers nothing: no test here lists projects by status.
+func (*forbiddenProjects) ProjectsByStatus(context.Context, []string) ([]contracts.ProjectEntry, error) {
+	return nil, nil
+}

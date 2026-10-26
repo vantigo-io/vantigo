@@ -45,12 +45,15 @@ type directoryProjectRow struct {
 	BillingType     string
 	Currency        *string
 	DefaultBillRate pgtype.Numeric
+	StartDate       pgtype.Date
+	EndDate         pgtype.Date
 }
 
 // toProjectEntry converts a directoryProjectRow into the contract's
 // ProjectEntry: OpenForWork derived from Status, DefaultBillRate read off
 // its numeric column the same way every other optional decimal in this
-// module is (floatPtrFromNumeric).
+// module is (floatPtrFromNumeric), and the planned dates as the civil dates
+// the columns hold (planning design S9), nil when NULL.
 func toProjectEntry(row directoryProjectRow) (contracts.ProjectEntry, error) {
 	defaultBillRate, err := floatPtrFromNumeric(row.DefaultBillRate)
 	if err != nil {
@@ -66,7 +69,19 @@ func toProjectEntry(row directoryProjectRow) (contracts.ProjectEntry, error) {
 		BillingType:     row.BillingType,
 		Currency:        row.Currency,
 		DefaultBillRate: defaultBillRate,
+		StartDate:       directoryDate(row.StartDate),
+		EndDate:         directoryDate(row.EndDate),
 	}, nil
+}
+
+// directoryDate is a nullable date column as the contract carries it: the
+// civil date at midnight UTC, as pgx decodes it, nil for NULL.
+func directoryDate(d pgtype.Date) *time.Time {
+	if !d.Valid {
+		return nil
+	}
+	t := d.Time
+	return &t
 }
 
 // Project looks up a project by id, cancelled and completed ones included: a
@@ -83,6 +98,7 @@ func (d *directory) Project(ctx context.Context, id int32) (*contracts.ProjectEn
 	entry, err := toProjectEntry(directoryProjectRow{
 		ID: row.ID, Code: row.Code, Name: row.Name, CustomerID: row.CustomerID,
 		Status: row.Status, BillingType: row.BillingType, Currency: row.Currency, DefaultBillRate: row.DefaultBillRate,
+		StartDate: row.StartDate, EndDate: row.EndDate,
 	})
 	if err != nil {
 		return nil, err
@@ -149,6 +165,7 @@ func (d *directory) ProjectsForUser(ctx context.Context, userID uuid.UUID) ([]co
 		entry, err := toProjectEntry(directoryProjectRow{
 			ID: row.ID, Code: row.Code, Name: row.Name, CustomerID: row.CustomerID,
 			Status: row.Status, BillingType: row.BillingType, Currency: row.Currency, DefaultBillRate: row.DefaultBillRate,
+			StartDate: row.StartDate, EndDate: row.EndDate,
 		})
 		if err != nil {
 			return nil, err
@@ -178,6 +195,7 @@ func (d *directory) ProjectsForCustomer(ctx context.Context, customerID int32) (
 		entry, err := toProjectEntry(directoryProjectRow{
 			ID: row.ID, Code: row.Code, Name: row.Name, CustomerID: row.CustomerID,
 			Status: row.Status, BillingType: row.BillingType, Currency: row.Currency, DefaultBillRate: row.DefaultBillRate,
+			StartDate: row.StartDate, EndDate: row.EndDate,
 		})
 		if err != nil {
 			return nil, err
@@ -203,6 +221,7 @@ func (d *directory) Projects(ctx context.Context, ids []int32) ([]contracts.Proj
 		entry, err := toProjectEntry(directoryProjectRow{
 			ID: row.ID, Code: row.Code, Name: row.Name, CustomerID: row.CustomerID,
 			Status: row.Status, BillingType: row.BillingType, Currency: row.Currency, DefaultBillRate: row.DefaultBillRate,
+			StartDate: row.StartDate, EndDate: row.EndDate,
 		})
 		if err != nil {
 			return nil, err
@@ -226,11 +245,44 @@ func (d *directory) ProjectByCode(ctx context.Context, code string) (*contracts.
 	entry, err := toProjectEntry(directoryProjectRow{
 		ID: row.ID, Code: row.Code, Name: row.Name, CustomerID: row.CustomerID,
 		Status: row.Status, BillingType: row.BillingType, Currency: row.Currency, DefaultBillRate: row.DefaultBillRate,
+		StartDate: row.StartDate, EndDate: row.EndDate,
 	})
 	if err != nil {
 		return nil, err
 	}
 	return &entry, nil
+}
+
+// ProjectsByStatus lists every project whose status is one of statuses, by
+// code then id, at most contracts.MaxDirectoryProjects of them. It is
+// consumer-gated (planning design S9), as ProjectActuals is: no
+// authorization here, the consumer's own permission decides who sees the
+// list. No statuses answer an empty result without a query; an unknown one
+// matches nothing.
+func (d *directory) ProjectsByStatus(ctx context.Context, statuses []string) ([]contracts.ProjectEntry, error) {
+	if len(statuses) == 0 {
+		return []contracts.ProjectEntry{}, nil
+	}
+	rows, err := d.q.DirectoryProjectsByStatus(ctx, store.DirectoryProjectsByStatusParams{
+		Statuses:    statuses,
+		MaxProjects: contracts.MaxDirectoryProjects,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("projects: directory projects by status: %w", err)
+	}
+	entries := make([]contracts.ProjectEntry, 0, len(rows))
+	for _, row := range rows {
+		entry, err := toProjectEntry(directoryProjectRow{
+			ID: row.ID, Code: row.Code, Name: row.Name, CustomerID: row.CustomerID,
+			Status: row.Status, BillingType: row.BillingType, Currency: row.Currency, DefaultBillRate: row.DefaultBillRate,
+			StartDate: row.StartDate, EndDate: row.EndDate,
+		})
+		if err != nil {
+			return nil, err
+		}
+		entries = append(entries, entry)
+	}
+	return entries, nil
 }
 
 // BillingLines lists every billing line on projectID, active and inactive,

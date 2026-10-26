@@ -101,6 +101,13 @@ func TestModulesEnv_ListsAStubbedModuleAsEnabled(t *testing.T) {
 	if got != "customers,projects" {
 		t.Errorf("modulesEnv(projects; stubbed projects) = %q, want exactly %q", got, "customers,projects")
 	}
+
+	// planning is valid only beside projects and staff (config.go), and its
+	// harness stands in for both with fakes (WithProjects, WithWorkforce).
+	got = modulesEnv([]module.Module{{Name: "planning"}}, "projects", "staff")
+	if got != "customers,planning,projects,staff" {
+		t.Errorf("modulesEnv(planning; stubbed projects, staff) = %q, want exactly %q", got, "customers,planning,projects,staff")
+	}
 }
 
 // TestModulesEnv_ListsStaffBesideEntra proves a harness composing entra lists

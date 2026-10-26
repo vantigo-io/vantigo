@@ -614,7 +614,7 @@ func TestCompose_MergesEveryRealContract(t *testing.T) {
 
 	// Every business module contract here must actually mount, so all of
 	// them are enabled; identity mounts regardless.
-	handler, err := Compose(Deps{Access: access, Config: &config.Config{Modules: []string{"customers", "products", "energy", "communications", "projects", "time", "expenses", "invoices", "staff", "calendar", "entra"}}}, mods...)
+	handler, err := Compose(Deps{Access: access, Config: &config.Config{Modules: []string{"customers", "products", "energy", "communications", "projects", "time", "expenses", "invoices", "staff", "planning", "calendar", "entra"}}}, mods...)
 	if err != nil {
 		t.Fatalf("Compose: %v", err)
 	}
@@ -2513,3 +2513,18 @@ func TestCompose_IdentityProvisionerWithAReservedKeyFails(t *testing.T) {
 		}
 	}
 }
+
+// ProjectsByStatus answers nothing: no test here lists projects by status.
+func (*fakeProjectDirectory) ProjectsByStatus(context.Context, []string) ([]contracts.ProjectEntry, error) {
+	return nil, nil
+}
+
+func (*fakeWorkforce) People(context.Context, time.Time, time.Time) ([]contracts.PersonEntry, error) {
+	return nil, nil
+}
+
+func (*fakeWorkforce) Capacity(context.Context, time.Time, time.Time, []int64) (map[int64]contracts.PersonCapacity, error) {
+	return nil, nil
+}
+
+func (*fakeWorkforce) Self(context.Context) (*contracts.PersonEntry, error) { return nil, nil }

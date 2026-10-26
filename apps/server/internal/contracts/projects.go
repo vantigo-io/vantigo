@@ -22,7 +22,14 @@ type ProjectEntry struct {
 	BillingType     string
 	Currency        *string
 	DefaultBillRate *float64
+	// StartDate and EndDate are the project's planned dates, civil dates at
+	// midnight UTC, nil when the project has none (planning design S9).
+	StartDate, EndDate *time.Time
 }
+
+// MaxDirectoryProjects caps ProjectsByStatus: a consumer that gets exactly
+// this many back must assume there are more.
+const MaxDirectoryProjects = 1000
 
 // TaskEntry is a project task as another module may reference it: enough to
 // name it, know who it is assigned to and when it is due, never enough to
@@ -132,4 +139,12 @@ type ProjectDirectory interface {
 	// choice filters the active ones itself. A project with none, or one that
 	// does not exist, answers an empty result.
 	WorkTypes(ctx context.Context, projectID int32) ([]WorkTypeEntry, error)
+	// ProjectsByStatus lists every project whose status is one of statuses,
+	// by code then id, at most MaxDirectoryProjects of them. It is
+	// consumer-gated, as ProjectActuals is: Projects performs no
+	// authorization, so the consumer's own permission decides who sees the
+	// list (planning design S9) — a planner learns every project's existence,
+	// bids included, which Projects otherwise reserves for projects:view-all.
+	// Unknown statuses match nothing; no statuses answer an empty result.
+	ProjectsByStatus(ctx context.Context, statuses []string) ([]ProjectEntry, error)
 }

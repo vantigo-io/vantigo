@@ -788,3 +788,8 @@ func TestProjectExpensesNeverCountsAPerDiemDayAsReady(t *testing.T) {
 			nok.UnpricedCount)
 	}
 }
+
+// ProjectsByStatus answers nothing: no test here lists projects by status.
+func (*forbiddenProjects) ProjectsByStatus(context.Context, []string) ([]contracts.ProjectEntry, error) {
+	return nil, nil
+}
