@@ -26,7 +26,10 @@ import (
 // only the door: the mapping is still checked against the keys each write
 // needs by hand. energy:prices-view and energy:prices-manage (energy
 // consumption billing design D2) are the spot prices' two: market data, not
-// a customer's, so neither is sensitive.
+// a customer's, so neither is sensitive. energy:tariffs-view and
+// energy:tariffs-manage (design D3) are the tariffs': a business's own price
+// lists, not personal data, so neither is sensitive either; assigning a
+// tariff needs only the write's own permission.
 // The entries are written in the alphabetical-by-key order
 // TestModule_DeclaresItsPermissionCatalog pins (ported from
 // EnergyPermissionCatalogTests.cs:14-23's stable-ordering assertion):
@@ -45,6 +48,8 @@ var permissions = []contracts.Permission{
 	{Key: "energy:prices-view", Display: "View energy prices", Description: "View spot prices per price area and what is held of them.", Category: "Energy", Sensitive: false, Delegable: true},
 	{Key: "energy:supply-periods-manage", Display: "Manage energy supply periods", Description: "Create, switch, end, and cancel energy supply periods.", Category: "Energy", Sensitive: false, Delegable: true},
 	{Key: "energy:supply-periods-view", Display: "View energy supply periods", Description: "View energy supply periods for metering points.", Category: "Energy", Sensitive: false, Delegable: true},
+	{Key: "energy:tariffs-manage", Display: "Manage energy tariffs", Description: "Create, edit, archive and delete power and grid tariffs.", Category: "Energy", Sensitive: false, Delegable: true},
+	{Key: "energy:tariffs-view", Display: "View energy tariffs", Description: "View power and grid tariffs, their versions and their components.", Category: "Energy", Sensitive: false, Delegable: true},
 }
 
 // limits maps each rate-limited operationId to its policy. No Energy endpoint

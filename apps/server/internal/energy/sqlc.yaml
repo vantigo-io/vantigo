@@ -10,6 +10,7 @@ sql:
       - ../db/migrations/00049_energy_imports.sql
       - ../db/migrations/00065_energy_spot_prices.sql
       - ../db/migrations/00075_energy_spot_price_service.sql
+      - ../db/migrations/00076_energy_tariffs.sql
     queries: queries
     gen:
       go:

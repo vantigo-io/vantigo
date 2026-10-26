@@ -214,12 +214,21 @@ components:
             type: object
         CreateSupplyPeriodRequest:
             properties:
+                cadence:
+                    description: The billing cadence, monthly (the default when absent), quarterly or yearly.
+                    nullable: true
+                    type: string
                 customerId:
                     format: int32
                     type: integer
                 start:
                     format: date-time
                     type: string
+                tariffId:
+                    description: An active power tariff, or null for none (the period is then not priced).
+                    format: int32
+                    nullable: true
+                    type: integer
             required:
                 - customerId
                 - start
@@ -679,6 +688,10 @@ components:
                 connectionStatus:
                     nullable: true
                     type: string
+                electricityTaxClass:
+                    description: ordinary (the default when absent), reduced or exempt.
+                    nullable: true
+                    type: string
                 expectedAnnualConsumptionKwh:
                     format: double
                     nullable: true
@@ -686,9 +699,18 @@ components:
                 gridArea:
                     nullable: true
                     type: string
+                gridTariffId:
+                    description: An active grid tariff, or null for none. The PUT is a full replace, so absent means none; a tariff the point already holds is kept even when archived.
+                    format: int32
+                    nullable: true
+                    type: integer
                 gsrn:
                     nullable: true
                     type: string
+                household:
+                    description: Supplied for household use; absent means false.
+                    nullable: true
+                    type: boolean
                 latitude:
                     format: double
                     nullable: true
@@ -710,6 +732,7 @@ components:
                 - priceArea
             type: object
         MeteringPointResponse:
+            description: A metering point. gridTariffId, gridTariffName, household, electricityTaxClass and vatTreatment (energy consumption billing design D3, D4) are always sent; the schema leaves them optional because the recorded .NET exchanges predate them.
             properties:
                 address:
                     $ref: '#/components/schemas/AddressResponse'
@@ -718,6 +741,9 @@ components:
                 createdAt:
                     format: date-time
                     type: string
+                electricityTaxClass:
+                    description: ordinary, reduced or exempt (energy consumption billing design D4).
+                    type: string
                 expectedAnnualConsumptionKwh:
                     format: double
                     nullable: true
@@ -725,8 +751,20 @@ components:
                 gridArea:
                     nullable: true
                     type: string
+                gridTariffId:
+                    description: The installation's own grid tariff for the point; null when the grid company bills grid services itself.
+                    format: int32
+                    nullable: true
+                    type: integer
+                gridTariffName:
+                    description: The grid tariff's name, null without one.
+                    nullable: true
+                    type: string
                 gsrn:
                     type: string
+                household:
+                    description: Supplied for household use (mvaf § 6-6-1), set by hand.
+                    type: boolean
                 id:
                     format: int32
                     type: integer
@@ -745,6 +783,9 @@ components:
                     type: string
                 updatedAt:
                     format: date-time
+                    type: string
+                vatTreatment:
+                    description: "Derived, never stored: exempt_household_north when household is set, the country is NO and the postal code is 8000–9999; otherwise standard. A hint Invoices maps to a VAT code."
                     type: string
             required:
                 - id
@@ -769,6 +810,10 @@ components:
                 connectionStatus:
                     nullable: true
                     type: string
+                electricityTaxClass:
+                    description: ordinary (the default when absent), reduced or exempt.
+                    nullable: true
+                    type: string
                 expectedAnnualConsumptionKwh:
                     format: double
                     nullable: true
@@ -776,9 +821,18 @@ components:
                 gridArea:
                     nullable: true
                     type: string
+                gridTariffId:
+                    description: An active grid tariff, or null for none. The PUT is a full replace, so absent means none; a tariff the point already holds is kept even when archived.
+                    format: int32
+                    nullable: true
+                    type: integer
                 gsrn:
                     nullable: true
                     type: string
+                household:
+                    description: Supplied for household use; absent means false.
+                    nullable: true
+                    type: boolean
                 latitude:
                     format: double
                     nullable: true
@@ -890,26 +944,6 @@ components:
                 - intervalCount
                 - daysMissingLast30
             type: object
-        SpotPriceHistory:
-            description: "The spot-price service sync's walk back through an area's history (spot-price service design S5): cursorDay is the oldest civil day (Europe/Oslo) copied so far, floorDay the oldest the service holds; complete once the cursor has reached the floor. daysSkipped counts the days the service held incompletely, without a NOK price, or over an imported day at another resolution, and the days of a window it failed permanently three times in a row — left for a file. error is the last failed window's sentence while the walk waits to retry, or after a skipped window until the next window is copied. It is kept for an area the service no longer follows."
-            properties:
-                complete:
-                    type: boolean
-                cursorDay:
-                    format: date
-                    type: string
-                daysSkipped:
-                    format: int32
-                    type: integer
-                error:
-                    type: string
-                floorDay:
-                    format: date
-                    type: string
-            required:
-                - complete
-                - daysSkipped
-            type: object
         SpotPriceFetch:
             description: "The feed worker's record of one area and civil day: ok once the day's prices are stored; pending while today's or tomorrow's are not yet published; missing for a past day the feed has no file for; failed for anything else, with the failure's sentence in error (never the response's body). attempts counts the requests made since the record last changed status, so a day pending for hours and then missing starts its seven missing attempts from one."
             properties:
@@ -934,6 +968,26 @@ components:
                 - day
                 - status
                 - attempts
+            type: object
+        SpotPriceHistory:
+            description: "The spot-price service sync's walk back through an area's history (spot-price service design S5): cursorDay is the oldest civil day (Europe/Oslo) copied so far, floorDay the oldest the service holds; complete once the cursor has reached the floor. daysSkipped counts the days the service held incompletely, without a NOK price, or over an imported day at another resolution, and the days of a window it failed permanently three times in a row — left for a file. error is the last failed window's sentence while the walk waits to retry, or after a skipped window until the next window is copied. It is kept for an area the service no longer follows."
+            properties:
+                complete:
+                    type: boolean
+                cursorDay:
+                    format: date
+                    type: string
+                daysSkipped:
+                    format: int32
+                    type: integer
+                error:
+                    type: string
+                floorDay:
+                    format: date
+                    type: string
+            required:
+                - complete
+                - daysSkipped
             type: object
         SpotPriceImportArea:
             description: What a spot price import did for one area, counting the rows without an error — inserted where no interval with the row's start was stored, replaced where one was with other figures, unchanged where one was with the same — and the range the rows cover.
@@ -1103,7 +1157,11 @@ components:
                 - preliminary
             type: object
         SupplyPeriodResponse:
+            description: A supply period. tariffId, tariffName and cadence (energy consumption billing design D3, D4) are always sent; the schema leaves them optional because the recorded .NET exchanges predate them.
             properties:
+                cadence:
+                    description: monthly, quarterly or yearly.
+                    type: string
                 customerId:
                     format: int32
                     type: integer
@@ -1122,6 +1180,15 @@ components:
                     type: string
                 status:
                     type: string
+                tariffId:
+                    description: The period's power tariff, null for none.
+                    format: int32
+                    nullable: true
+                    type: integer
+                tariffName:
+                    description: The power tariff's name, null without one.
+                    nullable: true
+                    type: string
             required:
                 - id
                 - meteringPointId
@@ -1132,12 +1199,21 @@ components:
             type: object
         SwitchSupplyPeriodRequest:
             properties:
+                cadence:
+                    description: The billing cadence, monthly (the default when absent), quarterly or yearly.
+                    nullable: true
+                    type: string
                 customerId:
                     format: int32
                     type: integer
                 switchAt:
                     format: date-time
                     type: string
+                tariffId:
+                    description: An active power tariff, or null for none (the period is then not priced).
+                    format: int32
+                    nullable: true
+                    type: integer
             required:
                 - customerId
                 - switchAt
@@ -1153,6 +1229,314 @@ components:
             required:
                 - endedPeriod
                 - newPeriod
+            type: object
+        Tariff:
+            description: "A tariff (energy consumption billing design D3): a power tariff is the supplier's contract, assigned to supply periods; a grid tariff is the installation's own, assigned to metering points. versions are in validFrom order, each with its components in position order."
+            properties:
+                createdAt:
+                    format: date-time
+                    type: string
+                description:
+                    nullable: true
+                    type: string
+                id:
+                    format: int32
+                    type: integer
+                kind:
+                    description: power or grid.
+                    type: string
+                name:
+                    description: What a settlement prints as the contract's name (§ 7-2 d).
+                    type: string
+                status:
+                    description: active or archived. An archived tariff cannot be assigned anew, and still prices the periods it is assigned to.
+                    type: string
+                updatedAt:
+                    format: date-time
+                    type: string
+                usage:
+                    $ref: '#/components/schemas/TariffUsage'
+                versions:
+                    items:
+                        $ref: '#/components/schemas/TariffVersion'
+                    type: array
+            required:
+                - id
+                - kind
+                - name
+                - description
+                - status
+                - createdAt
+                - updatedAt
+                - usage
+                - versions
+            type: object
+        TariffComponent:
+            description: One priced element of a version. A field the kind does not use is null; see TariffComponentRequest for which kind uses which.
+            properties:
+                dayFrom:
+                    format: int32
+                    nullable: true
+                    type: integer
+                dayTo:
+                    format: int32
+                    nullable: true
+                    type: integer
+                id:
+                    format: int32
+                    type: integer
+                kind:
+                    type: string
+                name:
+                    type: string
+                position:
+                    description: The component's place in its version, from 0; the order the lines print in.
+                    format: int32
+                    type: integer
+                rate:
+                    format: double
+                    nullable: true
+                    type: number
+                rateBusiness:
+                    format: double
+                    nullable: true
+                    type: number
+                rateNight:
+                    format: double
+                    nullable: true
+                    type: number
+                rateReduced:
+                    format: double
+                    nullable: true
+                    type: number
+                tiers:
+                    items:
+                        $ref: '#/components/schemas/TariffTier'
+                    nullable: true
+                    type: array
+                weekdaysOnly:
+                    type: boolean
+            required:
+                - id
+                - position
+                - kind
+                - name
+                - rate
+                - rateNight
+                - dayFrom
+                - dayTo
+                - weekdaysOnly
+                - tiers
+                - rateReduced
+                - rateBusiness
+            type: object
+        TariffComponentRequest:
+            description: "One component. kind is one of spot_energy, fixed_energy, markup, monthly_fee (a power tariff's) or grid_energy, grid_capacity, grid_fixed, electricity_tax, enova_levy, monthly_fee (a grid tariff's). The fields each kind needs: spot_energy none; fixed_energy and markup rate (NOK/kWh); monthly_fee and grid_fixed rate (NOK/month); grid_energy rate (the day rate, NOK/kWh) and optionally rateNight with dayFrom, dayTo (whole hours, 0 ≤ dayFrom < dayTo ≤ 24) and weekdaysOnly, all or none; grid_capacity tiers; electricity_tax rate (ordinary) and rateReduced; enova_levy rate (household, NOK/kWh) and rateBusiness (NOK/year). A field the kind does not use must be null or absent. Rates are 0 ≤ rate < 1 000 000, stored to six decimals."
+            properties:
+                dayFrom:
+                    format: int32
+                    nullable: true
+                    type: integer
+                dayTo:
+                    format: int32
+                    nullable: true
+                    type: integer
+                kind:
+                    nullable: true
+                    type: string
+                name:
+                    description: The line's text, 1–80 characters.
+                    nullable: true
+                    type: string
+                rate:
+                    format: double
+                    nullable: true
+                    type: number
+                rateBusiness:
+                    format: double
+                    nullable: true
+                    type: number
+                rateNight:
+                    format: double
+                    nullable: true
+                    type: number
+                rateReduced:
+                    format: double
+                    nullable: true
+                    type: number
+                tiers:
+                    items:
+                        $ref: '#/components/schemas/TariffTier'
+                    nullable: true
+                    type: array
+                weekdaysOnly:
+                    nullable: true
+                    type: boolean
+            required:
+                - kind
+                - name
+            type: object
+        TariffRequest:
+            description: "A tariff's header and every version with its components, in one body (POST creates, PUT replaces). A power tariff's version holds exactly one of spot_energy and fixed_energy; at most one each of grid_energy, grid_capacity, electricity_tax and enova_levy per version. A tariff has at least one version, a version at least one component, and two versions never overlap. A refusal names the place: versions[i].components[j].field."
+            properties:
+                description:
+                    description: At most 500 characters.
+                    nullable: true
+                    type: string
+                kind:
+                    description: power or grid; on a PUT, the stored kind (a tariff's kind cannot be changed).
+                    nullable: true
+                    type: string
+                name:
+                    description: 1–120 characters.
+                    nullable: true
+                    type: string
+                versions:
+                    items:
+                        $ref: '#/components/schemas/TariffVersionRequest'
+                    nullable: true
+                    type: array
+            required:
+                - kind
+                - name
+                - versions
+            type: object
+        TariffSummary:
+            description: A tariff as the list shows it, with the version valid today (Europe/Oslo), null when none is.
+            properties:
+                createdAt:
+                    format: date-time
+                    type: string
+                currentVersion:
+                    allOf:
+                        - $ref: '#/components/schemas/TariffValidity'
+                    nullable: true
+                description:
+                    nullable: true
+                    type: string
+                id:
+                    format: int32
+                    type: integer
+                kind:
+                    type: string
+                name:
+                    type: string
+                status:
+                    type: string
+                updatedAt:
+                    format: date-time
+                    type: string
+                usage:
+                    $ref: '#/components/schemas/TariffUsage'
+                versionCount:
+                    format: int32
+                    type: integer
+            required:
+                - id
+                - kind
+                - name
+                - description
+                - status
+                - createdAt
+                - updatedAt
+                - versionCount
+                - currentVersion
+                - usage
+            type: object
+        TariffTier:
+            description: A capacity step (kapasitetsledd) from fromKw, the average of the month's three highest hourly kWh on three different days, at perMonth NOK a month. Tiers ascend strictly from 0; at most 50.
+            properties:
+                fromKw:
+                    format: double
+                    type: number
+                perMonth:
+                    format: double
+                    type: number
+            required:
+                - fromKw
+                - perMonth
+            type: object
+        TariffUsage:
+            description: How many supply periods (of any status) and metering points name the tariff; a tariff named by any cannot be deleted.
+            properties:
+                meteringPoints:
+                    format: int32
+                    type: integer
+                supplyPeriods:
+                    format: int32
+                    type: integer
+            required:
+                - supplyPeriods
+                - meteringPoints
+            type: object
+        TariffValidity:
+            properties:
+                validFrom:
+                    format: date
+                    type: string
+                validTo:
+                    format: date
+                    nullable: true
+                    type: string
+            required:
+                - validFrom
+                - validTo
+            type: object
+        TariffVersion:
+            description: A version applies on the civil days [validFrom, validTo) in the point's market time zone; validTo null is open-ended.
+            properties:
+                components:
+                    items:
+                        $ref: '#/components/schemas/TariffComponent'
+                    type: array
+                id:
+                    format: int32
+                    type: integer
+                validFrom:
+                    format: date
+                    type: string
+                validTo:
+                    format: date
+                    nullable: true
+                    type: string
+            required:
+                - id
+                - validFrom
+                - validTo
+                - components
+            type: object
+        TariffVersionRequest:
+            properties:
+                components:
+                    items:
+                        $ref: '#/components/schemas/TariffComponentRequest'
+                    nullable: true
+                    type: array
+                validFrom:
+                    format: date
+                    nullable: true
+                    type: string
+                validTo:
+                    description: The first day the version no longer applies; null or absent is open-ended.
+                    format: date
+                    nullable: true
+                    type: string
+            required:
+                - validFrom
+                - components
+            type: object
+        UpdateSupplyPeriodTermsRequest:
+            description: A supply period's terms, nothing else of it.
+            properties:
+                cadence:
+                    description: monthly (the default when absent), quarterly or yearly.
+                    nullable: true
+                    type: string
+                tariffId:
+                    description: An active power tariff (or the one the period already holds, even archived), or null for none.
+                    format: int32
+                    nullable: true
+                    type: integer
             type: object
 info:
     title: Vantigo Energy API
@@ -2434,6 +2818,59 @@ paths:
             tags:
                 - Energy metering points
             x-vantigo-access: permission:energy:supply-periods-manage+energy:supply-periods-view
+    /api/v1/energy/metering-points/{id}/supply-periods/switch:
+        post:
+            operationId: postEnergyMeteringPointsByIdSupplyPeriodsSwitch
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/SwitchSupplyPeriodRequest'
+                required: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/SwitchSupplyPeriodResponse'
+                    description: Created
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/ProblemDetails
+                    description: Conflict
+            summary: Switch supply period customer
+            tags:
+                - Energy metering points
+            x-vantigo-access: permission:energy:supply-periods-manage+energy:supply-periods-view
     /api/v1/energy/metering-points/{id}/supply-periods/{periodId}:
         delete:
             operationId: deleteEnergyMeteringPointsByIdSupplyPeriodsByPeriodId
@@ -2471,6 +2908,59 @@ paths:
             tags:
                 - Energy metering points
             x-vantigo-access: permission:energy:supply-periods-manage
+        put:
+            description: Changes a supply period's power tariff and billing cadence (energy tariffs plan, reading 6), nothing else of it. A cancelled period cannot be changed.
+            operationId: putEnergyMeteringPointsByIdSupplyPeriodsByPeriodId
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+                - in: path
+                  name: periodId
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/UpdateSupplyPeriodTermsRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/SupplyPeriodResponse'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request — a cancelled period, a cadence none of the three, or a tariffId that does not exist, is a grid tariff or is archived (unless the period already holds it).
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+            summary: Change a supply period's terms
+            tags:
+                - Energy metering points
+            x-vantigo-access: permission:energy:supply-periods-manage+energy:supply-periods-view
     /api/v1/energy/metering-points/{id}/supply-periods/{periodId}/end:
         post:
             operationId: postEnergyMeteringPointsByIdSupplyPeriodsByPeriodIdEnd
@@ -2527,59 +3017,6 @@ paths:
                                 $ref: common.yaml#/components/schemas/ProblemDetails
                     description: Conflict
             summary: End a supply period
-            tags:
-                - Energy metering points
-            x-vantigo-access: permission:energy:supply-periods-manage+energy:supply-periods-view
-    /api/v1/energy/metering-points/{id}/supply-periods/switch:
-        post:
-            operationId: postEnergyMeteringPointsByIdSupplyPeriodsSwitch
-            parameters:
-                - in: path
-                  name: id
-                  required: true
-                  schema:
-                    format: int32
-                    type: integer
-            requestBody:
-                content:
-                    application/json:
-                        schema:
-                            $ref: '#/components/schemas/SwitchSupplyPeriodRequest'
-                required: true
-            responses:
-                "201":
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/SwitchSupplyPeriodResponse'
-                    description: Created
-                "400":
-                    content:
-                        application/problem+json:
-                            schema:
-                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
-                    description: Bad Request
-                "401":
-                    content:
-                        application/json:
-                            schema:
-                                $ref: common.yaml#/components/schemas/AuthErrorResponse
-                    description: Unauthorized
-                "403":
-                    content:
-                        application/json:
-                            schema:
-                                $ref: common.yaml#/components/schemas/AuthErrorResponse
-                    description: Forbidden
-                "404":
-                    description: Not Found
-                "409":
-                    content:
-                        application/problem+json:
-                            schema:
-                                $ref: common.yaml#/components/schemas/ProblemDetails
-                    description: Conflict
-            summary: Switch supply period customer
             tags:
                 - Energy metering points
             x-vantigo-access: permission:energy:supply-periods-manage+energy:supply-periods-view
@@ -2918,5 +3355,246 @@ paths:
             tags:
                 - EnergyStatsEndpoints
             x-vantigo-access: permission:energy:consumption-view
+    /api/v1/energy/tariffs:
+        get:
+            description: 'Every tariff (energy consumption billing design D3), active first, then by kind and name, each with its version count, the version valid today in Europe/Oslo and its usage. Not paged: a business holds a handful.'
+            operationId: getEnergyTariffs
+            parameters:
+                - description: power or grid.
+                  in: query
+                  name: kind
+                  required: false
+                  schema:
+                    type: string
+                - description: active or archived.
+                  in: query
+                  name: status
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/TariffSummary'
+                                type: array
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request — kind or status that is none of its two.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+            summary: List tariffs
+            tags:
+                - EnergyTariffsEndpoints
+            x-vantigo-access: permission:energy:tariffs-view
+        post:
+            description: Creates a tariff with its versions and components, active.
+            operationId: postEnergyTariffs
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/TariffRequest'
+                required: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Tariff'
+                    description: Created
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: 'Bad Request — the body refused, every error keyed by its place: kind, name, description, versions, versions[i].validFrom, versions[i].validTo, versions[i].components, versions[i].components[j].<field>, versions[i].components[j].tiers[k].<field>.'
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+            summary: Create a tariff
+            tags:
+                - EnergyTariffsEndpoints
+            x-vantigo-access: permission:energy:tariffs-manage+energy:tariffs-view
+    /api/v1/energy/tariffs/{id}:
+        delete:
+            description: Deletes a tariff no supply period (of any status) and no metering point names, with its versions and components. A tariff in use is archived instead.
+            operationId: deleteEnergyTariffsById
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+            responses:
+                "204":
+                    description: No Content
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/ProblemDetails
+                    description: 'Conflict — Tariff in use: a supply period or a metering point names the tariff.'
+            summary: Delete an unused tariff
+            tags:
+                - EnergyTariffsEndpoints
+            x-vantigo-access: permission:energy:tariffs-manage
+        get:
+            operationId: getEnergyTariff
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Tariff'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+            summary: Get a tariff
+            tags:
+                - EnergyTariffsEndpoints
+            x-vantigo-access: permission:energy:tariffs-view
+        put:
+            description: 'Replaces the tariff''s name, description and every version with its components. The kind cannot be changed; the status is the archive''s. An archived tariff can still be edited: it still prices the periods it covers.'
+            operationId: putEnergyTariffsById
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/TariffRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Tariff'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: 'Bad Request — the body refused, every error keyed by its place: kind, name, description, versions, versions[i].validFrom, versions[i].validTo, versions[i].components, versions[i].components[j].<field>, versions[i].components[j].tiers[k].<field>. kind differing from the stored kind.'
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+            summary: Replace a tariff
+            tags:
+                - EnergyTariffsEndpoints
+            x-vantigo-access: permission:energy:tariffs-manage+energy:tariffs-view
+    /api/v1/energy/tariffs/{id}/archive:
+        post:
+            description: 'Archives the tariff (idempotent): it can no longer be assigned anew, and it still prices the supply periods and metering points it is assigned to.'
+            operationId: postEnergyTariffsByIdArchive
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Tariff'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+            summary: Archive a tariff
+            tags:
+                - EnergyTariffsEndpoints
+            x-vantigo-access: permission:energy:tariffs-manage+energy:tariffs-view
 servers:
     - url: /

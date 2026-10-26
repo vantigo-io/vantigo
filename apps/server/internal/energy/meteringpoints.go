@@ -152,7 +152,12 @@ func trimmedOrNil(v *string) *string {
 	return &t
 }
 
-func meteringPointResponseOf(row store.EnergyMeteringPoint, meterNumber *string) gen.MeteringPointResponse {
+// meteringPointResponseOf builds the response for row; names holds the grid
+// tariff's name (tariffNames), so a page of points reads them with one query.
+// The VAT treatment is derived here, every time, never stored (vat.go).
+func meteringPointResponseOf(row store.EnergyMeteringPoint, meterNumber *string, names map[int32]string) gen.MeteringPointResponse {
+	household, taxClass := row.Household, row.ElectricityTaxClass
+	vat := vatTreatment(row.Household, row.CountryCode, row.PostalCode)
 	return gen.MeteringPointResponse{
 		Id:                           row.ID,
 		Gsrn:                         row.Gsrn,
@@ -166,7 +171,49 @@ func meteringPointResponseOf(row store.EnergyMeteringPoint, meterNumber *string)
 		ConnectionStatus:             row.ConnectionStatus,
 		CreatedAt:                    row.CreatedAt,
 		UpdatedAt:                    row.UpdatedAt,
+		GridTariffId:                 row.GridTariffID,
+		GridTariffName:               tariffNameOf(names, row.GridTariffID),
+		Household:                    &household,
+		ElectricityTaxClass:          &taxClass,
+		VatTreatment:                 &vat,
 	}
+}
+
+// meteringPointOfListRow is a list row's point without its meter's number, so
+// the list and the customer's points build their responses as the item does.
+func meteringPointOfListRow(r store.ListMeteringPointsRow) store.EnergyMeteringPoint {
+	return store.EnergyMeteringPoint{
+		ID: r.ID, Gsrn: r.Gsrn, StreetAddress: r.StreetAddress, PostalCode: r.PostalCode, City: r.City,
+		CountryCode: r.CountryCode, PriceArea: r.PriceArea, GridArea: r.GridArea,
+		ExpectedAnnualConsumptionKwh: r.ExpectedAnnualConsumptionKwh, Latitude: r.Latitude, Longitude: r.Longitude,
+		ConnectionStatus: r.ConnectionStatus, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
+		GridTariffID: r.GridTariffID, Household: r.Household, ElectricityTaxClass: r.ElectricityTaxClass,
+	}
+}
+
+// validateBillingFacts checks the point's billing facts a create or a replace
+// carries (energy consumption billing design D3, D4): the tax class's word and
+// the grid tariff's assignability (checkTariffAssignable; current is the
+// tariff the point holds now, nil on a create). It answers the class read and
+// adds each refusal to errs under its field.
+func validateBillingFacts(ctx context.Context, q *store.Queries, errs map[string][]string, gridTariffID *int32, taxClass *string, current *int32) (string, error) {
+	class, ok := parseTaxClass(taxClass)
+	if !ok {
+		errs["electricityTaxClass"] = []string{taxClassMessage}
+	}
+	msg, err := checkTariffAssignable(ctx, q, gridTariffID, tariffKindGrid, current)
+	if err != nil {
+		return "", err
+	}
+	if msg != "" {
+		errs["gridTariffId"] = []string{msg}
+	}
+	return class, nil
+}
+
+// boolOrFalse is an optional request flag: absent is false.
+func boolOrFalse(v *bool) bool {
+	return v != nil && *v
 }
 
 // activeMeterNumber is MeteringPointResponse.FromDomain's
@@ -193,7 +240,11 @@ func meteringPointResponse(ctx context.Context, q *store.Queries, row store.Ener
 	if err != nil {
 		return gen.MeteringPointResponse{}, err
 	}
-	return meteringPointResponseOf(row, meterNumber), nil
+	names, err := tariffNames(ctx, q, row.GridTariffID)
+	if err != nil {
+		return gen.MeteringPointResponse{}, err
+	}
+	return meteringPointResponseOf(row, meterNumber, names), nil
 }
 
 // GetEnergyMeteringPoints List metering points
@@ -244,22 +295,17 @@ func (s *server) GetEnergyMeteringPoints(ctx context.Context, req gen.GetEnergyM
 		return nil, fmt.Errorf("energy: list metering points: %w", err)
 	}
 
+	gridTariffs := make([]*int32, 0, len(rows))
+	for _, r := range rows {
+		gridTariffs = append(gridTariffs, r.GridTariffID)
+	}
+	names, err := tariffNames(ctx, q, gridTariffs...)
+	if err != nil {
+		return nil, err
+	}
 	data := make([]gen.MeteringPointResponse, 0, len(rows))
 	for _, r := range rows {
-		data = append(data, gen.MeteringPointResponse{
-			Id:                           r.ID,
-			Gsrn:                         r.Gsrn,
-			MeterNumber:                  r.ActiveMeterNumber,
-			Address:                      gen.AddressResponse{StreetAddress: r.StreetAddress, PostalCode: r.PostalCode, City: r.City, CountryCode: r.CountryCode},
-			PriceArea:                    r.PriceArea,
-			GridArea:                     r.GridArea,
-			ExpectedAnnualConsumptionKwh: floatPtrFromNumeric(r.ExpectedAnnualConsumptionKwh),
-			Latitude:                     r.Latitude,
-			Longitude:                    r.Longitude,
-			ConnectionStatus:             r.ConnectionStatus,
-			CreatedAt:                    r.CreatedAt,
-			UpdatedAt:                    r.UpdatedAt,
-		})
+		data = append(data, meteringPointResponseOf(meteringPointOfListRow(r), r.ActiveMeterNumber, names))
 	}
 	return gen.GetEnergyMeteringPoints200JSONResponse(gen.PaginatedResponseOfMeteringPointResponse{
 		Data: data,
@@ -285,11 +331,15 @@ func (s *server) PostEnergyMeteringPoints(ctx context.Context, req gen.PostEnerg
 	if msg := validateMeterNumber(body.MeterNumber); msg != "" {
 		errs["meterNumber"] = []string{msg}
 	}
+	q := store.New(s.deps.Pool)
+	taxClass, err := validateBillingFacts(ctx, q, errs, body.GridTariffId, body.ElectricityTaxClass, nil)
+	if err != nil {
+		return nil, err
+	}
 	if len(errs) > 0 {
 		return gen.PostEnergyMeteringPoints400ApplicationProblemPlusJSONResponse(apicommon.ValidationProblem("Invalid metering point", errs)), nil
 	}
 
-	q := store.New(s.deps.Pool)
 	exists, err := q.GsrnExists(ctx, *body.Gsrn)
 	if err != nil {
 		return nil, fmt.Errorf("energy: check gsrn: %w", err)
@@ -321,6 +371,9 @@ func (s *server) PostEnergyMeteringPoints(ctx context.Context, req gen.PostEnerg
 			Longitude:                    body.Longitude,
 			ConnectionStatus:             connStatus,
 			Now:                          now,
+			GridTariffID:                 body.GridTariffId,
+			Household:                    boolOrFalse(body.Household),
+			ElectricityTaxClass:          taxClass,
 		}, strings.TrimSpace(*body.MeterNumber))
 		return ierr
 	})
@@ -375,8 +428,10 @@ func (s *server) GetEnergyMeteringPoint(ctx context.Context, req gen.GetEnergyMe
 //
 // UpdateMeteringPointEndpoint.cs:14-31: field validation *before* the
 // existence check (opposite of ReplaceMeter's order, energy inventory §1.1
-// line 32/§8 oddity 3) -> existence (404) -> duplicate-GSRN pre-check
-// excluding self (409) -> apply. Meters are never touched here.
+// line 32/§8 oddity 3) -> existence (404) -> the billing facts (400, energy
+// tariffs plan reading 7: absent means no grid tariff, not a household,
+// ordinary) -> duplicate-GSRN pre-check excluding self (409) -> apply. Meters
+// are never touched here.
 func (s *server) PutEnergyMeteringPointsById(ctx context.Context, req gen.PutEnergyMeteringPointsByIdRequestObject) (gen.PutEnergyMeteringPointsByIdResponseObject, error) {
 	body := gen.MeteringPointUpdateRequest{}
 	if req.Body != nil {
@@ -389,10 +444,20 @@ func (s *server) PutEnergyMeteringPointsById(ctx context.Context, req gen.PutEne
 	}
 
 	q := store.New(s.deps.Pool)
-	if _, err := q.GetMeteringPointByID(ctx, req.Id); errors.Is(err, pgx.ErrNoRows) {
+	stored, err := q.GetMeteringPointByID(ctx, req.Id)
+	if errors.Is(err, pgx.ErrNoRows) {
 		return gen.PutEnergyMeteringPointsById404Response{}, nil
 	} else if err != nil {
 		return nil, fmt.Errorf("energy: get metering point: %w", err)
+	}
+	// The billing facts are judged after the existence check: whether the
+	// grid tariff may be written depends on the one the point holds.
+	taxClass, err := validateBillingFacts(ctx, q, errs, body.GridTariffId, body.ElectricityTaxClass, stored.GridTariffID)
+	if err != nil {
+		return nil, err
+	}
+	if len(errs) > 0 {
+		return gen.PutEnergyMeteringPointsById400ApplicationProblemPlusJSONResponse(apicommon.ValidationProblem("Invalid metering point", errs)), nil
 	}
 
 	dupExists, err := q.GsrnExistsExcludingID(ctx, store.GsrnExistsExcludingIDParams{ID: req.Id, Gsrn: *body.Gsrn})
@@ -423,6 +488,9 @@ func (s *server) PutEnergyMeteringPointsById(ctx context.Context, req gen.PutEne
 		Longitude:                    body.Longitude,
 		ConnectionStatus:             connStatus,
 		UpdatedAt:                    s.deps.Clock(),
+		GridTariffID:                 body.GridTariffId,
+		Household:                    boolOrFalse(body.Household),
+		ElectricityTaxClass:          taxClass,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("energy: update metering point: %w", err)

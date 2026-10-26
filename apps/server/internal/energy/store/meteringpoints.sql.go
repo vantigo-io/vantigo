@@ -51,7 +51,8 @@ func (q *Queries) CountMeteringPoints(ctx context.Context, arg CountMeteringPoin
 
 const getMeteringPointByID = `-- name: GetMeteringPointByID :one
 SELECT id, gsrn, street_address, postal_code, city, country_code, price_area, grid_area,
-       expected_annual_consumption_kwh, latitude, longitude, connection_status, created_at, updated_at
+       expected_annual_consumption_kwh, latitude, longitude, connection_status, created_at, updated_at,
+       grid_tariff_id, household, electricity_tax_class
 FROM energy.metering_points
 WHERE id = $1
 `
@@ -78,6 +79,9 @@ func (q *Queries) GetMeteringPointByID(ctx context.Context, id int32) (EnergyMet
 		&i.ConnectionStatus,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.GridTariffID,
+		&i.Household,
+		&i.ElectricityTaxClass,
 	)
 	return i, err
 }
@@ -115,13 +119,16 @@ func (q *Queries) GsrnExistsExcludingID(ctx context.Context, arg GsrnExistsExclu
 const insertMeteringPoint = `-- name: InsertMeteringPoint :one
 INSERT INTO energy.metering_points (
     gsrn, street_address, postal_code, city, country_code, price_area, grid_area,
-    expected_annual_consumption_kwh, latitude, longitude, connection_status, created_at, updated_at
+    expected_annual_consumption_kwh, latitude, longitude, connection_status, created_at, updated_at,
+    grid_tariff_id, household, electricity_tax_class
 ) VALUES (
     $1, $2, $3, $4, $5, $6, $7,
-    $8, $9, $10, $11, $12::timestamptz, $12::timestamptz
+    $8, $9, $10, $11, $12::timestamptz, $12::timestamptz,
+    $13::int, $14, $15
 )
 RETURNING id, gsrn, street_address, postal_code, city, country_code, price_area, grid_area,
-          expected_annual_consumption_kwh, latitude, longitude, connection_status, created_at, updated_at
+          expected_annual_consumption_kwh, latitude, longitude, connection_status, created_at, updated_at,
+          grid_tariff_id, household, electricity_tax_class
 `
 
 type InsertMeteringPointParams struct {
@@ -137,6 +144,9 @@ type InsertMeteringPointParams struct {
 	Longitude                    *float64
 	ConnectionStatus             string
 	Now                          time.Time
+	GridTariffID                 *int32
+	Household                    bool
+	ElectricityTaxClass          string
 }
 
 // InsertMeteringPoint creates a metering point row
@@ -156,6 +166,9 @@ func (q *Queries) InsertMeteringPoint(ctx context.Context, arg InsertMeteringPoi
 		arg.Longitude,
 		arg.ConnectionStatus,
 		arg.Now,
+		arg.GridTariffID,
+		arg.Household,
+		arg.ElectricityTaxClass,
 	)
 	var i EnergyMeteringPoint
 	err := row.Scan(
@@ -173,6 +186,9 @@ func (q *Queries) InsertMeteringPoint(ctx context.Context, arg InsertMeteringPoi
 		&i.ConnectionStatus,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.GridTariffID,
+		&i.Household,
+		&i.ElectricityTaxClass,
 	)
 	return i, err
 }
@@ -180,6 +196,7 @@ func (q *Queries) InsertMeteringPoint(ctx context.Context, arg InsertMeteringPoi
 const listMeteringPoints = `-- name: ListMeteringPoints :many
 SELECT mp.id, mp.gsrn, mp.street_address, mp.postal_code, mp.city, mp.country_code, mp.price_area, mp.grid_area,
        mp.expected_annual_consumption_kwh, mp.latitude, mp.longitude, mp.connection_status, mp.created_at, mp.updated_at,
+       mp.grid_tariff_id, mp.household, mp.electricity_tax_class,
        active.meter_number AS active_meter_number
 FROM energy.metering_points mp
 LEFT JOIN energy.meters active ON active.metering_point_id = mp.id AND active.removed_at IS NULL
@@ -221,6 +238,9 @@ type ListMeteringPointsRow struct {
 	ConnectionStatus             string
 	CreatedAt                    time.Time
 	UpdatedAt                    time.Time
+	GridTariffID                 *int32
+	Household                    bool
+	ElectricityTaxClass          string
 	ActiveMeterNumber            *string
 }
 
@@ -257,6 +277,9 @@ func (q *Queries) ListMeteringPoints(ctx context.Context, arg ListMeteringPoints
 			&i.ConnectionStatus,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.GridTariffID,
+			&i.Household,
+			&i.ElectricityTaxClass,
 			&i.ActiveMeterNumber,
 		); err != nil {
 			return nil, err
@@ -271,7 +294,8 @@ func (q *Queries) ListMeteringPoints(ctx context.Context, arg ListMeteringPoints
 
 const meteringPointByGsrnForUpdate = `-- name: MeteringPointByGsrnForUpdate :one
 SELECT id, gsrn, street_address, postal_code, city, country_code, price_area, grid_area,
-       expected_annual_consumption_kwh, latitude, longitude, connection_status, created_at, updated_at
+       expected_annual_consumption_kwh, latitude, longitude, connection_status, created_at, updated_at,
+       grid_tariff_id, household, electricity_tax_class
 FROM energy.metering_points
 WHERE gsrn = $1
 FOR NO KEY UPDATE
@@ -304,6 +328,9 @@ func (q *Queries) MeteringPointByGsrnForUpdate(ctx context.Context, gsrn string)
 		&i.ConnectionStatus,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.GridTariffID,
+		&i.Household,
+		&i.ElectricityTaxClass,
 	)
 	return i, err
 }
@@ -324,10 +351,12 @@ UPDATE energy.metering_points
 SET gsrn = $1, street_address = $2, postal_code = $3, city = $4,
     country_code = $5, price_area = $6, grid_area = $7,
     expected_annual_consumption_kwh = $8, latitude = $9,
-    longitude = $10, connection_status = $11, updated_at = $12::timestamptz
-WHERE id = $13
+    longitude = $10, connection_status = $11, updated_at = $12::timestamptz,
+    grid_tariff_id = $13::int, household = $14, electricity_tax_class = $15
+WHERE id = $16
 RETURNING id, gsrn, street_address, postal_code, city, country_code, price_area, grid_area,
-          expected_annual_consumption_kwh, latitude, longitude, connection_status, created_at, updated_at
+          expected_annual_consumption_kwh, latitude, longitude, connection_status, created_at, updated_at,
+          grid_tariff_id, household, electricity_tax_class
 `
 
 type UpdateMeteringPointParams struct {
@@ -343,12 +372,17 @@ type UpdateMeteringPointParams struct {
 	Longitude                    *float64
 	ConnectionStatus             string
 	UpdatedAt                    time.Time
+	GridTariffID                 *int32
+	Household                    bool
+	ElectricityTaxClass          string
 	ID                           int32
 }
 
 // UpdateMeteringPoint applies PUT /{id}'s validated fields
 // (UpdateMeteringPointEndpoint.cs:20-29). updated_at is whatever the caller
-// computes it should be, from Deps.Clock().
+// computes it should be, from Deps.Clock(). The billing facts (energy
+// consumption billing design D3, D4) are replaced with the rest: the PUT is a
+// full replace.
 func (q *Queries) UpdateMeteringPoint(ctx context.Context, arg UpdateMeteringPointParams) (EnergyMeteringPoint, error) {
 	row := q.db.QueryRow(ctx, updateMeteringPoint,
 		arg.Gsrn,
@@ -363,6 +397,9 @@ func (q *Queries) UpdateMeteringPoint(ctx context.Context, arg UpdateMeteringPoi
 		arg.Longitude,
 		arg.ConnectionStatus,
 		arg.UpdatedAt,
+		arg.GridTariffID,
+		arg.Household,
+		arg.ElectricityTaxClass,
 		arg.ID,
 	)
 	var i EnergyMeteringPoint
@@ -381,6 +418,9 @@ func (q *Queries) UpdateMeteringPoint(ctx context.Context, arg UpdateMeteringPoi
 		&i.ConnectionStatus,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.GridTariffID,
+		&i.Household,
+		&i.ElectricityTaxClass,
 	)
 	return i, err
 }

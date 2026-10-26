@@ -235,8 +235,13 @@ type ConsumptionResponse struct {
 
 // CreateSupplyPeriodRequest defines model for CreateSupplyPeriodRequest.
 type CreateSupplyPeriodRequest struct {
+	// Cadence The billing cadence, monthly (the default when absent), quarterly or yearly.
+	Cadence    *string   `json:"cadence,omitempty"`
 	CustomerId int32     `json:"customerId"`
 	Start      time.Time `json:"start"`
+
+	// TariffId An active power tariff, or null for none (the period is then not priced).
+	TariffId *int32 `json:"tariffId,omitempty"`
 }
 
 // CustomerConsumptionAggregateResponse defines model for CustomerConsumptionAggregateResponse.
@@ -251,6 +256,7 @@ type CustomerConsumptionAggregateResponse struct {
 
 // CustomerMeteringPointResponse defines model for CustomerMeteringPointResponse.
 type CustomerMeteringPointResponse struct {
+	// MeteringPoint A metering point. gridTariffId, gridTariffName, household, electricityTaxClass and vatTreatment (energy consumption billing design D3, D4) are always sent; the schema leaves them optional because the recorded .NET exchanges predate them.
 	MeteringPoint MeteringPointResponse  `json:"meteringPoint"`
 	SupplyPeriods []SupplyPeriodResponse `json:"supplyPeriods"`
 }
@@ -428,43 +434,76 @@ type MeterResponse struct {
 
 // MeteringPointRequest defines model for MeteringPointRequest.
 type MeteringPointRequest struct {
-	Address                      *AddressRequest `json:"address"`
-	ConnectionStatus             *string         `json:"connectionStatus,omitempty"`
-	ExpectedAnnualConsumptionKwh *float64        `json:"expectedAnnualConsumptionKwh,omitempty"`
-	GridArea                     *string         `json:"gridArea,omitempty"`
-	Gsrn                         *string         `json:"gsrn"`
-	Latitude                     *float64        `json:"latitude,omitempty"`
-	Longitude                    *float64        `json:"longitude,omitempty"`
-	MeterNumber                  *string         `json:"meterNumber"`
-	PriceArea                    *string         `json:"priceArea"`
+	Address          *AddressRequest `json:"address"`
+	ConnectionStatus *string         `json:"connectionStatus,omitempty"`
+
+	// ElectricityTaxClass ordinary (the default when absent), reduced or exempt.
+	ElectricityTaxClass          *string  `json:"electricityTaxClass,omitempty"`
+	ExpectedAnnualConsumptionKwh *float64 `json:"expectedAnnualConsumptionKwh,omitempty"`
+	GridArea                     *string  `json:"gridArea,omitempty"`
+
+	// GridTariffId An active grid tariff, or null for none. The PUT is a full replace, so absent means none; a tariff the point already holds is kept even when archived.
+	GridTariffId *int32  `json:"gridTariffId,omitempty"`
+	Gsrn         *string `json:"gsrn"`
+
+	// Household Supplied for household use; absent means false.
+	Household   *bool    `json:"household,omitempty"`
+	Latitude    *float64 `json:"latitude,omitempty"`
+	Longitude   *float64 `json:"longitude,omitempty"`
+	MeterNumber *string  `json:"meterNumber"`
+	PriceArea   *string  `json:"priceArea"`
 }
 
-// MeteringPointResponse defines model for MeteringPointResponse.
+// MeteringPointResponse A metering point. gridTariffId, gridTariffName, household, electricityTaxClass and vatTreatment (energy consumption billing design D3, D4) are always sent; the schema leaves them optional because the recorded .NET exchanges predate them.
 type MeteringPointResponse struct {
-	Address                      AddressResponse `json:"address"`
-	ConnectionStatus             string          `json:"connectionStatus"`
-	CreatedAt                    time.Time       `json:"createdAt"`
-	ExpectedAnnualConsumptionKwh *float64        `json:"expectedAnnualConsumptionKwh"`
-	GridArea                     *string         `json:"gridArea"`
-	Gsrn                         string          `json:"gsrn"`
-	Id                           int32           `json:"id"`
-	Latitude                     *float64        `json:"latitude"`
-	Longitude                    *float64        `json:"longitude"`
-	MeterNumber                  *string         `json:"meterNumber"`
-	PriceArea                    string          `json:"priceArea"`
-	UpdatedAt                    time.Time       `json:"updatedAt"`
+	Address          AddressResponse `json:"address"`
+	ConnectionStatus string          `json:"connectionStatus"`
+	CreatedAt        time.Time       `json:"createdAt"`
+
+	// ElectricityTaxClass ordinary, reduced or exempt (energy consumption billing design D4).
+	ElectricityTaxClass          *string  `json:"electricityTaxClass,omitempty"`
+	ExpectedAnnualConsumptionKwh *float64 `json:"expectedAnnualConsumptionKwh"`
+	GridArea                     *string  `json:"gridArea"`
+
+	// GridTariffId The installation's own grid tariff for the point; null when the grid company bills grid services itself.
+	GridTariffId *int32 `json:"gridTariffId,omitempty"`
+
+	// GridTariffName The grid tariff's name, null without one.
+	GridTariffName *string `json:"gridTariffName,omitempty"`
+	Gsrn           string  `json:"gsrn"`
+
+	// Household Supplied for household use (mvaf § 6-6-1), set by hand.
+	Household   *bool     `json:"household,omitempty"`
+	Id          int32     `json:"id"`
+	Latitude    *float64  `json:"latitude"`
+	Longitude   *float64  `json:"longitude"`
+	MeterNumber *string   `json:"meterNumber"`
+	PriceArea   string    `json:"priceArea"`
+	UpdatedAt   time.Time `json:"updatedAt"`
+
+	// VatTreatment Derived, never stored: exempt_household_north when household is set, the country is NO and the postal code is 8000–9999; otherwise standard. A hint Invoices maps to a VAT code.
+	VatTreatment *string `json:"vatTreatment,omitempty"`
 }
 
 // MeteringPointUpdateRequest defines model for MeteringPointUpdateRequest.
 type MeteringPointUpdateRequest struct {
-	Address                      *AddressRequest `json:"address"`
-	ConnectionStatus             *string         `json:"connectionStatus,omitempty"`
-	ExpectedAnnualConsumptionKwh *float64        `json:"expectedAnnualConsumptionKwh,omitempty"`
-	GridArea                     *string         `json:"gridArea,omitempty"`
-	Gsrn                         *string         `json:"gsrn"`
-	Latitude                     *float64        `json:"latitude,omitempty"`
-	Longitude                    *float64        `json:"longitude,omitempty"`
-	PriceArea                    *string         `json:"priceArea"`
+	Address          *AddressRequest `json:"address"`
+	ConnectionStatus *string         `json:"connectionStatus,omitempty"`
+
+	// ElectricityTaxClass ordinary (the default when absent), reduced or exempt.
+	ElectricityTaxClass          *string  `json:"electricityTaxClass,omitempty"`
+	ExpectedAnnualConsumptionKwh *float64 `json:"expectedAnnualConsumptionKwh,omitempty"`
+	GridArea                     *string  `json:"gridArea,omitempty"`
+
+	// GridTariffId An active grid tariff, or null for none. The PUT is a full replace, so absent means none; a tariff the point already holds is kept even when archived.
+	GridTariffId *int32  `json:"gridTariffId,omitempty"`
+	Gsrn         *string `json:"gsrn"`
+
+	// Household Supplied for household use; absent means false.
+	Household *bool    `json:"household,omitempty"`
+	Latitude  *float64 `json:"latitude,omitempty"`
+	Longitude *float64 `json:"longitude,omitempty"`
+	PriceArea *string  `json:"priceArea"`
 }
 
 // PaginatedResponseOfEnergyImport defines model for PaginatedResponseOfEnergyImport.
@@ -608,26 +647,169 @@ type SpotPriceSummaryBucket struct {
 	Start          time.Time `json:"start"`
 }
 
-// SupplyPeriodResponse defines model for SupplyPeriodResponse.
+// SupplyPeriodResponse A supply period. tariffId, tariffName and cadence (energy consumption billing design D3, D4) are always sent; the schema leaves them optional because the recorded .NET exchanges predate them.
 type SupplyPeriodResponse struct {
+	// Cadence monthly, quarterly or yearly.
+	Cadence         *string    `json:"cadence,omitempty"`
 	CustomerId      int32      `json:"customerId"`
 	End             *time.Time `json:"end"`
 	Id              int32      `json:"id"`
 	MeteringPointId int32      `json:"meteringPointId"`
 	Start           time.Time  `json:"start"`
 	Status          string     `json:"status"`
+
+	// TariffId The period's power tariff, null for none.
+	TariffId *int32 `json:"tariffId,omitempty"`
+
+	// TariffName The power tariff's name, null without one.
+	TariffName *string `json:"tariffName,omitempty"`
 }
 
 // SwitchSupplyPeriodRequest defines model for SwitchSupplyPeriodRequest.
 type SwitchSupplyPeriodRequest struct {
+	// Cadence The billing cadence, monthly (the default when absent), quarterly or yearly.
+	Cadence    *string   `json:"cadence,omitempty"`
 	CustomerId int32     `json:"customerId"`
 	SwitchAt   time.Time `json:"switchAt"`
+
+	// TariffId An active power tariff, or null for none (the period is then not priced).
+	TariffId *int32 `json:"tariffId,omitempty"`
 }
 
 // SwitchSupplyPeriodResponse defines model for SwitchSupplyPeriodResponse.
 type SwitchSupplyPeriodResponse struct {
 	EndedPeriod *SupplyPeriodResponse `json:"endedPeriod"`
-	NewPeriod   SupplyPeriodResponse  `json:"newPeriod"`
+
+	// NewPeriod A supply period. tariffId, tariffName and cadence (energy consumption billing design D3, D4) are always sent; the schema leaves them optional because the recorded .NET exchanges predate them.
+	NewPeriod SupplyPeriodResponse `json:"newPeriod"`
+}
+
+// Tariff A tariff (energy consumption billing design D3): a power tariff is the supplier's contract, assigned to supply periods; a grid tariff is the installation's own, assigned to metering points. versions are in validFrom order, each with its components in position order.
+type Tariff struct {
+	CreatedAt   time.Time `json:"createdAt"`
+	Description *string   `json:"description"`
+	Id          int32     `json:"id"`
+
+	// Kind power or grid.
+	Kind string `json:"kind"`
+
+	// Name What a settlement prints as the contract's name (§ 7-2 d).
+	Name string `json:"name"`
+
+	// Status active or archived. An archived tariff cannot be assigned anew, and still prices the periods it is assigned to.
+	Status    string    `json:"status"`
+	UpdatedAt time.Time `json:"updatedAt"`
+
+	// Usage How many supply periods (of any status) and metering points name the tariff; a tariff named by any cannot be deleted.
+	Usage    TariffUsage     `json:"usage"`
+	Versions []TariffVersion `json:"versions"`
+}
+
+// TariffComponent One priced element of a version. A field the kind does not use is null; see TariffComponentRequest for which kind uses which.
+type TariffComponent struct {
+	DayFrom *int32 `json:"dayFrom"`
+	DayTo   *int32 `json:"dayTo"`
+	Id      int32  `json:"id"`
+	Kind    string `json:"kind"`
+	Name    string `json:"name"`
+
+	// Position The component's place in its version, from 0; the order the lines print in.
+	Position     int32         `json:"position"`
+	Rate         *float64      `json:"rate"`
+	RateBusiness *float64      `json:"rateBusiness"`
+	RateNight    *float64      `json:"rateNight"`
+	RateReduced  *float64      `json:"rateReduced"`
+	Tiers        *[]TariffTier `json:"tiers"`
+	WeekdaysOnly bool          `json:"weekdaysOnly"`
+}
+
+// TariffComponentRequest One component. kind is one of spot_energy, fixed_energy, markup, monthly_fee (a power tariff's) or grid_energy, grid_capacity, grid_fixed, electricity_tax, enova_levy, monthly_fee (a grid tariff's). The fields each kind needs: spot_energy none; fixed_energy and markup rate (NOK/kWh); monthly_fee and grid_fixed rate (NOK/month); grid_energy rate (the day rate, NOK/kWh) and optionally rateNight with dayFrom, dayTo (whole hours, 0 ≤ dayFrom < dayTo ≤ 24) and weekdaysOnly, all or none; grid_capacity tiers; electricity_tax rate (ordinary) and rateReduced; enova_levy rate (household, NOK/kWh) and rateBusiness (NOK/year). A field the kind does not use must be null or absent. Rates are 0 ≤ rate < 1 000 000, stored to six decimals.
+type TariffComponentRequest struct {
+	DayFrom *int32  `json:"dayFrom,omitempty"`
+	DayTo   *int32  `json:"dayTo,omitempty"`
+	Kind    *string `json:"kind"`
+
+	// Name The line's text, 1–80 characters.
+	Name         *string       `json:"name"`
+	Rate         *float64      `json:"rate,omitempty"`
+	RateBusiness *float64      `json:"rateBusiness,omitempty"`
+	RateNight    *float64      `json:"rateNight,omitempty"`
+	RateReduced  *float64      `json:"rateReduced,omitempty"`
+	Tiers        *[]TariffTier `json:"tiers,omitempty"`
+	WeekdaysOnly *bool         `json:"weekdaysOnly,omitempty"`
+}
+
+// TariffRequest A tariff's header and every version with its components, in one body (POST creates, PUT replaces). A power tariff's version holds exactly one of spot_energy and fixed_energy; at most one each of grid_energy, grid_capacity, electricity_tax and enova_levy per version. A tariff has at least one version, a version at least one component, and two versions never overlap. A refusal names the place: versions[i].components[j].field.
+type TariffRequest struct {
+	// Description At most 500 characters.
+	Description *string `json:"description,omitempty"`
+
+	// Kind power or grid; on a PUT, the stored kind (a tariff's kind cannot be changed).
+	Kind *string `json:"kind"`
+
+	// Name 1–120 characters.
+	Name     *string                 `json:"name"`
+	Versions *[]TariffVersionRequest `json:"versions"`
+}
+
+// TariffSummary A tariff as the list shows it, with the version valid today (Europe/Oslo), null when none is.
+type TariffSummary struct {
+	CreatedAt      time.Time       `json:"createdAt"`
+	CurrentVersion *TariffValidity `json:"currentVersion"`
+	Description    *string         `json:"description"`
+	Id             int32           `json:"id"`
+	Kind           string          `json:"kind"`
+	Name           string          `json:"name"`
+	Status         string          `json:"status"`
+	UpdatedAt      time.Time       `json:"updatedAt"`
+
+	// Usage How many supply periods (of any status) and metering points name the tariff; a tariff named by any cannot be deleted.
+	Usage        TariffUsage `json:"usage"`
+	VersionCount int32       `json:"versionCount"`
+}
+
+// TariffTier A capacity step (kapasitetsledd) from fromKw, the average of the month's three highest hourly kWh on three different days, at perMonth NOK a month. Tiers ascend strictly from 0; at most 50.
+type TariffTier struct {
+	FromKw   float64 `json:"fromKw"`
+	PerMonth float64 `json:"perMonth"`
+}
+
+// TariffUsage How many supply periods (of any status) and metering points name the tariff; a tariff named by any cannot be deleted.
+type TariffUsage struct {
+	MeteringPoints int32 `json:"meteringPoints"`
+	SupplyPeriods  int32 `json:"supplyPeriods"`
+}
+
+// TariffValidity defines model for TariffValidity.
+type TariffValidity struct {
+	ValidFrom openapi_types.Date  `json:"validFrom"`
+	ValidTo   *openapi_types.Date `json:"validTo"`
+}
+
+// TariffVersion A version applies on the civil days [validFrom, validTo) in the point's market time zone; validTo null is open-ended.
+type TariffVersion struct {
+	Components []TariffComponent   `json:"components"`
+	Id         int32               `json:"id"`
+	ValidFrom  openapi_types.Date  `json:"validFrom"`
+	ValidTo    *openapi_types.Date `json:"validTo"`
+}
+
+// TariffVersionRequest defines model for TariffVersionRequest.
+type TariffVersionRequest struct {
+	Components *[]TariffComponentRequest `json:"components"`
+	ValidFrom  *openapi_types.Date       `json:"validFrom"`
+
+	// ValidTo The first day the version no longer applies; null or absent is open-ended.
+	ValidTo *openapi_types.Date `json:"validTo,omitempty"`
+}
+
+// UpdateSupplyPeriodTermsRequest A supply period's terms, nothing else of it.
+type UpdateSupplyPeriodTermsRequest struct {
+	// Cadence monthly (the default when absent), quarterly or yearly.
+	Cadence *string `json:"cadence,omitempty"`
+
+	// TariffId An active power tariff (or the one the period already holds, even archived), or null for none.
+	TariffId *int32 `json:"tariffId,omitempty"`
 }
 
 // GetEnergyCustomersByCustomerIdConsumptionParams defines parameters for GetEnergyCustomersByCustomerIdConsumption.
@@ -753,6 +935,15 @@ type GetEnergyStatsTimeseriesParams struct {
 	To     *time.Time `form:"to,omitempty" json:"to,omitempty"`
 }
 
+// GetEnergyTariffsParams defines parameters for GetEnergyTariffs.
+type GetEnergyTariffsParams struct {
+	// Kind power or grid.
+	Kind *string `form:"kind,omitempty" json:"kind,omitempty"`
+
+	// Status active or archived.
+	Status *string `form:"status,omitempty" json:"status,omitempty"`
+}
+
 // PostEnergyImportsMultipartRequestBody defines body for PostEnergyImports for multipart/form-data ContentType.
 type PostEnergyImportsMultipartRequestBody PostEnergyImportsMultipartBody
 
@@ -786,11 +977,20 @@ type PostEnergyMeteringPointsByIdSupplyPeriodsJSONRequestBody = CreateSupplyPeri
 // PostEnergyMeteringPointsByIdSupplyPeriodsSwitchJSONRequestBody defines body for PostEnergyMeteringPointsByIdSupplyPeriodsSwitch for application/json ContentType.
 type PostEnergyMeteringPointsByIdSupplyPeriodsSwitchJSONRequestBody = SwitchSupplyPeriodRequest
 
+// PutEnergyMeteringPointsByIdSupplyPeriodsByPeriodIdJSONRequestBody defines body for PutEnergyMeteringPointsByIdSupplyPeriodsByPeriodId for application/json ContentType.
+type PutEnergyMeteringPointsByIdSupplyPeriodsByPeriodIdJSONRequestBody = UpdateSupplyPeriodTermsRequest
+
 // PostEnergyMeteringPointsByIdSupplyPeriodsByPeriodIdEndJSONRequestBody defines body for PostEnergyMeteringPointsByIdSupplyPeriodsByPeriodIdEnd for application/json ContentType.
 type PostEnergyMeteringPointsByIdSupplyPeriodsByPeriodIdEndJSONRequestBody = EndSupplyPeriodRequest
 
 // PostEnergySpotPricesImportMultipartRequestBody defines body for PostEnergySpotPricesImport for multipart/form-data ContentType.
 type PostEnergySpotPricesImportMultipartRequestBody PostEnergySpotPricesImportMultipartBody
+
+// PostEnergyTariffsJSONRequestBody defines body for PostEnergyTariffs for application/json ContentType.
+type PostEnergyTariffsJSONRequestBody = TariffRequest
+
+// PutEnergyTariffsByIdJSONRequestBody defines body for PutEnergyTariffsById for application/json ContentType.
+type PutEnergyTariffsByIdJSONRequestBody = TariffRequest
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
@@ -878,6 +1078,9 @@ type ServerInterface interface {
 	// DeleteEnergyMeteringPointsByIdSupplyPeriodsByPeriodId Cancel a supply period
 	// (DELETE /api/v1/energy/metering-points/{id}/supply-periods/{periodId})
 	DeleteEnergyMeteringPointsByIdSupplyPeriodsByPeriodId(w http.ResponseWriter, r *http.Request, id int32, periodId int32)
+	// PutEnergyMeteringPointsByIdSupplyPeriodsByPeriodId Change a supply period's terms
+	// (PUT /api/v1/energy/metering-points/{id}/supply-periods/{periodId})
+	PutEnergyMeteringPointsByIdSupplyPeriodsByPeriodId(w http.ResponseWriter, r *http.Request, id int32, periodId int32)
 	// PostEnergyMeteringPointsByIdSupplyPeriodsByPeriodIdEnd End a supply period
 	// (POST /api/v1/energy/metering-points/{id}/supply-periods/{periodId}/end)
 	PostEnergyMeteringPointsByIdSupplyPeriodsByPeriodIdEnd(w http.ResponseWriter, r *http.Request, id int32, periodId int32)
@@ -902,6 +1105,24 @@ type ServerInterface interface {
 	// GetEnergyStatsTimeseries Get energy dashboard time series
 	// (GET /api/v1/energy/stats/timeseries)
 	GetEnergyStatsTimeseries(w http.ResponseWriter, r *http.Request, params GetEnergyStatsTimeseriesParams)
+	// GetEnergyTariffs List tariffs
+	// (GET /api/v1/energy/tariffs)
+	GetEnergyTariffs(w http.ResponseWriter, r *http.Request, params GetEnergyTariffsParams)
+	// PostEnergyTariffs Create a tariff
+	// (POST /api/v1/energy/tariffs)
+	PostEnergyTariffs(w http.ResponseWriter, r *http.Request)
+	// DeleteEnergyTariffsById Delete an unused tariff
+	// (DELETE /api/v1/energy/tariffs/{id})
+	DeleteEnergyTariffsById(w http.ResponseWriter, r *http.Request, id int32)
+	// GetEnergyTariff Get a tariff
+	// (GET /api/v1/energy/tariffs/{id})
+	GetEnergyTariff(w http.ResponseWriter, r *http.Request, id int32)
+	// PutEnergyTariffsById Replace a tariff
+	// (PUT /api/v1/energy/tariffs/{id})
+	PutEnergyTariffsById(w http.ResponseWriter, r *http.Request, id int32)
+	// PostEnergyTariffsByIdArchive Archive a tariff
+	// (POST /api/v1/energy/tariffs/{id}/archive)
+	PostEnergyTariffsByIdArchive(w http.ResponseWriter, r *http.Request, id int32)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -1931,6 +2152,41 @@ func (siw *ServerInterfaceWrapper) DeleteEnergyMeteringPointsByIdSupplyPeriodsBy
 	handler.ServeHTTP(w, r)
 }
 
+// PutEnergyMeteringPointsByIdSupplyPeriodsByPeriodId operation middleware
+func (siw *ServerInterfaceWrapper) PutEnergyMeteringPointsByIdSupplyPeriodsByPeriodId(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "periodId" -------------
+	var periodId int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "periodId", r.PathValue("periodId"), &periodId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "periodId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutEnergyMeteringPointsByIdSupplyPeriodsByPeriodId(w, r, id, periodId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // PostEnergyMeteringPointsByIdSupplyPeriodsByPeriodIdEnd operation middleware
 func (siw *ServerInterfaceWrapper) PostEnergyMeteringPointsByIdSupplyPeriodsByPeriodIdEnd(w http.ResponseWriter, r *http.Request) {
 
@@ -2263,6 +2519,170 @@ func (siw *ServerInterfaceWrapper) GetEnergyStatsTimeseries(w http.ResponseWrite
 	handler.ServeHTTP(w, r)
 }
 
+// GetEnergyTariffs operation middleware
+func (siw *ServerInterfaceWrapper) GetEnergyTariffs(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetEnergyTariffsParams
+
+	// ------------- Optional query parameter "kind" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "kind", r.URL.Query(), &params.Kind, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "kind"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "kind", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "status" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "status", r.URL.Query(), &params.Status, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "status"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "status", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetEnergyTariffs(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostEnergyTariffs operation middleware
+func (siw *ServerInterfaceWrapper) PostEnergyTariffs(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostEnergyTariffs(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteEnergyTariffsById operation middleware
+func (siw *ServerInterfaceWrapper) DeleteEnergyTariffsById(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteEnergyTariffsById(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetEnergyTariff operation middleware
+func (siw *ServerInterfaceWrapper) GetEnergyTariff(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetEnergyTariff(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutEnergyTariffsById operation middleware
+func (siw *ServerInterfaceWrapper) PutEnergyTariffsById(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutEnergyTariffsById(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostEnergyTariffsByIdArchive operation middleware
+func (siw *ServerInterfaceWrapper) PostEnergyTariffsByIdArchive(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostEnergyTariffsByIdArchive(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 type UnescapedCookieParamError struct {
 	ParamName string
 	Err       error
@@ -2409,9 +2829,10 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/energy/metering-points/{id}/meters", wrapper.PostEnergyMeteringPointsByIdMeters)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/energy/metering-points/{id}/supply-periods", wrapper.GetEnergyMeteringPointsByIdSupplyPeriods)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/energy/metering-points/{id}/supply-periods", wrapper.PostEnergyMeteringPointsByIdSupplyPeriods)
-	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/energy/metering-points/{id}/supply-periods/{periodId}", wrapper.DeleteEnergyMeteringPointsByIdSupplyPeriodsByPeriodId)
-	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/energy/metering-points/{id}/supply-periods/{periodId}/end", wrapper.PostEnergyMeteringPointsByIdSupplyPeriodsByPeriodIdEnd)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/energy/metering-points/{id}/supply-periods/switch", wrapper.PostEnergyMeteringPointsByIdSupplyPeriodsSwitch)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/energy/metering-points/{id}/supply-periods/{periodId}", wrapper.DeleteEnergyMeteringPointsByIdSupplyPeriodsByPeriodId)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/energy/metering-points/{id}/supply-periods/{periodId}", wrapper.PutEnergyMeteringPointsByIdSupplyPeriodsByPeriodId)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/energy/metering-points/{id}/supply-periods/{periodId}/end", wrapper.PostEnergyMeteringPointsByIdSupplyPeriodsByPeriodIdEnd)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/energy/spot-prices", wrapper.GetEnergySpotPrices)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/energy/spot-prices/coverage", wrapper.GetEnergySpotPricesCoverage)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/energy/spot-prices/import", wrapper.PostEnergySpotPricesImport)
@@ -2419,6 +2840,12 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/energy/stats/attention", wrapper.GetEnergyStatsAttention)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/energy/stats/summary", wrapper.GetEnergyStatsSummary)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/energy/stats/timeseries", wrapper.GetEnergyStatsTimeseries)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/energy/tariffs", wrapper.GetEnergyTariffs)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/energy/tariffs", wrapper.PostEnergyTariffs)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/energy/tariffs/{id}", wrapper.DeleteEnergyTariffsById)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/energy/tariffs/{id}", wrapper.GetEnergyTariff)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/energy/tariffs/{id}", wrapper.PutEnergyTariffsById)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/energy/tariffs/{id}/archive", wrapper.PostEnergyTariffsByIdArchive)
 
 	return m
 }
@@ -4463,6 +4890,80 @@ func (response DeleteEnergyMeteringPointsByIdSupplyPeriodsByPeriodId404Response)
 	return nil
 }
 
+type PutEnergyMeteringPointsByIdSupplyPeriodsByPeriodIdRequestObject struct {
+	Id       int32 `json:"id"`
+	PeriodId int32 `json:"periodId"`
+	Body     *PutEnergyMeteringPointsByIdSupplyPeriodsByPeriodIdJSONRequestBody
+}
+
+type PutEnergyMeteringPointsByIdSupplyPeriodsByPeriodIdResponseObject interface {
+	VisitPutEnergyMeteringPointsByIdSupplyPeriodsByPeriodIdResponse(w http.ResponseWriter) error
+}
+
+type PutEnergyMeteringPointsByIdSupplyPeriodsByPeriodId200JSONResponse SupplyPeriodResponse
+
+func (response PutEnergyMeteringPointsByIdSupplyPeriodsByPeriodId200JSONResponse) VisitPutEnergyMeteringPointsByIdSupplyPeriodsByPeriodIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutEnergyMeteringPointsByIdSupplyPeriodsByPeriodId400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response PutEnergyMeteringPointsByIdSupplyPeriodsByPeriodId400ApplicationProblemPlusJSONResponse) VisitPutEnergyMeteringPointsByIdSupplyPeriodsByPeriodIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutEnergyMeteringPointsByIdSupplyPeriodsByPeriodId401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutEnergyMeteringPointsByIdSupplyPeriodsByPeriodId401JSONResponse) VisitPutEnergyMeteringPointsByIdSupplyPeriodsByPeriodIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutEnergyMeteringPointsByIdSupplyPeriodsByPeriodId403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutEnergyMeteringPointsByIdSupplyPeriodsByPeriodId403JSONResponse) VisitPutEnergyMeteringPointsByIdSupplyPeriodsByPeriodIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutEnergyMeteringPointsByIdSupplyPeriodsByPeriodId404Response struct {
+}
+
+func (response PutEnergyMeteringPointsByIdSupplyPeriodsByPeriodId404Response) VisitPutEnergyMeteringPointsByIdSupplyPeriodsByPeriodIdResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
 type PostEnergyMeteringPointsByIdSupplyPeriodsByPeriodIdEndRequestObject struct {
 	Id       int32 `json:"id"`
 	PeriodId int32 `json:"periodId"`
@@ -5008,6 +5509,389 @@ func (response GetEnergyStatsTimeseries403JSONResponse) VisitGetEnergyStatsTimes
 	return err
 }
 
+type GetEnergyTariffsRequestObject struct {
+	Params GetEnergyTariffsParams
+}
+
+type GetEnergyTariffsResponseObject interface {
+	VisitGetEnergyTariffsResponse(w http.ResponseWriter) error
+}
+
+type GetEnergyTariffs200JSONResponse []TariffSummary
+
+func (response GetEnergyTariffs200JSONResponse) VisitGetEnergyTariffsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetEnergyTariffs400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response GetEnergyTariffs400ApplicationProblemPlusJSONResponse) VisitGetEnergyTariffsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetEnergyTariffs401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetEnergyTariffs401JSONResponse) VisitGetEnergyTariffsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetEnergyTariffs403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetEnergyTariffs403JSONResponse) VisitGetEnergyTariffsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostEnergyTariffsRequestObject struct {
+	Body *PostEnergyTariffsJSONRequestBody
+}
+
+type PostEnergyTariffsResponseObject interface {
+	VisitPostEnergyTariffsResponse(w http.ResponseWriter) error
+}
+
+type PostEnergyTariffs201JSONResponse Tariff
+
+func (response PostEnergyTariffs201JSONResponse) VisitPostEnergyTariffsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostEnergyTariffs400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response PostEnergyTariffs400ApplicationProblemPlusJSONResponse) VisitPostEnergyTariffsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostEnergyTariffs401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostEnergyTariffs401JSONResponse) VisitPostEnergyTariffsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostEnergyTariffs403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostEnergyTariffs403JSONResponse) VisitPostEnergyTariffsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteEnergyTariffsByIdRequestObject struct {
+	Id int32 `json:"id"`
+}
+
+type DeleteEnergyTariffsByIdResponseObject interface {
+	VisitDeleteEnergyTariffsByIdResponse(w http.ResponseWriter) error
+}
+
+type DeleteEnergyTariffsById204Response struct {
+}
+
+func (response DeleteEnergyTariffsById204Response) VisitDeleteEnergyTariffsByIdResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteEnergyTariffsById401JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteEnergyTariffsById401JSONResponse) VisitDeleteEnergyTariffsByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteEnergyTariffsById403JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteEnergyTariffsById403JSONResponse) VisitDeleteEnergyTariffsByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteEnergyTariffsById404Response struct {
+}
+
+func (response DeleteEnergyTariffsById404Response) VisitDeleteEnergyTariffsByIdResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type DeleteEnergyTariffsById409ApplicationProblemPlusJSONResponse externalRef0.ProblemDetails
+
+func (response DeleteEnergyTariffsById409ApplicationProblemPlusJSONResponse) VisitDeleteEnergyTariffsByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetEnergyTariffRequestObject struct {
+	Id int32 `json:"id"`
+}
+
+type GetEnergyTariffResponseObject interface {
+	VisitGetEnergyTariffResponse(w http.ResponseWriter) error
+}
+
+type GetEnergyTariff200JSONResponse Tariff
+
+func (response GetEnergyTariff200JSONResponse) VisitGetEnergyTariffResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetEnergyTariff401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetEnergyTariff401JSONResponse) VisitGetEnergyTariffResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetEnergyTariff403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetEnergyTariff403JSONResponse) VisitGetEnergyTariffResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetEnergyTariff404Response struct {
+}
+
+func (response GetEnergyTariff404Response) VisitGetEnergyTariffResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PutEnergyTariffsByIdRequestObject struct {
+	Id   int32 `json:"id"`
+	Body *PutEnergyTariffsByIdJSONRequestBody
+}
+
+type PutEnergyTariffsByIdResponseObject interface {
+	VisitPutEnergyTariffsByIdResponse(w http.ResponseWriter) error
+}
+
+type PutEnergyTariffsById200JSONResponse Tariff
+
+func (response PutEnergyTariffsById200JSONResponse) VisitPutEnergyTariffsByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutEnergyTariffsById400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response PutEnergyTariffsById400ApplicationProblemPlusJSONResponse) VisitPutEnergyTariffsByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutEnergyTariffsById401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutEnergyTariffsById401JSONResponse) VisitPutEnergyTariffsByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutEnergyTariffsById403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutEnergyTariffsById403JSONResponse) VisitPutEnergyTariffsByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutEnergyTariffsById404Response struct {
+}
+
+func (response PutEnergyTariffsById404Response) VisitPutEnergyTariffsByIdResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostEnergyTariffsByIdArchiveRequestObject struct {
+	Id int32 `json:"id"`
+}
+
+type PostEnergyTariffsByIdArchiveResponseObject interface {
+	VisitPostEnergyTariffsByIdArchiveResponse(w http.ResponseWriter) error
+}
+
+type PostEnergyTariffsByIdArchive200JSONResponse Tariff
+
+func (response PostEnergyTariffsByIdArchive200JSONResponse) VisitPostEnergyTariffsByIdArchiveResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostEnergyTariffsByIdArchive401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostEnergyTariffsByIdArchive401JSONResponse) VisitPostEnergyTariffsByIdArchiveResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostEnergyTariffsByIdArchive403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostEnergyTariffsByIdArchive403JSONResponse) VisitPostEnergyTariffsByIdArchiveResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostEnergyTariffsByIdArchive404Response struct {
+}
+
+func (response PostEnergyTariffsByIdArchive404Response) VisitPostEnergyTariffsByIdArchiveResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
 	// GetEnergyCustomersByCustomerIdConsumption List a customer's consumption
@@ -5094,6 +5978,9 @@ type StrictServerInterface interface {
 	// DeleteEnergyMeteringPointsByIdSupplyPeriodsByPeriodId Cancel a supply period
 	// (DELETE /api/v1/energy/metering-points/{id}/supply-periods/{periodId})
 	DeleteEnergyMeteringPointsByIdSupplyPeriodsByPeriodId(ctx context.Context, request DeleteEnergyMeteringPointsByIdSupplyPeriodsByPeriodIdRequestObject) (DeleteEnergyMeteringPointsByIdSupplyPeriodsByPeriodIdResponseObject, error)
+	// PutEnergyMeteringPointsByIdSupplyPeriodsByPeriodId Change a supply period's terms
+	// (PUT /api/v1/energy/metering-points/{id}/supply-periods/{periodId})
+	PutEnergyMeteringPointsByIdSupplyPeriodsByPeriodId(ctx context.Context, request PutEnergyMeteringPointsByIdSupplyPeriodsByPeriodIdRequestObject) (PutEnergyMeteringPointsByIdSupplyPeriodsByPeriodIdResponseObject, error)
 	// PostEnergyMeteringPointsByIdSupplyPeriodsByPeriodIdEnd End a supply period
 	// (POST /api/v1/energy/metering-points/{id}/supply-periods/{periodId}/end)
 	PostEnergyMeteringPointsByIdSupplyPeriodsByPeriodIdEnd(ctx context.Context, request PostEnergyMeteringPointsByIdSupplyPeriodsByPeriodIdEndRequestObject) (PostEnergyMeteringPointsByIdSupplyPeriodsByPeriodIdEndResponseObject, error)
@@ -5118,6 +6005,24 @@ type StrictServerInterface interface {
 	// GetEnergyStatsTimeseries Get energy dashboard time series
 	// (GET /api/v1/energy/stats/timeseries)
 	GetEnergyStatsTimeseries(ctx context.Context, request GetEnergyStatsTimeseriesRequestObject) (GetEnergyStatsTimeseriesResponseObject, error)
+	// GetEnergyTariffs List tariffs
+	// (GET /api/v1/energy/tariffs)
+	GetEnergyTariffs(ctx context.Context, request GetEnergyTariffsRequestObject) (GetEnergyTariffsResponseObject, error)
+	// PostEnergyTariffs Create a tariff
+	// (POST /api/v1/energy/tariffs)
+	PostEnergyTariffs(ctx context.Context, request PostEnergyTariffsRequestObject) (PostEnergyTariffsResponseObject, error)
+	// DeleteEnergyTariffsById Delete an unused tariff
+	// (DELETE /api/v1/energy/tariffs/{id})
+	DeleteEnergyTariffsById(ctx context.Context, request DeleteEnergyTariffsByIdRequestObject) (DeleteEnergyTariffsByIdResponseObject, error)
+	// GetEnergyTariff Get a tariff
+	// (GET /api/v1/energy/tariffs/{id})
+	GetEnergyTariff(ctx context.Context, request GetEnergyTariffRequestObject) (GetEnergyTariffResponseObject, error)
+	// PutEnergyTariffsById Replace a tariff
+	// (PUT /api/v1/energy/tariffs/{id})
+	PutEnergyTariffsById(ctx context.Context, request PutEnergyTariffsByIdRequestObject) (PutEnergyTariffsByIdResponseObject, error)
+	// PostEnergyTariffsByIdArchive Archive a tariff
+	// (POST /api/v1/energy/tariffs/{id}/archive)
+	PostEnergyTariffsByIdArchive(ctx context.Context, request PostEnergyTariffsByIdArchiveRequestObject) (PostEnergyTariffsByIdArchiveResponseObject, error)
 }
 
 type StrictHandlerFunc func(ctx context.Context, w http.ResponseWriter, r *http.Request, request any) (any, error)
@@ -5970,6 +6875,40 @@ func (sh *strictHandler) DeleteEnergyMeteringPointsByIdSupplyPeriodsByPeriodId(w
 	}
 }
 
+// PutEnergyMeteringPointsByIdSupplyPeriodsByPeriodId operation middleware
+func (sh *strictHandler) PutEnergyMeteringPointsByIdSupplyPeriodsByPeriodId(w http.ResponseWriter, r *http.Request, id int32, periodId int32) {
+	var request PutEnergyMeteringPointsByIdSupplyPeriodsByPeriodIdRequestObject
+
+	request.Id = id
+	request.PeriodId = periodId
+
+	var body PutEnergyMeteringPointsByIdSupplyPeriodsByPeriodIdJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutEnergyMeteringPointsByIdSupplyPeriodsByPeriodId(ctx, request.(PutEnergyMeteringPointsByIdSupplyPeriodsByPeriodIdRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutEnergyMeteringPointsByIdSupplyPeriodsByPeriodId")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutEnergyMeteringPointsByIdSupplyPeriodsByPeriodIdResponseObject); ok {
+		if err := validResponse.VisitPutEnergyMeteringPointsByIdSupplyPeriodsByPeriodIdResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // PostEnergyMeteringPointsByIdSupplyPeriodsByPeriodIdEnd operation middleware
 func (sh *strictHandler) PostEnergyMeteringPointsByIdSupplyPeriodsByPeriodIdEnd(w http.ResponseWriter, r *http.Request, id int32, periodId int32) {
 	var request PostEnergyMeteringPointsByIdSupplyPeriodsByPeriodIdEndRequestObject
@@ -6182,6 +7121,174 @@ func (sh *strictHandler) GetEnergyStatsTimeseries(w http.ResponseWriter, r *http
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetEnergyStatsTimeseriesResponseObject); ok {
 		if err := validResponse.VisitGetEnergyStatsTimeseriesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetEnergyTariffs operation middleware
+func (sh *strictHandler) GetEnergyTariffs(w http.ResponseWriter, r *http.Request, params GetEnergyTariffsParams) {
+	var request GetEnergyTariffsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetEnergyTariffs(ctx, request.(GetEnergyTariffsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetEnergyTariffs")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetEnergyTariffsResponseObject); ok {
+		if err := validResponse.VisitGetEnergyTariffsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostEnergyTariffs operation middleware
+func (sh *strictHandler) PostEnergyTariffs(w http.ResponseWriter, r *http.Request) {
+	var request PostEnergyTariffsRequestObject
+
+	var body PostEnergyTariffsJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostEnergyTariffs(ctx, request.(PostEnergyTariffsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostEnergyTariffs")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostEnergyTariffsResponseObject); ok {
+		if err := validResponse.VisitPostEnergyTariffsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteEnergyTariffsById operation middleware
+func (sh *strictHandler) DeleteEnergyTariffsById(w http.ResponseWriter, r *http.Request, id int32) {
+	var request DeleteEnergyTariffsByIdRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteEnergyTariffsById(ctx, request.(DeleteEnergyTariffsByIdRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteEnergyTariffsById")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteEnergyTariffsByIdResponseObject); ok {
+		if err := validResponse.VisitDeleteEnergyTariffsByIdResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetEnergyTariff operation middleware
+func (sh *strictHandler) GetEnergyTariff(w http.ResponseWriter, r *http.Request, id int32) {
+	var request GetEnergyTariffRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetEnergyTariff(ctx, request.(GetEnergyTariffRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetEnergyTariff")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetEnergyTariffResponseObject); ok {
+		if err := validResponse.VisitGetEnergyTariffResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutEnergyTariffsById operation middleware
+func (sh *strictHandler) PutEnergyTariffsById(w http.ResponseWriter, r *http.Request, id int32) {
+	var request PutEnergyTariffsByIdRequestObject
+
+	request.Id = id
+
+	var body PutEnergyTariffsByIdJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutEnergyTariffsById(ctx, request.(PutEnergyTariffsByIdRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutEnergyTariffsById")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutEnergyTariffsByIdResponseObject); ok {
+		if err := validResponse.VisitPutEnergyTariffsByIdResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostEnergyTariffsByIdArchive operation middleware
+func (sh *strictHandler) PostEnergyTariffsByIdArchive(w http.ResponseWriter, r *http.Request, id int32) {
+	var request PostEnergyTariffsByIdArchiveRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostEnergyTariffsByIdArchive(ctx, request.(PostEnergyTariffsByIdArchiveRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostEnergyTariffsByIdArchive")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostEnergyTariffsByIdArchiveResponseObject); ok {
+		if err := validResponse.VisitPostEnergyTariffsByIdArchiveResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

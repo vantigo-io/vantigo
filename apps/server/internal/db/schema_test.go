@@ -966,7 +966,8 @@ func TestEnergyBaseline_AppliesAndIsIdempotent(t *testing.T) {
 	// D3) are applied with every migration up.
 	// The spot prices' two (00065_energy_spot_prices.sql, energy consumption
 	// billing design D2) likewise, and the service sync's history walk
-	// (00075_energy_spot_price_service.sql, spot-price service design S2).
+	// (00075_energy_spot_price_service.sql, spot-price service design S2),
+	// and the tariffs' three (00076_energy_tariffs.sql, design D3).
 	wantTables := []string{
 		"consumption_intervals",
 		"import_rows",
@@ -977,6 +978,9 @@ func TestEnergyBaseline_AppliesAndIsIdempotent(t *testing.T) {
 		"spot_price_history",
 		"spot_prices",
 		"supply_periods",
+		"tariff_components",
+		"tariff_versions",
+		"tariffs",
 	}
 	rows, err := pool.Query(ctx, `
 		SELECT c.relname
