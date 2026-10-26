@@ -25,13 +25,15 @@ const (
 
 // The lifecycle's event actions (the plan's "Exact values").
 const (
-	actionUserPrepared    = "entra.user.prepared"
-	actionUserActivated   = "entra.user.activated"
-	actionUserDeactivated = "entra.user.deactivated"
-	actionUserUpdated     = "entra.user.updated"
-	actionUserDeleted     = "entra.user.deleted"
-	actionPassIssued      = "entra.pass.issued"
-	actionPassRevealed    = "entra.pass.revealed"
+	actionUserPrepared     = "entra.user.prepared"
+	actionUserActivated    = "entra.user.activated"
+	actionUserDeactivated  = "entra.user.deactivated"
+	actionUserUpdated      = "entra.user.updated"
+	actionUserDeleted      = "entra.user.deleted"
+	actionPassIssued       = "entra.pass.issued"
+	actionPassRevealed     = "entra.pass.revealed"
+	actionUserPhotoSet     = "entra.user.photo_set"
+	actionUserPhotoCleared = "entra.user.photo_cleared"
 )
 
 // The account states entra.accounts and ExternalAccount.State name.

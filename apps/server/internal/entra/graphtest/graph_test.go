@@ -552,3 +552,68 @@ func TestGroups(t *testing.T) {
 		t.Errorf("a second team: %d, want 409", status)
 	}
 }
+
+// photoRequest sends method to a user's /photo/$value with body as
+// contentType, and answers the status and Graph's error code ("" for none).
+func (c *client) photoRequest(method, id, contentType string, body []byte) (int, string) {
+	c.t.Helper()
+	req, err := http.NewRequest(method, "https://graph.microsoft.com/v1.0/users/"+id+"/photo/$value", bytes.NewReader(body))
+	if err != nil {
+		c.t.Fatal(err)
+	}
+	req.Header.Set("Authorization", "Bearer "+c.token)
+	if contentType != "" {
+		req.Header.Set("Content-Type", contentType)
+	}
+	resp, err := c.http.Do(req)
+	if err != nil {
+		c.t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	raw, _ := io.ReadAll(resp.Body)
+	var out map[string]any
+	_ = json.Unmarshal(raw, &out)
+	return resp.StatusCode, errorCode(out)
+}
+
+// The photo: PUT keeps a JPEG and refuses another type or none (400), the
+// photo denied refuses the PUT and the DELETE (403), and a DELETE of none is
+// 404.
+func TestPhoto(t *testing.T) {
+	now := time.Now()
+	g := tenantFake(&now)
+	c := newClient(t, g)
+	u := g.AddUser(graphtest.User{UserPrincipalName: "foto@nordlys.no", EmployeeID: "E-9", DisplayName: "Foto"})
+	jpeg := []byte{0xFF, 0xD8, 0xFF, 0xD9}
+
+	if status, code := c.photoRequest(http.MethodPut, u.ID, "image/png", jpeg); status != http.StatusBadRequest || code != "ErrorInvalidImage" {
+		t.Errorf("PUT as image/png: %d %s, want 400 ErrorInvalidImage", status, code)
+	}
+	if status, _ := c.photoRequest(http.MethodPut, u.ID, "image/jpeg", nil); status != http.StatusBadRequest {
+		t.Errorf("PUT of nothing: %d, want 400", status)
+	}
+	if stored, _ := g.User(u.ID); stored.Photo != nil {
+		t.Error("a refused PUT stored a photo")
+	}
+	if status, _ := c.photoRequest(http.MethodPut, u.ID, "image/jpeg", jpeg); status != http.StatusOK {
+		t.Fatalf("PUT a JPEG: %d, want 200", status)
+	}
+
+	g.Configure(func(g *graphtest.FakeGraph) { g.PhotoDenied = true })
+	if status, _ := c.photoRequest(http.MethodPut, u.ID, "image/jpeg", jpeg); status != http.StatusForbidden {
+		t.Errorf("PUT denied: %d, want 403", status)
+	}
+	if status, _ := c.photoRequest(http.MethodDelete, u.ID, "", nil); status != http.StatusForbidden {
+		t.Errorf("DELETE denied: %d, want 403", status)
+	}
+	if stored, _ := g.User(u.ID); stored.Photo == nil {
+		t.Error("a denied DELETE removed the photo")
+	}
+	g.Configure(func(g *graphtest.FakeGraph) { g.PhotoDenied = false })
+	if status, _ := c.photoRequest(http.MethodDelete, u.ID, "", nil); status != http.StatusOK {
+		t.Errorf("DELETE: %d, want 200", status)
+	}
+	if status, _ := c.photoRequest(http.MethodDelete, u.ID, "", nil); status != http.StatusNotFound {
+		t.Errorf("DELETE of none: %d, want 404", status)
+	}
+}
