@@ -382,7 +382,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/energy/metering-points/{id}/supply-periods/{periodId}": {
+    "/api/v1/energy/metering-points/{id}/supply-periods/switch": {
         parameters: {
             query?: never;
             header?: never;
@@ -391,6 +391,27 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Switch supply period customer */
+        post: operations["postEnergyMeteringPointsByIdSupplyPeriodsSwitch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/energy/metering-points/{id}/supply-periods/{periodId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Change a supply period's terms
+         * @description Changes a supply period's power tariff and billing cadence (energy tariffs plan, reading 6), nothing else of it. A cancelled period cannot be changed.
+         */
+        put: operations["putEnergyMeteringPointsByIdSupplyPeriodsByPeriodId"];
         post?: never;
         /** Cancel a supply period */
         delete: operations["deleteEnergyMeteringPointsByIdSupplyPeriodsByPeriodId"];
@@ -410,23 +431,6 @@ export interface paths {
         put?: never;
         /** End a supply period */
         post: operations["postEnergyMeteringPointsByIdSupplyPeriodsByPeriodIdEnd"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/energy/metering-points/{id}/supply-periods/switch": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Switch supply period customer */
-        post: operations["postEnergyMeteringPointsByIdSupplyPeriodsSwitch"];
         delete?: never;
         options?: never;
         head?: never;
@@ -568,6 +572,75 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/energy/tariffs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List tariffs
+         * @description Every tariff (energy consumption billing design D3), active first, then by kind and name, each with its version count, the version valid today in Europe/Oslo and its usage. Not paged: a business holds a handful.
+         */
+        get: operations["getEnergyTariffs"];
+        put?: never;
+        /**
+         * Create a tariff
+         * @description Creates a tariff with its versions and components, active.
+         */
+        post: operations["postEnergyTariffs"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/energy/tariffs/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get a tariff */
+        get: operations["getEnergyTariff"];
+        /**
+         * Replace a tariff
+         * @description Replaces the tariff's name, description and every version with its components. The kind cannot be changed; the status is the archive's. An archived tariff can still be edited: it still prices the periods it covers.
+         */
+        put: operations["putEnergyTariffsById"];
+        post?: never;
+        /**
+         * Delete an unused tariff
+         * @description Deletes a tariff no supply period (of any status) and no metering point names, with its versions and components. A tariff in use is archived instead.
+         */
+        delete: operations["deleteEnergyTariffsById"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/energy/tariffs/{id}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Archive a tariff
+         * @description Archives the tariff (idempotent): it can no longer be assigned anew, and it still prices the supply periods and metering points it is assigned to.
+         */
+        post: operations["postEnergyTariffsByIdArchive"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -669,10 +742,17 @@ export interface components {
             start: string;
         };
         CreateSupplyPeriodRequest: {
+            /** @description The billing cadence, monthly (the default when absent), quarterly or yearly. */
+            cadence?: string | null;
             /** Format: int32 */
             customerId: number;
             /** Format: date-time */
             start: string;
+            /**
+             * Format: int32
+             * @description An active power tariff, or null for none (the period is then not priced).
+             */
+            tariffId?: number | null;
         };
         CustomerConsumptionAggregateResponse: {
             /** Format: date-time */
@@ -885,10 +965,19 @@ export interface components {
         MeteringPointRequest: {
             address: components["schemas"]["AddressRequest"] | null;
             connectionStatus?: string | null;
+            /** @description ordinary (the default when absent), reduced or exempt. */
+            electricityTaxClass?: string | null;
             /** Format: double */
             expectedAnnualConsumptionKwh?: number | null;
             gridArea?: string | null;
+            /**
+             * Format: int32
+             * @description An active grid tariff, or null for none. The PUT is a full replace, so absent means none; a tariff the point already holds is kept even when archived.
+             */
+            gridTariffId?: number | null;
             gsrn: string | null;
+            /** @description Supplied for household use; absent means false. */
+            household?: boolean | null;
             /** Format: double */
             latitude?: number | null;
             /** Format: double */
@@ -896,15 +985,27 @@ export interface components {
             meterNumber: string | null;
             priceArea: string | null;
         };
+        /** @description A metering point. gridTariffId, gridTariffName, household, electricityTaxClass and vatTreatment (energy consumption billing design D3, D4) are always sent; the schema leaves them optional because the recorded .NET exchanges predate them. */
         MeteringPointResponse: {
             address: components["schemas"]["AddressResponse"];
             connectionStatus: string;
             /** Format: date-time */
             createdAt: string;
+            /** @description ordinary, reduced or exempt (energy consumption billing design D4). */
+            electricityTaxClass?: string;
             /** Format: double */
             expectedAnnualConsumptionKwh: number | null;
             gridArea: string | null;
+            /**
+             * Format: int32
+             * @description The installation's own grid tariff for the point; null when the grid company bills grid services itself.
+             */
+            gridTariffId?: number | null;
+            /** @description The grid tariff's name, null without one. */
+            gridTariffName?: string | null;
             gsrn: string;
+            /** @description Supplied for household use (mvaf § 6-6-1), set by hand. */
+            household?: boolean;
             /** Format: int32 */
             id: number;
             /** Format: double */
@@ -915,14 +1016,25 @@ export interface components {
             priceArea: string;
             /** Format: date-time */
             updatedAt: string;
+            /** @description Derived, never stored: exempt_household_north when household is set, the country is NO and the postal code is 8000–9999; otherwise standard. A hint Invoices maps to a VAT code. */
+            vatTreatment?: string;
         };
         MeteringPointUpdateRequest: {
             address: components["schemas"]["AddressRequest"] | null;
             connectionStatus?: string | null;
+            /** @description ordinary (the default when absent), reduced or exempt. */
+            electricityTaxClass?: string | null;
             /** Format: double */
             expectedAnnualConsumptionKwh?: number | null;
             gridArea?: string | null;
+            /**
+             * Format: int32
+             * @description An active grid tariff, or null for none. The PUT is a full replace, so absent means none; a tariff the point already holds is kept even when archived.
+             */
+            gridTariffId?: number | null;
             gsrn: string | null;
+            /** @description Supplied for household use; absent means false. */
+            household?: boolean | null;
             /** Format: double */
             latitude?: number | null;
             /** Format: double */
@@ -970,17 +1082,6 @@ export interface components {
             /** @description The length of the area's latest stored interval as an ISO 8601 duration, PT15M or PT60M; absent for an area with no prices. */
             resolution?: string;
         };
-        /** @description The spot-price service sync's walk back through an area's history (spot-price service design S5): cursorDay is the oldest civil day (Europe/Oslo) copied so far, floorDay the oldest the service holds; complete once the cursor has reached the floor. daysSkipped counts the days the service held incompletely, without a NOK price, or over an imported day at another resolution, and the days of a window it failed permanently three times in a row — left for a file. error is the last failed window's sentence while the walk waits to retry, or after a skipped window until the next window is copied. It is kept for an area the service no longer follows. */
-        SpotPriceHistory: {
-            complete: boolean;
-            /** Format: date */
-            cursorDay?: string;
-            /** Format: int32 */
-            daysSkipped: number;
-            error?: string;
-            /** Format: date */
-            floorDay?: string;
-        };
         /** @description The feed worker's record of one area and civil day: ok once the day's prices are stored; pending while today's or tomorrow's are not yet published; missing for a past day the feed has no file for; failed for anything else, with the failure's sentence in error (never the response's body). attempts counts the requests made since the record last changed status, so a day pending for hours and then missing starts its seven missing attempts from one. */
         SpotPriceFetch: {
             /** Format: date-time */
@@ -994,6 +1095,17 @@ export interface components {
             nextAttemptAt?: string;
             /** @description ok, pending, missing or failed. */
             status: string;
+        };
+        /** @description The spot-price service sync's walk back through an area's history (spot-price service design S5): cursorDay is the oldest civil day (Europe/Oslo) copied so far, floorDay the oldest the service holds; complete once the cursor has reached the floor. daysSkipped counts the days the service held incompletely, without a NOK price, or over an imported day at another resolution, and the days of a window it failed permanently three times in a row — left for a file. error is the last failed window's sentence while the walk waits to retry, or after a skipped window until the next window is copied. It is kept for an area the service no longer follows. */
+        SpotPriceHistory: {
+            complete: boolean;
+            /** Format: date */
+            cursorDay?: string;
+            /** Format: int32 */
+            daysSkipped: number;
+            error?: string;
+            /** Format: date */
+            floorDay?: string;
         };
         /** @description What a spot price import did for one area, counting the rows without an error — inserted where no interval with the row's start was stored, replaced where one was with other figures, unchanged where one was with the same — and the range the rows cover. */
         SpotPriceImportArea: {
@@ -1076,7 +1188,10 @@ export interface components {
             /** Format: date-time */
             start: string;
         };
+        /** @description A supply period. tariffId, tariffName and cadence (energy consumption billing design D3, D4) are always sent; the schema leaves them optional because the recorded .NET exchanges predate them. */
         SupplyPeriodResponse: {
+            /** @description monthly, quarterly or yearly. */
+            cadence?: string;
             /** Format: int32 */
             customerId: number;
             /** Format: date-time */
@@ -1088,16 +1203,171 @@ export interface components {
             /** Format: date-time */
             start: string;
             status: string;
+            /**
+             * Format: int32
+             * @description The period's power tariff, null for none.
+             */
+            tariffId?: number | null;
+            /** @description The power tariff's name, null without one. */
+            tariffName?: string | null;
         };
         SwitchSupplyPeriodRequest: {
+            /** @description The billing cadence, monthly (the default when absent), quarterly or yearly. */
+            cadence?: string | null;
             /** Format: int32 */
             customerId: number;
             /** Format: date-time */
             switchAt: string;
+            /**
+             * Format: int32
+             * @description An active power tariff, or null for none (the period is then not priced).
+             */
+            tariffId?: number | null;
         };
         SwitchSupplyPeriodResponse: {
             endedPeriod: components["schemas"]["SupplyPeriodResponse"] | null;
             newPeriod: components["schemas"]["SupplyPeriodResponse"];
+        };
+        /** @description A tariff (energy consumption billing design D3): a power tariff is the supplier's contract, assigned to supply periods; a grid tariff is the installation's own, assigned to metering points. versions are in validFrom order, each with its components in position order. */
+        Tariff: {
+            /** Format: date-time */
+            createdAt: string;
+            description: string | null;
+            /** Format: int32 */
+            id: number;
+            /** @description power or grid. */
+            kind: string;
+            /** @description What a settlement prints as the contract's name (§ 7-2 d). */
+            name: string;
+            /** @description active or archived. An archived tariff cannot be assigned anew, and still prices the periods it is assigned to. */
+            status: string;
+            /** Format: date-time */
+            updatedAt: string;
+            usage: components["schemas"]["TariffUsage"];
+            versions: components["schemas"]["TariffVersion"][];
+        };
+        /** @description One priced element of a version. A field the kind does not use is null; see TariffComponentRequest for which kind uses which. */
+        TariffComponent: {
+            /** Format: int32 */
+            dayFrom: number | null;
+            /** Format: int32 */
+            dayTo: number | null;
+            /** Format: int32 */
+            id: number;
+            kind: string;
+            name: string;
+            /**
+             * Format: int32
+             * @description The component's place in its version, from 0; the order the lines print in.
+             */
+            position: number;
+            /** Format: double */
+            rate: number | null;
+            /** Format: double */
+            rateBusiness: number | null;
+            /** Format: double */
+            rateNight: number | null;
+            /** Format: double */
+            rateReduced: number | null;
+            tiers: components["schemas"]["TariffTier"][] | null;
+            weekdaysOnly: boolean;
+        };
+        /** @description One component. kind is one of spot_energy, fixed_energy, markup, monthly_fee (a power tariff's) or grid_energy, grid_capacity, grid_fixed, electricity_tax, enova_levy, monthly_fee (a grid tariff's). The fields each kind needs: spot_energy none; fixed_energy and markup rate (NOK/kWh); monthly_fee and grid_fixed rate (NOK/month); grid_energy rate (the day rate, NOK/kWh) and optionally rateNight with dayFrom, dayTo (whole hours, 0 ≤ dayFrom < dayTo ≤ 24) and weekdaysOnly, all or none; grid_capacity tiers; electricity_tax rate (ordinary) and rateReduced; enova_levy rate (household, NOK/kWh) and rateBusiness (NOK/year). A field the kind does not use must be null or absent. Rates are 0 ≤ rate < 1 000 000, stored to six decimals. */
+        TariffComponentRequest: {
+            /** Format: int32 */
+            dayFrom?: number | null;
+            /** Format: int32 */
+            dayTo?: number | null;
+            kind: string | null;
+            /** @description The line's text, 1–80 characters. */
+            name: string | null;
+            /** Format: double */
+            rate?: number | null;
+            /** Format: double */
+            rateBusiness?: number | null;
+            /** Format: double */
+            rateNight?: number | null;
+            /** Format: double */
+            rateReduced?: number | null;
+            tiers?: components["schemas"]["TariffTier"][] | null;
+            weekdaysOnly?: boolean | null;
+        };
+        /** @description A tariff's header and every version with its components, in one body (POST creates, PUT replaces). A power tariff's version holds exactly one of spot_energy and fixed_energy; at most one each of grid_energy, grid_capacity, electricity_tax and enova_levy per version. A tariff has at least one version, a version at least one component, and two versions never overlap. A refusal names the place: versions[i].components[j].field. */
+        TariffRequest: {
+            /** @description At most 500 characters. */
+            description?: string | null;
+            /** @description power or grid; on a PUT, the stored kind (a tariff's kind cannot be changed). */
+            kind: string | null;
+            /** @description 1–120 characters. */
+            name: string | null;
+            versions: components["schemas"]["TariffVersionRequest"][] | null;
+        };
+        /** @description A tariff as the list shows it, with the version valid today (Europe/Oslo), null when none is. */
+        TariffSummary: {
+            /** Format: date-time */
+            createdAt: string;
+            currentVersion: components["schemas"]["TariffValidity"] | null;
+            description: string | null;
+            /** Format: int32 */
+            id: number;
+            kind: string;
+            name: string;
+            status: string;
+            /** Format: date-time */
+            updatedAt: string;
+            usage: components["schemas"]["TariffUsage"];
+            /** Format: int32 */
+            versionCount: number;
+        };
+        /** @description A capacity step (kapasitetsledd) from fromKw, the average of the month's three highest hourly kWh on three different days, at perMonth NOK a month. Tiers ascend strictly from 0; at most 50. */
+        TariffTier: {
+            /** Format: double */
+            fromKw: number;
+            /** Format: double */
+            perMonth: number;
+        };
+        /** @description How many supply periods (of any status) and metering points name the tariff; a tariff named by any cannot be deleted. */
+        TariffUsage: {
+            /** Format: int32 */
+            meteringPoints: number;
+            /** Format: int32 */
+            supplyPeriods: number;
+        };
+        TariffValidity: {
+            /** Format: date */
+            validFrom: string;
+            /** Format: date */
+            validTo: string | null;
+        };
+        /** @description A version applies on the civil days [validFrom, validTo) in the point's market time zone; validTo null is open-ended. */
+        TariffVersion: {
+            components: components["schemas"]["TariffComponent"][];
+            /** Format: int32 */
+            id: number;
+            /** Format: date */
+            validFrom: string;
+            /** Format: date */
+            validTo: string | null;
+        };
+        TariffVersionRequest: {
+            components: components["schemas"]["TariffComponentRequest"][] | null;
+            /** Format: date */
+            validFrom: string | null;
+            /**
+             * Format: date
+             * @description The first day the version no longer applies; null or absent is open-ended.
+             */
+            validTo?: string | null;
+        };
+        /** @description A supply period's terms, nothing else of it. */
+        UpdateSupplyPeriodTermsRequest: {
+            /** @description monthly (the default when absent), quarterly or yearly. */
+            cadence?: string | null;
+            /**
+             * Format: int32
+             * @description An active power tariff (or the one the period already holds, even archived), or null for none.
+             */
+            tariffId?: number | null;
         };
         ProblemDetails: {
             detail?: string | null;
@@ -2652,6 +2922,136 @@ export interface operations {
             };
         };
     };
+    postEnergyMeteringPointsByIdSupplyPeriodsSwitch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SwitchSupplyPeriodRequest"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SwitchSupplyPeriodResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    putEnergyMeteringPointsByIdSupplyPeriodsByPeriodId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+                periodId: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateSupplyPeriodTermsRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupplyPeriodResponse"];
+                };
+            };
+            /** @description Bad Request — a cancelled period, a cadence none of the three, or a tariffId that does not exist, is a grid tariff or is archived (unless the period already holds it). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     deleteEnergyMeteringPointsByIdSupplyPeriodsByPeriodId: {
         parameters: {
             query?: never;
@@ -2721,75 +3121,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SupplyPeriodResponse"];
-                };
-            };
-            /** @description Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthErrorResponse"];
-                };
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthErrorResponse"];
-                };
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ProblemDetails"];
-                };
-            };
-        };
-    };
-    postEnergyMeteringPointsByIdSupplyPeriodsSwitch: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: number;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["SwitchSupplyPeriodRequest"];
-            };
-        };
-        responses: {
-            /** @description Created */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SwitchSupplyPeriodResponse"];
                 };
             };
             /** @description Bad Request */
@@ -3196,6 +3527,317 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["AuthErrorResponse"];
                 };
+            };
+        };
+    };
+    getEnergyTariffs: {
+        parameters: {
+            query?: {
+                /** @description power or grid. */
+                kind?: string;
+                /** @description active or archived. */
+                status?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TariffSummary"][];
+                };
+            };
+            /** @description Bad Request — kind or status that is none of its two. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    postEnergyTariffs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TariffRequest"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Tariff"];
+                };
+            };
+            /** @description Bad Request — the body refused, every error keyed by its place: kind, name, description, versions, versions[i].validFrom, versions[i].validTo, versions[i].components, versions[i].components[j].<field>, versions[i].components[j].tiers[k].<field>. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    getEnergyTariff: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Tariff"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    putEnergyTariffsById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TariffRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Tariff"];
+                };
+            };
+            /** @description Bad Request — the body refused, every error keyed by its place: kind, name, description, versions, versions[i].validFrom, versions[i].validTo, versions[i].components, versions[i].components[j].<field>, versions[i].components[j].tiers[k].<field>. kind differing from the stored kind. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    deleteEnergyTariffsById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — Tariff in use: a supply period or a metering point names the tariff. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    postEnergyTariffsByIdArchive: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Tariff"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

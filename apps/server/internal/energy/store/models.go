@@ -94,6 +94,9 @@ type EnergyMeteringPoint struct {
 	ConnectionStatus             string
 	CreatedAt                    time.Time
 	UpdatedAt                    time.Time
+	GridTariffID                 *int32
+	Household                    bool
+	ElectricityTaxClass          string
 }
 
 type EnergySpotPrice struct {
@@ -143,4 +146,39 @@ type EnergySupplyPeriod struct {
 	Start           time.Time
 	End             *time.Time
 	Status          string
+	TariffID        *int32
+	Cadence         string
+}
+
+type EnergyTariff struct {
+	ID          int32
+	Kind        string
+	Name        string
+	Description *string
+	Status      string
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
+type EnergyTariffComponent struct {
+	ID           int32
+	VersionID    int32
+	Position     int16
+	Kind         string
+	Name         string
+	Rate         pgtype.Numeric
+	RateNight    pgtype.Numeric
+	DayFrom      *int16
+	DayTo        *int16
+	WeekdaysOnly bool
+	Tiers        []byte
+	RateReduced  pgtype.Numeric
+	RateBusiness pgtype.Numeric
+}
+
+type EnergyTariffVersion struct {
+	ID        int32
+	TariffID  int32
+	ValidFrom pgtype.Date
+	ValidTo   pgtype.Date
 }

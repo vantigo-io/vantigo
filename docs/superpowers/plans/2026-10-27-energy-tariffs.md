@@ -125,9 +125,9 @@ component names no price state, and the state stays the settlement's to judge.
    edited: an archived tariff still prices the periods it covers, so a wrong figure
    in it must stay correctable. `POST /tariffs/{id}/archive`: 404, else `status =
    archived` (idempotent) → 200. **`DELETE /tariffs/{id}`** (`energy:tariffs-manage`,
-   the design's "cannot be deleted" made concrete): 404; 409 `tariff_in_use` when any
+   the design's "cannot be deleted" made concrete): 404; 409 "Tariff in use" (a ProblemDetails: Energy's problems carry no machine code) when any
    supply period (of any status) or metering point names it — checked under the row
-   lock, the foreign key's RESTRICT the backstop (a 23503 is the same 409) — else 204.
+   lock, the foreign key's RESTRICT the backstop (its 23001 is the same 409) — else 204.
    There is no un-archive in B; the PUT does not touch `status`.
 5. **Assignment.** A supply period's `tariffId` must name an **active power** tariff, a
    metering point's `gridTariffId` an **active grid** tariff, else 400 on the field
@@ -142,21 +142,26 @@ component names no price state, and the state stays the settlement's to judge.
    the order the field appears (tariff, then cadence), before the transaction. A switch
    does **not** inherit the ended period's tariff: the new customer's contract is the
    body's. The import's create and switch write no tariff and `monthly` (the file
-   carries no contract); its own pages say so. The shared writes `insertSupplyPeriod`
+   carries no contract), and its update of a matched point keeps the point's grid
+   tariff, household and tax class; its own pages say so. The shared writes `insertSupplyPeriod`
    and `switchSupplyPeriod` take a `supplyTerms{TariffID *int32; Cadence string}`.
    **`PUT /metering-points/{id}/supply-periods/{periodId}`** (`energy:supply-periods-manage`,
    new): `{tariffId, cadence}` changes the terms of an existing period — without it
    every period created before B would stay without a tariff. 404 for an unknown
    (period, point); 400 for a `Cancelled` period ("A cancelled period cannot be
    changed.") and for the fields as above; under the point's supply-period lock.
-   `SupplyPeriodResponse` gains `tariffId`, `tariffName` and `cadence` (required,
-   nullable where they may be null).
+   The terms PUT accepts the tariff the period already holds even when archived
+   (reading 5). `SupplyPeriodResponse` gains `tariffId`, `tariffName` and `cadence`,
+   always sent but **optional in the schema**: the recorded .NET exchanges
+   (`openapi/testdata/exchanges/energy.jsonl`) are frozen and predate them, and
+   every recorded response must still validate.
 7. **The metering point.** `PUT /metering-points/{id}` stays a full replace: the body
    gains `gridTariffId?`, `household?` and `electricityTaxClass?`, and absent means
    none, `false` and `ordinary` — as an absent `gridArea` means none today. The edit
    form sends the three, so editing the address keeps them. `POST /metering-points`
    accepts the same three. `MeteringPointResponse` gains `gridTariffId`,
-   `gridTariffName`, `household`, `electricityTaxClass` and `vatTreatment` (required),
+   `gridTariffName`, `household`, `electricityTaxClass` and `vatTreatment` (always
+   sent, optional in the schema for the same reason),
    in every place it is built (the list, the item, the customer's points). Tariff names
    are read for a page of points with one query (`ListTariffNamesByIDs`).
 8. **The VAT treatment** (`srv/energy/vat.go`): `vatTreatment(household bool,
@@ -280,6 +285,6 @@ component names no price state, and the state stays the settlement's to judge.
 - Names used the same everywhere: `energy.tariffs`, `energy.tariff_versions`,
   `energy.tariff_components`, `tariff_id`, `grid_tariff_id`, `household`,
   `electricity_tax_class`, `cadence`, `vatTreatment`, `exempt_household_north`,
-  `standard`, `energy:tariffs-view`, `energy:tariffs-manage`, `tariff_in_use`.
+  `standard`, `energy:tariffs-view`, `energy:tariffs-manage`, "Tariff in use".
 - Not here: settlements, `contracts.ConsumptionProvider`, anything of Invoices (C–E).
   Nothing in B reads a spot price.

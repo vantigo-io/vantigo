@@ -648,7 +648,7 @@ func (s *server) importRow(ctx context.Context, tx pgx.Tx, l importLayout, p imp
 			Gsrn: p.Gsrn, StreetAddress: r.streetAddress, PostalCode: r.postalCode, City: r.city,
 			CountryCode: strings.ToUpper(r.countryCode), PriceArea: r.priceArea, GridArea: r.gridArea,
 			ExpectedAnnualConsumptionKwh: expected, Latitude: r.latitude, Longitude: r.longitude,
-			ConnectionStatus: r.connectionStatus, Now: s.deps.Clock(),
+			ConnectionStatus: r.connectionStatus, Now: s.deps.Clock(), ElectricityTaxClass: taxClassOrdinary,
 		}, r.meterNumber)
 		if db.IsUniqueViolation(err, "ux_metering_points_gsrn") {
 			return importRowResult{}, refuseRow(p.Row, fieldGsrn, "A metering point with that GSRN already exists.")
@@ -711,6 +711,8 @@ func (s *server) importUpdatePoint(ctx context.Context, txq *store.Queries, p im
 		ID: cur.ID, Gsrn: cur.Gsrn, StreetAddress: r.streetAddress, PostalCode: r.postalCode, City: r.city,
 		CountryCode: country, PriceArea: r.priceArea, GridArea: r.gridArea, ExpectedAnnualConsumptionKwh: expected,
 		Latitude: r.latitude, Longitude: r.longitude, ConnectionStatus: r.connectionStatus, UpdatedAt: s.deps.Clock(),
+		// The file carries no billing facts: the point keeps its own.
+		GridTariffID: cur.GridTariffID, Household: cur.Household, ElectricityTaxClass: cur.ElectricityTaxClass,
 	})
 	return err
 }
@@ -771,7 +773,7 @@ func assignSupplyPeriod(ctx context.Context, tx pgx.Tx, row int, pointID, custom
 	if overlaps {
 		return refuseRow(row, fieldSupplyStart, overlapDetail)
 	}
-	if _, err := insertSupplyPeriod(ctx, tx, pointID, customerID, start); err != nil {
+	if _, err := insertSupplyPeriod(ctx, tx, pointID, customerID, start, defaultSupplyTerms); err != nil {
 		if isExclusionViolation(err) {
 			return refuseRow(row, fieldSupplyStart, overlapDetail)
 		}
@@ -784,7 +786,7 @@ func assignSupplyPeriod(ctx context.Context, tx pgx.Tx, row int, pointID, custom
 // endpoint's refusals — a start at or before the current period's, an
 // overlap — the row's error, and within the budget the person confirmed.
 func switchSupplyPeriodFor(ctx context.Context, tx pgx.Tx, row int, pointID, fromCustomerID, customerID int32, at time.Time, budget *switchBudget) error {
-	out, err := switchSupplyPeriod(ctx, tx, pointID, customerID, at)
+	out, err := switchSupplyPeriod(ctx, tx, pointID, customerID, at, defaultSupplyTerms)
 	if isExclusionViolation(err) {
 		return refuseRow(row, fieldSupplyStart, overlapDetail)
 	}

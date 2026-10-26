@@ -8,6 +8,7 @@ sources:
   - apps/server/internal/db/migrations/00049_energy_imports.sql
   - apps/server/internal/db/migrations/00065_energy_spot_prices.sql
   - apps/server/internal/db/migrations/00075_energy_spot_price_service.sql
+  - apps/server/internal/db/migrations/00076_energy_tariffs.sql
   - apps/server/internal/energy/spot_price_service_client.go
   - apps/server/internal/energy/spot_price_service_sync.go
   - apps/server/internal/netguard

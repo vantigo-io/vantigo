@@ -1,14 +1,16 @@
 -- name: InsertSupplyPeriod :one
 -- InsertSupplyPeriod creates a new, always open-ended (end NULL) supply
--- period (CreateSupplyPeriodEndpoint.cs:25-26, SwitchSupplyPeriodEndpoint.cs:59-65).
-INSERT INTO energy.supply_periods (metering_point_id, customer_id, start, status)
-VALUES (@metering_point_id, @customer_id, @start::timestamptz, @status)
-RETURNING id, metering_point_id, customer_id, start, "end", status;
+-- period (CreateSupplyPeriodEndpoint.cs:25-26, SwitchSupplyPeriodEndpoint.cs:59-65),
+-- with its terms (energy consumption billing design D3, D4): the power tariff,
+-- NULL for none, and the billing cadence.
+INSERT INTO energy.supply_periods (metering_point_id, customer_id, start, status, tariff_id, cadence)
+VALUES (@metering_point_id, @customer_id, @start::timestamptz, @status, sqlc.narg(tariff_id)::int, @cadence)
+RETURNING id, metering_point_id, customer_id, start, "end", status, tariff_id, cadence;
 
 -- name: ListSupplyPeriodsByMeteringPoint :many
 -- ListSupplyPeriodsByMeteringPoint is GetSupplyPeriodsEndpoint's history,
 -- ordered by Start (:15).
-SELECT id, metering_point_id, customer_id, start, "end", status
+SELECT id, metering_point_id, customer_id, start, "end", status, tariff_id, cadence
 FROM energy.supply_periods
 WHERE metering_point_id = @metering_point_id
 ORDER BY start;
@@ -16,7 +18,7 @@ ORDER BY start;
 -- name: GetSupplyPeriod :one
 -- GetSupplyPeriod is the (periodId, meteringPointId) lookup both
 -- EndSupplyPeriodEndpoint and CancelSupplyPeriodEndpoint run (:15).
-SELECT id, metering_point_id, customer_id, start, "end", status
+SELECT id, metering_point_id, customer_id, start, "end", status, tariff_id, cadence
 FROM energy.supply_periods
 WHERE id = @id AND metering_point_id = @metering_point_id;
 
@@ -26,7 +28,7 @@ WHERE id = @id AND metering_point_id = @metering_point_id;
 -- inventory §2.3 — at most one can ever exist per metering point, the
 -- exclusion constraint's own invariant, so LIMIT 1 never discards a second
 -- candidate).
-SELECT id, metering_point_id, customer_id, start, "end", status
+SELECT id, metering_point_id, customer_id, start, "end", status, tariff_id, cadence
 FROM energy.supply_periods
 WHERE metering_point_id = @metering_point_id AND status = 'Active' AND "end" IS NULL
 LIMIT 1;
@@ -57,11 +59,18 @@ SELECT EXISTS (
 -- own transition (status always 'Ended') and SwitchSupplyPeriodEndpoint's
 -- close-the-active-period step (also always 'Ended') both use it.
 UPDATE energy.supply_periods SET "end" = @end_at::timestamptz, status = @status WHERE id = @id
-RETURNING id, metering_point_id, customer_id, start, "end", status;
+RETURNING id, metering_point_id, customer_id, start, "end", status, tariff_id, cadence;
 
 -- name: SetSupplyPeriodStatus :one
 -- SetSupplyPeriodStatus is CancelSupplyPeriodEndpoint's unconditional
 -- transition (:15) — no status guard, an already-Ended or already-Cancelled
 -- period can be cancelled again (energy inventory §1.1/§8 oddity 5).
 UPDATE energy.supply_periods SET status = @status WHERE id = @id
-RETURNING id, metering_point_id, customer_id, start, "end", status;
+RETURNING id, metering_point_id, customer_id, start, "end", status, tariff_id, cadence;
+
+-- name: UpdateSupplyPeriodTerms :one
+-- UpdateSupplyPeriodTerms is PUT /supply-periods/{periodId}'s write (energy
+-- tariffs plan, reading 6): a period's power tariff and billing cadence,
+-- nothing else of it.
+UPDATE energy.supply_periods SET tariff_id = sqlc.narg(tariff_id)::int, cadence = @cadence WHERE id = @id
+RETURNING id, metering_point_id, customer_id, start, "end", status, tariff_id, cadence;

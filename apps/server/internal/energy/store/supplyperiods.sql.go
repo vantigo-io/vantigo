@@ -12,7 +12,7 @@ import (
 
 const endSupplyPeriod = `-- name: EndSupplyPeriod :one
 UPDATE energy.supply_periods SET "end" = $1::timestamptz, status = $2 WHERE id = $3
-RETURNING id, metering_point_id, customer_id, start, "end", status
+RETURNING id, metering_point_id, customer_id, start, "end", status, tariff_id, cadence
 `
 
 type EndSupplyPeriodParams struct {
@@ -34,12 +34,14 @@ func (q *Queries) EndSupplyPeriod(ctx context.Context, arg EndSupplyPeriodParams
 		&i.Start,
 		&i.End,
 		&i.Status,
+		&i.TariffID,
+		&i.Cadence,
 	)
 	return i, err
 }
 
 const getActiveOpenSupplyPeriod = `-- name: GetActiveOpenSupplyPeriod :one
-SELECT id, metering_point_id, customer_id, start, "end", status
+SELECT id, metering_point_id, customer_id, start, "end", status, tariff_id, cadence
 FROM energy.supply_periods
 WHERE metering_point_id = $1 AND status = 'Active' AND "end" IS NULL
 LIMIT 1
@@ -60,12 +62,14 @@ func (q *Queries) GetActiveOpenSupplyPeriod(ctx context.Context, meteringPointID
 		&i.Start,
 		&i.End,
 		&i.Status,
+		&i.TariffID,
+		&i.Cadence,
 	)
 	return i, err
 }
 
 const getSupplyPeriod = `-- name: GetSupplyPeriod :one
-SELECT id, metering_point_id, customer_id, start, "end", status
+SELECT id, metering_point_id, customer_id, start, "end", status, tariff_id, cadence
 FROM energy.supply_periods
 WHERE id = $1 AND metering_point_id = $2
 `
@@ -87,14 +91,16 @@ func (q *Queries) GetSupplyPeriod(ctx context.Context, arg GetSupplyPeriodParams
 		&i.Start,
 		&i.End,
 		&i.Status,
+		&i.TariffID,
+		&i.Cadence,
 	)
 	return i, err
 }
 
 const insertSupplyPeriod = `-- name: InsertSupplyPeriod :one
-INSERT INTO energy.supply_periods (metering_point_id, customer_id, start, status)
-VALUES ($1, $2, $3::timestamptz, $4)
-RETURNING id, metering_point_id, customer_id, start, "end", status
+INSERT INTO energy.supply_periods (metering_point_id, customer_id, start, status, tariff_id, cadence)
+VALUES ($1, $2, $3::timestamptz, $4, $5::int, $6)
+RETURNING id, metering_point_id, customer_id, start, "end", status, tariff_id, cadence
 `
 
 type InsertSupplyPeriodParams struct {
@@ -102,16 +108,22 @@ type InsertSupplyPeriodParams struct {
 	CustomerID      int32
 	Start           time.Time
 	Status          string
+	TariffID        *int32
+	Cadence         string
 }
 
 // InsertSupplyPeriod creates a new, always open-ended (end NULL) supply
-// period (CreateSupplyPeriodEndpoint.cs:25-26, SwitchSupplyPeriodEndpoint.cs:59-65).
+// period (CreateSupplyPeriodEndpoint.cs:25-26, SwitchSupplyPeriodEndpoint.cs:59-65),
+// with its terms (energy consumption billing design D3, D4): the power tariff,
+// NULL for none, and the billing cadence.
 func (q *Queries) InsertSupplyPeriod(ctx context.Context, arg InsertSupplyPeriodParams) (EnergySupplyPeriod, error) {
 	row := q.db.QueryRow(ctx, insertSupplyPeriod,
 		arg.MeteringPointID,
 		arg.CustomerID,
 		arg.Start,
 		arg.Status,
+		arg.TariffID,
+		arg.Cadence,
 	)
 	var i EnergySupplyPeriod
 	err := row.Scan(
@@ -121,12 +133,14 @@ func (q *Queries) InsertSupplyPeriod(ctx context.Context, arg InsertSupplyPeriod
 		&i.Start,
 		&i.End,
 		&i.Status,
+		&i.TariffID,
+		&i.Cadence,
 	)
 	return i, err
 }
 
 const listSupplyPeriodsByMeteringPoint = `-- name: ListSupplyPeriodsByMeteringPoint :many
-SELECT id, metering_point_id, customer_id, start, "end", status
+SELECT id, metering_point_id, customer_id, start, "end", status, tariff_id, cadence
 FROM energy.supply_periods
 WHERE metering_point_id = $1
 ORDER BY start
@@ -150,6 +164,8 @@ func (q *Queries) ListSupplyPeriodsByMeteringPoint(ctx context.Context, metering
 			&i.Start,
 			&i.End,
 			&i.Status,
+			&i.TariffID,
+			&i.Cadence,
 		); err != nil {
 			return nil, err
 		}
@@ -163,7 +179,7 @@ func (q *Queries) ListSupplyPeriodsByMeteringPoint(ctx context.Context, metering
 
 const setSupplyPeriodStatus = `-- name: SetSupplyPeriodStatus :one
 UPDATE energy.supply_periods SET status = $1 WHERE id = $2
-RETURNING id, metering_point_id, customer_id, start, "end", status
+RETURNING id, metering_point_id, customer_id, start, "end", status, tariff_id, cadence
 `
 
 type SetSupplyPeriodStatusParams struct {
@@ -184,6 +200,8 @@ func (q *Queries) SetSupplyPeriodStatus(ctx context.Context, arg SetSupplyPeriod
 		&i.Start,
 		&i.End,
 		&i.Status,
+		&i.TariffID,
+		&i.Cadence,
 	)
 	return i, err
 }
@@ -220,4 +238,34 @@ func (q *Queries) SupplyPeriodOverlapExists(ctx context.Context, arg SupplyPerio
 	var exists bool
 	err := row.Scan(&exists)
 	return exists, err
+}
+
+const updateSupplyPeriodTerms = `-- name: UpdateSupplyPeriodTerms :one
+UPDATE energy.supply_periods SET tariff_id = $1::int, cadence = $2 WHERE id = $3
+RETURNING id, metering_point_id, customer_id, start, "end", status, tariff_id, cadence
+`
+
+type UpdateSupplyPeriodTermsParams struct {
+	TariffID *int32
+	Cadence  string
+	ID       int32
+}
+
+// UpdateSupplyPeriodTerms is PUT /supply-periods/{periodId}'s write (energy
+// tariffs plan, reading 6): a period's power tariff and billing cadence,
+// nothing else of it.
+func (q *Queries) UpdateSupplyPeriodTerms(ctx context.Context, arg UpdateSupplyPeriodTermsParams) (EnergySupplyPeriod, error) {
+	row := q.db.QueryRow(ctx, updateSupplyPeriodTerms, arg.TariffID, arg.Cadence, arg.ID)
+	var i EnergySupplyPeriod
+	err := row.Scan(
+		&i.ID,
+		&i.MeteringPointID,
+		&i.CustomerID,
+		&i.Start,
+		&i.End,
+		&i.Status,
+		&i.TariffID,
+		&i.Cadence,
+	)
+	return i, err
 }

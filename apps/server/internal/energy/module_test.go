@@ -28,7 +28,7 @@ func TestModule_ComposesAndDemandsAPermission(t *testing.T) {
 }
 
 // TestModule_DeclaresItsPermissionCatalog pins the module's name and all
-// eleven permissions — the eight ported ones, energy:import and the spot prices' two — field for field, against the .NET catalog
+// thirteen permissions — the eight ported ones, energy:import, the spot prices' two and the tariffs' two — field for field, against the .NET catalog
 // (AZ/EnergyPermissionCatalogContributor.cs, energy inventory §6): every key
 // is delegable and none is sensitive, and every key shares one category,
 // "Energy". Ported from TS/Authorization/EnergyPermissionCatalogTests.cs,
@@ -57,12 +57,14 @@ func TestModule_DeclaresItsPermissionCatalog(t *testing.T) {
 		{Key: "energy:prices-view", Display: "View energy prices", Description: "View spot prices per price area and what is held of them.", Category: "Energy", Sensitive: false, Delegable: true},
 		{Key: "energy:supply-periods-manage", Display: "Manage energy supply periods", Description: "Create, switch, end, and cancel energy supply periods.", Category: "Energy", Sensitive: false, Delegable: true},
 		{Key: "energy:supply-periods-view", Display: "View energy supply periods", Description: "View energy supply periods for metering points.", Category: "Energy", Sensitive: false, Delegable: true},
+		{Key: "energy:tariffs-manage", Display: "Manage energy tariffs", Description: "Create, edit, archive and delete power and grid tariffs.", Category: "Energy", Sensitive: false, Delegable: true},
+		{Key: "energy:tariffs-view", Display: "View energy tariffs", Description: "View power and grid tariffs, their versions and their components.", Category: "Energy", Sensitive: false, Delegable: true},
 	}
 	if m.Name != "energy" {
 		t.Errorf("Name = %q, want energy", m.Name)
 	}
-	if len(m.Permissions) != 11 {
-		t.Fatalf("Permissions has %d entries, want exactly 11: %+v", len(m.Permissions), m.Permissions)
+	if len(m.Permissions) != 13 {
+		t.Fatalf("Permissions has %d entries, want exactly 13: %+v", len(m.Permissions), m.Permissions)
 	}
 
 	// Ported from EnergyPermissionCatalogTests.cs:14-23: the catalog's keys

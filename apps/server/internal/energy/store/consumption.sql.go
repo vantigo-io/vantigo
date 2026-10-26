@@ -665,6 +665,7 @@ func (q *Queries) ListCustomerMeteringPointPriceAreas(ctx context.Context, arg L
 const listCustomerMeteringPoints = `-- name: ListCustomerMeteringPoints :many
 SELECT DISTINCT mp.id, mp.gsrn, mp.street_address, mp.postal_code, mp.city, mp.country_code, mp.price_area, mp.grid_area,
        mp.expected_annual_consumption_kwh, mp.latitude, mp.longitude, mp.connection_status, mp.created_at, mp.updated_at,
+       mp.grid_tariff_id, mp.household, mp.electricity_tax_class,
        active.meter_number AS active_meter_number
 FROM energy.metering_points mp
 LEFT JOIN energy.meters active ON active.metering_point_id = mp.id AND active.removed_at IS NULL
@@ -690,6 +691,9 @@ type ListCustomerMeteringPointsRow struct {
 	ConnectionStatus             string
 	CreatedAt                    time.Time
 	UpdatedAt                    time.Time
+	GridTariffID                 *int32
+	Household                    bool
+	ElectricityTaxClass          string
 	ActiveMeterNumber            *string
 }
 
@@ -721,6 +725,9 @@ func (q *Queries) ListCustomerMeteringPoints(ctx context.Context, customerID int
 			&i.ConnectionStatus,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.GridTariffID,
+			&i.Household,
+			&i.ElectricityTaxClass,
 			&i.ActiveMeterNumber,
 		); err != nil {
 			return nil, err
@@ -734,7 +741,7 @@ func (q *Queries) ListCustomerMeteringPoints(ctx context.Context, customerID int
 }
 
 const listCustomerSupplyPeriods = `-- name: ListCustomerSupplyPeriods :many
-SELECT id, metering_point_id, customer_id, start, "end", status
+SELECT id, metering_point_id, customer_id, start, "end", status, tariff_id, cadence
 FROM energy.supply_periods
 WHERE customer_id = $1 AND status <> 'Cancelled'
 ORDER BY metering_point_id, start
@@ -761,6 +768,8 @@ func (q *Queries) ListCustomerSupplyPeriods(ctx context.Context, customerID int3
 			&i.Start,
 			&i.End,
 			&i.Status,
+			&i.TariffID,
+			&i.Cadence,
 		); err != nil {
 			return nil, err
 		}

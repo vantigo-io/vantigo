@@ -175,6 +175,7 @@ ORDER BY mp.id;
 -- meter's number the same way ListMeteringPoints does.
 SELECT DISTINCT mp.id, mp.gsrn, mp.street_address, mp.postal_code, mp.city, mp.country_code, mp.price_area, mp.grid_area,
        mp.expected_annual_consumption_kwh, mp.latitude, mp.longitude, mp.connection_status, mp.created_at, mp.updated_at,
+       mp.grid_tariff_id, mp.household, mp.electricity_tax_class,
        active.meter_number AS active_meter_number
 FROM energy.metering_points mp
 LEFT JOIN energy.meters active ON active.metering_point_id = mp.id AND active.removed_at IS NULL
@@ -190,7 +191,7 @@ ORDER BY mp.id;
 -- metering point, ordered so each point's own periods group together and
 -- sort by Start within the group — the handler slices this one query's rows
 -- per point rather than issuing one query per point.
-SELECT id, metering_point_id, customer_id, start, "end", status
+SELECT id, metering_point_id, customer_id, start, "end", status, tariff_id, cadence
 FROM energy.supply_periods
 WHERE customer_id = @customer_id AND status <> 'Cancelled'
 ORDER BY metering_point_id, start;

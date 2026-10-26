@@ -36,28 +36,26 @@ func (s *server) GetEnergyCustomersByCustomerIdMeteringPoints(ctx context.Contex
 	if err != nil {
 		return nil, fmt.Errorf("energy: list customer supply periods: %w", err)
 	}
+	tariffIDs := make([]*int32, 0, len(points)+len(periods))
+	for _, r := range points {
+		tariffIDs = append(tariffIDs, r.GridTariffID)
+	}
+	for _, p := range periods {
+		tariffIDs = append(tariffIDs, p.TariffID)
+	}
+	names, err := tariffNames(ctx, q, tariffIDs...)
+	if err != nil {
+		return nil, err
+	}
 	periodsByPoint := make(map[int32][]gen.SupplyPeriodResponse, len(points))
 	for _, p := range periods {
-		periodsByPoint[p.MeteringPointID] = append(periodsByPoint[p.MeteringPointID], supplyPeriodResponseOf(p))
+		periodsByPoint[p.MeteringPointID] = append(periodsByPoint[p.MeteringPointID], supplyPeriodResponseOf(p, names))
 	}
 
 	data := make([]gen.CustomerMeteringPointResponse, 0, len(points))
 	for _, r := range points {
 		data = append(data, gen.CustomerMeteringPointResponse{
-			MeteringPoint: gen.MeteringPointResponse{
-				Id:                           r.ID,
-				Gsrn:                         r.Gsrn,
-				MeterNumber:                  r.ActiveMeterNumber,
-				Address:                      gen.AddressResponse{StreetAddress: r.StreetAddress, PostalCode: r.PostalCode, City: r.City, CountryCode: r.CountryCode},
-				PriceArea:                    r.PriceArea,
-				GridArea:                     r.GridArea,
-				ExpectedAnnualConsumptionKwh: floatPtrFromNumeric(r.ExpectedAnnualConsumptionKwh),
-				Latitude:                     r.Latitude,
-				Longitude:                    r.Longitude,
-				ConnectionStatus:             r.ConnectionStatus,
-				CreatedAt:                    r.CreatedAt,
-				UpdatedAt:                    r.UpdatedAt,
-			},
+			MeteringPoint: meteringPointResponseOf(meteringPointOfListRow(store.ListMeteringPointsRow(r)), r.ActiveMeterNumber, names),
 			SupplyPeriods: periodsByPoint[r.ID],
 		})
 	}

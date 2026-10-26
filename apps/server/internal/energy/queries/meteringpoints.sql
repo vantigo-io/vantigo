@@ -4,26 +4,33 @@
 -- same instant on creation, supplied by the caller from Deps.Clock().
 INSERT INTO energy.metering_points (
     gsrn, street_address, postal_code, city, country_code, price_area, grid_area,
-    expected_annual_consumption_kwh, latitude, longitude, connection_status, created_at, updated_at
+    expected_annual_consumption_kwh, latitude, longitude, connection_status, created_at, updated_at,
+    grid_tariff_id, household, electricity_tax_class
 ) VALUES (
     @gsrn, @street_address, @postal_code, @city, @country_code, @price_area, @grid_area,
-    @expected_annual_consumption_kwh, @latitude, @longitude, @connection_status, @now::timestamptz, @now::timestamptz
+    @expected_annual_consumption_kwh, @latitude, @longitude, @connection_status, @now::timestamptz, @now::timestamptz,
+    sqlc.narg(grid_tariff_id)::int, @household, @electricity_tax_class
 )
 RETURNING id, gsrn, street_address, postal_code, city, country_code, price_area, grid_area,
-          expected_annual_consumption_kwh, latitude, longitude, connection_status, created_at, updated_at;
+          expected_annual_consumption_kwh, latitude, longitude, connection_status, created_at, updated_at,
+          grid_tariff_id, household, electricity_tax_class;
 
 -- name: UpdateMeteringPoint :one
 -- UpdateMeteringPoint applies PUT /{id}'s validated fields
 -- (UpdateMeteringPointEndpoint.cs:20-29). updated_at is whatever the caller
--- computes it should be, from Deps.Clock().
+-- computes it should be, from Deps.Clock(). The billing facts (energy
+-- consumption billing design D3, D4) are replaced with the rest: the PUT is a
+-- full replace.
 UPDATE energy.metering_points
 SET gsrn = @gsrn, street_address = @street_address, postal_code = @postal_code, city = @city,
     country_code = @country_code, price_area = @price_area, grid_area = @grid_area,
     expected_annual_consumption_kwh = @expected_annual_consumption_kwh, latitude = @latitude,
-    longitude = @longitude, connection_status = @connection_status, updated_at = @updated_at::timestamptz
+    longitude = @longitude, connection_status = @connection_status, updated_at = @updated_at::timestamptz,
+    grid_tariff_id = sqlc.narg(grid_tariff_id)::int, household = @household, electricity_tax_class = @electricity_tax_class
 WHERE id = @id
 RETURNING id, gsrn, street_address, postal_code, city, country_code, price_area, grid_area,
-          expected_annual_consumption_kwh, latitude, longitude, connection_status, created_at, updated_at;
+          expected_annual_consumption_kwh, latitude, longitude, connection_status, created_at, updated_at,
+          grid_tariff_id, household, electricity_tax_class;
 
 -- name: GetMeteringPointByID :one
 -- GetMeteringPointByID is GetMeteringPointEndpoint's single lookup, and the
@@ -31,7 +38,8 @@ RETURNING id, gsrn, street_address, postal_code, city, country_code, price_area,
 -- (there is no in-app tracked entity to read back from the way EF's
 -- SaveChangesAsync leaves one).
 SELECT id, gsrn, street_address, postal_code, city, country_code, price_area, grid_area,
-       expected_annual_consumption_kwh, latitude, longitude, connection_status, created_at, updated_at
+       expected_annual_consumption_kwh, latitude, longitude, connection_status, created_at, updated_at,
+       grid_tariff_id, household, electricity_tax_class
 FROM energy.metering_points
 WHERE id = @id;
 
@@ -78,6 +86,7 @@ AND (sqlc.narg(without_customer_at)::timestamptz IS NULL OR NOT EXISTS (
 -- it off the already-loaded Meters collection (Dtos/MeteringPointResponse.cs:20).
 SELECT mp.id, mp.gsrn, mp.street_address, mp.postal_code, mp.city, mp.country_code, mp.price_area, mp.grid_area,
        mp.expected_annual_consumption_kwh, mp.latitude, mp.longitude, mp.connection_status, mp.created_at, mp.updated_at,
+       mp.grid_tariff_id, mp.household, mp.electricity_tax_class,
        active.meter_number AS active_meter_number
 FROM energy.metering_points mp
 LEFT JOIN energy.meters active ON active.metering_point_id = mp.id AND active.removed_at IS NULL
@@ -107,7 +116,8 @@ LIMIT @page_size::int OFFSET @row_offset::int;
 -- on a row that waits on that advisory lock. An update, a GSRN change or a
 -- delete of the point still waits, as before.
 SELECT id, gsrn, street_address, postal_code, city, country_code, price_area, grid_area,
-       expected_annual_consumption_kwh, latitude, longitude, connection_status, created_at, updated_at
+       expected_annual_consumption_kwh, latitude, longitude, connection_status, created_at, updated_at,
+       grid_tariff_id, household, electricity_tax_class
 FROM energy.metering_points
 WHERE gsrn = @gsrn
 FOR NO KEY UPDATE;

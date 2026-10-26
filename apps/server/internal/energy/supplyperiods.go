@@ -19,8 +19,9 @@ import (
 // (EP/SupplyPeriods/*Endpoint.cs): getEnergyMeteringPointsByIdSupplyPeriods,
 // postEnergyMeteringPointsByIdSupplyPeriods,
 // postEnergyMeteringPointsByIdSupplyPeriodsSwitch,
-// postEnergyMeteringPointsByIdSupplyPeriodsByPeriodIdEnd and
-// deleteEnergyMeteringPointsByIdSupplyPeriodsByPeriodId — the state machine
+// postEnergyMeteringPointsByIdSupplyPeriodsByPeriodIdEnd,
+// deleteEnergyMeteringPointsByIdSupplyPeriodsByPeriodId and
+// putEnergyMeteringPointsByIdSupplyPeriodsByPeriodId (the terms) — the state machine
 // (energy inventory §2.3): Active -> Ended (End), Active -> Cancelled
 // (Cancel, also reachable from Ended — no illegal-transition guard besides
 // End's own single check).
@@ -141,11 +142,48 @@ func validateSupplyPeriodEnd(start, end time.Time) string {
 	return ""
 }
 
-func supplyPeriodResponseOf(p store.EnergySupplyPeriod) gen.SupplyPeriodResponse {
+// supplyPeriodResponseOf builds the response for p; names holds its power
+// tariff's name (tariffNames).
+func supplyPeriodResponseOf(p store.EnergySupplyPeriod, names map[int32]string) gen.SupplyPeriodResponse {
+	cadence := p.Cadence
 	return gen.SupplyPeriodResponse{
 		Id: p.ID, MeteringPointId: p.MeteringPointID, CustomerId: p.CustomerID,
 		Start: p.Start, End: p.End, Status: p.Status,
+		TariffId: p.TariffID, TariffName: tariffNameOf(names, p.TariffID), Cadence: &cadence,
 	}
+}
+
+// supplyPeriodResponseRead is supplyPeriodResponseOf for one period, reading
+// its tariff's name.
+func supplyPeriodResponseRead(ctx context.Context, q *store.Queries, p store.EnergySupplyPeriod) (gen.SupplyPeriodResponse, error) {
+	names, err := tariffNames(ctx, q, p.TariffID)
+	if err != nil {
+		return gen.SupplyPeriodResponse{}, err
+	}
+	return supplyPeriodResponseOf(p, names), nil
+}
+
+// parseSupplyTerms reads and judges a request's terms (energy tariffs plan,
+// reading 6): the tariff must be assignable as a power tariff (current is the
+// one the period holds, nil for a new period) and the cadence one of the
+// three. It answers the terms and the refusals keyed by field, nil when none.
+func parseSupplyTerms(ctx context.Context, q *store.Queries, tariffID *int32, cadence *string, current *int32) (supplyTerms, map[string][]string, error) {
+	errs := map[string][]string{}
+	msg, err := checkTariffAssignable(ctx, q, tariffID, tariffKindPower, current)
+	if err != nil {
+		return supplyTerms{}, nil, err
+	}
+	if msg != "" {
+		errs["tariffId"] = []string{msg}
+	}
+	c, ok := parseCadence(cadence)
+	if !ok {
+		errs["cadence"] = []string{cadenceMessage}
+	}
+	if len(errs) > 0 {
+		return supplyTerms{}, errs, nil
+	}
+	return supplyTerms{TariffID: tariffID, Cadence: c}, nil, nil
 }
 
 // GetEnergyMeteringPointsByIdSupplyPeriods List supply periods
@@ -166,9 +204,17 @@ func (s *server) GetEnergyMeteringPointsByIdSupplyPeriods(ctx context.Context, r
 	if err != nil {
 		return nil, fmt.Errorf("energy: list supply periods: %w", err)
 	}
+	tariffIDs := make([]*int32, 0, len(rows))
+	for _, r := range rows {
+		tariffIDs = append(tariffIDs, r.TariffID)
+	}
+	names, err := tariffNames(ctx, q, tariffIDs...)
+	if err != nil {
+		return nil, err
+	}
 	data := make([]gen.SupplyPeriodResponse, 0, len(rows))
 	for _, r := range rows {
-		data = append(data, supplyPeriodResponseOf(r))
+		data = append(data, supplyPeriodResponseOf(r, names))
 	}
 	return gen.GetEnergyMeteringPointsByIdSupplyPeriods200JSONResponse(data), nil
 }
@@ -180,7 +226,8 @@ func (s *server) GetEnergyMeteringPointsByIdSupplyPeriods(ctx context.Context, r
 // order is customerId<=0 (400) -> the UTC-offset-only check on start, since
 // end is always nil at creation (400) -> metering point existence (404) ->
 // the customer-directory miss (400 on field customerId, *not* 404 — this
-// task's dispatch correction 1) -> the friendly overlap pre-check (409).
+// task's dispatch correction 1) -> the terms, tariffId then cadence (400,
+// energy tariffs plan reading 6) -> the friendly overlap pre-check (409).
 // The GiST exclusion constraint is the real backstop for a concurrent
 // overlap (energy inventory §3.2/§5): a race that slips past the pre-check
 // surfaces as a plain error here, which module.ResponseError/httpx.WriteError
@@ -217,6 +264,14 @@ func (s *server) PostEnergyMeteringPointsByIdSupplyPeriods(ctx context.Context, 
 		return gen.PostEnergyMeteringPointsByIdSupplyPeriods400ApplicationProblemPlusJSONResponse(apicommon.ValidationProblem(
 			"Invalid supply period", map[string][]string{"customerId": {fmt.Sprintf("Customer %d does not exist.", body.CustomerId)}})), nil
 	}
+	terms, termErrs, err := parseSupplyTerms(ctx, q, body.TariffId, body.Cadence, nil)
+	if err != nil {
+		return nil, err
+	}
+	if termErrs != nil {
+		return gen.PostEnergyMeteringPointsByIdSupplyPeriods400ApplicationProblemPlusJSONResponse(apicommon.ValidationProblem(
+			"Invalid supply period", termErrs)), nil
+	}
 
 	overlaps, err := q.SupplyPeriodOverlapExists(ctx, store.SupplyPeriodOverlapExistsParams{MeteringPointID: req.Id, Start: body.Start})
 	if err != nil {
@@ -231,14 +286,18 @@ func (s *server) PostEnergyMeteringPointsByIdSupplyPeriods(ctx context.Context, 
 	err = db.RetrySerializable(ctx, supplyPeriodRaceAttempts, func() error {
 		return db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 			var ierr error
-			created, ierr = insertSupplyPeriod(ctx, tx, req.Id, body.CustomerId, body.Start)
+			created, ierr = insertSupplyPeriod(ctx, tx, req.Id, body.CustomerId, body.Start, terms)
 			return ierr
 		})
 	})
 	if err != nil {
 		return nil, fmt.Errorf("energy: create supply period: %w", err)
 	}
-	return gen.PostEnergyMeteringPointsByIdSupplyPeriods201JSONResponse(supplyPeriodResponseOf(created)), nil
+	resp, err := supplyPeriodResponseRead(ctx, q, created)
+	if err != nil {
+		return nil, err
+	}
+	return gen.PostEnergyMeteringPointsByIdSupplyPeriods201JSONResponse(resp), nil
 }
 
 // PostEnergyMeteringPointsByIdSupplyPeriodsSwitch Switch supply period customer
@@ -247,7 +306,8 @@ func (s *server) PostEnergyMeteringPointsByIdSupplyPeriods(ctx context.Context, 
 // SwitchSupplyPeriodEndpoint.cs:13-75 (energy inventory §1.1 line 40): the
 // opposite order from Create above (dispatch correction 2) — metering point
 // existence (404) *first*, then customerId<=0 (400), then the switchAt
-// UTC-offset check (400), then the directory miss (400 on customerId).
+// UTC-offset check (400), then the directory miss (400 on customerId), then
+// the terms (400 on tariffId, cadence).
 // Inside one transaction: if an open (end IS NULL), Active period already
 // exists, reject the same customer (400) or a switchAt at or before its
 // start (400), else end it at switchAt; otherwise (no open period) this is
@@ -289,6 +349,16 @@ func (s *server) PostEnergyMeteringPointsByIdSupplyPeriodsSwitch(ctx context.Con
 		return gen.PostEnergyMeteringPointsByIdSupplyPeriodsSwitch400ApplicationProblemPlusJSONResponse(apicommon.ValidationProblem(
 			"Invalid supply period", map[string][]string{"customerId": {fmt.Sprintf("Customer %d does not exist.", body.CustomerId)}})), nil
 	}
+	// The new customer's terms are the body's: a switch never inherits the
+	// ended period's tariff (energy tariffs plan, reading 6).
+	terms, termErrs, err := parseSupplyTerms(ctx, q, body.TariffId, body.Cadence, nil)
+	if err != nil {
+		return nil, err
+	}
+	if termErrs != nil {
+		return gen.PostEnergyMeteringPointsByIdSupplyPeriodsSwitch400ApplicationProblemPlusJSONResponse(apicommon.ValidationProblem(
+			"Invalid supply period", termErrs)), nil
+	}
 
 	var out switchOutcome
 	err = db.RetrySerializable(ctx, supplyPeriodRaceAttempts, func() error {
@@ -298,7 +368,7 @@ func (s *server) PostEnergyMeteringPointsByIdSupplyPeriodsSwitch(ctx context.Con
 		out = switchOutcome{}
 		return db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 			var serr error
-			out, serr = switchSupplyPeriod(ctx, tx, req.Id, body.CustomerId, body.SwitchAt)
+			out, serr = switchSupplyPeriod(ctx, tx, req.Id, body.CustomerId, body.SwitchAt, terms)
 			return serr
 		})
 	})
@@ -314,26 +384,36 @@ func (s *server) PostEnergyMeteringPointsByIdSupplyPeriodsSwitch(ctx context.Con
 			apicommon.ProblemStatus(overlapTitle, overlapDetail, http.StatusConflict)), nil
 	}
 
+	var endedTariff *int32
+	if out.ended != nil {
+		endedTariff = out.ended.TariffID
+	}
+	names, err := tariffNames(ctx, q, endedTariff, out.created.TariffID)
+	if err != nil {
+		return nil, err
+	}
 	var endedResp *gen.SupplyPeriodResponse
 	if out.ended != nil {
-		r := supplyPeriodResponseOf(*out.ended)
+		r := supplyPeriodResponseOf(*out.ended, names)
 		endedResp = &r
 	}
 	return gen.PostEnergyMeteringPointsByIdSupplyPeriodsSwitch201JSONResponse(gen.SwitchSupplyPeriodResponse{
-		EndedPeriod: endedResp, NewPeriod: supplyPeriodResponseOf(out.created),
+		EndedPeriod: endedResp, NewPeriod: supplyPeriodResponseOf(out.created, names),
 	}), nil
 }
 
 // insertSupplyPeriod is the create's write, inside the caller's transaction:
 // the metering point's supply-period lock, then the new open-ended Active
-// period. The create endpoint and the import (import.go) both assign a
-// customer through it; the GiST exclusion constraint stays the backstop.
-func insertSupplyPeriod(ctx context.Context, tx pgx.Tx, meteringPointID, customerID int32, start time.Time) (store.EnergySupplyPeriod, error) {
+// period on terms. The create endpoint and the import (import.go, with
+// defaultSupplyTerms) both assign a customer through it; the GiST exclusion
+// constraint stays the backstop.
+func insertSupplyPeriod(ctx context.Context, tx pgx.Tx, meteringPointID, customerID int32, start time.Time, terms supplyTerms) (store.EnergySupplyPeriod, error) {
 	if err := lockSupplyPeriods(ctx, tx, meteringPointID); err != nil {
 		return store.EnergySupplyPeriod{}, err
 	}
 	return store.New(tx).InsertSupplyPeriod(ctx, store.InsertSupplyPeriodParams{
 		MeteringPointID: meteringPointID, CustomerID: customerID, Start: start, Status: statusActive,
+		TariffID: terms.TariffID, Cadence: terms.Cadence,
 	})
 }
 
@@ -352,10 +432,10 @@ type switchOutcome struct {
 // customer is refused, a switch date at or before its start is refused, and
 // otherwise it ends at the switch date; with none, the move-in runs the
 // create's overlap pre-check. Then the customer's period starts at the switch
-// date. The switch endpoint and the import (import.go) both switch a
-// customer through it. A refusal is the outcome, not an error: the caller's
+// date, on terms. The switch endpoint and the import (import.go, with
+// defaultSupplyTerms) both switch a customer through it. A refusal is the outcome, not an error: the caller's
 // transaction commits nothing it has not written.
-func switchSupplyPeriod(ctx context.Context, tx pgx.Tx, meteringPointID, customerID int32, at time.Time) (switchOutcome, error) {
+func switchSupplyPeriod(ctx context.Context, tx pgx.Tx, meteringPointID, customerID int32, at time.Time, terms supplyTerms) (switchOutcome, error) {
 	var out switchOutcome
 	if err := lockSupplyPeriods(ctx, tx, meteringPointID); err != nil {
 		return out, err
@@ -397,6 +477,7 @@ func switchSupplyPeriod(ctx context.Context, tx pgx.Tx, meteringPointID, custome
 
 	out.created, err = txq.InsertSupplyPeriod(ctx, store.InsertSupplyPeriodParams{
 		MeteringPointID: meteringPointID, CustomerID: customerID, Start: at, Status: statusActive,
+		TariffID: terms.TariffID, Cadence: terms.Cadence,
 	})
 	return out, err
 }
@@ -454,7 +535,68 @@ func (s *server) PostEnergyMeteringPointsByIdSupplyPeriodsByPeriodIdEnd(ctx cont
 	if err != nil {
 		return nil, fmt.Errorf("energy: end supply period: %w", err)
 	}
-	return gen.PostEnergyMeteringPointsByIdSupplyPeriodsByPeriodIdEnd200JSONResponse(supplyPeriodResponseOf(updated)), nil
+	resp, err := supplyPeriodResponseRead(ctx, q, updated)
+	if err != nil {
+		return nil, err
+	}
+	return gen.PostEnergyMeteringPointsByIdSupplyPeriodsByPeriodIdEnd200JSONResponse(resp), nil
+}
+
+// PutEnergyMeteringPointsByIdSupplyPeriodsByPeriodId Change a supply period's terms
+// (PUT /api/v1/energy/metering-points/{id}/supply-periods/{periodId})
+//
+// Energy tariffs plan, reading 6: a period's power tariff and cadence, nothing
+// else of it, so the periods created before tariffs existed can be given one.
+// Lookup by (periodId, meteringPointId) (404) -> a Cancelled period is not
+// changed (400) -> the terms, tariffId then cadence, where the tariff the
+// period already holds passes even archived (400) -> the write, under the
+// point's supply-period lock as every write to supply_periods takes it.
+func (s *server) PutEnergyMeteringPointsByIdSupplyPeriodsByPeriodId(ctx context.Context, req gen.PutEnergyMeteringPointsByIdSupplyPeriodsByPeriodIdRequestObject) (gen.PutEnergyMeteringPointsByIdSupplyPeriodsByPeriodIdResponseObject, error) {
+	q := store.New(s.deps.Pool)
+	period, err := q.GetSupplyPeriod(ctx, store.GetSupplyPeriodParams{ID: req.PeriodId, MeteringPointID: req.Id})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return gen.PutEnergyMeteringPointsByIdSupplyPeriodsByPeriodId404Response{}, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("energy: get supply period: %w", err)
+	}
+	if period.Status == statusCancelled {
+		return gen.PutEnergyMeteringPointsByIdSupplyPeriodsByPeriodId400ApplicationProblemPlusJSONResponse(
+			validationProblemNoErrors("Invalid supply period", "A cancelled period cannot be changed.")), nil
+	}
+
+	body := gen.UpdateSupplyPeriodTermsRequest{}
+	if req.Body != nil {
+		body = *req.Body
+	}
+	terms, termErrs, err := parseSupplyTerms(ctx, q, body.TariffId, body.Cadence, period.TariffID)
+	if err != nil {
+		return nil, err
+	}
+	if termErrs != nil {
+		return gen.PutEnergyMeteringPointsByIdSupplyPeriodsByPeriodId400ApplicationProblemPlusJSONResponse(
+			apicommon.ValidationProblem("Invalid supply period", termErrs)), nil
+	}
+
+	var updated store.EnergySupplyPeriod
+	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
+		if lerr := lockSupplyPeriods(ctx, tx, req.Id); lerr != nil {
+			return lerr
+		}
+		var uerr error
+		updated, uerr = store.New(tx).UpdateSupplyPeriodTerms(ctx, store.UpdateSupplyPeriodTermsParams{
+			ID: period.ID, TariffID: terms.TariffID, Cadence: terms.Cadence,
+		})
+		return uerr
+	})
+	if err != nil {
+		return nil, fmt.Errorf("energy: change supply period terms: %w", err)
+	}
+	resp, err := supplyPeriodResponseRead(ctx, q, updated)
+	if err != nil {
+		return nil, err
+	}
+	return gen.PutEnergyMeteringPointsByIdSupplyPeriodsByPeriodId200JSONResponse(resp), nil
 }
 
 // DeleteEnergyMeteringPointsByIdSupplyPeriodsByPeriodId Cancel a supply period
