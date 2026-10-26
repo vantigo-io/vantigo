@@ -1742,7 +1742,7 @@ flight; Staff phase 2 is built.
 
 **Planning** — one module owning every booking of a person's time, reading Projects and
 Staff — has [a section of its own](#planning); its phase 1, allocations, requests and
-assignments, is in flight. Shifts and their trades are that module's later phase.
+assignments, is built. Shifts and their trades are that module's later phase.
 
 ## Planning
 
@@ -1815,16 +1815,30 @@ list. The readings taken while building it are in the spec's §13. One migration
 *Unblocks:* capacity at intake — whether the company can take the bid — and the project's
 demand on the board before anyone is named.
 
-**C — Assignments and wishes**, planned: an allocation's terms — the notice and when it
-was given, the minimum duration, replacement approval, the handover and the
-non-compete — with the earliest release and the handover start derived; the
-non-compete as the one hard refusal and the release as the matcher's flag; the person's
-wishes off a project or for something new, without a word of free text, seen and
-resolved by the planners, with their mail and their place in the matcher; and the
-calendar source, the person's own confirmed bookings on their calendar.
+**C — Assignments and wishes, built** on `claude/nifty-jemison-e121e1`
+([the plan](docs/superpowers/plans/2026-10-26-planning-assignments.md)): an allocation's
+terms — the notice and when it was given, the minimum duration, replacement approval,
+the handover, the non-compete toward named customers and the contract's reference —
+`planning:manage`'s to set and clear, with their own revision, set on a tentative row
+and binding once it is confirmed; the earliest release and the handover start derived
+on every allocation, a notice in months by Staff's month rule; the non-compete as the
+one hard refusal — a confirmed row on a barred customer's project refused, a tentative
+one warned, a candidate under one not listed — read through the customer ids the terms
+store; the release and the customer's approval as a candidate's flags; the person's
+wishes off a project or for something new, without a word of free text, at most five
+open, seen and resolved by the planners on their Wishes page, mailed to every planner
+but the wisher, a flag and the sort's second key in the matcher, and an erased person's
+deleted; the `wishesUnseen` attention item; the wish events the planners' alone; the
+terms section of the allocation sheet, the release and handover marks on the timeline,
+the wish forms on My planning; and the calendar source, `planning.allocation`, the
+person's own confirmed bookings on their calendar and in its feed when `calendar` is
+composed. The readings taken while building it are in the spec's §13. One migration,
+`00074_planning_assignments.sql`.
 
 *Unblocks:* a consultant's release date known before the next bid, and a person heard
 before they resign.
+
+With C, phase 1 is complete: what follows is the *Later* list below.
 
 ### Later
 

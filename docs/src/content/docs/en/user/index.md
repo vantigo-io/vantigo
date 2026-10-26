@@ -53,8 +53,9 @@ a sign-in mode the worker disagrees with), which open Staff's settings, and each
 not in sync with its directory, which opens the group's page; and Planning's: for
 `planning:view`, people unbooked, which opens the Unbooked list, and people overbooked and
 a certificate expiring during a booking, which open the person's timeline, and, for
-`planning:manage`, a booking ending without follow-on, which opens the plan, and an open
-request starting soon or already started, which opens Requests
+`planning:manage`, a booking ending without follow-on, which opens the plan, an open
+request starting soon or already started, which opens Requests, and the wishes no
+planner has seen yet, counted in one item, which opens Wishes
 ([the dashboard](/en/user/planning/#the-dashboard)).
 
 Inside an app, the sidebar lists its areas. Many of them are only shown to people who
@@ -70,7 +71,7 @@ shorter than yours:
 | [Calendar](/en/user/calendar/) | Calendar (your own, and a colleague's with the picker), My calendar (your calendar on your phone, and calendars from elsewhere) |
 | [Expenses](/en/user/expenses/) | My expenses, Expense approvals, Reimbursements, Expense settings |
 | [Staff](/en/user/staff/) | My page (its **Absence** and **Competence** tabs and, for a manager, **My team**), Staff directory, Absence (the calendar and the approvals), Competence (the matrix and, for HR, the interests), Groups, Staff settings |
-| [Planning](/en/user/planning/) | Plan (the board), a project's plan and a person's timeline, Requests, Intake, Unbooked, My planning, Planning settings |
+| [Planning](/en/user/planning/) | Plan (the board), a project's plan and a person's timeline, Requests, Intake, Unbooked, Wishes, My planning, Planning settings |
 | [Invoices](/en/user/invoices/) | Invoices, Quick invoice, Invoice journal, Overdue, Payments, Invoice settings |
 | [Communications](/en/user/communications/) | Inbox, Channels, Suppressions |
 | [Products](/en/user/products/) | Products, Categories, Tax categories |

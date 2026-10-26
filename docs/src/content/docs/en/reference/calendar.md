@@ -11,7 +11,8 @@ sources:
 ---
 The Calendar module is one view of every time-bound thing Vantigo knows about one
 person — the follow-ups Customers holds for them, their absences in Staff, their tasks in
-Projects, their hours in Time, their trips in Expenses — beside the **appointments** they
+Projects, their hours in Time, their trips in Expenses, their bookings in Planning —
+beside the **appointments** they
 schedule themselves, with colleagues on them. It is a vertical-slice module inside the
 single Vantigo binary (`apps/server/internal/calendar`), owns the `calendar` schema in
 the shared PostgreSQL database, and serves `openapi/calendar.yaml` under
@@ -221,7 +222,7 @@ Customer 360's rule.
 
 ### The kinds
 
-Five providers answer six kinds, each from a small file in its own module, each with the
+Six providers answer seven kinds, each from a small file in its own module, each with the
 module's own query. The table is in module order, the order `sources` lists them in and
 the order their items are added to the window. The calendar's own kind,
 `calendar.appointment`, is not a provider's and is never listed in `sources`, neither on
@@ -238,6 +239,7 @@ module `calendar`, when the caller has at least one subscription, and never in
 | `time.entry` | The caller's own entries dated in the window, any status ([the domain model](/en/reference/time/#domain-model)) | `time:access` | A block from `startTime` to `endTime` read as wall-clock times on `entryDate` in the **business** zone when both are set and the end is after the start, otherwise all-day on `entryDate`; titled with the project's name (through `Deps.Projects`), else the task's title, else the note's first line, else `Time`; the hours below (`7.5 h`) when set; done when approved | `/time/day?date={entryDate}` |
 | `expenses.claim` | The caller's own travel claims, any status, whose departure to return overlaps the window taken as two instants — the first day's midnight and the midnight after the last day, in the viewer's zone, half-open, so a trip that returns at the first midnight is not in it ([travel claims](/en/reference/expenses/#the-unit-an-expense-belongs-to)) | `expenses:access` | A block over the two instants; done when approved; the purpose, the destination below when it has one | `/expenses/claims/{claimId}` |
 | `staff.absence` | The linked person's own absences — requested, approved or registered — overlapping the window ([absence](/en/reference/staff/#absences)) | `staff:access` and a self-service link (no link, no items) | All-day over the first to the last day (an hour type's is one day); never done; titled with the type's name in the **person's own language** — `staff.people.preferred_language`, English when it is `en`, Norwegian bokmål otherwise — not the viewer's; below it, an hour type's hours (`3 h`) and, for a request not yet decided, `Requested` or `Søkt om` in the same language, joined by ` · ` | `/staff/me?tab=absence` |
+| `planning.allocation` | The linked person's own **confirmed** allocations overlapping the window — never a tentative row, never a colleague's ([My planning](/en/reference/planning/#my-planning), [the calendar source](/en/reference/planning/#the-calendar-source)) | `planning:access` and a person through Staff's `Self` (no person, no items) | All-day over the first to the last day; never done; titled with the project's code and name (`project N` when the directory does not resolve it), the load below as typed (`50 %`, `22.5 h`) | `/planning/me` |
 
 **Public holidays are not a provider.** The calendar reads the platform package
 `internal/holidays` itself — a package every module may import — and answers Norway's
@@ -967,7 +969,7 @@ window:
   uses the business zone when it is absent.
 - `kinds` is an optional comma-separated list of the kinds to ask for
   (`calendar.appointment,projects.task`), so a caller that wants only appointments does
-  not pay for five queries. A provider is asked only when one of its kinds is named, and
+  not pay for six queries. A provider is asked only when one of its kinds is named, and
   the caller's appointments only when `calendar.appointment` is; a name no one declares
   asks nothing, so a list of only such names answers no items. The caller's
   [subscriptions](#parsed-on-read) are read only when `calendar.subscription` is named,
@@ -1037,8 +1039,8 @@ free ones and private titles included — though still with no provider's items,
 `sources` and no directory check, so the app need not treat it apart. A window the
 request cannot have is the same 400 "Invalid window" as on `GET /items`.
 
-No provider is asked, and no subscription is read: a colleague's follow-ups, tasks and
-hours are the other modules' data behind their own doors, the calendars they subscribe to
+No provider is asked, and no subscription is read: a colleague's follow-ups, tasks,
+hours and bookings are the other modules' data behind their own doors, the calendars they subscribe to
 are theirs to read, and Staff already shows a colleague's days away on its own
 calendar to the audience it chooses. The one audience rule here is the permission:
 `calendar:view-colleagues` sees every active colleague this way, with no manager relation
@@ -1185,7 +1187,7 @@ public holiday: every phone has a holiday calendar, and a second copy is noise.
 | A [cancelled](#cancellation) appointment | left out | left out |
 | A provider's **timed** item (hours with a start and an end, a trip) | a `VEVENT` with the title, the subtitle as `DESCRIPTION`, the module in `CATEGORIES` and the link in `URL`; a done one with `✓ ` before its title, since no client draws a strike | a `VEVENT` of its time alone, under an [opaque `UID`](#the-icalendar-object) |
 | A provider's **point** — a timed item whose end is not after its start, such as a customer interaction logged at a time | the same, with no `DTEND` | left out: a point is not a span of busy time |
-| A provider's **all-day** item (a follow-up, a task due, an absence) | the same, as dates (`VALUE=DATE`) | left out: a day with a task on it is not a day the person is busy |
+| A provider's **all-day** item (a follow-up, a task due, an absence, a booking) | the same, as dates (`VALUE=DATE`) | left out: a day with a task on it is not a day the person is busy |
 | A [subscription's](#subscriptions) event | never | never |
 | A public holiday | never | never |
 

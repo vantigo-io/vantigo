@@ -3,7 +3,7 @@
 The first phase of the `planning` module (Norwegian **Bemanning**). Research:
 `docs/superpowers/research/2026-10-26-planning-module.md` ("N", cited by section; its
 §8 holds the readings the owner is asked to confirm) over the Staff research
-`docs/superpowers/research/2026-10-11-staff-module.md` ("R"). Revision 2: revision 1
+`docs/superpowers/research/2026-10-11-staff-module.md` ("R"). Revision 5 adds §13's amendments 65–93 (delivery C); revision 2: revision 1
 was the design before review; the review of 2026-10-26 found the capacity read leaking
 absence detail Staff withholds from colleagues and "me" resting on a permission an
 employee does not hold, and this revision answers both (S6, S8) and the rest of its
@@ -1014,3 +1014,128 @@ fourteen readings stand, with 6 and 8 amended here.
 64. **The `requestsOpen` item and a candidate's current project name a project's code to
     `planning:manage`**, as A's write answers do, under amendment 36's assumption that a
     planner's role carries both keys.
+
+## Amendments at revision 5 (decided while building delivery C, 2026-10-26)
+
+65. The plan's readings 1–9 (`docs/superpowers/plans/2026-10-26-planning-assignments.md`)
+    stand as amendments: the derived dates computed whenever terms exist and binding on a
+    confirmed row; the terms `PUT`'s optional `If-Match`; a non-compete date and its
+    customers each needing the other; the erased person's wishes deleted only when
+    `People` answered somebody, as `wish_withdrawn` with `reason: unanswered`; the release
+    flag on rows with terms alone; the wisher not mailed about their own wish; the
+    calendar subtitle in figures; the non-compete judged on the stored customer ids; the
+    `wishesUnseen` item one item with a count.
+66. **The non-compete is judged before the overbooking** (S17.3, S7): when both would
+    refuse, the 409 is `non_compete`; a `PUT` that leaves a row tentative gets the
+    warning, one that leaves it confirmed is refused, and moving a row off a person is
+    never judged for that person (amendment 20).
+67. **A notice in months follows Staff's month rule** (S15): the day is clamped, so 31
+    January plus one month is 28 February, as Staff's own terms count notice.
+68. **A terms `PUT` that changes nothing writes nothing** (amendment 18): the revision
+    stays and no event is recorded; a first `PUT` of an empty body inserts the row at
+    revision 1 and records no event. A terms `PUT` is `project_closed` on a closed
+    project; the `DELETE` is allowed there, as a row's deletion is. Both re-read the row
+    under the person's lock and retry as a `DELETE` does (amendments 21, 35).
+69. **The non-compete's customer ids are stored ascending with duplicates collapsed**;
+    the twenty-id limit is judged on the list as sent; `replacementNeedsApproval` is
+    recorded in an event only when true; dates are recorded as `YYYY-MM-DD` and the
+    customer ids as a list.
+70. **`needs_customer_approval` fires only beside a `release_after_start` on the same
+    row** (S17.4's "on it"): the customer's approval matters for a row the person must
+    be released from early.
+71. **The row that fills a request binds nothing on that request's candidates**, as the
+    write path skips the row's own id: the person who filled it is not flagged or
+    excluded against their own booking.
+72. **A candidate's release flags when strictly after the request's first day; a
+    non-compete binds when its until date is on or after it** (S17.3, S17.4).
+73. **The intake judges the bindings once**, read from the earliest first day of the
+    requests it judges, each request against its own project's customer from the
+    planned-project entries it already holds (S18, amendment 47).
+74. **A wisher who holds `planning:view` without `manage` sees their own wishes on the
+    planner's timeline path too** (S21): the person's own wishes are theirs whatever else
+    they hold; the timeline asks `Self` once and answers them only when the person is
+    the caller.
+75. **A wish that is someone else's is the same 404 as an unknown id** on `DELETE
+    /me/wishes/{id}`, answered as a problem body without a code; a caller without a
+    person gets `no_person`. `seen` and `resolve` answer the bare 404.
+76. **Create's order** (S21, §4.7): an unknown property is a 400 first; then `no_person`;
+    then the field errors (an unknown `kind` is a field error on `kind`; `fromDate` has
+    no upper bound); under the lock `wish_no_booking`, then `wish_limit`, then
+    `wish_exists` — a unique violation on the off index answers `wish_exists` too.
+77. **Who is mailed about a new wish**: every active `planning:manage` holder, Owners
+    included, once each, less the caller's user and the user linked to their person; a
+    holder read that fails is logged and mails nobody, the wish still written. The
+    subject is the sentence ("NAME wishes off CODE NAME from DATE" / "NAME wishes for
+    something new from DATE"), the body the sentence and "Open the wishes: LINK", in
+    both languages; an unresolved project reads "project N".
+78. **`seen` is idempotent without a transaction** when the read already shows a stamp;
+    otherwise it stamps under the person's lock, and a stamp set meanwhile is kept with
+    no second event.
+79. **A person Staff does not answer between today and the bound's far end counts as
+    erased for S26** — a leaver included: their open wishes are deleted on the planners'
+    list in one transaction under each person's lock, the caller the actor.
+80. **The `wishesUnseen` item** is keyed `wishesUnseen/all`, dated by the oldest unseen
+    wish's `created_at`, titled with that person's name (or their id when Staff answers
+    nobody), with `count` the number unseen.
+81. **The calendar source's title is the project's code and name** ("project N" in
+    English when unresolved), the subtitle the load as typed ("22.5 h", "50 %"), items
+    oldest first; the builder answers nil when `calendar` is not among the configured
+    modules (S25).
+82. **The permission descriptions change with C** (§5): `planning:access` reads "Use the
+    Planning app: My planning, your own confirmed bookings and wishes, and your bookings
+    on the Calendar."; `planning:manage` "Create, change, confirm and delete allocations
+    and their terms, create, change, fill and withdraw requests, read the planners'
+    notes, the candidates and the wishes, and change the Planning settings." The host's
+    catalog is pinned to the server's words by test, so both changed together.
+83. **The terms section keeps each save's answer and the sheet stays open** after a
+    terms save or clear, so the planner sees the derived dates ("Earliest release DATE ·
+    Handover from DATE" in the section's heading, when terms exist); a
+    `revision_conflict` closes the sheet as the allocation form does. The form judges
+    the terms itself before sending (both-or-neither, the given-on needs a period, the
+    ranges, the date and the customers each needing the other, the reference's length);
+    a field left empty is left out of the body and so cleared.
+84. **The customers picker degrades without `customers:view`** (§7): any error from the
+    customers search hides it with a note, and the customers the server named stay
+    removable; one the directory did not name reads "Customer N".
+85. **The timeline shows an earliest release only when it differs from the row's end**;
+    the marks are one-day spans (release, handover) in a lane of their own; the two
+    dates are columns of the table.
+86. **The Wishes page's words**: *Mark seen* and *Resolve* as row actions named with the
+    person and the wish, a *New* badge on an unseen wish, an erased person as plain
+    text, a dash for a wish without a project; the kind reads "Off" / "Something new"
+    (nb "Av" / "Noe nytt") on the page and "off their project" / "something new" in a
+    candidate's flag.
+87. **My planning's wish forms**: the off-wish button is disabled without a confirmed
+    booking, the new-wish button always shown, the empty state included; the project
+    select offers the projects of the bookings shown and cannot be cleared; the date's
+    minimum is today; the dialog is a modal on a desktop and a bottom drawer on a phone;
+    the seen stamp reads "Seen by a planner DATE" / "Not seen yet".
+88. **The sidebar's Wishes entry** (nb *Ønsker*) follows Unbooked and is `planning:manage`'s;
+    the `wishesUnseen` item opens it with the sentence "Unseen wishes: N"; the Calendar
+    names the kind **Bookings** / **Allokeringer** in indigo.
+89. **The terms' events are `planning:manage`'s** (S14, S23), as a wish's are: `terms_set`
+    and `terms_cleared` keep the fields before and after — the reference and the
+    customer ids included — and `GET /events` never answers them to a `planning:view`
+    caller, whatever the filter, since S14 gives that audience the two derived dates and
+    nothing else of the terms.
+90. **A `PUT` is judged for the non-compete only when it places the row** (S17.3 "would
+    place"): the person changes, the project changes, the status goes tentative to
+    confirmed, or `fromDate` moves earlier so a non-compete's until date newly lies on
+    or after it. Any other `PUT` of a confirmed row on a barred customer — a title, a
+    load, a later start, an earlier end — is written and answers the `non_compete`
+    warning, so a row the non-compete overtook is not stuck until deleted.
+91. **A terms row's insert always records `terms_set`** (S23: every write is one row in
+    the record), its `fields` empty when nothing was set; an update records nothing when
+    nothing changed (amendment 68).
+92. **The `wishes` flag unsets `covers` on purpose** (S18's "no flag"): a candidate who
+    wishes for a change is one the planner must weigh, so the request reads
+    `partly_covered` until someone is placed; the flag still lists them first (reading 7).
+    The S26 deletion's reason reads `unanswered`, since §4.4 tells left and erased apart
+    and the planners' list cannot.
+93. **A write's answer never fails after its commit for a customer the directory could
+    not name**: `applyTerms` logs the failure and answers the id alone (rule 4).
+
+Open question 4, for the owner: **terms follow a row that a `PUT` gives to another
+person** — the notice, the minimum date and the non-compete then bind the new person.
+The design is silent; the build keeps the row's terms and the planner clears or resets
+them. The alternative is to clear the terms when the person changes.

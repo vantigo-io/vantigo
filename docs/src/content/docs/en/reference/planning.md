@@ -1,6 +1,6 @@
 ---
 title: "Planning module"
-description: "Booking people's time on projects: the one allocation table — a person, a project, a period, a load in percent or hours a week, tentative or confirmed, a title and the planners' note; the Workforce reads it takes from Staff and the project listing it takes from Projects, both before any transaction; the schema; the three permissions, why two are sensitive and why a planner needs staff:view; the settings; the period rules, the default status by the project's, confirm and its mail; the one capacity calculation — capacity, away, available, booked, tentative and free per day and per week, and absence that never shrinks a booking; overbooking as a warning or, by a setting, a refusal of a growing excess; the board, the project's plan with its demand, the person's timeline with its flags, the unbooked list and My planning; requests — a project's need for a person not yet named, in hours a week with competence requirements, open, filled or withdrawn — and the fill that books one, the reopen when its row is deleted; a request's candidates judged for competence, availability and the fit Staff scores; the intake of the planned projects; the competence catalogue read; the dashboard's figures and attention items; the events and their actor; the locks; the personal data held; the refusals, the switch and the endpoints."
+description: "Booking people's time on projects: the one allocation table — a person, a project, a period, a load in percent or hours a week, tentative or confirmed, a title and the planners' note; the Workforce reads it takes from Staff and the project listing it takes from Projects, both before any transaction; the schema; the three permissions, why two are sensitive and why a planner needs staff:view; the settings; the period rules, the default status by the project's, confirm and its mail; the one capacity calculation — capacity, away, available, booked, tentative and free per day and per week, and absence that never shrinks a booking; overbooking as a warning or, by a setting, a refusal of a growing excess; the board, the project's plan with its demand, the person's timeline with its flags, the unbooked list and My planning; requests — a project's need for a person not yet named, in hours a week with competence requirements, open, filled or withdrawn — and the fill that books one, the reopen when its row is deleted; a request's candidates judged for competence, availability, the terms that bind them, their wishes and the fit Staff scores; the intake of the planned projects; the competence catalogue read; an assignment's terms — the notice, the minimum term, replacement approval, the handover, the non-compete toward named customers and the reference — and the earliest release and the handover start derived from them; the non-compete as the one hard refusal, of a confirmed write and of a candidate; the person's wishes off a project or for something new, seen and resolved by the planners, with their mail; the calendar source of the caller's own confirmed bookings; the dashboard's figures and attention items; the events and their actor; the locks; the personal data held; the refusals, the switch and the endpoints."
 sources:
   - apps/server/internal/planning
   - apps/planning/frontend
@@ -8,6 +8,7 @@ sources:
   - apps/server/internal/openapi/specs/planning.yaml
   - apps/server/internal/db/migrations/00072_planning_baseline.sql
   - apps/server/internal/db/migrations/00073_planning_requests.sql
+  - apps/server/internal/db/migrations/00074_planning_assignments.sql
 ---
 The Planning module books the company's people on its projects and shows the plan
 whole: who is on what, for how long and how much, tentative or confirmed, against the
@@ -28,29 +29,31 @@ It depends on two business modules, the first module to consume two at once
 on, through `contracts.ProjectDirectory`, and Staff, for the people and their hours,
 through `contracts.Workforce`. `MODULES` refuses `planning` without either
 (`planning requires projects`, `planning requires staff`); Customers, for the customers'
-names, comes with Projects, which requires it. It provides no contract in this release.
-Calendar is optional the other way: from delivery C the module fills the many-provider
-calendar slot with the caller's own confirmed bookings; with A it fills nothing.
+names, comes with Projects, which requires it. It provides no contract. Calendar is
+optional the other way: when `calendar` is composed the module fills the many-provider
+calendar slot with the caller's own confirmed bookings
+([the calendar source](#the-calendar-source)); without it the module fills nothing.
 
-This page grows with the module. What is here today, deliveries A and B: the
+This page describes phase 1 of the module, deliveries A, B and C: the
 [contracts it consumes](#contracts-consumed), [the schema](#the-schema), the
 [permissions](#permissions), the [settings](#settings), the
 [projects and people it lists](#projects-and-people), [allocations](#allocations) —
 [the load](#the-load), [tentative or confirmed](#tentative-or-confirmed),
-[the period](#the-period), [title and note](#title-and-note) and the
-[warnings on a write](#warnings) — [capacity](#capacity),
+[the period](#the-period), [title and note](#title-and-note), the
+[warnings on a write](#warnings), [the terms](#terms),
+[the derived dates](#the-derived-dates) and [the non-compete](#non-compete) —
+[capacity](#capacity),
 [overbooking](#overbooking), [the board](#the-board),
 [the project's plan](#the-projects-plan), [the person's timeline](#the-persons-timeline),
 [the unbooked list](#the-unbooked-list), [requests](#requests) — their
 [requirements](#the-requirements), [the fill](#the-fill) and
 [the reopen](#the-reopen) — a request's [candidates](#candidates), [the intake](#intake),
 [the competence catalogue](#the-competence-catalogue), [My planning](#my-planning) and
-[its mails](#the-mails), the dashboard's [figures and attention items](#stats-and-attention),
+[its mails](#the-mails), [wishes](#wishes), [the calendar source](#the-calendar-source),
+the dashboard's [figures and attention items](#stats-and-attention),
 the [events](#events), the [locks](#locks), the [personal data](#personal-data) it holds,
 [how a refusal looks](#refusals-and-revisions), [the switch](#enabling-and-disabling),
-[what comes next](#what-comes-next) and the [endpoints](#endpoints). The terms of an
-assignment, the person's wishes, the non-compete and the release in the candidates, and
-the calendar source come with C.
+[what comes next](#what-comes-next) and the [endpoints](#endpoints).
 
 ## Contracts consumed
 
@@ -114,18 +117,26 @@ authorization, and this module's own permission, `planning:view`, decides who se
 surfaces the id, code, name, customer, status and dates — never `Currency` or
 `DefaultBillRate`.
 
-**`contracts.CustomerDirectory`** (`Deps.Directory`) for the customers' names on a
-project, and **`contracts.UserDirectory`** (`Deps.Users`) for the actors' names and
-`Notify`, the person's mail.
+**`contracts.CustomerDirectory`** (`Deps.Directory`) for the customers' names: a
+project's, and those an assignment's [non-compete](#terms) names — each id read on the
+terms' `PUT`, an id it does not resolve a field error, and the names read again on every
+response that answers the terms. **`contracts.UserDirectory`** (`Deps.Users`) for the
+actors' names, `PermissionHolders` for the planners [a new wish](#wishes) is mailed to,
+and `Notify`, the mail to the person and to the planners.
+
+**`Deps.CalendarSources`**, the other way: the module **fills** the many-provider slot
+when `calendar` is composed ([the calendar source](#the-calendar-source)). Nothing else
+of this module is read by another.
 
 ## The schema
 
-Two migrations make five tables: `00072_planning_baseline.sql` creates the `planning`
-schema with `settings`, `allocations` and `events` (delivery A), and
+Three migrations make seven tables: `00072_planning_baseline.sql` creates the
+`planning` schema with `settings`, `allocations` and `events` (delivery A),
 `00073_planning_requests.sql` adds `requests` and `request_requirements` and the
-allocation's `request_id` (B). No table references another schema: `person_id`
-(Staff's), `project_id` (Projects'), `competence_id` (Staff's), and every user id are
-opaque. **No CHECK constraints** — the module's validation owns the rules and reports
+allocation's `request_id` (B), and `00074_planning_assignments.sql` adds
+`allocation_terms` and `wishes` (C). No table references another schema: `person_id`
+(Staff's), `project_id` (Projects'), `competence_id` (Staff's), the non-compete's
+customer ids (Customers'), and every user id are opaque. **No CHECK constraints** — the module's validation owns the rules and reports
 them per field; the one exception is the settings table's one-row index.
 
 - **`settings`** — the installation's one row, written by the migration with the
@@ -152,7 +163,21 @@ them per field; the one exception is the settings table's one-row index.
 - **`request_requirements`** — `id`, `request_id` (a foreign key to `requests`,
   `ON DELETE CASCADE`), `competence_id`, `min_level` (`smallint`, null for none); unique
   on `(request_id, competence_id)`.
-- **`events`** — `id`, `entity_kind` (`allocation` or `request`), `entity_id`, `person_id`,
+- **`allocation_terms`** — one row to an allocation, keyed by `allocation_id`, a foreign
+  key to `allocations` with **`ON DELETE CASCADE`**, so the terms go with their row:
+  `notice_count` (`smallint`) and `notice_unit` (`days`, `weeks` or `months`),
+  `notice_given_on`, `minimum_until`, `replacement_needs_approval` (`boolean`, false by
+  default), `handover_days` (`smallint`), `non_compete_until`,
+  `non_compete_customer_ids` (`integer[]`, empty by default), `reference` (200),
+  `revision` (1 on insert), and the created and updated stamps with the user who wrote.
+  The [derived dates](#the-derived-dates) are not stored.
+- **`wishes`** — `id` (identity, from 1001), `person_id`, `kind` (`off` or `new`),
+  `project_id` (an `off` wish's, null for `new`), `from_date`, `created_at`, `seen_at`
+  and `seen_by_user_id`; indexed by `(person_id, from_date)`, and the unique partial
+  index `ux_wishes_person_project_off` on `(person_id, project_id)` `WHERE kind = 'off'`
+  — one `off` wish a person on a project. The table holds **open wishes only**: a
+  resolved or withdrawn wish is deleted ([wishes](#wishes)).
+- **`events`** — `id`, `entity_kind` (`allocation`, `request` or `wish`), `entity_id`, `person_id`,
   `project_id`, `kind`, `payload` (`jsonb`), `actor` (`jsonb`), `occurred_at`; indexed by
   `(person_id, occurred_at)`, `(project_id, occurred_at)` and `(entity_kind, entity_id)`.
 
@@ -163,9 +188,9 @@ its id: names, codes and statuses are read through the contracts on every respon
 
 | Key | Name | Grants | Sensitive |
 | --- | --- | --- | --- |
-| `planning:access` | Use Planning | The app: [My planning](#my-planning) — the caller's own confirmed bookings — and their own [timeline](#the-persons-timeline). **Every operation requires it.** | no |
-| `planning:view` | See the plan | The board, every project's plan with its demand and requests, every person's timeline with confirmed and tentative rows and their titles, the unbooked list, the requests, the intake, the competence catalogue, the events, the stats — and with them every plannable project's code, name, customer, status and dates. | yes |
-| `planning:manage` | Plan | Write allocations — create, change, confirm, delete — requests — create, change, withdraw, fill — and the settings; read a request's candidates; read the notes; the `manage` attention items. | yes |
+| `planning:access` | Use Planning | "Use the Planning app: My planning, your own confirmed bookings and wishes, and your bookings on the Calendar." — [My planning](#my-planning), the caller's own [timeline](#the-persons-timeline), their own [wishes](#wishes) filed and withdrawn, and [their bookings on the calendar](#the-calendar-source). **Every operation requires it.** | no |
+| `planning:view` | See the plan | The board, every project's plan with its demand and requests, every person's timeline with confirmed and tentative rows, their titles and [derived dates](#the-derived-dates), the unbooked list, the requests, the intake, the competence catalogue, the events but the terms' and the wishes', the stats — and with them every plannable project's code, name, customer, status and dates. | yes |
+| `planning:manage` | Plan | "Create, change, confirm and delete allocations and their terms, create, change, fill and withdraw requests, read the planners' notes, the candidates and the wishes, and change the Planning settings." — with them the [terms](#terms) whole, every open [wish](#wishes) with seen and resolve, the terms' and the wishes' [events](#events), and the `manage` attention items. | yes |
 
 All three are in the category "Planning" and delegable; the Owner holds them through
 the wildcard. Each operation's rule is in the contract's `x-vantigo-access`; a caller
@@ -174,7 +199,7 @@ without it gets the access layer's uniform 403.
 **Why two are sensitive.** `planning:view` reveals the whole project portfolio — bids in
 `planned` included — which Projects otherwise reserves for `projects:view-all`: that is
 what a plan is (reading 3). `planning:manage` reads the notes, the planners' sentences
-about a person; from C it reads the person's wishes and the terms of a customer
+about a person, the person's wishes — their voice — and the terms of a customer
 contract.
 
 **What `manage` alone names.** The `requestsOpen` item and a candidate's
@@ -190,9 +215,9 @@ empty plan.
 
 | Reads | `access` (self) | `view` | `manage` |
 | --- | --- | --- | --- |
-| own confirmed rows with their title | ✓ | ✓ | ✓ |
-| anyone's rows, tentative included; the projects; the requests and the intake | – | ✓ | ✓ |
-| notes, an allocation's and a request's; a request's candidates; settings | – | – | ✓ |
+| own confirmed rows with their title and derived dates; own open wishes; own bookings on the calendar | ✓ | ✓ | ✓ |
+| anyone's rows, tentative included, with their derived dates; the projects; the requests and the intake | – | ✓ | ✓ |
+| notes, an allocation's and a request's; the terms whole; a request's candidates; every open wish and the Wishes page; the terms' and the wishes' events; settings | – | – | ✓ |
 
 **`GET /meta`** answers `canView`, `canManage`, `hasPerson` (whether `Self` answers a
 person), `workforceVisible`, the load units, and — for `planning:manage` alone — the
@@ -232,13 +257,16 @@ The two pickers the allocation form reads, both `planning:view`'s:
 
 `planning.allocations` (S1) is the one booking table: a person (Staff's id), a project
 (Projects' id), a period `fromDate`..`toDate`, a load with its unit, a status, a title
-and a note. No table of assignments stands beside it: from delivery C, an allocation
-that is also a contract with the customer carries its terms.
+and a note. No table of assignments stands beside it: an allocation that is also a
+contract with the customer carries its [terms](#terms).
 
 An allocation answers `{id, person: {id, displayName?, employeeNumber?}, project: {id,
 code?, name?, status?}, fromDate, toDate, loadUnit, load, status, title?, note?,
-confirmedAt?, requestId?, revision, createdAt, updatedAt}` — `requestId` the request the
-row [fills](#the-fill), absent otherwise. **A missing person or project is an id
+confirmedAt?, requestId?, earliestRelease, handoverStart?, terms?, revision, createdAt,
+updatedAt}` — `requestId` the request the row [fills](#the-fill), absent otherwise;
+`earliestRelease` and `handoverStart` [derived](#the-derived-dates) on every response
+that answers a row, to whoever reads it; `terms` the row's [terms](#terms) whole, to
+`planning:manage` alone and only when the row has some. **A missing person or project is an id
 with no name**: a person Staff no longer answers — erased, left, or not visible to the
 caller — reads by its id with `displayName` null, and the app shows *Erased person* or *A colleague*; a
 project the directory does not resolve reads by its id. Nothing is deleted for it.
@@ -259,7 +287,8 @@ keeps its rows, which weigh as they are until a planner deletes them.
   that fills a request keeps its `requestId` through any `PUT`, and the request stays
   filled (S16).
 - **`DELETE /allocations/{id}`** (`planning:manage`) deletes the row: 204. A confirmed
-  row's person is told; a row that fills a request [reopens it](#the-reopen).
+  row's person is told; a row that fills a request [reopens it](#the-reopen); its terms
+  go with it.
 - **`POST /allocations/{id}/confirm`** (`planning:manage`) confirms it
   ([below](#tentative-or-confirmed)), with no `If-Match`.
 
@@ -323,7 +352,7 @@ other free text is on a person's row. A longer one is a field error on its field
 
 ### Warnings
 
-A write's answer is the row and `warnings: [{code, weeks?, detail?}]`, so the planner
+A write's answer is the row and `warnings: [{code, weeks?, detail?, allocationId?, date?}]`, so the planner
 sees the consequence without a second call (§4.6). The codes, snake_case like every
 flag — a [request's](#requests) write answers `outside_project_dates` alone, and a
 [fill](#the-fill) its allocation's:
@@ -333,6 +362,123 @@ flag — a [request's](#requests) write answers `outside_project_dates` alone, a
 | `overbooked` | A week's confirmed `booked` exceeds its `capacity` after the write; `weeks` names the Mondays ([overbooking](#overbooking)). |
 | `booked_while_away` | A week's confirmed `booked` exceeds its `available` but not its `capacity`. |
 | `outside_project_dates` | The period reaches outside the project's start and end dates. |
+| `non_compete` | A row on a customer the person's [non-compete](#non-compete) bars, written because it is **tentative**, or because a `PUT` of a confirmed row did not place it; `allocationId` the confirmed row whose terms bind and `date` their `nonCompeteUntil`. A write that places a confirmed row there is refused instead. |
+
+### Terms
+
+`planning.allocation_terms` (S14) is the contract with the customer an allocation may
+carry — what makes the row an assignment. One row to an allocation, gone with it, and
+**`planning:manage`'s** to read and write; anyone else reads of the terms only the
+[derived dates](#the-derived-dates). The person never reads them: My planning and their
+own timeline carry the dates, never `terms`.
+
+- **`PUT /allocations/{id}/terms`** (`planning:manage`) sets the terms **whole** from
+  `{noticeCount?, noticeUnit?, noticeGivenOn?, minimumUntil?, replacementNeedsApproval?,
+  handoverDays?, nonCompeteUntil?, nonCompeteCustomerIds?, reference?}` — a field left
+  out is cleared — and answers the allocation with its `terms` and its derived dates.
+- **`DELETE /allocations/{id}/terms`** (`planning:manage`) clears them: 204. A row with
+  no terms is left as it is and nothing is recorded; the derived dates fall back to the
+  row's `toDate`. An unknown allocation is the bare 404 on both.
+
+`terms` answers `{noticeCount?, noticeUnit?, noticeGivenOn?, minimumUntil?,
+replacementNeedsApproval, handoverDays?, nonCompeteUntil?, nonCompeteCustomers: [{id,
+name?}], reference?, revision, createdAt, updatedAt}`: a customer named when the
+directory resolves it, by its id alone otherwise (rule 4). Naming them never fails a
+response (amendment 93): a customer read that fails is logged and every customer
+answered as `{id}` alone, so a write's answer after its commit, and the allocations'
+list and get, never answer 503 for it.
+
+| Field | Rule |
+| --- | --- |
+| `noticeCount`, `noticeUnit` | The notice period: a count from 1 to 365 and a unit, `days`, `weeks` or `months` — **both or neither**, the missing one the field error. |
+| `noticeGivenOn` | The day notice was given; it needs a notice period, else a field error on `noticeGivenOn`. |
+| `minimumUntil` | The minimum term: the day before which the customer need not release the person. |
+| `replacementNeedsApproval` | Whether a replacement needs the customer's approval; false when left out. |
+| `handoverDays` | The overlap a successor needs, 0 to 90 days. |
+| `nonCompeteUntil`, `nonCompeteCustomerIds` | The non-compete: toward the named customers until the date. **Each needs the other** (plan reading 3): customers with no date is a field error on `nonCompeteUntil`, a date with no customer one on `nonCompeteCustomerIds` — half of it would bind nothing and only mislead. At most **20** ids, judged on the list as sent; each read from the customer directory, one it does not resolve a field error on `nonCompeteCustomerIds`. Stored ascending, a repeat collapsed. |
+| `reference` | The contract's reference, trimmed, at most 200 characters; empty is none. |
+
+Every bad field is reported at once, a 400 titled *Invalid allocation*, before anything
+is written; a property the schema does not name is one of them.
+
+**A `PUT`, in order.** An `If-Match` that is not a revision is a 400; then the field
+rules; then the allocation; then its project — **a closed project**, `completed` or
+`cancelled`, is `project_closed` (409), since a change of the terms is a change of the
+row (plan reading 2); then the customers. Under the person's [lock](#locks) the row is
+re-read — one changed since the read starts the write again, three times at most, then
+`revision_conflict` — and its terms row read `FOR UPDATE` and judged against
+**`If-Match`**. The terms have a **revision of their own**, apart from the row's, and
+the header is **optional**: left out on a row with no terms, the terms' `revision` on a
+row with some. A header on a row with no terms, no header on a row with terms, or a
+stale revision is `revision_conflict` (409). The first `PUT` inserts the terms at
+revision 1 and **always** records `terms_set` — its `fields` `{}` when it set nothing,
+an empty body included (amendment 91). A later one replaces them, moves the revision
+on and records `terms_set` with the fields it changed; **one that changes nothing writes
+nothing** — the revision stays and no event is recorded (amendment 68)
+([events](#events)).
+
+**The `DELETE`** takes no `If-Match` and is **allowed on a closed project**, as a row's
+deletion is. Under the person's lock it re-reads the row — one moved to another person
+since starts again, as above — deletes the terms and records `terms_cleared` with the
+fields before.
+
+**Set on a tentative row, binding once confirmed** (S14, reading 8). Terms may be set on
+any row; the [non-compete](#non-compete) and the release bind — refuse a write, leave
+out or flag a candidate — only from a **confirmed** row. Writing terms judges no other
+row and mails nobody: a non-compete set today refuses the next write that meets it, not
+the rows already booked.
+
+### The derived dates
+
+Computed on read and never stored (S15), on **every** allocation a response answers — a
+tentative row's too, so the planner sees what confirming would bind (plan reading 1):
+
+- **`earliestRelease`** — the latest of the row's `toDate`, `minimumUntil`, and — when
+  notice was given and the period is set — `noticeGivenOn` plus the notice period: days
+  as days, a week as seven, **months by Staff's month rule**, the day clamped to the
+  month's last, so 31 January plus one month is 28 February (amendment 67). With no
+  terms, or none that binds a later day, it is `toDate`.
+- **`handoverStart`** — `earliestRelease` less `handoverDays` when set, 0 being the
+  release day itself: the day a successor should begin so the two overlap. Absent when
+  no handover is set.
+
+They are read by whoever reads the row — the person on [My planning](#my-planning) and
+their own timeline, a `planning:view` holder on the board, the plan and the timeline —
+and are all of the terms anyone but `planning:manage` reads. The
+[candidates](#candidates) read the release as a flag.
+
+### Non-compete
+
+The one hard refusal (S17.3), the owner's one exception to warnings. Judged under the
+person's [lock](#locks) on their **confirmed** rows' terms: a **non-compete in force** is
+a confirmed row of the person, other than the row being written, whose terms name the
+**target project's customer** among their customer ids, with `nonCompeteUntil` **on or
+after the first day** of the row being written. The binding row need not overlap it.
+The target project's customer is read from the directory before the transaction; no
+other row's project is asked about, since the terms store the customer ids they name
+(plan reading 8). **A project with no customer is never barred.**
+
+It is judged on every write of a row — `POST /allocations`; `PUT /allocations/{id}`,
+on the person and the project the row is left on, so moving a row off a person is never
+judged for them; a [fill](#the-fill); and a [confirm](#tentative-or-confirmed) — and
+**refuses only a write that places a confirmed row**:
+
+- a confirmed row a write **places** is **`non_compete`** (409) and nothing is written;
+  the detail names the binding row and its until date. A `POST`, a fill and a confirm
+  always place the row; a `PUT` places it only when it puts the row on another person
+  or another project, sets it from tentative to confirmed, or moves its `fromDate`
+  earlier — so a non-compete whose until date lay before the old first day may newly
+  hold (amendment 90);
+- any other `PUT` of a confirmed row on a barred customer — its title, its load, a later
+  start, an earlier end — is written and answers the warning `non_compete`, since it
+  places nothing the binding row did not already meet;
+- a row written or left **tentative** is written, with the warning `non_compete` naming
+  the binding row (`allocationId`) and the date ([warnings](#warnings)); confirming it is
+  refused while the non-compete holds.
+
+It is judged **before the overbooking** (amendment 66): when both would refuse, the 409
+is `non_compete`. A `PUT` that changes nothing is judged for neither. The same rule
+**leaves a candidate out** ([candidates](#candidates)).
 
 ## Capacity
 
@@ -424,8 +570,10 @@ with a public holiday, 4/5. A filled request is booked through its row and weigh
 
 `GET /people/{personId}/timeline?from&to` (S12): forward by default, today to today plus
 26 weeks, at most 104 weeks inside the Workforce [bound](#contracts-consumed). It answers
-`{person, employed, away, allocations, flags}`: the employment spans, the away spans,
-each allocation, and the flags `[{allocationId, code, date?}]`, `date` the day the flag
+`{person, employed, away, allocations, wishes, flags}`: the employment spans, the away
+spans, each allocation with its [earliest release and handover start](#the-derived-dates)
+— and its [terms](#terms) to `planning:manage` — the person's open [wishes](#wishes), and
+the flags `[{allocationId, code, date?}]`, `date` the day the flag
 is about:
 
 - **`beyond_employment`** — the row has days past the end of the person's employment;
@@ -438,9 +586,11 @@ A `planning:view` holder reads anyone `People` answers them; one it answers nobo
 without `staff:view` — reads only their own, as below. A caller holding `planning:access`
 alone reads their own — the person `Self` answers — with its **confirmed** rows only, as
 [My planning](#my-planning) shows them; anyone else's answers the 404 an unknown id
-gets, with an empty body. The earliest release
-and the handover start of an assignment, and the person's open wishes, come with
-delivery C.
+gets, with an empty body.
+
+**`wishes`** are the person's open wishes, oldest first, to `planning:manage` and to the
+person themself — a wisher who holds `planning:view` without `manage` reads their own
+on this path too, `Self` asked once (amendment 74) — and empty to anyone else.
 
 ## The unbooked list
 
@@ -629,7 +779,8 @@ as a write answers. A caller without `staff:view` is answered nobody.
 
 A candidate answers `{person: {id, displayName, employeeNumber, department?, employed},
 availability, freeHours, requiredHours, fit: {score, lowered}, flags: [{code,
-competenceKey?, date?}], missing, covers, currentProject?: {project, since, days}}`:
+competenceKey?, date?, allocationId?, handoverFrom?, wishKind?}], missing, covers,
+currentProject?: {project, since, days}}`:
 
 1. **Competence** (S17.1). Each requirement is judged against what the person holds on
    the later of the request's first day and today (`HeldCompetences`), the day Staff can
@@ -650,22 +801,48 @@ competenceKey?, date?}], missing, covers, currentProject?: {project, since, days
    `freeHours ≥ requiredHours`, else **`partial`**. Availability never excludes: one
    week away does not hide a person free the rest of the period, and both figures are
    answered so the planner sees the margin.
-3. **Fit** (S17.6). One `Workforce.PreferenceFits` call for every person kept, with the
+3. **Non-compete** (S17.3). A person under a [non-compete](#non-compete) toward the
+   request's project's customer — a confirmed row of theirs whose terms name it with
+   `nonCompeteUntil` **on or after** the request's first day — is **left out**,
+   whatever `includePartial`: the one hard filter. A project with no customer bars
+   nobody.
+4. **Release** (S17.4, plan reading 5). For each confirmed row of the person **with
+   terms** whose [earliest release](#the-derived-dates) is **strictly after** the
+   request's first day, the flag **`release_after_start`**, `date` the release,
+   `handoverFrom` its handover start when the terms set one, `allocationId` the row; and
+   beside it, when that row's terms say `replacementNeedsApproval`, the flag
+   **`needs_customer_approval`** with `allocationId` (amendment 70) — the customer's word
+   matters for a row the person must be released from early. A row without terms raises
+   nothing: every busy person's row ends after some first day, and the flag is about an
+   assignment. Never excluded — the planner may negotiate.
+5. **Wishes** (S17.5). For each open [wish](#wishes) of the person with `fromDate` on or
+   before the request's first day — a `new` wish, or an `off` wish naming the person's
+   current project (point 7) — the flag **`wishes`** with `wishKind` and `date`, nothing
+   more. An `off` wish on another project counts for nothing.
+6. **Fit** (S17.6). One `Workforce.PreferenceFits` call for every person kept, with the
    booking's `From` and `To` the period cut to the bound and `HoursPerWeek` the
    request's. The other facets — weekdays, parts of the day, location, consecutive
    days, travel, remote — are left empty and contradict nothing, so today only a
    `max_hours_per_week` preference can lower a score, judged on the request's hours
    alone. **`fit`** is `{score, lowered}` as Staff answers it; a person Staff leaves out
    of the answer scores 100 with nothing lowered.
-4. **The current project**, the fairness signal: the project of the person's confirmed
+7. **The current project**, the fairness signal: the project of the person's confirmed
    row covering today with the earliest from date, `since` that date and `days` the
    days from it to today; absent when no confirmed row covers today.
 
-**`covers`** is `availability` `fits` with no flag and nothing missing — the intake's
-[covered](#intake).
+Points 3 to 5 read, before any transaction and from the module's own tables, each
+person's confirmed rows with terms that could bind on or after the request's first day,
+their open wishes and their current row. **The row that fills the request binds nothing
+on its own candidates** (amendment 71): the person who filled it is neither left out nor
+flagged against their own booking.
 
-**The sort** is total: `fits` before `partial`; then fit score descending; then free
-hours descending; then the days on the current project descending — the longest on one
+**`covers`** is `availability` `fits` with no flag and nothing missing — the intake's
+[covered](#intake). Any flag unsets it, `wishes` included, **on purpose** (amendment 92):
+a candidate who wishes for a change is one the planner must weigh, so the request reads
+`partly_covered` until someone is placed; the flag still sorts them first.
+
+**The sort** is total: `fits` before `partial`; then a `wishes` flag first, the willing
+before the rest; then fit score descending; then free hours descending; then the days on the current project descending — the longest on one
 project first, none counting 0; then display name; then id.
 
 ## Intake
@@ -680,12 +857,14 @@ intake answers how many cover it.
 
 **Coverage** is judged over [the candidates](#candidates) **without partial matches**
 (plan reading 9): a candidate is a person employed through the period who meets every
-requirement.
+requirement and whom no [non-compete](#non-compete) bars. The terms and the wishes are
+read once for every person judged, from the earliest first day of the requests, and each
+request is judged against its own project's customer (amendment 73).
 
 | Coverage | When |
 | --- | --- |
 | `covered` | The request is filled, or at least one candidate covers it: fits, no flag, nothing missing. |
-| `partly_covered` | There are candidates and none covers: each is `partial` or flagged. |
+| `partly_covered` | There are candidates and none covers: each is `partial` or flagged — a certificate expiring, a release after the start, or a wish. |
 | `uncovered` | Nobody employed through the period meets every requirement. |
 
 So `uncovered` means that nobody holds the competences, not merely that nobody is
@@ -718,11 +897,13 @@ request sheet offers none for a new requirement — for a request's
 
 ## My planning
 
-`GET /me` (`planning:access`, S19) answers `{person, allocations}`: the caller's person,
-as `Self` answers it, and their **confirmed** allocations from today on, each with its
-dates, load and title — never a note. Tentative rows are the planner's draft and are not
-shown. A caller `Self` answers no person for — linked to nobody, or by a link that does
-not give them Self — gets `no_person` (404). The person's wishes come with delivery C.
+`GET /me` (`planning:access`, S19) answers `{person, allocations, wishes}`: the caller's
+person, as `Self` answers it; their **confirmed** allocations from today on, each with
+its dates, load, title and [derived dates](#the-derived-dates) — never a note, never the
+terms; and their open [wishes](#wishes), oldest first, each with its project named.
+Tentative rows are the planner's draft and are not shown. A caller `Self` answers no
+person for — linked to nobody, or by a link that does not give them Self — gets
+`no_person` (404).
 
 ### The mails
 
@@ -738,7 +919,117 @@ Each names the project's code and name and the dates, in the person's own langua
 identity picks it — and never the note. A tentative write mails nobody. A person with no
 `UserID` is never mailed, and that is not an error; nor is a person `People` does not
 answer to the planner — a planner without `staff:view`, or an erased person — since the
-mail needs the person answered.
+mail needs the person answered. A new wish's mail to the planners is [below](#wishes).
+
+## Wishes
+
+`planning.wishes` (S21) is the person's voice: a wish off a project they are on, or for
+something new, from a date — **without a word of free text**, so a wish says nothing the
+form did not ask. A wish answers `{id, person: {id, displayName?, employeeNumber?}, kind,
+project?: {id, code?, name?, status?}, fromDate, createdAt, seenAt?}`: the person named
+as Staff answers them to the caller, by id alone when it does not (rule 4); the project
+by its id alone when the directory does not resolve it. Who stamped it seen is stored,
+not answered.
+
+| Kind | Means | `projectId` |
+| --- | --- | --- |
+| `off` | The person wishes off a project they are booked on, from `fromDate`. | Required: a project the directory resolves, on which the person has a confirmed row. |
+| `new` | The person wishes for something new from `fromDate`. | None. |
+
+**The person's writes** (`planning:access`), on My planning:
+
+- **`POST /me/wishes`** from `{kind, projectId?, fromDate}` files a wish of the caller's
+  own person and answers it, 201. In order (amendment 76): a property the schema does not
+  name is a 400; a caller `Self` answers no person for is `no_person` (404); then the
+  field errors, titled *Invalid wish* — a `kind` neither `off` nor `new`, an `off` wish
+  without `projectId` or a `new` one with it, a `fromDate` before today (it has no upper
+  bound); then, for an `off` wish, the project read — one the directory does not resolve
+  is a field error on `projectId`, and a closed one is no refusal. Under the person's
+  [lock](#locks), three refusals, in this order:
+  1. **`wish_no_booking`** (409) — an `off` wish on a project the person has no
+     confirmed row on ending today or later;
+  2. **`wish_limit`** (409) — the person already has **five** open wishes;
+  3. **`wish_exists`** (409) — they already wish off that project; the unique index
+     `ux_wishes_person_project_off` is the backstop, and a violation of it answers
+     `wish_exists` too.
+
+  The wish is inserted, unseen, and `wish_created` recorded.
+- **`DELETE /me/wishes/{id}`** withdraws one of the caller's own: under the person's
+  lock the wish is read `FOR UPDATE`, deleted, and `wish_withdrawn` recorded; 204. A
+  wish that is someone else's is the same 404 as an unknown id — a problem `{title: "No
+  such wish", status: 404}` with no `code` — so an id tells nobody whose it is; a caller
+  without a person gets `no_person`.
+
+**The planners' side** (`planning:manage`), the **Wishes** page:
+
+- **`GET /wishes?personId`** lists the open wishes, oldest first — by `createdAt`, then
+  id — `personId` narrowing to one person. The people are named through `People` over
+  today to the Workforce bound's far end, the projects through the directory.
+- **`POST /wishes/{id}/seen`** stamps a wish **seen** by the caller and records
+  `wish_seen`, answering the wish with its `seenAt`. As Staff's one-to-one stamps, it is
+  set once: a wish the read shows stamped is answered as it is, with no transaction, and
+  a stamp another planner set meanwhile is kept under the lock, with no second event
+  (amendment 78).
+- **`POST /wishes/{id}/resolve`** resolves it: under the person's lock the wish is
+  deleted and `wish_resolved` recorded; 204.
+
+Neither takes `If-Match`. An unknown id on `seen` or `resolve` — or a wish resolved or
+withdrawn meanwhile — is the bare 404.
+
+**A resolved or withdrawn wish is deleted**, so the table holds open wishes only; its
+event keeps the kind, the project id and the date, never more, and the person sees
+nothing of a closed wish.
+
+**The mail** (amendment 77). After the commit, outside any transaction, every active
+`planning:manage` holder as `PermissionHolders` answers them — Owners included — is
+mailed **once** through `Notify`, in their own language, **less the wisher**: the
+caller's user and the user linked to their person (plan reading 6). The subject is the
+sentence, "NAME wishes off CODE NAME from DATE" or "NAME wishes for something new from
+DATE" (nb "NAME ønsker seg av CODE NAME fra DATE", "NAME ønsker noe nytt fra DATE"), a
+project the directory does not resolve reading "project N"; the body is the sentence,
+then "Open the wishes:" and the link to `/planning/wishes` when the installation has an
+origin. A holder read that fails is logged by the person's id and mails nobody, a send
+that fails is logged, and the wish is written either way.
+
+**An erased person's wishes** (S26, plan reading 4, amendment 79). `GET /wishes` deletes
+the open wishes of every person `People` does not answer between today and the bound's
+far end — an erased person, and a leaver too — in one transaction under each such
+person's lock, each recorded as `wish_withdrawn` with `reason: unanswered` — since the
+list cannot tell a leaver from an erased person (amendment 92) — and the caller as the
+actor, and leaves them out of the answer. It does so **only when `People` answered
+somebody**: to a planner without `staff:view` Staff answers nobody, and taking that for
+"everyone is erased" would empty the table.
+
+**Who reads them.** The person reads their own open wishes on [My planning](#my-planning)
+and their own [timeline](#the-persons-timeline); `planning:manage` reads every one — the
+list, the timeline, the [candidates' flag](#candidates), the
+[`wishesUnseen` item](#stats-and-attention) and their [events](#events). `planning:view`
+alone reads none, and the person's manager does not read wishes in this phase.
+
+## The calendar source
+
+When `calendar` is composed (S24, S25), the module fills the many-provider
+`CalendarSources` slot with one kind, **`planning.allocation`**, module `planning` — a
+row of [the calendar's kinds](/en/reference/calendar/#the-kinds). Its builder answers nil
+when `calendar` is not among the configured modules (amendment 81): Planning does not
+require the calendar, and nothing would read the source.
+
+It is its own gatekeeper (rule 12 of the
+[module boundaries](/en/contributing/module-boundaries/)) and answers **nothing, never an
+error**, unless the caller holds **`planning:access`** — `contracts.HasPermission`, which
+answers for a request and, for the
+[feed](/en/reference/calendar/#reading-the-providers-for-the-feed), under
+`contracts.AsUser` — **and** Staff's `Self` answers them a person, as it does under
+`AsUser` too; `Self` needs `staff:access`, so a caller without it has no person and no
+items.
+
+It projects the person's own **confirmed** allocations touching the window, by from date
+then id — never a tentative row, never a colleague's — each an **all-day** item over
+`fromDate`..`toDate`: the row's id its id, never done, titled with the project's code
+and name ("project N" when the directory does not resolve it), the load below in figures
+as typed ("50 %", "22.5 h" — the feed knows no reader's language, plan reading 7), and
+the path `/planning/me`. A read that fails is an error, which fails the calendar's read
+as every source's does.
 
 ## Stats and attention
 
@@ -754,8 +1045,8 @@ hide.
 
 **`GET /stats/attention`** (`planning:access`) answers the items as a bare array, oldest first, in the
 shape every module's attention items share — `{id, type, title, occurredAt, entityId,
-count?}`, `entityId` the person's id, the allocation's for `endingWithoutFollowOn`, or the
-request's for `requestsOpen` — each to its audience; a caller with none of them gets `[]`, never a 403:
+count?}`, `entityId` the person's id, the allocation's for `endingWithoutFollowOn`, the
+request's for `requestsOpen`, or the oldest unseen wish's for `wishesUnseen` — each to its audience; a caller with none of them gets `[]`, never a 403:
 
 | Type | Audience | When |
 | --- | --- | --- |
@@ -764,16 +1055,19 @@ request's for `requestsOpen` — each to its audience; a caller with none of the
 | `endingWithoutFollowOn` | `planning:manage` | Confirmed rows ending within `endingLeadWeeks` where the person has no confirmed row starting on or before that end plus seven days. |
 | `certificatesExpiring` | `planning:view` | Held certificates expiring inside a confirmed row within the horizon ([the timeline's flag](#the-persons-timeline)). |
 | `requestsOpen` | `planning:manage` | One per open [request](#requests) whose first day is on or before today plus `requestLeadDays` — starting within the lead, or already started, including one whose period has already ended, until it is withdrawn — dated on that first day at midnight UTC and titled "CODE — title", the project's code when the directory resolves it, else its id. |
+| `wishesUnseen` | `planning:manage` | **One** item when any open [wish](#wishes) has no seen stamp (plan reading 9), id `wishesUnseen/all`, `count` the number unseen, dated by the oldest unseen wish's `createdAt` and titled with that person's name as the attention window's people give it, or their id when Staff answers nobody (amendment 80). |
 
-Each opens the screen that answers it. `wishesUnseen` comes with C.
+Each opens the screen that answers it — `wishesUnseen` the planners' Wishes page.
 
 ## Events
 
 Every write is one row in `planning.events` (S23), in the write's transaction:
 `allocation_created`, `allocation_changed`, `allocation_confirmed`,
-`allocation_unconfirmed` and `allocation_deleted` about an allocation (`entityKind`
-`allocation`), and `request_created`, `request_changed`, `request_filled`,
-`request_reopened` and `request_withdrawn` about a request (`request`). The payload
+`allocation_unconfirmed`, `allocation_deleted`, `terms_set` and `terms_cleared` about an
+allocation (`entityKind` `allocation`); `request_created`, `request_changed`,
+`request_filled`, `request_reopened` and `request_withdrawn` about a request
+(`request`); and `wish_created`, `wish_seen`, `wish_resolved` and `wish_withdrawn` about
+a wish (`wish`). The payload
 carries the changed fields before and after, by the contract's field names; the
 **actor** is the
 snapshot `{kind, displayName, userId}` — `kind` `user` or `system` — of the caller who
@@ -792,6 +1086,17 @@ A request's events are filed under its project:
 | `request_reopened` | `{allocationId}`, the deleted row, beside its `allocation_deleted`. | The project and the deleted row's person. |
 | `request_withdrawn` | `status` from `open` to `withdrawn`. | The project. |
 
+The terms' and a wish's events:
+
+| Kind | Payload | Filed under |
+| --- | --- | --- |
+| `terms_set` | The [terms'](#terms) fields a `PUT` changed, before and after, by the input's names: the dates as `YYYY-MM-DD`, `nonCompeteCustomerIds` as the list of ids, `replacementNeedsApproval` only when true (amendment 69). Always on the first `PUT`, `fields` `{}` when it set nothing (amendment 91). | The allocation, its person and its project. |
+| `terms_cleared` | Every field the terms had, before; none after. | The same. |
+| `wish_created` | `{kind, projectId?, fromDate}`. | The person, and for an `off` wish the project. |
+| `wish_seen` | The same. | The same. |
+| `wish_resolved` | The same. | The same. |
+| `wish_withdrawn` | The same; with `reason: unanswered` when the module deleted it because Staff no longer answers the person — [erased or left](#wishes). | The same. |
+
 **The note is recorded by its name alone**, on an allocation and on a request: a changed
 note is in the payload with neither text, since events are `planning:view`'s and the
 note `planning:manage`'s (amendment 18). An allocation's recorded fields carry
@@ -799,13 +1104,19 @@ note `planning:manage`'s (amendment 18). An allocation's recorded fields carry
 
 `GET /events?personId|projectId|allocationId` is `planning:view`'s: newest first, at
 most 500. A request's events are read by its project, and `request_filled` by the
-person too.
+person too; the terms' by the allocation; a wish's by the person and its project.
+**The terms' and the wishes' events are `planning:manage`'s**: `GET /events` never
+answers them to `planning:view` alone, whatever the filter — every event with
+`entityKind` `wish`, and `terms_set` and `terms_cleared`, are held back from a caller
+without `manage`, the audience decided by that permission alone (S23, amendment 89) —
+since the terms and the wishes are `manage`'s to read.
 
 ## Locks
 
 - **No call out of a transaction.** The people, their capacity, the project's entry, the
-  competence catalogue and the competences held, the preference fits, the user directory
-  and the mail are reached before a transaction opens or
+  competence catalogue and the competences held, the preference fits, the customers a
+  non-compete names and the target project's customer, the user directory, the planners
+  a wish is mailed to, and the mail are reached before a transaction opens or
   after it commits, never inside one; each goes through its accessor, which refuses such
   a call, and the tests fail on any made inside one. A change in Staff between the read
   and the write is accepted: capacity is a warning's input, employment a 409's, and a
@@ -813,7 +1124,14 @@ person too.
 - **The person.** Every write of an allocation takes a transaction advisory lock on the
   person (`planning`, `person_id`), and the overbooking judgement reads the person's
   confirmed rows under it — so two planners booking one person are judged one after the
-  other, the second on the first's committed rows.
+  other, the second on the first's committed rows. The [non-compete](#non-compete) is
+  judged under the same lock, before the overbooking, on the same confirmed rows'
+  terms. The **terms**' `PUT` and `DELETE` take it too, re-read the row and lock its
+  terms row `FOR UPDATE`. So does every write of a **wish** — a create, which counts the
+  open wishes and judges the booking under it; a withdrawal, a seen stamp and a
+  resolution, each reading the wish `FOR UPDATE` after it — and the deletion of an
+  erased person's wishes on `GET /wishes`, one transaction under every such person's
+  lock in ascending id.
 - **The project.** Every write of a request takes a transaction advisory lock on its
   project (`planning`, `project_id`), and re-reads the request `FOR UPDATE` under it; a
   `PUT` that moves a request to another project takes both projects' in ascending id.
@@ -826,14 +1144,21 @@ person too.
 
 ## Personal data
 
-The module stores about a person ids, dates and hours — no name, no text about them
-but the planners' note, no health fact — and the planners' names as the events' actors
-(S26). A request stores nothing of a person: its title and note are about a project's
-need, and who fills it is the allocation's `person_id`. Staff's personal-data export and erase do not reach it in this release: after an
-erase the rows keep an id Staff no longer resolves, read as *Erased person*, and weigh
-nothing new, since `People` no longer lists them — they leave the board and stay in the
-project's plan by id. A many-provider slot through which Staff collects another module's
-rows about a person for its export and its erase is the roadmap's, for phase 2.
+The module stores about a person ids, dates and hours and the kind of a wish — no
+name, no text about them but the planners' note, no health fact — and the planners'
+names as the events' actors (S26). A request stores nothing of a person: its title and
+note are about a project's need, and who fills it is the allocation's `person_id`. An
+assignment's [terms](#terms) are the customer contract's — counts, dates, customer ids
+and a reference — and a [wish](#wishes) is a kind, a project id and a date, with no free
+text. Staff's personal-data export and erase do not reach the module: after an erase the
+rows keep an id Staff no longer resolves, read as *Erased person*, and weigh nothing new,
+since `People` no longer lists them — they leave the board and stay in the project's plan
+by id. **The erased person's open wishes are deleted** by the planners' next
+[list](#wishes), recorded as `wish_withdrawn` with `reason: unanswered`, since the list
+cannot tell a leaver from an erased person (amendment 92) — the one thing the module
+deletes for an erased person. A many-provider slot through which Staff collects
+another module's rows about a person for its export and its erase is the roadmap's, for
+phase 2.
 
 ## Refusals and revisions
 
@@ -844,20 +1169,25 @@ field.
 
 | Code | Status | When |
 | --- | --- | --- |
-| *(field error)* | 400 | `toDate` before `fromDate`; `load` or `loadUnit` out of its rule; `title` or `note` too long; a request's `title` empty; `hoursPerWeek` out of its rule; more than ten `requirements`; a `requirements[i].competenceId` the catalogue does not answer or named twice; a `requirements[i].minLevel` out of 0 to 4 or on a competence without a level; `personId` Staff does not answer; `projectId` the directory does not resolve; a settings field out of its bounds; a property the schema does not name; a window that does not parse, ends before it starts or lies outside the bound; a board of more than 53 weeks; a project status that is none of the five. |
+| *(field error)* | 400 | `toDate` before `fromDate`; `load` or `loadUnit` out of its rule; `title` or `note` too long; a request's `title` empty; `hoursPerWeek` out of its rule; more than ten `requirements`; a `requirements[i].competenceId` the catalogue does not answer or named twice; a `requirements[i].minLevel` out of 0 to 4 or on a competence without a level; `personId` Staff does not answer; `projectId` the directory does not resolve; a [terms](#terms) field out of its rule — `noticeCount` and `noticeUnit` not both or neither, `noticeGivenOn` without a period, `handoverDays` out of 0 to 90, `nonCompeteUntil` and `nonCompeteCustomerIds` not each with the other, more than 20 ids or one the customer directory does not resolve, `reference` too long; a [wish's](#wishes) `kind`, a `projectId` missing on `off`, given on `new` or not resolved, a `fromDate` before today; an `If-Match` that is not a revision; a settings field out of its bounds; a property the schema does not name; a window that does not parse, ends before it starts or lies outside the bound; a board of more than 53 weeks; a project status that is none of the five. |
 | `period_too_long` | 400 | A period of more than 1096 days, on `toDate`. |
 | `outside_employment` | 409 | A day of the period outside the person's employment. |
-| `project_closed` | 409 | A new row, a change or a confirm, a new request or a change to one, or a fill, on a project in status `completed` or `cancelled`. |
+| `project_closed` | 409 | A new row, a change or a confirm, a terms `PUT`, a new request or a change to one, or a fill, on a project in status `completed` or `cancelled`. |
+| `non_compete` | 409 | A `POST`, fill or confirm — or a `PUT` that places the row: another person or project, tentative to confirmed, an earlier `fromDate` — that would leave a **confirmed** row of the person on a customer their [non-compete](#non-compete) bars; judged before `overbooked`. On a tentative row, or a confirmed one a `PUT` does not place, it is a warning. |
 | `overbooked` | 409 | Under `overbooking: refuse`, a write that makes a week's confirmed excess over capacity grow. |
 | `request_not_open` | 409 | A `PUT`, a `fill` or a `withdraw` of a request that is filled or withdrawn. |
-| `revision_conflict` | 409 | The `If-Match` revision of an allocation, a request or the settings has moved on, or the row kept changing under a `DELETE`, a `confirm`, a `fill` or a `withdraw` three times running. |
-| `no_person` | 404 | `GET /me` for a caller `Self` answers no person for. |
+| `wish_no_booking` | 409 | An `off` wish on a project the person has no confirmed row on ending today or later. |
+| `wish_limit` | 409 | A wish when the person has five open already. |
+| `wish_exists` | 409 | A second `off` wish on the same project. |
+| `revision_conflict` | 409 | The `If-Match` revision of an allocation, its terms, a request or the settings has moved on — or, on the terms, a header sent on a row with no terms or left out on a row with some — or the row kept changing under a `DELETE`, a `confirm`, a `fill`, a `withdraw` or a terms `PUT` or `DELETE` three times running. |
+| `no_person` | 404 | `GET /me`, `POST /me/wishes` or `DELETE /me/wishes/{id}` for a caller `Self` answers no person for. |
 | `dependency_unavailable` | 503 | `Deps.Projects`, `Deps.Workforce` or `Deps.Directory` is nil — never so in a running `planning`, which `MODULES` refuses without them. |
 
 A caller without the operation's permission gets the access layer's uniform 403. **`PUT`**
 on an allocation, on a request and on the settings takes `If-Match` with the row's
-revision; `confirm`, `fill` and `withdraw` do not. Delivery C adds `non_compete` and the
-wishes' codes.
+revision; the terms' `PUT` takes the **terms'** revision, and only when the row has
+terms ([terms](#terms)); `confirm`, `fill`, `withdraw`, the terms' `DELETE`, `seen` and
+`resolve` take none.
 
 ## Enabling and disabling
 
@@ -876,18 +1206,27 @@ panic if one is.
 
 Omitting `planning` means the module contributes no route, no permission and no
 contract path; its paths answer the `/api` catch-all 404 and the switcher tile greys
-out. Nothing of this module is read by another, so nothing else changes. The `planning`
+out. Nothing of this module is read by another, so nothing else changes but the
+calendar, which loses the `planning.allocation` kind, a slot collected from enabled
+modules only. The `planning`
 schema is migrated regardless, so enabling it later needs no migration. Planning
 contributes **no background worker**.
 
 ## What comes next
 
-- **C — Assignments and wishes**: an allocation's terms — the notice, the minimum
-  duration, the handover and the non-compete — with the earliest release and the
-  handover start derived from them; the non-compete as the one hard refusal, excluding
-  a candidate and refusing a write; the release and the wishes as a candidate's flags,
-  the wishes in the sort; the person's wishes, without a word of free text, seen and
-  resolved by the planners; and the calendar source.
+Phase 1 — allocations, requests and assignments — is complete with delivery C. What
+follows is the roadmap's *Later*:
+
+- **Shifts and trading** — rostering, open shifts and trades every employee can see.
+- **The revenue forecast** — what the confirmed and tentative hours will bill.
+- **The automatic request** — a request opened from a foreseeable drop in a project's
+  staffing, rather than typed.
+- **The booking contract Staff reads** for holiday approval, so a manager deciding
+  absence sees the bookings it conflicts with.
+- **The personal-data slot** — a many-provider slot through which Staff collects another
+  module's rows about a person for its export and its erase.
+- **A project manager booking on their own project** without `planning:manage`.
+- **The weekly digest** — the unbooked and the ending, mailed rather than read.
 
 ## Endpoints
 
@@ -903,7 +1242,7 @@ names what it requires beside it.
 | `GET /people` | `planning:view` | The people of a window. |
 | `GET /board` | `planning:view` | People or projects against weeks, with the figures and the bars. |
 | `GET /projects/{projectId}/plan` | `planning:view` | One project's rows, its requests, and its hours and demand per week. |
-| `GET /people/{personId}/timeline` | `planning:view`, or the person's own | The person's employment, away spans, rows and flags. |
+| `GET /people/{personId}/timeline` | `planning:view`, or the person's own | The person's employment, away spans, rows with their derived dates, open wishes and flags. |
 | `GET /unbooked` | `planning:view` | The people under the threshold within the horizon. |
 | `GET /competences` | `planning:view` | Staff's competence catalogue as the caller may see it. |
 | `GET /intake` | `planning:view` | The planned projects with their requests' coverage and their hours a week. |
@@ -920,7 +1259,14 @@ names what it requires beside it.
 | `PUT /allocations/{id}` | `planning:manage` | Change a row, with `If-Match`; answers it with its warnings. |
 | `DELETE /allocations/{id}` | `planning:manage` | Delete a row. |
 | `POST /allocations/{id}/confirm` | `planning:manage` | Confirm a row and tell the person. |
-| `GET /me` | `planning:access` | The caller's own confirmed bookings. |
-| `GET /events` | `planning:view` | The events of a person, a project or a row. |
+| `PUT /allocations/{id}/terms` | `planning:manage` | Set a row's terms whole, with the terms' `If-Match` when it has some; answers the row with its terms and derived dates. |
+| `DELETE /allocations/{id}/terms` | `planning:manage` | Clear a row's terms. |
+| `GET /me` | `planning:access` | The caller's own confirmed bookings and open wishes. |
+| `POST /me/wishes` | `planning:access` | File a wish of the caller's own. |
+| `DELETE /me/wishes/{id}` | `planning:access` | Withdraw a wish of the caller's own. |
+| `GET /wishes` | `planning:manage` | The open wishes, oldest first, by person; those of a person Staff no longer answers deleted. |
+| `POST /wishes/{id}/seen` | `planning:manage` | Stamp a wish seen, once. |
+| `POST /wishes/{id}/resolve` | `planning:manage` | Resolve a wish, deleting it. |
+| `GET /events` | `planning:view` | The events of a person, a project or a row; the terms' and the wishes' to `planning:manage` alone. |
 | `GET /stats` | `planning:view` | The dashboard card's figures. |
 | `GET /stats/attention` | `planning:access` | The attention items, shaped by the caller's audience. |

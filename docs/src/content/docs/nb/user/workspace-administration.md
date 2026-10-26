@@ -349,11 +349,13 @@ personopplysninger** den eneste tillatelsen som viser et fødselsnummer eller en
 — **Administrere ansatte** gjør det ikke, men holder kompetansekatalogen — og **Avgjøre
 fravær** avgjør alles fravær og bekrefter også folks kompetanse og registrerer
 kompetansesamtalene deres, aldri innehaverens egne. I Bemanning gir **Bruke Bemanning**
-appen og innehaverens egne bekreftede allokeringer; **Se planen**, merket sensitiv, viser
-planen, hver persons tidslinje og hvert prosjekts kode, navn, kunde, status og datoer,
-tilbud medregnet, med behovene og inntaket; og **Planlegge**, også sensitiv, skriver
-allokeringene og behovene, finner kandidatene til et behov og fyller det, leser
-planleggernes notater og holder Bemanningsinnstillinger. En planlegger trenger også **Se
+appen, innehaverens egne bekreftede allokeringer og ønsker, og de allokeringene i
+Kalender; **Se planen**, merket sensitiv, viser planen, hver persons tidslinje og hvert
+prosjekts kode, navn, kunde, status og datoer, tilbud medregnet, med behovene og
+inntaket; og **Planlegge**, også sensitiv, skriver allokeringene og vilkårene deres —
+oppsigelsestiden, overlappingen og karantenen i en kundekontrakt — og behovene, finner
+kandidatene til et behov og fyller det, leser planleggernes notater og personenes
+ønsker, og holder Bemanningsinnstillinger. En planlegger trenger også **Se
 ansattoversikten** fra Ansatte, siden planen bare viser personene Ansatte viser dem.
 **Administrer
 identitet** (`identity:manage`) er identitetsmodulens egen, eneste tillatelse.

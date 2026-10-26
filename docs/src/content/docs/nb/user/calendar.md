@@ -13,8 +13,8 @@ sources:
 
 Kalender-appen er én oversikt over dagene dine: avtalene du lager selv, med kolleger på,
 ved siden av det de andre appene allerede vet om deg — oppfølgingene dine i Kunder,
-fraværet ditt i Ansatte, oppgavene dine i Prosjekter, timene dine i Timer og reisene
-dine i Utlegg. Ingenting kopieres: en oppfølging du huker av i Kunder, er avhuket i
+fraværet ditt i Ansatte, oppgavene dine i Prosjekter, timene dine i Timer, reisene
+dine i Utlegg og allokeringene dine i Bemanning. Ingenting kopieres: en oppfølging du huker av i Kunder, er avhuket i
 kalenderen med en gang, fordi kalenderen spør Kunder hver gang den åpnes. Reglene bak
 hvert steg står i [referansen for Kalender-modulen](/en/reference/calendar/); denne
 siden handler om hva du gjør på hvert skjermbilde.
@@ -32,7 +32,9 @@ siden handler om hva du gjør på hvert skjermbilde.
 
 Det de andre appene legger i kalenderen din, følger deres egne rettigheter: du ser
 oppfølgingene dine bare hvis du kan lese tidslinjen i Kunder, fraværet ditt bare hvis
-brukeren din er koblet til personen din i Ansatte, og så videre. En app du ikke har
+brukeren din er koblet til personen din i Ansatte, allokeringene dine bare hvis du kan
+bruke Bemanning (`planning:access`) og brukeren din er koblet til personen din i
+Ansatte, og så videre. En app du ikke har
 tilgang til, eller som installasjonen ikke har slått på, legger rett og slett ikke til
 noe. Hele tabellen står under [Permissions](/en/reference/calendar/#permissions).
 
@@ -68,6 +70,7 @@ klikk på et element av den tar deg:
 | **Timer** | Timer du har ført, med prosjektet som tittel, på start- og sluttiden når du oppga dem, ellers hele dagen; strøket over når de er godkjent | åpner dagen i Timer |
 | **Reiser** | En av reiseregningene dine, fra avreise til hjemkomst; strøket over når den er godkjent | åpner reiseregningen |
 | **Fravær** | Ditt eget fravær, søkt, godkjent eller registrert; et fravær du har søkt om, viser **Søkt om** under navnet til det er avgjort. Navnet og det ordet står på språket som er satt under **Språk** på personen din i Ansatte | åpner **Min side** på fanen **Fravær** |
+| **Allokeringer** | Dine egne bekreftede allokeringer i Bemanning, hele dagen gjennom allokeringens periode, med prosjektets kode og navn som tittel; hold pekeren over en for å lese belastningen. En tentativ allokering, planleggernes utkast, vises aldri | åpner **Min bemanning** i Bemanning |
 | **Abonnementer** | En hendelse i en kalender du abonnerer på fra et annet sted, i fargen du ga den ([Kalendere fra andre steder](#kalendere-fra-andre-steder)) | — |
 | **Helligdager** | Norges helligdager, skyggelagt på dagene sine | — |
 
@@ -277,7 +280,7 @@ kalenderen deres i stedet for din, uten å kunne endre noe:
 - avtalene som gjør dem opptatt, med tittel og sted når avtalen er delt;
 - en privat som et skravert **Opptatt**, uten noe mer;
 - ingenting for de ledige avtalene deres, og ingenting fra de andre appene — oppgavene,
-  timene og oppfølgingene deres blir værende bak de appenes egne dører.
+  timene, oppfølgingene og allokeringene deres blir værende bak de appenes egne dører.
 
 Forklaringen krymper til **Avtaler** og **Helligdager**, og **Ny avtale** skjules. Tøm
 velgeren for å komme tilbake til din egen kalender.
@@ -324,8 +327,8 @@ oppdaterer.
 telefonen** er det to adresser, hver med en setning om hva den inneholder:
 
 - **Hele kalenderen** — kalenderen din slik du ser den i Vantigo: avtalene dine, med
-  tittel, sted og beskrivelse, og timene, reisene, oppgavene, oppfølgingene og fraværet
-  ditt fra de andre appene. Hver hendelse lenker tilbake til Vantigo.
+  tittel, sted og beskrivelse, og timene, reisene, oppgavene, oppfølgingene, fraværet og
+  allokeringene dine fra de andre appene. Hver hendelse lenker tilbake til Vantigo.
 - **Bare opptatt** — tidene du er opptatt, hver med tittelen **Opptatt**, og ingenting
   annet. Gi denne til den som skal se når du er ledig, men ikke hva du gjør — en
   resepsjonist, eller kalenderen til partneren din.
