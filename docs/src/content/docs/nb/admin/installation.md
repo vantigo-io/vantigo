@@ -84,10 +84,10 @@ engangsjobb, og starter deretter Vantigo:
 - **API-kontrakten** — `GET http://localhost:8080/api/openapi.json` (krever en sesjon)
 
 Modulene Kunder, Produkter, Energi, Kommunikasjon, Prosjekter, Tid, Utgifter,
-Fakturaer, Ansatte, Kalender og Microsoft Entra ID er aktivert som standard (`MODULES`
-i `vantigo.env`). De deler én PostgreSQL-database ved navn `vantigo`, med uavhengige
-skjemaer `identity`, `customers`, `products`, `energy`, `communications`, `projects`,
-`time`, `expenses`, `invoices`, `staff`, `calendar` og `entra`, hver med sin egen
+Fakturaer, Ansatte, Bemanning, Kalender og Microsoft Entra ID er aktivert som standard
+(`MODULES` i `vantigo.env`). De deler én PostgreSQL-database ved navn `vantigo`, med
+uavhengige skjemaer `identity`, `customers`, `products`, `energy`, `communications`,
+`projects`, `time`, `expenses`, `invoices`, `staff`, `planning`, `calendar` og `entra`, hver med sin egen
 migreringshistorikk.
 
 ## Hva stacken inneholder
@@ -186,9 +186,10 @@ prosedyrene og gjenopprettingen.
 - **`MODULES`** (`vantigo.env`) — den kommaseparerte listen over forretningsmoduler
   denne installasjonen aktiverer. `identity` er alltid montert og listes aldri. Usatt
   aktiverer hver modul binæren kan montere: `customers`, `products`, `energy`,
-  `communications`, `projects`, `time`, `expenses`, `invoices`, `staff`, `calendar` og
-  `entra`. `energy`, `communications`, `projects` og `invoices` krever hver
-  `customers`, `time` krever `projects`, og `entra` krever `staff`; `projects` bruker
+  `communications`, `projects`, `time`, `expenses`, `invoices`, `staff`, `planning`,
+  `calendar` og `entra`. `energy`, `communications`, `projects` og `invoices` krever hver
+  `customers`, `time` krever `projects`, `planning` krever både `projects` og `staff`,
+  og `entra` krever `staff`; `projects` bruker
   også `products` når den er aktivert og svarer 409 på endepunktene for
   faktureringslinjer når den ikke er det; `expenses` krever ingenting og leser
   `projects` bare når den tilfeldigvis er aktivert; `staff` og `calendar` krever
@@ -267,9 +268,9 @@ ALTER DEFAULT PRIVILEGES FOR ROLE "vantigo" GRANT USAGE, SELECT ON SEQUENCES TO 
 -- Standardrettigheter dekker bare objekter som opprettes etterpå; gi rettigheter
 -- på skjemaene de aktiverte modulene allerede har opprettet (legg til/fjern
 -- skjemaer så de stemmer med MODULES aktivert i din installasjon).
-GRANT USAGE ON SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, calendar, entra TO "vantigo_app";
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, calendar, entra TO "vantigo_app";
-GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, calendar, entra TO "vantigo_app";
+GRANT USAGE ON SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, calendar, entra TO "vantigo_app";
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, calendar, entra TO "vantigo_app";
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, calendar, entra TO "vantigo_app";
 ```
 
 ## Bakgrunnsjobber og skalering
@@ -410,7 +411,8 @@ Hele applikasjonen kan serveres under ett konfigurerbart stiprefiks. Sett
 verten — ingen sti, siden stiprefikset er `APP_BASE_PATH`, ikke en del av `APP_URL`.
 API-prefiksene forblir `/api/v1/identity`, `/api/v1/customers`, `/api/v1/products`,
 `/api/v1/energy`, `/api/v1/communications`, `/api/v1/projects`, `/api/v1/time`,
-`/api/v1/expenses`, `/api/v1/invoices` og `/api/v1/staff`.
+`/api/v1/expenses`, `/api/v1/invoices`, `/api/v1/staff`, `/api/v1/planning`,
+`/api/v1/calendar` og `/api/v1/entra`.
 
 For eksempel, med nginx:
 
@@ -684,6 +686,17 @@ trenger tilgang til skjemaet `entra` ([Databaseroller](#databaseroller)). Å rul
 migreringen tilbake dropper skjemaet med de forseglede hemmelighetene og et pass som
 ikke er vist ennå, og rører ingenting i leietakeren. Se
 [Microsoft Entra ID](/nb/admin/entra/).
+
+**Utgivelsen med Bemanning.** Den har `00072_planning_baseline.sql`, skjemaet
+`planning` med innstillingene på standardverdiene og ingen allokeringer. En installasjon
+som lar `MODULES` stå usatt, får modulen, og **Bemanning**-flisen for alle som får
+`planning:access`, ved oppgradering; en som lister `MODULES`, får den når `planning`
+legges til ved siden av `projects` og `staff`, som den krever begge — `planning` uten en
+av dem nekter å starte. De tre rettighetene er nye, og ingen egendefinert rolle har dem
+før en eier legger dem til. En rolle med minste privilegium trenger tilgang til skjemaet
+`planning` ([Databaseroller](#databaseroller)). Den starter ingen bakgrunnsjobb og
+trenger ingen innstilling; det er ikke noe mer å gjøre. Å rulle migreringen tilbake
+dropper skjemaet med alle allokeringene. Se [Bemanning](/nb/user/planning/).
 
 **Utgivelsen med kompetanse i Ansatte.** Den har `00066_staff_competence.sql`:
 kompetansekatalogen — fem kategorier og femten norske sertifikater forhåndsdefinert — og

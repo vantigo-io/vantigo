@@ -91,6 +91,14 @@ tatt, heller ikke som en tom overskrift. Personen selv, en leder av dem, en koll
 [feltgrupper og målgrupper](/en/reference/staff/#field-groups-and-audiences) i
 referansen. En person du ikke kan se, svarer akkurat som en som ikke finnes.
 
+Når Bemanning-modulen er på, kommer en åttende fane, **Bemanning** (`?tab=planning`),
+etter **Konto** for dem som har `planning:access` og enten `planning:view` eller er
+personen selv. Den viser personens tidslinje i Bemanning — ansettelsen, fraværsdagene og
+allokeringene på prosjekter de neste 26 ukene, med merknad på en allokering som varer
+lenger enn ansettelsen eller et sertifikat som utløper under en — og på din egen side,
+med bare `planning:access`, de bekreftede allokeringene dine. Se
+[En persons tidslinje](/nb/user/planning/#en-persons-tidslinje).
+
 Øverst, ved siden av navnet, står personens **bilde** — eller initialene når det ikke
 finnes noe — med tittelen og avdelingen under navnet. Alle som kan åpne siden, ser
 bildet, kolleger også. Bildet HR legger inn her, blir personens bilde overalt: i
@@ -1211,8 +1219,8 @@ skriver det; lederen din leser det, før eller i samtalen. Hver del lagres for s
   fra en **Første dag** til en **Siste dag** (står den tom, den ene dagen). Slå på **Del
   av dagen** for å si når den **Starter** og **Slutter**; ellers gjelder den hele dagen.
   Trykk **Legg til**. Legg til så mange du trenger, høyst 50, ta bort en med knappen i
-  tabellen, og trykk **Lagre tilgjengelighet**. Det er bare opplysninger: ingen
-  planlegger etter dem ennå.
+  tabellen, og trykk **Lagre tilgjengelighet**. Det er bare opplysninger: Bemanning
+  leser den i en senere levering.
 
 Det finnes ikke noe felt for en begrunnelse noe sted, med vilje. En begrunnelse for
 «ingen nattevakter» blir lett en opplysning om helsen din, og den hører ikke hjemme i et

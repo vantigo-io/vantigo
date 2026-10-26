@@ -31,7 +31,8 @@ serves under `/docs/`.
 | [Time](/en/reference/time/) | Hours on projects, rates and their snapshots, weekly submission and approval. |
 | [Expenses](/en/reference/expenses/) | Outlays and mileage, receipts, approval, reimbursement and invoicing. |
 | [Invoices](/en/reference/invoices/) | The sales document: numbering, VAT, issue, credit notes, the PDF, payments, sending and export. |
-| [Staff](/en/reference/staff/) | The workforce register: the settings, the business time zone and the company's structure. |
+| [Staff](/en/reference/staff/) | The workforce register: people, employments and terms, absence, competence, documents, accounts and groups. |
+| [Planning](/en/reference/planning/) | Booking people's time on projects: allocations, tentative or confirmed, against the capacity computed from Staff's facts; the board, the project's plan, the person's timeline, the unbooked list and My planning. |
 | [Calendar](/en/reference/calendar/) | Appointments with recurrence and colleagues, the sources other modules project their rows through, the window in the viewer's zone and a colleague's busy and free, the invitations, the calendar feed a phone subscribes to and the calendars subscribed to from elsewhere. |
 | [Microsoft Entra ID](/en/reference/entra/) | The connection to one tenant, its client secrets and the connection test, the account rules, the guarded Graph client, and the user lifecycle Staff drives through it: the account prepared, enabled with a Temporary Access Pass, kept in step, disabled and deleted. |
 

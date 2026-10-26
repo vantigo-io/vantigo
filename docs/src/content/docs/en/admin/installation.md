@@ -84,10 +84,11 @@ job, and then starts Vantigo:
 - **API contract** — `GET http://localhost:8080/api/openapi.json` (requires a session)
 
 The Customers, Products, Energy, Communications, Projects, Time, Expenses, Invoices,
-Staff, Calendar and Microsoft Entra ID modules are enabled by default (`MODULES` in
-`vantigo.env`). They share one PostgreSQL database named `vantigo`, with independent
-`identity`, `customers`, `products`, `energy`, `communications`, `projects`, `time`,
-`expenses`, `invoices`, `staff`, `calendar` and `entra` schemas and migration histories.
+Staff, Planning, Calendar and Microsoft Entra ID modules are enabled by default
+(`MODULES` in `vantigo.env`). They share one PostgreSQL database named `vantigo`, with
+independent `identity`, `customers`, `products`, `energy`, `communications`,
+`projects`, `time`, `expenses`, `invoices`, `staff`, `planning`, `calendar` and `entra`
+schemas and migration histories.
 
 ## What the stack contains
 
@@ -184,9 +185,10 @@ and the recovery.
 - **`MODULES`** (`vantigo.env`) — the comma-separated list of business modules this
   deployment enables. `identity` is always mounted and never listed. Unset enables
   every module the binary can mount: `customers`, `products`, `energy`,
-  `communications`, `projects`, `time`, `expenses`, `invoices`, `staff`, `calendar` and
-  `entra`. `energy`, `communications`, `projects` and `invoices` each require
-  `customers`, `time` requires `projects`, and `entra` requires `staff`; `projects` also
+  `communications`, `projects`, `time`, `expenses`, `invoices`, `staff`, `planning`,
+  `calendar` and `entra`. `energy`, `communications`, `projects` and `invoices` each
+  require `customers`, `time` requires `projects`, `planning` requires both `projects`
+  and `staff`, and `entra` requires `staff`; `projects` also
   uses `products` when it is enabled and answers 409 on its billing-line endpoints when
   it is not; `expenses` requires nothing and reads `projects` only when it happens to be
   enabled; `staff` and `calendar` require nothing. To run
@@ -262,9 +264,9 @@ ALTER DEFAULT PRIVILEGES FOR ROLE "vantigo" GRANT USAGE, SELECT ON SEQUENCES TO 
 -- Default privileges only cover objects created afterwards; grant on the
 -- schemas the enabled modules already created (add/remove schemas to match
 -- the MODULES enabled in your installation).
-GRANT USAGE ON SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, calendar, entra TO "vantigo_app";
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, calendar, entra TO "vantigo_app";
-GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, calendar, entra TO "vantigo_app";
+GRANT USAGE ON SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, calendar, entra TO "vantigo_app";
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, calendar, entra TO "vantigo_app";
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, calendar, entra TO "vantigo_app";
 ```
 
 ## Background workers and scaling
@@ -399,7 +401,8 @@ The whole application can be served below one configurable path prefix. Set
 path, since the path prefix is `APP_BASE_PATH`, not part of `APP_URL`. The API
 prefixes remain `/api/v1/identity`, `/api/v1/customers`, `/api/v1/products`,
 `/api/v1/energy`, `/api/v1/communications`, `/api/v1/projects`, `/api/v1/time`,
-`/api/v1/expenses`, `/api/v1/invoices` and `/api/v1/staff`.
+`/api/v1/expenses`, `/api/v1/invoices`, `/api/v1/staff`, `/api/v1/planning`,
+`/api/v1/calendar` and `/api/v1/entra`.
 
 For example, with nginx:
 
@@ -661,6 +664,17 @@ accounts there only for people of the **Microsoft Entra ID** kind. A least-privi
 role needs the `entra` schema granted ([Database roles](#database-roles)). Rolling the
 migration back drops the schema with the sealed secrets and any pass not yet shown, and
 touches nothing in the tenant. See [Microsoft Entra ID](/en/admin/entra/).
+
+**The release with Planning.** It brings `00072_planning_baseline.sql`, the `planning`
+schema with its settings at their defaults and no allocations. An installation that
+leaves `MODULES` unset gets the module, and its **Planning** tile for everyone given
+`planning:access`, on upgrade; one that lists `MODULES` gets it once `planning` is added
+beside `projects` and `staff`, both of which it requires — `planning` without either
+refuses to start. The three permissions are new and held by no custom role until an
+Owner adds them. A least-privilege role needs the `planning` schema granted
+([Database roles](#database-roles)). It starts no worker and needs no setting; there is
+nothing else to do. Rolling the migration back drops the schema with every
+allocation. See [Planning](/en/user/planning/).
 
 **The release with Staff competence.** It brings `00066_staff_competence.sql`: the
 competence catalogue — five categories and fifteen Norwegian certificates seeded — and

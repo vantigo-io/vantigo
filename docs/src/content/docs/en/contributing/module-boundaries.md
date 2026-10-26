@@ -16,6 +16,7 @@ sources:
   - apps/entra/frontend/eslint.config.js
   - apps/expenses/frontend/eslint.config.js
   - apps/invoices/frontend/eslint.config.js
+  - apps/planning/frontend/eslint.config.js
   - apps/products/frontend/eslint.config.js
   - apps/projects/frontend/eslint.config.js
   - apps/staff/frontend/eslint.config.js
@@ -24,7 +25,7 @@ sources:
 Vantigo is a modular monolith: one Go binary, one container, one PostgreSQL
 database — with strict module boundaries so any module can later be extracted into
 its own deployable without a rewrite. Customers, Products, Energy, Communications,
-Projects, Time, Expenses, Invoices, Staff, Calendar and Entra are vertical-slice modules composed only
+Projects, Time, Expenses, Invoices, Staff, Calendar, Entra and Planning are vertical-slice modules composed only
 by `cmd/vantigo`, on the Identity platform.
 
 Modules never reference each other directly. Synchronous cross-module needs go
@@ -73,7 +74,7 @@ Communications' outbox is the working example.
    type, never a store type, and the reason is rules 8, 9 and 10's.
 4. **One schema per module.** Each module maps tables only into its own PostgreSQL
    schema (`identity`, `customers`, `products`, `energy`, `communications`,
-   `projects`, `time`, `expenses`, `invoices`, `staff`, `calendar`), and no module's migrations or queries reference
+   `projects`, `time`, `expenses`, `invoices`, `staff`, `calendar`, `entra`, `planning`), and no module's migrations or queries reference
    another's. **No cross-schema foreign keys or joins** — reference other modules'
    data by opaque ID only. That is what keeps a future "move this schema to its own
    server" a connection-string change instead of a data migration.
@@ -86,7 +87,8 @@ Communications' outbox is the working example.
    identity — the workspace's business time zone and the day an instant falls on in
    it, which every module judges "today" by), `Accounts`
    (`contracts.AccountProvisioning`, identity — rule 11), `Products` (`contracts.ProductCatalog`,
-   products), `Projects` (`contracts.ProjectDirectory`, projects), `Actuals`
+   products), `Projects` (`contracts.ProjectDirectory`, projects, incl. the
+   consumer-gated `ProjectsByStatus`), `Actuals`
    (`contracts.ProjectActuals`, time), `Timesheets` (`contracts.Timesheets`, time — the
    hours a user logged in a week, consumer-gated), `Expenses`
    (`contracts.ProjectExpenses`, expenses), `Receivables`
@@ -95,7 +97,8 @@ Communications' outbox is the working example.
    invoice is built from — `BillableHours` (`contracts.BillableHours`, time),
    `BillableExpenses` (`contracts.BillableExpenses`, expenses) and
    `BillableMilestones` (`contracts.BillableMilestones`, projects) — and `Workforce`
-   (`contracts.Workforce`, staff — who holds which competence, valid on a date; rule
+   (`contracts.Workforce`, staff — who holds which competence valid on a date, the
+   people in employment and their capacity over a window, the caller's own person; rule
    12). `module.Compose`
    mounts each module at `/api/v1/<name>/` and builds every provider before any
    `Mount` runs, so a module's `Deps` already carries what it consumes; `Calendar`
@@ -182,7 +185,10 @@ Communications' outbox is the working example.
    `@vantigo/products-ui`) never imports from another module's package or from the
    host app; only the host composes them. Shared UI lives in
    `@vantigo/frontend-shell` and the generated API types and client in
-   `@vantigo/frontend-api-client`.
+   `@vantigo/frontend-api-client`. A module package may open a *slot* — a prop the host
+   fills with another package's component, as `@vantigo/staff-ui`'s `PersonPage` does
+   with `extraTabs`, through which the host adds Planning's tab to the person page —
+   and the host composes it; the package that opens the slot never names what fills it.
 8. **One sanctioned cross-module write.** A module never writes another's data —
    with one exception, made for merging customers:
    `contracts.CustomerReferenceHolder`. A module that stores customer ids in its
@@ -387,20 +393,25 @@ Communications' outbox is the working example.
     [the feed's read](/en/reference/calendar/#reading-the-providers-for-the-feed)).
     The single-provider `contracts.Workforce` is bound by the same rule: Staff, its
     sole provider, applies the Colleague rule — `staff:view` (or, for the catalogue
-    alone, `staff:manage`), and the person active today — to the principal in `ctx`,
-    under a request or `AsUser`, and answers nothing, not an error, to anyone else or
-    to a context with neither; a declared certificate is not held. The fit for a
-    proposed booking — a score and the kinds of preference that lowered it, never a
-    preference's value — is written into the reference ahead of Staffing and added to
-    the interface with Staffing's first delivery. Staffing, its intended consumer,
-    never re-states the rule
+    alone, `staff:manage`), and the person in employment on today or on a later day of
+    the window asked — to the principal in `ctx`, under a request or `AsUser`, and
+    answers nothing, not an error, to anyone else or to a context with neither; a
+    declared certificate is not held. `Self`, the caller's own person, is the one read
+    under Staff's Self rule instead, for `staff:access`. The window of `People` and
+    `Capacity` is bounded — from the Monday thirteen weeks before today to three years
+    after it — and their figures are derived: hours a week and whole days away, **never
+    a share**, a type or a terms row. The fit for a proposed booking — a score and the
+    kinds of preference that lowered it, never a preference's value — is written into
+    the reference ahead of its consumer and added to the interface with Planning's
+    delivery B. Planning, its consumer, never re-states the rule
     ([Staff](/en/reference/staff/#the-workforce-contract)).
 
-    Two single-provider reads are the other class, **consumer-gated**:
-    `contracts.ProjectActuals` (Time → Projects) and `contracts.Timesheets` (Time →
-    Staff). Their provider performs no authorization at all, because the rule that
-    decides who may see the figures is the consumer's and the provider cannot know it —
-    Projects' financial rights, Staff's manager rule. The consumer decides before it
+    Three single-provider reads are the other class, **consumer-gated**:
+    `contracts.ProjectActuals` (Time → Projects), `contracts.Timesheets` (Time →
+    Staff) and `contracts.ProjectDirectory.ProjectsByStatus` (Projects → Planning).
+    Their provider performs no authorization at all, because the rule that decides who
+    may see the figures is the consumer's and the provider cannot know it — Projects'
+    financial rights, Staff's manager rule, Planning's `planning:view`. The consumer decides before it
     calls, with the request's context and never inside a transaction, and shows only
     what its own rule allows; the provider answers whatever was logged. A contract is
     one class or the other, said in its doc comment: a provider-gated read is never
@@ -597,7 +608,7 @@ MODULES=customers,products
 ```
 
 Unset enables every module this binary can mount
-(`customers,products,energy,communications,projects,time,expenses,invoices,staff,calendar,entra`). Identity is always mounted and
+(`customers,products,energy,communications,projects,time,expenses,invoices,staff,calendar,entra,planning`). Identity is always mounted and
 is never listed. Entries are trimmed and lower-cased, empty entries are ignored, and a
 name the binary does not know fails startup naming both the value and the known set.
 
@@ -623,7 +634,9 @@ reads them through `contracts.ProjectDirectory`, so `time` without `projects` is
 rejected the same way (`time requires projects`). Entra reads nothing of Staff's but
 is called only by Staff's accounts worker, the slot's one consumer, so `entra` without
 `staff` would hold a tenant's credential nothing uses and is rejected too (`entra
-requires staff`). A module that starts requiring
+requires staff`). Planning books Staff's people on Projects' projects, so `planning`
+requires both `projects` and `staff` (`planning requires projects`, `planning requires
+staff`). A module that starts requiring
 another module's contract adds its own check in `internal/config`.
 
 A contract can also be **optional**. `contracts.ProductCatalog` is the first:
@@ -877,8 +890,9 @@ from the configuration, in the API and a worker alike, with a construction error
 for the calls that need a store rather than failing the process) for the bytes of
 people's documents and photos. It counts the working days an absence takes by the platform
 calendar (`internal/holidays`), never a holiday list of its own. It reads no business module but Time's hours, optionally. It provides one contract,
-`contracts.Workforce` — the competences people hold, valid on a date, for Staffing, its
-intended consumer, which does not exist yet — as that slot's sole provider, and fills
+`contracts.Workforce` — the competences people hold, valid on a date, the people in
+employment and their capacity over a window, and the caller's own person, for Planning,
+its consumer — as that slot's sole provider, and fills
 the many-provider `CalendarSources` slot with the caller's own absences; with Staff
 switched off `Deps.Workforce` is nil, which a consumer must handle, and nothing else in
 another module is stranded — but it does strand its
@@ -902,6 +916,24 @@ the person's lock included, never asking the pool for a second, which is how a l
 holder deadlocked the customers worker with a pool of four (PR #124) — and the ledger
 pass over `staff.object_deletions` takes no lease and holds no connection across
 `objectDelete`. See [Staff](/en/reference/staff/#locks).
+
+**Planning depends on Projects and Staff.** It is the first module to consume two
+business modules at once: it reads `contracts.ProjectDirectory` for the projects a
+person is booked on — `ProjectsByStatus`, consumer-gated, for the plannable list —
+`contracts.Workforce` for the people in employment, their capacity, the caller's own
+person and the competences held, and `contracts.CustomerDirectory` for the customers'
+names; identity's `Deps.Users` gives it the actors' names and `Notify`, the one mail it
+sends, to the person whose row was confirmed, changed or deleted. `MODULES` refuses it
+without `projects` or `staff`, so `Deps.Projects`, `Deps.Workforce` and `Deps.Directory`
+are never nil in a running `planning`; it still answers `dependency_unavailable` (503)
+rather than panic if one is. Every contract call goes through its accessor in
+`internal/planning/contractscalls.go`, with the request's context, **before** a
+transaction opens, never inside one, and the harness fails a test that makes one under
+an open transaction. It provides nothing yet: no other module reads it, and the host
+composes its Planning tab on Staff's person page through the slot `@vantigo/staff-ui`
+opens (rule 7). From delivery C it fills the many-provider `CalendarSources` slot with
+the caller's own confirmed bookings. It has no background worker. With `planning` off
+nothing else changes. See [Planning](/en/reference/planning/#contracts-consumed).
 
 **Entra depends on nobody but identity, and is called by Staff.** It reads no other
 module — in its first release not even identity: the Owner's and `entra:manage`'s

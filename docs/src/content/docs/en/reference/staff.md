@@ -27,7 +27,8 @@ its one mail through the platform's SMTP seam, and keeps its documents' bytes an
 people's photos in the platform's object store under its own scope, `staff`.
 `MODULES=staff` alone is a valid installation. It provides one contract,
 `contracts.Workforce` — the [competences people hold](#the-workforce-contract), valid on
-a date — as the sole provider of that slot, and fills the many-provider calendar slot
+a date, the people in employment and their capacity over a window, and the caller's own
+person — as the sole provider of that slot, and fills the many-provider calendar slot
 with the caller's own absences ([on the calendar](#on-the-calendar)); nothing else of
 the register is read by another module. It reads one many-provider
 slot, `Deps.IdentityProvisioners` (`contracts.IdentityProvisioner`): the external
@@ -677,6 +678,14 @@ The **hold** group is about the record's retention rather than the person: wheth
 legal hold stands, with its reason and when it was set, when the retention run erased
 the person and when they were reassessed. It is HR's alone — `erasedAt` and
 `reassessedAt` are absent until set, `legalHold` is `{held: false}` when there is none.
+
+**The person page's Planning tab.** When the Planning module is on, the person page
+gains a **Planning** tab — the person's [timeline](/en/reference/planning/#the-persons-timeline)
+— for a `planning:view` holder and for the person themselves. The tab is the host's:
+`@vantigo/staff-ui`'s `PersonPage` only opens a slot, `extraTabs`, which the host's
+route fills from `@vantigo/planning-ui`, so neither package imports the other
+([rule 7](/en/contributing/module-boundaries/)). Staff reads nothing of Planning and
+answers nothing new for it.
 
 ### The photo
 
@@ -3172,7 +3181,7 @@ sent twice is refused on the later index (`preferences[1].kind`), an unknown kin
   error on `preferences[i].weight` otherwise.
 - **No free text.** No kind carries text and no row a note: a reason for "no night
   shifts" is a health fact in a sentence (S9). Customer and project wishes, and *do not
-  schedule with*, are Staffing's.
+  schedule with*, are Planning's.
 - **Kept by kind.** The same kind with the same canonical value and weight keeps its row
   and its stamp; another value or weight changes the row and clears its stamp.
 - **The answer** is `{preferences: [...]}`, each row `{kind, value, weight, seenAt}`,
@@ -3201,7 +3210,7 @@ rows by weekday first, then the dated ones by day, each by its start.
 
 **Data only.** Nothing in Staff enforces, sums or checks the declaration against
 absence or the contract's hours; whether a row is hard or soft, and how it meets the
-rest, is Staffing's to decide.
+rest, is Planning's to decide.
 
 ### The review
 
@@ -3499,12 +3508,22 @@ person's Competence tab. Their audiences and triggers are in the
 
 ### The Workforce contract
 
-`contracts.Workforce` is Staff's register of competences read by another module
-(S15): Staff is its sole provider (the `Workforce` slot; nil when Staff is disabled),
-and Staffing its intended consumer, which reads it through `Deps.Workforce` and never
-Staff's tables. Staff is its own gatekeeper
-([rule 12](/en/contributing/module-boundaries/)): the principal is the request's
-caller, or the user `contracts.AsUser` names; a context with neither answers nothing.
+`contracts.Workforce` is Staff's register read by another module (S15, and the
+planning design's S8): Staff is its sole provider (the `Workforce` slot; nil when Staff
+is disabled), and [Planning](/en/reference/planning/#contracts-consumed) its consumer,
+which reads it through `Deps.Workforce` and never Staff's tables. Staff is its own
+gatekeeper ([rule 12](/en/contributing/module-boundaries/)): the principal is the
+request's caller, or the user `contracts.AsUser` names; a context with neither answers
+nothing.
+
+**The Colleague rule, widened.** `HeldCompetences`, `People` and `Capacity` need
+**`staff:view`** — `staff:manage` alone answers nothing — and answer the people **in
+employment on today or on a later day of the window asked**: next month's starter is
+answered, yesterday's leaver is not, whatever window is asked. For `HeldCompetences`
+the window is its one date `on`: the people in employment on `on` when it is today or
+later, and on today for a past `on`. This is wider than the directory's "active today"
+([field groups and audiences](#field-groups-and-audiences)), so a planner sees who
+starts next month; it never reaches a person who has left.
 
 - **`Competences(ctx)`** is the catalogue: every competence not archived, hidden ones
   included, each with its id, key, names, its category's key, its kind, `HasLevel`,
@@ -3513,24 +3532,53 @@ caller, or the user `contracts.AsUser` names; a context with neither answers not
 - **`HeldCompetences(ctx, on, personIDs)`** answers, for each person id, the
   competences they hold valid on `on` (a calendar date at midnight UTC): the current
   row, `validFrom` on or before it and `validTo` absent or on or after it, as
-  `{CompetenceID, Key, Kind, Level, Verified, ValidFrom, ValidTo}`. It applies the
-  **Colleague rule**: it needs `staff:view` — `staff:manage` alone answers nothing —
-  and answers people **active today** only, in employment on today's date in the
-  business zone, whatever date is asked. A person not active today, and one who holds
-  nothing on the date, is absent from the map.
+  `{CompetenceID, Key, Kind, Level, Verified, ValidFrom, ValidTo}`, under the widened
+  Colleague rule above. A person not in employment on the date judged, and one who
+  holds nothing on `on`, is absent from the map.
+- **`People(ctx, from, to)`** answers the people in employment on today or a later day
+  of `from`..`to` (civil dates, inclusive), as the caller may see them: the register's
+  Work group, never a private field — each `{ID, DisplayName, EmployeeNumber,
+  DepartmentID, DepartmentName, UserID, Employed}`. The department is the person's
+  place today, or on their first day in employment inside the window when that is
+  later. `Employed` is the days inside the window the person is in employment, merged
+  into non-overlapping spans. **`UserID`** is the user the person's
+  [self-service link](#the-self-service-link) names in a state that gives that user
+  Self, nil otherwise — for mailing the person through `UserDirectory.Notify`, and for
+  nothing else.
+- **`Capacity(ctx, from, to, personIDs)`** answers, per person, `Segments` — the hours a
+  week in force over the window, `{From, To, HoursPerWeek}`, consecutive,
+  non-overlapping and inside employment, `HoursPerWeek` the full position's hours × the
+  FTE of the [terms](#terms) in force, summed over concurrent employments — and
+  `Away`, whole-day spans: the approved and registered absences of whole or part days,
+  coalesced and clipped to the window, with **no share, no hours, no type and no
+  status** — the same as [the calendar](#the-calendar) shows a colleague. Never a terms
+  row. A person the caller may not see is absent from the map.
+- **The bound.** `People` and `Capacity` take a window from no earlier than the Monday
+  thirteen weeks before today to no later than three years after today, in the business
+  zone; outside it they answer `contracts.ErrWindowOutOfBounds`, so a past window never
+  lists every leaver.
+- **`Self(ctx)`** answers the caller's own person — the one whose self-service link
+  names the caller in a state that gives them Self, under Staff's own Self rule, as
+  [`GET /me`](#my-page) finds them — as a `PersonEntry` with `Employed` empty, or none
+  (`nil, nil`). It needs `staff:access` and nothing more: the person's own record is
+  theirs.
+- **Derived figures.** `HoursPerWeek` is a figure a colleague can nearly compute from
+  the FTE they read and the scheme's default (planning reading 2); a day away is
+  wholly away, since the share is a fact Staff keeps from colleagues (planning
+  reading 1).
 - **Held** means verified for a certificate: a declared certificate is not held. A
   declared skill is held, with `Verified` false. An expired certificate is absent on a
   date after its end, though the dashboard still shows it.
 - The consumer calls with the request's context, never inside a transaction of its
-  own. What a person **wants** is never a method: it reaches Staffing only as a fit
+  own. What a person **wants** is never a method: it reaches Planning only as a fit
   Staff scores (below).
 
 **The matching contract's Staff side** (S15, reading 36). What a person wants reaches a
 planner as a **fit** for a proposed booking — a number and the kinds that lowered it —
-never the wishes themselves, so Staffing weighs preferences nobody but the person's
+never the wishes themselves, so Planning weighs preferences nobody but the person's
 manager and HR read. The method is not on the interface yet: an interface method
-without a consumer is dead code, so it is added with Staffing's first delivery, in this
-shape:
+without a consumer is dead code, so it is added with the Planning delivery that matches
+(B), in this shape:
 
 ```go
 PreferenceFit(ctx context.Context, personID int64, b Booking) (Fit, error)
@@ -3556,7 +3604,7 @@ type Fit struct {
   [preferences](#preferences) the booking contradicts lowers it by its weight × 10 — 10,
   20 or 30 — and names its kind in `Lowered`, never its value.
 - **The availability declaration is not scored**: whether a row is hard or soft, and
-  how it meets the booking, is Staffing's to enforce (S10).
+  how it meets the booking, is Planning's to enforce (S10).
 
 ### The exports and the erase
 
@@ -3633,8 +3681,9 @@ field; every reader of the history reads both.
 
 The phase is built: A — the catalogue, a person's competences, the worker and the
 Workforce contract; B — what the person wants and the review; C — profiles and gaps,
-the matrix and the interests overview. Staffing is the consumer next: it reads who
-holds what through `contracts.Workforce` and, from its first delivery, the fit Staff
+the matrix and the interests overview. Planning is the consumer: its delivery A reads
+who holds what, the people in employment, their capacity and the caller's own person
+through `contracts.Workforce`, and its delivery B adds `PreferenceFits`, the fit Staff
 scores for a booking ([the matching contract's Staff side](#the-workforce-contract)).
 
 ## Absence

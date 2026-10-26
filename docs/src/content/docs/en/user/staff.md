@@ -90,6 +90,14 @@ holding `staff:view` and HR each see a different page; the full table is under
 [field groups and audiences](/en/reference/staff/#field-groups-and-audiences). A person
 you may not see answers exactly as one who does not exist.
 
+When the Planning module is on, an eighth tab, **Planning** (`?tab=planning`), follows
+**Account** for those who hold `planning:access` and either `planning:view` or are the
+person themselves. It shows the person's timeline in Planning — their employment, their
+days away and their bookings on projects for the next 26 weeks, with a booking past the
+employment's end or a certificate expiring during one flagged — and on your own page,
+with `planning:access` alone, your confirmed bookings. See
+[A person's timeline](/en/user/planning/#a-persons-timeline).
+
 At the top, beside the name, is the person's **photo** — or their initials when there is
 none — with their title and department under the name. Everyone who may open the page
 sees the photo, colleagues included. The photo HR sets here becomes the person's picture
@@ -1209,7 +1217,7 @@ saved on its own:
   day** (left empty, the one day). Turn on **Part of the day** to say when it **Starts**
   and **Ends**; otherwise it is the whole day. Press **Add**. Add as many as you need,
   at most 50, take one away with its button in the table, and press **Save
-  availability**. It is data only: nobody plans from it yet.
+  availability**. It is data only: Planning reads it in a later delivery.
 
 There is no field for a reason anywhere, on purpose. A reason for "no night shifts"
 easily becomes a fact about your health, and that does not belong in a form: if a
