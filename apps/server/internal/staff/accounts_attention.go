@@ -105,6 +105,7 @@ var providerCodeItems = map[string]gen.StaffStatsAttentionItemType{
 	contracts.ReportedPrivileged:         gen.AccountPrivilegedInEntra,
 	contracts.ReportedLicenceUnavailable: gen.LicenceUnavailable,
 	contracts.ReportedManagerNotFound:    gen.ManagerNotInEntra,
+	contracts.ReportedPhotoNotWritten:    gen.PhotoNotWritten,
 	codeManagerNotInEntra:                gen.ManagerNotInEntra,
 }
 

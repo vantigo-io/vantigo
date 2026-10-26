@@ -137,9 +137,11 @@ var fieldGroups = map[string]fieldGroup{
 	"roles":             groupWork,
 	// The photo (person-glance design S1): when it was set, on the person and
 	// the directory's row, and the field photo_set and photo_removed name —
-	// everyone's who sees the person.
+	// everyone's who sees the person; whose picture it is (photo sync design
+	// §4: HR's or the linked user's own avatar), in the same group.
 	"photoUpdatedAt": groupWork,
 	"photo":          groupWork,
+	"photoSource":    groupWork,
 
 	"birthDate":    groupPrivate,
 	"gender":       groupPrivate,
@@ -408,8 +410,9 @@ func shown[T any](a audience, field string, v *T) *T {
 // that reads the link. canDecide is whether the caller decides the person's
 // absence requests (deciders.go). lastReview is the person's latest
 // competence review, nil when there is none; it is shown to the reviews
-// group alone.
-func personResponse(row store.GetPersonRow, p placement, a audience, user *gen.StaffPersonUser, canDecide bool, lastReview *gen.StaffLastCompetenceReview) gen.StaffPerson {
+// group alone. photoSource is whose picture the person's photo is (record or
+// account), nil when there is none.
+func personResponse(row store.GetPersonRow, p placement, a audience, user *gen.StaffPersonUser, canDecide bool, lastReview *gen.StaffLastCompetenceReview, photoSource *gen.StaffPersonPhotoSource) gen.StaffPerson {
 	out := gen.StaffPerson{
 		Status:            p.status,
 		Manager:           shown(a, "manager", p.manager),
@@ -445,13 +448,15 @@ func personResponse(row store.GetPersonRow, p placement, a audience, user *gen.S
 			CanStampWishesSeen: (a.Manager || a.Manage) && !a.Self,
 			// The profiles (plan reading 32): assigned by staff:manage alone.
 			CanAssignProfiles: a.Manage,
-			// The photo (person-glance design S1): the person and HR — never
-			// on an erased record, whose PUT and DELETE are person_erased.
-			CanSetPhoto: (a.Self || a.Manage || a.PersonalData) && row.ErasedAt == nil,
+			// HR's photo (photo sync design S2): HR alone — the person's own
+			// picture is their Vantigo avatar — and never on an erased
+			// record, whose PUT and DELETE are person_erased.
+			CanSetPhoto: (a.Manage || a.PersonalData) && row.ErasedAt == nil,
 		},
 		WorkEmail:      shown(a, "workEmail", row.WorkEmail),
 		PhoneWork:      shown(a, "phoneWork", row.PhoneWork),
 		PhotoUpdatedAt: shown(a, "photoUpdatedAt", row.PhotoUpdatedAt),
+		PhotoSource:    shown(a, "photoSource", photoSource),
 		BirthDate:      shown(a, "birthDate", dateOf(row.BirthDate)),
 		Gender:         shown(a, "gender", enumOf[gen.StaffGender](row.Gender)),
 		PhoneMobile:    shown(a, "phoneMobile", row.PhoneMobile),

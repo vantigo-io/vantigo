@@ -63,6 +63,7 @@ func TestAccountAttention_EveryProviderCodeIsMapped(t *testing.T) {
 		contracts.ReportedLicenceUnavailable:                 gen.LicenceUnavailable,
 		contracts.ReportedLicenceUnavailable + ":ENTERPRISE": gen.LicenceUnavailable,
 		contracts.ReportedManagerNotFound:                    gen.ManagerNotInEntra,
+		contracts.ReportedPhotoNotWritten:                    gen.PhotoNotWritten,
 		codeManagerNotInEntra:                                gen.ManagerNotInEntra,
 	} {
 		if got, ok := providerCodeItem(code); !ok || got != want {

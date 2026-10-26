@@ -70,6 +70,38 @@ type fakeAccounts struct {
 	// kinds is the account kind each Prepare and Activate named, in order,
 	// as "<method>:<kind>" (Entra design D5: the kind travels on the call).
 	kinds []string
+	// managed is every SetManagedAvatar call, in order (photo sync design
+	// S1); kept apart from writes, which the account chain's tests compare
+	// whole.
+	managed []managedAvatarCall
+	// avatars, when set (mirrorAvatars), is told every managed avatar
+	// SetManagedAvatar sets or clears, so a directory reading it
+	// (modtest.FakeAvatars.Wrap) answers what identity would.
+	avatars *modtest.FakeAvatars
+}
+
+// managedAvatarCall is one SetManagedAvatar call: the user, the actor, and a
+// copy of the avatar it was given, nil for a clear.
+type managedAvatarCall struct {
+	user   uuid.UUID
+	actor  contracts.Actor
+	avatar *contracts.ManagedAvatar
+}
+
+// managedAvatarCalls is every SetManagedAvatar call so far, in order,
+// refused ones included.
+func (f *fakeAccounts) managedAvatarCalls() []managedAvatarCall {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return slices.Clone(f.managed)
+}
+
+// mirrorAvatars makes every managed avatar SetManagedAvatar sets or clears
+// reach avatars too.
+func (f *fakeAccounts) mirrorAvatars(avatars *modtest.FakeAvatars) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.avatars = avatars
 }
 
 // callKinds is the "<method>:<kind>" of every Prepare and Activate so far.
@@ -206,7 +238,8 @@ func (f *fakeAccounts) ProvisioningRoles(context.Context) ([]contracts.RoleRef, 
 }
 
 // failWith makes every call of method ("Prepare", "Activate", "Deactivate",
-// "Update", "Expect", "Unexpect") answer err, nil to stop.
+// "Update", "Expect", "Unexpect", "Erase", "SetManagedAvatar") answer err,
+// nil to stop.
 func (f *fakeAccounts) failWith(method string, err error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -535,4 +568,38 @@ func TestFakeAccounts_ExpectHoldsTheAnnouncementByNumber(t *testing.T) {
 	if err := f.Expect(ctx, contracts.Actor{}, contracts.ExpectedAccount{EmployeeNumber: "E-2"}); !errors.Is(err, contracts.ErrInvalidActor) {
 		t.Errorf("Expect with no actor = %v, want ErrInvalidActor", err)
 	}
+}
+
+// SetManagedAvatar records the call — refused ones too — then answers the
+// error a test shaped for it (failWith), ErrUserGone for a user the fake does
+// not hold, ErrAccountPrivileged for a set on an Owner or a SystemAdmin,
+// managed or not — a clear is always allowed; otherwise it sets or clears the user's managed avatar in the mirrored
+// avatars, if any. It is not one of writes.
+func (f *fakeAccounts) SetManagedAvatar(_ context.Context, actor contracts.Actor, id uuid.UUID, avatar *contracts.ManagedAvatar) error {
+	if !actor.Valid() {
+		return contracts.ErrInvalidActor
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	call := managedAvatarCall{user: id, actor: actor}
+	if avatar != nil {
+		copied := *avatar
+		copied.Data = slices.Clone(avatar.Data)
+		call.avatar = &copied
+	}
+	f.managed = append(f.managed, call)
+	if err := f.writeErr["SetManagedAvatar"]; err != nil {
+		return err
+	}
+	ref, ok := f.users[id]
+	switch {
+	case !ok:
+		return contracts.ErrUserGone
+	case ref.Privileged && avatar != nil:
+		return contracts.ErrAccountPrivileged
+	}
+	if f.avatars != nil {
+		f.avatars.SetManaged(id, call.avatar)
+	}
+	return nil
 }

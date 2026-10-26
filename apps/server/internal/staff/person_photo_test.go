@@ -76,13 +76,14 @@ func testGIF(t *testing.T) []byte {
 	return buf.Bytes()
 }
 
-// The person themselves, staff:manage and staff:personal-data set the photo
-// (S1): 200 with the person, photoUpdatedAt set and canSetPhoto true for them,
-// the object stored under the person's photo prefix. Each set replaces the
-// last, whose object waits in the ledger — never removed inline. The manager
-// and a colleague see the person and are the uniform 403, a caller who does
-// not see them the bare 404; an erased person is person_erased, the object
-// written for it removed again.
+// staff:manage and staff:personal-data set the photo (photo sync design S2:
+// HR alone): 200 with the person, photoUpdatedAt set and canSetPhoto true for
+// them, the object stored under the person's photo prefix. Each set replaces
+// the last, whose object waits in the ledger — never removed inline. The
+// person themselves, the manager and a colleague see the person and are the
+// uniform 403 — the person's canSetPhoto false, their own picture being their
+// Vantigo avatar — a caller who does not see them the bare 404; an erased
+// person is person_erased, the object written for it removed again.
 func TestPersonPhoto_WhoMaySetIt(t *testing.T) {
 	t.Parallel()
 	w := newAbsenceWorld(t)
@@ -92,7 +93,7 @@ func TestPersonPhoto_WhoMaySetIt(t *testing.T) {
 	for _, tc := range []struct {
 		name string
 		c    *modtest.Client
-	}{{"the person", w.kariC}, {"HR", w.hr}, {"personal-data", w.pd}} {
+	}{{"HR", w.hr}, {"personal-data", w.pd}} {
 		got := setPhoto(t, tc.c, w.kari.Id, testPNG(t))
 		if got.PhotoUpdatedAt == nil || !got.Capabilities.CanSetPhoto {
 			t.Errorf("%s: photoUpdatedAt %v canSetPhoto %v, want set and true", tc.name, got.PhotoUpdatedAt, got.Capabilities.CanSetPhoto)
@@ -108,14 +109,21 @@ func TestPersonPhoto_WhoMaySetIt(t *testing.T) {
 		previous = key
 	}
 
-	var asBoss gen.StaffPerson
-	do(t, w.bossC, http.MethodGet, personPath(w.kari.Id), nil, http.StatusOK, &asBoss)
-	if asBoss.Capabilities.CanSetPhoto || asBoss.PhotoUpdatedAt == nil {
-		t.Errorf("the manager: canSetPhoto %v photoUpdatedAt %v, want false and set", asBoss.Capabilities.CanSetPhoto, asBoss.PhotoUpdatedAt)
+	for name, c := range map[string]*modtest.Client{"the manager": w.bossC, "the person": w.kariC} {
+		var got gen.StaffPerson
+		do(t, c, http.MethodGet, personPath(w.kari.Id), nil, http.StatusOK, &got)
+		if got.Capabilities.CanSetPhoto || got.PhotoUpdatedAt == nil {
+			t.Errorf("%s: canSetPhoto %v photoUpdatedAt %v, want false and set", name, got.Capabilities.CanSetPhoto, got.PhotoUpdatedAt)
+		}
+	}
+	var mine gen.StaffPerson
+	do(t, w.kariC, http.MethodGet, mePath, nil, http.StatusOK, &mine)
+	if mine.Capabilities.CanSetPhoto {
+		t.Error("the person's own record: canSetPhoto true, want false (their picture is their Vantigo avatar)")
 	}
 
 	stored := len(h.objects.keys())
-	for name, c := range map[string]*modtest.Client{"the manager": w.bossC, "a colleague": w.viewer} {
+	for name, c := range map[string]*modtest.Client{"the person": w.kariC, "the manager": w.bossC, "a colleague": w.viewer} {
 		if r := putPhoto(t, c, w.kari.Id, "me.png", "image/png", testPNG(t)); r.Status != http.StatusForbidden || r.Code() != "forbidden" {
 			t.Errorf("%s: status %d body %s, want the uniform 403", name, r.Status, r.Body)
 		}
@@ -260,7 +268,8 @@ func TestPersonPhoto_GetStreamsItWithItsHeaders(t *testing.T) {
 
 // DELETE /people/{id}/photo is the setters' too: the row cleared, the object
 // queued in the ledger, 204; then GET is 404. A person without a photo is
-// 404, the manager the uniform 403, a stranger the 404.
+// 404, the manager and the person themselves the uniform 403, a stranger the
+// 404.
 func TestPersonPhoto_RemoveIt(t *testing.T) {
 	t.Parallel()
 	w := newAbsenceWorld(t)
@@ -272,14 +281,16 @@ func TestPersonPhoto_RemoveIt(t *testing.T) {
 	setPhoto(t, w.hr, w.kari.Id, testPNG(t))
 	key, _ := photoKey(t, h, w.kari.Id)
 
-	if r := w.bossC.Do(http.MethodDelete, photoPath(w.kari.Id), nil); r.Status != http.StatusForbidden || r.Code() != "forbidden" {
-		t.Errorf("the manager: status %d body %s, want the uniform 403", r.Status, r.Body)
+	for name, c := range map[string]*modtest.Client{"the manager": w.bossC, "the person": w.kariC} {
+		if r := c.Do(http.MethodDelete, photoPath(w.kari.Id), nil); r.Status != http.StatusForbidden || r.Code() != "forbidden" {
+			t.Errorf("%s: status %d body %s, want the uniform 403", name, r.Status, r.Body)
+		}
 	}
 	if r := w.nobody.Do(http.MethodDelete, photoPath(w.kari.Id), nil); r.Status != http.StatusNotFound || len(r.Body) != 0 {
 		t.Errorf("a stranger: status %d body %q, want the bare 404", r.Status, r.Body)
 	}
 
-	do(t, w.kariC, http.MethodDelete, photoPath(w.kari.Id), nil, http.StatusNoContent, nil)
+	do(t, w.pd, http.MethodDelete, photoPath(w.kari.Id), nil, http.StatusNoContent, nil)
 	if now, _ := photoKey(t, h, w.kari.Id); now != "" || !queued(t, h, key) || !h.objects.has(key) {
 		t.Errorf("after the delete: row names %q, queued %v, stored %v; want none, queued, left to the ledger", now, queued(t, h, key), h.objects.has(key))
 	}
@@ -305,8 +316,8 @@ func TestPersonPhoto_TheEventsCarryTheTypeOnly(t *testing.T) {
 	t.Parallel()
 	w := newAbsenceWorld(t)
 
-	setPhoto(t, w.kariC, w.kari.Id, testPNG(t))
-	do(t, w.kariC, http.MethodPut, photoPath(w.kari.Id), nil, http.StatusOK, nil, modtest.RawBody(upload{fileName: "me.jpg", data: testJPEG(t)}.form(t)))
+	setPhoto(t, w.hr, w.kari.Id, testPNG(t))
+	do(t, w.pd, http.MethodPut, photoPath(w.kari.Id), nil, http.StatusOK, nil, modtest.RawBody(upload{fileName: "me.jpg", data: testJPEG(t)}.form(t)))
 	do(t, w.hr, http.MethodDelete, photoPath(w.kari.Id), nil, http.StatusNoContent, nil)
 
 	for name, c := range map[string]*modtest.Client{"the manager": w.bossC, "HR": w.hr, "the person": w.kariC} {
@@ -374,7 +385,7 @@ func TestPersonPhoto_TheMetadataIsStripped(t *testing.T) {
 	exif := append([]byte{0xFF, 0xE1, 0x00, byte(len(payload) + 2)}, payload...)
 	tagged := append(append(append([]byte{}, clean[:2]...), exif...), clean[2:]...)
 
-	setPhoto(t, w.kariC, w.kari.Id, tagged)
+	setPhoto(t, w.hr, w.kari.Id, tagged)
 	key, contentType := photoKey(t, w.h, w.kari.Id)
 	got := w.viewer.Do(http.MethodGet, photoPath(w.kari.Id), nil)
 	if contentType != "image/jpeg" || got.Status != http.StatusOK || !bytes.Equal(got.Body, clean) ||

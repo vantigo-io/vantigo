@@ -106,7 +106,10 @@ var columnClasses = map[string]string{
 	// the rest says what the worker did and when.
 	"identity_links.external_upn": "D", "identity_links.external_email": "D", "identity_links.announced_at": "C",
 	"identity_links.pass_issued_at": "C", "identity_links.reported_codes": "C",
-	"identity_links.created_at": "C", "identity_links.updated_at": "C",
+	// The photo pushed (00071, photo sync §3.2): about the account, not the
+	// person — C with the rest of the link.
+	"identity_links.photo_pushed_stamp": "C",
+	"identity_links.created_at":         "C", "identity_links.updated_at": "C",
 
 	// The terms (§3.3): what the job was is C; the pay, the seniority date
 	// and the pay grade are A, kept five years past the end year; the note is
@@ -607,37 +610,39 @@ func (p retentionPlan) dueA(person *int64, limit int32) store.DueEmploymentsAPar
 // retentionBatch people — and each one's erases in one transaction of its
 // own, on conn. One person failing is logged by id and the cycle moves on;
 // they are due again next cycle. It answers what was erased, per kind,
-// summed. zone is the business time zone the caller read before holding
-// conn: nothing here asks the pool for a second connection.
-func (s *server) eraseCycle(ctx context.Context, conn *pgxpool.Conn, who actor, zone *time.Location) ([]erasedKind, error) {
+// summed, and the users linked to the people the D erase marked, whose
+// managed avatar the caller clears once conn is returned
+// (clearErasedAvatars). zone is the business time zone the caller read
+// before holding conn: nothing here asks the pool for a second connection.
+func (s *server) eraseCycle(ctx context.Context, conn *pgxpool.Conn, who actor, zone *time.Location) ([]erasedKind, []erasedLink, error) {
 	q := store.New(conn)
 	plan, err := s.planRetention(ctx, q, zone)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	d, err := q.DuePeopleD(ctx, plan.dueD(nil, retentionBatch))
 	if err != nil {
-		return nil, fmt.Errorf("staff: select the people due for the D erase: %w", err)
+		return nil, nil, fmt.Errorf("staff: select the people due for the D erase: %w", err)
 	}
 	health, err := q.DuePeopleHealth(ctx, plan.dueHealth(nil, retentionBatch))
 	if err != nil {
-		return nil, fmt.Errorf("staff: select the people due for the health erase: %w", err)
+		return nil, nil, fmt.Errorf("staff: select the people due for the health erase: %w", err)
 	}
 	a, err := q.DueEmploymentsA(ctx, plan.dueA(nil, retentionBatch))
 	if err != nil {
-		return nil, fmt.Errorf("staff: select the employments due for the A erase: %w", err)
+		return nil, nil, fmt.Errorf("staff: select the employments due for the A erase: %w", err)
 	}
 	cases, err := q.DueCasesE(ctx, plan.dueCases(nil, retentionBatch))
 	if err != nil {
-		return nil, fmt.Errorf("staff: select the cases due for the health erase: %w", err)
+		return nil, nil, fmt.Errorf("staff: select the cases due for the health erase: %w", err)
 	}
 	childSick, err := q.DuePeopleChildSick(ctx, plan.dueChildSick(nil, retentionBatch))
 	if err != nil {
-		return nil, fmt.Errorf("staff: select the people due for the child-sick erase: %w", err)
+		return nil, nil, fmt.Errorf("staff: select the people due for the child-sick erase: %w", err)
 	}
 	withdrawal, err := q.DuePeopleWithdrawal(ctx, plan.dueWithdrawal(nil, retentionBatch))
 	if err != nil {
-		return nil, fmt.Errorf("staff: select the people due for the withdrawal's erase: %w", err)
+		return nil, nil, fmt.Errorf("staff: select the people due for the withdrawal's erase: %w", err)
 	}
 	people := slices.Concat(d, health)
 	for _, row := range a {
@@ -648,13 +653,13 @@ func (s *server) eraseCycle(ctx context.Context, conn *pgxpool.Conn, who actor, 
 	}
 	orphans, err := q.DuePeopleOrphanedSickEvents(ctx, plan.dueOrphans(nil, retentionBatch))
 	if err != nil {
-		return nil, fmt.Errorf("staff: select the people with orphaned sick events due: %w", err)
+		return nil, nil, fmt.Errorf("staff: select the people with orphaned sick events due: %w", err)
 	}
 	people = slices.Concat(people, childSick, withdrawal, orphans)
 	if plan.erasePregnancyHealth {
 		pregnancy, err := q.DuePeoplePregnancyHealth(ctx, plan.duePregnancyHealth(nil, retentionBatch))
 		if err != nil {
-			return nil, fmt.Errorf("staff: select the people due for the pregnancy and health erase: %w", err)
+			return nil, nil, fmt.Errorf("staff: select the people due for the pregnancy and health erase: %w", err)
 		}
 		people = append(people, pregnancy...)
 	}
@@ -667,11 +672,12 @@ func (s *server) eraseCycle(ctx context.Context, conn *pgxpool.Conn, who actor, 
 
 	totals := map[string]int64{}
 	erased, failed := 0, 0
+	var links []erasedLink
 	for _, id := range due {
 		if ctx.Err() != nil {
 			break
 		}
-		kinds, err := s.erasePersonRecovering(ctx, conn, id, plan, who)
+		kinds, link, err := s.erasePersonRecovering(ctx, conn, id, plan, who)
 		if err != nil {
 			if ctx.Err() == nil {
 				s.logger().ErrorContext(ctx, "staff: erasing a person failed; they are due again next cycle",
@@ -682,6 +688,9 @@ func (s *server) eraseCycle(ctx context.Context, conn *pgxpool.Conn, who actor, 
 		}
 		if len(kinds) > 0 {
 			erased++
+		}
+		if link != nil {
+			links = append(links, erasedLink{personID: id, user: *link})
 		}
 		for _, k := range kinds {
 			totals[k.Kind] += k.Count
@@ -694,17 +703,43 @@ func (s *server) eraseCycle(ctx context.Context, conn *pgxpool.Conn, who actor, 
 			out = append(out, erasedKind{Kind: kind, Count: count})
 		}
 	}
-	return out, nil
+	return out, links, nil
+}
+
+// erasedLink is a user linked to a person the D erase marked: their managed
+// avatar, HR's photo of the person, is cleared once the cycle's connection
+// is returned (photo sync design §4).
+type erasedLink struct {
+	personID int64
+	user     string
+}
+
+// clearErasedAvatars clears the managed avatar of each user links names, as
+// the retention worker, on no connection: the erased person's photo is gone,
+// so it is no longer the account's picture. A failure is logged, never the
+// cycle's.
+func (s *server) clearErasedAvatars(ctx context.Context, links []erasedLink) {
+	for _, l := range links {
+		if ctx.Err() != nil {
+			return
+		}
+		user, err := uuid.Parse(l.user)
+		if err != nil {
+			s.logger().ErrorContext(ctx, "staff: a self-service link names no user id", "worker", retentionWorkerName, "person_id", l.personID)
+			continue
+		}
+		s.setManagedAvatar(ctx, contracts.Actor{System: contracts.SystemActorStaffRetention}, l.personID, user, nil)
+	}
 }
 
 // erasePersonRecovering is erasePerson with a panic turned into that person's
 // error: the transaction's deferred rollback has run, nothing of the person
 // changed, and the cycle moves on — one bug must not stop the worker for
 // good, since the runner never restarts it.
-func (s *server) erasePersonRecovering(ctx context.Context, conn *pgxpool.Conn, personID int64, plan retentionPlan, who actor) (kinds []erasedKind, err error) {
+func (s *server) erasePersonRecovering(ctx context.Context, conn *pgxpool.Conn, personID int64, plan retentionPlan, who actor) (kinds []erasedKind, link *string, err error) {
 	defer func() {
 		if r := recover(); r != nil {
-			kinds, err = nil, fmt.Errorf("panic: %v\n%s", r, debug.Stack())
+			kinds, link, err = nil, nil, fmt.Errorf("panic: %v\n%s", r, debug.Stack())
 		}
 	}()
 	return s.erasePerson(ctx, conn, personID, plan, who)
@@ -716,11 +751,16 @@ func (s *server) erasePersonRecovering(ctx context.Context, conn *pgxpool.Conn, 
 // selection is seen here — and records one erased event naming the kinds
 // when anything was erased. The lock allows an erased person (allowErased):
 // the health and the A erases run on people the D erase marked, and the D
-// erase's own due query is what refuses a person already erased.
-func (s *server) erasePerson(ctx context.Context, conn *pgxpool.Conn, personID int64, plan retentionPlan, who actor) ([]erasedKind, error) {
-	var kinds []erasedKind
+// erase's own due query is what refuses a person already erased. When the D
+// erase ran it also answers the user the person's identity link names, nil
+// for none.
+func (s *server) erasePerson(ctx context.Context, conn *pgxpool.Conn, personID int64, plan retentionPlan, who actor) ([]erasedKind, *string, error) {
+	var (
+		kinds []erasedKind
+		link  *string
+	)
 	err := s.withPersonLockOn(ctx, conn, personID, allowErased, func(ctx context.Context, tx pgx.Tx, txq *store.Queries) error {
-		kinds = nil
+		kinds, link = nil, nil
 		now := s.deps.Clock()
 		d, err := txq.DuePeopleD(ctx, plan.dueD(&personID, 1))
 		if err != nil {
@@ -732,6 +772,9 @@ func (s *server) erasePerson(ctx context.Context, conn *pgxpool.Conn, personID i
 				return err
 			}
 			kinds = append(kinds, erasedKind{Kind: eraseKindD, Count: n})
+			if link, err = linkedUserID(ctx, txq, personID); err != nil {
+				return err
+			}
 		}
 		health, err := txq.DuePeopleHealth(ctx, plan.dueHealth(&personID, 1))
 		if err != nil {
@@ -793,9 +836,12 @@ func (s *server) erasePerson(ctx context.Context, conn *pgxpool.Conn, personID i
 	})
 	if errors.Is(err, errPersonNotFound) {
 		// Deleted since the cycle chose them: nothing left to erase.
-		return nil, nil
+		return nil, nil, nil
 	}
-	return kinds, err
+	if err != nil {
+		return nil, nil, err
+	}
+	return kinds, link, nil
 }
 
 // eraseD is the D erase (S15): every D column of the person and their terms
@@ -1651,6 +1697,9 @@ func (s *server) eraseAccounts(ctx context.Context, who actor, zone *time.Locati
 		if row.ExternalID != nil {
 			userID, err := uuid.Parse(*row.ExternalID)
 			if err == nil {
+				// The erased person's photo is no longer the account's
+				// picture, before the account's own end (photo sync §4).
+				s.setManagedAvatar(ctx, contracts.Actor{System: contracts.SystemActorStaffRetention}, row.PersonID, userID, nil)
 				_, err = withCallTimeout(ctx, func(ctx context.Context) (struct{}, error) {
 					return struct{}{}, s.accountsErase(ctx, contracts.Actor{System: contracts.SystemActorStaffRetention}, userID)
 				})

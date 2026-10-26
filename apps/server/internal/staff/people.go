@@ -117,7 +117,9 @@ func (s *server) linkedUser(ctx context.Context, externalID *string) (*gen.Staff
 // respondPerson is the person as the caller may read them, after any
 // transaction: the audience and the placement today resolved on the pool,
 // and the linked user read from the directory when the audience reads the
-// link, the latest competence review when it reads the Reviews group.
+// link, the latest competence review when it reads the Reviews group, and
+// the effective picture — the linked user's avatar while HR has set no
+// photo (effectivePhoto).
 func (s *server) respondPerson(ctx context.Context, caller *callerContext, row store.GetPersonRow, link *string) (gen.StaffPerson, error) {
 	a, err := personAudience(ctx, store.New(s.deps.Pool), caller, row.ID)
 	if err != nil {
@@ -141,7 +143,9 @@ func (s *server) respondPerson(ctx context.Context, caller *callerContext, row s
 	if err != nil {
 		return gen.StaffPerson{}, err
 	}
-	return personResponse(row, placements[row.ID], a, user, d.decides, last), nil
+	var source *gen.StaffPersonPhotoSource
+	row.PhotoUpdatedAt, source = s.effectivePhoto(ctx, a, row, link)
+	return personResponse(row, placements[row.ID], a, user, d.decides, last, source), nil
 }
 
 // generateEmployeeNumber is the next number of the settings' sequence — the

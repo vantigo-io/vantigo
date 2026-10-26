@@ -527,6 +527,27 @@ func (q *Queries) LockPersonAccountLink(ctx context.Context, personID int64) (Lo
 	return i, err
 }
 
+const nudgeAccountLink = `-- name: NudgeAccountLink :exec
+UPDATE staff.identity_links SET next_attempt_at = $1::timestamptz
+WHERE person_id = $2 AND provider = 'identity'
+  AND next_attempt_at > $1::timestamptz
+`
+
+type NudgeAccountLinkParams struct {
+	Now      time.Time
+	PersonID int64
+}
+
+// NudgeAccountLink makes the person's identity link due at @now, after HR's
+// photo or the self-service link changed (photo sync design §4), so the
+// accounts worker's next poll reconciles the managed avatar and pushes the
+// picture on to the directory instead of at the next midnight. A link
+// already due is left as it is; no link is nothing.
+func (q *Queries) NudgeAccountLink(ctx context.Context, arg NudgeAccountLinkParams) error {
+	_, err := q.db.Exec(ctx, nudgeAccountLink, arg.Now, arg.PersonID)
+	return err
+}
+
 const personAccountLink = `-- name: PersonAccountLink :one
 SELECT external_id, state, managed, blocked_reason, attempts, next_attempt_at, last_synced_at, lease_until
 FROM staff.identity_links

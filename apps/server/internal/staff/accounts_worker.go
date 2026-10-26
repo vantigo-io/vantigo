@@ -871,6 +871,11 @@ func (s *server) workAccountLink(ctx context.Context, run accountsRun, claim sto
 			return accountWorked{failed: r.failed || provider.failed, err: errors.Join(provider.err, werr), providerRefusal: provider.refusal}
 		}
 	}
+	// The account's picture put right before the provider column, which
+	// pushes it on to the directory in the same claim (photo sync design §4).
+	if user != nil {
+		s.reconcileManagedAvatar(ctx, run, *user, ref, f)
+	}
 	// The provider column first, so the announcement precedes the arrival.
 	var provider providerOutcome
 	if f.provider != nil {

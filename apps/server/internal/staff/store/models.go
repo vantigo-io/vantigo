@@ -365,6 +365,7 @@ type StaffIdentityLink struct {
 	AnnouncedAt          *time.Time
 	PassIssuedAt         *time.Time
 	ReportedCodes        []string
+	PhotoPushedStamp     *string
 }
 
 type StaffLegalEntity struct {

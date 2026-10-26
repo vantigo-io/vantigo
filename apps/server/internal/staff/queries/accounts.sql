@@ -303,3 +303,13 @@ SELECT account_kind, count(*)::bigint AS people FROM staff.people
 WHERE provision_account AND erased_at IS NULL AND account_kind NOT IN ('local', 'external')
 GROUP BY account_kind
 ORDER BY account_kind;
+
+-- name: NudgeAccountLink :exec
+-- NudgeAccountLink makes the person's identity link due at @now, after HR's
+-- photo or the self-service link changed (photo sync design §4), so the
+-- accounts worker's next poll reconciles the managed avatar and pushes the
+-- picture on to the directory instead of at the next midnight. A link
+-- already due is left as it is; no link is nothing.
+UPDATE staff.identity_links SET next_attempt_at = @now::timestamptz
+WHERE person_id = @person_id AND provider = 'identity'
+  AND next_attempt_at > @now::timestamptz;

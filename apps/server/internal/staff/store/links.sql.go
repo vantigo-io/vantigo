@@ -242,7 +242,7 @@ const personProviderLink = `-- name: PersonProviderLink :one
 
 SELECT id, external_id, state, managed, blocked_reason, last_error, attempts, next_attempt_at,
     last_synced_at, last_spec_hash, external_upn, external_email, announced_at, pass_issued_at,
-    reported_codes, updated_at
+    reported_codes, photo_pushed_stamp, updated_at
 FROM staff.identity_links
 WHERE person_id = $1 AND provider = $2
 `
@@ -253,22 +253,23 @@ type PersonProviderLinkParams struct {
 }
 
 type PersonProviderLinkRow struct {
-	ID            int64
-	ExternalID    *string
-	State         string
-	Managed       bool
-	BlockedReason *string
-	LastError     *string
-	Attempts      int32
-	NextAttemptAt *time.Time
-	LastSyncedAt  *time.Time
-	LastSpecHash  []byte
-	ExternalUpn   *string
-	ExternalEmail *string
-	AnnouncedAt   *time.Time
-	PassIssuedAt  *time.Time
-	ReportedCodes []string
-	UpdatedAt     time.Time
+	ID               int64
+	ExternalID       *string
+	State            string
+	Managed          bool
+	BlockedReason    *string
+	LastError        *string
+	Attempts         int32
+	NextAttemptAt    *time.Time
+	LastSyncedAt     *time.Time
+	LastSpecHash     []byte
+	ExternalUpn      *string
+	ExternalEmail    *string
+	AnnouncedAt      *time.Time
+	PassIssuedAt     *time.Time
+	ReportedCodes    []string
+	PhotoPushedStamp *string
+	UpdatedAt        time.Time
 }
 
 // The provider links (Entra design D7, delivery B): a person's second row in
@@ -298,6 +299,7 @@ func (q *Queries) PersonProviderLink(ctx context.Context, arg PersonProviderLink
 		&i.AnnouncedAt,
 		&i.PassIssuedAt,
 		&i.ReportedCodes,
+		&i.PhotoPushedStamp,
 		&i.UpdatedAt,
 	)
 	return i, err
@@ -433,29 +435,31 @@ UPDATE staff.identity_links AS pl SET
     announced_at = $11::timestamptz,
     pass_issued_at = $12::timestamptz,
     reported_codes = $13::text[],
-    updated_at = $14::timestamptz
-WHERE pl.id = $15 AND pl.provider <> 'identity'
+    photo_pushed_stamp = coalesce($14::varchar, pl.photo_pushed_stamp),
+    updated_at = $15::timestamptz
+WHERE pl.id = $16 AND pl.provider <> 'identity'
   AND EXISTS (SELECT 1 FROM staff.identity_links il
-              WHERE il.person_id = pl.person_id AND il.provider = 'identity' AND il.lease_id = $16::uuid)
+              WHERE il.person_id = pl.person_id AND il.provider = 'identity' AND il.lease_id = $17::uuid)
 `
 
 type WriteProviderLinkResultParams struct {
-	ExternalID    *string
-	State         string
-	BlockedReason *string
-	LastError     *string
-	Attempts      int32
-	NextAttemptAt *time.Time
-	LastSyncedAt  *time.Time
-	LastSpecHash  []byte
-	ExternalUpn   *string
-	ExternalEmail *string
-	AnnouncedAt   *time.Time
-	PassIssuedAt  *time.Time
-	ReportedCodes []string
-	Now           time.Time
-	ID            int64
-	LeaseID       uuid.UUID
+	ExternalID       *string
+	State            string
+	BlockedReason    *string
+	LastError        *string
+	Attempts         int32
+	NextAttemptAt    *time.Time
+	LastSyncedAt     *time.Time
+	LastSpecHash     []byte
+	ExternalUpn      *string
+	ExternalEmail    *string
+	AnnouncedAt      *time.Time
+	PassIssuedAt     *time.Time
+	ReportedCodes    []string
+	PhotoPushedStamp *string
+	Now              time.Time
+	ID               int64
+	LeaseID          uuid.UUID
 }
 
 // WriteProviderLinkResult records what a claim did on a provider link, every
@@ -464,6 +468,10 @@ type WriteProviderLinkResultParams struct {
 // under the identity provider (never written here), or a claim lost — the
 // identity link's lease lapsed and taken by another cycle, or the identity
 // link gone. Neither the person's revision nor updated_at moves.
+// photo_pushed_stamp is the effective picture's stamp last pushed to the
+// directory (staff photo sync §3.2); null keeps the one recorded, for a
+// claim that pushed nothing (a cleared photo is the stamp "none", never
+// null).
 func (q *Queries) WriteProviderLinkResult(ctx context.Context, arg WriteProviderLinkResultParams) (int64, error) {
 	result, err := q.db.Exec(ctx, writeProviderLinkResult,
 		arg.ExternalID,
@@ -479,6 +487,7 @@ func (q *Queries) WriteProviderLinkResult(ctx context.Context, arg WriteProvider
 		arg.AnnouncedAt,
 		arg.PassIssuedAt,
 		arg.ReportedCodes,
+		arg.PhotoPushedStamp,
 		arg.Now,
 		arg.ID,
 		arg.LeaseID,

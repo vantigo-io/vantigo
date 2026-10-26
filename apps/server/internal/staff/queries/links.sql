@@ -91,7 +91,7 @@ WHERE l.provider = 'identity' AND l.external_id = ANY(@user_ids::text[])
 -- under it.
 SELECT id, external_id, state, managed, blocked_reason, last_error, attempts, next_attempt_at,
     last_synced_at, last_spec_hash, external_upn, external_email, announced_at, pass_issued_at,
-    reported_codes, updated_at
+    reported_codes, photo_pushed_stamp, updated_at
 FROM staff.identity_links
 WHERE person_id = @person_id AND provider = @provider;
 
@@ -128,6 +128,10 @@ ON CONFLICT (person_id, provider) DO NOTHING;
 -- under the identity provider (never written here), or a claim lost — the
 -- identity link's lease lapsed and taken by another cycle, or the identity
 -- link gone. Neither the person's revision nor updated_at moves.
+-- photo_pushed_stamp is the effective picture's stamp last pushed to the
+-- directory (staff photo sync §3.2); null keeps the one recorded, for a
+-- claim that pushed nothing (a cleared photo is the stamp "none", never
+-- null).
 UPDATE staff.identity_links AS pl SET
     external_id = sqlc.narg(external_id)::text,
     state = @state,
@@ -143,6 +147,7 @@ UPDATE staff.identity_links AS pl SET
     announced_at = sqlc.narg(announced_at)::timestamptz,
     pass_issued_at = sqlc.narg(pass_issued_at)::timestamptz,
     reported_codes = @reported_codes::text[],
+    photo_pushed_stamp = coalesce(sqlc.narg(photo_pushed_stamp)::varchar, pl.photo_pushed_stamp),
     updated_at = @now::timestamptz
 WHERE pl.id = @id AND pl.provider <> 'identity'
   AND EXISTS (SELECT 1 FROM staff.identity_links il
