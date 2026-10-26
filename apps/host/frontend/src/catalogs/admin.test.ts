@@ -45,6 +45,10 @@ const staffPermissionKeys = [
   "staff:personal-data",
 ] as const;
 
+// Hand-kept in step with `apps/server/internal/planning/module.go` (`var
+// permissions`), for the same reason.
+const planningPermissionKeys = ["planning:access", "planning:view", "planning:manage"] as const;
+
 describe("the admin permission catalog", () => {
   it("has a display name and a description, in English and Norwegian, for these six projects permissions", () => {
     for (const key of projectsPermissionKeys) {
@@ -145,6 +149,40 @@ describe("the admin permission catalog", () => {
     expect(en["admin.permission.staffPersonalData"]).toBe("Reveal and erase personal data");
     expect(en["admin.permission.staffPersonalDataDescription"]).toBe(
       "Reveal and change national identity numbers and bank accounts, read health documents and sick-leave notes, see HR-only absence types, export anyone's personal data, set legal holds, and erase and re-assess people.",
+    );
+  });
+
+  it("has a display name and a description, in English and Norwegian, for the three planning permissions", () => {
+    for (const key of planningPermissionKeys) {
+      const translation = hostPermissionTranslationKeys[key];
+      expect(translation, `no catalog entry for ${key}`).toBeDefined();
+      expect(translation.moduleKey).toBe("admin.permission.module.planning");
+      expect(translation.categoryKey).toBe("admin.permission.category.planning");
+      for (const lng of ["en", "nb"] as const) {
+        const catalog = adminCatalog[lng] as Record<string, string>;
+        expect(catalog[translation.displayNameKey], `${key} display name (${lng})`).toBeTruthy();
+        expect(catalog[translation.descriptionKey], `${key} description (${lng})`).toBeTruthy();
+        expect(catalog[translation.moduleKey], `${key} module (${lng})`).toBeTruthy();
+        expect(catalog[translation.categoryKey], `${key} category (${lng})`).toBeTruthy();
+      }
+    }
+  });
+
+  it("matches the server's exact English display names and descriptions for planning permissions", () => {
+    const en = adminCatalog.en as Record<string, string>;
+    expect(en["admin.permission.module.planning"]).toBe("Planning");
+    expect(en["admin.permission.category.planning"]).toBe("Planning");
+    expect(en["admin.permission.planningAccess"]).toBe("Use Planning");
+    expect(en["admin.permission.planningAccessDescription"]).toBe(
+      "Use the Planning app: My planning, your own confirmed bookings.",
+    );
+    expect(en["admin.permission.planningView"]).toBe("See the plan");
+    expect(en["admin.permission.planningViewDescription"]).toBe(
+      "See the board, every project's plan, every person's timeline with tentative bookings, the unbooked list, the events and the stats — and with them every project's code, name, customer, status and dates, bids included.",
+    );
+    expect(en["admin.permission.planningManage"]).toBe("Plan");
+    expect(en["admin.permission.planningManageDescription"]).toBe(
+      "Create, change, confirm and delete allocations, read the planners' notes, and change the Planning settings.",
     );
   });
 

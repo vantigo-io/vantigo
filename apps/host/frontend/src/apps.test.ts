@@ -1,4 +1,5 @@
-import { IconCalendarEvent, IconUsersGroup } from "@tabler/icons-react";
+import { IconCalendarEvent, IconCalendarStats, IconUsersGroup } from "@tabler/icons-react";
+import { planningNavItems } from "@vantigo/planning-ui";
 import { staffNavItems } from "@vantigo/staff-ui";
 import { describe, expect, it } from "vitest";
 import {
@@ -23,6 +24,7 @@ const allModules = [
   "entra",
   "expenses",
   "invoices",
+  "planning",
   "products",
   "projects",
   "staff",
@@ -41,6 +43,7 @@ describe("the app registry", () => {
       "time",
       "expenses",
       "staff",
+      "planning",
       "invoices",
       "communications",
       "products",
@@ -86,6 +89,10 @@ describe("the app registry", () => {
       "/staff/competence",
       "/staff/groups",
       "/staff/settings",
+      "/planning",
+      "/planning/unbooked",
+      "/planning/me",
+      "/planning/settings",
       "/invoices",
       "/invoices/quick",
       "/invoices/journal",
@@ -437,6 +444,50 @@ describe("the app registry", () => {
     ]);
   });
 
+  // Planning's destinations are the package's (`planningNavItems`), the host
+  // adding the label and the icon. The board is offered to planning:view but
+  // guarded by the app alone: its URL is the prefix a person's own timeline
+  // lives under, and the board's route sends a caller without planning:view
+  // to My planning.
+  it("gives Planning the board, Unbooked, My planning and the settings, from the package's destinations", () => {
+    const planning = appForKey("planning");
+    expect(planning).toMatchObject({ module: "planning", label: "navigation.planning", home: "/planning" });
+    expect(planning.icon).toBe(IconCalendarStats);
+    expect(planning.requiredPermissions).toEqual(["planning:access"]);
+    const items = planning.navSections.flatMap((section) => section.items);
+    expect(items.map((item) => [item.label, item.to, item.requiredPermissions, item.guardPermissions])).toEqual([
+      ["navigation.planningBoard", "/planning", ["planning:view"], ["planning:access"]],
+      ["navigation.planningUnbooked", "/planning/unbooked", ["planning:view"], undefined],
+      ["navigation.planningMyPlanning", "/planning/me", ["planning:access"], undefined],
+      ["navigation.planningSettings", "/planning/settings", ["planning:manage"], undefined],
+    ]);
+    expect(items.map((item) => item.to)).toEqual(planningNavItems.map((item) => item.to));
+    for (const item of items) {
+      expect(navigationCatalog.en[item.label as keyof typeof navigationCatalog.en]).toBeTruthy();
+      expect(navigationCatalog.nb[item.label as keyof typeof navigationCatalog.nb]).toBeTruthy();
+    }
+    expect(navigationCatalog.en["navigation.planning"]).toBe("Planning");
+    expect(navigationCatalog.nb["navigation.planning"]).toBe("Bemanning");
+  });
+
+  it("shows the Planning tile for planning:access, and a holder of it alone My planning alone", () => {
+    const keys = (permissions: string[], enabled: readonly (typeof allModules)[number][]) =>
+      switcherTiles(permissions, enabled, undefined).map((tile) => [tile.app.key, tile.enabled]);
+    expect(keys(["planning:access"], allModules)).toContainEqual(["planning", true]);
+    expect(keys(["planning:view", "planning:manage"], allModules).map(([key]) => key)).not.toContain("planning");
+    expect(keys(["planning:access"], ["customers"])).toContainEqual(["planning", false]);
+    const paths = (permissions: string[]) =>
+      appNavSections(appForKey("planning"), allModules, {
+        permissions,
+        isOwner: false,
+        canManageAuthorization: false,
+        enabledModules: allModules,
+      }).flatMap((section) => section.items.map((item) => item.to));
+    expect(paths(["planning:access"])).toEqual(["/planning/me"]);
+    expect(paths(["planning:access", "planning:view"])).toEqual(["/planning", "/planning/unbooked", "/planning/me"]);
+    expect(paths(["*"])).toEqual(["/planning", "/planning/unbooked", "/planning/me", "/planning/settings"]);
+  });
+
   it("treats Home as always enabled and module apps as enabled when their module is", () => {
     expect(isAppEnabled(appForKey("home"), [])).toBe(true);
     expect(isAppEnabled(appForKey("energy"), ["customers"])).toBe(false);
@@ -458,6 +509,7 @@ describe("the administration areas", () => {
       "time",
       "expenses",
       "staff",
+      "planning",
       "invoices",
       "communications",
       "products",
@@ -552,6 +604,7 @@ describe("switcherTiles", () => {
       ["time", false],
       ["expenses", false],
       ["staff", false],
+      ["planning", false],
       ["invoices", false],
       ["communications", false],
       ["products", false],

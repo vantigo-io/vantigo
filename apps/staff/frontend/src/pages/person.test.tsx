@@ -1,6 +1,7 @@
 import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { validatePersonSearch } from "../lib/search";
 import { people } from "../test/fixtures";
 import { choose, region, retype, sent } from "../test/helpers";
 import { renderRoute } from "../test/route-tree";
@@ -500,5 +501,52 @@ describe("Person page — the care-day fields", () => {
     const [put] = sent(fetchMock, "PUT", /\/staff\/me$/);
     for (const field of ["childrenUnder12", "soleCarer", "chronicallyIllChildren"])
       expect(put.body).not.toHaveProperty(field);
+  });
+});
+
+/**
+ * The slot (planning design §7, plan reading 3): the host adds a tab this
+ * package never names — Planning's — after Account, addressable by URL; an
+ * unknown tab, or the slot's tab when the host gives none, is the profile.
+ */
+describe("Person page — a tab the host adds", () => {
+  const planningTab = { value: "planning", label: "Planning", render: () => <p>The person's plan</p> };
+
+  it("keeps a lowercase tab the package does not know, and drops anything else and the profile", () => {
+    expect(validatePersonSearch({ tab: "planning" })).toEqual({ tab: "planning" });
+    expect(validatePersonSearch({ tab: "account" })).toEqual({ tab: "account" });
+    for (const tab of ["profile", "Planning", "plan-ning", "x1", "", 3, undefined])
+      expect(validatePersonSearch({ tab }), String(tab)).toEqual({ tab: undefined });
+  });
+
+  it("draws the host's tab after Account and renders it when the URL names it", async () => {
+    stubStaffApi({ role: "manage" });
+    renderRoute("/staff/people/101?tab=planning", { personExtraTabs: [planningTab] });
+
+    expect(await screen.findByText("The person's plan")).toBeInTheDocument();
+    const tabs = screen.getAllByRole("tab").map((tab) => tab.textContent);
+    expect(tabs.at(-1)).toBe("Planning");
+    expect(tabs.indexOf("Account")).toBe(tabs.length - 2);
+    expect(screen.getByRole("tab", { name: "Planning" })).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("opens the host's tab on a click and leaves it unrendered while another is current", async () => {
+    stubStaffApi({ role: "manage" });
+    const { router } = renderRoute("/staff/people/101", { personExtraTabs: [planningTab] });
+
+    await region("Work");
+    expect(screen.queryByText("The person's plan")).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("tab", { name: "Planning" }));
+    expect(await screen.findByText("The person's plan")).toBeInTheDocument();
+    expect(router.state.location.search).toEqual({ tab: "planning" });
+  });
+
+  it("falls back to the profile for a tab nobody draws", async () => {
+    stubStaffApi({ role: "manage" });
+    renderRoute("/staff/people/101?tab=planning");
+
+    expect(await region("Work")).toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "Planning" })).not.toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Profile" })).toHaveAttribute("aria-selected", "true");
   });
 });

@@ -124,6 +124,21 @@ export interface StaffStats {
   onLeaveToday?: number;
 }
 
+/**
+ * Planning's `PlanningStats` (planning design S22): this week's figures, not
+ * the period's, fetched on their own (`GET /planning/stats`) as Staff's are.
+ */
+export interface PlanningStats {
+  peoplePlannedThisWeek: number;
+  /** Confirmed booked over capacity this week, in per cent; absent when the capacity is 0. */
+  loadPercentThisWeek?: number;
+  /** The same for tentative rows. */
+  tentativeLoadPercentThisWeek?: number;
+  unbooked: number;
+  /** Open requests; 0 until delivery B. */
+  openRequests: number;
+}
+
 export interface AttentionItem {
   id: string;
   type: string;
@@ -184,6 +199,8 @@ export const fetchTimeseries = (module: ModuleKey, metric: string, range: DateRa
   request<DailyPoint[]>(buildStatsUrl(module, "timeseries", range, metric), { signal });
 
 export const fetchStaffStats = (signal: AbortSignal) => request<StaffStats>("/api/v1/staff/stats", { signal });
+
+export const fetchPlanningStats = (signal: AbortSignal) => request<PlanningStats>("/api/v1/planning/stats", { signal });
 
 export const fetchAttention = async (module: ModuleKey, signal: AbortSignal) => {
   try {

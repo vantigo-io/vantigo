@@ -34,9 +34,14 @@ import { GroupPage } from "../pages/group";
 import { GroupsPage } from "../pages/groups";
 import { MyPage } from "../pages/my-page";
 import { PeoplePage } from "../pages/people";
-import { PersonPage } from "../pages/person";
+import { type PersonExtraTab, PersonPage } from "../pages/person";
 import { SettingsPage } from "../pages/settings";
 import "../i18n";
+
+export interface RouteTreeOptions {
+  /** What the host route passes the person page, as its Planning tab. */
+  personExtraTabs?: readonly PersonExtraTab[];
+}
 
 /**
  * Stands in for the host routes this package's pages are mounted by (Task
@@ -45,7 +50,7 @@ import "../i18n";
  * back instead of mocking navigation. A fresh tree per call: a route carries
  * its children, and tests mount it more than once.
  */
-export const makeRouteTree = () => {
+export const makeRouteTree = ({ personExtraTabs }: RouteTreeOptions = {}) => {
   const rootRoute = createRootRouteWithContext<{ queryClient: QueryClient }>()({
     component: () => <Outlet />,
   });
@@ -59,7 +64,7 @@ export const makeRouteTree = () => {
     createRoute({
       getParentRoute: () => rootRoute,
       path: PERSON_ROUTE_PATH,
-      component: PersonPage,
+      component: personExtraTabs ? () => <PersonPage extraTabs={personExtraTabs} /> : PersonPage,
       validateSearch: validatePersonSearch,
     }),
     createRoute({
@@ -87,10 +92,10 @@ export const makeRouteTree = () => {
 };
 
 /** Mounts the route tree at a URL under the providers the host gives the pages. */
-export const renderRoute = (url: string) => {
+export const renderRoute = (url: string, options?: RouteTreeOptions) => {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
   const router = createRouter({
-    routeTree: makeRouteTree(),
+    routeTree: makeRouteTree(options),
     context: { queryClient },
     history: createMemoryHistory({ initialEntries: [url] }),
   });

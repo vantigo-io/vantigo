@@ -178,7 +178,13 @@ describe("the staff routes", () => {
     expect(StaffMeRoute.options.validateSearch).toBe(validateMyPageSearch);
     expect(validateMyPageSearch({ tab: "absence" })).toEqual({ tab: "absence" });
     expect(validateMyPageSearch({ tab: "team" })).toEqual({ tab: "team" });
-    expect(validatePersonSearch({ tab: "team" })).toEqual({ tab: undefined });
+    // The person page keeps any lowercase word, so a tab the host adds through
+    // the page's slot (Planning's) is addressable; the page draws the profile
+    // when no tab it shows matches (planning plan reading 3).
+    expect(validatePersonSearch({ tab: "team" })).toEqual({ tab: "team" });
+    expect(validatePersonSearch({ tab: "planning" })).toEqual({ tab: "planning" });
+    expect(validatePersonSearch({ tab: "Planning" })).toEqual({ tab: undefined });
+    expect(validatePersonSearch({ tab: "profile" })).toEqual({ tab: undefined });
     // The spotlight's Request absence lands on My page with the sheet open.
     expect(validateMyPageSearch({ tab: "absence", create: "absence" })).toEqual({ tab: "absence", create: "absence" });
   });

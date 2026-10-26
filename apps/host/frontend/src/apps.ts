@@ -8,6 +8,8 @@ import {
   IconBuildingBank,
   IconCalendar,
   IconCalendarEvent,
+  IconCalendarStats,
+  IconCalendarUser,
   IconCashBanknote,
   IconCategory,
   IconCertificate,
@@ -32,9 +34,11 @@ import {
   IconShieldLock,
   IconUser,
   IconUserPlus,
+  IconUserQuestion,
   IconUsers,
   IconUsersGroup,
 } from "@tabler/icons-react";
+import { type PlanningNavItem, planningNavItems } from "@vantigo/planning-ui";
 import { type StaffNavItem, staffNavItems } from "@vantigo/staff-ui";
 import { accountMenuSections } from "./account-menu";
 import {
@@ -126,6 +130,18 @@ const staffNavPresentation: Record<StaffNavItem["key"], Pick<NavItem, "label" | 
   competence: { label: "navigation.staffCompetence", icon: IconCertificate },
   groups: { label: "navigation.staffGroups", icon: IconUsers },
   settings: { label: "navigation.staffSettings", icon: IconAdjustments },
+};
+
+/**
+ * The host's half of a Planning sidebar entry, as Staff's above: where each
+ * destination is and which permission offers it are the package's
+ * (`planningNavItems`); the label and the icon are the host's.
+ */
+const planningNavPresentation: Record<PlanningNavItem["key"], Pick<NavItem, "label" | "icon">> = {
+  board: { label: "navigation.planningBoard", icon: IconCalendarStats },
+  unbooked: { label: "navigation.planningUnbooked", icon: IconUserQuestion },
+  myPlanning: { label: "navigation.planningMyPlanning", icon: IconCalendarUser },
+  settings: { label: "navigation.planningSettings", icon: IconAdjustments },
 };
 
 /** Every app, in switcher order. Home has no module and no sidebar. */
@@ -293,6 +309,28 @@ export const apps: readonly AppDefinition[] = [
     // server refuses every Staff call without staff:access, so a role with
     // staff:view or staff:manage alone would open an app that answers 403.
     requiredPermissions: ["staff:access"],
+  },
+  {
+    ...moduleApp(
+      "planning",
+      "navigation.planning",
+      IconCalendarStats,
+      "/planning",
+      planningNavItems.map(({ key, to, requiredPermissions }) => ({
+        ...planningNavPresentation[key],
+        to,
+        requiredPermissions,
+        // The board is offered to planning:view, but its URL is the app's
+        // prefix, which a person's own timeline (/planning/people/$personId)
+        // lives under too — planning:access's, the server answering 404 for
+        // anyone else's. So the guard asks for the app here; the board's own
+        // route sends a caller without planning:view to My planning.
+        guardPermissions: key === "board" ? ["planning:access"] : undefined,
+      })),
+    ),
+    // The tile asks for the app itself, as Staff's does: every Planning call
+    // requires planning:access, whatever else the caller holds.
+    requiredPermissions: ["planning:access"],
   },
   moduleApp("invoices", "navigation.invoices", IconFileInvoice, "/invoices", [
     {

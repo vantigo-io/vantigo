@@ -405,6 +405,24 @@ export const hostPermissionTranslationKeys = {
     displayNameKey: "admin.permission.staffPersonalData",
     descriptionKey: "admin.permission.staffPersonalDataDescription",
   },
+  "planning:access": {
+    moduleKey: "admin.permission.module.planning",
+    categoryKey: "admin.permission.category.planning",
+    displayNameKey: "admin.permission.planningAccess",
+    descriptionKey: "admin.permission.planningAccessDescription",
+  },
+  "planning:view": {
+    moduleKey: "admin.permission.module.planning",
+    categoryKey: "admin.permission.category.planning",
+    displayNameKey: "admin.permission.planningView",
+    descriptionKey: "admin.permission.planningViewDescription",
+  },
+  "planning:manage": {
+    moduleKey: "admin.permission.module.planning",
+    categoryKey: "admin.permission.category.planning",
+    displayNameKey: "admin.permission.planningManage",
+    descriptionKey: "admin.permission.planningManageDescription",
+  },
   "calendar:access": {
     moduleKey: "admin.permission.module.calendar",
     categoryKey: "admin.permission.category.calendar",
@@ -619,6 +637,7 @@ const en = {
   "admin.permission.module.calendar": "Calendar",
   "admin.permission.module.entra": "Microsoft Entra ID",
   "admin.permission.module.staff": "Staff",
+  "admin.permission.module.planning": "Planning",
   "admin.permission.category.administration": "Administration",
   "admin.permission.category.customers": "Customers",
   "admin.permission.category.legalIdentity": "Legal identity",
@@ -640,6 +659,7 @@ const en = {
   "admin.permission.category.invoices": "Invoices",
   "admin.permission.category.calendar": "Calendar",
   "admin.permission.category.staff": "Staff",
+  "admin.permission.category.planning": "Planning",
   "admin.permission.identityManage": "Manage identity",
   "admin.permission.identityManageDescription": "Manage accounts, roles, and access.",
   "admin.permission.customersView": "View customers",
@@ -794,6 +814,14 @@ const en = {
   "admin.permission.staffPersonalData": "Reveal and erase personal data",
   "admin.permission.staffPersonalDataDescription":
     "Reveal and change national identity numbers and bank accounts, read health documents and sick-leave notes, see HR-only absence types, export anyone's personal data, set legal holds, and erase and re-assess people.",
+  "admin.permission.planningAccess": "Use Planning",
+  "admin.permission.planningAccessDescription": "Use the Planning app: My planning, your own confirmed bookings.",
+  "admin.permission.planningView": "See the plan",
+  "admin.permission.planningViewDescription":
+    "See the board, every project's plan, every person's timeline with tentative bookings, the unbooked list, the events and the stats — and with them every project's code, name, customer, status and dates, bids included.",
+  "admin.permission.planningManage": "Plan",
+  "admin.permission.planningManageDescription":
+    "Create, change, confirm and delete allocations, read the planners' notes, and change the Planning settings.",
   "admin.permission.calendarAccess": "Use Calendar",
   "admin.permission.calendarAccessDescription":
     "Use the Calendar app: your own calendar, your appointments and your answers to them, and the dashboard's agenda.",
@@ -1198,6 +1226,7 @@ const nb: { [Key in keyof typeof en]: string } = {
   "admin.permission.module.calendar": "Kalender",
   "admin.permission.module.entra": "Microsoft Entra ID",
   "admin.permission.module.staff": "Ansatte",
+  "admin.permission.module.planning": "Bemanning",
   "admin.permission.category.administration": "Administrasjon",
   "admin.permission.category.customers": "Kunder",
   "admin.permission.category.legalIdentity": "Juridisk identitet",
@@ -1219,6 +1248,7 @@ const nb: { [Key in keyof typeof en]: string } = {
   "admin.permission.category.invoices": "Fakturaer",
   "admin.permission.category.calendar": "Kalender",
   "admin.permission.category.staff": "Ansatte",
+  "admin.permission.category.planning": "Bemanning",
   "admin.permission.identityManage": "Administrer identitet",
   "admin.permission.identityManageDescription": "Administrer kontoer, roller og tilgang.",
   "admin.permission.customersView": "Se kunder",
@@ -1376,6 +1406,15 @@ const nb: { [Key in keyof typeof en]: string } = {
   "admin.permission.staffPersonalData": "Vise og slette personopplysninger",
   "admin.permission.staffPersonalDataDescription":
     "Vise og endre fødselsnumre og bankkontoer, lese helsedokumenter og sykmeldinger, se fraværstyper bare HR ser, eksportere hvem som helst sine personopplysninger, sette rettslig hold, og slette og vurdere personer på nytt.",
+  "admin.permission.planningAccess": "Bruke Bemanning",
+  "admin.permission.planningAccessDescription":
+    "Bruke Bemanning-appen: Min bemanning, dine egne bekreftede allokeringer.",
+  "admin.permission.planningView": "Se planen",
+  "admin.permission.planningViewDescription":
+    "Se planen, hvert prosjekts plan, hver persons tidslinje med tentative allokeringer, listen over ubemannede, hendelsene og nøkkeltallene — og med dem hvert prosjekts kode, navn, kunde, status og datoer, tilbud medregnet.",
+  "admin.permission.planningManage": "Planlegge",
+  "admin.permission.planningManageDescription":
+    "Opprette, endre, bekrefte og slette allokeringer, lese planleggernes notater og endre innstillingene for Bemanning.",
   "admin.permission.calendarAccess": "Bruk Kalender",
   "admin.permission.calendarAccessDescription":
     "Bruk Kalender-appen: din egen kalender, avtalene dine og svarene dine på dem, og agendaen på kontrollpanelet.",
