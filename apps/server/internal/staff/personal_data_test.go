@@ -401,7 +401,7 @@ func TestPersonalData_ThePhoto(t *testing.T) {
 		}
 	}
 
-	set := setPhoto(t, w.kariC, w.kari.Id, testPNG(t))
+	set := setPhoto(t, w.hr, w.kari.Id, testPNG(t))
 	for name, r := range files() {
 		file := exportOf(t, r)
 		if file.Photo == nil || file.Photo.ContentType != "image/png" || !file.Photo.UpdatedAt.Equal(*set.PhotoUpdatedAt) {

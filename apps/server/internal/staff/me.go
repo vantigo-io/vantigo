@@ -86,8 +86,8 @@ func (p parsedMe) applyTo(current store.GetPersonRow) store.GetPersonRow {
 }
 
 // respondSelf is the person as they read themselves, placed on today, the
-// linked user and their latest competence review's reviewer read from the
-// directory after any transaction.
+// linked user, their latest competence review's reviewer and their effective
+// picture read from the directory after any transaction.
 func (s *server) respondSelf(ctx context.Context, caller *callerContext, row store.GetPersonRow, link *string) (gen.StaffPerson, error) {
 	placements, err := placementsOf(ctx, store.New(s.deps.Pool), []int64{row.ID}, caller.Today)
 	if err != nil {
@@ -105,7 +105,9 @@ func (s *server) respondSelf(ctx context.Context, caller *callerContext, row sto
 	if err != nil {
 		return gen.StaffPerson{}, err
 	}
-	return personResponse(row, placements[row.ID], selfAudience, user, d.decides, last), nil
+	var source *gen.StaffPersonPhotoSource
+	row.PhotoUpdatedAt, source = s.effectivePhoto(ctx, selfAudience, row, link)
+	return personResponse(row, placements[row.ID], selfAudience, user, d.decides, last, source), nil
 }
 
 // GetStaffMe Get my own record

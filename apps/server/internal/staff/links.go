@@ -161,7 +161,9 @@ func (s *server) GetStaffPeopleByIdUser(ctx context.Context, req gen.GetStaffPeo
 // decoder reads a body without it as null, and an unlink is not what an empty
 // body should mean. Linking to the user already linked writes nothing;
 // linking to another replaces the link, one user_linked event from the old
-// user to the new.
+// user to the new. Once the change has committed the account pictures follow
+// it (followLink): the old user's managed avatar cleared, HR's photo made the
+// new user's.
 func (s *server) PutStaffPeopleByIdUser(ctx context.Context, req gen.PutStaffPeopleByIdUserRequestObject) (gen.PutStaffPeopleByIdUserResponseObject, error) {
 	var body gen.StaffPersonLinkRequest
 	if req.Body != nil {
@@ -225,8 +227,13 @@ func (s *server) PutStaffPeopleByIdUser(ctx context.Context, req gen.PutStaffPeo
 	if target == nil {
 		rule = allowErased
 	}
-	var row *store.PersonLinkRow
+	var (
+		row                  *store.PersonLinkRow
+		person               store.GetPersonRow
+		linkedFrom, linkedTo *string
+	)
 	err = s.withPersonLock(ctx, req.Id, rule, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
+		linkedFrom, linkedTo = nil, nil
 		current, err := personLink(ctx, txq, req.Id)
 		if err != nil {
 			return err
@@ -241,6 +248,10 @@ func (s *server) PutStaffPeopleByIdUser(ctx context.Context, req gen.PutStaffPeo
 			if err := txq.DeletePersonLink(ctx, req.Id); err != nil {
 				return fmt.Errorf("staff: unlink person %d: %w", req.Id, err)
 			}
+			if person, err = readPerson(ctx, txq, req.Id); err != nil {
+				return err
+			}
+			linkedFrom = current.ExternalID
 			return s.recordChanges(ctx, txq, req.Id, eventUserUnlinked, who, changes{"user": fieldChange{From: from(current)}})
 		}
 		id := target.ID.String()
@@ -261,6 +272,13 @@ func (s *server) PutStaffPeopleByIdUser(ctx context.Context, req gen.PutStaffPeo
 		if row, err = personLink(ctx, txq, req.Id); err != nil {
 			return err
 		}
+		if person, err = readPerson(ctx, txq, req.Id); err != nil {
+			return err
+		}
+		if current != nil {
+			linkedFrom = current.ExternalID
+		}
+		linkedTo = &id
 		return s.recordChanges(ctx, txq, req.Id, eventUserLinked, who, changes{"user": fieldChange{
 			From: from(current),
 			To:   map[string]any{"id": id, "displayName": target.DisplayName},
@@ -281,6 +299,7 @@ func (s *server) PutStaffPeopleByIdUser(ctx context.Context, req gen.PutStaffPeo
 	if err != nil {
 		return nil, err
 	}
+	s.followLink(ctx, who, person, linkedFrom, linkedTo)
 	// The user was read from the directory before the transaction; it is the
 	// one the link now names, so it is answered without reading it again.
 	var user *gen.StaffPersonUser

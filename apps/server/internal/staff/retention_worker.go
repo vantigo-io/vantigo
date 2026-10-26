@@ -157,6 +157,7 @@ func (s *server) eraseUnderLease(ctx context.Context, who actor) (bool, []erased
 	var (
 		acquired bool
 		kinds    []erasedKind
+		links    []erasedLink
 	)
 	if err := func() error {
 		conn, err := s.deps.Pool.Acquire(ctx)
@@ -181,11 +182,12 @@ func (s *server) eraseUnderLease(ctx context.Context, who actor) (bool, []erased
 			}
 		}()
 		var cycleErr error
-		kinds, cycleErr = s.eraseCycle(ctx, conn, who, zone)
+		kinds, links, cycleErr = s.eraseCycle(ctx, conn, who, zone)
 		return cycleErr
 	}(); err != nil || !acquired {
 		return acquired, nil, err
 	}
+	s.clearErasedAvatars(ctx, links)
 	if err := s.eraseAccounts(ctx, who, zone); err != nil {
 		return true, kinds, err
 	}

@@ -11,6 +11,8 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/vantigo-io/vantigo/server/internal/apicommon"
+	"github.com/vantigo-io/vantigo/server/internal/contracts"
+	"github.com/vantigo-io/vantigo/server/internal/imagemeta"
 	"github.com/vantigo-io/vantigo/server/internal/staff/gen"
 	"github.com/vantigo-io/vantigo/server/internal/staff/store"
 	"github.com/vantigo-io/vantigo/server/internal/storage"
@@ -19,9 +21,13 @@ import (
 // This file is the person's photo (person-glance design S1, §4 "The photo";
 // plan readings 7 and 8): GET, PUT and DELETE /people/{id}/photo. The bytes
 // live in the object store under the module's scope, the key, the type and
-// when it was set on the person's row. The photo is set and removed by the
-// person themselves, staff:manage and staff:personal-data; read by everyone
-// who reads the person's Work group. The documents' orders hold: the object
+// when it was set on the person's row. The photo is HR's: set and removed by
+// staff:manage and staff:personal-data alone (photo sync design S2 — the
+// person's own picture is their Vantigo avatar, set through identity), and
+// made the linked user's managed avatar once its write commits
+// (person_photo_sync.go); read by everyone who reads the person's Work
+// group, who are shown the linked user's own avatar while HR has set none.
+// The documents' orders hold: the object
 // is written before the person's lock and removed again when the write
 // fails, and an object the row no longer names — the replaced photo, the
 // removed one — is queued in the deletion ledger in the row's own
@@ -34,8 +40,9 @@ const photoCacheControl = "private, max-age=300"
 
 // judgePhotoWriter is the person and whether the caller may set or remove
 // their photo, on q: a caller who does not see the person is the 404
-// refusal, one who sees them but is neither the person, staff:manage nor
-// staff:personal-data the uniform 403.
+// refusal, one who sees them but holds neither staff:manage nor
+// staff:personal-data the uniform 403 — the person themselves included
+// (photo sync design S2).
 func judgePhotoWriter(ctx context.Context, q *store.Queries, caller *callerContext, personID int64) (store.GetPersonRow, error) {
 	row, err := readPerson(ctx, q, personID)
 	if err != nil {
@@ -48,7 +55,7 @@ func judgePhotoWriter(ctx context.Context, q *store.Queries, caller *callerConte
 	if !a.seesPerson() {
 		return row, notFound()
 	}
-	if !a.Self && !a.Manage && !a.PersonalData {
+	if !a.Manage && !a.PersonalData {
 		return row, forbidden()
 	}
 	return row, nil
@@ -70,17 +77,23 @@ func (r photoDownload) VisitGetStaffPeopleByIdPhotoResponse(w http.ResponseWrite
 // GetStaffPeopleByIdPhoto Get a person's photo
 // (GET /api/v1/staff/people/{id}/photo)
 //
-// The row is read in a snapshot and the object after it, outside any
-// transaction; v is ignored. A person the caller does not see, one with no
-// photo, and one whose object the store no longer holds — removed between
-// the snapshot and the read — is the bare 404; a store that cannot be read is
-// 503.
+// The person's effective picture (photo sync design §4): HR's photo when
+// set, else the linked user's avatar. The row and the link are read in a
+// snapshot, the object or the avatar after it, outside any transaction; v
+// is ignored. A person the caller does not see, one with neither picture
+// (an erased person's link is never read), one whose object the store no
+// longer holds — removed between the snapshot
+// and the read — and one whose avatar the directory cannot answer, is the
+// bare 404; a store that cannot be read is 503.
 func (s *server) GetStaffPeopleByIdPhoto(ctx context.Context, req gen.GetStaffPeopleByIdPhotoRequestObject) (gen.GetStaffPeopleByIdPhotoResponseObject, error) {
 	caller, err := s.callerFor(ctx, store.New(s.deps.Pool))
 	if err != nil {
 		return nil, err
 	}
-	var row store.GetPersonRow
+	var (
+		row  store.GetPersonRow
+		link *string
+	)
 	err = s.withReadTx(ctx, func(ctx context.Context, q *store.Queries) error {
 		var err error
 		if row, err = readPerson(ctx, q, req.Id); err != nil {
@@ -93,7 +106,10 @@ func (s *server) GetStaffPeopleByIdPhoto(ctx context.Context, req gen.GetStaffPe
 		if !a.seesPerson() {
 			return notFound()
 		}
-		return nil
+		if row.PhotoObjectKey == nil && row.ErasedAt == nil {
+			link, err = linkedUserID(ctx, q, req.Id)
+		}
+		return err
 	})
 	if _, ok := asRefusal(err); ok {
 		return gen.GetStaffPeopleByIdPhoto404Response{}, nil
@@ -102,7 +118,11 @@ func (s *server) GetStaffPeopleByIdPhoto(ctx context.Context, req gen.GetStaffPe
 		return nil, err
 	}
 	if row.PhotoObjectKey == nil || row.PhotoContentType == nil {
-		return gen.GetStaffPeopleByIdPhoto404Response{}, nil
+		entry := s.linkedAvatar(ctx, req.Id, link)
+		if entry == nil {
+			return gen.GetStaffPeopleByIdPhoto404Response{}, nil
+		}
+		return photoBody(req.Id, entry.ContentType, entry.Data)
 	}
 	data, err := s.readPhoto(ctx, *row.PhotoObjectKey)
 	if errors.Is(err, storage.ErrNotExist) {
@@ -112,14 +132,19 @@ func (s *server) GetStaffPeopleByIdPhoto(ctx context.Context, req gen.GetStaffPe
 		s.deps.Logger.ErrorContext(ctx, "staff: a photo could not be read from the store", "person_id", req.Id, "error", err.Error())
 		return gen.GetStaffPeopleByIdPhoto503ApplicationProblemPlusJSONResponse(storageUnavailable()), nil
 	}
+	return photoBody(req.Id, *row.PhotoContentType, data)
+}
+
+// photoBody is the photo answer for data of contentType, with its headers.
+func photoBody(personID int64, contentType string, data []byte) (gen.GetStaffPeopleByIdPhotoResponseObject, error) {
 	length := int64(len(data))
-	switch *row.PhotoContentType {
+	switch contentType {
 	case "image/png":
 		return photoDownload{body: gen.GetStaffPeopleByIdPhoto200ImagepngResponse{Body: bytes.NewReader(data), ContentLength: length}}, nil
 	case "image/jpeg":
 		return photoDownload{body: gen.GetStaffPeopleByIdPhoto200ImagejpegResponse{Body: bytes.NewReader(data), ContentLength: length}}, nil
 	}
-	return nil, fmt.Errorf("staff: person %d's photo is stored as %q, which is no photo type", req.Id, *row.PhotoContentType)
+	return nil, fmt.Errorf("staff: person %d's photo is %q, which is no photo type", personID, contentType)
 }
 
 // readPhoto is a photo's bytes, read whole — at most 5 MiB — so the answer
@@ -140,13 +165,16 @@ func (s *server) readPhoto(ctx context.Context, key string) ([]byte, error) {
 // may not see (404), the uniform 403, the file (400 photo_invalid), then the
 // state of things (409 person_erased, at the lock). The file's metadata —
 // Exif, XMP, IPTC, PNG's text — is stripped before it is stored
-// (stripPhotoMetadata), and one that cannot be walked is photo_invalid too.
+// (imagemeta.Strip), and one that cannot be walked is photo_invalid too.
 // The object is written
 // before the transaction — a store that cannot write is 503 with nothing
 // recorded — and under the person's lock the caller is judged again, the row
 // set, the replaced object queued in the ledger and photo_set recorded with
 // the types alone. Whatever refuses or fails after the write removes the
-// object.
+// object. Once it has committed, the photo is made the linked user's managed
+// avatar (syncManagedAvatar): a failure there is logged, never the
+// request's, and the accounts worker puts it right — the identity link made
+// due now (nudgeAccountLink), so the directory has it within the hour.
 func (s *server) PutStaffPeopleByIdPhoto(ctx context.Context, req gen.PutStaffPeopleByIdPhotoRequestObject) (gen.PutStaffPeopleByIdPhotoResponseObject, error) {
 	caller, err := s.callerFor(ctx, store.New(s.deps.Pool))
 	if err != nil {
@@ -170,7 +198,7 @@ func (s *server) PutStaffPeopleByIdPhoto(ctx context.Context, req gen.PutStaffPe
 	if f.failed() {
 		return gen.PutStaffPeopleByIdPhoto400ApplicationProblemPlusJSONResponse(invalid(invalidPhotoTitle, f)), nil
 	}
-	data, err := stripPhotoMetadata(contentType, form.data)
+	data, err := imagemeta.Strip(contentType, form.data)
 	if err != nil {
 		var broken fieldErrors
 		broken.addCoded(documentFormField, codePhotoInvalid, photoTypeMessage)
@@ -233,6 +261,12 @@ func (s *server) PutStaffPeopleByIdPhoto(ctx context.Context, req gen.PutStaffPe
 	if err != nil {
 		return nil, err
 	}
+	if saved.PhotoUpdatedAt != nil {
+		s.syncManagedAvatar(ctx, who, req.Id, link, &contracts.ManagedAvatar{
+			ContentType: contentType, Data: data, Source: managedAvatarSource, Stamp: photoStamp(*saved.PhotoUpdatedAt),
+		})
+	}
+	s.nudgeAccountLink(ctx, req.Id)
 	out, err := s.respondPerson(ctx, caller, saved, link)
 	if err != nil {
 		return nil, err
@@ -247,7 +281,8 @@ func (s *server) PutStaffPeopleByIdPhoto(ctx context.Context, req gen.PutStaffPe
 // may not see an erased person learns nothing from its 409 — and again under
 // the lock, where a person with no photo is the 404. The row is cleared, the
 // object queued in the ledger and photo_removed recorded with the type, in
-// one transaction.
+// one transaction; once it has committed, the linked user's managed avatar
+// is cleared, as the set made it, and the identity link made due now.
 func (s *server) DeleteStaffPeopleByIdPhoto(ctx context.Context, req gen.DeleteStaffPeopleByIdPhotoRequestObject) (gen.DeleteStaffPeopleByIdPhotoResponseObject, error) {
 	caller, err := s.callerFor(ctx, store.New(s.deps.Pool))
 	if err != nil {
@@ -270,6 +305,7 @@ func (s *server) DeleteStaffPeopleByIdPhoto(ctx context.Context, req gen.DeleteS
 	if err != nil {
 		return nil, err
 	}
+	var link *string
 	err = s.withPersonLock(ctx, req.Id, refuseErased, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
 		current, err := judgePhotoWriter(ctx, txq, caller, req.Id)
 		if err != nil {
@@ -277,6 +313,9 @@ func (s *server) DeleteStaffPeopleByIdPhoto(ctx context.Context, req gen.DeleteS
 		}
 		if current.PhotoObjectKey == nil {
 			return notFound()
+		}
+		if link, err = linkedUserID(ctx, txq, req.Id); err != nil {
+			return err
 		}
 		if _, err := txq.ClearPersonPhoto(ctx, store.ClearPersonPhotoParams{Now: s.deps.Clock(), ID: req.Id}); err != nil {
 			return fmt.Errorf("staff: clear person %d's photo: %w", req.Id, err)
@@ -305,6 +344,8 @@ func (s *server) DeleteStaffPeopleByIdPhoto(ctx context.Context, req gen.DeleteS
 	if err != nil {
 		return nil, err
 	}
+	s.syncManagedAvatar(ctx, who, req.Id, link, nil)
+	s.nudgeAccountLink(ctx, req.Id)
 	return gen.DeleteStaffPeopleByIdPhoto204Response{}, nil
 }
 

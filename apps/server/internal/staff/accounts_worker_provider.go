@@ -219,6 +219,9 @@ type providerResult struct {
 	announcedAt  *time.Time
 	passIssuedAt *time.Time
 	codes        []string
+	// photoPushedStamp is the effective picture's stamp last pushed to the
+	// directory (pushPhoto), nil before any push.
+	photoPushedStamp *string
 	// failed is a call that could not be made, retried; soon is a link to
 	// work again at the next poll (a deactivation that failed, the chain's
 	// three calls spent with more to do).
@@ -239,6 +242,7 @@ func newProviderResult(pf *providerFacts) *providerResult {
 		r.externalID, r.state, r.reason, r.lastError, r.attempts = l.ExternalID, l.State, l.BlockedReason, l.LastError, l.Attempts
 		r.syncedAt, r.specHash, r.upn, r.email = l.LastSyncedAt, l.LastSpecHash, l.ExternalUpn, l.ExternalEmail
 		r.announcedAt, r.passIssuedAt, r.codes = l.AnnouncedAt, l.PassIssuedAt, slices.Clone(l.ReportedCodes)
+		r.photoPushedStamp = l.PhotoPushedStamp
 	}
 	return r
 }
@@ -417,13 +421,15 @@ type providerOutcome struct {
 
 // providerIdentity is what the provider column knows of the identity link:
 // whether its user has arrived (named, and not a pending, credential-less
-// one), the pending user an announcement replaces, and whether the link
-// names any user (an announcement nothing fulfilled is withdrawn on a
-// deactivate or a delete only then).
+// one), the pending user an announcement replaces, whether the link names
+// any user (an announcement nothing fulfilled is withdrawn on a deactivate
+// or a delete only then), and that user, whose picture is the account's
+// (pushPhoto).
 type providerIdentity struct {
 	arrived bool
 	replace *uuid.UUID
 	linked  bool
+	user    *uuid.UUID
 }
 
 // identityForProvider reads ref (nil: no user, or none read) as the
@@ -434,13 +440,13 @@ func identityForProvider(user *uuid.UUID, ref *contracts.AccountRef, known bool)
 		return providerIdentity{}
 	}
 	if !known || ref == nil {
-		return providerIdentity{arrived: true, linked: true}
+		return providerIdentity{arrived: true, linked: true, user: user}
 	}
 	if ref.Managed && ref.State == contracts.AccountStatePending && !ref.HasCredential {
 		id := ref.UserID
-		return providerIdentity{replace: &id, linked: true}
+		return providerIdentity{replace: &id, linked: true, user: user}
 	}
-	return providerIdentity{arrived: true, linked: true}
+	return providerIdentity{arrived: true, linked: true, user: user}
 }
 
 // workProviderLink works the person's provider link on the claim r holds
@@ -515,7 +521,8 @@ func (s *server) workProviderLink(ctx context.Context, run accountsRun, claim st
 		DeleteAfterDays: pf.deleteAfterDays, LegalHold: pf.legalHold, DisableRequested: disable,
 		CreateBeforeDays: f.createBeforeDays, Today: f.today, Fresh: run.fresh,
 	}
-	for calls := 0; ; calls++ {
+	calls, settled := 0, false
+	for ; ; calls++ {
 		step := decideProvider(in)
 		if (run.unseeded || pf.foreign) && step.Kind != accountStepDeactivate && (calls == 0 || step.Kind != accountStepNone) {
 			// The kinds unseeded (account_seed.go), or a link the person's
@@ -527,6 +534,7 @@ func (s *server) workProviderLink(ctx context.Context, run accountsRun, claim st
 		}
 		if !step.isCall() && step.Kind != accountStepAnnounce && step.Kind != accountStepDelete {
 			r.reported(step)
+			settled = step.Kind == accountStepNone
 			break
 		}
 		if calls >= accountsMaxCalls {
@@ -588,6 +596,14 @@ func (s *server) workProviderLink(ctx context.Context, run accountsRun, claim st
 			in.Fresh = false
 		}
 		in.SpecChanged = !slices.Equal(externalSpecHash(spec), r.specHash)
+	}
+	// The account's picture, once the chain has nothing more to do on an
+	// enabled account (photo sync design §4, plan reading 10).
+	if settled && !disable && !pf.foreign && !run.unseeded && info.Status == contracts.ProviderConnected &&
+		f.decide.Flag && !f.decide.Erased && acc != nil && acc.State == providerStateEnabled {
+		if !s.pushPhoto(ctx, run, claim, lease, p, r, f, ident, calls) {
+			return out
+		}
 	}
 	out.failed, out.soon = r.failed, out.soon || r.soon
 	if len(r.dropped) > 0 {
@@ -784,7 +800,7 @@ func (s *server) writeProviderResult(ctx context.Context, run accountsRun, claim
 			ID: r.id, LeaseID: lease, ExternalID: r.externalID, State: r.state, BlockedReason: r.reason,
 			LastError: r.lastError, Attempts: r.attempts, NextAttemptAt: &next, LastSyncedAt: r.syncedAt,
 			LastSpecHash: r.specHash, ExternalUpn: r.upn, ExternalEmail: r.email, AnnouncedAt: r.announcedAt,
-			PassIssuedAt: r.passIssuedAt, ReportedCodes: codes, Now: now,
+			PassIssuedAt: r.passIssuedAt, ReportedCodes: codes, PhotoPushedStamp: r.photoPushedStamp, Now: now,
 		})
 		if err != nil {
 			return err

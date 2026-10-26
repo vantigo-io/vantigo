@@ -43,6 +43,14 @@ func (silentUsers) PermissionHolders(context.Context, string) ([]contracts.Holde
 
 func (silentUsers) Notify(context.Context, uuid.UUID, contracts.Notice) error { return nil }
 
+func (silentUsers) Avatar(context.Context, uuid.UUID) (*contracts.AvatarEntry, error) {
+	return nil, nil
+}
+
+func (silentUsers) AvatarInfo(context.Context, uuid.UUID) (*contracts.AvatarInfo, error) {
+	return nil, nil
+}
+
 func silentMail(context.Context, config.MailConfig, mail.Outbound) error { return nil }
 
 // silentAccounts is contracts.AccountProvisioning answering nothing, and
@@ -70,6 +78,10 @@ func (silentAccounts) Expect(context.Context, contracts.Actor, contracts.Expecte
 func (silentAccounts) Unexpect(context.Context, contracts.Actor, string) error { return nil }
 
 func (silentAccounts) Erase(context.Context, contracts.Actor, uuid.UUID) error { return nil }
+
+func (silentAccounts) SetManagedAvatar(context.Context, contracts.Actor, uuid.UUID, *contracts.ManagedAvatar) error {
+	return nil
+}
 
 // silentProvisioner is a contracts.IdentityProvisioner answering nothing
 // and refusing nothing, under the key "entra".
@@ -106,6 +118,12 @@ func (silentProvisioner) Account(context.Context, string) (*contracts.ExternalAc
 func (silentProvisioner) RevealPass(context.Context, contracts.Actor, string) (contracts.Pass, error) {
 	return contracts.Pass{}, nil
 }
+
+func (silentProvisioner) SetPhoto(context.Context, contracts.Actor, string, contracts.Photo) error {
+	return nil
+}
+
+func (silentProvisioner) ClearPhoto(context.Context, contracts.Actor, string) error { return nil }
 
 // silentStore is an object store that keeps nothing and refuses nothing.
 type silentStore struct{}
@@ -180,12 +198,17 @@ func TestContractCalls_AreReportedAndRefusedInsideATransaction(t *testing.T) {
 		_, e19 := s.providerUpdate(ctx, p, system, "x", contracts.ExternalSpec{})
 		e20 := s.providerDelete(ctx, p, system, "x")
 		_, e21 := s.providerRevealPass(ctx, p, system, "x")
-		return []error{e1, e2, e3, e4, e5, e6, e7, e8, e9, e10, e11, e12, e13, e13b, e14, e15, e16, e17, e18, e19, e20, e21}
+		_, e22 := s.usersAvatar(ctx, user)
+		e23 := s.accountsSetManagedAvatar(ctx, system, user, nil)
+		e24 := s.providerSetPhoto(ctx, p, system, "x", contracts.Photo{})
+		e25 := s.providerClearPhoto(ctx, p, system, "x")
+		return []error{e1, e2, e3, e4, e5, e6, e7, e8, e9, e10, e11, e12, e13, e13b, e14, e15, e16, e17, e18, e19, e20, e21, e22, e23, e24, e25}
 	}
 	want := []string{"Users.User", "Users.Users", "Users.SearchUsers", "SMTPSend", "ObjectStore.Put", "ObjectStore.Get", "ObjectStore.Delete",
 		"Accounts.Mode", "Accounts.Account", "Accounts.ProvisioningRoles", "Users.PermissionHolders",
 		"Accounts.Expect", "Accounts.Unexpect", "Accounts.Erase", "Provisioner.Provider", "Provisioner.Account", "Provisioner.Prepare",
-		"Provisioner.Activate", "Provisioner.Deactivate", "Provisioner.Update", "Provisioner.Delete", "Provisioner.RevealPass"}
+		"Provisioner.Activate", "Provisioner.Deactivate", "Provisioner.Update", "Provisioner.Delete", "Provisioner.RevealPass",
+		"Users.Avatar", "Accounts.SetManagedAvatar", "Provisioner.SetPhoto", "Provisioner.ClearPhoto"}
 
 	for _, err := range call(ctx) {
 		if err != nil {
@@ -274,6 +297,9 @@ func TestContractCalls_TheAccountsAccessors(t *testing.T) {
 	if err := none.accountsErase(ctx, contracts.Actor{System: contracts.SystemActorStaffRetention}, uuid.New()); !errors.Is(err, errAccountsUnavailable) {
 		t.Errorf("Erase without a provider = %v, want errAccountsUnavailable", err)
 	}
+	if err := none.accountsSetManagedAvatar(ctx, contracts.Actor{System: contracts.SystemActorStaffAccounts}, uuid.New(), nil); !errors.Is(err, errAccountsUnavailable) {
+		t.Errorf("SetManagedAvatar without a provider = %v, want errAccountsUnavailable", err)
+	}
 	// A provider no enabled module offers: the slot names none, and every
 	// provider accessor answers errProviderUnavailable.
 	if p, ok := none.provisioner(contracts.AccountKindEntra); ok || p != nil {
@@ -284,6 +310,12 @@ func TestContractCalls_TheAccountsAccessors(t *testing.T) {
 	}
 	if _, err := none.providerRevealPass(ctx, nil, contracts.Actor{}, "x"); !errors.Is(err, errProviderUnavailable) {
 		t.Errorf("RevealPass without the provider = %v, want errProviderUnavailable", err)
+	}
+	if err := none.providerSetPhoto(ctx, nil, contracts.Actor{}, "x", contracts.Photo{}); !errors.Is(err, errProviderUnavailable) {
+		t.Errorf("SetPhoto without the provider = %v, want errProviderUnavailable", err)
+	}
+	if err := none.providerClearPhoto(ctx, nil, contracts.Actor{}, "x"); !errors.Is(err, errProviderUnavailable) {
+		t.Errorf("ClearPhoto without the provider = %v, want errProviderUnavailable", err)
 	}
 
 	// The persons are read as every caller reads one, readAccountPerson

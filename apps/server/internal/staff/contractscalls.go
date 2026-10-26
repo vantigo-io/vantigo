@@ -100,6 +100,27 @@ func (s *server) usersPermissionHolders(ctx context.Context, key string) ([]cont
 	return s.deps.Users.PermissionHolders(ctx, key)
 }
 
+// usersAvatar is the user's effective avatar (contracts.UserDirectory.Avatar,
+// photo sync design S1): the managed one Staff set, else the user's own; nil
+// when they have none. Its bytes are streamed to a caller allowed the person's
+// photo and never logged.
+func (s *server) usersAvatar(ctx context.Context, id uuid.UUID) (*contracts.AvatarEntry, error) {
+	if err := noteContractCall(ctx, "Users.Avatar"); err != nil {
+		return nil, err
+	}
+	return s.deps.Users.Avatar(ctx, id)
+}
+
+// usersAvatarInfo is usersAvatar without the bytes
+// (contracts.UserDirectory.AvatarInfo): what a caller that only compares the
+// stamp, or shows when the picture changed, reads.
+func (s *server) usersAvatarInfo(ctx context.Context, id uuid.UUID) (*contracts.AvatarInfo, error) {
+	if err := noteContractCall(ctx, "Users.AvatarInfo"); err != nil {
+		return nil, err
+	}
+	return s.deps.Users.AvatarInfo(ctx, id)
+}
+
 // errAccountsUnavailable is every accounts accessor's answer when no module
 // provides account provisioning (Deps.Accounts nil): the request is answered
 // accounts_unavailable, or the field it fills is left out.
@@ -230,6 +251,19 @@ func (s *server) accountsErase(ctx context.Context, actor contracts.Actor, id uu
 	return s.deps.Accounts.Erase(ctx, actor, id)
 }
 
+// accountsSetManagedAvatar sets the user's managed avatar to HR's photo, or
+// clears it with a nil avatar (photo sync design S1): the one write of the
+// user's picture, after the photo's own transaction has committed.
+func (s *server) accountsSetManagedAvatar(ctx context.Context, actor contracts.Actor, id uuid.UUID, avatar *contracts.ManagedAvatar) error {
+	if err := noteContractCall(ctx, "Accounts.SetManagedAvatar"); err != nil {
+		return err
+	}
+	if s.deps.Accounts == nil {
+		return errAccountsUnavailable
+	}
+	return s.deps.Accounts.SetManagedAvatar(ctx, actor, id, avatar)
+}
+
 // errProviderUnavailable is every provider accessor's answer when no enabled
 // module offers the provider a person's kind names (the slot lacks its key):
 // the worker records provider_unavailable, a request answers 503.
@@ -335,6 +369,30 @@ func (s *server) providerRevealPass(ctx context.Context, p contracts.IdentityPro
 		return contracts.Pass{}, errProviderUnavailable
 	}
 	return p.RevealPass(ctx, actor, externalID)
+}
+
+// providerSetPhoto and providerClearPhoto write the account's photo in the
+// provider's directory, or remove it (photo sync design S2): the effective
+// picture the accounts worker pushes on the provider link. A refusal is a
+// code the account reports (contracts.ReportedPhotoNotWritten), not an error.
+func (s *server) providerSetPhoto(ctx context.Context, p contracts.IdentityProvisioner, actor contracts.Actor, externalID string, photo contracts.Photo) error {
+	if err := noteContractCall(ctx, "Provisioner.SetPhoto"); err != nil {
+		return err
+	}
+	if p == nil {
+		return errProviderUnavailable
+	}
+	return p.SetPhoto(ctx, actor, externalID, photo)
+}
+
+func (s *server) providerClearPhoto(ctx context.Context, p contracts.IdentityProvisioner, actor contracts.Actor, externalID string) error {
+	if err := noteContractCall(ctx, "Provisioner.ClearPhoto"); err != nil {
+		return err
+	}
+	if p == nil {
+		return errProviderUnavailable
+	}
+	return p.ClearPhoto(ctx, actor, externalID)
 }
 
 // providerGroupTraits, providerEnsureGroup, providerSetMembers and

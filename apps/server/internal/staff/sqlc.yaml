@@ -17,6 +17,7 @@ sql:
       - ../db/migrations/00067_staff_one_to_one.sql
       - ../db/migrations/00068_staff_competence_profiles.sql
       - ../db/migrations/00069_staff_person_photo.sql
+      - ../db/migrations/00071_staff_photo_push.sql
     queries: queries
     gen:
       go:
