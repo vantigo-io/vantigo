@@ -7,6 +7,7 @@ import {
   IconBuilding,
   IconCalendarEvent,
   IconCalendarPlus,
+  IconCalendarStats,
   IconCertificate,
   IconClock,
   IconListCheck,
@@ -26,6 +27,7 @@ import { customersQueryOptions } from "@vantigo/customers-ui/api/customers";
 import { formatContactName } from "@vantigo/customers-ui/lib/format-contact-name";
 import { meteringPointsQueryOptions } from "@vantigo/energy-ui";
 import { useI18n } from "@vantigo/frontend-shell";
+import { BOARD_ROUTE_PATH } from "@vantigo/planning-ui/lib/routes";
 import { projectSearchQueryOptions } from "@vantigo/projects-ui/api/projects";
 import { MY_PAGE_ROUTE_PATH, PEOPLE_ROUTE_PATH } from "@vantigo/staff-ui/lib/routes";
 import { useState } from "react";
@@ -161,6 +163,24 @@ export const AppSpotlight = ({
             icon: IconCertificate,
             path: MY_PAGE_ROUTE_PATH,
             search: { tab: "competence", create: "competence" },
+          },
+        ]
+      : []),
+    // New allocation is the planner's: the board opens the allocation sheet on
+    // arrival (the package's `create=allocation` seam). Writing one needs the
+    // app and planning:manage, and the board itself planning:view — without
+    // it the board sends the caller to My planning — so three checks, each
+    // any-of on its own.
+    ...(enabledModules?.includes("planning") &&
+    hasPermissions(permissions, ["planning:access"]) &&
+    hasPermissions(permissions, ["planning:view"]) &&
+    hasPermissions(permissions, ["planning:manage"])
+      ? [
+          {
+            label: t("dashboard.newAllocation"),
+            icon: IconCalendarStats,
+            path: BOARD_ROUTE_PATH,
+            search: { create: "allocation" },
           },
         ]
       : []),

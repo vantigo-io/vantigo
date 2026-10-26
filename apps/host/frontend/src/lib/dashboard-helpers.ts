@@ -2,6 +2,7 @@ import {
   IconBolt,
   IconBriefcase,
   IconCalendar,
+  IconCalendarStats,
   IconClock,
   IconFileInvoice,
   IconMessage,
@@ -10,7 +11,7 @@ import {
   IconUsers,
   IconUsersGroup,
 } from "@tabler/icons-react";
-import type { DailyPoint, InvoicesSummary, StaffStats } from "../api/dashboard";
+import type { DailyPoint, InvoicesSummary, PlanningStats, StaffStats } from "../api/dashboard";
 import { hasPermissions, type ModuleKey } from "../navigation";
 
 export const moduleCards = [
@@ -100,6 +101,14 @@ export const moduleCards = [
     module: "staff" as ModuleKey,
     requiredPermissions: ["staff:access"],
   },
+  {
+    title: "dashboard.planning",
+    description: "dashboard.managePlanning",
+    path: "/planning",
+    icon: IconCalendarStats,
+    module: "planning" as ModuleKey,
+    requiredPermissions: ["planning:access"],
+  },
 ] as const;
 
 /** The module cards the caller may see: module enabled for the tenant and permission granted. */
@@ -118,14 +127,31 @@ export const canReadStaffStats = (permissions: string[] | undefined) =>
   hasPermissions(permissions, ["staff:view", "staff:manage"]);
 
 /**
- * The cards of the KPI row: every visible module card, Staff's for those who
- * may read its figures. Calendar has none: it serves no stats endpoints, and
- * its place on the page is the agenda above the row (calendar design D7).
+ * Whether the caller may read Planning's figures: `GET /planning/stats` is
+ * `planning:view`'s (planning design §6), and `planning:manage` does not imply
+ * it (amendment 36), so a caller with `planning:access` alone, or with
+ * `planning:manage` without `planning:view`, keeps the module card and has no
+ * Planning card in the KPI row.
+ */
+export const canReadPlanningStats = (permissions: string[] | undefined) =>
+  hasPermissions(permissions, ["planning:view"]);
+
+/**
+ * The cards of the KPI row: every visible module card, Staff's and
+ * Planning's for those who may read their figures. Calendar has none: it
+ * serves no stats endpoints, and its place on the page is the agenda above
+ * the row (calendar design D7).
  */
 export const kpiCards = <Card extends { module: ModuleKey }>(
   cards: readonly Card[],
   permissions: string[] | undefined,
-) => cards.filter((card) => card.module !== "calendar" && (card.module !== "staff" || canReadStaffStats(permissions)));
+) =>
+  cards.filter(
+    (card) =>
+      card.module !== "calendar" &&
+      (card.module !== "staff" || canReadStaffStats(permissions)) &&
+      (card.module !== "planning" || canReadPlanningStats(permissions)),
+  );
 
 /** The activity chart's series. Invoices has none: it serves no timeseries (payments and delivery design D7). */
 export const metrics = [
@@ -336,7 +362,28 @@ export const attentionHref = (item: { module: ModuleKey; type: string; entityId:
     if (staffGroupAttentionTypes.includes(item.type)) return `/staff/groups/${encodeURIComponent(item.entityId)}`;
     return "/staff";
   }
+  if (item.module === "planning") {
+    // The person's items carry their id and open their timeline; an ending
+    // row carries the allocation's id, which no page is addressed by, so it
+    // opens the board, where the row is seen beside what follows it.
+    if (item.type === "unbooked") return "/planning/unbooked";
+    if (item.type === "overbooked" || item.type === "certificatesExpiring")
+      return `/planning/people/${encodeURIComponent(item.entityId)}`;
+    return "/planning";
+  }
   return "/communications/inbox";
+};
+
+/**
+ * Planning's sentences (planning design S22): the server's title is the
+ * person's name with the week, the certificate or the project's code after
+ * it, so the sentence around it is worded here, in the reader's language.
+ */
+const planningAttentionTitleKeys: Record<string, string> = {
+  unbooked: "dashboard.planningUnbooked",
+  overbooked: "dashboard.planningOverbooked",
+  endingWithoutFollowOn: "dashboard.planningEndingWithoutFollowOn",
+  certificatesExpiring: "dashboard.planningCertificateExpiring",
 };
 
 /**
@@ -517,6 +564,7 @@ export const attentionTitleKey = (item: {
       return "dashboard.staffAccountFailingErased";
     return staffAttentionTitleKeys[item.type];
   }
+  if (item.module === "planning") return planningAttentionTitleKeys[item.type];
   return undefined;
 };
 
@@ -549,7 +597,8 @@ export const attentionTitle = (
     item.module === "projects" ||
     item.module === "expenses" ||
     item.module === "customers" ||
-    item.module === "staff"
+    item.module === "staff" ||
+    item.module === "planning"
   ) {
     return t(key, { name: item.title, count: item.count });
   }
@@ -699,6 +748,34 @@ export const staffKpi = (
       ? `${hint} · ${t("dashboard.staffWithoutEmploymentHint", { count: stats.peopleWithoutEmployment })}`
       : hint,
   };
+};
+
+/**
+ * The Planning card's figures (planning design S22): the people with a
+ * confirmed booking this week, and as the hint the confirmed load this week
+ * with the tentative named after it, and the people on the unbooked list. A
+ * load is left out when the server sends none — nobody has capacity this week.
+ * Open requests arrive with delivery B.
+ */
+export const planningKpi = (
+  stats: PlanningStats | undefined,
+  formatNumber: (value: number, options?: Intl.NumberFormatOptions) => string,
+  t: (key: string, values?: Record<string, unknown>) => string,
+) => {
+  if (!stats) return { value: "—", hint: undefined };
+  const percent = (value: number) => formatNumber(value / 100, { style: "percent", maximumFractionDigits: 0 });
+  const hint = [
+    stats.loadPercentThisWeek === undefined
+      ? undefined
+      : t("dashboard.planningLoadHint", { load: percent(stats.loadPercentThisWeek) }),
+    stats.tentativeLoadPercentThisWeek === undefined
+      ? undefined
+      : t("dashboard.planningTentativeHint", { load: percent(stats.tentativeLoadPercentThisWeek) }),
+    t("dashboard.planningUnbookedHint", { count: stats.unbooked }),
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  return { value: stats.peoplePlannedThisWeek, hint };
 };
 
 export const sparkline = (points: DailyPoint[] | undefined) => points?.map((point) => point.value);

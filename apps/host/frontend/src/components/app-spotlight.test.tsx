@@ -15,6 +15,7 @@ const allModules: ModuleKey[] = [
   "energy",
   "entra",
   "expenses",
+  "planning",
   "products",
   "projects",
   "staff",
@@ -256,6 +257,41 @@ describe("AppSpotlight navigation authorization", () => {
     await waitFor(() => expect(screen.getByText("Create customer", { exact: true })).toBeInTheDocument());
     expect(screen.queryByText("New person", { exact: true })).not.toBeInTheDocument();
     expect(screen.queryByText("My page", { exact: true })).not.toBeInTheDocument();
+  });
+
+  // New allocation is the planner's: the board opens the allocation sheet on
+  // arrival (`?create=allocation`, the package's own search seam).
+  it("opens the New allocation sheet from the quick action for planning:manage", async () => {
+    const onNavigate = vi.fn();
+    renderSpotlight(["planning:access", "planning:view", "planning:manage"], false, false, onNavigate);
+
+    fireEvent.click(await waitFor(() => screen.getByText("New allocation", { exact: true })));
+
+    expect(onNavigate).toHaveBeenCalledTimes(1);
+    expect(navigateMock).toHaveBeenCalledWith(
+      expect.objectContaining({ to: "/planning", search: { create: "allocation" } }),
+    );
+  });
+
+  it("hides New allocation without planning:manage, without the board, and when the module is off", async () => {
+    renderSpotlight(["planning:access", "planning:view"], false, false);
+    await waitFor(() => expect(screen.getByText("My planning", { exact: true })).toBeInTheDocument());
+    expect(screen.queryByText("New allocation", { exact: true })).not.toBeInTheDocument();
+
+    // planning:manage without planning:view would land on My planning, which
+    // the board sends such a caller to, so the action is not offered.
+    cleanup();
+    spotlight.close();
+    renderSpotlight(["planning:access", "planning:manage"], false, false);
+    await waitFor(() => expect(screen.getByText("Planning settings", { exact: true })).toBeInTheDocument());
+    expect(screen.queryByText("New allocation", { exact: true })).not.toBeInTheDocument();
+
+    cleanup();
+    spotlight.close();
+    renderSpotlight(["*"], true, true, undefined, ["customers", "projects", "staff"]);
+    await waitFor(() => expect(screen.getByText("Create customer", { exact: true })).toBeInTheDocument());
+    expect(screen.queryByText("New allocation", { exact: true })).not.toBeInTheDocument();
+    expect(screen.queryByText("My planning", { exact: true })).not.toBeInTheDocument();
   });
 
   // Request absence is everyone's in the app: it lands on My page's Absence

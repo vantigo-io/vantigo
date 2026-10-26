@@ -23,6 +23,7 @@ import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
 import { Route as InvoicesRouteImport } from './routes/invoices'
 import { Route as PasswordResetRouteImport } from './routes/password-reset'
 import { Route as PayRouteImport } from './routes/pay'
+import { Route as PlanningRouteImport } from './routes/planning'
 import { Route as ProductsRouteImport } from './routes/products'
 import { Route as ProjectsRouteImport } from './routes/projects'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
@@ -58,6 +59,10 @@ import { Route as InvoicesJournalRouteImport } from './routes/invoices/journal'
 import { Route as InvoicesOverdueRouteImport } from './routes/invoices/overdue'
 import { Route as InvoicesQuickRouteImport } from './routes/invoices/quick'
 import { Route as InvoicesSettingsRouteImport } from './routes/invoices/settings'
+import { Route as PlanningIndexRouteImport } from './routes/planning/index'
+import { Route as PlanningMeRouteImport } from './routes/planning/me'
+import { Route as PlanningSettingsRouteImport } from './routes/planning/settings'
+import { Route as PlanningUnbookedRouteImport } from './routes/planning/unbooked'
 import { Route as ProductsIndexRouteImport } from './routes/products/index'
 import { Route as ProductsProductIdRouteImport } from './routes/products/$productId'
 import { Route as ProductsCategoriesRouteImport } from './routes/products/categories'
@@ -99,6 +104,8 @@ import { Route as InvoicesPaymentsIndexRouteImport } from './routes/invoices/pay
 import { Route as InvoicesPaymentsVippsRouteImport } from './routes/invoices/payments.vipps'
 import { Route as InvoicesReminderRunsRunIdRouteImport } from './routes/invoices/reminder-runs.$runId'
 import { Route as InvoicesRemindersPrintRouteImport } from './routes/invoices/reminders.print'
+import { Route as PlanningPeoplePersonIdRouteImport } from './routes/planning/people.$personId'
+import { Route as PlanningProjectsProjectIdRouteImport } from './routes/planning/projects.$projectId'
 import { Route as ProjectsProjectIdIndexRouteImport } from './routes/projects/$projectId.index'
 import { Route as ProjectsProjectIdBillingRouteImport } from './routes/projects/$projectId.billing'
 import { Route as ProjectsProjectIdEconomyRouteImport } from './routes/projects/$projectId.economy'
@@ -183,6 +190,11 @@ const PasswordResetRoute = PasswordResetRouteImport.update({
 const PayRoute = PayRouteImport.update({
   id: '/pay',
   path: '/pay',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PlanningRoute = PlanningRouteImport.update({
+  id: '/planning',
+  path: '/planning',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ProductsRoute = ProductsRouteImport.update({
@@ -360,6 +372,26 @@ const InvoicesSettingsRoute = InvoicesSettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
   getParentRoute: () => InvoicesRoute,
+} as any)
+const PlanningIndexRoute = PlanningIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => PlanningRoute,
+} as any)
+const PlanningMeRoute = PlanningMeRouteImport.update({
+  id: '/me',
+  path: '/me',
+  getParentRoute: () => PlanningRoute,
+} as any)
+const PlanningSettingsRoute = PlanningSettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => PlanningRoute,
+} as any)
+const PlanningUnbookedRoute = PlanningUnbookedRouteImport.update({
+  id: '/unbooked',
+  path: '/unbooked',
+  getParentRoute: () => PlanningRoute,
 } as any)
 const ProductsIndexRoute = ProductsIndexRouteImport.update({
   id: '/',
@@ -574,6 +606,17 @@ const InvoicesRemindersPrintRoute = InvoicesRemindersPrintRouteImport.update({
   path: '/reminders/print',
   getParentRoute: () => InvoicesRoute,
 } as any)
+const PlanningPeoplePersonIdRoute = PlanningPeoplePersonIdRouteImport.update({
+  id: '/people/$personId',
+  path: '/people/$personId',
+  getParentRoute: () => PlanningRoute,
+} as any)
+const PlanningProjectsProjectIdRoute =
+  PlanningProjectsProjectIdRouteImport.update({
+    id: '/projects/$projectId',
+    path: '/projects/$projectId',
+    getParentRoute: () => PlanningRoute,
+  } as any)
 const ProjectsProjectIdIndexRoute = ProjectsProjectIdIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -672,6 +715,7 @@ export interface FileRoutesByFullPath {
   '/invoices': typeof InvoicesRouteWithChildren
   '/password-reset': typeof PasswordResetRoute
   '/pay': typeof PayRoute
+  '/planning': typeof PlanningRouteWithChildren
   '/products': typeof ProductsRouteWithChildren
   '/projects': typeof ProjectsRouteWithChildren
   '/reset-password': typeof ResetPasswordRoute
@@ -699,6 +743,9 @@ export interface FileRoutesByFullPath {
   '/invoices/overdue': typeof InvoicesOverdueRoute
   '/invoices/quick': typeof InvoicesQuickRoute
   '/invoices/settings': typeof InvoicesSettingsRoute
+  '/planning/me': typeof PlanningMeRoute
+  '/planning/settings': typeof PlanningSettingsRoute
+  '/planning/unbooked': typeof PlanningUnbookedRoute
   '/products/$productId': typeof ProductsProductIdRoute
   '/products/categories': typeof ProductsCategoriesRoute
   '/products/tax-categories': typeof ProductsTaxCategoriesRoute
@@ -727,6 +774,7 @@ export interface FileRoutesByFullPath {
   '/entra/': typeof EntraIndexRoute
   '/expenses/': typeof ExpensesIndexRoute
   '/invoices/': typeof InvoicesIndexRoute
+  '/planning/': typeof PlanningIndexRoute
   '/products/': typeof ProductsIndexRoute
   '/projects/': typeof ProjectsIndexRoute
   '/settings/': typeof SettingsIndexRoute
@@ -743,6 +791,8 @@ export interface FileRoutesByFullPath {
   '/invoices/payments/vipps': typeof InvoicesPaymentsVippsRoute
   '/invoices/reminder-runs/$runId': typeof InvoicesReminderRunsRunIdRoute
   '/invoices/reminders/print': typeof InvoicesRemindersPrintRoute
+  '/planning/people/$personId': typeof PlanningPeoplePersonIdRoute
+  '/planning/projects/$projectId': typeof PlanningProjectsProjectIdRoute
   '/projects/$projectId/billing': typeof ProjectsProjectIdBillingRoute
   '/projects/$projectId/economy': typeof ProjectsProjectIdEconomyRoute
   '/projects/$projectId/expenses': typeof ProjectsProjectIdExpensesRoute
@@ -791,6 +841,9 @@ export interface FileRoutesByTo {
   '/invoices/overdue': typeof InvoicesOverdueRoute
   '/invoices/quick': typeof InvoicesQuickRoute
   '/invoices/settings': typeof InvoicesSettingsRoute
+  '/planning/me': typeof PlanningMeRoute
+  '/planning/settings': typeof PlanningSettingsRoute
+  '/planning/unbooked': typeof PlanningUnbookedRoute
   '/products/$productId': typeof ProductsProductIdRoute
   '/products/categories': typeof ProductsCategoriesRoute
   '/products/tax-categories': typeof ProductsTaxCategoriesRoute
@@ -818,6 +871,7 @@ export interface FileRoutesByTo {
   '/entra': typeof EntraIndexRoute
   '/expenses': typeof ExpensesIndexRoute
   '/invoices': typeof InvoicesIndexRoute
+  '/planning': typeof PlanningIndexRoute
   '/products': typeof ProductsIndexRoute
   '/projects': typeof ProjectsIndexRoute
   '/settings': typeof SettingsIndexRoute
@@ -834,6 +888,8 @@ export interface FileRoutesByTo {
   '/invoices/payments/vipps': typeof InvoicesPaymentsVippsRoute
   '/invoices/reminder-runs/$runId': typeof InvoicesReminderRunsRunIdRoute
   '/invoices/reminders/print': typeof InvoicesRemindersPrintRoute
+  '/planning/people/$personId': typeof PlanningPeoplePersonIdRoute
+  '/planning/projects/$projectId': typeof PlanningProjectsProjectIdRoute
   '/projects/$projectId/billing': typeof ProjectsProjectIdBillingRoute
   '/projects/$projectId/economy': typeof ProjectsProjectIdEconomyRoute
   '/projects/$projectId/expenses': typeof ProjectsProjectIdExpensesRoute
@@ -871,6 +927,7 @@ export interface FileRoutesById {
   '/invoices': typeof InvoicesRouteWithChildren
   '/password-reset': typeof PasswordResetRoute
   '/pay': typeof PayRoute
+  '/planning': typeof PlanningRouteWithChildren
   '/products': typeof ProductsRouteWithChildren
   '/projects': typeof ProjectsRouteWithChildren
   '/reset-password': typeof ResetPasswordRoute
@@ -898,6 +955,9 @@ export interface FileRoutesById {
   '/invoices/overdue': typeof InvoicesOverdueRoute
   '/invoices/quick': typeof InvoicesQuickRoute
   '/invoices/settings': typeof InvoicesSettingsRoute
+  '/planning/me': typeof PlanningMeRoute
+  '/planning/settings': typeof PlanningSettingsRoute
+  '/planning/unbooked': typeof PlanningUnbookedRoute
   '/products/$productId': typeof ProductsProductIdRoute
   '/products/categories': typeof ProductsCategoriesRoute
   '/products/tax-categories': typeof ProductsTaxCategoriesRoute
@@ -926,6 +986,7 @@ export interface FileRoutesById {
   '/entra/': typeof EntraIndexRoute
   '/expenses/': typeof ExpensesIndexRoute
   '/invoices/': typeof InvoicesIndexRoute
+  '/planning/': typeof PlanningIndexRoute
   '/products/': typeof ProductsIndexRoute
   '/projects/': typeof ProjectsIndexRoute
   '/settings/': typeof SettingsIndexRoute
@@ -942,6 +1003,8 @@ export interface FileRoutesById {
   '/invoices/payments/vipps': typeof InvoicesPaymentsVippsRoute
   '/invoices/reminder-runs/$runId': typeof InvoicesReminderRunsRunIdRoute
   '/invoices/reminders/print': typeof InvoicesRemindersPrintRoute
+  '/planning/people/$personId': typeof PlanningPeoplePersonIdRoute
+  '/planning/projects/$projectId': typeof PlanningProjectsProjectIdRoute
   '/projects/$projectId/billing': typeof ProjectsProjectIdBillingRoute
   '/projects/$projectId/economy': typeof ProjectsProjectIdEconomyRoute
   '/projects/$projectId/expenses': typeof ProjectsProjectIdExpensesRoute
@@ -980,6 +1043,7 @@ export interface FileRouteTypes {
     | '/invoices'
     | '/password-reset'
     | '/pay'
+    | '/planning'
     | '/products'
     | '/projects'
     | '/reset-password'
@@ -1007,6 +1071,9 @@ export interface FileRouteTypes {
     | '/invoices/overdue'
     | '/invoices/quick'
     | '/invoices/settings'
+    | '/planning/me'
+    | '/planning/settings'
+    | '/planning/unbooked'
     | '/products/$productId'
     | '/products/categories'
     | '/products/tax-categories'
@@ -1035,6 +1102,7 @@ export interface FileRouteTypes {
     | '/entra/'
     | '/expenses/'
     | '/invoices/'
+    | '/planning/'
     | '/products/'
     | '/projects/'
     | '/settings/'
@@ -1051,6 +1119,8 @@ export interface FileRouteTypes {
     | '/invoices/payments/vipps'
     | '/invoices/reminder-runs/$runId'
     | '/invoices/reminders/print'
+    | '/planning/people/$personId'
+    | '/planning/projects/$projectId'
     | '/projects/$projectId/billing'
     | '/projects/$projectId/economy'
     | '/projects/$projectId/expenses'
@@ -1099,6 +1169,9 @@ export interface FileRouteTypes {
     | '/invoices/overdue'
     | '/invoices/quick'
     | '/invoices/settings'
+    | '/planning/me'
+    | '/planning/settings'
+    | '/planning/unbooked'
     | '/products/$productId'
     | '/products/categories'
     | '/products/tax-categories'
@@ -1126,6 +1199,7 @@ export interface FileRouteTypes {
     | '/entra'
     | '/expenses'
     | '/invoices'
+    | '/planning'
     | '/products'
     | '/projects'
     | '/settings'
@@ -1142,6 +1216,8 @@ export interface FileRouteTypes {
     | '/invoices/payments/vipps'
     | '/invoices/reminder-runs/$runId'
     | '/invoices/reminders/print'
+    | '/planning/people/$personId'
+    | '/planning/projects/$projectId'
     | '/projects/$projectId/billing'
     | '/projects/$projectId/economy'
     | '/projects/$projectId/expenses'
@@ -1178,6 +1254,7 @@ export interface FileRouteTypes {
     | '/invoices'
     | '/password-reset'
     | '/pay'
+    | '/planning'
     | '/products'
     | '/projects'
     | '/reset-password'
@@ -1205,6 +1282,9 @@ export interface FileRouteTypes {
     | '/invoices/overdue'
     | '/invoices/quick'
     | '/invoices/settings'
+    | '/planning/me'
+    | '/planning/settings'
+    | '/planning/unbooked'
     | '/products/$productId'
     | '/products/categories'
     | '/products/tax-categories'
@@ -1233,6 +1313,7 @@ export interface FileRouteTypes {
     | '/entra/'
     | '/expenses/'
     | '/invoices/'
+    | '/planning/'
     | '/products/'
     | '/projects/'
     | '/settings/'
@@ -1249,6 +1330,8 @@ export interface FileRouteTypes {
     | '/invoices/payments/vipps'
     | '/invoices/reminder-runs/$runId'
     | '/invoices/reminders/print'
+    | '/planning/people/$personId'
+    | '/planning/projects/$projectId'
     | '/projects/$projectId/billing'
     | '/projects/$projectId/economy'
     | '/projects/$projectId/expenses'
@@ -1286,6 +1369,7 @@ export interface RootRouteChildren {
   InvoicesRoute: typeof InvoicesRouteWithChildren
   PasswordResetRoute: typeof PasswordResetRoute
   PayRoute: typeof PayRoute
+  PlanningRoute: typeof PlanningRouteWithChildren
   ProductsRoute: typeof ProductsRouteWithChildren
   ProjectsRoute: typeof ProjectsRouteWithChildren
   ResetPasswordRoute: typeof ResetPasswordRoute
@@ -1398,6 +1482,13 @@ declare module '@tanstack/react-router' {
       path: '/pay'
       fullPath: '/pay'
       preLoaderRoute: typeof PayRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/planning': {
+      id: '/planning'
+      path: '/planning'
+      fullPath: '/planning'
+      preLoaderRoute: typeof PlanningRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/products': {
@@ -1644,6 +1735,34 @@ declare module '@tanstack/react-router' {
       fullPath: '/invoices/settings'
       preLoaderRoute: typeof InvoicesSettingsRouteImport
       parentRoute: typeof InvoicesRoute
+    }
+    '/planning/': {
+      id: '/planning/'
+      path: '/'
+      fullPath: '/planning/'
+      preLoaderRoute: typeof PlanningIndexRouteImport
+      parentRoute: typeof PlanningRoute
+    }
+    '/planning/me': {
+      id: '/planning/me'
+      path: '/me'
+      fullPath: '/planning/me'
+      preLoaderRoute: typeof PlanningMeRouteImport
+      parentRoute: typeof PlanningRoute
+    }
+    '/planning/settings': {
+      id: '/planning/settings'
+      path: '/settings'
+      fullPath: '/planning/settings'
+      preLoaderRoute: typeof PlanningSettingsRouteImport
+      parentRoute: typeof PlanningRoute
+    }
+    '/planning/unbooked': {
+      id: '/planning/unbooked'
+      path: '/unbooked'
+      fullPath: '/planning/unbooked'
+      preLoaderRoute: typeof PlanningUnbookedRouteImport
+      parentRoute: typeof PlanningRoute
     }
     '/products/': {
       id: '/products/'
@@ -1932,6 +2051,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof InvoicesRemindersPrintRouteImport
       parentRoute: typeof InvoicesRoute
     }
+    '/planning/people/$personId': {
+      id: '/planning/people/$personId'
+      path: '/people/$personId'
+      fullPath: '/planning/people/$personId'
+      preLoaderRoute: typeof PlanningPeoplePersonIdRouteImport
+      parentRoute: typeof PlanningRoute
+    }
+    '/planning/projects/$projectId': {
+      id: '/planning/projects/$projectId'
+      path: '/projects/$projectId'
+      fullPath: '/planning/projects/$projectId'
+      preLoaderRoute: typeof PlanningProjectsProjectIdRouteImport
+      parentRoute: typeof PlanningRoute
+    }
     '/projects/$projectId/': {
       id: '/projects/$projectId/'
       path: '/'
@@ -2208,6 +2341,28 @@ const InvoicesRouteWithChildren = InvoicesRoute._addFileChildren(
   InvoicesRouteChildren,
 )
 
+interface PlanningRouteChildren {
+  PlanningMeRoute: typeof PlanningMeRoute
+  PlanningSettingsRoute: typeof PlanningSettingsRoute
+  PlanningUnbookedRoute: typeof PlanningUnbookedRoute
+  PlanningIndexRoute: typeof PlanningIndexRoute
+  PlanningPeoplePersonIdRoute: typeof PlanningPeoplePersonIdRoute
+  PlanningProjectsProjectIdRoute: typeof PlanningProjectsProjectIdRoute
+}
+
+const PlanningRouteChildren: PlanningRouteChildren = {
+  PlanningMeRoute: PlanningMeRoute,
+  PlanningSettingsRoute: PlanningSettingsRoute,
+  PlanningUnbookedRoute: PlanningUnbookedRoute,
+  PlanningIndexRoute: PlanningIndexRoute,
+  PlanningPeoplePersonIdRoute: PlanningPeoplePersonIdRoute,
+  PlanningProjectsProjectIdRoute: PlanningProjectsProjectIdRoute,
+}
+
+const PlanningRouteWithChildren = PlanningRoute._addFileChildren(
+  PlanningRouteChildren,
+)
+
 interface ProductsRouteChildren {
   ProductsProductIdRoute: typeof ProductsProductIdRoute
   ProductsCategoriesRoute: typeof ProductsCategoriesRoute
@@ -2364,6 +2519,7 @@ const rootRouteChildren: RootRouteChildren = {
   InvoicesRoute: InvoicesRouteWithChildren,
   PasswordResetRoute: PasswordResetRoute,
   PayRoute: PayRoute,
+  PlanningRoute: PlanningRouteWithChildren,
   ProductsRoute: ProductsRouteWithChildren,
   ProjectsRoute: ProjectsRouteWithChildren,
   ResetPasswordRoute: ResetPasswordRoute,

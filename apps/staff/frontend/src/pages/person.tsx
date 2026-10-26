@@ -3,7 +3,7 @@ import { IconAlertCircle } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import { ContentSkeleton, EmptyState, PageHeader, PageTabs, useI18n } from "@vantigo/frontend-shell";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { personHolidayAccountQueryOptions } from "../api/absence";
 import { staffMetaQueryOptions } from "../api/meta";
 import { personEventsQueryOptions, personQueryOptions, type StaffPerson } from "../api/people";
@@ -13,7 +13,7 @@ import { ErasedBadge, PersonStatusBadge } from "../components/person-status";
 import "../i18n";
 import { readsDocuments } from "../lib/documents";
 import { PEOPLE_ROUTE_PATH } from "../lib/routes";
-import type { PersonSearch, PersonTab } from "../lib/search";
+import type { PersonSearch } from "../lib/search";
 import { ErasedBanner } from "./-erased-banner";
 import { LegalHoldAlert, LegalHoldButton } from "./-legal-hold";
 import { PersonAbsence } from "./-person-absence";
@@ -24,6 +24,21 @@ import { PersonEmployments } from "./-person-employments";
 import { PersonHistory } from "./-person-history";
 import { PersonProfile } from "./-person-profile";
 import { PersonalDataDownload } from "./-personal-data-download";
+
+/**
+ * A tab another module adds to the page through the host (planning design
+ * §7): this package never names that module, so the host route gives the
+ * value, the label and what the tab renders. Extra tabs follow Account.
+ */
+export interface PersonExtraTab {
+  value: string;
+  label: ReactNode;
+  render: () => ReactNode;
+}
+
+export interface PersonPageProps {
+  extraTabs?: readonly PersonExtraTab[];
+}
 
 /**
  * The person page (design §7): Profile, Employments, Absence, Competence,
@@ -45,7 +60,7 @@ import { PersonalDataDownload } from "./-personal-data-download";
  * an erased record with *Disable now* alone, which the server takes there:
  * the access must end too.
  */
-export const PersonPage = () => {
+export const PersonPage = ({ extraTabs = [] }: PersonPageProps = {}) => {
   const { t } = useI18n("staff");
   const { id } = useParams({ strict: false }) as { id: string };
   const personId = Number(id);
@@ -122,8 +137,9 @@ export const PersonPage = () => {
     ...(historyReadable ? [{ value: "history" as const, label: t("tab_history") }] : []),
     ...(readsDocuments(data) ? [{ value: "documents" as const, label: t("tab_documents") }] : []),
     ...(readsAccount ? [{ value: "account" as const, label: t("tab_account") }] : []),
+    ...extraTabs.map(({ value, label }) => ({ value, label })),
   ];
-  const current: PersonTab = tabs.some((one) => one.value === tab) ? tab : "profile";
+  const current: string = tabs.some((one) => one.value === tab) ? tab : "profile";
 
   return (
     <Stack gap="lg">
@@ -224,6 +240,11 @@ export const PersonPage = () => {
             {current === "account" && <PersonAccount person={data} timeZone={timeZone} erased={erased} />}
           </Tabs.Panel>
         )}
+        {extraTabs.map((extra) => (
+          <Tabs.Panel key={extra.value} value={extra.value} pt="lg">
+            {current === extra.value && extra.render()}
+          </Tabs.Panel>
+        ))}
       </PageTabs>
     </Stack>
   );

@@ -40,6 +40,7 @@ import {
   type ExpensesSummary,
   endOfDay,
   fetchAttention,
+  fetchPlanningStats,
   fetchStaffStats,
   fetchSummary,
   fetchTimeseries,
@@ -54,6 +55,7 @@ import {
   attentionHref,
   attentionTitle,
   awaitingApprovalHint,
+  canReadPlanningStats,
   canReadStaffStats,
   deltaPercent,
   expensesUnreimbursedValue,
@@ -61,6 +63,7 @@ import {
   kpiCards,
   metrics,
   moduleCards,
+  planningKpi,
   projectsCardHint,
   relativeTime,
   sparkline,
@@ -157,6 +160,14 @@ const DashboardPage = () => {
     queryKey: ["dashboard", "staff", "stats"],
     queryFn: ({ signal }) => fetchStaffStats(signal),
     enabled: allowed("staff") && canReadStaffStats(permissions),
+    retry: false,
+  });
+
+  // Planning's figures are this week's, not the period's (planning design S22).
+  const planningStats = useQuery({
+    queryKey: ["dashboard", "planning", "stats"],
+    queryFn: ({ signal }) => fetchPlanningStats(signal),
+    enabled: allowed("planning") && canReadPlanningStats(permissions),
     retry: false,
   });
 
@@ -280,6 +291,13 @@ const DashboardPage = () => {
     retry: false,
   });
 
+  const planningAttention = useQuery({
+    queryKey: ["dashboard", "planning", "attention"],
+    queryFn: ({ signal }) => fetchAttention("planning", signal),
+    enabled: allowed("planning"),
+    retry: false,
+  });
+
   const timeseriesByMetric: Record<string, DailyPoint[] | undefined> = {
     "customers:newCustomers": customersTimeseries.data,
     "communications:newConversations": communicationsTimeseries.data,
@@ -320,7 +338,8 @@ const DashboardPage = () => {
     (allowed("time") && timeAttention.isPending) ||
     (allowed("expenses") && expensesAttention.isPending) ||
     (allowed("invoices") && invoicesAttention.isPending) ||
-    (allowed("staff") && staffAttention.isPending);
+    (allowed("staff") && staffAttention.isPending) ||
+    (allowed("planning") && planningAttention.isPending);
   const activityLoading =
     (allowed("customers") && customersTimeseries.isPending) ||
     (allowed("communications") && communicationsTimeseries.isPending) ||
@@ -340,6 +359,7 @@ const DashboardPage = () => {
     ...(expensesAttention.data ?? []).map((item) => ({ ...item, module: "expenses" as ModuleKey })),
     ...(invoicesAttention.data ?? []).map((item) => ({ ...item, module: "invoices" as ModuleKey })),
     ...(staffAttention.data ?? []).map((item) => ({ ...item, module: "staff" as ModuleKey })),
+    ...(planningAttention.data ?? []).map((item) => ({ ...item, module: "planning" as ModuleKey })),
   ]
     .sort((a, b) => new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime())
     .slice(0, 8);
@@ -610,6 +630,17 @@ const DashboardPage = () => {
                 {...staffKpi(staffStats.data, formatters.formatNumber, t)}
                 href={href}
                 loading={staffStats.isPending}
+              />
+            );
+          }
+          if (module.module === "planning") {
+            return (
+              <KpiCard
+                key={module.module}
+                label={t("dashboard.planningPeoplePlanned")}
+                {...planningKpi(planningStats.data, formatters.formatNumber, t)}
+                href={href}
+                loading={planningStats.isPending}
               />
             );
           }

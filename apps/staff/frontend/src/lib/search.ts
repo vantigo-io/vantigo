@@ -66,14 +66,24 @@ export const personTabs = [
 ] as const;
 export type PersonTab = (typeof personTabs)[number];
 
-/** The person page's and My page's URL search: the tab, so a refresh or a pasted link opens the same view. */
+/**
+ * The person page's URL search: the tab, so a refresh or a pasted link opens
+ * the same view. A tab is one of `personTabs` or one the host adds through
+ * the page's `extraTabs` slot (the Planning tab), which this package cannot
+ * name — hence a string.
+ */
 export interface PersonSearch {
-  tab?: PersonTab;
+  tab?: PersonTab | (string & {});
 }
 
-/** The host route's `validateSearch` for the person page and My page; an unknown tab is the profile. */
+/**
+ * The host route's `validateSearch` for the person page. Any lowercase word
+ * is kept, so a tab the host adds is addressable by URL; the page falls back
+ * to the profile when no tab it draws matches (plan reading 3).
+ */
 export const validatePersonSearch = (search: Record<string, unknown>): PersonSearch => ({
-  tab: personTabs.includes(search.tab as PersonTab) && search.tab !== "profile" ? (search.tab as PersonTab) : undefined,
+  tab:
+    typeof search.tab === "string" && /^[a-z]+$/.test(search.tab) && search.tab !== "profile" ? search.tab : undefined,
 });
 
 /**

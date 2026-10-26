@@ -31,5 +31,5 @@ export { GroupPage } from "./pages/group";
 export { GroupsPage } from "./pages/groups";
 export { MyPage } from "./pages/my-page";
 export { PeoplePage } from "./pages/people";
-export { PersonPage } from "./pages/person";
+export { type PersonExtraTab, PersonPage, type PersonPageProps } from "./pages/person";
 export { SettingsPage } from "./pages/settings";
