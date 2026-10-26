@@ -2,12 +2,14 @@ package energy
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"sort"
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/vantigo-io/vantigo/server/internal/energy/store"
@@ -354,32 +356,64 @@ func applySpotPriceWrite(ctx context.Context, tx pgx.Tx, plan spotPriceWritePlan
 			return fmt.Errorf("energy: delete the spot prices a day replaces: %w", err)
 		}
 	}
-	for _, r := range plan.inserts {
-		nok, eur, exr, err := spotPriceNumerics(r)
+	// The inserts go in one COPY and the replaces in one batch: a history
+	// window of 35 quarter-hour days is some 3 400 rows, which one statement
+	// each would send as as many round trips inside the write's budget.
+	if len(plan.inserts) > 0 {
+		_, err := tx.CopyFrom(ctx, pgx.Identifier{"energy", "spot_prices"},
+			[]string{"price_area", "start", "end", "nok_per_kwh", "eur_per_kwh", "exchange_rate", "source", "received_at",
+				"state", "upstream", "rate_source", "upstream_version"},
+			pgx.CopyFromSlice(len(plan.inserts), func(i int) ([]any, error) {
+				r := plan.inserts[i]
+				nok, eur, exr, err := spotPriceNumerics(r)
+				if err != nil {
+					return nil, err
+				}
+				return []any{r.PriceArea, r.Start, r.End, nok, eur, exr, source, now,
+					r.state(), r.Upstream, r.RateSource, r.UpstreamVersion}, nil
+			}))
 		if err != nil {
-			return err
-		}
-		if err := q.InsertSpotPrice(ctx, store.InsertSpotPriceParams{
-			PriceArea: r.PriceArea, Start: r.Start, EndAt: r.End,
-			NokPerKwh: nok, EurPerKwh: eur, ExchangeRate: exr, Source: source, ReceivedAt: now,
-			State: r.state(), Upstream: r.Upstream, RateSource: r.RateSource, UpstreamVersion: r.UpstreamVersion,
-		}); err != nil {
-			return fmt.Errorf("energy: insert the spot price of %s at %s: %w", r.PriceArea, r.Start.Format(time.RFC3339), err)
+			return fmt.Errorf("energy: insert the spot prices of %s: %w", plan.inserts[0].PriceArea, err)
 		}
 	}
-	for _, rep := range plan.replaces {
-		nok, eur, exr, err := spotPriceNumerics(rep.row)
-		if err != nil {
-			return err
+	if len(plan.replaces) > 0 {
+		batch := &spotPriceBatch{}
+		bq := store.New(batch)
+		for _, rep := range plan.replaces {
+			nok, eur, exr, err := spotPriceNumerics(rep.row)
+			if err != nil {
+				return err
+			}
+			if err := bq.UpdateSpotPrice(ctx, store.UpdateSpotPriceParams{
+				NokPerKwh: nok, EurPerKwh: eur, ExchangeRate: exr, Source: source, ReceivedAt: now, ID: rep.id,
+				State: rep.row.state(), Upstream: rep.row.Upstream, RateSource: rep.row.RateSource, UpstreamVersion: rep.row.UpstreamVersion,
+			}); err != nil {
+				return err
+			}
 		}
-		if err := q.UpdateSpotPrice(ctx, store.UpdateSpotPriceParams{
-			NokPerKwh: nok, EurPerKwh: eur, ExchangeRate: exr, Source: source, ReceivedAt: now, ID: rep.id,
-			State: rep.row.state(), Upstream: rep.row.Upstream, RateSource: rep.row.RateSource, UpstreamVersion: rep.row.UpstreamVersion,
-		}); err != nil {
-			return fmt.Errorf("energy: replace the spot price %d: %w", rep.id, err)
+		if err := tx.SendBatch(ctx, &batch.b).Close(); err != nil {
+			return fmt.Errorf("energy: replace the spot prices of %s: %w", plan.replaces[0].row.PriceArea, err)
 		}
 	}
 	return nil
+}
+
+// spotPriceBatch is a store.DBTX that queues every Exec into one pgx.Batch
+// instead of running it, so the generated UpdateSpotPrice is sent as one
+// round trip for a whole plan. Only Exec is used through it.
+type spotPriceBatch struct{ b pgx.Batch }
+
+func (q *spotPriceBatch) Exec(_ context.Context, sql string, args ...interface{}) (pgconn.CommandTag, error) {
+	q.b.Queue(sql, args...)
+	return pgconn.CommandTag{}, nil
+}
+
+func (q *spotPriceBatch) Query(context.Context, string, ...interface{}) (pgx.Rows, error) {
+	return nil, errors.New("energy: a spot price batch only queues statements")
+}
+
+func (q *spotPriceBatch) QueryRow(context.Context, string, ...interface{}) pgx.Row {
+	panic("energy: a spot price batch only queues statements")
 }
 
 func spotPriceNumerics(r spotPriceRow) (nok, eur, exr pgtype.Numeric, err error) {
