@@ -56,6 +56,7 @@ type fakePerson struct {
 	segments []contracts.CapacitySegment
 	away     []contracts.DateSpan
 	held     []contracts.HeldCompetence
+	fit      *contracts.Fit // nil: 100, nothing lowered
 }
 
 // fakeWorkforce is contracts.Workforce over a register a test shapes. visible
@@ -70,6 +71,8 @@ type fakeWorkforce struct {
 	self         map[uuid.UUID]int64
 	visible      bool
 	refuseWindow bool
+	lastBooking  *contracts.Booking // the booking PreferenceFits was last asked about
+	competences  []contracts.CompetenceEntry
 }
 
 var _ contracts.Workforce = (*fakeWorkforce)(nil)
@@ -131,9 +134,24 @@ func (w *fakeWorkforce) setHeld(personID int64, held ...contracts.HeldCompetence
 	w.people[personID].held = held
 }
 
+// setCompetences makes the catalogue entries, in their order: every
+// competence not archived, hidden ones included, as Staff answers it.
+func (w *fakeWorkforce) setCompetences(entries ...contracts.CompetenceEntry) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.competences = entries
+}
+
+// Competences answers the catalogue a test set (setCompetences), nothing
+// until it does, and nothing to a caller without staff:view.
 func (w *fakeWorkforce) Competences(ctx context.Context) ([]contracts.CompetenceEntry, error) {
 	lockedContractCalls.note(ctx, "fake Workforce.Competences")
-	return nil, nil
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if !w.visible {
+		return nil, nil
+	}
+	return slices.Clone(w.competences), nil
 }
 
 func (w *fakeWorkforce) HeldCompetences(ctx context.Context, on time.Time, personIDs []int64) (map[int64][]contracts.HeldCompetence, error) {
@@ -233,6 +251,41 @@ func (w *fakeWorkforce) Self(ctx context.Context) (*contracts.PersonEntry, error
 	e := w.people[id].entry
 	e.Employed = nil
 	return &e, nil
+}
+
+// setFit makes personID's fit for any booking the given one; a person with
+// no fit set scores 100 with nothing lowered, as Staff answers a person with
+// no preference.
+func (w *fakeWorkforce) setFit(personID int64, fit contracts.Fit) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.people[personID].fit = &fit
+}
+
+// PreferenceFits answers each visible person's fit as a test set it (setFit),
+// 100 and nothing lowered otherwise, and records the booking asked about in
+// lastBooking for a test to assert on.
+func (w *fakeWorkforce) PreferenceFits(ctx context.Context, personIDs []int64, b contracts.Booking) (map[int64]contracts.Fit, error) {
+	lockedContractCalls.note(ctx, "fake Workforce.PreferenceFits")
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.lastBooking = &b
+	if !w.visible {
+		return nil, nil
+	}
+	out := make(map[int64]contracts.Fit, len(personIDs))
+	for _, id := range personIDs {
+		p, ok := w.people[id]
+		if !ok {
+			continue
+		}
+		if p.fit != nil {
+			out[id] = *p.fit
+			continue
+		}
+		out[id] = contracts.Fit{Score: 100}
+	}
+	return out, nil
 }
 
 // clip is spans cut to from..to, a span wholly outside dropped.

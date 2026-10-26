@@ -53,10 +53,10 @@ func TestTimeline_Planner(t *testing.T) {
 	if len(tl.Flags) != 2 {
 		t.Fatalf("flags = %+v, want one of each", tl.Flags)
 	}
-	if f := flags[gen.BeyondEmployment]; f.AllocationId != late || f.Date == nil || f.Date.String() != "2026-10-31" {
+	if f := flags[gen.PlanningTimelineFlagCodeBeyondEmployment]; f.AllocationId != late || f.Date == nil || f.Date.String() != "2026-10-31" {
 		t.Errorf("beyond_employment = %+v, want the late row, dated on the employment's end", f)
 	}
-	if f := flags[gen.CertificateExpires]; f.AllocationId != early || f.Date == nil || f.Date.String() != "2026-10-09" {
+	if f := flags[gen.PlanningTimelineFlagCodeCertificateExpires]; f.AllocationId != early || f.Date == nil || f.Date.String() != "2026-10-09" {
 		t.Errorf("certificate_expires = %+v, want the early row, dated on validTo", f)
 	}
 

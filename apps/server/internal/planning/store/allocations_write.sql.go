@@ -26,12 +26,13 @@ func (q *Queries) DeleteAllocation(ctx context.Context, id int64) error {
 const insertAllocation = `-- name: InsertAllocation :one
 INSERT INTO planning.allocations (
     person_id, project_id, from_date, to_date, load_unit, load, status, title, note,
-    confirmed_at, created_at, created_by_user_id, updated_at, updated_by_user_id
+    confirmed_at, request_id, created_at, created_by_user_id, updated_at, updated_by_user_id
 ) VALUES (
     $1, $2, $3, $4, $5, $6, $7, $8, $9,
-    $10::timestamptz, $11::timestamptz, $12::uuid, $11::timestamptz, $12::uuid
+    $10::timestamptz, $11::bigint,
+    $12::timestamptz, $13::uuid, $12::timestamptz, $13::uuid
 )
-RETURNING id, person_id, project_id, from_date, to_date, load_unit, load, status, title, note, confirmed_at, revision, created_at, created_by_user_id, updated_at, updated_by_user_id
+RETURNING id, person_id, project_id, from_date, to_date, load_unit, load, status, title, note, confirmed_at, revision, created_at, created_by_user_id, updated_at, updated_by_user_id, request_id
 `
 
 type InsertAllocationParams struct {
@@ -45,11 +46,13 @@ type InsertAllocationParams struct {
 	Title       *string
 	Note        *string
 	ConfirmedAt *time.Time
+	RequestID   *int64
 	Now         time.Time
 	UserID      *uuid.UUID
 }
 
-// InsertAllocation writes a new row at revision 1, stamped by the caller.
+// InsertAllocation writes a new row at revision 1, stamped by the caller;
+// @request_id is the request a fill writes it for (S16), NULL otherwise.
 func (q *Queries) InsertAllocation(ctx context.Context, arg InsertAllocationParams) (PlanningAllocation, error) {
 	row := q.db.QueryRow(ctx, insertAllocation,
 		arg.PersonID,
@@ -62,6 +65,7 @@ func (q *Queries) InsertAllocation(ctx context.Context, arg InsertAllocationPara
 		arg.Title,
 		arg.Note,
 		arg.ConfirmedAt,
+		arg.RequestID,
 		arg.Now,
 		arg.UserID,
 	)
@@ -83,13 +87,14 @@ func (q *Queries) InsertAllocation(ctx context.Context, arg InsertAllocationPara
 		&i.CreatedByUserID,
 		&i.UpdatedAt,
 		&i.UpdatedByUserID,
+		&i.RequestID,
 	)
 	return i, err
 }
 
 const listAllocationsFiltered = `-- name: ListAllocationsFiltered :many
 
-SELECT id, person_id, project_id, from_date, to_date, load_unit, load, status, title, note, confirmed_at, revision, created_at, created_by_user_id, updated_at, updated_by_user_id FROM planning.allocations
+SELECT id, person_id, project_id, from_date, to_date, load_unit, load, status, title, note, confirmed_at, revision, created_at, created_by_user_id, updated_at, updated_by_user_id, request_id FROM planning.allocations
 WHERE ($1::bigint IS NULL OR person_id = $1::bigint)
   AND ($2::integer IS NULL OR project_id = $2::integer)
   AND ($3::date IS NULL OR to_date >= $3::date)
@@ -147,6 +152,7 @@ func (q *Queries) ListAllocationsFiltered(ctx context.Context, arg ListAllocatio
 			&i.CreatedByUserID,
 			&i.UpdatedAt,
 			&i.UpdatedByUserID,
+			&i.RequestID,
 		); err != nil {
 			return nil, err
 		}
@@ -174,7 +180,7 @@ UPDATE planning.allocations SET
     updated_at = $11::timestamptz,
     updated_by_user_id = $12::uuid
 WHERE id = $13
-RETURNING id, person_id, project_id, from_date, to_date, load_unit, load, status, title, note, confirmed_at, revision, created_at, created_by_user_id, updated_at, updated_by_user_id
+RETURNING id, person_id, project_id, from_date, to_date, load_unit, load, status, title, note, confirmed_at, revision, created_at, created_by_user_id, updated_at, updated_by_user_id, request_id
 `
 
 type UpdateAllocationParams struct {
@@ -229,6 +235,7 @@ func (q *Queries) UpdateAllocation(ctx context.Context, arg UpdateAllocationPara
 		&i.CreatedByUserID,
 		&i.UpdatedAt,
 		&i.UpdatedByUserID,
+		&i.RequestID,
 	)
 	return i, err
 }

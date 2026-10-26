@@ -28,6 +28,7 @@ type PlanningAllocation struct {
 	CreatedByUserID *uuid.UUID
 	UpdatedAt       time.Time
 	UpdatedByUserID *uuid.UUID
+	RequestID       *int64
 }
 
 type PlanningEvent struct {
@@ -42,6 +43,29 @@ type PlanningEvent struct {
 	ActorUserID  *uuid.UUID
 	ActorDisplay *string
 	OccurredAt   time.Time
+}
+
+type PlanningRequest struct {
+	ID              int64
+	ProjectID       int32
+	Title           string
+	FromDate        pgtype.Date
+	ToDate          pgtype.Date
+	HoursPerWeek    pgtype.Numeric
+	Status          string
+	Note            *string
+	Revision        int32
+	CreatedAt       time.Time
+	CreatedByUserID *uuid.UUID
+	UpdatedAt       time.Time
+	UpdatedByUserID *uuid.UUID
+}
+
+type PlanningRequestRequirement struct {
+	ID           int64
+	RequestID    int64
+	CompetenceID int64
+	MinLevel     *int16
 }
 
 type PlanningSetting struct {

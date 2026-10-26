@@ -64,13 +64,13 @@ func (s *server) readStaff(ctx context.Context, c *callerContext, from, to time.
 	}
 	people, err := s.workforcePeople(ctx, r.lo, r.hi)
 	if err != nil {
-		return staffRead{}, outOfStaffBound(err, r.lo, c.Today)
+		return staffRead{}, outOfStaffBound(err, r.lo, c.Today, invalidAllocationTitle)
 	}
 	r.people = people
 	if capacityOf != 0 {
 		capacity, err := s.workforceCapacity(ctx, r.lo, r.hi, []int64{capacityOf})
 		if err != nil {
-			return staffRead{}, outOfStaffBound(err, r.lo, c.Today)
+			return staffRead{}, outOfStaffBound(err, r.lo, c.Today, invalidAllocationTitle)
 		}
 		r.capacity = capacity[capacityOf]
 	}
@@ -82,8 +82,10 @@ func (s *server) readStaff(ctx context.Context, c *callerContext, from, to time.
 // this module's today cannot rule out when Staff's today is another day, at
 // midnight — as boundErrors' field error window_out_of_bounds, on fromDate
 // when the window starts on the bound's near end, else on toDate. Any other
-// error is answered as it is.
-func outOfStaffBound(err error, lo, today time.Time) error {
+// error is answered as it is. title is the problem's: an allocation's write
+// (and a fill, whose fields are an allocation's) answers invalidAllocationTitle,
+// a request's read or write invalidRequestTitle.
+func outOfStaffBound(err error, lo, today time.Time, title string) error {
 	if !errors.Is(err, contracts.ErrWindowOutOfBounds) {
 		return err
 	}
@@ -93,7 +95,7 @@ func outOfStaffBound(err error, lo, today time.Time) error {
 	}
 	var f fieldErrors
 	f.addCoded(field, codeWindowOutOfBounds, message)
-	return refuseInvalid(invalidAllocationTitle, f)
+	return refuseInvalid(title, f)
 }
 
 // employs reports whether person is employed on every day of from..to Staff
@@ -190,15 +192,54 @@ func (s *server) create(ctx context.Context, body gen.PlanningAllocationInput) (
 	if err != nil {
 		return gen.PlanningAllocationWritten{}, err
 	}
-	project, err := s.projectEntry(ctx, fields.projectID)
+	w, err := s.readCreate(ctx, c, fields, invalidAllocationTitle)
 	if err != nil {
 		return gen.PlanningAllocationWritten{}, err
 	}
+	var (
+		row store.PlanningAllocation
+		o   overbooking
+	)
+	err = s.withPersonLock(ctx, fields.personID, func(ctx context.Context, txq *store.Queries) error {
+		row, o, err = s.insertAllocation(ctx, txq, c, who, w, nil)
+		return err
+	})
+	if err != nil {
+		return gen.PlanningAllocationWritten{}, err
+	}
+	return s.created(ctx, c, w, row, o), nil
+}
+
+// newRow is what a new allocation's write read before its transaction
+// (rule 3): its fields with the status decided, the project, the person as
+// Staff answers them over the weeks it touches, and the settings — what a
+// create and a request's fill (S16) share.
+type newRow struct {
+	fields  allocationFields
+	status  string
+	project *contracts.ProjectEntry
+	person  *contracts.PersonEntry
+	staff   staffRead
+	rules   store.PlanningSetting
+}
+
+// readCreate is a new row's reads and judgements before its transaction
+// (S3, S4): the project known and open, the status by the project unless
+// given, the person answered by Staff and employed over the whole period,
+// the person's capacity when the row is confirmed, and the settings. A
+// project the directory does not resolve is the field error on projectId
+// under unknownProjectTitle: a create's invalidAllocationTitle, a fill's
+// invalidRequestTitle.
+func (s *server) readCreate(ctx context.Context, c *callerContext, fields allocationFields, unknownProjectTitle string) (newRow, error) {
+	project, err := s.projectEntry(ctx, fields.projectID)
+	if err != nil {
+		return newRow{}, err
+	}
 	if project == nil {
-		return gen.PlanningAllocationWritten{}, fieldRefusal("projectId", unknownProjectMessage)
+		return newRow{}, refuseInvalid(unknownProjectTitle, fieldErrors{errs: fieldError("projectId", unknownProjectMessage)})
 	}
 	if projectClosed(project) {
-		return gen.PlanningAllocationWritten{}, refuseProjectClosed(project)
+		return newRow{}, refuseProjectClosed(project)
 	}
 	status := defaultStatus(*project)
 	if fields.status != nil {
@@ -211,56 +252,65 @@ func (s *server) create(ctx context.Context, body gen.PlanningAllocationInput) (
 	lo, hi := rowWindow(fields.from, fields.to)
 	staff, err := s.readStaff(ctx, c, lo, hi, capacityOf)
 	if err != nil {
-		return gen.PlanningAllocationWritten{}, err
+		return newRow{}, err
 	}
 	person := personIn(staff.people, fields.personID)
 	if person == nil {
-		return gen.PlanningAllocationWritten{}, fieldRefusal("personId", unknownPersonMessage)
+		return newRow{}, fieldRefusal("personId", unknownPersonMessage)
 	}
 	if !staff.employs(person, fields.from, fields.to) {
-		return gen.PlanningAllocationWritten{}, refuseOutsideEmployment()
+		return newRow{}, refuseOutsideEmployment()
 	}
 	rules, err := settings(ctx, store.New(s.deps.Pool))
 	if err != nil {
-		return gen.PlanningAllocationWritten{}, err
+		return newRow{}, err
 	}
+	return newRow{fields: fields, status: status, project: project, person: person, staff: staff, rules: rules}, nil
+}
 
-	now := s.deps.Clock()
-	var (
-		row store.PlanningAllocation
-		o   overbooking
-	)
-	err = s.withPersonLock(ctx, fields.personID, func(ctx context.Context, txq *store.Queries) error {
-		if status == statusConfirmed {
-			candidate := capacityRowOf(fields)
-			if o, err = judgeOverbooking(ctx, txq, rules.Overbooking, fields.personID, 0, staff.capacity, nil, &candidate); err != nil {
-				return err
-			}
+// insertAllocation is a new row's write under the person's lock: S7's
+// overbooking judged on the person's confirmed rows when the row is
+// confirmed, the row inserted — naming requestID when a fill writes it —
+// and allocation_created recorded.
+func (s *server) insertAllocation(ctx context.Context, txq *store.Queries, c *callerContext, who actor, w newRow, requestID *int64) (store.PlanningAllocation, overbooking, error) {
+	var o overbooking
+	if w.status == statusConfirmed {
+		candidate := capacityRowOf(w.fields)
+		var err error
+		if o, err = judgeOverbooking(ctx, txq, w.rules.Overbooking, w.fields.personID, 0, w.staff.capacity, nil, &candidate); err != nil {
+			return store.PlanningAllocation{}, overbooking{}, err
 		}
-		params := store.InsertAllocationParams{
-			PersonID: fields.personID, ProjectID: fields.projectID,
-			FromDate: dayParam(fields.from), ToDate: dayParam(fields.to),
-			LoadUnit: fields.loadUnit, Load: numericOfHundredths(fields.load), Status: status,
-			Title: fields.title, Note: fields.note, Now: now, UserID: &c.UserID,
-		}
-		if status == statusConfirmed {
-			params.ConfirmedAt = &now
-		}
-		if row, err = txq.InsertAllocation(ctx, params); err != nil {
-			return fmt.Errorf("planning: create an allocation: %w", err)
-		}
-		return s.recordChanges(ctx, txq, who, allocationEvent(row, eventAllocationCreated), changesOf(nil, &row, false))
-	})
-	if err != nil {
-		return gen.PlanningAllocationWritten{}, err
 	}
-	if status == statusConfirmed {
-		s.sendNotices(ctx, noticeTo(noticePlanned, person, row, project))
+	now := s.deps.Clock()
+	params := store.InsertAllocationParams{
+		PersonID: w.fields.personID, ProjectID: w.fields.projectID,
+		FromDate: dayParam(w.fields.from), ToDate: dayParam(w.fields.to),
+		LoadUnit: w.fields.loadUnit, Load: numericOfHundredths(w.fields.load), Status: w.status,
+		Title: w.fields.title, Note: w.fields.note, RequestID: requestID, Now: now, UserID: &c.UserID,
+	}
+	if w.status == statusConfirmed {
+		params.ConfirmedAt = &now
+	}
+	row, err := txq.InsertAllocation(ctx, params)
+	if err != nil {
+		return store.PlanningAllocation{}, overbooking{}, fmt.Errorf("planning: create an allocation: %w", err)
+	}
+	if err := s.recordChanges(ctx, txq, who, allocationEvent(row, eventAllocationCreated), changesOf(nil, &row, false)); err != nil {
+		return store.PlanningAllocation{}, overbooking{}, err
+	}
+	return row, o, nil
+}
+
+// created is a new row's answer after its commit, the person mailed when it
+// is confirmed (S19).
+func (s *server) created(ctx context.Context, c *callerContext, w newRow, row store.PlanningAllocation, o overbooking) gen.PlanningAllocationWritten {
+	if w.status == statusConfirmed {
+		s.sendNotices(ctx, noticeTo(noticePlanned, w.person, row, w.project))
 	}
 	return gen.PlanningAllocationWritten{
-		Allocation: allocationResponse(row, person, project, c.Manage),
-		Warnings:   allocationWarnings(o, project, fields.from, fields.to),
-	}, nil
+		Allocation: allocationResponse(row, w.person, w.project, c.Manage),
+		Warnings:   allocationWarnings(o, w.project, w.fields.from, w.fields.to),
+	}
 }
 
 // PutPlanningAllocation Change an allocation
@@ -505,7 +555,8 @@ func (s *server) DeletePlanningAllocation(ctx context.Context, req gen.DeletePla
 
 // retryMoved runs write until it does not answer errRowMoved, at most
 // maxWriteAttempts times; a row still moving after the last is the 409
-// revision_conflict (§13 amendment 35), not a fault.
+// revision_conflict (§13 amendment 35), not a fault. A request's writes
+// without If-Match — a fill, a withdrawal — start again the same way.
 func (s *server) retryMoved(write func() error) error {
 	for range maxWriteAttempts {
 		if err := write(); !errors.Is(err, errRowMoved) {
@@ -513,12 +564,15 @@ func (s *server) retryMoved(write func() error) error {
 		}
 	}
 	return refuseConflict(conflict(codeRevisionConflict, "Revision conflict",
-		"The allocation kept changing while it was being written. Read it again and retry."))
+		"The row kept changing while it was being written. Read it again and retry."))
 }
 
 // remove is DELETE /allocations/{id}: allowed on a closed project too (S4),
 // the row's fields recorded as allocation_deleted, and the person told when
-// the row was confirmed.
+// the row was confirmed. A row that fills a request reopens it in the same
+// transaction (S16: a request is filled exactly while a row names it),
+// recorded as request_reopened, under the project's lock before the
+// person's (S23).
 func (s *server) remove(ctx context.Context, id int64) error {
 	c, err := s.callerFor(ctx)
 	if err != nil {
@@ -550,18 +604,39 @@ func (s *server) remove(ctx context.Context, id int64) error {
 		}
 		person = personIn(staff.people, current.PersonID)
 	}
-	err = s.withPersonLock(ctx, current.PersonID, func(ctx context.Context, txq *store.Queries) error {
+	locks := lockSet{persons: []int64{current.PersonID}}
+	if current.RequestID != nil {
+		// The request's project, which a PUT of the row may have left; the
+		// request itself cannot move while it is filled (request_not_open).
+		request, found, err := s.request(ctx, *current.RequestID)
+		if err != nil {
+			return err
+		}
+		locks.projects = []int32{current.ProjectID}
+		if found {
+			locks.projects = []int32{request.ProjectID}
+		}
+	}
+	err = s.withLocks(ctx, locks, func(ctx context.Context, txq *store.Queries) error {
 		before, err := lockedAllocation(ctx, txq, id)
 		if err != nil {
 			return err
 		}
+		// A row moved since the read — to another project or person — is
+		// under locks this write did not take.
 		if before.Revision != current.Revision {
 			return errRowMoved
 		}
 		if err := txq.DeleteAllocation(ctx, id); err != nil {
 			return fmt.Errorf("planning: delete allocation %d: %w", id, err)
 		}
-		return s.recordEvent(ctx, txq, who, withChanges(allocationEvent(before, eventAllocationDeleted), changesOf(&before, nil, false)))
+		if err := s.recordEvent(ctx, txq, who, withChanges(allocationEvent(before, eventAllocationDeleted), changesOf(&before, nil, false))); err != nil {
+			return err
+		}
+		if before.RequestID == nil {
+			return nil
+		}
+		return s.reopenRequest(ctx, txq, c, who, before)
 	})
 	if err != nil {
 		return err
@@ -739,6 +814,9 @@ func recordedValues(r *store.PlanningAllocation) map[string]any {
 	}
 	if r.Note != nil {
 		v["note"] = *r.Note
+	}
+	if r.RequestID != nil {
+		v["requestId"] = *r.RequestID
 	}
 	return v
 }

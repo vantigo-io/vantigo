@@ -16,13 +16,15 @@ ORDER BY from_date, id
 LIMIT @max_rows::integer;
 
 -- name: InsertAllocation :one
--- InsertAllocation writes a new row at revision 1, stamped by the caller.
+-- InsertAllocation writes a new row at revision 1, stamped by the caller;
+-- @request_id is the request a fill writes it for (S16), NULL otherwise.
 INSERT INTO planning.allocations (
     person_id, project_id, from_date, to_date, load_unit, load, status, title, note,
-    confirmed_at, created_at, created_by_user_id, updated_at, updated_by_user_id
+    confirmed_at, request_id, created_at, created_by_user_id, updated_at, updated_by_user_id
 ) VALUES (
     @person_id, @project_id, @from_date, @to_date, @load_unit, @load, @status, sqlc.narg(title), sqlc.narg(note),
-    sqlc.narg(confirmed_at)::timestamptz, @now::timestamptz, sqlc.narg(user_id)::uuid, @now::timestamptz, sqlc.narg(user_id)::uuid
+    sqlc.narg(confirmed_at)::timestamptz, sqlc.narg(request_id)::bigint,
+    @now::timestamptz, sqlc.narg(user_id)::uuid, @now::timestamptz, sqlc.narg(user_id)::uuid
 )
 RETURNING *;
 

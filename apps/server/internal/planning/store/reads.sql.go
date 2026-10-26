@@ -13,7 +13,7 @@ import (
 
 const personConfirmedAllocationsFrom = `-- name: PersonConfirmedAllocationsFrom :many
 
-SELECT id, person_id, project_id, from_date, to_date, load_unit, load, status, title, note, confirmed_at, revision, created_at, created_by_user_id, updated_at, updated_by_user_id FROM planning.allocations
+SELECT id, person_id, project_id, from_date, to_date, load_unit, load, status, title, note, confirmed_at, revision, created_at, created_by_user_id, updated_at, updated_by_user_id, request_id FROM planning.allocations
 WHERE person_id = $1 AND status = 'confirmed' AND to_date >= $2::date
 ORDER BY from_date, id
 `
@@ -54,6 +54,7 @@ func (q *Queries) PersonConfirmedAllocationsFrom(ctx context.Context, arg Person
 			&i.CreatedByUserID,
 			&i.UpdatedAt,
 			&i.UpdatedByUserID,
+			&i.RequestID,
 		); err != nil {
 			return nil, err
 		}

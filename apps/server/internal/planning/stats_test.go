@@ -11,7 +11,8 @@ const statsPath = "/api/v1/planning/stats"
 
 // TestStats_ThisWeek is S22's figures: this week Kari is half booked and
 // Ola tentatively full, over the two's 67.5 hours; one person planned; the
-// unbooked list's count; no open requests before delivery B. A caller to
+// unbooked list's count; two open requests — not the filled or the
+// withdrawn one, and on whichever project. A caller to
 // whom Staff answers nobody sees no load at all.
 func TestStats_ThisWeek(t *testing.T) {
 	t.Parallel()
@@ -19,11 +20,15 @@ func TestStats_ThisWeek(t *testing.T) {
 	c := h.SignIn(t, "planning:access", "planning:view")
 	seedAllocation(t, h, seedRow{person: personKari, project: projectActive, from: thisMonday, to: "2026-09-13", load: 50})
 	seedAllocation(t, h, seedRow{person: personOla, project: projectPlanned, from: thisMonday, to: "2026-09-13", load: 100, status: "tentative"})
+	seedRequest(t, h, seedReq{project: projectActive, from: "2026-10-05", to: "2026-10-30"})
+	seedRequest(t, h, seedReq{project: projectPlanned, from: "2027-01-04", to: "2027-01-29"})
+	seedRequest(t, h, seedReq{project: projectActive, from: "2026-10-05", to: "2026-10-30", status: "filled"})
+	seedRequest(t, h, seedReq{project: projectActive, from: "2026-10-05", to: "2026-10-30", status: "withdrawn"})
 
 	var stats gen.PlanningStats
 	getJSON(t, c, statsPath, http.StatusOK, &stats)
-	if stats.PeoplePlannedThisWeek != 1 || stats.OpenRequests != 0 || stats.Unbooked != 2 {
-		t.Errorf("stats = %+v, want one planned, two unbooked over the horizon ahead, no requests", stats)
+	if stats.PeoplePlannedThisWeek != 1 || stats.OpenRequests != 2 || stats.Unbooked != 2 {
+		t.Errorf("stats = %+v, want one planned, two unbooked over the horizon ahead, two open requests", stats)
 	}
 	if stats.LoadPercentThisWeek == nil || *stats.LoadPercentThisWeek != 27.78 ||
 		stats.TentativeLoadPercentThisWeek == nil || *stats.TentativeLoadPercentThisWeek != 44.44 {

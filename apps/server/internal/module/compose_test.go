@@ -2528,3 +2528,7 @@ func (*fakeWorkforce) Capacity(context.Context, time.Time, time.Time, []int64) (
 }
 
 func (*fakeWorkforce) Self(context.Context) (*contracts.PersonEntry, error) { return nil, nil }
+
+func (*fakeWorkforce) PreferenceFits(context.Context, []int64, contracts.Booking) (map[int64]contracts.Fit, error) {
+	return nil, nil
+}

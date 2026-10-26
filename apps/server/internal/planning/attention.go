@@ -14,9 +14,9 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/planning/store"
 )
 
-// The attention items of delivery A (design S22), computed on read, each to
-// its audience: unbooked, overbooked and certificatesExpiring to
-// planning:view, endingWithoutFollowOn to planning:manage. A caller with
+// The attention items (design S22), computed on read, each to its audience:
+// unbooked, overbooked and certificatesExpiring to planning:view,
+// endingWithoutFollowOn and requestsOpen to planning:manage. A caller with
 // neither role gets an empty list, never a 403: the host asks every module it
 // shows.
 
@@ -90,6 +90,11 @@ func (s *server) attention(ctx context.Context) ([]gen.PlanningStatsAttentionIte
 			return nil, err
 		}
 		items = append(items, ending...)
+		open, err := s.requestItems(ctx, c.Today, row.RequestLeadDays)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, open...)
 	}
 	slices.SortFunc(items, func(a, b gen.PlanningStatsAttentionItem) int {
 		return cmp.Or(a.OccurredAt.Compare(b.OccurredAt), cmp.Compare(a.Type, b.Type), cmp.Compare(a.Id, b.Id))
@@ -186,6 +191,35 @@ func (s *server) endingItems(ctx context.Context, w *window, today, endingTo tim
 		}
 		out = append(out, attentionItem(gen.PlanningStatsAttentionItemTypeEndingWithoutFollowOn, strconv.FormatInt(a.ID, 10),
 			a.ID, title, civil(a.ToDate)))
+	}
+	return out, nil
+}
+
+// requestItems is one requestsOpen item per open request starting within
+// leadDays of today, or already started (S22): about the request, dated on
+// its first day, titled "CODE — title" with the project's code when the
+// directory resolves it, else its id.
+func (s *server) requestItems(ctx context.Context, today time.Time, leadDays int16) ([]gen.PlanningStatsAttentionItem, error) {
+	rows, err := store.New(s.deps.Pool).OpenRequestsStartingBy(ctx, dayParam(addDays(today, int(leadDays))))
+	if err != nil {
+		return nil, fmt.Errorf("planning: read the open requests within the lead: %w", err)
+	}
+	ids := make([]int32, len(rows))
+	for i, r := range rows {
+		ids[i] = r.ProjectID
+	}
+	projects, err := s.projectEntries(ctx, slices.Compact(slices.Sorted(slices.Values(ids))))
+	if err != nil {
+		return nil, err
+	}
+	out := make([]gen.PlanningStatsAttentionItem, 0, len(rows))
+	for _, r := range rows {
+		code := strconv.FormatInt(int64(r.ProjectID), 10)
+		if p, ok := projects[r.ProjectID]; ok {
+			code = p.Code
+		}
+		out = append(out, attentionItem(gen.PlanningStatsAttentionItemTypeRequestsOpen, strconv.FormatInt(r.ID, 10),
+			r.ID, fmt.Sprintf("%s — %s", code, r.Title), civil(r.FromDate)))
 	}
 	return out, nil
 }

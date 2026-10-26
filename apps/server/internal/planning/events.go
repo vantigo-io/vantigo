@@ -16,9 +16,12 @@ import (
 // fields before and after, and the actor snapshotted as Staff keeps it. The
 // person's name is never written; the actor's is, as it read when they wrote.
 
-// The entity kinds an event is about: an allocation in delivery A; a request
-// and a wish arrive with B and C.
-const entityAllocation = "allocation"
+// The entity kinds an event is about: an allocation (delivery A), a request
+// (B); a wish arrives with C.
+const (
+	entityAllocation = "allocation"
+	entityRequest    = "request"
+)
 
 const (
 	actorKindUser          = "user"
@@ -104,7 +107,7 @@ func (s *server) recordEvent(ctx context.Context, txq *store.Queries, who actor,
 	return nil
 }
 
-// recordChanges records kind for an allocation with c as its fields; nothing
+// recordChanges records e with c as its fields; nothing
 // when c is empty, since a write that changed nothing has nothing to say.
 func (s *server) recordChanges(ctx context.Context, txq *store.Queries, who actor, e event, c changes) error {
 	if len(c) == 0 {
@@ -122,4 +125,15 @@ const (
 	eventAllocationConfirmed   = "allocation_confirmed"
 	eventAllocationUnconfirmed = "allocation_unconfirmed"
 	eventAllocationDeleted     = "allocation_deleted"
+)
+
+// The kinds of a request's events (S23, S16): created and changed carry the
+// fields; filled names the allocation and its person, reopened the deleted
+// allocation, withdrawn the status's before and after.
+const (
+	eventRequestCreated   = "request_created"
+	eventRequestChanged   = "request_changed"
+	eventRequestFilled    = "request_filled"
+	eventRequestReopened  = "request_reopened"
+	eventRequestWithdrawn = "request_withdrawn"
 )

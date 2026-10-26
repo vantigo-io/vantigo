@@ -94,10 +94,10 @@ func (s *server) timeline(ctx context.Context, personID int64, p gen.GetPlanning
 	flags := []gen.PlanningTimelineFlag{}
 	for _, a := range rows {
 		if day, ok := beyondEmployment(a, person.Employed, to); ok {
-			flags = append(flags, gen.PlanningTimelineFlag{AllocationId: a.ID, Code: gen.BeyondEmployment, Date: ptrTo(apiDate(day))})
+			flags = append(flags, gen.PlanningTimelineFlag{AllocationId: a.ID, Code: gen.PlanningTimelineFlagCodeBeyondEmployment, Date: ptrTo(apiDate(day))})
 		}
 		for _, h := range expiringCertificates(a, held[personID]) {
-			flags = append(flags, gen.PlanningTimelineFlag{AllocationId: a.ID, Code: gen.CertificateExpires, Date: ptrTo(apiDate(*h.ValidTo))})
+			flags = append(flags, gen.PlanningTimelineFlag{AllocationId: a.ID, Code: gen.PlanningTimelineFlagCodeCertificateExpires, Date: ptrTo(apiDate(*h.ValidTo))})
 		}
 	}
 	return gen.PlanningTimeline{

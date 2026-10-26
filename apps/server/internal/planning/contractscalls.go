@@ -13,8 +13,8 @@ import (
 
 // This file is the whole of this module's reach outside its own schema (design
 // S8, S9, S25): Staff's register (deps.Workforce, contracts.Workforce — the
-// people of a window, their capacity, the caller's own person and the
-// competences held), Projects' directory (deps.Projects,
+// people of a window, their capacity, the caller's own person, the
+// catalogue, the competences held and the preference fits), Projects' directory (deps.Projects,
 // contracts.ProjectDirectory — the listing by status, consumer-gated, and the
 // entries), Customers' names (deps.Directory, contracts.CustomerDirectory,
 // which Projects requires) and identity's users (deps.Users,
@@ -115,6 +115,36 @@ func (s *server) workforceHeld(ctx context.Context, on time.Time, personIDs []in
 		return nil, errDependencyUnavailable
 	}
 	return s.deps.Workforce.HeldCompetences(ctx, on, personIDs)
+}
+
+// workforceCompetences is Staff's catalogue as the caller may see it — every
+// competence not archived, hidden ones included — or nothing to a caller
+// without staff:view or staff:manage (S16's requirements, amendment 38's
+// board filter).
+func (s *server) workforceCompetences(ctx context.Context) ([]contracts.CompetenceEntry, error) {
+	if err := noteContractCall(ctx, "Workforce.Competences"); err != nil {
+		return nil, err
+	}
+	if s.deps.Workforce == nil {
+		return nil, errDependencyUnavailable
+	}
+	return s.deps.Workforce.Competences(ctx)
+}
+
+// workforceFits is how booking fits each person's preferences, as Staff
+// scores it (S17.6); a person the caller may not see is absent. It answers
+// nothing for an empty batch without asking.
+func (s *server) workforceFits(ctx context.Context, personIDs []int64, booking contracts.Booking) (map[int64]contracts.Fit, error) {
+	if len(personIDs) == 0 {
+		return map[int64]contracts.Fit{}, nil
+	}
+	if err := noteContractCall(ctx, "Workforce.PreferenceFits"); err != nil {
+		return nil, err
+	}
+	if s.deps.Workforce == nil {
+		return nil, errDependencyUnavailable
+	}
+	return s.deps.Workforce.PreferenceFits(ctx, personIDs, booking)
 }
 
 // projectsByStatus is every project in any of statuses, by code, at most
