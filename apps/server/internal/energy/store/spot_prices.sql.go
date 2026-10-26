@@ -586,6 +586,80 @@ func (q *Queries) RecordSpotPriceFetch(ctx context.Context, arg RecordSpotPriceF
 	return err
 }
 
+const summariseSpotPrices = `-- name: SummariseSpotPrices :many
+SELECT (CASE WHEN $1::text = 'hour'
+             THEN date_trunc('hour', "start" AT TIME ZONE 'UTC')
+             ELSE date_trunc($1::text, "start" AT TIME ZONE 'Europe/Oslo')
+        END)::timestamp AS bucket_local,
+       round(sum(nok_per_kwh * extract(epoch FROM "end" - "start")) / sum(extract(epoch FROM "end" - "start")), 6)::numeric AS avg_nok_per_kwh,
+       min(nok_per_kwh)::numeric AS min_nok_per_kwh,
+       max(nok_per_kwh)::numeric AS max_nok_per_kwh,
+       (sum(extract(epoch FROM "end" - "start")) / 60)::integer AS covered_minutes,
+       bool_or(state = 'preliminary')::boolean AS preliminary
+FROM energy.spot_prices
+WHERE price_area = $2 AND "start" >= $3::timestamptz AND "start" < $4::timestamptz
+GROUP BY 1
+ORDER BY 1
+`
+
+type SummariseSpotPricesParams struct {
+	Bucket    string
+	PriceArea string
+	FromTs    time.Time
+	ToTs      time.Time
+}
+
+type SummariseSpotPricesRow struct {
+	BucketLocal    pgtype.Timestamp
+	AvgNokPerKwh   pgtype.Numeric
+	MinNokPerKwh   pgtype.Numeric
+	MaxNokPerKwh   pgtype.Numeric
+	CoveredMinutes int32
+	Preliminary    bool
+}
+
+// SummariseSpotPrices is the read behind GET /energy/spot-prices/summary
+// (spot-price service design S8): an area's intervals starting inside
+// [from, to) grouped per civil hour, day, ISO week or month in Europe/Oslo.
+// bucket_local is the bucket's local start, converted to an instant in Go.
+// An hour is truncated on the UTC instant instead: Oslo's offset is whole
+// hours, so it is the same hour, and the autumn's repeated 02:00 stays two
+// buckets where a truncated local timestamp would merge them. The average is
+// time-weighted, Σ(price × seconds) / Σ(seconds), since history is hourly
+// before 2025-10-01 and quarter-hourly after; a bucket with no interval is
+// absent.
+func (q *Queries) SummariseSpotPrices(ctx context.Context, arg SummariseSpotPricesParams) ([]SummariseSpotPricesRow, error) {
+	rows, err := q.db.Query(ctx, summariseSpotPrices,
+		arg.Bucket,
+		arg.PriceArea,
+		arg.FromTs,
+		arg.ToTs,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []SummariseSpotPricesRow
+	for rows.Next() {
+		var i SummariseSpotPricesRow
+		if err := rows.Scan(
+			&i.BucketLocal,
+			&i.AvgNokPerKwh,
+			&i.MinNokPerKwh,
+			&i.MaxNokPerKwh,
+			&i.CoveredMinutes,
+			&i.Preliminary,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const updateSpotPrice = `-- name: UpdateSpotPrice :exec
 UPDATE energy.spot_prices
 SET nok_per_kwh = $1, eur_per_kwh = $2, exchange_rate = $3,
