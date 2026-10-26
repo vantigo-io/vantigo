@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"sync/atomic"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -46,6 +47,12 @@ import (
 // of its own requests, and RecordSpotPriceFetch counts an attempt on every
 // write, so writing it ok without a request would make the record say a
 // request was made that was not.
+//
+// With ENERGY_SPOT_PRICE_SERVICE_URL set the same worker, under the same
+// lease and on the same poll, copies from the shared spot-price service
+// instead (spot-price service design S5): its cycle is
+// spot_price_service_sync.go's, and config.Load refuses both sources at
+// once.
 
 const (
 	// spotPriceWorkerName is what the runner logs this worker as.
@@ -105,6 +112,12 @@ type SpotPriceWorker struct {
 	template spotFeedTemplate
 	zone     *time.Location
 	client   *http.Client
+	// service is the spot-price service's client when it is the source,
+	// nil when the feed is.
+	service *spotServiceClient
+	// copying is whether the last service cycle left a history walk that
+	// can go on, so the next cycle comes after a minute (design S5).
+	copying atomic.Bool
 	// setupErr is a template or a zone the worker cannot fetch with; every
 	// cycle answers it rather than the process panicking.
 	setupErr error
@@ -124,6 +137,10 @@ func NewSpotPriceWorker(d module.Deps) *SpotPriceWorker {
 		raw = d.Config.EnergySpotPriceFeedURL
 	}
 	w.template, w.setupErr = parseSpotFeedTemplate(raw)
+	if d.Config != nil && d.Config.EnergySpotPriceServiceURL != "" {
+		service, err := newSpotServiceClient(d.Config.EnergySpotPriceServiceURL, d.Config.EnergySpotPriceServiceKey, d.HTTPTransport, w.logger, w.now)
+		w.service, w.setupErr = service, errors.Join(w.setupErr, err)
+	}
 	if zone, err := time.LoadLocation(spotPriceDayZone); err != nil {
 		w.setupErr = errors.Join(w.setupErr, fmt.Errorf("energy: load %s: %w", spotPriceDayZone, err))
 	} else {
@@ -136,7 +153,8 @@ func NewSpotPriceWorker(d module.Deps) *SpotPriceWorker {
 func (w *SpotPriceWorker) Name() string { return spotPriceWorkerName }
 
 // Interval is the poll between cycles (ENERGY_SPOT_PRICE_FEED_POLL, default
-// fifteen minutes).
+// fifteen minutes), whichever the source. While the service's history is
+// being copied the loop waits a minute instead (nextWait).
 func (w *SpotPriceWorker) Interval() time.Duration {
 	if w.deps.Config != nil && w.deps.Config.EnergySpotPriceFeedPoll > 0 {
 		return w.deps.Config.EnergySpotPriceFeedPoll
@@ -144,33 +162,54 @@ func (w *SpotPriceWorker) Interval() time.Duration {
 	return defaultSpotPriceFeedPoll
 }
 
-// Run is the worker loop: a cycle, then the next on the tick — the import
-// worker's loop without its nudge, since nothing a person does asks for a
-// price.
+// Run is the worker loop: a cycle, then the next after nextWait — the
+// import worker's loop without its nudge, since nothing a person does asks
+// for a price.
 func (w *SpotPriceWorker) Run(ctx context.Context) error {
-	ticker := time.NewTicker(w.Interval())
-	defer ticker.Stop()
 	for {
 		if _, err := w.RunCycle(ctx); err != nil && ctx.Err() == nil {
 			w.logger().Error("spot price cycle failed", "worker", spotPriceWorkerName, "error", err)
 		}
+		timer := time.NewTimer(w.nextWait())
 		select {
 		case <-ctx.Done():
+			timer.Stop()
 			return nil
-		case <-ticker.C:
+		case <-timer.C:
 		}
 	}
 }
 
+// nextWait is the wait after a cycle: a minute while the service's history
+// walk can go on (spot-price service design S5), the poll otherwise.
+func (w *SpotPriceWorker) nextWait() time.Duration {
+	if w.copying.Load() {
+		return spotServiceCopyingWait
+	}
+	return w.Interval()
+}
+
 // RunCycle is one cycle under the advisory lease, answering how many
 // requests it made: none when another replica holds the lease or nothing is
-// due. A failure of the feed is recorded on the day's row and the cycle goes
-// on; an error is the database's, and ends the cycle.
+// due. A failure of the feed or the service is recorded on the day's row (or
+// the history walk's) and the cycle goes on; an error is the database's, and
+// ends the cycle. With the service as the source the cycle is serviceCycle.
 func (w *SpotPriceWorker) RunCycle(ctx context.Context) (int, error) {
 	if w.setupErr != nil {
 		return 0, w.setupErr
 	}
 	requests := 0
+	if w.service != nil {
+		acquired, err := w.underLease(ctx, func(ctx context.Context, conn *pgxpool.Conn) error {
+			n, err := w.serviceCycle(ctx, conn)
+			requests = n
+			return err
+		})
+		if !acquired {
+			w.copying.Store(false)
+		}
+		return requests, err
+	}
 	_, err := w.underLease(ctx, func(ctx context.Context, conn *pgxpool.Conn) error {
 		due, err := w.due(ctx, store.New(conn))
 		if err != nil {
