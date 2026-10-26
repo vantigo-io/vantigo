@@ -16,7 +16,9 @@ import (
 // employment, the days away, the allocations and their flags to
 // planning:view; to the person themselves, holding planning:access alone,
 // their confirmed rows and nothing else — the reads that give employment,
-// days away and certificates need staff:view, which they do not hold.
+// days away and certificates need staff:view, which they do not hold. The
+// person's open wishes (S21) are planning:manage's and the person's own:
+// empty to anyone else.
 
 const (
 	// timelineDefaultDays is the timeline's window when the request names
@@ -87,7 +89,11 @@ func (s *server) timeline(ctx context.Context, personID int64, p gen.GetPlanning
 		return gen.PlanningTimeline{}, err
 	}
 	rows := w.rowsOf(personID)
-	projects, err := s.projectsOfRows(ctx, rows)
+	wishes, err := s.timelineWishes(ctx, c, personID)
+	if err != nil {
+		return gen.PlanningTimeline{}, err
+	}
+	projects, err := s.projectEntries(ctx, wishProjectIDs(rows, wishes))
 	if err != nil {
 		return gen.PlanningTimeline{}, err
 	}
@@ -100,19 +106,39 @@ func (s *server) timeline(ctx context.Context, personID int64, p gen.GetPlanning
 			flags = append(flags, gen.PlanningTimelineFlag{AllocationId: a.ID, Code: gen.PlanningTimelineFlagCodeCertificateExpires, Date: ptrTo(apiDate(*h.ValidTo))})
 		}
 	}
+	people := peopleByID(w.People)
+	allocations := allocationsView(rows, people, projects, c.Manage)
+	if err := s.applyTerms(ctx, allocations, c.Manage); err != nil {
+		return gen.PlanningTimeline{}, err
+	}
 	return gen.PlanningTimeline{
 		Person:      personView(person),
 		Employed:    spansView(person.Employed),
 		Away:        spansView(w.Capacity[personID].Away),
-		Allocations: allocationsView(rows, peopleByID(w.People), projects, c.Manage),
+		Allocations: allocations,
+		Wishes:      wishesView(wishes, people, projects),
 		Flags:       flags,
 	}, nil
 }
 
+// timelineWishes is the open wishes of personID the caller may read on
+// their timeline (S21): every one to planning:manage, the caller's own to
+// themself, none to planning:view alone. Self is asked only when the caller
+// does not plan.
+func (s *server) timelineWishes(ctx context.Context, c *callerContext, personID int64) ([]store.PlanningWish, error) {
+	if !c.Manage {
+		self, err := s.callerSelf(ctx, c)
+		if err != nil || self == nil || self.ID != personID {
+			return nil, err
+		}
+	}
+	return s.openWishesOf(ctx, personID)
+}
+
 // ownTimeline is the timeline of a caller holding planning:access alone
 // (§13 amendment 2): their own person as Self answers it, their confirmed
-// rows of the window without the note, and no employment, days away or
-// flags. Another person's id is the bare 404.
+// rows of the window without the note or the terms, their open wishes, and
+// no employment, days away or flags. Another person's id is the bare 404.
 func (s *server) ownTimeline(ctx context.Context, c *callerContext, personID int64, from, to time.Time) (gen.PlanningTimeline, error) {
 	self, err := s.callerSelf(ctx, c)
 	if err != nil {
@@ -128,17 +154,26 @@ func (s *server) ownTimeline(ctx context.Context, c *callerContext, personID int
 		return gen.PlanningTimeline{}, fmt.Errorf("planning: read the timeline of person %d: %w", personID, err)
 	}
 	rows = slices.DeleteFunc(rows, func(a store.PlanningAllocation) bool { return a.Status != statusConfirmed })
-	projects, err := s.projectsOfRows(ctx, rows)
+	wishes, err := s.openWishesOf(ctx, personID)
+	if err != nil {
+		return gen.PlanningTimeline{}, err
+	}
+	projects, err := s.projectEntries(ctx, wishProjectIDs(rows, wishes))
 	if err != nil {
 		return gen.PlanningTimeline{}, err
 	}
 	person := *self
 	person.Employed = nil
+	allocations := allocationsView(rows, map[int64]*contracts.PersonEntry{personID: &person}, projects, false)
+	if err := s.applyTerms(ctx, allocations, false); err != nil {
+		return gen.PlanningTimeline{}, err
+	}
 	return gen.PlanningTimeline{
 		Person:      personView(person),
 		Employed:    []gen.PlanningDateSpan{},
 		Away:        []gen.PlanningDateSpan{},
-		Allocations: allocationsView(rows, map[int64]*contracts.PersonEntry{personID: &person}, projects, false),
+		Allocations: allocations,
+		Wishes:      ownWishes(wishes, &person, projects),
 		Flags:       []gen.PlanningTimelineFlag{},
 	}, nil
 }

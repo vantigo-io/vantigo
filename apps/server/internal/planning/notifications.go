@@ -29,6 +29,11 @@ import (
 // on a context the request's end does not cancel; a notice that fails is
 // logged by the allocation's and the user's ids and never fails the write. A
 // person with no linked user is never mailed, and that is not an error.
+//
+// A new wish (S21) is mailed the same way to the planners — every
+// planning:manage holder, once, but the wisher (reading 6) — naming the
+// person as Staff answered them to themself, the kind, the project and the
+// date, and linking to the planners' Wishes page.
 
 // allocationNoticeKind is what a notice tells the person.
 type allocationNoticeKind int
@@ -45,6 +50,9 @@ const noticeTimeout = 30 * time.Second
 
 // myPlanningPage is the page a notice links to.
 const myPlanningPage = "/planning/me"
+
+// wishesPage is the page a wish's notice to the planners links to.
+const wishesPage = "/planning/wishes"
 
 // allocationNotice is one notice to send after the commit: whom, what, and
 // the row as the notice describes it — the row as written, or as it stood
@@ -99,6 +107,7 @@ type noticeWords struct {
 	removedSubject, removedBody          string
 	withdrawnSubject, withdrawnBody      string
 	openMyPlanning, project              string
+	wishOff, wishNew, openWishes         string
 	months                               [12]string
 	dateFormat                           func(day int, month string, year int) string
 	percent, hoursPerWeek, decimalSymbol string
@@ -119,6 +128,9 @@ var (
 		withdrawnBody:    "Your planning on %s from %s to %s is no longer confirmed.",
 		openMyPlanning:   "Open My planning:",
 		project:          "project %d",
+		wishOff:          "%s wishes off %s from %s",
+		wishNew:          "%s wishes for something new from %s",
+		openWishes:       "Open the wishes:",
 		months: [12]string{"January", "February", "March", "April", "May", "June", "July", "August",
 			"September", "October", "November", "December"},
 		dateFormat:    func(day int, month string, year int) string { return fmt.Sprintf("%d %s %d", day, month, year) },
@@ -138,6 +150,9 @@ var (
 		withdrawnBody:    "Planen din på %s fra %s til %s er ikke lenger bekreftet.",
 		openMyPlanning:   "Åpne Min bemanning:",
 		project:          "prosjekt %d",
+		wishOff:          "%s ønsker seg av %s fra %s",
+		wishNew:          "%s ønsker noe nytt fra %s",
+		openWishes:       "Åpne ønskene:",
 		months: [12]string{"januar", "februar", "mars", "april", "mai", "juni", "juli", "august",
 			"september", "oktober", "november", "desember"},
 		dateFormat:    func(day int, month string, year int) string { return fmt.Sprintf("%d. %s %d", day, month, year) },
@@ -177,10 +192,16 @@ func noticeTexts(n allocationNotice, link string) map[string]contracts.NoticeTex
 // projectName is the project as a notice names it: its code and name on one
 // line, or its id when the directory did not resolve it (rule 4).
 func (w noticeWords) projectName(n allocationNotice) string {
-	if n.project == nil {
-		return fmt.Sprintf(w.project, n.row.ProjectID)
+	return w.projectNamed(n.row.ProjectID, n.project)
+}
+
+// projectNamed is project id as the language names it: the entry's code and
+// name on one line, or the id when the directory did not resolve it.
+func (w noticeWords) projectNamed(id int32, project *contracts.ProjectEntry) string {
+	if project == nil {
+		return fmt.Sprintf(w.project, id)
 	}
-	return oneLine(n.project.Code + " " + n.project.Name)
+	return oneLine(project.Code + " " + project.Name)
 }
 
 // date is a civil date as the language writes it.
@@ -201,3 +222,51 @@ func (w noticeWords) load(a store.PlanningAllocation) string {
 // oneLine is s with every run of white space, line breaks included, as one
 // space: a project's name never breaks a subject.
 func oneLine(s string) string { return strings.Join(strings.Fields(s), " ") }
+
+// wishNotice is a new wish as the planners are told of it: the wisher as
+// Staff's Self answered them, the wish as written and its project, nil for
+// a wish for something new.
+type wishNotice struct {
+	person  *contracts.PersonEntry
+	wish    store.PlanningWish
+	project *contracts.ProjectEntry
+}
+
+// sendWishNotices tells each of recipients of n, after the wish committed,
+// under one budget of noticeTimeout; a failure is logged by the wish's and
+// the user's ids and goes no further.
+func (s *server) sendWishNotices(ctx context.Context, recipients []uuid.UUID, n wishNotice) {
+	if len(recipients) == 0 {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), noticeTimeout)
+	defer cancel()
+	texts := wishNoticeTexts(n, s.appLink(wishesPage))
+	for _, user := range recipients {
+		if err := s.usersNotify(ctx, user, contracts.Notice{Texts: texts}); err != nil {
+			s.deps.Logger.WarnContext(ctx, "planning: a wish's notice could not be sent",
+				"wish_id", n.wish.ID, "user_id", user.String(), "error", err.Error())
+		}
+	}
+}
+
+// wishNoticeTexts is n in both languages: "NAME wishes off CODE NAME from
+// DATE" or "NAME wishes for something new from DATE" as the subject and the
+// sentence, the body ending in the link to the Wishes page when the
+// installation has an origin.
+func wishNoticeTexts(n wishNotice, link string) map[string]contracts.NoticeText {
+	texts := map[string]contracts.NoticeText{}
+	for _, w := range []noticeWords{noticeEnglish, noticeNorwegian} {
+		name, from := oneLine(n.person.DisplayName), w.date(civil(n.wish.FromDate))
+		sentence := fmt.Sprintf(w.wishNew, name, from)
+		if n.wish.ProjectID != nil {
+			sentence = fmt.Sprintf(w.wishOff, name, w.projectNamed(*n.wish.ProjectID, n.project), from)
+		}
+		body := sentence + ".\n"
+		if link != "" {
+			body += "\n" + w.openWishes + " " + link + "\n"
+		}
+		texts[w.lang] = contracts.NoticeText{Subject: sentence, Body: body}
+	}
+	return texts
+}

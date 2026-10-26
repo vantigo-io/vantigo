@@ -19,15 +19,19 @@ func TestProjects_Listing(t *testing.T) {
 
 	var list gen.PlanningProjectList
 	getJSON(t, c, projectsPath, http.StatusOK, &list)
-	if len(list.Projects) != 3 || list.Projects[0].Code != "INTERN" || list.Projects[1].Code != "KVEM1000" || list.Projects[2].Code != "KVEM2000" {
-		t.Fatalf("projects = %+v, want INTERN, KVEM1000, KVEM2000", list.Projects)
+	if len(list.Projects) != 4 || list.Projects[0].Code != "HYDRO100" || list.Projects[1].Code != "INTERN" ||
+		list.Projects[2].Code != "KVEM1000" || list.Projects[3].Code != "KVEM2000" {
+		t.Fatalf("projects = %+v, want HYDRO100, INTERN, KVEM1000, KVEM2000", list.Projects)
 	}
-	active := list.Projects[1]
+	if hydro := list.Projects[0]; hydro.Customer == nil || hydro.Customer.Name == nil || *hydro.Customer.Name != "Hydro ASA" {
+		t.Errorf("HYDRO100 = %+v, want the second customer named", hydro)
+	}
+	active := list.Projects[2]
 	if active.Customer == nil || active.Customer.Name == nil || *active.Customer.Name != "Kraft-Verket AS" ||
 		active.StartDate == nil || active.StartDate.String() != "2026-09-01" || active.EndDate == nil || active.Status != gen.Active {
 		t.Errorf("KVEM1000 = %+v, want its customer named and its dates", active)
 	}
-	if internal := list.Projects[0]; internal.Customer != nil || internal.StartDate != nil {
+	if internal := list.Projects[1]; internal.Customer != nil || internal.StartDate != nil {
 		t.Errorf("INTERN = %+v, want no customer and no dates", internal)
 	}
 

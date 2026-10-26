@@ -25,23 +25,27 @@ import (
 // allocationResponse is a as the contract answers it: person and project
 // named when Staff and the directory answered them (nil reads by id alone,
 // rule 4), and the note only when withNote — the caller holds
-// planning:manage.
+// planning:manage. The derived dates and the terms are applyTerms' (S14,
+// S15), which every response answering allocations calls after this.
 func allocationResponse(a store.PlanningAllocation, person *contracts.PersonEntry, project *contracts.ProjectEntry, withNote bool) gen.PlanningAllocation {
 	out := gen.PlanningAllocation{
-		Id:          a.ID,
-		Person:      gen.PlanningPersonRef{Id: a.PersonID},
-		Project:     gen.PlanningProjectRef{Id: a.ProjectID},
-		FromDate:    apiDate(civil(a.FromDate)),
-		ToDate:      apiDate(civil(a.ToDate)),
-		LoadUnit:    gen.PlanningLoadUnit(a.LoadUnit),
-		Load:        loadOf(a.Load),
-		Status:      gen.PlanningAllocationStatus(a.Status),
-		Title:       a.Title,
-		ConfirmedAt: a.ConfirmedAt,
-		RequestId:   a.RequestID,
-		Revision:    a.Revision,
-		CreatedAt:   a.CreatedAt,
-		UpdatedAt:   a.UpdatedAt,
+		Id:       a.ID,
+		Person:   gen.PlanningPersonRef{Id: a.PersonID},
+		Project:  gen.PlanningProjectRef{Id: a.ProjectID},
+		FromDate: apiDate(civil(a.FromDate)),
+		ToDate:   apiDate(civil(a.ToDate)),
+		// The row's end until applyTerms derives the earliest release from
+		// its terms (S15).
+		EarliestRelease: apiDate(civil(a.ToDate)),
+		LoadUnit:        gen.PlanningLoadUnit(a.LoadUnit),
+		Load:            loadOf(a.Load),
+		Status:          gen.PlanningAllocationStatus(a.Status),
+		Title:           a.Title,
+		ConfirmedAt:     a.ConfirmedAt,
+		RequestId:       a.RequestID,
+		Revision:        a.Revision,
+		CreatedAt:       a.CreatedAt,
+		UpdatedAt:       a.UpdatedAt,
 	}
 	if person != nil {
 		name := person.DisplayName
@@ -152,6 +156,9 @@ func (s *server) ListPlanningAllocations(ctx context.Context, req gen.ListPlanni
 	for i, r := range rows {
 		out.Allocations[i] = allocationResponse(r, names.person(r.PersonID), names.project(r.ProjectID), c.Manage)
 	}
+	if err := s.applyTerms(ctx, out.Allocations, c.Manage); err != nil {
+		return nil, err
+	}
 	return gen.ListPlanningAllocations200JSONResponse(out), nil
 }
 
@@ -178,7 +185,11 @@ func (s *server) GetPlanningAllocation(ctx context.Context, req gen.GetPlanningA
 	if err != nil {
 		return nil, err
 	}
-	return gen.GetPlanningAllocation200JSONResponse(allocationResponse(row, names.person(row.PersonID), names.project(row.ProjectID), c.Manage)), nil
+	out := []gen.PlanningAllocation{allocationResponse(row, names.person(row.PersonID), names.project(row.ProjectID), c.Manage)}
+	if err := s.applyTerms(ctx, out, c.Manage); err != nil {
+		return nil, err
+	}
+	return gen.GetPlanningAllocation200JSONResponse(out[0]), nil
 }
 
 // allocation reads one row outside any transaction; false when there is

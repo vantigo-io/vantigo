@@ -126,19 +126,22 @@ func unknownNames(schema *openapi3.Schema, properties map[string]json.RawMessage
 
 // The contract's names for the request schemas this module closes: the
 // settings' change (S20), an allocation's fields (S1–S5), a request's fields,
-// each of its requirements and a fill (S16).
+// each of its requirements and a fill (S16), an allocation's terms (S14), a
+// wish (S21).
 const (
 	settingsRequestSchema   = "PlanningSettingsRequest"
 	allocationRequestSchema = "PlanningAllocationInput"
 	requestRequestSchema    = "PlanningRequestInput"
 	fillRequestSchema       = "PlanningFillInput"
 	requirementInputSchema  = "PlanningRequirementInput"
+	termsRequestSchema      = "PlanningTermsInput"
+	wishRequestSchema       = "PlanningWishInput"
 )
 
 // closedSchemas are the request schemas whose handlers refuse a property the
 // contract does not name, and the item schemas closedItems judges inside
 // them.
-var closedSchemas = []string{settingsRequestSchema, allocationRequestSchema, requestRequestSchema, fillRequestSchema, requirementInputSchema}
+var closedSchemas = []string{settingsRequestSchema, allocationRequestSchema, requestRequestSchema, fillRequestSchema, requirementInputSchema, termsRequestSchema, wishRequestSchema}
 
 // closedItems is, per closed request schema, its array properties whose
 // items are closed schemas of their own, each with that schema's name: a

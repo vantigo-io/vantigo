@@ -4,8 +4,10 @@ import (
 	"fmt"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
+	"github.com/vantigo-io/vantigo/server/internal/modtest"
 	"github.com/vantigo-io/vantigo/server/internal/planning/gen"
 )
 
@@ -112,5 +114,52 @@ func TestAttention_RequestsOpen(t *testing.T) {
 		if item.Type == gen.PlanningStatsAttentionItemTypeRequestsOpen {
 			t.Errorf("planning:view alone sees %+v, want no requestsOpen item", item)
 		}
+	}
+}
+
+// TestAttention_WishesUnseen is S22's wishesUnseen and plan reading 9: one
+// item to planning:manage while any open wish is unseen, counting them,
+// about the oldest unseen and titled with its person's name — none to
+// planning:view alone, and none once every wish is seen.
+func TestAttention_WishesUnseen(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	seen := seedOpenWish(t, h, personOla, "new", nil, "2026-10-01", 0)
+	h.Exec(t, `UPDATE planning.wishes SET seen_at = $2 WHERE id = $1`, seen, h.Now())
+	oldest := seedOpenWish(t, h, personKari, "new", nil, "2026-10-01", time.Hour)
+	newer := seedOpenWish(t, h, personOla, "off", ptr(projectActive), "2026-10-01", 2*time.Hour)
+
+	unseen := func(c *modtest.Client) []gen.PlanningStatsAttentionItem {
+		var got []gen.PlanningStatsAttentionItem
+		getJSON(t, c, attentionPath, http.StatusOK, &got)
+		var out []gen.PlanningStatsAttentionItem
+		for _, item := range got {
+			if item.Type == gen.PlanningStatsAttentionItemTypeWishesUnseen {
+				out = append(out, item)
+			}
+		}
+		return out
+	}
+	manager := h.SignIn(t, "planning:access", "planning:manage")
+	items := unseen(manager)
+	if len(items) != 1 {
+		t.Fatalf("items = %+v, want one", items)
+	}
+	item := items[0]
+	if item.Id != "wishesUnseen/all" || item.EntityId != fmt.Sprint(oldest) || item.Title != "Kari Nordmann" ||
+		item.Count == nil || *item.Count != 2 || !item.OccurredAt.Equal(h.Now().Add(time.Hour)) {
+		t.Errorf("item = %+v, want two unseen, about Kari's", item)
+	}
+	if items := unseen(h.SignIn(t, "planning:access", "planning:view")); len(items) != 0 {
+		t.Errorf("planning:view alone sees %+v", items)
+	}
+
+	h.workforce.setVisible(false)
+	if items := unseen(manager); len(items) != 1 || items[0].Title != fmt.Sprint(personKari) {
+		t.Errorf("without the workforce = %+v, want the person's id as the title", items)
+	}
+	h.Exec(t, `UPDATE planning.wishes SET seen_at = $2 WHERE id IN ($1, $3)`, oldest, h.Now(), newer)
+	if items := unseen(manager); len(items) != 0 {
+		t.Errorf("all seen = %+v, want no item", items)
 	}
 }

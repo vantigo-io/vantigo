@@ -15,13 +15,14 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/planning/store"
 )
 
-// A request's candidates (design S17 points 1, 2 and 6 and its sort; the
-// non-compete, the release and the wishes are delivery C's): the people in
+// A request's candidates (design S17 and its sort): the people in
 // employment through the whole period, each judged for competence against
-// the requirements, for availability against their free hours, and for fit
-// as Staff scores it — with the figures, the flags and the reasons, so the
-// planner sees why. The intake (intake.go) judges its coverage over the same
-// list.
+// the requirements, for availability against their free hours, against the
+// terms of their confirmed assignments — a non-compete toward the request's
+// customer excludes them, a release after the request's first day flags them
+// — for their wishes, and for fit as Staff scores it, with the figures, the
+// flags and the reasons, so the planner sees why. The intake (intake.go)
+// judges its coverage over the same list.
 //
 // Everything is read before any transaction, as every read is: Staff over
 // the request's period cut to the Workforce bound, as a write asks it
@@ -97,6 +98,60 @@ type judged struct {
 	candidate gen.PlanningCandidate
 	free      int64 // the free hours in hundredths, compared exactly
 	days      int32 // the days on the current project, 0 with none
+	wishes    bool  // a wishes flag: the person is willing (S17.5)
+}
+
+// bindings is what S17's points 3 to 5 read of the people judged, before
+// any transaction: the customer of the request's project, nil for none;
+// each person's confirmed rows with terms that could bind on or after the
+// request's first day (PersonAssignmentsFrom, plan reading 5); their open
+// wishes; and their current row — the confirmed row covering today with
+// the earliest from date — whose project an off wish names.
+type bindings struct {
+	customerID  *int32
+	assignments map[int64][]store.PersonAssignmentsFromRow
+	wishes      map[int64][]store.PlanningWish
+	current     map[int64]store.PlanningAllocation
+}
+
+// readBindings reads the bindings of personIDs for requests starting on or
+// after from — the assignments, the open wishes and the current rows, today
+// being today — in three queries of the module's own tables, nothing asked
+// for an empty batch. The customer is the caller's to set.
+func (s *server) readBindings(ctx context.Context, today, from time.Time, personIDs []int64) (bindings, error) {
+	b := bindings{
+		assignments: map[int64][]store.PersonAssignmentsFromRow{},
+		wishes:      map[int64][]store.PlanningWish{},
+		current:     map[int64]store.PlanningAllocation{},
+	}
+	if len(personIDs) == 0 {
+		return b, nil
+	}
+	q := store.New(s.deps.Pool)
+	assignments, err := q.PersonAssignmentsFrom(ctx, store.PersonAssignmentsFromParams{PersonIds: personIDs, FromDate: dayParam(from)})
+	if err != nil {
+		return bindings{}, fmt.Errorf("planning: read the candidates' assignments: %w", err)
+	}
+	for _, a := range assignments {
+		b.assignments[a.PlanningAllocation.PersonID] = append(b.assignments[a.PlanningAllocation.PersonID], a)
+	}
+	wishes, err := q.CandidateWishes(ctx, personIDs)
+	if err != nil {
+		return bindings{}, fmt.Errorf("planning: read the candidates' wishes: %w", err)
+	}
+	for _, w := range wishes {
+		b.wishes[w.PersonID] = append(b.wishes[w.PersonID], w)
+	}
+	rows, err := q.ConfirmedAllocationsCovering(ctx, store.ConfirmedAllocationsCoveringParams{PersonIds: personIDs, Day: dayParam(today)})
+	if err != nil {
+		return bindings{}, fmt.Errorf("planning: read the candidates' current rows: %w", err)
+	}
+	for _, a := range rows {
+		if _, seen := b.current[a.PersonID]; !seen {
+			b.current[a.PersonID] = a
+		}
+	}
+	return b, nil
 }
 
 // candidatesOf is r's candidates in S17's order, never nil: the people Staff
@@ -120,8 +175,19 @@ func (s *server) candidatesOf(ctx context.Context, c *callerContext, r store.Pla
 	if err != nil {
 		return nil, err
 	}
-	out := judgeCandidates(w, people, held, r, lo, hi, requirements, catalogue, includePartial)
-	return s.rankCandidates(ctx, c, out, lo, hi, loadOf(r.HoursPerWeek))
+	project, err := s.projectEntry(ctx, r.ProjectID)
+	if err != nil {
+		return nil, err
+	}
+	b, err := s.readBindings(ctx, c.Today, from, personIDsOf(people))
+	if err != nil {
+		return nil, err
+	}
+	if project != nil {
+		b.customerID = project.CustomerID
+	}
+	out := judgeCandidates(w, people, held, r, lo, hi, requirements, catalogue, b, includePartial)
+	return s.rankCandidates(ctx, c, out, lo, hi, loadOf(r.HoursPerWeek), b.current)
 }
 
 // employedOver is the people of people employed on every day of from..to
@@ -152,19 +218,31 @@ func employedOver(people []contracts.PersonEntry, from, to, lo, hi time.Time) []
 //     capacity (hoursPerWeek / 5 each, as an hours row books), freeHours the
 //     sum of the person's free hours over their confirmed rows (S6); fits
 //     when free is at or above required, else partial. Never excluded.
+//   - the non-compete, the release and the wishes (S17.3–5, bindings.of and
+//     bindings.wishFlags):
+//     a non-compete toward r's customer in force on its first day excludes
+//     the person, whatever includePartial; a release after the first day
+//     and an open wish are flags.
 //
 // covers is fits with no flag and nothing missing (S18's covered); the fit
 // does not enter it, so it is judged here, before any fit is asked.
 func judgeCandidates(w *window, people []contracts.PersonEntry, held map[int64][]contracts.HeldCompetence, r store.PlanningRequest,
-	lo, hi time.Time, requirements []store.PlanningRequestRequirement, catalogue map[int64]contracts.CompetenceEntry, includePartial bool) []judged {
+	lo, hi time.Time, requirements []store.PlanningRequestRequirement, catalogue map[int64]contracts.CompetenceEntry, b bindings, includePartial bool) []judged {
 	to := civil(r.ToDate)
 	request := capacityRow{From: civil(r.FromDate), To: to, LoadUnit: loadUnitHours, Load: loadOf(r.HoursPerWeek)}
 	var out []judged
 	for _, e := range people {
+		barred, termFlags := b.of(e.ID, r)
+		if barred {
+			continue
+		}
 		missing, flags := competenceOf(requirements, catalogue, held[e.ID], to)
 		if len(missing) > 0 && !includePartial {
 			continue
 		}
+		flags = append(flags, termFlags...)
+		wishFlags := b.wishFlags(e.ID, r)
+		flags = append(flags, wishFlags...)
 		capacity := w.Capacity[e.ID]
 		var required, free float64
 		for _, week := range capacityWeeks(capacityInput{From: lo, To: hi, Segments: capacity.Segments, Away: capacity.Away,
@@ -187,7 +265,8 @@ func judgeCandidates(w *window, people []contracts.PersonEntry, held map[int64][
 				Fit: gen.PlanningFit{Score: 100, Lowered: []string{}}, Flags: flags, Missing: missing,
 				Covers: availability == gen.Fits && len(flags) == 0 && len(missing) == 0,
 			},
-			free: hundredths(free),
+			free:   hundredths(free),
+			wishes: len(wishFlags) > 0,
 		})
 	}
 	return out
@@ -203,10 +282,12 @@ func judgeCandidates(w *window, people []contracts.PersonEntry, held map[int64][
 //   - the current project: the project of the person's confirmed row
 //     covering today with the earliest from date, and the days since it.
 //
-// The sort is fits first, then fit score, free hours and days on the
-// current project descending, then display name and id, so the order is
-// total.
-func (s *server) rankCandidates(ctx context.Context, c *callerContext, out []judged, lo, hi time.Time, hours float64) ([]gen.PlanningCandidate, error) {
+// The sort is fits first, then the willing — a wishes flag — first (S17's
+// second key), then fit score, free hours and days on the current project
+// descending, then display name and id, so the order is total. current is
+// each person's current row, as readBindings read it.
+func (s *server) rankCandidates(ctx context.Context, c *callerContext, out []judged, lo, hi time.Time, hours float64,
+	current map[int64]store.PlanningAllocation) ([]gen.PlanningCandidate, error) {
 	ids := make([]int64, len(out))
 	for i, j := range out {
 		ids[i] = j.candidate.Person.Id
@@ -215,7 +296,7 @@ func (s *server) rankCandidates(ctx context.Context, c *callerContext, out []jud
 	if err != nil {
 		return nil, outOfStaffBound(err, lo, c.Today, invalidRequestTitle)
 	}
-	current, err := s.currentProjects(ctx, c.Today, ids)
+	projects, err := s.currentProjects(ctx, c.Today, current)
 	if err != nil {
 		return nil, err
 	}
@@ -224,7 +305,7 @@ func (s *server) rankCandidates(ctx context.Context, c *callerContext, out []jud
 		if f, ok := fits[j.candidate.Person.Id]; ok {
 			j.candidate.Fit = gen.PlanningFit{Score: int32(f.Score), Lowered: append([]string{}, f.Lowered...)}
 		}
-		if p, ok := current[j.candidate.Person.Id]; ok {
+		if p, ok := projects[j.candidate.Person.Id]; ok {
 			j.candidate.CurrentProject, j.days = &p, p.Days
 		}
 	}
@@ -232,6 +313,7 @@ func (s *server) rankCandidates(ctx context.Context, c *callerContext, out []jud
 		x, y := a.candidate, b.candidate
 		return cmp.Or(
 			cmp.Compare(availabilityRank(x.Availability), availabilityRank(y.Availability)),
+			cmp.Compare(wishRank(a.wishes), wishRank(b.wishes)),
 			cmp.Compare(y.Fit.Score, x.Fit.Score),
 			cmp.Compare(b.free, a.free),
 			cmp.Compare(b.days, a.days),
@@ -252,6 +334,72 @@ func availabilityRank(a gen.PlanningCandidateAvailability) int {
 		return 0
 	}
 	return 1
+}
+
+// wishRank sorts the willing — a wishes flag — before the rest.
+func wishRank(wishes bool) int {
+	if wishes {
+		return 0
+	}
+	return 1
+}
+
+// of is S17.3 and S17.4 for personID against r, from the person's
+// assignments: barred when one's terms name r's customer with a non-compete
+// until r's first day or later; else a release_after_start flag for each
+// whose earliest release (S15) is after r's first day — dated on the
+// release, with the handover start and the row — and beside it
+// needs_customer_approval when its terms say so, since only a row the person
+// must be released from early needs the customer's word. The row that fills
+// r itself binds nothing on r: it is the request's own booking.
+func (b bindings) of(personID int64, r store.PlanningRequest) (bool, []gen.PlanningCandidateFlag) {
+	first := civil(r.FromDate)
+	var flags []gen.PlanningCandidateFlag
+	for _, a := range b.assignments[personID] {
+		row, t := a.PlanningAllocation, a.PlanningAllocationTerm
+		if row.RequestID != nil && *row.RequestID == r.ID {
+			continue
+		}
+		if b.customerID != nil && t.NonCompeteUntil.Valid && !civil(t.NonCompeteUntil).Before(first) &&
+			slices.Contains(t.NonCompeteCustomerIds, *b.customerID) {
+			return true, nil
+		}
+		release, handover := derivedDates(row, &t)
+		if !release.After(first) {
+			continue
+		}
+		flag := gen.PlanningCandidateFlag{Code: gen.PlanningCandidateFlagCodeReleaseAfterStart, Date: ptrTo(apiDate(release)), AllocationId: ptrTo(row.ID)}
+		if handover != nil {
+			flag.HandoverFrom = ptrTo(apiDate(*handover))
+		}
+		flags = append(flags, flag)
+		if t.ReplacementNeedsApproval {
+			flags = append(flags, gen.PlanningCandidateFlag{Code: gen.PlanningCandidateFlagCodeNeedsCustomerApproval, AllocationId: ptrTo(row.ID)})
+		}
+	}
+	return false, flags
+}
+
+// wishFlags is S17.5 for personID against r: a wishes flag, with the kind
+// and the wish's date, for each open wish from r's first day or before that
+// is new, or off the person's current project.
+func (b bindings) wishFlags(personID int64, r store.PlanningRequest) []gen.PlanningCandidateFlag {
+	first := civil(r.FromDate)
+	var flags []gen.PlanningCandidateFlag
+	for _, w := range b.wishes[personID] {
+		if civil(w.FromDate).After(first) {
+			continue
+		}
+		kind := gen.PlanningWishKind(w.Kind)
+		if kind == gen.Off {
+			current, ok := b.current[personID]
+			if !ok || w.ProjectID == nil || *w.ProjectID != current.ProjectID {
+				continue
+			}
+		}
+		flags = append(flags, gen.PlanningCandidateFlag{Code: gen.PlanningCandidateFlagCodeWishes, WishKind: &kind, Date: ptrTo(apiDate(civil(w.FromDate)))})
+	}
+	return flags
 }
 
 // competenceOf judges one person's held competences against requirements
@@ -307,30 +455,21 @@ func expiresBefore(meeting []contracts.HeldCompetence, last time.Time) (time.Tim
 	return latest, true
 }
 
-// currentProjects is each of personIDs' current project (S17): the project
-// of their confirmed row covering today with the earliest from date, named
-// when the directory resolves it, and the days since that date. A person
-// with no confirmed row covering today is absent. Nothing is asked for an
-// empty batch.
-func (s *server) currentProjects(ctx context.Context, today time.Time, personIDs []int64) (map[int64]gen.PlanningCurrentProject, error) {
+// currentProjects is each person's current project (S17) from first, their
+// confirmed row covering today with the earliest from date (readBindings):
+// the project named when the directory resolves it, and the days since that
+// date. A person with no such row is absent. Nothing is asked for an empty
+// map.
+func (s *server) currentProjects(ctx context.Context, today time.Time, first map[int64]store.PlanningAllocation) (map[int64]gen.PlanningCurrentProject, error) {
 	out := map[int64]gen.PlanningCurrentProject{}
-	if len(personIDs) == 0 {
+	if len(first) == 0 {
 		return out, nil
 	}
-	rows, err := store.New(s.deps.Pool).ConfirmedAllocationsCovering(ctx, store.ConfirmedAllocationsCoveringParams{
-		PersonIds: personIDs, Day: dayParam(today),
-	})
-	if err != nil {
-		return nil, fmt.Errorf("planning: read the candidates' current rows: %w", err)
+	firsts := make([]store.PlanningAllocation, 0, len(first))
+	for _, a := range first {
+		firsts = append(firsts, a)
 	}
-	first := map[int64]store.PlanningAllocation{}
-	var firsts []store.PlanningAllocation
-	for _, a := range rows {
-		if _, seen := first[a.PersonID]; !seen {
-			first[a.PersonID] = a
-			firsts = append(firsts, a)
-		}
-	}
+	slices.SortFunc(firsts, func(a, b store.PlanningAllocation) int { return cmp.Compare(a.ID, b.ID) })
 	projects, err := s.projectsOfRows(ctx, firsts)
 	if err != nil {
 		return nil, err

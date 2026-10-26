@@ -460,7 +460,7 @@ func (s *server) fill(ctx context.Context, id int64, body gen.PlanningFillInput)
 	var (
 		row     store.PlanningAllocation
 		request store.PlanningRequest
-		o       overbooking
+		v       verdict
 	)
 	locks := lockSet{projects: []int32{current.ProjectID}, persons: []int64{body.PersonId}}
 	err = s.withLocks(ctx, locks, func(ctx context.Context, txq *store.Queries) error {
@@ -473,7 +473,7 @@ func (s *server) fill(ctx context.Context, id int64, body gen.PlanningFillInput)
 		if before.Revision != current.Revision {
 			return errRowMoved
 		}
-		if row, o, err = s.insertAllocation(ctx, txq, c, who, w, &id); err != nil {
+		if row, v, err = s.insertAllocation(ctx, txq, c, who, w, &id); err != nil {
 			return err
 		}
 		if request, err = txq.SetRequestStatus(ctx, store.SetRequestStatusParams{
@@ -489,7 +489,10 @@ func (s *server) fill(ctx context.Context, id int64, body gen.PlanningFillInput)
 	if err != nil {
 		return gen.PlanningRequestFilled{}, err
 	}
-	written := s.created(ctx, c, w, row, o)
+	written, err := s.created(ctx, c, w, row, v)
+	if err != nil {
+		return gen.PlanningRequestFilled{}, err
+	}
 	return gen.PlanningRequestFilled{
 		Request:    requestResponse(request, held[id], catalogue, w.project, filledByOf(row, w.person), c.Manage),
 		Allocation: written.Allocation,

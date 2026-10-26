@@ -34,7 +34,7 @@ func TestIntake_Coverage(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
 	seedCatalogue(h)
-	h.projects.setProject(contracts.ProjectEntry{ID: 2005, Code: "AAA100", Name: "Tidlig fase", Status: "planned", BillingType: "time-and-materials"})
+	h.projects.setProject(contracts.ProjectEntry{ID: 2007, Code: "AAA100", Name: "Tidlig fase", Status: "planned", BillingType: "time-and-materials"})
 	h.projects.setProject(contracts.ProjectEntry{ID: 2006, Code: "KVEM9000", Name: "På vent", Status: "on-hold", BillingType: "time-and-materials"})
 	h.workforce.setHeld(personKari, heldSkill(catalogueJava, 4))
 	h.workforce.setHeld(personOla, heldSkill(catalogueJava, 2))
@@ -159,5 +159,42 @@ func TestIntake_PartlyCoveredAndUncovered(t *testing.T) {
 		if r.Coverage != gen.PartlyCovered || r.Candidates != 0 {
 			t.Errorf("request %d with the expiring card = %s with %d, want partly_covered with none", r.Request.Id, r.Coverage, r.Candidates)
 		}
+	}
+}
+
+// TestIntake_TermsAndNonCompete is S18 over S17.3 and S17.4: Kari is barred
+// from Kraft-Verket's planned project and Ola's only candidacy is flagged by
+// a release after the request's first day, so the request is
+// partly_covered with nobody covering; with Ola's terms cleared he covers it
+// alone (key_person); with Kari's non-compete expired before the first day,
+// both do.
+func TestIntake_TermsAndNonCompete(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	barring := seedAllocation(t, h, seedRow{person: personKari, project: projectInternal, from: "2026-09-01", to: "2026-09-30", load: 20})
+	seedTerms(t, h, barring, seedTerm{nonCompeteUntil: "2027-06-30", customers: []int32{customerKraftVerket}})
+	keeping := seedAllocation(t, h, seedRow{person: personOla, project: projectHydro, from: "2026-09-01", to: "2026-10-09", load: 20})
+	seedTerms(t, h, keeping, seedTerm{minimumUntil: "2026-10-30"})
+	id := seedRequest(t, h, seedReq{project: projectPlanned, from: "2026-10-05", to: "2026-10-30", hours: 10})
+
+	judge := func() gen.PlanningIntakeRequest {
+		t.Helper()
+		var intake gen.PlanningIntake
+		getJSON(t, h.SignIn(t, "planning:access", "planning:view"), intakePath, http.StatusOK, &intake)
+		if len(intake.Projects) != 1 || len(intake.Projects[0].Requests) != 1 || intake.Projects[0].Requests[0].Request.Id != id {
+			t.Fatalf("intake = %+v, want KVEM2000 with the request", intake.Projects)
+		}
+		return intake.Projects[0].Requests[0]
+	}
+	if r := judge(); r.Coverage != gen.PartlyCovered || r.Candidates != 0 || len(r.Flags) != 0 {
+		t.Errorf("with Kari barred and Ola flagged = %s with %d %v, want partly_covered with none", r.Coverage, r.Candidates, r.Flags)
+	}
+	h.Exec(t, `DELETE FROM planning.allocation_terms WHERE allocation_id = $1`, keeping)
+	if r := judge(); r.Coverage != gen.Covered || r.Candidates != 1 || !slices.Contains(r.Flags, gen.KeyPerson) {
+		t.Errorf("with Ola free = %s with %d %v, want covered by one, key_person", r.Coverage, r.Candidates, r.Flags)
+	}
+	h.Exec(t, `UPDATE planning.allocation_terms SET non_compete_until = '2026-10-04' WHERE allocation_id = $1`, barring)
+	if r := judge(); r.Coverage != gen.Covered || r.Candidates != 2 || len(r.Flags) != 0 {
+		t.Errorf("with Kari's non-compete over = %s with %d %v, want covered by two", r.Coverage, r.Candidates, r.Flags)
 	}
 }

@@ -71,7 +71,11 @@ func (s *server) intake(ctx context.Context) (gen.PlanningIntake, error) {
 	if err != nil {
 		return gen.PlanningIntake{}, err
 	}
-	candidates, err := s.intakeCandidates(ctx, c, rows, requirements, catalogue)
+	customers := map[int32]*int32{}
+	for _, e := range entries {
+		customers[e.ID] = e.CustomerID
+	}
+	candidates, err := s.intakeCandidates(ctx, c, rows, requirements, catalogue, customers)
 	if err != nil {
 		return gen.PlanningIntake{}, err
 	}
@@ -79,14 +83,14 @@ func (s *server) intake(ctx context.Context) (gen.PlanningIntake, error) {
 	if err != nil {
 		return gen.PlanningIntake{}, err
 	}
-	customers, err := s.customersOf(ctx, entries)
+	names, err := s.customersOf(ctx, entries)
 	if err != nil {
 		return gen.PlanningIntake{}, err
 	}
 
 	byProject := map[int32]*gen.PlanningIntakeProject{}
 	for _, e := range entries {
-		out.Projects = append(out.Projects, gen.PlanningIntakeProject{Project: projectView(e, customers), Requests: []gen.PlanningIntakeRequest{}})
+		out.Projects = append(out.Projects, gen.PlanningIntakeProject{Project: projectView(e, names), Requests: []gen.PlanningIntakeRequest{}})
 	}
 	for i := range out.Projects {
 		byProject[out.Projects[i].Project.Id] = &out.Projects[i]
@@ -124,8 +128,11 @@ func (s *server) intake(ctx context.Context) (gen.PlanningIntake, error) {
 // today when every first day is past) for the people any request of that
 // day keeps. Each request is then judged on its own period cut to the
 // bound, lo..hi, out of the shared window, exactly as its candidates read
-// judges it over a window of its own. No fit and no current project is
-// asked: coverage reads neither.
+// judges it over a window of its own. The bindings (S17.3–5) are read once
+// for every person kept, from the earliest first day of the requests judged,
+// and each request judged against its own project's customer (customers, by
+// project id). No fit and no current project's name is asked: coverage reads
+// neither.
 //
 // A request with no day inside the Workforce bound has no candidates Staff
 // can answer about, so it is judged on none (absent) rather than refusing
@@ -133,7 +140,8 @@ func (s *server) intake(ctx context.Context) (gen.PlanningIntake, error) {
 // refuses the shared window as outside its bound (its today another day
 // than this module's, at midnight).
 func (s *server) intakeCandidates(ctx context.Context, c *callerContext, rows []store.PlanningRequest,
-	requirements map[int64][]store.PlanningRequestRequirement, catalogue map[int64]contracts.CompetenceEntry) (map[int64][]judged, error) {
+	requirements map[int64][]store.PlanningRequestRequirement, catalogue map[int64]contracts.CompetenceEntry,
+	customers map[int32]*int32) (map[int64][]judged, error) {
 	out := map[int64][]judged{}
 	type cut struct{ lo, hi time.Time }
 	cuts := map[int64]cut{}
@@ -163,12 +171,18 @@ func (s *server) intakeCandidates(ctx context.Context, c *callerContext, rows []
 	people := map[int64][]contracts.PersonEntry{}
 	var days []string // the distinct days held is asked on, in first-seen order
 	idsOn := map[string][]int64{}
+	var everyone []int64
+	var first time.Time
 	for _, r := range rows {
 		k, ok := cuts[r.ID]
 		if !ok {
 			continue
 		}
+		if first.IsZero() || civil(r.FromDate).Before(first) {
+			first = civil(r.FromDate)
+		}
 		people[r.ID] = employedOver(w.People, civil(r.FromDate), civil(r.ToDate), k.lo, k.hi)
+		everyone = append(everyone, personIDsOf(people[r.ID])...)
 		day := latestOf(civil(r.FromDate), c.Today).Format(time.DateOnly)
 		if _, seen := idsOn[day]; !seen {
 			days = append(days, day)
@@ -184,13 +198,18 @@ func (s *server) intakeCandidates(ctx context.Context, c *callerContext, rows []
 		}
 		heldOn[day] = held
 	}
+	b, err := s.readBindings(ctx, c.Today, first, slices.Compact(slices.Sorted(slices.Values(everyone))))
+	if err != nil {
+		return nil, err
+	}
 	for _, r := range rows {
 		k, ok := cuts[r.ID]
 		if !ok {
 			continue
 		}
 		held := heldOn[latestOf(civil(r.FromDate), c.Today).Format(time.DateOnly)]
-		out[r.ID] = judgeCandidates(w, people[r.ID], held, r, k.lo, k.hi, requirements[r.ID], catalogue, false)
+		b.customerID = customers[r.ProjectID]
+		out[r.ID] = judgeCandidates(w, people[r.ID], held, r, k.lo, k.hi, requirements[r.ID], catalogue, b, false)
 	}
 	return out, nil
 }

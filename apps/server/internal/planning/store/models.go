@@ -31,6 +31,24 @@ type PlanningAllocation struct {
 	RequestID       *int64
 }
 
+type PlanningAllocationTerm struct {
+	AllocationID             int64
+	NoticeCount              *int16
+	NoticeUnit               *string
+	NoticeGivenOn            pgtype.Date
+	MinimumUntil             pgtype.Date
+	ReplacementNeedsApproval bool
+	HandoverDays             *int16
+	NonCompeteUntil          pgtype.Date
+	NonCompeteCustomerIds    []int32
+	Reference                *string
+	Revision                 int32
+	CreatedAt                time.Time
+	CreatedByUserID          *uuid.UUID
+	UpdatedAt                time.Time
+	UpdatedByUserID          *uuid.UUID
+}
+
 type PlanningEvent struct {
 	ID           int64
 	EntityKind   string
@@ -79,4 +97,15 @@ type PlanningSetting struct {
 	Revision                 int32
 	UpdatedAt                time.Time
 	UpdatedByUserID          *uuid.UUID
+}
+
+type PlanningWish struct {
+	ID           int64
+	PersonID     int64
+	Kind         string
+	ProjectID    *int32
+	FromDate     pgtype.Date
+	CreatedAt    time.Time
+	SeenAt       *time.Time
+	SeenByUserID *uuid.UUID
 }

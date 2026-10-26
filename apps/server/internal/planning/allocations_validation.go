@@ -282,6 +282,41 @@ func allocationWarnings(o overbooking, project *contracts.ProjectEntry, from, to
 	return out
 }
 
+// nonCompeteHit is the confirmed row whose terms bar a booking (S17.3): its
+// id and the non-compete's until date.
+type nonCompeteHit struct {
+	ID    int64
+	Until time.Time
+}
+
+// refuseNonCompete is the 409 a write answers when it would place a
+// confirmed row of the person on a customer's project their non-compete
+// bars (S17.3); nothing is written.
+func refuseNonCompete(hit *nonCompeteHit) error {
+	return refuseConflict(conflict(codeNonCompete, "The person is under a non-compete",
+		fmt.Sprintf("Allocation %d bars a booking on this customer's projects until %s.", hit.ID, hit.Until.Format(time.DateOnly))))
+}
+
+// verdict is what a write judged under the person's lock: S7's overbooking
+// and, for a row written tentative or a confirmed row the write does not
+// place (amendment 90), S17.3's non-compete — the case that refuses a
+// confirmed row placed — carried out to the warnings.
+type verdict struct {
+	overbooking
+	nonCompete *nonCompeteHit
+}
+
+// verdictWarnings is rule 6's warnings of a write: allocationWarnings', and
+// non_compete on a row the non-compete did not refuse, naming the binding
+// row and its until date.
+func verdictWarnings(v verdict, project *contracts.ProjectEntry, from, to time.Time) []gen.PlanningWarning {
+	out := allocationWarnings(v.overbooking, project, from, to)
+	if hit := v.nonCompete; hit != nil {
+		out = append(out, gen.PlanningWarning{Code: warnNonCompete, AllocationId: ptrTo(hit.ID), Date: ptrTo(apiDate(hit.Until))})
+	}
+	return out
+}
+
 // outsideProjectDates reports whether from..to leaves the project's
 // startDate..endDate, judged on the ends it has.
 func outsideProjectDates(project *contracts.ProjectEntry, from, to time.Time) bool {

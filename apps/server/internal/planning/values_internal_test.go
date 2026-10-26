@@ -127,7 +127,8 @@ func TestCodesAreTheContracts(t *testing.T) {
 	}
 	described := doc.Components.Schemas["PlanningProblem"].Value.Description
 	for _, code := range []string{codeOutsideEmployment, codeProjectClosed, codeOverbooked, codePeriodTooLong,
-		codeRevisionConflict, codeNoPerson, codeDependencyUnavailable} {
+		codeRevisionConflict, codeNoPerson, codeDependencyUnavailable, codeRequestNotOpen,
+		codeNonCompete, codeWishExists, codeWishLimit, codeWishNoBooking} {
 		if !strings.Contains(described, code) {
 			t.Errorf("PlanningProblem's description does not name %s", code)
 		}
@@ -136,7 +137,7 @@ func TestCodesAreTheContracts(t *testing.T) {
 	for _, v := range doc.Components.Schemas["PlanningWarning"].Value.Properties["code"].Value.Enum {
 		enum = append(enum, v.(string))
 	}
-	if want := []string{warnOverbooked, warnBookedWhileAway, warnOutsideProjectDates}; !slices.Equal(enum, want) {
+	if want := []string{warnOverbooked, warnBookedWhileAway, warnOutsideProjectDates, warnNonCompete}; !slices.Equal(enum, want) {
 		t.Errorf("PlanningWarning's codes = %v, want %v", enum, want)
 	}
 }

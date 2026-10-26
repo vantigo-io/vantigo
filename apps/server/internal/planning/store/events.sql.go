@@ -51,24 +51,30 @@ func (q *Queries) InsertEvent(ctx context.Context, arg InsertEventParams) error 
 
 const listEvents = `-- name: ListEvents :many
 SELECT id, entity_kind, entity_id, person_id, project_id, kind, payload, actor_kind, actor_user_id, actor_display, occurred_at FROM planning.events
-WHERE ($1::bigint IS NULL OR person_id = $1::bigint)
-  AND ($2::integer IS NULL OR project_id = $2::integer)
-  AND ($3::bigint IS NULL OR (entity_kind = 'allocation' AND entity_id = $3::bigint))
+WHERE ($1::boolean OR (entity_kind <> 'wish' AND kind NOT IN ('terms_set', 'terms_cleared')))
+  AND ($2::bigint IS NULL OR person_id = $2::bigint)
+  AND ($3::integer IS NULL OR project_id = $3::integer)
+  AND ($4::bigint IS NULL OR (entity_kind = 'allocation' AND entity_id = $4::bigint))
 ORDER BY occurred_at DESC, id DESC
-LIMIT $4::integer
+LIMIT $5::integer
 `
 
 type ListEventsParams struct {
-	PersonID     *int64
-	ProjectID    *int32
-	AllocationID *int64
-	MaxEvents    int32
+	IncludeManageOnly bool
+	PersonID          *int64
+	ProjectID         *int32
+	AllocationID      *int64
+	MaxEvents         int32
 }
 
 // ListEvents is the record filtered by person, project and allocation (each
-// NULL for any), newest first, at most @max_events.
+// NULL for any), newest first, at most @max_events. A wish's events and the
+// terms' (terms_set, terms_cleared) are planning:manage's (S23, S14,
+// amendment 89): without @include_manage_only none is listed, whatever the
+// filter.
 func (q *Queries) ListEvents(ctx context.Context, arg ListEventsParams) ([]PlanningEvent, error) {
 	rows, err := q.db.Query(ctx, listEvents,
+		arg.IncludeManageOnly,
 		arg.PersonID,
 		arg.ProjectID,
 		arg.AllocationID,

@@ -8,6 +8,7 @@ sql:
     schema:
       - ../db/migrations/00072_planning_baseline.sql
       - ../db/migrations/00073_planning_requests.sql
+      - ../db/migrations/00074_planning_assignments.sql
     queries: queries
     gen:
       go:

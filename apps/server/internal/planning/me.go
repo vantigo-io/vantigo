@@ -10,9 +10,9 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/planning/store"
 )
 
-// My planning (design S19): the caller's own person, as Staff's Self rule
-// answers it, and their confirmed rows from today on — never a tentative
-// row, never the note.
+// My planning (design S19, S21): the caller's own person, as Staff's Self
+// rule answers it, their confirmed rows from today on with the derived dates
+// — never a tentative row, the note or the terms — and their open wishes.
 
 // GetPlanningMe My planning
 // (GET /api/v1/planning/me)
@@ -52,13 +52,22 @@ func (s *server) me(ctx context.Context) (gen.PlanningMe, error) {
 	if err != nil {
 		return gen.PlanningMe{}, fmt.Errorf("planning: read the confirmed rows of person %d: %w", self.ID, err)
 	}
-	projects, err := s.projectsOfRows(ctx, rows)
+	wishes, err := s.openWishesOf(ctx, self.ID)
+	if err != nil {
+		return gen.PlanningMe{}, err
+	}
+	projects, err := s.projectEntries(ctx, wishProjectIDs(rows, wishes))
 	if err != nil {
 		return gen.PlanningMe{}, err
 	}
 	person := *self
+	allocations := allocationsView(rows, map[int64]*contracts.PersonEntry{person.ID: &person}, projects, false)
+	if err := s.applyTerms(ctx, allocations, false); err != nil {
+		return gen.PlanningMe{}, err
+	}
 	return gen.PlanningMe{
 		Person:      personView(person),
-		Allocations: allocationsView(rows, map[int64]*contracts.PersonEntry{person.ID: &person}, projects, false),
+		Allocations: allocations,
+		Wishes:      ownWishes(wishes, &person, projects),
 	}, nil
 }

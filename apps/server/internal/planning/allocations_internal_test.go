@@ -328,3 +328,65 @@ func TestReplaceNotices(t *testing.T) {
 }
 
 func ptrOf[T any](v T) *T { return &v }
+
+// TestDerivedDates is S15 as a pure rule over a row ending 30 October 2026:
+// the latest of the end, the minimum term and the notice's end when notice
+// was given (days, weeks, months by Staff's month rule, clamped to a short
+// month), and the handover counted back from the release, 0 days being the
+// release day itself.
+func TestDerivedDates(t *testing.T) {
+	t.Parallel()
+	day := func(s string) time.Time { d, _ := time.Parse(time.DateOnly, s); return d }
+	row := store.PlanningAllocation{ToDate: dayParam(day("2026-10-30"))}
+	unit := func(u string) *string { return &u }
+	count := func(n int16) *int16 { return &n }
+	for _, tc := range []struct {
+		name     string
+		terms    *store.PlanningAllocationTerm
+		release  string
+		handover string
+	}{
+		{"no terms", nil, "2026-10-30", ""},
+		{"empty terms", &store.PlanningAllocationTerm{}, "2026-10-30", ""},
+		{"a minimum after", &store.PlanningAllocationTerm{MinimumUntil: dayParam(day("2026-12-31"))}, "2026-12-31", ""},
+		{"a minimum before", &store.PlanningAllocationTerm{MinimumUntil: dayParam(day("2026-10-01"))}, "2026-10-30", ""},
+		{"days", &store.PlanningAllocationTerm{NoticeCount: count(14), NoticeUnit: unit("days"), NoticeGivenOn: dayParam(day("2026-10-20"))}, "2026-11-03", ""},
+		{"weeks", &store.PlanningAllocationTerm{NoticeCount: count(3), NoticeUnit: unit("weeks"), NoticeGivenOn: dayParam(day("2026-10-26"))}, "2026-11-16", ""},
+		{"months clamped", &store.PlanningAllocationTerm{NoticeCount: count(1), NoticeUnit: unit("months"), NoticeGivenOn: dayParam(day("2027-01-31"))}, "2027-02-28", ""},
+		{"notice not given", &store.PlanningAllocationTerm{NoticeCount: count(3), NoticeUnit: unit("months")}, "2026-10-30", ""},
+		{"a handover", &store.PlanningAllocationTerm{MinimumUntil: dayParam(day("2026-12-31")), HandoverDays: count(10)}, "2026-12-31", "2026-12-21"},
+		{"a handover of 0", &store.PlanningAllocationTerm{HandoverDays: count(0)}, "2026-10-30", "2026-10-30"},
+	} {
+		release, handover := derivedDates(row, tc.terms)
+		got := ""
+		if handover != nil {
+			got = handover.Format(time.DateOnly)
+		}
+		if release.Format(time.DateOnly) != tc.release || got != tc.handover {
+			t.Errorf("%s: %s, %q; want %s, %q", tc.name, release.Format(time.DateOnly), got, tc.release, tc.handover)
+		}
+	}
+}
+
+// TestCheckTermsRevision is plan reading 2's four cases.
+func TestCheckTermsRevision(t *testing.T) {
+	t.Parallel()
+	stored := &store.PlanningAllocationTerm{Revision: 2}
+	two, one := int32(2), int32(1)
+	for name, tc := range map[string]struct {
+		stored   *store.PlanningAllocationTerm
+		supplied *int32
+		ok       bool
+	}{
+		"none and none":     {nil, nil, true},
+		"a header, no row":  {nil, &one, false},
+		"a row, no header":  {stored, nil, false},
+		"a stale revision":  {stored, &one, false},
+		"the same revision": {stored, &two, true},
+	} {
+		err := checkTermsRevision(tc.stored, tc.supplied)
+		if r, conflict := asRefusal(err); tc.ok != (err == nil) || (!tc.ok && (!conflict || r.status != http.StatusConflict)) {
+			t.Errorf("%s = %v, want ok %v or a 409", name, err, tc.ok)
+		}
+	}
+}
