@@ -338,11 +338,13 @@ policy and marking a day's Vipps payments reconciled. In Staff,
 number or a bank account — **Manage staff** does not, though it keeps the competence
 catalogue — and **Decide absence** decides anyone's absence and also verifies people's
 competences and records their competence reviews, never the holder's own. In Planning,
-**Use Planning** gives the app and the holder's own confirmed bookings; **See the plan**,
-marked sensitive, shows the board, every person's timeline and every project's code,
-name, customer, status and dates, bids included, with the requests and the intake; and
-**Plan**, also sensitive, writes the allocations and the requests, finds a request's
-candidates and fills it, reads the planners' notes and keeps the Planning settings. A
+**Use Planning** gives the app, the holder's own confirmed bookings and wishes, and
+those bookings on the Calendar; **See the plan**, marked sensitive, shows the board,
+every person's timeline and every project's code, name, customer, status and dates,
+bids included, with the requests and the intake; and **Plan**, also sensitive, writes
+the allocations and their terms — a customer contract's notice, handover and
+non-compete — and the requests, finds a request's candidates and fills it, reads the
+planners' notes and the people's wishes, and keeps the Planning settings. A
 planner also needs **View the staff directory** from Staff, since the plan shows only
 the people Staff answers them. **Manage identity**
 (`identity:manage`) is the one permission of the identity module itself.

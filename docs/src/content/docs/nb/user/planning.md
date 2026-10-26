@@ -1,6 +1,6 @@
 ---
 title: Bemanning
-description: Hvem som jobber med hva — Planen med personer mot uker, fargene, grupperingene og filtrene, allokeringsskjemaet med varslene og avvisningene, Behov og behovsskjemaet, å fylle et behov fra kandidatene, Inntak med de planlagte prosjektene, prosjektplanen med etterspørselen, en persons tidslinje med merknadene, listen Ubemannet, Min bemanning og e-posten personen får, Bemanningsinnstillinger, kortet på dashbordet og punktene i Trenger oppfølging, og bemanningsfanene på personsiden i Ansatte og prosjektsiden i Prosjekter.
+description: Hvem som jobber med hva — Planen med personer mot uker, fargene, grupperingene og filtrene, allokeringsskjemaet med varslene og avvisningene, et oppdrags vilkår med tidligst ledig, overlappingen og karantenen, Behov og behovsskjemaet, å fylle et behov fra kandidatene, Inntak med de planlagte prosjektene, prosjektplanen med etterspørselen, en persons tidslinje med merknadene og markeringene, listen Ubemannet, personenes ønsker i Min bemanning og planleggernes Ønsker, Min bemanning og e-posten personen får, Bemanningsinnstillinger, kortet på dashbordet og punktene i Trenger oppfølging, bemanningsfanene på personsiden i Ansatte og prosjektsiden i Prosjekter, og allokeringene dine i Kalender.
 sidebar:
   order: 46
 sources:
@@ -21,8 +21,11 @@ denne siden handler om hva du gjør i hvert skjermbilde.
 
 Bemanning har allokeringene, planen, listene og personens egen visning, og **behov** —
 det et prosjekt trenger før noen er navngitt — med dem som kunne fylt dem, og inntaket av
-planlagte prosjekter. Oppdrag med kontraktsvilkårene, og personens ønsker, kommer i en
-senere levering.
+planlagte prosjekter. En allokering som også er et oppdrag for en kunde, har
+kontraktens **vilkår** — oppsigelsestiden, bindingen, overlappingen og karantenen — og
+av dem leser Bemanning dagen personen tidligst er ledig. Personene sier hva de
+**ønsker**, av et prosjekt eller noe nytt, og planleggerne leser det. Og dine egne
+bekreftede allokeringer vises i [Kalender](#i-kalender).
 
 ## Appen og sidemenyen
 
@@ -35,6 +38,7 @@ rettighetene dine gir deg:
 | **Behov** | `planning:view` |
 | **Inntak** | `planning:view` |
 | **Ubemannet** | `planning:view` |
+| **Ønsker** | `planning:manage` |
 | **Min bemanning** | alle med `planning:access` |
 | **Bemanningsinnstillinger** | `planning:manage` |
 
@@ -149,8 +153,14 @@ dem:
 - *Personen er satt opp mens hen er borte i* … — ukene der allokeringene passer i
   kapasiteten, men ikke i dagene personen er på jobb.
 - *Perioden går utenfor prosjektets start- eller sluttdato.*
+- *Personen har karantene overfor denne kunden til og med* … — personen har
+  [karantene](#karantenen) overfor prosjektets kunde, og allokeringen er tentativ, så den
+  lagres som planleggernes utkast; den avvises i det øyeblikket du bekrefter den. En
+  bekreftet allokering som alt ligger på den kundens prosjekt, får det samme varselet
+  når du bare endrer rollen, belastningen eller den siste dagen.
 
-Bare bekreftede allokeringer veies: en tentativ allokering overbooker aldri noen.
+Bare bekreftede allokeringer veies for overbelastning: en tentativ allokering
+overbooker aldri noen.
 
 ### Avvisninger
 
@@ -167,6 +177,9 @@ merker feltet:
   [innstillingene](#bemanningsinnstillinger). En endring som beholder eller minsker en
   overbelastning som allerede finnes, lagres fortsatt, med varselet, så en plan kan
   rettes én allokering om gangen.
+- *Personen har karantene overfor denne kunden.* — en bekreftet allokering som plasseres
+  på et prosjekt for en kunde personens [karantene](#karantenen) gjelder. Den vurderes før
+  overbelastningen, så når begge gjelder, er det denne grunnen som gis.
 - *Noen andre lagret dette først; det er lastet inn på nytt* — en annen planlegger endret
   den samme allokeringen først. Se hva som står der nå, og gjør endringen din på nytt.
 
@@ -191,6 +204,75 @@ opp eller allokeringen endres — og lenker til **Min bemanning**; den har aldri
 notatet. Flytter du en bekreftet allokering til en annen person, får den første beskjed
 om at hen ikke lenger er satt opp, og den andre at hen er det. Det sendes aldri e-post om
 en tentativ allokering, og en person uten bruker får aldri e-post.
+
+### Vilkår
+
+Når en allokering er et oppdrag for en kunde, hører kontraktens vilkår hjemme på den.
+Åpne allokeringen (`planning:manage`): under allokeringens eget skjema har skjemaet en
+egen del, **Vilkår**: *Oppdragets vilkår med kunden. Vilkårene gjelder først når
+allokeringen er bekreftet; bare planleggerne ser dem.* Den finnes bare på en allokering
+som alt er lagret — personen ser aldri vilkårene, og **Se planen** viser bare de to
+datoene de gir.
+
+- **Oppsigelsestid** — et antall fra 1 til 365 og en enhet, **dager**, **uker** eller
+  **måneder**; oppgi begge eller ingen av dem.
+- **Oppsigelse gitt** — dagen oppsigelsen ble gitt, av dere eller av kunden. Den krever
+  en oppsigelsestid.
+- **Bundet til** — dagen kontrakten binder personen til, minst.
+- **Erstatning krever kundens godkjenning** — kunden må godkjenne en erstatter før
+  personen kan gå tidlig.
+- **Overlappingsdager** — 0 til 90: hvor mange dager en etterfølger bør overlappe før
+  personen tidligst er ledig.
+- **Karantene til** og **Kunder** — personen kan ikke bekreftes mot kundene som står her,
+  høyst 20, før den dagen. Oppgi begge eller ingen av dem.
+- **Referanse** (høyst 200 tegn) — kontraktens eller bestillingens referanse.
+
+Trykk **Lagre vilkår**; skjemaet blir stående åpent med *Vilkårene er lagret*, så du kan
+lese datoene de gir. **Fjern vilkår** spør *Fjerne vilkårene?* og fjerner alle. Vilkårene
+lagres for seg, ikke sammen med allokeringen, og alltid hele: et felt du tømmer, blir
+fjernet.
+
+Vilkår kan settes på en tentativ allokering, og **binder når den er bekreftet**: før det
+teller verken tidligst ledig eller karantenen noe sted.
+
+Når vilkårene er lagret, viser overskriften i delen de to datoene Bemanning leser av
+dem, og som ingen skriver inn:
+
+- **Tidligst ledig** — dagen personen tidligst kan bli ledig: den seneste av
+  allokeringens siste dag, **Bundet til**, og dagen oppsigelsen ble gitt pluss
+  oppsigelsestiden. Uten vilkår, eller uten noen som går lenger, er det allokeringens
+  siste dag; fjerner du vilkårene, blir det den igjen.
+- **Overlapping fra** — tidligst ledig minus overlappingsdagene: dagen en etterfølger bør
+  begynne, så de to overlapper. Vises bare når **Overlappingsdager** er oppgitt.
+
+Begge vises på personens [tidslinje](#en-persons-tidslinje), og begge blir merknader på
+personen når hen er [kandidat](#fyll-et-behov) til et behov som begynner før hen er
+ledig.
+
+For å legge til kunder under **Kunder** søker du på navnet; det krever **Se kunder**
+(`customers:view`) i Kunder. Uten den sier delen *Du kan ikke søke i kundene (det krever
+Se kunder). Kundene som står her, kan fortsatt fjernes.* — kundene som alt står der,
+blir stående, og hver kan fjernes, og en kunde kunderegisteret ikke lenger kjenner, står
+som *Kunde* og nummeret.
+
+#### Karantenen
+
+Karantenen er det ene vilkåret Bemanning håndhever. Når en bekreftet allokering for
+personen har vilkår med en karantene mot en kunde, gjelder den mot hver annen allokering
+for personen som begynner på eller før dagen i **Karantene til**:
+
+- en allokering som ville **plassere** personen, bekreftet, på et prosjekt for den
+  kunden, avvises med *Personen har karantene overfor denne kunden.*: en ny bekreftet
+  allokering, å [fylle et behov](#fyll-et-behov) som bekreftet, å bekrefte en tentativ
+  allokering, og en endring av en bekreftet allokering som flytter den til personen
+  eller til prosjektet, eller flytter den første dagen tidligere;
+- en **tentativ** allokering lagres, med varselet som oppgir dagen karantenen varer til
+  og med — og det gjør også en endring av en bekreftet allokering som alt ligger på den
+  kundens prosjekt, når den bare gjelder rollen, belastningen eller den siste dagen;
+- personen tilbys ikke i det hele tatt som kandidat til den kundens behov.
+
+Et prosjekt uten kunde treffes aldri av en karantene, og allokeringen som har vilkårene,
+vurderes aldri mot seg selv.
 
 ## Behov
 
@@ -276,11 +358,24 @@ alle kravene. Hvert kort viser:
 - *Sertifikatet utløper* med dagen og sertifikatet, når et sertifikat som kreves, går ut
   før behovets siste dag;
 - *På PROSJEKT i N dager* — prosjektet personen har en bekreftet allokering på i dag, og
-  hvor lenge hen har vært på det.
+  hvor lenge hen har vært på det;
+- *Tidligst ledig DATO* — en bekreftet allokering for personen der
+  [vilkårene](#vilkår) først gjør hen ledig etter behovets første dag, og ved siden av
+  *Overlapping fra DATO* når vilkårene oppgir overlappingsdager: dagen hen bør begynne å
+  overlappe med en etterfølger. Personen tilbys likevel — det kan forhandles om når hen
+  blir ledig;
+- *Erstatning krever kundens godkjenning* — ved siden av en ledig dag etter starten, når
+  vilkårene på den allokeringen sier det;
+- *Ønsker seg av prosjektet fra DATO* eller *Ønsker seg noe nytt fra DATO* — et åpent
+  [ønske](#mine-ønsker) fra personen, fra behovets første dag eller før: om noe nytt,
+  eller om å gå av prosjektet hen er på i dag.
 
-De som har tid, kommer først, så etter hvor godt det passer ønskene, så etter ledige
-timer, og blant like den som har vært lengst på sitt nåværende prosjekt først, så
-planleggeren kan la noen gå videre.
+De som har tid, kommer først, så de som har ønsket seg en endring, så etter hvor godt
+det passer ønskene, så etter ledige timer, og blant like den som har vært lengst på sitt
+nåværende prosjekt først, så planleggeren kan la noen gå videre.
+
+En person med [karantene](#karantenen) mot prosjektets kunde fra behovets første dag
+vises ikke i det hele tatt, heller ikke under **Vis delvise treff**.
 
 **Vis delvise treff** viser også dem som mangler et krav, med *Mangler* og kompetansene
 i rødt. Når ingen passer, sier panelet **Ingen passer til dette behovet**.
@@ -313,7 +408,8 @@ Under dem står de åpne og fylte behovene, hvert med perioden, timene per uke o
 - **Dekket** — behovet er fylt, eller minst én person dekker det: har tid, har alle
   kravene og ingen merknad.
 - **Delvis dekket** — det finnes folk som har alle kravene, men ingen dekker det: de har
-  for lite tid, eller et sertifikat som kreves, går ut i perioden.
+  for lite tid, et sertifikat som kreves, går ut i perioden, eller de har en annen
+  merknad — ledig først etter at behovet begynner, eller et ønske.
 - **Udekket** — ingen som er ansatt gjennom hele perioden, har alle kravene.
 
 **Nøkkelperson** markerer et åpent behov nøyaktig én person dekker: blir den personen
@@ -369,9 +465,23 @@ Ansatte. Den ser fremover: i dag og de 26 ukene etter.
   - **Sertifikatet utløper** (med dagen) — et av personens sertifikater i Ansatte går ut
     under allokeringen. Forny det i Ansatte, eller planlegg for det.
 
+  Listen har også kolonnene **Tidligst ledig** og **Overlapping fra** — datoene
+  [vilkårene](#vilkår) på en allokering gir, eller en strek: **Tidligst ledig** vises bare
+  når vilkårene flytter den forbi allokeringens siste dag.
+- **Tidligst ledig og overlapping** — en rad under stolpene, som finnes når vilkårene på
+  en allokering gir en av datoene: **Tidligst ledig** markert på sin dag, og **Overlapping
+  fra** på sin. Hold pekeren over en markering for å lese den med prosjektet først —
+  *P-100 Havneappen: Tidligst ledig* og datoen.
+
+Under stolpene viser **Åpne ønsker** personens åpne ønsker — *Av PROSJEKT fra DATO*
+eller *Noe nytt fra DATO* — hvert med *Sett* og dagen en planlegger merket det, eller
+*Ikke sett ennå*. En planlegger (`planning:manage`) ser det på alles tidslinje, og du ser
+det på din egen; **Se planen** alene viser ikke en annen persons ønsker.
+
 En planlegger åpner en stolpe for å endre allokeringen. Med `planning:view` ser du hele
 tidslinjen til hvem som helst, tentative allokeringer medregnet. Din egen tidslinje, med
-bare `planning:access`, viser de bekreftede allokeringene dine og ikke noe annet;
+bare `planning:access`, viser de bekreftede allokeringene dine og de åpne ønskene dine,
+ikke noe annet;
 ansettelsen og fraværet ditt står på [Min side](/nb/user/staff/#min-side) i Ansatte.
 
 ## Ubemannet
@@ -390,6 +500,27 @@ etter belastning. Den som er borte hele perioden, eller begynner etter den, stå
 listen: de er ikke ubemannet, de er borte. Når ingen er under terskelen, sier siden
 **Alle er satt opp**.
 
+## Ønsker
+
+**Ønsker** (`planning:manage`) er der planleggerne leser hva personene
+[ønsker](#mine-ønsker): hvert åpent ønske, eldste først, med **Person** — trykk navnet for
+å åpne tidslinjen — **Type**, **Av** eller **Noe nytt**, **Prosjekt** et ønske om å gå av
+prosjektet gjelder (trykk det for å åpne prosjektplanen; en strek på noe nytt), dagen det
+gjelder **Fra**, dagen det ble **Registrert**, og **Sett**: dagen en planlegger merket
+det, eller et oransje **Nytt**-merke på et ønske ingen har lest.
+
+- **Merk som sett** (på et nytt ønske) merker det som sett — personen ser *Sett av en
+  planlegger* og datoen på sin egen side. Det er planleggernes kvittering, ikke et svar.
+- **Avslutt** spør *Avslutte ønsket?* og sletter det, når ønsket er håndtert: *Det
+  slettes, og loggen beholder typen, prosjektet og datoen.* Personen ser det ikke lenger
+  heller.
+
+En planlegger uten **Se ansattoversikten** (`staff:view`) ser merknaden **Ansatte viser
+deg ingen** øverst, som i Ubemannet, og hver person står som *En kollega*. Når ingen har
+et åpent ønske, sier siden **Ingen åpne ønsker**. Hver planlegger får
+e-post når noen registrerer et ønske, og dashbordet teller ønskene ingen har sett
+([Usette ønsker](#dashbordet)).
+
 ## Min bemanning
 
 **Min bemanning** er hver brukers egen visning, med `planning:access`: det du er satt
@@ -402,6 +533,45 @@ e-post, og e-posten lenker hit.
 Sier siden **Ingen person er knyttet til deg**, har Ansatte ingen person knyttet til
 brukeren din, så det er ingen å vise allokeringer for. Be HR knytte brukeren din til
 personen din.
+
+### Mine ønsker
+
+Under allokeringene dine er **Mine ønsker** der du sier fra til planleggerne at du
+gjerne vil ha en endring. Det er to knapper:
+
+- **Jeg ønsker meg av dette prosjektet fra…** åpner *Jeg ønsker meg av et prosjekt*: velg
+  **Prosjekt** — en av de bekreftede allokeringene over som du ikke alt ønsker deg av;
+  er det bare én, er den valgt for deg — og dagen det gjelder **Fra**, i dag eller
+  senere. Når det ikke er noe slikt prosjekt igjen, er knappen grå med *Du har ingen
+  bekreftet allokering å ønske deg av.*
+- **Jeg ønsker noe nytt fra…** åpner *Jeg ønsker noe nytt*: bare dagen det gjelder
+  **Fra**. Du trenger ingen allokering for det.
+
+Trykk **Send**: *Ønsket ditt er sendt til planleggerne*. På mobilen åpnes dialogen
+nedenfra.
+
+Det finnes ikke noe felt for hvorfor. Et ønske er et prosjekt og en dato, ikke noe mer:
+planleggerne leser hva du vil og fra når, og grunnene er dine å fortelle dem — Bemanning
+tar ikke vare på noe du skriver.
+
+Du kan ha høyst fem åpne ønsker, og ett om å gå av hvert prosjekt. Ved fem er begge
+knappene grå med *Du har allerede fem åpne ønsker. Trekk tilbake ett før du sender et
+nytt.* Endrer noe seg mens dialogen er åpen — en allokering fjernet, et ønske sendt fra
+en annen enhet — sier den det med egne ord: *Du ønsker deg allerede av det prosjektet.*
+eller *Du har ingen bekreftet allokering på det prosjektet.*
+
+Hvert åpent ønske står i listen — *Av PROSJEKT fra DATO* eller *Noe nytt fra DATO* — med
+*Sett av en planlegger* og datoen når en planlegger har lest det, eller *Ikke sett
+ennå*. **Trekk tilbake** spør *Trekke tilbake dette ønsket?* og sletter det; planleggerne
+ser det ikke lenger. Et ønske en planlegger har avsluttet, er også borte fra listen, og
+et som blir avsluttet mens du trekker det tilbake, sier *Ønsket finnes ikke lenger: det
+er trukket tilbake eller avsluttet i mellomtiden.* — slik siden **Ønsker** gjør når to
+planleggere handler på det samme ønsket.
+
+Når du sender et ønske, får hver planlegger (`planning:manage`) én e-post, på sitt eget
+språk, med navnet ditt, prosjektet og dagen, og en lenke til siden **Ønsker**; du får
+ingen e-post om ditt eget ønske. Når du er kandidat til et behov, ser planleggeren som
+fyller det, ønsket ditt ved navnet ditt.
 
 ## Bemanningsinnstillinger
 
@@ -433,7 +603,7 @@ belastningen deres denne uken med den tentative ved siden av, hvor mange behov s
 åpne, og hvor mange som er ubemannet.
 
 Punktene fra Bemanning kommer sammen med de andre appenes i **Trenger oppfølging**. De
-tre første er for `planning:view`, de to siste for `planning:manage`:
+tre første er for `planning:view`, de tre siste for `planning:manage`:
 
 | Punkt | Det betyr | Åpner |
 | --- | --- | --- |
@@ -442,10 +612,11 @@ tre første er for `planning:view`, de to siste for `planning:manage`:
 | Sertifikat utløper under en allokering | Et sertifikat personen har, går ut under en av de bekreftede allokeringene deres i horisonten — ett punkt per allokering og sertifikat, datert dagen det går ut. | Personens tidslinje |
 | Slutter uten oppfølging | En bekreftet allokering slutter innen ukene innstillingene oppgir, og personen har ingen bekreftet allokering som fortsetter innen sju dager etter slutten. Med personen og prosjektets kode i navnet. | Plan |
 | Åpent behov | Et åpent behov starter innen dagene innstillingene oppgir, eller har alt startet — ett punkt per behov, med prosjektets kode og behovets tittel i navnet, datert første dag. | Behov, filtrert til de åpne |
+| Usette ønsker | Ønsker ingen planlegger har merket som sett — ett punkt for alle, *Usette ønsker:* og antallet, datert dagen det eldste av dem ble registrert. | Ønsker |
 
 Et punkt forsvinner når det det teller, gjør det: en allokering satt opp, en
 overbelastning rettet, et sertifikat fornyet i Ansatte, et behov fylt eller trukket
-tilbake.
+tilbake, hvert ønske merket som sett eller avsluttet.
 
 ## På personsiden i Ansatte
 
@@ -464,13 +635,25 @@ allokeringene og behovene — under prosjektsidens egen overskrift, og en planle
 arbeider derfra som fra prosjektplanen: **Ny allokering**, **Nytt behov**,
 **Kandidater**, **Trekk tilbake**. Har du bare `planning:manage`, vises ikke fanen.
 
+## I Kalender
+
+Når Kalender-appen er på, vises dine egne bekreftede allokeringer i
+[kalenderen](/nb/user/calendar/) din: hver som et heldagselement gjennom allokeringens
+periode, med prosjektets kode og navn som tittel og belastningen når du holder pekeren
+over det. De hører til brikken **Allokeringer** i forklaringen, og et klikk på en åpner
+**Min bemanning**. De kommer også med i kalenderadressen din, så telefonen viser dem.
+
+De følger Bemannings egen rettighet: du trenger `planning:access` og en person i Ansatte
+som er knyttet til brukeren din. Tentative allokeringer, planleggernes utkast, vises
+aldri, og heller ikke andres allokeringer — en kollegas kalender viser ingen av deres.
+
 ## Hvem ser hva
 
 | Hva | `planning:access` | `planning:view` | `planning:manage` |
 | --- | --- | --- | --- |
-| Appen, **Min bemanning**, dine egne bekreftede allokeringer og e-posten om dem | ✓ | ✓ | ✓ |
+| Appen, **Min bemanning**, dine egne bekreftede allokeringer og e-posten om dem, **Mine ønsker** og de åpne ønskene dine på din egen tidslinje, allokeringene dine i Kalender | ✓ | ✓ | ✓ |
 | **Plan**, hvert prosjekts plan og **Bemanning**-fanen på prosjektsiden, hver persons tidslinje med tentative allokeringer, **Behov**, **Inntak**, **Ubemannet**, tallene og punktene på dashbordet | – | ✓ | ✓ |
-| Allokeringsskjemaet, behovsskjemaet, **Kandidater** og **Fyll**, **Trekk tilbake**, planleggernes notater, **Bemanningsinnstillinger**, punktene *Slutter uten oppfølging* og *Åpent behov* | – | – | ✓ |
+| Allokeringsskjemaet med **Vilkår**, behovsskjemaet, **Kandidater** og **Fyll**, **Trekk tilbake**, planleggernes notater, **Ønsker** og de åpne ønskene på alles tidslinje, e-posten om et nytt ønske, **Bemanningsinnstillinger**, punktene *Slutter uten oppfølging*, *Åpent behov* og *Usette ønsker* | – | – | ✓ |
 
 **Se planen** (`planning:view`) og **Planlegge** (`planning:manage`) er sensitive: planen
 viser hvert prosjekts kode, navn, kunde, status og datoer — tilbud medregnet, som

@@ -13,8 +13,8 @@ sources:
 
 The Calendar app is one view of your days: the appointments you make yourself, with
 colleagues on them, beside what the other apps already know about you — your follow-ups
-in Customers, your absence in Staff, your tasks in Projects, your hours in Time and your
-trips in Expenses. Nothing is copied: a follow-up you tick in Customers is ticked on the
+in Customers, your absence in Staff, your tasks in Projects, your hours in Time, your
+trips in Expenses and your confirmed bookings in Planning. Nothing is copied: a follow-up you tick in Customers is ticked on the
 calendar at once, because the calendar asks Customers each time it is opened. The rules
 behind every step are in the [Calendar module reference](/en/reference/calendar/); this
 page is about what you do on each screen.
@@ -32,7 +32,8 @@ page is about what you do on each screen.
 
 What the other apps put on your calendar follows their own permissions: you see your
 follow-ups only if you may read Customers' timeline, your absence only if your user is
-linked to your record in Staff, and so on. An app you have no access to, or that your
+linked to your record in Staff, your bookings only if you may use Planning
+(`planning:access`) and your user is linked to your record in Staff, and so on. An app you have no access to, or that your
 installation has not switched on, simply adds nothing. The full table is under
 [Permissions](/en/reference/calendar/#permissions).
 
@@ -68,6 +69,7 @@ of it takes you:
 | **Hours** | Hours you logged, titled with the project, at their start and end time when you gave them, otherwise all day; struck through once approved | opens the day in Time |
 | **Travel** | One of your travel claims, from departure to return; struck through once approved | opens the travel claim |
 | **Absence** | Your own absence, requested, approved or registered; one you have requested shows **Requested** under its name until it is decided. The name and that word are in the language set under **Language** on your Staff record | opens **My page** on its **Absence** tab |
+| **Bookings** | Your own confirmed bookings in Planning, all day over the booking's period, titled with the project's code and name; hold the pointer over one to read the load. A tentative booking, the planners' draft, is never shown | opens **My planning** in Planning |
 | **Subscriptions** | An event of a calendar you subscribe to from elsewhere, in the colour you gave it ([Calendars from elsewhere](#calendars-from-elsewhere)) | — |
 | **Public holidays** | Norway's public holidays, shaded on their days | — |
 
@@ -276,7 +278,7 @@ see their calendar instead of yours, read-only:
   appointment is shared;
 - a private one as a hatched **Busy**, with nothing else;
 - nothing for their free appointments, and nothing from the other apps — their tasks,
-  hours and follow-ups stay behind those apps' own doors.
+  hours, follow-ups and bookings stay behind those apps' own doors.
 
 The legend shrinks to **Appointments** and **Public holidays**, and **New appointment**
 is hidden. Clear the picker to come back to your own calendar.
@@ -322,8 +324,8 @@ Open **Calendar** and choose **My calendar** in its sidebar. Under **Your calend
 phone** there are two addresses, each with a sentence saying what it carries:
 
 - **Full calendar** — your calendar as you see it in Vantigo: your appointments, with
-  their titles, places and descriptions, and your hours, trips, tasks, follow-ups and
-  absence from the other apps. Each event links back to Vantigo.
+  their titles, places and descriptions, and your hours, trips, tasks, follow-ups,
+  absence and bookings from the other apps. Each event links back to Vantigo.
 - **Busy only** — the times you are busy, each titled **Busy**, and nothing else. Give
   this one to someone who should see when you are free but not what you are doing — a
   receptionist, or your partner's calendar.

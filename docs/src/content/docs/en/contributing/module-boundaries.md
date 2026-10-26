@@ -373,7 +373,8 @@ Communications' outbox is the working example.
     request's `ctx` (`contracts.HasPermission` reads the request from it) and answers
     **nothing, not an error**, when the caller lacks its permission. The consumer never
     re-states the rule, which already exists in the provider as a query the provider's
-    module owns — Projects' `visible()`, Time's "mine", Staff's self-service link — and
+    module owns — Projects' `visible()`, Time's "mine", Staff's self-service link,
+    Planning's `planning:access` with the person Staff's `Self` answers — and
     a copy would drift; it shows what comes back and never says what was withheld. A
     provider that **fails** returns an error, and the consumer fails the whole request
     rather than show the rest: absent must never also mean "could not be read",
@@ -923,8 +924,11 @@ business modules at once: it reads `contracts.ProjectDirectory` for the projects
 person is booked on — `ProjectsByStatus`, consumer-gated, for the plannable list —
 `contracts.Workforce` for the people in employment, their capacity, the caller's own
 person, the competence catalogue and the competences held, and the fit Staff scores for
-a request's booking, and `contracts.CustomerDirectory` for the customers' names; identity's `Deps.Users` gives it the actors' names and `Notify`, the one mail it
-sends, to the person whose row was confirmed, changed or deleted. `MODULES` refuses it
+a request's booking, and `contracts.CustomerDirectory` for the customers' names — a
+project's, and those an assignment's non-compete names, each id checked on the terms'
+write; identity's `Deps.Users` gives it the actors' names, `PermissionHolders` for the
+planners a new wish is mailed to, and `Notify`, its mail: to the person whose row was
+confirmed, changed or deleted, and to the planners of a wish. `MODULES` refuses it
 without `projects` or `staff`, so `Deps.Projects`, `Deps.Workforce` and `Deps.Directory`
 are never nil in a running `planning`; it still answers `dependency_unavailable` (503)
 rather than panic if one is. Every contract call goes through its accessor in
@@ -933,8 +937,10 @@ transaction opens, never inside one, and the harness fails a test that makes one
 an open transaction. It provides nothing yet: no other module reads it; the host
 composes its Planning tab on Staff's person page through the slot `@vantigo/staff-ui`
 opens (rule 7) and its Planning tab on the project page in the host's own tab list, as
-Time's and Expenses' tabs are. From delivery C it fills the many-provider `CalendarSources` slot with
-the caller's own confirmed bookings. It has no background worker. With `planning` off
+Time's and Expenses' tabs are. It fills the many-provider `CalendarSources` slot with
+the caller's own confirmed bookings, the kind `planning.allocation`, when `calendar` is
+composed — its builder answers nil otherwise, since Planning does not require the
+calendar and nothing would read the source. It has no background worker. With `planning` off
 nothing else changes. See [Planning](/en/reference/planning/#contracts-consumed).
 
 **Entra depends on nobody but identity, and is called by Staff.** It reads no other

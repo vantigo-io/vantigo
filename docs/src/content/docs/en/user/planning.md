@@ -1,6 +1,6 @@
 ---
 title: Planning
-description: Who works on what — the Plan board of people against weeks with its colours, groupings and filters, the allocation sheet with its warnings and refusals, Requests and the request sheet, filling a request from its candidates, the Intake of planned projects, a project's plan with its demand, a person's timeline with its flags, the Unbooked list, My planning and the mail a person gets, the Planning settings, the dashboard card and its attention items, and the Planning tabs on a person's page in Staff and a project's page in Projects.
+description: Who works on what — the Plan board of people against weeks with its colours, groupings and filters, the allocation sheet with its warnings and refusals, an assignment's terms with the earliest release, the handover and the non-compete, Requests and the request sheet, filling a request from its candidates, the Intake of planned projects, a project's plan with its demand, a person's timeline with its flags and marks, the Unbooked list, the people's wishes on My planning and the planners' Wishes, My planning and the mail a person gets, the Planning settings, the dashboard card and its attention items, the Planning tabs on a person's page in Staff and a project's page in Projects, and your bookings on the Calendar.
 sidebar:
   order: 46
 sources:
@@ -22,8 +22,12 @@ each screen.
 
 Planning has allocations, the board, the lists and the person's own view, and
 **requests** — what a project needs before anybody is named — with the people who could
-fill them and the intake of planned projects. Assignments with their contract terms, and
-the person's wishes, come in a later delivery.
+fill them and the intake of planned projects. A booking that is also an assignment for
+a customer carries its contract **terms** — the notice, the minimum, the handover and the
+non-compete — from which Planning reads the day the person can be released at the
+earliest. The people say what they **wish**, off a project or for something new, and the
+planners read it. And your own confirmed bookings show on your
+[Calendar](#on-the-calendar).
 
 ## The app and its sidebar
 
@@ -36,6 +40,7 @@ areas your permissions give you:
 | **Requests** | `planning:view` |
 | **Intake** | `planning:view` |
 | **Unbooked** | `planning:view` |
+| **Wishes** | `planning:manage` |
 | **My planning** | everyone with `planning:access` |
 | **Planning settings** | `planning:manage` |
 
@@ -149,8 +154,14 @@ lists them:
 - *The person is booked while away in* … — the weeks where the bookings fit the
   capacity but not the days the person is at work.
 - *The period goes beyond the project's start or end date.*
+- *The person is under a non-compete toward this customer until* … — the person is
+  under a [non-compete](#the-non-compete) toward the project's customer, and the
+  booking is tentative, so it is saved as the planners' draft; it is refused the moment
+  you confirm it. A confirmed booking already on that customer's project gets the same
+  warning when you change only its role, its load or its last day.
 
-Only confirmed bookings are weighed: a tentative one never overbooks anyone.
+Only confirmed bookings are weighed for overbooking: a tentative one never overbooks
+anyone.
 
 ### Refusals
 
@@ -167,6 +178,9 @@ marks the field:
   [settings](#planning-settings). A change that keeps or shrinks an overbooking already
   there is still saved, with the warning, so a plan can be mended one booking at a
   time.
+- *The person is under a non-compete toward this customer.* — a confirmed booking placed
+  on a project of a customer the person's [non-compete](#the-non-compete) names. It is
+  judged before the overbooking, so when both apply this is the reason given.
 - *Somebody else saved this; it has been reloaded* — another planner changed the same
   allocation first. Look at what is there now and make your change again.
 
@@ -190,6 +204,75 @@ planned or the booking changed — and links to **My planning**; it never carrie
 note. Moving a confirmed booking to another person
 tells the first that they are no longer planned on it, and the second that they are. A
 tentative booking is never mailed about, and a person without a user is never mailed.
+
+### Terms
+
+When a booking is an assignment for a customer, the contract's terms belong on it. Open
+the allocation (`planning:manage`): under the allocation's own form, the sheet has a
+section of its own, **Terms**: *The assignment's terms with the customer. The terms bind
+once the allocation is confirmed; only the planners see them.* It is there only on an
+allocation already saved — the person never sees the terms, and **See the plan** shows
+only the two dates they lead to.
+
+- **Notice period** — a count from 1 to 365 and a unit, **days**, **weeks** or
+  **months**; give both or neither.
+- **Notice given on** — the day notice was given, by you or by the customer. It needs a
+  notice period.
+- **Minimum until** — the day the contract binds the person to at least.
+- **Replacement needs the customer's approval** — the customer must approve a
+  replacement before the person can leave early.
+- **Handover days** — 0 to 90: how many days a successor should overlap before the
+  person is released.
+- **Non-compete until** and **Customers** — the person may not be confirmed toward the
+  customers named, at most 20, until that day. Give both or neither.
+- **Reference** (at most 200 characters) — the contract's or the order's reference.
+
+Press **Save terms**; the sheet stays open with *The terms are saved*, so you can read
+the dates they lead to. **Clear terms** asks *Clear the terms?* and removes them all.
+The terms are saved apart from the allocation, and are always saved whole: a field you
+empty is cleared.
+
+Terms may be set on a tentative booking, and **bind once it is confirmed**: until then
+neither the release nor the non-compete counts anywhere.
+
+Once the terms are saved, the section's heading names the two dates Planning reads from
+them, which nobody types:
+
+- **Earliest release** — the day the person can be released at the earliest: the latest
+  of the booking's last day, **Minimum until**, and the day notice was given plus the
+  notice period. With no terms, or none that reach past it, it is the booking's last
+  day; clearing the terms brings it back there.
+- **Handover from** — the earliest release less the handover days: the day a successor
+  should start, so that the two overlap. Shown only when **Handover days** is given.
+
+Both show on the person's [timeline](#a-persons-timeline), and both are flagged on the
+person when they are a [candidate](#filling-a-request) for a request that starts
+before the release.
+
+To name customers under **Customers**, search them by name; that needs **View
+customers** (`customers:view`) in Customers. Without it, the section says *You may not
+search the customers (that needs View customers). The customers named here can still be
+removed.* — the customers already named stay listed, each removable, and one the
+customer directory no longer knows reads *Customer* and its number.
+
+#### The non-compete
+
+A non-compete is the one term Planning enforces. When a confirmed booking of the
+person carries terms whose non-compete names a customer, it holds against every other
+booking of the person that starts on or before its **Non-compete until** day:
+
+- a booking that would **place** the person, confirmed, on a project of that customer
+  is refused with *The person is under a non-compete toward this customer.*: a new
+  confirmed booking, [filling a request](#filling-a-request) as confirmed, confirming a
+  tentative booking, and a change to a confirmed booking that moves it to the person or
+  to the project, or moves its first day earlier;
+- a **tentative** booking is saved, with the warning naming the day the non-compete lasts
+  until — and so is a change to a confirmed booking already on that customer's project
+  that only touches its role, its load or its last day;
+- the person is not offered as a candidate for that customer's requests at all.
+
+A project with no customer is never caught by a non-compete, and the booking that
+carries the terms is never judged against itself.
 
 ## Requests
 
@@ -276,10 +359,24 @@ holds every requirement. Each card shows:
 - *Certificate expires* with the day and the certificate, when a required certificate
   runs out before the request's last day;
 - *On PROJECT for N days* — the project of the person's confirmed booking today, and
-  how long they have been on it.
+  how long they have been on it;
+- *Released DATE at the earliest* — a confirmed booking of the person whose
+  [terms](#terms) release them only after the request's first day, and beside it
+  *Handover from DATE* when the terms give handover days: the day to start them
+  overlapping with a successor. The person is still offered — the release can be
+  negotiated;
+- *Replacement needs the customer's approval* — beside a release after the start, when
+  that booking's terms say so;
+- *Wishes off their project from DATE* or *Wishes something new from DATE* — an open
+  [wish](#my-wishes) of the person, from the request's first day or before: for
+  something new, or off the project they are on today.
 
-The people with the time come first, then by fit, then by free hours, and between equals
-the one longest on their current project first, so the planner can let someone move on.
+The people with the time come first, then those who have wished for a change, then by
+fit, then by free hours, and between equals the one longest on their current project
+first, so the planner can let someone move on.
+
+A person under a [non-compete](#the-non-compete) toward the project's customer from the
+request's first day is not listed at all, not even under **Show partial matches**.
 
 **Show partial matches** also lists the people who miss a requirement, with *Missing*
 and the competences in red. When nobody fits, the panel says **Nobody fits this
@@ -313,7 +410,8 @@ each with its period, its hours a week and its **Coverage**:
 - **Covered** — the request is filled, or at least one person covers it: has the time,
   holds every requirement and carries no flag.
 - **Partly covered** — people who hold every requirement exist, but none covers it: they
-  are short of time, or a required certificate runs out during the period.
+  are short of time, a required certificate runs out during the period, or they carry
+  another flag — a release after the request starts, or a wish.
 - **Uncovered** — nobody employed through the whole period holds every requirement.
 
 **Key person** marks an open request exactly one person covers: if that person is taken,
@@ -368,9 +466,22 @@ today and the 26 weeks after.
   - **Certificate expires** (with the day) — one of the person's certificates in Staff
     runs out during the booking. Renew it in Staff, or plan for it.
 
+  The list also has the columns **Earliest release** and **Handover from** — the dates
+  a booking's [terms](#terms) lead to, or a dash: **Earliest release** shows only when
+  the terms move it past the booking's last day.
+- **Earliest release and handover** — a lane under the bars, there when a booking's
+  terms set either date: **Earliest release** marked on its day, and **Handover from**
+  on its day. Hold the pointer over a mark to read it with its project first —
+  *P-100 Harbour app: Earliest release* and the date.
+
+Under the bars, **Open wishes** lists the person's open wishes — *Off PROJECT from
+DATE* or *Something new from DATE* — each with *Seen* and the day a planner marked it,
+or *Not seen yet*. A planner (`planning:manage`) sees it on anyone's timeline, and you
+see it on your own; **See the plan** alone does not show another person's wishes.
+
 A planner opens a bar to change its allocation. With `planning:view` you see anyone's
 timeline whole, tentative bookings included. Your own timeline, with `planning:access`
-alone, shows your confirmed bookings and nothing else; your employment and your absence
+alone, shows your confirmed bookings and your open wishes, nothing else; your employment and your absence
 are on [My page](/en/user/staff/#my-page) in Staff.
 
 ## Unbooked
@@ -389,6 +500,27 @@ off, then by load. Someone away throughout those weeks, or starting after them, 
 listed: they are not unbooked, they are away. When nobody is under the threshold, the
 page says **Everybody is booked**.
 
+## Wishes
+
+**Wishes** (`planning:manage`) is where the planners read what the people
+[wish](#my-wishes): every open wish, oldest first, with the **Person** — press the name
+to open their timeline — the **Kind**, **Off** or **Something new**, the **Project** an
+off-wish names (press it to open the project's plan; a dash on something new), the day
+it is **From**, the day it was **Filed**, and **Seen**: the day a planner marked it, or
+an orange **New** badge on a wish nobody has read.
+
+- **Mark seen** (on a new wish) stamps it seen — the person sees *Seen by a planner*
+  and the date on their own page. It is the planners' receipt, not an answer.
+- **Resolve** asks *Resolve the wish?* and, once the wish is handled, deletes it: *It is
+  deleted and the record keeps the kind, the project and the date.* The person no
+  longer sees it either.
+
+A planner without **View the staff directory** (`staff:view`) sees the note **Staff
+shows you nobody** at the top, as on Unbooked, and every person reads *A colleague*.
+When nobody has an open wish, the page says **No open wishes**. Every planner is mailed
+when somebody files a wish, and the dashboard counts the wishes nobody has seen
+([Unseen wishes](#the-dashboard)).
+
 ## My planning
 
 **My planning** is every user's own view, with `planning:access`: what you are booked on
@@ -400,6 +532,44 @@ removes a booking of yours, you are told by email, and the mail links here.
 If the page says **No person is linked to you**, Staff has no person record linked to
 your user, so there is nobody to show bookings for. Ask HR to link your user to your
 record.
+
+### My wishes
+
+Under your bookings, **My wishes** is where you tell the planners you would like a
+change. There are two buttons:
+
+- **I wish off this project from…** opens *I wish off a project*: pick the **Project** —
+  one of the confirmed bookings shown above that you do not already wish off; with only
+  one, it is picked for you — and the day it is **From**, today or later. When no such
+  project is left, the button is greyed out with *You have no confirmed booking to wish
+  off.*
+- **I wish for something new from…** opens *I wish for something new*: only the day it
+  is **From**. You need no booking for it.
+
+Press **Send**: *Your wish is sent to the planners*. On a phone the dialog opens from the
+bottom of the screen.
+
+There is no field for why. A wish is a project and a date, nothing more: the planners
+read what you want and from when, and your reasons stay yours to tell them — Planning
+keeps no text of yours.
+
+You may have at most five open wishes, and one off each project. At five, both buttons
+are greyed out with *You already have five open wishes. Withdraw one before you send
+another.* If something changes while the dialog is open — a booking removed, a wish sent
+from another device — it says so in its own words: *You already wish off that project.*
+or *You have no confirmed booking on that project.*
+
+Each open wish is listed — *Off PROJECT from DATE* or *Something new from DATE* — with
+*Seen by a planner* and the date once a planner has read it, or *Not seen yet*.
+**Withdraw** asks *Withdraw this wish?* and deletes it; the planners see it no more.
+A wish a planner has resolved is gone from the list too, and one resolved while you
+withdraw it says *The wish is gone: it was withdrawn or resolved meanwhile.* — as the
+Wishes page does when two planners act on the same wish.
+
+When you send a wish, every planner (`planning:manage`) is mailed once, in their own
+language, with your name, the project and the day, and a link to their **Wishes** page;
+you are not mailed about your own wish. When you are a candidate for a request, the
+planner filling it sees your wish beside your name.
 
 ## Planning settings
 
@@ -431,7 +601,7 @@ load this week with the tentative load beside it, how many requests are open, an
 many people are unbooked.
 
 Planning's items join the other apps' in **Needs attention**. The first three are for
-`planning:view`, the last two for `planning:manage`:
+`planning:view`, the last three for `planning:manage`:
 
 | Item | It means | Opens |
 | --- | --- | --- |
@@ -440,9 +610,11 @@ Planning's items join the other apps' in **Needs attention**. The first three ar
 | Certificate expiring during a booking | A certificate of the person runs out inside one of their confirmed bookings within the horizon — one item per booking and certificate, dated the day it runs out. | The person's timeline |
 | Ending without follow-on | A confirmed booking ends within the weeks the settings name, and the person has no confirmed booking that carries on within seven days of its end. Named with the person and the project's code. | Plan |
 | Open request | An open request starts within the days the settings name, or has already started — one item per request, named with the project's code and the request's title, dated its first day. | Requests, filtered to the open ones |
+| Unseen wishes | Wishes no planner has marked seen — one item for them all, *Unseen wishes:* and their number, dated the day the oldest of them was filed. | Wishes |
 
 An item goes away when what it counts does: a booking made, an overbooking mended, a
-certificate renewed in Staff, a request filled or withdrawn.
+certificate renewed in Staff, a request filled or withdrawn, every wish marked seen or
+resolved.
 
 ## On the Staff person page
 
@@ -461,13 +633,25 @@ allocations and the requests — under the project page's own header, and a plan
 works from it as from the plan: **New allocation**, **New request**, **Candidates**,
 **Withdraw**. Holding `planning:manage` alone does not show the tab.
 
+## On the Calendar
+
+When the Calendar app is on, your own confirmed bookings show on your
+[calendar](/en/user/calendar/): each an all-day item over the booking's period, titled
+with the project's code and name, with the load when you hold the pointer over it. They
+come under the chip **Bookings** in the legend, and clicking one opens **My planning**.
+They also go into your calendar address, so your phone shows them.
+
+They follow Planning's own permission: you need `planning:access` and a person record in
+Staff linked to your user. Tentative bookings, the planners' draft, never show, and
+neither does anybody else's booking — a colleague's calendar shows none of theirs.
+
 ## Who sees what
 
 | What | `planning:access` | `planning:view` | `planning:manage` |
 | --- | --- | --- | --- |
-| The app, **My planning**, your own confirmed bookings and the mail about them | ✓ | ✓ | ✓ |
+| The app, **My planning**, your own confirmed bookings and the mail about them, **My wishes** and your open wishes on your own timeline, your bookings on the Calendar | ✓ | ✓ | ✓ |
 | **Plan**, every project's plan and the project page's **Planning** tab, every person's timeline with tentative bookings, **Requests**, **Intake**, **Unbooked**, the dashboard figures and items | – | ✓ | ✓ |
-| The allocation sheet, the request sheet, **Candidates** and **Fill**, **Withdraw**, the planners' notes, **Planning settings**, the *Ending without follow-on* and *Open request* items | – | – | ✓ |
+| The allocation sheet with its **Terms**, the request sheet, **Candidates** and **Fill**, **Withdraw**, the planners' notes, **Wishes** and the open wishes on anyone's timeline, the mail about a new wish, **Planning settings**, the *Ending without follow-on*, *Open request* and *Unseen wishes* items | – | – | ✓ |
 
 **See the plan** (`planning:view`) and **Plan** (`planning:manage`) are sensitive: the
 plan shows every project's code, name, customer, status and dates — bids included,

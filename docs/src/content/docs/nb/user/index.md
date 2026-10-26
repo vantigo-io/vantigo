@@ -57,8 +57,9 @@ Ansatte, og hver gruppe som ikke er synkronisert med katalogen, som åpner grupp
 side; og fra Bemanning: for `planning:view` personer som er ubemannet, som åpner listen
 Ubemannet, og personer som er overbooket og et sertifikat som utløper under en
 allokering, som åpner personens tidslinje, og, for `planning:manage`, en allokering som
-slutter uten oppfølging, som åpner planen, og et åpent behov som starter snart eller alt
-har startet, som åpner Behov ([dashbordet](/nb/user/planning/#dashbordet)).
+slutter uten oppfølging, som åpner planen, et åpent behov som starter snart eller alt
+har startet, som åpner Behov, og ønskene ingen planlegger har sett ennå, talt i ett
+punkt, som åpner Ønsker ([dashbordet](/nb/user/planning/#dashbordet)).
 
 Inne i en app lister sidemenyen appens områder. Mange av dem vises bare til den som har
 den tilhørende rettigheten — og noen få, som **Hurtigfaktura** i Fakturaer, bare til den
@@ -73,7 +74,7 @@ kortere enn din:
 | [Kalender](/nb/user/calendar/) | Kalender (din egen, og en kollegas med velgeren), Min kalender (kalenderen din på mobilen, og kalendere fra andre steder) |
 | [Utlegg](/nb/user/expenses/) | Mine utlegg, Godkjenning av utlegg, Refusjoner, Utleggsinnstillinger |
 | [Ansatte](/nb/user/staff/) | Min side (fanene **Fravær** og **Kompetanse** og, for en leder, **Mitt team**), Ansattoversikt, Fravær (kalenderen og godkjenningene), Kompetanse (matrisen og, for HR, interessene), Grupper, Ansatteinnstillinger |
-| [Bemanning](/nb/user/planning/) | Plan (planen), prosjektplanen og tidslinjen, Behov, Inntak, Ubemannet, Min bemanning, Bemanningsinnstillinger |
+| [Bemanning](/nb/user/planning/) | Plan (planen), prosjektplanen og tidslinjen, Behov, Inntak, Ubemannet, Ønsker, Min bemanning, Bemanningsinnstillinger |
 | [Fakturaer](/nb/user/invoices/) | Fakturaer, Hurtigfaktura, Fakturajournal, Forfalt, Innbetalinger, Fakturainnstillinger |
 | [Kommunikasjon](/nb/user/communications/) | Innboks, Kanaler, Blokkeringer |
 | [Produkter](/nb/user/products/) | Produkter, Kategorier, Avgiftskategorier |
