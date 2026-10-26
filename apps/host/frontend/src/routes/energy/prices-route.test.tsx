@@ -125,5 +125,12 @@ describe("the Prices route", () => {
       period: "range",
       from: "2024-01",
     });
+    // A year below 1000 would be read as 19xx by the page's date arithmetic.
+    expect(validate({ date: "0099-06-01", from: "0050-01", to: "0999-12" })).toEqual({});
+    expect(validate({ date: "1000-01-01", from: "1000-01", to: "9999-12" })).toEqual({
+      date: "1000-01-01",
+      from: "1000-01",
+      to: "9999-12",
+    });
   });
 });

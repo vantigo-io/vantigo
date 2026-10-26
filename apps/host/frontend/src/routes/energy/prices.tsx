@@ -3,12 +3,13 @@ import { PricesPage } from "./-prices-page";
 
 const PERIODS = ["day", "week", "month", "year", "range"] as const;
 const AREA = /^[A-Z]{2}\d{0,2}$/;
-const MONTH = /^\d{4}-(0[1-9]|1[0-2])$/;
+// Years 1000–9999: the page's date arithmetic (`Date.UTC`) reads 0–99 as 19xx.
+const MONTH = /^[1-9]\d{3}-(0[1-9]|1[0-2])$/;
 
-/** A civil date, `YYYY-MM-DD`, that exists: 2026-02-30 does not. */
+/** A civil date, `YYYY-MM-DD` in the years 1000–9999, that exists: 2026-02-30 does not. */
 const isDay = (value: unknown): value is string =>
   typeof value === "string" &&
-  /^\d{4}-\d{2}-\d{2}$/.test(value) &&
+  /^[1-9]\d{3}-\d{2}-\d{2}$/.test(value) &&
   new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value;
 
 /**

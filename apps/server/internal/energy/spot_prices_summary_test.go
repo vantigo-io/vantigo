@@ -159,6 +159,20 @@ func TestSpotPriceSummary_TheAutumnsRepeatedHourIsTwoHourBuckets(t *testing.T) {
 			t.Errorf("hour %d = %+v, want [%s, +1h) at %v over 60 minutes", i, b, start, wantAvg[i])
 		}
 	}
+
+	// An hour is written in Oslo, as a day is: the two 02:00 hours by their
+	// offsets, not as 00:00Z and 01:00Z.
+	var raw struct {
+		Buckets []struct{ Start, End string } `json:"buckets"`
+	}
+	getSpotPriceSummary(c, "NO1", "hour", from, oslo(t, 2026, time.October, 25, 4)).JSON(&raw)
+	wantStart := []string{"2026-10-25T00:00:00+02:00", "2026-10-25T01:00:00+02:00", "2026-10-25T02:00:00+02:00", "2026-10-25T02:00:00+01:00", "2026-10-25T03:00:00+01:00"}
+	wantEnd := []string{"2026-10-25T01:00:00+02:00", "2026-10-25T02:00:00+02:00", "2026-10-25T02:00:00+01:00", "2026-10-25T03:00:00+01:00", "2026-10-25T04:00:00+01:00"}
+	for i, b := range raw.Buckets {
+		if i < len(wantStart) && (b.Start != wantStart[i] || b.End != wantEnd[i]) {
+			t.Errorf("hour %d is written %s to %s, want %s to %s", i, b.Start, b.End, wantStart[i], wantEnd[i])
+		}
+	}
 }
 
 func TestSpotPriceSummary_AMonthStartsAtTheFirstsLocalMidnight(t *testing.T) {

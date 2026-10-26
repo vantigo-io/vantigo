@@ -532,13 +532,16 @@ Slik leses filen:
 - **Priser** godtar desimalkomma eller -punktum (`0,8123` eller `0.8123`, ikke begge);
   mellomrom som tusenskille ignoreres, og en pris kan være negativ. De lagres med seks
   desimaler. En valutakurs må være over null; prisen i EUR og kursen kan stå tomme.
-- **Med en sluttkolonne** varer hver pris fra starten til slutten, høyst én time.
+- **Hver pris** varer et kvarter eller en time, starter på kvarteret (minutt 00, 15,
+  30 eller 45), og en pris på en time starter på hel time — slik markedets gjør. En rad
+  som ikke gjør det, avvises med årsaken.
+- **Med en sluttkolonne** varer hver pris fra starten til slutten.
   Radene trenger ikke å følge rett etter hverandre, så én fil kan fylle flere adskilte
   dager; men radene i hvert område må stå i tidsrekkefølge og kan ikke overlappe.
 - **Uten en sluttkolonne** varer hver pris til neste rad i samme område starter, og et
   områdes siste rad like lenge som raden før den (én time når området bare har én rad).
   Hold radene i hvert område i tidsrekkefølge uten hull: en rad avvises når neste rad i
-  området starter senere enn ett intervall etter den (høyst én time).
+  området starter senere enn ett intervall etter den.
 
 Dette skriver importen:
 

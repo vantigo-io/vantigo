@@ -2,39 +2,63 @@ import { MantineProvider } from "@mantine/core";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import type { ReactElement, ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { stubFetch } from "../test/fetch";
 import { PriceChart } from "./-price-chart";
+import { PriceSummaryChart } from "./-price-summary-chart";
 import { PricesPage } from "./prices";
 
 // The charts as text: each row's label and its line values ("|" between
-// series), the series by name (a dashed one marked), and whether dots show.
+// series), the series by name (a dashed one marked), whether dots show, the
+// points a line's own dot renderer draws (series@label), and the page's
+// tooltip for each row beside the chart.
 vi.mock("@mantine/charts", () => {
+  type Series = { name: string; type?: string; color?: string; strokeDasharray?: string | number };
   interface Props {
     data: Array<Record<string, unknown>>;
     dataKey: string;
-    series: Array<{ name: string; type?: string; strokeDasharray?: string | number }>;
+    series: Series[];
     withDots?: boolean;
+    lineProps?: (series: Series) => { dot?: (point: { cx: number; cy: number; index: number }) => ReactElement };
+    tooltipProps?: {
+      content?: (props: { label?: ReactNode; payload?: ReadonlyArray<{ payload?: unknown }> }) => ReactNode;
+    };
   }
   const chart =
     (testId: string) =>
-    ({ data, dataKey, series, withDots }: Props) => (
-      <div
-        data-testid={testId}
-        data-series={series.map((item) => `${item.name}${item.strokeDasharray ? "~dashed" : ""}`).join(",")}
-        data-dots={String(Boolean(withDots))}
-      >
-        {data
-          .map(
-            (item) =>
-              `${String(item[dataKey])}=${series
-                .filter((entry) => entry.type !== "area")
-                .map((entry) => String(item[entry.name]))
-                .join("|")}`,
-          )
-          .join(",")}
-      </div>
-    );
+    ({ data, dataKey, series, withDots, lineProps, tooltipProps }: Props) => {
+      const lines = series.filter((entry) => entry.type !== "area");
+      const dots = lines.flatMap((entry) => {
+        const dot = lineProps?.(entry).dot;
+        return dot
+          ? data.flatMap((item, index) =>
+              dot({ cx: 0, cy: 0, index }).type === "circle" ? [`${entry.name}@${String(item[dataKey])}`] : [],
+            )
+          : [];
+      });
+      return (
+        <>
+          <div
+            data-testid={testId}
+            data-series={series.map((item) => `${item.name}${item.strokeDasharray ? "~dashed" : ""}`).join(",")}
+            data-dots={String(Boolean(withDots))}
+            data-colors={lines.map((item) => `${item.name}:${item.color ?? ""}`).join(",")}
+            data-lone-dots={dots.join(",")}
+          >
+            {data
+              .map((item) => `${String(item[dataKey])}=${lines.map((entry) => String(item[entry.name])).join("|")}`)
+              .join(",")}
+          </div>
+          {tooltipProps?.content &&
+            data.map((item) => (
+              <div key={String(item[dataKey])} data-testid={`${testId}-tooltip-${String(item[dataKey])}`}>
+                {tooltipProps.content?.({ label: String(item[dataKey]), payload: [{ payload: item }] })}
+              </div>
+            ))}
+        </>
+      );
+    };
   return { LineChart: chart("price-chart"), CompositeChart: chart("price-summary-chart") };
 });
 
@@ -124,7 +148,7 @@ const answerFor =
 
 const renderPage = (
   props: Parameters<typeof PricesPage>[0],
-  answer: (url: URL) => Response = answerFor(intervals, summaryBuckets),
+  answer: (url: URL) => Response | Promise<Response> = answerFor(intervals, summaryBuckets),
 ) => {
   const fetchMock = stubFetch(async (input) => answer(new URL(String(input), "http://localhost")));
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -446,8 +470,65 @@ describe("PricesPage", () => {
         ? json({ ...coverage, areas: [coverage.areas[0]] })
         : json({ title: "Bad Request", detail: "to is more than 35 days after from" }, 400),
     );
-    expect(await screen.findByText("Failed to load the prices")).toBeInTheDocument();
+    expect(await screen.findByText("Failed to load the prices for NO1")).toBeInTheDocument();
     expect(screen.getByText("to is more than 35 days after from")).toBeInTheDocument();
+  });
+
+  it("charts the areas that loaded and names the one that failed", async () => {
+    const answer = answerFor(intervals, summaryBuckets, ["NO1", "NO2"]);
+    renderPage({ search: { areas: ["NO1", "NO2"] } }, (url) =>
+      url.searchParams.get("area") === "NO2"
+        ? json({ title: "Bad Gateway", detail: "upstream down" }, 502)
+        : answer(url),
+    );
+    expect(await screen.findByText("Failed to load the prices for NO2")).toBeInTheDocument();
+    expect(screen.getByText("upstream down")).toBeInTheDocument();
+    expect(await screen.findByTestId("price-chart")).toHaveAttribute("data-series", "NO1");
+    expect(screen.getByTestId("price-chart")).toHaveTextContent("12:00 AM=0.8123,01:00 AM=0.7");
+  });
+
+  it("keeps an area's colour when the area before it fails", async () => {
+    const answer = answerFor(intervals, summaryBuckets, ["NO1", "NO2"]);
+    renderPage({ search: { areas: ["NO1", "NO2"] } }, (url) =>
+      url.searchParams.get("area") === "NO1"
+        ? json({ title: "Bad Gateway", detail: "upstream down" }, 502)
+        : answer(url),
+    );
+    expect(await screen.findByTestId("price-chart")).toHaveAttribute("data-series", "NO2");
+    expect(screen.getByTestId("price-chart")).toHaveAttribute("data-colors", "NO2:orange.8");
+  });
+
+  it("keeps the chart while an added area loads", async () => {
+    const user = userEvent.setup();
+    const answer = answerFor(intervals, summaryBuckets, ["NO1", "NO2"]);
+    let release: () => void = () => {};
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    renderPage({}, (url) => (url.searchParams.get("area") === "NO2" ? held.then(() => answer(url)) : answer(url)));
+    await screen.findByTestId("price-chart");
+
+    await user.click(screen.getByRole("combobox", { name: "Compare areas" }));
+    await user.click(await screen.findByRole("option", { name: "NO2" }));
+    expect(screen.getByTestId("price-chart")).toHaveAttribute("data-series", "NO1");
+    release();
+    await waitFor(() => expect(screen.getByTestId("price-chart")).toHaveAttribute("data-series", "NO1,NO2"));
+  });
+
+  it("marks an incomplete bucket in the tooltip, by its own length on a DST day", async () => {
+    renderPage(
+      { search: { period: "month" } },
+      answerFor(intervals, [
+        ...summaryBuckets,
+        // The day the clock goes forward is 23 hours: covered whole.
+        { ...summaryBuckets[0], start: "2026-03-28T23:00:00Z", end: "2026-03-29T22:00:00Z", coveredMinutes: 1380 },
+      ]),
+    );
+    expect(await screen.findByTestId("price-summary-chart-tooltip-Mar 2")).toHaveTextContent(
+      "NO1: 2.00 NOK/kWhIncomplete: 8 h of 24 h",
+    );
+    expect(screen.getByTestId("price-summary-chart-tooltip-Mar 1")).not.toHaveTextContent("Incomplete");
+    expect(screen.getByTestId("price-summary-chart-tooltip-Mar 29")).not.toHaveTextContent("Incomplete");
   });
 
   it("says so when the coverage cannot be read", async () => {
@@ -488,6 +569,41 @@ describe("PriceChart", () => {
     expect(shown.slice(1, 5)).toEqual(["01:00 AM", "02:00 AM +02", "02:00 AM +01", "03:00 AM"]);
   });
 
+  it("holds an hourly area's price on another area's quarter-hours, and leaves its missing hour a gap", () => {
+    const quarters = Array.from({ length: 12 }, (_, index) => {
+      const start = new Date(Date.parse("2026-01-13T23:00:00Z") + index * 900_000);
+      return {
+        ...hourly("2026-01-13T23:00:00Z", 1)[0],
+        id: index + 1,
+        start: start.toISOString(),
+        end: new Date(start.getTime() + 900_000).toISOString(),
+        nokPerKwh: index,
+      };
+    });
+    const [first, , third] = hourly("2026-01-13T23:00:00Z", 3);
+    render(
+      <MantineProvider env="test">
+        <PriceChart
+          areas={[
+            { area: "NO1", intervals: quarters },
+            {
+              area: "NO2",
+              intervals: [first, { ...third, nokPerKwh: 12 }].map((item) => ({ ...item, priceArea: "NO2" })),
+            },
+          ]}
+          period="day"
+        />
+      </MantineProvider>,
+    );
+    expect(screen.getByTestId("price-chart")).toHaveTextContent(
+      [
+        "12:00 AM=0|0,12:15 AM=1|0,12:30 AM=2|0,12:45 AM=3|0",
+        "01:00 AM=4|null,01:15 AM=5|null,01:30 AM=6|null,01:45 AM=7|null",
+        "02:00 AM=8|12,02:15 AM=9|12,02:30 AM=10|12,02:45 AM=11|12",
+      ].join(","),
+    );
+  });
+
   it("keeps the plain hours on an ordinary day", () => {
     render(
       <MantineProvider env="test">
@@ -498,5 +614,38 @@ describe("PriceChart", () => {
     expect(shown).toHaveLength(24);
     expect(shown[0]).toBe("12:00 AM");
     expect(shown.every((label) => !/[+-]\d\d$/.test(label))).toBe(true);
+  });
+});
+
+describe("PriceSummaryChart", () => {
+  const day = (start: string, end: string, avg: number, preliminary = false) => ({
+    start,
+    end,
+    avgNokPerKwh: avg,
+    minNokPerKwh: avg,
+    maxNokPerKwh: avg,
+    coveredMinutes: 1440,
+    preliminary,
+  });
+  const march1 = day("2026-02-28T23:00:00Z", "2026-03-01T23:00:00Z", 1);
+  const march2 = day("2026-03-01T23:00:00Z", "2026-03-02T23:00:00Z", 2);
+  const march3 = day("2026-03-02T23:00:00Z", "2026-03-03T23:00:00Z", 3);
+
+  it("draws a dot on a bucket whose neighbours are gaps, and on no other", () => {
+    render(
+      <MantineProvider env="test">
+        <PriceSummaryChart
+          areas={[
+            { area: "NO1", buckets: [march1, march2, march3] },
+            { area: "NO2", buckets: [march2] },
+            { area: "NO3", buckets: [{ ...march3, preliminary: true }] },
+          ]}
+          bucket="day"
+        />
+      </MantineProvider>,
+    );
+    const chart = screen.getByTestId("price-summary-chart");
+    expect(chart).toHaveTextContent("Mar 1=1|null|null|null,Mar 2=2|2|null|null,Mar 3=3|null|null|3");
+    expect(chart).toHaveAttribute("data-lone-dots", "NO2@Mar 2,NO3_preliminary@Mar 3");
   });
 });

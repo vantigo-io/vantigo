@@ -528,14 +528,16 @@ How the file is read:
   a space as thousands separator is ignored, and a price may be negative. They are kept
   to six decimals. An exchange rate must be above zero; the price in EUR and the rate
   may be left blank.
-- **With an end column**, each price lasts from its start to its end, at most an hour.
+- **Every price** lasts a quarter of an hour or an hour, starts on the quarter-hour
+  (minute 00, 15, 30 or 45), and a price of an hour starts on the hour — as the
+  market's do. A row that does not is refused with the reason.
+- **With an end column**, each price lasts from its start to its end.
   The rows need not follow on from each other, so one file may fill several separate
   days; but each area's rows must be in time order and must not overlap.
 - **Without an end column**, each price lasts until the next row of the same area
   starts, and an area's last row as long as the row before it (an hour when the area
   has only one row). Keep each area's rows in time order with no gaps: a row is refused
-  when the next row of its area starts later than one interval after it (at most an
-  hour).
+  when the next row of its area starts later than one interval after it.
 
 What the import writes:
 
