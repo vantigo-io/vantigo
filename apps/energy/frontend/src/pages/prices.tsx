@@ -71,7 +71,9 @@ export const PricesPage = ({ canImport = false }: { canImport?: boolean }) => {
           <Text size="sm">
             {copy.complete
               ? copy.floorDay && t("pricesHistoryComplete", { date: civilDay(copy.floorDay) })
-              : copy.cursorDay && t("pricesHistoryCopying", { date: civilDay(copy.cursorDay) })}
+              : copy.cursorDay
+                ? t("pricesHistoryCopying", { date: civilDay(copy.cursorDay) })
+                : t("pricesHistoryWaiting")}
           </Text>
         )}
         {copy && copy.daysSkipped > 0 && (

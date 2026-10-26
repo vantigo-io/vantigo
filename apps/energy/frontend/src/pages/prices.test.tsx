@@ -156,6 +156,7 @@ describe("PricesPage", () => {
         },
         { priceArea: "NO3", intervalCount: 10, daysMissingLast30: 0, followedByService: false },
         { priceArea: "NO4", intervalCount: 0, daysMissingLast30: 30 },
+        { priceArea: "NO5", intervalCount: 0, daysMissingLast30: 30, history: { complete: false, daysSkipped: 0 } },
       ],
     };
     const serve = (url: URL) => (url.pathname.endsWith("/coverage") ? json(serviceCoverage) : json([]));
@@ -172,6 +173,12 @@ describe("PricesPage", () => {
       expect(within(no2).getByText("3 days skipped")).toBeInTheDocument();
       expect(within(no2).getByText("the service answered 503")).toBeInTheDocument();
       expect(within(screen.getByRole("columnheader", { name: "History" })).queryByText("x")).toBeNull();
+    });
+
+    it("says a walk is waiting while the service has no coverage to walk to", async () => {
+      renderPage({}, serve);
+      const no5 = await screen.findByRole("row", { name: /^NO5/ });
+      expect(within(no5).getByText("Waiting for the service's coverage")).toBeInTheDocument();
     });
 
     it("flags an area the service does not follow, and shows a dash where there is no history", async () => {
