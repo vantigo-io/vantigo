@@ -7,13 +7,36 @@ import { stubFetch } from "../test/fetch";
 import { PriceChart } from "./-price-chart";
 import { PricesPage } from "./prices";
 
-vi.mock("@mantine/charts", () => ({
-  LineChart: ({ data, dataKey }: { data: Array<Record<string, unknown>>; dataKey: string }) => (
-    <div data-testid="price-chart">
-      {data.map((item) => `${String(item[dataKey])}=${String(item.nokPerKwh)}`).join(",")}
-    </div>
-  ),
-}));
+// The charts as text: each row's label and its line values ("|" between
+// series), the series by name (a dashed one marked), and whether dots show.
+vi.mock("@mantine/charts", () => {
+  interface Props {
+    data: Array<Record<string, unknown>>;
+    dataKey: string;
+    series: Array<{ name: string; type?: string; strokeDasharray?: string | number }>;
+    withDots?: boolean;
+  }
+  const chart =
+    (testId: string) =>
+    ({ data, dataKey, series, withDots }: Props) => (
+      <div
+        data-testid={testId}
+        data-series={series.map((item) => `${item.name}${item.strokeDasharray ? "~dashed" : ""}`).join(",")}
+        data-dots={String(Boolean(withDots))}
+      >
+        {data
+          .map(
+            (item) =>
+              `${String(item[dataKey])}=${series
+                .filter((entry) => entry.type !== "area")
+                .map((entry) => String(item[entry.name]))
+                .join("|")}`,
+          )
+          .join(",")}
+      </div>
+    );
+  return { LineChart: chart("price-chart"), CompositeChart: chart("price-summary-chart") };
+});
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
@@ -62,10 +85,46 @@ const intervals = [
   },
 ];
 
+const summaryBuckets = [
+  {
+    start: "2026-02-28T23:00:00Z",
+    end: "2026-03-01T23:00:00Z",
+    avgNokPerKwh: 1,
+    minNokPerKwh: 0.1,
+    maxNokPerKwh: 1.5,
+    coveredMinutes: 1440,
+    preliminary: false,
+  },
+  {
+    start: "2026-03-01T23:00:00Z",
+    end: "2026-03-02T23:00:00Z",
+    avgNokPerKwh: 2,
+    minNokPerKwh: 0.2,
+    maxNokPerKwh: 3,
+    coveredMinutes: 480,
+    preliminary: false,
+  },
+];
+
+const answerFor =
+  (prices: typeof intervals, buckets: typeof summaryBuckets, areas = ["NO1"]) =>
+  (url: URL) => {
+    const area = url.searchParams.get("area") ?? "";
+    if (url.pathname.endsWith("/coverage")) return json(coverage);
+    if (url.pathname.endsWith("/summary")) {
+      return json({
+        priceArea: area,
+        bucket: url.searchParams.get("bucket"),
+        timeZone: "Europe/Oslo",
+        buckets: areas.includes(area) ? buckets : [],
+      });
+    }
+    return json(areas.includes(area) ? prices : []);
+  };
+
 const renderPage = (
-  props: { canImport?: boolean },
-  answer: (url: URL) => Response = (url) =>
-    url.pathname.endsWith("/coverage") ? json(coverage) : json(url.searchParams.get("area") === "NO1" ? intervals : []),
+  props: Parameters<typeof PricesPage>[0],
+  answer: (url: URL) => Response = answerFor(intervals, summaryBuckets),
 ) => {
   const fetchMock = stubFetch(async (input) => answer(new URL(String(input), "http://localhost")));
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -81,7 +140,12 @@ const renderPage = (
       .map(([input]) => new URL(String(input), "http://localhost"))
       .filter((url) => url.pathname === "/api/v1/energy/spot-prices")
       .map((url) => Object.fromEntries(url.searchParams));
-  return { fetchMock, priceCalls };
+  const summaryCalls = () =>
+    fetchMock.mock.calls
+      .map(([input]) => new URL(String(input), "http://localhost"))
+      .filter((url) => url.pathname === "/api/v1/energy/spot-prices/summary")
+      .map((url) => Object.fromEntries(url.searchParams));
+  return { fetchMock, priceCalls, summaryCalls };
 };
 
 // Only the clock: the day the page opens on is the market's today, a DST day
@@ -202,24 +266,158 @@ describe("PricesPage", () => {
     expect(priceCalls()).toEqual([{ area: "NO1", from: "2026-03-28T23:00:00.000Z", to: "2026-03-29T22:00:00.000Z" }]);
   });
 
-  it("asks for the whole month in month mode, and for another area when one is chosen", async () => {
+  it("asks for the Monday-to-Monday week of the day, every interval without dots, across a month's end", async () => {
+    const { priceCalls, summaryCalls } = renderPage({ search: { period: "week", date: "2026-04-01" } });
+    const chart = await screen.findByTestId("price-chart");
+    expect(chart).toHaveAttribute("data-dots", "false");
+    expect(priceCalls()).toEqual([{ area: "NO1", from: "2026-03-29T22:00:00.000Z", to: "2026-04-05T22:00:00.000Z" }]);
+    expect(summaryCalls()).toEqual([]);
+  });
+
+  it("asks for a DST month's daily summary and charts the average on the band", async () => {
     const user = userEvent.setup();
-    const { priceCalls } = renderPage({});
+    const { summaryCalls } = renderPage({});
     await screen.findByTestId("price-chart");
+    expect(screen.getByTestId("price-chart")).toHaveAttribute("data-dots", "true");
 
     await user.click(screen.getByRole("radio", { name: "Month" }));
-    await waitFor(() =>
-      expect(priceCalls().at(-1)).toEqual({
-        area: "NO1",
-        from: "2026-02-28T23:00:00.000Z",
-        to: "2026-03-31T22:00:00.000Z",
-      }),
-    );
+    const chart = await screen.findByTestId("price-summary-chart");
+    expect(summaryCalls()).toEqual([
+      { area: "NO1", bucket: "day", from: "2026-02-28T23:00:00.000Z", to: "2026-03-31T22:00:00.000Z" },
+    ]);
+    expect(chart).toHaveAttribute("data-series", "band,NO1");
+    expect(chart).toHaveTextContent("Mar 1=1,Mar 2=2");
+  });
 
-    await user.click(screen.getByRole("combobox", { name: "Price area" }));
+  it("asks for the calendar year's days in year mode", async () => {
+    const { summaryCalls } = renderPage({ search: { period: "year", date: "2025-06-01" } });
+    await screen.findByTestId("price-summary-chart");
+    expect(summaryCalls()).toEqual([
+      { area: "NO1", bucket: "day", from: "2024-12-31T23:00:00.000Z", to: "2025-12-31T23:00:00.000Z" },
+    ]);
+  });
+
+  it("asks a range of up to two years per whole ISO week, and a longer one per month, clamped to 30 years", async () => {
+    const user = userEvent.setup();
+    const { summaryCalls } = renderPage({});
+    await screen.findByTestId("price-chart");
+    await user.click(screen.getByRole("radio", { name: "Range" }));
+    await screen.findByTestId("price-summary-chart");
+    // The last twelve months by default: April 2025 to March 2026.
+    expect(summaryCalls().at(-1)).toEqual({
+      area: "NO1",
+      bucket: "week",
+      from: "2025-03-30T22:00:00.000Z",
+      to: "2026-04-05T22:00:00.000Z",
+    });
+    cleanup();
+
+    const wide = renderPage({ search: { period: "range", from: "2020-01", to: "2026-03" } });
+    await screen.findByTestId("price-summary-chart");
+    expect(wide.summaryCalls()).toEqual([
+      { area: "NO1", bucket: "month", from: "2019-12-31T23:00:00.000Z", to: "2026-03-31T22:00:00.000Z" },
+    ]);
+    cleanup();
+
+    const clamped = renderPage({ search: { period: "range", from: "1980-01", to: "2026-03" } });
+    await screen.findByTestId("price-summary-chart");
+    expect(clamped.summaryCalls()).toEqual([
+      { area: "NO1", bucket: "month", from: "1996-03-31T22:00:00.000Z", to: "2026-03-31T22:00:00.000Z" },
+    ]);
+  });
+
+  it("labels a weekly range's buckets by ISO week", async () => {
+    renderPage(
+      { search: { period: "range", from: "2025-12", to: "2026-01" } },
+      answerFor(intervals, [{ ...summaryBuckets[0], start: "2025-12-28T23:00:00Z", end: "2026-01-04T23:00:00Z" }]),
+    );
+    expect(await screen.findByTestId("price-summary-chart")).toHaveTextContent("W1 2026=1");
+    expect(screen.getByTestId("price-figure-pricesLowest")).toHaveTextContent("Week 1, 2026");
+  });
+
+  it("compares areas: one request and one line each, and the band only for a single area", async () => {
+    const user = userEvent.setup();
+    const { priceCalls, summaryCalls } = renderPage({}, answerFor(intervals, summaryBuckets, ["NO1", "NO2"]));
+    await screen.findByTestId("price-chart");
+
+    await user.click(screen.getByRole("combobox", { name: "Compare areas" }));
     await user.click(await screen.findByRole("option", { name: "NO2" }));
-    await waitFor(() => expect(priceCalls().at(-1)?.area).toBe("NO2"));
+    await waitFor(() => expect(priceCalls().map((call) => call.area)).toEqual(["NO1", "NO2"]));
+    await waitFor(() => expect(screen.getByTestId("price-chart")).toHaveAttribute("data-series", "NO1,NO2"));
+    expect(screen.getByTestId("price-chart")).toHaveTextContent("12:00 AM=0.8123|0.8123,01:00 AM=0.7|0.7");
+
+    await user.click(screen.getByRole("radio", { name: "Month" }));
+    await waitFor(() => expect(summaryCalls().map((call) => call.area)).toEqual(["NO1", "NO2"]));
+    expect(await screen.findByTestId("price-summary-chart")).toHaveAttribute("data-series", "NO1,NO2");
+  });
+
+  it("says so when no compared area has prices for the period", async () => {
+    renderPage({ search: { areas: ["NO2"] } });
     expect(await screen.findByText("No prices for this period.")).toBeInTheDocument();
+  });
+
+  it("shows the first area's time-weighted average, lowest and highest with their interval", async () => {
+    renderPage(
+      {},
+      answerFor(
+        [
+          { ...intervals[0], nokPerKwh: 1 },
+          { ...intervals[1], end: "2026-03-29T00:15:00Z", nokPerKwh: 2 },
+        ],
+        summaryBuckets,
+      ),
+    );
+    // An hour at 1 and a quarter-hour at 2: 1.2, where a plain mean would say 1.5.
+    expect(await screen.findByTestId("price-figure-pricesAverage")).toHaveTextContent("Average1.20 NOK/kWh");
+    expect(screen.getByTestId("price-figure-pricesLowest")).toHaveTextContent("Lowest1.00 NOK/kWh12:00 AM–01:00 AM");
+    expect(screen.getByTestId("price-figure-pricesHighest")).toHaveTextContent("Highest2.00 NOK/kWh01:00 AM–01:15 AM");
+  });
+
+  it("weighs a summary's average by the minutes each bucket covers, and names the day of the extremes", async () => {
+    renderPage({ search: { period: "month", date: "2026-03-10" } });
+    // 1 over a whole day and 2 over eight hours: 1.25.
+    expect(await screen.findByTestId("price-figure-pricesAverage")).toHaveTextContent("1.25 NOK/kWh");
+    expect(screen.getByTestId("price-figure-pricesLowest")).toHaveTextContent("0.10 NOK/kWhMar 1, 2026");
+    expect(screen.getByTestId("price-figure-pricesHighest")).toHaveTextContent("3.00 NOK/kWhMar 2, 2026");
+    expect(screen.queryByText("Preliminary")).toBeNull();
+  });
+
+  it("flags preliminary prices and draws them dashed", async () => {
+    renderPage({}, answerFor([intervals[0], { ...intervals[1], state: "preliminary" }], summaryBuckets));
+    const chart = await screen.findByTestId("price-chart");
+    expect(screen.getByText("Preliminary")).toBeInTheDocument();
+    expect(chart).toHaveAttribute("data-series", "NO1,NO1_preliminary~dashed");
+    // The solid line reaches the first preliminary interval; the dashed one holds only those.
+    expect(chart).toHaveTextContent("12:00 AM=0.8123|null,01:00 AM=0.7|0.7");
+  });
+
+  it("flags a preliminary day of a month and joins its dashed line to the last final day", async () => {
+    renderPage(
+      { search: { period: "month" } },
+      answerFor(intervals, [summaryBuckets[0], { ...summaryBuckets[1], preliminary: true }]),
+    );
+    const chart = await screen.findByTestId("price-summary-chart");
+    expect(screen.getByText("Preliminary")).toBeInTheDocument();
+    expect(chart).toHaveAttribute("data-series", "band,NO1,NO1_preliminary~dashed");
+    expect(chart).toHaveTextContent("Mar 1=1|1,Mar 2=null|2");
+  });
+
+  it("hands every change of the view to the host, and shows what the host holds", async () => {
+    const user = userEvent.setup();
+    const onSearchChange = vi.fn();
+    const { summaryCalls } = renderPage({
+      search: { areas: ["NO2", "NO1"], period: "year", date: "2025-06-01" },
+      onSearchChange,
+    });
+    await waitFor(() => expect(summaryCalls().map((call) => call.area)).toEqual(["NO2", "NO1"]));
+    expect(screen.getByRole("radio", { name: "Year" })).toBeChecked();
+
+    await user.click(screen.getByRole("radio", { name: "Week" }));
+    expect(onSearchChange).toHaveBeenLastCalledWith({
+      areas: ["NO2", "NO1"],
+      period: "week",
+      date: "2025-06-01",
+    });
   });
 
   it("offers Import prices only when the host says the caller may import", async () => {
@@ -281,7 +479,7 @@ describe("PriceChart", () => {
   it("tells the two runs of 02:00 apart on the day the clock goes back", () => {
     render(
       <MantineProvider env="test">
-        <PriceChart intervals={hourly("2025-10-25T22:00:00Z", 25)} period="day" />
+        <PriceChart areas={[{ area: "NO1", intervals: hourly("2025-10-25T22:00:00Z", 25) }]} period="day" />
       </MantineProvider>,
     );
     const shown = labels();
@@ -293,7 +491,7 @@ describe("PriceChart", () => {
   it("keeps the plain hours on an ordinary day", () => {
     render(
       <MantineProvider env="test">
-        <PriceChart intervals={hourly("2026-01-13T23:00:00Z", 24)} period="day" />
+        <PriceChart areas={[{ area: "NO1", intervals: hourly("2026-01-13T23:00:00Z", 24) }]} period="day" />
       </MantineProvider>,
     );
     const shown = labels();
