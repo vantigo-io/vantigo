@@ -464,3 +464,100 @@ func TestDialContext_StopsDiallingOnceTheCallerGivesUp(t *testing.T) {
 		t.Fatalf("dial func called %d times, want 1 (the loop must stop once the context is done)", dialled)
 	}
 }
+
+// TestPrivateNetwork_IsTheOperatorsRangesOnly pins the one exception's
+// table (spot-price service design S7): RFC 1918 and unique-local, an
+// IPv4-mapped form unwrapped, and nothing a translator embeds, nor
+// loopback, link-local, carrier-grade NAT or the edges just outside.
+func TestPrivateNetwork_IsTheOperatorsRangesOnly(t *testing.T) {
+	t.Parallel()
+	for in, want := range map[string]bool{
+		"10.0.0.1":        true,
+		"10.255.255.255":  true,
+		"172.16.0.0":      true,
+		"172.31.255.255":  true,
+		"172.15.255.255":  false,
+		"172.32.0.0":      false,
+		"192.168.10.4":    true,
+		"192.169.0.1":     false,
+		"fd12:3456::1":    true,
+		"fc00::1":         true,
+		"fe80::1":         false,
+		"::ffff:10.0.0.1": true,
+		"64:ff9b::a00:1":  false,
+		"2002:a00:1::1":   false,
+		"127.0.0.1":       false,
+		"::1":             false,
+		"169.254.169.254": false,
+		"100.64.0.1":      false,
+		"0.0.0.0":         false,
+		"203.0.113.5":     false,
+		"2001:db8::1":     false,
+	} {
+		if got := PrivateNetwork(mustAddr(t, in)); got != want {
+			t.Errorf("PrivateNetwork(%s) = %v, want %v", in, got, want)
+		}
+	}
+	if PrivateNetwork(netip.Addr{}) {
+		t.Error("PrivateNetwork(zero) = true, want false")
+	}
+}
+
+// TestDialContextAllowingPrivate_TheExceptionAndItsLimits proves the
+// private-allowing dialler lets an operator's private address through,
+// refuses everything else Disallowed refuses — a mixed answer included —
+// and, with requirePrivate, refuses a public address too, all before any
+// dial.
+func TestDialContextAllowingPrivate_TheExceptionAndItsLimits(t *testing.T) {
+	t.Parallel()
+	for name, tc := range map[string]struct {
+		addrs          []string
+		requirePrivate bool
+		wantDial       string
+	}{
+		"a docker network address":               {[]string{"172.18.0.5"}, false, "172.18.0.5:8080"},
+		"a docker network address, private only": {[]string{"172.18.0.5"}, true, "172.18.0.5:8080"},
+		"a unique-local address, private only":   {[]string{"fd00::5"}, true, "[fd00::5]:8080"},
+		"a public address":                       {[]string{"203.0.113.5"}, false, "203.0.113.5:8080"},
+		"a public address, private only":         {[]string{"203.0.113.5"}, true, ""},
+		"loopback":                               {[]string{"127.0.0.1"}, false, ""},
+		"the metadata address":                   {[]string{"169.254.169.254"}, false, ""},
+		"carrier-grade NAT":                      {[]string{"100.64.0.1"}, false, ""},
+		"private and loopback together":          {[]string{"172.18.0.5", "127.0.0.1"}, false, ""},
+		"private and public, private only":       {[]string{"172.18.0.5", "203.0.113.5"}, true, ""},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			addrs := make([]netip.Addr, 0, len(tc.addrs))
+			for _, a := range tc.addrs {
+				addrs = append(addrs, mustAddr(t, a))
+			}
+			var dialed string
+			dial := func(_ context.Context, _, addr string) (net.Conn, error) {
+				dialed = addr
+				return fakeConn{}, nil
+			}
+			_, err := DialContextAllowingPrivate(&fakeResolver{addrs: addrs}, dial, tc.requirePrivate)(context.Background(), "tcp", "vantigo-spotprices:8080")
+			if tc.wantDial == "" {
+				if !errors.Is(err, ErrDisallowed) || dialed != "" {
+					t.Fatalf("err = %v, dialed %q; want ErrDisallowed and no dial", err, dialed)
+				}
+				return
+			}
+			if err != nil || dialed != tc.wantDial {
+				t.Fatalf("err = %v, dialed %q; want %q", err, dialed, tc.wantDial)
+			}
+		})
+	}
+}
+
+// TestDialContext_StillRefusesPrivate proves the exception is not
+// DialContext's: an operator's private address is refused there as ever.
+func TestDialContext_StillRefusesPrivate(t *testing.T) {
+	t.Parallel()
+	dial := func(context.Context, string, string) (net.Conn, error) { return fakeConn{}, nil }
+	_, err := DialContext(&fakeResolver{addrs: []netip.Addr{mustAddr(t, "172.18.0.5")}}, dial)(context.Background(), "tcp", "vantigo-spotprices:8080")
+	if !errors.Is(err, ErrDisallowed) {
+		t.Fatalf("err = %v, want ErrDisallowed", err)
+	}
+}
