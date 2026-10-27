@@ -71,6 +71,10 @@ guide describes narrowing it with **RBAC for Applications** to a group of mailbo
 that Entra's tenant-wide consent must then be removed); a mailbox outside the scope is
 answered 403 per person (`mailbox_denied`, O7), never as the connection failing.
 
+*As built:* `permission_missing` is answered only while the connection is
+`connected`; on but not connected is `unavailable` with the connection's reason, as the
+table says.
+
 ### O3 — The certain mailbox (Staff)
 
 `contracts.Workforce` gains `DirectoryAccount(ctx) (*DirectoryAccount, error)`: the
@@ -86,6 +90,12 @@ only the principal's own. It is the third read under Staff's own principal (besi
 The Entra side checks again: it writes only to an object id that is a row of
 `entra.accounts` the module made or whose adoption is confirmed, and not `deleted`
 (`ErrMailboxUnknown` otherwise).
+
+*As built:* `DirectoryAccount` performs no permission check at all — the principal's own
+account id, under Staff's own principal — rather than being gated by a key; it finds the
+person under `PersonForUser`'s predicate (a disabled identity link included, one blocked
+`mismatch` or `account_not_managed` never) and answers the oldest provider link. Its
+`Enabled` is not read by the calendar today.
 
 ### O4 — The contract: `contracts.MailboxCalendar`
 
@@ -136,6 +146,19 @@ VantigoKey`, `isReminderOn: false`, timed events in UTC, all-day events at midni
 the Windows name of `TimeZone` (the CLDR table the calendar already holds, mirrored) —
 UTC when none — and `sensitivity: private` when `Private`.
 
+*As built:* `Status` is `cleanup` only while a credential still works — the tenant and
+the client saved, a secret unrevoked and unexpired, and the connection not `failing`
+`credential_invalid` — and `permission_missing` only while the connection is
+`connected`; the switch off with no working credential is `unavailable` (reason
+`switch_off`), so the calendar answers that person `unavailable`. Graph's bare
+`ResourceNotFound` is not read as the mailbox gone (only `MailboxNotEnabledForRESTAPI`,
+`ErrorInvalidUser`, `ErrorNonExistentMailbox` and `Request_ResourceNotFound`), so an
+event or a calendar gone is never mistaken for its mailbox. A `$batch` holding a create
+is sent with no retry of a 5xx; 429s inside a batch are sent again once after the
+longest `Retry-After`. The `$batch` answer is read through 8 MiB, the client's other
+answers through 1 MiB. The calendar hands `Apply` slices of 100 ops, which Entra splits
+into batches of 20.
+
 ### O5 — The person's setting (Calendar)
 
 `calendar.mailbox_sync`, one row per user who has ever turned it on:
@@ -177,6 +200,12 @@ the calendar addresses: *Outlook* — the toggle, *Where* (main calendar / a sep
 colleagues), *What* (the kinds), *Titles* (full / *Busy* only), the state and the last
 sync, *Sync now*, and, when unavailable, why, in the person's words.
 
+*As built:* a stale revision is 409 `revision_mismatch` — the module's existing refusal
+for `If-Match` — not 412. `mailbox_sync_unavailable` is a 409 whose `detail` carries the
+availability code (`off` for a *Sync now* while the sync is off). The card is on
+**Calendar → My calendar**, the screen's name. A `PUT` that keeps the sync on while it
+cannot run is refused too; turning it off is always taken.
+
 ### O6 — What is pushed, and how it looks
 
 The window is **30 days back to 180 days ahead** of today in the business zone. In it:
@@ -204,6 +233,12 @@ is the person's preferred language.
 
 At most **1500** events per person; past it the farthest projected items are left out
 (the feed's order), never an appointment.
+
+*As built:* the body of an appointment's copy is its description (an item's is its
+subtitle), and the link is the app's — `APP_URL` and the base path — as the feed's and
+the notices' are, not the installation's public host, which serves only its allowlist.
+A done item's subject starts `✓ `. The private flag is set on every copy of a private
+appointment, its owner's included.
 
 ### O7 — The worker: `calendar-mailbox-sync`
 
@@ -241,6 +276,17 @@ the daily `reconcile` plus the poll; a change of roles is seen at the next poll.
 `CALENDAR_MAILBOX_SYNC_ENABLED` (default `true`) turns the worker off, as the other
 calendar workers.
 
+*As built:* the steps run Status first, then `UserHolds`: an unavailable provider calls
+nothing. **Reconcile does not delete** a marked event whose key is not wanted: it adopts
+a wanted key the map lacks, deletes a second event carrying a key already mapped (the
+duplicate an unknown create leaves), and forgets a mapped event `Find` no longer
+answers — only when `Find` answered fewer than 5000, so a cut list forgets nothing. An
+unwanted marked event is most often a copy that slid before the window, which the past
+keeps. The daily reconcile is derived from `last_synced_at`'s business day (a first sync
+on a later day reconciles), not scheduled. `Apply` is handed slices of 100. A refusal
+of `ErrMailboxUnknown` is recorded as `no_account`, and `ErrMailboxUnavailable` as
+`unavailable`, both retried in an hour.
+
 ### O8 — The clean-up
 
 When a person turns the toggle off, changes the target, may no longer use Calendar, or
@@ -251,6 +297,10 @@ is `off` (toggle off) or `unavailable`. A clean-up that cannot reach the mailbox
 (`mailbox_gone`, the connection unusable) forgets the map and logs it: the mailbox is
 gone or the copies cannot be reached, and a leaver's mailbox is soft-deleted with them.
 Turning the switch back on resumes everyone whose toggle is on, from a reconcile.
+
+*As built:* the clean-up's target is decided by the row's `calendar_id`, not its
+`target`: with a *Vantigo* calendar made it is deleted whole, otherwise each mapped event
+of the default calendar. A failure to retry keeps the clean-up owed (`stopping`).
 
 ### O9 — B: Outlook's busy time in Vantigo (outline)
 

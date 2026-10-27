@@ -1,6 +1,6 @@
 ---
 title: Kalender
-description: Avtalene dine og det de andre appene har lagt inn i dagene dine, å invitere kolleger, kunders kontaktpersoner og hvem som helst med en adresse, hva en invitert får og hvordan de svarer, avlysning, når kolleger er opptatt, gjentakende avtaler, agendaen på dashbordet, kalenderen din på mobilen og kalendere fra andre steder ved siden av din egen.
+description: Avtalene dine og det de andre appene har lagt inn i dagene dine, å invitere kolleger, kunders kontaktpersoner og hvem som helst med en adresse, hva en invitert får og hvordan de svarer, avlysning, når kolleger er opptatt, gjentakende avtaler, agendaen på dashbordet, kalenderen din på mobilen, kalendere fra andre steder ved siden av din egen, og en kopi av kalenderen din i Outlook.
 sidebar:
   order: 35
 sources:
@@ -434,9 +434,78 @@ Disse kalenderne er bare dine: en kollega som ser på kalenderen din, ser dem ik
 er aldri med i din egen kalenderadresse, så en mobil som abonnerer på Vantigo-kalenderen
 din, får dem ikke to ganger.
 
+## Synkroniser med Outlook
+
+Vantigo kan holde en kopi av kalenderen din i Microsoft 365-postboksen din, så avtalene
+dine vises i Outlook — på datamaskinen og mobilen — ved siden av alt det andre. I
+hovedkalenderen viser de deg også som opptatt for kolleger som booker møter i Outlook.
+Endringene gjør du fortsatt i Vantigo: kopiene sier **Holdes av Vantigo — endre det
+der:** med en lenke tilbake.
+
+1. Åpne **Kalender → Min kalender**. Kortet **Outlook** står under kalenderadressene
+   dine.
+2. Slå på **Synkroniser til Outlook-kalenderen min**.
+3. Velg:
+   - **Hvor** — **Hovedkalenderen min**, som viser tiden som opptatt for kolleger, eller
+     **En egen Vantigo-kalender**, som er lett å skjule, men ikke gjør deg opptatt for
+     andre.
+   - **Hva** — **Avtaler** og det du vil ha med fra de andre appene: **Fravær**,
+     **Oppgaver**, **Timer**, **Reiser**, **Oppfølginger**, **Allokeringer** og
+     lignende, så langt du ser dem i Vantigo. Avtaler og fravær er krysset av første
+     gang.
+   - **Titler** — **Fulle titler**, eller **Bare opptatt**: alle titler blir *Opptatt*,
+     med ikke noe annet enn lenken.
+
+Hver endring lagres med en gang. Kortet sier så **Venter på den første
+synkroniseringen …**, og snart **Sist synkronisert** og når. Vantigo synkroniserer hvert
+kvarter, og innen et minutt når en av avtalene dine endres; **Synkroniser nå** ber om en
+synkronisering med en gang.
+
+Dette får Outlook: avtalene dine fra 30 dager tilbake til 180 dager frem — de du har
+laget, og de du er invitert til og ikke har takket nei til, hver forekomst av en
+gjentakende avtale som sin egen hendelse — og det du valgte fra de andre appene, på ditt
+språk. En avtale du har svart *kanskje* på, vises som foreløpig, en som er merket ledig,
+som ledig, og fravær som fraværende. En privat avtale er privat i Outlook, og en en
+kollega har gjort privat, vises som *Opptatt*. Det følger ingen deltakere og ingen
+påminnelser med. Aldri med: en kollegas kalender, kalenderne du abonnerer på fra andre
+steder, og helligdager.
+
+**Endre i Vantigo, ikke i Outlook.** Inntil videre settes en kopi du flytter eller
+endrer i Outlook, tilbake neste gang Vantigo synkroniserer, og en du sletter der, kommer
+tilbake. Det er planlagt at endringene dine i Outlook skal tas inn i Vantigo.
+
+**Slå den av** med samme bryter: Vantigo fjerner det den la inn i Outlook — **Fjerner det
+Vantigo la inn i Outlook …** — og kortet sier **Synkroniserer ikke**. Velger du det andre
+**Hvor**, fjernes også kopiene fra det første stedet før de skrives til det nye. I
+hovedkalenderen blir kopier av det som ligger mer enn 30 dager tilbake, liggende som de
+var; en egen Vantigo-kalender fjernes i sin helhet.
+
+Når bryteren ikke kan slås på, sier kortet hvorfor:
+
+- **Administratoren din har ikke slått på kalendersynkronisering.** — en eier slår på
+  **Kalendersynkronisering** på Microsoft Entra ID-siden ([Microsoft Entra
+  ID](/nb/user/entra/#kalendersynkronisering)).
+- **Kalendersynkronisering krever modulen Microsoft Entra ID.** — installasjonen kjører
+  den ikke.
+- **Kalendersynkroniseringen venter på at administratoren din gir tillatelsen til
+  kalenderen.**
+- **Tilkoblingen til Microsoft 365 virker ikke akkurat nå.**
+- **Vantigo-brukeren din er ikke koblet til en Microsoft 365-konto som Vantigo
+  styrer.** — HR kobler personen din i Ansatte til Microsoft-kontoen din; Vantigo
+  gjetter den aldri ut fra adressen din.
+
+Når synkroniseringen har stoppet, sier kortet hvorfor i stedet for når den sist kjørte:
+**Organisasjonen din har ikke gitt Vantigo tilgang til postboksen din.** (administratoren
+har begrenset hvilke postbokser Vantigo kan skrive til), **Postboksen din ble ikke
+funnet.**, **Tilkoblingen til Microsoft 365 virker ikke akkurat nå.** eller **Den siste
+synkroniseringen mislyktes; Vantigo prøver igjen.** Det siste trenger du ikke gjøre noe
+med: Vantigo prøver igjen, sjeldnere for hver gang. Slutter du, eller mister du tilgangen
+til Kalender, fjernes kopiene dine.
+
 ## Hva som kommer
 
-Både kalenderadressen til telefonen og kalendere fra andre steder er bygget. Det som
-gjenstår, ligger lenger frem: toveis synkronisering med Google og Microsoft,
-bookingsider, rom og ressurser, påminnelser i appen og på e-post, CalDAV og
-teamkalendere.
+Kalenderadressen til telefonen, kalendere fra andre steder og kopien i Outlook er
+bygget. Neste for Outlook: når du er opptatt i Outlook, vist i Vantigo, så endringene du
+gjør i avtalene dine i Outlook, tatt inn i Vantigo, og så raskere oppdateringer. Lenger
+frem: synkronisering med Google, bookingsider, rom og ressurser, påminnelser i appen og
+på e-post, CalDAV og teamkalendere.
