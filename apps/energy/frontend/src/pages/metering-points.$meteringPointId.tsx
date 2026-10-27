@@ -25,6 +25,7 @@ import { ImportReadingsModal } from "./-import-readings-modal";
 import { ManualReadingModal } from "./-manual-reading-modal";
 import { MeteringPointFormModal, type MeteringPointModalState } from "./-metering-point-form-modal";
 import { ReplaceMeterModal } from "./-replace-meter-modal";
+import { SettlementsCard } from "./-settlements-card";
 import { SupplyPeriodModal } from "./-supply-period-modal";
 import { SupplyTermsModal } from "./-supply-terms";
 import "../i18n";
@@ -43,14 +44,18 @@ const defaultTo = () => new Date().toISOString().slice(0, 10);
  * readings** in the Consumption card (energy import design D8).
  * `canViewTariffs` — `energy:tariffs-view` — lets the edit form and the
  * supply-period dialogs list the tariffs to choose from; without it they show
- * the tariff held, read-only.
+ * the tariff held, read-only. `canViewSettlements` —
+ * `energy:supply-periods-view` and `energy:consumption-view` together — shows
+ * the Settlements card.
  */
 export const MeteringPointDetailsPage = ({
   canImportReadings = false,
   canViewTariffs = false,
+  canViewSettlements = false,
 }: {
   canImportReadings?: boolean;
   canViewTariffs?: boolean;
+  canViewSettlements?: boolean;
 }) => {
   const { t, formatters } = useI18n("energy");
   const { meteringPointId } = useParams({ strict: false }) as { meteringPointId: number };
@@ -271,6 +276,7 @@ export const MeteringPointDetailsPage = ({
           )}
         </Stack>
       </Card>
+      {canViewSettlements && <SettlementsCard meteringPointId={meteringPointId} />}
       <Card withBorder>
         <Stack>
           <Group justify="space-between">

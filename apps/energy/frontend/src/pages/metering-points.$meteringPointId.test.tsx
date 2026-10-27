@@ -44,7 +44,7 @@ const periods: SupplyPeriod[] = [
   { id: 4, meteringPointId: 7, customerId: 1001, start: "2025-06-01T00:00:00Z", end: null, status: "Cancelled" },
 ];
 
-const renderPage = async (point: MeteringPoint) => {
+const renderPage = async (point: MeteringPoint, canViewSettlements = false) => {
   stubFetch(async (input) => {
     const url = String(input);
     if (url === "/api/v1/energy/metering-points/7") return json(point);
@@ -56,7 +56,7 @@ const renderPage = async (point: MeteringPoint) => {
   render(
     <MantineProvider env="test">
       <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-        <MeteringPointDetailsPage />
+        <MeteringPointDetailsPage canViewSettlements={canViewSettlements} />
       </QueryClientProvider>
     </MantineProvider>,
   );
@@ -101,5 +101,16 @@ describe("MeteringPointDetailsPage", () => {
 
     await userEvent.click(within(active).getByRole("button", { name: "Change terms" }));
     expect(await screen.findByRole("dialog", { name: "Change terms" })).toBeInTheDocument();
+  });
+
+  it("shows the Settlements card only to a caller who may view settlements", async () => {
+    await renderPage(basePoint, true);
+    expect(await screen.findByRole("heading", { name: "Settlements" })).toBeInTheDocument();
+    expect(await screen.findByText("No billing period has closed yet.")).toBeInTheDocument();
+  });
+
+  it("leaves the Settlements card out without the permission", async () => {
+    await renderPage(basePoint);
+    expect(screen.queryByRole("heading", { name: "Settlements" })).not.toBeInTheDocument();
   });
 });
