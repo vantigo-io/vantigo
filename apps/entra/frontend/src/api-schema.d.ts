@@ -175,7 +175,7 @@ export interface paths {
         };
         /**
          * Find the directory's exact matches
-         * @description Proposes, for every user not yet connected to the workforce provider, the one account in the tenant that matches them exactly — the review an Owner connects a whole workspace from. The candidates are identity's: every user who is not pending and has neither a link nor an announced link under the configured issuer, the caller excluded, at most 1000 of them in identity's order (truncated says when more wait). The tenant is asked by the candidates' addresses (mail and userPrincipalName) and employee numbers (employeeId), exact values only. A candidate is proposed only when every key that matched points to one and the same account, and that account is neither held (an announced link, a SCIM mapping or an announced account names it) nor the one match of another candidate; everything else is left out, and counted as ambiguous when more than one account was in play. The addresses are compared here and never answered. Connecting is identity's announced link, POST /api/v1/identity/owner/users/{id}/sso-link, once per chosen pair. 409 sso_not_configured while single sign-on is off. Rate limited to 6 per client address a minute, a bucket of its own.
+         * @description Proposes, for every user not yet connected to the workforce provider, the one account in the tenant that matches them exactly — the review an Owner connects a whole workspace from. The candidates are identity's: every user who is not pending and has neither a link nor an announced link under the configured issuer, the caller excluded, at most 1000 of them in identity's order (truncated says when more wait). The tenant is asked by the candidates' addresses (mail and userPrincipalName) and employee numbers (employeeId), exact values only. A guest account (userType Guest) matches nobody: it is left out before matching, and not counted. A candidate is proposed only when every key that matched points to one and the same account, and that account is neither held for another user (an announced link or a SCIM mapping of somebody else's, or an announced account, names it) nor the one match of another candidate; everything else is left out, and counted as ambiguous when more than one account was in play. The addresses are compared here and never answered. The read is bounded to two minutes, past which it answers 503 tenant_unreachable; an Owner's second request while their first is still reading waits for it and gets the same answer. Connecting is identity's announced link, POST /api/v1/identity/owner/users/{id}/sso-link, once per chosen pair. 409 sso_not_configured while single sign-on is off. Rate limited to 6 per client address a minute, a bucket of its own.
          */
         get: operations["getEntraDirectoryMatches"];
         put?: never;
@@ -439,11 +439,11 @@ export interface components {
             /** Format: uuid */
             userId: string;
         };
-        /** @description The exact matches between the users not yet connected and the tenant's accounts. Only an exact match is proposed — no fuzzy match, no guess between two. The users' addresses are compared in the server and never answered. */
+        /** @description The exact matches between the users not yet connected and the tenant's accounts. Only an exact match is proposed — no fuzzy match, no guess between two, never a guest account. The users' addresses are compared in the server and never answered. */
         EntraDirectoryMatches: {
             /**
              * Format: int32
-             * @description How many candidates were left out because more than one account matched them, or because the account that matched them matched another candidate too.
+             * @description How many candidates were left out because more than one account matched them, or because the account that matched them matched another candidate too. A guest account is no match at all — it is neither proposed nor counted here.
              */
             ambiguous: number;
             /**
@@ -462,6 +462,8 @@ export interface components {
             displayName: string;
             /** @description The account's employeeId. Absent when it has none. */
             employeeId?: string;
+            /** @description True when the account is a guest of the tenant (its userType is Guest), invited from another organisation. Absent for a member. The matches never propose a guest. */
+            guest?: boolean;
             holder?: components["schemas"]["EntraDirectoryHolder"];
             /** @description The account's mail. Absent when it has none. */
             mail?: string;
@@ -1213,7 +1215,7 @@ export interface operations {
                     "application/json": components["schemas"]["AuthErrorResponse"];
                 };
             };
-            /** @description Service Unavailable — credential_invalid, no secret fetched a token; tenant_unreachable, the tenant did not answer; or throttled, the tenant throttled the module twice in a row. */
+            /** @description Service Unavailable — credential_invalid, no secret fetched a token; tenant_unreachable, the tenant did not answer, or the read took more than two minutes; or throttled, the tenant throttled the module twice in a row. */
             503: {
                 headers: {
                     [name: string]: unknown;

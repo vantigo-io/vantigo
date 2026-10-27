@@ -53,6 +53,25 @@ describe("the directory picker", () => {
     expect(field).toHaveValue("Kari Nordmann");
   });
 
+  it("tells the host to forget the pick once the search changes after it, and only then", async () => {
+    const onClear = vi.fn();
+    const { field } = openPicker({ directory: [KARI] }, { onClear });
+    await userEvent.type(field, "kari");
+    expect(onClear).not.toHaveBeenCalled();
+    await userEvent.click(await screen.findByRole("option", { name: /Kari Nordmann/ }));
+    await userEvent.type(field, "x");
+    expect(onClear).toHaveBeenCalledTimes(1);
+    await userEvent.type(field, "y");
+    expect(onClear).toHaveBeenCalledTimes(1);
+  });
+
+  it("marks a guest account", async () => {
+    const { field } = openPicker({ directory: [KARI, { ...OLA, guest: true }] });
+    await userEvent.type(field, "nordmann");
+    expect(await screen.findByRole("option", { name: /Ola Nordmann/ })).toHaveTextContent("Guest");
+    expect(screen.getByRole("option", { name: /Kari Nordmann/ })).not.toHaveTextContent("Guest");
+  });
+
   it("marks a held account and keeps it from being picked, unless it is the user's own", async () => {
     const { field, onPick } = openPicker(
       {

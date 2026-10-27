@@ -35,11 +35,18 @@ export const directoryUsersQueryOptions = (q: string) =>
     queryFn: ({ signal }) => request<EntraDirectoryUsers>(`${base}/users?q=${encodeURIComponent(q)}`, { signal }),
     enabled: q.trim().length >= DIRECTORY_SEARCH_MIN,
     staleTime: 30_000,
+    refetchOnWindowFocus: false,
   });
 
-/** The exact matches between the users not yet connected and the tenant's accounts; 409 `sso_not_configured` while single sign-on is off. */
+/**
+ * The exact matches between the users not yet connected and the tenant's accounts; 409 `sso_not_configured` while
+ * single sign-on is off. The read is costly for the tenant, so it is never retried on its own nor repeated when the
+ * window regains focus: the Owner asks again.
+ */
 export const directoryMatchesQueryOptions = () =>
   queryOptions({
     queryKey: [ENTRA_QUERY_KEY, "directory", "matches"],
     queryFn: ({ signal }) => request<EntraDirectoryMatches>(`${base}/matches`, { signal }),
+    retry: false,
+    refetchOnWindowFocus: false,
   });

@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/google/uuid"
@@ -59,8 +60,16 @@ const (
 	// it.
 	matchTop = 999
 	// directorySelect is what both reads ask of an account.
-	directorySelect = "id,displayName,mail,userPrincipalName,employeeId,accountEnabled"
+	directorySelect = "id,displayName,mail,userPrincipalName,employeeId,accountEnabled,userType"
+	// matchesTimeout bounds the matches' whole read — identity's candidates,
+	// the tenant's in filters and the holders — past which it answers 503
+	// tenant_unreachable.
+	matchesTimeout = 2 * time.Minute
 )
+
+// guestUserType is the userType Graph answers for a guest of the tenant,
+// an account invited from another organisation.
+const guestUserType = "Guest"
 
 // directoryAccount is an account as the two reads ask for it
 // (directorySelect).
@@ -71,7 +80,11 @@ type directoryAccount struct {
 	UserPrincipalName string  `json:"userPrincipalName"`
 	EmployeeID        *string `json:"employeeId"`
 	AccountEnabled    bool    `json:"accountEnabled"`
+	UserType          string  `json:"userType"`
 }
+
+// guest reports whether the account is a guest of the tenant.
+func (a directoryAccount) guest() bool { return strings.EqualFold(a.UserType, guestUserType) }
 
 // directoryPage is a list of accounts as Graph answers it.
 type directoryPage struct {
@@ -126,21 +139,23 @@ func (s *server) GetEntraDirectoryUsers(ctx context.Context, req gen.GetEntraDir
 // searchUsers is the search of plan reading 3: q, already rid of " and \,
 // quoted into a clause on each of the three properties, by display name, at
 // most directorySearchTop — an advanced query, so with $count and
-// ConsistencyLevel: eventual.
+// ConsistencyLevel: eventual, and noWords: Graph's refusal may echo q, which
+// may be an address, and is never logged.
 func (s *server) searchUsers(ctx context.Context, cred graphCredential, q string) ([]directoryAccount, error) {
 	search := `"displayName:` + q + `" OR "mail:` + q + `" OR "userPrincipalName:` + q + `"`
 	var page directoryPage
 	err := s.client.get(ctx, cred, "/users?"+query(url.Values{
 		"$search": {search}, "$select": {directorySelect}, "$orderby": {"displayName"},
 		"$top": {strconv.Itoa(directorySearchTop)}, "$count": {"true"},
-	}), &page, eventual)
+	}), &page, eventual, noWords)
 	return page.Value, err
 }
 
 // findByKeys is every account whose property — mail, userPrincipalName or
 // employeeId — is one of values, read in in filters of matchChunk values,
 // each quoted as OData quotes, a ' doubled; an advanced query, so with
-// $count and ConsistencyLevel: eventual.
+// $count and ConsistencyLevel: eventual, and noWords: Graph's refusal may
+// echo the filter's addresses, and is never logged.
 func (s *server) findByKeys(ctx context.Context, cred graphCredential, property string, values []string) ([]directoryAccount, error) {
 	var out []directoryAccount
 	for chunk := range slices.Chunk(values, matchChunk) {
@@ -152,7 +167,7 @@ func (s *server) findByKeys(ctx context.Context, cred graphCredential, property 
 		err := s.client.get(ctx, cred, "/users?"+query(url.Values{
 			"$filter": {property + " in (" + strings.Join(quoted, ", ") + ")"}, "$select": {directorySelect},
 			"$top": {strconv.Itoa(matchTop)}, "$count": {"true"},
-		}), &page, eventual)
+		}), &page, eventual, noWords)
 		if err != nil {
 			return nil, err
 		}
@@ -163,18 +178,14 @@ func (s *server) findByKeys(ctx context.Context, cred graphCredential, property 
 
 // holders is who holds each of accounts under the configured issuer, by
 // the account's id, as identity answers it (contracts.SSOConnections's
-// KeyHolders); an account nobody holds is absent. Without the port —
-// identity not composed — nobody holds anything.
+// KeyHolders, through keyHolders); an account nobody holds is absent.
+// Without the port — identity not composed — nobody holds anything.
 func (s *server) holders(ctx context.Context, accounts []directoryAccount) (map[string]*gen.EntraDirectoryHolder, error) {
-	port := s.deps.SSOConnections
-	if port == nil || len(accounts) == 0 {
-		return nil, nil
-	}
 	keys := make([]contracts.DirectoryKey, 0, len(accounts))
 	for _, a := range accounts {
 		keys = append(keys, contracts.DirectoryKey{ObjectID: a.ID, UserPrincipalName: a.UserPrincipalName})
 	}
-	found, err := port.KeyHolders(ctx, keys)
+	found, err := s.keyHolders(ctx, keys)
 	if err != nil {
 		return nil, fmt.Errorf("entra: read who holds the accounts: %w", err)
 	}
@@ -191,13 +202,20 @@ func (s *server) holders(ctx context.Context, accounts []directoryAccount) (map[
 }
 
 // directoryUserBody is an account as the contract answers it, with its
-// holder; ok false for an id that is not a GUID, which Graph never answers.
+// holder, guest set only for a guest; ok false for an id that is not a
+// GUID, which Graph never answers.
 func directoryUserBody(a directoryAccount, holder *gen.EntraDirectoryHolder) (gen.EntraDirectoryUser, bool) {
 	id, ok := objectID(a.ID)
 	if !ok {
 		return gen.EntraDirectoryUser{}, false
 	}
+	var guest *bool
+	if a.guest() {
+		yes := true
+		guest = &yes
+	}
 	return gen.EntraDirectoryUser{
+		Guest:             guest,
 		ObjectId:          openapi_types.UUID(id),
 		DisplayName:       a.DisplayName,
 		Mail:              nonEmpty(a.Mail),
@@ -219,23 +237,63 @@ func nonEmpty(s *string) *string {
 
 // GetEntraDirectoryMatches proposes, for the users not yet connected, the
 // one account in the tenant each matches exactly (plan reading 4,
-// matchCandidates), leaving out an account somebody already holds. It reads
+// matchCandidates), leaving out an account held for another user. It reads
 // at most 1000 users, in identity's order, truncated saying when more
 // exist. 409 sso_not_configured while single sign-on is off; 503
 // credential_invalid, tenant_unreachable or throttled when the tenant could
-// not be asked. policy:Owner+OwnerManagement, as the router checks.
+// not be asked, tenant_unreachable too when the read took longer than
+// matchesTimeout. A caller's second request while their first still reads
+// waits for it and shares its answer (s.matches, keyed by the caller: what
+// identity answers depends on who asks), so the read is never run twice at
+// once for one Owner. policy:Owner+OwnerManagement, as the router checks.
 // (GET /api/v1/entra/directory/matches)
 func (s *server) GetEntraDirectoryMatches(ctx context.Context, _ gen.GetEntraDirectoryMatchesRequestObject) (gen.GetEntraDirectoryMatchesResponseObject, error) {
-	port := s.deps.SSOConnections
-	if port == nil {
-		return gen.GetEntraDirectoryMatches409ApplicationProblemPlusJSONResponse(ssoNotConfigured()), nil
+	p, _ := contracts.PrincipalFrom(ctx)
+	for {
+		ch := s.matches.DoChan(p.UserID.String(), func() (any, error) {
+			return s.readMatches(ctx)
+		})
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case res := <-ch:
+			// The read shared was another request's, whose client left:
+			// this one is still waiting, so it reads again.
+			if res.Shared && errors.Is(res.Err, context.Canceled) && ctx.Err() == nil {
+				continue
+			}
+			if res.Err != nil {
+				return nil, res.Err
+			}
+			return res.Val.(gen.GetEntraDirectoryMatchesResponseObject), nil
+		}
 	}
-	candidates, err := port.Unconnected(ctx)
+}
+
+// readMatches is GetEntraDirectoryMatches' read, bounded by matchesTimeout.
+func (s *server) readMatches(ctx context.Context) (gen.GetEntraDirectoryMatchesResponseObject, error) {
+	readCtx, cancel := context.WithTimeout(ctx, matchesTimeout)
+	defer cancel()
+	// unavailable is the answer to a read that failed: the request's own
+	// end as it is, the timeout as 503 tenant_unreachable, a tenant that
+	// could not be asked as its 503, anything else a fault.
+	unavailable := func(err error, tenant bool) (gen.GetEntraDirectoryMatchesResponseObject, error) {
+		switch {
+		case ctx.Err() != nil:
+			return nil, ctx.Err()
+		case readCtx.Err() != nil:
+			return gen.GetEntraDirectoryMatches503ApplicationProblemPlusJSONResponse(tenantUnavailable(reasonTenantUnreachable)), nil
+		case tenant:
+			return gen.GetEntraDirectoryMatches503ApplicationProblemPlusJSONResponse(directoryUnavailable(err)), nil
+		}
+		return nil, err
+	}
+	candidates, err := s.unconnected(readCtx, matchCandidatesMax+1)
 	if errors.Is(err, contracts.ErrSSONotConfigured) {
 		return gen.GetEntraDirectoryMatches409ApplicationProblemPlusJSONResponse(ssoNotConfigured()), nil
 	}
 	if err != nil {
-		return nil, fmt.Errorf("entra: read the users not yet connected: %w", err)
+		return unavailable(fmt.Errorf("entra: read the users not yet connected: %w", err), false)
 	}
 	out := gen.EntraDirectoryMatches{Matches: []gen.EntraDirectoryMatch{}}
 	if len(candidates) > matchCandidatesMax {
@@ -245,19 +303,13 @@ func (s *server) GetEntraDirectoryMatches(ctx context.Context, _ gen.GetEntraDir
 	if len(candidates) == 0 {
 		return gen.GetEntraDirectoryMatches200JSONResponse(out), nil
 	}
-	cred, err := credentialFor(ctx, s.q, s.client)
+	cred, err := credentialFor(readCtx, s.q, s.client)
 	if err != nil {
-		if ctx.Err() != nil {
-			return nil, ctx.Err()
-		}
-		return gen.GetEntraDirectoryMatches503ApplicationProblemPlusJSONResponse(directoryUnavailable(err)), nil
+		return unavailable(err, true)
 	}
-	accounts, err := s.findCandidates(ctx, cred, candidates)
+	accounts, err := s.findCandidates(readCtx, cred, candidates)
 	if err != nil {
-		if ctx.Err() != nil {
-			return nil, ctx.Err()
-		}
-		return gen.GetEntraDirectoryMatches503ApplicationProblemPlusJSONResponse(directoryUnavailable(err)), nil
+		return unavailable(err, true)
 	}
 	proposals, ambiguous := matchCandidates(candidates, accounts)
 	out.Ambiguous = int32(ambiguous)
@@ -265,12 +317,15 @@ func (s *server) GetEntraDirectoryMatches(ctx context.Context, _ gen.GetEntraDir
 	for _, p := range proposals {
 		proposed = append(proposed, p.account)
 	}
-	held, err := s.holders(ctx, proposed)
+	held, err := s.holders(readCtx, proposed)
 	if err != nil {
-		return nil, err
+		return unavailable(err, false)
 	}
 	for _, p := range proposals {
-		if held[p.account.ID] != nil {
+		// An account held for somebody else — another user's announced link
+		// or SCIM mapping, or an announced account, which has no user — is
+		// left out; the candidate's own SCIM mapping does not block them.
+		if h := held[p.account.ID]; h != nil && (h.UserId == nil || uuid.UUID(*h.UserId) != p.userID) {
 			continue
 		}
 		account, ok := directoryUserBody(p.account, nil)
@@ -337,7 +392,10 @@ type proposal struct {
 //   - employeeId: the candidate's employee number equals the account's
 //     employeeId, trimmed and ignoring case.
 //
-// An address identity made up (Email "") and an empty number match nothing.
+// A guest account matches nobody: it is left out before matching and
+// counted nowhere, so it neither is proposed nor makes a candidate
+// ambiguous. An address identity made up (Email "") and an empty number
+// match nothing.
 // A candidate whose keys matched no account is neither proposed nor
 // ambiguous. A candidate is proposed, with every key that matched in
 // matchedBy (mail, userPrincipalName, employeeId, in that order), when its
@@ -351,6 +409,9 @@ type proposal struct {
 func matchCandidates(candidates []contracts.ConnectCandidate, accounts []directoryAccount) ([]proposal, int) {
 	byMail, byUPN, byNumber := map[string][]int{}, map[string][]int{}, map[string][]int{}
 	for i, a := range accounts {
+		if a.guest() {
+			continue
+		}
 		if a.Mail != nil {
 			if k := addressKey(*a.Mail); k != "" {
 				byMail[k] = append(byMail[k], i)

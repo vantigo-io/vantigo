@@ -39,7 +39,7 @@ import {
 } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, redirect } from "@tanstack/react-router";
-import { DirectoryMatches, DirectoryPicker } from "@vantigo/entra-ui";
+import { DirectoryMatches, type DirectoryPick, DirectoryPicker } from "@vantigo/entra-ui";
 import { appUrl, ContentSkeleton, EmptyState, PageHeader, useI18n } from "@vantigo/frontend-shell";
 import { useMemo, useState } from "react";
 import { createInvitation, listInvitations } from "../../api/account-lifecycle";
@@ -148,6 +148,9 @@ const UsersPage = () => {
   const [adoptUser, setAdoptUser] = useState<ManagedUser | null>(null);
   const [connectUser, setConnectUser] = useState<ManagedUser | null>(null);
   const [connectMore, setConnectMore] = useState(false);
+  // The account last picked in the directory: its two keys are one unit, so
+  // editing either away from it, or searching again, forgets the pick.
+  const [connectPick, setConnectPick] = useState<DirectoryPick | null>(null);
   const [matchesOpen, setMatchesOpen] = useState(false);
   // The Entra module's directory picker and review, while the module is enabled (plan reading 7).
   const entraOn = enabledModuleKeys().includes("entra");
@@ -305,6 +308,7 @@ const UsersPage = () => {
     connectForm.resetDirty();
     connectForm.clearErrors();
     setConnectMore(expected && !!link.objectId);
+    setConnectPick(null);
     setConnectUser(u);
   };
   const confirmRemoveLink = (u: ManagedUser, kind: "disconnect" | "cancel") =>
@@ -906,10 +910,16 @@ const UsersPage = () => {
                   const holder = users.data?.find((u) => u.id === id);
                   return holder ? holder.displayName || holder.email || undefined : undefined;
                 }}
-                onPick={({ objectId, userPrincipalName }) => {
-                  connectForm.setValues({ userPrincipalName, objectId });
+                onPick={(pick) => {
+                  connectForm.setValues(pick);
                   connectForm.clearErrors();
+                  setConnectPick(pick);
                   setConnectMore(true);
+                }}
+                onClear={() => {
+                  if (!connectPick) return;
+                  connectForm.setValues({ userPrincipalName: "", objectId: "" });
+                  setConnectPick(null);
                 }}
               />
             )}
@@ -917,6 +927,16 @@ const UsersPage = () => {
               label={t("admin.ssoLinkUpn")}
               description={t("admin.ssoLinkUpnHelp")}
               {...connectForm.getInputProps("userPrincipalName")}
+              onChange={(event) => {
+                const value = event.currentTarget.value;
+                connectForm.getInputProps("userPrincipalName").onChange(value);
+                // A principal name edited away from the picked account's no
+                // longer names it: its object id goes with the pick.
+                if (connectPick && value.trim() !== connectPick.userPrincipalName) {
+                  connectForm.setFieldValue("objectId", "");
+                  setConnectPick(null);
+                }
+              }}
             />
             <Anchor component="button" type="button" size="sm" onClick={() => setConnectMore((m) => !m)}>
               {t("admin.ssoLinkMore")}
@@ -926,6 +946,12 @@ const UsersPage = () => {
                 label={t("admin.ssoLinkObjectId")}
                 description={t("admin.ssoLinkObjectIdHelp")}
                 {...connectForm.getInputProps("objectId")}
+                onChange={(event) => {
+                  const value = event.currentTarget.value;
+                  connectForm.getInputProps("objectId").onChange(value);
+                  // An object id typed over the pick's makes the pair the Owner's own.
+                  if (connectPick && value.trim() !== connectPick.objectId) setConnectPick(null);
+                }}
               />
             </Collapse>
             <Button type="submit" loading={announce.isPending}>
@@ -943,7 +969,12 @@ const UsersPage = () => {
       >
         {matchesOpen && (
           <DirectoryMatches
-            users={users.data ?? []}
+            users={(users.data ?? []).map((u) => ({
+              id: u.id,
+              displayName: u.displayName,
+              email: u.email,
+              owner: u.role === "Owner",
+            }))}
             connect={async (userId, pick) => {
               try {
                 await announceSsoLink(userId, pick);

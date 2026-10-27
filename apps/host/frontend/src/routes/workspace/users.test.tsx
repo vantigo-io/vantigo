@@ -456,7 +456,7 @@ describe("the Entra directory in the users screen", () => {
         return Promise.resolve(
           json({
             matches: [
-              { userId: "u-1", account, matchedBy: ["employeeId"] },
+              { userId: "u-1", account, matchedBy: ["userPrincipalName", "employeeId"] },
               { userId: "u-2", account: olaAccount, matchedBy: ["userPrincipalName"] },
             ],
             candidates: 2,
@@ -490,6 +490,58 @@ describe("the Entra directory in the users screen", () => {
         objectId: account.objectId,
       }),
     );
+  });
+
+  it("forgets the picked object id when the principal name is edited away from the pick", async () => {
+    stubDirectory();
+    api.announceSsoLink.mockResolvedValue(user({ ssoLink: { state: "expected" } }));
+    await renderUsers([user({ ssoLink: { state: "none" } })]);
+    fireEvent.click(within(row("Kari Nordmann")).getByRole("button", { name: "Connect…" }));
+    await userEvent.type(await screen.findByLabelText(/Search the directory/), "kari");
+    await userEvent.click(await screen.findByRole("option", { name: /kari\.nordmann@contoso\.no/ }));
+    expect(screen.getByLabelText("Object id")).toHaveValue(account.objectId);
+    const upn = screen.getByLabelText("User principal name");
+    await userEvent.clear(upn);
+    await userEvent.type(upn, "someone.else@contoso.no");
+    expect(screen.getByLabelText("Object id")).toHaveValue("");
+    fireEvent.click(screen.getByRole("button", { name: "Connect" }));
+    await waitFor(() =>
+      expect(api.announceSsoLink).toHaveBeenCalledWith("u-1", { userPrincipalName: "someone.else@contoso.no" }),
+    );
+  });
+
+  it("clears the picked pair when the directory search is changed after a pick", async () => {
+    stubDirectory();
+    await renderUsers([user({ ssoLink: { state: "none" } })]);
+    fireEvent.click(within(row("Kari Nordmann")).getByRole("button", { name: "Connect…" }));
+    const search = await screen.findByLabelText(/Search the directory/);
+    await userEvent.type(search, "kari");
+    await userEvent.click(await screen.findByRole("option", { name: /kari\.nordmann@contoso\.no/ }));
+    expect(screen.getByLabelText("User principal name")).toHaveValue("kari.nordmann@contoso.no");
+    await userEvent.type(search, "x");
+    expect(screen.getByLabelText("User principal name")).toHaveValue("");
+    expect(screen.getByLabelText("Object id")).toHaveValue("");
+  });
+
+  it("leaves an Owner's match unchecked in the review, to be checked", async () => {
+    stubDirectory();
+    await renderUsers([
+      user({ id: "u-1", displayName: "Kari Nordmann", ssoLink: { state: "none" } }),
+      user({
+        id: "u-2",
+        displayName: "Ola Hansen",
+        email: "ola@example.com",
+        role: "Owner",
+        ssoLink: { state: "none" },
+      }),
+    ]);
+    fireEvent.click(screen.getByRole("button", { name: "Find matches in the directory…" }));
+    const dialog = await screen.findByRole("dialog", { name: "Users who match an account in the directory" });
+    expect(await within(dialog).findByRole("button", { name: "Connect selected (1)" })).toBeEnabled();
+    expect(
+      within(dialog).getByRole("checkbox", { name: "Connect Ola Hansen to ola.hansen@contoso.no" }),
+    ).not.toBeChecked();
+    expect(within(dialog).getByText("Check this match")).toBeInTheDocument();
   });
 
   it("keeps the typed field alone while the module is off", async () => {

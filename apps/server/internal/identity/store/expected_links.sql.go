@@ -165,6 +165,34 @@ func (q *Queries) GetExpectedLinkTaker(ctx context.Context, arg GetExpectedLinkT
 	return user_id, err
 }
 
+const scimMappingNamesKeyForOther = `-- name: ScimMappingNamesKeyForOther :one
+SELECT EXISTS (
+    SELECT 1 FROM identity.scim_user_mappings
+    WHERE user_id <> $1
+      AND (($2::varchar IS NOT NULL AND external_id = $2::varchar)
+        OR ($3::varchar IS NOT NULL AND upper(btrim(user_name)) = $3::varchar))
+)::boolean AS named
+`
+
+type ScimMappingNamesKeyForOtherParams struct {
+	UserID            uuid.UUID
+	ObjectID          *string
+	UserPrincipalName *string
+}
+
+// ScimMappingNamesKeyForOther reports whether a SCIM mapping of a user other
+// than @user_id names either key — its externalId equal to the object id,
+// or its userName, normalised as emails are, equal to the principal name
+// (both given normalised): ListKeyHolders' mapped holder. The provider
+// already holds that account for somebody else, so an Owner's announcement
+// of it is refused sso_link_taken.
+func (q *Queries) ScimMappingNamesKeyForOther(ctx context.Context, arg ScimMappingNamesKeyForOtherParams) (bool, error) {
+	row := q.db.QueryRow(ctx, scimMappingNamesKeyForOther, arg.UserID, arg.ObjectID, arg.UserPrincipalName)
+	var named bool
+	err := row.Scan(&named)
+	return named, err
+}
+
 const upsertExpectedLink = `-- name: UpsertExpectedLink :exec
 
 INSERT INTO identity.expected_links (user_id, issuer, object_id, user_principal_name, created_at, created_by_user_id)

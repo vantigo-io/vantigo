@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 
 	"github.com/google/uuid"
@@ -68,14 +69,20 @@ func (c *ssoConnections) owner(ctx context.Context) (caller uuid.UUID, issuer st
 
 // Unconnected lists the users not connected under the configured issuer,
 // for an Owner (contracts.SSOConnections), contracts.ErrSSONotConfigured
-// while OIDC is off. An address identity made up for an account the
-// provider created is answered as none.
-func (c *ssoConnections) Unconnected(ctx context.Context) ([]contracts.ConnectCandidate, error) {
+// while OIDC is off, at most limit of them (none for a limit below one). An
+// address identity made up for an account the provider created is answered
+// as none.
+func (c *ssoConnections) Unconnected(ctx context.Context, limit int) ([]contracts.ConnectCandidate, error) {
 	caller, issuer, ok, err := c.owner(ctx)
 	if err != nil || !ok {
 		return nil, err
 	}
-	rows, err := c.q.ListConnectCandidates(ctx, store.ListConnectCandidatesParams{Caller: caller, OidcIssuer: issuer})
+	if limit < 1 {
+		return nil, nil
+	}
+	rows, err := c.q.ListConnectCandidates(ctx, store.ListConnectCandidatesParams{
+		Caller: caller, OidcIssuer: issuer, MaxRows: int32(min(limit, math.MaxInt32)),
+	})
 	if err != nil {
 		return nil, fmt.Errorf("identity: SSO connections: list the candidates: %w", err)
 	}

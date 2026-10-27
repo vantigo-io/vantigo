@@ -32,11 +32,13 @@ ORDER BY EXISTS (
              WHERE ur.user_id = u.id AND r.name = 'Owner'
          ) DESC,
          u.display_name COLLATE "C", u.id
+LIMIT $3::int
 `
 
 type ListConnectCandidatesParams struct {
 	Caller     uuid.UUID
 	OidcIssuer string
+	MaxRows    int32
 }
 
 type ListConnectCandidatesRow struct {
@@ -54,9 +56,9 @@ type ListConnectCandidatesRow struct {
 // ListConnectCandidates is every user who is not pending, holds no OIDC link
 // under @oidc_issuer and no announced link under it, @caller excluded, in
 // ListManagedUsers' order: the Owners first, then by display name
-// ordinally, then by id.
+// ordinally, then by id; at most @max_rows of them.
 func (q *Queries) ListConnectCandidates(ctx context.Context, arg ListConnectCandidatesParams) ([]ListConnectCandidatesRow, error) {
-	rows, err := q.db.Query(ctx, listConnectCandidates, arg.Caller, arg.OidcIssuer)
+	rows, err := q.db.Query(ctx, listConnectCandidates, arg.Caller, arg.OidcIssuer, arg.MaxRows)
 	if err != nil {
 		return nil, err
 	}

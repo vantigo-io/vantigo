@@ -42,7 +42,8 @@ var (
 	// accountLinked refuses announcing a user who is linked already.
 	accountLinked = refuse(http.StatusConflict, "account_linked", "This user is already connected to the provider.", nil)
 	// ssoLinkTaken refuses a directory account another user's announcement,
-	// or an account Staff announced, already names.
+	// an account Staff announced, or another user's SCIM mapping already
+	// names.
 	ssoLinkTaken = refuse(http.StatusConflict, "sso_link_taken", "Another user is already connected to this account.", nil)
 )
 
@@ -130,8 +131,10 @@ func keysOf(object, upn *string) []string {
 // OIDC off is 409 sso_not_configured; a pending user 409 account_pending
 // (their way in is the invitation, or the announced account that replaces
 // them); a user linked under the issuer 409 account_linked; a key another
-// user's announcement or an announced account names 409 sso_link_taken —
-// also when only the unique indexes see a concurrent announcement. A
+// user's announcement, an announced account or another user's SCIM mapping
+// (its externalId the object id, or its userName the principal name) names
+// 409 sso_link_taken — also when only the unique indexes see a concurrent
+// announcement. A
 // disabled user, an Owner and a SystemAdmin may be announced. The same
 // announcement again changes nothing; any change replaces it whole, audited
 // account.link-expected with the names of its keys.
@@ -189,6 +192,11 @@ func (s *server) PostIdentityOwnerUsersByIdSsoLink(ctx context.Context, req gen.
 			return err
 		}
 		if named, err := q.ExpectedAccountNamesKey(ctx, store.ExpectedAccountNamesKeyParams{ObjectID: link.object, UserPrincipalName: link.userPrincipalName}); err != nil || named {
+			return cmpOr(err, error(ssoLinkTaken))
+		}
+		if named, err := q.ScimMappingNamesKeyForOther(ctx, store.ScimMappingNamesKeyForOtherParams{
+			UserID: target.ID, ObjectID: link.object, UserPrincipalName: link.userPrincipalName,
+		}); err != nil || named {
 			return cmpOr(err, error(ssoLinkTaken))
 		}
 		now := s.deps.Clock()

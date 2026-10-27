@@ -229,6 +229,35 @@ func TestExpectedLinks_AnnounceRefusals(t *testing.T) {
 	mustAnnounce(t, owner, second, map[string]any{"userPrincipalName": "second.owner@tenant.example"})
 }
 
+// A key another user's SCIM mapping names — its userName the principal
+// name, ignoring case and space, or its externalId the object id — is 409
+// sso_link_taken, as the directory marks it mapped; the target's own
+// mapping does not block announcing them.
+func TestExpectedLinks_AnnounceRefusesAnotherUsersMapping(t *testing.T) {
+	t.Parallel()
+	f := newFakeOIDC(t)
+	h := newHarness(t, f.options()...)
+	owner, _ := h.bootstrapOwner(t)
+	mapped := h.createUser(t, owner, "kari@example.test", identity.RoleUser)
+	other := h.createUser(t, owner, "ola@example.test", identity.RoleUser)
+	h.exec(t, `INSERT INTO identity.scim_user_mappings (resource_id, user_id, external_id, user_name, upstream_active, version, etag, created_at, updated_at)
+	          VALUES ($1, $2, $3, ' Kari@Tenant.Example ', true, 1, 'etag', $4, $4)`, uuid.New(), mapped, fakeObjectID, h.now())
+
+	for name, body := range map[string]map[string]any{
+		"the principal name": {"userPrincipalName": "kari@TENANT.example"},
+		"the object id":      {"objectId": strings.ToUpper(fakeObjectID)},
+		"either key":         {"userPrincipalName": "someone@tenant.example", "objectId": fakeObjectID},
+	} {
+		if r := announce(owner, other, body); r.status != http.StatusConflict || r.code() != "sso_link_taken" {
+			t.Errorf("%s of another user's mapping: status %d code %q, want 409 sso_link_taken", name, r.status, r.code())
+		}
+	}
+	if announcedLinks(t, h) != 0 {
+		t.Errorf("%d announcements after the refusals, want none", announcedLinks(t, h))
+	}
+	mustAnnounce(t, owner, mapped, map[string]any{"userPrincipalName": "kari@tenant.example", "objectId": fakeObjectID})
+}
+
 // While OIDC is off there is no issuer to announce under, and the list
 // reports no link state at all.
 func TestExpectedLinks_NeedOIDC(t *testing.T) {

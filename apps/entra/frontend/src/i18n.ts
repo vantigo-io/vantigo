@@ -246,6 +246,7 @@ export const entraCatalog = {
     directoryNarrow: "Showing the first 25 accounts. Narrow the search to find the right one.",
     directoryAccountKeys: "{{upn}} · employee ID {{employeeId}}",
     directoryDisabled: "Disabled",
+    directoryGuest: "Guest",
     directoryHolderExpected: "Awaiting another user",
     directoryHolderExpectedNamed: "Awaiting {{name}}",
     directoryHolderMapped: "Provisioned to another user",
@@ -265,6 +266,10 @@ export const entraCatalog = {
     directoryMatchResult: "Result",
     directoryMatchChoose: "Connect {{name}} to {{account}}",
     directoryMatchConnected: "Connected",
+    directoryCheckMatch: "Check this match",
+    directoryCheckWeakKey:
+      "Matched by mail or employee ID only, not by the principal name the person signs in with. Make sure it is the same person.",
+    directoryCheckOwner: "This user is an Owner. Whoever holds this account will sign in with the Owner's access.",
     directoryUnknownUser: "A user",
     directoryConnectSelected: "Connect selected ({{count}})",
 
@@ -597,6 +602,7 @@ export const entraCatalog = {
     directoryNarrow: "Viser de 25 første kontoene. Snevre inn søket for å finne den riktige.",
     directoryAccountKeys: "{{upn}} · ansatt-ID {{employeeId}}",
     directoryDisabled: "Deaktivert",
+    directoryGuest: "Gjest",
     directoryHolderExpected: "Venter på en annen bruker",
     directoryHolderExpectedNamed: "Venter på {{name}}",
     directoryHolderMapped: "Klargjort for en annen bruker",
@@ -616,6 +622,10 @@ export const entraCatalog = {
     directoryMatchResult: "Resultat",
     directoryMatchChoose: "Koble {{name}} til {{account}}",
     directoryMatchConnected: "Koblet til",
+    directoryCheckMatch: "Sjekk treffet",
+    directoryCheckWeakKey:
+      "Treff bare på e-post eller ansatt-ID, ikke på brukerprinsipalnavnet personen logger på med. Forsikre deg om at det er samme person.",
+    directoryCheckOwner: "Denne brukeren er eier. Den som har denne kontoen, logger på med eierens tilgang.",
     directoryUnknownUser: "En bruker",
     directoryConnectSelected: "Koble til valgte ({{count}})",
 

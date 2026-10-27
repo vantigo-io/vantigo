@@ -13,6 +13,8 @@ export interface DirectoryMatchesUser {
   id: string;
   displayName?: string | null;
   email?: string | null;
+  /** Whether the user is an Owner: connecting one is never proposed unchecked. */
+  owner?: boolean;
 }
 
 export interface DirectoryMatchesProps {
@@ -32,26 +34,38 @@ type Outcome = { connected: true } | { connected: false; message: string };
 /**
  * The review an Owner connects a whole workspace from (Entra phase 2, plan
  * reading 8): for every user not yet connected, the one directory account
- * that matches them exactly, each with a checkbox — all checked but a
- * disabled account's — and *Connect selected*, which connects the chosen
+ * that matches them exactly, each with a checkbox — checked only when the
+ * account is enabled, the principal name the person signs in with matched,
+ * and the user is not an Owner; any other row is left unchecked and marked
+ * *Check this match* with the reason — and *Connect selected*, which connects the chosen
  * pairs one at a time through the host and marks each row connected or
  * refused.
  */
 export const DirectoryMatches = ({ users, connect, onDone }: DirectoryMatchesProps) => {
   const { t } = useI18n("entra");
   const matches = useQuery({ ...directoryMatchesQueryOptions(), staleTime: 0 });
-  // What the Owner changed; a row untouched is checked when its account is enabled.
+  // What the Owner changed; a row untouched is checked when it is proposed (proposed).
   const [choice, setChoice] = useState<Record<string, boolean>>({});
   const [outcomes, setOutcomes] = useState<Record<string, Outcome>>({});
   const [running, setRunning] = useState(false);
 
+  const userFor = (userId: string) => users.find((one) => one.id === userId);
+
+  // Why a match should be looked at before it is connected: a mail or an
+  // employee ID alone is a weaker key than the principal name the person
+  // signs in with, and an Owner's sign-in is the workspace's.
+  const concerns = (match: EntraDirectoryMatch) => ({
+    weakKey: !match.matchedBy.includes("userPrincipalName"),
+    owner: userFor(match.userId)?.owner === true,
+  });
+  const proposed = (match: EntraDirectoryMatch) => {
+    const { weakKey, owner } = concerns(match);
+    return match.account.accountEnabled && !weakKey && !owner;
+  };
   const done = (match: EntraDirectoryMatch) => outcomes[match.userId]?.connected === true;
-  const checked = (match: EntraDirectoryMatch) =>
-    !done(match) && (choice[match.userId] ?? match.account.accountEnabled);
+  const checked = (match: EntraDirectoryMatch) => !done(match) && (choice[match.userId] ?? proposed(match));
   const proposals = matches.data?.matches ?? [];
   const selected = proposals.filter(checked);
-
-  const userFor = (userId: string) => users.find((one) => one.id === userId);
 
   const connectSelected = async () => {
     setRunning(true);
@@ -109,6 +123,7 @@ export const DirectoryMatches = ({ users, connect, onDone }: DirectoryMatchesPro
                   const user = userFor(match.userId);
                   const name = user?.displayName || user?.email || t("directoryUnknownUser");
                   const outcome = outcomes[match.userId];
+                  const { weakKey, owner } = concerns(match);
                   return (
                     <Table.Tr key={match.userId}>
                       <Table.Td>
@@ -143,6 +158,23 @@ export const DirectoryMatches = ({ users, connect, onDone }: DirectoryMatchesPro
                             </Badge>
                           ))}
                         </Group>
+                        {(weakKey || owner) && (
+                          <Stack gap={2} mt={6}>
+                            <Badge size="sm" variant="light" color="yellow">
+                              {t("directoryCheckMatch")}
+                            </Badge>
+                            {weakKey && (
+                              <Text size="xs" c="dimmed">
+                                {t("directoryCheckWeakKey")}
+                              </Text>
+                            )}
+                            {owner && (
+                              <Text size="xs" c="dimmed">
+                                {t("directoryCheckOwner")}
+                              </Text>
+                            )}
+                          </Stack>
+                        )}
                       </Table.Td>
                       <Table.Td>
                         {outcome?.connected === true && (

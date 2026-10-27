@@ -198,6 +198,9 @@ type User struct {
 	MobilePhone           string
 	UsageLocation         string
 	PreferredLanguage     string
+	// UserType is "Member" or "Guest", as Graph answers it; "" is answered
+	// as "Member", Graph's default for an account the tenant created.
+	UserType string
 	// ForceChangePassword is the create's passwordProfile flag; the
 	// password itself is never kept.
 	ForceChangePassword bool
@@ -1048,6 +1051,15 @@ func (g *FakeGraph) apply(u *User, props map[string]json.RawMessage, create bool
 	return answer{}, false
 }
 
+// userType is an account's userType as Graph answers it: "Member" unless
+// the account says otherwise.
+func userType(t string) string {
+	if t == "" {
+		return "Member"
+	}
+	return t
+}
+
 // selectUser is the user as Graph answers it: the properties $select names,
 // or the default set without one.
 func (g *FakeGraph) selectUser(u *User, selectList string) map[string]any {
@@ -1056,6 +1068,7 @@ func (g *FakeGraph) selectUser(u *User, selectList string) map[string]any {
 		"givenName": nullable(u.GivenName), "surname": nullable(u.Surname), "mailNickname": u.MailNickname,
 		"userPrincipalName": u.UserPrincipalName, "mail": nullable(u.Mail), "employeeId": nullable(u.EmployeeID),
 		"employeeHireDate": instant(u.EmployeeHireDate), "employeeLeaveDateTime": instant(u.EmployeeLeaveDateTime),
+		"userType":     userType(u.UserType),
 		"employeeType": nullable(u.EmployeeType), "jobTitle": nullable(u.JobTitle), "department": nullable(u.Department),
 		"companyName": nullable(u.CompanyName), "officeLocation": nullable(u.OfficeLocation),
 		"streetAddress": nullable(u.StreetAddress), "postalCode": nullable(u.PostalCode), "city": nullable(u.City),
