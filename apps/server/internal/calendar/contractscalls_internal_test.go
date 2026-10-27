@@ -2,6 +2,7 @@ package calendar
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"testing"
@@ -40,5 +41,20 @@ func TestSourceItems_RefusesAQueryAboutAnyoneButThePrincipal(t *testing.T) {
 	items, err = s.sourceItems(ctx, src, contracts.CalendarQuery{UserID: me, From: day, To: day, Zone: time.UTC})
 	if err != nil || len(items) != 1 || src.calls != 1 {
 		t.Errorf("the principal's own query: items %v err %v calls %d", items, err, src.calls)
+	}
+}
+
+// The busy read's accessors with no provider wired answer it unavailable.
+// That they refuse a call inside a transaction is the harness's lock rule,
+// which every worker test carries (lockedContractCalls): a locked call made
+// here would be recorded against the parallel tests' harnesses.
+func TestBusyReadAccessors_WithNoProviderAreUnavailable(t *testing.T) {
+	t.Parallel()
+	s := newServer(module.Deps{Logger: slog.New(slog.NewTextHandler(io.Discard, nil))})
+	if _, err := s.mailboxDelta(context.Background(), "oid", time.Time{}, time.Time{}, ""); !errors.Is(err, contracts.ErrMailboxUnavailable) {
+		t.Errorf("Delta with no provider: %v", err)
+	}
+	if _, err := s.mailboxMarked(context.Background(), "oid", nil); !errors.Is(err, contracts.ErrMailboxUnavailable) {
+		t.Errorf("Marked with no provider: %v", err)
 	}
 }

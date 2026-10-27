@@ -79,6 +79,33 @@ func (q *Queries) DeleteMailboxBusyForUser(ctx context.Context, userID uuid.UUID
 	return result.RowsAffected(), nil
 }
 
+const listMailboxBusyEventIDs = `-- name: ListMailboxBusyEventIDs :many
+SELECT event_id FROM calendar.mailbox_busy WHERE user_id = $1
+`
+
+// ListMailboxBusyEventIDs is the event ids of the person's busy rows,
+// whatever their sync's state: what the worker's read holds against the cap
+// of 5000, telling an event it stores already from a new one (O9.3).
+func (q *Queries) ListMailboxBusyEventIDs(ctx context.Context, userID uuid.UUID) ([]string, error) {
+	rows, err := q.db.Query(ctx, listMailboxBusyEventIDs, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var event_id string
+		if err := rows.Scan(&event_id); err != nil {
+			return nil, err
+		}
+		items = append(items, event_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listMailboxBusyForUsers = `-- name: ListMailboxBusyForUsers :many
 SELECT b.user_id, b.event_id, b.all_day, b.starts_at, b.ends_at, b.start_date, b.end_date, b.show_as, b.updated_at
 FROM calendar.mailbox_busy b

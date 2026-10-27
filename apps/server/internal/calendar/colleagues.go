@@ -18,7 +18,11 @@ import (
 // its location as the subtitle; a private one carries neither, only
 // visibility private: the "Busy" a person reads is the client's word in the
 // client's language, not this module's. A free one is left out, since the
-// view answers "when can I book them". No source is asked — a colleague's
+// view answers "when can I book them". Beside them, while the colleague's
+// Outlook sync is on, the busy and out-of-office events it read back from
+// their mailbox, as calendar.outlook items with no title (calendar Outlook
+// sync design O9.7) — tentative and working elsewhere are not busy, as a
+// tentative answer is not. No source is asked — a colleague's
 // follow-ups, tasks and hours are the other modules' data behind their own
 // doors — so sources is empty. The colleague must be an active user in the
 // directory, or this is the 404 an unknown id gets; the caller's own id is
@@ -63,5 +67,10 @@ func (s *server) GetCalendarColleaguesByUserIdItems(ctx context.Context, req gen
 	if err != nil {
 		return nil, err
 	}
+	outlook, err := s.colleagueOutlookItems(ctx, req.UserId, w)
+	if err != nil {
+		return nil, err
+	}
+	list = append(list, outlook...)
 	return gen.GetCalendarColleaguesByUserIdItems200JSONResponse(windowOut(w, none, append([]gen.CalendarItem{}, list...))), nil
 }

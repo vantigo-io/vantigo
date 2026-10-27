@@ -15,7 +15,8 @@ import (
 // calendar, whether invitations are mailed (calendar invitations design D3:
 // the mail driver is smtp), and every kind the enabled modules' sources declare — for the
 // filter, the legend and the colours — which costs no provider a query, with
-// calendar.subscription after them when the caller subscribes to a calendar.
+// calendar.subscription after them when the caller subscribes to a calendar,
+// and calendar.outlook last while the caller's Outlook sync is on.
 func (s *server) GetCalendarMeta(ctx context.Context, _ gen.GetCalendarMetaRequestObject) (gen.GetCalendarMetaResponseObject, error) {
 	c, err := s.callerFor(ctx)
 	if err != nil {
@@ -37,6 +38,15 @@ func (s *server) GetCalendarMeta(ctx context.Context, _ gen.GetCalendarMetaReque
 	}
 	if n > 0 {
 		kinds = append(kinds, gen.CalendarSourceKind{Kind: subscriptionKind, Module: "calendar"})
+	}
+	// The Outlook busy time's chip (calendar Outlook sync design O9.5), while
+	// the caller's sync is on.
+	row, err := s.mailboxSyncRow(ctx, s.queries(), c.UserID, false)
+	if err != nil {
+		return nil, err
+	}
+	if row != nil && row.Enabled {
+		kinds = append(kinds, gen.CalendarSourceKind{Kind: outlookKind, Module: "calendar"})
 	}
 	return gen.GetCalendarMeta200JSONResponse{
 		TimeZone:             c.zone().String(),

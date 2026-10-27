@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/vantigo-io/vantigo/server/internal/calendar/store"
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
@@ -18,12 +19,13 @@ import (
 )
 
 // This file is the calendar-mailbox-sync worker (calendar Outlook sync design
-// O7, O8): every minute, under an advisory lease of its own, it syncs at most
-// fifty people whose sync is due — on, or owing a clean-up, next_sync_at null
-// or past — one at a time. The due list is read in a short transaction on
-// the lease's connection and committed before the first call out, so no row
-// lock is held while a mailbox is written; the lease is what keeps two
-// replicas from syncing the same person. Everything else reads and writes the
+// O7, O8, O9): every minute, under an advisory lease of its own, it syncs at
+// most fifty people whose sync is due — on, or owing a clean-up, next_sync_at
+// null or past — one at a time, and reads their Outlook busy time back (step
+// 9). The due list is read in a short transaction on the lease's connection
+// and committed before the first call out, so no row lock is held while a
+// mailbox is written; the lease is what keeps two replicas from syncing the
+// same person. Everything else reads and writes the
 // pool in short transactions, and no transaction is open while the provider,
 // identity, Staff or a calendar source is asked (contractscalls.go refuses
 // such a call). Each person's sync has three minutes (mailboxPersonDeadline)
@@ -70,6 +72,17 @@ import (
 //     (CALENDAR_MAILBOX_SYNC_POLL); a refusal (mailbox_denied, mailbox_gone)
 //     is unavailable with its code, retried in six hours; a failure backs
 //     off 1, 5, 15, 60 minutes, then hourly, and is failed from the fifth.
+//  9. The busy read (O9.1–O9.3, mailbox_busy.go), before step 8's result,
+//     once the push worked: Delta on the default calendar — afresh over
+//     today−30..today+210 when there is no link, when the stored window ends
+//     before today+180, or once when the provider no longer takes the link —
+//     page by page while the deadline lasts; the events the map knows and
+//     those Marked answers (single events that would be stored) are the
+//     calendar's own copies and never stored, nor a free, cancelled or
+//     removed one; each page written in one short transaction with its link,
+//     a fresh delta's first emptying the person's rows; at most 5000 rows a
+//     person. A refusal or failure of Delta or Marked is recorded as step
+//     8's are.
 //
 // The clean-up (O8): target own deletes the Vantigo calendar — only one the
 // provider made; for any other (ErrCalendarNotOurs) the copies in it are
@@ -79,7 +92,9 @@ import (
 // a mailbox that is no longer there — gone, or an account the provider no
 // longer manages — has its copies forgotten unremoved, the fact logged; a
 // mailbox denied, a provider unusable or a failure keeps the map and the
-// clean-up owed, retried on the backoff. Then the map is emptied. Nothing of
+// clean-up owed, retried on the backoff. Then the map is emptied, and the
+// person's busy rows and their delta link forgotten — as they are by every
+// result that leaves the sync off or unavailable (O9.9). Nothing of
 // a person's mailbox, their copies' titles or the provider's words (which
 // carry the mailbox's paths) is ever logged: an error is logged by its code.
 
@@ -407,6 +422,13 @@ func (w *MailboxSyncWorker) syncPerson(ctx context.Context, r store.CalendarMail
 		r.Reconcile = r.Reconcile || createUnknown
 		return w.failed(ctx, r, now, "write a copy", opErr)
 	}
+	callErr, err := w.readBusy(ctx, call, r, mailbox, today, loc, now)
+	if err != nil {
+		return err
+	}
+	if callErr != nil {
+		return w.refusedOrFailed(ctx, r, now, "read the busy time", callErr)
+	}
 	return w.write(ctx, r, now, mailboxResult{
 		state: mailboxStateActive, next: timePtr(now.Add(w.poll())), synced: true,
 	})
@@ -620,9 +642,9 @@ func (w *MailboxSyncWorker) apply(ctx, call context.Context, userID uuid.UUID, m
 // when the provider says it is not one it made (ErrCalendarNotOurs), the
 // copies in it — otherwise every copy of the default calendar. A mailbox no
 // longer there (gone, or an account the provider no longer manages) has its
-// copies forgotten and the fact logged. Then the map is emptied, the
-// calendar forgotten and the next sync made a reconcile; r is changed to
-// match. Anything else — the mailbox denied, the provider unusable, a
+// copies forgotten and the fact logged. Then the map is emptied, the busy
+// rows and their delta forgotten (design O9.9), the calendar forgotten and
+// the next sync made a reconcile; r is changed to match. Anything else — the mailbox denied, the provider unusable, a
 // failure — is answered as the error, with the map as the deletes that
 // worked left it and the clean-up still owed.
 func (w *MailboxSyncWorker) cleanup(ctx, call context.Context, r *store.CalendarMailboxSync, now time.Time) error {
@@ -651,7 +673,11 @@ func (w *MailboxSyncWorker) cleanup(ctx, call context.Context, r *store.Calendar
 	if err := w.forgetAll(ctx, r.UserID); err != nil {
 		return err
 	}
+	if err := w.forgetBusy(ctx, r.UserID, now); err != nil {
+		return err
+	}
 	r.CalendarID, r.Reconcile = nil, true
+	r.BusyLink, r.BusyFrom, r.BusyTo, r.BusySyncedAt = nil, pgtype.Date{}, pgtype.Date{}, nil
 	return w.setMailbox(ctx, *r, now)
 }
 
@@ -817,7 +843,9 @@ func mailboxErrorCode(err error) string {
 
 // write records res on r's row, unless a PUT has moved the revision on — the
 // sync was then of a setting the row no longer holds, and the PUT has made
-// it due again.
+// it due again. A result that leaves the sync off or unavailable forgets the
+// person's busy rows and their delta (design O9.9); a failure on the backoff
+// keeps them.
 func (w *MailboxSyncWorker) write(ctx context.Context, r store.CalendarMailboxSync, now time.Time, res mailboxResult) error {
 	params := store.WriteMailboxSyncResultParams{
 		State: res.state, NextSyncAt: res.next, Attempts: res.attempts, Reconcile: res.reconcile,
@@ -837,6 +865,9 @@ func (w *MailboxSyncWorker) write(ctx context.Context, r store.CalendarMailboxSy
 	}
 	if err != nil {
 		return fmt.Errorf("calendar: record a mailbox sync: %w", err)
+	}
+	if res.state == mailboxStateOff || res.state == mailboxStateUnavailable {
+		return w.forgetBusy(ctx, r.UserID, now)
 	}
 	return nil
 }

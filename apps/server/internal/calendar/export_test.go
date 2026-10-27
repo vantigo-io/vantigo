@@ -14,3 +14,12 @@ var InOpenTx = inOpenTx
 func SetContractCallHook(hook func(ctx context.Context, method string)) {
 	contractCallHook = hook
 }
+
+// SetMailboxBusyCap lowers the busy read's cap of rows a person holds for one
+// test, and answers the function that puts it back. Only a test that does not
+// run in parallel may call it: the cap is a package variable the worker reads.
+func SetMailboxBusyCap(n int) (restore func()) {
+	was := mailboxBusyCap
+	mailboxBusyCap = n
+	return func() { mailboxBusyCap = was }
+}

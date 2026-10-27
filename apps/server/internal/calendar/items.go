@@ -24,8 +24,9 @@ import (
 // expanded in their own zones with their exceptions applied; then every
 // enabled module's calendar source, concurrently, in module order; then the
 // caller's subscriptions, parsed from their last fetch (calendar feed design
-// D8); then the public holidays beside them — and sorted by start, all-day first within a
-// day. Nothing is paged: 93 days of one person's calendar is hundreds of rows.
+// D8); then the caller's Outlook busy time, read back by their Outlook sync
+// (calendar Outlook sync design O9.5, mailbox_busy.go); then the public
+// holidays beside them — and sorted by start, all-day first within a day. Nothing is paged: 93 days of one person's calendar is hundreds of rows.
 
 // sourcesBudget is how long the providers have, all of them together.
 const sourcesBudget = 10 * time.Second
@@ -75,6 +76,11 @@ func (s *server) GetCalendarItems(ctx context.Context, req gen.GetCalendarItemsR
 		return nil, err
 	}
 	list = append(list, subscribed...)
+	outlook, err := s.outlookItems(ctx, c.UserID, w, kinds)
+	if err != nil {
+		return nil, err
+	}
+	list = append(list, outlook...)
 	sources, err := s.sourceKinds(ctx)
 	if err != nil {
 		return nil, err
