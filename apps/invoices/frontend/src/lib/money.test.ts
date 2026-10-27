@@ -8,6 +8,13 @@ describe("the editor's money", () => {
     expect(lineAmounts(3, 0.1, 0)).toEqual({ gross: 0.3, allowance: 0, net: 0.3 });
   });
 
+  it("multiplies an energy line's eight-decimal unit price exactly", () => {
+    // At four decimals the price would be 1.2346 and the net 1 234.60.
+    expect(lineAmounts(1000, 1.23456789, 0)).toEqual({ gross: 1234.57, allowance: 0, net: 1234.57 });
+    // A correction line's −1 × its amount.
+    expect(lineAmounts(-1, 15.5, 0)).toEqual({ gross: -15.5, allowance: 0, net: -15.5 });
+  });
+
   it("takes a discount as an allowance of the rounded gross", () => {
     expect(lineAmounts(3, 33.33, 10)).toEqual({ gross: 99.99, allowance: 10, net: 89.99 });
   });

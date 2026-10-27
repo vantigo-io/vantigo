@@ -860,6 +860,7 @@ export const settings = (overrides: Partial<InvoiceSettings> = {}): InvoiceSetti
   missingSellerFields: ["postalCode", "bankAccount"],
   warnings: [],
   workVatCodes: { hours: 1, expenses: 1, milestones: 1 },
+  energyVatCodes: { energy: 1, energyExempt: 5 },
   timesheetDefault: false,
   timesheetPersonLabel: "initials",
   revision: 5,
@@ -1789,3 +1790,268 @@ export const payPage = (overrides: Partial<PayPageView> = {}): PayPageView => ({
   payable: true,
   ...overrides,
 });
+
+type ConsumptionView = components["schemas"]["InvoicesConsumptionResponse"];
+type SettlementsView = components["schemas"]["InvoicesConsumptionSettlementsResponse"];
+type Settlement = components["schemas"]["InvoicesConsumptionSettlement"];
+
+/**
+ * GET /invoices/consumption for Acme as the server answers it (energy
+ * consumption billing design D11): a monthly supply billed through August with
+ * one period due, and a quarterly one never billed whose first period lacks
+ * spot prices.
+ */
+export const consumptionView = (overrides: Partial<ConsumptionView> = {}): ConsumptionView => ({
+  customerId: 2001,
+  through: "2026-09-12",
+  supplies: [
+    {
+      supplyPeriodId: 31,
+      meteringPointId: 21,
+      gsrn: "707057500000000011",
+      address: "Storgata 1, 0155 Oslo",
+      priceArea: "NO1",
+      contractName: "Spot Pluss",
+      cadence: "monthly",
+      billedThrough: "2026-07-31",
+      duePeriods: 1,
+    },
+    {
+      supplyPeriodId: 32,
+      meteringPointId: 22,
+      gsrn: "707057500000000028",
+      address: "Hytteveien 4, 3570 Ål",
+      priceArea: "NO1",
+      contractName: "Spot Pluss",
+      cadence: "quarterly",
+      duePeriods: 2,
+      blocked: "price_gap",
+    },
+  ],
+  warnings: [],
+  ...overrides,
+});
+
+/** One settlement of Storgata 1's August, 512.5 kWh, two lines at 25 % and none estimated. */
+const settlement = (overrides: Partial<Settlement> = {}): Settlement => ({
+  id: 4001,
+  revision: 1,
+  kind: "regular",
+  supplyPeriodId: 31,
+  meteringPointId: 21,
+  gsrn: "707057500000000011",
+  address: "Storgata 1, 0155 Oslo",
+  priceArea: "NO1",
+  contractName: "Spot Pluss",
+  periodFrom: "2026-08-01",
+  periodTo: "2026-08-31",
+  kwh: 512.5,
+  estimated: false,
+  missingIntervals: 0,
+  currency: "NOK",
+  amount: 812.34,
+  state: "draft",
+  selectable: true,
+  lines: [
+    {
+      kind: "spot_energy",
+      text: "Strøm",
+      band: "day",
+      quantity: 512.5,
+      unit: "kWh",
+      unitPrice: 1.23456789,
+      amount: 632.72,
+      vatHint: "standard",
+    },
+    {
+      kind: "monthly_fee",
+      text: "Fastbeløp",
+      quantity: 1,
+      unit: "month",
+      unitPrice: 179.62,
+      amount: 179.62,
+      vatHint: "standard",
+    },
+  ],
+  ...overrides,
+});
+
+/**
+ * GET /invoices/consumption/settlements for Acme through 2026-09-12: Storgata
+ * 1's August, selectable, and its July correction, estimated, held by draft
+ * 1003; the cabin's quarter blocked by a price gap, and a yearly supply's
+ * year, which a person is not billed for.
+ */
+export const settlementsView = (overrides: Partial<SettlementsView> = {}): SettlementsView => ({
+  customerId: 2001,
+  through: "2026-09-12",
+  settlements: [
+    settlement(),
+    settlement({
+      id: 4002,
+      kind: "correction",
+      correctsId: 3990,
+      periodFrom: "2026-07-01",
+      periodTo: "2026-07-31",
+      kwh: -12,
+      amount: -15.5,
+      estimated: true,
+      selectable: false,
+      reason: "held",
+      heldBy: { invoiceId: 1003, status: "draft" },
+      lines: [
+        {
+          kind: "spot_energy",
+          text: "Strøm",
+          quantity: -12,
+          unit: "kWh",
+          unitPrice: 1.29166667,
+          amount: -15.5,
+          vatHint: "standard",
+        },
+      ],
+    }),
+    settlement({
+      id: 4003,
+      supplyPeriodId: 32,
+      meteringPointId: 22,
+      gsrn: "707057500000000028",
+      address: "Hytteveien 4, 3570 Ål",
+      periodFrom: "2026-04-01",
+      periodTo: "2026-06-30",
+      kwh: 300,
+      amount: 420,
+      selectable: false,
+      reason: "blocked",
+      blocked: "price_gap",
+      blockedDetail: "NO1 2026-05-03",
+      lines: [
+        {
+          kind: "spot_energy",
+          text: "Strøm",
+          quantity: 300,
+          unit: "kWh",
+          unitPrice: 1.4,
+          amount: 420,
+          vatHint: "exempt_household_north",
+        },
+      ],
+    }),
+  ],
+  warnings: [],
+  ...overrides,
+});
+
+/** The cabin's quarter as it can be taken: exempt lines, not blocked. */
+export const exemptSettlement = (): Settlement =>
+  settlement({
+    id: 4004,
+    supplyPeriodId: 33,
+    meteringPointId: 23,
+    gsrn: "707057500000000035",
+    address: "Fjellveien 2, 9008 Tromsø",
+    periodFrom: "2026-08-01",
+    periodTo: "2026-08-31",
+    kwh: 100,
+    amount: 120,
+    lines: [
+      {
+        kind: "spot_energy",
+        text: "Strøm",
+        quantity: 100,
+        unit: "kWh",
+        unitPrice: 1.2,
+        amount: 120,
+        vatHint: "exempt_household_north",
+      },
+    ],
+  });
+
+/**
+ * An invoice draft of consumption (energy consumption billing design D7), as
+ * a save answers it: lines 1 and 2 bill Storgata 1's August settlement — both
+ * name it, the first with lineCount 2 — line 3 a July correction at −1, and
+ * line 4 nothing.
+ */
+export const consumptionDraft = (overrides: Partial<InvoiceDocument> = {}): InvoiceDocument => {
+  const base = draft();
+  const point = {
+    gsrn: "707057500000000011",
+    address: "Storgata 1, 0155 Oslo",
+    priceArea: "NO1",
+    contractName: "Spot Pluss",
+    estimated: false,
+    state: "held",
+    kind: "energy.settlement",
+  };
+  const august = {
+    ...point,
+    id: 4001,
+    subkind: "regular",
+    lineCount: 2,
+    periodFrom: "2026-08-01",
+    date: "2026-08-31",
+    quantity: 512.5,
+    amount: 812.34,
+  };
+  const july = {
+    ...point,
+    id: 4002,
+    subkind: "correction",
+    lineCount: 1,
+    periodFrom: "2026-07-01",
+    date: "2026-07-31",
+    quantity: -12,
+    amount: -15.5,
+    estimated: true,
+  };
+  const line = { discountPercent: 0, vatCodeId: 1, warnings: [] };
+  return {
+    ...base,
+    lines: [
+      {
+        ...line,
+        id: 5201,
+        position: 1,
+        description: "Strøm (dag), 707057500000000011 Storgata 1, 0155 Oslo, 1.–31. aug. 2026",
+        quantity: 512.5,
+        unit: "kWh",
+        unitPrice: 1.23456789,
+        lineGross: 632.72,
+        lineAllowance: 0,
+        lineNet: 632.72,
+        sources: [august],
+      },
+      {
+        ...line,
+        id: 5202,
+        position: 2,
+        description: "Fastbeløp, 707057500000000011 Storgata 1, 0155 Oslo, 1.–31. aug. 2026",
+        quantity: 1,
+        unit: "mnd",
+        unitPrice: 179.62,
+        lineGross: 179.62,
+        lineAllowance: 0,
+        lineNet: 179.62,
+        sources: [august],
+      },
+      {
+        ...line,
+        id: 5203,
+        position: 3,
+        description: "Korreksjon Strøm, 707057500000000011 Storgata 1, 0155 Oslo, 1.–31. jul. 2026: −12 kWh",
+        quantity: -1,
+        unit: "stk",
+        unitPrice: 15.5,
+        lineGross: -15.5,
+        lineAllowance: 0,
+        lineNet: -15.5,
+        correction: true,
+        sources: [july],
+      },
+      { ...base.lines[2], id: 5204, position: 4, sources: [], warnings: [] },
+    ],
+    sources: { count: 2, held: 2, invoiced: 0, released: 0 },
+    ...overrides,
+  };
+};

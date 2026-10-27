@@ -39,6 +39,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { ContentSkeleton, PageHeader } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import type { LetterLeft } from "../api/collection";
+import { SETTLEMENT_KIND } from "../api/consumption";
 import { deductibleQueryOptions } from "../api/deductible";
 import {
   creditInvoice,
@@ -181,6 +182,12 @@ interface EditorLine {
   warnings?: string[];
   /** On a final settlement's deduction line (D7), the a-konto invoice it deducts. */
   deductsInvoiceId?: number;
+  /**
+   * On a line billing an energy correction settlement (energy consumption
+   * billing design D7): its quantity may be below zero, and it takes no
+   * discount. The server derives it from the line's sources on every save.
+   */
+  correction?: boolean;
 }
 
 type LineSource = NonNullable<InvoiceDocument["lines"][number]["sources"]>[number];
@@ -194,7 +201,8 @@ const numberOf = (v: number | string): number => {
 
 /**
  * The largest quantity and unit price a line's columns hold (numeric(12,3) and
- * numeric(14,4)), which the server refuses past. The inputs clamp to them;
+ * numeric(14,4) — eight decimals on a line billing an energy settlement), which
+ * the server refuses past. The inputs clamp to them;
  * the arithmetic in lib/money copes with anything typed before the clamp.
  */
 const MAX_QUANTITY = 999999999.999;
@@ -308,6 +316,7 @@ const DraftEditor = ({
       read: l.sources,
       warnings: l.warnings,
       deductsInvoiceId: l.deductsInvoiceId,
+      correction: l.correction,
     })),
   );
   const [timesheet, setTimesheet] = useState(draft.timesheet);
@@ -372,9 +381,20 @@ const DraftEditor = ({
   // lines at the rate each code has today — offered or not, 0 % without a
   // period today — and a credit note's at its original lines' own.
   const originalLine = (line: EditorLine) => original.data?.lines.find((ol) => ol.id === line.creditsLineId);
-  /** A deduction line, or a credit note's line crediting one: its quantity is below zero. */
+  /**
+   * A deduction line, or a credit note's line crediting one: its quantity is
+   * below zero. A correction line (energy consumption billing design D7) may
+   * be too, so it keeps the −1 the wizard gave it.
+   */
   const negative = (line: EditorLine): boolean =>
-    credit ? (originalLine(line)?.quantity ?? numberOf(line.quantity)) < 0 : line.deductsInvoiceId !== undefined;
+    credit
+      ? (originalLine(line)?.quantity ?? numberOf(line.quantity)) < 0
+      : line.deductsInvoiceId !== undefined || line.correction === true;
+  /** A line billing an energy settlement — or crediting one — whose unit price takes eight decimals (D7). */
+  const billsSettlement = (line: EditorLine): boolean =>
+    [...(line.sources ?? []), ...(line.read ?? []), ...(originalLine(line)?.sources ?? [])].some(
+      (s) => s.kind === SETTLEMENT_KIND,
+    );
   const rateOf = (line: EditorLine): { category: string; ratePercent: number } => {
     if (credit) {
       const o = originalLine(line);
@@ -866,7 +886,7 @@ const DraftEditor = ({
                   <Table.Td>
                     <NumberInput
                       aria-label={t("lineUnitPrice", { n: i + 1 })}
-                      decimalScale={4}
+                      decimalScale={billsSettlement(l) ? 8 : 4}
                       min={0}
                       max={credit ? originalLine(l)?.unitPrice : MAX_UNIT_PRICE}
                       readOnly={!editable}
@@ -882,8 +902,9 @@ const DraftEditor = ({
                       min={0}
                       max={100}
                       // A deduction carries no discount, and its VAT code is the
-                      // a-konto's (D7): the server refuses either changed.
-                      disabled={fixed || l.deductsInvoiceId !== undefined}
+                      // a-konto's (D7): the server refuses either changed. A
+                      // correction line carries no discount either.
+                      disabled={fixed || l.deductsInvoiceId !== undefined || l.correction === true}
                       value={l.discountPercent}
                       error={fieldError(`lines[${i}].discountPercent`)}
                       onChange={(v) => setLine(l.key, { discountPercent: v })}
@@ -1074,13 +1095,23 @@ const LineWork = ({ line, n, currency }: { line: EditorLine; n: number; currency
         </Text>
       )}
       {read.map((source) => (
-        <Text key={`${source.kind}:${source.id}`} size="xs" c="dimmed">
-          {t("sourceLine", {
-            source: sourceName(source),
-            date: date(source.date),
-            quantity: number(source.quantity),
-            amount: money(source.amount, currency),
-          })}
+        <Text key={`${source.kind}:${source.id}`} size="xs" c="dimmed" data-source={`${source.kind}:${source.id}`}>
+          {source.kind === SETTLEMENT_KIND
+            ? `${source.subkind === "correction" ? `${t("settlementCorrection")} · ` : ""}${t("settlementSource", {
+                point: [source.gsrn, source.address].filter(Boolean).join(" "),
+                period: t("settlementPeriod", {
+                  from: date(source.periodFrom ?? source.date),
+                  to: date(source.date),
+                }),
+                quantity: number(source.quantity),
+                amount: money(source.amount, currency),
+              })}${source.estimated ? ` · ${t("settlementEstimated")}` : ""}`
+            : t("sourceLine", {
+                source: sourceName(source),
+                date: date(source.date),
+                quantity: number(source.quantity),
+                amount: money(source.amount, currency),
+              })}
           {source.state !== "held" &&
             ` · ${`sourceState.${source.state}` in invoicesCatalog.en ? t(`sourceState.${source.state}`) : source.state}`}
         </Text>

@@ -42,7 +42,9 @@ export interface LineAmounts {
 
 /** A line's gross, its discount as an allowance of the rounded gross, and its net. */
 export const lineAmounts = (quantity: number, unitPrice: number, discountPercent: number): LineAmounts => {
-  const gross = divRound(scaled(quantity, 3) * scaled(unitPrice, 4), 100000n);
+  // A unit price has up to eight decimals (numeric(18,8)) on a line billing an
+  // energy settlement, four on any other: scaled at eight, both are exact.
+  const gross = divRound(scaled(quantity, 3) * scaled(unitPrice, 8), 1000000000n);
   const allowance = divRound(gross * scaled(discountPercent, 2), 10000n);
   return { gross: fromOre(gross), allowance: fromOre(allowance), net: fromOre(gross - allowance) };
 };

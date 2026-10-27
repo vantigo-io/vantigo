@@ -181,6 +181,8 @@ const sellerInputs = new Set([
   "workVatCodes.milestones",
   "timesheetDefault",
   "timesheetPersonLabel",
+  "energyVatCodes.energy",
+  "energyVatCodes.energyExempt",
 ]);
 
 interface SellerFormProps {
@@ -261,6 +263,10 @@ const SellerForm = ({ settings, latestRevision, dirty, onDirtyChange: setDirty }
         workVatCodes: values.workVatCodes,
         timesheetDefault: values.timesheetDefault,
         timesheetPersonLabel: values.timesheetPersonLabel,
+        // The Consumption to invoice card's (energy consumption billing
+        // design D8); left out when the server answered none, which keeps
+        // the stored codes.
+        ...(values.energyVatCodes ? { energyVatCodes: values.energyVatCodes } : {}),
         revision: settings.revision,
       }),
     onSuccess: async (saved) => {
@@ -446,6 +452,9 @@ const SellerForm = ({ settings, latestRevision, dirty, onDirtyChange: setDirty }
       </Card>
       <KidCard settings={settings} values={values} errors={errors} set={set} />
       <WorkCard stored={settings.workVatCodes} values={values} errors={errors} set={set} />
+      {settings.energyVatCodes && values.energyVatCodes && (
+        <EnergyCard stored={settings.energyVatCodes} values={values} errors={errors} set={set} />
+      )}
       <Group justify="flex-end">
         <Button loading={save.isPending} disabled={!dirty} onClick={() => save.mutate()}>
           {t("save")}
@@ -559,6 +568,67 @@ const KidCard = ({ settings, values, errors, set }: KidCardProps) => {
 
 const personLabels = ["initials", "number", "name"] as const;
 const workKinds = ["hours", "expenses", "milestones"] as const;
+const energyHints = ["energy", "energyExempt"] as const;
+
+/** The codes offered for new lines, and any one stored that no longer is — never another inactive code, which the server would refuse. */
+const useStoredCodeOptions = (storedIds: Set<number>) => {
+  const { t } = useInvoiceFormat();
+  const codes = useQuery(vatCodesQueryOptions());
+  return (codes.data ?? [])
+    .filter((c) => c.active || storedIds.has(c.id))
+    .map((c) => {
+      const label = t("vatCodeOption", { code: c.code, name: c.name });
+      return { value: String(c.id), label: c.active ? label : t("vatCodeNotOffered", { label }) };
+    });
+};
+
+/**
+ * The Consumption to invoice card (energy consumption billing design D8): the
+ * VAT code an electricity line is invoiced at by its hint — the standard rate,
+ * and the exemption for households in Nord-Norge (mval. § 6-6) — offered as
+ * the work codes are. Saved with the seller record; a refused code is said on
+ * its own input.
+ */
+const EnergyCard = ({
+  stored,
+  values,
+  errors,
+  set,
+}: {
+  stored: NonNullable<InvoiceSettings["energyVatCodes"]>;
+  values: InvoiceSettings;
+  errors: Record<string, string>;
+  set: <K extends keyof InvoiceSettings>(key: K, value: InvoiceSettings[K], field?: string) => void;
+}) => {
+  const { t } = useInvoiceFormat();
+  const options = useStoredCodeOptions(new Set(Object.values(stored)));
+  const codes = values.energyVatCodes ?? stored;
+  return (
+    <Card withBorder data-testid="energy-card">
+      <Stack>
+        <Title order={4}>{t("consumptionToInvoice")}</Title>
+        <Text size="sm" c="dimmed">
+          {t("consumptionToInvoiceDescription")}
+        </Text>
+        <SimpleGrid cols={{ base: 1, sm: 2 }}>
+          {energyHints.map((hint) => (
+            <Select
+              key={hint}
+              label={t(`vatCodeFor.${hint}`)}
+              data={options}
+              allowDeselect={false}
+              value={String(codes[hint])}
+              error={errors[`energyVatCodes.${hint}`]}
+              onChange={(v) =>
+                v !== null && set("energyVatCodes", { ...codes, [hint]: Number(v) }, `energyVatCodes.${hint}`)
+              }
+            />
+          ))}
+        </SimpleGrid>
+      </Stack>
+    </Card>
+  );
+};
 
 /**
  * The Work to invoice card (invoices work design D5, D6, D18): the VAT code
@@ -581,16 +651,7 @@ const WorkCard = ({
   set: <K extends keyof InvoiceSettings>(key: K, value: InvoiceSettings[K], field?: string) => void;
 }) => {
   const { t } = useInvoiceFormat();
-  const codes = useQuery(vatCodesQueryOptions());
-  // The codes offered for new lines, and any one stored that no longer is —
-  // never another inactive code, which the server would refuse.
-  const storedIds = new Set(Object.values(stored));
-  const options = (codes.data ?? [])
-    .filter((c) => c.active || storedIds.has(c.id))
-    .map((c) => {
-      const label = t("vatCodeOption", { code: c.code, name: c.name });
-      return { value: String(c.id), label: c.active ? label : t("vatCodeNotOffered", { label }) };
-    });
+  const options = useStoredCodeOptions(new Set(Object.values(stored)));
   return (
     <Card withBorder data-testid="work-card">
       <Stack>
