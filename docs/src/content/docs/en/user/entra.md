@@ -249,8 +249,13 @@ sign-on is on.
    their address; the **Account in the directory**, with its display name, principal
    name, employee ID when it has one, and *Disabled* when the account is; and
    **Matched by**: **Mail**, **Principal name**, **Employee ID**, or several.
-3. Check the rows. Every row is checked, except one whose account is disabled. Clear
-   the ones you do not want.
+3. Check the rows. A row starts ticked only when the account is enabled, the
+   principal name matched, and the user is not an Owner. Any other row starts
+   unticked and is marked **Check this match**, with the reason: *Matched by mail or
+   employee ID only, not by the principal name the person signs in with. Make sure it
+   is the same person.*, or *This user is an Owner. Whoever holds this account will
+   sign in with the Owner's access.* Tick those you have checked, and clear the ones
+   you do not want.
 4. Choose **Connect selected**, which shows how many are checked. Vantigo connects the
    pairs one at a time, and each row's **Result** says *Connected*, or why it was
    refused in words — for instance that another user is already connected to the
@@ -264,15 +269,21 @@ account. There is no guessing on names or similar addresses. Left out are:
 - a user who matches more than one account, or whose account also matches another
   user — counted as *Left out because more than one account matched*; connect them one
   at a time;
-- an account somebody already holds: one announced for another user, one the
+- guest accounts, invited from another organisation: they are never proposed and not
+  counted;
+- an account somebody else already holds: one announced for another user, one the
   provider's provisioning gave to another user, or one Staff announced for a new
-  person;
+  person. An account the provider's provisioning already gave to the same user is still
+  proposed;
 - users already connected, or awaiting their first sign-in; **Pending** users; and you
   — you connect yourself by signing in through Microsoft.
 
 When no one matches, the window says so and that you connect them one at a time from
 the **Single sign-on** column. Only the first 1,000 users not yet connected are
-compared; when there are more, it says so — connect these, then look again.
+compared; when there are more, it says so — connect these, then look again. Finding
+the matches can take a while in a large tenant; opening the window again meanwhile
+waits for the same answer, and after two minutes it gives up and says the tenant did
+not answer.
 
 A connected row reads **Awaiting first sign-in** in **Users** until the person next
 signs in through Microsoft, or the provider pushes their account; then the connection
@@ -283,14 +294,16 @@ completes and it reads **Connected**. Their name, address and roles stay as they
 **Connect…** in a user's row opens **Connect _name_ to single sign-on**, which, while
 this app is enabled, starts with **Search the directory**. Type two characters or more
 of the person's name, address or principal name; after a pause the list shows the
-matching accounts, by display name, each with its principal name, its employee ID, and
-*Disabled* when the account is. An account somebody already holds reads *Awaiting*
+matching accounts, by display name, each with its principal name, its employee ID,
+*Guest* for a guest of the tenant, and *Disabled* when the account is. An account somebody already holds reads *Awaiting*
 and the user's name (or *Awaiting another user*), *Provisioned to another user* or
 *Announced by Staff*, and cannot be picked. At most 25 accounts are shown; when there
 are that many, it asks you to narrow the search.
 
 Picking an account fills in **User principal name** and, under **More**, **Object id**.
-Check them and choose **Connect**, as before. The typed fields stay: you can still
+The two belong together: change the principal name and the object id is cleared;
+search again after a pick and both are cleared. Check them and choose **Connect**, as
+before. The typed fields stay: you can still
 type the name yourself, and they are all there is while the directory cannot be read.
 
 A search or a review can be refused when the tenant cannot be asked: the secrets are

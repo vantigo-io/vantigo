@@ -255,8 +255,13 @@ finnes mens enkel pålogging er på.
    **Konto i katalogen**, med visningsnavn, brukerprinsipalnavn, ansatt-ID når den har
    en, og *Deaktivert* når kontoen er det; og **Treff på**: **E-post**,
    **Brukerprinsipalnavn**, **Ansatt-ID**, eller flere.
-3. Se over radene. Alle rader er krysset av, unntatt en der kontoen er deaktivert. Fjern
-   krysset på dem du ikke vil ha.
+3. Se over radene. En rad er krysset av fra start bare når kontoen er aktiv,
+   brukerprinsipalnavnet traff, og brukeren ikke er eier. Alle andre rader står uten
+   kryss og er merket **Sjekk treffet**, med grunnen: *Treff bare på e-post eller
+   ansatt-ID, ikke på brukerprinsipalnavnet personen logger på med. Forsikre deg om at
+   det er samme person.*, eller *Denne brukeren er eier. Den som har denne kontoen,
+   logger på med eierens tilgang.* Kryss av dem du har sjekket, og fjern krysset på dem
+   du ikke vil ha.
 4. Velg **Koble til valgte**, som viser hvor mange som er krysset av. Vantigo kobler
    parene til ett om gangen, og **Resultat** på hver rad sier *Koblet til*, eller med
    ord hvorfor det ble avvist — for eksempel at en annen bruker allerede er koblet til
@@ -270,14 +275,19 @@ kontoen. Det gjettes ikke på navn eller lignende adresser. Utelatt blir:
 - en bruker som passer med mer enn én konto, eller der kontoen også passer med en annen
   bruker — telt som *Utelatt fordi mer enn én konto passet*; koble dem til én om
   gangen;
-- en konto noen allerede har: en kunngjort for en annen bruker, en leverandørens
-  klargjøring har gitt en annen bruker, eller en Ansatte har kunngjort for en ny person;
+- gjestekontoer, invitert fra en annen organisasjon: de foreslås aldri og telles ikke;
+- en konto noen andre allerede har: en kunngjort for en annen bruker, en leverandørens
+  klargjøring har gitt en annen bruker, eller en Ansatte har kunngjort for en ny person.
+  En konto leverandørens klargjøring allerede har gitt den samme brukeren, foreslås
+  likevel;
 - brukere som allerede er koblet til eller venter på første pålogging, brukere som er
   **Venter**, og deg selv — du kobler deg selv til ved å logge inn gjennom Microsoft.
 
 Når ingen passer, sier vinduet det, og at du kobler dem til én om gangen fra kolonnen
 **Enkel pålogging**. Bare de 1 000 første brukerne som ikke er koblet til, sammenlignes;
-er det flere, sier det fra — koble til disse, og se så etter igjen.
+er det flere, sier det fra — koble til disse, og se så etter igjen. Å finne treffene kan
+ta litt tid i en stor leietaker; åpner du vinduet igjen i mellomtiden, venter det på det
+samme svaret, og etter to minutter gir det opp og sier at leietakeren ikke svarte.
 
 En rad som er koblet til, viser **Venter på første pålogging** under **Brukere** til
 personen neste gang logger inn gjennom Microsoft, eller leverandøren sender kontoen;
@@ -289,14 +299,15 @@ de var.
 **Koble til…** i en brukers rad åpner **Koble _navn_ til enkel pålogging**, som, mens
 denne appen er slått på, begynner med **Søk i katalogen**. Skriv to tegn eller mer av
 personens navn, adresse eller brukerprinsipalnavn; etter en pause viser listen
-kontoene som passer, etter visningsnavn, hver med brukerprinsipalnavn, ansatt-ID og
-*Deaktivert* når kontoen er det. En konto noen allerede har, viser *Venter på* og
+kontoene som passer, etter visningsnavn, hver med brukerprinsipalnavn, ansatt-ID,
+*Gjest* for en gjest i leietakeren, og *Deaktivert* når kontoen er det. En konto noen allerede har, viser *Venter på* og
 brukerens navn (eller *Venter på en annen bruker*), *Klargjort for en annen bruker*
 eller *Kunngjort av Ansatte*, og kan ikke velges. Høyst 25 kontoer vises; når det er så
 mange, ber den deg snevre inn søket.
 
 Å velge en konto fyller ut **Brukerprinsipalnavn** og, under **Mer**, **Objekt-ID**.
-Kontroller dem og velg **Koble til**, som før. Feltene du skriver i, blir stående: du
+De to hører sammen: endrer du brukerprinsipalnavnet, tømmes objekt-ID-en; søker du på
+nytt etter et valg, tømmes begge. Kontroller dem og velg **Koble til**, som før. Feltene du skriver i, blir stående: du
 kan fortsatt skrive navnet selv, og de er alt som finnes mens katalogen ikke kan leses.
 
 Et søk eller en gjennomgang kan avvises når leietakeren ikke kan spørres:

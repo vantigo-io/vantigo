@@ -44,4 +44,14 @@ The spec names the endpoints and the rule; these are the choices it leaves to th
   - `reference/entra.md`: the two reads, the matching rule, the limits, the refusals. `reference/identity.md` (or where identity's ports are listed) and `contributing/module-boundaries.md` rule 5: `SSOConnections`.
   - `admin/sso-scim.md` (en, nb): the announced link's paragraph names the review.
   - `ROADMAP.md`: Entra phase 2 — B done; the spec's delivery B unchanged.
-- [ ] **6. Review, then verification.** A security review of the port and the two reads (read-only), fixes; `mise run server:check`, `mise run server:test`, `mise run frontend:check`, `mise run docs:check`.
+- [x] **6. Review, then verification.** A security review of the port and the two reads (read-only), fixes; `mise run server:check`, `mise run server:test`, `mise run frontend:check`, `mise run docs:check`.
+  - The review's fixes (6da856f4), documented in the same pages in both languages:
+    - Pre-tick: a row starts ticked only when the account is enabled, matched by `userPrincipalName`, and the user is not an Owner; any other is unticked and marked *Check this match* with the reason (a weak key — mail or employee ID only — or an Owner).
+    - Guests (`userType` `Guest`) are never proposed nor counted ambiguous; the picker marks them *Guest*; `EntraDirectoryUser.guest`.
+    - A candidate's own SCIM mapping no longer blocks its proposal: only an account held for another user (or an announced account) is left out.
+    - The pick's two keys travel together: editing the principal name clears the object id; changing the search after a pick clears both.
+    - The matches read is bounded by two minutes (503 `tenant_unreachable`) and shared per caller while one is in flight (singleflight); identity reads at most 1001 candidates (`Unconnected(ctx, limit)`).
+    - Graph's error words are not logged on the directory reads (`noWords`).
+    - Identity: `POST …/sso-link` refuses 409 `sso_link_taken` when another user's SCIM mapping names either key.
+    - Entra's calls to the port go through `internal/entra/contractscalls.go` (rule 12's accessor).
+    - The port's Owner gate requires MFA only when `OWNERS_REQUIRE_MFA` is set, as every Owner endpoint.

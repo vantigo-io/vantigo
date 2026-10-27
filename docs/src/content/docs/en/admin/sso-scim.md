@@ -377,14 +377,16 @@ account). The Owner announces it on the Users screen or through
 [the endpoint](/en/admin/authentication/#connect-an-existing-user-to-the-provider);
 the announcement is kept in `identity.expected_links`, one per user, with the issuer it
 was made under, the object id and the user principal name (either may be absent, not
-both) and who made it. A directory account can be announced for one user only.
+both) and who made it. A directory account can be announced for one user only, and not
+at all while another user's SCIM mapping names it (`sso_link_taken`).
 
 With the Entra module enabled, the Owner need not type the account: the connect
 dialog searches the tenant and fills in both keys from the account picked, and *Find
 matches in the directory…* on the Users screen proposes, for every user not yet
 connected, the one account whose mail or principal name equals their address or whose
-employee ID equals their employee number — exact matches only — and **Connect
-selected** announces each chosen pair through the same endpoint
+employee ID equals their employee number — exact matches only, never a guest account,
+pre-ticked only when the principal name matched on an enabled account of a user who is
+not an Owner — and **Connect selected** announces each chosen pair through the same endpoint
 ([connect existing users](/en/user/entra/#connect-existing-users); the rule in
 [the reference](/en/reference/entra/#the-exact-matches)). Nothing else changes: each
 announcement is fulfilled, as below, at the person's next arrival.

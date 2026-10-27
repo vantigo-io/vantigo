@@ -381,13 +381,16 @@ eksisterende konto). Eieren kunngjør den på brukerskjermen eller gjennom
 [endepunktet](/nb/admin/authentication/#koble-en-eksisterende-bruker-til-leverandøren);
 kunngjøringen lagres i `identity.expected_links`, én per bruker, med utstederen den ble
 gjort under, objekt-ID-en og brukerprinsipalnavnet (det ene kan mangle, ikke begge) og
-hvem som gjorde den. En katalogkonto kan bare kunngjøres for én bruker.
+hvem som gjorde den. En katalogkonto kan bare kunngjøres for én bruker, og ikke i det
+hele tatt mens en annen brukers SCIM-tilordning peker den ut (`sso_link_taken`).
 
 Med Entra-modulen slått på trenger ikke eieren å skrive inn kontoen: tilkoblingsdialogen
 søker i leietakeren og fyller ut begge nøklene fra kontoen som velges, og *Finn treff i
 katalogen…* på brukerskjermen foreslår, for hver bruker som ikke er koblet til, den ene
 kontoen der e-post eller brukerprinsipalnavn er lik adressen deres, eller der ansatt-ID
-er lik ansattnummeret deres — bare nøyaktige treff — og **Koble til valgte** kunngjør
+er lik ansattnummeret deres — bare nøyaktige treff, aldri en gjestekonto, krysset av fra
+start bare når brukerprinsipalnavnet traff på en aktiv konto for en bruker som ikke er
+eier — og **Koble til valgte** kunngjør
 hvert valgte par gjennom det samme endepunktet
 ([koble til eksisterende brukere](/nb/user/entra/#koble-til-eksisterende-brukere);
 regelen i [referansen](/en/reference/entra/#the-exact-matches)). Ellers endres

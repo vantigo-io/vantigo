@@ -532,7 +532,7 @@ What can go wrong, in the order the endpoint judges it:
 | 409 `sso_not_configured` | OIDC is off, so there is no issuer to announce under |
 | 409 `account_pending` | The user is pending: their way in is the invitation, or the announced account that replaces them |
 | 409 `account_linked` | The user already has a link under the configured issuer; disconnect them first |
-| 409 `sso_link_taken` | The object id under the issuer, or the principal name, is announced for another user, or named by Staff's [announced account](#the-announced-account) |
+| 409 `sso_link_taken` | The object id under the issuer, or the principal name, is announced for another user, named by Staff's [announced account](#the-announced-account), or named by another user's SCIM mapping (its `externalId` the object id, or its `userName` the principal name, ignoring case) |
 
 A disabled user may be announced: the arrival signs them in by a linked account's
 rules, `account_locked` until they are enabled. An Owner or a SystemAdmin may be
@@ -547,9 +547,14 @@ chosen pair is announced through this same endpoint. What the module needs of id
 for that — the users not yet connected, with the address and employee number they are
 matched by, and who already holds a directory account's keys — identity answers through
 the port `contracts.SSOConnections`, and only to an Owner under
-`policy:Owner+OwnerManagement`: a request from anyone else gets nothing, and while OIDC
+`policy:Owner+OwnerManagement`, with a second factor when Owners must use one
+(`OWNERS_REQUIRE_MFA`), as on every Owner endpoint: a request from anyone else gets
+nothing, and while OIDC
 is off there is nothing to connect under (`sso_not_configured`). The addresses are
-compared inside the Entra module and never answered, logged or recorded.
+compared inside the Entra module and never answered, logged or recorded. The review
+reads at most 1000 users not yet connected (identity is asked for one more, to tell
+whether more wait), never proposes a guest account, and does not let a user's own SCIM
+mapping of an account block its proposal.
 
 ### Disconnect a user
 
