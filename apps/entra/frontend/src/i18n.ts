@@ -237,6 +237,37 @@ export const entraCatalog = {
       "To give the people Staff registers a Microsoft account by default, choose Microsoft Entra ID as the default account kind in Staff's settings.",
     openStaffSettings: "Open Staff's settings",
 
+    directorySearch: "Search the directory",
+    directorySearchHelp: "Find the account by name or address; the pick fills in the fields below.",
+    directorySearchPlaceholder: "Name, address or principal name",
+    directoryTypeMore: "Type at least two characters.",
+    directorySearching: "Searching…",
+    directoryNothingFound: "No account in the directory matches.",
+    directoryNarrow: "Showing the first 25 accounts. Narrow the search to find the right one.",
+    directoryAccountKeys: "{{upn}} · employee ID {{employeeId}}",
+    directoryDisabled: "Disabled",
+    directoryHolderExpected: "Awaiting another user",
+    directoryHolderExpectedNamed: "Awaiting {{name}}",
+    directoryHolderMapped: "Provisioned to another user",
+    directoryHolderAccount: "Announced by Staff",
+    directoryMatchesFailed: "The matches could not be found",
+    directoryMatchesSummary:
+      "Users not yet connected: {{candidates}}. Matched exactly: {{matches}}. Left out because more than one account matched: {{ambiguous}}.",
+    directoryMatchesTruncated: "Only the first 1,000 users were compared; connect these, then look again.",
+    directoryMatchesNone:
+      "No user not yet connected matches exactly one account. Connect them one at a time from the Single sign-on column.",
+    directoryMatchUser: "User",
+    directoryMatchAccount: "Account in the directory",
+    directoryMatchedBy: "Matched by",
+    directoryMatchedBy_mail: "Mail",
+    directoryMatchedBy_userPrincipalName: "Principal name",
+    directoryMatchedBy_employeeId: "Employee ID",
+    directoryMatchResult: "Result",
+    directoryMatchChoose: "Connect {{name}} to {{account}}",
+    directoryMatchConnected: "Connected",
+    directoryUnknownUser: "A user",
+    directoryConnectSelected: "Connect selected ({{count}})",
+
     "refusal.connection_in_use": "The module keeps accounts in the current tenant; confirm the change to make it.",
     "refusal.credential_in_use":
       "This is the only valid secret while the module keeps accounts. Add a new secret first, then revoke this one.",
@@ -244,6 +275,8 @@ export const entraCatalog = {
     "refusal.credential_invalid": "The tenant refused every secret: add a valid one in step 2.",
     "refusal.tenant_unreachable": "The tenant did not answer. Try again in a moment.",
     "refusal.not_found": "It is gone: somebody else removed it.",
+    "refusal.throttled": "The tenant is busy and asked Vantigo to wait. Try again in a minute.",
+    "refusal.sso_not_configured": "Single sign-on is not configured, so there is nothing to connect users to.",
     "refusal.adoption_confirmed":
       "The account is Vantigo's already: its adoption was confirmed, or Vantigo created it.",
 
@@ -555,6 +588,37 @@ export const entraCatalog = {
       "For å gi personene Ansatte registrerer en Microsoft-konto som standard velger du Microsoft Entra ID som standard kontotype i innstillingene til Ansatte.",
     openStaffSettings: "Åpne innstillingene til Ansatte",
 
+    directorySearch: "Søk i katalogen",
+    directorySearchHelp: "Finn kontoen etter navn eller adresse; valget fyller ut feltene nedenfor.",
+    directorySearchPlaceholder: "Navn, adresse eller brukerprinsipalnavn",
+    directoryTypeMore: "Skriv minst to tegn.",
+    directorySearching: "Søker …",
+    directoryNothingFound: "Ingen konto i katalogen passer.",
+    directoryNarrow: "Viser de 25 første kontoene. Snevre inn søket for å finne den riktige.",
+    directoryAccountKeys: "{{upn}} · ansatt-ID {{employeeId}}",
+    directoryDisabled: "Deaktivert",
+    directoryHolderExpected: "Venter på en annen bruker",
+    directoryHolderExpectedNamed: "Venter på {{name}}",
+    directoryHolderMapped: "Klargjort for en annen bruker",
+    directoryHolderAccount: "Kunngjort av Ansatte",
+    directoryMatchesFailed: "Treffene kunne ikke finnes",
+    directoryMatchesSummary:
+      "Brukere som ikke er koblet til: {{candidates}}. Nøyaktige treff: {{matches}}. Utelatt fordi mer enn én konto passet: {{ambiguous}}.",
+    directoryMatchesTruncated: "Bare de 1 000 første brukerne ble sammenlignet; koble til disse, og se så etter igjen.",
+    directoryMatchesNone:
+      "Ingen bruker som ikke er koblet til, passer nøyaktig med én konto. Koble dem til én om gangen fra kolonnen Enkel pålogging.",
+    directoryMatchUser: "Bruker",
+    directoryMatchAccount: "Konto i katalogen",
+    directoryMatchedBy: "Treff på",
+    directoryMatchedBy_mail: "E-post",
+    directoryMatchedBy_userPrincipalName: "Brukerprinsipalnavn",
+    directoryMatchedBy_employeeId: "Ansatt-ID",
+    directoryMatchResult: "Resultat",
+    directoryMatchChoose: "Koble {{name}} til {{account}}",
+    directoryMatchConnected: "Koblet til",
+    directoryUnknownUser: "En bruker",
+    directoryConnectSelected: "Koble til valgte ({{count}})",
+
     "refusal.connection_in_use":
       "Modulen holder kontoer i den nåværende leietakeren; bekreft endringen for å gjøre den.",
     "refusal.credential_in_use":
@@ -563,6 +627,8 @@ export const entraCatalog = {
     "refusal.credential_invalid": "Leietakeren avviste alle hemmelighetene: legg til en gyldig i steg 2.",
     "refusal.tenant_unreachable": "Leietakeren svarte ikke. Prøv igjen om litt.",
     "refusal.not_found": "Den er borte: noen andre har fjernet den.",
+    "refusal.throttled": "Leietakeren er opptatt og ba Vantigo vente. Prøv igjen om et minutt.",
+    "refusal.sso_not_configured": "Enkel pålogging er ikke satt opp, så det er ingenting å koble brukere til.",
     "refusal.adoption_confirmed":
       "Kontoen er allerede Vantigos: overtakelsen er bekreftet, eller Vantigo opprettet den.",
 

@@ -166,6 +166,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/entra/directory/matches": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Find the directory's exact matches
+         * @description Proposes, for every user not yet connected to the workforce provider, the one account in the tenant that matches them exactly — the review an Owner connects a whole workspace from. The candidates are identity's: every user who is not pending and has neither a link nor an announced link under the configured issuer, the caller excluded, at most 1000 of them in identity's order (truncated says when more wait). The tenant is asked by the candidates' addresses (mail and userPrincipalName) and employee numbers (employeeId), exact values only. A candidate is proposed only when every key that matched points to one and the same account, and that account is neither held (an announced link, a SCIM mapping or an announced account names it) nor the one match of another candidate; everything else is left out, and counted as ambiguous when more than one account was in play. The addresses are compared here and never answered. Connecting is identity's announced link, POST /api/v1/identity/owner/users/{id}/sso-link, once per chosen pair. 409 sso_not_configured while single sign-on is off. Rate limited to 6 per client address a minute, a bucket of its own.
+         */
+        get: operations["getEntraDirectoryMatches"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/entra/directory/users": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Search the directory
+         * @description Searches the tenant's accounts by display name, mail and principal name — the picker an Owner connects one user from. At most 25 accounts, by display name. Each says who already holds it under the configured issuer, as far as identity knows: an announced link, a SCIM mapping or an announced account. An account whose person signed in through the provider already is not marked: the link a sign-in makes names no key the directory answers, and identity still refuses connecting it twice. Rate limited to 60 per client address a minute, a bucket of its own.
+         */
+        get: operations["getEntraDirectoryUsers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/entra/events": {
         parameters: {
             query?: never;
@@ -381,6 +421,61 @@ export interface components {
             /** @description The secret's value, 1 to 1000 characters. */
             secret: string;
         };
+        /** @description Who already holds a directory account's keys under the configured issuer, as identity knows it: expected, an Owner announced it for an existing user; mapped, the provider's SCIM push maps it to a user (its userName the principal name, or its externalId the object id); account, Staff announced it for a person yet to arrive, with no user. A sign-in through the provider is not shown: the link it makes names no key the directory answers. */
+        EntraDirectoryHolder: {
+            /** @enum {string} */
+            kind: "expected" | "mapped" | "account";
+            /**
+             * Format: uuid
+             * @description The user holding the account. Absent for account.
+             */
+            userId?: string;
+        };
+        /** @description A user not yet connected and the one directory account that matches them exactly, proposed for connecting. */
+        EntraDirectoryMatch: {
+            account: components["schemas"]["EntraDirectoryUser"];
+            /** @description What matched: the user's address equal, ignoring case, to the account's mail or its principal name; the user's employee number equal, trimmed and ignoring case, to the account's employeeId. Every key that matched points to this account. */
+            matchedBy: ("mail" | "userPrincipalName" | "employeeId")[];
+            /** Format: uuid */
+            userId: string;
+        };
+        /** @description The exact matches between the users not yet connected and the tenant's accounts. Only an exact match is proposed — no fuzzy match, no guess between two. The users' addresses are compared in the server and never answered. */
+        EntraDirectoryMatches: {
+            /**
+             * Format: int32
+             * @description How many candidates were left out because more than one account matched them, or because the account that matched them matched another candidate too.
+             */
+            ambiguous: number;
+            /**
+             * Format: int32
+             * @description How many users not yet connected were read — every user who is not pending and has neither a link nor an announced link under the configured issuer, the caller excluded.
+             */
+            candidates: number;
+            /** @description The proposals, in the order identity lists the users. */
+            matches: components["schemas"]["EntraDirectoryMatch"][];
+            /** @description True when more than 1000 users were waiting and only the first 1000, in identity's order, were read. */
+            truncated: boolean;
+        };
+        /** @description One account in the tenant as the directory answers it. */
+        EntraDirectoryUser: {
+            accountEnabled: boolean;
+            displayName: string;
+            /** @description The account's employeeId. Absent when it has none. */
+            employeeId?: string;
+            holder?: components["schemas"]["EntraDirectoryHolder"];
+            /** @description The account's mail. Absent when it has none. */
+            mail?: string;
+            /**
+             * Format: uuid
+             * @description The account's object id in the tenant, immutable.
+             */
+            objectId: string;
+            userPrincipalName: string;
+        };
+        /** @description The accounts a directory search found, by display name, at most 25. When 25 come back there may be more, and the search should be narrowed. */
+        EntraDirectoryUsers: {
+            users: components["schemas"]["EntraDirectoryUser"][];
+        };
         /** @description One write the module made, in the tenant or to its own connection — the module's own append-only trail. It carries the codes and the UPN the module made, never an address beyond it, a secret or a pass. */
         EntraEvent: {
             /** @description entra.connection.changed, entra.connection.tested, entra.settings.changed, entra.credential.added, entra.credential.revoked, entra.user.prepared, entra.user.activated, entra.user.deactivated, entra.user.updated, entra.user.deleted, entra.user.photo_set, entra.user.photo_cleared, entra.pass.issued, entra.pass.revealed or entra.account.adoption_confirmed. */
@@ -447,7 +542,7 @@ export interface components {
             /** Format: int32 */
             count: number;
         };
-        /** @description An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: connection_in_use (409: the tenant or the client changes while the module keeps accounts, and confirmChange is not true), adoption_confirmed (409: the account's adoption is confirmed already), credential_in_use (409: the secret is the only valid one while the module keeps accounts), version_mismatch (412: the connection has been written since the If-Match version), credential_invalid and tenant_unreachable (503: the tenant could not be asked). errors carries the field errors of a 400, keyed by the request's camelCase field. A request the server could not decode answers a bare 400 with neither. */
+        /** @description An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: connection_in_use (409: the tenant or the client changes while the module keeps accounts, and confirmChange is not true), adoption_confirmed (409: the account's adoption is confirmed already), credential_in_use (409: the secret is the only valid one while the module keeps accounts), version_mismatch (412: the connection has been written since the If-Match version), sso_not_configured (409: single sign-on is not configured, so there is nothing to connect under), invalid_request (400: a field is not valid), credential_invalid and tenant_unreachable (503: the tenant could not be asked), throttled (503: the tenant throttled the module twice in a row). errors carries the field errors of a 400, keyed by the request's camelCase field. A request the server could not decode answers a bare 400 with neither. */
         EntraProblem: {
             code?: string | null;
             detail?: string | null;
@@ -1059,6 +1154,141 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    getEntraDirectoryMatches: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EntraDirectoryMatches"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Conflict — sso_not_configured, single sign-on is not configured, so there is nothing to connect under. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["EntraProblem"];
+                };
+            };
+            /** @description Too Many Requests — entra-matches's limit for this client address. */
+            429: {
+                headers: {
+                    "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable — credential_invalid, no secret fetched a token; tenant_unreachable, the tenant did not answer; or throttled, the tenant throttled the module twice in a row. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["EntraProblem"];
+                };
+            };
+        };
+    };
+    getEntraDirectoryUsers: {
+        parameters: {
+            query: {
+                /** @description What to search for, 2 to 100 characters once trimmed. A double quote or a backslash in it is left out. */
+                q: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EntraDirectoryUsers"];
+                };
+            };
+            /** @description Bad Request — invalid_request, q is not 2 to 100 characters once trimmed; errors names q. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["EntraProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests — entra-directory's limit for this client address. */
+            429: {
+                headers: {
+                    "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable — credential_invalid, no secret fetched a token; tenant_unreachable, the tenant did not answer; or throttled, the tenant throttled the module twice in a row. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["EntraProblem"];
                 };
             };
         };
