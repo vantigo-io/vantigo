@@ -247,7 +247,7 @@ kan slå på **Synkroniser til Outlook-kalenderen min**; innen et minutt sier ko
 **Sist synkronisert**, og avtalene står i Outlook. Til en test ser tillatelsen, sier
 linjen **Calendars.ReadWrite er ikke i tokenet. Det er som ventet hvis du ga den med
 Exchange RBAC for Applications; ellers legg den til, gi administratorsamtykke og test på
-nytt.**, og steg 3 er *Ikke gjort* — men linjen er bare til orientering: folk kan slå på
+nytt.** — men linjen er bare til orientering, og steg 3 venter ikke på den: folk kan slå på
 synkroniseringen sin likevel, og en postboks tillatelsen ikke når, avvises bare for den
 personen. Resten av modulen virker som før.
 
@@ -299,8 +299,8 @@ PowerShell, som Exchange-administrator:
 
 Endringene tar **30 minutter til 2 timer** å slå gjennom. En tildeling gjort med RBAC for
 Applications vises aldri i tokenet, så når samtykket for hele leietakeren er fjernet,
-viser neste **Test tilkoblingen** `Calendars.ReadWrite` som manglende, steg 3 sier *Ikke
-gjort*, og linjen under bryteren sier **Calendars.ReadWrite er ikke i tokenet. Det er
+viser neste **Test tilkoblingen** `Calendars.ReadWrite` som manglende (steg 3 står fortsatt som
+*Ferdig*), og linjen under bryteren sier **Calendars.ReadWrite er ikke i tokenet. Det er
 som ventet hvis du ga den med Exchange RBAC for Applications; …** — det er som ventet,
 og synkroniseringen fortsetter. Verifiser med en person innenfor omfanget: kortet deres
 sier **Sist synkronisert**. En person utenfor omfanget ser **Organisasjonen din har ikke

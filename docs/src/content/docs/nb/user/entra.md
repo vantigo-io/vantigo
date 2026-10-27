@@ -214,8 +214,9 @@ synkronisering av eller på.
    `Calendars.ReadWrite`, merket *(for kalendersynkronisering)*. En eier legger den til
    i portalen, gir administratorsamtykke på nytt og velger **Test tilkoblingen** —
    [administrasjonsveiledningen](/nb/admin/entra/#kalendersynkronisering) har stegene,
-   og hvordan den begrenses til enkelte postbokser. Til en test ser den, er steg 3 *Ikke
-   gjort*, og kortet **Status** viser den som manglende, *(for kalendersynkronisering)*;
+   og hvordan den begrenses til enkelte postbokser. Til en test ser den, viser kortet
+   **Status** den som manglende, *(for kalendersynkronisering)* — steg 3 venter ikke på
+   den, siden tillatelsen bare er til orientering;
    resten av modulen virker uten den. Er den gitt med Exchange RBAC for Applications i
    stedet, viser tokenet den aldri: da blir den stående i listen, og det er som ventet —
    synkroniseringen kjører likevel.

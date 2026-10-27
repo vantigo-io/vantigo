@@ -209,8 +209,8 @@ on or off.
    `Calendars.ReadWrite`, marked *(for calendar sync)*. An Owner adds it in the portal,
    grants admin consent again and chooses **Test connection** — the [administration
    guide](/en/admin/entra/#calendar-sync) has the steps, and how to limit it to some
-   mailboxes. Until a test sees it, step 3 is *Not done* and the **Status** card lists it
-   as missing, *(for calendar sync)*; the rest of the module works without it. If it was
+   mailboxes. Until a test sees it, the **Status** card lists it as missing, *(for
+   calendar sync)* — step 3 does not wait for it, since the permission is advisory; the rest of the module works without it. If it was
    granted with Exchange RBAC for Applications instead, the token never shows it: then
    it stays listed, and that is expected — the sync runs all the same.
 

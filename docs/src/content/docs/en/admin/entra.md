@@ -247,7 +247,7 @@ can turn on **Sync to my Outlook calendar**; within a minute their card says **L
 synced** and the appointments are in Outlook. Until a test sees the permission, the
 line reads **Calendars.ReadWrite is not in the token. That is expected if you granted it
 with Exchange RBAC for Applications; otherwise add it, grant admin consent and test
-again.** and step 3 is *Not done* — but the line is advisory: people can turn their sync
+again.** — but the line is advisory, and step 3 does not wait for it: people can turn their sync
 on all the same, and a mailbox the permission does not reach is refused for that person
 alone. The rest of the module works as before.
 
@@ -299,7 +299,7 @@ Exchange Online PowerShell, as an Exchange administrator:
 
 The changes take **30 minutes to 2 hours** to apply. A grant made with RBAC for
 Applications never shows in the token, so once the tenant-wide consent is removed, the
-next **Test connection** lists `Calendars.ReadWrite` as missing, step 3 reads *Not done*
+next **Test connection** lists `Calendars.ReadWrite` as missing (step 3 stays *Done*)
 and the line under the switch reads **Calendars.ReadWrite is not in the token. That is
 expected if you granted it with Exchange RBAC for Applications; …** — that is expected,
 and the sync goes on. Verify with a person inside the scope: their card says **Last
