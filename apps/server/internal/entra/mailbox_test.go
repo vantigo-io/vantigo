@@ -23,7 +23,13 @@ import (
 // against the fake Graph: the status by the switch and the permission, the
 // account check, Apply's batches and refusals, the calendar and Find.
 
-const vantigoMarker = "String {7b1c5e3a-6f0d-4d5e-9a40-3c7a5e2b9d11} Name VantigoKey"
+const (
+	vantigoMarker   = "String {7b1c5e3a-6f0d-4d5e-9a40-3c7a5e2b9d11} Name VantigoKey"
+	calendarMarker  = "String {7b1c5e3a-6f0d-4d5e-9a40-3c7a5e2b9d11} Name VantigoCalendar"
+	keyPrefix       = "vantigo:" + clientID + ":"
+	calendarMark    = "vantigo:" + clientID
+	otherInstallKey = "vantigo:9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d:"
+)
 
 // mailboxProvider is the module's MailboxCalendar built on the harness's
 // Deps, as Compose builds it.
@@ -162,7 +168,9 @@ func TestMailbox_StatusAndTheConnectionsCalendarSync(t *testing.T) {
 	if result.Status != gen.EntraConnectionTestStatusConnected || !slices.Equal(result.PermissionsMissing, []string{"Calendars.ReadWrite"}) {
 		t.Errorf("the test with the switch on: %+v, want connected missing Calendars.ReadWrite", result)
 	}
-	status(contracts.MailboxCleanup, "permission_missing")
+	// The role not in the token is advisory only — an Exchange RBAC grant
+	// never shows there — so the provider is available all the same.
+	status(contracts.MailboxAvailable, "")
 	calendarSync(gen.PermissionMissing, "", true)
 
 	// Consented: ready, available.
@@ -224,7 +232,7 @@ func TestMailbox_OnlyAnAccountTheModuleManages(t *testing.T) {
 		if err := p.DeleteCalendar(ctx, mailbox, "AAMk"); !errors.Is(err, contracts.ErrMailboxUnknown) {
 			t.Errorf("DeleteCalendar, %s: %v, want ErrMailboxUnknown", name, err)
 		}
-		if _, err := p.Find(ctx, mailbox, ""); !errors.Is(err, contracts.ErrMailboxUnknown) {
+		if _, err := p.Find(ctx, mailbox, "", time.Time{}); !errors.Is(err, contracts.ErrMailboxUnknown) {
 			t.Errorf("Find, %s: %v, want ErrMailboxUnknown", name, err)
 		}
 	}
@@ -269,7 +277,7 @@ func TestMailbox_ApplyInBatchesOfTwenty(t *testing.T) {
 		if r.Err != nil || !ok || r.ChangeKey == "" || r.ChangeKey != e.ChangeKey {
 			t.Fatalf("result %d: %+v (event %+v)", i, r, e)
 		}
-		if e.Properties[vantigoMarker] != fmt.Sprintf("vantigo:appointment:%d", i) || e.Subject != fmt.Sprintf("Event %d", i) ||
+		if e.Properties[vantigoMarker] != fmt.Sprintf(keyPrefix+"appointment:%d", i) || e.Subject != fmt.Sprintf("Event %d", i) ||
 			e.IsReminderOn || e.Start.TimeZone != "UTC" || e.Start.DateTime != start.Add(time.Duration(i)*time.Hour).Format("2006-01-02T15:04:05") {
 			t.Fatalf("event %d: %+v", i, e)
 		}
@@ -379,7 +387,7 @@ func TestMailbox_DeniedAndGone(t *testing.T) {
 		if _, err := p.EnsureCalendar(ctx, c.mailbox, "", "Vantigo"); !errors.Is(err, c.want) {
 			t.Errorf("%s, EnsureCalendar: %v, want %v", name, err, c.want)
 		}
-		if _, err := p.Find(ctx, c.mailbox, ""); !errors.Is(err, c.want) {
+		if _, err := p.Find(ctx, c.mailbox, "", time.Time{}); !errors.Is(err, c.want) {
 			t.Errorf("%s, Find: %v, want %v", name, err, c.want)
 		}
 		if err := p.DeleteCalendar(ctx, c.mailbox, "AAMk"); !errors.Is(err, c.want) {
@@ -491,7 +499,7 @@ func TestMailbox_CleanupTakesDeletesOnly(t *testing.T) {
 	if _, err := p.EnsureCalendar(ctx, mailbox, cal, "Vantigo"); !errors.Is(err, contracts.ErrMailboxUnavailable) {
 		t.Errorf("EnsureCalendar in cleanup: %v, want ErrMailboxUnavailable", err)
 	}
-	if refs, err := p.Find(ctx, mailbox, ""); err != nil || len(refs) != 1 {
+	if refs, err := p.Find(ctx, mailbox, "", time.Time{}); err != nil || len(refs) != 1 {
 		t.Errorf("Find in cleanup: %+v %v, want the one left", refs, err)
 	}
 	if err := p.DeleteCalendar(ctx, mailbox, cal); err != nil {
@@ -502,7 +510,7 @@ func TestMailbox_CleanupTakesDeletesOnly(t *testing.T) {
 	if _, err := p.Apply(ctx, mailbox, "", []contracts.MailboxOp{{Kind: contracts.MailboxOpDelete, EventID: made[0].EventID}}); !errors.Is(err, contracts.ErrMailboxUnavailable) {
 		t.Errorf("Apply while unavailable: %v, want ErrMailboxUnavailable", err)
 	}
-	if _, err := p.Find(ctx, mailbox, ""); !errors.Is(err, contracts.ErrMailboxUnavailable) {
+	if _, err := p.Find(ctx, mailbox, "", time.Time{}); !errors.Is(err, contracts.ErrMailboxUnavailable) {
 		t.Errorf("Find while unavailable: %v, want ErrMailboxUnavailable", err)
 	}
 }
@@ -543,27 +551,30 @@ func TestMailbox_EnsureAndDeleteTheCalendar(t *testing.T) {
 	if err != nil || remade == "" || remade == first {
 		t.Errorf("a known calendar gone: %q %v, want a new one", remade, err)
 	}
-	if cals := g.Calendars(mailbox); len(cals) != 2 || cals[1].ID != remade || cals[1].Name != "Vantigo" {
+	if cals := g.Calendars(mailbox); len(cals) != 2 || cals[1].ID != remade || cals[1].Name != "Vantigo" || cals[1].Properties[calendarMarker] != calendarMark {
 		t.Errorf("the calendars: %+v", cals)
 	}
 }
 
-// Find: in the default calendar the marked events only, across pages; in a
-// secondary calendar every event, "" for one without a key; and the
-// events of a secondary calendar made there through Apply.
+// Find: in either calendar the events carrying this installation's marker
+// only, across pages — never one of the person's own, nor one another
+// installation sharing the tenant wrote — and, with a from, those starting
+// at or after it.
 func TestMailbox_Find(t *testing.T) {
 	ctx := context.Background()
 	h, g, _ := newMailboxHarness(t)
 	p := mailboxProvider(h)
 	mailbox := mailboxUser(t, h, g)
+	start := time.Date(2026, 11, 2, 8, 0, 0, 0, time.UTC)
 
-	made, err := p.Apply(ctx, mailbox, "", creates(150, h.Now()))
+	made, err := p.Apply(ctx, mailbox, "", creates(150, start))
 	if err != nil {
 		t.Fatal(err)
 	}
 	g.AddEvent(mailbox, "", graphtest.Event{Subject: "Dentist"})
 	g.AddEvent(mailbox, "", graphtest.Event{Subject: "Someone else's", Properties: map[string]string{vantigoMarker: "other:1"}})
-	refs, err := p.Find(ctx, mailbox, "")
+	g.AddEvent(mailbox, "", graphtest.Event{Subject: "Another installation's", Properties: map[string]string{vantigoMarker: otherInstallKey + "appointment:1"}})
+	refs, err := p.Find(ctx, mailbox, "", time.Time{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -585,25 +596,140 @@ func TestMailbox_Find(t *testing.T) {
 		t.Errorf("%d pages, want 2 of a hundred", pages)
 	}
 
+	// From the 100th hour on: the last fifty.
+	refs, err = p.Find(ctx, mailbox, "", start.Add(100*time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(refs) != 50 || refs[0].Key != "appointment:100" {
+		t.Errorf("from the 100th hour: %d refs (%+v), want the last 50", len(refs), refs)
+	}
+
 	cal, err := p.EnsureCalendar(ctx, mailbox, "", "Vantigo")
 	if err != nil {
 		t.Fatal(err)
 	}
-	inCal, err := p.Apply(ctx, mailbox, cal, creates(1, h.Now()))
+	inCal, err := p.Apply(ctx, mailbox, cal, creates(1, start))
 	if err != nil || inCal[0].Err != nil {
 		t.Fatalf("a create in the calendar: %+v %v", inCal, err)
 	}
 	if n := len(g.Events(mailbox, cal)); n != 1 {
 		t.Errorf("%d events in the calendar, want 1", n)
 	}
-	foreign := g.AddEvent(mailbox, cal, graphtest.Event{Subject: "Put there by hand"})
-	refs, err = p.Find(ctx, mailbox, cal)
+	g.AddEvent(mailbox, cal, graphtest.Event{Subject: "Put there by hand"})
+	g.AddEvent(mailbox, cal, graphtest.Event{Subject: "Another installation's", Properties: map[string]string{vantigoMarker: otherInstallKey + "appointment:0"}})
+	before := len(g.Calls())
+	refs, err = p.Find(ctx, mailbox, cal, time.Time{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []contracts.MailboxEventRef{{EventID: inCal[0].EventID, Key: "appointment:0"}, {EventID: foreign.ID, Key: ""}}
+	want := []contracts.MailboxEventRef{{EventID: inCal[0].EventID, Key: "appointment:0"}}
 	if !slices.Equal(refs, want) {
 		t.Errorf("the calendar's refs: %+v, want %+v", refs, want)
+	}
+	for _, c := range g.Calls()[before:] {
+		if strings.HasSuffix(c.Path, "/events") && !strings.Contains(c.Query, "startswith") {
+			t.Errorf("the calendar's list is not filtered on the marker: %s", c.Query)
+		}
+	}
+}
+
+// The calendar's own marker (design O4, O8): a calendar of the name that the
+// module did not make is never adopted — the next name is made — and never
+// deleted; a known id carrying no marker is not kept; five names taken by
+// strangers is a failure.
+func TestMailbox_TheCalendarIsAdoptedAndDeletedOnlyWithItsMarker(t *testing.T) {
+	ctx := context.Background()
+	h, g, _ := newMailboxHarness(t)
+	p := mailboxProvider(h)
+	mailbox := mailboxUser(t, h, g)
+
+	persons := g.AddCalendar(mailbox, "Vantigo")
+	g.AddEvent(mailbox, persons.ID, graphtest.Event{Subject: "My own"})
+	others := g.AddCalendar(mailbox, "Vantigo (2)", map[string]string{calendarMarker: "vantigo:9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d"})
+
+	made, err := p.EnsureCalendar(ctx, mailbox, "", "Vantigo")
+	if err != nil || made == persons.ID || made == others.ID {
+		t.Fatalf("EnsureCalendar past strangers' calendars: %q %v", made, err)
+	}
+	var mine graphtest.Calendar
+	for _, c := range g.Calendars(mailbox) {
+		if c.ID == made {
+			mine = c
+		}
+	}
+	if mine.Name != "Vantigo (3)" || mine.Properties[calendarMarker] != calendarMark {
+		t.Errorf("the calendar made: %+v, want Vantigo (3) carrying the marker", mine)
+	}
+	// The one name's create lost its answer: adopted by name and marker.
+	if again, err := p.EnsureCalendar(ctx, mailbox, "", "Vantigo"); err != nil || again != made {
+		t.Errorf("EnsureCalendar again: %q %v, want %q adopted", again, err, made)
+	}
+	// A known id that is the person's own is not kept.
+	if kept, err := p.EnsureCalendar(ctx, mailbox, persons.ID, "Vantigo"); err != nil || kept != made {
+		t.Errorf("EnsureCalendar of the person's calendar: %q %v, want ours %q", kept, err, made)
+	}
+
+	for _, id := range []string{persons.ID, others.ID} {
+		if err := p.DeleteCalendar(ctx, mailbox, id); !errors.Is(err, contracts.ErrCalendarNotOurs) {
+			t.Errorf("DeleteCalendar of a stranger's calendar: %v, want ErrCalendarNotOurs", err)
+		}
+	}
+	for _, c := range g.Calls() {
+		if c.Method == http.MethodDelete && (strings.Contains(c.Path, persons.ID) || strings.Contains(c.Path, others.ID)) {
+			t.Errorf("a stranger's calendar was sent a DELETE: %+v", c)
+		}
+	}
+	if n := len(g.Events(mailbox, persons.ID)); n != 1 {
+		t.Errorf("the person's calendar holds %d events, want its one", n)
+	}
+	if err := p.DeleteCalendar(ctx, mailbox, made); err != nil {
+		t.Errorf("DeleteCalendar of ours: %v", err)
+	}
+
+	// Every name taken by strangers: a failure, no sentinel.
+	for _, name := range []string{"Vantigo (3)", "Vantigo (4)", "Vantigo (5)"} {
+		g.AddCalendar(mailbox, name)
+	}
+	if _, err := p.EnsureCalendar(ctx, mailbox, "", "Vantigo"); err == nil || errors.Is(err, contracts.ErrMailboxUnavailable) {
+		t.Errorf("five names taken: %v, want a failure", err)
+	}
+}
+
+// A $batch's 429 whose Retry-After is a number is read; one longer than
+// thirty seconds is not waited for — the op fails at once, to be retried —
+// and a cancelled context fails the call.
+func TestMailbox_ThrottleWaitsAreBounded(t *testing.T) {
+	ctx := context.Background()
+	h, g, _ := newMailboxHarness(t)
+	p := mailboxProvider(h)
+	mailbox := mailboxUser(t, h, g)
+
+	g.ThrottleBatchFor(1, 2)
+	before := batches(g.Calls())
+	results, err := p.Apply(ctx, mailbox, "", creates(1, h.Now()))
+	if err != nil || results[0].Err != nil {
+		t.Fatalf("a 429 of two seconds as a number: %+v %v, want retried and made", results, err)
+	}
+	if n := batches(g.Calls()) - before; n != 2 {
+		t.Errorf("%d batches, want the batch and its retry", n)
+	}
+
+	g.ThrottleBatchFor(1, 45)
+	before = batches(g.Calls())
+	results, err = p.Apply(ctx, mailbox, "", creates(1, h.Now()))
+	if err != nil || results[0].Err == nil {
+		t.Fatalf("a 429 of 45 seconds: %+v %v, want the op failing", results, err)
+	}
+	if n := batches(g.Calls()) - before; n != 1 {
+		t.Errorf("%d batches, want no retry", n)
+	}
+	g.ThrottleBatchFor(0, 0)
+
+	cancelled, cancel := context.WithCancel(ctx)
+	cancel()
+	if _, err := p.Apply(cancelled, mailbox, "", creates(1, h.Now())); err == nil {
+		t.Error("Apply on a cancelled context: no error")
 	}
 }
 

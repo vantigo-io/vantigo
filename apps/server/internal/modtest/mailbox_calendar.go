@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strconv"
 	"sync"
+	"time"
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 )
@@ -19,13 +20,17 @@ import (
 // calendar's under calendar id "" — and records every call in Calls.
 //
 // Its writes act as a mailbox would: EnsureCalendar keeps a known calendar
-// that still exists and makes a new one otherwise; DeleteCalendar drops a
-// calendar and its events, and a calendar already gone is done; Apply
-// creates an event carrying the op's Key and answers its new id, rewrites
-// or deletes an existing one, and answers Gone for an update or a delete of
-// an event that no longer exists; Find answers the events carrying a key in
-// the default calendar and every event in a secondary one. A mailbox is
-// made on its first use.
+// of the provider's that still exists, adopts one of the provider's by its
+// name, and makes a new one otherwise — a name a foreign calendar holds
+// (PutCalendar) skipped for "<name> (2)" up to "(5)"; DeleteCalendar drops a
+// calendar of the provider's and its events, refuses a foreign one with
+// ErrCalendarNotOurs, and a calendar already gone is done; Apply creates an
+// event carrying the op's Key and answers its new id, rewrites or deletes an
+// existing one, and answers Gone for an update or a delete of an event that
+// no longer exists; Find answers the events carrying a key in any calendar
+// — an event with none is never the provider's — starting at or after its
+// from when that is set (a timed event's StartsAt, an all-day one's
+// StartDate). A mailbox is made on its first use.
 //
 // Its refusals are the contract's: while the status is
 // contracts.MailboxUnavailable every call but Status answers
@@ -34,7 +39,8 @@ import (
 // its result. A mailbox SetUnknown marks answers ErrMailboxUnknown to every
 // call naming it, and SetMailboxError makes every call naming a mailbox
 // answer the error a test chooses (ErrMailboxDenied, ErrMailboxGone, a
-// failure). FailWith makes a method answer an error a test chooses.
+// failure). FailWith makes a method answer an error a test chooses, and
+// FailOps the next ops of Apply each answer one.
 // It is safe for concurrent use: the calendar's worker calls it from its own
 // goroutine while a test reads it.
 type FakeMailboxCalendar struct {
@@ -45,15 +51,19 @@ type FakeMailboxCalendar struct {
 	unknown   map[string]bool
 	refusals  map[string]error // by mailbox: SetMailboxError
 	fail      map[string]error // by method: FailWith
+	failOps   int              // FailOps: the ops still to fail
+	failOpErr error
 	calls     []MailboxCall
 	next      int // the last id handed out
 }
 
 // MailboxCall is one call a FakeMailboxCalendar recorded: the method, the
-// mailbox and the calendar it named, and a copy of the ops Apply was given.
+// mailbox and the calendar it named, a copy of the ops Apply was given, and
+// the from Find was given.
 type MailboxCall struct {
 	Method, Mailbox, CalendarID string
 	Ops                         []contracts.MailboxOp
+	From                        time.Time
 }
 
 // FakeMailboxEvent is one event of the fake's mailbox, as Events answers it.
@@ -63,10 +73,11 @@ type FakeMailboxEvent struct {
 	ChangeKey           string
 }
 
-// fakeMailbox is one mailbox of the fake: its secondary calendars and its
-// events, by id.
+// fakeMailbox is one mailbox of the fake: its secondary calendars, the ones
+// of them the provider did not make, and its events, by id.
 type fakeMailbox struct {
 	calendars map[string]string // id → name
+	foreign   map[string]bool
 	events    map[string]*FakeMailboxEvent
 }
 
@@ -143,6 +154,15 @@ func (f *FakeMailboxCalendar) FailWith(method string, err error) {
 	}
 }
 
+// FailOps makes the next n ops Apply is handed — after any refused for the
+// status — answer err in their results, unsent: a throttled or failed op
+// among others that are done.
+func (f *FakeMailboxCalendar) FailOps(n int, err error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.failOps, f.failOpErr = n, err
+}
+
 // PutEvent places an event in a mailbox's calendar as if someone else had
 // made it — key "" for one carrying no key — and answers its id: what a
 // test's reconcile finds.
@@ -150,6 +170,22 @@ func (f *FakeMailboxCalendar) PutEvent(mailbox, calendarID, key string, event co
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.create(f.mailbox(mailbox), calendarID, key, event)
+}
+
+// PutCalendar places a secondary calendar named name in a mailbox and
+// answers its id: one the provider made (ours), or — ours false — one the
+// person or another installation made, which EnsureCalendar never adopts
+// and DeleteCalendar refuses.
+func (f *FakeMailboxCalendar) PutCalendar(mailbox, name string, ours bool) string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	m := f.mailbox(mailbox)
+	id := f.id("calendar")
+	m.calendars[id] = name
+	if !ours {
+		m.foreign[id] = true
+	}
+	return id
 }
 
 // Calendars answers a mailbox's secondary calendars, id → name.
@@ -204,8 +240,10 @@ func (f *FakeMailboxCalendar) Status(context.Context) (contracts.MailboxStatus, 
 	return f.status, nil
 }
 
-// EnsureCalendar keeps known when the mailbox still holds it, and makes a
-// calendar named name otherwise.
+// EnsureCalendar keeps known when the mailbox still holds it and it is the
+// provider's; otherwise it adopts the provider's calendar named name, or
+// makes one — a name a foreign calendar holds skipped for the next, up to
+// "<name> (5)", then a failure.
 func (f *FakeMailboxCalendar) EnsureCalendar(_ context.Context, mailbox, known, name string) (string, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -213,16 +251,35 @@ func (f *FakeMailboxCalendar) EnsureCalendar(_ context.Context, mailbox, known, 
 		return "", err
 	}
 	m := f.mailbox(mailbox)
-	if _, ok := m.calendars[known]; known != "" && ok {
+	if _, ok := m.calendars[known]; known != "" && ok && !m.foreign[known] {
 		return known, nil
 	}
-	id := f.id("calendar")
-	m.calendars[id] = name
-	return id, nil
+	for n := 1; n <= 5; n++ {
+		want := name
+		if n > 1 {
+			want = name + " (" + strconv.Itoa(n) + ")"
+		}
+		taken := false
+		for _, id := range slices.SortedFunc(maps.Keys(m.calendars), compareIDs) {
+			if m.calendars[id] != want {
+				continue
+			}
+			if !m.foreign[id] {
+				return id, nil
+			}
+			taken = true
+		}
+		if !taken {
+			id := f.id("calendar")
+			m.calendars[id] = want
+			return id, nil
+		}
+	}
+	return "", errors.New("modtest: every name of the calendar is taken by a foreign one")
 }
 
 // DeleteCalendar drops the calendar and its events; one already gone is
-// done.
+// done, a foreign one ErrCalendarNotOurs.
 func (f *FakeMailboxCalendar) DeleteCalendar(_ context.Context, mailbox, calendarID string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -233,6 +290,9 @@ func (f *FakeMailboxCalendar) DeleteCalendar(_ context.Context, mailbox, calenda
 		return errors.New("modtest: the default calendar cannot be deleted")
 	}
 	m := f.mailbox(mailbox)
+	if m.foreign[calendarID] {
+		return contracts.ErrCalendarNotOurs
+	}
 	delete(m.calendars, calendarID)
 	for id, e := range m.events {
 		if e.CalendarID == calendarID {
@@ -259,6 +319,11 @@ func (f *FakeMailboxCalendar) Apply(_ context.Context, mailbox, calendarID strin
 	for i, op := range ops {
 		if cleanup && op.Kind != contracts.MailboxOpDelete {
 			out[i] = contracts.MailboxResult{Err: contracts.ErrMailboxUnavailable}
+			continue
+		}
+		if f.failOps > 0 {
+			f.failOps--
+			out[i] = contracts.MailboxResult{EventID: op.EventID, Err: f.failOpErr}
 			continue
 		}
 		switch op.Kind {
@@ -297,12 +362,13 @@ func (f *FakeMailboxCalendar) Apply(_ context.Context, mailbox, calendarID strin
 	return out, nil
 }
 
-// Find answers the events carrying a key in the default calendar, and every
-// event in a secondary one, ordered by id.
-func (f *FakeMailboxCalendar) Find(_ context.Context, mailbox, calendarID string) ([]contracts.MailboxEventRef, error) {
+// Find answers the events of the calendar carrying a key, starting at or
+// after from when it is set, ordered by id.
+func (f *FakeMailboxCalendar) Find(_ context.Context, mailbox, calendarID string, from time.Time) ([]contracts.MailboxEventRef, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	if err := f.begin("Find", mailbox, calendarID, nil, true); err != nil {
+	f.calls = append(f.calls, MailboxCall{Method: "Find", Mailbox: mailbox, CalendarID: calendarID, From: from})
+	if err := f.refusal("Find", mailbox, true); err != nil {
 		return nil, err
 	}
 	m := f.mailbox(mailbox)
@@ -311,7 +377,14 @@ func (f *FakeMailboxCalendar) Find(_ context.Context, mailbox, calendarID string
 	}
 	var out []contracts.MailboxEventRef
 	for _, e := range m.events {
-		if e.CalendarID != calendarID || (calendarID == "" && e.Key == "") {
+		if e.CalendarID != calendarID || e.Key == "" {
+			continue
+		}
+		start := e.Event.StartsAt
+		if e.Event.AllDay {
+			start = e.Event.StartDate
+		}
+		if !from.IsZero() && start.Before(from) {
 			continue
 		}
 		out = append(out, contracts.MailboxEventRef{EventID: e.ID, Key: e.Key})
@@ -325,6 +398,12 @@ func (f *FakeMailboxCalendar) Find(_ context.Context, mailbox, calendarID string
 // unknown or refused, a FailWith. f.mu is held.
 func (f *FakeMailboxCalendar) begin(method, mailbox, calendarID string, ops []contracts.MailboxOp, cleanupOK bool) error {
 	f.calls = append(f.calls, MailboxCall{Method: method, Mailbox: mailbox, CalendarID: calendarID, Ops: slices.Clone(ops)})
+	return f.refusal(method, mailbox, cleanupOK)
+}
+
+// refusal is the refusal a call of method naming mailbox meets, if any.
+// f.mu is held.
+func (f *FakeMailboxCalendar) refusal(method, mailbox string, cleanupOK bool) error {
 	switch f.status.State {
 	case contracts.MailboxAvailable:
 	case contracts.MailboxCleanup:
@@ -347,7 +426,7 @@ func (f *FakeMailboxCalendar) begin(method, mailbox, calendarID string, ops []co
 func (f *FakeMailboxCalendar) mailbox(id string) *fakeMailbox {
 	m := f.mailboxes[id]
 	if m == nil {
-		m = &fakeMailbox{calendars: map[string]string{}, events: map[string]*FakeMailboxEvent{}}
+		m = &fakeMailbox{calendars: map[string]string{}, foreign: map[string]bool{}, events: map[string]*FakeMailboxEvent{}}
 		f.mailboxes[id] = m
 	}
 	return m

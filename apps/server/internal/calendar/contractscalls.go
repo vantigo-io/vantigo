@@ -303,16 +303,16 @@ func (s *server) mailboxApply(ctx context.Context, mailbox, calendarID string, o
 	return s.deps.MailboxCalendar.Apply(ctx, mailbox, calendarID, ops)
 }
 
-// mailboxFind is the events carrying a key in the mailbox's calendar — in a
-// secondary one, every event in it.
-func (s *server) mailboxFind(ctx context.Context, mailbox, calendarID string) ([]contracts.MailboxEventRef, error) {
+// mailboxFind is the events of the mailbox's calendar carrying this
+// installation's marker, starting at or after from unless it is zero.
+func (s *server) mailboxFind(ctx context.Context, mailbox, calendarID string, from time.Time) ([]contracts.MailboxEventRef, error) {
 	if err := noteContractCall(ctx, "MailboxCalendar.Find"); err != nil {
 		return nil, err
 	}
 	if s.deps.MailboxCalendar == nil {
 		return nil, contracts.ErrMailboxUnavailable
 	}
-	return s.deps.MailboxCalendar.Find(ctx, mailbox, calendarID)
+	return s.deps.MailboxCalendar.Find(ctx, mailbox, calendarID, from)
 }
 
 // workforceDirectoryAccount is the principal's own account in an external

@@ -42,7 +42,7 @@ func TestFakeMailboxCalendar_ApplyAndFind(t *testing.T) {
 	if !res[1].Gone || !res[2].Gone {
 		t.Errorf("the update and delete of a missing event answered %+v, %+v; want Gone", res[1], res[2])
 	}
-	refs, err := f.Find(ctx, "oid-1", "")
+	refs, err := f.Find(ctx, "oid-1", "", time.Time{})
 	if err != nil || !slices.Equal(refs, []contracts.MailboxEventRef{{EventID: created, Key: "appointment:1"}}) {
 		t.Errorf("Find = %v, %v; want the keyed event alone, not %s", refs, err, foreign)
 	}
@@ -65,8 +65,8 @@ func TestFakeMailboxCalendar_ApplyAndFind(t *testing.T) {
 }
 
 // EnsureCalendar keeps a calendar that still exists and makes a new one
-// otherwise; DeleteCalendar drops it with its events, and Find answers every
-// event in a secondary calendar.
+// otherwise; DeleteCalendar drops it with its events, and Find answers the
+// keyed events of a secondary calendar alone.
 func TestFakeMailboxCalendar_Calendars(t *testing.T) {
 	ctx := context.Background()
 	f := NewFakeMailboxCalendar()
@@ -78,8 +78,9 @@ func TestFakeMailboxCalendar_Calendars(t *testing.T) {
 		t.Errorf("EnsureCalendar(known) = %q, %v; want %q kept", again, err, id)
 	}
 	f.PutEvent("oid-1", id, "", *mailboxEvent("Untagged"))
-	if refs, err := f.Find(ctx, "oid-1", id); err != nil || len(refs) != 1 {
-		t.Errorf("Find in the secondary calendar = %v, %v; want its one event", refs, err)
+	keyed := f.PutEvent("oid-1", id, "appointment:1", *mailboxEvent("Tagged"))
+	if refs, err := f.Find(ctx, "oid-1", id, time.Time{}); err != nil || !slices.Equal(refs, []contracts.MailboxEventRef{{EventID: keyed, Key: "appointment:1"}}) {
+		t.Errorf("Find in the secondary calendar = %v, %v; want its keyed event alone", refs, err)
 	}
 	if err := f.DeleteCalendar(ctx, "oid-1", id); err != nil {
 		t.Fatalf("DeleteCalendar: %v", err)
@@ -129,7 +130,7 @@ func TestFakeMailboxCalendar_Refusals(t *testing.T) {
 
 	f.SetStatus(contracts.MailboxAvailable, "")
 	f.SetUnknown("oid-2", true)
-	if _, err := f.Find(ctx, "oid-2", ""); !errors.Is(err, contracts.ErrMailboxUnknown) {
+	if _, err := f.Find(ctx, "oid-2", "", time.Time{}); !errors.Is(err, contracts.ErrMailboxUnknown) {
 		t.Errorf("Find of an unknown mailbox = %v, want ErrMailboxUnknown", err)
 	}
 	f.SetMailboxError("oid-3", contracts.ErrMailboxDenied)
@@ -139,5 +140,39 @@ func TestFakeMailboxCalendar_Refusals(t *testing.T) {
 	f.SetMailboxError("oid-3", nil)
 	if _, err := f.Apply(ctx, "oid-3", "", nil); err != nil {
 		t.Errorf("Apply after the refusal was cleared = %v", err)
+	}
+}
+
+// A foreign calendar (PutCalendar ours false) is never adopted — the next
+// name is made — and DeleteCalendar refuses it with ErrCalendarNotOurs; Find
+// with a from answers the events starting at or after it.
+func TestFakeMailboxCalendar_ForeignCalendarsAndFrom(t *testing.T) {
+	ctx := context.Background()
+	f := NewFakeMailboxCalendar()
+	theirs := f.PutCalendar("oid-1", "Vantigo", false)
+	ours, err := f.EnsureCalendar(ctx, "oid-1", "", "Vantigo")
+	if err != nil || ours == theirs || f.Calendars("oid-1")[ours] != "Vantigo (2)" {
+		t.Fatalf("EnsureCalendar past a foreign one = %q, %v; calendars %v", ours, err, f.Calendars("oid-1"))
+	}
+	if kept, err := f.EnsureCalendar(ctx, "oid-1", theirs, "Vantigo"); err != nil || kept != ours {
+		t.Errorf("EnsureCalendar(known foreign) = %q, %v; want ours %q", kept, err, ours)
+	}
+	if err := f.DeleteCalendar(ctx, "oid-1", theirs); !errors.Is(err, contracts.ErrCalendarNotOurs) {
+		t.Errorf("DeleteCalendar(foreign) = %v, want ErrCalendarNotOurs", err)
+	}
+	if _, ok := f.Calendars("oid-1")[theirs]; !ok {
+		t.Error("the foreign calendar was deleted")
+	}
+
+	early := f.PutEvent("oid-1", "", "appointment:1", *mailboxEvent("Early"))
+	late := *mailboxEvent("Late")
+	late.StartsAt, late.EndsAt = Start.Add(48*time.Hour), Start.Add(49*time.Hour)
+	lateID := f.PutEvent("oid-1", "", "appointment:2", late)
+	refs, err := f.Find(ctx, "oid-1", "", Start.Add(time.Hour))
+	if err != nil || !slices.Equal(refs, []contracts.MailboxEventRef{{EventID: lateID, Key: "appointment:2"}}) {
+		t.Errorf("Find from an hour on = %v, %v; want the late one, not %s", refs, err, early)
+	}
+	if calls := f.Calls(); !calls[len(calls)-1].From.Equal(Start.Add(time.Hour)) {
+		t.Errorf("the call recorded From %v", calls[len(calls)-1].From)
 	}
 }

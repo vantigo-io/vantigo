@@ -664,7 +664,7 @@ type CalendarMeta struct {
 	Today openapi_types.Date `json:"today"`
 }
 
-// CalendarProblem An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: revision_mismatch (409: the If-Match revision has moved on), occurrence_not_in_series (409: the series' rule never produces that date), appointment_cancelled (409: the appointment is cancelled and nothing of it changes), invitations_unavailable (503: the mail driver is not smtp, so no invitation can be sent), subscription_limit (409: the caller has ten subscriptions already) and mailbox_sync_unavailable (409: the Outlook sync cannot run now; detail carries the availability — switch_off, no_provider, unavailable, permission_missing or no_account). errors carries the field errors of a 400, keyed by the request's camelCase field (a nested one as recurrence.rule, an element of a list as attendees[0]). A request the server could not decode answers a bare 400 with neither.
+// CalendarProblem An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: revision_mismatch (409: the If-Match revision has moved on), occurrence_not_in_series (409: the series' rule never produces that date), appointment_cancelled (409: the appointment is cancelled and nothing of it changes), invitations_unavailable (503: the mail driver is not smtp, so no invitation can be sent), subscription_limit (409: the caller has ten subscriptions already), mailbox_sync_unavailable (409: the Outlook sync cannot run now; detail carries the availability — switch_off, no_provider, unavailable or no_account) and mailbox_sync_off (409: Sync now of an Outlook sync that is turned off). errors carries the field errors of a 400, keyed by the request's camelCase field (a nested one as recurrence.rule, an element of a list as attendees[0]). A request the server could not decode answers a bare 400 with neither.
 type CalendarProblem struct {
 	Code     *string              `json:"code,omitempty"`
 	Detail   *string              `json:"detail,omitempty"`
@@ -760,7 +760,7 @@ type FeedAddresses struct {
 // FeedVariant A calendar address's variant (calendar feed design D3): full is the person's calendar as they see it — never a colleague's appointment, a cancelled or a declined one, a subscription's item or a public holiday; busy is its busy spans and nothing else, each titled Busy.
 type FeedVariant string
 
-// MailboxSync The caller's Outlook sync (calendar Outlook sync design O5): their setting, the worker's state, and whether it can run. availability is available, or why not — switch_off (an Owner has not turned on Calendar sync in the Entra module), no_provider (no enabled module writes mailboxes), unavailable (the provider's connection is not working), permission_missing (the connection lacks the calendar permission) or no_account (the caller has no account in the directory that Staff links to them). availableKinds are the kinds the caller may choose: the appointment kind and the kinds the calendar sources declare today. state is pending (on, not yet synced), active, stopping (the copies are being removed), off, unavailable or failed; error is the last refusal's code, absent after a sync that worked. A caller who never turned it on is answered the defaults at revision 0.
+// MailboxSync The caller's Outlook sync (calendar Outlook sync design O5): their setting, the worker's state, and whether it can run. availability is available, or why not — switch_off (an Owner has not turned on Calendar sync in the Entra module), no_provider (no enabled module writes mailboxes), unavailable (the provider's connection is not working), permission_missing (reserved and no longer answered: the calendar permission may be granted with Exchange RBAC for Applications, which no token shows, so a mailbox outside the grant is the sync's mailbox_denied error instead) or no_account (the caller has no account in the directory that Staff links to them). availableKinds are the kinds the caller may choose: the appointment kind and the kinds the calendar sources declare today. state is pending (on, not yet synced), active, stopping (the copies are being removed), off, unavailable or failed; error is the last refusal's code, absent after a sync that worked. A caller who never turned it on is answered the defaults at revision 0.
 type MailboxSync struct {
 	Availability   MailboxSyncAvailability `json:"availability"`
 	AvailableKinds []MailboxSyncKind       `json:"availableKinds"`
@@ -3232,6 +3232,30 @@ func (response PutCalendarMailboxSync409ApplicationProblemPlusJSONResponse) Visi
 	}
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutCalendarMailboxSync429ResponseHeaders struct {
+	RetryAfter *string
+}
+
+type PutCalendarMailboxSync429JSONResponse struct {
+	Body    externalRef0.AuthErrorResponse
+	Headers PutCalendarMailboxSync429ResponseHeaders
+}
+
+func (response PutCalendarMailboxSync429JSONResponse) VisitPutCalendarMailboxSyncResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	w.WriteHeader(429)
 	_, err := buf.WriteTo(w)
 	return err
 }

@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -42,8 +43,10 @@ import (
 // expenses.claim busy, every other all-day item free and timed item busy. A
 // private appointment is marked private. A point item (its end its start)
 // lasts 30 minutes. The time zone is the business zone's name. At most 1500
-// events: past it the farthest projected items are left out (the feed's
-// order), never an appointment.
+// events, a hard cap: past it the farthest projected items are left out
+// first (the feed's order), and only when the appointments alone are more
+// than that the farthest of their occurrences from today — the cut logged by
+// its counts alone.
 
 const (
 	// mailboxDaysBack and mailboxDaysAhead are the window either side of
@@ -85,7 +88,8 @@ type mailboxPush struct {
 
 // mailboxDesired is the person's desired set in p's window, appointments
 // first, then the projected items nearest today first — cut to
-// mailboxMaxEvents by leaving out the farthest projected items. It reads the
+// mailboxMaxEvents by leaving out the farthest projected items, then, when
+// the appointments alone are over it, the farthest occurrences. It reads the
 // module's pool and the sources, never inside a transaction.
 func (s *server) mailboxDesired(ctx context.Context, p mailboxPush) ([]mailboxItem, error) {
 	chosen := map[string]bool{}
@@ -98,11 +102,17 @@ func (s *server) mailboxDesired(ctx context.Context, p mailboxPush) ([]mailboxIt
 		if err != nil {
 			return nil, err
 		}
+		if len(appts) > mailboxMaxEvents {
+			nearestFirst(appts, p.today, p.w.loc)
+			s.deps.Logger.InfoContext(ctx, "calendar: the Outlook sync was over its limit; the farthest appointment occurrences were left out",
+				"user_id", p.userID.String(), "dropped", len(appts)-mailboxMaxEvents, "kept", mailboxMaxEvents)
+			appts = appts[:mailboxMaxEvents]
+		}
 		out = append(out, appts...)
 	}
 	delete(chosen, appointmentKind)
 	delete(chosen, subscriptionKind)
-	if len(chosen) == 0 {
+	if len(chosen) == 0 || len(out) >= mailboxMaxEvents {
 		return out, nil
 	}
 	projected, err := s.sourceItemsIn(contracts.AsUser(withoutRequest{ctx}, p.userID), p.userID, p.w, chosen)
@@ -123,6 +133,27 @@ func (s *server) mailboxDesired(ctx context.Context, p mailboxPush) ([]mailboxIt
 		out = append(out, item)
 	}
 	return out, nil
+}
+
+// nearestFirst orders copies by how far they lie from today in loc — one
+// that touches today first, then the nearest either side — keeping the
+// order of those as near (byDistance's rule, on the copy's own span).
+func nearestFirst(list []mailboxItem, today time.Time, loc *time.Location) {
+	dayStart, dayEnd := wallClock(today, loc), wallClock(addDays(today, 1), loc)
+	distance := func(it mailboxItem) time.Duration {
+		start, end := it.event.StartsAt, it.event.EndsAt
+		if it.event.AllDay {
+			start, end = wallClock(civil(it.event.StartDate), loc), wallClock(addDays(civil(it.event.EndDate), 1), loc)
+		}
+		switch {
+		case !end.After(dayStart):
+			return dayStart.Sub(end)
+		case !start.Before(dayEnd):
+			return start.Sub(dayEnd)
+		}
+		return 0
+	}
+	sort.SliceStable(list, func(i, j int) bool { return distance(list[i]) < distance(list[j]) })
 }
 
 // mailboxAppointments is every occurrence in the window of the person's

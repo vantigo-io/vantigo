@@ -220,7 +220,7 @@ export const entraCatalog = {
       "Needs the Calendars.ReadWrite application permission. You can limit it to some mailboxes with Exchange RBAC for Applications.",
     calendarSyncStatus_ready: "Ready",
     calendarSyncStatus_permission_missing:
-      "Add Calendars.ReadWrite, grant admin consent and test the connection again.",
+      "Calendars.ReadWrite is not in the token. That is expected if you granted it with Exchange RBAC for Applications; otherwise add it, grant admin consent and test again.",
     calendarSyncStatus_unavailable: "Waiting for the connection",
     saveSettings: "Save the account rules",
     settingsSaved: "Account rules saved",
@@ -587,7 +587,7 @@ export const entraCatalog = {
       "Krever applikasjonstillatelsen Calendars.ReadWrite. Du kan begrense den til enkelte postbokser med Exchange RBAC for Applications.",
     calendarSyncStatus_ready: "Klar",
     calendarSyncStatus_permission_missing:
-      "Legg til Calendars.ReadWrite, gi administratorsamtykke og test tilkoblingen på nytt.",
+      "Calendars.ReadWrite er ikke i tokenet. Det er som ventet hvis du ga den med Exchange RBAC for Applications; ellers legg den til, gi administratorsamtykke og test på nytt.",
     calendarSyncStatus_unavailable: "Venter på tilkoblingen",
     saveSettings: "Lagre kontoreglene",
     settingsSaved: "Kontoreglene er lagret",

@@ -42,13 +42,20 @@ type MailboxCalendar interface {
 	// provider's own state and never the network.
 	Status(ctx context.Context) (MailboxStatus, error)
 
-	// EnsureCalendar answers the id of the calendar named name that the
-	// provider made in mailbox: known when it still exists, else a new one.
-	// Refused under MailboxCleanup.
+	// EnsureCalendar answers the id of a calendar the provider made in
+	// mailbox, carrying its own marker (calendar Outlook sync design O4):
+	// known when it still exists and carries the marker, else one named name
+	// that does — made anew, or adopted when the mailbox already holds a
+	// calendar of that name carrying this installation's marker. A calendar
+	// of the name that is not the provider's is never adopted: the next name
+	// is tried ("Vantigo (2)", up to "(5)"), then the call fails. Refused
+	// under MailboxCleanup.
 	EnsureCalendar(ctx context.Context, mailbox, known, name string) (string, error)
-	// DeleteCalendar deletes the calendar and every event in it. Idempotent:
-	// a calendar already gone answers nil. Allowed under MailboxCleanup, so a
-	// person's copies can still be removed.
+	// DeleteCalendar deletes the calendar and every event in it — only a
+	// calendar carrying this installation's marker: any other answers
+	// ErrCalendarNotOurs and is left whole, so a person's own calendar is
+	// never deleted. Idempotent: a calendar already gone answers nil. Allowed
+	// under MailboxCleanup, so a person's copies can still be removed.
 	DeleteCalendar(ctx context.Context, mailbox, calendarID string) error
 
 	// Apply runs ops against the calendar — calendarID "" is the mailbox's
@@ -60,10 +67,14 @@ type MailboxCalendar interface {
 	// deletes are taken: every other op answers ErrMailboxUnavailable.
 	Apply(ctx context.Context, mailbox, calendarID string, ops []MailboxOp) ([]MailboxResult, error)
 
-	// Find answers the events carrying a key — in a secondary calendar,
-	// every event in it — bounded at 5000: what the calendar reconciles its
-	// map against.
-	Find(ctx context.Context, mailbox, calendarID string) ([]MailboxEventRef, error)
+	// Find answers the events of the calendar — calendarID "" the default
+	// one — that carry this installation's marker, each with its key, and no
+	// other: an event of the person's own, or one another installation
+	// sharing the tenant wrote, is never answered. A from that is not zero
+	// answers only the events that start at or after it; zero is no bound.
+	// Bounded at 5000: what the calendar reconciles its map against, and
+	// what its clean-up deletes.
+	Find(ctx context.Context, mailbox, calendarID string, from time.Time) ([]MailboxEventRef, error)
 }
 
 // The states of MailboxStatus.State.
@@ -172,4 +183,8 @@ var (
 	// ErrMailboxGone: the directory has no such user, or the user has no
 	// mailbox.
 	ErrMailboxGone = errors.New("contracts: the mailbox is gone")
+	// ErrCalendarNotOurs: DeleteCalendar was asked to delete a calendar that
+	// does not carry the provider's marker — one the person, or another
+	// installation, made — so it deleted nothing (design O8).
+	ErrCalendarNotOurs = errors.New("contracts: the calendar is not one the provider made")
 )

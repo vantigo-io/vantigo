@@ -110,9 +110,16 @@ func TestMailboxSync_GetAnswersTheDefaultsAndWhyItCannotRun(t *testing.T) {
 	}{
 		{name: "available", state: contracts.MailboxAvailable, want: gen.MailboxSyncAvailabilityAvailable},
 		{name: "the switch off", state: contracts.MailboxCleanup, reason: "switch_off", want: gen.MailboxSyncAvailabilitySwitchOff},
-		{name: "the permission missing", state: contracts.MailboxCleanup, reason: "permission_missing", want: gen.MailboxSyncAvailabilityPermissionMissing},
+		// The switch off with no credential working is unavailable to the
+		// provider, and switch_off to the person all the same.
+		{name: "the switch off, nothing working", state: contracts.MailboxUnavailable, reason: "switch_off", want: gen.MailboxSyncAvailabilitySwitchOff},
+		// permission_missing is never answered any more: a cleanup of
+		// another reason is unavailable.
+		{name: "a cleanup of another reason", state: contracts.MailboxCleanup, reason: "permission_missing", want: gen.MailboxSyncAvailabilityUnavailable},
 		{name: "the connection not working", state: contracts.MailboxUnavailable, reason: "not_connected", want: gen.MailboxSyncAvailabilityUnavailable},
 		{name: "no account", state: contracts.MailboxAvailable, account: &contracts.DirectoryAccount{}, want: gen.MailboxSyncAvailabilityNoAccount},
+		{name: "a disabled account", state: contracts.MailboxAvailable,
+			account: &contracts.DirectoryAccount{Provider: "entra", ExternalID: "oid-leaver", Enabled: false}, want: gen.MailboxSyncAvailabilityNoAccount},
 		{name: "another provider's account", state: contracts.MailboxAvailable,
 			account: &contracts.DirectoryAccount{Provider: "google", ExternalID: "g-1", Enabled: true}, want: gen.MailboxSyncAvailabilityNoAccount},
 	} {
@@ -230,10 +237,8 @@ func TestMailboxSync_RunMakesTheSyncDueAtOnce(t *testing.T) {
 	t.Parallel()
 	r := newMailboxRig(t)
 	c, id, _ := r.person(t)
-	p := refused(t, c.Do(http.MethodPost, mailboxSyncRunPath, nil), http.StatusConflict, "mailbox_sync_unavailable")
-	if p.Detail != "off" {
-		t.Errorf("a sync never turned on: detail %q", p.Detail)
-	}
+	// A sync that is off is its own code, not an availability.
+	refused(t, c.Do(http.MethodPost, mailboxSyncRunPath, nil), http.StatusConflict, "mailbox_sync_off")
 	on := turnOn(t, c, "default", "full", "calendar.appointment")
 	r.Exec(t, `UPDATE calendar.mailbox_sync SET next_sync_at = $2 WHERE user_id = $1`, id, r.Now().Add(time.Hour))
 	var got gen.MailboxSync
@@ -244,8 +249,8 @@ func TestMailboxSync_RunMakesTheSyncDueAtOnce(t *testing.T) {
 	if next := modtest.One[time.Time](t, r.Harness, `SELECT next_sync_at FROM calendar.mailbox_sync WHERE user_id = $1`, id); !next.Equal(r.Now()) {
 		t.Errorf("next_sync_at = %v, want now %v", next, r.Now())
 	}
-	r.box.SetStatus(contracts.MailboxCleanup, "permission_missing")
-	if p := refused(t, c.Do(http.MethodPost, mailboxSyncRunPath, nil), http.StatusConflict, "mailbox_sync_unavailable"); p.Detail != "permission_missing" {
+	r.box.SetStatus(contracts.MailboxCleanup, "switch_off")
+	if p := refused(t, c.Do(http.MethodPost, mailboxSyncRunPath, nil), http.StatusConflict, "mailbox_sync_unavailable"); p.Detail != "switch_off" {
 		t.Errorf("detail = %q", p.Detail)
 	}
 }
@@ -304,5 +309,20 @@ func TestMailboxSyncWorker_SkipsTheCycleWhileTheLeaseIsHeldElsewhere(t *testing.
 	}
 	if ran, _, err := w.RunCycle(context.Background()); !ran || err != nil {
 		t.Errorf("with the lease free the cycle ran %v, %v", ran, err)
+	}
+}
+
+// The PUT is rate limited: ten writes per client in ten minutes
+// (calendar-mailbox-sync-write), each one making a sync due.
+func TestMailboxSync_TheEleventhWriteInTenMinutesIs429(t *testing.T) {
+	t.Parallel()
+	r := newMailboxRig(t)
+	c, _, _ := r.person(t)
+	revision := getSync(t, c).Revision
+	for i := range 10 {
+		revision = putSync(t, c, revision, syncBody(i%2 == 0, "default", "full", "calendar.appointment")).Revision
+	}
+	if res := c.Do(http.MethodPut, mailboxSyncPath, syncBody(true, "default", "full"), ifMatch(revision)); res.Status != http.StatusTooManyRequests {
+		t.Errorf("the 11th write = %d, want 429", res.Status)
 	}
 }

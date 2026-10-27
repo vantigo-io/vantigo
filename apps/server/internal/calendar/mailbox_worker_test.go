@@ -14,6 +14,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/vantigo-io/vantigo/server/internal/calendar"
+	"github.com/vantigo-io/vantigo/server/internal/calendar/gen"
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/modtest"
 )
@@ -312,10 +313,12 @@ func TestMailboxSyncWorker_TheReconcileAdoptsAndDropsDuplicates(t *testing.T) {
 	// Written before: the copy (whose create's answer was lost) and a
 	// duplicate of it, an event of the person's own and a copy of something
 	// no longer wanted.
-	adopted := r.box.PutEvent(mb, "", key(a.Id), contracts.MailboxEvent{Subject: "old"})
-	duplicate := r.box.PutEvent(mb, "", key(a.Id), contracts.MailboxEvent{Subject: "old"})
-	own := r.box.PutEvent(mb, "", "", contracts.MailboxEvent{Subject: "Mine"})
-	gone := r.box.PutEvent(mb, "", "appointment:999999", contracts.MailboxEvent{Subject: "Past"})
+	starts := at(t, oslo, "2026-09-14T09:00")
+	old := contracts.MailboxEvent{Subject: "old", StartsAt: starts, EndsAt: starts.Add(time.Hour)}
+	adopted := r.box.PutEvent(mb, "", key(a.Id), old)
+	duplicate := r.box.PutEvent(mb, "", key(a.Id), old)
+	own := r.box.PutEvent(mb, "", "", contracts.MailboxEvent{Subject: "Mine", StartsAt: starts, EndsAt: starts.Add(time.Hour)})
+	gone := r.box.PutEvent(mb, "", "appointment:999999", contracts.MailboxEvent{Subject: "Past", StartsAt: starts, EndsAt: starts.Add(time.Hour)})
 	turnOn(t, c, "default", "full", "calendar.appointment")
 	mailboxCycle(t, r)
 	events := map[string]string{}
@@ -486,8 +489,14 @@ func TestMailboxSyncWorker_TheSwitchTurnedOffOnlyDeletes(t *testing.T) {
 			t.Errorf("under cleanup the worker applied %+v", op)
 		}
 	}
-	if len(calls(r, before, "Find")) != 0 || len(calls(r, before, "EnsureCalendar")) != 0 {
-		t.Error("under cleanup the worker asked for more than deletes")
+	if len(calls(r, before, "EnsureCalendar")) != 0 {
+		t.Error("under cleanup the worker asked for a calendar")
+	}
+	// The clean-up lists every copy, whatever its date: no bound.
+	for _, f := range calls(r, before, "Find") {
+		if !f.From.IsZero() {
+			t.Errorf("the clean-up's Find was bounded from %v", f.From)
+		}
 	}
 	if len(r.box.Events(mb, "")) != 0 {
 		t.Error("the copies were not removed")
@@ -613,5 +622,221 @@ func TestMailboxSyncWorker_BusyDetailTitlesInThePersonsLanguage(t *testing.T) {
 	mailboxCycle(t, r)
 	if ev := byKey(r, mb, "")[key(a.Id)].Event; ev.Subject != "Lønnssamtale" || !strings.Contains(ev.Body, "Holdes av Vantigo — endre det der:") {
 		t.Errorf("a full copy = %+v", ev)
+	}
+}
+
+// A calendar the provider did not make is never deleted (design O8): the
+// clean-up deletes this installation's copies in it, leaves the person's own
+// events, and forgets the calendar. And a Vantigo calendar of the person's
+// own is passed over for the next name.
+func TestMailboxSyncWorker_ACalendarNotOursIsNeverDeleted(t *testing.T) {
+	t.Parallel()
+	r := newMailboxRig(t)
+	c, me, mb := r.person(t)
+	theirs := r.box.PutCalendar(mb, "Vantigo", false)
+	create(t, c, timed(t, "Plan", oslo, "2026-09-14T09:00", "2026-09-14T10:00"))
+	on := turnOn(t, c, "own", "full", "calendar.appointment")
+	mailboxCycle(t, r)
+	cals := r.box.Calendars(mb)
+	if len(cals) != 2 || len(r.box.Events(mb, theirs)) != 0 {
+		t.Fatalf("calendars = %v; the copy went to the person's own calendar", cals)
+	}
+
+	// The row comes to name the person's own calendar, holding a copy of
+	// ours and one of theirs.
+	r.Exec(t, `UPDATE calendar.mailbox_sync SET calendar_id = $2 WHERE user_id = $1`, me, theirs)
+	starts := at(t, oslo, "2026-09-20T09:00")
+	r.box.PutEvent(mb, theirs, "appointment:424242", contracts.MailboxEvent{Subject: "A copy", StartsAt: starts, EndsAt: starts.Add(time.Hour)})
+	own := r.box.PutEvent(mb, theirs, "", contracts.MailboxEvent{Subject: "Mine", StartsAt: starts, EndsAt: starts.Add(time.Hour)})
+	putSync(t, c, on.Revision, syncBody(false, "own", "full", "calendar.appointment"))
+	mailboxCycle(t, r)
+	if _, ok := r.box.Calendars(mb)[theirs]; !ok {
+		t.Fatal("the person's calendar was deleted")
+	}
+	if e := r.box.Events(mb, theirs); len(e) != 1 || e[0].ID != own {
+		t.Errorf("the person's calendar holds %+v, want their own event alone", e)
+	}
+	if row := readSyncRow(t, r, me); row.state != "off" {
+		t.Errorf("the row = %+v, want off", row)
+	}
+	if id := modtest.One[*string](t, r.Harness, `SELECT calendar_id FROM calendar.mailbox_sync WHERE user_id = $1`, me); id != nil {
+		t.Errorf("calendar_id = %q, want forgotten", *id)
+	}
+}
+
+// A clean-up the mailbox refuses for now — denied, the provider unusable —
+// keeps the map and the clean-up owed, backing off, until it can be done; a
+// mailbox gone is forgotten (design O8).
+func TestMailboxSyncWorker_ACleanUpRefusedForNowStaysOwed(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name string
+		err  error
+		code string
+	}{
+		{"denied", contracts.ErrMailboxDenied, "mailbox_denied"},
+		{"the provider unusable", contracts.ErrMailboxUnavailable, "unavailable"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			r := newMailboxRig(t)
+			c, me, mb := r.person(t)
+			create(t, c, timed(t, "Plan", oslo, "2026-09-14T09:00", "2026-09-14T10:00"))
+			on := turnOn(t, c, "default", "full", "calendar.appointment")
+			mailboxCycle(t, r)
+			r.box.SetMailboxError(mb, tc.err)
+			putSync(t, c, on.Revision, syncBody(false, "default", "full", "calendar.appointment"))
+			mailboxCycle(t, r)
+			row := readSyncRow(t, r, me)
+			if row.state != "stopping" || row.errCode == nil || *row.errCode != tc.code || row.attempts != 1 ||
+				row.next == nil || !row.next.Equal(r.Now().Add(time.Minute)) {
+				t.Errorf("the row = %+v, want stopping, %s, in a minute", row, tc.code)
+			}
+			if mapped(t, r, me) != 1 || len(r.box.Events(mb, "")) != 1 {
+				t.Errorf("mapped %d, events %d: want the map and the copy kept", mapped(t, r, me), len(r.box.Events(mb, "")))
+			}
+			r.box.SetMailboxError(mb, nil)
+			r.Advance(time.Minute)
+			mailboxCycle(t, r)
+			if len(r.box.Events(mb, "")) != 0 || mapped(t, r, me) != 0 || readSyncRow(t, r, me).state != "off" {
+				t.Errorf("after the retry: events %d, mapped %d, state %s", len(r.box.Events(mb, "")), mapped(t, r, me), readSyncRow(t, r, me).state)
+			}
+		})
+	}
+	t.Run("gone", func(t *testing.T) {
+		t.Parallel()
+		r := newMailboxRig(t)
+		c, me, mb := r.person(t)
+		create(t, c, timed(t, "Plan", oslo, "2026-09-14T09:00", "2026-09-14T10:00"))
+		on := turnOn(t, c, "default", "full", "calendar.appointment")
+		mailboxCycle(t, r)
+		r.box.SetMailboxError(mb, contracts.ErrMailboxGone)
+		putSync(t, c, on.Revision, syncBody(false, "default", "full", "calendar.appointment"))
+		mailboxCycle(t, r)
+		if row := readSyncRow(t, r, me); row.state != "off" || mapped(t, r, me) != 0 {
+			t.Errorf("the row = %+v, mapped %d: want off and forgotten", row, mapped(t, r, me))
+		}
+		if strings.Contains(r.Logs(), mb) {
+			t.Error("the mailbox was logged")
+		}
+	})
+}
+
+// The clean-up deletes every copy this installation wrote, those slid before
+// the window too (design O8); the reconcile asks only from the window's
+// first instant.
+func TestMailboxSyncWorker_TheCleanUpDeletesCopiesBeforeTheWindow(t *testing.T) {
+	t.Parallel()
+	r := newMailboxRig(t)
+	c, me, mb := r.person(t, "staff:access")
+	turnOn(t, c, "default", "full", "staff.absence")
+	day := time.Date(2026, 9, 14, 0, 0, 0, 0, time.UTC)
+	r.sources.staff.give(me, contracts.CalendarItem{Kind: "staff.absence", ID: "1", Title: "Off", AllDay: true, StartDate: day, EndDate: day})
+	mailboxCycle(t, r)
+	if f := calls(r, 0, "Find"); len(f) != 1 || !f[0].From.Equal(at(t, oslo, "2026-08-13T00:00")) {
+		t.Errorf("the reconcile's Find = %+v, want from the window's first instant", f)
+	}
+	r.sources.staff.give(me)
+	r.Advance(40 * 24 * time.Hour)
+	mailboxCycle(t, r)
+	if len(r.box.Events(mb, "")) != 1 || mapped(t, r, me) != 0 {
+		t.Fatalf("events %d, mapped %d: want the past copy kept and forgotten", len(r.box.Events(mb, "")), mapped(t, r, me))
+	}
+	// Turned off (as the PUT does; the session has long expired).
+	r.Exec(t, `UPDATE calendar.mailbox_sync SET enabled = false, state = 'stopping', next_sync_at = NULL WHERE user_id = $1`, me)
+	mailboxCycle(t, r)
+	if n := len(r.box.Events(mb, "")); n != 0 {
+		t.Errorf("%d copies left after turning off, want none", n)
+	}
+}
+
+// A disabled directory account — a leaver's — is no account: the copies are
+// cleaned up, the row unavailable no_account (design O3).
+func TestMailboxSyncWorker_ADisabledAccountIsNoAccount(t *testing.T) {
+	t.Parallel()
+	r := newMailboxRig(t)
+	c, me, mb := r.person(t)
+	create(t, c, timed(t, "Plan", oslo, "2026-09-14T09:00", "2026-09-14T10:00"))
+	turnOn(t, c, "default", "full", "calendar.appointment")
+	mailboxCycle(t, r)
+	r.staff.set(me, &contracts.DirectoryAccount{Provider: "entra", ExternalID: mb, Enabled: false})
+	r.Advance(15 * time.Minute)
+	mailboxCycle(t, r)
+	if len(r.box.Events(mb, "")) != 0 || mapped(t, r, me) != 0 {
+		t.Errorf("events %d, mapped %d", len(r.box.Events(mb, "")), mapped(t, r, me))
+	}
+	if row := readSyncRow(t, r, me); row.state != "unavailable" || row.errCode == nil || *row.errCode != "no_account" {
+		t.Errorf("the row = %+v, want unavailable no_account", row)
+	}
+}
+
+// The first op that fails stops the person's sync after its slice: no
+// further slice is sent, the done ones are mapped, and the rest follow on
+// the retry. The log names the code, never the error's words.
+func TestMailboxSyncWorker_AFailedOpStopsTheSlices(t *testing.T) {
+	t.Parallel()
+	r := newMailboxRig(t)
+	c, me, mb := r.person(t, "time:access")
+	var entries []contracts.CalendarItem
+	start := at(t, oslo, "2026-09-14T08:00")
+	for i := range 250 {
+		s := start.Add(time.Duration(i) * 2 * time.Hour)
+		entries = append(entries, contracts.CalendarItem{Kind: "time.entry", ID: strconv.Itoa(i), Title: "Work", StartsAt: s, EndsAt: s.Add(time.Hour)})
+	}
+	r.sources.time.give(me, entries...)
+	turnOn(t, c, "default", "full", "time.entry")
+	r.box.FailOps(1, errors.New("graph: /users/"+mb+"/events throttled"))
+	mailboxCycle(t, r)
+	if n := len(calls(r, 0, "Apply")); n != 1 {
+		t.Errorf("%d slices sent, want the first alone", n)
+	}
+	if n := mapped(t, r, me); n != 99 {
+		t.Errorf("mapped %d, want the 99 done", n)
+	}
+	row := readSyncRow(t, r, me)
+	if row.attempts != 1 || row.errCode == nil || *row.errCode != "failed" || !row.reconcile {
+		t.Errorf("the row = %+v, want a failure that reconciles next", row)
+	}
+	if strings.Contains(r.Logs(), mb) {
+		t.Error("the error's words, with the mailbox's path, were logged")
+	}
+	r.Advance(time.Minute)
+	mailboxCycle(t, r)
+	if n := len(r.box.Events(mb, "")); n != 250 {
+		t.Errorf("%d copies after the retry, want 250", n)
+	}
+}
+
+// The cap is hard: the appointments' occurrences alone over 1500 lose the
+// farthest from today, and no projected item is written.
+func TestMailboxSyncWorker_TheCapTrimsAppointmentsToo(t *testing.T) {
+	t.Parallel()
+	r := newMailboxRig(t)
+	c, me, mb := r.person(t, "time:access")
+	var series []gen.Appointment
+	for h := range 8 {
+		start := fmt.Sprintf("2026-08-13T%02d:00", 8+h)
+		end := fmt.Sprintf("2026-08-13T%02d:30", 8+h)
+		series = append(series, create(t, c, with(timed(t, "Daily", oslo, start, end), "recurrence", map[string]any{"rule": "FREQ=DAILY"})))
+	}
+	s := at(t, oslo, "2026-09-12T15:00")
+	r.sources.time.give(me, contracts.CalendarItem{Kind: "time.entry", ID: "1", Title: "Work", StartsAt: s, EndsAt: s.Add(time.Hour)})
+	turnOn(t, c, "default", "full", "calendar.appointment", "time.entry")
+	mailboxCycle(t, r)
+	got := byKey(r, mb, "")
+	if len(got) != 1500 {
+		t.Errorf("copies = %d, want 1500", len(got))
+	}
+	if _, ok := got[key(series[0].Id, "2026-09-12")]; !ok {
+		t.Error("today's occurrence was left out")
+	}
+	if _, ok := got[key(series[0].Id, "2027-03-11")]; ok {
+		t.Error("the farthest occurrence was kept")
+	}
+	if _, ok := got["time.entry:1"]; ok {
+		t.Error("a projected item was written past the cap")
+	}
+	if !strings.Contains(r.Logs(), "farthest appointment occurrences were left out") {
+		t.Error("the cut was not logged")
 	}
 }
