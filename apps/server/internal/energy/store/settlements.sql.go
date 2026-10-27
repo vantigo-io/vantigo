@@ -416,6 +416,37 @@ func (q *Queries) ListSettlementSubjectsByIDs(ctx context.Context, ids []int32) 
 	return items, nil
 }
 
+const listSettlementSupplyPeriodIDsAll = `-- name: ListSettlementSupplyPeriodIDsAll :many
+SELECT id
+FROM energy.supply_periods
+WHERE status <> 'Cancelled'
+  AND start < $1::timestamptz
+ORDER BY id
+`
+
+// ListSettlementSupplyPeriodIDsAll is DueSupplies' "every supply period"
+// (DueSuppliesRequest.Every, the billing run's read): the non-cancelled ones
+// that started before @through, in id order.
+func (q *Queries) ListSettlementSupplyPeriodIDsAll(ctx context.Context, through time.Time) ([]int32, error) {
+	rows, err := q.db.Query(ctx, listSettlementSupplyPeriodIDsAll, through)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []int32
+	for rows.Next() {
+		var id int32
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listSettlementSupplyPeriodIDsByCustomers = `-- name: ListSettlementSupplyPeriodIDsByCustomers :many
 SELECT id
 FROM energy.supply_periods

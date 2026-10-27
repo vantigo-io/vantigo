@@ -226,12 +226,8 @@ func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.
 		deps.Products = productsProvider.Products(deps)
 	}
 
-	projectsProvider, err := soleProvider(mods, "a project directory", func(m Module) bool { return m.Projects != nil })
-	if err != nil {
+	if deps, err = withProjects(deps, mods); err != nil {
 		return nil, err
-	}
-	if projectsProvider != nil {
-		deps.Projects = projectsProvider.Projects(deps)
 	}
 
 	// Actuals resolves after the project directory: the module that
@@ -283,43 +279,11 @@ func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.
 		deps.Receivables = receivablesProvider.Receivables(deps)
 	}
 
-	// The three billable reads (contracts.BillableHours, BillableExpenses,
-	// BillableMilestones, rule 10) resolve beside actuals and expenses, after
-	// the project directory and for the same reason: a provider may read
-	// deps.Projects while it is built, never while it serves.
-	hoursProvider, err := soleProvider(mods, "billable hours", func(m Module) bool { return m.BillableHours != nil })
-	if err != nil {
+	// The three billable reads and consumption resolve beside actuals and
+	// expenses, after the project directory (withBillables says why); Workers
+	// resolves them the same way.
+	if deps, err = withBillables(deps, mods); err != nil {
 		return nil, err
-	}
-	if hoursProvider != nil {
-		deps.BillableHours = hoursProvider.BillableHours(deps)
-	}
-	billableExpensesProvider, err := soleProvider(mods, "billable expenses", func(m Module) bool { return m.BillableExpenses != nil })
-	if err != nil {
-		return nil, err
-	}
-	if billableExpensesProvider != nil {
-		deps.BillableExpenses = billableExpensesProvider.BillableExpenses(deps)
-	}
-	milestonesProvider, err := soleProvider(mods, "billable milestones", func(m Module) bool { return m.BillableMilestones != nil })
-	if err != nil {
-		return nil, err
-	}
-	if milestonesProvider != nil {
-		deps.BillableMilestones = milestonesProvider.BillableMilestones(deps)
-	}
-
-	// Consumption (contracts.ConsumptionProvider, energy consumption billing
-	// design D1) resolves after the customer directory and in the billable
-	// group, last: it is what Invoices builds a consumption invoice from, as
-	// the three above are what it builds a work invoice from. Its provider
-	// never reads the directory while it serves.
-	consumptionProvider, err := soleProvider(mods, "consumption", func(m Module) bool { return m.Consumption != nil })
-	if err != nil {
-		return nil, err
-	}
-	if consumptionProvider != nil {
-		deps.Consumption = consumptionProvider.Consumption(deps)
 	}
 
 	// The workforce register (contracts.Workforce, staff competence design

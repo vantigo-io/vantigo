@@ -31,6 +31,16 @@ WHERE customer_id = ANY(@customer_ids::int[])
   AND start < @through::timestamptz
 ORDER BY id;
 
+-- name: ListSettlementSupplyPeriodIDsAll :many
+-- ListSettlementSupplyPeriodIDsAll is DueSupplies' "every supply period"
+-- (DueSuppliesRequest.Every, the billing run's read): the non-cancelled ones
+-- that started before @through, in id order.
+SELECT id
+FROM energy.supply_periods
+WHERE status <> 'Cancelled'
+  AND start < @through::timestamptz
+ORDER BY id;
+
 -- name: ListSettlementSupplyPeriodIDsByMeteringPoint :many
 -- ListSettlementSupplyPeriodIDsByMeteringPoint is the endpoint's supply
 -- periods: every non-cancelled one of the point, in id order.

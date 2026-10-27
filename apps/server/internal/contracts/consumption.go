@@ -111,19 +111,23 @@ type ConsumptionProvider interface {
 }
 
 // DueSuppliesRequest names the customers whose due supply periods are
-// listed. Through is an instant: a billing period is due when it ends on or
-// before it (the invoicing module passes the start of the day after its
-// "through" date).
+// listed — or, with Every, every customer's: the billing run's read, which
+// has no list of customers to name (billing runs plan reading 2). Through is
+// an instant: a billing period is due when it ends on or before it (the
+// invoicing module passes the start of the day after its "through" date).
 type DueSuppliesRequest struct {
 	CustomerIDs []int32
+	Every       bool
 	Through     time.Time
 }
 
-// Validate is the request's shape: 1 to MaxActualsRequests customers, none
-// twice, and a Through.
+// Validate is the request's shape: exactly one of 1 to MaxActualsRequests
+// customers, none twice, and Every; and a Through.
 func (r DueSuppliesRequest) Validate() error {
 	switch {
-	case len(r.CustomerIDs) == 0:
+	case r.Every && len(r.CustomerIDs) > 0:
+		return errors.New("contracts: a due-supplies request names customers and every customer")
+	case !r.Every && len(r.CustomerIDs) == 0:
 		return errors.New("contracts: a due-supplies request names no customer")
 	case len(r.CustomerIDs) > MaxActualsRequests:
 		return fmt.Errorf("contracts: a due-supplies request names %d customers, more than %d", len(r.CustomerIDs), MaxActualsRequests)

@@ -256,24 +256,61 @@ func invoiceIssueChecks(ctx context.Context, txq *store.Queries, profile *contra
 // PostInvoicesByIdIssue Issue a draft
 // (POST /api/v1/invoices/{id}/issue)
 func (s *server) PostInvoicesByIdIssue(ctx context.Context, req gen.PostInvoicesByIdIssueRequestObject) (gen.PostInvoicesByIdIssueResponseObject, error) {
-	q := store.New(s.deps.Pool)
-	draft, err := q.GetInvoice(ctx, req.Id)
-	if errors.Is(err, pgx.ErrNoRows) {
+	out, err := s.issueDraft(ctx, req.Id, req.Body.IssueDate)
+	switch {
+	case err != nil:
+		return nil, err
+	case out.notFound:
 		return gen.PostInvoicesByIdIssue404Response{}, nil
+	case out.unavailable != nil:
+		return gen.PostInvoicesByIdIssue503ApplicationProblemPlusJSONResponse(*out.unavailable), nil
+	case out.refusal != nil:
+		return gen.PostInvoicesByIdIssue409ApplicationProblemPlusJSONResponse(*out.refusal), nil
+	}
+	resp, err := s.invoiceResponse(ctx, store.New(s.deps.Pool), out.doc, nil, out.loc)
+	if err != nil {
+		return nil, err
+	}
+	return gen.PostInvoicesByIdIssue200JSONResponse(resp), nil
+}
+
+// issueOutcome is what the issue's core made of a draft: the issued document,
+// its PDF stored (or pdfStored saying not), with the business time zone its
+// response is built with — or the refusal (a 409), the object store missing
+// (a 503, storage_unavailable) or the draft gone (a 404). Exactly one holds.
+type issueOutcome struct {
+	doc         store.InvoicesInvoice
+	loc         *time.Location
+	refusal     *gen.InvoicesConflictProblem
+	unavailable *gen.InvoicesConflictProblem
+	notFound    bool
+}
+
+// issueDraft is the issue's core — its reads, issueLocked under the
+// document's lock and storeAfterIssue after the commit — and the handler's
+// and the invoices-billing worker's one code path (billing runs plan reading
+// 6). Its actor is the principal on ctx, which callerID reads: the issuer,
+// or the run's creator (readings on the record 10). issueDate is the
+// request's, nil for today.
+func (s *server) issueDraft(ctx context.Context, id int64, issueDate *openapi_types.Date) (issueOutcome, error) {
+	q := store.New(s.deps.Pool)
+	draft, err := q.GetInvoice(ctx, id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return issueOutcome{notFound: true}, nil
 	}
 	if err != nil {
-		return nil, fmt.Errorf("invoices: read document %d: %w", req.Id, err)
+		return issueOutcome{}, fmt.Errorf("invoices: read document %d: %w", id, err)
 	}
 	if draft.Status != statusDraft {
-		return gen.PostInvoicesByIdIssue409ApplicationProblemPlusJSONResponse(invoiceIssued()), nil
+		return issueOutcome{refusal: ptr(invoiceIssued())}, nil
 	}
 	if !s.storageConfigured {
 		status := int32(503)
 		code, title := codeStorageUnavailable, storageUnavailableTitle
 		detail := "This installation has no object store, so an issued document's PDF could never be stored. Nothing was issued."
-		return gen.PostInvoicesByIdIssue503ApplicationProblemPlusJSONResponse(gen.InvoicesConflictProblem{
+		return issueOutcome{unavailable: &gen.InvoicesConflictProblem{
 			Code: &code, Title: &title, Detail: &detail, Status: &status,
-		}), nil
+		}}, nil
 	}
 	var profile *contracts.CustomerBillingProfile
 	var work issueWork
@@ -281,28 +318,28 @@ func (s *server) PostInvoicesByIdIssue(ctx context.Context, req gen.PostInvoices
 	switch draft.Kind {
 	case kindInvoice:
 		if profile, err = s.customerProfile(ctx, draft.CustomerID); err != nil {
-			return nil, err
+			return issueOutcome{}, err
 		}
 		// The work the invoice bills: its projects and the issuer's name are
 		// read now, never under the lock (invoices work design D1).
 		if work, refusal, err = s.readIssueWork(ctx, q, draft); err != nil {
-			return nil, err
+			return issueOutcome{}, err
 		}
 		if refusal != nil {
-			return gen.PostInvoicesByIdIssue409ApplicationProblemPlusJSONResponse(*refusal), nil
+			return issueOutcome{refusal: refusal}, nil
 		}
 	case kindCreditNote:
 		// The work the credit note may release: the holders and the
 		// issuer's name, read now when its original bills any (D8).
 		if work, err = s.readReleaseWork(ctx, q, draft); err != nil {
-			return nil, err
+			return issueOutcome{}, err
 		}
 	}
 	// The business time zone the issue and due dates are taken in, read
 	// before the lock as every call out of the module is.
 	loc, err := s.businessZone(ctx)
 	if err != nil {
-		return nil, err
+		return issueOutcome{}, err
 	}
 	if issueBeforeLock != nil {
 		issueBeforeLock(ctx, draft.ID)
@@ -311,18 +348,18 @@ func (s *server) PostInvoicesByIdIssue(ctx context.Context, req gen.PostInvoices
 	var issued store.InvoicesInvoice
 	err = s.withLockedTx(ctx, func(ctx context.Context, tx pgx.Tx, txq *store.Queries) error {
 		// 1. The document, FOR UPDATE: two issues of one draft queue here.
-		locked, err := txq.LockInvoice(ctx, req.Id)
+		locked, err := txq.LockInvoice(ctx, id)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return errDocumentGone
 		}
 		if err != nil {
-			return fmt.Errorf("invoices: lock document %d: %w", req.Id, err)
+			return fmt.Errorf("invoices: lock document %d: %w", id, err)
 		}
 		if locked.Status != statusDraft {
 			refusal = ptr(invoiceIssued())
 			return errRefused
 		}
-		issued, refusal, err = s.issueLocked(ctx, tx, txq, locked, draft, profile, work, req.Body.IssueDate, false, loc)
+		issued, refusal, err = s.issueLocked(ctx, tx, txq, locked, draft, profile, work, issueDate, false, loc)
 		if err != nil {
 			return err
 		}
@@ -332,22 +369,17 @@ func (s *server) PostInvoicesByIdIssue(ctx context.Context, req gen.PostInvoices
 		return nil
 	})
 	if refusal != nil {
-		return gen.PostInvoicesByIdIssue409ApplicationProblemPlusJSONResponse(*refusal), nil
+		return issueOutcome{refusal: refusal}, nil
 	}
 	if errors.Is(err, errDocumentGone) {
-		return gen.PostInvoicesByIdIssue404Response{}, nil
+		return issueOutcome{notFound: true}, nil
 	}
 	if err != nil {
-		return nil, err
+		return issueOutcome{}, err
 	}
 	// After the commit, the PDF is stored once (D7). A failure there is
 	// logged and never fails the issue; pdfStored says so.
-	issued = s.storeAfterIssue(ctx, q, issued)
-	resp, err := s.invoiceResponse(ctx, q, issued, nil, loc)
-	if err != nil {
-		return nil, err
-	}
-	return gen.PostInvoicesByIdIssue200JSONResponse(resp), nil
+	return issueOutcome{doc: s.storeAfterIssue(ctx, q, issued), loc: loc}, nil
 }
 
 // issueLocked runs the issue's steps 2–6 on a document the transaction tx

@@ -264,6 +264,42 @@ func TestConsumptionProvider_ABlockedSettlementIsAnswered(t *testing.T) {
 	}
 }
 
+// TestConsumptionProvider_DueSuppliesForEveryCustomer: Every answers every
+// customer's due supply periods (the billing run's read) — the fixture's
+// among them, as the customer-named read answers it — and writes nothing.
+func TestConsumptionProvider_DueSuppliesForEveryCustomer(t *testing.T) {
+	t.Parallel()
+	f := newStlFixture(t, true)
+	ctx := context.Background()
+
+	named, err := f.provider.DueSupplies(ctx, contracts.DueSuppliesRequest{CustomerIDs: []int32{f.customer}, Through: stlAugStart})
+	if err != nil {
+		t.Fatalf("DueSupplies by customer: %v", err)
+	}
+	every, err := f.provider.DueSupplies(ctx, contracts.DueSuppliesRequest{Every: true, Through: stlAugStart})
+	if err != nil {
+		t.Fatalf("DueSupplies for every customer: %v", err)
+	}
+	if len(named.Supplies) != 1 {
+		t.Fatalf("DueSupplies by customer = %+v, want one supply", named)
+	}
+	found := false
+	for _, d := range every.Supplies {
+		if d.SupplyPeriodID == f.supply {
+			found = true
+			if d != named.Supplies[0] {
+				t.Errorf("every customer's answer for supply %d = %+v, want %+v", f.supply, d, named.Supplies[0])
+			}
+		}
+	}
+	if !found {
+		t.Errorf("DueSupplies for every customer = %+v, want supply period %d among them", every.Supplies, f.supply)
+	}
+	if n := f.h.Count(t, `SELECT count(*) FROM energy.settlements`); n != 0 {
+		t.Errorf("DueSupplies wrote %d settlements, want none", n)
+	}
+}
+
 // TestConsumptionProvider_SettlementsByID: a draft is recomputed and
 // rewritten when a figure changed, so the revision answered is the one
 // stored; a missing id is absent.
