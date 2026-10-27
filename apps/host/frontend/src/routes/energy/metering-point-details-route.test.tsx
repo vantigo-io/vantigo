@@ -14,8 +14,17 @@ vi.mock("@tanstack/react-query", async (importOriginal) => {
 });
 
 vi.mock("@vantigo/energy-ui", () => ({
-  MeteringPointDetailsPage: ({ canImportReadings }: { canImportReadings?: boolean }) => (
-    <span data-testid="can-import-readings">{String(Boolean(canImportReadings))}</span>
+  MeteringPointDetailsPage: ({
+    canImportReadings,
+    canViewTariffs,
+  }: {
+    canImportReadings?: boolean;
+    canViewTariffs?: boolean;
+  }) => (
+    <>
+      <span data-testid="can-import-readings">{String(Boolean(canImportReadings))}</span>
+      <span data-testid="can-view-tariffs">{String(Boolean(canViewTariffs))}</span>
+    </>
   ),
 }));
 
@@ -56,5 +65,17 @@ describe("the metering point route", () => {
     withPermissions(["energy:import", "energy:consumption-view"]);
     renderPage();
     expect(screen.getByTestId("can-import-readings")).toHaveTextContent("false");
+  });
+
+  // The edit form and the supply-period dialogs list tariffs only with energy:tariffs-view.
+  it("passes canViewTariffs only with energy:tariffs-view", () => {
+    withPermissions(["energy:supply-periods-manage", "energy:tariffs-view"]);
+    renderPage();
+    expect(screen.getByTestId("can-view-tariffs")).toHaveTextContent("true");
+    cleanup();
+
+    withPermissions(["energy:supply-periods-manage", "energy:tariffs-manage"]);
+    renderPage();
+    expect(screen.getByTestId("can-view-tariffs")).toHaveTextContent("false");
   });
 });

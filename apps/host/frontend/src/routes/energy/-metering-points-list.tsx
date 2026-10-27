@@ -11,7 +11,8 @@ export const IMPORT_PERMISSIONS = ["energy:import", "energy:metering-points-mana
 /**
  * The metering-point list, plus the capability it needs: `canImport`
  * (`energy:import` and `energy:metering-points-manage` together) puts
- * **Import** in the header, a link to the import page.
+ * **Import** in the header, a link to the import page; `canViewTariffs`
+ * (`energy:tariffs-view`) lets the new point's form list the grid tariffs.
  *
  * Lives beside the route file rather than inside it: a route file may export
  * nothing but its `Route` without costing the bundle a code split.
@@ -21,6 +22,7 @@ export const MeteringPointsListPage = () => {
   return (
     <MeteringPointsPage
       canImport={IMPORT_PERMISSIONS.every((permission) => hasPermissions(permissions, [permission]))}
+      canViewTariffs={hasPermissions(permissions, ["energy:tariffs-view"])}
     />
   );
 };

@@ -47,6 +47,7 @@ import { Route as CustomersCustomerIdRouteImport } from './routes/customers/$cus
 import { Route as CustomersFollowUpsRouteImport } from './routes/customers/follow-ups'
 import { Route as EnergyIndexRouteImport } from './routes/energy/index'
 import { Route as EnergyPricesRouteImport } from './routes/energy/prices'
+import { Route as EnergyTariffsRouteImport } from './routes/energy/tariffs'
 import { Route as EntraIndexRouteImport } from './routes/entra/index'
 import { Route as ExpensesIndexRouteImport } from './routes/expenses/index'
 import { Route as ExpensesApprovalsRouteImport } from './routes/expenses/approvals'
@@ -315,6 +316,11 @@ const EnergyIndexRoute = EnergyIndexRouteImport.update({
 const EnergyPricesRoute = EnergyPricesRouteImport.update({
   id: '/prices',
   path: '/prices',
+  getParentRoute: () => EnergyRoute,
+} as any)
+const EnergyTariffsRoute = EnergyTariffsRouteImport.update({
+  id: '/tariffs',
+  path: '/tariffs',
   getParentRoute: () => EnergyRoute,
 } as any)
 const EntraIndexRoute = EntraIndexRouteImport.update({
@@ -759,6 +765,7 @@ export interface FileRoutesByFullPath {
   '/customers/$customerId': typeof CustomersCustomerIdRouteWithChildren
   '/customers/follow-ups': typeof CustomersFollowUpsRoute
   '/energy/prices': typeof EnergyPricesRoute
+  '/energy/tariffs': typeof EnergyTariffsRoute
   '/expenses/approvals': typeof ExpensesApprovalsRoute
   '/expenses/reimbursements': typeof ExpensesReimbursementsRoute
   '/expenses/settings': typeof ExpensesSettingsRoute
@@ -861,6 +868,7 @@ export interface FileRoutesByTo {
   '/communications/suppressions': typeof CommunicationsSuppressionsRoute
   '/customers/follow-ups': typeof CustomersFollowUpsRoute
   '/energy/prices': typeof EnergyPricesRoute
+  '/energy/tariffs': typeof EnergyTariffsRoute
   '/expenses/approvals': typeof ExpensesApprovalsRoute
   '/expenses/reimbursements': typeof ExpensesReimbursementsRoute
   '/expenses/settings': typeof ExpensesSettingsRoute
@@ -979,6 +987,7 @@ export interface FileRoutesById {
   '/customers/$customerId': typeof CustomersCustomerIdRouteWithChildren
   '/customers/follow-ups': typeof CustomersFollowUpsRoute
   '/energy/prices': typeof EnergyPricesRoute
+  '/energy/tariffs': typeof EnergyTariffsRoute
   '/expenses/approvals': typeof ExpensesApprovalsRoute
   '/expenses/reimbursements': typeof ExpensesReimbursementsRoute
   '/expenses/settings': typeof ExpensesSettingsRoute
@@ -1099,6 +1108,7 @@ export interface FileRouteTypes {
     | '/customers/$customerId'
     | '/customers/follow-ups'
     | '/energy/prices'
+    | '/energy/tariffs'
     | '/expenses/approvals'
     | '/expenses/reimbursements'
     | '/expenses/settings'
@@ -1201,6 +1211,7 @@ export interface FileRouteTypes {
     | '/communications/suppressions'
     | '/customers/follow-ups'
     | '/energy/prices'
+    | '/energy/tariffs'
     | '/expenses/approvals'
     | '/expenses/reimbursements'
     | '/expenses/settings'
@@ -1318,6 +1329,7 @@ export interface FileRouteTypes {
     | '/customers/$customerId'
     | '/customers/follow-ups'
     | '/energy/prices'
+    | '/energy/tariffs'
     | '/expenses/approvals'
     | '/expenses/reimbursements'
     | '/expenses/settings'
@@ -1699,6 +1711,13 @@ declare module '@tanstack/react-router' {
       path: '/prices'
       fullPath: '/energy/prices'
       preLoaderRoute: typeof EnergyPricesRouteImport
+      parentRoute: typeof EnergyRoute
+    }
+    '/energy/tariffs': {
+      id: '/energy/tariffs'
+      path: '/tariffs'
+      fullPath: '/energy/tariffs'
+      preLoaderRoute: typeof EnergyTariffsRouteImport
       parentRoute: typeof EnergyRoute
     }
     '/entra/': {
@@ -2335,6 +2354,7 @@ const CustomersRouteWithChildren = CustomersRoute._addFileChildren(
 
 interface EnergyRouteChildren {
   EnergyPricesRoute: typeof EnergyPricesRoute
+  EnergyTariffsRoute: typeof EnergyTariffsRoute
   EnergyIndexRoute: typeof EnergyIndexRoute
   EnergyMeteringPointsMeteringPointIdRoute: typeof EnergyMeteringPointsMeteringPointIdRoute
   EnergyMeteringPointsIndexRoute: typeof EnergyMeteringPointsIndexRoute
@@ -2344,6 +2364,7 @@ interface EnergyRouteChildren {
 
 const EnergyRouteChildren: EnergyRouteChildren = {
   EnergyPricesRoute: EnergyPricesRoute,
+  EnergyTariffsRoute: EnergyTariffsRoute,
   EnergyIndexRoute: EnergyIndexRoute,
   EnergyMeteringPointsMeteringPointIdRoute:
     EnergyMeteringPointsMeteringPointIdRoute,

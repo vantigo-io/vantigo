@@ -9,6 +9,11 @@ export type ConsumptionQuality = "Measured" | "Estimated" | "Corrected" | "Manua
 export type ConsumptionSource = "Elhub" | "Manual" | "Import";
 export type SupplyPeriodStatus = "Active" | "Ended" | "Cancelled";
 export type ConsumptionResolution = "hour" | "day" | "month";
+export type ElectricityTaxClass = "ordinary" | "reduced" | "exempt";
+export type VatTreatment = "standard" | "exempt_household_north";
+export type BillingCadence = "monthly" | "quarterly" | "yearly";
+export const BILLING_CADENCES: readonly BillingCadence[] = ["monthly", "quarterly", "yearly"];
+export const ELECTRICITY_TAX_CLASSES: readonly ElectricityTaxClass[] = ["ordinary", "reduced", "exempt"];
 
 export interface MeteringPointAddress {
   streetAddress: string;
@@ -30,7 +35,26 @@ export interface MeteringPoint {
   connectionStatus: ConnectionStatus;
   createdAt: string;
   updatedAt: string;
+  /**
+   * The billing facts (energy consumption billing design D3, D4): always
+   * sent, optional because the recorded .NET exchanges predate them — read a
+   * missing one with `billingFacts`.
+   */
+  gridTariffId?: number | null;
+  gridTariffName?: string | null;
+  household?: boolean;
+  electricityTaxClass?: ElectricityTaxClass;
+  vatTreatment?: VatTreatment;
 }
+
+/** A point's billing facts, a missing one read as none, false, ordinary and standard. */
+export const billingFacts = (point: MeteringPoint) => ({
+  gridTariffId: point.gridTariffId ?? null,
+  gridTariffName: point.gridTariffName ?? null,
+  household: point.household ?? false,
+  electricityTaxClass: point.electricityTaxClass ?? "ordinary",
+  vatTreatment: point.vatTreatment ?? "standard",
+});
 
 export interface MeteringPointInput {
   gsrn: string;
@@ -42,6 +66,10 @@ export interface MeteringPointInput {
   latitude?: number;
   longitude?: number;
   connectionStatus?: ConnectionStatus;
+  /** The PUT is a full replace: absent is none, false and ordinary, so the form always sends the three. */
+  gridTariffId: number | null;
+  household: boolean;
+  electricityTaxClass: ElectricityTaxClass;
 }
 
 export type MeteringPointUpdateInput = Omit<MeteringPointInput, "meterNumber">;
@@ -87,6 +115,16 @@ export interface SupplyPeriod {
   start: string;
   end?: string | null;
   status: SupplyPeriodStatus;
+  /** Always sent, optional for the same reason as a point's billing facts: missing is none and monthly. */
+  tariffId?: number | null;
+  tariffName?: string | null;
+  cadence?: BillingCadence;
+}
+
+/** What a supply period starts with besides the customer and the date. */
+export interface SupplyTermsInput {
+  tariffId: number | null;
+  cadence: BillingCadence;
 }
 
 export interface CustomerMeteringPoint {
@@ -280,7 +318,10 @@ export const supplyPeriodsQueryOptions = (id: number) =>
     queryFn: ({ signal }) => request<SupplyPeriod[]>(`/api/v1/energy/metering-points/${id}/supply-periods`, { signal }),
   });
 
-export const assignSupplyPeriod = (id: number, input: { customerId: number; start: string }) =>
+export const assignSupplyPeriod = (
+  id: number,
+  input: { customerId: number; start: string } & Partial<SupplyTermsInput>,
+) =>
   request<SupplyPeriod>(`/api/v1/energy/metering-points/${id}/supply-periods`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -292,11 +333,19 @@ export interface SwitchSupplyPeriodResponse {
   newPeriod: SupplyPeriod;
 }
 
-export const switchSupplyPeriod = (id: number, input: { customerId: number; start: string }) =>
+export const switchSupplyPeriod = (
+  id: number,
+  input: { customerId: number; start: string } & Partial<SupplyTermsInput>,
+) =>
   request<SwitchSupplyPeriodResponse>(`/api/v1/energy/metering-points/${id}/supply-periods/switch`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ customerId: input.customerId, switchAt: input.start }),
+    body: JSON.stringify({
+      customerId: input.customerId,
+      switchAt: input.start,
+      tariffId: input.tariffId,
+      cadence: input.cadence,
+    }),
   });
 
 export const endSupplyPeriod = (id: number, periodId: number, end: string) =>

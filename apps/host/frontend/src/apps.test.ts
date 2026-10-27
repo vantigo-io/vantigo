@@ -110,6 +110,7 @@ describe("the app registry", () => {
       "/products/tax-categories",
       "/energy/metering-points",
       "/energy/prices",
+      "/energy/tariffs",
       "/entra",
     ]);
   });

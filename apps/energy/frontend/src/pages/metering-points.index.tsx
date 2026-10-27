@@ -37,7 +37,14 @@ const statusColor = (status: ConnectionStatus) => ({ New: "blue", Connected: "te
  * page. **Without customer** keeps the points with no customer now — the list
  * to attach the points an import left without one.
  */
-export const MeteringPointsPage = ({ canImport = false }: { canImport?: boolean }) => {
+export const MeteringPointsPage = ({
+  canImport = false,
+  canViewTariffs = false,
+}: {
+  canImport?: boolean;
+  /** `energy:tariffs-view`: the new point's grid tariff is chosen from the active ones. */
+  canViewTariffs?: boolean;
+}) => {
   const { t } = useI18n("energy");
   const { page, search, withoutCustomer } = useSearch({ strict: false }) as MeteringPointsSearch;
   const navigate = useNavigate() as (options: unknown) => void;
@@ -88,7 +95,7 @@ export const MeteringPointsPage = ({ canImport = false }: { canImport?: boolean 
           </Group>
         }
       />
-      <MeteringPointFormModal state={modalState} onClose={() => setModalState(null)} />
+      <MeteringPointFormModal state={modalState} onClose={() => setModalState(null)} canViewTariffs={canViewTariffs} />
       <Card withBorder padding="lg" radius="md">
         <Stack gap="md">
           <Group gap="md" align="center">

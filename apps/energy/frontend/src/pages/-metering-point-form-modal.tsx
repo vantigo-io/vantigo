@@ -1,4 +1,4 @@
-import { Button, Group, Modal, NumberInput, Select, Stack, TextInput } from "@mantine/core";
+import { Button, Checkbox, Group, Modal, NumberInput, Select, Stack, Text, TextInput } from "@mantine/core";
 import { useForm } from "@mantine/form";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -6,12 +6,16 @@ import { useI18n } from "@vantigo/frontend-shell";
 import { useEffect } from "react";
 import {
   ApiValidationError,
+  billingFacts,
   createMeteringPoint,
+  ELECTRICITY_TAX_CLASSES,
+  type ElectricityTaxClass,
   type MeteringPoint,
   type MeteringPointInput,
   type MeteringPointUpdateInput,
   updateMeteringPoint,
 } from "../api/energy";
+import { taxClassKey, useTariffOptions } from "../lib/billing";
 import "../i18n";
 
 export type MeteringPointModalState = { mode: "create" } | { mode: "edit"; meteringPoint: MeteringPoint };
@@ -29,6 +33,9 @@ type Values = {
   latitude: number | string;
   longitude: number | string;
   connectionStatus: "New" | "Connected" | "Disconnected";
+  gridTariffId: string | null;
+  household: boolean;
+  electricityTaxClass: ElectricityTaxClass;
 };
 
 const empty: Values = {
@@ -44,11 +51,15 @@ const empty: Values = {
   latitude: "",
   longitude: "",
   connectionStatus: "New",
+  gridTariffId: null,
+  household: false,
+  electricityTaxClass: "ordinary",
 };
 
 const fromState = (state: MeteringPointModalState): Values => {
   if (state.mode === "create") return empty;
   const point = state.meteringPoint;
+  const facts = billingFacts(point);
   return {
     gsrn: point.gsrn,
     meterNumber: point.meterNumber ?? "",
@@ -62,19 +73,35 @@ const fromState = (state: MeteringPointModalState): Values => {
     latitude: point.latitude ?? "",
     longitude: point.longitude ?? "",
     connectionStatus: point.connectionStatus,
+    gridTariffId: facts.gridTariffId !== null ? String(facts.gridTariffId) : null,
+    household: facts.household,
+    electricityTaxClass: facts.electricityTaxClass,
   };
 };
 
+/**
+ * Create or edit a metering point. The edit is a full replace, so the billing
+ * facts — the grid tariff, household use and the tax class — are always sent.
+ * `canViewTariffs` (`energy:tariffs-view`) lists the active grid tariffs, and
+ * the one held even when archived; without it the held one is shown read-only
+ * and sent unchanged.
+ */
 export const MeteringPointFormModal = ({
   state,
   onClose,
+  canViewTariffs = false,
 }: {
   state: MeteringPointModalState | null;
   onClose: () => void;
+  canViewTariffs?: boolean;
 }) => {
   const { t } = useI18n("energy");
   const client = useQueryClient();
   const isEdit = state?.mode === "edit";
+  const held = isEdit
+    ? { id: billingFacts(state.meteringPoint).gridTariffId, name: billingFacts(state.meteringPoint).gridTariffName }
+    : { id: null, name: null };
+  const gridTariffs = useTariffOptions("grid", state !== null && canViewTariffs, held);
   const form = useForm<Values>({
     initialValues: empty,
     validate: {
@@ -133,6 +160,9 @@ export const MeteringPointFormModal = ({
       latitude: values.latitude === "" ? undefined : Number(values.latitude),
       longitude: values.longitude === "" ? undefined : Number(values.longitude),
       connectionStatus: values.connectionStatus,
+      gridTariffId: canViewTariffs ? (values.gridTariffId ? Number(values.gridTariffId) : null) : held.id,
+      household: values.household,
+      electricityTaxClass: values.electricityTaxClass,
     } satisfies MeteringPointUpdateInput;
     mutation.mutate(isEdit ? input : { ...input, meterNumber: values.meterNumber.trim() });
   });
@@ -188,6 +218,32 @@ export const MeteringPointFormModal = ({
             <NumberInput label={t("latitude")} decimalScale={6} {...form.getInputProps("latitude")} />
             <NumberInput label={t("longitude")} decimalScale={6} {...form.getInputProps("longitude")} />
           </Group>
+          <Text fw={600} size="sm">
+            {t("billing")}
+          </Text>
+          {canViewTariffs ? (
+            <Select
+              label={t("gridTariff")}
+              description={t("gridTariffHint")}
+              placeholder={t("noGridTariff")}
+              clearable
+              data={gridTariffs}
+              {...form.getInputProps("gridTariffId")}
+            />
+          ) : (
+            <TextInput label={t("gridTariff")} readOnly value={held.name ?? t("noGridTariff")} />
+          )}
+          <Select
+            label={t("electricityTaxClass")}
+            allowDeselect={false}
+            data={ELECTRICITY_TAX_CLASSES.map((value) => ({ value, label: t(taxClassKey(value)) }))}
+            {...form.getInputProps("electricityTaxClass")}
+          />
+          <Checkbox
+            label={t("householdUse")}
+            description={t("householdUseHint")}
+            {...form.getInputProps("household", { type: "checkbox" })}
+          />
           <Group justify="flex-end">
             <Button variant="default" onClick={onClose}>
               {t("cancel")}

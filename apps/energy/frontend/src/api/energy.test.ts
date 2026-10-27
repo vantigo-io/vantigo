@@ -82,6 +82,9 @@ describe("energy api", () => {
       meterNumber: "M-1",
       address: { streetAddress: "Main 1", postalCode: "0001", city: "Oslo", countryCode: "NO" },
       priceArea: "NO1",
+      gridTariffId: null,
+      household: false,
+      electricityTaxClass: "ordinary",
     });
     await expect(assignSupplyPeriod(1, { customerId: 7, start: "2026-01-01" })).rejects.toThrow(
       "This period overlaps an existing period.",
@@ -120,5 +123,15 @@ describe("energy api", () => {
         body: JSON.stringify({ customerId: 1002, switchAt: "2026-08-11" }),
       }),
     );
+  });
+
+  it("sends the new period's tariff and cadence with a switch", async () => {
+    const fetchMock = stubFetch(() => Promise.resolve(response({ endedPeriod: null, newPeriod: { id: 2 } })));
+
+    await switchSupplyPeriod(4, { customerId: 1002, start: "2026-08-11", tariffId: 1001, cadence: "quarterly" });
+
+    expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({
+      body: JSON.stringify({ customerId: 1002, switchAt: "2026-08-11", tariffId: 1001, cadence: "quarterly" }),
+    });
   });
 });

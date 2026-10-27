@@ -460,6 +460,12 @@ export const apps: readonly AppDefinition[] = [
       icon: IconChartLine,
       requiredPermissions: ["energy:prices-view"],
     },
+    {
+      label: "navigation.tariffs",
+      to: "/energy/tariffs",
+      icon: IconReportMoney,
+      requiredPermissions: ["energy:tariffs-view"],
+    },
   ]),
   // The connection to the tenant (Entra design D15): one page, the status and
   // the wizard, behind entra:manage. The Owner-only steps are the page's to

@@ -4,7 +4,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import { customersQueryOptions } from "../api/customers";
-import { ApiValidationError, switchSupplyPeriod } from "../api/energy";
+import { ApiValidationError, type BillingCadence, switchSupplyPeriod } from "../api/energy";
+import { tariffIdOf } from "../lib/billing";
+import { SupplyTermsFields } from "./-supply-terms";
 import "../i18n";
 
 export const SupplyPeriodModal = ({
@@ -12,29 +14,34 @@ export const SupplyPeriodModal = ({
   opened,
   onClose,
   hasActivePeriod = false,
+  canViewTariffs = false,
 }: {
   meteringPointId: number;
   opened: boolean;
   onClose: () => void;
   hasActivePeriod?: boolean;
+  /** `energy:tariffs-view`: the power tariff is chosen from the active ones; without it the period starts with none. */
+  canViewTariffs?: boolean;
 }) => {
   const { t } = useI18n("energy");
   const client = useQueryClient();
   const [search, setSearch] = useState("");
   const { data: customers } = useQuery({ ...customersQueryOptions(search), enabled: opened });
   const form = useForm({
-    initialValues: { customerId: "", start: "" },
+    initialValues: { customerId: "", start: "", tariffId: null as string | null, cadence: "monthly" as BillingCadence },
     validate: {
       customerId: (value) => (value ? null : t("customerRequired")),
       start: (value) => (value ? null : t("startRequired")),
     },
   });
   const mutation = useMutation({
-    mutationFn: (values: { customerId: number; start: string }) => switchSupplyPeriod(meteringPointId, values),
+    mutationFn: (values: { customerId: number; start: string; tariffId: number | null; cadence: BillingCadence }) =>
+      switchSupplyPeriod(meteringPointId, values),
     onSuccess: () => {
       void client.invalidateQueries({ queryKey: ["energy", "metering-points", meteringPointId, "supply-periods"] });
       void client.invalidateQueries({ queryKey: ["energy", "metering-points", meteringPointId, "consumption"] });
       void client.invalidateQueries({ queryKey: ["energy", "customers"] });
+      void client.invalidateQueries({ queryKey: ["energy", "tariffs"] });
       form.reset();
       onClose();
     },
@@ -48,7 +55,12 @@ export const SupplyPeriodModal = ({
       <form
         onSubmit={form.onSubmit((values) =>
           // The date input yields "YYYY-MM-DD"; the backend requires UTC.
-          mutation.mutate({ customerId: Number(values.customerId), start: new Date(values.start).toISOString() }),
+          mutation.mutate({
+            customerId: Number(values.customerId),
+            start: new Date(values.start).toISOString(),
+            tariffId: canViewTariffs ? tariffIdOf(values.tariffId) : null,
+            cadence: values.cadence,
+          }),
         )}
       >
         <Stack>
@@ -63,6 +75,7 @@ export const SupplyPeriodModal = ({
             {...form.getInputProps("customerId")}
           />
           <TextInput label={t("switchDate")} type="date" withAsterisk {...form.getInputProps("start")} />
+          <SupplyTermsFields form={form} opened={opened} canViewTariffs={canViewTariffs} />
           <Group justify="flex-end">
             <Button variant="default" onClick={onClose}>
               {t("cancel")}
