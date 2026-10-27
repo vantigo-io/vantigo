@@ -536,7 +536,8 @@ copies the history once.
 ### Look at the prices of a day or a week
 
 The card **Spot prices** shows prices as a line in NOK/kWh, read in Norwegian time. It
-opens on today in the first area. Choose the period in the row of buttons — **Day**,
+opens on today, in the areas you compared last time (see
+[Compare areas](#compare-areas)). Choose the period in the row of buttons — **Day**,
 **Week**, **Month**, **Year** or **Range** — and then the time it covers.
 
 - **Day**, with the day in **Day**: every price of the day as a stepped line, each
@@ -578,6 +579,11 @@ In **Compare areas**, choose up to five price areas. Each gets its own line in i
 colour, with a legend, the first area chosen in the first colour. The
 lowest–highest band is drawn only when one area is shown, since several bands would
 hide each other. At least one area is always chosen.
+
+The page remembers the areas you chose, in this browser: the next time you open
+**Prices** without areas in the address, it shows the same ones. The first time, or when
+none of them is listed any more, it opens on the first area. Changing the areas, the
+period or the day keeps the page where it is, so you can set several in a row.
 
 ### Read the figures
 

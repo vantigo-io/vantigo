@@ -4,6 +4,7 @@ import { cleanup, render, screen, waitFor, within } from "@testing-library/react
 import userEvent from "@testing-library/user-event";
 import type { ReactElement, ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { REMEMBERED_AREAS_STORAGE_KEY } from "../lib/remembered-areas";
 import { stubFetch } from "../test/fetch";
 import { PriceChart } from "./-price-chart";
 import { PriceSummaryChart } from "./-price-summary-chart";
@@ -373,6 +374,26 @@ describe("PricesPage", () => {
     await user.click(screen.getByRole("radio", { name: "Month" }));
     await waitFor(() => expect(summaryCalls().map((call) => call.area)).toEqual(["NO1", "NO2"]));
     expect(await screen.findByTestId("price-summary-chart")).toHaveAttribute("data-series", "NO1,NO2");
+  });
+
+  it("remembers the areas compared, and opens on them when the link names none", async () => {
+    const user = userEvent.setup();
+    const answer = answerFor(intervals, summaryBuckets, ["NO1", "NO2"]);
+    renderPage({}, answer);
+    await screen.findByTestId("price-chart");
+    await user.click(screen.getByRole("combobox", { name: "Compare areas" }));
+    await user.click(await screen.findByRole("option", { name: "NO2" }));
+    await waitFor(() => expect(screen.getByTestId("price-chart")).toHaveAttribute("data-series", "NO1,NO2"));
+    expect(JSON.parse(window.localStorage.getItem(REMEMBERED_AREAS_STORAGE_KEY) ?? "[]")).toEqual(["NO1", "NO2"]);
+    cleanup();
+
+    window.localStorage.setItem(REMEMBERED_AREAS_STORAGE_KEY, JSON.stringify(["NO2", "XX"]));
+    const { priceCalls } = renderPage({}, answer);
+    await waitFor(() => expect(priceCalls().map((call) => call.area)).toEqual(["NO2"]));
+    cleanup();
+
+    const linked = renderPage({ search: { areas: ["NO1"] } }, answer);
+    await waitFor(() => expect(linked.priceCalls().map((call) => call.area)).toEqual(["NO1"]));
   });
 
   it("says so when no compared area has prices for the period", async () => {

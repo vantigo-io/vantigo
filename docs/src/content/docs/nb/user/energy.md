@@ -542,7 +542,8 @@ kopierer historikken én gang.
 ### Se prisene for en dag eller en uke
 
 Kortet **Spotpriser** viser prisene som en linje i kr/kWh, lest i norsk tid. Det åpner
-på dagens dato i det første området. Velg perioden i knapperaden — **Dag**, **Uke**,
+på dagens dato, i områdene du sammenlignet sist (se
+[Sammenlign områder](#sammenlign-områder)). Velg perioden i knapperaden — **Dag**, **Uke**,
 **Måned**, **År** eller **Tidsrom** — og deretter tiden den dekker.
 
 - **Dag**, med dagen i **Dag**: hver pris den dagen som en trappelinje, hver tegnet fra
@@ -584,6 +585,11 @@ I **Sammenlign områder** velger du opptil fem prisområder. Hvert får sin egen
 sin egen farge, med en forklaring, og det første området du valgte får den første
 fargen. Båndet lavest–høyest tegnes bare når ett område vises, siden flere bånd ville
 skjule hverandre. Minst ett område er alltid valgt.
+
+Siden husker områdene du valgte, i denne nettleseren: neste gang du åpner **Priser**
+uten områder i adressen, viser den de samme. Første gang, eller når ingen av dem lenger
+vises, åpner den på det første området. Når du endrer områdene, perioden eller dagen,
+blir siden stående der den er, så du kan endre flere ting etter hverandre.
 
 ### Les tallene
 
