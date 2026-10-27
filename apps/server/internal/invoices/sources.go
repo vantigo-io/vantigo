@@ -128,6 +128,13 @@ func sourcesOf(ctx context.Context, q *store.Queries, invoiceID int64) ([]heldSo
 	return heldSources(rows)
 }
 
+// workKinds are the kinds an invoice line may name as its source: the three
+// kinds of work. contracts.InvoicedWorkOrder also names energy's settlements
+// (energy consumption billing design D6), which this module learns to build
+// lines from in its own delivery (design D7); until then a request naming one
+// is refused as a kind this module does not know, as it was before.
+var workKinds = []contracts.WorkSourceKind{contracts.WorkSourceMilestone, contracts.WorkSourceExpense, contracts.WorkSourceHours}
+
 // parseLineSources is line i's sources as the request names them: nil when
 // the field is absent, empty for [], and a 400 on lines[i].sources for a kind
 // this module does not know or an id that is not one.
@@ -139,7 +146,7 @@ func parseLineSources(i int, l gen.InvoicesLineRequest) ([]sourceRef, map[string
 	out := make([]sourceRef, 0, len(*l.Sources))
 	for _, s := range *l.Sources {
 		kind := contracts.WorkSourceKind(s.Kind)
-		if !slices.Contains(contracts.InvoicedWorkOrder, kind) || s.Id <= 0 {
+		if !slices.Contains(workKinds, kind) || s.Id <= 0 {
 			if errs == nil {
 				errs = fieldError(fmt.Sprintf("lines[%d].sources", i), msgSourceKind)
 			}

@@ -33,6 +33,9 @@ var (
 	kindHours     = contracts.WorkSourceHours
 	kindExpense   = contracts.WorkSourceExpense
 	kindMilestone = contracts.WorkSourceMilestone
+	// workKinds is the work kinds in contracts.InvoicedWorkOrder's order:
+	// the order also names energy's settlements, which no test here holds.
+	workKinds = []contracts.WorkSourceKind{kindMilestone, kindExpense, kindHours}
 )
 
 // workReady is an installation ready to issue work: a complete seller, the
@@ -100,11 +103,11 @@ func TestIssue_CallsEachHolderOnceInTheLockOrder(t *testing.T) {
 	h := workReady(t, holders, newFakeProjects())
 	inv := issued(t, h, sourcedDraft(t, h).ID)
 
-	if got := holders.calledOrder(); !slices.Equal(got, contracts.InvoicedWorkOrder) {
-		t.Fatalf("holders called = %v, want %v", got, contracts.InvoicedWorkOrder)
+	if got := holders.calledOrder(); !slices.Equal(got, workKinds) {
+		t.Fatalf("holders called = %v, want %v", got, workKinds)
 	}
 	want := map[contracts.WorkSourceKind][]int64{kindMilestone: {milestone}, kindExpense: {mileage}, kindHours: {hourOne, hourTwo}}
-	for _, k := range contracts.InvoicedWorkOrder {
+	for _, k := range workKinds {
 		calls := holders.callsOf(k)
 		if len(calls) != 1 {
 			t.Errorf("%s: %d calls, want 1", k, len(calls))
@@ -148,7 +151,7 @@ func TestIssue_TheHoldersRideTheIssuesTransaction(t *testing.T) {
 	if issueXact == "" {
 		t.Fatal("the issue's hook read no transaction id")
 	}
-	for _, k := range contracts.InvoicedWorkOrder {
+	for _, k := range workKinds {
 		calls := holders.callsOf(k)
 		if len(calls) != 1 || calls[0].xact != issueXact || !calls[0].locked {
 			t.Errorf("%s: calls %+v, want one in transaction %s, marked locked", k, calls, issueXact)
@@ -180,7 +183,7 @@ func TestIssue_TheRefHasTheNumberTheDateTheIssuerAndIssuedAt(t *testing.T) {
 	if !issuedAt.Equal(start) {
 		t.Errorf("issued_at = %v, want %v: the clock is read once", issuedAt, start)
 	}
-	for _, k := range contracts.InvoicedWorkOrder {
+	for _, k := range workKinds {
 		calls := holders.callsOf(k)
 		if len(calls) != 1 {
 			t.Fatalf("%s: %d calls, want 1", k, len(calls))
@@ -199,7 +202,7 @@ func TestIssue_TheRefHasTheNumberTheDateTheIssuerAndIssuedAt(t *testing.T) {
 		subkind  string
 	}
 	wants := map[int64]want{hourOne: {2, "4800", ""}, hourTwo: {1, "4200", ""}, mileage: {3, "450", "mileage"}, milestone: {1, "10000", ""}}
-	for _, k := range contracts.InvoicedWorkOrder {
+	for _, k := range workKinds {
 		for _, s := range holders.callsOf(k)[0].sources {
 			w := wants[s.ID]
 			amount, ok := new(big.Rat).SetString(s.Amount)

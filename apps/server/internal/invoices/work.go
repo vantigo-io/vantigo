@@ -531,7 +531,7 @@ func parseFromWork(body gen.InvoicesFromWorkRequest) ([]fromWorkRef, string, map
 		field := fmt.Sprintf("sources[%d]", i)
 		ref := sourceRef{kind: contracts.WorkSourceKind(src.Kind), id: src.Id}
 		switch {
-		case !slices.Contains(contracts.InvoicedWorkOrder, ref.kind) || src.Id <= 0:
+		case !slices.Contains(workKinds, ref.kind) || src.Id <= 0:
 			errs = withFieldError(errs, field, msgSourceKind)
 		case seen[ref]:
 			errs = withFieldError(errs, field, msgSourceTwice)

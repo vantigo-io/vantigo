@@ -23,9 +23,11 @@ const (
 // InvoicedWorkOrder is the cross-module lock order the issue calls holders
 // in, after Invoices' own locks: Projects (the project rows, then their
 // milestones), then Expenses (the claims, then the lines), then Time (the
-// entries). Every transaction that locks rows of more than one of these
-// modules takes them in this order, so no two can wait on each other.
-var InvoicedWorkOrder = []WorkSourceKind{WorkSourceMilestone, WorkSourceExpense, WorkSourceHours}
+// entries), then Energy (the settlements, energy consumption billing design
+// D6: an energy row never shares a transaction with work, so its place only
+// has to be fixed). Every transaction that locks rows of more than one of
+// these modules takes them in this order, so no two can wait on each other.
+var InvoicedWorkOrder = []WorkSourceKind{WorkSourceMilestone, WorkSourceExpense, WorkSourceHours, WorkSourceSettlement}
 
 // InvoicedWorkHolder is a module whose rows an invoice is built from, and the
 // third sanctioned cross-module WRITE (module-boundaries rule 10), beside

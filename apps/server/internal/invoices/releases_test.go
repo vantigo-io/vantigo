@@ -105,7 +105,7 @@ func releaseReady(t *testing.T, holders *fakeHolders) *harness {
 // releaseCalls is every release command, by kind.
 func releaseCalls(holders *fakeHolders) map[contracts.WorkSourceKind][]holderCall {
 	out := map[contracts.WorkSourceKind][]holderCall{}
-	for _, k := range contracts.InvoicedWorkOrder {
+	for _, k := range workKinds {
 		for _, c := range holders.callsOf(k) {
 			if c.op == "release" {
 				out[k] = append(out[k], c)
@@ -179,11 +179,11 @@ func TestRelease_AFullReturnReleases(t *testing.T) {
 	res.JSON(&credit)
 	display := modtest.One[string](t, h.Harness, `SELECT display_name FROM identity.users WHERE id = $1`, userID)
 
-	if marks := 3; len(holders.calledOrder()) != marks+3 || !slices.Equal(holders.calledOrder()[marks:], contracts.InvoicedWorkOrder) {
+	if marks := 3; len(holders.calledOrder()) != marks+3 || !slices.Equal(holders.calledOrder()[marks:], workKinds) {
 		t.Fatalf("holders called = %v, want the three marks then the three releases in the lock order", holders.calledOrder())
 	}
 	want := map[contracts.WorkSourceKind][]int64{kindMilestone: {milestone}, kindExpense: {mileage}, kindHours: {hourOne, hourTwo}}
-	for _, k := range contracts.InvoicedWorkOrder {
+	for _, k := range workKinds {
 		calls := releaseCalls(holders)[k]
 		if len(calls) != 1 {
 			t.Fatalf("%s: %d releases, want 1", k, len(calls))
