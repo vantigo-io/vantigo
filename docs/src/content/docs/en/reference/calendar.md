@@ -1577,17 +1577,21 @@ type MailboxCalendar interface {
     EnsureCalendar(ctx context.Context, mailbox, known, name string) (string, error)
     DeleteCalendar(ctx context.Context, mailbox, calendarID string) error
     Apply(ctx context.Context, mailbox, calendarID string, ops []MailboxOp) ([]MailboxResult, error)
-    Find(ctx context.Context, mailbox, calendarID string) ([]MailboxEventRef, error)
+    Find(ctx context.Context, mailbox, calendarID string, from time.Time) ([]MailboxEventRef, error)
 }
 ```
 
 - `mailbox` is the account's `ExternalID`; `calendarID` `""` is the mailbox's default
-  calendar. `EnsureCalendar` answers the id of the calendar named `name` the provider
-  made — `known` while it still exists, else a new one. `DeleteCalendar` deletes a
-  calendar and every event in it, and one already gone is done.
+  calendar. `EnsureCalendar` answers the id of a calendar the provider made, carrying
+  its marker — `known` while it still exists and carries it, else one named `name`,
+  made anew or adopted when it carries the marker; a calendar of the name that is not
+  the provider's is never adopted, and the next name is tried (`Vantigo (2)` up to
+  `Vantigo (5)`). `DeleteCalendar` deletes a calendar the provider made and every
+  event in it; any other is refused `ErrCalendarNotOurs` and left whole, and one
+  already gone is done.
 - `Status` answers `MailboxStatus{State, Reason}`: `available` (the provider may write),
   `cleanup` (it may only remove — `Apply` takes deletes alone, and `DeleteCalendar` and
-  `Find` work — with the reason `switch_off` or `permission_missing`) or `unavailable`.
+  `Find` work — with the reason `switch_off`) or `unavailable`.
 - `MailboxOp{Kind, EventID, Key, Event}`: a `create` names `Key` and `Event`, an
   `update` `EventID` and `Event`, a `delete` `EventID`. `Key` is written on create as the
   event's marker and never changed.
@@ -1599,13 +1603,16 @@ type MailboxCalendar interface {
   an update or delete of an event that no longer exists is `Gone` — a delete is then
   done, an update the caller's to re-create. A returned error is the whole call failing,
   with no result.
-- `Find` answers `{EventID, Key}` for the events carrying a key — in a secondary
-  calendar, every event in it, with `""` for one carrying none — at most 5000.
+- `Find` answers `{EventID, Key}` for the events of the calendar that carry this
+  installation's marker, and no other — never an event of the person's own, nor one
+  another installation sharing the tenant wrote — starting at or after `from` unless it
+  is zero, at most 5000.
 - The refusals are sentinels: `ErrMailboxUnavailable` (not available, or a non-delete in
   cleanup), `ErrMailboxUnknown` (not an account the provider manages),
   `ErrMailboxDenied` (the directory refused the mailbox: outside the provider's
-  permission scope) and `ErrMailboxGone` (no such user, or no mailbox). Anything else is
-  a failure to retry.
+  permission scope), `ErrMailboxGone` (no such user, or no mailbox) and
+  `ErrCalendarNotOurs` (`DeleteCalendar` of a calendar the provider did not make).
+  Anything else is a failure to retry.
 
 The module calls the provider only through the accessors in `contractscalls.go`
 (`mailboxStatus`, `mailboxEnsure`, `mailboxDeleteCalendar`, `mailboxApply`,
@@ -1653,7 +1660,8 @@ Three operations, each under `calendar:access` and on the caller's own row alone
   `calendar.appointment` and `staff.absence` (each when offered).
 - **`PUT /mailbox-sync`** replaces the setting whole — `{enabled, target, detail,
   kinds}` — under `If-Match`, the revision it was read at (bare, quoted or weakly tagged;
-  `0` for a caller with no row). `target` and `detail` must be one of their values and
+  `0` for a caller with no row), rate limited to 10 per client address in 10 minutes
+  (`calendar-mailbox-sync-write`), since each write makes the sync due. `target` and `detail` must be one of their values and
   each kind one of `availableKinds`, none twice — each a field error, "Invalid Outlook
   sync" — and the kinds are stored in `availableKinds`' order. **Turning it on, or
   keeping it on, while `availability` is not `available` is 409
@@ -1667,8 +1675,8 @@ Three operations, each under `calendar:access` and on the caller's own row alone
   worker's record — the mailbox, the calendar, the error, the last sync — as it was.
 - **`POST /mailbox-sync/run`** — *Sync now* — makes the caller's row due at once and
   answers the setting; the revision stays. 409 `mailbox_sync_unavailable` while the
-  availability is not `available` (the `detail` is the availability) or the sync is off
-  (the `detail` is `off`). Rate limited to 6 a minute per client address
+  availability is not `available` (the `detail` is the availability), and then 409
+  `mailbox_sync_off` while the sync is turned off. Rate limited to 6 a minute per client address
   (`calendar-mailbox-run`).
 
 **The availability** is asked of the neighbours outside any transaction, in this order:
@@ -1676,11 +1684,15 @@ Three operations, each under `calendar:access` and on the caller's own row alone
 | `availability` | When |
 | --- | --- |
 | `no_provider` | No enabled module fills the `MailboxCalendar` slot (Entra is off). |
-| `switch_off` | The provider is in `cleanup` with the reason `switch_off`: the Owner's *Calendar sync* switch is off. |
-| `permission_missing` | The provider is in `cleanup` with the reason `permission_missing`: the switch is on and the connection connected, but its last test did not see `Calendars.ReadWrite`. |
-| `unavailable` | The provider's status is anything else — its connection is not working, or the switch is off and no credential works. |
-| `no_account` | `Workforce.DirectoryAccount` answers nothing for the caller, an account of another provider than the slot's `Key`, or one with no external id. |
+| `switch_off` | The provider's reason is `switch_off`, whatever its state: the Owner's *Calendar sync* switch is off. |
+| `unavailable` | The provider's status is anything else but `available`: its connection is not working. |
+| `no_account` | `Workforce.DirectoryAccount` answers nothing for the caller, a disabled account (a leaver's), an account of another provider than the slot's `Key`, or one with no external id. |
 | `available` | None of the above. |
+
+`permission_missing` stays in the contract's enum but is never answered: the calendar
+permission may be granted with Exchange RBAC for Applications, which no token shows, so
+the provider never refuses for it, and a mailbox outside the grant is that person's
+`mailbox_denied` instead.
 
 ### What is pushed
 
@@ -1700,9 +1712,10 @@ zone. The **desired set** is built in it, appointments first:
 - **Never** a colleague's calendar, a subscription's events — they came from elsewhere,
   perhaps from Outlook itself — or a public holiday.
 
-At most **1500** events per person: past it the projected items farthest from today are
-left out (the feed's order), logged at info with the person's id and how many, and never
-an appointment.
+At most **1500** events per person, a hard cap: past it the projected items farthest
+from today are left out first (the feed's order); only when the appointments alone are
+more than that are the farthest of their occurrences left out too. Each cut is logged at
+info with the person's id and its counts.
 
 **The event.** Each copy is laid out as follows, in the person's preferred language
 (Norwegian for `nb`, English otherwise):
@@ -1734,19 +1747,21 @@ connection as the other calendar workers do, and lists in a short transaction on
 connection, committed before the first call out, the rows that are on or owe a clean-up
 and are due (`next_sync_at` null or past) — the never-synced first, then the longest
 due — at most **50** a cycle (`FOR UPDATE SKIP LOCKED`). It syncs them one at a time,
-with no transaction open while the provider, identity, Staff or a source is asked. For
-each person:
+with no transaction open while the provider, identity, Staff or a source is asked. Each
+person has **three minutes** for everything their sync asks of the neighbours, so one
+slow mailbox cannot hold the cycle; the person's own rows are written past it. For each
+person:
 
 1. **The provider's status.** `unavailable` calls nothing: the row is `unavailable`
    (error `unavailable`) — a clean-up owed stays `stopping` — and tried again in an hour.
 2. **The person's access.** `Access.UserHolds(calendar:access)`. A person who may no
-   longer use Calendar, a provider in `cleanup` or a clean-up owed is
+   longer use Calendar, a provider in `cleanup` (the Owner's switch off) or a clean-up owed is
    [cleaned up](#the-clean-up). Then the row is `off` when the toggle is off;
    `unavailable` (error `unavailable`, tried in an hour) when the person or the provider
    cannot go on; and otherwise — a target change — the sync goes on to the new target at
    once.
-3. **The account.** `Workforce.DirectoryAccount` under `AsUser`. None, another
-   provider's, or one with no external id cleans up what was written to the mailbox
+3. **The account.** `Workforce.DirectoryAccount` under `AsUser`. None, a disabled one
+   (a leaver's), another provider's, or one with no external id cleans up what was written to the mailbox
    stored and is `unavailable` with error `no_account`, tried in an hour. A different
    external id than the one stored cleans the old mailbox up first, then starts over on
    the new one. The mailbox is recorded as soon as it is known, whatever the revision.
@@ -1755,23 +1770,27 @@ each person:
 5. **The desired set** ([above](#what-is-pushed)).
 6. **Reconcile**, when `reconcile` is set (turned on, a clean-up, a refusal, a create
    whose outcome is unknown), at the first sync, and at the first sync of each business
-   day (`last_synced_at` falling on an earlier day): `Find`, then
+   day (`last_synced_at` falling on an earlier day): `Find` from the window's first
+   instant — only events carrying this installation's marker are answered — then
    - an event carrying a key the desired set holds and the map does not is **adopted**
      (mapped with no hash, so it is rewritten);
    - a second event carrying a key already mapped — the duplicate an unknown create
      leaves — is **deleted**;
-   - a mapped event `Find` no longer answers is **forgotten**, to be made anew — only
-     when the list is shorter than 5000, so an answer that may be cut forgets nothing;
-   - an event carrying a key the set does not hold is **left alone**: `Find` has no
-     window, and such an event is most often a copy that slid before the window and was
-     forgotten on purpose. An event with no key — in the *Vantigo* calendar, one the
-     person made there — is left alone too.
+   - a mapped event starting in the window that `Find` no longer answers is
+     **forgotten**, to be made anew — only when the list is shorter than 5000, so an
+     answer that may be cut forgets nothing;
+   - an event carrying a key the set does not hold is **left alone**: such an event is
+     most often a copy that slid before the window and was forgotten on purpose — the
+     past stays until a clean-up. An event without the marker — one the person made, in
+     the *Vantigo* calendar or their own — is never answered, so never touched.
 7. **The diff** against the map: the duplicates' deletes, then a create for each new key
    and an update for each changed hash, in the desired set's order, then a delete for
    each mapped key the set no longer holds that starts inside the window. A mapped key
    that now starts before the window is forgotten, its copy left in the past.
 8. **`Apply`** in slices of 100, the map written after each slice in a short
-   transaction; an update answered `Gone` becomes a create in a later slice.
+   transaction; an update answered `Gone` becomes a create in a later slice. The first
+   op that fails — throttled, or any failure to retry — stops the person's sync after
+   its slice; the rest wait for the next sync.
 9. **The result**, written only if the revision is still the one the sync read — a `PUT`
    meanwhile has made the row due again, and the sync's outcome is dropped:
 
@@ -1782,12 +1801,14 @@ each person:
 | `ErrMailboxGone` | `unavailable` | `mailbox_gone` | in six hours |
 | `ErrMailboxUnknown` | `unavailable` | `no_account` | in an hour |
 | `ErrMailboxUnavailable` | `unavailable` | `unavailable` | in an hour |
-| Any other failure | unchanged (`pending`, `active` or `stopping`); `failed` from the fifth in a row | `failed` | 1, 5, 15, 60 minutes, then hourly |
+| Any other failure, or a clean-up that met a refusal | unchanged (`pending`, `active` or `stopping`); `failed` from the fifth in a row | `failed` — or the clean-up's refusal, `mailbox_denied` or `unavailable` | 1, 5, 15, 60 minutes, then hourly |
 
-A refusal of one op stops the person's sync after its slice's map is written; a failure
-of one op lets the other slices run, then counts as a failure. Each failure is logged at
-warning with the person's id and the step; a refusal at info with its code. Nothing of a
-person's mailbox, their copies' titles or Graph's words is logged.
+A refusal of one op stops the person's sync after its slice's map is written, and so
+does a failure. Each failure is logged at warning with the person's id, the step and a
+code; a refusal at info with its code. Nothing of a person's mailbox, their copies'
+titles or the provider's words — which carry the mailbox's paths — is logged: an error
+is logged by its code alone (`mailbox_denied`, `mailbox_gone`, `mailbox_unknown`,
+`unavailable`, `calendar_not_ours`, `deadline`, `canceled` or `failed`).
 
 **The nudge.** Every appointment write — a create, a change, a delete or cancellation, a
 colleague's answer, an occurrence moved, cancelled or restored — makes the rows of its
@@ -1802,15 +1823,23 @@ re-sync.
 
 A person's copies are removed when they turn the toggle off or change the target, when
 they may no longer use Calendar, when Staff no longer names their account (or names
-another), and when the provider is in `cleanup` — the Owner's switch turned off, or the
-permission missing. The clean-up works on the mailbox stored on the row: with a
-`calendar_id` it deletes the *Vantigo* calendar (`DeleteCalendar`, with everything in
-it); without one it deletes each mapped event from the default calendar, 100 to an
-`Apply`, forgetting each one done or gone. A mailbox that cannot be reached — gone,
-unknown, denied, or the provider unusable — has its copies **forgotten**, logged at
-warning with the person's id: the mailbox is gone, or the copies cannot be reached, and a
-leaver's mailbox is soft-deleted with them. A failure to retry keeps the clean-up owed.
-Then the map is emptied, `calendar_id` cleared and the next sync made a reconcile.
+another), and when the provider is in `cleanup` — the Owner's switch turned off. The
+clean-up works on the mailbox stored on the row, and is decided by its `calendar_id`:
+
+- with one, it deletes the *Vantigo* calendar (`DeleteCalendar`, with everything in it)
+  — only a calendar the provider made; for any other (`ErrCalendarNotOurs`, logged at
+  warning) it deletes the copies in that calendar instead, one by one;
+- without one, it deletes from the default calendar **every event carrying this
+  installation's marker, whatever its date** (`Find` with no bound), and every mapped
+  one besides, 100 to an `Apply`, forgetting each one done or gone. A list as long as
+  `Find`'s bound is a failure once its deletes are done, so the rest go on the retry.
+
+Only a mailbox that is no longer there — `ErrMailboxGone`, or `ErrMailboxUnknown`, an
+account the provider no longer manages — has its copies **forgotten** unremoved, logged
+at warning with the person's id: a leaver's mailbox is soft-deleted with them. A mailbox
+denied, a provider unusable or a failure keeps the map and the clean-up owed, retried on
+the backoff (a row that owed it stays `stopping`). Then the map is emptied, `calendar_id`
+cleared and the next sync made a reconcile.
 Turning the switch back on resumes everyone whose toggle is on, from a reconcile.
 
 ## Refusals and revisions
@@ -1833,9 +1862,10 @@ a date, a missing `If-Match` — is a bare 400 with neither `code` nor `errors`.
 | `appointment_cancelled` | 409 | Any write to a [cancelled](#cancellation) appointment — a `PUT`, a `DELETE`, an occurrence's `PUT` or `DELETE`, a colleague's answer, a resend — and an answer by the link (`POST /rsvp`). |
 | `invitations_unavailable` | 503 | `POST /appointments/{id}/attendees/{attendeeId}/resend` when the mail driver is not `smtp`. |
 | `subscription_limit` | 409 | `POST /subscriptions` when the caller has ten subscriptions already. |
-| `mailbox_sync_unavailable` | 409 | `PUT /mailbox-sync` turning the sync on, or keeping it on, while it cannot run, and `POST /mailbox-sync/run` while it cannot run or is off. The `detail` is the [availability](#the-persons-setting) — `switch_off`, `no_provider`, `unavailable`, `permission_missing` or `no_account` — or `off`. |
+| `mailbox_sync_unavailable` | 409 | `PUT /mailbox-sync` turning the sync on, or keeping it on, while it cannot run, and `POST /mailbox-sync/run` while it cannot run. The `detail` is the [availability](#the-persons-setting) — `switch_off`, `no_provider`, `unavailable` or `no_account`. |
+| `mailbox_sync_off` | 409 | `POST /mailbox-sync/run` while the sync is turned off. |
 | — | 403 | `GET /contacts` without `customers:contacts-view` and `customers:associations-view`. |
-| — | 429 | `POST /rsvp/read` over 60, `POST /rsvp` over 30, the feed's `GET /feed/{file}` over 120, or `POST /subscriptions`, `PUT /subscriptions/{id}` and `POST /subscriptions/{id}/refresh` together over 30 (`calendar-subscription-fetch`), per client address in 10 minutes; and `POST /mailbox-sync/run` over 6 per client address in a minute (`calendar-mailbox-run`): the limiter's `rate_limited`, with `Retry-After`. |
+| — | 429 | `POST /rsvp/read` over 60, `POST /rsvp` over 30, the feed's `GET /feed/{file}` over 120, or `POST /subscriptions`, `PUT /subscriptions/{id}` and `POST /subscriptions/{id}/refresh` together over 30 (`calendar-subscription-fetch`), per client address in 10 minutes; `PUT /mailbox-sync` over 10 per client address in 10 minutes (`calendar-mailbox-sync-write`) and `POST /mailbox-sync/run` over 6 per client address in a minute (`calendar-mailbox-run`): the limiter's `rate_limited`, with `Retry-After`. |
 | — | 503 | `GET /items`, and the feed's `GET /feed/{file}`, when a calendar source failed or ran out of time: "Calendar source unavailable", naming no module. |
 
 **A 404 is bare, with no body**, and says nothing more than "not for you": an unknown
@@ -1921,7 +1951,7 @@ All under `/api/v1/calendar`.
 | `DELETE /subscriptions/{id}` | `calendar:access`, then the caller's own (otherwise 404) |
 | `POST /subscriptions/{id}/refresh` | `calendar:access`, then the caller's own (otherwise 404); in `calendar-subscription-fetch` |
 | `GET /mailbox-sync` | `calendar:access`; the caller's own |
-| `PUT /mailbox-sync` | `calendar:access`; the caller's own; `If-Match` |
+| `PUT /mailbox-sync` | `calendar:access`; the caller's own; `If-Match`; 10 per 10 minutes per client address (`calendar-mailbox-sync-write`) |
 | `POST /mailbox-sync/run` | `calendar:access`; the caller's own; 6 a minute per client address (`calendar-mailbox-run`) |
 
 Every operation requires `calendar:access` but the three `anonymous` ones, which the token

@@ -554,18 +554,20 @@ Communications' outbox is the working example.
     calendar never calls it inside a transaction or holding a connection** — only through
     the accessors in its `contractscalls.go` that refuse such a call, between the short
     transactions its worker writes the map in. Every call is **idempotent or answers what
-    it did per operation**: `EnsureCalendar` answers the calendar it made or found,
-    `DeleteCalendar` is done for a calendar already gone, and `Apply` answers one result
+    it did per operation**: `EnsureCalendar` answers the calendar it made, or adopts
+    one only when it carries the installation's marker, `DeleteCalendar` deletes only a
+    calendar carrying it (`ErrCalendarNotOurs` otherwise) and is done for one already
+    gone, `Find` answers only the events carrying it, and `Apply` answers one result
     per op, in order — done, `Gone`, or the op's refusal — so a slice the network cut
     short is judged op by op and a create whose outcome is unknown is found again by its
     key (`Find`). The provider writes **only to accounts it manages** — an object id it
     made, or whose adoption is confirmed, and not deleted, else `ErrMailboxUnknown` —
-    and the calendar names the mailbox only from Staff's `DirectoryAccount` under the
+    and the calendar names the mailbox only from Staff's enabled `DirectoryAccount` under the
     person's own principal (rule 12), matched against the provider's `Key`, so neither
     side guesses a person's mailbox. Its refusals are sentinels (`ErrMailboxUnavailable`,
-    `ErrMailboxUnknown`, `ErrMailboxDenied`, `ErrMailboxGone`); anything else is a
-    failure to retry. A provider in `cleanup` — its switch off, its permission missing,
-    a credential still working — takes deletes only, so a person's copies can always be
+    `ErrMailboxUnknown`, `ErrMailboxDenied`, `ErrMailboxGone`, `ErrCalendarNotOurs`); anything else is a
+    failure to retry. A provider in `cleanup` — its switch off, a credential still
+    working — takes deletes only, so a person's copies can always be
     removed ([Calendar](/en/reference/calendar/#outlook-sync)).
 
 ## How they are enforced

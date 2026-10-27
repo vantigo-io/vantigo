@@ -3575,8 +3575,9 @@ starts next month; it never reaches a person who has left.
   nothing more: it needs no Staff key, never answers for another user, and answers
   `nil, nil` for a context with no principal, a user with no person, a person with no
   provider link, no external id, or a link `deleted`, `preparing`, `failed` or
-  `blocked`. The calendar matches `Provider` against the mailbox provider's own key, and
-  the provider checks again that it manages the account
+  `blocked`. The calendar takes only an `Enabled` account whose `Provider` matches the
+  mailbox provider's own key — a disabled one, a leaver's, is no account — and the
+  provider checks again that it manages the account
   ([Microsoft Entra ID](/en/reference/entra/#the-account-check)).
 - **Derived figures.** `HoursPerWeek` is a figure a colleague can nearly compute from
   the FTE they read and the scheme's default (planning reading 2); a day away is

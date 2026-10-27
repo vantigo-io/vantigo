@@ -309,7 +309,7 @@ export interface components {
             /** Format: int32 */
             enabled: number;
         };
-        /** @description The calendar sync switch (calendar Outlook sync design O2): whether people may sync their Vantigo calendar to Outlook, and whether it can run. status is off while the switch is; ready when on, connected, and the last test's token carried Calendars.ReadWrite; permission_missing when on but the last test did not see it (add it, consent, and test again); unavailable when on but the connection is not connected, reason then being the connection's statusReason. */
+        /** @description The calendar sync switch (calendar Outlook sync design O2): whether people may sync their Vantigo calendar to Outlook, and whether it can run. status is off while the switch is; ready when on, connected, and the last test's token carried Calendars.ReadWrite; permission_missing when on and connected but the last test's token did not carry it — advisory: expected when the permission was granted with Exchange RBAC for Applications, which no token shows, and otherwise a sign to add it, consent, and test again; the sync runs either way, and a mailbox outside the grant is refused per person; unavailable when on but the connection is not connected, reason then being the connection's statusReason. */
         EntraCalendarSync: {
             enabled: boolean;
             /** @description A code, never the directory's words; absent when there is nothing to say. */

@@ -210,13 +210,17 @@ on or off.
    grants admin consent again and chooses **Test connection** — the [administration
    guide](/en/admin/entra/#calendar-sync) has the steps, and how to limit it to some
    mailboxes. Until a test sees it, step 3 is *Not done* and the **Status** card lists it
-   as missing, *(for calendar sync)*; the rest of the module works without it.
+   as missing, *(for calendar sync)*; the rest of the module works without it. If it was
+   granted with Exchange RBAC for Applications instead, the token never shows it: then
+   it stays listed, and that is expected — the sync runs all the same.
 
 Under the switch, a line says where calendar sync stands:
 
 - **Ready** — people can turn on their sync;
-- **Add Calendars.ReadWrite, grant admin consent and test the connection again.** — the
-  last test did not see the permission;
+- **Calendars.ReadWrite is not in the token. That is expected if you granted it with
+  Exchange RBAC for Applications; otherwise add it, grant admin consent and test
+  again.** — the last test did not see the permission; people can still turn their sync
+  on, and anyone whose mailbox the permission does not reach is told so on their card;
 - **Waiting for the connection** — the connection is not connected, with the reason under
   it.
 

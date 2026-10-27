@@ -244,10 +244,12 @@ in [the reference](/en/reference/entra/#the-mailbox-calendar).
 Verify: the line under the switch reads **Ready**, and the **Status** card no longer
 lists `Calendars.ReadWrite` as missing. A person who opens **Calendar → My calendar**
 can turn on **Sync to my Outlook calendar**; within a minute their card says **Last
-synced** and the appointments are in Outlook. Until the test sees the permission, the
-line reads **Add Calendars.ReadWrite, grant admin consent and test the connection
-again.**, step 3 is *Not done*, and nobody can turn their sync on — the rest of the
-module works as before.
+synced** and the appointments are in Outlook. Until a test sees the permission, the
+line reads **Calendars.ReadWrite is not in the token. That is expected if you granted it
+with Exchange RBAC for Applications; otherwise add it, grant admin consent and test
+again.** and step 3 is *Not done* — but the line is advisory: people can turn their sync
+on all the same, and a mailbox the permission does not reach is refused for that person
+alone. The rest of the module works as before.
 
 **Turning it off** stops everyone's sync, and the worker removes the copies it wrote,
 using the connection while a credential still works. Turning it on again resumes
@@ -295,12 +297,13 @@ Exchange Online PowerShell, as an Exchange administrator:
    remove `Calendars.ReadWrite` (or revoke its admin consent). Exchange adds the two
    grants together, so while the tenant-wide consent stands the scope restricts nothing.
 
-The changes take **30 minutes to 2 hours** to apply. Then choose **Test connection** in
-step 3 and check the line under the switch. Vantigo judges the permission by the roles
-in the token its test fetches: if it reads **Add Calendars.ReadWrite, grant admin
-consent and test the connection again.** once the consent is removed, Vantigo treats
-calendar sync as missing its permission and removes the copies — put the consent back
-until this is supported. A person outside the scope sees **Your organisation has not
+The changes take **30 minutes to 2 hours** to apply. A grant made with RBAC for
+Applications never shows in the token, so once the tenant-wide consent is removed, the
+next **Test connection** lists `Calendars.ReadWrite` as missing, step 3 reads *Not done*
+and the line under the switch reads **Calendars.ReadWrite is not in the token. That is
+expected if you granted it with Exchange RBAC for Applications; …** — that is expected,
+and the sync goes on. Verify with a person inside the scope: their card says **Last
+synced**. A person outside the scope sees **Your organisation has not
 allowed Vantigo to reach your mailbox.** on their Outlook card: Vantigo tries them again
 every six hours, and never reads it as the connection failing.
 
@@ -555,7 +558,7 @@ Calendar sync's troubles show on the line under its switch, and on each person's
 
 | Where | Means | Do |
 | --- | --- | --- |
-| *Add Calendars.ReadWrite, grant admin consent and test the connection again.* under the switch | The switch is on, the connection connected, and the last test's token lacked `Calendars.ReadWrite`. Nobody can turn their sync on, and the worker removes the copies already written. | Add the permission, grant consent and test again ([calendar sync](#turn-it-on)). |
+| *Calendars.ReadWrite is not in the token. …* under the switch | The switch is on, the connection connected, and the last test's token lacked `Calendars.ReadWrite`. Expected under RBAC for Applications; the sync runs either way. | Nothing under RBAC for Applications. Otherwise add the permission, grant consent and test again ([calendar sync](#turn-it-on)); until then every person's sync is refused as their own mailbox denied. |
 | *Waiting for the connection* under the switch | The connection is not connected; its reason is under the line. | Fix the connection as the table above says. |
 | *Your organisation has not allowed Vantigo to reach your mailbox.* on a person's card | Graph answered 403 for their mailbox (`mailbox_denied`): outside an RBAC for Applications scope. Tried again every six hours. | Add the person to the scope's group, or accept it; they press **Sync now** to try at once. |
 | *Your mailbox could not be found.* on a person's card | The user has no Exchange Online mailbox, or no longer exists (`mailbox_gone`). Tried again every six hours. | Give the account a licence with Exchange Online. |

@@ -338,7 +338,8 @@ its permission ([Microsoft Entra ID](/en/admin/entra/#calendar-sync)). The
 `CALENDAR_MAILBOX_SYNC_ENABLED=0`, in worker mode, and in api mode with
 `WORKERS_IN_PROCESS=1`. It **wakes every minute** — not a setting — takes an advisory
 lock so several replicas take turns, and syncs each person who is due, at most 50 a
-cycle, one at a time. A person is due `CALENDAR_MAILBOX_SYNC_POLL` (default `15m`, at
+cycle, one at a time, each with three minutes for what their sync asks of Microsoft and
+the other modules, so one slow mailbox cannot hold the rest. A person is due `CALENDAR_MAILBOX_SYNC_POLL` (default `15m`, at
 least `1m`) after their last sync, and at once when one of their appointments changes,
 when they change their setting, or when they press **Sync now** — so an appointment
 reaches Outlook within a minute. A failed sync is tried again after 1, 5, 15 and 60
