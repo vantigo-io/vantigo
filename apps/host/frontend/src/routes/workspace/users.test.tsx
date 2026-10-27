@@ -1,6 +1,7 @@
 import { QueryClient } from "@tanstack/react-query";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import userEvent from "@testing-library/user-event";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ManagedUser } from "../../api/users";
 import { renderRoute } from "../../test/render-route";
 import { Route as UsersRoute } from "./users";
@@ -422,5 +423,108 @@ describe("the single sign-on column", () => {
     openActions("Kari Nordmann");
     await screen.findByRole("menuitem", { name: "Edit details" });
     expect(screen.queryByRole("menuitem", { name: "Connect to single sign-on…" })).not.toBeInTheDocument();
+  });
+});
+
+describe("the Entra directory in the users screen", () => {
+  const account = {
+    objectId: "44444444-4444-4444-8444-444444444444",
+    displayName: "Kari Nordmann",
+    mail: "kari.nordmann@contoso.no",
+    userPrincipalName: "kari.nordmann@contoso.no",
+    employeeId: "1042",
+    accountEnabled: true,
+  };
+  const olaAccount = {
+    objectId: "55555555-5555-4555-8555-555555555555",
+    displayName: "Ola Hansen",
+    userPrincipalName: "ola.hansen@contoso.no",
+    accountEnabled: true,
+  };
+  const json = (body: unknown, status = 200) =>
+    new Response(JSON.stringify(body), {
+      status,
+      headers: { "Content-Type": status === 200 ? "application/json" : "application/problem+json" },
+    });
+
+  /** The Entra module's two reads, faked at the network as its package calls them. */
+  const stubDirectory = () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.startsWith("/api/v1/entra/directory/users?")) return Promise.resolve(json({ users: [account] }));
+      if (url === "/api/v1/entra/directory/matches")
+        return Promise.resolve(
+          json({
+            matches: [
+              { userId: "u-1", account, matchedBy: ["employeeId"] },
+              { userId: "u-2", account: olaAccount, matchedBy: ["userPrincipalName"] },
+            ],
+            candidates: 2,
+            ambiguous: 0,
+            truncated: false,
+          }),
+        );
+      return Promise.resolve(new Response(null, { status: 404 }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    return fetchMock;
+  };
+
+  afterEach(() => {
+    delete window.__VANTIGO_APP__;
+  });
+
+  it("fills both keys from the account picked in the directory", async () => {
+    stubDirectory();
+    api.announceSsoLink.mockResolvedValue(user({ ssoLink: { state: "expected" } }));
+    await renderUsers([user({ ssoLink: { state: "none" } })]);
+    fireEvent.click(within(row("Kari Nordmann")).getByRole("button", { name: "Connect…" }));
+    await userEvent.type(await screen.findByLabelText(/Search the directory/), "kari");
+    await userEvent.click(await screen.findByRole("option", { name: /kari\.nordmann@contoso\.no/ }));
+    expect(screen.getByLabelText("User principal name")).toHaveValue("kari.nordmann@contoso.no");
+    expect(screen.getByLabelText("Object id")).toHaveValue(account.objectId);
+    fireEvent.click(screen.getByRole("button", { name: "Connect" }));
+    await waitFor(() =>
+      expect(api.announceSsoLink).toHaveBeenCalledWith("u-1", {
+        userPrincipalName: "kari.nordmann@contoso.no",
+        objectId: account.objectId,
+      }),
+    );
+  });
+
+  it("keeps the typed field alone while the module is off", async () => {
+    window.__VANTIGO_APP__ = { basePath: "/", title: "Vantigo", support: {}, modules: ["staff"] };
+    await renderUsers([user({ ssoLink: { state: "none" } })]);
+    expect(screen.queryByRole("button", { name: "Find matches in the directory…" })).not.toBeInTheDocument();
+    fireEvent.click(within(row("Kari Nordmann")).getByRole("button", { name: "Connect…" }));
+    expect(await screen.findByLabelText("User principal name")).toHaveValue("kari@example.com");
+    expect(screen.queryByLabelText(/Search the directory/)).not.toBeInTheDocument();
+  });
+
+  it("connects the selected pairs from the matches, in the Owner's words when refused", async () => {
+    stubDirectory();
+    api.announceSsoLink.mockImplementation((id: string) =>
+      id === "u-2" ? Promise.reject(refusal(409, "sso_link_taken")) : Promise.resolve(user({})),
+    );
+    await renderUsers([
+      user({ id: "u-1", displayName: "Kari Nordmann", ssoLink: { state: "none" } }),
+      user({ id: "u-2", displayName: "Ola Hansen", email: "ola@example.com", ssoLink: { state: "none" } }),
+    ]);
+    fireEvent.click(screen.getByRole("button", { name: "Find matches in the directory…" }));
+    const dialog = await screen.findByRole("dialog", { name: "Users who match an account in the directory" });
+    await userEvent.click(await within(dialog).findByRole("button", { name: "Connect selected (2)" }));
+    await waitFor(() => expect(api.announceSsoLink).toHaveBeenCalledTimes(2));
+    expect(api.announceSsoLink).toHaveBeenCalledWith("u-1", {
+      objectId: account.objectId,
+      userPrincipalName: "kari.nordmann@contoso.no",
+    });
+    expect(api.announceSsoLink).toHaveBeenCalledWith("u-2", {
+      objectId: olaAccount.objectId,
+      userPrincipalName: "ola.hansen@contoso.no",
+    });
+    expect(await within(dialog).findByText("Another user is already connected to this account.")).toBeInTheDocument();
+    expect(within(dialog).getByText("Connected")).toBeInTheDocument();
+    // The screen's users are read again once the review is through.
+    await waitFor(() => expect(api.listUsers).toHaveBeenCalledTimes(2));
   });
 });

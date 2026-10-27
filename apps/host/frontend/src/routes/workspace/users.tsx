@@ -39,6 +39,7 @@ import {
 } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, redirect } from "@tanstack/react-router";
+import { DirectoryMatches, DirectoryPicker } from "@vantigo/entra-ui";
 import { appUrl, ContentSkeleton, EmptyState, PageHeader, useI18n } from "@vantigo/frontend-shell";
 import { useMemo, useState } from "react";
 import { createInvitation, listInvitations } from "../../api/account-lifecycle";
@@ -61,6 +62,7 @@ import {
   updateUser,
 } from "../../api/users";
 import { translateHostRole } from "../../i18n";
+import { enabledModuleKeys } from "../../lib/enabled-modules";
 import "../../i18n";
 
 const emailPattern = /^\S+@\S+$/;
@@ -89,6 +91,15 @@ const refusalMessage = (error: unknown, t: (key: string) => string) => {
   if (key) return t(key);
   return error instanceof Error ? error.message : t("common.requestFailed");
 };
+
+/**
+ * Why identity refused announcing a link, in the Owner's words: a field's
+ * sentence for a refused value, the coded refusals by their words.
+ */
+const ssoLinkRefusal = (error: unknown, t: (key: string) => string) =>
+  error instanceof ApiValidationError
+    ? (Object.values(error.fieldErrors)[0] ?? error.message)
+    : refusalMessage(error, t);
 
 /** A menu item's label with, when it cannot be used, the reason beneath it. */
 const withReason = (label: string, reason?: string) =>
@@ -137,6 +148,9 @@ const UsersPage = () => {
   const [adoptUser, setAdoptUser] = useState<ManagedUser | null>(null);
   const [connectUser, setConnectUser] = useState<ManagedUser | null>(null);
   const [connectMore, setConnectMore] = useState(false);
+  const [matchesOpen, setMatchesOpen] = useState(false);
+  // The Entra module's directory picker and review, while the module is enabled (plan reading 7).
+  const entraOn = enabledModuleKeys().includes("entra");
   const form = useForm({
     initialValues: { displayName: "", email: "", role: "User" as UserRole, password: "" },
     validate: {
@@ -659,10 +673,17 @@ const UsersPage = () => {
             onChange={(e) => setSearch(e.currentTarget.value)}
             style={{ flex: "1 1 280px" }}
           />
-          <Text size="sm" c="dimmed">
-            {formatters.formatNumber(filtered.length)}{" "}
-            {filtered.length === 1 ? t("common.userSingular") : t("common.users")}
-          </Text>
+          <Group gap="md">
+            {ssoOn && entraOn && (
+              <Button variant="default" onClick={() => setMatchesOpen(true)}>
+                {t("admin.ssoLinkFindMatches")}
+              </Button>
+            )}
+            <Text size="sm" c="dimmed">
+              {formatters.formatNumber(filtered.length)}{" "}
+              {filtered.length === 1 ? t("common.userSingular") : t("common.users")}
+            </Text>
+          </Group>
         </Group>
         {users.isError && (
           <Alert m="md" color="red" title={t("admin.usersLoadFailed")}>
@@ -878,6 +899,20 @@ const UsersPage = () => {
             <Text size="sm" c="dimmed">
               {t("admin.ssoLinkConnectDescription")}
             </Text>
+            {entraOn && connectUser && (
+              <DirectoryPicker
+                forUserId={connectUser.id}
+                userName={(id) => {
+                  const holder = users.data?.find((u) => u.id === id);
+                  return holder ? holder.displayName || holder.email || undefined : undefined;
+                }}
+                onPick={({ objectId, userPrincipalName }) => {
+                  connectForm.setValues({ userPrincipalName, objectId });
+                  connectForm.clearErrors();
+                  setConnectMore(true);
+                }}
+              />
+            )}
             <TextInput
               label={t("admin.ssoLinkUpn")}
               description={t("admin.ssoLinkUpnHelp")}
@@ -898,6 +933,27 @@ const UsersPage = () => {
             </Button>
           </Stack>
         </form>
+      </Modal>
+      <Modal
+        opened={matchesOpen}
+        onClose={() => setMatchesOpen(false)}
+        title={t("admin.ssoLinkMatchesTitle")}
+        size="xl"
+        centered
+      >
+        {matchesOpen && (
+          <DirectoryMatches
+            users={users.data ?? []}
+            connect={async (userId, pick) => {
+              try {
+                await announceSsoLink(userId, pick);
+              } catch (error) {
+                throw new Error(ssoLinkRefusal(error, t), { cause: error });
+              }
+            }}
+            onDone={refresh}
+          />
+        )}
       </Modal>
       <Modal
         opened={!!passwordUser}
