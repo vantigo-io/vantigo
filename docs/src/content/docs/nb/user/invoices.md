@@ -1,6 +1,6 @@
 ---
 title: Fakturaer
-description: Fakturering av arbeid og forbruk, utkast, utstedelse og sending av fakturaer, kreditnotaer, betalinger, journalen og eksporten.
+description: Fakturering av arbeid og forbruk, fakturakjøringer, utkast, utstedelse og sending av fakturaer, kreditnotaer, betalinger, journalen og eksporten.
 sidebar:
   order: 50
 sources:
@@ -14,8 +14,9 @@ sources:
 
 Fakturaer-appen utsteder salgsdokumentene i bokføringen din: et utkast blir en
 nummerert faktura eller kreditnota i det øyeblikket det utstedes, får en PDF, og endres
-aldri etter det. Appen har seks områder i sidemenyen: **Fakturaer**, **Hurtigfaktura**
-(vist bare for den som har både `invoices:create` og `invoices:issue`), **Fakturajournal**,
+aldri etter det. Appen har sju områder i sidemenyen: **Fakturaer**, **Hurtigfaktura**
+(vist bare for den som har både `invoices:create` og `invoices:issue`),
+**Fakturakjøringer** (vist med `invoices:create`), **Fakturajournal**,
 **Forfalt** (de forfalte fakturaene og purringene deres), **Innbetalinger** (bankens
 filer og avvikskøen, og dagens Vipps-betalinger, vist bare med `invoices:payments`) og **Fakturainnstillinger**. Alle beløp er i NOK i denne fasen. En faktura leveres som
 PDF — ved nedlasting eller på e-post — eller som EHF-faktura i Peppol-nettverket, når
@@ -544,6 +545,56 @@ faktureres eller er ikke i NOK; avregningene gir mer enn 500 linjer sammen med u
 egne (velg færre, eller lag et nytt utkast); eller kunden kan ikke faktureres, som for
 **Ny faktura**. Gjelder avvisningen én avregning, nevner varselet den — *Avregningen som
 ble avvist: …*.
+
+### Kjør fakturering for alle kunder
+
+En **fakturakjøring** fakturerer forbruket til alle kunder som har noe som skal
+faktureres — eller til kundene du nevner — i én omgang: Vantigo lager én faktura per
+kunde, akkurat slik **Fra forbruk** ville gjort, og utsteder den hvis du ber om det
+([slik virker det](/en/reference/invoices/#billing-runs)). Det krever `invoices:create`,
+og `invoices:issue` for å utstede fakturaene. Bare én kjøring går om gangen.
+
+1. Åpne **Fakturakjøringer** i sidemenyen og klikk **Ny fakturakjøring**.
+2. **Avregningsperioder som slutter på eller før** — i dag med mindre du endrer det.
+3. Kryss av for **Utsted fakturaene** for å få hver faktura utstedt så snart den er
+   laget, eller la være for å få bare utkast, som du ser over og utsteder selv. Valget
+   vises bare hvis du kan utstede.
+4. **Kunde-ID-er** — la feltet stå tomt for å fakturere alle kunder med forbruk som
+   skal faktureres til og med dagen, eller skriv ID-ene til kundene for å fakturere bare
+   dem.
+5. Klikk **Start kjøringen**. Den åpnes på sin egen side og går gjennom kundene i bakgrunnen;
+   siden følger den underveis.
+
+Kjøringen avvises, og ingenting lages, når Energi-modulen er slått av, når en annen
+kjøring ikke er ferdig, når ingenting skal faktureres til og med dagen, eller når mer
+enn 5 000 leveranser skal faktureres — nevn da kundene, i flere kjøringer.
+
+**Kjøringens side** viser dagen, om den utsteder, statusen — **I kø**, **Kjører**,
+**Ferdig** eller **Avbrutt** — og hvor mange kunder som endte på hver måte, og så én rad per kunde,
+som du kan filtrere på utfall:
+
+- **Utkast laget** eller **Utstedt** — fakturaen den laget, som lenke. En kunde med for
+  mange linjer til én faktura får flere, delt etter målepunkt.
+- **Hoppet over** — kunden kunne ikke faktureres, og raden sier hvorfor med ord, slik
+  veiviseren ville gjort: ingenting skulle faktureres, eller et målepunkt er ikke klart
+  ennå — raden nevner målepunktet, for eksempel når faktureringsperioden fortsatt er
+  åpen, avlesninger eller spotpriser mangler, eller det er årlig fakturering av en
+  person. Rett det i Energi og fakturer kunden senere, fra kortet eller i en ny kjøring.
+- **Feilet** — fakturaen ble laget, men kunne ikke utstedes (grunnen står der);
+  utkastet blir liggende og er lenket, så du kan rette det og utstede for hånd. En kunde
+  som gang på gang støtte på en feil, feiler også, etter tre forsøk.
+
+En faktura kjøringen laget, er en vanlig faktura: et utkast kan redigeres eller
+slettes — et slettet utkast vises ikke lenger på kjøringen — og en utstedt faktura
+krediteres som enhver annen.
+
+**Avbryt kjøringen** stopper en kjøring som ikke er ferdig: kundene den ikke har nådd
+ennå, blir **Avbrutt**, og den som faktureres akkurat da, gjøres ferdig. Det som er laget,
+blir stående.
+
+**Sending er ikke en del av kjøringen.** Send de utstedte fakturaene etterpå fra hvert
+dokument, på e-post eller som EHF ([Sende et dokument på e-post](#sende-et-dokument-på-e-post),
+[Sende som EHF](#sende-som-ehf)).
 
 ## Redigere og slette et utkast
 
@@ -1843,7 +1894,7 @@ Ingen innebygd rolle har disse; en eier har alt
 | --- | --- |
 | Åpne appen, lese hvert dokument, laste ned PDF-er og EHF-filer, se betalinger, sendinger og EHF-tilstander, lese journalen, eksportere CSV-filen, se kortet på dashbordet, lese forfallslisten, se en fakturas purringer, purrekrav, leveringer, vent og overlevering og laste ned PDF-en til et brev, lese en kundes purreregel, inkassosatsene og purreinnstillingene, se dashbordets varsler om forfalte fakturaer og penger som skal tilbake, se en fakturas betalingslenke og Vipps-betalinger, liste dagens Vipps-betalinger og laste dem ned som CSV | `invoices:access` |
 | Lage, redigere, forhåndsvise og slette utkast | `invoices:create`, og `customers:view` for å velge kjøperen |
-| Se det ufakturerte arbeidet — timene, personene og satsene — på en kundes fane Fakturaer eller et prosjekts fane Fakturagrunnlag, lage et utkast av det eller legge det til i et, oppdatere arbeidet på et utkast, slå timelisten av eller på, trekke fra tidligere fakturaer; se en kundes forbruk som skal faktureres, og lage et utkast av det eller legge det til i et | `invoices:create` |
+| Se det ufakturerte arbeidet — timene, personene og satsene — på en kundes fane Fakturaer eller et prosjekts fane Fakturagrunnlag, lage et utkast av det eller legge det til i et, oppdatere arbeidet på et utkast, slå timelisten av eller på, trekke fra tidligere fakturaer; se en kundes forbruk som skal faktureres, og lage et utkast av det eller legge det til i et; lage, følge og avbryte fakturakjøringer | `invoices:create` (og `invoices:issue` for en kjøring som utsteder fakturaene) |
 | Utstede et utkast — som merker arbeidet på det som fakturert i Timer, Utlegg og Prosjekter, og forbruket i Energi, uten å spørre etter rettighetene der — lage en kreditnota, sende et dokument på e-post eller som EHF, se hvor hver sending gikk, avbryte eller avklare en EHF-sending, registrere en levering manuelt eller fjerne en, lage eller trekke tilbake en betalingslenke og se adressen og QR-koden mens betaling på stedet tilbys, ta imot en Vipps-betaling på stedet | `invoices:issue` |
 | Registrere en betaling eller fjerne en med begrunnelse; importere bankfiler, og bruke **Innbetalinger** og avvikskøen der; sette en kundes purreregel; forhåndsvise og gjøre purrekjøringer, skrive ut papirbrev, bekrefte en bunke postlagt eller skrive den ut på nytt; trekke tilbake et brev eller sende et som feilet på nytt; registrere en betaling av purrekrav, fjerne en, ettergi et purrekrav; sette en faktura på vent og fjerne den fra vent, registrere en overlevering til inkasso og trekke den tilbake, eksportere inkassofilen; registrere en dags Vipps-betalinger som avstemt; se dashbordets varsler om banklinjer, brev, utskriftsbunker og Vipps-betalinger | `invoices:payments` |
 | Lage en hurtigfaktura — laget og utstedt i ett steg, registrert som overlevert — og ta betalt for den med Vipps på stedet | `invoices:create` og `invoices:issue` |

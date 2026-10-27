@@ -167,8 +167,13 @@ Communications' outbox is the working example.
    on `Deps` when no enabled module provides one: a worker reads identity's users and
    the accounts worker writes them. Workers has no error to return, so two providers
    of `Directory`, `Users` or `Accounts` — a bug in the binary's module list, which
-   Compose refuses — panic. Workers does not resolve `Consumption` yet: no worker
-   reads it until billing runs (energy consumption billing, delivery E).
+   Compose refuses — panic. After `Workforce` it resolves `Projects`, then the three
+   `Billable*` reads and `Consumption`, through the very helpers Compose calls
+   (`withProjects`, then `withBillables`), in Compose's order and keeping a preset
+   value when no enabled module provides one: Invoices' `invoices-billing` worker
+   drafts and issues through the From consumption wizard's and the issue's own code
+   paths, which read them ([Billing runs](/en/reference/invoices/#billing-runs)). Two
+   providers of any of them panic, as above.
    One order is not the module order: both Compose and Workers put the
    `CustomerReferences` and `CustomerPersonalData` of the modules that declare
    `InvoicedWork` **after every other module's**, each side in module order (a

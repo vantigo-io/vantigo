@@ -280,6 +280,7 @@ Standardoppsettet med én container kjører bakgrunnsjobbene til hver aktivert m
 kundemodulens importjobb `customers-import`, energimodulens importjobb `energy-import`, energimodulens spotprisjobb
 `energy-spot-prices` når `ENERGY_SPOT_PRICE_SERVICE_URL` er satt eller `ENERGY_SPOT_PRICE_FEED_ENABLED=1`, fakturamodulens EHF-jobber `invoices-ehf` og `invoices-ehf-events` når
 `INVOICES_EHF_ENABLED` er på, fakturamodulens purrejobb `invoices-reminders`, alltid,
+fakturamodulens faktureringsjobb `invoices-billing`, alltid,
 fakturamodulens betalingsjobb `invoices-payments` når `INVOICES_VIPPS_ENABLED` er på, og
 kalendermodulens avlysningsjobb `calendar-cancellations` med mindre
 `CALENDAR_CANCELLATIONS_ENABLED=0`, og kalendermodulens abonnementsjobb
@@ -311,8 +312,8 @@ Replikaer som verken skal migrere eller kjøre bakgrunnsjobber kan kjøre komman
 `server` i stedet for `api`; den serverer bare, uansett hva `WORKERS_IN_PROCESS` sier.
 Uansett topologi tar oppbevaringsoppryddingen, registerjobbene, EHF-hendelsesjobben og
 kalenderens avlysnings- og abonnementsjobb en rådgivende lås (advisory lock) i PostgreSQL, så hver av dem kjører på nøyaktig én
-instans per syklus; utboksen, `invoices-ehf`-jobben, `invoices-reminders`-jobben og
-`invoices-payments`-jobben tar i stedet én rad om gangen under en tidsbegrenset lås, så
+instans per syklus; utboksen, `invoices-ehf`-jobben, `invoices-reminders`-jobben,
+`invoices-billing`-jobben og `invoices-payments`-jobben tar i stedet én rad om gangen under en tidsbegrenset lås, så
 et hvilket som helst antall instanser deler arbeidet uten å sende noe to ganger. Purrejobben sender ett brev om
 gangen, høyst ett i sekundet per instans, og hver sending må bli ferdig godt innenfor
 låsen på 60 sekunder
@@ -320,6 +321,11 @@ låsen på 60 sekunder
 Betalingsjobben ser etter arbeid hvert sekund og behandler alle Vipps-betalinger som er
 klare, i hver syklus
 ([Betalingsjobben](/nb/admin/payments/#betalingsjobben)).
+Faktureringsjobben har ingen innstillinger: den utfører fakturakjøringene folk lager
+under **Fakturaer → Fakturakjøringer**, ser etter arbeid hvert 5. sekund og lager — og,
+når kjøringen ber om det, utsteder — én kundes fakturaer om gangen, høyst fem kunder
+per syklus, hver under en lås på 10 minutter; den sender ingenting
+([Billing runs](/en/reference/invoices/#billing-runs)).
 
 Kundemodulens importjobb kontrollerer og kjører kundefilene folk laster opp. Den ser
 etter arbeid hvert `CUSTOMERS_IMPORT_POLL` (5 sekunder som standard), og i

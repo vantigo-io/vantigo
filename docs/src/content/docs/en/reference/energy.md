@@ -1540,14 +1540,18 @@ points, settled per supply period and billing period, priced by the module that 
 the prices. Nothing of a consumption series crosses it, only settlements. Its three
 methods:
 
-- **`DueSupplies(DueSuppliesRequest{CustomerIDs, Through})`** — per customer, the
+- **`DueSupplies(DueSuppliesRequest{CustomerIDs | Every, Through})`** — per customer, the
   supply periods with at least one billing period due through `Through` and not yet
   invoiced, without settling anything: each `DueSupply` with the customer, supply
   period and point, the GSRN, the address (*"street, postal city"*), the price area,
   the contract's name, the cadence, `BilledThrough` (the end of the last invoiced
   period, none when none was), `DuePeriods` and `Blocked`, judged by computing the
   first due period without writing; by customer, then supply period. A customer's
-  supply periods are its non-cancelled ones that start before `Through`.
+  supply periods are its non-cancelled ones that start before `Through`. With
+  **`Every`** in place of customers it looks at **every** non-cancelled supply period
+  that started before `Through`, whoever it belongs to (`ListSettlementSupplyPeriodIDsAll`)
+  — the read of Invoices' [billing runs](/en/reference/invoices/#billing-runs), which
+  have no list of customers to name — and answers the same, capped as always.
 - **`Settle(SettleRequest{CustomerIDs | SupplyPeriodIDs, Through})`** — computes the
   due periods not yet invoiced of the customers' supply periods or of the ones named
   (one that does not exist is absent), writes them as draft rows
@@ -1560,8 +1564,8 @@ methods:
 
 `Through` is an instant: a period is due when it ends on or before it; invoicing passes
 the start of the day after its "through" date. **The request rules**
-(`Validate`, `ValidateSettlementIDs`): a due-supplies request names 1 to
-`MaxActualsRequests` (2 000) customers, none twice, and a `Through`; a settle request
+(`Validate`, `ValidateSettlementIDs`): a due-supplies request names exactly one of 1 to
+`MaxActualsRequests` (2 000) customers, none twice, and `Every`, and a `Through`; a settle request
 exactly one of customers (at most 2 000) and supply periods (at most
 `MaxBillableRows`, 5 000), none twice, and a `Through`; a settlements read 1 to 5 000
 ids, none twice. The kinds, states, blockers, units, bands and VAT hints are exported
@@ -1585,8 +1589,12 @@ Energy and resolved into `Deps.Consumption` by `module.Compose` after the three
 **Consumption** section of the uninvoiced panel reads `DueSupplies`, and the **From
 consumption** wizard `DueSupplies`, then `Settle` or `Settlements`, a draft's freshness, refresh and issue
 `Settlements` — each on the pool before any transaction of Invoices'
-([Invoicing consumption](/en/reference/invoices/#invoicing-consumption)). `module.Workers`
-does not resolve it yet; billing runs teach it (delivery E).
+([Invoicing consumption](/en/reference/invoices/#invoicing-consumption)). A billing run
+reads `DueSupplies` with `Every` when it is made without named customers, and its
+worker `Settle` per customer, then the wizard's and the issue's reads
+([Billing runs](/en/reference/invoices/#billing-runs)). `module.Workers` resolves the
+slot too, as `Compose` does, for the `invoices-billing` worker
+([module boundaries rule 5](/en/contributing/module-boundaries/#the-rules)).
 
 ## The invoiced-work holder
 
