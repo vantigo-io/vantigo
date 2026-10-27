@@ -30,7 +30,8 @@ import (
 // once, a 5xx is retried once after a second — never for a call made
 // noRetry, the create of a user, a group or a pass, which the tenant may
 // have carried out before it failed —, a 401 fetches a fresh token once;
-// every answer read through a 1 MiB cap (8 MiB for a mailbox $batch); and Graph's refusal parsed into a
+// every answer read through a 1 MiB cap (8 MiB for a mailbox $batch, 16 MiB
+// for a page of the mailbox's delta); and Graph's refusal parsed into a
 // graphError carrying the status and the codes, its words logged at debug
 // level with the tenant's id — except a noRetry call's, which may echo the
 // password or the pass it carried, and a noWords call's, which may echo a
@@ -85,6 +86,15 @@ const (
 	// call made largeAnswer): twenty events, each answered whole with its
 	// body, may outgrow graphMaxBody.
 	graphMaxBatchBody = 8 << 20
+	// graphMaxDeltaBody is the most of a page of the mailbox's calendar
+	// delta read (a call made deltaPage): fifty events answered whole —
+	// subject, an HTML body, attendees — about 320 KiB each, which the
+	// provider decodes none of but must read past.
+	graphMaxDeltaBody = 16 << 20
+	// graphDeltaPrefer is the Prefer header of a deltaPage call: the
+	// event's times in UTC and fifty events a page (calendar Outlook sync
+	// design O9.1).
+	graphDeltaPrefer = `outlook.timezone="UTC", odata.maxpagesize=50`
 )
 
 // The client's failures. A refusal Graph answered is a *graphError; these
@@ -105,7 +115,7 @@ var (
 	// wait longer than graphMaxRetryAfter.
 	errThrottled = errors.New("entra: Graph throttled the call")
 	// errResponseTooLarge: an answer longer than graphMaxBody (graphMaxBatchBody
-	// for a call made largeAnswer).
+	// for a call made largeAnswer, graphMaxDeltaBody deltaPage).
 	errResponseTooLarge = errors.New("entra: Graph's answer is larger than the client reads")
 )
 
@@ -307,6 +317,11 @@ const eventual callOption = 3
 // rather than graphMaxBody: the mailbox's $batch of events (mailbox.go).
 const largeAnswer callOption = 4
 
+// deltaPage is a read of a page of the mailbox's calendar delta
+// (mailbox_delta.go): sent with Prefer: graphDeltaPrefer, its answer read
+// through graphMaxDeltaBody.
+const deltaPage callOption = 5
+
 // get reads path into into. path is everything after /v1.0, its query
 // already escaped (url.Values.Encode).
 func (c *graphClient) get(ctx context.Context, cred graphCredential, path string, into any, opts ...callOption) error {
@@ -368,10 +383,17 @@ func (c *graphClient) do(ctx context.Context, cred graphCredential, method, path
 func (c *graphClient) send(ctx context.Context, cred graphCredential, method, path string, body *payload, into any, opts ...callOption) error {
 	once := slices.Contains(opts, noRetry)
 	words := !once && !slices.Contains(opts, noWords)
-	advanced := slices.Contains(opts, eventual)
+	extra := http.Header{}
+	if slices.Contains(opts, eventual) {
+		extra.Set("ConsistencyLevel", "eventual")
+	}
 	limit := int64(graphMaxBody)
 	if slices.Contains(opts, largeAnswer) {
 		limit = graphMaxBatchBody
+	}
+	if slices.Contains(opts, deltaPage) {
+		extra.Set("Prefer", graphDeltaPrefer)
+		limit = graphMaxDeltaBody
 	}
 	target, err := graphURL(path)
 	if err != nil {
@@ -383,7 +405,7 @@ func (c *graphClient) send(ctx context.Context, cred graphCredential, method, pa
 		if err != nil {
 			return err
 		}
-		status, header, data, err := c.exchange(ctx, method, target, token, body, advanced, limit)
+		status, header, data, err := c.exchange(ctx, method, target, token, body, extra, limit)
 		if err != nil {
 			return err
 		}
@@ -439,10 +461,11 @@ func graphURL(path string) (*url.URL, error) {
 }
 
 // exchange sends one request, body with its media type when not nil and
-// ConsistencyLevel: eventual when advanced, and answers the status, the headers and the body read through limit. A
+// the extra headers, and answers the status, the headers and the body read
+// through limit. A
 // request that could not be made, or was not answered in time, is
 // errTenantUnreachable; the caller's own context ending is its error.
-func (c *graphClient) exchange(ctx context.Context, method string, target *url.URL, token string, body *payload, advanced bool, limit int64) (int, http.Header, []byte, error) {
+func (c *graphClient) exchange(ctx context.Context, method string, target *url.URL, token string, body *payload, extra http.Header, limit int64) (int, http.Header, []byte, error) {
 	var reader io.Reader
 	if body != nil {
 		reader = bytes.NewReader(body.data)
@@ -456,8 +479,8 @@ func (c *graphClient) exchange(ctx context.Context, method string, target *url.U
 	if body != nil {
 		req.Header.Set("Content-Type", body.contentType)
 	}
-	if advanced {
-		req.Header.Set("ConsistencyLevel", "eventual")
+	for k, v := range extra {
+		req.Header[k] = v
 	}
 	resp, err := c.http.Do(req)
 	if err != nil {

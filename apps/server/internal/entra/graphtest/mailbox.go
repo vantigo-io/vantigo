@@ -1,6 +1,7 @@
 package graphtest
 
 import (
+	"cmp"
 	"encoding/base64"
 	"encoding/json"
 	"net/http"
@@ -60,17 +61,28 @@ type Event struct {
 	ShowAs       string
 	Sensitivity  string
 	IsReminderOn bool
+	// Type is singleInstance ("" is one), occurrence or exception.
+	Type        string
+	IsCancelled bool
 	// Properties are the event's single-value extended properties by id.
 	Properties map[string]string
 	// LastWrite is the body of the create or the PATCH that last wrote the
 	// event, as it was sent.
 	LastWrite map[string]json.RawMessage
+
+	// seq is the fake's serial at the event's last change, its place in
+	// the mailbox's change log (mailbox_delta.go).
+	seq int
 }
 
-// mailbox is one user's calendars and events.
+// mailbox is one user's calendars and events, and the delta's state: the
+// events deleted, by the serial of their deletion, and the refusal a delta
+// link is answered while ExpireDelta holds.
 type mailbox struct {
-	calendars []*Calendar
-	events    []*Event
+	calendars    []*Calendar
+	events       []*Event
+	removed      []tombstone
+	deltaExpired int
 }
 
 // ThrottleBatch makes the next n requests inside a $batch answer 429
@@ -153,6 +165,7 @@ func (g *FakeGraph) AddEvent(userID, calendarID string, e Event) Event {
 		stored.ID = g.itemID()
 	}
 	stored.CalendarID, stored.ChangeKey = cal.ID, g.changeKey()
+	stored.seq = g.serial
 	mb.events = append(mb.events, &stored)
 	return copyEvent(&stored)
 }
@@ -212,11 +225,8 @@ func itemNotFound() answer {
 // mailboxRoute answers /users/{id}/calendars… and /users/{id}/events… for u,
 // seg being the path from "calendars" or "events" on.
 func (g *FakeGraph) mailboxRoute(u *User, method string, seg []string, query url.Values, body []byte) answer {
-	switch {
-	case u.MailboxDenied:
-		return graphError(http.StatusForbidden, "ErrorAccessDenied", "Access is denied. Check credentials and try again.")
-	case u.NoMailbox:
-		return graphError(http.StatusNotFound, "MailboxNotEnabledForRESTAPI", "The mailbox is either inactive, soft-deleted, or is hosted on-premise.")
+	if a, refused := mailboxRefused(u); refused {
+		return a
 	}
 	mb := g.mailboxOf(u.ID)
 	if seg[0] == "events" {
@@ -232,11 +242,14 @@ func (g *FakeGraph) mailboxRoute(u *User, method string, seg []string, query url
 			}
 			switch method {
 			case http.MethodGet:
+				if x := query.Get("$expand"); x != "" && !markerExpand.MatchString(x) {
+					return graphError(http.StatusBadRequest, "ErrorInvalidUrlQuery", "The $expand is not valid.")
+				}
 				return answer{status: http.StatusOK, body: eventJSON(e, query)}
 			case http.MethodPatch:
 				return g.patchEvent(e, body)
 			case http.MethodDelete:
-				mb.events = slices.DeleteFunc(mb.events, func(x *Event) bool { return x == e })
+				g.removeEvent(mb, e)
 				return answer{status: http.StatusNoContent}
 			}
 		}
@@ -274,6 +287,18 @@ func (g *FakeGraph) mailboxRoute(u *User, method string, seg []string, query url
 		return g.createEvent(mb, cal, body)
 	}
 	return graphError(http.StatusBadRequest, "BadRequest", "Unsupported request: "+method+" users/{id}/"+strings.Join(seg, "/")+".")
+}
+
+// mailboxRefused is the refusal of every request to u's mailbox: 403 when
+// it is outside the application's scope, 404 when u has none.
+func mailboxRefused(u *User) (answer, bool) {
+	switch {
+	case u.MailboxDenied:
+		return graphError(http.StatusForbidden, "ErrorAccessDenied", "Access is denied. Check credentials and try again."), true
+	case u.NoMailbox:
+		return graphError(http.StatusNotFound, "MailboxNotEnabledForRESTAPI", "The mailbox is either inactive, soft-deleted, or is hosted on-premise."), true
+	}
+	return answer{}, false
 }
 
 // calendarJSON is c as Graph answers it, with the property $expand names
@@ -463,6 +488,7 @@ func (g *FakeGraph) writeEvent(e *Event, body []byte, create bool) (answer, bool
 	}
 	e.LastWrite = props
 	e.ChangeKey = g.changeKey()
+	e.seq = g.serial
 	return answer{}, true
 }
 
@@ -555,6 +581,8 @@ func eventJSON(e *Event, query url.Values) map[string]any {
 		out["showAs"] = e.ShowAs
 		out["sensitivity"] = e.Sensitivity
 		out["isReminderOn"] = e.IsReminderOn
+		out["type"] = cmp.Or(e.Type, "singleInstance")
+		out["isCancelled"] = e.IsCancelled
 	}
 	if m := markerExpand.FindStringSubmatch(query.Get("$expand")); m != nil {
 		if v, ok := e.Properties[m[1]]; ok {
