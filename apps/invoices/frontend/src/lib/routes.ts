@@ -54,3 +54,18 @@ export const REMINDER_PRINT_ROUTE_PATH = "/invoices/reminders/print";
 
 /** The quick invoice: a customer and a few lines, issued at once and, where allowed, paid on the spot (D17, D22). */
 export const QUICK_INVOICE_ROUTE_PATH = "/invoices/quick";
+
+/** Billing runs: the runs, and a new one (energy consumption billing design D10, D11). */
+export const BILLING_RUNS_ROUTE_PATH = "/invoices/billing-runs";
+
+/** One billing run and its items, under Billing runs. */
+export const BILLING_RUN_ROUTE_PATH = "/invoices/billing-runs/$runId";
+
+/** What `navigate` and `Link` take to reach one billing run. */
+export const billingRunLinkOptions = (runId: number) => ({
+  to: BILLING_RUN_ROUTE_PATH,
+  params: { runId: String(runId) },
+});
+
+/** The same path as a plain URL, for a link's href. */
+export const billingRunHref = (runId: number): string => BILLING_RUN_ROUTE_PATH.replace("$runId", String(runId));

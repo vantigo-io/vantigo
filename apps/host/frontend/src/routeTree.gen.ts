@@ -104,6 +104,8 @@ import { Route as CustomersImportImportIdRouteImport } from './routes/customers/
 import { Route as EnergyMeteringPointsIndexRouteImport } from './routes/energy/metering-points/index'
 import { Route as EnergyMeteringPointsMeteringPointIdRouteImport } from './routes/energy/metering-points/$meteringPointId'
 import { Route as ExpensesClaimsClaimIdRouteImport } from './routes/expenses/claims.$claimId'
+import { Route as InvoicesBillingRunsIndexRouteImport } from './routes/invoices/billing-runs.index'
+import { Route as InvoicesBillingRunsRunIdRouteImport } from './routes/invoices/billing-runs.$runId'
 import { Route as InvoicesPaymentsIndexRouteImport } from './routes/invoices/payments.index'
 import { Route as InvoicesPaymentsVippsRouteImport } from './routes/invoices/payments.vipps'
 import { Route as InvoicesReminderRunsRunIdRouteImport } from './routes/invoices/reminder-runs.$runId'
@@ -610,6 +612,18 @@ const ExpensesClaimsClaimIdRoute = ExpensesClaimsClaimIdRouteImport.update({
   path: '/claims/$claimId',
   getParentRoute: () => ExpensesRoute,
 } as any)
+const InvoicesBillingRunsIndexRoute =
+  InvoicesBillingRunsIndexRouteImport.update({
+    id: '/billing-runs/',
+    path: '/billing-runs/',
+    getParentRoute: () => InvoicesRoute,
+  } as any)
+const InvoicesBillingRunsRunIdRoute =
+  InvoicesBillingRunsRunIdRouteImport.update({
+    id: '/billing-runs/$runId',
+    path: '/billing-runs/$runId',
+    getParentRoute: () => InvoicesRoute,
+  } as any)
 const InvoicesPaymentsIndexRoute = InvoicesPaymentsIndexRouteImport.update({
   id: '/payments/',
   path: '/payments/',
@@ -823,6 +837,7 @@ export interface FileRoutesByFullPath {
   '/customers/import/$importId': typeof CustomersImportImportIdRoute
   '/energy/metering-points/$meteringPointId': typeof EnergyMeteringPointsMeteringPointIdRoute
   '/expenses/claims/$claimId': typeof ExpensesClaimsClaimIdRoute
+  '/invoices/billing-runs/$runId': typeof InvoicesBillingRunsRunIdRoute
   '/invoices/payments/vipps': typeof InvoicesPaymentsVippsRoute
   '/invoices/reminder-runs/$runId': typeof InvoicesReminderRunsRunIdRoute
   '/invoices/reminders/print': typeof InvoicesRemindersPrintRoute
@@ -842,6 +857,7 @@ export interface FileRoutesByFullPath {
   '/customers/contacts/': typeof CustomersContactsIndexRoute
   '/customers/import/': typeof CustomersImportIndexRoute
   '/energy/metering-points/': typeof EnergyMeteringPointsIndexRoute
+  '/invoices/billing-runs/': typeof InvoicesBillingRunsIndexRoute
   '/invoices/payments/': typeof InvoicesPaymentsIndexRoute
   '/projects/$projectId/': typeof ProjectsProjectIdIndexRoute
   '/staff/groups/': typeof StaffGroupsIndexRoute
@@ -925,6 +941,7 @@ export interface FileRoutesByTo {
   '/customers/import/$importId': typeof CustomersImportImportIdRoute
   '/energy/metering-points/$meteringPointId': typeof EnergyMeteringPointsMeteringPointIdRoute
   '/expenses/claims/$claimId': typeof ExpensesClaimsClaimIdRoute
+  '/invoices/billing-runs/$runId': typeof InvoicesBillingRunsRunIdRoute
   '/invoices/payments/vipps': typeof InvoicesPaymentsVippsRoute
   '/invoices/reminder-runs/$runId': typeof InvoicesReminderRunsRunIdRoute
   '/invoices/reminders/print': typeof InvoicesRemindersPrintRoute
@@ -944,6 +961,7 @@ export interface FileRoutesByTo {
   '/customers/contacts': typeof CustomersContactsIndexRoute
   '/customers/import': typeof CustomersImportIndexRoute
   '/energy/metering-points': typeof EnergyMeteringPointsIndexRoute
+  '/invoices/billing-runs': typeof InvoicesBillingRunsIndexRoute
   '/invoices/payments': typeof InvoicesPaymentsIndexRoute
   '/projects/$projectId': typeof ProjectsProjectIdIndexRoute
   '/staff/groups': typeof StaffGroupsIndexRoute
@@ -1045,6 +1063,7 @@ export interface FileRoutesById {
   '/customers/import/$importId': typeof CustomersImportImportIdRoute
   '/energy/metering-points/$meteringPointId': typeof EnergyMeteringPointsMeteringPointIdRoute
   '/expenses/claims/$claimId': typeof ExpensesClaimsClaimIdRoute
+  '/invoices/billing-runs/$runId': typeof InvoicesBillingRunsRunIdRoute
   '/invoices/payments/vipps': typeof InvoicesPaymentsVippsRoute
   '/invoices/reminder-runs/$runId': typeof InvoicesReminderRunsRunIdRoute
   '/invoices/reminders/print': typeof InvoicesRemindersPrintRoute
@@ -1064,6 +1083,7 @@ export interface FileRoutesById {
   '/customers/contacts/': typeof CustomersContactsIndexRoute
   '/customers/import/': typeof CustomersImportIndexRoute
   '/energy/metering-points/': typeof EnergyMeteringPointsIndexRoute
+  '/invoices/billing-runs/': typeof InvoicesBillingRunsIndexRoute
   '/invoices/payments/': typeof InvoicesPaymentsIndexRoute
   '/projects/$projectId/': typeof ProjectsProjectIdIndexRoute
   '/staff/groups/': typeof StaffGroupsIndexRoute
@@ -1166,6 +1186,7 @@ export interface FileRouteTypes {
     | '/customers/import/$importId'
     | '/energy/metering-points/$meteringPointId'
     | '/expenses/claims/$claimId'
+    | '/invoices/billing-runs/$runId'
     | '/invoices/payments/vipps'
     | '/invoices/reminder-runs/$runId'
     | '/invoices/reminders/print'
@@ -1185,6 +1206,7 @@ export interface FileRouteTypes {
     | '/customers/contacts/'
     | '/customers/import/'
     | '/energy/metering-points/'
+    | '/invoices/billing-runs/'
     | '/invoices/payments/'
     | '/projects/$projectId/'
     | '/staff/groups/'
@@ -1268,6 +1290,7 @@ export interface FileRouteTypes {
     | '/customers/import/$importId'
     | '/energy/metering-points/$meteringPointId'
     | '/expenses/claims/$claimId'
+    | '/invoices/billing-runs/$runId'
     | '/invoices/payments/vipps'
     | '/invoices/reminder-runs/$runId'
     | '/invoices/reminders/print'
@@ -1287,6 +1310,7 @@ export interface FileRouteTypes {
     | '/customers/contacts'
     | '/customers/import'
     | '/energy/metering-points'
+    | '/invoices/billing-runs'
     | '/invoices/payments'
     | '/projects/$projectId'
     | '/staff/groups'
@@ -1387,6 +1411,7 @@ export interface FileRouteTypes {
     | '/customers/import/$importId'
     | '/energy/metering-points/$meteringPointId'
     | '/expenses/claims/$claimId'
+    | '/invoices/billing-runs/$runId'
     | '/invoices/payments/vipps'
     | '/invoices/reminder-runs/$runId'
     | '/invoices/reminders/print'
@@ -1406,6 +1431,7 @@ export interface FileRouteTypes {
     | '/customers/contacts/'
     | '/customers/import/'
     | '/energy/metering-points/'
+    | '/invoices/billing-runs/'
     | '/invoices/payments/'
     | '/projects/$projectId/'
     | '/staff/groups/'
@@ -2112,6 +2138,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ExpensesClaimsClaimIdRouteImport
       parentRoute: typeof ExpensesRoute
     }
+    '/invoices/billing-runs/': {
+      id: '/invoices/billing-runs/'
+      path: '/billing-runs'
+      fullPath: '/invoices/billing-runs/'
+      preLoaderRoute: typeof InvoicesBillingRunsIndexRouteImport
+      parentRoute: typeof InvoicesRoute
+    }
+    '/invoices/billing-runs/$runId': {
+      id: '/invoices/billing-runs/$runId'
+      path: '/billing-runs/$runId'
+      fullPath: '/invoices/billing-runs/$runId'
+      preLoaderRoute: typeof InvoicesBillingRunsRunIdRouteImport
+      parentRoute: typeof InvoicesRoute
+    }
     '/invoices/payments/': {
       id: '/invoices/payments/'
       path: '/payments'
@@ -2414,9 +2454,11 @@ interface InvoicesRouteChildren {
   InvoicesQuickRoute: typeof InvoicesQuickRoute
   InvoicesSettingsRoute: typeof InvoicesSettingsRoute
   InvoicesIndexRoute: typeof InvoicesIndexRoute
+  InvoicesBillingRunsRunIdRoute: typeof InvoicesBillingRunsRunIdRoute
   InvoicesPaymentsVippsRoute: typeof InvoicesPaymentsVippsRoute
   InvoicesReminderRunsRunIdRoute: typeof InvoicesReminderRunsRunIdRoute
   InvoicesRemindersPrintRoute: typeof InvoicesRemindersPrintRoute
+  InvoicesBillingRunsIndexRoute: typeof InvoicesBillingRunsIndexRoute
   InvoicesPaymentsIndexRoute: typeof InvoicesPaymentsIndexRoute
   InvoicesPaymentsFilesBankFileIdRoute: typeof InvoicesPaymentsFilesBankFileIdRoute
 }
@@ -2428,9 +2470,11 @@ const InvoicesRouteChildren: InvoicesRouteChildren = {
   InvoicesQuickRoute: InvoicesQuickRoute,
   InvoicesSettingsRoute: InvoicesSettingsRoute,
   InvoicesIndexRoute: InvoicesIndexRoute,
+  InvoicesBillingRunsRunIdRoute: InvoicesBillingRunsRunIdRoute,
   InvoicesPaymentsVippsRoute: InvoicesPaymentsVippsRoute,
   InvoicesReminderRunsRunIdRoute: InvoicesReminderRunsRunIdRoute,
   InvoicesRemindersPrintRoute: InvoicesRemindersPrintRoute,
+  InvoicesBillingRunsIndexRoute: InvoicesBillingRunsIndexRoute,
   InvoicesPaymentsIndexRoute: InvoicesPaymentsIndexRoute,
   InvoicesPaymentsFilesBankFileIdRoute: InvoicesPaymentsFilesBankFileIdRoute,
 }

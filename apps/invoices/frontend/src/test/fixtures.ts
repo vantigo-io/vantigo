@@ -2055,3 +2055,71 @@ export const consumptionDraft = (overrides: Partial<InvoiceDocument> = {}): Invo
     ...overrides,
   };
 };
+
+type BillingRunWire = components["schemas"]["InvoicesBillingRun"];
+type BillingRunItemWire = components["schemas"]["InvoicesBillingRunItem"];
+type BillingRunDetailWire = components["schemas"]["InvoicesBillingRunDetail"];
+
+/** Billing run 7 as the server answers it: through 2026-08-31, issuing, running, four customers. */
+export const billingRun = (overrides: Partial<BillingRunWire> = {}): BillingRunWire => ({
+  id: 7,
+  through: "2026-08-31",
+  issue: true,
+  status: "running",
+  customers: 4,
+  counts: { queued: 1, drafted: 0, issued: 1, skipped: 1, failed: 1, cancelled: 0 },
+  createdAt: "2026-09-12T08:00:00Z",
+  createdByUserId: "00000000-0000-4000-8000-000000000001",
+  startedAt: "2026-09-12T08:00:05Z",
+  ...overrides,
+});
+
+/**
+ * Run 7's items: Acme issued on two documents (split by metering point),
+ * Kari skipped on a blocked settlement, a customer the directory does not
+ * name failed on the document store with its draft kept, and Bygg queued.
+ */
+export const billingRunItems = (): BillingRunItemWire[] => [
+  {
+    id: 71,
+    customerId: 2001,
+    customerName: "Acme AS",
+    status: "issued",
+    attempts: 1,
+    invoices: [
+      { invoiceId: 1101, number: 1201, status: "issued" },
+      { invoiceId: 1102, number: 1202, status: "issued" },
+    ],
+    finishedAt: "2026-09-12T08:00:10Z",
+  },
+  {
+    id: 72,
+    customerId: 2002,
+    customerName: "Kari Nordmann",
+    status: "skipped",
+    attempts: 1,
+    invoices: [],
+    code: "settlement_blocked",
+    detail: "Metering point 707057500000000017: spot prices are missing.",
+    finishedAt: "2026-09-12T08:00:12Z",
+  },
+  {
+    id: 73,
+    customerId: 2099,
+    status: "failed",
+    attempts: 1,
+    invoices: [{ invoiceId: 1103, status: "draft" }],
+    code: "storage_unavailable",
+    finishedAt: "2026-09-12T08:00:14Z",
+  },
+  { id: 74, customerId: 2003, customerName: "Bygg AS", status: "queued", attempts: 0, invoices: [] },
+];
+
+/** GET /billing-runs/7: the run and its items, of one status when `status` names one. */
+export const billingRunDetail = (
+  status: string | null = null,
+  run: BillingRunWire = billingRun(),
+): BillingRunDetailWire => {
+  const items = billingRunItems().filter((item) => !status || item.status === status);
+  return { run, items, pagination: pageOf(items).pagination };
+};

@@ -56,6 +56,17 @@ describe("the invoices route tree", () => {
     expect(ids).not.toContain("/invoices/$invoiceId");
   });
 
+  // So are Billing runs and a run's page.
+  it.each([
+    ["/invoices/billing-runs", "/invoices/billing-runs/"],
+    ["/invoices/billing-runs/7", "/invoices/billing-runs/$runId"],
+  ])("matches %s on the Billing runs route, not a document's", (path, routeId) => {
+    const ids = matchedRouteIds(path);
+
+    expect(ids).toContain(routeId);
+    expect(ids).not.toContain("/invoices/$invoiceId");
+  });
+
   it("still matches a document id on the dynamic route", () => {
     expect(matchedRouteIds("/invoices/1001")).toContain("/invoices/$invoiceId");
   });

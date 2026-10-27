@@ -2,6 +2,7 @@ import "./i18n";
 
 export type { OnSitePayment, OnSitePaymentStatus, PaymentAttempt, VippsPaymentsDay } from "./api/attempts";
 export * from "./api/bank";
+export * from "./api/billing-runs";
 export * from "./api/customers";
 export * from "./api/deductible";
 export * from "./api/invoices";
@@ -25,6 +26,8 @@ export * from "./lib/routes";
 export { IssueModal, type IssueModalProps } from "./pages/-issue-modal";
 export { QrScreen, type QrScreenProps } from "./pages/-qr-screen";
 export { BankFilePage, type BankFilePageProps } from "./pages/bank-file";
+export { BillingRunPage, type BillingRunPageProps } from "./pages/billing-run";
+export { BillingRunsPage } from "./pages/billing-runs";
 export { InvoicePage, type InvoicePageProps } from "./pages/invoice";
 export { InvoicesPage, type InvoicesPageProps } from "./pages/invoices";
 export { JournalPage } from "./pages/journal";

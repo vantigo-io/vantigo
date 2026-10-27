@@ -100,6 +100,7 @@ describe("the app registry", () => {
       "/invoices/quick",
       "/invoices/journal",
       "/invoices/overdue",
+      "/invoices/billing-runs",
       "/invoices/payments",
       "/invoices/settings",
       "/communications/inbox",
@@ -255,7 +256,7 @@ describe("the app registry", () => {
   // and issue (invoices payments and reminders design D17, D22), Payments for
   // invoices:payments (D22), the settings for invoices:manage (invoices
   // foundation design D12).
-  it("gives Invoices the list, the quick invoice, the journal, Overdue, Payments and the settings", () => {
+  it("gives Invoices the list, the quick invoice, the journal, Overdue, Billing runs, Payments and the settings", () => {
     const invoices = appForKey("invoices");
     expect(invoices).toMatchObject({ module: "invoices", label: "navigation.invoices", home: "/invoices" });
     expect(invoices.requiredPermissions).toEqual(["invoices:access", "invoices:payments", "invoices:manage"]);
@@ -265,6 +266,7 @@ describe("the app registry", () => {
       ["navigation.invoiceQuick", "/invoices/quick", ["invoices:access"]],
       ["navigation.invoiceJournal", "/invoices/journal", ["invoices:access"]],
       ["navigation.invoiceOverdue", "/invoices/overdue", ["invoices:access"]],
+      ["navigation.invoiceBillingRuns", "/invoices/billing-runs", ["invoices:access"]],
       ["navigation.invoicePayments", "/invoices/payments", ["invoices:payments"]],
       ["navigation.invoiceSettings", "/invoices/settings", ["invoices:manage"]],
     ]);
@@ -313,6 +315,25 @@ describe("the app registry", () => {
     expect(paths(["invoices:access", "invoices:issue"])).not.toContain("/invoices/quick");
     expect(paths(["invoices:access", "invoices:create"])).not.toContain("/invoices/quick");
     expect(paths(["invoices:create", "invoices:issue"])).not.toContain("/invoices/quick");
+  });
+
+  // Billing runs (energy consumption billing design D10, D11): making and
+  // cancelling a run ask for invoices:access and invoices:create together, so
+  // a reader alone is never offered the entry.
+  it("Nav_BillingRunsBehindCreate", () => {
+    const paths = (permissions: string[]) =>
+      appNavSections(appForKey("invoices"), allModules, {
+        permissions,
+        isOwner: false,
+        canManageAuthorization: false,
+        enabledModules: allModules,
+      }).flatMap((section) => section.items.map((item) => item.to));
+    expect(paths(["invoices:access", "invoices:create"])).toContain("/invoices/billing-runs");
+    expect(paths(["*"])).toContain("/invoices/billing-runs");
+    expect(paths(["invoices:access"])).not.toContain("/invoices/billing-runs");
+    expect(paths(["invoices:create"])).not.toContain("/invoices/billing-runs");
+    expect(navigationCatalog.en["navigation.invoiceBillingRuns"]).toBe("Billing runs");
+    expect(navigationCatalog.nb["navigation.invoiceBillingRuns"]).toBe("Fakturakjøringer");
   });
 
   it("names the quick invoice in both languages", () => {

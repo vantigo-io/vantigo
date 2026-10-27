@@ -15,6 +15,8 @@ import type { ReactNode } from "react";
 import "../i18n";
 import {
   BANK_FILE_ROUTE_PATH,
+  BILLING_RUN_ROUTE_PATH,
+  BILLING_RUNS_ROUTE_PATH,
   INVOICE_ROUTE_PATH,
   OVERDUE_ROUTE_PATH,
   PAYMENTS_ROUTE_PATH,
@@ -23,6 +25,7 @@ import {
   REMINDER_RUN_ROUTE_PATH,
   VIPPS_PAYMENTS_ROUTE_PATH,
 } from "../lib/routes";
+import { BillingRunsPage } from "../pages/billing-runs";
 import { InvoicesPage } from "../pages/invoices";
 import { OverduePage } from "../pages/overdue";
 import { PaymentsPage } from "../pages/payments";
@@ -30,6 +33,7 @@ import { QuickInvoicePage } from "../pages/quick-invoice";
 import { ReminderPrintPage } from "../pages/reminder-print";
 import { VippsPaymentsPage } from "../pages/vipps-payments";
 import { BankFileRoute } from "./bank-file-route";
+import { BillingRunRoute } from "./billing-run-route";
 import { CURRENT_USER_ID } from "./fixtures";
 import { InvoiceRoute } from "./invoice-route";
 import { ReminderRunRoute } from "./reminder-run-route";
@@ -82,6 +86,16 @@ const makeRouteTree = (canViewCustomers: boolean, canCreateCustomers: boolean) =
       getParentRoute: () => rootRoute,
       path: REMINDER_RUN_ROUTE_PATH,
       component: ReminderRunRoute,
+    }),
+    createRoute({
+      getParentRoute: () => rootRoute,
+      path: BILLING_RUNS_ROUTE_PATH,
+      component: BillingRunsPage,
+    }),
+    createRoute({
+      getParentRoute: () => rootRoute,
+      path: BILLING_RUN_ROUTE_PATH,
+      component: BillingRunRoute,
     }),
     createRoute({
       getParentRoute: () => rootRoute,
