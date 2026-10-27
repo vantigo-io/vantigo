@@ -8,8 +8,10 @@
 // module's provisioner executes Staff's decisions against the tenant through
 // Microsoft Graph. Staff's accounts worker is the provisioner's only caller,
 // which is why MODULES refuses entra without staff. The module depends on
-// nobody but identity — and in this delivery reads nothing of identity's
-// either: the Owner's and entra:manage's checks are the router's. It writes
+// nobody but identity, and reads of identity only what
+// contracts.SSOConnections answers an Owner — the users left to connect and
+// who holds a directory key — for the directory's exact matches (phase 2,
+// delivery B); the Owner's and entra:manage's checks are the router's. It writes
 // nothing outside its own schema; nothing here imports another module —
 // depguard enforces it, tests included — and no SQL of this module crosses a
 // schema.

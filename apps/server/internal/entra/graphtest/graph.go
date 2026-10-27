@@ -24,7 +24,9 @@
 // deletes the user; a Team on a group younger than TeamReadyAfter is 404; a
 // group's members are listed in pages of $top with an @odata.nextLink; a
 // $batch holds at most twenty requests; a user's photo is a JPEG of at most
-// 4 MB, 413 beyond. Every error body is Graph's
+// 4 MB, 413 beyond; a $search or a $count is 400 Request_UnsupportedQuery
+// without ConsistencyLevel: eventual, an in filter lists at most fifteen
+// values. Every error body is Graph's
 // { "error": { "code", "message" } }, the token endpoint's OAuth's
 // { "error", "error_description" }.
 package graphtest
@@ -588,6 +590,10 @@ func (g *FakeGraph) api(req *http.Request, body []byte) answer {
 	if req.Method == http.MethodPost && path == "/$batch" {
 		return g.batch(body)
 	}
+	if q := req.URL.Query(); (q.Has("$search") || q.Has("$count")) && !strings.EqualFold(req.Header.Get("ConsistencyLevel"), "eventual") {
+		return graphError(http.StatusBadRequest, "Request_UnsupportedQuery",
+			"Request with $search or $count query parameters only works with 'ConsistencyLevel' header set to 'eventual'.")
+	}
 	return g.route(req.Method, path, req.URL.Query(), req.Header.Get("Content-Type"), body)
 }
 
@@ -756,24 +762,102 @@ func (g *FakeGraph) photo(u *User, method, contentType string, body []byte) answ
 var (
 	employeeIDFilter   = regexp.MustCompile(`^employeeId eq '((?:[^']|'')*)'$`)
 	mailNicknameFilter = regexp.MustCompile(`^mailNickname eq '((?:[^']|'')*)'$`)
+	// inFilter is "<property> in ('…', …)" on one of the three properties
+	// the directory's matches filter on.
+	inFilter = regexp.MustCompile(`^(mail|userPrincipalName|employeeId) in \(\s*('(?:[^']|'')*'(?:\s*,\s*'(?:[^']|'')*')*)\s*\)$`)
+	// inValue is one quoted value of an in filter.
+	inValue = regexp.MustCompile(`'((?:[^']|'')*)'`)
+	// searchClause is one quoted clause of a $search: "property:value".
+	searchClause = regexp.MustCompile(`^"(displayName|mail|userPrincipalName):([^"]*)"$`)
 )
 
-// listUsers is GET /users with $filter=employeeId eq '…', the one filter the
-// module uses; anything else is refused as Graph refuses an unsupported
-// query. Deleted users are not listed.
+// inMaxValues is the most values one in filter may list, as Graph allows.
+const inMaxValues = 15
+
+// listUsers is GET /users as the module asks it: $filter=employeeId eq '…'
+// (an account's lookup), $filter=<mail|userPrincipalName|employeeId> in
+// ('…', …) of at most fifteen values, compared ignoring case (the
+// directory's matches), or $search of "property:value" clauses on
+// displayName, mail and userPrincipalName joined by OR, each a
+// case-insensitive substring (the picker); with $orderby=displayName, $top
+// and $count=true. Anything else is refused as Graph refuses an unsupported
+// query; api refused a $search or a $count without ConsistencyLevel:
+// eventual already. Deleted users are not listed.
 func (g *FakeGraph) listUsers(query url.Values) answer {
-	m := employeeIDFilter.FindStringSubmatch(query.Get("$filter"))
-	if m == nil {
-		return graphError(http.StatusBadRequest, "Request_UnsupportedQuery", "Unsupported or invalid query filter clause specified.")
+	unsupported := graphError(http.StatusBadRequest, "Request_UnsupportedQuery", "Unsupported or invalid query filter clause specified.")
+	var match func(u *User) bool
+	switch filter, search := query.Get("$filter"), query.Get("$search"); {
+	case filter != "" && search != "":
+		return unsupported
+	case search != "":
+		var clauses [][]string
+		for _, part := range strings.Split(search, " OR ") {
+			m := searchClause.FindStringSubmatch(strings.TrimSpace(part))
+			if m == nil {
+				return graphError(http.StatusBadRequest, "Request_UnsupportedQuery", "Syntax error: invalid $search.")
+			}
+			clauses = append(clauses, m[1:])
+		}
+		match = func(u *User) bool {
+			for _, c := range clauses {
+				value := map[string]string{"displayName": u.DisplayName, "mail": u.Mail, "userPrincipalName": u.UserPrincipalName}[c[0]]
+				if strings.Contains(strings.ToLower(value), strings.ToLower(c[1])) {
+					return true
+				}
+			}
+			return false
+		}
+	case employeeIDFilter.MatchString(filter):
+		number := strings.ReplaceAll(employeeIDFilter.FindStringSubmatch(filter)[1], "''", "'")
+		match = func(u *User) bool { return u.EmployeeID == number }
+	case inFilter.MatchString(filter):
+		m := inFilter.FindStringSubmatch(filter)
+		var values []string
+		for _, v := range inValue.FindAllStringSubmatch(m[2], -1) {
+			values = append(values, strings.ReplaceAll(v[1], "''", "'"))
+		}
+		if len(values) > inMaxValues {
+			return graphError(http.StatusBadRequest, "Request_UnsupportedQuery", "Too many values in the in operator.")
+		}
+		match = func(u *User) bool {
+			value := map[string]string{"mail": u.Mail, "userPrincipalName": u.UserPrincipalName, "employeeId": u.EmployeeID}[m[1]]
+			return value != "" && slices.ContainsFunc(values, func(v string) bool { return strings.EqualFold(v, value) })
+		}
+	default:
+		return unsupported
 	}
-	number := strings.ReplaceAll(m[1], "''", "'")
-	out := []any{}
+	var found []*User
 	for _, u := range g.users {
-		if !u.Deleted && u.EmployeeID == number {
-			out = append(out, g.selectUser(u, query.Get("$select")))
+		if !u.Deleted && match(u) {
+			found = append(found, u)
 		}
 	}
-	return answer{status: http.StatusOK, body: map[string]any{"value": out}}
+	switch order := query.Get("$orderby"); order {
+	case "":
+	case "displayName":
+		slices.SortStableFunc(found, func(a, b *User) int {
+			return strings.Compare(strings.ToLower(a.DisplayName), strings.ToLower(b.DisplayName))
+		})
+	default:
+		return graphError(http.StatusBadRequest, "Request_UnsupportedQuery", "Unsupported $orderby: "+order+".")
+	}
+	count := len(found)
+	if top := query.Get("$top"); top != "" {
+		n, err := strconv.Atoi(top)
+		if err != nil || n < 1 || n > 999 {
+			return graphError(http.StatusBadRequest, "Request_BadRequest", "Invalid page size specified.")
+		}
+		found = found[:min(n, len(found))]
+	}
+	out := []any{}
+	for _, u := range found {
+		out = append(out, g.selectUser(u, query.Get("$select")))
+	}
+	body := map[string]any{"value": out}
+	if query.Get("$count") == "true" {
+		body["@odata.count"] = count
+	}
+	return answer{status: http.StatusOK, body: body}
 }
 
 // createUser is POST /users: Graph's five required properties, a UPN in the

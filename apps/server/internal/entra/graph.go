@@ -292,10 +292,16 @@ const noRetry callOption = 1
 // call, its refusal logged by its status and codes alone.
 const noWords callOption = 2
 
+// eventual is a read Graph answers only as an advanced query — $search,
+// $count, an in filter on employeeId — sent with ConsistencyLevel:
+// eventual, which Graph requires of one (Entra phase 2, delivery B; plan
+// reading 3). It is retried as any call.
+const eventual callOption = 3
+
 // get reads path into into. path is everything after /v1.0, its query
 // already escaped (url.Values.Encode).
-func (c *graphClient) get(ctx context.Context, cred graphCredential, path string, into any) error {
-	return c.do(ctx, cred, http.MethodGet, path, nil, into)
+func (c *graphClient) get(ctx context.Context, cred graphCredential, path string, into any, opts ...callOption) error {
+	return c.do(ctx, cred, http.MethodGet, path, nil, into, opts...)
 }
 
 // post sends body to path and reads the answer into into (nil discards it).
@@ -353,6 +359,7 @@ func (c *graphClient) do(ctx context.Context, cred graphCredential, method, path
 func (c *graphClient) send(ctx context.Context, cred graphCredential, method, path string, body *payload, into any, opts ...callOption) error {
 	once := slices.Contains(opts, noRetry)
 	words := !once && !slices.Contains(opts, noWords)
+	advanced := slices.Contains(opts, eventual)
 	target, err := graphURL(path)
 	if err != nil {
 		return err
@@ -363,7 +370,7 @@ func (c *graphClient) send(ctx context.Context, cred graphCredential, method, pa
 		if err != nil {
 			return err
 		}
-		status, header, data, err := c.exchange(ctx, method, target, token, body)
+		status, header, data, err := c.exchange(ctx, method, target, token, body, advanced)
 		if err != nil {
 			return err
 		}
@@ -418,11 +425,11 @@ func graphURL(path string) (*url.URL, error) {
 	return u, nil
 }
 
-// exchange sends one request, body with its media type when not nil, and
-// answers the status, the headers and the body read through the cap. A
+// exchange sends one request, body with its media type when not nil and
+// ConsistencyLevel: eventual when advanced, and answers the status, the headers and the body read through the cap. A
 // request that could not be made, or was not answered in time, is
 // errTenantUnreachable; the caller's own context ending is its error.
-func (c *graphClient) exchange(ctx context.Context, method string, target *url.URL, token string, body *payload) (int, http.Header, []byte, error) {
+func (c *graphClient) exchange(ctx context.Context, method string, target *url.URL, token string, body *payload, advanced bool) (int, http.Header, []byte, error) {
 	var reader io.Reader
 	if body != nil {
 		reader = bytes.NewReader(body.data)
@@ -435,6 +442,9 @@ func (c *graphClient) exchange(ctx context.Context, method string, target *url.U
 	req.Header.Set("Accept", "application/json")
 	if body != nil {
 		req.Header.Set("Content-Type", body.contentType)
+	}
+	if advanced {
+		req.Header.Set("ConsistencyLevel", "eventual")
 	}
 	resp, err := c.http.Do(req)
 	if err != nil {
