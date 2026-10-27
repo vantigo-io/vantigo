@@ -221,6 +221,10 @@ func (w *ImportWorker) runImport(ctx context.Context, conn *pgxpool.Conn, imp st
 	// firstCells is the cells of the earlier rows the repeats are compared
 	// with, read once each.
 	firstCells := map[int32][]string{}
+	// registry is what Brønnøysund said about the organisation numbers of the
+	// rows that leave out what it can give (import_registry.go), asked before
+	// each chunk's rows are planned and kept for the rest of the run.
+	registry := newImportRegistry(w.srv)
 
 	for {
 		rows, err := q.ImportRowsChunk(ctx, store.ImportRowsChunkParams{ImportID: imp.ID, Limit: importChunkRows})
@@ -230,12 +234,20 @@ func (w *ImportWorker) runImport(ctx context.Context, conn *pgxpool.Conn, imp st
 		if len(rows) == 0 {
 			break
 		}
-		for _, row := range rows {
+		recs := make([]fileimport.Record, len(rows))
+		for i, row := range rows {
+			recs[i] = fileimport.Record{Row: int(row.RowNo), Cells: row.Cells}
+		}
+		answers, err := registry.lookup(ctx, q, l, recs)
+		if err != nil {
+			return err
+		}
+		for i, row := range rows {
 			if err := ctx.Err(); err != nil {
 				return err
 			}
-			rec := fileimport.Record{Row: int(row.RowNo), Cells: row.Cells}
-			p, planErrs := l.plan(rec, vocab, l.creates())
+			rec := recs[i]
+			p, planErrs := l.plan(rec, vocab, answers[rec.Row], l.creates())
 			var result importRowResult
 			if first, dup := duplicates[row.RowNo]; dup {
 				cells, ok := firstCells[first]

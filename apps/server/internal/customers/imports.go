@@ -295,7 +295,7 @@ func (s *server) importSample(ctx context.Context, q *store.Queries, imp store.C
 	for _, row := range rows {
 		item := gen.CustomerImportSampleRow{Row: row.RowNo, Cells: row.Cells, Errors: []gen.CustomerImportRowError{}}
 		if mapping != nil {
-			_, errs := l.plan(fileimport.Record{Row: int(row.RowNo), Cells: row.Cells}, vocab, l.creates())
+			_, errs := l.plan(fileimport.Record{Row: int(row.RowNo), Cells: row.Cells}, vocab, nil, l.creates())
 			for _, e := range errs {
 				item.Errors = append(item.Errors, l.wire(e))
 			}

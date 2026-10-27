@@ -371,6 +371,22 @@ kundelisten for å åpne **Importer kunder**.
    og radene som ble hoppet over med raden hver av dem gjentar. Radene som ble hoppet
    over, er ikke med i filen med radene som feilet.
 
+**Organisasjonsnummeret fyller inn resten.** Har en rad et norsk organisasjonsnummer
+for en bedrift, slår Vantigo opp det raden mangler i Brønnøysundregistrene: en ny
+kunde uten navn får navnet selskapet er registrert med, og en postadresse som mangler,
+eller mangler en del som gateadressen eller postnummeret, får selskapets registrerte
+postadresse (eller forretningsadressen når det ikke har noen postadresse). Det filen
+oppgir, vinner alltid: bare tomme deler fylles inn, og en adresse en kunde allerede
+har, erstattes aldri; for en kunde som oppdateres, slås adressen bare opp når den er
+ufullstendig. Kjenner Brønnøysund organisasjonen, merkes identiteten som hentet fra
+Brønnøysund med det registrerte navnet, og kortet **Register** fylles ut for en kunde
+importen oppretter, eller en kunde importen endrer organisasjonsnummeret til. Kjenner
+ikke Brønnøysund organisasjonsnummeret, eller kan registeret ikke nås, kontrolleres
+raden som den ville blitt uten oppslaget, og mangler den fortsatt navn, eller har den
+en ufullstendig adresse, feiler den med en feil på organisasjonsnummeret som sier
+hvorfor. **Forhåndsvisning** slår ikke opp noe, så den
+kan vise feil som kontrollen vil fylle inn.
+
 Feiler noen rader, gir **Last ned radene som feilet** deg akkurat de radene, med dine
 egne kolonner og en feilkolonne først. Rett dem og last opp den filen: valget av
 kolonner foreslås igjen. Ved oppdatering endres bare feltene som er valgt; en tom

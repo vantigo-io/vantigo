@@ -1372,7 +1372,7 @@ row's group is the customer's current group with the mapped fields laid over it,
 then validated and written as a whole through the same function — mapping `email`
 alone keeps the phone and the website; mapping `postalCity` alone onto a customer
 with no postal address is that row's error, since an address needs a line and a
-country. On a create an unmapped field is blank. A mapped cell that **is blank
+country — unless Brønnøysund fills the rest (below). On a create an unmapped field is blank. A mapped cell that **is blank
 clears** its field, with the two rules the hand-written endpoints have: a blank
 `name` on an update is the row's error, and all of an address's mapped cells blank
 remove the primary address of that type only when it is the only one of that type
@@ -1388,6 +1388,63 @@ field. `type` accepts, besides `business` and `person`, `bedrift`, `firma`,
 `selskap` and `company` for a business and `privat`, `privatperson` and `private`
 for a person, folded in the import alone. A row with no `type` is `business`, with
 no `status` `active`.
+
+**Brønnøysund fills what a row leaves out**
+([`import_registry.go`](https://github.com/vantigo-io/vantigo/blob/main/apps/server/internal/customers/import_registry.go)).
+A row whose file gives a Norwegian organisation number for a business — `legalId`
+mapped, `legalCountry` `NO` or defaulted, a valid check digit, neither `type` nor
+`legalType` a person — asks Enhetsregisteret for the entity
+(`GET /enhetsregisteret/api/enheter/{orgnr}`, the registry record's own fetch) only
+when it would use the answer. Before each chunk is checked or run, the worker finds,
+on its own connection and outside any row's transaction, the customer each such row
+will update, as the row itself will (the match key, and in `createOrUpdate` whether
+it creates): a row that **creates** asks when it has no name, no postal address or an
+incomplete one; a row that **updates** a business asks only when its postal address —
+its mapped postal cells laid over the address on file — is incomplete. An update
+that maps no postal field, or whose address is complete, never asks.
+
+- **Name.** A row that creates and has no name — `name` unmapped or its cell blank —
+  takes the registry's name. An update never takes it.
+- **Legal name.** When the registry answered for the row's identity and `legalName`
+  is unmapped or blank, the legal name is the registry's name, whatever friendly
+  name the file gives and never the legal name on file of an identity the row
+  replaces — so the record stored with it reports no rename and raises no attention
+  item. An identity the row leaves as it is (the same id) keeps its own name and
+  source.
+- **Postal address** (the `postal` group alone; the invoice address is never filled).
+  The registry's address is the entity's postal address, falling back to its business
+  address, read as the address list's *Use the registry's postal address* reads it:
+  the first line is `line1`, the rest joined into `line2`, the country lowercased,
+  `no` when it names none. A row's postal address — the file's cells laid over the
+  address on file, as above — that fails validation has its **blank** parts filled
+  from it and is validated again: the file's cells win, `line2` is filled only with
+  `line1`, and an address the file places in another country than the registry's is
+  not filled. On a create that gives no postal address at all (the group unmapped,
+  or every cell blank), the registry's address becomes the new customer's primary
+  postal address when it is a valid one. A complete address on file is never
+  replaced.
+- **Source and record.** When the registry knows the organisation (a live or a
+  deleted entity), the identity's source is `brreg` rather than `manual`, and the
+  fetched record is stored in the row's own transaction as a Brreg pick's is — on a
+  create, and on an update whose identity changes, mirroring the PUT's fetch for a
+  changed Brreg identity. The Registry card is filled and nothing is fetched twice.
+  An update that repeats the identity on file keeps that identity, source included.
+
+Lookups run at most four at a time, once per organisation number per check or run;
+a file whose rows are complete, or whose rows only update customers whose addresses
+are complete, makes no request. When the registry cannot help, the row is decided
+exactly as it would be without it; if it still lacks a name, or has an incomplete
+postal address, for the organisation asked about, one error on `legalId` says why:
+`Brønnøysund has no organisation {orgnr}` (a 404, or an entity removed from open
+data); `Brønnøysund's answer about organisation {orgnr} could not be read; the name
+and postal address were not looked up` (a body, content type or organisation number
+the client refuses); or `Brønnøysund could not be reached; the name and postal
+address were not looked up` (every attempt spent on a transport error, a timeout or
+a retryable status within `BRREG_TIMEOUT`). Only that last kind ends the asking for
+the rest of the check or run — an outage costs one timeout, not one per company —
+and none of them fails the import or a row that did not need the lookup. The
+preview's sample does not ask the registry, so a sample row may show the name or
+address errors the check will fill.
 
 **Mode and match.** `create` makes every row a new customer. `update` and
 `createOrUpdate` find the customer by the mapped match column: `customerNumber`
