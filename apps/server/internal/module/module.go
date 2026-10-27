@@ -203,6 +203,17 @@ type Deps struct {
 	// claim. Only Staff calls them, never inside a transaction. nil when no
 	// enabled module provides one.
 	IdentityProvisioners []contracts.IdentityProvisioner
+	// MailboxCalendar is a provider's mailbox calendars, the one sanctioned
+	// way the calendar writes a person's copies to their mailbox (see
+	// contracts.MailboxCalendar, calendar Outlook sync design O4). Compose
+	// sets it, on every module's Deps copy, from whichever enabled module
+	// declares Module.MailboxCalendar, after the identity provisioners;
+	// Workers sets it too, the same way, because the calendar's sync worker
+	// runs in worker mode. Both keep a preset value when no enabled module
+	// provides one (the seam modtest.WithMailboxCalendar fills). Only the
+	// calendar calls it, never inside a transaction. nil when no enabled
+	// module provides one (entra disabled).
+	MailboxCalendar contracts.MailboxCalendar
 	// HTTPTransport is the RoundTripper a module's own outbound HTTP client
 	// (customers' Brreg lookup, so far the only one) dials through. nil in
 	// production, meaning http.DefaultTransport; a test harness sets it to a
@@ -414,4 +425,10 @@ type Module struct {
 	// IdentityProvisioners; no two providers may answer one Key. A nil
 	// result contributes nothing.
 	IdentityProvisioner func(Deps) contracts.IdentityProvisioner
+	// MailboxCalendar builds this module's contracts.MailboxCalendar, if it
+	// writes people's mailbox calendars for the calendar (calendar Outlook
+	// sync design O4). At most one enabled module may set it; Compose and
+	// Workers call it after the identity provisioners — it reads nothing
+	// while it is built — and put the result on every module's Deps.
+	MailboxCalendar func(Deps) contracts.MailboxCalendar
 }

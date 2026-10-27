@@ -76,6 +76,7 @@ var limits = map[string]ratelimit.Policy{
 	"postCalendarSubscriptions":            subscriptionFetchLimit,
 	"putCalendarSubscriptionsById":         subscriptionFetchLimit,
 	"postCalendarSubscriptionsByIdRefresh": subscriptionFetchLimit,
+	"postCalendarMailboxSyncRun":           {Name: "calendar-mailbox-run", Limit: 6, Window: time.Minute},
 }
 
 // subscriptionFetchLimit is the one policy of the three operations that

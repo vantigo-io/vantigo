@@ -222,6 +222,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/calendar/mailbox-sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The caller's Outlook sync
+         * @description The caller's Outlook sync (calendar Outlook sync design O5) — their setting, its state and its last sync, whether it can run and, when not, why, and the kinds they may choose.
+         */
+        get: operations["getCalendarMailboxSync"];
+        /**
+         * Change the caller's Outlook sync
+         * @description Replaces the caller's Outlook sync setting whole (calendar Outlook sync design O5). Turning it on, or keeping it on, while availability is not available is a 409 mailbox_sync_unavailable whose detail is the availability; turning it off is always taken. Turning it off, or changing the target, starts the clean-up of the copies already written (O8); every write makes the sync due at once. The first write turns the defaults into the caller's row.
+         */
+        put: operations["putCalendarMailboxSync"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/calendar/mailbox-sync/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sync the caller's calendar now
+         * @description Syncs the caller's calendar now — the screen's Sync now: the sync is made due at once and the worker takes it within a minute. It writes nothing of the setting, so the revision stays. 409 mailbox_sync_unavailable, with the availability as its detail, while the sync is off or cannot run. Rate limited to 6 per client address a minute (calendar-mailbox-run).
+         */
+        post: operations["postCalendarMailboxSyncRun"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/calendar/meta": {
         parameters: {
             query?: never;
@@ -665,7 +709,7 @@ export interface components {
              */
             today: string;
         };
-        /** @description An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: revision_mismatch (409: the If-Match revision has moved on), occurrence_not_in_series (409: the series' rule never produces that date), appointment_cancelled (409: the appointment is cancelled and nothing of it changes), invitations_unavailable (503: the mail driver is not smtp, so no invitation can be sent) and subscription_limit (409: the caller has ten subscriptions already). errors carries the field errors of a 400, keyed by the request's camelCase field (a nested one as recurrence.rule, an element of a list as attendees[0]). A request the server could not decode answers a bare 400 with neither. */
+        /** @description An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: revision_mismatch (409: the If-Match revision has moved on), occurrence_not_in_series (409: the series' rule never produces that date), appointment_cancelled (409: the appointment is cancelled and nothing of it changes), invitations_unavailable (503: the mail driver is not smtp, so no invitation can be sent), subscription_limit (409: the caller has ten subscriptions already) and mailbox_sync_unavailable (409: the Outlook sync cannot run now; detail carries the availability — switch_off, no_provider, unavailable, permission_missing or no_account). errors carries the field errors of a 400, keyed by the request's camelCase field (a nested one as recurrence.rule, an element of a list as attendees[0]). A request the server could not decode answers a bare 400 with neither. */
         CalendarProblem: {
             code?: string | null;
             detail?: string | null;
@@ -763,6 +807,49 @@ export interface components {
          * @enum {string}
          */
         FeedVariant: "full" | "busy";
+        /** @description The caller's Outlook sync (calendar Outlook sync design O5): their setting, the worker's state, and whether it can run. availability is available, or why not — switch_off (an Owner has not turned on Calendar sync in the Entra module), no_provider (no enabled module writes mailboxes), unavailable (the provider's connection is not working), permission_missing (the connection lacks the calendar permission) or no_account (the caller has no account in the directory that Staff links to them). availableKinds are the kinds the caller may choose: the appointment kind and the kinds the calendar sources declare today. state is pending (on, not yet synced), active, stopping (the copies are being removed), off, unavailable or failed; error is the last refusal's code, absent after a sync that worked. A caller who never turned it on is answered the defaults at revision 0. */
+        MailboxSync: {
+            /** @enum {string} */
+            availability: "available" | "switch_off" | "no_provider" | "unavailable" | "permission_missing" | "no_account";
+            availableKinds: components["schemas"]["MailboxSyncKind"][];
+            detail: components["schemas"]["MailboxSyncDetail"];
+            enabled: boolean;
+            /** @enum {string} */
+            error?: "no_account" | "mailbox_denied" | "mailbox_gone" | "unavailable" | "failed";
+            kinds: string[];
+            /** Format: date-time */
+            lastSyncedAt?: string;
+            /**
+             * Format: int32
+             * @description Send it back as If-Match on PUT /mailbox-sync.
+             */
+            revision: number;
+            /** @enum {string} */
+            state: "pending" | "active" | "stopping" | "off" | "unavailable" | "failed";
+            target: components["schemas"]["MailboxSyncTarget"];
+        };
+        /**
+         * @description What the copies show — full, the titles, the places and the links, or busy, Busy for every title and the link alone.
+         * @enum {string}
+         */
+        MailboxSyncDetail: "full" | "busy";
+        /** @description One kind the caller may sync: its key ("calendar.appointment", "staff.absence") and the module it comes from. */
+        MailboxSyncKind: {
+            key: string;
+            module: string;
+        };
+        /**
+         * @description Where the copies go — default, the caller's main calendar, which shows them busy to colleagues, or own, a separate calendar named Vantigo.
+         * @enum {string}
+         */
+        MailboxSyncTarget: "default" | "own";
+        /** @description The caller's setting as PUT /mailbox-sync replaces it whole (calendar Outlook sync design O5), each rule a field error: target and detail one of their values; kinds each one of availableKinds, no kind twice. */
+        MailboxSyncWrite: {
+            detail: components["schemas"]["MailboxSyncDetail"];
+            enabled: boolean;
+            kinds: string[];
+            target: components["schemas"]["MailboxSyncTarget"];
+        };
         /** @description One occurrence's exception: cancelled true, or a move — startsAt and endsAt for a timed series, startDate and endDate for an all-day one — never both. A moved occurrence keeps the day it came from as its identity. */
         OccurrenceWrite: {
             cancelled?: boolean;
@@ -1699,6 +1786,164 @@ export interface operations {
                 };
                 content: {
                     "application/problem+json": components["schemas"]["CalendarProblem"];
+                };
+            };
+        };
+    };
+    getCalendarMailboxSync: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MailboxSync"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    putCalendarMailboxSync: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description The revision the setting was read at, bare (3) or quoted ("3"); 0 for a caller who never turned it on. A revision that has moved on is a 409 revision_mismatch. */
+                "If-Match": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MailboxSyncWrite"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MailboxSync"];
+                };
+            };
+            /** @description Bad Request — field errors on the body (an unknown target, detail or kind), or an If-Match that is not a revision. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["CalendarProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Conflict — revision_mismatch, or mailbox_sync_unavailable with the availability as its detail. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["CalendarProblem"];
+                };
+            };
+        };
+    };
+    postCalendarMailboxSyncRun: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK — the setting as it now stands, due at once. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MailboxSync"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Conflict — mailbox_sync_unavailable, with the availability as its detail. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["CalendarProblem"];
+                };
+            };
+            /** @description Too Many Requests — calendar-mailbox-run's limit for this client address. */
+            429: {
+                headers: {
+                    "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
                 };
             };
         };

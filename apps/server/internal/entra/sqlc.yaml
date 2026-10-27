@@ -8,6 +8,7 @@ sql:
     schema:
       - ../db/migrations/00061_entra_baseline.sql
       - ../db/migrations/00063_entra_groups.sql
+      - ../db/migrations/00082_entra_calendar_sync.sql
     queries: queries
     gen:
       go:

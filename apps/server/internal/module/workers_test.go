@@ -255,6 +255,10 @@ func TestWorkers_PanicsOnTwoProvidersOfASlot(t *testing.T) {
 			{Name: "alpha", Workforce: func(Deps) contracts.Workforce { return &fakeWorkforce{} }},
 			{Name: "beta", Workforce: func(Deps) contracts.Workforce { return &fakeWorkforce{} }},
 		}, "a workforce directory"},
+		{"mailbox calendar", []Module{
+			{Name: "alpha", MailboxCalendar: func(Deps) contracts.MailboxCalendar { return &fakeMailboxCalendar{} }},
+			{Name: "beta", MailboxCalendar: func(Deps) contracts.MailboxCalendar { return &fakeMailboxCalendar{} }},
+		}, "a mailbox calendar"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			defer func() {
@@ -319,6 +323,27 @@ func TestWorkers_ResolveTheWorkforceSlot(t *testing.T) {
 	Workers(Deps{Config: &config.Config{Modules: []string{"reader"}}, Workforce: preset}, reader, owner)
 	if seen != preset {
 		t.Errorf("the workers saw Deps.Workforce = %v, want the caller's, the owner being disabled", seen)
+	}
+}
+
+// Worker mode never composes, so Workers resolves the MailboxCalendar slot
+// itself, as Compose does (calendar Outlook sync design O4): from the enabled
+// provider, and the caller's own when no enabled module provides one.
+func TestWorkers_ResolveTheMailboxCalendarSlot(t *testing.T) {
+	built, preset := &fakeMailboxCalendar{key: "owner"}, &fakeMailboxCalendar{key: "preset"}
+	var seen contracts.MailboxCalendar
+	reader := Module{Name: "reader", Workers: func(d Deps) []worker.Worker {
+		seen = d.MailboxCalendar
+		return nil
+	}}
+	owner := Module{Name: "owner", MailboxCalendar: func(Deps) contracts.MailboxCalendar { return built }}
+	Workers(Deps{Config: &config.Config{Modules: []string{"reader", "owner"}}, MailboxCalendar: preset}, reader, owner)
+	if seen != built {
+		t.Errorf("the workers saw Deps.MailboxCalendar = %v, want the enabled owner's", seen)
+	}
+	Workers(Deps{Config: &config.Config{Modules: []string{"reader"}}, MailboxCalendar: preset}, reader, owner)
+	if seen != preset {
+		t.Errorf("the workers saw Deps.MailboxCalendar = %v, want the caller's, the owner being disabled", seen)
 	}
 }
 

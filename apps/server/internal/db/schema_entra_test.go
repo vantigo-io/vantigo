@@ -339,12 +339,15 @@ func TestEntraGroups_AppliesAndIsIdempotent(t *testing.T) {
 	}; !equalStrings(columns("groups"), want) {
 		t.Errorf("entra.groups columns =\n%s\nwant\n%s", strings.Join(columns("groups"), "\n"), strings.Join(want, "\n"))
 	}
+	// 00082's calendar_sync follows them, pinned by
+	// TestEntraCalendarSync_AppliesAndIsIdempotent.
 	connection := columns("connection")
-	if tail := connection[max(len(connection)-2, 0):]; !equalStrings(tail, []string{
+	if tail := connection[max(len(connection)-3, 0):]; !equalStrings(tail, []string{
 		"service_principal_id:uuid:YES:",
 		"skus:jsonb:NO:'[]'::jsonb",
+		"calendar_sync:boolean:NO:false",
 	}) {
-		t.Errorf("entra.connection's last columns = %v, want service_principal_id and skus", tail)
+		t.Errorf("entra.connection's last columns = %v, want service_principal_id, skus and calendar_sync", tail)
 	}
 	accounts := columns("accounts")
 	if tail := accounts[max(len(accounts)-1, 0):]; !equalStrings(tail, []string{"licences_assigned:ARRAY:NO:'{}'::text[]"}) {

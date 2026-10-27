@@ -40,6 +40,7 @@ export const unconfigured = (): EntraConnection => ({
   credentials: [],
   accounts: { count: 0, enabled: 0, disabled: 0, deleted: 0 },
   groups: { count: 0 },
+  calendarSync: { enabled: false, status: "off" },
   version: 1,
 });
 
@@ -68,6 +69,7 @@ export const connected = (overrides: Partial<EntraConnection> = {}): EntraConnec
   credentials: [credential()],
   accounts: { count: 3, enabled: 2, disabled: 1, deleted: 0 },
   groups: { count: 0 },
+  calendarSync: { enabled: false, status: "off" },
   version: 4,
   ...overrides,
 });

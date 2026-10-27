@@ -359,6 +359,14 @@ func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.
 		return nil, err
 	}
 
+	// The mailbox calendars (contracts.MailboxCalendar, calendar Outlook
+	// sync design O4) resolve after the identity provisioners, by the
+	// helper Workers uses too: the calendar's sync worker writes through
+	// them in worker mode as the API does.
+	if deps, err = withMailboxCalendar(deps, mods); err != nil {
+		return nil, err
+	}
+
 	outer := http.NewServeMux()
 	mounts := make([]moduleMount, 0, len(mods))
 	order := make([]string, 0, len(mods))

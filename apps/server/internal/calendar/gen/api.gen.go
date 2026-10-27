@@ -188,6 +188,129 @@ func (e FeedVariant) Valid() bool {
 	}
 }
 
+// Defines values for MailboxSyncAvailability.
+const (
+	MailboxSyncAvailabilityAvailable         MailboxSyncAvailability = "available"
+	MailboxSyncAvailabilityNoAccount         MailboxSyncAvailability = "no_account"
+	MailboxSyncAvailabilityNoProvider        MailboxSyncAvailability = "no_provider"
+	MailboxSyncAvailabilityPermissionMissing MailboxSyncAvailability = "permission_missing"
+	MailboxSyncAvailabilitySwitchOff         MailboxSyncAvailability = "switch_off"
+	MailboxSyncAvailabilityUnavailable       MailboxSyncAvailability = "unavailable"
+)
+
+// Valid indicates whether the value is a known member of the MailboxSyncAvailability enum.
+func (e MailboxSyncAvailability) Valid() bool {
+	switch e {
+	case MailboxSyncAvailabilityAvailable:
+		return true
+	case MailboxSyncAvailabilityNoAccount:
+		return true
+	case MailboxSyncAvailabilityNoProvider:
+		return true
+	case MailboxSyncAvailabilityPermissionMissing:
+		return true
+	case MailboxSyncAvailabilitySwitchOff:
+		return true
+	case MailboxSyncAvailabilityUnavailable:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for MailboxSyncError.
+const (
+	MailboxSyncErrorFailed        MailboxSyncError = "failed"
+	MailboxSyncErrorMailboxDenied MailboxSyncError = "mailbox_denied"
+	MailboxSyncErrorMailboxGone   MailboxSyncError = "mailbox_gone"
+	MailboxSyncErrorNoAccount     MailboxSyncError = "no_account"
+	MailboxSyncErrorUnavailable   MailboxSyncError = "unavailable"
+)
+
+// Valid indicates whether the value is a known member of the MailboxSyncError enum.
+func (e MailboxSyncError) Valid() bool {
+	switch e {
+	case MailboxSyncErrorFailed:
+		return true
+	case MailboxSyncErrorMailboxDenied:
+		return true
+	case MailboxSyncErrorMailboxGone:
+		return true
+	case MailboxSyncErrorNoAccount:
+		return true
+	case MailboxSyncErrorUnavailable:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for MailboxSyncState.
+const (
+	MailboxSyncStateActive      MailboxSyncState = "active"
+	MailboxSyncStateFailed      MailboxSyncState = "failed"
+	MailboxSyncStateOff         MailboxSyncState = "off"
+	MailboxSyncStatePending     MailboxSyncState = "pending"
+	MailboxSyncStateStopping    MailboxSyncState = "stopping"
+	MailboxSyncStateUnavailable MailboxSyncState = "unavailable"
+)
+
+// Valid indicates whether the value is a known member of the MailboxSyncState enum.
+func (e MailboxSyncState) Valid() bool {
+	switch e {
+	case MailboxSyncStateActive:
+		return true
+	case MailboxSyncStateFailed:
+		return true
+	case MailboxSyncStateOff:
+		return true
+	case MailboxSyncStatePending:
+		return true
+	case MailboxSyncStateStopping:
+		return true
+	case MailboxSyncStateUnavailable:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for MailboxSyncDetail.
+const (
+	MailboxSyncDetailBusy MailboxSyncDetail = "busy"
+	MailboxSyncDetailFull MailboxSyncDetail = "full"
+)
+
+// Valid indicates whether the value is a known member of the MailboxSyncDetail enum.
+func (e MailboxSyncDetail) Valid() bool {
+	switch e {
+	case MailboxSyncDetailBusy:
+		return true
+	case MailboxSyncDetailFull:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for MailboxSyncTarget.
+const (
+	Default MailboxSyncTarget = "default"
+	Own     MailboxSyncTarget = "own"
+)
+
+// Valid indicates whether the value is a known member of the MailboxSyncTarget enum.
+func (e MailboxSyncTarget) Valid() bool {
+	switch e {
+	case Default:
+		return true
+	case Own:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for RsvpPageLanguage.
 const (
 	En RsvpPageLanguage = "en"
@@ -541,7 +664,7 @@ type CalendarMeta struct {
 	Today openapi_types.Date `json:"today"`
 }
 
-// CalendarProblem An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: revision_mismatch (409: the If-Match revision has moved on), occurrence_not_in_series (409: the series' rule never produces that date), appointment_cancelled (409: the appointment is cancelled and nothing of it changes), invitations_unavailable (503: the mail driver is not smtp, so no invitation can be sent) and subscription_limit (409: the caller has ten subscriptions already). errors carries the field errors of a 400, keyed by the request's camelCase field (a nested one as recurrence.rule, an element of a list as attendees[0]). A request the server could not decode answers a bare 400 with neither.
+// CalendarProblem An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: revision_mismatch (409: the If-Match revision has moved on), occurrence_not_in_series (409: the series' rule never produces that date), appointment_cancelled (409: the appointment is cancelled and nothing of it changes), invitations_unavailable (503: the mail driver is not smtp, so no invitation can be sent), subscription_limit (409: the caller has ten subscriptions already) and mailbox_sync_unavailable (409: the Outlook sync cannot run now; detail carries the availability — switch_off, no_provider, unavailable, permission_missing or no_account). errors carries the field errors of a 400, keyed by the request's camelCase field (a nested one as recurrence.rule, an element of a list as attendees[0]). A request the server could not decode answers a bare 400 with neither.
 type CalendarProblem struct {
 	Code     *string              `json:"code,omitempty"`
 	Detail   *string              `json:"detail,omitempty"`
@@ -636,6 +759,58 @@ type FeedAddresses struct {
 
 // FeedVariant A calendar address's variant (calendar feed design D3): full is the person's calendar as they see it — never a colleague's appointment, a cancelled or a declined one, a subscription's item or a public holiday; busy is its busy spans and nothing else, each titled Busy.
 type FeedVariant string
+
+// MailboxSync The caller's Outlook sync (calendar Outlook sync design O5): their setting, the worker's state, and whether it can run. availability is available, or why not — switch_off (an Owner has not turned on Calendar sync in the Entra module), no_provider (no enabled module writes mailboxes), unavailable (the provider's connection is not working), permission_missing (the connection lacks the calendar permission) or no_account (the caller has no account in the directory that Staff links to them). availableKinds are the kinds the caller may choose: the appointment kind and the kinds the calendar sources declare today. state is pending (on, not yet synced), active, stopping (the copies are being removed), off, unavailable or failed; error is the last refusal's code, absent after a sync that worked. A caller who never turned it on is answered the defaults at revision 0.
+type MailboxSync struct {
+	Availability   MailboxSyncAvailability `json:"availability"`
+	AvailableKinds []MailboxSyncKind       `json:"availableKinds"`
+
+	// Detail What the copies show — full, the titles, the places and the links, or busy, Busy for every title and the link alone.
+	Detail       MailboxSyncDetail `json:"detail"`
+	Enabled      bool              `json:"enabled"`
+	Error        *MailboxSyncError `json:"error,omitempty"`
+	Kinds        []string          `json:"kinds"`
+	LastSyncedAt *time.Time        `json:"lastSyncedAt,omitempty"`
+
+	// Revision Send it back as If-Match on PUT /mailbox-sync.
+	Revision int32            `json:"revision"`
+	State    MailboxSyncState `json:"state"`
+
+	// Target Where the copies go — default, the caller's main calendar, which shows them busy to colleagues, or own, a separate calendar named Vantigo.
+	Target MailboxSyncTarget `json:"target"`
+}
+
+// MailboxSyncAvailability defines model for MailboxSync.Availability.
+type MailboxSyncAvailability string
+
+// MailboxSyncError defines model for MailboxSync.Error.
+type MailboxSyncError string
+
+// MailboxSyncState defines model for MailboxSync.State.
+type MailboxSyncState string
+
+// MailboxSyncDetail What the copies show — full, the titles, the places and the links, or busy, Busy for every title and the link alone.
+type MailboxSyncDetail string
+
+// MailboxSyncKind One kind the caller may sync: its key ("calendar.appointment", "staff.absence") and the module it comes from.
+type MailboxSyncKind struct {
+	Key    string `json:"key"`
+	Module string `json:"module"`
+}
+
+// MailboxSyncTarget Where the copies go — default, the caller's main calendar, which shows them busy to colleagues, or own, a separate calendar named Vantigo.
+type MailboxSyncTarget string
+
+// MailboxSyncWrite The caller's setting as PUT /mailbox-sync replaces it whole (calendar Outlook sync design O5), each rule a field error: target and detail one of their values; kinds each one of availableKinds, no kind twice.
+type MailboxSyncWrite struct {
+	// Detail What the copies show — full, the titles, the places and the links, or busy, Busy for every title and the link alone.
+	Detail  MailboxSyncDetail `json:"detail"`
+	Enabled bool              `json:"enabled"`
+	Kinds   []string          `json:"kinds"`
+
+	// Target Where the copies go — default, the caller's main calendar, which shows them busy to colleagues, or own, a separate calendar named Vantigo.
+	Target MailboxSyncTarget `json:"target"`
+}
 
 // OccurrenceWrite One occurrence's exception: cancelled true, or a move — startsAt and endsAt for a timed series, startDate and endDate for an all-day one — never both. A moved occurrence keeps the day it came from as its identity.
 type OccurrenceWrite struct {
@@ -741,6 +916,12 @@ type GetCalendarItemsParams struct {
 	Kinds *string `form:"kinds,omitempty" json:"kinds,omitempty"`
 }
 
+// PutCalendarMailboxSyncParams defines parameters for PutCalendarMailboxSync.
+type PutCalendarMailboxSyncParams struct {
+	// IfMatch The revision the setting was read at, bare (3) or quoted ("3"); 0 for a caller who never turned it on. A revision that has moved on is a 409 revision_mismatch.
+	IfMatch string `json:"If-Match"`
+}
+
 // GetCalendarUsersParams defines parameters for GetCalendarUsers.
 type GetCalendarUsersParams struct {
 	// Query Narrows the search by display name. Absent or blank lists the first page of active users.
@@ -761,6 +942,9 @@ type PutCalendarAppointmentsByIdOccurrencesByDateJSONRequestBody = OccurrenceWri
 
 // PostCalendarAppointmentsByIdResponseJSONRequestBody defines body for PostCalendarAppointmentsByIdResponse for application/json ContentType.
 type PostCalendarAppointmentsByIdResponseJSONRequestBody = AppointmentResponseWrite
+
+// PutCalendarMailboxSyncJSONRequestBody defines body for PutCalendarMailboxSync for application/json ContentType.
+type PutCalendarMailboxSyncJSONRequestBody = MailboxSyncWrite
 
 // PostCalendarRsvpJSONRequestBody defines body for PostCalendarRsvp for application/json ContentType.
 type PostCalendarRsvpJSONRequestBody = RsvpWrite
@@ -821,6 +1005,15 @@ type ServerInterface interface {
 	// GetCalendarItems The caller's calendar
 	// (GET /api/v1/calendar/items)
 	GetCalendarItems(w http.ResponseWriter, r *http.Request, params GetCalendarItemsParams)
+	// GetCalendarMailboxSync The caller's Outlook sync
+	// (GET /api/v1/calendar/mailbox-sync)
+	GetCalendarMailboxSync(w http.ResponseWriter, r *http.Request)
+	// PutCalendarMailboxSync Change the caller's Outlook sync
+	// (PUT /api/v1/calendar/mailbox-sync)
+	PutCalendarMailboxSync(w http.ResponseWriter, r *http.Request, params PutCalendarMailboxSyncParams)
+	// PostCalendarMailboxSyncRun Sync the caller's calendar now
+	// (POST /api/v1/calendar/mailbox-sync/run)
+	PostCalendarMailboxSyncRun(w http.ResponseWriter, r *http.Request)
 	// GetCalendarMeta The calendar's settings
 	// (GET /api/v1/calendar/meta)
 	GetCalendarMeta(w http.ResponseWriter, r *http.Request)
@@ -1399,6 +1592,79 @@ func (siw *ServerInterfaceWrapper) GetCalendarItems(w http.ResponseWriter, r *ht
 	handler.ServeHTTP(w, r)
 }
 
+// GetCalendarMailboxSync operation middleware
+func (siw *ServerInterfaceWrapper) GetCalendarMailboxSync(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetCalendarMailboxSync(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutCalendarMailboxSync operation middleware
+func (siw *ServerInterfaceWrapper) PutCalendarMailboxSync(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params PutCalendarMailboxSyncParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "If-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
+		var IfMatch string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-Match", Err: err})
+			return
+		}
+
+		params.IfMatch = IfMatch
+
+	} else {
+		err := fmt.Errorf("Header parameter If-Match is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "If-Match", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutCalendarMailboxSync(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostCalendarMailboxSyncRun operation middleware
+func (siw *ServerInterfaceWrapper) PostCalendarMailboxSyncRun(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostCalendarMailboxSyncRun(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetCalendarMeta operation middleware
 func (siw *ServerInterfaceWrapper) GetCalendarMeta(w http.ResponseWriter, r *http.Request) {
 
@@ -1728,6 +1994,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/calendar/feed/{file}", wrapper.GetCalendarFeedByFile)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/calendar/feed/{file}", wrapper.PostCalendarFeedByVariant)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/calendar/items", wrapper.GetCalendarItems)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/calendar/mailbox-sync", wrapper.GetCalendarMailboxSync)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/calendar/mailbox-sync", wrapper.PutCalendarMailboxSync)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/calendar/mailbox-sync/run", wrapper.PostCalendarMailboxSyncRun)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/calendar/meta", wrapper.GetCalendarMeta)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/calendar/rsvp", wrapper.PostCalendarRsvp)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/calendar/rsvp/read", wrapper.PostCalendarRsvpRead)
@@ -2839,6 +3108,221 @@ func (response GetCalendarItems503ApplicationProblemPlusJSONResponse) VisitGetCa
 	return err
 }
 
+type GetCalendarMailboxSyncRequestObject struct {
+}
+
+type GetCalendarMailboxSyncResponseObject interface {
+	VisitGetCalendarMailboxSyncResponse(w http.ResponseWriter) error
+}
+
+type GetCalendarMailboxSync200JSONResponse MailboxSync
+
+func (response GetCalendarMailboxSync200JSONResponse) VisitGetCalendarMailboxSyncResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCalendarMailboxSync401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetCalendarMailboxSync401JSONResponse) VisitGetCalendarMailboxSyncResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCalendarMailboxSync403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetCalendarMailboxSync403JSONResponse) VisitGetCalendarMailboxSyncResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutCalendarMailboxSyncRequestObject struct {
+	Params PutCalendarMailboxSyncParams
+	Body   *PutCalendarMailboxSyncJSONRequestBody
+}
+
+type PutCalendarMailboxSyncResponseObject interface {
+	VisitPutCalendarMailboxSyncResponse(w http.ResponseWriter) error
+}
+
+type PutCalendarMailboxSync200JSONResponse MailboxSync
+
+func (response PutCalendarMailboxSync200JSONResponse) VisitPutCalendarMailboxSyncResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutCalendarMailboxSync400ApplicationProblemPlusJSONResponse CalendarProblem
+
+func (response PutCalendarMailboxSync400ApplicationProblemPlusJSONResponse) VisitPutCalendarMailboxSyncResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutCalendarMailboxSync401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutCalendarMailboxSync401JSONResponse) VisitPutCalendarMailboxSyncResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutCalendarMailboxSync403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutCalendarMailboxSync403JSONResponse) VisitPutCalendarMailboxSyncResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutCalendarMailboxSync409ApplicationProblemPlusJSONResponse CalendarProblem
+
+func (response PutCalendarMailboxSync409ApplicationProblemPlusJSONResponse) VisitPutCalendarMailboxSyncResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostCalendarMailboxSyncRunRequestObject struct {
+}
+
+type PostCalendarMailboxSyncRunResponseObject interface {
+	VisitPostCalendarMailboxSyncRunResponse(w http.ResponseWriter) error
+}
+
+type PostCalendarMailboxSyncRun200JSONResponse MailboxSync
+
+func (response PostCalendarMailboxSyncRun200JSONResponse) VisitPostCalendarMailboxSyncRunResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostCalendarMailboxSyncRun401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostCalendarMailboxSyncRun401JSONResponse) VisitPostCalendarMailboxSyncRunResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostCalendarMailboxSyncRun403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostCalendarMailboxSyncRun403JSONResponse) VisitPostCalendarMailboxSyncRunResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostCalendarMailboxSyncRun409ApplicationProblemPlusJSONResponse CalendarProblem
+
+func (response PostCalendarMailboxSyncRun409ApplicationProblemPlusJSONResponse) VisitPostCalendarMailboxSyncRunResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostCalendarMailboxSyncRun429ResponseHeaders struct {
+	RetryAfter *string
+}
+
+type PostCalendarMailboxSyncRun429JSONResponse struct {
+	Body    externalRef0.AuthErrorResponse
+	Headers PostCalendarMailboxSyncRun429ResponseHeaders
+}
+
+func (response PostCalendarMailboxSyncRun429JSONResponse) VisitPostCalendarMailboxSyncRunResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetCalendarMetaRequestObject struct {
 }
 
@@ -3531,6 +4015,15 @@ type StrictServerInterface interface {
 	// GetCalendarItems The caller's calendar
 	// (GET /api/v1/calendar/items)
 	GetCalendarItems(ctx context.Context, request GetCalendarItemsRequestObject) (GetCalendarItemsResponseObject, error)
+	// GetCalendarMailboxSync The caller's Outlook sync
+	// (GET /api/v1/calendar/mailbox-sync)
+	GetCalendarMailboxSync(ctx context.Context, request GetCalendarMailboxSyncRequestObject) (GetCalendarMailboxSyncResponseObject, error)
+	// PutCalendarMailboxSync Change the caller's Outlook sync
+	// (PUT /api/v1/calendar/mailbox-sync)
+	PutCalendarMailboxSync(ctx context.Context, request PutCalendarMailboxSyncRequestObject) (PutCalendarMailboxSyncResponseObject, error)
+	// PostCalendarMailboxSyncRun Sync the caller's calendar now
+	// (POST /api/v1/calendar/mailbox-sync/run)
+	PostCalendarMailboxSyncRun(ctx context.Context, request PostCalendarMailboxSyncRunRequestObject) (PostCalendarMailboxSyncRunResponseObject, error)
 	// GetCalendarMeta The calendar's settings
 	// (GET /api/v1/calendar/meta)
 	GetCalendarMeta(ctx context.Context, request GetCalendarMetaRequestObject) (GetCalendarMetaResponseObject, error)
@@ -4012,6 +4505,87 @@ func (sh *strictHandler) GetCalendarItems(w http.ResponseWriter, r *http.Request
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetCalendarItemsResponseObject); ok {
 		if err := validResponse.VisitGetCalendarItemsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetCalendarMailboxSync operation middleware
+func (sh *strictHandler) GetCalendarMailboxSync(w http.ResponseWriter, r *http.Request) {
+	var request GetCalendarMailboxSyncRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetCalendarMailboxSync(ctx, request.(GetCalendarMailboxSyncRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetCalendarMailboxSync")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetCalendarMailboxSyncResponseObject); ok {
+		if err := validResponse.VisitGetCalendarMailboxSyncResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutCalendarMailboxSync operation middleware
+func (sh *strictHandler) PutCalendarMailboxSync(w http.ResponseWriter, r *http.Request, params PutCalendarMailboxSyncParams) {
+	var request PutCalendarMailboxSyncRequestObject
+
+	request.Params = params
+
+	var body PutCalendarMailboxSyncJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutCalendarMailboxSync(ctx, request.(PutCalendarMailboxSyncRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutCalendarMailboxSync")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutCalendarMailboxSyncResponseObject); ok {
+		if err := validResponse.VisitPutCalendarMailboxSyncResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostCalendarMailboxSyncRun operation middleware
+func (sh *strictHandler) PostCalendarMailboxSyncRun(w http.ResponseWriter, r *http.Request) {
+	var request PostCalendarMailboxSyncRunRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostCalendarMailboxSyncRun(ctx, request.(PostCalendarMailboxSyncRunRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostCalendarMailboxSyncRun")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostCalendarMailboxSyncRunResponseObject); ok {
+		if err := validResponse.VisitPostCalendarMailboxSyncRunResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

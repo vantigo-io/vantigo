@@ -77,6 +77,35 @@ type CalendarFeedToken struct {
 	LastUsedAt        *time.Time
 }
 
+type CalendarMailboxEvent struct {
+	UserID      uuid.UUID
+	ItemKey     string
+	EventID     string
+	ContentHash string
+	StartsOn    pgtype.Date
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
+type CalendarMailboxSync struct {
+	UserID       uuid.UUID
+	Enabled      bool
+	Target       string
+	Detail       string
+	Kinds        []string
+	Mailbox      *string
+	CalendarID   *string
+	State        string
+	Error        *string
+	NextSyncAt   *time.Time
+	LastSyncedAt *time.Time
+	Attempts     int32
+	Reconcile    bool
+	Revision     int32
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
+}
+
 type CalendarSubscription struct {
 	ID           int64
 	UserID       uuid.UUID

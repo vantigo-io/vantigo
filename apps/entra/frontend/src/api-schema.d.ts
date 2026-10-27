@@ -309,9 +309,18 @@ export interface components {
             /** Format: int32 */
             enabled: number;
         };
+        /** @description The calendar sync switch (calendar Outlook sync design O2): whether people may sync their Vantigo calendar to Outlook, and whether it can run. status is off while the switch is; ready when on, connected, and the last test's token carried Calendars.ReadWrite; permission_missing when on but the last test did not see it (add it, consent, and test again); unavailable when on but the connection is not connected, reason then being the connection's statusReason. */
+        EntraCalendarSync: {
+            enabled: boolean;
+            /** @description A code, never the directory's words; absent when there is nothing to say. */
+            reason?: string;
+            /** @enum {string} */
+            status: "off" | "ready" | "permission_missing" | "unavailable";
+        };
         /** @description The installation's one connection to a Microsoft Entra ID tenant (Entra design D11): the tenant and the application registered in it, what the last connection test found, the account rules, the client secrets without their values, and how many accounts and groups the module keeps. Sent whether or not anything is set, so the wizard can show every step before the first is done. */
         EntraConnection: {
             accounts: components["schemas"]["EntraAccountCounts"];
+            calendarSync: components["schemas"]["EntraCalendarSync"];
             /**
              * Format: uuid
              * @description The application (client) id of the app registration. Absent until step 1 is saved.
@@ -327,7 +336,7 @@ export interface components {
             lastCheckedAt?: string;
             /** @description The tenant's organisation name as the last test read it. */
             organisationName?: string;
-            /** @description The application permissions the module needs (User.ReadWrite.All, User-LifeCycleInfo.ReadWrite.All, User.RevokeSessions.All, UserAuthMethod-TAP.ReadWrite.All, LicenseAssignment.ReadWrite.All, Group.ReadWrite.All, Domain.Read.All, Organization.Read.All) that the last test's token did not carry; all of them before the first test. */
+            /** @description The application permissions the module needs (User.ReadWrite.All, User-LifeCycleInfo.ReadWrite.All, User.RevokeSessions.All, UserAuthMethod-TAP.ReadWrite.All, LicenseAssignment.ReadWrite.All, Group.ReadWrite.All, Domain.Read.All, Organization.Read.All, and Calendars.ReadWrite while the calendar sync switch is on) that the last test's token did not carry; all of them before the first test. */
             permissionsMissing: string[];
             /** @description The application permissions the last test's token carried in its roles claim. */
             permissionsPresent: string[];
@@ -593,8 +602,10 @@ export interface components {
             /** @description A joiner's first day is written as employeeHireDate, 01:00 in the business time zone. */
             writeHireDate: boolean;
         };
-        /** @description Step 4, the account rules. Every field is optional, and one left out keeps its value; each refusal is a field error under its own name. */
+        /** @description Step 4, the account rules and the calendar sync switch. Every field is optional, and one left out keeps its value; each refusal is a field error under its own name. */
         EntraSettingsRequest: {
+            /** @description Lets people sync their Vantigo calendar to Outlook (calendar Outlook sync design O2). Turning it on asks for Calendars.ReadWrite; turning it off removes the copies already written. */
+            calendarSync?: boolean;
             /** @description Two letters, ISO 3166-1 alpha-2. */
             defaultUsageLocation?: string;
             /** @enum {string} */

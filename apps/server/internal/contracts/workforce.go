@@ -68,6 +68,27 @@ type Workforce interface {
 	// person with no preference scores 100. It needs staff:view; a person the
 	// caller may not see is absent from the map.
 	PreferenceFits(ctx context.Context, personIDs []int64, b Booking) (map[int64]Fit, error)
+	// DirectoryAccount answers the caller's own account in an external
+	// directory (calendar Outlook sync design O3): the provider link of the
+	// person whose identity link names the principal in ctx — a request's,
+	// or contracts.AsUser's — with an external id and a state of enabled or
+	// disabled. It needs no Staff key, being the caller's own account id and
+	// nothing more, and answers only the principal's own. (nil, nil) for a
+	// principal with no person, no provider link, no external id, or a link
+	// in any other state (deleted, preparing, failed, blocked).
+	DirectoryAccount(ctx context.Context) (*DirectoryAccount, error)
+}
+
+// DirectoryAccount is the caller's own account in an external directory, as
+// Workforce.DirectoryAccount answers it.
+type DirectoryAccount struct {
+	// Provider is the provider link's key ("entra"), matched against a
+	// provider's own Key (MailboxCalendar.Key).
+	Provider string
+	// ExternalID is the directory's immutable id for the account.
+	ExternalID string
+	// Enabled is the link's state: enabled, or disabled when false.
+	Enabled bool
 }
 
 // ErrWindowOutOfBounds is answered by People and Capacity for a window that

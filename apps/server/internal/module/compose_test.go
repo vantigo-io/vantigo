@@ -2460,6 +2460,72 @@ func TestCompose_ResolvesTheWorkforceSlot(t *testing.T) {
 	})
 }
 
+// fakeMailboxCalendar is a contracts.MailboxCalendar that answers nothing
+// but its key: these tests only need distinct values to assert on. The
+// embedded nil interface panics on any other call, which no test here makes.
+type fakeMailboxCalendar struct {
+	contracts.MailboxCalendar
+	key string
+}
+
+func (f *fakeMailboxCalendar) Key() string { return f.key }
+
+// The MailboxCalendar slot (contracts.MailboxCalendar, calendar Outlook sync
+// design O4) is a sole-provider slot, resolved before any Mount runs and
+// after the identity provisioners; it reaches every module's Deps. Two
+// enabled providers are a compose error naming both, and a preset value
+// survives when no enabled module provides one.
+func TestCompose_ResolvesTheMailboxCalendarSlot(t *testing.T) {
+	specs := map[string]string{"alpha": alphaContract, "beta": betaContract}
+	t.Run("one provider", func(t *testing.T) {
+		provider := &fakeMailboxCalendar{key: "entra"}
+		var got Deps
+		_, err := compose(Deps{Access: &fakeAccess{}, MailboxCalendar: &fakeMailboxCalendar{key: "preset"}}, fakeLoad(specs),
+			Module{Name: "beta", MailboxCalendar: func(Deps) contracts.MailboxCalendar { return provider }, Mount: staticHandler("beta")},
+			Module{Name: "alpha", Mount: func(d Deps) (http.Handler, error) {
+				got = d
+				return staticHandler("alpha")(d)
+			}},
+		)
+		if err != nil {
+			t.Fatalf("compose: %v", err)
+		}
+		if got.MailboxCalendar != provider {
+			t.Errorf("Deps.MailboxCalendar = %v, want the provider's", got.MailboxCalendar)
+		}
+	})
+	t.Run("two providers", func(t *testing.T) {
+		provide := func(Deps) contracts.MailboxCalendar { return &fakeMailboxCalendar{} }
+		_, err := compose(Deps{Access: &fakeAccess{}}, fakeLoad(specs),
+			Module{Name: "alpha", MailboxCalendar: provide, Mount: staticHandler("alpha")},
+			Module{Name: "beta", MailboxCalendar: provide, Mount: staticHandler("beta")},
+		)
+		if err == nil || !strings.Contains(err.Error(), "a mailbox calendar") ||
+			!strings.Contains(err.Error(), "alpha") || !strings.Contains(err.Error(), "beta") {
+			t.Errorf("compose = %v, want an error naming a mailbox calendar, alpha and beta", err)
+		}
+	})
+	t.Run("preset kept", func(t *testing.T) {
+		preset := &fakeMailboxCalendar{key: "preset"}
+		var got Deps
+		_, err := compose(
+			Deps{Access: &fakeAccess{}, Config: &config.Config{Modules: []string{"alpha"}}, MailboxCalendar: preset},
+			fakeLoad(specs),
+			Module{Name: "alpha", Mount: func(d Deps) (http.Handler, error) {
+				got = d
+				return staticHandler("alpha")(d)
+			}},
+			Module{Name: "beta", MailboxCalendar: func(Deps) contracts.MailboxCalendar { return &fakeMailboxCalendar{key: "beta"} }, Mount: staticHandler("beta")},
+		)
+		if err != nil {
+			t.Fatalf("compose: %v", err)
+		}
+		if got.MailboxCalendar != preset {
+			t.Errorf("Deps.MailboxCalendar = %v, want the preset: beta (the provider) is disabled", got.MailboxCalendar)
+		}
+	})
+}
+
 // fakeIdentityProvisioner is a contracts.IdentityProvisioner that answers
 // nothing but its key: these tests only need distinct values to collect and
 // assert on, and what Deps carried when each was built. The embedded nil
@@ -2584,6 +2650,10 @@ func (*fakeWorkforce) Capacity(context.Context, time.Time, time.Time, []int64) (
 }
 
 func (*fakeWorkforce) Self(context.Context) (*contracts.PersonEntry, error) { return nil, nil }
+
+func (*fakeWorkforce) DirectoryAccount(context.Context) (*contracts.DirectoryAccount, error) {
+	return nil, nil
+}
 
 func (*fakeWorkforce) PreferenceFits(context.Context, []int64, contracts.Booking) (map[int64]contracts.Fit, error) {
 	return nil, nil

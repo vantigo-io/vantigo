@@ -490,7 +490,7 @@ components:
                 - sources
             type: object
         CalendarProblem:
-            description: 'An RFC 9457 problem with this module''s refusal code. code names the rule that refused and is what a client keys off, never the words: revision_mismatch (409: the If-Match revision has moved on), occurrence_not_in_series (409: the series'' rule never produces that date), appointment_cancelled (409: the appointment is cancelled and nothing of it changes), invitations_unavailable (503: the mail driver is not smtp, so no invitation can be sent) and subscription_limit (409: the caller has ten subscriptions already). errors carries the field errors of a 400, keyed by the request''s camelCase field (a nested one as recurrence.rule, an element of a list as attendees[0]). A request the server could not decode answers a bare 400 with neither.'
+            description: 'An RFC 9457 problem with this module''s refusal code. code names the rule that refused and is what a client keys off, never the words: revision_mismatch (409: the If-Match revision has moved on), occurrence_not_in_series (409: the series'' rule never produces that date), appointment_cancelled (409: the appointment is cancelled and nothing of it changes), invitations_unavailable (503: the mail driver is not smtp, so no invitation can be sent), subscription_limit (409: the caller has ten subscriptions already) and mailbox_sync_unavailable (409: the Outlook sync cannot run now; detail carries the availability — switch_off, no_provider, unavailable, permission_missing or no_account). errors carries the field errors of a 400, keyed by the request''s camelCase field (a nested one as recurrence.rule, an element of a list as attendees[0]). A request the server could not decode answers a bare 400 with neither.'
             properties:
                 code:
                     nullable: true
@@ -673,6 +673,108 @@ components:
                 - full
                 - busy
             type: string
+        MailboxSync:
+            description: 'The caller''s Outlook sync (calendar Outlook sync design O5): their setting, the worker''s state, and whether it can run. availability is available, or why not — switch_off (an Owner has not turned on Calendar sync in the Entra module), no_provider (no enabled module writes mailboxes), unavailable (the provider''s connection is not working), permission_missing (the connection lacks the calendar permission) or no_account (the caller has no account in the directory that Staff links to them). availableKinds are the kinds the caller may choose: the appointment kind and the kinds the calendar sources declare today. state is pending (on, not yet synced), active, stopping (the copies are being removed), off, unavailable or failed; error is the last refusal''s code, absent after a sync that worked. A caller who never turned it on is answered the defaults at revision 0.'
+            properties:
+                availability:
+                    enum:
+                        - available
+                        - switch_off
+                        - no_provider
+                        - unavailable
+                        - permission_missing
+                        - no_account
+                    type: string
+                availableKinds:
+                    items:
+                        $ref: '#/components/schemas/MailboxSyncKind'
+                    type: array
+                detail:
+                    $ref: '#/components/schemas/MailboxSyncDetail'
+                enabled:
+                    type: boolean
+                error:
+                    enum:
+                        - no_account
+                        - mailbox_denied
+                        - mailbox_gone
+                        - unavailable
+                        - failed
+                    type: string
+                kinds:
+                    items:
+                        type: string
+                    type: array
+                lastSyncedAt:
+                    format: date-time
+                    type: string
+                revision:
+                    description: Send it back as If-Match on PUT /mailbox-sync.
+                    format: int32
+                    type: integer
+                state:
+                    enum:
+                        - pending
+                        - active
+                        - stopping
+                        - "off"
+                        - unavailable
+                        - failed
+                    type: string
+                target:
+                    $ref: '#/components/schemas/MailboxSyncTarget'
+            required:
+                - availability
+                - enabled
+                - target
+                - detail
+                - kinds
+                - availableKinds
+                - state
+                - revision
+            type: object
+        MailboxSyncDetail:
+            description: What the copies show — full, the titles, the places and the links, or busy, Busy for every title and the link alone.
+            enum:
+                - full
+                - busy
+            type: string
+        MailboxSyncKind:
+            description: 'One kind the caller may sync: its key ("calendar.appointment", "staff.absence") and the module it comes from.'
+            properties:
+                key:
+                    type: string
+                module:
+                    type: string
+            required:
+                - key
+                - module
+            type: object
+        MailboxSyncTarget:
+            description: Where the copies go — default, the caller's main calendar, which shows them busy to colleagues, or own, a separate calendar named Vantigo.
+            enum:
+                - default
+                - own
+            type: string
+        MailboxSyncWrite:
+            description: 'The caller''s setting as PUT /mailbox-sync replaces it whole (calendar Outlook sync design O5), each rule a field error: target and detail one of their values; kinds each one of availableKinds, no kind twice.'
+            properties:
+                detail:
+                    $ref: '#/components/schemas/MailboxSyncDetail'
+                enabled:
+                    type: boolean
+                kinds:
+                    items:
+                        type: string
+                    type: array
+                target:
+                    $ref: '#/components/schemas/MailboxSyncTarget'
+            required:
+                - enabled
+                - target
+                - detail
+                - kinds
+            type: object
         OccurrenceWrite:
             description: 'One occurrence''s exception: cancelled true, or a move — startsAt and endsAt for a timed series, startDate and endDate for an all-day one — never both. A moved occurrence keeps the day it came from as its identity.'
             properties:
@@ -1491,6 +1593,127 @@ paths:
                                 $ref: '#/components/schemas/CalendarProblem'
                     description: Service Unavailable — a calendar source could not be read. The problem names no module.
             summary: The caller's calendar
+            tags:
+                - Calendar
+            x-vantigo-access: permission:calendar:access
+    /api/v1/calendar/mailbox-sync:
+        get:
+            description: The caller's Outlook sync (calendar Outlook sync design O5) — their setting, its state and its last sync, whether it can run and, when not, why, and the kinds they may choose.
+            operationId: getCalendarMailboxSync
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/MailboxSync'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+            summary: The caller's Outlook sync
+            tags:
+                - Calendar
+            x-vantigo-access: permission:calendar:access
+        put:
+            description: 'Replaces the caller''s Outlook sync setting whole (calendar Outlook sync design O5). Turning it on, or keeping it on, while availability is not available is a 409 mailbox_sync_unavailable whose detail is the availability; turning it off is always taken. Turning it off, or changing the target, starts the clean-up of the copies already written (O8); every write makes the sync due at once. The first write turns the defaults into the caller''s row.'
+            operationId: putCalendarMailboxSync
+            parameters:
+                - description: The revision the setting was read at, bare (3) or quoted ("3"); 0 for a caller who never turned it on. A revision that has moved on is a 409 revision_mismatch.
+                  in: header
+                  name: If-Match
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/MailboxSyncWrite'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/MailboxSync'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/CalendarProblem'
+                    description: Bad Request — field errors on the body (an unknown target, detail or kind), or an If-Match that is not a revision.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/CalendarProblem'
+                    description: Conflict — revision_mismatch, or mailbox_sync_unavailable with the availability as its detail.
+            summary: Change the caller's Outlook sync
+            tags:
+                - Calendar
+            x-vantigo-access: permission:calendar:access
+    /api/v1/calendar/mailbox-sync/run:
+        post:
+            description: 'Syncs the caller''s calendar now — the screen''s Sync now: the sync is made due at once and the worker takes it within a minute. It writes nothing of the setting, so the revision stays. 409 mailbox_sync_unavailable, with the availability as its detail, while the sync is off or cannot run. Rate limited to 6 per client address a minute (calendar-mailbox-run).'
+            operationId: postCalendarMailboxSyncRun
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/MailboxSync'
+                    description: OK — the setting as it now stands, due at once.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/CalendarProblem'
+                    description: Conflict — mailbox_sync_unavailable, with the availability as its detail.
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Too Many Requests — calendar-mailbox-run's limit for this client address.
+                    headers:
+                        Retry-After:
+                            schema:
+                                type: string
+            summary: Sync the caller's calendar now
             tags:
                 - Calendar
             x-vantigo-access: permission:calendar:access

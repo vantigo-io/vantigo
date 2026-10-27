@@ -56,6 +56,7 @@ type EntraConnection struct {
 	UpdatedByUserID       *uuid.UUID
 	ServicePrincipalID    *uuid.UUID
 	Skus                  []byte
+	CalendarSync          bool
 }
 
 type EntraCredential struct {

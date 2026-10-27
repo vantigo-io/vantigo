@@ -253,6 +253,11 @@ func (w *fakeWorkforce) Self(ctx context.Context) (*contracts.PersonEntry, error
 	return &e, nil
 }
 
+// DirectoryAccount answers nothing: Planning never reads it.
+func (w *fakeWorkforce) DirectoryAccount(context.Context) (*contracts.DirectoryAccount, error) {
+	return nil, nil
+}
+
 // setFit makes personID's fit for any booking the given one; a person with
 // no fit set scores 100 with nothing lowered, as Staff answers a person with
 // no preference.
