@@ -85,7 +85,7 @@ Communications' outbox is the working example.
 5. **One module, one mount.** A module exposes one `Module()` returning a
    `module.Module`: its name, its `Mount`, the permissions it contributes, the
    background workers it contributes, and the cross-module contracts it *provides*.
-   There are fourteen single-provider slots, each filled by at most one enabled module:
+   There are fifteen single-provider slots, each filled by at most one enabled module:
    `Directory` (`contracts.CustomerDirectory`, customers), `Users`
    (`contracts.UserDirectory`, identity), `Calendar` (`contracts.BusinessCalendar`,
    identity — the workspace's business time zone and the day an instant falls on in
@@ -100,7 +100,10 @@ Communications' outbox is the working example.
    owes, every state judged on the provider's own business day), and the three line-level reads an
    invoice is built from — `BillableHours` (`contracts.BillableHours`, time),
    `BillableExpenses` (`contracts.BillableExpenses`, expenses) and
-   `BillableMilestones` (`contracts.BillableMilestones`, projects) — and `Workforce`
+   `BillableMilestones` (`contracts.BillableMilestones`, projects) — `Consumption`
+   (`contracts.ConsumptionProvider`, energy — the settlements a customer owes for its
+   metering points, what a consumption invoice is built from; optional for its
+   consumer, nil when Energy is off), and `Workforce`
    (`contracts.Workforce`, staff — the competence catalogue, who holds which competence
    valid on a date, the people in employment and their capacity over a window, the
    caller's own person, and how a proposed booking fits what each person wants; rule
@@ -113,7 +116,8 @@ Communications' outbox is the working example.
    `Expenses`, `Receivables` and the three `Billable*` are resolved last, after
    `Projects` and `Directory`, so those providers' *constructors* are allowed to read
    the project directory or the customer directory (none does, but a future
-   provider could). `Workforce` is resolved after the business calendar — by Compose
+   provider could), and `Consumption` right after the three `Billable*` (its provider
+   never reads a directory while it serves). `Workforce` is resolved after the business calendar — by Compose
    after the line-level reads, by `module.Workers` after `Users` and `Accounts`
    (`withWorkforce`) — so its provider reads `Deps.Calendar` while it is built, and a
    worker-mode `Deps` answers who holds what as a composed one does.
@@ -163,7 +167,8 @@ Communications' outbox is the working example.
    on `Deps` when no enabled module provides one: a worker reads identity's users and
    the accounts worker writes them. Workers has no error to return, so two providers
    of `Directory`, `Users` or `Accounts` — a bug in the binary's module list, which
-   Compose refuses — panic.
+   Compose refuses — panic. Workers does not resolve `Consumption` yet: no worker
+   reads it until billing runs (energy consumption billing, delivery E).
    One order is not the module order: both Compose and Workers put the
    `CustomerReferences` and `CustomerPersonalData` of the modules that declare
    `InvoicedWork` **after every other module's**, each side in module order (a
@@ -231,14 +236,15 @@ Communications' outbox is the working example.
 10. **Work marked invoiced, inside the issue.** The third sanctioned cross-module
     direction, made for invoicing work: `contracts.InvoicedWorkHolder`. A module whose
     rows an invoice is built from — Time's entries, Expenses' lines, Projects' billing
-    milestones — declares `Module.InvoicedWork`, and Invoices calls the holders
+    milestones, Energy's settlements — declares `Module.InvoicedWork`, and Invoices calls the holders
     **inside its issue's transaction**, which already holds the document, the settings
     row, the number counter and, for a credit note, its original locked: after every
     check and the number, before the document is written. `MarkInvoiced` judges each
     source as it stands under the holder's own lock — already invoiced first
     (`source_already_invoiced`), then still approved, ready or billable
     (`source_not_invoiceable`), then unchanged since the draft took it — the revision
-    and amount for Time and Projects, the billing facts for Expenses
+    and amount for Time and Projects, the billing facts for Expenses, the settlement
+    recomputed and then its revision, currency and amount for Energy
     (`source_changed`), amounts compared exactly, by value — and stamps it with the
     invoice's id and number at the issue's time; `ReleaseInvoiced` takes the stamp back
     in the issue of the credit note that returns the source's line in full. A source a holder will
@@ -257,7 +263,9 @@ Communications' outbox is the working example.
     (`contracts.InvoicedWorkOrder`) is Invoices' own first — the document, the settings
     row, the counter, then a credit note's original — and then the source modules in one
     fixed order: Projects (the project rows, then their milestones), Expenses (the
-    claims, then the lines, by id), Time (the entries, by id). No source module ever
+    claims, then the lines, by id), Time (the entries, by id), Energy (the settlements,
+    by id — an energy row never shares a transaction with work, so its place, last,
+    only has to be fixed). No source module ever
     locks a row of `invoices`, and a transaction that locks both an invoices document
     and a source module's row takes the document first — which is why the customers
     merge and anonymisation call the holders of the modules that provide invoiced work
@@ -282,7 +290,12 @@ Communications' outbox is the working example.
     the document's `issued_at` — and only then moves its `line_sources` from held to
     invoiced and writes the document. A refusal names the first line holding the source
     and the source (`linePosition`, `sourceKind`, `sourceId`). Today's holders are time,
-    expenses and projects ([Invoicing work](/en/reference/invoices/#invoicing-work)).
+    expenses and projects ([Invoicing work](/en/reference/invoices/#invoicing-work)), and
+    energy (`energy.settlement`,
+    [The invoiced-work holder](/en/reference/energy/#the-invoiced-work-holder)), whose
+    holder runs its own recomputation of a settlement under its lock with
+    `InvoiceRef.IssuedAt` as now — a read of its own schema on the caller's
+    transaction, not a clock or a contract.
 11. **Staff writes identity's accounts.** The fourth sanctioned cross-module
     direction, staff → identity, made for the accounts of the people Staff
     registers: `contracts.AccountProvisioning`, in the single-provider slot
@@ -515,7 +528,7 @@ Communications' outbox is the working example.
   declare, a component two modules declare differently under the same name, or two
   modules both declaring the same provider — a customer directory, a user directory,
   a product catalog, a project directory, project actuals, project expenses,
-  billable hours, billable expenses or billable milestones — naming both, or a
+  billable hours, billable expenses, billable milestones or consumption — naming both, or a
   source kind two invoiced-work holders both claim (`module: two modules both stamp
   "time.entry": a, b`), naming the kind and both — a holder a caller preset on
   `Deps.InvoicedWork` (a test harness's fake) claims its kinds first and is named

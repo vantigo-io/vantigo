@@ -1,6 +1,6 @@
 ---
 title: Energi
-description: Målepunkter, målere, leveranseperioder, forbruk per kunde, spotpriser og tariffer.
+description: Målepunkter, målere, leveranseperioder, forbruk per kunde, spotpriser, tariffer og oppgjør.
 sidebar:
   order: 70
 sources:
@@ -10,8 +10,9 @@ sources:
 
 Energi-appen holder orden på målepunktene organisasjonen din leverer strøm til: hvor
 hvert av dem er, hvilken måler som sitter på det, hvilken kunde det leveres til og hvor
-lenge, og forbruket som er lest av fra det, spotprisene forbruket prises etter, og
-kraftavtalene og nettleien det skal faktureres etter. Appen har tre områder,
+lenge, og forbruket som er lest av fra det, spotprisene forbruket prises etter,
+kraftavtalene og nettleien det faktureres etter, og oppgjørene som priser hver
+faktureringsperiode. Appen har tre områder,
 **Målepunkter**, **Priser** og **Tariffer**, og den legger til en **Energi**-fane på
 hver kunde i Kunder-appen.
 
@@ -212,7 +213,7 @@ felt.
 
 ## Les et målepunkts side
 
-Siden har GSRN og adressen som overskrift, og fem kort:
+Siden har GSRN og adressen som overskrift, og seks kort:
 
 - **Detaljer om målepunkt**: målernummer, prisområde, nettområde, tilkoblingsstatus og
   forventet årsforbruk.
@@ -229,9 +230,84 @@ Siden har GSRN og adressen som overskrift, og fem kort:
   hvilken **Kraftavtale** og hvilken **Fakturering**, med statusen
   **Aktiv**, **Avsluttet** eller **Kansellert**. En slutt som ikke er satt, vises som
   **Åpen slutt**.
+- **Oppgjør**: hva hver avsluttet faktureringsperiode kommer på, se
+  [under](#les-oppgjørene-for-et-målepunkt).
 - **Forbruk**: avlesningene for et datointervall, som diagram og tabell.
 
 Tidspunkter på denne siden vises i norsk markedstid (Europe/Oslo).
+
+## Les oppgjørene for et målepunkt
+
+Et oppgjør er det en kunde skylder for målepunktet for én faktureringsperiode:
+periodens forbruk priset etter spotprisene og tariffene, linje for linje. Kortet
+**Oppgjør**, under **Leveranseperioder**, viser dem for de siste 24 månedene, nyeste
+periode først. En faktureringsperiode er kalendermåneden, kvartalet eller året som
+leveranseperiodens **Fakturering** sier, avkortet til leveranseperiodens start og
+slutt, og den vises når den er avsluttet. Å åpne siden endrer ingenting: en periode
+som ikke er fakturert ennå, regnes ut på nytt hver gang, så tallene følger
+avlesningene, prisene og tariffene til den er fakturert.
+
+Hver rad viser:
+
+- **Periode**: første og siste dag i faktureringsperioden.
+- **Type**: **Ordinært**, eller **Korreksjon** for differansen som er funnet etter at
+  en periode ble fakturert (se under).
+- **Status**: **Utkast** til perioden er fakturert, **Fakturert** når den er det, og
+  **Frigitt** når en kreditnota tok hele fakturaen tilbake; perioden faktureres da på
+  nytt som et nytt utkast. **Estimert** ved siden av betyr at noen av avlesningene er
+  estimater, noe fakturaen vil si.
+- **kWh** og **Beløp (NOK)**.
+- **Faktura**: fakturaens nummer når perioden er fakturert; klikk det for å åpne
+  fakturaen.
+- **Vis linjer** åpner linjene beløpet består av – hver med **Linje** (navnet på
+  tariffkomponenten og typen, for eksempel *Spotenergi*, *Månedsavgift* eller
+  *Nettleie, kapasitetsledd*), **Mengde**, **Enhetspris** og **Beløp (NOK)** – og
+  **Skjul linjer** lukker dem.
+
+Når ingen faktureringsperiode er avsluttet ennå, sier kortet *Ingen
+faktureringsperiode er avsluttet ennå.*
+
+### Når en periode ikke kan prises
+
+En periode som ikke kan prises, vises likevel, med beløpet null og årsaken i rødt under
+statusen, etterfulgt av en nærmere forklaring (på engelsk):
+
+- **Faktureringsperioden er fortsatt åpen**: perioden er ikke avsluttet ennå. Vent
+  til den er avsluttet.
+- **Ingen tariff gjelder**: leveranseperioden har ingen **Kraftavtale**, eller en
+  tariff har ingen versjon for en av dagene i perioden. Gi leveranseperioden en tariff
+  ([Endre vilkårene for en leveranseperiode](#endre-vilkårene-for-en-leveranseperiode))
+  eller legg til versjonen som mangler i tariffen
+  ([Legg til versjoner](#legg-til-versjoner)).
+- **Ikke noe forbruk i perioden**: det finnes ingen avlesninger i det hele tatt for
+  perioden. Importer avlesningene ([Importer avlesninger](#importer-avlesninger)) eller
+  legg dem inn for hånd.
+- **Avlesninger mangler**: noen av periodens avlesninger mangler, en avlesning går over
+  starten eller slutten av perioden, eller to avlesninger overlapper. Importer
+  avlesningene som mangler, eller rett dem som går over grensen eller overlapper.
+- **Spotpriser mangler**: prisområdet har ingen spotpris for en del av perioden.
+  Importer prisene ([Importer priser fra en fil](#importer-priser-fra-en-fil)), eller
+  vent til de er hentet.
+- **Spotprisene er fortsatt foreløpige**: en pris perioden trenger, er fortsatt
+  foreløpig. Vent til prisene er endelige ([Foreløpige priser](#foreløpige-priser)).
+
+Du trenger ikke gjøre noe med selve oppgjøret: når årsaken er rettet, prises perioden
+neste gang siden åpnes. De to siste gjelder bare spotprisavtaler.
+
+### Korreksjoner
+
+En fakturert periode endres aldri. Når avlesningene, prisene eller tariffene for den
+endres etter at den ble fakturert – inntil tolv måneder etter at perioden ble
+avsluttet – føres differansen opp som en **Korreksjon** av perioden neste gang kundens
+forbruk gjøres opp for fakturering: linjene er differansene, og beløpet kan være
+negativt.
+
+Forbruk faktureres ikke fra Vantigo ennå: fakturering av det kommer i en senere
+versjon. Fram til da viser kortet hva hver periode kommer på.
+
+Kortet vises når du har både `energy:supply-periods-view` og
+`energy:consumption-view`. Reglene bak tallene står i
+[Settlements](/en/reference/energy/#settlements).
 
 ## Bytt måler
 
@@ -634,9 +710,9 @@ den, aktive tariffer først; avgrens den etter slag eller status. Siden krever
 `energy:tariffs-view`; å opprette, redigere, arkivere og slette krever i tillegg
 `energy:tariffs-manage`.
 
-Tariffene brukes ikke til noe ennå: oppgjør av forbruk etter dem kommer i en senere
-versjon av Vantigo. Fram til da kan du sette dem opp og velge dem på
-leveranseperiodene og målepunktene.
+Tariffene priser målepunktenes oppgjør, se
+[Les oppgjørene for et målepunkt](#les-oppgjørene-for-et-målepunkt). En endring i en
+tariff endrer oppgjørene som ikke er fakturert ennå, neste gang de vises.
 
 ### Opprett en tariff
 
@@ -722,9 +798,9 @@ De fullstendige reglene står i [Tariffs](/en/reference/energy/#tariffs).
 | `energy:metering-points-manage` | Opprette og redigere målepunkter, faktureringsopplysningene medregnet |
 | `energy:meters-view` | Se målerhistorikken (kreves sammen med den over for å se appen i det hele tatt) |
 | `energy:meters-manage` | Bytte måler og registrere den første måleren ved opprettelse |
-| `energy:supply-periods-view` | Se leveranseperioder og en kundes målepunkter |
+| `energy:supply-periods-view` | Se leveranseperioder og en kundes målepunkter; sammen med `energy:consumption-view`, kortet **Oppgjør** |
 | `energy:supply-periods-manage` | Tildele, bytte, avslutte og knytte til leveranseperioder, og endre vilkårene deres |
-| `energy:consumption-view` | Se forbruk og Energi-fanens forbrukstall |
+| `energy:consumption-view` | Se forbruk og Energi-fanens forbrukstall; sammen med `energy:supply-periods-view`, kortet **Oppgjør** |
 | `energy:consumption-manage` | Legge til manuelle avlesninger |
 | `energy:prices-view` | Se **Priser**: dekningen og hvert områdes priser |
 | `energy:prices-manage` | Importere priser fra en fil, sammen med `energy:prices-view` |

@@ -1,6 +1,6 @@
 ---
 title: "Energy module"
-description: "Metering points, meters, supply periods, consumption, the metering-point and consumption imports, spot prices, tariffs, the metering point's billing facts and permissions."
+description: "Metering points, meters, supply periods, consumption, the metering-point and consumption imports, spot prices, tariffs, the metering point's billing facts, settlements, the consumption contract, the invoiced-work holder and permissions."
 sources:
   - apps/server/internal/energy
   - openapi/energy.yaml
@@ -9,6 +9,7 @@ sources:
   - apps/server/internal/db/migrations/00065_energy_spot_prices.sql
   - apps/server/internal/db/migrations/00075_energy_spot_price_service.sql
   - apps/server/internal/db/migrations/00076_energy_tariffs.sql
+  - apps/server/internal/db/migrations/00077_energy_settlements.sql
   - apps/server/internal/energy/spot_price_service_client.go
   - apps/server/internal/energy/spot_price_service_sync.go
   - apps/server/internal/netguard
@@ -17,15 +18,22 @@ The Energy module keeps the metering points an energy supplier supplies: where e
 one is, which meter sits on it, which customer it is supplied to and for how long, and
 the consumption read from it. It also holds the day-ahead spot prices of each price
 area, the price dimension consumption billing is built on
-([Spot prices](#spot-prices)), and the power and grid tariffs consumption will be
-priced by beside them ([Tariffs](#tariffs)). It is served under `/api/v1/energy/*`
+([Spot prices](#spot-prices)), and the power and grid tariffs consumption is priced
+by beside them ([Tariffs](#tariffs)). It **settles**: each billing period of a supply
+period is priced into a settlement, the lines a customer owes for the point
+([Settlements](#settlements)), which it hands to invoicing across
+`contracts.ConsumptionProvider` ([The consumption contract](#the-consumption-contract))
+and which an issued invoice stamps through Energy's `InvoicedWorkHolder`
+([The invoiced-work holder](#the-invoiced-work-holder)). It is served under `/api/v1/energy/*`
 (`apps/server/internal/energy`, schema `energy`) and described by
 [`openapi/energy.yaml`](https://github.com/vantigo-io/vantigo/blob/main/openapi/energy.yaml).
 
 Energy reads customers only through `contracts.CustomerDirectory`, never the
 `customers` schema: a supply period's `customer_id` is an opaque id, not a foreign key.
 It provides no directory of its own. It is one of the customers module's
-`CustomerReferenceHolder`s (a customer merge re-points its supply periods) and
+`CustomerReferenceHolder`s (a customer merge re-points its supply periods and their
+settlements, kinds `energy.supplyPeriods` and `energy.settlements`;
+`RepointSettlementsCustomer`) and
 `CustomerPersonalData` holders (a private person's export carries their supply
 periods, with the point's address and the monthly consumption inside each).
 
@@ -153,7 +161,7 @@ an import left without a customer.
 
 ## The metering point's billing facts
 
-What a settlement will need of the point itself, beside its address and price area
+What a settlement needs of the point itself, beside its address and price area
 (design D3, D4; migration `00076_energy_tariffs.sql`). Three are set by hand, the
 fourth is derived:
 
@@ -521,7 +529,7 @@ and are in no customer's export.
 The service collects and the installation keeps what it bills by: with the service as
 its source the worker **copies** its prices into `energy.spot_prices`, with their
 provenance, and never reads through to it. Every read — the Prices page, the coverage
-and the settlements to come — reads the installation's own rows, which are in its own
+and the settlements — reads the installation's own rows, which are in its own
 backups.
 
 ### The model
@@ -1103,7 +1111,7 @@ in a split deployment, where the worker runs elsewhere.
 
 ## Tariffs
 
-What consumption will be priced by beside the spot price: the supplier's **power
+What consumption is priced by beside the spot price: the supplier's **power
 tariffs**, its contracts with its customers, assigned to a supply period; and the
 installation's own **grid tariffs**, for the points it is the grid operator of,
 assigned to a metering point. The design is D3 of
@@ -1113,11 +1121,10 @@ the readings the plan
 Tariffs are the business's own price lists, not a customer's data, and are in no
 customer's export.
 
-Nothing prices anything yet. The settlements to come (delivery C) read the tariff a
-supply period and its point name, the version valid on each day and its components;
-until then a tariff is stored, validated and assigned, never applied. A
-`spot_energy` component names no price state: which spot prices a settlement may use
-is the settlement's to judge.
+The settlements ([below](#settlements)) read the tariff a supply period and its point
+name, the version valid on each day and its components. A `spot_energy` component
+names no price state: which spot prices a settlement may use is the settlement's to
+judge — only `final` ones ([The computation](#the-computation)).
 
 ### The model
 
@@ -1134,7 +1141,7 @@ Migration `00076_energy_tariffs.sql`, ids from 1001.
   new version from a day, and the old one stays for the periods it priced. Two
   versions of one tariff never overlap — the validation refuses it, and a GiST
   exclusion (`tariff_versions_no_overlap`) backs it — but they may leave a gap: a day
-  no version covers prices nothing, which a settlement will block as `no_tariff`. A
+  no version covers prices nothing, which a settlement blocks as `no_tariff`. A
   tariff has at least one version.
 - **Component** — `energy.tariff_components`: one priced element of a version, at its
   `position` (from 0, the order the lines print in), with a `kind`, a `name` (1–80
@@ -1150,7 +1157,7 @@ before the write.
 
 ### The component kinds
 
-| Kind | Tariff | Fields | What it will price (design D3) |
+| Kind | Tariff | Fields | What it prices (design D3; [The lines](#the-lines)) |
 | --- | --- | --- | --- |
 | `spot_energy` | power | none | Σ kWh × each interval's NOK spot price; the line's unit price the volume-weighted average |
 | `fixed_energy` | power | `rate` (NOK/kWh) | kWh × `rate` |
@@ -1257,6 +1264,332 @@ All under `/api/v1/energy/`.
 | `DELETE tariffs/{id}` | `permission:energy:tariffs-manage` | `404`; `409` "Tariff in use"; else `204`. |
 | `PUT metering-points/{id}/supply-periods/{periodId}` | `permission:energy:supply-periods-manage+energy:supply-periods-view` | Changes a supply period's tariff and cadence ([above](#supply-periods-and-the-no-overlap-rule)): `200` with the period. |
 
+## Settlements
+
+A **settlement** is what a customer owes for a metering point over one billing period
+of one supply period: the period's consumption priced by the spot prices and the
+tariffs, as lines an invoice is built from. Energy computes it, stores it and hands it
+to invoicing across `contracts.ConsumptionProvider`
+([below](#the-consumption-contract)); Invoices builds the document from it (delivery D)
+and stamps it invoiced through Energy's holder ([below](#the-invoiced-work-holder)).
+The design is D4–D6 of
+[`docs/superpowers/specs/2026-10-24-energy-consumption-billing-design.md`](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-10-24-energy-consumption-billing-design.md)
+with S10 of
+[`docs/superpowers/specs/2026-10-26-energy-spot-price-service-design.md`](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-10-26-energy-spot-price-service-design.md),
+the readings the plan
+[`docs/superpowers/plans/2026-10-27-energy-settlements.md`](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/plans/2026-10-27-energy-settlements.md).
+A settlement holds no personal data beyond the opaque customer id, and is in no
+customer's export.
+
+### The model
+
+Migration `00077_energy_settlements.sql`.
+
+- **Settlement** — `energy.settlements`: the `supply_period_id`, the
+  `metering_point_id` and the `customer_id` (opaque, copied from the supply period);
+  `kind`, `regular` (a billing period priced) or `correction` (the difference between a
+  period recomputed and what was invoiced for it, naming the invoiced original in
+  `corrects_id`, which a regular settlement never sets); `period_start` and
+  `period_end`, the half-open period as instants; `state`, `draft`, `invoiced` or
+  `released`; `revision`, from 1; the figures — `kwh` (three decimals), `estimated`,
+  `interval_count` and `expected_interval_count`, `blocked` and `blocked_detail`,
+  `amount` (two decimals), `currency` (`NOK`) and `contract_name`, the power tariff's
+  name; `computed_at`, `touched_at` (the last time a read answered the row),
+  `created_at` and `updated_at`.
+- **The stamp** — `invoiced_invoice_id`, `invoiced_number`, `invoiced_at`,
+  `invoiced_by_user_id` and `invoice_date`, set by the holder; `released_at`, set when
+  a credit note takes the stamp back. A CHECK (`ck_settlements_stamp`) keeps a draft
+  without any of them, an invoiced row with the id, the number, `invoiced_at` and the
+  date and no `released_at`, and a released row with `released_at`, its stamp kept as
+  history.
+- **Line** — `energy.settlement_lines`, keyed `(settlement_id, position)` and deleted
+  with its settlement: `kind`, one of the nine component kinds
+  ([The component kinds](#the-component-kinds)); `text`, the component's own name;
+  `band`, `day` or `night` for a `grid_energy` component with a night rate; `month`,
+  the calendar month (its first day) a `grid_capacity` line prices; `quantity` (three
+  decimals); `unit`, `kWh`, `month`, `year` or `pcs`; `unit_price` (six decimals, NOK);
+  `amount` (two decimals, negative only on a correction); `vat_hint`.
+
+**The live index.** `ux_settlements_live`, unique on `(supply_period_id, period_start,
+kind)` among the drafts and the invoiced regular settlements: one live regular
+settlement per billing period of a supply period, draft or invoiced, and one correction
+draft per period at a time — a second correction waits until the first is invoiced or
+released. An invoiced correction is part of the period's baseline, not a slot: the next
+correction is drafted beside it. A released row is
+history and leaves the period free to be drafted afresh. The supply period and the
+point are referenced `ON DELETE RESTRICT`: a priced period is a record, and neither is
+deleted from under it.
+
+### Billing periods
+
+A supply period is billed by its `cadence` (`settlement_periods.go`): the civil
+**month**, the **quarter** (January, April, July, October) or the **year** in the
+point's market time zone ([Consumption](#consumption)), clipped to the supply period's
+`[start, end)`, as instants. The first period starts at the supply period's start, the
+last ends at its end, and a supply period starting before **2000-01-01** is settled
+from that day, so a malformed start never enumerates centuries. A period is **due**
+when its end is on or before both the request's `Through` and now: a period still
+running is never settled, and neither is a period of an ended supply period that ends
+in the future, whose consumption cannot be there yet. A `Cancelled` supply period has
+no billing periods.
+
+### The computation
+
+Each settlement is computed from the database as it stands, deterministically for a
+given state (`settlement_compute.go`):
+
+- **The intervals.** The period's current intervals are those with `start ≥
+  period_start` and `end ≤ period_end`. A current interval that overlaps a bound
+  without lying inside makes the period `incomplete`, and so do two current intervals
+  that overlap each other (resolutions written over one another): one kWh is never
+  priced twice. The finest interval length present is the expected unit (an hour when
+  there is none); the intervals missing are the period's length less the intervals'
+  total length, divided by that unit and rounded up, so a period mixing PT1H and PT15M
+  intervals is counted right. `interval_count` is the intervals inside,
+  `expected_interval_count` those plus the missing ones. `estimated` is set when any interval's quality is
+  `Estimated` (a `Corrected` interval is a measurement).
+- **The prices.** Read only when a power version of the period holds `spot_energy`,
+  and judged only for the intervals such a version prices. An interval is priced by the area's spot-price intervals that cover it,
+  **time-weighted**, its kWh spread evenly over its length: when one price interval
+  contains it, that is the price containing its start; when prices are finer — quarter-
+  hourly prices against hourly consumption — the hour takes the mean of its quarters.
+  Only `final` prices price (S10): a part of an interval no price covers is
+  `price_gap`, and a period whose prices include a `preliminary` one is
+  `price_preliminary`.
+- **The tariffs.** The power tariff is the supply period's `tariffId`; the grid tariff
+  the point's `gridTariffId`, optional (none means no grid lines). Every civil day the
+  period touches, in the market zone, takes the version of each tariff whose
+  `[validFrom, validTo)` contains it, as stored at the computation; an archived tariff
+  still prices. An interval is priced by the versions of the day its start falls on. A
+  power tariff unset, or a day a version of the power tariff — or of the grid tariff,
+  when there is one — does not cover, is `no_tariff`.
+- **The days.** Monthly and yearly figures are prorated by **counted days**: a civil day
+  belongs to the period that contains its midnight, so two supply periods meeting at
+  14:00 never both count that day.
+
+### The lines
+
+One line per version and component — a version change mid-period gives a component two
+lines, each with its own days' kWh and rate — two for a `grid_energy` component with a
+night rate (`band` `day` and `night`, the text the component's name for both: the
+words are Invoices' to add per language), and one per calendar month and version for
+`grid_capacity`. They are ordered by the kinds table, power before grid within
+`monthly_fee`, then the version's `validFrom`, the component's position, `day` before
+`night` and the month.
+
+| Kind | Quantity, unit | Unit price | Amount |
+| --- | --- | --- | --- |
+| `spot_energy` | the kWh, `kWh` | the amount before rounding ÷ the kWh, six decimals (0 with no kWh) | Σ kWh × price, rounded once: the amount wins over quantity × unit price |
+| `fixed_energy`, `markup` | the kWh, `kWh` | `rate` | kWh × `rate` |
+| `electricity_tax` | the kWh, `kWh` | `rate` for the `ordinary` class, `rateReduced` for `reduced` | kWh × the rate; no line when the point is `exempt` |
+| `enova_levy`, household point | the kWh, `kWh` | `rate` | kWh × `rate` |
+| `enova_levy`, other point | the years covered — Σ per calendar year of counted days ÷ the year's days — `year` | `rateBusiness` | quantity × `rateBusiness` |
+| `monthly_fee`, `grid_fixed` | the months covered — Σ per calendar month of counted days ÷ the month's days — `month` | `rate` | quantity × `rate` |
+| `grid_energy` | the kWh of the band, `kWh` | `rate` (day) or `rateNight` | kWh × the rate |
+| `grid_capacity` | the month's fraction, as `monthly_fee`, `month` | the tier's `perMonth` | quantity × `perMonth` |
+
+- **`grid_energy`'s bands.** An interval is *day* when its local start hour is in
+  `[dayFrom, dayTo)`, except on a Saturday or a Sunday when `weekdaysOnly`, which is
+  night throughout; *night* otherwise. Without `rateNight`, one line at `rate`.
+- **`grid_capacity`'s tier.** Sub-hour kWh are summed to the clock hour; each civil day
+  takes its highest hour; the three highest days of the month are averaged (fewer when
+  the month's part of the period has fewer days); the tier is the one whose `fromKw` is
+  the highest not above that average — an hour's kWh is its kW. A partial month is
+  prorated, as every monthly figure is.
+
+**Rounding.** Quantities have three decimals, unit prices six and amounts two. A
+prorated line (`month`, `year`) rounds its quantity **first** and takes the amount from
+it, so quantity × unit price is the amount printed; a per-kWh line's amount is the kWh
+× the rate, rounded; `spot_energy`'s is Σ kWh × price, rounded once. Every figure is
+rounded half away from zero; `amount` is Σ of the
+rounded line amounts. Arithmetic inside is exact (`math/big.Rat`); the API carries JSON
+numbers and the contract decimal text.
+
+**The VAT hint.** Every line carries the point's `vatTreatment` as `vat_hint` —
+`standard` or `exempt_household_north`
+([The metering point's billing facts](#the-metering-points-billing-facts)) — the grid's
+and the taxes' lines included (design D8). It is a hint: Invoices maps it to a VAT
+code (delivery D).
+
+### Blockers
+
+A settlement that cannot be priced is still a settlement: it is answered with
+`blocked` set, `blockedDetail` saying why in one sentence, no lines, `amount` `0.00`,
+and its kWh and missing intervals as found, so invoicing can say why a point is not
+billed instead of skipping it. The blockers are judged in this order and the first
+that holds wins:
+
+| Blocker | When | Detail |
+| --- | --- | --- |
+| `period_open` | The period has not ended at the computation's moment — a guard: only due periods are settled | `the period ends <instant>` |
+| `no_tariff` | The supply period has no power tariff, or a day the period touches has no version of the power tariff or of the point's grid tariff | `no power tariff`, `<tariff name> has no version on <day>` |
+| `no_consumption` | The period has no current interval at all | `no consumption in the period` |
+| `incomplete` | An interval crosses the period's bound, two overlap, or intervals are missing — the first of these found | `an interval crosses <instant>`, `intervals overlap at <instant>`, `<n> of <m> intervals are missing` |
+| `price_gap` | Part of an interval has no price of the area (spot tariffs only) | `no price for <area> at <instant>` |
+| `price_preliminary` | A price the period needs is still `preliminary` (spot tariffs only) | `prices for <day> are preliminary` |
+
+An `<instant>` is RFC 3339 in the market zone, a `<day>` the civil date there.
+
+What to do about each: give the supply period a tariff, or add the missing version
+([Assigning a tariff](#assigning-a-tariff)); import or add the missing readings
+([Importing consumption](#importing-consumption)); import or wait for the prices
+([Spot prices](#spot-prices)). Nothing has to be done to a blocked settlement itself:
+the next read computes it again.
+
+### Drafts, revisions and housekeeping
+
+A draft is never stale by itself: `Settle` and `Settlements` recompute every draft
+they answer and write it when any figure changed — the kWh, the amount, the lines,
+the blocker and its detail, `estimated`, the counts, the period's end or the contract
+name — bumping `revision`; `touched_at` is set on every answer. Each settlement is
+written in its own short transaction, its live row locked `FOR NO KEY UPDATE`,
+compared and written. A revision is how invoicing judges a source's freshness (the
+revision and the amount, as for a billable hour), which is why `Settlements` writes
+too: answering new figures under the stored revision would make the holder refuse what
+invoicing had just refreshed. `Settle` never touches an `invoiced` live row — a changed
+invoiced period is a correction's business.
+
+Energy cannot see which drafts an invoice holds (module boundaries rule 1), so
+"drafts nobody holds" reads as **drafts nobody has touched for thirty days**: a draft
+held by a draft invoice is refreshed by invoicing's reads and stays; one deleted from
+under it is answered absent, which invoicing already reads as
+`source_not_invoiceable`. `Settle` deletes, for each supply period it settles, the
+drafts of periods no longer due — as after the supply period was cancelled or its end
+moved — and the correction drafts with nothing left to correct; and then every draft
+untouched for thirty days. The `energy-spot-prices` worker's cycle deletes the
+untouched drafts too, when that worker runs.
+
+### Corrections
+
+An invoiced period is not changed; a difference found later is a **correction**. For
+each supply period `Settle` touches, not cancelled, every period with an invoiced regular settlement
+whose `period_end` lies within the twelve months before now is recomputed when, after
+the latest invoiced baseline's `computed_at`, an interval of the point in the period
+was received, a price of the area in the period was received, or a tariff that priced
+it was updated — or when a correction draft is already live. The **baseline** is the
+invoiced regular settlement plus its invoiced corrections, summed per line key
+(`kind`, `text`, `band`, `month`, `unit`). The correction's lines are the differences
+per key, in the recomputed order with the keys only the baseline has after them: the
+quantity and the amount the differences, the unit price the recomputed line's (the
+baseline's for a key that vanished); its kWh the kWh's difference; a line whose
+quantity and amount are both zero is left out. A correction with no line is not
+written, and a correction draft already live is then deleted — by `Settlements` too.
+A recomputation that is blocked writes no correction, and a live correction draft is
+kept as it stands, answered with the blocker. A correction's lines keep their components' kinds;
+`correction` is the settlement's kind. Once invoiced, a correction is part of the
+baseline the next one is measured against.
+
+### Endpoint
+
+Under `/api/v1/energy/`.
+
+| Operation | Rule | What it does |
+| --- | --- | --- |
+| `GET metering-points/{id}/settlements` | `permission:energy:supply-periods-view+energy:consumption-view` | The point's settlements, **writing nothing**: for every non-cancelled supply period of the point, every billing period due through now whose end lies within the last **24 months**, each as its stored live settlement — an invoiced one as frozen, a draft recomputed in memory — or, when none is stored, computed for the answer, without an `id` and `draft`; beside them every other stored settlement in the window — invoiced and released ones as stored, a correction draft recomputed and left out when nothing is left to correct. Newest period first, then regular before correction, then by id. `404` for an unknown point. |
+
+Each `SettlementResponse` mirrors `contracts.Settlement`: `id` and `revision` when
+stored, `kind`, `correctsId`, the supply period, point and customer ids, `periodStart`,
+`periodEnd`, `kwh`, `estimated`, `missingIntervals`, `currency`, `amount`,
+`contractName`, `state`, `blocked` and `blockedDetail` when blocked, the `lines` (each
+`kind`, `text`, `band`, `month`, `quantity`, `unit`, `unitPrice`, `amount`,
+`vatHint`) and, when stamped, `invoice` — `id`, `number`, `issueDate`, `invoicedAt`
+and `releasedAt` once released. Figures are JSON numbers; kinds, states, blockers and
+units are plain strings. A settlement is a supply period's consumption, priced, so the
+endpoint needs exactly what reading both needs and no permission of its own.
+
+## The consumption contract
+
+`contracts.ConsumptionProvider`
+([`apps/server/internal/contracts/consumption.go`](https://github.com/vantigo-io/vantigo/blob/main/apps/server/internal/contracts/consumption.go),
+design D1) is Energy's read for invoicing: what a customer owes for its metering
+points, settled per supply period and billing period, priced by the module that owns
+the prices. Nothing of a consumption series crosses it, only settlements. Its three
+methods:
+
+- **`DueSupplies(DueSuppliesRequest{CustomerIDs, Through})`** — per customer, the
+  supply periods with at least one billing period due through `Through` and not yet
+  invoiced, without settling anything: each `DueSupply` with the customer, supply
+  period and point, the GSRN, the address (*"street, postal city"*), the price area,
+  the contract's name, the cadence, `BilledThrough` (the end of the last invoiced
+  period, none when none was), `DuePeriods` and `Blocked`, judged by computing the
+  first due period without writing; by customer, then supply period. A customer's
+  supply periods are its non-cancelled ones that start before `Through`.
+- **`Settle(SettleRequest{CustomerIDs | SupplyPeriodIDs, Through})`** — computes the
+  due periods not yet invoiced of the customers' supply periods or of the ones named
+  (one that does not exist is absent), writes them as draft rows
+  ([above](#drafts-revisions-and-housekeeping)), writes the corrections
+  ([above](#corrections)) and answers the drafts, by supply period, period, regular
+  before correction. The one method of any contract that writes,
+  and named a command for it.
+- **`Settlements(ids)`** — settlements by id as they stand now: a draft recomputed
+  (and written when changed), an invoiced or released one as frozen.
+
+`Through` is an instant: a period is due when it ends on or before it; invoicing passes
+the start of the day after its "through" date. **The request rules**
+(`Validate`, `ValidateSettlementIDs`): a due-supplies request names 1 to
+`MaxActualsRequests` (2 000) customers, none twice, and a `Through`; a settle request
+exactly one of customers (at most 2 000) and supply periods (at most
+`MaxBillableRows`, 5 000), none twice, and a `Through`; a settlements read 1 to 5 000
+ids, none twice. The kinds, states, blockers, units, bands and VAT hints are exported
+constants, and `WorkSourceSettlement` names the source kind.
+
+**The provider's rules.** It reads and writes on the pool, never under a lock of the
+caller's, and is never called inside a transaction that holds one. It never calls a
+directory while serving — the customer's facts are the caller's to read — and is
+built from `Deps.Pool` and `Deps.Clock` alone. It refuses what `Validate` refuses,
+answers at most `MaxBillableRows` and sets `More` when there were more. Read by ids, a
+missing id is absent, never an error. It fails rather than under-reports: an error
+means the settlements could not be read, never that there are none. A blocked
+settlement is answered, with `Blocked` set and no lines. Money and quantities cross as
+exact decimal text at their places.
+
+**The slot.** `Module.Consumption func(Deps) contracts.ConsumptionProvider`, filled by
+Energy and resolved into `Deps.Consumption` by `module.Compose` after the three
+`Billable*` reads, so after `Directory`: a single-provider slot
+([module boundaries rule 5](/en/contributing/module-boundaries/#the-rules)). It is
+**optional** for its consumer: nil when Energy is off. `module.Workers` does not
+resolve it yet; billing runs teach it (delivery E).
+
+## The invoiced-work holder
+
+Energy is one of the holders of
+[`contracts.InvoicedWorkHolder`](/en/contributing/module-boundaries/#the-rules) (rule
+10, design D6): an issued invoice stamps the settlements it was built from, inside the
+issue's own transaction. Its source kind is `energy.settlement`
+(`contracts.WorkSourceSettlement`), **last** in `contracts.InvoicedWorkOrder` — after
+Projects, Expenses and Time: an energy row never shares a transaction with work, so its
+place only has to be fixed. The holder (`invoiced_work.go`) is built from
+`Deps.Logger` alone and runs whether or not the module is enabled: every schema is
+migrated whatever `MODULES` says, and a switched-off module's settlements are still
+stamped and released.
+
+**`MarkInvoiced`** locks the settlements by id ascending, `FOR NO KEY UPDATE`, and
+judges each in this order, every refusal a `*contracts.WorkSourceRefusal` that rolls
+the whole issue back:
+
+1. A settlement that does not exist → `source_not_invoiceable`.
+2. `invoiced` → `source_already_invoiced`.
+3. `released`, or blocked as stored → `source_not_invoiceable`.
+4. Recomputed inside the issue's transaction, with `ref.IssuedAt` as now (the holder's
+   only clock): a correction with nothing left to correct → `source_changed`;
+   blocked → `source_not_invoiceable`; any figure different from the stored row →
+   `source_changed`.
+5. The source's revision, currency and amount (by value, never as text) against the
+   row → `source_changed`.
+
+It then stamps each one: `state` `invoiced`, `invoiced_invoice_id`, `invoiced_number`,
+`invoice_date`, `invoiced_by_user_id` from the `InvoiceRef`, `invoiced_at` its
+`IssuedAt`, and `revision + 1`. The recomputation's own reads — intervals, prices,
+tariffs — take no locks: an interval written after the stamp is a correction's
+business.
+
+**`ReleaseInvoiced`** takes the same locks in the same order, moves the rows carrying
+`ref.ID`'s stamp from `invoiced` to `released` and sets `released_at` to the credit
+note's `IssuedAt`, keeping the stamp columns as history. A row that no longer carries
+the stamp is skipped with a warning, never an error: a credit note must never be
+blocked. The released period is free for a new draft, settled afresh by the next
+`Settle`.
+
 ## Permissions
 
 | Key | Display | Sensitive |
@@ -1284,11 +1617,13 @@ Prices page needs `energy:prices-view`, and its **Import prices** also
 **Archive** and **Delete** also `energy:tariffs-manage`. Assigning a tariff needs only
 the write's own permission; the dialogs list the tariffs to choose from when the
 caller holds `energy:tariffs-view`, and otherwise show the assigned tariff's name
-read-only.
+read-only. The metering point's **Settlements** card and its endpoint need
+`energy:supply-periods-view` and `energy:consumption-view`, both; no permission of
+their own.
 
 ## Workers
 
 | Worker | What it does |
 | --- | --- |
 | `energy-import` | Checks, runs and attaches metering-point imports; sweeps old ones ([above](#the-worker-energy-import)) |
-| `energy-spot-prices` | Copies the day-ahead prices and their history from the spot-price service when `ENERGY_SPOT_PRICE_SERVICE_URL` is set ([above](#the-service-sync)), or fetches those of the areas in use from the public feed when `ENERGY_SPOT_PRICE_FEED_ENABLED` is on ([above](#the-feed-worker-energy-spot-prices)) — never both |
+| `energy-spot-prices` | Copies the day-ahead prices and their history from the spot-price service when `ENERGY_SPOT_PRICE_SERVICE_URL` is set ([above](#the-service-sync)), or fetches those of the areas in use from the public feed when `ENERGY_SPOT_PRICE_FEED_ENABLED` is on ([above](#the-feed-worker-energy-spot-prices)) — never both. Each cycle also deletes the draft settlements nobody has touched for thirty days ([above](#drafts-revisions-and-housekeeping)) |
