@@ -438,6 +438,8 @@ describe("EntraPage — calendar sync", () => {
     const status = within(region("Status")).getByRole("list", { name: "Missing permissions" });
     expect(within(status).getByText("Calendars.ReadWrite")).toBeInTheDocument();
     expect(within(status).getByText("(for calendar sync)")).toBeInTheDocument();
+    // Advisory only: a grant made with RBAC for Applications never reaches the token.
+    expect(within(step).getByText("Done")).toBeInTheDocument();
   });
 
   it("reads Ready once the token carries the permission", async () => {
@@ -481,7 +483,9 @@ describe("EntraPage — calendar sync", () => {
       stubEntraApi({ connection: connected({ calendarSync: { enabled: true, status: "permission_missing" } }) });
       renderWithProviders(<EntraPage signIn={() => null} provisioning={() => null} />);
       expect(
-        await screen.findByText(/^Calendars\.ReadWrite er ikke i tokenet\. Det er som ventet hvis du ga den med Exchange RBAC for Applications/),
+        await screen.findByText(
+          /^Calendars\.ReadWrite er ikke i tokenet\. Det er som ventet hvis du ga den med Exchange RBAC for Applications/,
+        ),
       ).toBeInTheDocument();
     } finally {
       setLanguagePreference("auto");
