@@ -812,3 +812,74 @@ func TestEHF_Goldens(t *testing.T) {
 		}
 	}
 }
+
+// An energy invoice (energy consumption billing design D9, invoices from
+// consumption plan reading 9): every line names its metering point in an
+// AdditionalItemProperty after the ClassifiedTaxCategory, as UBL orders the
+// item; a price keeps its own decimals, at least four and up to eight; the
+// unit words map to KWH, MON, C62 and ANN; a correction's -1 is the
+// quantity a deduction's is; the Z line covers its VAT row, so no zero line
+// is added; the pre-check and the invariants accept it.
+func TestEHF_EnergyLines(t *testing.T) {
+	t.Parallel()
+	d := fixture(t, "invoice-energy")
+	root := render(t, d)
+	lines := root.All("cac:InvoiceLine")
+	if len(lines) != len(d.Lines) {
+		t.Fatalf("%d lines, want %d (no zero line)", len(lines), len(d.Lines))
+	}
+	for i, c := range []struct{ gsrn, quantity, unit, price string }{
+		{"707057500012345671", "1234.567", "KWH", "1.23456789"},
+		{"707057500012345671", "1.000", "MON", "49.0000"},
+		{"707057500012345671", "-1.000", "C62", "15.4300"},
+		{"707057500098765431", "800.000", "KWH", "0.4567"},
+		{"707057500098765431", "1.000", "ANN", "588.0000"},
+	} {
+		l := lines[i]
+		if q := l.First("cbc:InvoicedQuantity"); q.Text != c.quantity || q.Attr("unitCode") != c.unit {
+			t.Errorf("line %d InvoicedQuantity = %q %q, want %q %q", i+1, q.Text, q.Attr("unitCode"), c.quantity, c.unit)
+		}
+		expect(t, l, c.price, "cac:Price", "cbc:PriceAmount")
+		expect(t, l, "Målepunkt-ID", "cac:Item", "cac:AdditionalItemProperty", "cbc:Name")
+		expect(t, l, c.gsrn, "cac:Item", "cac:AdditionalItemProperty", "cbc:Value")
+		var order []string
+		for _, child := range l.First("cac:Item").Children {
+			order = append(order, child.Name.Local)
+		}
+		if want := []string{"Name", "ClassifiedTaxCategory", "AdditionalItemProperty"}; !slices.Equal(order, want) {
+			t.Errorf("line %d Item = %q, want %q", i+1, order, want)
+		}
+	}
+	expect(t, lines[2], "-15.43", "cbc:LineExtensionAmount")
+	expect(t, root, "2026-08-01", "cac:InvoicePeriod", "cbc:StartDate")
+	expect(t, root, "2026-09-30", "cac:InvoicePeriod", "cbc:EndDate")
+
+	body, err := ehf.Render(d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rules, err := ehf.Precheck(body); err != nil || len(rules) != 0 {
+		t.Errorf("Precheck = %v, %v; want none", rules, err)
+	}
+	if rules, err := ehf.Invariants(body, d); err != nil || len(rules) != 0 {
+		t.Errorf("Invariants = %v, %v; want none", rules, err)
+	}
+
+	// A line of work carries no item property.
+	absent(t, render(t, fixture(t, "invoice-person")), "cac:InvoiceLine", "cac:Item", "cac:AdditionalItemProperty")
+}
+
+// A price prints with four decimals at least, its own up to eight: trailing
+// zeros past the fourth dropped, so a price of four or fewer prints as it
+// always has.
+func TestEHF_PriceDecimals(t *testing.T) {
+	t.Parallel()
+	for _, c := range []struct{ price, want string }{
+		{"1200", "1200.0000"}, {"33.3333", "33.3333"}, {"0.45", "0.4500"},
+		{"1.23456", "1.23456"}, {"1.2345678", "1.2345678"}, {"0.00000001", "0.00000001"}, {"1.234500", "1.2345"},
+	} {
+		d := fixture(t, "invoice-person")
+		d.Lines[0].UnitPrice = rat(c.price)
+		expect(t, render(t, d), c.want, "cac:InvoiceLine", "cac:Price", "cbc:PriceAmount")
+	}
+}

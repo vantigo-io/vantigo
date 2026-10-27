@@ -19,8 +19,12 @@ import (
 // sending (D2: not part of the snapshot), and the stored PDF's bytes with
 // the download's file name. Never the settings beyond that id, the directory
 // or the VAT tables.
+//
+// held is the document's line sources (sourcesOf): each line a settlement's
+// span bills carries its metering point's GSRN as an item property (energy
+// consumption billing design D9, invoices from consumption plan reading 9).
 func ehfDocumentOf(inv store.InvoicesInvoice, lines []store.InvoicesLine, sums []store.InvoicesVatSummary,
-	original *store.InvoicesInvoice, deducted []deductedRef, sellerPeppolID string, pdf []byte,
+	original *store.InvoicesInvoice, deducted []deductedRef, held []heldSource, sellerPeppolID string, pdf []byte,
 ) (ehf.Document, error) {
 	if inv.Status != statusIssued || inv.Number == nil {
 		return ehf.Document{}, fmt.Errorf("invoices: document %d is not issued; it has no EHF", inv.ID)
@@ -87,6 +91,7 @@ func ehfDocumentOf(inv store.InvoicesInvoice, lines []store.InvoicesLine, sums [
 			Number: strconv.FormatInt(r.number, 10), IssueDate: r.issueDate.Format(time.DateOnly),
 		})
 	}
+	points := pointsByLine(lines, held)
 	for i, l := range lines {
 		pl := p.lines[i]
 		line := ehf.Line{
@@ -99,6 +104,9 @@ func ehfDocumentOf(inv store.InvoicesInvoice, lines []store.InvoicesLine, sums [
 		}
 		if line.Allowance, err = ratFromNumeric(l.LineAllowance); err != nil {
 			return ehf.Document{}, err
+		}
+		if points[i] != nil {
+			line.Properties = []ehf.ItemProperty{{Name: ehf.MeteringPointProperty, Value: points[i].gsrn}}
 		}
 		if line.Category == "" {
 			return ehf.Document{}, fmt.Errorf("invoices: document %d's line %d has no VAT snapshot", inv.ID, l.Position)

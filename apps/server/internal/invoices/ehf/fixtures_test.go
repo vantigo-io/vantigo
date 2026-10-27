@@ -282,6 +282,35 @@ func fixtures(t *testing.T) map[string]ehf.Document {
 	creditSettlement.PDFName = "kreditnota-10058.pdf"
 	out["credit-note-of-settlement"] = creditSettlement
 
+	// Consumption billed to a person (energy consumption billing design D9,
+	// invoices from consumption plan reading 9): the month as the invoice
+	// period; two metering points, each line naming its GSRN as an item
+	// property; a kWh line at an eight-decimal price, a monthly fixed charge
+	// and a correction of the month before — quantity -1 at a positive price,
+	// as a deduction's — at 25 %; the second point a household in the north
+	// (Z, 0 %), its kWh at a four-decimal price and a yearly charge.
+	energy := baseInvoice("10060")
+	energy.BuyerReference = "Kari Nordmann"
+	energy.Buyer = person.Buyer
+	energy.DeliveryFrom, energy.DeliveryTo = "2026-08-01", "2026-09-30"
+	oslo, tromso := "707057500012345671", "707057500098765431"
+	point := func(l ehf.Line, gsrn string) ehf.Line {
+		l.Properties = []ehf.ItemProperty{{Name: ehf.MeteringPointProperty, Value: gsrn}}
+		return l
+	}
+	energy.Lines = []ehf.Line{
+		point(line("1", "Strøm, "+oslo+" Storgata 1, 0155 Oslo, 01.09.2026–30.09.2026", "kWh", "1234.567", "1.23456789", "0", "S", "25"), oslo),
+		point(line("2", "Fastledd, "+oslo+" Storgata 1, 0155 Oslo, 01.09.2026–30.09.2026", "mnd", "1", "49", "0", "S", "25"), oslo),
+		point(line("3", "Korreksjon Strøm, "+oslo+" Storgata 1, 0155 Oslo, 01.08.2026–31.08.2026: -12,5 kWh, tidligere fakturert 10031",
+			"stk", "-1", "15.43", "0", "S", "25"), oslo),
+		point(line("4", "Strøm, "+tromso+" Storgata 9, 9008 Tromsø, 01.09.2026–30.09.2026", "kWh", "800", "0.4567", "0", "Z", "0"), tromso),
+		point(line("5", "Fastbeløp, "+tromso+" Storgata 9, 9008 Tromsø, 01.09.2026–30.09.2026", "år", "1", "588", "0", "Z", "0"), tromso),
+	}
+	energy.VAT = []ehf.VATRow{vat("S", "25", "1557.73", "389.43", ""), vat("Z", "0", "953.36", "0.00", "")}
+	energy.NetTotal, energy.VATTotal, energy.GrossTotal = rat("2511.09"), rat("389.43"), rat("2900.52")
+	energy.PDFName = "faktura-10060.pdf"
+	out["invoice-energy"] = energy
+
 	return out
 }
 

@@ -10,6 +10,7 @@ import (
 	"io"
 	"math/big"
 	"net/http"
+	"slices"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -53,6 +54,7 @@ func pdfDocumentOf(inv store.InvoicesInvoice, lines []store.InvoicesLine, sums [
 		orderRef: inv.OrderReference, projectRef: str(inv.ProjectReference), note: inv.Note, footer: str(inv.SellerFooterText),
 		seller: sellerParty(inv), buyer: buyerParty(inv),
 		bankAccount: str(inv.SellerBankAccount), iban: str(inv.SellerIban), bic: str(inv.SellerBic),
+		buyerPerson: str(inv.BuyerType) == "person",
 	}
 	if inv.Kid != nil || inv.KidAlgorithm != nil {
 		if inv.Kid == nil || inv.KidAlgorithm == nil || inv.Number == nil || !kid.Verify(*inv.Kid, *inv.KidAlgorithm, *inv.Number) {
@@ -206,6 +208,11 @@ func renderIssued(ctx context.Context, q *store.Queries, inv store.InvoicesInvoi
 	if doc.timesheet, err = timesheetOf(ctx, q, inv); err != nil {
 		return nil, err
 	}
+	held, err := sourcesOf(ctx, q, inv.ID)
+	if err != nil {
+		return nil, err
+	}
+	doc.points = meteringPointsOf(lines, held)
 	doc.payLink = payLink
 	m := buildPDFModel(doc)
 	if pdfModelBuilt != nil {
@@ -243,6 +250,77 @@ func timesheetOf(ctx context.Context, q *store.Queries, inv store.InvoicesInvoic
 		out = append(out, pdfTimesheetRow{date: r.EntryDate.Time, person: r.PersonLabel, workType: work, description: r.Description, hours: hours})
 	}
 	return out, nil
+}
+
+// pointsByLine is, per line (index-aligned with lines), the metering point of
+// the settlement whose span bills it, nil for a line of anything else: the
+// document's own line sources (energy consumption billing design D9: the PDF
+// and the EHF never read Energy).
+func pointsByLine(lines []store.InvoicesLine, held []heldSource) []*settlementPoint {
+	out := make([]*settlementPoint, len(lines))
+	for _, h := range held {
+		if !h.isSettlement() || h.point == nil {
+			continue
+		}
+		for i, l := range lines {
+			if h.billsLine(l.Position) {
+				out[i] = h.point
+			}
+		}
+	}
+	return out
+}
+
+// meteringPointsOf is each metering point a document's settlements bill, by
+// GSRN in order of its first line (invoices from consumption plan reading 9):
+// the period from its settlements' earliest first day to their latest last
+// day, the regular settlements' kWh summed, the corrections' differences
+// summed, estimated when any settlement is, and the lines their spans bill.
+// None for a document without settlements.
+func meteringPointsOf(lines []store.InvoicesLine, held []heldSource) []pdfPoint {
+	byGSRN := map[string]*pdfPoint{}
+	var order []string
+	for _, h := range held {
+		if !h.isSettlement() || h.point == nil {
+			continue
+		}
+		p := byGSRN[h.point.gsrn]
+		if p == nil {
+			p = &pdfPoint{gsrn: h.point.gsrn, address: h.point.address, priceArea: h.point.priceArea,
+				contractName: h.point.contractName, from: h.point.periodFrom, to: h.date}
+			byGSRN[h.point.gsrn] = p
+			order = append(order, h.point.gsrn)
+		}
+		if h.point.periodFrom.Before(p.from) {
+			p.from = h.point.periodFrom
+		}
+		if h.date.After(p.to) {
+			p.to = h.date
+		}
+		sum := &p.kWh
+		if h.isCorrection() {
+			sum = &p.correctionKWh
+		}
+		if *sum == nil {
+			*sum = new(big.Rat)
+		}
+		(*sum).Add(*sum, h.quantity)
+		p.estimated = p.estimated || h.point.estimated
+	}
+	for i, point := range pointsByLine(lines, held) {
+		if point != nil {
+			p := byGSRN[point.gsrn]
+			p.lines = append(p.lines, i)
+		}
+	}
+	out := make([]pdfPoint, 0, len(order))
+	for _, g := range order {
+		if p := byGSRN[g]; len(p.lines) > 0 {
+			out = append(out, *p)
+		}
+	}
+	slices.SortStableFunc(out, func(a, b pdfPoint) int { return a.lines[0] - b.lines[0] })
+	return out
 }
 
 // pdfModelBuilt, when a test sets it (export_test.go), is told every model a
@@ -628,6 +706,11 @@ func (s *server) renderPreview(ctx context.Context, q *store.Queries, inv store.
 	if doc.timesheet, err = timesheetOf(ctx, q, inv); err != nil {
 		return nil, err
 	}
+	held, err := sourcesOf(ctx, q, inv.ID)
+	if err != nil {
+		return nil, err
+	}
+	doc.points = meteringPointsOf(stored, held)
 	if previewRendered != nil {
 		previewRendered(inv.ID, doc.totals.vat)
 	}

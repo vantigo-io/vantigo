@@ -59,7 +59,7 @@ var exemptionCodes = map[string]string{"AE": "VATEX-EU-AE", "G": "VATEX-EU-G", "
 
 // Render is d as a Peppol BIS Billing 3.0 UBL 2.1 Invoice or CreditNote:
 // the elements in the schema's order, amounts with two decimals, quantities
-// and prices at their stored scale, the PDF embedded. It reads nothing but
+// at their stored scale and prices with four to eight, the PDF embedded. It reads nothing but
 // d, so the same Document renders the same bytes.
 func Render(d Document) ([]byte, error) {
 	root, rootNS, lineName, quantityName := "Invoice", nsInvoice, "cac:InvoiceLine", "cbc:InvoicedQuantity"
@@ -305,9 +305,18 @@ func Render(d Document) ([]byte, error) {
 		w.start("cac:Item")
 		w.leaf("cbc:Name", l.Description)
 		writeTaxCategory(w, "cac:ClassifiedTaxCategory", l.Category, l.Rate, "", false)
+		// The item's properties after its tax category, as UBL orders them:
+		// an energy line's metering point (energy consumption billing design
+		// D9, invoices from consumption plan reading 9).
+		for _, p := range l.Properties {
+			w.start("cac:AdditionalItemProperty")
+			w.leaf("cbc:Name", p.Name)
+			w.leaf("cbc:Value", p.Value)
+			w.end("cac:AdditionalItemProperty")
+		}
 		w.end("cac:Item")
 		w.start("cac:Price")
-		w.leaf("cbc:PriceAmount", decimal(l.UnitPrice, 4), attr("currencyID", cur))
+		w.leaf("cbc:PriceAmount", price(l.UnitPrice), attr("currencyID", cur))
 		w.end("cac:Price")
 		w.end(lineName)
 	}
@@ -348,6 +357,17 @@ func zeroLines(d Document, v words) []Line {
 		})
 	}
 	return out
+}
+
+// price is a unit price with its own decimals: at least four, as every
+// price before energy's printed, and up to eight, an energy line's (invoices
+// from consumption plan reading 3), trailing zeros past four dropped.
+func price(v *big.Rat) string {
+	text := decimal(v, 8)
+	for strings.HasSuffix(text, "0") && len(text)-strings.IndexByte(text, '.') > 5 {
+		text = text[:len(text)-1]
+	}
+	return text
 }
 
 // sameRate compares two rates, a nil one as zero.
