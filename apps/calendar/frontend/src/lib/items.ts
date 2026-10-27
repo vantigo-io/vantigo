@@ -1,7 +1,9 @@
 import type { EventInput } from "@fullcalendar/react";
 import type { CalendarItem, CalendarPublicHoliday } from "../api/items";
-import { colourForKind, colourForModule, colourForName, HOLIDAYS_KIND } from "./colours";
+import { colourForKind, colourForModule, colourForName, HOLIDAYS_KIND, OUTLOOK_KIND } from "./colours";
 import { addDays } from "./dates";
+
+export type OutlookShowAs = NonNullable<CalendarItem["outlook"]>["showAs"];
 
 /** What an event drawn from the API carries back to the page's handlers. */
 export interface CalendarEventProps {
@@ -15,6 +17,8 @@ export interface ToEventOptions {
    * private appointment, a busy-only subscription's item.
    */
   busyLabel: string;
+  /** The words for an Outlook busy block, by how it shows the person's time; it has no title. */
+  outlookLabels?: Record<OutlookShowAs, string>;
   /** A colleague's calendar: nothing on it is the viewer's to move. */
   readOnly?: boolean;
 }
@@ -26,16 +30,20 @@ export interface ToEventOptions {
  * default length. Only the caller's own appointment may be dragged; a
  * subscription's item is drawn in its subscription's colour (feed design D9).
  */
-export const toEventInput = (item: CalendarItem, { busyLabel, readOnly = false }: ToEventOptions): EventInput => {
+export const toEventInput = (
+  item: CalendarItem,
+  { busyLabel, outlookLabels, readOnly = false }: ToEventOptions,
+): EventInput => {
   const appointment = item.appointment;
   const subscription = item.subscription;
   const isPrivate = appointment?.visibility === "private" || subscription?.busyOnly === true;
+  const isOutlook = item.kind === OUTLOOK_KIND;
   const declined = appointment?.myStatus === "declined";
   const className = [
     "vantigo-calendar-item",
     item.done || declined ? "vantigo-calendar-done" : "",
     appointment?.transparency === "free" ? "vantigo-calendar-free" : "",
-    readOnly && isPrivate ? "vantigo-calendar-busy" : "",
+    (readOnly && isPrivate) || isOutlook ? "vantigo-calendar-busy" : "",
     appointment?.recurring ? "vantigo-calendar-recurring" : "",
   ]
     .filter(Boolean)
@@ -51,7 +59,13 @@ export const toEventInput = (item: CalendarItem, { busyLabel, readOnly = false }
       };
   return {
     id: `${item.kind}:${item.id}`,
-    title: item.title.trim() ? item.title : isPrivate ? busyLabel : item.title,
+    title: item.title.trim()
+      ? item.title
+      : isOutlook
+        ? (outlookLabels?.[item.outlook?.showAs ?? "busy"] ?? busyLabel)
+        : isPrivate
+          ? busyLabel
+          : item.title,
     allDay: item.allDay,
     ...times,
     color: subscription ? colourForName(subscription.colour) : colourForKind(item.kind),

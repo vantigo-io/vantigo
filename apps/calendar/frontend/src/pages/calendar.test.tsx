@@ -262,6 +262,16 @@ describe("CalendarPage", () => {
           done: false,
           appointment: { id: 3002, isOwner: false, recurring: false, transparency: "busy", visibility: "shared" },
         },
+        {
+          kind: "calendar.outlook",
+          id: "0123456789abcdef",
+          title: "",
+          allDay: false,
+          startsAt: at(0, "10:00"),
+          endsAt: at(0, "11:00"),
+          done: false,
+          outlook: { showAs: "oof" },
+        },
       ],
     });
     const { router } = renderRoute("/calendar");
@@ -272,6 +282,7 @@ describe("CalendarPage", () => {
 
     expect(await screen.findByText("Busy")).toBeInTheDocument();
     expect(screen.getByText("Budget review")).toBeInTheDocument();
+    expect(screen.getByText("Out of office")).toBeInTheDocument();
     expect(screen.queryByText("Kickoff with Nordlys AS")).not.toBeInTheDocument();
     expect(router.state.location.search).toMatchObject({ user: KARI.id });
     expect(

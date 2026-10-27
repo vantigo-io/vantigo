@@ -1,6 +1,7 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { setLanguagePreference } from "@vantigo/frontend-shell";
+import { afterEach, describe, expect, it } from "vitest";
 import { addDays, isoWeek } from "../lib/weeks";
 import { MONDAY, week, weekEnd } from "../test/fixtures";
 import { choose, sent } from "../test/helpers";
@@ -13,6 +14,8 @@ const W = (n: number) => `W${isoWeek(week(n))}`;
 const cell = (name: string, n: number) => screen.findByLabelText(new RegExp(`^${name}, ${W(n)}:`));
 
 describe("BoardPage — the board", () => {
+  afterEach(() => setLanguagePreference("auto"));
+
   it("shows the people against twelve weeks, each week's load, and a tentative share hatched apart", async () => {
     const fetchMock = stubPlanningApi({ role: "view" });
     renderRoute("/planning");
@@ -49,6 +52,24 @@ describe("BoardPage — the board", () => {
     const ada = await cell("Ada Lovelace", 2);
     expect(ada.querySelector("[data-conflict]")).not.toBeInTheDocument();
     expect(ada).toHaveAccessibleName(/Away part of the week/);
+  });
+
+  it("shows the calendar's busy hours and days beside the load, without changing it", async () => {
+    stubPlanningApi({ role: "view", busy: { 1: { hours: 6.5, days: 1 } } });
+    renderRoute("/planning");
+    const ada = await cell("Ada Lovelace", 0);
+    expect(ada).toHaveAccessibleName(/Calendar: 6\.5 h busy, 1 day/);
+    expect(ada).toHaveTextContent("50%");
+    expect(ada.querySelector("[data-level]")).toHaveAttribute("data-level", "fine");
+    // Grace's calendar answers nothing: no line.
+    expect(await cell("Grace Hopper", 0)).not.toHaveAccessibleName(/Calendar:/);
+  });
+
+  it("says the busy time in Norwegian, with its plural", async () => {
+    setLanguagePreference("nb");
+    stubPlanningApi({ role: "view", busy: { 1: { hours: 6.5, days: 2 } } });
+    renderRoute("/planning");
+    expect((await screen.findAllByLabelText(/Kalender: 6,5 t opptatt, 2 dager/)).length).toBeGreaterThan(0);
   });
 
   it("reads red where a week with days away is booked past what is available", async () => {

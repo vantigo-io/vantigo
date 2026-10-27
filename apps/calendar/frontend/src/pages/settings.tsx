@@ -260,7 +260,7 @@ const knownOr = (exists: (key: string) => boolean, key: string, fallback: string
  * turns it off.
  */
 const OutlookSection = () => {
-  const { t, i18n } = useI18n("calendar");
+  const { t, i18n, locale } = useI18n("calendar");
   const queryClient = useQueryClient();
   const titleId = useId();
   const sync = useQuery(mailboxSyncQueryOptions());
@@ -410,6 +410,19 @@ const OutlookSection = () => {
                   </Stack>
                 </Radio.Group>
               </SimpleGrid>
+            )}
+
+            {data.enabled && (
+              <Stack gap={2}>
+                <Text size="sm" c="dimmed">
+                  {t("outlook.busyIn")}
+                </Text>
+                {data.busySyncedAt && (
+                  <Text size="sm" c="dimmed" role="status">
+                    {t("outlook.busySynced", { relative: relativeTime(data.busySyncedAt, locale) })}
+                  </Text>
+                )}
+              </Stack>
             )}
 
             {(data.enabled || data.state !== "off") && (

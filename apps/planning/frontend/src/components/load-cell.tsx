@@ -19,7 +19,7 @@ export interface LoadCellProps {
  * booked past what the days left hold (`booked > available`, S7's
  * `booked_while_away`, amendment 37) — a conflict, never a silent re-plan
  * (S6). The tooltip
- * says the figures; never a type or a share of an absence, which the server
+ * says the figures, and the calendar's busy hours and days when it answers them (informational, not part of the load colour); never a type or a share of an absence, which the server
  * does not answer.
  */
 export const LoadCell = ({ figures, label, showTentative, onClick }: LoadCellProps) => {
@@ -29,11 +29,17 @@ export const LoadCell = ({ figures, label, showTentative, onClick }: LoadCellPro
   const tentative = showTentative && figures.tentative > 0;
   const tentativeShare =
     figures.capacity > 0 ? Math.min(100, (figures.tentative / figures.capacity) * 100) : tentative ? 100 : 0;
+  // The calendar's busy time is shown beside the load, never counted in it.
+  const busyParts = [
+    ...(figures.busyHours !== undefined ? [t("cellBusyHours", { hours: hours(figures.busyHours) })] : []),
+    ...(figures.busyDays ? [t("cellBusyDays", { count: figures.busyDays })] : []),
+  ];
   const lines = [
     t("cellBooked", { hours: hours(figures.booked), capacity: hours(figures.capacity) }),
     ...(tentative ? [t("cellTentative", { hours: hours(figures.tentative) })] : []),
     t("cellFree", { hours: hours(figures.free) }),
     ...(figures.away ? [t(conflict ? "cellAwayConflict" : "cellAway")] : []),
+    ...(busyParts.length > 0 ? [t("cellBusy", { parts: busyParts.join(", ") })] : []),
   ];
   const body = (
     <Box

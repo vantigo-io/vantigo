@@ -96,6 +96,10 @@ export const planningCatalog = {
     cellTentative: "{{hours}} tentative",
     cellFree: "{{hours}} free",
     cellAway: "Away part of the week",
+    cellBusy: "Calendar: {{parts}}",
+    cellBusyHours: "{{hours}} busy",
+    cellBusyDays_one: "{{count}} day",
+    cellBusyDays_other: "{{count}} days",
     cellAwayConflict: "Booked in a week with days away",
     noCapacity: "No capacity",
 
@@ -522,6 +526,10 @@ export const planningCatalog = {
     cellTentative: "{{hours}} tentativt",
     cellFree: "{{hours}} ledig",
     cellAway: "Borte deler av uken",
+    cellBusy: "Kalender: {{parts}}",
+    cellBusyHours: "{{hours}} opptatt",
+    cellBusyDays_one: "{{count}} dag",
+    cellBusyDays_other: "{{count}} dager",
     cellAwayConflict: "Satt opp i en uke med fravær",
     noCapacity: "Ingen kapasitet",
 

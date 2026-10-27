@@ -400,6 +400,25 @@ describe("SettingsPage: Outlook", () => {
     expect(await screen.findByText("Vantigo will sync your calendar within a minute")).toBeInTheDocument();
   });
 
+  it("says the busy time is read, never titles, and when", async () => {
+    stubCalendarServer({
+      mailboxSync: mailboxSyncFixture({
+        enabled: true,
+        state: "active",
+        lastSyncedAt: new Date().toISOString(),
+        busySyncedAt: new Date(Date.now() - 2 * 3600 * 1000).toISOString(),
+      }),
+    });
+    renderWithProviders(<SettingsPage />);
+
+    const region = await outlook();
+    expect(
+      await within(region).findByText(/busy in your main Outlook calendar shows in your Vantigo calendar/),
+    ).toBeInTheDocument();
+    expect(within(region).getByText(/Their titles are never read/)).toBeInTheDocument();
+    expect(within(region).getByText("Busy time read 2 hours ago")).toBeInTheDocument();
+  });
+
   it("speaks Norwegian", async () => {
     setLanguagePreference("nb");
     stubCalendarServer({ mailboxSync: mailboxSyncFixture({ enabled: true, state: "pending" }) });
