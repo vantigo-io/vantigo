@@ -182,7 +182,7 @@ func (c *graphClient) fetchToken(ctx context.Context, cred graphCredential) (cac
 		return cachedToken{}, fmt.Errorf("%w: the token request: %w", errTenantUnreachable, unwrapURLError(err))
 	}
 	defer func() { _ = resp.Body.Close() }()
-	data, err := readCapped(resp.Body)
+	data, err := readCapped(resp.Body, graphMaxBody)
 	if err != nil {
 		return cachedToken{}, fmt.Errorf("%w: the token answer: %w", errTenantUnreachable, err)
 	}

@@ -85,13 +85,19 @@ func badIfMatch() gen.EntraProblem {
 	return invalid("Invalid If-Match", f)
 }
 
-// missingPermissions are requiredPermissions less present, in their order.
-func missingPermissions(present []string) []string {
+// missingPermissions are requiredPermissions less present, in their order,
+// then Calendars.ReadWrite when calendarSync is on and present lacks it
+// (calendar Outlook sync design O2): the calendar's permission is asked for
+// only while the switch is on, and never judges the connection itself.
+func missingPermissions(present []string, calendarSync bool) []string {
 	out := []string{}
 	for _, p := range requiredPermissions {
 		if !slices.Contains(present, p) {
 			out = append(out, p)
 		}
+	}
+	if calendarSync && !slices.Contains(present, permissionCalendarsReadWrite) {
+		out = append(out, permissionCalendarsReadWrite)
 	}
 	return out
 }
@@ -144,7 +150,7 @@ func connectionBody(conn store.EntraConnection, creds []store.EntraCredential, c
 		OrganisationName:   conn.OrganisationName,
 		VerifiedDomains:    orEmpty(conn.VerifiedDomains),
 		PermissionsPresent: orEmpty(conn.PermissionsPresent),
-		PermissionsMissing: missingPermissions(conn.PermissionsPresent),
+		PermissionsMissing: missingPermissions(conn.PermissionsPresent, conn.CalendarSync),
 		LastCheckedAt:      conn.LastCheckedAt,
 		Settings: gen.EntraSettings{
 			UpnDomain:            conn.UpnDomain,
@@ -502,7 +508,7 @@ func (s *server) PostEntraConnectionTest(ctx context.Context, _ gen.PostEntraCon
 			Status:             gen.EntraConnectionTestStatus(contracts.ProviderUnconfigured),
 			VerifiedDomains:    orEmpty(conn.VerifiedDomains),
 			PermissionsPresent: []string{},
-			PermissionsMissing: missingPermissions(nil),
+			PermissionsMissing: missingPermissions(nil, conn.CalendarSync),
 		}), nil
 	}
 
@@ -568,7 +574,7 @@ func (s *server) PostEntraConnectionTest(ctx context.Context, _ gen.PostEntraCon
 			}
 		}
 	}
-	missing := missingPermissions(updated.PermissionsPresent)
+	missing := missingPermissions(updated.PermissionsPresent, updated.CalendarSync)
 	codes := []string{status}
 	if reason != "" {
 		codes = append(codes, reason)

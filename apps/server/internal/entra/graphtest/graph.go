@@ -26,7 +26,11 @@
 // $batch holds at most twenty requests; a user's photo is a JPEG of at most
 // 4 MB, 413 beyond; a $search or a $count is 400 Request_UnsupportedQuery
 // without ConsistencyLevel: eventual, an in filter lists at most fifteen
-// values. Every error body is Graph's
+// values; a user's calendars and events keep the extended property they
+// were written with, are listed in pages of $top with an @odata.nextLink,
+// and answer 403 for a mailbox outside the application's scope and 404
+// MailboxNotEnabledForRESTAPI for a user with none (mailbox.go). Every error
+// body is Graph's
 // { "error": { "code", "message" } }, the token endpoint's OAuth's
 // { "error", "error_description" }.
 package graphtest
@@ -122,13 +126,16 @@ type FakeGraph struct {
 	// group's age; time.Now when nil.
 	Now func() time.Time
 
-	mu       sync.Mutex
-	users    []*User
-	groups   []*Group
-	tokens   map[string]time.Time
-	throttle int
-	failNext []int
-	calls    []Call
+	mu            sync.Mutex
+	users         []*User
+	groups        []*Group
+	tokens        map[string]time.Time
+	throttle      int
+	batchThrottle int
+	failNext      []int
+	calls         []Call
+	mailboxes     map[string]*mailbox
+	serial        int
 }
 
 // Domain is one of the tenant's domains.
@@ -225,6 +232,13 @@ type User struct {
 	Privileged bool
 	// Deleted is a soft-deleted user: gone from /users, its UPN still held.
 	Deleted bool
+	// MailboxDenied is a mailbox outside the application's RBAC for
+	// Applications scope: every calendar and event request is 403
+	// ErrorAccessDenied.
+	MailboxDenied bool
+	// NoMailbox is a user with no mailbox in Exchange Online: every calendar
+	// and event request is 404 MailboxNotEnabledForRESTAPI.
+	NoMailbox bool
 }
 
 // Group is a group in the fake tenant.
@@ -718,6 +732,8 @@ func (g *FakeGraph) usersRoute(method string, seg []string, query url.Values, co
 		return g.createPass(u, body)
 	case rest == "photo/$value":
 		return g.photo(u, method, contentType, body)
+	case len(seg) > 1 && (seg[1] == "calendars" || seg[1] == "events"):
+		return g.mailboxRoute(u, method, seg[1:], query, body)
 	}
 	return graphError(http.StatusBadRequest, "BadRequest", "Unsupported request: "+method+" users/{id}/"+rest+".")
 }
@@ -1517,10 +1533,11 @@ func groupJSON(gr *Group) map[string]any {
 func (g *FakeGraph) batch(body []byte) answer {
 	var req struct {
 		Requests []struct {
-			ID     string          `json:"id"`
-			Method string          `json:"method"`
-			URL    string          `json:"url"`
-			Body   json.RawMessage `json:"body"`
+			ID      string            `json:"id"`
+			Method  string            `json:"method"`
+			URL     string            `json:"url"`
+			Body    json.RawMessage   `json:"body"`
+			Headers map[string]string `json:"headers"`
 		} `json:"requests"`
 	}
 	if err := json.Unmarshal(body, &req); err != nil || len(req.Requests) == 0 {
@@ -1533,9 +1550,17 @@ func (g *FakeGraph) batch(body []byte) answer {
 	for _, r := range req.Requests {
 		u, err := url.Parse(r.URL)
 		var a answer
-		if err != nil || !strings.HasPrefix(u.Path, "/") {
+		switch {
+		case err != nil || !strings.HasPrefix(u.Path, "/"):
 			a = graphError(http.StatusBadRequest, "BadRequest", "Invalid request URL.")
-		} else {
+			u = &url.URL{}
+		case len(r.Body) > 0 && !strings.HasPrefix(headerOf(r.Headers, "Content-Type"), "application/json"):
+			a = graphError(http.StatusBadRequest, "BadRequest", "Content-Type header must be specified for a request with a body.")
+		case g.batchThrottle > 0:
+			g.batchThrottle--
+			a = graphError(http.StatusTooManyRequests, "ApplicationThrottled", "Application is over its MailboxConcurrency limit.")
+			a.header = http.Header{"Retry-After": []string{"1"}}
+		default:
 			a = g.route(strings.ToUpper(r.Method), u.Path, u.Query(), "application/json", r.Body)
 		}
 		g.calls = append(g.calls, Call{Method: strings.ToUpper(r.Method), Host: GraphHost, Path: "/v1.0" + u.Path, Query: u.RawQuery, Status: a.status, Batch: true})
