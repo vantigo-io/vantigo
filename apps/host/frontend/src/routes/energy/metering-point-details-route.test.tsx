@@ -17,13 +17,16 @@ vi.mock("@vantigo/energy-ui", () => ({
   MeteringPointDetailsPage: ({
     canImportReadings,
     canViewTariffs,
+    canViewSettlements,
   }: {
     canImportReadings?: boolean;
     canViewTariffs?: boolean;
+    canViewSettlements?: boolean;
   }) => (
     <>
       <span data-testid="can-import-readings">{String(Boolean(canImportReadings))}</span>
       <span data-testid="can-view-tariffs">{String(Boolean(canViewTariffs))}</span>
+      <span data-testid="can-view-settlements">{String(Boolean(canViewSettlements))}</span>
     </>
   ),
 }));
@@ -77,5 +80,22 @@ describe("the metering point route", () => {
     withPermissions(["energy:supply-periods-manage", "energy:tariffs-manage"]);
     renderPage();
     expect(screen.getByTestId("can-view-tariffs")).toHaveTextContent("false");
+  });
+
+  // The Settlements card needs both view permissions.
+  it("passes canViewSettlements only with energy:supply-periods-view and energy:consumption-view", () => {
+    withPermissions(["energy:supply-periods-view", "energy:consumption-view"]);
+    renderPage();
+    expect(screen.getByTestId("can-view-settlements")).toHaveTextContent("true");
+    cleanup();
+
+    withPermissions(["energy:supply-periods-view"]);
+    renderPage();
+    expect(screen.getByTestId("can-view-settlements")).toHaveTextContent("false");
+    cleanup();
+
+    withPermissions(["energy:consumption-view"]);
+    renderPage();
+    expect(screen.getByTestId("can-view-settlements")).toHaveTextContent("false");
   });
 });
