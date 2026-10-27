@@ -13,6 +13,8 @@ export interface SupplyTermsValues {
   cadence: BillingCadence;
 }
 
+const TERMS_FIELDS: ReadonlySet<string> = new Set(["tariffId", "cadence"]);
+
 /**
  * The power tariff and the billing cadence of a supply period. Without
  * `canViewTariffs` the tariff is shown read-only and stays what it is.
@@ -102,13 +104,21 @@ export const SupplyTermsModal = ({
       if (error instanceof ApiValidationError) form.setErrors(error.fieldErrors);
     },
   });
+  // A refusal the two fields cannot show — one naming no field (a cancelled
+  // period) or another field — is shown above them.
+  const error = mutation.error;
+  const unplaced = !error
+    ? []
+    : error instanceof ApiValidationError
+      ? Object.entries(error.fieldErrors)
+          .filter(([field]) => !TERMS_FIELDS.has(field))
+          .map(([, message]) => message)
+      : [error.message];
   return (
     <Modal opened={period !== null} onClose={onClose} title={t("changeSupplyTerms")} centered>
       <form onSubmit={form.onSubmit((values) => mutation.mutate(values))}>
         <Stack>
-          {mutation.error && !(mutation.error instanceof ApiValidationError) && (
-            <Alert color="red">{mutation.error.message}</Alert>
-          )}
+          {unplaced.length > 0 && <Alert color="red">{unplaced.join(" ")}</Alert>}
           <SupplyTermsFields
             form={form}
             opened={period !== null}

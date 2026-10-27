@@ -134,12 +134,19 @@ component names no price state, and the state stays the settlement's to judge.
    ("Tariff 1004 is a grid tariff." / "… is archived." / "… does not exist."). An
    archived tariff already assigned stays assigned: the metering point's PUT accepts
    the `gridTariffId` it already holds even when that tariff is archived, so editing
-   the address of a point does not force a tariff change. One helper,
-   `checkTariffAssignable(ctx, q, id, wantKind, current *int32)`, serves both.
+   the address of a point does not force a tariff change. The assignment is judged
+   inside the write's transaction: `shareTariff` reads the tariff `FOR SHARE` before
+   the write's other locks, so an archive or a delete in flight (both `FOR UPDATE`) is
+   waited for and seen, and `tariffRefusal(id, t, wantKind, current *int32)` judges it;
+   both writes use them. A foreign-key violation on the tariff, the backstop, is the
+   field's "… does not exist."
 6. **The supply period.** `CreateSupplyPeriodRequest` and `SwitchSupplyPeriodRequest`
    gain `tariffId?` (absent: none) and `cadence?` (absent: `monthly`); a cadence that is
    none of the three is 400 on `cadence`. The checks run after the existing ones, in
-   the order the field appears (tariff, then cadence), before the transaction. A switch
+   the order the field appears (tariff, then cadence), in one 400: the cadence's word
+   is read before the transaction, and the tariff is judged first inside it, under
+   `FOR SHARE` (reading 5), the refusal answered as the outcome with nothing written;
+   the create's overlap pre-check follows in the same transaction. A switch
    does **not** inherit the ended period's tariff: the new customer's contract is the
    body's. The import's create and switch write no tariff and `monthly` (the file
    carries no contract), and its update of a matched point keeps the point's grid
@@ -149,10 +156,14 @@ component names no price state, and the state stays the settlement's to judge.
    new): `{tariffId, cadence}` changes the terms of an existing period — without it
    every period created before B would stay without a tariff. 404 for an unknown
    (period, point); 400 for a `Cancelled` period ("A cancelled period cannot be
-   changed.") and for the fields as above; under the point's supply-period lock.
+   changed.") and for the fields as above; under the point's supply-period lock,
+   taken after the tariff's `FOR SHARE`, the period read again under it so the
+   `Cancelled` check and the tariff it holds are judged as it is written.
    The terms PUT accepts the tariff the period already holds even when archived
-   (reading 5). `SupplyPeriodResponse` gains `tariffId`, `tariffName` and `cadence`,
-   always sent but **optional in the schema**: the recorded .NET exchanges
+   (reading 5). `SupplyPeriodResponse` gains `tariffId`, `tariffName` and `cadence`:
+   `cadence` always sent, `tariffId` and `tariffName` sent when the period has a
+   tariff and **left out** of the JSON when it has none (not `null`); all three
+   **optional in the schema**: the recorded .NET exchanges
    (`openapi/testdata/exchanges/energy.jsonl`) are frozen and predate them, and
    every recorded response must still validate.
 7. **The metering point.** `PUT /metering-points/{id}` stays a full replace: the body
@@ -160,10 +171,15 @@ component names no price state, and the state stays the settlement's to judge.
    none, `false` and `ordinary` — as an absent `gridArea` means none today. The edit
    form sends the three, so editing the address keeps them. `POST /metering-points`
    accepts the same three. `MeteringPointResponse` gains `gridTariffId`,
-   `gridTariffName`, `household`, `electricityTaxClass` and `vatTreatment` (always
-   sent, optional in the schema for the same reason),
+   `gridTariffName`, `household`, `electricityTaxClass` and `vatTreatment` (the last
+   three always sent, `gridTariffId` and `gridTariffName` **left out** when the point
+   has no grid tariff; all optional in the schema for the same reason),
    in every place it is built (the list, the item, the customer's points). Tariff names
-   are read for a page of points with one query (`ListTariffNamesByIDs`).
+   are read for a page of points with one query (`ListTariffNamesByIDs`). The POST
+   and the PUT judge the grid tariff inside the write's transaction under `FOR SHARE`
+   (reading 5), with the GSRN pre-check and the write after it; the PUT reads the
+   point there `FOR NO KEY UPDATE`, after the tariff, and judges the tariff against
+   the one that row holds.
 8. **The VAT treatment** (`srv/energy/vat.go`): `vatTreatment(household bool,
    countryCode, postalCode string) string` answers `exempt_household_north` when
    `household`, `countryCode` is `NO` (case-insensitive) and the trimmed postal code is

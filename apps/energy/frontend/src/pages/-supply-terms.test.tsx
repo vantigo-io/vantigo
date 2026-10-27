@@ -87,4 +87,28 @@ describe("SupplyTermsModal", () => {
     expect(await screen.findByText("Tariff 1003 is archived.")).toBeInTheDocument();
     expect(onClose).not.toHaveBeenCalled();
   });
+
+  it("shows a refusal that names no field in an alert", async () => {
+    const { onClose } = renderTerms(true, (init) =>
+      init?.method === "PUT"
+        ? json({ title: "Invalid supply period", detail: "A cancelled period cannot be changed.", status: 400 }, 400)
+        : undefined,
+    );
+    await screen.findByDisplayValue("Fixed 2025 (archived)");
+    await userEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("A cancelled period cannot be changed.");
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("shows a refusal on a field the dialog does not hold in an alert", async () => {
+    const { onClose } = renderTerms(true, (init) =>
+      init?.method === "PUT"
+        ? json({ title: "Invalid supply period", errors: { period: ["The period has changed."] } }, 400)
+        : undefined,
+    );
+    await screen.findByDisplayValue("Fixed 2025 (archived)");
+    await userEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("The period has changed.");
+    expect(onClose).not.toHaveBeenCalled();
+  });
 });

@@ -105,6 +105,18 @@ AND (sqlc.narg(without_customer_at)::timestamptz IS NULL OR NOT EXISTS (
 ORDER BY mp.id
 LIMIT @page_size::int OFFSET @row_offset::int;
 
+-- name: GetMeteringPointByIDForUpdate :one
+-- GetMeteringPointByIDForUpdate is the replace's read, inside its
+-- transaction: the point as it is when the grid tariff is judged against the
+-- one it holds (energy tariffs plan, reading 5). FOR NO KEY UPDATE for the
+-- reason MeteringPointByGsrnForUpdate gives.
+SELECT id, gsrn, street_address, postal_code, city, country_code, price_area, grid_area,
+       expected_annual_consumption_kwh, latitude, longitude, connection_status, created_at, updated_at,
+       grid_tariff_id, household, electricity_tax_class
+FROM energy.metering_points
+WHERE id = @id
+FOR NO KEY UPDATE;
+
 -- name: MeteringPointByGsrnForUpdate :one
 -- MeteringPointByGsrnForUpdate is the import's match (energy import design
 -- D3): the point holding a GSRN, locked for the row's transaction so nothing

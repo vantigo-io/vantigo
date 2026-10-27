@@ -985,7 +985,7 @@ export interface components {
             meterNumber: string | null;
             priceArea: string | null;
         };
-        /** @description A metering point. gridTariffId, gridTariffName, household, electricityTaxClass and vatTreatment (energy consumption billing design D3, D4) are always sent; the schema leaves them optional because the recorded .NET exchanges predate them. */
+        /** @description A metering point. household, electricityTaxClass and vatTreatment (energy consumption billing design D3, D4) are always sent; gridTariffId and gridTariffName are sent when the point has a grid tariff and left out when it has none. The schema leaves all five optional because the recorded .NET exchanges predate them. */
         MeteringPointResponse: {
             address: components["schemas"]["AddressResponse"];
             connectionStatus: string;
@@ -998,10 +998,10 @@ export interface components {
             gridArea: string | null;
             /**
              * Format: int32
-             * @description The installation's own grid tariff for the point; null when the grid company bills grid services itself.
+             * @description The installation's own grid tariff for the point; left out when it has none, as when the grid company bills grid services itself.
              */
             gridTariffId?: number | null;
-            /** @description The grid tariff's name, null without one. */
+            /** @description The grid tariff's name; left out without one. */
             gridTariffName?: string | null;
             gsrn: string;
             /** @description Supplied for household use (mvaf § 6-6-1), set by hand. */
@@ -1188,7 +1188,7 @@ export interface components {
             /** Format: date-time */
             start: string;
         };
-        /** @description A supply period. tariffId, tariffName and cadence (energy consumption billing design D3, D4) are always sent; the schema leaves them optional because the recorded .NET exchanges predate them. */
+        /** @description A supply period. cadence (energy consumption billing design D4) is always sent; tariffId and tariffName (D3) are sent when the period has a power tariff and left out when it has none. The schema leaves all three optional because the recorded .NET exchanges predate them. */
         SupplyPeriodResponse: {
             /** @description monthly, quarterly or yearly. */
             cadence?: string;
@@ -1205,10 +1205,10 @@ export interface components {
             status: string;
             /**
              * Format: int32
-             * @description The period's power tariff, null for none.
+             * @description The period's power tariff; left out when it has none.
              */
             tariffId?: number | null;
-            /** @description The power tariff's name, null without one. */
+            /** @description The power tariff's name; left out without one. */
             tariffName?: string | null;
         };
         SwitchSupplyPeriodRequest: {

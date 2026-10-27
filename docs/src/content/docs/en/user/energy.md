@@ -202,7 +202,7 @@ The dialog also holds the point's billing facts, which a settlement will need:
   and cannot be changed here.
 - **Household use**: tick it when the point is supplied for household use. Vantigo
   cannot know this; you set it.
-- **Electricity tax class**: **Ordinary** for most points, **Reduced** or **Exempt**
+- **Electricity tax**: **Ordinary rate** for most points, **Reduced rate** or **Exempt**
   for a point that qualifies, which decides the electricity-tax rate the grid tariff
   applies.
 
@@ -216,16 +216,16 @@ The page is headed by the GSRN and the address, and has five cards:
 - **Metering point details**: meter number, price area, grid area, connection status
   and expected annual consumption.
 - **Billing**: the **Grid tariff** (or none), **Household use**, the **Electricity
-  tax class** and the **VAT treatment**. The VAT treatment is not set by hand: it is
-  *exempt (household, Northern Norway)* when the point is for household use, its
+  tax** and the **VAT**. The VAT is not set by hand: it is
+  *Exempt — household in Northern Norway (VAT Act § 6-6)* when the point is for household use, its
   country is `NO` and its postal code is from 8000 to 9999 — electricity for
-  household use in Nordland, Troms and Finnmark is exempt from VAT — and *standard*
+  household use in Nordland, Troms and Finnmark is exempt from VAT — and *Standard*
   otherwise. It is shown so that a wrong postal code or a forgotten **Household use**
   is seen here, before an invoice is made.
 - **Meter history**: every meter that has sat on the point, with **Installed** and
   **Removed** times. The current meter has no removed time.
 - **Supply periods**: which customer the point has been supplied to, from when to
-  when, on which **Power tariff** and **Cadence**, with the status **Active**,
+  when, on which **Power tariff** and **Billing**, with the status **Active**,
   **Ended** or **Cancelled**. An end that is not set reads **Open-ended**.
 - **Consumption**: the readings for a date range, as a chart and a table.
 
@@ -250,7 +250,7 @@ customer is supplied on:
 - **Power tariff**: the customer's contract, one of the active power tariffs (see
   [Tariffs](#tariffs)). It may be left empty, but a period without one cannot be
   billed. The list is shown when you hold `energy:tariffs-view`.
-- **Cadence**: how often the period is billed, **Monthly** (the default),
+- **Billing**: how often the period is billed, **Monthly** (the default),
   **Quarterly** or **Yearly**. A consumer may be billed at most quarterly; Vantigo
   accepts **Yearly** here for any customer, and the invoicing will refuse it for a
   private person.
@@ -272,7 +272,7 @@ A supply period can also be started from the customer's side, see
 ## Change a supply period's terms
 
 In **Supply periods**, click **Change terms** on the row. The dialog holds the
-period's **Power tariff** and **Cadence**, as when it was started; change them and
+period's **Power tariff** and **Billing**, as when it was started; change them and
 save. This is how a period started without a tariff, by an import or before tariffs
 existed, gets one. An active or an ended period can be changed; a cancelled one
 cannot. A tariff archived since the period was given it stays as it is, so you can
@@ -633,19 +633,19 @@ supply periods and the metering points.
 
 ### Create a tariff
 
-Click **New tariff**. Choose the kind, **Power** or **Grid** (it cannot be changed
-afterwards), and give the tariff a **Name**, which is printed on the invoice as the
+Click **New tariff**. Choose the **Kind**, **Power tariff** or **Grid tariff** (it
+cannot be changed afterwards), and give the tariff a **Name**, which is printed on the invoice as the
 contract's name, and optionally a description. Then add at least one version with at
-least one component, and save. Click a row in the list to open a tariff and edit it
-the same way.
+least one component, and save. To change a tariff later, click **Edit** on its row (it
+needs `energy:tariffs-manage`) to open the tariff and edit it the same way.
 
 The dialog marks each problem on the field it concerns, such as a missing rate or two
 versions whose dates overlap.
 
 ### Add versions
 
-Each version has **Valid from** and **Valid until**. **Valid from** is the first day
-the version applies; **Valid until** is the first day it no longer applies, so a
+Each version has **Valid from** and **Valid until (not included)**. **Valid from** is
+the first day the version applies; **Valid until** is the first day it no longer applies, so a
 version from 1 January valid until 1 July covers January to June. Leave **Valid
 until** empty for a version that applies until further notice. The days are
 Norwegian calendar days.
@@ -656,7 +656,7 @@ current version to that day and add a new version from it.
 
 ### Add components
 
-Add components to a version by kind; each one has a **Name**, the text of its line on
+Add components to a version by kind; each one has a **Line text**, the text of its line on
 the invoice. Move them up or down to set the order the lines are printed in. Rates are
 in NOK. A power tariff may hold:
 
@@ -673,11 +673,14 @@ A grid tariff may hold:
 
 - **Energy charge**: a price per kWh in the day, and optionally a night rate with the
   hours the day rate applies (from and to, whole hours) and whether the night rate
-  applies all weekend.
+  applies all weekend. Turn on the switch **Night and weekend rate** to set it: enter
+  the **Night rate (NOK/kWh)**, then when the day starts (**Day starts (hour)**) and
+  ends (**Day ends (hour, not included)**), and tick **Day rate on weekdays only** if the day rate
+  should not apply at weekends.
 - **Capacity charge**: an amount per month by the steps below.
 - **Fixed charge**: a fixed amount per month.
 - **Electricity tax**: the ordinary and the reduced rate per kWh; the metering point's
-  **Electricity tax class** decides which applies, or none.
+  **Electricity tax** decides which applies, or none.
 - **Enova levy**: the household rate per kWh, and the amount per year a point that is
   not for household use pays.
 - **Monthly fee**: as for a power tariff.
@@ -687,7 +690,7 @@ electricity tax and the Enova levy.
 
 ### Set the capacity steps
 
-The capacity charge is a table of steps: **From kW** and the price **Per month**. Each
+The capacity charge is a table of steps: **From kW** and the price in **NOK per month**. Each
 month, the point's step is found from the average of its three highest hourly
 consumptions, on three different days. The first step starts at 0 kW, and each next
 one must start higher; a table has at most 50 steps.

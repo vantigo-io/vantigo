@@ -256,7 +256,7 @@ type CustomerConsumptionAggregateResponse struct {
 
 // CustomerMeteringPointResponse defines model for CustomerMeteringPointResponse.
 type CustomerMeteringPointResponse struct {
-	// MeteringPoint A metering point. gridTariffId, gridTariffName, household, electricityTaxClass and vatTreatment (energy consumption billing design D3, D4) are always sent; the schema leaves them optional because the recorded .NET exchanges predate them.
+	// MeteringPoint A metering point. household, electricityTaxClass and vatTreatment (energy consumption billing design D3, D4) are always sent; gridTariffId and gridTariffName are sent when the point has a grid tariff and left out when it has none. The schema leaves all five optional because the recorded .NET exchanges predate them.
 	MeteringPoint MeteringPointResponse  `json:"meteringPoint"`
 	SupplyPeriods []SupplyPeriodResponse `json:"supplyPeriods"`
 }
@@ -454,7 +454,7 @@ type MeteringPointRequest struct {
 	PriceArea   *string  `json:"priceArea"`
 }
 
-// MeteringPointResponse A metering point. gridTariffId, gridTariffName, household, electricityTaxClass and vatTreatment (energy consumption billing design D3, D4) are always sent; the schema leaves them optional because the recorded .NET exchanges predate them.
+// MeteringPointResponse A metering point. household, electricityTaxClass and vatTreatment (energy consumption billing design D3, D4) are always sent; gridTariffId and gridTariffName are sent when the point has a grid tariff and left out when it has none. The schema leaves all five optional because the recorded .NET exchanges predate them.
 type MeteringPointResponse struct {
 	Address          AddressResponse `json:"address"`
 	ConnectionStatus string          `json:"connectionStatus"`
@@ -465,10 +465,10 @@ type MeteringPointResponse struct {
 	ExpectedAnnualConsumptionKwh *float64 `json:"expectedAnnualConsumptionKwh"`
 	GridArea                     *string  `json:"gridArea"`
 
-	// GridTariffId The installation's own grid tariff for the point; null when the grid company bills grid services itself.
+	// GridTariffId The installation's own grid tariff for the point; left out when it has none, as when the grid company bills grid services itself.
 	GridTariffId *int32 `json:"gridTariffId,omitempty"`
 
-	// GridTariffName The grid tariff's name, null without one.
+	// GridTariffName The grid tariff's name; left out without one.
 	GridTariffName *string `json:"gridTariffName,omitempty"`
 	Gsrn           string  `json:"gsrn"`
 
@@ -647,7 +647,7 @@ type SpotPriceSummaryBucket struct {
 	Start          time.Time `json:"start"`
 }
 
-// SupplyPeriodResponse A supply period. tariffId, tariffName and cadence (energy consumption billing design D3, D4) are always sent; the schema leaves them optional because the recorded .NET exchanges predate them.
+// SupplyPeriodResponse A supply period. cadence (energy consumption billing design D4) is always sent; tariffId and tariffName (D3) are sent when the period has a power tariff and left out when it has none. The schema leaves all three optional because the recorded .NET exchanges predate them.
 type SupplyPeriodResponse struct {
 	// Cadence monthly, quarterly or yearly.
 	Cadence         *string    `json:"cadence,omitempty"`
@@ -658,10 +658,10 @@ type SupplyPeriodResponse struct {
 	Start           time.Time  `json:"start"`
 	Status          string     `json:"status"`
 
-	// TariffId The period's power tariff, null for none.
+	// TariffId The period's power tariff; left out when it has none.
 	TariffId *int32 `json:"tariffId,omitempty"`
 
-	// TariffName The power tariff's name, null without one.
+	// TariffName The power tariff's name; left out without one.
 	TariffName *string `json:"tariffName,omitempty"`
 }
 
@@ -680,7 +680,7 @@ type SwitchSupplyPeriodRequest struct {
 type SwitchSupplyPeriodResponse struct {
 	EndedPeriod *SupplyPeriodResponse `json:"endedPeriod"`
 
-	// NewPeriod A supply period. tariffId, tariffName and cadence (energy consumption billing design D3, D4) are always sent; the schema leaves them optional because the recorded .NET exchanges predate them.
+	// NewPeriod A supply period. cadence (energy consumption billing design D4) is always sent; tariffId and tariffName (D3) are sent when the period has a power tariff and left out when it has none. The schema leaves all three optional because the recorded .NET exchanges predate them.
 	NewPeriod SupplyPeriodResponse `json:"newPeriod"`
 }
 

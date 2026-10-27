@@ -86,6 +86,44 @@ func (q *Queries) GetMeteringPointByID(ctx context.Context, id int32) (EnergyMet
 	return i, err
 }
 
+const getMeteringPointByIDForUpdate = `-- name: GetMeteringPointByIDForUpdate :one
+SELECT id, gsrn, street_address, postal_code, city, country_code, price_area, grid_area,
+       expected_annual_consumption_kwh, latitude, longitude, connection_status, created_at, updated_at,
+       grid_tariff_id, household, electricity_tax_class
+FROM energy.metering_points
+WHERE id = $1
+FOR NO KEY UPDATE
+`
+
+// GetMeteringPointByIDForUpdate is the replace's read, inside its
+// transaction: the point as it is when the grid tariff is judged against the
+// one it holds (energy tariffs plan, reading 5). FOR NO KEY UPDATE for the
+// reason MeteringPointByGsrnForUpdate gives.
+func (q *Queries) GetMeteringPointByIDForUpdate(ctx context.Context, id int32) (EnergyMeteringPoint, error) {
+	row := q.db.QueryRow(ctx, getMeteringPointByIDForUpdate, id)
+	var i EnergyMeteringPoint
+	err := row.Scan(
+		&i.ID,
+		&i.Gsrn,
+		&i.StreetAddress,
+		&i.PostalCode,
+		&i.City,
+		&i.CountryCode,
+		&i.PriceArea,
+		&i.GridArea,
+		&i.ExpectedAnnualConsumptionKwh,
+		&i.Latitude,
+		&i.Longitude,
+		&i.ConnectionStatus,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.GridTariffID,
+		&i.Household,
+		&i.ElectricityTaxClass,
+	)
+	return i, err
+}
+
 const gsrnExists = `-- name: GsrnExists :one
 SELECT EXISTS (SELECT 1 FROM energy.metering_points WHERE gsrn = $1)
 `
