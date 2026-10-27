@@ -190,15 +190,15 @@ FROM energy.consumption_intervals
 WHERE metering_point_id = $1
   AND is_current
   AND "start" < $2::timestamptz
-  AND "start" >= $3AND "end" > $4::timestamptz
+  AND "start" >= ($3::timestamptz - interval '1 day')
+  AND "end" > $3::timestamptz
 ORDER BY "start", "end"
 `
 
 type ListSettlementIntervalsParams struct {
-	MeteringPointID                        int32
-	ToTs                                   time.Time
-	FromTstimestamptz1DaypgCataloginterval time.Time
-	FromTs                                 time.Time
+	MeteringPointID int32
+	ToTs            time.Time
+	FromTs          time.Time
 }
 
 type ListSettlementIntervalsRow struct {
@@ -215,12 +215,7 @@ type ListSettlementIntervalsRow struct {
 // start reaches a day back so a long interval crossing @from is seen and the
 // partitions can still be pruned.
 func (q *Queries) ListSettlementIntervals(ctx context.Context, arg ListSettlementIntervalsParams) ([]ListSettlementIntervalsRow, error) {
-	rows, err := q.db.Query(ctx, listSettlementIntervals,
-		arg.MeteringPointID,
-		arg.ToTs,
-		arg.FromTstimestamptz1DaypgCataloginterval,
-		arg.FromTs,
-	)
+	rows, err := q.db.Query(ctx, listSettlementIntervals, arg.MeteringPointID, arg.ToTs, arg.FromTs)
 	if err != nil {
 		return nil, err
 	}
@@ -675,7 +670,7 @@ FROM energy.settlements
 WHERE supply_period_id = $1
   AND period_start = $2::timestamptz
   AND kind = $3
-  AND state IN ('draft', 'invoiced')
+  AND (state = 'draft' OR (state = 'invoiced' AND kind = 'regular'))
 FOR NO KEY UPDATE
 `
 
@@ -686,8 +681,9 @@ type LockLiveSettlementParams struct {
 }
 
 // LockLiveSettlement is a draft write's lock (plan reading 7): the live
-// settlement of (supply period, period, kind), FOR NO KEY UPDATE, so a
-// racing Settle or the holder's stamp waits.
+// settlement of (supply period, period, kind) as ux_settlements_live counts
+// it — a draft, or an invoiced regular one —, FOR NO KEY UPDATE, so a racing
+// Settle or the holder's stamp waits.
 func (q *Queries) LockLiveSettlement(ctx context.Context, arg LockLiveSettlementParams) (EnergySettlement, error) {
 	row := q.db.QueryRow(ctx, lockLiveSettlement, arg.SupplyPeriodID, arg.PeriodStart, arg.Kind)
 	var i EnergySettlement
@@ -851,32 +847,32 @@ SELECT (
         SELECT 1 FROM energy.consumption_intervals c
         WHERE c.metering_point_id = $1
           AND c."start" < $2::timestamptz
-          AND c."start" >= $3        AND c."end" > $4::timestamptz
-          AND c.received_at > $5::timestamptz
+          AND c."start" >= ($3::timestamptz - interval '1 day')
+          AND c."end" > $3::timestamptz
+          AND c.received_at > $4::timestamptz
     )
     OR EXISTS (
         SELECT 1 FROM energy.spot_prices p
-        WHERE p.price_area = $6
+        WHERE p.price_area = $5
           AND p."start" < $2::timestamptz
-          AND p."end" > $4::timestamptz
-          AND p.received_at > $5::timestamptz
+          AND p."end" > $3::timestamptz
+          AND p.received_at > $4::timestamptz
     )
     OR EXISTS (
         SELECT 1 FROM energy.tariffs t
-        WHERE t.id = ANY($7::int[])
-          AND t.updated_at > $5::timestamptz
+        WHERE t.id = ANY($6::int[])
+          AND t.updated_at > $4::timestamptz
     )
 )::bool AS changed
 `
 
 type SettlementInputsChangedSinceParams struct {
-	MeteringPointID                        int32
-	ToTs                                   time.Time
-	FromTstimestamptz1DaypgCataloginterval time.Time
-	FromTs                                 time.Time
-	Since                                  time.Time
-	PriceArea                              string
-	TariffIds                              []int32
+	MeteringPointID int32
+	ToTs            time.Time
+	FromTs          time.Time
+	Since           time.Time
+	PriceArea       string
+	TariffIds       []int32
 }
 
 // SettlementInputsChangedSince is a correction's trigger (plan reading 8):
@@ -886,7 +882,6 @@ func (q *Queries) SettlementInputsChangedSince(ctx context.Context, arg Settleme
 	row := q.db.QueryRow(ctx, settlementInputsChangedSince,
 		arg.MeteringPointID,
 		arg.ToTs,
-		arg.FromTstimestamptz1DaypgCataloginterval,
 		arg.FromTs,
 		arg.Since,
 		arg.PriceArea,

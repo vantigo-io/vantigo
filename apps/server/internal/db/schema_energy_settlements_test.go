@@ -104,7 +104,15 @@ func TestEnergySettlements_AppliesAndIsIdempotent(t *testing.T) {
 		t.Errorf("insert a correction beside its period's regular settlement: %v", err)
 	}
 	_, err = insert("correction", regular, january, "draft", false, nil)
-	wantCode("a second live correction of one period", err, "23505")
+	wantCode("a second correction draft of one period", err, "23505")
+	// An invoiced correction is a baseline, not a slot: the next one is
+	// drafted beside it.
+	if _, err := insert("correction", regular, "2026-03-01T00:00:00+01:00", "invoiced", true, nil); err != nil {
+		t.Fatalf("insert an invoiced correction: %v", err)
+	}
+	if _, err := insert("correction", regular, "2026-03-01T00:00:00+01:00", "draft", false, nil); err != nil {
+		t.Errorf("draft a correction beside an invoiced one: %v", err)
+	}
 
 	// A released settlement is forgotten by the live index: the period is
 	// drafted afresh.

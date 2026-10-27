@@ -62,9 +62,11 @@ CREATE TABLE energy.settlements (
 );
 
 -- The floor (design D5): one live regular settlement per period of a supply
--- period, and one live correction per period at a time.
+-- period — a draft or an invoiced one —, and one correction draft per period
+-- at a time. An invoiced correction is a baseline, not a slot: the next
+-- correction of the period is drafted beside it (plan reading 8).
 CREATE UNIQUE INDEX ux_settlements_live ON energy.settlements (supply_period_id, period_start, kind)
-    WHERE state IN ('draft', 'invoiced');
+    WHERE state = 'draft' OR (state = 'invoiced' AND kind = 'regular');
 CREATE INDEX ix_settlements_metering_point_id ON energy.settlements (metering_point_id, period_start);
 CREATE INDEX ix_settlements_customer_id ON energy.settlements (customer_id);
 CREATE INDEX ix_settlements_corrects_id ON energy.settlements (corrects_id) WHERE corrects_id IS NOT NULL;

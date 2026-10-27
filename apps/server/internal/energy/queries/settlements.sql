@@ -51,7 +51,7 @@ FROM energy.consumption_intervals
 WHERE metering_point_id = @metering_point_id
   AND is_current
   AND "start" < @to_ts::timestamptz
-  AND "start" >= @from_ts::timestamptz - interval '1 day'
+  AND "start" >= (sqlc.arg(from_ts)::timestamptz - interval '1 day')
   AND "end" > @from_ts::timestamptz
 ORDER BY "start", "end";
 
@@ -75,7 +75,7 @@ SELECT (
         SELECT 1 FROM energy.consumption_intervals c
         WHERE c.metering_point_id = @metering_point_id
           AND c."start" < @to_ts::timestamptz
-          AND c."start" >= @from_ts::timestamptz - interval '1 day'
+          AND c."start" >= (sqlc.arg(from_ts)::timestamptz - interval '1 day')
           AND c."end" > @from_ts::timestamptz
           AND c.received_at > @since::timestamptz
     )
@@ -126,14 +126,15 @@ ORDER BY settlement_id, position;
 
 -- name: LockLiveSettlement :one
 -- LockLiveSettlement is a draft write's lock (plan reading 7): the live
--- settlement of (supply period, period, kind), FOR NO KEY UPDATE, so a
--- racing Settle or the holder's stamp waits.
+-- settlement of (supply period, period, kind) as ux_settlements_live counts
+-- it — a draft, or an invoiced regular one —, FOR NO KEY UPDATE, so a racing
+-- Settle or the holder's stamp waits.
 SELECT *
 FROM energy.settlements
 WHERE supply_period_id = @supply_period_id
   AND period_start = @period_start::timestamptz
   AND kind = @kind
-  AND state IN ('draft', 'invoiced')
+  AND (state = 'draft' OR (state = 'invoiced' AND kind = 'regular'))
 FOR NO KEY UPDATE;
 
 -- name: LockSettlementsByIDs :many

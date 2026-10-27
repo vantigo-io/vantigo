@@ -97,6 +97,10 @@ var energyEndpointCases = []energyEndpointCase{
 		permissions: []string{"energy:consumption-manage", "energy:consumption-view", "energy:import"}},
 	{method: http.MethodGet, path: "/api/v1/energy/metering-points/999999/supply-periods",
 		permissions: []string{"energy:supply-periods-view"}},
+	// The settlements (energy settlements plan reading 12): a supply
+	// period's consumption, priced, needs what reading both needs.
+	{method: http.MethodGet, path: "/api/v1/energy/metering-points/999999/settlements",
+		permissions: []string{"energy:consumption-view", "energy:supply-periods-view"}},
 	{method: http.MethodPost, path: "/api/v1/energy/metering-points/999999/supply-periods",
 		permissions: []string{"energy:supply-periods-manage", "energy:supply-periods-view"},
 		body:        func(now time.Time) any { return map[string]any{"customerId": 1001, "start": now.Add(-24 * time.Hour)} }},
