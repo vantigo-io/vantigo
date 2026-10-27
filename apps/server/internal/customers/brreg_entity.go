@@ -357,6 +357,14 @@ func parseRemovedEntity(body []byte) (brregEntityRecord, error) {
 // are never retried on.
 var errBrregBody = errors.New("brreg: response body could not be used")
 
+// errBrregUnreachable marks entity's one failure that is about the registry
+// rather than the organisation asked about: every attempt spent on a
+// transport error, a timeout or a retryable status. The import reads it to
+// stop asking for the rest of a run (import_registry.go); a refused body, a
+// content type or an answer about another organisation number is that one
+// answer's failure and does not carry it.
+var errBrregUnreachable = errors.New("brreg: registry could not be reached")
+
 // validateBrregContentType requires contentType to parse
 // (mime.ParseMediaType) to one of accepted, naming what it actually got when
 // it does not — a 406's problem body, an HTML error page from a misbehaving
@@ -469,7 +477,7 @@ func (c *brregClient) entity(ctx context.Context, orgnr string) (brregEntityReco
 		}
 		return rec, outcome, nil
 	}
-	return brregEntityRecord{}, brregEntityUnknown, fmt.Errorf("%w: %w", errBrregUnavailable, lastErr)
+	return brregEntityRecord{}, brregEntityUnknown, fmt.Errorf("%w: %w: %w", errBrregUnavailable, errBrregUnreachable, lastErr)
 }
 
 // entityAttempt performs one GET for path, bounded by brregAttemptTimeout,

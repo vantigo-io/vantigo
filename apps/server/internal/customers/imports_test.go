@@ -524,7 +524,7 @@ func TestImportRows_UpdateModeRefusesARowWithNoMatch_AndABlankKey(t *testing.T) 
 
 func TestImportRows_MatchByLegalId(t *testing.T) {
 	t.Parallel()
-	h := newHarness(t)
+	h := newHarness(t, unknownToTheRegistry())
 	c, _ := uploadClient(t, h)
 	holder := createCustomerWithIdentity(t, c, "Holder AS", "no", validOrgNumbers[0])
 	// Two customers share the second identity, allowed by hand.
@@ -675,7 +675,7 @@ func TestImportRows_TypeSynonyms_FixedValues_AndVocabularyByName(t *testing.T) {
 
 func TestImportRows_TheDuplicateGuard_InTheFileAndOnFile(t *testing.T) {
 	t.Parallel()
-	h := newHarness(t)
+	h := newHarness(t, unknownToTheRegistry())
 	c, _ := uploadClient(t, h)
 	createCustomerWithIdentity(t, c, "Taken AS", "no", validOrgNumbers[0])
 	file := csvFileOf([]string{"name", "legalId"},
@@ -723,7 +723,7 @@ func TestImportRows_TheDuplicateGuard_InTheFileAndOnFile(t *testing.T) {
 // still the row's error.
 func TestImportRows_ARepeatedCustomerIsSkipped(t *testing.T) {
 	t.Parallel()
-	h := newHarness(t)
+	h := newHarness(t, unknownToTheRegistry())
 	c, _ := uploadClient(t, h)
 	file := csvFileOf([]string{"name", "legalId", "MALEPUNKT"},
 		[]string{"Kraft AS", validOrgNumbers[2], "707057500000000001"},
@@ -777,7 +777,7 @@ func TestImportRows_ARepeatedCustomerIsSkipped(t *testing.T) {
 // one is skipped, a differing one refused, as without it.
 func TestImportRows_ARepeatedCustomerIsSkipped_WithDuplicatesAllowed(t *testing.T) {
 	t.Parallel()
-	h := newHarness(t)
+	h := newHarness(t, unknownToTheRegistry())
 	c, _ := uploadClient(t, h)
 	file := csvFileOf([]string{"name", "legalId"},
 		[]string{"Kraft AS", validOrgNumbers[4]},

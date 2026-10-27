@@ -681,92 +681,104 @@ func (s *server) refreshRegistryRecord(ctx context.Context, customerID int32, or
 
 	var result registryRefreshResult
 	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
-		txq := store.New(tx)
-		locked, err := lockWritableCustomer(ctx, txq, customerID)
-		if err != nil {
-			if errors.Is(err, pgx.ErrNoRows) {
-				// The customer went away between this request's own 404 check
-				// and here. A customer is archived, never hard-deleted, so this
-				// is all but unreachable — but a refresh must answer the same
-				// 404 the address writes do rather than a 500.
-				return errCustomerNotFound
-			}
-			return err
-		}
-		// orgnr was resolved before the network call — it had to be, the call was
-		// made for it — so the identity is re-read here, under the lock, and the
-		// answer is thrown away if it is about a company this customer no longer
-		// is (final fix wave I4, errRegistryIdentityChanged's own comment for what
-		// the alternative costs). The same rule the whole module reads a record by:
-		// registryOrganisationNumber of the row as it stands now.
-		if registryOrganisationNumber(identityFromRow(locked.LegalCountry, locked.LegalID, locked.LegalName,
-			locked.LegalSource, locked.LegalType), locked.Type) != orgnr {
-			return errRegistryIdentityChanged
-		}
-		before, err := lockedRegistryRecord(ctx, txq, customerID)
-		if err != nil {
-			return err
-		}
-
-		if outcome == brregEntityRemoved {
-			// Removed from open data: the copy goes (Brreg's own terms), and
-			// the only thing kept is the fact that it left, and when. There is
-			// no record to return and no before/after to diff — the one change
-			// reported is the removal itself.
-			//
-			// With nothing on file there is nothing to remove and nothing to
-			// report: the status still says "removed", so the caller learns
-			// what the registry answered, but the timeline stays quiet. That is
-			// what keeps a second click (or a first refresh of a customer whose
-			// record was never fetched) from writing a duplicate entry about a
-			// disappearance that had already happened.
-			if before == nil {
-				result = registryRefreshResult{Status: registryStatusRemoved}
-				return nil
-			}
-			if err := txq.DeleteCustomerRegistryRecord(ctx, customerID); err != nil {
-				return err
-			}
-			changes := []registryChange{{Field: registryRemovedField, To: registryDateDisplay(entity.DeletedOn)}}
-			result = registryRefreshResult{Status: registryStatusRemoved, Changes: changes}
-			return recordRegistryRemoved(ctx, txq, now, customerID, changes, act.Kind, act.Display, act.UserID)
-		}
-
-		after := registryRecordFrom(entity, now)
-		status := registryStatusFound
-		if outcome == brregEntityDeleted {
-			after = deletedRegistryRecordFrom(before, entity, now)
-			status = registryStatusDeleted
-		}
-		// The hint is the feed worker's column, and the upsert below leaves it
-		// alone — so the record this call ANSWERS with has to carry it over from
-		// the row on file, or a refresh would describe a record without a hint
-		// while the stored row still has one, and the card's line would vanish
-		// until the next GET put it back. (deletedRegistryRecordFrom already
-		// copies it with everything else; this makes the found case agree.)
-		if before != nil {
-			after.RegistryUpdatedHint = before.RegistryUpdatedHint
-		}
-		changes := diffRegistryRecords(before, legalName, after)
-
-		params, err := registryUpsertParams(customerID, after)
-		if err != nil {
-			return err
-		}
-		if err := txq.UpsertCustomerRegistryRecord(ctx, params); err != nil {
-			return err
-		}
-		stored := after
-		result = registryRefreshResult{Status: status, Record: &stored, Changes: changes}
-		if len(changes) == 0 {
-			return nil
-		}
-		return recordRegistryChange(ctx, txq, now, customerID, changes, act.Kind, act.Display, act.UserID)
+		var err error
+		result, err = storeRegistryAnswer(ctx, store.New(tx), customerID, orgnr, legalName, entity, outcome, now, act)
+		return err
 	})
 	if err != nil {
 		return registryRefreshResult{}, fmt.Errorf("customers: store registry record: %w", err)
 	}
 	return result, nil
+}
+
+// storeRegistryAnswer is refreshRegistryRecord's transaction body, the
+// registry's answer already in hand: the customer locked, the identity
+// re-checked, the record on file read, what the registry said written and at
+// most one event recorded for what differed. It is its own function so the
+// import can store the record it already fetched for a row inside that row's
+// own transaction (import_registry.go) rather than fetch it a second time;
+// outcome is never brregEntityUnknown here, which stores nothing.
+func storeRegistryAnswer(ctx context.Context, txq *store.Queries, customerID int32, orgnr, legalName string,
+	entity brregEntityRecord, outcome brregEntityOutcome, now time.Time, act actor) (registryRefreshResult, error) {
+	locked, err := lockWritableCustomer(ctx, txq, customerID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			// The customer went away between this request's own 404 check
+			// and here. A customer is archived, never hard-deleted, so this
+			// is all but unreachable — but a refresh must answer the same
+			// 404 the address writes do rather than a 500.
+			return registryRefreshResult{}, errCustomerNotFound
+		}
+		return registryRefreshResult{}, err
+	}
+	// orgnr was resolved before the network call — it had to be, the call was
+	// made for it — so the identity is re-read here, under the lock, and the
+	// answer is thrown away if it is about a company this customer no longer
+	// is (final fix wave I4, errRegistryIdentityChanged's own comment for what
+	// the alternative costs). The same rule the whole module reads a record by:
+	// registryOrganisationNumber of the row as it stands now.
+	if registryOrganisationNumber(identityFromRow(locked.LegalCountry, locked.LegalID, locked.LegalName,
+		locked.LegalSource, locked.LegalType), locked.Type) != orgnr {
+		return registryRefreshResult{}, errRegistryIdentityChanged
+	}
+	before, err := lockedRegistryRecord(ctx, txq, customerID)
+	if err != nil {
+		return registryRefreshResult{}, err
+	}
+
+	if outcome == brregEntityRemoved {
+		// Removed from open data: the copy goes (Brreg's own terms), and
+		// the only thing kept is the fact that it left, and when. There is
+		// no record to return and no before/after to diff — the one change
+		// reported is the removal itself.
+		//
+		// With nothing on file there is nothing to remove and nothing to
+		// report: the status still says "removed", so the caller learns
+		// what the registry answered, but the timeline stays quiet. That is
+		// what keeps a second click (or a first refresh of a customer whose
+		// record was never fetched) from writing a duplicate entry about a
+		// disappearance that had already happened.
+		if before == nil {
+			return registryRefreshResult{Status: registryStatusRemoved}, nil
+		}
+		if err := txq.DeleteCustomerRegistryRecord(ctx, customerID); err != nil {
+			return registryRefreshResult{}, err
+		}
+		changes := []registryChange{{Field: registryRemovedField, To: registryDateDisplay(entity.DeletedOn)}}
+		return registryRefreshResult{Status: registryStatusRemoved, Changes: changes},
+			recordRegistryRemoved(ctx, txq, now, customerID, changes, act.Kind, act.Display, act.UserID)
+	}
+
+	after := registryRecordFrom(entity, now)
+	status := registryStatusFound
+	if outcome == brregEntityDeleted {
+		after = deletedRegistryRecordFrom(before, entity, now)
+		status = registryStatusDeleted
+	}
+	// The hint is the feed worker's column, and the upsert below leaves it
+	// alone — so the record this call ANSWERS with has to carry it over from
+	// the row on file, or a refresh would describe a record without a hint
+	// while the stored row still has one, and the card's line would vanish
+	// until the next GET put it back. (deletedRegistryRecordFrom already
+	// copies it with everything else; this makes the found case agree.)
+	if before != nil {
+		after.RegistryUpdatedHint = before.RegistryUpdatedHint
+	}
+	changes := diffRegistryRecords(before, legalName, after)
+
+	params, err := registryUpsertParams(customerID, after)
+	if err != nil {
+		return registryRefreshResult{}, err
+	}
+	if err := txq.UpsertCustomerRegistryRecord(ctx, params); err != nil {
+		return registryRefreshResult{}, err
+	}
+	stored := after
+	result := registryRefreshResult{Status: status, Record: &stored, Changes: changes}
+	if len(changes) == 0 {
+		return result, nil
+	}
+	return result, recordRegistryChange(ctx, txq, now, customerID, changes, act.Kind, act.Display, act.UserID)
 }
 
 // lockedRegistryRecord reads the record on file inside the refresh's own

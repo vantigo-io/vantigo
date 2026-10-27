@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -47,8 +48,9 @@ import (
 //     on the file before any row runs (import_worker.go's duplicate pass).
 //   - Nothing leaves the database while a row's transaction is open: the actor
 //     and the group and tag vocabularies are resolved once, before the first
-//     row, and every permission the mapping needs was checked when it was
-//     saved (imports_mapping.go).
+//     row, Brønnøysund is asked before each chunk's rows for what they leave
+//     out (import_registry.go), and every permission the mapping needs was
+//     checked when it was saved (imports_mapping.go).
 
 // importLayout is a mapping read against a file's header
 // (imports_mapping.go's layoutFor): where each field comes from — a column
@@ -227,14 +229,17 @@ func identityKeyOf(country, id string) (identityKey, bool) {
 	return identityKey{Country: country, ID: id}, true
 }
 
-// importPlan is one row read through the layout: its raw values, and the key
-// it matches a customer by. Everything else — the typed, validated groups —
-// is resolve's, since on an update it depends on the customer found.
+// importPlan is one row read through the layout: its raw values, the key it
+// matches a customer by, and what Brønnøysund said about its organisation
+// number when the row looked it up (import_registry.go; nil when it did not).
+// Everything else — the typed, validated groups — is resolve's, since on an
+// update it depends on the customer found.
 type importPlan struct {
 	Row            int
 	Raw            map[string]string
 	CustomerNumber *int64
 	MatchIdentity  *identityKey
+	Registry       *importRegistryAnswer
 }
 
 // plan reads one row (design D3): its raw values, its match key, and the
@@ -242,12 +247,25 @@ type importPlan struct {
 // unmapped field is blank", the truth for a create, and false when the row
 // may be an update whose unmapped fields come from the customer, in which
 // case only the mapped fields' own errors are kept (the rest are judged
-// again, laid over the customer, in importRow).
-func (l importLayout) plan(rec fileimport.Record, vocab importVocabulary, strict bool) (importPlan, []importError) {
-	p := importPlan{Row: rec.Row, Raw: l.raw(rec)}
+// again, laid over the customer, in importRow). answer is what the registry
+// said about the row's organisation number when the row looked it up
+// (import_registry.go), nil when it did not.
+func (l importLayout) plan(rec fileimport.Record, vocab importVocabulary, answer *importRegistryAnswer, strict bool) (importPlan, []importError) {
+	p, errs := l.matchKey(rec)
+	p.Registry = answer
 	if len(rec.Cells) > l.width {
 		return p, []importError{{Row: rec.Row, Message: fmt.Sprintf("This row has %d cells, but the header has %d", len(rec.Cells), l.width)}}
 	}
+	_, resolveErrs := l.resolve(p, nil, vocab, strict)
+	errs = append(errs, resolveErrs...)
+	return p, l.sorted(errs)
+}
+
+// matchKey is a row's raw values and the key it matches a customer by — the
+// part of plan the registry lookup reads too, to find the customer a row
+// will update before it asks (import_registry.go) — with the key cell's error.
+func (l importLayout) matchKey(rec fileimport.Record) (importPlan, []importError) {
+	p := importPlan{Row: rec.Row, Raw: l.raw(rec)}
 	var errs []importError
 	if l.matchBy == gen.CustomerNumber && !l.creates() {
 		if n := strings.TrimSpace(p.Raw["customerNumber"]); n != "" {
@@ -263,9 +281,7 @@ func (l importLayout) plan(rec fileimport.Record, vocab importVocabulary, strict
 			p.MatchIdentity = &key
 		}
 	}
-	_, resolveErrs := l.resolve(p, nil, vocab, strict)
-	errs = append(errs, resolveErrs...)
-	return p, l.sorted(errs)
+	return p, errs
 }
 
 // sorted orders a row's errors by where their column sits in the file, a
@@ -344,12 +360,23 @@ func importCustomerType(raw string) (string, string) {
 // defaults applied (country NO, type the customer type, name the customer's
 // name) when a legal id is there. Errors are keyed by field; with strict
 // false only the mapped fields' are kept.
+//
+// What Brønnøysund said about the row's organisation number (p.Registry,
+// import_registry.go) fills what the row leaves out, never what it gives: a
+// new customer's name when the row has none, its legal name with it, and the
+// postal address's blanks (address); the identity is then the registry's
+// (source "brreg"). When the registry could not help, the row is decided as
+// it would be without it, and an error on the legal id says why.
 func (l importLayout) resolve(p importPlan, cur *customerState, vocab importVocabulary, strict bool) (resolvedRow, []importError) {
 	var r resolvedRow
 	var errs []importError
 	fail := func(field, message string) {
 		errs = append(errs, importError{Row: p.Row, Field: field, Message: message})
 	}
+	// registryShort is a gap the lookup was made for and could not fill: the
+	// legal id's error at the end, when the errors it explains are kept.
+	registryShort := false
+	answered := p.Registry.answered()
 	failAll := func(fieldOf func(string) string, fieldErrs map[string][]string) {
 		for field, messages := range fieldErrs {
 			for _, m := range messages {
@@ -374,17 +401,29 @@ func (l importLayout) resolve(p importPlan, cur *customerState, vocab importVoca
 		return func() string { return deref(get()) }
 	}
 
-	// The row: name, type, status.
-	if l.mapped("name") {
+	// The row: name, type, status. A new customer the row names nothing gets
+	// the registry's name.
+	nameMissing := cur == nil && strings.TrimSpace(p.Raw["name"]) == ""
+	switch {
+	case nameMissing && answered && strings.TrimSpace(p.Registry.Record.Name) != "":
+		if name, msg := validateFriendlyName(p.Registry.Record.Name); msg != "" {
+			fail("name", msg)
+		} else {
+			r.Name = name
+		}
+	case l.mapped("name"):
 		if name, msg := validateFriendlyName(p.Raw["name"]); msg != "" {
 			fail("name", msg)
 		} else {
 			r.Name = name
 		}
-	} else if cur != nil {
+	case cur != nil:
 		r.Name = cur.Name
-	} else {
+	default:
 		fail("", "A new customer needs a name, and no name column is mapped")
+	}
+	if nameMissing && r.Name == "" && p.Registry != nil && !answered {
+		registryShort = true
 	}
 	typeFailed := false
 	if v := trimmed("type", nil); v != "" {
@@ -433,12 +472,27 @@ func (l importLayout) resolve(p importPlan, cur *customerState, vocab importVoca
 			if typ == "" {
 				typ = r.Type
 			}
+			// An identity the registry answered for is the registry's: unless
+			// the file gives a legal name, it is the registered one — whatever
+			// friendly name the file gives, and never the name on file of the
+			// organisation the row replaces — so the record stored with it
+			// reports no rename. An identity the row leaves as it is keeps its
+			// own name (importedIdentity keeps it whole).
+			fromRegistry := answered && strings.ToLower(country) == "no" && strings.ToLower(typ) == "business" &&
+				stripWhitespace(id) == p.Registry.OrgNr && strings.TrimSpace(p.Registry.Record.Name) != ""
+			sameIdentity := cur != nil && cur.Identity != nil && stripWhitespace(cur.Identity.ID) == stripWhitespace(id)
+			if fromRegistry && !sameIdentity && strings.TrimSpace(p.Raw["legalName"]) == "" {
+				name = p.Registry.Record.Name
+			}
 			if name == "" {
 				name = r.Name
 			}
 			identity, idErrs := validateLegalIdentity(country, typ, id, name, "manual")
 			failAll(func(field string) string { return identityColumns[field] }, idErrs)
 			if idErrs == nil {
+				if fromRegistry && registryOrganisationNumber(&identity, r.Type) == p.Registry.OrgNr {
+					identity.Source = "brreg"
+				}
 				r.Identity = &identity
 				if !typeFailed {
 					if mismatch := identityTypeMismatch(r.Type, r.Identity); mismatch != "" {
@@ -472,12 +526,23 @@ func (l importLayout) resolve(p importPlan, cur *customerState, vocab importVoca
 	}
 
 	// The two primary addresses.
+	// The postal address alone is filled from the registry, and only for the
+	// organisation the identity resolved to.
 	var curPostal, curInvoice *addressSnapshot
 	if cur != nil {
 		curPostal, curInvoice = cur.Postal, cur.Invoice
 	}
-	r.HasPostal, r.Postal = l.address(p, csvGroupPostal, "postal", curPostal, failAll)
-	r.HasInvoice, r.Invoice = l.address(p, csvGroupInvoice, "invoice", curInvoice, failAll)
+	var registryAddress *brregAddress
+	if r.Identity != nil && r.Identity.Source == "brreg" {
+		registryAddress = p.Registry.address()
+	}
+	var postalIncomplete bool
+	r.HasPostal, r.Postal, postalIncomplete = l.address(p, csvGroupPostal, "postal", curPostal, cur == nil, registryAddress, failAll)
+	r.HasInvoice, r.Invoice, _ = l.address(p, csvGroupInvoice, "invoice", curInvoice, cur == nil, nil, failAll)
+	if postalIncomplete && p.Registry != nil && !answered && r.Identity != nil &&
+		registryOrganisationNumber(r.Identity, r.Type) == p.Registry.OrgNr {
+		registryShort = true
+	}
 
 	// The billing profile.
 	if l.has(csvGroupBilling) {
@@ -567,6 +632,11 @@ func (l importLayout) resolve(p importPlan, cur *customerState, vocab importVoca
 		}
 		errs = kept
 	}
+	if registryShort && slices.ContainsFunc(errs, func(e importError) bool {
+		return e.Field == "" || e.Field == "name" || strings.HasPrefix(e.Field, "postal")
+	}) {
+		fail("legalId", p.Registry.refusal())
+	}
 	return r, errs
 }
 
@@ -575,39 +645,104 @@ func (l importLayout) resolve(p importPlan, cur *customerState, vocab importVoca
 // cell blank, "no primary address of this type" (importPrimaryAddress says
 // when that can be); otherwise validateAddress's request, its field errors
 // keyed back to the import's fields ("line1" → "postalLine1").
-func (l importLayout) address(p importPlan, g csvGroup, addrType string, cur *addressSnapshot, failAll func(func(string) string, map[string][]string)) (bool, *validatedAddress) {
-	if !l.has(g) {
-		return false, nil
+//
+// reg is the registry's address for the row (import_registry.go), nil when
+// there is none to fill from: on a create that gives no address at all —
+// the group unmapped, or every cell blank — it is the new customer's, when
+// it is a valid one; an address that fails validation has its blank parts
+// filled from it and is judged again, the file's cells winning. An address on
+// file that is complete is never touched by it. incomplete reports an
+// address that still failed.
+func (l importLayout) address(p importPlan, g csvGroup, addrType string, cur *addressSnapshot, create bool, reg *brregAddress, failAll func(func(string) string, map[string][]string)) (has bool, addr *validatedAddress, incomplete bool) {
+	var parts addressParts
+	if l.has(g) {
+		parts = l.addressParts(p.Raw, addrType, cur)
+	} else if !create || reg == nil {
+		return false, nil, false
 	}
-	field := func(part string) string { return addrType + strings.ToUpper(part[:1]) + part[1:] }
-	value := func(part string, current string) string {
-		if v, ok := p.Raw[field(part)]; ok {
-			return v
+	if fileimport.AllBlank(parts[:]) {
+		if !create || reg == nil {
+			return true, nil, false
 		}
-		if cur != nil {
-			return current
+		// Nothing from the file: the registry's address, or none — never an
+		// error the file did not cause.
+		if parsed, errs := validateAddress(parts.filledFrom(reg).request(addrType)); errs == nil {
+			return true, &parsed, false
 		}
-		return ""
+		return l.has(g), nil, false
 	}
-	var line1, line2, postalCode, city, region, country string
-	if cur != nil {
-		line1, line2, postalCode, city, region, country = cur.Line1, deref(cur.Line2), deref(cur.PostalCode), deref(cur.City), deref(cur.Region), cur.Country
+	parsed, errs := validateAddress(parts.request(addrType))
+	if errs != nil && reg != nil {
+		parsed, errs = validateAddress(parts.filledFrom(reg).request(addrType))
 	}
-	line1, line2, postalCode = value("line1", line1), value("line2", line2), value("postalCode", postalCode)
-	city, region, country = value("city", city), value("region", region), value("country", country)
-	if fileimport.AllBlank([]string{line1, line2, postalCode, city, region, country}) {
-		return true, nil
-	}
-	optional := func(v string) *string { return &v }
-	parsed, errs := validateAddress(gen.CustomerAddressRequest{
-		Type: addrType, Line1: line1, Line2: optional(line2), PostalCode: optional(postalCode),
-		City: optional(city), Region: optional(region), Country: country,
-	})
-	failAll(field, errs)
+	failAll(func(part string) string { return addressField(addrType, part) }, errs)
 	if errs != nil {
-		return true, nil
+		return true, nil, true
 	}
-	return true, &parsed
+	return true, &parsed, false
+}
+
+// addressParts is one address group's values in addressPartNames' order.
+type addressParts [6]string
+
+// addressPartNames is validateAddress's keys for an address's six parts.
+var addressPartNames = [6]string{"line1", "line2", "postalCode", "city", "region", "country"}
+
+// addressField is an address part's import field: "line1" of "postal" is
+// "postalLine1".
+func addressField(addrType, part string) string {
+	return addrType + strings.ToUpper(part[:1]) + part[1:]
+}
+
+// addressParts is an address group's values for a row: each mapped field's
+// value from the row, each unmapped one from the address on file — blank
+// when there is none.
+func (l importLayout) addressParts(raw map[string]string, addrType string, cur *addressSnapshot) addressParts {
+	var parts addressParts
+	if cur != nil {
+		parts = addressParts{cur.Line1, deref(cur.Line2), deref(cur.PostalCode), deref(cur.City), deref(cur.Region), cur.Country}
+	}
+	for i, part := range addressPartNames {
+		if v, ok := raw[addressField(addrType, part)]; ok {
+			parts[i] = v
+		}
+	}
+	return parts
+}
+
+// filledFrom is the parts with their blanks filled from a registry address
+// (registryAddressParts): the first line, and the second with it only when
+// the first was blank too, so a street the file gives never gets another
+// street's second line; the postal code, the city and the country. An
+// address the file places in another country than the registry's is left as
+// it is: the two are not the same place.
+func (a addressParts) filledFrom(reg *brregAddress) addressParts {
+	line1, line2, postalCode, city, country := registryAddressParts(reg)
+	if c := strings.ToLower(strings.TrimSpace(a[5])); c != "" && c != country {
+		return a
+	}
+	blank := func(i int) bool { return strings.TrimSpace(a[i]) == "" }
+	if blank(0) {
+		a[0] = line1
+		if blank(1) {
+			a[1] = line2
+		}
+	}
+	for i, v := range map[int]string{2: postalCode, 3: city, 5: country} {
+		if blank(i) {
+			a[i] = v
+		}
+	}
+	return a
+}
+
+// request is the parts as the address endpoint's request, for validateAddress.
+func (a addressParts) request(addrType string) gen.CustomerAddressRequest {
+	optional := func(v string) *string { return &v }
+	return gen.CustomerAddressRequest{
+		Type: addrType, Line1: a[0], Line2: optional(a[1]), PostalCode: optional(a[2]),
+		City: optional(a[3]), Region: optional(a[4]), Country: a[5],
+	}
 }
 
 // importOptions is what every row of one run shares, resolved before the
@@ -646,7 +781,7 @@ func (s *server) importRow(ctx context.Context, txq *store.Queries, l importLayo
 		// a customer number nobody has: a blank number is a new customer, a
 		// number that is not on file is a typo, never a customer with another
 		// number. A legal id nobody holds is the case the mode is for.
-		if l.mode == gen.Update || (l.matchBy == gen.CustomerNumber && p.CustomerNumber != nil) {
+		if !importCreatesUnmatched(l, p) {
 			return 0, 0, refuseRow(p.Row, string(l.matchBy), importNoMatchMessage(l, p))
 		}
 		id, err := s.importCreate(ctx, txq, l, p, o)
@@ -654,6 +789,13 @@ func (s *server) importRow(ctx context.Context, txq *store.Queries, l importLayo
 	}
 	err = s.importUpdate(ctx, txq, l, p, o, id)
 	return importUpdated, id, err
+}
+
+// importCreatesUnmatched reports whether a row that matches no customer
+// creates one (importRow's rule): never in update mode, nor for a customer
+// number nobody has.
+func importCreatesUnmatched(l importLayout, p importPlan) bool {
+	return l.mode != gen.Update && (l.matchBy != gen.CustomerNumber || p.CustomerNumber == nil)
 }
 
 // importNoMatchMessage is the update-mode refusal of a row that found no
@@ -712,7 +854,8 @@ func (s *server) importFind(ctx context.Context, txq *store.Queries, l importLay
 
 // importCreate is POST /customers for a row: every unmapped field blank, the
 // row validated whole (strict), its name, type, status, identity and contact
-// info in the create's own insert, and the rest through importRelations.
+// info in the create's own insert, the registry record the row's lookup
+// fetched stored as a Brreg pick's is, and the rest through importRelations.
 func (s *server) importCreate(ctx context.Context, txq *store.Queries, l importLayout, p importPlan, o importOptions) (int32, error) {
 	r, errs := l.resolve(p, nil, o.vocab, true)
 	if len(errs) > 0 {
@@ -726,6 +869,9 @@ func (s *server) importCreate(ctx context.Context, txq *store.Queries, l importL
 		return 0, refuseRow(p.Row, "legalId", duplicateIdentityRowMessage(conflict))
 	}
 	if err != nil {
+		return 0, err
+	}
+	if err := storeImportRegistryRecord(ctx, txq, created.ID, r.Identity, p.Registry, o.act); err != nil {
 		return 0, err
 	}
 	return created.ID, s.importRelations(ctx, txq, created.ID, p.Row, customerState{}, r, o)
@@ -781,6 +927,14 @@ func (s *server) importUpdate(ctx context.Context, txq *store.Queries, l importL
 				return refuseRow(p.Row, "legalId", duplicateIdentityRowMessage(conflict))
 			}
 			return err
+		}
+		// An identity changed to the registry's has its record stored, as the
+		// PUT's own after-commit fetch does for a changed Brreg identity — from
+		// the answer the row already has, in the row's transaction.
+		if !identityEqual(before.Identity, after.Identity) {
+			if err := storeImportRegistryRecord(ctx, txq, id, after.Identity, p.Registry, o.act); err != nil {
+				return err
+			}
 		}
 	}
 	if r.HasContact && !contactInfoEqual(cur.Contact, r.Contact) {

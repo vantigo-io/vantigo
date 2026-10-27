@@ -366,6 +366,22 @@ customer list to open **Import customers**.
    the skipped rows with the row each repeats. Skipped rows are not in the failed
    rows file.
 
+**Organisation numbers fill in the rest.** When a row has a Norwegian organisation
+number for a business, Vantigo looks up what the row leaves out in Brønnøysund: a new
+customer with no name gets the name the company is registered under, and a postal
+address that is missing, or missing a part such as the street or the postal code,
+gets the company's registered postal address (or its business address when it has no
+postal address). What your file gives always wins: only blank parts are filled, and
+an address already on a customer is never replaced; a customer being updated only
+has its address looked up when the address is incomplete. When Brønnøysund knows the
+organisation, the identity is marked as coming from Brønnøysund with its registered
+name, and the **Registry** card is filled for a customer the import creates, or one
+whose organisation number the import changes. If Brønnøysund does not know the
+organisation number, or cannot be reached, the row is checked as it would be without
+it and, when it still lacks a name, or has an incomplete address, it fails with an
+error on the organisation number saying why. The **Preview** does not
+look anything up, so it may show problems the check will fill in.
+
 When rows fail, **Download failed rows** gives you exactly those rows, with your own
 columns and an error column in front. Fix them and upload that file: your mapping is
 suggested again. On an update, only the mapped fields change; a blank cell in a
