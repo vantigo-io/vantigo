@@ -1523,13 +1523,27 @@ Decisions taken while building it:
   before the window and the past stays.
 - **The link is the app's**, `APP_URL` and the base path, as the feed's and the notices'
   are — never the public host, which serves only its allowlist.
-- **The clean-up follows what was made**: the *Vantigo* calendar is deleted when one was
-  made, else each mapped event; a mailbox that cannot be reached is forgotten and logged.
+- **The clean-up follows what was made, and never forgets on a refusal**: the *Vantigo*
+  calendar is deleted when it carries the installation's marker, else the marked copies
+  in it; in the main calendar every marked copy is deleted, whatever its date. Only a
+  mailbox gone, or an account no longer managed, is forgotten; a mailbox denied or a
+  provider unusable keeps the clean-up owed, on the backoff.
 - **A stale setting is 409 `revision_mismatch`**, the module's existing refusal, and an
   unavailable sync is 409 `mailbox_sync_unavailable` with the availability as its
   detail.
-- **Cleanup needs a working credential**, and `permission_missing` is answered only while
-  the connection is connected; otherwise the provider is simply unavailable.
+- **The token's role does not gate the sync**: a grant made with Exchange RBAC for
+  Applications never shows in the token, so the provider is available whenever the
+  switch is on and the connection connected, `calendarSync`'s `permission_missing` is
+  advisory, and a mailbox outside the grant is that person's `mailbox_denied`. Cleanup
+  needs a working credential, and `switch_off` is told the person whatever the state.
+- **The markers name the installation**: `vantigo:<client id>` on the calendars the
+  module makes and `vantigo:<client id>:<key>` on its events, so a calendar of the
+  person's own, or another installation's copies in a shared tenant, are never adopted,
+  deleted or found.
+- **Bounded work**: three minutes per person, the first failed slice stops the sync, the
+  1500 cap is hard (appointments trimmed farthest-first after the projected items), the
+  `PUT` rate limited (`calendar-mailbox-sync-write`, 10 per 10 minutes), and errors
+  logged by their codes alone.
 - **The daily reconcile is derived**, not scheduled: a person's first sync on a business
   day later than their `last_synced_at`'s reads the mailbox's list first.
 - **Graph's bare `ResourceNotFound` is not a mailbox gone**, so an event gone is never

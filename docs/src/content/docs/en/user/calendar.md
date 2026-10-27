@@ -473,8 +473,8 @@ Taking your changes from Outlook into Vantigo is planned.
 **Turn it off** with the same switch: Vantigo removes what it put in Outlook — **Removing
 what Vantigo put in Outlook…** — and the card says **Not syncing**. Choosing the other
 **Where** also removes the copies from the first place before writing them to the new
-one. In your main calendar, copies of what lies more than 30 days back stay as they were; a
-separate Vantigo calendar is removed whole.
+one. Everything Vantigo put there goes, older copies included; a separate Vantigo calendar is
+removed whole, and a calendar you made yourself is never touched.
 
 When the switch cannot be turned on, the card says why:
 
@@ -482,7 +482,6 @@ When the switch cannot be turned on, the card says why:
   sync** on the Microsoft Entra ID page ([Microsoft Entra ID](/en/user/entra/#calendar-sync)).
 - **Calendar sync needs the Microsoft Entra ID module.** — the installation does not run
   it.
-- **Calendar sync is waiting for your administrator to grant the calendar permission.**
 - **The connection to Microsoft 365 is not working right now.**
 - **Your Vantigo user is not connected to a Microsoft 365 account that Vantigo
   manages.** — HR connects your person in Staff to your Microsoft account; Vantigo never

@@ -346,7 +346,9 @@ Outlook](/nb/user/calendar/#synkroniser-med-outlook)), når en eier har slått p
 `CALENDAR_MAILBOX_SYNC_ENABLED=0`, i worker-modus, og i api-modus med
 `WORKERS_IN_PROCESS=1`. Den **våkner hvert minutt** — ikke en innstilling — tar en
 rådgivende lås så flere replikaer bytter på, og synkroniserer hver person som står for
-tur, høyst 50 per runde, én om gangen. En person står for tur
+tur, høyst 50 per runde, én om gangen, hver med tre minutter til det synkroniseringen
+spør Microsoft og de andre modulene om, så én treg postboks ikke holder igjen resten. En
+person står for tur
 `CALENDAR_MAILBOX_SYNC_POLL` (standard `15m`, minst `1m`) etter forrige synkronisering,
 og med en gang når en av avtalene deres endres, når de endrer innstillingen sin, eller
 når de trykker **Synkroniser nå** — så en avtale når Outlook innen et minutt. En

@@ -216,13 +216,18 @@ synkronisering av eller på.
    [administrasjonsveiledningen](/nb/admin/entra/#kalendersynkronisering) har stegene,
    og hvordan den begrenses til enkelte postbokser. Til en test ser den, er steg 3 *Ikke
    gjort*, og kortet **Status** viser den som manglende, *(for kalendersynkronisering)*;
-   resten av modulen virker uten den.
+   resten av modulen virker uten den. Er den gitt med Exchange RBAC for Applications i
+   stedet, viser tokenet den aldri: da blir den stående i listen, og det er som ventet —
+   synkroniseringen kjører likevel.
 
 Under bryteren sier en linje hvor kalendersynkroniseringen står:
 
 - **Klar** — folk kan slå på synkroniseringen sin;
-- **Legg til Calendars.ReadWrite, gi administratorsamtykke og test tilkoblingen på
-  nytt.** — den siste testen så ikke tillatelsen;
+- **Calendars.ReadWrite er ikke i tokenet. Det er som ventet hvis du ga den med
+  Exchange RBAC for Applications; ellers legg den til, gi administratorsamtykke og test
+  på nytt.** — den siste testen så ikke tillatelsen; folk kan likevel slå på
+  synkroniseringen sin, og den som har en postboks tillatelsen ikke når, får beskjed om
+  det på kortet sitt;
 - **Venter på tilkoblingen** — tilkoblingen er ikke tilkoblet, med årsaken under.
 
 Slår du den av, stopper synkroniseringen for alle, og kopiene Vantigo la inn i Outlook

@@ -476,9 +476,9 @@ tilbake. Det er planlagt at endringene dine i Outlook skal tas inn i Vantigo.
 
 **Slå den av** med samme bryter: Vantigo fjerner det den la inn i Outlook — **Fjerner det
 Vantigo la inn i Outlook …** — og kortet sier **Synkroniserer ikke**. Velger du det andre
-**Hvor**, fjernes også kopiene fra det første stedet før de skrives til det nye. I
-hovedkalenderen blir kopier av det som ligger mer enn 30 dager tilbake, liggende som de
-var; en egen Vantigo-kalender fjernes i sin helhet.
+**Hvor**, fjernes også kopiene fra det første stedet før de skrives til det nye. Alt
+Vantigo la inn, forsvinner, også eldre kopier; en egen Vantigo-kalender fjernes i sin
+helhet, og en kalender du har laget selv, røres aldri.
 
 Når bryteren ikke kan slås på, sier kortet hvorfor:
 
@@ -487,8 +487,6 @@ Når bryteren ikke kan slås på, sier kortet hvorfor:
   ID](/nb/user/entra/#kalendersynkronisering)).
 - **Kalendersynkronisering krever modulen Microsoft Entra ID.** — installasjonen kjører
   den ikke.
-- **Kalendersynkroniseringen venter på at administratoren din gir tillatelsen til
-  kalenderen.**
 - **Tilkoblingen til Microsoft 365 virker ikke akkurat nå.**
 - **Vantigo-brukeren din er ikke koblet til en Microsoft 365-konto som Vantigo
   styrer.** — HR kobler personen din i Ansatte til Microsoft-kontoen din; Vantigo

@@ -308,7 +308,9 @@ token carries it — and never judging the connection itself: the status the tes
 is decided by the eight alone, and a token without it is still `connected`. It is the
 [mailbox calendar's](#the-mailbox-calendar) permission, and an administrator may narrow
 it to a group of mailboxes with Exchange's RBAC for Applications ([the administration
-guide](/en/admin/entra/#calendar-sync)).
+guide](/en/admin/entra/#calendar-sync)). A grant made that way never shows in the
+token, so the permission listed missing is **advisory**: the sync runs either way, and a
+mailbox outside the grant is refused for that person alone.
 
 Beside them, **the User Administrator directory role** must be assigned to the
 application's service principal: Graph treats enabling and disabling an account,
@@ -1269,7 +1271,7 @@ with it off, and with the permission missing. `GET /connection` answers it as
 | --- | --- |
 | `off` | The switch is off. |
 | `ready` | On, the connection `connected`, and the last test's token carried `Calendars.ReadWrite`. |
-| `permission_missing` | On and `connected`, but the last test did not see `Calendars.ReadWrite`. |
+| `permission_missing` | On and `connected`, but the last test's token did not carry `Calendars.ReadWrite`. **Advisory**: expected when the permission was granted with Exchange RBAC for Applications, and otherwise a sign to add it; the sync runs either way. |
 | `unavailable` | On, but the connection is not `connected`; `reason` is the connection's `statusReason`, when it has one. |
 
 ### The status
@@ -1279,10 +1281,9 @@ with it off, and with the permission missing. `GET /connection` answers it as
 
 | State | Reason | When |
 | --- | --- | --- |
-| `available` | — | The switch is on, the connection `connected` (with or without a reason such as `secret_expiring`) and the last test's token carried `Calendars.ReadWrite`. |
+| `available` | — | The switch is on and the connection `connected` (with or without a reason such as `secret_expiring`), whether or not the last test's token carried `Calendars.ReadWrite`: a grant made with RBAC for Applications never shows there, and a mailbox outside the grant answers its own 403, `ErrMailboxDenied`. |
 | `cleanup` | `switch_off` | The switch is off, and a credential still works: the tenant and the client saved, a secret unrevoked and unexpired, and the connection not `failing` with `credential_invalid`. |
 | `unavailable` | `switch_off` | The switch is off, and no credential works. |
-| `cleanup` | `permission_missing` | The switch is on and the connection `connected`, but the permission is missing. |
 | `unavailable` | the connection's reason, else its status | The switch is on and the connection is not `connected`. |
 
 In `cleanup` a person's copies can still be removed: `Apply` takes deletes only, and
@@ -1298,25 +1299,35 @@ account it manages**: the `mailbox` must be an object id that is a row of
 and not `deleted` — otherwise `ErrMailboxUnknown`, and nothing is sent. So the calendar
 can never point it at a mailbox the module does not own. A connection with no tenant,
 client or usable secret is `ErrMailboxUnavailable`. A calendar or event id the caller
-hands back must be at most 512 printable characters with no space, and a calendar's name
-1 to 255 characters.
+hands back must be at most 512 printable characters with no space, and never a path
+segment of its own — `.` or `..`, bare or percent-encoded, judged through every decoding
+— which would move a `$batch` request's URL off the item it names; a calendar's name is
+1 to 251 characters, room left for ` (5)`.
+
+**The markers name the installation.** Every event the module writes carries the
+single-value extended property `String {7b1c5e3a-6f0d-4d5e-9a40-3c7a5e2b9d11} Name
+VantigoKey`, its value `vantigo:<client id>:<key>`; every calendar it makes carries
+`String {7b1c5e3a-6f0d-4d5e-9a40-3c7a5e2b9d11} Name VantigoCalendar`, its value
+`vantigo:<client id>` — the client id the Entra application's, a lower-case GUID, which
+tells two installations sharing a tenant apart. A calendar or an event without this
+installation's marker is never the module's: never adopted, deleted or answered by
+`Find`.
 
 ### The Graph calls
 
 | Call | Graph |
 | --- | --- |
-| `EnsureCalendar` | `GET /users/{oid}/calendars/{known}?$select=id` while `known` is set — found, it is the answer; a 404 for the item goes on —, then `POST /users/{oid}/calendars` `{name}`, sent once (no retry of a 5xx). A 409 or `ErrorFolderExists` — a create whose answer was lost — reads `GET /users/{oid}/calendars?$filter=name eq '<name>'&$select=id,name` and answers the calendar of that name. |
-| `DeleteCalendar` | `DELETE /users/{oid}/calendars/{id}`, which deletes its events with it; a 404 for the item is done. |
+| `EnsureCalendar` | `GET /users/{oid}/calendars/{known}?$select=id,name&$expand=singleValueExtendedProperties($filter=id eq '<calendar marker>')` while `known` is set — found carrying this installation's marker, it is the answer; a 404 for the item, or a calendar without the marker, goes on —, then `POST /users/{oid}/calendars` `{name, singleValueExtendedProperties: [the marker]}`, sent once (no retry of a 5xx). A 409 or `ErrorFolderExists` reads `GET /users/{oid}/calendars?$filter=name eq '<name>'&$select=id,name&$expand=…` and adopts the calendar of that name only when it carries the marker — a create whose answer was lost; otherwise it tries the next name, `<name> (2)` up to `<name> (5)`, then fails. A calendar of the person's own is never adopted. |
+| `DeleteCalendar` | `GET /users/{oid}/calendars/{id}` with the marker's `$expand` first: a calendar without this installation's marker is `ErrCalendarNotOurs` and is never deleted; then `DELETE /users/{oid}/calendars/{id}`, which deletes its events with it. A 404 for the item is done. |
 | `Apply` | `POST /$batch` of at most 20 requests, the batches one after another — Outlook allows four concurrent requests per mailbox. A create is `POST /users/{oid}/events` (the default calendar) or `POST /users/{oid}/calendars/{id}/events`; an update `PATCH /users/{oid}/events/{id}`; a delete `DELETE /users/{oid}/events/{id}`. Each request's body carries `Content-Type: application/json`. |
-| `Find` | `GET /users/{oid}/events?$filter=singleValueExtendedProperties/Any(ep: ep/id eq '<marker>' and startswith(ep/value, 'vantigo:'))&$expand=singleValueExtendedProperties($filter=id eq '<marker>')&$select=id&$top=100` for the default calendar; for a secondary one, `GET /users/{oid}/calendars/{id}/events` with the same `$expand`, `$select` and `$top` and no `$filter`, so every event in it is answered, its key `""` when it carries none. It follows `@odata.nextLink` — refused when the link leaves Graph's base — and stops at 5000. |
+| `Find` | `GET /users/{oid}/events` (the default calendar) or `GET /users/{oid}/calendars/{id}/events`, with `$filter=singleValueExtendedProperties/Any(ep: ep/id eq '<event marker>' and startswith(ep/value, 'vantigo:<client id>:'))` — and `and start/dateTime ge '<from, UTC>'` when `from` is set — `&$expand=singleValueExtendedProperties($filter=id eq '<event marker>')&$select=id&$top=100`, in either calendar: only this installation's events are answered, each with its key. It follows `@odata.nextLink` — refused when the link leaves Graph's base — and stops at 5000. |
 
 **The event** as Graph takes it: `subject`; `body` as `text`; `location.displayName`
 when there is one — on an update always, so a location dropped is cleared; `isAllDay`;
 `start` and `end`; `showAs` (`busy` when none was given; anything outside the five
 values refuses the op); `sensitivity` `private` or `normal`; `isReminderOn: false`; and,
-**on create only**, the marker — the single-value extended property
-`String {7b1c5e3a-6f0d-4d5e-9a40-3c7a5e2b9d11} Name VantigoKey`, its value `vantigo:` and
-the calendar's key — which is never written again. A timed event is laid in `UTC`; an
+**on create only**, the event marker carrying `vantigo:<client id>:` and the calendar's
+key, which is never written again. A timed event is laid in `UTC`; an
 **all-day** event runs from midnight of its first day to midnight of the day after its
 last, in the **Windows name of its zone** (`Europe/Oslo` is `W. Europe Standard Time`):
 `windowszones.go` mirrors CLDR's `windowsZones.xml`, which the calendar holds for the
@@ -1333,7 +1344,7 @@ alone.
 | A mailbox gone — `MailboxNotEnabledForRESTAPI`, `ErrorInvalidUser`, `ErrorNonExistentMailbox` or `Request_ResourceNotFound`, as the code or the first detail's code | `ErrMailboxGone` |
 | 403 | `ErrMailboxDenied` — the mailbox is outside the application's scope (an RBAC for Applications scope) |
 | 404 on an update or a delete | `Gone` (a delete is then done) |
-| 429 | Sent again once, with the others of its batch answered 429, after the longest `Retry-After` among them; a second 429, or a `Retry-After` over 60 seconds, is a throttled failure |
+| 429 | Sent again once, with the others of its batch answered 429, after the longest `Retry-After` among them — only when it is at most 30 seconds, so one mailbox never holds the calendar's worker; a second 429, or a longer wait, is a throttled failure |
 | Anything else | Graph's refusal, a failure to retry |
 
 Graph's bare `ResourceNotFound` and `ErrorItemNotFound` are never read as the mailbox

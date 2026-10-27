@@ -244,10 +244,12 @@ hvordan, står i [referansen](/en/reference/entra/#the-mailbox-calendar).
 Verifiser: linjen under bryteren sier **Klar**, og kortet **Status** viser ikke lenger
 `Calendars.ReadWrite` som manglende. En person som åpner **Kalender → Min kalender**,
 kan slå på **Synkroniser til Outlook-kalenderen min**; innen et minutt sier kortet deres
-**Sist synkronisert**, og avtalene står i Outlook. Til testen ser tillatelsen, sier
-linjen **Legg til Calendars.ReadWrite, gi administratorsamtykke og test tilkoblingen på
-nytt.**, steg 3 er *Ikke gjort*, og ingen kan slå på synkroniseringen sin — resten av
-modulen virker som før.
+**Sist synkronisert**, og avtalene står i Outlook. Til en test ser tillatelsen, sier
+linjen **Calendars.ReadWrite er ikke i tokenet. Det er som ventet hvis du ga den med
+Exchange RBAC for Applications; ellers legg den til, gi administratorsamtykke og test på
+nytt.**, og steg 3 er *Ikke gjort* — men linjen er bare til orientering: folk kan slå på
+synkroniseringen sin likevel, og en postboks tillatelsen ikke når, avvises bare for den
+personen. Resten av modulen virker som før.
 
 **Slår du den av**, stopper synkroniseringen for alle, og arbeideren fjerner kopiene den
 skrev, med tilkoblingen så lenge en hemmelighet virker. Slår du den på igjen, fortsetter
@@ -295,12 +297,13 @@ PowerShell, som Exchange-administrator:
    administratorsamtykket). Exchange legger de to tildelingene sammen, så mens samtykket
    for hele leietakeren står, begrenser omfanget ingenting.
 
-Endringene tar **30 minutter til 2 timer** å slå gjennom. Velg så **Test tilkoblingen** i
-steg 3, og se på linjen under bryteren. Vantigo bedømmer tillatelsen ut fra rollene i
-tokenet testen henter: sier den **Legg til Calendars.ReadWrite, gi administratorsamtykke
-og test tilkoblingen på nytt.** etter at samtykket er fjernet, regner Vantigo med at
-kalendersynkroniseringen mangler tillatelsen sin, og fjerner kopiene — sett samtykket
-tilbake til dette støttes. En person utenfor omfanget ser **Organisasjonen din har ikke
+Endringene tar **30 minutter til 2 timer** å slå gjennom. En tildeling gjort med RBAC for
+Applications vises aldri i tokenet, så når samtykket for hele leietakeren er fjernet,
+viser neste **Test tilkoblingen** `Calendars.ReadWrite` som manglende, steg 3 sier *Ikke
+gjort*, og linjen under bryteren sier **Calendars.ReadWrite er ikke i tokenet. Det er
+som ventet hvis du ga den med Exchange RBAC for Applications; …** — det er som ventet,
+og synkroniseringen fortsetter. Verifiser med en person innenfor omfanget: kortet deres
+sier **Sist synkronisert**. En person utenfor omfanget ser **Organisasjonen din har ikke
 gitt Vantigo tilgang til postboksen din.** på Outlook-kortet sitt: Vantigo prøver dem
 igjen hver sjette time, og leser det aldri som at tilkoblingen feiler.
 
@@ -563,7 +566,7 @@ persons **Outlook**-kort i Kalender:
 
 | Hvor | Betyr | Gjør |
 | --- | --- | --- |
-| *Legg til Calendars.ReadWrite, gi administratorsamtykke og test tilkoblingen på nytt.* under bryteren | Bryteren er på, tilkoblingen tilkoblet, og den siste testens token manglet `Calendars.ReadWrite`. Ingen kan slå på synkroniseringen sin, og arbeideren fjerner kopiene som allerede er skrevet. | Legg til tillatelsen, gi samtykke og test igjen ([kalendersynkronisering](#slå-den-på)). |
+| *Calendars.ReadWrite er ikke i tokenet. …* under bryteren | Bryteren er på, tilkoblingen tilkoblet, og den siste testens token manglet `Calendars.ReadWrite`. Som ventet med RBAC for Applications; synkroniseringen kjører uansett. | Ingenting med RBAC for Applications. Ellers legg til tillatelsen, gi samtykke og test igjen ([kalendersynkronisering](#slå-den-på)); til da avvises hver persons synkronisering som at postboksen deres er nektet. |
 | *Venter på tilkoblingen* under bryteren | Tilkoblingen er ikke tilkoblet; årsaken står under linjen. | Rett tilkoblingen slik tabellen over sier. |
 | *Organisasjonen din har ikke gitt Vantigo tilgang til postboksen din.* på en persons kort | Graph svarte 403 for postboksen (`mailbox_denied`): utenfor et omfang i RBAC for Applications. Prøves igjen hver sjette time. | Legg personen til i omfangets gruppe, eller godta det; personen trykker **Synkroniser nå** for å prøve med en gang. |
 | *Postboksen din ble ikke funnet.* på en persons kort | Brukeren har ingen Exchange Online-postboks, eller finnes ikke lenger (`mailbox_gone`). Prøves igjen hver sjette time. | Gi kontoen en lisens med Exchange Online. |

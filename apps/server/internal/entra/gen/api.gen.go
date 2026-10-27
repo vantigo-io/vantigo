@@ -381,7 +381,7 @@ type EntraAccountCounts struct {
 	Enabled  int32 `json:"enabled"`
 }
 
-// EntraCalendarSync The calendar sync switch (calendar Outlook sync design O2): whether people may sync their Vantigo calendar to Outlook, and whether it can run. status is off while the switch is; ready when on, connected, and the last test's token carried Calendars.ReadWrite; permission_missing when on but the last test did not see it (add it, consent, and test again); unavailable when on but the connection is not connected, reason then being the connection's statusReason.
+// EntraCalendarSync The calendar sync switch (calendar Outlook sync design O2): whether people may sync their Vantigo calendar to Outlook, and whether it can run. status is off while the switch is; ready when on, connected, and the last test's token carried Calendars.ReadWrite; permission_missing when on and connected but the last test's token did not carry it — advisory: expected when the permission was granted with Exchange RBAC for Applications, which no token shows, and otherwise a sign to add it, consent, and test again; the sync runs either way, and a mailbox outside the grant is refused per person; unavailable when on but the connection is not connected, reason then being the connection's statusReason.
 type EntraCalendarSync struct {
 	Enabled bool `json:"enabled"`
 
@@ -398,7 +398,7 @@ type EntraConnection struct {
 	// Accounts How many accounts the module keeps in the tenant, by state; count is all of them, deleted included.
 	Accounts EntraAccountCounts `json:"accounts"`
 
-	// CalendarSync The calendar sync switch (calendar Outlook sync design O2): whether people may sync their Vantigo calendar to Outlook, and whether it can run. status is off while the switch is; ready when on, connected, and the last test's token carried Calendars.ReadWrite; permission_missing when on but the last test did not see it (add it, consent, and test again); unavailable when on but the connection is not connected, reason then being the connection's statusReason.
+	// CalendarSync The calendar sync switch (calendar Outlook sync design O2): whether people may sync their Vantigo calendar to Outlook, and whether it can run. status is off while the switch is; ready when on, connected, and the last test's token carried Calendars.ReadWrite; permission_missing when on and connected but the last test's token did not carry it — advisory: expected when the permission was granted with Exchange RBAC for Applications, which no token shows, and otherwise a sign to add it, consent, and test again; the sync runs either way, and a mailbox outside the grant is refused per person; unavailable when on but the connection is not connected, reason then being the connection's statusReason.
 	CalendarSync EntraCalendarSync `json:"calendarSync"`
 
 	// ClientId The application (client) id of the app registration. Absent until step 1 is saved.
