@@ -35,7 +35,7 @@ import { ColleaguePicker } from "../components/colleague-picker";
 import { type OccurrenceAnswer, OccurrenceQuestion } from "../components/occurrence-question";
 import { SourceLegend } from "../components/source-legend";
 import "../i18n";
-import { APPOINTMENT_KIND, HOLIDAYS_KIND } from "../lib/colours";
+import { APPOINTMENT_KIND, HOLIDAYS_KIND, OUTLOOK_KIND } from "../lib/colours";
 import { addDays, daysBetween } from "../lib/dates";
 import { useHiddenKinds } from "../lib/filter";
 import { type CalendarEventProps, holidayEventInput, toEventInput } from "../lib/items";
@@ -152,16 +152,30 @@ export function CalendarPage() {
   }, [controller, view]);
 
   const busyLabel = t("busy");
+  const outlookLabels = useMemo(
+    () => ({
+      busy: t("outlookShowAs.busy"),
+      tentative: t("outlookShowAs.tentative"),
+      oof: t("outlookShowAs.oof"),
+      workingElsewhere: t("outlookShowAs.workingElsewhere"),
+    }),
+    [t],
+  );
   const events = useMemo(() => {
     if (!items.data) return [];
     const drawn = items.data.items
       .filter((item) => !hidden.has(item.kind))
-      .map((item) => toEventInput(item, { busyLabel, readOnly: colleague !== undefined }));
+      .map((item) => toEventInput(item, { busyLabel, outlookLabels, readOnly: colleague !== undefined }));
     return hidden.has(HOLIDAYS_KIND) ? drawn : [...drawn, ...items.data.publicHolidays.map(holidayEventInput)];
-  }, [items.data, hidden, busyLabel, colleague]);
+  }, [items.data, hidden, busyLabel, outlookLabels, colleague]);
 
   const kinds = useMemo(() => {
-    const sources = colleague ? [] : (meta.data?.sources ?? items.data?.sources ?? []).map((source) => source.kind);
+    // A colleague's calendar has no providers, but their Outlook busy blocks are a chip of their own.
+    const sources = colleague
+      ? items.data?.items.some((item) => item.kind === OUTLOOK_KIND)
+        ? [OUTLOOK_KIND]
+        : []
+      : (meta.data?.sources ?? items.data?.sources ?? []).map((source) => source.kind);
     return [...new Set([APPOINTMENT_KIND, ...sources, HOLIDAYS_KIND])];
   }, [colleague, meta.data, items.data]);
 

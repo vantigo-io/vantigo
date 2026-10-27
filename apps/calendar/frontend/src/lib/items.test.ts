@@ -5,7 +5,37 @@ import { holidayEventInput, toEventInput } from "./items";
 
 const options = { busyLabel: "Busy" };
 
+const outlookLabels = {
+  busy: "Busy in Outlook",
+  tentative: "Tentative in Outlook",
+  oof: "Out of office",
+  workingElsewhere: "Working elsewhere",
+};
+
 describe("toEventInput", () => {
+  it.each([
+    ["busy", "Busy in Outlook"],
+    ["tentative", "Tentative in Outlook"],
+    ["oof", "Out of office"],
+    ["workingElsewhere", "Working elsewhere"],
+  ] as const)("titles an Outlook %s block by how it shows the time, read-only and styled busy", (showAs, title) => {
+    const item: CalendarItem = {
+      kind: "calendar.outlook",
+      id: "0123456789abcdef",
+      title: "",
+      allDay: false,
+      startsAt: "2026-10-20T08:00:00Z",
+      endsAt: "2026-10-20T09:00:00Z",
+      done: false,
+      outlook: { showAs },
+    };
+    const event = toEventInput(item, { ...options, outlookLabels });
+    expect(event).toMatchObject({ title, editable: false, color: "var(--vantigo-calendar-cyan)" });
+    expect(event.className).toContain("vantigo-calendar-busy");
+    // A colleague's view draws the same block.
+    expect(toEventInput(item, { ...options, outlookLabels, readOnly: true })).toMatchObject({ title, editable: false });
+  });
+
   it("draws an all-day item to the day after its last, FullCalendar's end being exclusive", () => {
     const item: CalendarItem = {
       kind: "staff.absence",

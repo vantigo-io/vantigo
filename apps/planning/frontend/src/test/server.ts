@@ -55,6 +55,8 @@ export interface PlanningServer {
   settings?: PlanningSettings;
   /** Each person's days away, by person id. */
   away?: Record<number, PlanningDateSpan[]>;
+  /** The calendar's busy hours and days in every week, by person id; a person left out has no answer. */
+  busy?: Record<number, { hours: number; days: number }>;
   /** The timeline's flags, any person's. */
   flags?: PlanningTimelineFlag[];
   /** The caller's person; null for nobody (`no_person`). Ada by default. */
@@ -231,6 +233,11 @@ export const stubPlanningApi = (server: PlanningServer = {}): PlanningStub => {
       free: round(available - booked),
       away: daysAway > 0,
     };
+    const busyOf = personIds.filter((id) => server.busy?.[id]);
+    if (busyOf.length > 0) {
+      answer.busyHours = busyOf.reduce((sum, id) => sum + (server.busy?.[id]?.hours ?? 0), 0);
+      answer.busyDays = busyOf.reduce((sum, id) => sum + (server.busy?.[id]?.days ?? 0), 0);
+    }
     if (capacity > 0) answer.loadPercent = round((booked / capacity) * 100);
     return answer;
   };

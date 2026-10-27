@@ -33,6 +33,13 @@ export const calendarCatalog = {
     kind_expenses_claim: "Travel",
     kind_planning_allocation: "Bookings",
     kind_calendar_subscription: "Subscriptions",
+    kind_calendar_outlook: "Outlook",
+    outlookShowAs: {
+      busy: "Busy in Outlook",
+      tentative: "Tentative in Outlook",
+      oof: "Out of office",
+      workingElsewhere: "Working elsewhere",
+    },
 
     newAppointment: "New appointment",
     appointment: "Appointment",
@@ -301,6 +308,9 @@ export const calendarCatalog = {
       detailFull: "Full titles",
       detailBusy: "Busy only",
       detailBusyHelp: "Every title becomes Busy.",
+      busyIn:
+        "The time you are busy in your main Outlook calendar shows in your Vantigo calendar, and as busy to your colleagues and on Planning's board. Their titles are never read.",
+      busySynced: "Busy time read {{relative}}",
       statePending: "Waiting for the first sync…",
       stateActive: "Last synced {{relative}}",
       stateStopping: "Removing what Vantigo put in Outlook…",
@@ -361,6 +371,13 @@ export const calendarCatalog = {
     kind_expenses_claim: "Reiser",
     kind_planning_allocation: "Allokeringer",
     kind_calendar_subscription: "Abonnementer",
+    kind_calendar_outlook: "Outlook",
+    outlookShowAs: {
+      busy: "Opptatt i Outlook",
+      tentative: "Foreløpig i Outlook",
+      oof: "Ikke til stede",
+      workingElsewhere: "Arbeider et annet sted",
+    },
 
     newAppointment: "Ny avtale",
     appointment: "Avtale",
@@ -629,6 +646,9 @@ export const calendarCatalog = {
       detailFull: "Fulle titler",
       detailBusy: "Bare opptatt",
       detailBusyHelp: "Alle titler blir Opptatt.",
+      busyIn:
+        "Tiden du er opptatt i hovedkalenderen din i Outlook vises i Vantigo-kalenderen din, og som opptatt for kollegene dine og på Bemanning-tavlen. Titlene blir aldri lest.",
+      busySynced: "Opptatt-tid lest {{relative}}",
       statePending: "Venter på den første synkroniseringen …",
       stateActive: "Sist synkronisert {{relative}}",
       stateStopping: "Fjerner det Vantigo la inn i Outlook …",
