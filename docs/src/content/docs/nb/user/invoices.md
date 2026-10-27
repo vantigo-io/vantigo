@@ -455,12 +455,12 @@ avregnes før du åpner veiviseren.
 
 ### Lag et utkast av det
 
-Klikk **Fra forbruk**. Dialogen **Fakturer forbruk** spør om:
+Klikk **Fra forbruk** (vises bare for en aktiv kunde). Dialogen **Fakturer forbruk** spør om:
 
 - **Faktureringsperioder som slutter senest** — i dag med mindre du endrer det. *Hver
   faktureringsperiode som er avsluttet innen denne dagen og ikke fakturert, avregnes og
   vises.* Endrer du dagen, avregnes det på nytt.
-- **Avregningene**, per målepunkt (*Avregninger for 707057500012345678*): hver
+- **Avregningene**, per målepunkt, med ID og adresse som overskrift (*707057500012345678 · Storgata 1, 9008 Tromsø*): hver
   faktureringsperiode med kWh, beløp og linjer — kraften, nettleiens dag og natt,
   kapasitetsleddet per måned, fastbeløpene og avgiftene — og *Korreksjon* på en som
   korrigerer en periode som er fakturert før. *Forbruket er delvis stipulert* når noen
@@ -472,7 +472,7 @@ Klikk **Fra forbruk**. Dialogen **Fakturer forbruk** spør om:
 - **Mva-kode for strøm** og **Mva-kode for avgiftsfri strøm (Nord-Norge)** — med kodene
   på kortet **Forbruk til fakturering** i innstillingene som utgangspunkt, eller kode 7
   for begge så lenge selgeren ikke er mva-registrert. Hver linje får en av de to etter
-  målepunktet sitt.
+  målepunktet sitt. Hver vises bare når en avkrysset avregning har en linje den gjelder for.
 - **Merknad** — *Skrives på fakturaen. Står den tom, foreslås en merknad om fakturaen den
   erstatter når forbruket er kreditert før.*
 - **Legg forbruket på** — **Et nytt utkast**, eller et av kundens fakturautkast.
@@ -512,7 +512,7 @@ med to ting i tankene:
 - **En avregnings linjer holdes sammen.** Du kan endre tekst, antall eller pris, fjerne
   noen av dem eller flytte dem samlet, men ikke sette andre linjer mellom dem: **Lagre**
   avviser det. Fjerner du alle linjene til en avregning, gis den tilbake — ufakturert
-  igjen etter **Lagre**, slik arbeid blir.
+  igjen etter **Lagre**, slik arbeid blir. En korreksjonslinje kan ikke ha rabatt.
 - **Oppdater arbeidet** avregner utkastets forbruk på nytt og skriver linjene på nytt fra
   Energis tall nå, i stedet for linjene du har redigert; en avregning som ikke lenger kan
   faktureres, faller bort og nevnes som frigitt. Er avlesninger eller priser endret etter
@@ -528,8 +528,7 @@ eller nå hører til en annen kunde: oppdater og utsted igjen. Prosjekter-module
 ikke være slått på for et utkast med bare forbruk.
 
 **Krediter** en forbruksfaktura som enhver annen. En avregning gis tilbake — ufakturert
-igjen, avregnet på nytt neste gang — bare når kreditnotaen returnerer **hver eneste av
-linjene** dens i sin helhet; returneres én av dem, forblir avregningen fakturert.
+igjen, avregnet på nytt neste gang — først når hver eneste av linjene dens er returnert i sin helhet — av denne kreditnotaen eller de før den; en linje på 0,00 trenger ikke å returneres. Returneres bare noen av dem, forblir avregningen fakturert til resten er det.
 Avlesninger eller priser som endres etter at en periode er fakturert, trenger ingen
 kreditnota: Energi lager selv en korreksjon av differansen, og den dukker opp i
 veiviseren.
@@ -569,7 +568,7 @@ før du forhåndsviser eller utsteder*.
   på alvor: et utstedt dokument uten noen av dem kan aldri sendes som EHF, bare
   krediteres og utstedes på nytt.
 - **Linjer**: **Legg til en linje**, deretter **Beskrivelse**, **Antall** (inntil tre
-  desimaler), **Enhet**, **Enhetspris** (inntil fire desimaler), **Rabatt %** og
+  desimaler), **Enhet**, **Enhetspris** (inntil fire desimaler, åtte på en linje som fakturerer strømforbruk), **Rabatt %** og
   **Mva-kode** fra kodene som tilbys på nye linjer; **Beløp** er linjens nettobeløp.
   Pilene flytter en linje, søppelbøtta fjerner den. En linje med en kode som siden er
   tatt ut av listen, viser den fortsatt, merket *(tilbys ikke lenger)*.

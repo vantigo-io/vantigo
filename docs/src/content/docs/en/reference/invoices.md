@@ -121,13 +121,13 @@ registration in the day's CSV — it is told in the business time zone too.
 
 | Table | What it holds |
 | --- | --- |
-| `invoices.settings` | One row: the seller record (legal name, organisation number, VAT registration, Foretaksregisteret, address, bank account, IBAN/BIC, e-mail, footer), the default terms and currency, `series_start`, the seller's Peppol id `peppol_id`, the KID agreement `kid_length` and `kid_algorithm` (a pair or both NULL, `ck_settings_kid`), the VAT code each kind of work is invoiced at — `work_vat_code_hours`, `work_vat_code_expenses`, `work_vat_code_milestones`, each a code that exists, all 1 (`3`, 25 %) by default — and the timesheet's default `timesheet_default` (off) and person label `timesheet_person_label` (`initials`, the default, `number` or `name`). |
+| `invoices.settings` | One row: the seller record (legal name, organisation number, VAT registration, Foretaksregisteret, address, bank account, IBAN/BIC, e-mail, footer), the default terms and currency, `series_start`, the seller's Peppol id `peppol_id`, the KID agreement `kid_length` and `kid_algorithm` (a pair or both NULL, `ck_settings_kid`), the VAT code each kind of work is invoiced at — `work_vat_code_hours`, `work_vat_code_expenses`, `work_vat_code_milestones`, each a code that exists, all 1 (`3`, 25 %) by default — the two codes an energy line takes by its hint, `energy_vat_code` (1) and `energy_vat_code_exempt` (10 where 5N was seeded, else 5), foreign keys `ON DELETE RESTRICT` ([VAT codes for energy](#vat-codes-for-energy)) — and the timesheet's default `timesheet_default` (off) and person label `timesheet_person_label` (`initials`, the default, `number` or `name`). |
 | `invoices.counters` | The one counter row, `documents`; it exists exactly when something has been issued. |
 | `invoices.vat_codes` | The tenant's codes: label, name, SAF-T code, UNCL5305 category, exemption reason, active. |
 | `invoices.vat_code_rates` | Each code's rates as dated periods that never overlap (an exclusion constraint). A rate change is a new period, not a new code. |
 | `invoices.invoices` | Drafts and issued documents: kind, status, number, customer, delivery, references, notes, the buyer snapshot and the seller snapshot (written at issue), the totals, the stored PDF's key and SHA-256, an invoice's `kid` with the `kid_algorithm` it was computed with (set at issue, both or neither, never on a credit note), the project its work belongs to — `project_id` and its code `project_reference`, both or neither (`ck_invoices_project`), derived by every save of an invoice draft and copied by a credit note ([The project](#the-project)) — and the `timesheet` flag (off by default). Every one of them is frozen at issue with the rest of the row. |
-| `invoices.lines` | Description, quantity (3 decimals), unit, unit price (4), discount (2), VAT code, the computed gross, allowance and net, the credited line on a credit note, the invoice a deduction line deducts (`deducts_invoice_id` — an unconstrained reference, deliberately without a foreign key, whose `FOR KEY SHARE` on the deducted invoice would cycle with the newest-first lock of a customer's documents; the save and the issue accept only an issued invoice of the same customer, and an issued document is never deleted), and the VAT snapshot written at issue. The quantity is above 0, or below 0 on a deduction line only (`ck_lines_quantity`), and a deduction line carries no discount (`ck_lines_deduction_no_discount`). `(id, invoice_id)` is unique, so a child row names its line and its document together and the two never disagree. |
-| `invoices.line_sources` | The work a line bills: the source's kind (`time.entry`, `expenses.entry`, `projects.milestone`) and id — opaque, the rows are other modules' — the revision it was taken at, an expense's kind (`source_subkind`, only on an expense), the project, the quantity, the source's exact amount (`numeric(22,8)`: an hour's amount carries up to eight decimals), the currency, the work's date and the state: `held` from the draft, `invoiced` by the issue, `released` by the credit note that returns its line. Its line and document are one composite key, and the rows go with their line. A source is live — `held` or `invoiced` — on one row at most (`ux_line_sources_live`). A row is written `held`; under a draft its one change is to `invoiced`, under an issued document its one change is from `invoiced` to `released`, once, nothing else changed. A row is deleted only under a draft and only while `held`, so dropping a hold never frees an invoiced source. A trigger refuses the rest (`invoices: a line source is written held`, `invoices: a line source changes only its state`, `invoices: a line source is deleted only while held`, `invoices: issued document is immutable`). Every save of a draft deletes its lines and so its held rows, and inserts the rows it carries anew under the new lines, in one statement ordered by kind and id ([Invoicing work](#invoicing-work)). |
+| `invoices.lines` | Description, quantity (3 decimals), unit, unit price (8; a request gives at most 4 but on a line billing an energy settlement or a credit note's line), discount (2), VAT code, the computed gross, allowance and net, the credited line on a credit note, the invoice a deduction line deducts (`deducts_invoice_id` — an unconstrained reference, deliberately without a foreign key, whose `FOR KEY SHARE` on the deducted invoice would cycle with the newest-first lock of a customer's documents; the save and the issue accept only an issued invoice of the same customer, and an issued document is never deleted), and the VAT snapshot written at issue. The quantity is above 0, or below 0 on a deduction line or a correction line only (`ck_lines_quantity`); a deduction line carries no discount (`ck_lines_deduction_no_discount`), nor does a correction line (`correction`, set by the module from the line's sources; `ck_lines_correction`, which also keeps its `deducts_invoice_id` NULL). `(id, invoice_id)` is unique, so a child row names its line and its document together and the two never disagree. |
+| `invoices.line_sources` | The work a line bills: the source's kind (`time.entry`, `expenses.entry`, `projects.milestone` or `energy.settlement`; the CHECK is a shape, `^[a-z]+\.[a-z_]+$`) and id — opaque, the rows are other modules' — the revision it was taken at, an expense's kind (`source_subkind`, also set on a settlement), the project (NULL exactly for a settlement, `ck_line_sources_project`), the quantity, the source's exact amount (`numeric(22,8)`: an hour's amount carries up to eight decimals), the currency, the work's date, for a settlement its `line_count` and the snapshot `point_gsrn`, `point_address`, `price_area`, `contract_name`, `period_from`, `estimated` ([The lines of a settlement](#the-lines-of-a-settlement)), and the state: `held` from the draft, `invoiced` by the issue, `released` by the credit note that returns its line. Its line and document are one composite key, and the rows go with their line. A source is live — `held` or `invoiced` — on one row at most (`ux_line_sources_live`). A row is written `held`; under a draft its one change is to `invoiced`, under an issued document its one change is from `invoiced` to `released`, once, nothing else changed. A row is deleted only under a draft and only while `held`, so dropping a hold never frees an invoiced source. A trigger refuses the rest (`invoices: a line source is written held`, `invoices: a line source changes only its state`, `invoices: a line source is deleted only while held`, `invoices: issued document is immutable`). Every save of a draft deletes its lines and so its held rows, and inserts the rows it carries anew under the new lines, in one statement ordered by kind and id ([Invoicing work](#invoicing-work)). |
 | `invoices.line_releases` | A credit note's release of an original line's source: the credit note, its line and the source, a source released once. Frozen with the credit note at its issue. |
 | `invoices.timesheet_rows` | The timesheet as printed, a snapshot: the position, the time entry, the person's label, the date, the hours, the work type and the description — never the entry's note. Written whole while the document's `timesheet` flag is on, pruned by every save to the hours the draft still holds ([The timesheet](#the-timesheet)); frozen with its document at issue, deleted with a deleted draft. |
 | `invoices.vat_summaries` | An issued document's VAT per (category, rate) with its SAF-T code and reason. |
@@ -501,8 +501,8 @@ then the grouping's term:
 
 **A line has one unit price**, so within a key hours split further by their effective
 rate: two people at two rates on one project are two lines under `project`, and an hour
-of a work type with a multiplier is billed at its own price. The rate is rounded to the
-four decimals `unit_price` holds; where that reaches the øre, the line's net differs from
+of a work type with a multiplier is billed at its own price. The rate is rounded to
+four decimals, the most a line of work takes; where that reaches the øre, the line's net differs from
 Time's exact amount and the draft warns `line_differs_from_sources`
 ([The link and its states](#the-link-and-its-states)). Lines are ordered by the
 project's code, then hours, expenses and milestones, then the key.
@@ -1005,8 +1005,8 @@ A settlement is a line source of the kind **`energy.settlement`**
 Every read of the provider is made on the pool before any transaction, through the
 accessors in `contractscalls.go`, and never under a lock (the provider's rule,
 [module boundaries rule 10](/en/contributing/module-boundaries/#the-rules)). In the app
-the view is the **Consumption** section of the card "Uninvoiced work" on a customer's
-Invoices tab, and the wizard is **From consumption**
+the view is the card **Consumption**, below the card "Uninvoiced work" on a customer's
+Invoices tab, and the wizard is **From consumption**, offered only for an active customer
 ([the user guide](/en/user/invoices/#invoicing-consumption)). Everything here asks for
 `invoices:access` and `invoices:create` and nothing more ([Permissions](#permissions)):
 Energy's own permissions are not asked, as Time's and Projects' are not for work.
@@ -1025,11 +1025,12 @@ the business time zone.
   supplies[], warnings[]}`, each supply its `supplyPeriodId`, `meteringPointId`,
   `gsrn`, `address` (*"street, postal city"*), `priceArea`, `contractName` (the power
   tariff's name), `cadence` (`monthly`, `quarterly` or `yearly`), `billedThrough` (the
-  end of the last invoiced period, absent when none), `duePeriods` (how many periods
+  last day of the last invoiced period — the day before Energy's exclusive end —, absent when none), `duePeriods` (how many periods
   closed through the date are not invoiced) and `blocked`, the first due period's
   blocker (`period_open`, `no_tariff`, `no_consumption`, `incomplete`, `price_gap`,
   `price_preliminary`; [Blockers](/en/reference/energy/#blockers)), absent when none.
-- **`GET /consumption/settlements`** — the wizard's list. Energy's `Settle` for the
+- **`GET /consumption/settlements`** — the wizard's list. It reads the billing profile
+  and Energy's `DueSupplies` (for the cadences), then `Settle` for the
   customer through the date — the provider's command, which writes **Energy's own**
   draft settlements; this module writes nothing — as `{customerId, through,
   settlements[], warnings[]}`, in a document's order (below). Each settlement carries
@@ -1049,8 +1050,8 @@ the business time zone.
 | `blocked` | Energy cannot price it (`blocked`, `blockedDetail`). |
 | `cadence` | A yearly supply of a person, who is billed at least quarterly (below). |
 
-Both answer the warning **`consumption_truncated`** when Energy had more than 5 000
-(`MaxBillableRows`) to answer and set `More`: the rest is not in the answer.
+Both answer the warning **`consumption_truncated`** when either answered `More`, Energy having more than 5 000
+(`MaxBillableRows`) to answer: the rest is not in the answer.
 
 ### From consumption to a draft
 
@@ -1060,8 +1061,7 @@ invoice draft of a customer's settled consumption — 201 — or, with `invoiceI
 200. The body: `{customerId, through?, settlementIds?, invoiceId?, revision?, vatCodes?:
 {energy?, energyExempt?}, note?}`. **In order**, each before any transaction:
 
-1. **The body** (400 on the field): a customer; `settlementIds` positive, none twice
-   and at most 5 000 (`settlementIds`, `settlementIds[i]`); `invoiceId` and `revision`
+1. **The body** (400 on the field): a customer; `settlementIds`, when given, at least one and at most 5 000, each positive and none twice (`settlementIds`, `settlementIds[i]`); `invoiceId` and `revision`
    together; a `note` of at most 1 000 characters.
 2. **An append's target**, as the work wizard's: 404 unknown, 409 `invoice_issued`
    once issued, 400 on `invoiceId` for a credit note or another customer's draft; then
@@ -1072,7 +1072,7 @@ invoice draft of a customer's settled consumption — 201 — or, with `invoiceI
    then `Settle` for the customer through the date — or, with `settlementIds`,
    `Settlements` by those ids. An answer with `More` is `too_many_sources`.
 6. **The judgments**, each over every settlement before the next, the first refused
-   named in `sourceKind` and `sourceId`:
+   named in `sourceKind` and `sourceId` (`currency_not_nok` in its detail only):
    - a named settlement of another customer — 409 `source_not_for_customer`;
    - a named settlement missing, invoiced or released — `source_not_invoiceable`;
    - a named settlement Energy cannot bill — **`settlement_blocked`**, the blocker and
@@ -1092,7 +1092,7 @@ invoice draft of a customer's settled consumption — 201 — or, with `invoiceI
    `vatCodes.energy` or `vatCodes.energyExempt`.
 8. **The lines** ([below](#the-lines-of-a-settlement)); more than 500 with the target's
    own is 409 `too_many_lines` (no `suggestedGrouping`: consumption has no grouping), and
-   a line too large for its columns a 400 on `lines`.
+   a line too large for its columns a 400 on `settlementIds`, and a document total too large, judged in the transaction, a 400 on `lines`.
 9. **The delivery period** is the settlements' span, from the first period's first day
    to the last period's last, widened on an append as the work wizard widens it
    ([From work to a draft](#from-work-to-a-draft)); **the note** the request's, else the
@@ -1151,7 +1151,7 @@ and the line then differs from its source (`line_differs_from_sources`). That is
 1 500 kWh line misses its amount by up to 7 øre nine times in ten, and EHF's
 PEPPOL-EN16931-R120 holds a line's net to quantity × price. A line of no quantity and
 no amount is left out; a settlement left with no line keeps its first as `1 stk × 0.00`,
-so its row always sits on a line. The discount is 0.
+so its row always sits on a line. The discount is 0. A save takes eight decimals on a line naming a settlement — and on a credit note's line whose original has more than four — and four on any other, a 400 on `lines[i].unitPrice` past them — except a price this draft already stores with more than four decimals, which a save may give back (a customer change or a detached settlement keeps its lines' prices). The customer's personal-data export writes a unit price with its own decimals, at least four and at most eight.
 
 **What the held row takes** (`line_sources`, `settlementSource`): the kind
 `energy.settlement`, the settlement's id and revision, its kind as `source_subkind`
@@ -1201,8 +1201,8 @@ negative quantity on a correction line as on a deduction line, and
 `ck_lines_correction` keeps its discount at 0 and its `deducts_invoice_id` NULL. The
 document must still total above zero: a draft whose corrections take it to zero or
 below warns `invoice_total_not_positive`, and its issue is refused with it. A credit
-note of a correction line is negative as a deduction's credit is, and carries
-`correction`.
+of a correction line is negative exactly when the line it credits is, carries
+`correction` and takes no discount.
 
 ### VAT codes for energy
 
@@ -1245,17 +1245,18 @@ writes it when a figure changed, so a read is how a held settlement stays curren
 ([Drafts, revisions and housekeeping](/en/reference/energy/#drafts-revisions-and-housekeeping)).
 
 **Refresh.** `PUT /{id}` with `refreshSources: true` reads each held settlement again
-and **rebuilds its lines** from its current lines with `energyLines`, in the draft's
-buyer language at the settings' codes, in place of the lines the request gave for it —
-their number may change; a settlement no longer invoiceable is dropped and named in
-`releasedSources`, as work is.
+and **rebuilds its lines** from its current lines with `energyLines` at the place of its first line, in the draft's
+buyer language at the settings' codes, the settlement's other lines dropped (another source they named stays on its line) —
+their number may change, and more than 500 lines after it is a 400 on `lines`; a settlement no longer invoiceable is dropped and named in
+`releasedSources`, as work is — and a dropped **correction** takes its own lines with it,
+since a correction line billing nothing must not stay (a line naming other work beside it
+keeps that work and is judged on it).
 
 **The issue** ([The write-back](#the-write-back)) differs in four ways:
 
 - `projects_unavailable` applies only when a held row carries a project: a draft of
   consumption alone issues with Projects switched off.
-- Before the transaction the held settlements are read through `Settlements`, and one
-  that now belongs to another customer is 409 `source_customer_changed`, naming it.
+- Before the transaction the held settlements are read through `Settlements`: one Energy no longer has is 409 `source_not_invoiceable`, one that now belongs to another customer `source_customer_changed`, each naming its first line.
 - `source_not_selectable` does not apply to the kind.
 - Energy's holder is handed the settlements (`ProjectID` 0, no expense kind) **last**,
   after Projects, Expenses and Time (`contracts.InvoicedWorkOrder`), and judges and
@@ -1264,10 +1265,8 @@ their number may change; a settlement no longer invoiceable is dropped and named
   `source_already_invoiced`, `source_not_invoiceable` and `source_changed` refuse the
   issue with the line and roll it back.
 
-**The credit note** releases a settlement only when it returns **every one of its
-lines** in full, each by its line's last return
-([Release on credit](#release-on-credit)): one line returned leaves the settlement
-invoiced. The `line_releases` row names the credit line returning its first line, and
+**The credit note** releases a settlement once **every one of its lines** is returned in full — by this note's last return of it or by the credit notes issued before it, a line carrying no money excepted — and this note returns at least one of them ([Release on credit](#release-on-credit)): one line returned leaves the settlement
+invoiced until the rest are. The `line_releases` row names this note's credit line returning the first of those lines it returns, and
 Energy's `ReleaseInvoiced` frees the period for a new settlement, settled afresh by the
 next `Settle`. A correction the released settlement had stays invoiced unless its own
 lines are credited too ([Corrections](/en/reference/energy/#corrections)).
@@ -1401,7 +1400,7 @@ register issues only O lines), `category_o_not_allowed` (a registered seller iss
 line), `reverse_charge_needs_org_number`, `vat_codes_ambiguous` and, under a KID agreement,
 `kid_length_exceeded` (the allocated number no longer fits a shortened agreement), and for
 a final settlement `deduction_exceeds_invoice` (with `linePosition`) and
-`invoice_total_not_positive` — a deduction line is exempt from the two VAT code checks,
+`invoice_total_not_positive` (also for an invoice whose energy correction lines take it to zero or below) — a deduction line is exempt from the two VAT code checks,
 taxed at its a-konto's snapshot; for a credit note
 `credit_exceeds_line` (with `linePosition`), `credit_exceeds_invoice`,
 `credit_total_negative` (its gross below zero) and `invoice_deducted` (an a-konto credited
@@ -1633,7 +1632,7 @@ its net total (EN 16931 BR-CO-10), so no credit note is one an EHF could not car
 **A settlement's credit note** copies its deduction lines with their negative quantity and
 the invoice they deduct ([A-konto and the final
 settlement](#a-konto-and-the-final-settlement)). A credit line is negative **exactly when
-the line it credits is a deduction line** — decided once the original is read, a 400 on
+the line it credits is negative — a deduction line, or an energy correction line that pays back —** — decided once the original is read, a 400 on
 `lines[i].quantity` otherwise — and `deductsInvoiceId` on a credit note's own request is a
 400: its lines deduct what the lines they credit deducted. Every comparison of a credit
 line with its line is **by magnitude and of the same sign**: lowering a quantity (a
@@ -4916,7 +4915,7 @@ All under `/api/v1/invoices`, every one behind `invoices:access` but the pay pag
 | `GET /` | | 400 paging, status, kind, state, `from` after `to` (`projectId` filters on the document's project) |
 | `POST /` | `invoices:create` | 400 on the field (`sources` and `refreshSources` included; a deduction line's `quantity`, `unitPrice`, `discountPercent`, `deductsInvoiceId`, `vatCodeId`, `sources`); 409 the customer gates, `deduction_duplicated` (with `linePosition`) |
 | `GET /{id}` | | 404 (an invoice draft's work is judged fresh — `source_changed`, `source_not_invoiceable` — only for a caller holding `invoices:create`) |
-| `PUT /{id}` | `invoices:create` | The body's phase 3 fields: each line's `sources` (`[{kind, id}]`, required on a draft that holds work) and `deductsInvoiceId`, `refreshSources` and `timesheet`. 404; 400 (a line's `sources` against the work the draft holds, at most 5 000; a deduction line's fields as on `POST /`; on a credit note a line's `deductsInvoiceId`, or a quantity of the other sign than the line it credits; `timesheet: true` on a credit-note draft); 409 `invoice_issued`, the customer gates, a stale revision, `invoice_changed` (`refreshSources`), `deduction_duplicated` (with `linePosition`) |
+| `PUT /{id}` | `invoices:create` | The body's phase 3 fields: each line's `sources` (`[{kind, id}]`, required on a draft that holds work) and `deductsInvoiceId`, `refreshSources` and `timesheet`. 404; 400 (a line's `sources` against the work the draft holds, at most 5 000; a deduction line's fields as on `POST /`; on a credit note a line's `deductsInvoiceId`, or a quantity of the other sign than the line it credits; `timesheet: true` on a credit-note draft; a settlement's lines not consecutive (`lines[i].sources`), a discount on a correction line, a unit price past its decimals (eight on a line billing a settlement, four otherwise; a credit line's past its original's), more than 500 lines after a refresh rebuilt them (`lines`)); 409 `invoice_issued`, the customer gates, a stale revision, `invoice_changed` (`refreshSources`), `deduction_duplicated` (with `linePosition`) |
 | `DELETE /{id}` | `invoices:create` | 404; 409 `invoice_issued` |
 | `POST /{id}/issue` | `invoices:issue` | 400 a body that does not decode (none, or an `issueDate` that is no calendar day); 404; 409 every code under [Issuing](#issuing); 503 `storage_unavailable` |
 | `POST /{id}/credit` | `invoices:issue` | 404; 409 `invoice_draft`, `credit_note_not_creditable`, `invoice_fully_credited` |

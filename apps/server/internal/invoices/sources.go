@@ -777,15 +777,62 @@ func (r *sourcesRefresh) apply(rows []heldSource) (kept []heldSource, dropped []
 			kept = append(kept, h)
 			continue
 		}
-		n, ok := r.now[h.ref()]
-		if !ok || n.currency != h.currency {
+		if r.drops(h) {
 			dropped = append(dropped, h.ref())
 			continue
 		}
+		n := r.now[h.ref()]
 		n.state, n.linePosition, n.lineCount = h.state, h.linePosition, h.lineCount
 		kept = append(kept, n)
 	}
 	return kept, dropped
+}
+
+// drops reports whether apply drops h: its module answered and no longer
+// answers it, or answers it in another currency.
+func (r *sourcesRefresh) drops(h heldSource) bool {
+	if !r.kind[h.kind] {
+		return false
+	}
+	n, ok := r.now[h.ref()]
+	return !ok || n.currency != h.currency
+}
+
+// withoutDroppedCorrections is lines with every held correction settlement
+// the refresh drops taken off them, and with it the lines that billed only
+// it, and the held work the refresh keeps. A correction's line bills nothing
+// but its correction, and may be negative only for it: kept with no source it
+// would issue a negative line billing nothing, so the refresh drops a
+// correction's own lines together with its source rather than refusing the
+// save (invoices from consumption plan reading 7). A line naming other work
+// beside it keeps that work, and is judged on it.
+func (r *sourcesRefresh) withoutDroppedCorrections(held []heldSource, lines []draftLine) (out []draftLine, kept []heldSource) {
+	gone := map[sourceRef]bool{}
+	for _, h := range held {
+		if r.drops(h) {
+			if h.isCorrection() {
+				gone[h.ref()] = true
+			}
+			continue
+		}
+		kept = append(kept, h)
+	}
+	if len(gone) == 0 {
+		return lines, kept
+	}
+	out = make([]draftLine, 0, len(lines))
+	for _, l := range lines {
+		if !slices.ContainsFunc(l.sources, func(s sourceRef) bool { return gone[s] }) {
+			out = append(out, l)
+			continue
+		}
+		others := slices.DeleteFunc(slices.Clone(l.sources), func(s sourceRef) bool { return gone[s] })
+		if len(others) > 0 {
+			l.sources = others
+			out = append(out, l)
+		}
+	}
+	return out, kept
 }
 
 // refreshSettlementLines is a refresh's rebuild of the held settlements'

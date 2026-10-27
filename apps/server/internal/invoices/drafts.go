@@ -159,16 +159,40 @@ func amount(label string, v float64, places int, minimum *big.Rat, strict bool, 
 // four.
 const unitPricePlaces = 8
 
-// linePricePlaces is the decimals a request may give line's unit price: the
-// eight unit_price stores on a line billing an energy settlement — its price
-// is its settlement line's amount over its quantity (invoices from
+// linePricePlaces is the decimals a request may give line's unit price, v:
+// the eight unit_price stores on a line billing an energy settlement — its
+// price is its settlement line's amount over its quantity (invoices from
 // consumption plan reading 3) — and four on any other; a credit note's line
-// is judged against the line it credits (putCreditDraft).
-func linePricePlaces(line draftLine) int {
+// is judged against the line it credits (putCreditDraft). A line giving back
+// a price the draft already stores with more than four decimals (stored) may
+// keep it: a save that changes the customer or detaches a settlement sends
+// its lines with no sources, and must not be refused the prices the draft
+// was built with.
+func linePricePlaces(line draftLine, v float64, stored map[string]bool) int {
 	if line.creditsLineID != nil || slices.ContainsFunc(line.sources, func(r sourceRef) bool { return r.kind == contracts.WorkSourceSettlement }) {
 		return unitPricePlaces
 	}
+	if len(stored) > 0 && finite(v) && stored[ratFromFloat(v).RatString()] {
+		return unitPricePlaces
+	}
 	return 4
+}
+
+// finePrices is the unit prices lines store with more than four decimals, by
+// their exact value (big.Rat.RatString) — what linePricePlaces lets a save
+// give back at eight.
+func finePrices(lines []store.InvoicesLine) (map[string]bool, error) {
+	out := map[string]bool{}
+	for _, l := range lines {
+		r, err := ratFromNumeric(l.UnitPrice)
+		if err != nil {
+			return nil, err
+		}
+		if !new(big.Rat).Mul(r, big.NewRat(10000, 1)).IsInt() {
+			out[r.RatString()] = true
+		}
+	}
+	return out, nil
 }
 
 // The columns' own ceilings: quantity numeric(12,3), unit_price
@@ -195,7 +219,7 @@ func optionalText(v *string) string {
 // provisionally: whether a line may carry one — a deduction line, or a credit
 // note's line crediting one (invoices work design D7) — is decided once the
 // line's kind is known (deductionRules, putCreditDraft).
-func parseDraft(body gen.InvoicesInvoiceRequest, currency string) (draftInput, map[string][]string) {
+func parseDraft(body gen.InvoicesInvoiceRequest, currency string, stored map[string]bool) (draftInput, map[string][]string) {
 	var errs map[string][]string
 	add := func(field, msg string) {
 		if msg != "" {
@@ -317,7 +341,7 @@ func parseDraft(body gen.InvoicesInvoiceRequest, currency string) (draftInput, m
 			line.quantity, msg = amount("A quantity", l.Quantity, 3, zero, true, maxQuantity)
 		}
 		add(field("quantity"), msg)
-		line.unitPrice, msg = amount("A unit price", l.UnitPrice, linePricePlaces(line), zero, false, maxUnitPrice)
+		line.unitPrice, msg = amount("A unit price", l.UnitPrice, linePricePlaces(line, l.UnitPrice, stored), zero, false, maxUnitPrice)
 		add(field("unitPrice"), msg)
 		discount := 0.0
 		if l.DiscountPercent != nil {
@@ -484,7 +508,7 @@ func (s *server) PostInvoices(ctx context.Context, req gen.PostInvoicesRequestOb
 	if err != nil {
 		return nil, fmt.Errorf("invoices: read the settings: %w", err)
 	}
-	in, errs := parseDraft(*req.Body, settings.DefaultCurrency)
+	in, errs := parseDraft(*req.Body, settings.DefaultCurrency, nil)
 	// Work arrives on a draft only through the uninvoiced view (D2, D3): a
 	// create holds none, and has none to refresh.
 	for i, l := range in.lines {
@@ -603,7 +627,15 @@ func (s *server) PutInvoicesById(ctx context.Context, req gen.PutInvoicesByIdReq
 	if err != nil {
 		return nil, fmt.Errorf("invoices: read the settings: %w", err)
 	}
-	in, errs := parseDraft(*req.Body, settings.DefaultCurrency)
+	storedLines, err := q.Lines(ctx, req.Id)
+	if err != nil {
+		return nil, fmt.Errorf("invoices: read draft %d's lines: %w", req.Id, err)
+	}
+	stored, err := finePrices(storedLines)
+	if err != nil {
+		return nil, err
+	}
+	in, errs := parseDraft(*req.Body, settings.DefaultCurrency, stored)
 	if in.paymentTermsDays == nil {
 		errs = withFieldError(errs, "paymentTermsDays", "An invoice needs payment terms")
 	}
@@ -651,8 +683,15 @@ func (s *server) PutInvoicesById(ctx context.Context, req gen.PutInvoicesByIdReq
 		}
 	}
 	// Whether a line bills an energy correction, and so may be negative,
-	// is the work it names, never the request's (plan reading 7).
-	markCorrections(held, in.lines)
+	// is the work it names, never the request's (plan reading 7) — and with
+	// a refresh, the work it will still name once the refresh has dropped
+	// what is no longer invoiceable: a dropped correction's lines go with it
+	// (sourcesRefresh.withoutDroppedCorrections).
+	correctable := held
+	if in.refresh != nil {
+		in.lines, correctable = in.refresh.withoutDroppedCorrections(held, in.lines)
+	}
+	markCorrections(correctable, in.lines)
 	codes, err := vatCodesOn(ctx, q, pgDate(holidays.DayIn(s.deps.Clock(), loc)))
 	if err != nil {
 		return nil, err
@@ -803,10 +842,16 @@ func (s *server) saveDraft(ctx context.Context, id int64, revision int32, in dra
 			out.invalid = invalidSources
 			return errRefused
 		}
-		// The corrections as the work held under the lock has them: a line
+		released = append(released, dropped...)
+		if in.refresh != nil {
+			rows, dropped = in.refresh.apply(rows)
+			released = append(released, dropped...)
+		}
+		// The corrections as the work the save keeps under the lock has them —
+		// after the refresh dropped what is no longer invoiceable: a line
 		// judged one on the pool read that no longer is cannot stay negative.
 		if locked.Kind == kindInvoice {
-			markCorrections(held, in.lines)
+			markCorrections(rows, in.lines)
 			for i, l := range in.lines {
 				if l.quantity.Sign() < 0 && l.deductsInvoiceID == nil && !l.correction {
 					out.invalid = withFieldError(out.invalid, fmt.Sprintf("lines[%d].quantity", i), msgQuantityPositive)
@@ -815,11 +860,6 @@ func (s *server) saveDraft(ctx context.Context, id int64, revision int32, in dra
 			if out.invalid != nil {
 				return errRefused
 			}
-		}
-		released = append(released, dropped...)
-		if in.refresh != nil {
-			rows, dropped = in.refresh.apply(rows)
-			released = append(released, dropped...)
 		}
 		slices.SortFunc(released, compareRefs)
 		yourReference := ""

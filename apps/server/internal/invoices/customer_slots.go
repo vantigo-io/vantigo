@@ -707,10 +707,15 @@ func exportCustomerData(ctx context.Context, q *store.Queries, customerID int32)
 				dst    *string
 				n      pgtype.Numeric
 				places int
-			}{{&line.Quantity, l.Quantity, 3}, {&line.UnitPrice, l.UnitPrice, 4}, {&line.DiscountPercent, l.DiscountPercent, 2}, {&line.LineNet, l.LineNet, 2}} {
+			}{{&line.Quantity, l.Quantity, 3}, {&line.UnitPrice, l.UnitPrice, unitPricePlaces}, {&line.DiscountPercent, l.DiscountPercent, 2}, {&line.LineNet, l.LineNet, 2}} {
 				if *c.dst, err = decimalOf(c.n, c.places); err != nil {
 					return nil, err
 				}
+			}
+			// The price at its own decimals, at least four, as EHF gives it:
+			// an energy line's has up to eight.
+			for strings.HasSuffix(line.UnitPrice, "0") && len(line.UnitPrice)-strings.IndexByte(line.UnitPrice, '.') > 5 {
+				line.UnitPrice = line.UnitPrice[:len(line.UnitPrice)-1]
 			}
 			if l.VatRatePercent.Valid {
 				rate, err := decimalOf(l.VatRatePercent, 2)

@@ -751,7 +751,7 @@ func (s *server) putCreditDraft(ctx context.Context, q *store.Queries, current s
 	if *body.Revision != current.Revision {
 		return gen.PutInvoicesById409ApplicationProblemPlusJSONResponse(revisionConflict("Invoice", current.Revision, *body.Revision)), nil
 	}
-	in, errs := parseDraft(body, current.Currency)
+	in, errs := parseDraft(body, current.Currency, nil)
 	add := func(field, msg string) { errs = withFieldError(errs, field, msg) }
 	if in.customerID != current.CustomerID {
 		add("customerId", "A credit note's customer is its original's")

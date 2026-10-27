@@ -658,3 +658,83 @@ func TestEnergy_ACreditOfACorrectionLineIsNegative(t *testing.T) {
 		t.Errorf("after the full credit: %v, want both released", got)
 	}
 }
+
+// A refresh that drops a correction settlement — invoiced elsewhere since —
+// drops the correction's own lines with it: a -1 line billing nothing must
+// not stay on the draft as a correction and issue (plan reading 7). The
+// settlement it corrects stays, its lines rebuilt, and the issue bills it
+// alone.
+func TestEnergy_ARefreshDropsADroppedCorrectionsLines(t *testing.T) {
+	t.Parallel()
+	f := newFakeConsumption()
+	a := septemberOf(settlementA, gsrnA)
+	c := lowerCorrectionOf(correctionC, a)
+	c.GSRN = gsrnB
+	f.put(a)
+	f.put(c)
+	h := energyReady(t, f, newFakeHolders())
+	d := energyDraft(t, h, a, c)
+
+	gone := c
+	gone.State = contracts.SettlementInvoiced
+	f.put(gone)
+
+	lines := append(linesBilling(a, []refJSON{refSettlementA}), linesBilling(c, []refJSON{refCorrectionC})...)
+	body := sourcedBody(d, customerAcme, lines...)
+	body["refreshSources"] = true
+	res, _ := putWork(t, h, d.ID, body)
+	if res.Status != http.StatusOK {
+		t.Fatalf("PUT refreshSources = %d %s, want 200", res.Status, res.Body)
+	}
+	if got := refsOf(energyDoc(t, res).ReleasedSources); !slices.Equal(got, []string{"energy.settlement:9003"}) {
+		t.Errorf("released = %v, want energy.settlement:9003", got)
+	}
+	if got := modtest.One[[]string](t, h.Harness, `
+		SELECT array_agg(format('%s:%s', position, correction) ORDER BY position)
+		FROM invoices.lines WHERE invoice_id = $1 AND quantity > 0`, d.ID); !slices.Equal(got, []string{"1:f", "2:f", "3:f"}) ||
+		modtest.One[int64](t, h.Harness, `SELECT count(*) FROM invoices.lines WHERE invoice_id = $1`, d.ID) != 3 {
+		t.Errorf("lines = %v, want A's three and no correction line", got)
+	}
+	inv := issued(t, h, d.ID)
+	if len(inv.Lines) != 3 || inv.NetTotal != 1187.07 {
+		t.Errorf("issued %d lines, net %v; want A's 3 and 1187.07", len(inv.Lines), inv.NetTotal)
+	}
+}
+
+// A save that detaches a settlement sends its lines with no sources, and may
+// give back the eight-decimal prices the draft stores; a price it does not
+// store is still held to four.
+func TestEnergy_ADetachingSaveKeepsTheStoredPrices(t *testing.T) {
+	t.Parallel()
+	f := newFakeConsumption()
+	st := septemberOf(settlementA, gsrnA)
+	f.put(st)
+	h := energyReady(t, f, newFakeHolders())
+	d := energyDraft(t, h, st)
+
+	lines := linesBilling(st, []refJSON{refSettlementA})
+	lines[0]["quantity"], lines[0]["unitPrice"] = 1500.25, 0.51234512
+	res, _ := putWork(t, h, d.ID, sourcedBody(d, customerAcme, lines...))
+	if res.Status != http.StatusOK {
+		t.Fatalf("PUT the span = %d %s, want 200", res.Status, res.Body)
+	}
+	saved := energyDoc(t, res)
+
+	other := linesBilling(st, []refJSON{})
+	other[0]["quantity"], other[0]["unitPrice"] = 1500.25, 0.51234513
+	if res, _ = putWork(t, h, d.ID, sourcedBody(saved.asInvoice(), customerAcme, other...)); res.Status != http.StatusBadRequest ||
+		len(problemOf(t, res).Errors["lines[0].unitPrice"]) == 0 {
+		t.Errorf("a new eight-decimal price on a detached line = %d %s, want 400 on lines[0].unitPrice", res.Status, res.Body)
+	}
+
+	detached := linesBilling(st, []refJSON{})
+	detached[0]["quantity"], detached[0]["unitPrice"] = 1500.25, 0.51234512
+	res, _ = putWork(t, h, d.ID, sourcedBody(saved.asInvoice(), customerAcme, detached...))
+	if res.Status != http.StatusOK {
+		t.Fatalf("PUT detaching the settlement at its stored price = %d %s, want 200", res.Status, res.Body)
+	}
+	if doc := energyDoc(t, res); doc.Lines[0].UnitPrice != 0.51234512 ||
+		!slices.Equal(refsOf(doc.ReleasedSources), []string{"energy.settlement:9001"}) {
+		t.Errorf("detached line 1 = %v, released %v; want 0.51234512 and energy.settlement:9001", doc.Lines[0].UnitPrice, doc.ReleasedSources)
+	}
+}

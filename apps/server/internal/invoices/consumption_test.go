@@ -229,7 +229,8 @@ func codesOfLines(doc wizardDocJSON) []int32 {
 
 // The panel's section: Energy's due supplies for the customer through the
 // date — the start of the next day in Oslo as the provider's instant —
-// sorted by GSRN, billedThrough as a civil date, blocked only when set;
+// sorted by GSRN, billedThrough as the last civil day billed (Energy answers
+// the exclusive end), blocked only when set;
 // today when no date is given; consumption_truncated when Energy had more.
 func TestConsumption_TheDueSupplies(t *testing.T) {
 	t.Parallel()
@@ -249,7 +250,7 @@ func TestConsumption_TheDueSupplies(t *testing.T) {
 	}
 	first, second := v.Supplies[0], v.Supplies[1]
 	if first.Gsrn != gsrnTromso || first.SupplyPeriodID != 11 || first.MeteringPointID != 111 || first.Cadence != "monthly" ||
-		first.BilledThrough == nil || *first.BilledThrough != "2026-08-01" || first.DuePeriods != 2 || first.Blocked != nil ||
+		first.BilledThrough == nil || *first.BilledThrough != "2026-07-31" || first.DuePeriods != 2 || first.Blocked != nil ||
 		first.Address != "Storgata 1, 9008 Tromsø" || first.PriceArea != "NO4" || first.ContractName != "Spot Nord" {
 		t.Errorf("Tromsø = %+v", first)
 	}

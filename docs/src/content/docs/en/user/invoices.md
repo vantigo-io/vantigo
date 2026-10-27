@@ -448,12 +448,12 @@ nothing is settled until you open the wizard.
 
 ### Make a draft of it
 
-Click **From consumption**. The dialog **Invoice consumption** asks:
+Click **From consumption** (offered only for an active customer). The dialog **Invoice consumption** asks:
 
 - **Billing periods ending on or before** — today unless you change it. *Every billing
   period closed by this day and not invoiced is settled and listed.* Changing the day
   settles again.
-- **The settlements**, per metering point (*Settlements of 707057500012345678*): each
+- **The settlements**, per metering point, headed by its ID and address (*707057500012345678 · Storgata 1, 9008 Tromsø*): each
   billing period with its kWh, its amount and its lines — the power, the grid's day and
   night, the capacity per month, the fees and the taxes — and *Correction* on one that
   corrects a period invoiced before. *The consumption is partly estimated* when some
@@ -465,7 +465,7 @@ Click **From consumption**. The dialog **Invoice consumption** asks:
 - **VAT code for electricity** and **VAT code for exempt electricity (Nord-Norge)** —
   starting at the codes on the card **Consumption to invoice** in the settings, or code
   7 for both while the seller is not registered for VAT. Each line takes one of the two
-  by its metering point.
+  by its metering point. Each is asked only when a ticked settlement has a line it applies to.
 - **Note** — *Printed on the invoice. Left empty, a note naming the invoice it replaces
   is suggested when the consumption was credited before.*
 - **Put the consumption on** — **A new draft**, or one of the customer's invoice
@@ -508,7 +508,7 @@ two things in mind:
 - **A settlement's lines stay together.** You may change their text, quantity or price,
   remove some of them or move them as a block, but not put other lines between them:
   Save refuses that. Removing every line of a settlement gives it back — uninvoiced again
-  after **Save**, as work is.
+  after **Save**, as work is. A correction line takes no discount.
 - **Refresh work** settles the draft's consumption again and writes its lines anew from
   Energy's current figures, in place of the lines you edited; a settlement that can no
   longer be invoiced is dropped and named as released. When readings or prices changed
@@ -524,8 +524,7 @@ invoiced, or now belongs to another customer: refresh and issue again. The Proje
 module does not need to be on for a draft of consumption alone.
 
 **Credit** a consumption invoice as any other. A settlement is given back — uninvoiced
-again, settled afresh the next time — only when the credit note returns **every one of
-its lines** in full; returning one of them leaves the settlement invoiced. Readings or
+again, settled afresh the next time — only once every one of its lines has been returned in full — by this credit note or the ones before it; a line of 0.00 need not be. Returning only some of them leaves the settlement invoiced until the rest are. Readings or
 prices that change after a period was invoiced need no credit note: Energy drafts a
 correction of the difference by itself, and it shows up in the wizard.
 
@@ -564,7 +563,7 @@ previewing or issuing*.
   afterwards.* Take it seriously: an issued document without either can never be sent
   as EHF, only credited and issued again.
 - **Lines**: **Add a line**, then its **Description**, **Quantity** (up to three
-  decimals), **Unit**, **Unit price** (up to four decimals), **Discount %** and **VAT
+  decimals), **Unit**, **Unit price** (up to four decimals, eight on a line billing electricity consumption), **Discount %** and **VAT
   code** from the codes offered for new lines; the **Amount** is the line's net. The
   arrows move a line, the bin removes it. A line whose code has since been taken out of
   the list still shows it, marked *(no longer offered)*.

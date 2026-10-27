@@ -264,9 +264,8 @@ const SellerForm = ({ settings, latestRevision, dirty, onDirtyChange: setDirty }
         timesheetDefault: values.timesheetDefault,
         timesheetPersonLabel: values.timesheetPersonLabel,
         // The Consumption to invoice card's (energy consumption billing
-        // design D8); left out when the server answered none, which keeps
-        // the stored codes.
-        ...(values.energyVatCodes ? { energyVatCodes: values.energyVatCodes } : {}),
+        // design D8): the code each hint is invoiced at.
+        energyVatCodes: values.energyVatCodes,
         revision: settings.revision,
       }),
     onSuccess: async (saved) => {
@@ -452,9 +451,7 @@ const SellerForm = ({ settings, latestRevision, dirty, onDirtyChange: setDirty }
       </Card>
       <KidCard settings={settings} values={values} errors={errors} set={set} />
       <WorkCard stored={settings.workVatCodes} values={values} errors={errors} set={set} />
-      {settings.energyVatCodes && values.energyVatCodes && (
-        <EnergyCard stored={settings.energyVatCodes} values={values} errors={errors} set={set} />
-      )}
+      <EnergyCard stored={settings.energyVatCodes} values={values} errors={errors} set={set} />
       <Group justify="flex-end">
         <Button loading={save.isPending} disabled={!dirty} onClick={() => save.mutate()}>
           {t("save")}
@@ -595,14 +592,14 @@ const EnergyCard = ({
   errors,
   set,
 }: {
-  stored: NonNullable<InvoiceSettings["energyVatCodes"]>;
+  stored: InvoiceSettings["energyVatCodes"];
   values: InvoiceSettings;
   errors: Record<string, string>;
   set: <K extends keyof InvoiceSettings>(key: K, value: InvoiceSettings[K], field?: string) => void;
 }) => {
   const { t } = useInvoiceFormat();
   const options = useStoredCodeOptions(new Set(Object.values(stored)));
-  const codes = values.energyVatCodes ?? stored;
+  const codes = values.energyVatCodes;
   return (
     <Card withBorder data-testid="energy-card">
       <Stack>

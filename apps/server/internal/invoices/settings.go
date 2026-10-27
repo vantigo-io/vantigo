@@ -469,7 +469,7 @@ func settingsResponse(row store.InvoicesSetting, locked bool, next int64) gen.In
 		WorkVatCodes: gen.InvoicesWorkVatCodes{
 			Hours: row.WorkVatCodeHours, Expenses: row.WorkVatCodeExpenses, Milestones: row.WorkVatCodeMilestones,
 		},
-		EnergyVatCodes:       &gen.InvoicesEnergyVatCodes{Energy: row.EnergyVatCode, EnergyExempt: row.EnergyVatCodeExempt},
+		EnergyVatCodes:       gen.InvoicesEnergyVatCodes{Energy: row.EnergyVatCode, EnergyExempt: row.EnergyVatCodeExempt},
 		TimesheetDefault:     row.TimesheetDefault,
 		TimesheetPersonLabel: gen.InvoicesSettingsResponseTimesheetPersonLabel(row.TimesheetPersonLabel),
 		LegalName:            row.LegalName, OrganisationNumber: row.OrganisationNumber,
