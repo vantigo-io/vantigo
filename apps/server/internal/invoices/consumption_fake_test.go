@@ -19,7 +19,8 @@ import (
 // of this module's locked transactions — which it never may be. Settle
 // answers every draft settlement of the request's customers (or supply
 // periods) whose period ends on or before Through; Settlements answers by id
-// whatever state a settlement is in. Safe for concurrent use.
+// whatever state a settlement is in; DueSupplies with Every answers every
+// supply put in. Safe for concurrent use.
 type fakeConsumption struct {
 	mu          sync.Mutex
 	settlements map[int64]contracts.Settlement
@@ -27,6 +28,11 @@ type fakeConsumption struct {
 	calls       []consumptionCall
 	// more is what every page answers as More.
 	more bool
+	// settleErr, when set, is what every Settle fails with.
+	settleErr error
+	// onSettle, when set, runs at the start of every Settle, after the
+	// record — what happens while a billing run item is being carried.
+	onSettle func()
 }
 
 // consumptionCall is one call: which, for whom, and whether under a lock.
@@ -85,6 +91,20 @@ func (f *fakeConsumption) answerMore(more bool) {
 	f.more = more
 }
 
+// failSettle makes every Settle fail with err; nil lets them through.
+func (f *fakeConsumption) failSettle(err error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.settleErr = err
+}
+
+// duringSettle sets onSettle.
+func (f *fakeConsumption) duringSettle(fn func()) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.onSettle = fn
+}
+
 // reads is every call made so far.
 func (f *fakeConsumption) reads() []consumptionCall {
 	f.mu.Lock()
@@ -108,7 +128,7 @@ func (f *fakeConsumption) DueSupplies(ctx context.Context, req contracts.DueSupp
 	defer f.mu.Unlock()
 	page := contracts.DueSuppliesPage{Supplies: []contracts.DueSupply{}, More: f.more}
 	for _, d := range f.supplies {
-		if slices.Contains(req.CustomerIDs, d.CustomerID) {
+		if req.Every || slices.Contains(req.CustomerIDs, d.CustomerID) {
 			page.Supplies = append(page.Supplies, d)
 		}
 	}
@@ -121,7 +141,16 @@ func (f *fakeConsumption) Settle(ctx context.Context, req contracts.SettleReques
 	}
 	f.record(ctx, consumptionCall{method: "Settle", customers: slices.Clone(req.CustomerIDs), through: req.Through})
 	f.mu.Lock()
+	during := f.onSettle
+	f.mu.Unlock()
+	if during != nil {
+		during()
+	}
+	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.settleErr != nil {
+		return contracts.SettlementsPage{}, f.settleErr
+	}
 	page := contracts.SettlementsPage{Settlements: []contracts.Settlement{}, More: f.more}
 	for _, s := range f.settlements {
 		mine := slices.Contains(req.CustomerIDs, s.CustomerID) || slices.Contains(req.SupplyPeriodIDs, s.SupplyPeriodID)

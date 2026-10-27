@@ -119,10 +119,16 @@ WHERE id = @id AND lease_id = @lease_id::text AND status = 'queued';
 
 -- name: RetryBillingRunItem :execrows
 -- RetryBillingRunItem counts a failed attempt of the claimed item and puts it
--- back, due at @next_attempt_at, its lease cleared.
-UPDATE invoices.billing_run_items
-SET attempts = attempts + 1, next_attempt_at = @next_attempt_at::timestamptz, lease_id = NULL, lease_until = NULL
-WHERE id = @id AND lease_id = @lease_id::text AND status = 'queued';
+-- back, due at @next_attempt_at, its lease cleared — or, when its run was
+-- cancelled while the item was carried, ends it cancelled at @now: a claim
+-- never picks an item of a cancelled run again, so put back it would stay
+-- queued for ever (plan reading 9).
+UPDATE invoices.billing_run_items i
+SET attempts = i.attempts + 1, next_attempt_at = @next_attempt_at::timestamptz, lease_id = NULL, lease_until = NULL,
+    status = CASE WHEN r.status = 'cancelled' THEN 'cancelled' ELSE i.status END,
+    finished_at = CASE WHEN r.status = 'cancelled' THEN @now::timestamptz ELSE i.finished_at END
+FROM invoices.billing_runs r
+WHERE r.id = i.run_id AND i.id = @id AND i.lease_id = @lease_id::text AND i.status = 'queued';
 
 -- name: FailBillingRunItem :execrows
 -- FailBillingRunItem counts the last failed attempt and fails the item.
