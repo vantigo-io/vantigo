@@ -38,9 +38,17 @@ import (
 // marker of its own. Both markers' values start "vantigo:<client id>" — the
 // Entra application's, which tells two installations sharing a tenant apart
 // — and a calendar or an event without this installation's is never the
-// module's: never adopted, deleted or answered by Find. Graph's words are never logged — an event's
-// subject or body may come back in them — nor is any subject, body or
-// address: a refusal is logged by its status and codes alone.
+// module's: never adopted, deleted or answered by Find or Marked.
+//
+// It reads the mailbox too (design O9; mailbox_delta.go): Delta pages
+// through Graph's calendarView/delta of the default calendar — its link
+// checked to be this mailbox's before it is followed — decoding an event's
+// id, type, times, showAs and cancelled flag and nothing of what it is
+// about; Marked reads single events by id in $batch requests of twenty to
+// tell this installation's copies by their marker. Both are refused under
+// cleanup. Graph's words are never logged — an event's subject or body may
+// come back in them — nor is any subject, body or address: a refusal is
+// logged by its status and codes alone.
 
 // The mailbox's figures and names (the design's O4).
 const (
@@ -757,21 +765,6 @@ func (m *mailboxCalendar) result(ctx context.Context, s mailboxSession, op contr
 		return contracts.MailboxResult{EventID: op.EventID, Gone: true}
 	}
 	return contracts.MailboxResult{Err: g}
-}
-
-// Delta reads the changes to the mailbox's default calendar (calendar
-// Outlook sync design O9.4). Delivery B, task 3a fills it: until then it
-// answers ErrMailboxUnavailable, so the calendar's read is refused as a
-// provider that cannot read would be.
-func (m *mailboxCalendar) Delta(context.Context, string, time.Time, time.Time, string) (contracts.MailboxDelta, error) {
-	return contracts.MailboxDelta{}, contracts.ErrMailboxUnavailable
-}
-
-// Marked answers the ids among eventIDs carrying this installation's marker
-// (design O9.2, O9.4). Delivery B, task 3a fills it: until then it answers
-// ErrMailboxUnavailable.
-func (m *mailboxCalendar) Marked(context.Context, string, []string) ([]contracts.MailboxEventRef, error) {
-	return nil, contracts.ErrMailboxUnavailable
 }
 
 // Find answers the events of the calendar — mailbox's default one,

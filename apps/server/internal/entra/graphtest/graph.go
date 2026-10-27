@@ -29,7 +29,10 @@
 // values; a user's calendars and events keep the extended property they
 // were written with, are listed in pages of $top with an @odata.nextLink,
 // and answer 403 for a mailbox outside the application's scope and 404
-// MailboxNotEnabledForRESTAPI for a user with none (mailbox.go). Every error
+// MailboxNotEnabledForRESTAPI for a user with none (mailbox.go); the
+// default calendar answers its calendarView/delta from a change log, in
+// pages Prefer sizes, its times in UTC when Prefer asks (mailbox_delta.go).
+// Every error
 // body is Graph's
 // { "error": { "code", "message" } }, the token endpoint's OAuth's
 // { "error", "error_description" }.
@@ -125,6 +128,10 @@ type FakeGraph struct {
 	// Now is the fake's clock, for the token's expiry, the pass's and the
 	// group's age; time.Now when nil.
 	Now func() time.Time
+	// DeltaPageSize, when set, is the most events a page of a calendar
+	// delta holds, whatever Prefer: odata.maxpagesize asks — Graph's pages
+	// vary (mailbox_delta.go).
+	DeltaPageSize int
 
 	mu            sync.Mutex
 	users         []*User
@@ -137,6 +144,7 @@ type FakeGraph struct {
 	calls         []Call
 	mailboxes     map[string]*mailbox
 	serial        int
+	deltas        map[string]*deltaState
 }
 
 // Domain is one of the tenant's domains.
@@ -607,6 +615,9 @@ func (g *FakeGraph) api(req *http.Request, body []byte) answer {
 	}
 	if req.Method == http.MethodPost && path == "/$batch" {
 		return g.batch(body)
+	}
+	if m := deltaRoute.FindStringSubmatch(path); m != nil && req.Method == http.MethodGet {
+		return g.delta(m[1], req.URL.Query(), req.Header.Get("Prefer"))
 	}
 	if q := req.URL.Query(); (q.Has("$search") || q.Has("$count")) && !strings.EqualFold(req.Header.Get("ConsistencyLevel"), "eventual") {
 		return graphError(http.StatusBadRequest, "Request_UnsupportedQuery",
