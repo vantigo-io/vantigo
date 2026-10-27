@@ -530,6 +530,98 @@ type ReplaceMeterRequest struct {
 	MeterNumber *string    `json:"meterNumber"`
 }
 
+// SettlementInvoice The invoice a settlement was stamped by.
+type SettlementInvoice struct {
+	Id         int64              `json:"id"`
+	InvoicedAt time.Time          `json:"invoicedAt"`
+	IssueDate  openapi_types.Date `json:"issueDate"`
+	Number     int64              `json:"number"`
+
+	// ReleasedAt When a credit note returned the settlement; left out while it is invoiced.
+	ReleasedAt *time.Time `json:"releasedAt,omitempty"`
+}
+
+// SettlementLine One priced element of a settlement, in the order it prints.
+type SettlementLine struct {
+	// Amount Two decimals, NOK; negative allowed on a correction.
+	Amount float64 `json:"amount"`
+
+	// Band day or night for a grid energy component with a night rate; left out otherwise.
+	Band *string `json:"band,omitempty"`
+
+	// Kind The tariff component's kind (spot_energy, fixed_energy, markup, monthly_fee, grid_energy, grid_capacity, grid_fixed, electricity_tax, enova_levy).
+	Kind string `json:"kind"`
+
+	// Month The calendar month (its first day) a grid capacity line prices; left out otherwise.
+	Month *openapi_types.Date `json:"month,omitempty"`
+
+	// Quantity Three decimals, in unit.
+	Quantity float64 `json:"quantity"`
+
+	// Text The tariff component's name.
+	Text string `json:"text"`
+
+	// Unit kWh, month, year or pcs.
+	Unit string `json:"unit"`
+
+	// UnitPrice Six decimals, NOK per unit.
+	UnitPrice float64 `json:"unitPrice"`
+
+	// VatHint standard or exempt_household_north.
+	VatHint string `json:"vatHint"`
+}
+
+// SettlementResponse What the supply period's customer owes for the metering point over one billing period (energy consumption billing design D5). A period nobody has settled yet is computed for the answer and has no id or revision.
+type SettlementResponse struct {
+	// Amount The sum of the lines, two decimals, NOK; 0 when blocked.
+	Amount float64 `json:"amount"`
+
+	// Blocked Why the period cannot be invoiced (period_open, no_tariff, no_consumption, incomplete, price_gap, price_preliminary); left out when it can.
+	Blocked *string `json:"blocked,omitempty"`
+
+	// BlockedDetail The blocker's sentence; left out when not blocked.
+	BlockedDetail *string `json:"blockedDetail,omitempty"`
+
+	// ContractName The power tariff's name.
+	ContractName string `json:"contractName"`
+
+	// CorrectsId A correction's invoiced original; left out on a regular settlement.
+	CorrectsId *int64 `json:"correctsId,omitempty"`
+	Currency   string `json:"currency"`
+	CustomerId int32  `json:"customerId"`
+
+	// Estimated Whether any interval of the period is an estimate.
+	Estimated bool `json:"estimated"`
+
+	// Id The stored settlement; left out for a period computed for this answer.
+	Id *int64 `json:"id,omitempty"`
+
+	// Invoice The invoice a settlement was stamped by.
+	Invoice *SettlementInvoice `json:"invoice,omitempty"`
+
+	// Kind regular or correction.
+	Kind string `json:"kind"`
+
+	// Kwh Three decimals; a correction's is the difference.
+	Kwh             float64          `json:"kwh"`
+	Lines           []SettlementLine `json:"lines"`
+	MeteringPointId int32            `json:"meteringPointId"`
+
+	// MissingIntervals How many intervals the period lacks; 0 is complete.
+	MissingIntervals int32 `json:"missingIntervals"`
+
+	// PeriodEnd The period's end, exclusive.
+	PeriodEnd   time.Time `json:"periodEnd"`
+	PeriodStart time.Time `json:"periodStart"`
+
+	// Revision The stored settlement's revision; left out with the id.
+	Revision *int32 `json:"revision,omitempty"`
+
+	// State draft, invoiced or released.
+	State          string `json:"state"`
+	SupplyPeriodId int32  `json:"supplyPeriodId"`
+}
+
 // SpotPriceCoverage What the installation holds of day-ahead prices, per price area (energy consumption billing design D2), for the Prices page — every area a metering point with a supply period is in, every area already priced and, with the spot-price service as the source, every area the service follows (spot-price service design S4). source is where the installation's worker fetches prices from — service (the shared spot-price service), feed (the public feed) or none (files only).
 type SpotPriceCoverage struct {
 	Areas []SpotPriceCoverageArea `json:"areas"`
@@ -1066,6 +1158,9 @@ type ServerInterface interface {
 	// PostEnergyMeteringPointsByIdMeters Replace a meter
 	// (POST /api/v1/energy/metering-points/{id}/meters)
 	PostEnergyMeteringPointsByIdMeters(w http.ResponseWriter, r *http.Request, id int32)
+	// GetEnergyMeteringPointsByIdSettlements List a metering point's settlements
+	// (GET /api/v1/energy/metering-points/{id}/settlements)
+	GetEnergyMeteringPointsByIdSettlements(w http.ResponseWriter, r *http.Request, id int32)
 	// GetEnergyMeteringPointsByIdSupplyPeriods List supply periods
 	// (GET /api/v1/energy/metering-points/{id}/supply-periods)
 	GetEnergyMeteringPointsByIdSupplyPeriods(w http.ResponseWriter, r *http.Request, id int32)
@@ -2039,6 +2134,32 @@ func (siw *ServerInterfaceWrapper) PostEnergyMeteringPointsByIdMeters(w http.Res
 	handler.ServeHTTP(w, r)
 }
 
+// GetEnergyMeteringPointsByIdSettlements operation middleware
+func (siw *ServerInterfaceWrapper) GetEnergyMeteringPointsByIdSettlements(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetEnergyMeteringPointsByIdSettlements(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetEnergyMeteringPointsByIdSupplyPeriods operation middleware
 func (siw *ServerInterfaceWrapper) GetEnergyMeteringPointsByIdSupplyPeriods(w http.ResponseWriter, r *http.Request) {
 
@@ -2827,6 +2948,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/energy/metering-points/{id}/consumption/import", wrapper.PostEnergyMeteringPointsByIdConsumptionImport)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/energy/metering-points/{id}/meters", wrapper.GetEnergyMeteringPointsByIdMeters)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/energy/metering-points/{id}/meters", wrapper.PostEnergyMeteringPointsByIdMeters)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/energy/metering-points/{id}/settlements", wrapper.GetEnergyMeteringPointsByIdSettlements)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/energy/metering-points/{id}/supply-periods", wrapper.GetEnergyMeteringPointsByIdSupplyPeriods)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/energy/metering-points/{id}/supply-periods", wrapper.PostEnergyMeteringPointsByIdSupplyPeriods)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/energy/metering-points/{id}/supply-periods/switch", wrapper.PostEnergyMeteringPointsByIdSupplyPeriodsSwitch)
@@ -4605,6 +4727,64 @@ func (response PostEnergyMeteringPointsByIdMeters404Response) VisitPostEnergyMet
 	return nil
 }
 
+type GetEnergyMeteringPointsByIdSettlementsRequestObject struct {
+	Id int32 `json:"id"`
+}
+
+type GetEnergyMeteringPointsByIdSettlementsResponseObject interface {
+	VisitGetEnergyMeteringPointsByIdSettlementsResponse(w http.ResponseWriter) error
+}
+
+type GetEnergyMeteringPointsByIdSettlements200JSONResponse []SettlementResponse
+
+func (response GetEnergyMeteringPointsByIdSettlements200JSONResponse) VisitGetEnergyMeteringPointsByIdSettlementsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetEnergyMeteringPointsByIdSettlements401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetEnergyMeteringPointsByIdSettlements401JSONResponse) VisitGetEnergyMeteringPointsByIdSettlementsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetEnergyMeteringPointsByIdSettlements403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetEnergyMeteringPointsByIdSettlements403JSONResponse) VisitGetEnergyMeteringPointsByIdSettlementsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetEnergyMeteringPointsByIdSettlements404Response struct {
+}
+
+func (response GetEnergyMeteringPointsByIdSettlements404Response) VisitGetEnergyMeteringPointsByIdSettlementsResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
 type GetEnergyMeteringPointsByIdSupplyPeriodsRequestObject struct {
 	Id int32 `json:"id"`
 }
@@ -5966,6 +6146,9 @@ type StrictServerInterface interface {
 	// PostEnergyMeteringPointsByIdMeters Replace a meter
 	// (POST /api/v1/energy/metering-points/{id}/meters)
 	PostEnergyMeteringPointsByIdMeters(ctx context.Context, request PostEnergyMeteringPointsByIdMetersRequestObject) (PostEnergyMeteringPointsByIdMetersResponseObject, error)
+	// GetEnergyMeteringPointsByIdSettlements List a metering point's settlements
+	// (GET /api/v1/energy/metering-points/{id}/settlements)
+	GetEnergyMeteringPointsByIdSettlements(ctx context.Context, request GetEnergyMeteringPointsByIdSettlementsRequestObject) (GetEnergyMeteringPointsByIdSettlementsResponseObject, error)
 	// GetEnergyMeteringPointsByIdSupplyPeriods List supply periods
 	// (GET /api/v1/energy/metering-points/{id}/supply-periods)
 	GetEnergyMeteringPointsByIdSupplyPeriods(ctx context.Context, request GetEnergyMeteringPointsByIdSupplyPeriodsRequestObject) (GetEnergyMeteringPointsByIdSupplyPeriodsResponseObject, error)
@@ -6749,6 +6932,32 @@ func (sh *strictHandler) PostEnergyMeteringPointsByIdMeters(w http.ResponseWrite
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PostEnergyMeteringPointsByIdMetersResponseObject); ok {
 		if err := validResponse.VisitPostEnergyMeteringPointsByIdMetersResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetEnergyMeteringPointsByIdSettlements operation middleware
+func (sh *strictHandler) GetEnergyMeteringPointsByIdSettlements(w http.ResponseWriter, r *http.Request, id int32) {
+	var request GetEnergyMeteringPointsByIdSettlementsRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetEnergyMeteringPointsByIdSettlements(ctx, request.(GetEnergyMeteringPointsByIdSettlementsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetEnergyMeteringPointsByIdSettlements")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetEnergyMeteringPointsByIdSettlementsResponseObject); ok {
+		if err := validResponse.VisitGetEnergyMeteringPointsByIdSettlementsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

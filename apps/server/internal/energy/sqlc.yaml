@@ -11,6 +11,7 @@ sql:
       - ../db/migrations/00065_energy_spot_prices.sql
       - ../db/migrations/00075_energy_spot_price_service.sql
       - ../db/migrations/00076_energy_tariffs.sql
+      - ../db/migrations/00077_energy_settlements.sql
     queries: queries
     gen:
       go:

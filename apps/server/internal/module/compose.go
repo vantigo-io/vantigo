@@ -309,6 +309,19 @@ func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.
 		deps.BillableMilestones = milestonesProvider.BillableMilestones(deps)
 	}
 
+	// Consumption (contracts.ConsumptionProvider, energy consumption billing
+	// design D1) resolves after the customer directory and in the billable
+	// group, last: it is what Invoices builds a consumption invoice from, as
+	// the three above are what it builds a work invoice from. Its provider
+	// never reads the directory while it serves.
+	consumptionProvider, err := soleProvider(mods, "consumption", func(m Module) bool { return m.Consumption != nil })
+	if err != nil {
+		return nil, err
+	}
+	if consumptionProvider != nil {
+		deps.Consumption = consumptionProvider.Consumption(deps)
+	}
+
 	// The workforce register (contracts.Workforce, staff competence design
 	// S15) resolves after the business calendar, so its provider may read
 	// deps.Calendar while it is built; Workers resolves it the same way.

@@ -364,6 +364,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/energy/metering-points/{id}/settlements": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List a metering point's settlements
+         * @description Every billing period of the point's non-cancelled supply periods that has closed in the last 24 months, each as its stored settlement (an invoiced one as frozen, a draft recomputed) or computed for the answer when none is stored, with the released settlements and the corrections of the window. Newest period first. Nothing is written.
+         */
+        get: operations["getEnergyMeteringPointsByIdSettlements"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/energy/metering-points/{id}/supply-periods": {
         parameters: {
             query?: never;
@@ -1057,6 +1077,116 @@ export interface components {
             /** Format: date-time */
             installedAt: string | null;
             meterNumber: string | null;
+        };
+        /** @description The invoice a settlement was stamped by. */
+        SettlementInvoice: {
+            /** Format: int64 */
+            id: number;
+            /** Format: date-time */
+            invoicedAt: string;
+            /** Format: date */
+            issueDate: string;
+            /** Format: int64 */
+            number: number;
+            /**
+             * Format: date-time
+             * @description When a credit note returned the settlement; left out while it is invoiced.
+             */
+            releasedAt?: string;
+        };
+        /** @description One priced element of a settlement, in the order it prints. */
+        SettlementLine: {
+            /**
+             * Format: double
+             * @description Two decimals, NOK; negative allowed on a correction.
+             */
+            amount: number;
+            /** @description day or night for a grid energy component with a night rate; left out otherwise. */
+            band?: string;
+            /** @description The tariff component's kind (spot_energy, fixed_energy, markup, monthly_fee, grid_energy, grid_capacity, grid_fixed, electricity_tax, enova_levy). */
+            kind: string;
+            /**
+             * Format: date
+             * @description The calendar month (its first day) a grid capacity line prices; left out otherwise.
+             */
+            month?: string;
+            /**
+             * Format: double
+             * @description Three decimals, in unit.
+             */
+            quantity: number;
+            /** @description The tariff component's name. */
+            text: string;
+            /** @description kWh, month, year or pcs. */
+            unit: string;
+            /**
+             * Format: double
+             * @description Six decimals, NOK per unit.
+             */
+            unitPrice: number;
+            /** @description standard or exempt_household_north. */
+            vatHint: string;
+        };
+        /** @description What the supply period's customer owes for the metering point over one billing period (energy consumption billing design D5). A period nobody has settled yet is computed for the answer and has no id or revision. */
+        SettlementResponse: {
+            /**
+             * Format: double
+             * @description The sum of the lines, two decimals, NOK; 0 when blocked.
+             */
+            amount: number;
+            /** @description Why the period cannot be invoiced (period_open, no_tariff, no_consumption, incomplete, price_gap, price_preliminary); left out when it can. */
+            blocked?: string;
+            /** @description The blocker's sentence; left out when not blocked. */
+            blockedDetail?: string;
+            /** @description The power tariff's name. */
+            contractName: string;
+            /**
+             * Format: int64
+             * @description A correction's invoiced original; left out on a regular settlement.
+             */
+            correctsId?: number;
+            currency: string;
+            /** Format: int32 */
+            customerId: number;
+            /** @description Whether any interval of the period is an estimate. */
+            estimated: boolean;
+            /**
+             * Format: int64
+             * @description The stored settlement; left out for a period computed for this answer.
+             */
+            id?: number;
+            invoice?: components["schemas"]["SettlementInvoice"];
+            /** @description regular or correction. */
+            kind: string;
+            /**
+             * Format: double
+             * @description Three decimals; a correction's is the difference.
+             */
+            kwh: number;
+            lines: components["schemas"]["SettlementLine"][];
+            /** Format: int32 */
+            meteringPointId: number;
+            /**
+             * Format: int32
+             * @description How many intervals the period lacks; 0 is complete.
+             */
+            missingIntervals: number;
+            /**
+             * Format: date-time
+             * @description The period's end, exclusive.
+             */
+            periodEnd: string;
+            /** Format: date-time */
+            periodStart: string;
+            /**
+             * Format: int32
+             * @description The stored settlement's revision; left out with the id.
+             */
+            revision?: number;
+            /** @description draft, invoiced or released. */
+            state: string;
+            /** Format: int32 */
+            supplyPeriodId: number;
         };
         /** @description What the installation holds of day-ahead prices, per price area (energy consumption billing design D2), for the Prices page — every area a metering point with a supply period is in, every area already priced and, with the spot-price service as the source, every area the service follows (spot-price service design S4). source is where the installation's worker fetches prices from — service (the shared spot-price service), feed (the public feed) or none (files only). */
         SpotPriceCoverage: {
@@ -2777,6 +2907,53 @@ export interface operations {
                 };
                 content: {
                     "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getEnergyMeteringPointsByIdSettlements: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettlementResponse"][];
                 };
             };
             /** @description Unauthorized */

@@ -2532,3 +2532,105 @@ func (*fakeWorkforce) Self(context.Context) (*contracts.PersonEntry, error) { re
 func (*fakeWorkforce) PreferenceFits(context.Context, []int64, contracts.Booking) (map[int64]contracts.Fit, error) {
 	return nil, nil
 }
+
+type fakeConsumption struct {
+	directory  contracts.CustomerDirectory  // whatever Deps carried when it was built
+	milestones contracts.BillableMilestones // likewise
+}
+
+func (*fakeConsumption) DueSupplies(context.Context, contracts.DueSuppliesRequest) (contracts.DueSuppliesPage, error) {
+	return contracts.DueSuppliesPage{}, nil
+}
+
+func (*fakeConsumption) Settle(context.Context, contracts.SettleRequest) (contracts.SettlementsPage, error) {
+	return contracts.SettlementsPage{}, nil
+}
+
+func (*fakeConsumption) Settlements(context.Context, []int64) (contracts.SettlementsPage, error) {
+	return contracts.SettlementsPage{}, nil
+}
+
+// Consumption is a sole-provider slot (contracts.ConsumptionProvider, energy
+// consumption billing design D1), resolved before any Mount runs onto every
+// module's Deps, after the customer directory and the billable reads, so its
+// provider is built on Deps carrying both.
+func TestCompose_InjectsConsumptionProvider(t *testing.T) {
+	var built *fakeConsumption
+	var got Deps
+	_, err := compose(Deps{Access: &fakeAccess{}}, fakeLoad(map[string]string{"alpha": alphaContract, "beta": betaContract}),
+		Module{Name: "beta", Consumption: func(d Deps) contracts.ConsumptionProvider {
+			built = &fakeConsumption{directory: d.Directory, milestones: d.BillableMilestones}
+			return built
+		}, Mount: staticHandler("beta")},
+		Module{Name: "alpha",
+			Directory:          func(Deps) contracts.CustomerDirectory { return &fakeDirectory{} },
+			BillableMilestones: func(Deps) contracts.BillableMilestones { return &fakeBillableMilestones{} },
+			Mount: func(d Deps) (http.Handler, error) {
+				got = d
+				return staticHandler("alpha")(d)
+			}},
+	)
+	if err != nil {
+		t.Fatalf("compose: %v", err)
+	}
+	if built == nil || got.Consumption != built {
+		t.Fatalf("Deps.Consumption = %v, want the provider's", got.Consumption)
+	}
+	if built.directory == nil || built.milestones == nil {
+		t.Errorf("the consumption provider was built on Deps without the directory (%v) or the billable reads (%v)", built.directory, built.milestones)
+	}
+}
+
+// Two modules both declaring Consumption is a compose error naming both.
+func TestCompose_DuplicateConsumptionProvider_Fails(t *testing.T) {
+	_, err := compose(Deps{Access: &fakeAccess{}}, fakeLoad(map[string]string{"alpha": alphaContract, "beta": betaContract}),
+		Module{Name: "alpha", Consumption: func(Deps) contracts.ConsumptionProvider { return &fakeConsumption{} }, Mount: staticHandler("alpha")},
+		Module{Name: "beta", Consumption: func(Deps) contracts.ConsumptionProvider { return &fakeConsumption{} }, Mount: staticHandler("beta")},
+	)
+	if err == nil {
+		t.Fatal("compose: want an error when two modules declare consumption")
+	}
+	if !strings.Contains(err.Error(), "consumption") || !strings.Contains(err.Error(), "alpha") || !strings.Contains(err.Error(), "beta") {
+		t.Errorf("error %q does not say \"consumption\" and name both modules", err)
+	}
+}
+
+// With Energy disabled, the consumer's Deps.Consumption is nil: optional for
+// its consumer.
+func TestCompose_DisabledConsumptionProvider_LeavesNil(t *testing.T) {
+	var got Deps
+	_, err := compose(
+		Deps{Access: &fakeAccess{}, Config: &config.Config{Modules: []string{"alpha"}}},
+		fakeLoad(map[string]string{"alpha": alphaContract, "beta": betaContract}),
+		Module{Name: "alpha", Mount: func(d Deps) (http.Handler, error) {
+			got = d
+			return staticHandler("alpha")(d)
+		}},
+		Module{Name: "beta", Consumption: func(Deps) contracts.ConsumptionProvider { return &fakeConsumption{} }, Mount: staticHandler("beta")},
+	)
+	if err != nil {
+		t.Fatalf("compose: %v", err)
+	}
+	if got.Consumption != nil {
+		t.Errorf("Deps.Consumption = %v, want nil: beta (the consumption provider) is disabled", got.Consumption)
+	}
+}
+
+// A value preset on Deps.Consumption survives when no enabled module declares
+// Module.Consumption, as every single-provider slot's does.
+func TestCompose_PresetConsumptionSurvivesWhenNoProvider(t *testing.T) {
+	preset := &fakeConsumption{}
+	var got Deps
+	_, err := compose(Deps{Access: &fakeAccess{}, Consumption: preset}, fakeLoad(map[string]string{"alpha": alphaContract}),
+		Module{Name: "alpha", Mount: func(d Deps) (http.Handler, error) {
+			got = d
+			return staticHandler("alpha")(d)
+		}},
+	)
+	if err != nil {
+		t.Fatalf("compose: %v", err)
+	}
+	if got.Consumption != preset {
+		t.Errorf("Deps.Consumption = %v, want the preset value to survive with no provider", got.Consumption)
+	}
+}

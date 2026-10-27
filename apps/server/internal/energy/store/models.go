@@ -99,6 +99,52 @@ type EnergyMeteringPoint struct {
 	ElectricityTaxClass          string
 }
 
+type EnergySettlement struct {
+	ID                    int64
+	SupplyPeriodID        int32
+	MeteringPointID       int32
+	CustomerID            int32
+	Kind                  string
+	CorrectsID            *int64
+	PeriodStart           time.Time
+	PeriodEnd             time.Time
+	State                 string
+	Revision              int32
+	Kwh                   pgtype.Numeric
+	Estimated             bool
+	IntervalCount         int32
+	ExpectedIntervalCount int32
+	Blocked               *string
+	BlockedDetail         *string
+	Amount                pgtype.Numeric
+	Currency              string
+	ContractName          string
+	ComputedAt            time.Time
+	TouchedAt             time.Time
+	CreatedAt             time.Time
+	UpdatedAt             time.Time
+	InvoicedInvoiceID     *int64
+	InvoicedNumber        *int64
+	InvoicedAt            *time.Time
+	InvoicedByUserID      *uuid.UUID
+	InvoiceDate           pgtype.Date
+	ReleasedAt            *time.Time
+}
+
+type EnergySettlementLine struct {
+	SettlementID int64
+	Position     int16
+	Kind         string
+	Text         string
+	Band         *string
+	Month        pgtype.Date
+	Quantity     pgtype.Numeric
+	Unit         string
+	UnitPrice    pgtype.Numeric
+	Amount       pgtype.Numeric
+	VatHint      string
+}
+
 type EnergySpotPrice struct {
 	ID              int64
 	PriceArea       string

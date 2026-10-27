@@ -898,6 +898,159 @@ components:
                 - meterNumber
                 - installedAt
             type: object
+        SettlementInvoice:
+            description: The invoice a settlement was stamped by.
+            properties:
+                id:
+                    format: int64
+                    type: integer
+                invoicedAt:
+                    format: date-time
+                    type: string
+                issueDate:
+                    format: date
+                    type: string
+                number:
+                    format: int64
+                    type: integer
+                releasedAt:
+                    description: When a credit note returned the settlement; left out while it is invoiced.
+                    format: date-time
+                    type: string
+            required:
+                - id
+                - number
+                - issueDate
+                - invoicedAt
+            type: object
+        SettlementLine:
+            description: One priced element of a settlement, in the order it prints.
+            properties:
+                amount:
+                    description: Two decimals, NOK; negative allowed on a correction.
+                    format: double
+                    type: number
+                band:
+                    description: day or night for a grid energy component with a night rate; left out otherwise.
+                    type: string
+                kind:
+                    description: The tariff component's kind (spot_energy, fixed_energy, markup, monthly_fee, grid_energy, grid_capacity, grid_fixed, electricity_tax, enova_levy).
+                    type: string
+                month:
+                    description: The calendar month (its first day) a grid capacity line prices; left out otherwise.
+                    format: date
+                    type: string
+                quantity:
+                    description: Three decimals, in unit.
+                    format: double
+                    type: number
+                text:
+                    description: The tariff component's name.
+                    type: string
+                unit:
+                    description: kWh, month, year or pcs.
+                    type: string
+                unitPrice:
+                    description: Six decimals, NOK per unit.
+                    format: double
+                    type: number
+                vatHint:
+                    description: standard or exempt_household_north.
+                    type: string
+            required:
+                - kind
+                - text
+                - quantity
+                - unit
+                - unitPrice
+                - amount
+                - vatHint
+            type: object
+        SettlementResponse:
+            description: What the supply period's customer owes for the metering point over one billing period (energy consumption billing design D5). A period nobody has settled yet is computed for the answer and has no id or revision.
+            properties:
+                amount:
+                    description: The sum of the lines, two decimals, NOK; 0 when blocked.
+                    format: double
+                    type: number
+                blocked:
+                    description: Why the period cannot be invoiced (period_open, no_tariff, no_consumption, incomplete, price_gap, price_preliminary); left out when it can.
+                    type: string
+                blockedDetail:
+                    description: The blocker's sentence; left out when not blocked.
+                    type: string
+                contractName:
+                    description: The power tariff's name.
+                    type: string
+                correctsId:
+                    description: A correction's invoiced original; left out on a regular settlement.
+                    format: int64
+                    type: integer
+                currency:
+                    type: string
+                customerId:
+                    format: int32
+                    type: integer
+                estimated:
+                    description: Whether any interval of the period is an estimate.
+                    type: boolean
+                id:
+                    description: The stored settlement; left out for a period computed for this answer.
+                    format: int64
+                    type: integer
+                invoice:
+                    $ref: '#/components/schemas/SettlementInvoice'
+                kind:
+                    description: regular or correction.
+                    type: string
+                kwh:
+                    description: Three decimals; a correction's is the difference.
+                    format: double
+                    type: number
+                lines:
+                    items:
+                        $ref: '#/components/schemas/SettlementLine'
+                    type: array
+                meteringPointId:
+                    format: int32
+                    type: integer
+                missingIntervals:
+                    description: How many intervals the period lacks; 0 is complete.
+                    format: int32
+                    type: integer
+                periodEnd:
+                    description: The period's end, exclusive.
+                    format: date-time
+                    type: string
+                periodStart:
+                    format: date-time
+                    type: string
+                revision:
+                    description: The stored settlement's revision; left out with the id.
+                    format: int32
+                    type: integer
+                state:
+                    description: draft, invoiced or released.
+                    type: string
+                supplyPeriodId:
+                    format: int32
+                    type: integer
+            required:
+                - kind
+                - supplyPeriodId
+                - meteringPointId
+                - customerId
+                - periodStart
+                - periodEnd
+                - kwh
+                - estimated
+                - missingIntervals
+                - currency
+                - lines
+                - amount
+                - contractName
+                - state
+            type: object
         SpotPriceCoverage:
             description: What the installation holds of day-ahead prices, per price area (energy consumption billing design D2), for the Prices page — every area a metering point with a supply period is in, every area already priced and, with the spot-price service as the source, every area the service follows (spot-price service design S4). source is where the installation's worker fetches prices from — service (the shared spot-price service), feed (the public feed) or none (files only).
             properties:
@@ -2729,6 +2882,44 @@ paths:
             tags:
                 - Energy metering points
             x-vantigo-access: permission:energy:meters-manage+energy:meters-view
+    /api/v1/energy/metering-points/{id}/settlements:
+        get:
+            description: Every billing period of the point's non-cancelled supply periods that has closed in the last 24 months, each as its stored settlement (an invoiced one as frozen, a draft recomputed) or computed for the answer when none is stored, with the released settlements and the corrections of the window. Newest period first. Nothing is written.
+            operationId: getEnergyMeteringPointsByIdSettlements
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/SettlementResponse'
+                                type: array
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+            summary: List a metering point's settlements
+            tags:
+                - Energy metering points
+            x-vantigo-access: permission:energy:supply-periods-view+energy:consumption-view
     /api/v1/energy/metering-points/{id}/supply-periods:
         get:
             operationId: getEnergyMeteringPointsByIdSupplyPeriods
