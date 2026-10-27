@@ -1,10 +1,11 @@
 ---
 title: "Invoices module"
-description: "The sales document: the seller record, gap-free numbering, VAT, issue and immutability, credit notes, the PDF, payments, sending, the journal, the export and retention."
+description: "The sales document: the seller record, gap-free numbering, VAT, issue and immutability, credit notes, invoicing work and consumption, the PDF, payments, sending, the journal, the export and retention."
 sources:
   - apps/server/internal/invoices
   - apps/invoices/frontend
   - openapi/invoices.yaml
+  - apps/server/internal/db/migrations/00078_invoices_energy.sql
 ---
 The Invoices module issues the sales document of Norwegian bookkeeping: a draft
 becomes a numbered, immutable invoice or credit note, rendered to a PDF that is stored
@@ -22,7 +23,10 @@ bank agreement; phase 3
 ([design](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-10-05-invoices-work-to-invoices-design.md))
 turned the work other modules record — hours, expenses, billing milestones — into
 lines, marked invoiced in their own modules by the issue and released by the credit
-note that returns them ([Invoicing work](#invoicing-work)). Vantigo stays a sub-ledger: there is
+note that returns them ([Invoicing work](#invoicing-work)); phase 5
+([design](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-10-24-energy-consumption-billing-design.md))
+does the same for the electricity a customer used, Energy's settlements becoming lines
+([Invoicing consumption](#invoicing-consumption)). Vantigo stays a sub-ledger: there is
 no general ledger and nothing is posted — a payment here is a registration, not a
 posting, made by hand or from a bank file's line matched on its KID ([Matching](#matching)).
 
@@ -980,6 +984,319 @@ financial year** (bokføringsloven § 13, the conservative reading) — and an i
 document's rows are part of the sales document, which art. 17(3)(b) exempts from
 erasure ([Retention and personal data](#retention-and-personal-data)).
 
+## Invoicing consumption
+
+Phase 5's delivery D
+([design](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-10-24-energy-consumption-billing-design.md)
+D7–D9, D11; the readings of the
+[plan](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/plans/2026-10-27-invoices-energy.md))
+invoices what a customer owes for the electricity its metering points used: Energy's
+**settlements** — one per supply period and billing period, priced by Energy's spot
+prices and tariffs ([Settlements](/en/reference/energy/#settlements)) — become an
+invoice draft's lines. The settlements stay Energy's; this module reads them only
+through `contracts.ConsumptionProvider` (`Deps.Consumption`,
+[the consumption contract](/en/reference/energy/#the-consumption-contract)), which is
+nil when Energy is switched off, and marks them invoiced through Energy's
+invoiced-work holder ([The invoiced-work holder](/en/reference/energy/#the-invoiced-work-holder)).
+A settlement is a line source of the kind **`energy.settlement`**
+(`contracts.WorkSourceSettlement`), held, invoiced and released exactly as work is
+([The link and its states](#the-link-and-its-states)); what differs is below.
+
+Every read of the provider is made on the pool before any transaction, through the
+accessors in `contractscalls.go`, and never under a lock (the provider's rule,
+[module boundaries rule 10](/en/contributing/module-boundaries/#the-rules)). In the app
+the view is the **Consumption** section of the card "Uninvoiced work" on a customer's
+Invoices tab, and the wizard is **From consumption**
+([the user guide](/en/user/invoices/#invoicing-consumption)). Everything here asks for
+`invoices:access` and `invoices:create` and nothing more ([Permissions](#permissions)):
+Energy's own permissions are not asked, as Time's and Projects' are not for work.
+
+### The two views
+
+Both are `permission:invoices:access+invoices:create`, take `customerId` (required, a
+400 without it) and an optional `through` date — today in the business time zone when
+absent — and answer 409 **`consumption_unavailable`** when `Deps.Consumption` is nil.
+A billing period is due when it ends on or before the end of `through`: the provider's
+`Through` is the start of the day after it in `Europe/Oslo`, the market zone, whatever
+the business time zone.
+
+- **`GET /consumption`** — the panel's section. Energy's `DueSupplies` for the
+  customer, which **writes nothing and settles nothing**: `{customerId, through,
+  supplies[], warnings[]}`, each supply its `supplyPeriodId`, `meteringPointId`,
+  `gsrn`, `address` (*"street, postal city"*), `priceArea`, `contractName` (the power
+  tariff's name), `cadence` (`monthly`, `quarterly` or `yearly`), `billedThrough` (the
+  end of the last invoiced period, absent when none), `duePeriods` (how many periods
+  closed through the date are not invoiced) and `blocked`, the first due period's
+  blocker (`period_open`, `no_tariff`, `no_consumption`, `incomplete`, `price_gap`,
+  `price_preliminary`; [Blockers](/en/reference/energy/#blockers)), absent when none.
+- **`GET /consumption/settlements`** — the wizard's list. Energy's `Settle` for the
+  customer through the date — the provider's command, which writes **Energy's own**
+  draft settlements; this module writes nothing — as `{customerId, through,
+  settlements[], warnings[]}`, in a document's order (below). Each settlement carries
+  its `id`, `revision`, `kind` (`regular` or `correction`, with `correctsId`), the
+  supply period and point, `gsrn`, `address`, `priceArea`, `contractName`,
+  `periodFrom` and `periodTo` (its first and last civil day), `kwh`, `estimated`,
+  `missingIntervals`, `currency`, `amount`, `state`, `blocked` with `blockedDetail`
+  when Energy cannot bill it, and its `lines` — each `kind`, `text`, `band` (`day` or
+  `night`) and `month` (a capacity line's month) when they apply, `quantity`, `unit`,
+  `unitPrice`, `amount` and `vatHint`. From this module's own rows
+  (`LiveSourcesFor`) it adds `selectable` — whether the wizard takes it when no ids are
+  named — and, when it is not, `reason`:
+
+| Reason | When |
+| --- | --- |
+| `held` | A live document of this module holds it or has invoiced it; `heldBy: {invoiceId, number?, status}` names the document. |
+| `blocked` | Energy cannot price it (`blocked`, `blockedDetail`). |
+| `cadence` | A yearly supply of a person, who is billed at least quarterly (below). |
+
+Both answer the warning **`consumption_truncated`** when Energy had more than 5 000
+(`MaxBillableRows`) to answer and set `More`: the rest is not in the answer.
+
+### From consumption to a draft
+
+`POST /from-consumption` (`permission:invoices:access+invoices:create`) makes an
+invoice draft of a customer's settled consumption — 201 — or, with `invoiceId` and the
+`revision` it was read at, adds it to an existing invoice draft of the same customer —
+200. The body: `{customerId, through?, settlementIds?, invoiceId?, revision?, vatCodes?:
+{energy?, energyExempt?}, note?}`. **In order**, each before any transaction:
+
+1. **The body** (400 on the field): a customer; `settlementIds` positive, none twice
+   and at most 5 000 (`settlementIds`, `settlementIds[i]`); `invoiceId` and `revision`
+   together; a `note` of at most 1 000 characters.
+2. **An append's target**, as the work wizard's: 404 unknown, 409 `invoice_issued`
+   once issued, 400 on `invoiceId` for a credit note or another customer's draft; then
+   409 `too_many_sources` past 5 000 sources, the target's held ones counted.
+3. **409 `consumption_unavailable`** when Energy is off.
+4. **The settings, the billing profile and the customer gates** ([Drafts](#drafts)).
+5. **The settlements**: Energy's `DueSupplies` for the customer (for the cadences),
+   then `Settle` for the customer through the date — or, with `settlementIds`,
+   `Settlements` by those ids. An answer with `More` is `too_many_sources`.
+6. **The judgments**, each over every settlement before the next, the first refused
+   named in `sourceKind` and `sourceId`:
+   - a named settlement of another customer — 409 `source_not_for_customer`;
+   - a named settlement missing, invoiced or released — `source_not_invoiceable`;
+   - a named settlement Energy cannot bill — **`settlement_blocked`**, the blocker and
+     its `blockedDetail` in the detail;
+   - a settlement of a **yearly** supply for a person — **`cadence_not_allowed`**: a
+     consumer is billed at least quarterly, a rule Energy cannot judge, since it does
+     not read the directory (design U6). The cadence is the one `DueSupplies` answers;
+     a settlement whose supply it does not list (a correction of a supply billed
+     through) counts as yearly when its period is longer than three months;
+   - a currency other than NOK — `currency_not_nok`.
+
+   **Without `settlementIds`** the wizard takes everything due instead and leaves out,
+   rather than refuses, the blocked settlements, those another live document holds and
+   those of a yearly supply of a person; nothing left is 409
+   **`no_consumption_due`**.
+7. **The VAT codes** ([VAT codes for energy](#vat-codes-for-energy)): a 400 on
+   `vatCodes.energy` or `vatCodes.energyExempt`.
+8. **The lines** ([below](#the-lines-of-a-settlement)); more than 500 with the target's
+   own is 409 `too_many_lines` (no `suggestedGrouping`: consumption has no grouping), and
+   a line too large for its columns a 400 on `lines`.
+9. **The delivery period** is the settlements' span, from the first period's first day
+   to the last period's last, widened on an append as the work wizard widens it
+   ([From work to a draft](#from-work-to-a-draft)); **the note** the request's, else the
+   suggested note naming the invoices released settlements replace, as for work
+   ([Release on credit](#release-on-credit)).
+
+Then **one transaction**, as the work wizard's: the new draft inserted, or the target
+locked at its revision (409 `invoice_issued` or the revision 409), its own lines first
+and their work carried, the new lines after; under the lock, a settlement another live
+document holds is 409 `source_held_elsewhere` with `heldBy`, and the settlements are
+then held in one statement ordered by kind and id. The draft's project is derived as
+always ([The project](#the-project)) from the held rows that carry one: a settlement
+carries none, so a draft of consumption alone names no project, and an append to a
+draft of one project's work keeps it. A new draft carries no timesheet (consumption
+has no hours); an append keeps the target's as it is.
+
+### The lines of a settlement
+
+The lines are built by one pure function (`energyLines`,
+[`energy_lines.go`](https://github.com/vantigo-io/vantigo/blob/main/apps/server/internal/invoices/energy_lines.go)),
+which the wizard and a save's refresh share. **One line per settlement line** — the
+regulation wants every price element on its own line (§ 7-2 (2) b), so there is no
+grouping — in the settlement's own order; the settlements are ordered by GSRN, then
+by period start, a regular one before its period's correction, then by id.
+
+**The text** is in the buyer's language, as the work lines' are:
+
+| | Norwegian | English |
+| --- | --- | --- |
+| a line | "<component><qualifier>, <GSRN> <address>, <period>" | the same |
+| a band | qualifier " (dag)" / " (natt)" | " (day)" / " (night)" |
+| a capacity line of a settlement spanning more than one month | qualifier " (<month> <year>)", "(oktober 2026)" | "(October 2026)" |
+| a correction | "Korreksjon <line's text>: <±q> <unit>, tidligere fakturert <n>" | "Correction <line's text>: <±q> <unit>, previously invoiced <n>" |
+
+`<component>` is the tariff component's own name as Energy answers it, `<address>`
+Energy's *"street, postal city"*, and `<period>` the period's first to last civil day
+in `Europe/Oslo` as the work lines write a period ("oktober 2026", "1. jan.–31. mars
+2026" / "1 Jan – 31 Mar 2026"). On a correction, `<±q>` is the difference in the
+line's quantity with its sign and up to three decimals ("+12,5", "−3"), left out with
+its unit when the quantity did not change; `<n>` is the number of the invoice the
+corrected settlement is invoiced on, read from this module's own rows
+(`correctedNumbers`, [`energy_sources.go`](https://github.com/vantigo-io/vantigo/blob/main/apps/server/internal/invoices/energy_sources.go)),
+left out with its words when no invoiced row names it. A text is cut to the line's
+500 characters.
+
+**The unit** is a word by Energy's unit, each one the EHF unit table maps
+([Units](#units)): `kWh` → `kWh` (`KWH`); `month` → `mnd` / `month` (`MON`); `year` →
+`år` / `year` (`ANN`); `pcs` → `stk` / `pcs` (`C62`).
+
+**A regular line** bills the settlement line's quantity (three decimals) at a price
+found so that **the amount wins** (Energy's reading on the record 3): the settlement
+line's own unit price when quantity × it rounds to the line's amount; else the amount
+÷ the quantity at eight decimals, when that rounds to it; else the settlement's price,
+and the line then differs from its source (`line_differs_from_sources`). That is why
+`unit_price` holds **eight decimals** (`numeric(18,8)`, migration 00078): at four, a
+1 500 kWh line misses its amount by up to 7 øre nine times in ten, and EHF's
+PEPPOL-EN16931-R120 holds a line's net to quantity × price. A line of no quantity and
+no amount is left out; a settlement left with no line keeps its first as `1 stk × 0.00`,
+so its row always sits on a line. The discount is 0.
+
+**What the held row takes** (`line_sources`, `settlementSource`): the kind
+`energy.settlement`, the settlement's id and revision, its kind as `source_subkind`
+(`regular` or `correction`), **no project** (`project_id` NULL, the one kind allowed
+it: `ck_line_sources_project`), its kWh as the quantity — a correction's the
+difference, zero or negative, which `ck_line_sources_quantity` allows for it — its
+amount, its currency, its period's last day as `source_date` and, for the document to
+print from, the snapshot `point_gsrn`, `point_address`, `price_area`,
+`contract_name`, `period_from` and `estimated` (`ck_line_sources_point`: all six set
+exactly when the row carries no project). The kind CHECK is a shape,
+`^[a-z]+\.[a-z_]+$`, so this module's migration names no other module.
+
+### A settlement over several lines
+
+A source is live on one row at most (`ux_line_sources_live`), and a settlement makes a
+line per price element, so its one row sits on its **first** line and
+**`line_count`** says how many lines in a row, from there, bill it
+(`ck_line_sources_line_count`: above 1 only for a row without a project). On the wire
+every one of those lines lists the source in `lines[i].sources`, and the source
+answers `lineCount`.
+
+- **A save names it on each of its lines**, and they must be **consecutive**: a gap is
+  a 400 on `lines[i].sources`, "A settlement's lines stay together, one after
+  another". A save that keeps fewer of its lines keeps the source with a smaller count;
+  one that names it on none releases it (`releasedSources`), as work is released.
+- **`line_differs_from_sources`** compares the sum of its lines' nets with the
+  source's amount, and warns on each of its lines; the freshness warnings mark each of
+  them.
+- **The issue's re-read** under the lock compares each row's position and count too:
+  a save slipped in between is `invoice_changed`.
+
+### Correction lines
+
+A correction settlement (Energy's [Corrections](/en/reference/energy/#corrections))
+carries per line the difference in quantity and the difference in amount, each on its
+own — when only a rate changed the quantity is 0 and the amount is not. Each of its
+lines is therefore billed as **±1 × |difference|**: quantity `-1` when the amount is
+negative, else `1`, the unit `stk` / `pcs`, the unit price the amount's magnitude, and
+the difference in kWh (or months) in the text. It is the deduction line's shape
+([A-konto and the final settlement](#a-konto-and-the-final-settlement)), honest when
+only a price changed, which no line of kWh could say (design reading 9).
+
+Such a line carries **`correction`** (`invoices.lines.correction`, answered on the
+line): set by the module on every write from the line's sources — a line naming a held
+correction settlement — and never taken from a request. `ck_lines_quantity` allows a
+negative quantity on a correction line as on a deduction line, and
+`ck_lines_correction` keeps its discount at 0 and its `deducts_invoice_id` NULL. The
+document must still total above zero: a draft whose corrections take it to zero or
+below warns `invoice_total_not_positive`, and its issue is refused with it. A credit
+note of a correction line is negative as a deduction's credit is, and carries
+`correction`.
+
+### VAT codes for energy
+
+Energy gives every settlement line a **hint**, not a code: `standard`, or
+`exempt_household_north` for a household in Nordland, Troms or Finnmark (mval. § 6-6;
+[the metering point's billing facts](/en/reference/energy/#the-metering-points-billing-facts)),
+the grid's and the taxes' lines included (design D8). This module maps the hint to a
+code:
+
+- **The settings** carry `energyVatCodes: {energy, energyExempt}`
+  (`invoices.settings.energy_vat_code`, `energy_vat_code_exempt`, foreign keys onto
+  `vat_codes` `ON DELETE RESTRICT`): **1** (code `3`, 25 %) and **10** (code `5N`) until
+  changed. `GET /settings` always answers them; on `PUT /settings` the field is
+  **optional** — absent keeps the stored codes — and given, each must exist and, when it
+  differs from the stored one, be active, else a 400 on `energyVatCodes.energy` or
+  `energyVatCodes.energyExempt`.
+- **The wizard** takes `vatCodes.energy` for `standard` lines and `vatCodes.energyExempt`
+  for exempt ones, else the settings' — or id 9 (code `7`, category O) for both while
+  the seller is not VAT-registered. A code given must exist and be active; a default
+  that has become inactive, with no code given, is a 400 on the field too; each is
+  judged only when a line carries its hint. A line's code is then editable like any.
+
+**The seeded code `5N`.** Migration 00078 seeds id 10, code `5N`, "Fritatt – kraft til
+husholdninger i Nord-Norge 0 %", SAF-T `5`, category `Z`, the exemption reason
+"Elektrisk kraft til husholdningsbruk i Nord-Norge, mval. § 6-6", at 0 % from
+2026-01-01 — only where neither id 10 nor the code `5N` is taken; the exempt default is
+10 where it was seeded and 5 otherwise. A Z category carries no reason in EHF (BR-Z-10),
+so the reason prints on the PDF's VAT summary; an operator who wants it in the EHF
+points the setting at an E code instead (design U4). Two codes of one category and rate
+on one document share a summary row, whose reason is the first line's.
+
+### Freshness, refresh and the issue
+
+**Freshness.** `GET /{id}` of an invoice draft holding settlements, for a caller with
+`invoices:create`, reads them through `Settlements` when Energy is on — a kind whose
+module is off is not judged, as for work — and warns `source_not_invoiceable` when one
+is missing, no longer a draft or blocked, and `source_changed` when its revision,
+currency or amount (by value) moved. `Settlements` recomputes a draft settlement and
+writes it when a figure changed, so a read is how a held settlement stays current
+([Drafts, revisions and housekeeping](/en/reference/energy/#drafts-revisions-and-housekeeping)).
+
+**Refresh.** `PUT /{id}` with `refreshSources: true` reads each held settlement again
+and **rebuilds its lines** from its current lines with `energyLines`, in the draft's
+buyer language at the settings' codes, in place of the lines the request gave for it —
+their number may change; a settlement no longer invoiceable is dropped and named in
+`releasedSources`, as work is.
+
+**The issue** ([The write-back](#the-write-back)) differs in four ways:
+
+- `projects_unavailable` applies only when a held row carries a project: a draft of
+  consumption alone issues with Projects switched off.
+- Before the transaction the held settlements are read through `Settlements`, and one
+  that now belongs to another customer is 409 `source_customer_changed`, naming it.
+- `source_not_selectable` does not apply to the kind.
+- Energy's holder is handed the settlements (`ProjectID` 0, no expense kind) **last**,
+  after Projects, Expenses and Time (`contracts.InvoicedWorkOrder`), and judges and
+  stamps them as its section says
+  ([The invoiced-work holder](/en/reference/energy/#the-invoiced-work-holder)): its
+  `source_already_invoiced`, `source_not_invoiceable` and `source_changed` refuse the
+  issue with the line and roll it back.
+
+**The credit note** releases a settlement only when it returns **every one of its
+lines** in full, each by its line's last return
+([Release on credit](#release-on-credit)): one line returned leaves the settlement
+invoiced. The `line_releases` row names the credit line returning its first line, and
+Energy's `ReleaseInvoiced` frees the period for a new settlement, settled afresh by the
+next `Settle`. A correction the released settlement had stays invoiced unless its own
+lines are credited too ([Corrections](/en/reference/energy/#corrections)).
+
+### On the documents
+
+Both are rendered from the document's own rows — the line sources' snapshot — and
+never read Energy (design D9).
+
+- **The PDF** prints, above the first line of each metering point's lines, a block:
+  "Målepunkt-ID" / "Metering point ID" (the GSRN), "Adresse" / "Address",
+  "Prisområde" / "Price area", "Avtale" / "Contract" (the power tariff's name),
+  "Periode" / "Period" (the span of its settlements' periods) and "Forbruk" /
+  "Consumption" — the regular settlements' kWh, and the corrections' difference beside
+  it, "(korreksjon +12,5 kWh)" / "(correction +12.5 kWh)" — then "Forbruket er delvis
+  stipulert" / "The consumption is partly estimated" when a settlement is estimated. A
+  save that interleaved a point's lines with others repeats the block above each run.
+  For a **person** buyer of a document holding settlements, a footer: "Prisene på strøm
+  kan sammenlignes på strømpris.no. Klager kan rettes til Elklagenemnda,
+  elklagenemnda.no" / "Electricity prices can be compared at strømpris.no. Complaints
+  can be made to Elklagenemnda, elklagenemnda.no". A unit price prints with its own
+  decimals, at least two and at most eight.
+- **The EHF** carries on each line of a settlement `cac:Item/cac:AdditionalItemProperty`
+  — `cbc:Name` "Målepunkt-ID", `cbc:Value` the GSRN — after
+  `cac:ClassifiedTaxCategory`; the document's period as `cac:InvoicePeriod`, as work's
+  (a line's own period, BT-134/135, stays out); `cbc:PriceAmount` with its own
+  decimals, at least four; the units `KWH`, `MON`, `ANN` and `C62` from the unit words;
+  and a correction line's −1 as `cbc:InvoicedQuantity` `-1.000`, as a deduction's.
+
 ## Issuing
 
 `POST /invoices/{id}/issue` runs one READ COMMITTED transaction in a fixed order:
@@ -993,7 +1310,7 @@ the VAT rows and the document are written. The directories — the customer's bi
 profile, and for work the projects and the issuer's name — are read before the
 transaction and the object store is used after it; none is ever called under a lock. The
 lock order is always document → settings → counter → original → the source modules'
-rows (Projects, Expenses, Time), and nothing takes them in another order — a
+rows (Projects, Expenses, Time, then Energy's settlements), and nothing takes them in another order — a
 settlement's deducted invoices are read after the counter and never locked, and its save
 and its credit note's creation lock only the draft and the original ([A-konto and the
 final settlement](#a-konto-and-the-final-settlement)): `PUT /settings` takes only the settings row, the rate operations the
@@ -1621,6 +1938,10 @@ and prints a deduction line with a leading minus on its quantity and its amount 
 settlement](#a-konto-and-the-final-settlement)). A credit note of a settlement lists
 none: its one preceding invoice is the settlement.
 
+**Consumption** prints a block per metering point above its lines and, for a person
+buyer, the footer naming strømpris.no and Elklagenemnda; a unit price prints with its
+own decimals, two to eight ([On the documents](#on-the-documents)).
+
 **The timesheet** of an invoice whose flag is on prints after everything else, on pages
 of its own: "Timeliste" / "Timesheet", the columns "Dato", "Person", "Arbeidstype",
 "Beskrivelse", "Timer" / "Date", "Person", "Work type", "Description", "Hours", one line
@@ -1661,7 +1982,8 @@ stored PDF's bytes: no clock, no randomness, and the same inputs render the same
 It is written by a small hand writer over Go's `encoding/xml` encoder with literal
 `cac:`/`cbc:` element names, the three namespace declarations on the root and the
 elements in the UBL schema's order. Amounts have exactly two decimals, quantities their
-stored three and unit prices their stored four, never in exponent form; an empty value
+stored three and unit prices their own decimals, at least four and at most the eight an
+energy line may carry ([On the documents](#on-the-documents)), never in exponent form; an empty value
 is left out rather than written as an empty element (PEPPOL-EN16931-R008).
 
 **The mapping**, from the snapshot and nothing else (the directory is never read; the
@@ -1702,6 +2024,11 @@ language, the row's category and rate, and a price of `0.0000`. It adds nothing 
 sum, and the stored document is unchanged. Category K needs the buyer's VAT identifier, which
 the module does not hold, so a document with a K line is never sent as EHF (the
 pre-check below); its PDF is unaffected.
+
+**A line billing a settlement** carries the metering point as
+`cac:Item/cac:AdditionalItemProperty` — `cbc:Name` "Målepunkt-ID", `cbc:Value` the
+GSRN — after its `cac:ClassifiedTaxCategory`, and a correction line its −1 as a
+deduction line does ([On the documents](#on-the-documents)).
 
 ### Units
 
@@ -4458,9 +4785,9 @@ administrator reads when building a role, say so.
 | Key | Sensitive | What it allows |
 | --- | --- | --- |
 | `invoices:access` | no | Use the app; read every invoice, credit note, PDF, payment and delivery, an invoice's charges, charge payments, waivers and manual deliveries, every document's EHF state and transmissions and download their UBL, the journal, the CSV export and the stats; read the collection rates, the reminder settings, the payment settings and a customer's reminder policy; the overdue list, and an issued invoice's letters, next action, hold and hand-off, and a sent letter's PDF; an invoice's pay link (its id and when it was made, not its address) and its Vipps payment attempts; the day's Vipps payments, their CSV and whether the day is reconciled (marking it is `invoices:payments`; [The day's Vipps payments](#the-days-vipps-payments)); the attention items about overdue invoices and refunds due ([Attention](#attention)). |
-| `invoices:create` | no | Create, edit and delete drafts; preview a draft; list the uninvoiced work, with its people and rates, and make a draft of it, or add it to one; refresh a draft's work and see whether it is still fresh; turn a draft's timesheet on or off; list what earlier invoices have left to deduct ([Invoicing work](#invoicing-work)). |
+| `invoices:create` | no | Create, edit and delete drafts; preview a draft; list the uninvoiced work, with its people and rates, and make a draft of it, or add it to one; refresh a draft's work and see whether it is still fresh; turn a draft's timesheet on or off; list what earlier invoices have left to deduct ([Invoicing work](#invoicing-work)); list a customer's consumption due and its settlements, and make a draft of them, or add them to one ([Invoicing consumption](#invoicing-consumption)). |
 | `invoices:issue` | yes | Issue a draft — and so mark the work it bills invoiced in its modules — and create a credit-note draft, whose issue releases the work it returns; send an issued document by e-mail, and see where each send went; send it as EHF, cancel a transmission never attempted and resolve an unconfirmed one; record that an invoice was handed over or posted, and remove such a record with a reason ([The delivery fact](#the-delivery-fact)); make an invoice's pay link on demand or revoke it, and read its address and QR code while payment on site is available ([Pay links](#pay-links)); ask for a Vipps payment on site, read the request and cancel it ([Paid on site — kontantsalg](#paid-on-site--kontantsalg)). |
-| `invoices:manage` | yes | The seller record and its Peppol id, the series start, the KID agreement, the VAT code each kind of work is invoiced at, the timesheet's default and person label, VAT codes and their rates, the access point's credentials, the Vipps credentials and the payment settings, abandoning a stuck Vipps payment attempt ([Abandon](#abandon)), the format a bank account's files are imported in, the collection rates (add one ahead of a release, delete one nothing has relied on) and the reminder settings, the regime's review among them. |
+| `invoices:manage` | yes | The seller record and its Peppol id, the series start, the KID agreement, the VAT code each kind of work is invoiced at, the two VAT codes energy lines take, the timesheet's default and person label, VAT codes and their rates, the access point's credentials, the Vipps credentials and the payment settings, abandoning a stuck Vipps payment attempt ([Abandon](#abandon)), the format a bank account's files are imported in, the collection rates (add one ahead of a release, delete one nothing has relied on) and the reminder settings, the regime's review among them. |
 | `invoices:payments` | yes | Register a payment against an issued invoice, and remove a registration with a reason; import bank files and read the imported files and their accounts; work the exception queue — apply, dismiss, handle a reversal, confirm a duplicate, treat one as distinct, reopen ([The exception queue](#the-exception-queue)); set a customer's reminder policy — whether, and with what charges, they are reminded; register a payment of an invoice's reminder charges and remove one, and waive charges ([Charges](#charges)); preview and make reminder runs and read them ([Runs](#runs)), see the address each letter goes to, print paper letters, confirm them posted or reprint them, and withdraw or retry a letter ([Letters](#letters)); hold a disputed invoice and lift the hold, record a hand-off to a collection agency and withdraw it, and export the collection file ([Holds and the hand-off to collection](#holds-and-the-hand-off-to-collection)); mark a day's Vipps payments reconciled ([The day's Vipps payments](#the-days-vipps-payments)); the attention items about the bank lines, the letters, the print batches and the Vipps payments ([Attention](#attention)). |
 
 **The quick invoice needs `invoices:create` and `invoices:issue` both** ([The quick
@@ -4522,6 +4849,11 @@ card only for an active customer, as it offers "New invoice". The source modules
 "Invoiced by invoice n" is a link to the invoice only for a caller who may open it —
 the invoices module mounted and `invoices:access` — and plain words otherwise.
 
+**Invoicing consumption adds none either** (design D7). Its two views and its wizard are
+`invoices:access` and `invoices:create`, and Energy's own permissions are not asked:
+whoever builds the invoice sees the metering points, the kWh and the prices it will
+state. The stamp and the release run under `invoices:issue` through Energy's holder.
+
 **Creating a draft in the app also needs `customers:view`**: the directory has no
 search, so the buyer picker reads the customers module's own list. The API takes a
 customer id and checks nothing more; the app hides "New invoice" without it.
@@ -4539,7 +4871,7 @@ All under `/api/v1/invoices`, every one behind `invoices:access` but the pay pag
 | --- | --- | --- |
 | `GET /meta` | | |
 | `GET /settings` | | |
-| `PUT /settings` | `invoices:manage` | 400 on the field (both mod-11 checks, IBAN mod-97, BIC, "Only NOK in this phase", the Peppol id, the KID pair, a next number the KID length does not fit, any of the three required-nullable fields absent, `workVatCodes` absent, a work VAT code unknown, or changed to an inactive one, `timesheetDefault` or `timesheetPersonLabel` absent or null, a label other than `initials`, `number` or `name`); 409 `series_locked`, or a stale revision (no code) |
+| `PUT /settings` | `invoices:manage` | 400 on the field (both mod-11 checks, IBAN mod-97, BIC, "Only NOK in this phase", the Peppol id, the KID pair, a next number the KID length does not fit, any of the three required-nullable fields absent, `workVatCodes` absent, a work VAT code unknown, or changed to an inactive one, `timesheetDefault` or `timesheetPersonLabel` absent or null, a label other than `initials`, `number` or `name`, an `energyVatCodes` code unknown, or changed to an inactive one); 409 `series_locked`, or a stale revision (no code) |
 | `GET /settings/access-point` | `invoices:manage` | none: 200 with `hasCredentials: false` when nothing is stored |
 | `PUT /settings/access-point` | `invoices:manage` | 400 on `provider`, `legalEntityId` or `apiKey` (blank, too long, or omitted while none is stored); 409 `transmissions_active` on a provider switch; 503 `ehf_unavailable`, a kept key that cannot be opened |
 | `DELETE /settings/access-point` | `invoices:manage` | 409 `transmissions_active` |
@@ -4577,6 +4909,9 @@ All under `/api/v1/invoices`, every one behind `invoices:access` but the pay pag
 | `DELETE /vat-codes/{id}/rates/{rateId}` | `invoices:manage` | 404; 409 `rate_period_not_latest`, `rate_period_last`, `rate_period_in_use` |
 | `GET /work` | `invoices:create` | 400 neither or both of `customerId` and `projectId`; 409 `work_unavailable`, `projects_unavailable`; 404 an unknown project |
 | `POST /from-work` | `invoices:create` | 400 on the field (`customerId`, `sources`, `sources[i]`, `grouping`, `revision`, `deliveryTo`, `invoiceId`, `vatCodes.<kind>`, `note`, `lines` — the document total too large); 404 the target; 409 `invoice_issued`, `too_many_sources`, the customer gates, `projects_unavailable`, `source_not_for_customer`, `source_not_selectable`, `source_not_invoiceable`, `source_changed`, `mixed_currency`, `currency_not_nok`, `too_many_lines` (with `suggestedGrouping`), a stale revision, `source_held_elsewhere` (with `heldBy`) |
+| `GET /consumption` | `invoices:create` | 400 no `customerId`, a `through` that is no date; 409 `consumption_unavailable` |
+| `GET /consumption/settlements` | `invoices:create` | 400 no `customerId`, a `through` that is no date; 409 `consumption_unavailable` |
+| `POST /from-consumption` | `invoices:create` | 400 on the field (`customerId`, `settlementIds`, `settlementIds[i]`, `invoiceId`, `revision`, `note`, `vatCodes.energy`, `vatCodes.energyExempt`, `lines` — the document total too large); 404 the target; 409 `invoice_issued`, `too_many_sources`, `consumption_unavailable`, the customer gates, `source_not_for_customer`, `source_not_invoiceable`, `settlement_blocked`, `cadence_not_allowed`, `currency_not_nok`, `no_consumption_due`, `too_many_lines`, a stale revision, `source_held_elsewhere` (with `heldBy`) |
 | `POST /quick` | `invoices:create` and `invoices:issue` | 400 on the field (`customerId`, `lines` — none, more than ten, or the document total too large — `lines[i].<field>`, `deliveryDate`, `paymentTermsDays`, `yourReference`, `note`); 409 the customer gates and every code under [Issuing](#issuing), nothing left behind; 409 `request_id_reused`, a `requestId` used before with another body, with `invoiceId`, the invoice it issued (the same body is 200 with the first's invoice); 503 `storage_unavailable` |
 | `GET /` | | 400 paging, status, kind, state, `from` after `to` (`projectId` filters on the document's project) |
 | `POST /` | `invoices:create` | 400 on the field (`sources` and `refreshSources` included; a deduction line's `quantity`, `unitPrice`, `discountPercent`, `deductsInvoiceId`, `vatCodeId`, `sources`); 409 the customer gates, `deduction_duplicated` (with `linePosition`) |
@@ -4637,6 +4972,20 @@ All under `/api/v1/invoices`, every one behind `invoices:access` but the pay pag
 
 ## What comes next
 
+**Phase 5 is half done.** Its delivery D
+([plan](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/plans/2026-10-27-invoices-energy.md))
+invoices consumption one customer at a time through the **From consumption** wizard
+([Invoicing consumption](#invoicing-consumption)), on migration
+`00078_invoices_energy.sql`. Next is **delivery E, billing runs** (design D10): a run
+over every customer `DueSupplies` names through a date, drafted — and, when asked,
+issued — by an `invoices-billing` worker in the wizard's own code path, a customer
+split across documents by metering point when one document cannot hold its lines
+(`suggestedSplit`), with **Billing runs** pages; `module.Workers` then resolves the
+`Consumption` slot. Left out of the phase on purpose (design D12): advance invoicing
+and a-konto for energy, gjennomfakturering, strømstøtte and Norgespris, a line's own
+period in EHF, a VAT code per component, a reason per line within one VAT summary row,
+and eFaktura and AvtaleGiro.
+
 **Phase 4 is complete.** Its second pull request, 4C
 ([design](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-10-06-invoices-payments-reminders-design.md),
 D13–D19), built the payments port and its Vipps MobilePay adapter, the public host and
@@ -4646,8 +4995,6 @@ invoice, and on-site payment as a kontantfaktura with the day's list and its
 reconciliation — on migration `00046_invoices_payments_port.sql`. **Webhooks are not
 supported yet**: the integration polls, and the public host's allowlist names no
 webhook path (design open question 1; [Vipps payments](#vipps-payments)).
-
-- **5**: energy consumption billing.
 
 Phase 4's first pull request built receiving payments from the bank — OCR giro and
 camt.054 files matched on KID, the exception queue — and chasing them: collection

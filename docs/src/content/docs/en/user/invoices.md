@@ -1,6 +1,6 @@
 ---
 title: Invoices
-description: Invoicing work, drafting, issuing and sending invoices, credit notes, payments, the journal and the export.
+description: Invoicing work and consumption, drafting, issuing and sending invoices, credit notes, payments, the journal and the export.
 sidebar:
   order: 50
 sources:
@@ -218,6 +218,26 @@ work starts with ([Invoicing work](#invoicing-work)). It is saved with the page'
   timesheet's rows are written, and an issued invoice's timesheet never changes
   ([the timesheet](/en/reference/invoices/#the-timesheet)).
 
+### Consumption to invoice
+
+The card **Consumption to invoice** on the same page — *The VAT code an electricity line
+is invoiced at: the standard rate, and the exemption for households in Nord-Norge* —
+holds the two codes a draft made from consumption starts with
+([Invoicing consumption](#invoicing-consumption)). It is saved with the page's **Save**.
+
+- **VAT code for electricity**: the code of every line of an ordinary metering point —
+  the power, the grid, the taxes. Code 3 (25 %) until you change it.
+- **VAT code for exempt electricity (Nord-Norge)**: the code of every line of a household
+  in Nordland, Troms or Finnmark, which pays no VAT on electricity (mval. § 6-6). Vantigo
+  seeds code **5N** for it — *Fritatt – kraft til husholdninger i Nord-Norge 0 %*, with
+  the legal reason printed on the PDF — and it is the default (code 5 where 5N could not
+  be added).
+
+Energy decides which of the two a metering point takes, from its household use and
+postal code, and shows it on the point's page. While the seller is not registered for
+VAT, every energy line is invoiced at code 7 instead, whatever the card says
+([VAT codes for energy](/en/reference/invoices/#vat-codes-for-energy)).
+
 ## Finding a document
 
 **Invoices** in the sidebar lists every draft and issued document: drafts first, then by
@@ -395,6 +415,131 @@ Nothing is made, and the dialog says *Could not invoice the work* and why:
 When the refusal is about the work, the alert names it — *The work refused: …* — and
 the list is read again, so work that is no longer there to invoice drops out of what you
 chose. Check the choice and click the button once more.
+
+## Invoicing consumption
+
+When the Energy module is on, the electricity a customer used becomes invoice lines
+here: Energy prices each metering point's consumption per billing period — a
+*settlement*, by the spot prices and the tariffs — and Vantigo writes one line for every
+price element of it, in the customer's language, and marks the settlement invoiced when
+the invoice is issued ([how it works](/en/reference/invoices/#invoicing-consumption)).
+Like invoicing work, it needs `invoices:access` and `invoices:create`.
+
+### Where the consumption due is
+
+On a customer's page, the **Invoices** tab shows the card **Consumption** — *Metering
+points with billing periods that have closed and are not invoiced yet.* — below
+**Uninvoiced work**. With the Energy module switched off the card is not shown. One row
+per supply:
+
+- **Metering point** (its GSRN) and **Address**;
+- **Billing** — **Monthly**, **Quarterly** or **Yearly**, as the supply period is set
+  up in Energy;
+- **Billed through** — the last day already invoiced, or *Never billed*;
+- **Due periods** — how many closed billing periods are not invoiced;
+- **Status** — *Ready to invoice*, or why the first due period cannot be billed yet:
+  *The billing period is still open*, *No tariff applies*, *No consumption in the
+  period*, *Readings are missing*, *Spot prices are missing* or *Spot prices are still
+  preliminary*. Fix it in Energy — give the supply a tariff, import the readings or the
+  prices — and the card shows it ready next time; nothing has to be done here.
+
+When nothing waits, the card says *No consumption to invoice*. The card only reads:
+nothing is settled until you open the wizard.
+
+### Make a draft of it
+
+Click **From consumption**. The dialog **Invoice consumption** asks:
+
+- **Billing periods ending on or before** — today unless you change it. *Every billing
+  period closed by this day and not invoiced is settled and listed.* Changing the day
+  settles again.
+- **The settlements**, per metering point (*Settlements of 707057500012345678*): each
+  billing period with its kWh, its amount and its lines — the power, the grid's day and
+  night, the capacity per month, the fees and the taxes — and *Correction* on one that
+  corrects a period invoiced before. *The consumption is partly estimated* when some
+  readings were estimated. Every settlement that can be invoiced is ticked; untick the
+  ones to leave for later. One that cannot be chosen says why: what blocks it, the
+  document that already holds it (**On draft 12**, **On invoice 1042**), or *A yearly
+  supply of a person, who is billed at least quarterly* — a consumer must be billed at
+  least every quarter, so change the supply's cadence in Energy.
+- **VAT code for electricity** and **VAT code for exempt electricity (Nord-Norge)** —
+  starting at the codes on the card **Consumption to invoice** in the settings, or code
+  7 for both while the seller is not registered for VAT. Each line takes one of the two
+  by its metering point.
+- **Note** — *Printed on the invoice. Left empty, a note naming the invoice it replaces
+  is suggested when the consumption was credited before.*
+- **Put the consumption on** — **A new draft**, or one of the customer's invoice
+  drafts.
+
+Click **Create draft**, or **Add to draft 12**. The draft opens; added to a draft, the
+message says *The consumption is added to the draft*.
+
+### What the draft looks like
+
+- **A line per price element**, in the customer's language — "Strøm (dag),
+  707057500012345678 Storgata 1, 9008 Tromsø, oktober 2026" or "… October 2026": the
+  element's own name, the day or night band or the month where it applies, the metering
+  point, its address and the period. The quantity is the kWh, the months or the years,
+  and the unit price can have up to eight decimals, so that every line's amount is
+  exactly the amount Energy settled.
+- **A correction** — a period invoiced before whose readings or prices changed since — is
+  billed as the difference: one line per changed element, *1 stk* at the difference (or
+  *-1 stk* when it is a refund), its text starting "Korreksjon" / "Correction" and
+  giving the difference in kWh and the invoice that billed the period, *tidligere
+  fakturert 1042* / *previously invoiced 1042*. The invoice as a whole must still total
+  more than zero.
+- **The delivery period** runs from the first settled day to the last.
+- **The PDF** prints, above each metering point's lines, a block with the **Metering
+  point ID**, **Address**, **Price area**, **Contract**, **Period** and **Consumption**
+  in kWh — with the correction's difference beside it — and *The consumption is partly
+  estimated* where it is. An invoice to a private person ends with *Electricity prices
+  can be compared at strømpris.no. Complaints can be made to Elklagenemnda,
+  elklagenemnda.no* (in Norwegian for a Norwegian customer). As EHF, every line carries
+  the metering point ID.
+
+Under each line the editor shows the settlement it bills — the metering point, the
+period, the kWh and the amount.
+
+### Editing a draft of consumption
+
+Edit the lines as on any draft ([The work on a draft](#the-work-on-a-draft)), keeping
+two things in mind:
+
+- **A settlement's lines stay together.** You may change their text, quantity or price,
+  remove some of them or move them as a block, but not put other lines between them:
+  Save refuses that. Removing every line of a settlement gives it back — uninvoiced again
+  after **Save**, as work is.
+- **Refresh work** settles the draft's consumption again and writes its lines anew from
+  Energy's current figures, in place of the lines you edited; a settlement that can no
+  longer be invoiced is dropped and named as released. When readings or prices changed
+  after the draft was made, the lines and **Worth a look** say the work changed: refresh,
+  or the issue will refuse it.
+
+### Issuing and crediting it
+
+**Issue** as any invoice. The issue marks each settlement invoiced in Energy, where the
+metering point's **Settlements** card then shows the invoice's number. It is refused,
+naming the line, when a settlement changed since the draft was made, can no longer be
+invoiced, or now belongs to another customer: refresh and issue again. The Projects
+module does not need to be on for a draft of consumption alone.
+
+**Credit** a consumption invoice as any other. A settlement is given back — uninvoiced
+again, settled afresh the next time — only when the credit note returns **every one of
+its lines** in full; returning one of them leaves the settlement invoiced. Readings or
+prices that change after a period was invoiced need no credit note: Energy drafts a
+correction of the difference by itself, and it shows up in the wizard.
+
+### When the wizard refuses
+
+Nothing is made, and the dialog says *Could not invoice the consumption* and why: the
+Energy module is switched off; *A chosen settlement cannot be billed yet*; *A chosen
+settlement is of a yearly supply to a person, and a consumer is billed at least
+quarterly*; *Nothing is left to invoice through this day*; a chosen settlement is
+already on another document, belongs to another customer, can no longer be invoiced or
+is not in NOK; the settlements make more than 500 lines with the draft's own (choose
+fewer, or make another draft); or the customer cannot be invoiced, as for **New
+invoice**. When the refusal is about one settlement, the alert names it — *The
+settlement refused: …*.
 
 ## Editing and deleting a draft
 
@@ -1680,11 +1825,11 @@ No built-in role holds these; an Owner holds everything
 | --- | --- |
 | Open the app, read every document, download PDFs and EHF files, see payments, sends and EHF states, read the journal, export the CSV, see the dashboard card, read the overdue list, see an invoice's reminders, charges, deliveries, hold and hand-off and download a letter's PDF, read a customer's reminder policy, the collection rates and the reminder settings, see the dashboard's notices about overdue invoices and money owed back, see an invoice's pay link and Vipps payments, list the day's Vipps payments and download them as CSV | `invoices:access` |
 | Create, edit, preview and delete drafts | `invoices:create`, and `customers:view` to pick the buyer |
-| See the uninvoiced work — its hours, people and rates — on a customer's Invoices tab or a project's Invoicing tab, make a draft of it or add it to one, refresh a draft's work, turn its timesheet on or off, deduct earlier invoices | `invoices:create` |
-| Issue a draft — which marks its work invoiced in Time, Expenses and Projects, without asking for their permissions — make a credit note, send a document by e-mail or as EHF, see where each send went, cancel or resolve an EHF transmission, record a delivery by hand or remove one, make or revoke a pay link and see its address and QR code while payment on site is offered, take a Vipps payment on site | `invoices:issue` |
+| See the uninvoiced work — its hours, people and rates — on a customer's Invoices tab or a project's Invoicing tab, make a draft of it or add it to one, refresh a draft's work, turn its timesheet on or off, deduct earlier invoices; see a customer's consumption due and make a draft of it, or add it to one | `invoices:create` |
+| Issue a draft — which marks its work invoiced in Time, Expenses and Projects, and its consumption in Energy, without asking for their permissions — make a credit note, send a document by e-mail or as EHF, see where each send went, cancel or resolve an EHF transmission, record a delivery by hand or remove one, make or revoke a pay link and see its address and QR code while payment on site is offered, take a Vipps payment on site | `invoices:issue` |
 | Register a payment or remove one with a reason; import bank files, and use **Payments** and its exception queue; set a customer's reminder policy; preview and make reminder runs, print paper letters, confirm a batch posted or reprint it; withdraw a letter or send a failed one again; register a charge payment, remove one, waive a charge; put an invoice on hold and lift the hold, record a hand-off to a collection agency and withdraw it, export the collection file; mark a day's Vipps payments reconciled; see the dashboard's notices about bank lines, letters, print batches and Vipps payments | `invoices:payments` |
 | Make a quick invoice — created and issued in one step, recorded as handed over — and take payment for it with Vipps on the spot | `invoices:create` and `invoices:issue` |
-| Edit the seller record, the number series, the Peppol id, the access point, the KID agreement, the VAT codes, the card **Work to invoice**, the collection rates and the reminder settings, the regime's review among them; change a bank account's file format under **Payments**, which also needs `invoices:payments` to open; set up Vipps and the payment settings, acknowledge kontantsalg, abandon a stuck Vipps payment | `invoices:manage` |
+| Edit the seller record, the number series, the Peppol id, the access point, the KID agreement, the VAT codes, the cards **Work to invoice** and **Consumption to invoice**, the collection rates and the reminder settings, the regime's review among them; change a bank account's file format under **Payments**, which also needs `invoices:payments` to open; set up Vipps and the payment settings, acknowledge kontantsalg, abandon a stuck Vipps payment | `invoices:manage` |
 
 Payments and reminders add no permission of their own. Reminders, the exception queue,
 holds and hand-offs need `invoices:payments`, not `invoices:issue`: a reminder is not a

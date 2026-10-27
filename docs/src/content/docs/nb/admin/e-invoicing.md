@@ -23,7 +23,13 @@ med typekode 50 — slik at kjøperens system kan rute den
 a konto-faktura det trekker fra som en tidligere faktura (BG-3, én
 `cac:BillingReference` hver) og fører fradragene som linjer med antall -1 og negativt
 beløp, aldri som et forhåndsbetalt beløp, så kjøperens system ser hva som ble fakturert
-før, og mvaen går opp per sats.
+før, og mvaen går opp per sats. En faktura for strømforbruk navngir på hver linje i en
+avregning målepunktet som en vareegenskap (`cac:AdditionalItemProperty`, navn
+«Målepunkt-ID», med målepunkt-ID-en som verdi), fører den avregnede perioden som
+fakturaperiode (`cac:InvoicePeriod`), skriver enhetspriser med fire til åtte desimaler så
+hver linjes beløp er nøyaktig antall × pris, og fører en korreksjon som gir penger
+tilbake som en linje med antall -1
+([fakturering av forbruk](/en/reference/invoices/#on-the-documents)).
 
 Pliktene: offentlige virksomheter har krevd EHF fra leverandørene sine siden 2019, og fra
 **1. januar 2027** skal en norsk virksomhet sende fakturaene sine til andre norske

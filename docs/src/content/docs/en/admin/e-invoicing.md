@@ -22,7 +22,13 @@ system can route it ([the mapping](/en/reference/invoices/#the-ehf-document)). A
 settlement names every a-konto invoice it deducts as a preceding invoice (BG-3, one
 `cac:BillingReference` each) and carries its deductions as lines with a quantity of -1
 and a negative amount, never as a prepaid amount, so the buyer's system sees what was
-billed before and the VAT nets out per rate.
+billed before and the VAT nets out per rate. An invoice of electricity consumption
+names, on every line of a settlement, its metering point as an item property
+(`cac:AdditionalItemProperty`, name "Målepunkt-ID", the GSRN as its value), carries the
+settled span as the invoice period (`cac:InvoicePeriod`), writes unit prices with four
+to eight decimals so each line's amount is exactly quantity × price, and a correction
+that pays back as a line with a quantity of -1
+([invoicing consumption](/en/reference/invoices/#on-the-documents)).
 
 The duties: public bodies have required EHF from their suppliers since 2019, and from
 **1 January 2027** a Norwegian business must send its invoices to other Norwegian
