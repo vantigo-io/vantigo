@@ -8,14 +8,17 @@ import { EmptyState, PageHeader, useI18n } from "@vantigo/frontend-shell";
 import { Fragment, useState } from "react";
 import { customersQueryOptions } from "../api/customers";
 import {
+  billingFacts,
   type ConsumptionResolution,
   consumptionAggregateQueryOptions,
   consumptionQueryOptions,
   endSupplyPeriod,
   meteringPointQueryOptions,
   metersQueryOptions,
+  type SupplyPeriod,
   supplyPeriodsQueryOptions,
 } from "../api/energy";
+import { cadenceKey, taxClassKey } from "../lib/billing";
 import { MARKET_TIME_ZONE, marketDayKey } from "../lib/market-time";
 import { ConsumptionChart } from "./-consumption-chart";
 import { ImportReadingsModal } from "./-import-readings-modal";
@@ -23,6 +26,7 @@ import { ManualReadingModal } from "./-manual-reading-modal";
 import { MeteringPointFormModal, type MeteringPointModalState } from "./-metering-point-form-modal";
 import { ReplaceMeterModal } from "./-replace-meter-modal";
 import { SupplyPeriodModal } from "./-supply-period-modal";
+import { SupplyTermsModal } from "./-supply-terms";
 import "../i18n";
 
 const defaultFrom = () => {
@@ -37,8 +41,17 @@ const defaultTo = () => new Date().toISOString().slice(0, 10);
  * `canImportReadings` — `energy:import`, `energy:consumption-manage` and
  * `energy:consumption-view` together, which the host reads — puts **Import
  * readings** in the Consumption card (energy import design D8).
+ * `canViewTariffs` — `energy:tariffs-view` — lets the edit form and the
+ * supply-period dialogs list the tariffs to choose from; without it they show
+ * the tariff held, read-only.
  */
-export const MeteringPointDetailsPage = ({ canImportReadings = false }: { canImportReadings?: boolean }) => {
+export const MeteringPointDetailsPage = ({
+  canImportReadings = false,
+  canViewTariffs = false,
+}: {
+  canImportReadings?: boolean;
+  canViewTariffs?: boolean;
+}) => {
   const { t, formatters } = useI18n("energy");
   const { meteringPointId } = useParams({ strict: false }) as { meteringPointId: number };
   const client = useQueryClient();
@@ -56,6 +69,8 @@ export const MeteringPointDetailsPage = ({ canImportReadings = false }: { canImp
   const [readingOpen, setReadingOpen] = useState(false);
   const [importReadingsOpen, setImportReadingsOpen] = useState(false);
   const [replaceMeterOpen, setReplaceMeterOpen] = useState(false);
+  const [termsPeriod, setTermsPeriod] = useState<SupplyPeriod | null>(null);
+  const facts = billingFacts(point);
   const endMutation = useMutation({
     mutationFn: (periodId: number) => endSupplyPeriod(meteringPointId, periodId, new Date().toISOString()),
     onSuccess: () =>
@@ -100,7 +115,7 @@ export const MeteringPointDetailsPage = ({ canImportReadings = false }: { canImp
           </Button>
         }
       />
-      <MeteringPointFormModal state={editState} onClose={() => setEditState(null)} />
+      <MeteringPointFormModal state={editState} onClose={() => setEditState(null)} canViewTariffs={canViewTariffs} />
       <Card withBorder>
         <Stack>
           <Title order={3}>{t("meteringPointDetails")}</Title>
@@ -124,6 +139,31 @@ export const MeteringPointDetailsPage = ({ canImportReadings = false }: { canImp
                 : t("notAvailable")}
             </Text>
           </Group>
+        </Stack>
+      </Card>
+      <Card withBorder>
+        <Stack>
+          <Title order={3}>{t("billing")}</Title>
+          <Group>
+            <Text>
+              <b>{t("gridTariff")}:</b> {facts.gridTariffName ?? t("noGridTariff")}
+            </Text>
+            <Text>
+              <b>{t("householdUse")}:</b> {facts.household ? t("yes") : t("no")}
+            </Text>
+            <Text>
+              <b>{t("electricityTaxClass")}:</b> {t(taxClassKey(facts.electricityTaxClass))}
+            </Text>
+            <Text>
+              <b>{t("vatTreatment")}:</b>{" "}
+              <Badge variant="light" color={facts.vatTreatment === "standard" ? "gray" : "teal"}>
+                {facts.vatTreatment === "standard" ? t("vatTreatmentStandard") : t("vatTreatmentExemptHouseholdNorth")}
+              </Badge>
+            </Text>
+          </Group>
+          <Text size="xs" c="dimmed">
+            {t("vatTreatmentHint")}
+          </Text>
         </Stack>
       </Card>
       <Card withBorder>
@@ -174,6 +214,13 @@ export const MeteringPointDetailsPage = ({ canImportReadings = false }: { canImp
             opened={supplyPeriodModalOpen}
             onClose={() => setSupplyPeriodModalOpen(false)}
             hasActivePeriod={hasActivePeriod}
+            canViewTariffs={canViewTariffs}
+          />
+          <SupplyTermsModal
+            meteringPointId={meteringPointId}
+            period={termsPeriod}
+            onClose={() => setTermsPeriod(null)}
+            canViewTariffs={canViewTariffs}
           />
           {periods && periods.length > 0 ? (
             <Table>
@@ -182,6 +229,8 @@ export const MeteringPointDetailsPage = ({ canImportReadings = false }: { canImp
                   <Table.Th>{t("customer")}</Table.Th>
                   <Table.Th>{t("start")}</Table.Th>
                   <Table.Th>{t("end")}</Table.Th>
+                  <Table.Th>{t("powerTariff")}</Table.Th>
+                  <Table.Th>{t("billingCadence")}</Table.Th>
                   <Table.Th>{t("status")}</Table.Th>
                   <Table.Th />
                 </Table.Tr>
@@ -192,17 +241,26 @@ export const MeteringPointDetailsPage = ({ canImportReadings = false }: { canImp
                     <Table.Td>{customerName(period.customerId)}</Table.Td>
                     <Table.Td>{supplyPeriodDate(period.start)}</Table.Td>
                     <Table.Td>{supplyPeriodDate(period.end)}</Table.Td>
+                    <Table.Td>{period.tariffName ?? t("noPowerTariff")}</Table.Td>
+                    <Table.Td>{t(cadenceKey(period.cadence ?? "monthly"))}</Table.Td>
                     <Table.Td>
                       <Badge color={period.status === "Active" ? "teal" : "gray"}>
                         {t(`supplyPeriodStatus${period.status}`)}
                       </Badge>
                     </Table.Td>
                     <Table.Td>
-                      {period.status === "Active" && (
-                        <Button size="compact-sm" variant="light" onClick={() => endMutation.mutate(period.id)}>
-                          {t("endPeriod")}
-                        </Button>
-                      )}
+                      <Group gap="xs" wrap="nowrap" justify="flex-end">
+                        {period.status !== "Cancelled" && (
+                          <Button size="compact-sm" variant="default" onClick={() => setTermsPeriod(period)}>
+                            {t("changeSupplyTerms")}
+                          </Button>
+                        )}
+                        {period.status === "Active" && (
+                          <Button size="compact-sm" variant="light" onClick={() => endMutation.mutate(period.id)}>
+                            {t("endPeriod")}
+                          </Button>
+                        )}
+                      </Group>
                     </Table.Td>
                   </Table.Tr>
                 ))}

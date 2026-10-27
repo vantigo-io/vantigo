@@ -14,8 +14,11 @@ vi.mock("@tanstack/react-query", async (importOriginal) => {
 });
 
 vi.mock("@vantigo/energy-ui/pages/metering-points.index", () => ({
-  MeteringPointsPage: ({ canImport }: { canImport?: boolean }) => (
-    <span data-testid="can-import">{String(Boolean(canImport))}</span>
+  MeteringPointsPage: ({ canImport, canViewTariffs }: { canImport?: boolean; canViewTariffs?: boolean }) => (
+    <>
+      <span data-testid="can-import">{String(Boolean(canImport))}</span>
+      <span data-testid="can-view-tariffs">{String(Boolean(canViewTariffs))}</span>
+    </>
   ),
 }));
 
@@ -56,6 +59,17 @@ describe("the metering-point list route", () => {
     withPermissions(["energy:metering-points-manage"]);
     renderPage();
     expect(screen.getByTestId("can-import")).toHaveTextContent("false");
+  });
+
+  it("passes canViewTariffs only with energy:tariffs-view, for the new point's grid tariff", () => {
+    withPermissions(["energy:metering-points-manage", "energy:tariffs-view"]);
+    renderPage();
+    expect(screen.getByTestId("can-view-tariffs")).toHaveTextContent("true");
+    cleanup();
+
+    withPermissions(["energy:metering-points-manage"]);
+    renderPage();
+    expect(screen.getByTestId("can-view-tariffs")).toHaveTextContent("false");
   });
 
   it("keeps the Without customer filter only when it is true", () => {
