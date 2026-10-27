@@ -11,13 +11,15 @@ DELETE FROM invoices.lines WHERE invoice_id = @invoice_id;
 -- InsertLine writes one line of a draft with its computed amounts (D5) and
 -- answers its id, which the line's sources name (invoices work design D2);
 -- the VAT snapshot is the issue's to write. A deduction line names the
--- invoice it deducts (invoices work design D7).
+-- invoice it deducts (invoices work design D7); a correction line bills an
+-- energy correction settlement and may be negative (energy consumption
+-- billing design D7).
 INSERT INTO invoices.lines (
     invoice_id, position, description, quantity, unit, unit_price, discount_percent, vat_code_id,
-    credits_line_id, line_gross, line_allowance, line_net, deducts_invoice_id
+    credits_line_id, line_gross, line_allowance, line_net, deducts_invoice_id, correction
 ) VALUES (
     @invoice_id, @position, @description, @quantity, @unit, @unit_price, @discount_percent, @vat_code_id,
-    @credits_line_id, @line_gross, @line_allowance, @line_net, @deducts_invoice_id
+    @credits_line_id, @line_gross, @line_allowance, @line_net, @deducts_invoice_id, @correction
 )
 RETURNING id;
 

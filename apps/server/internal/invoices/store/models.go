@@ -278,6 +278,7 @@ type InvoicesLine struct {
 	SafTCode         *string
 	ExemptionReason  *string
 	DeductsInvoiceID *int64
+	Correction       bool
 }
 
 type InvoicesLineRelease struct {
@@ -295,12 +296,19 @@ type InvoicesLineSource struct {
 	SourceID       int64
 	SourceRevision int32
 	SourceSubkind  *string
-	ProjectID      int32
+	ProjectID      *int32
 	Quantity       pgtype.Numeric
 	Amount         pgtype.Numeric
 	Currency       string
 	State          string
 	SourceDate     pgtype.Date
+	LineCount      int32
+	PointGsrn      *string
+	PointAddress   *string
+	PriceArea      *string
+	ContractName   *string
+	PeriodFrom     pgtype.Date
+	Estimated      *bool
 }
 
 type InvoicesManualDelivery struct {
@@ -542,6 +550,8 @@ type InvoicesSetting struct {
 	WorkVatCodeMilestones   int32
 	TimesheetDefault        bool
 	TimesheetPersonLabel    string
+	EnergyVatCode           int32
+	EnergyVatCodeExempt     int32
 }
 
 type InvoicesTimesheetRow struct {

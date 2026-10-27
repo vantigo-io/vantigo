@@ -99,6 +99,12 @@ type draftLine struct {
 	// credit note's line both are the original line's.
 	deductsInvoiceID *int64
 	snapshot         *taxedLine
+	// correction makes the line one billing an energy correction settlement
+	// (energy consumption billing design D7, plan reading 3): it may be
+	// negative, as a deduction line may. The module sets it from the
+	// sources the line bills, never from a request; a credit note's line
+	// takes the original line's.
+	correction bool
 }
 
 // draftInput is one validated draft body.
@@ -147,8 +153,15 @@ func amount(label string, v float64, places int, minimum *big.Rat, strict bool, 
 	return r, ""
 }
 
+// unitPricePlaces is the decimals invoices.lines.unit_price stores: eight,
+// so an energy line's net can be its settlement line's amount (invoices from
+// consumption plan reading 3). A request still gives an ordinary line at most
+// four.
+const unitPricePlaces = 8
+
 // The columns' own ceilings: quantity numeric(12,3), unit_price
-// numeric(14,4), discount_percent 0-100.
+// numeric(18,8) — ten whole digits, as before it took eight decimals —
+// discount_percent 0-100.
 var (
 	maxQuantity  = mustRat("999999999.999")
 	maxUnitPrice = mustRat("9999999999.9999")
@@ -422,6 +435,7 @@ func writeLines(ctx context.Context, txq *store.Queries, invoiceID int64, lines 
 		p := store.InsertLineParams{
 			InvoiceID: invoiceID, Position: int32(i + 1), Description: l.description, Unit: l.unit,
 			VatCodeID: l.vatCodeID, CreditsLineID: l.creditsLineID, DeductsInvoiceID: l.deductsInvoiceID,
+			Correction: l.correction,
 		}
 		var err error
 		for _, c := range []struct {
@@ -429,7 +443,7 @@ func writeLines(ctx context.Context, txq *store.Queries, invoiceID int64, lines 
 			v      *big.Rat
 			places int
 		}{
-			{&p.Quantity, l.quantity, 3}, {&p.UnitPrice, l.unitPrice, 4}, {&p.DiscountPercent, l.discount, 2},
+			{&p.Quantity, l.quantity, 3}, {&p.UnitPrice, l.unitPrice, unitPricePlaces}, {&p.DiscountPercent, l.discount, 2},
 			{&p.LineGross, l.amounts.gross, 2}, {&p.LineAllowance, l.amounts.allowance, 2}, {&p.LineNet, l.amounts.net, 2},
 		} {
 			if *c.dst, err = numericFromRat(c.v, c.places); err != nil {

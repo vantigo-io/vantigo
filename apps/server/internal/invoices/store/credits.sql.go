@@ -16,11 +16,11 @@ import (
 const copyLinesToCredit = `-- name: CopyLinesToCredit :exec
 INSERT INTO invoices.lines (
     invoice_id, position, description, quantity, unit, unit_price, discount_percent, vat_code_id,
-    credits_line_id, line_gross, line_allowance, line_net, deducts_invoice_id
+    credits_line_id, line_gross, line_allowance, line_net, deducts_invoice_id, correction
 )
 SELECT $1::bigint, src.position, src.description, src.quantity, src.unit, src.unit_price,
        src.discount_percent, src.vat_code_id, src.id, src.line_gross, src.line_allowance, src.line_net,
-       src.deducts_invoice_id
+       src.deducts_invoice_id, src.correction
 FROM invoices.lines src
 WHERE src.invoice_id = $2::bigint AND src.quantity <> 0
 ORDER BY src.position
@@ -36,7 +36,8 @@ type CopyLinesToCreditParams struct {
 // credit note's issue's to write, from the original line's. A settlement's
 // deduction line is copied as it is — its negative quantity and the invoice
 // it deducts (invoices work design D7) — so its credit gives the deduction
-// back.
+// back; so is a correction line, negative or not (energy consumption billing
+// design D7).
 func (q *Queries) CopyLinesToCredit(ctx context.Context, arg CopyLinesToCreditParams) error {
 	_, err := q.db.Exec(ctx, copyLinesToCredit, arg.CreditID, arg.OriginalID)
 	return err

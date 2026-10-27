@@ -64,7 +64,7 @@ ORDER BY s.project_id, s.source_kind, s.invoice_id
 
 type HeldOnDraftsRow struct {
 	InvoiceID  int64
-	ProjectID  int32
+	ProjectID  *int32
 	SourceKind string
 	Held       int32
 }
@@ -122,39 +122,57 @@ func (q *Queries) InsertLineReleases(ctx context.Context, arg InsertLineReleases
 const insertLineSources = `-- name: InsertLineSources :exec
 INSERT INTO invoices.line_sources (
     line_id, invoice_id, source_kind, source_id, source_revision, source_subkind,
-    project_id, quantity, amount, currency, source_date
+    project_id, quantity, amount, currency, source_date, line_count,
+    point_gsrn, point_address, price_area, contract_name, period_from, estimated
 )
 SELECT u.line_id, $1::bigint, u.kind, u.id, u.revision, NULLIF(u.subkind, ''),
-    u.project_id, u.quantity, u.amount, u.currency, u.source_date
+    NULLIF(u.project_id, 0), u.quantity, u.amount, u.currency, u.source_date, u.line_count,
+    CASE WHEN u.project_id = 0 THEN u.point_gsrn END, CASE WHEN u.project_id = 0 THEN u.point_address END,
+    CASE WHEN u.project_id = 0 THEN u.price_area END, CASE WHEN u.project_id = 0 THEN u.contract_name END,
+    CASE WHEN u.project_id = 0 THEN u.period_from END, CASE WHEN u.project_id = 0 THEN u.estimated END
 FROM (
     SELECT unnest($2::bigint[]) AS line_id, unnest($3::text[]) AS kind,
         unnest($4::bigint[]) AS id, unnest($5::int[]) AS revision,
         unnest($6::text[]) AS subkind, unnest($7::int[]) AS project_id,
         unnest($8::numeric[]) AS quantity, unnest($9::numeric[]) AS amount,
-        unnest($10::text[]) AS currency, unnest($11::date[]) AS source_date
+        unnest($10::text[]) AS currency, unnest($11::date[]) AS source_date,
+        unnest($12::int[]) AS line_count, unnest($13::text[]) AS point_gsrn,
+        unnest($14::text[]) AS point_address, unnest($15::text[]) AS price_area,
+        unnest($16::text[]) AS contract_name, unnest($17::date[]) AS period_from,
+        unnest($18::bool[]) AS estimated
 ) AS u
 ORDER BY u.kind, u.id
 `
 
 type InsertLineSourcesParams struct {
-	InvoiceID  int64
-	LineIds    []int64
-	Kinds      []string
-	Ids        []int64
-	Revisions  []int32
-	Subkinds   []string
-	ProjectIds []int32
-	Quantities []pgtype.Numeric
-	Amounts    []pgtype.Numeric
-	Currencies []string
-	Dates      []pgtype.Date
+	InvoiceID      int64
+	LineIds        []int64
+	Kinds          []string
+	Ids            []int64
+	Revisions      []int32
+	Subkinds       []string
+	ProjectIds     []int32
+	Quantities     []pgtype.Numeric
+	Amounts        []pgtype.Numeric
+	Currencies     []string
+	Dates          []pgtype.Date
+	LineCounts     []int32
+	PointGsrns     []string
+	PointAddresses []string
+	PriceAreas     []string
+	ContractNames  []string
+	PeriodFroms    []pgtype.Date
+	Estimateds     []bool
 }
 
 // InsertLineSources writes a document's sources held, in ONE statement
 // ordered by (source_kind, source_id) (D2): two transactions inserting
 // overlapping holds wait on ux_line_sources_live in the same order, so one
 // fails with the unique violation and neither deadlocks. The arrays run in
-// parallel; an empty subkind is NULL (only an expense carries one).
+// parallel; an empty subkind is NULL (an expense and a settlement carry
+// one). A project of 0 is none — an energy settlement's (energy consumption
+// billing design D7) — and only a source without one keeps the snapshot of
+// its metering point; a work source's is NULL whatever the arrays carry.
 func (q *Queries) InsertLineSources(ctx context.Context, arg InsertLineSourcesParams) error {
 	_, err := q.db.Exec(ctx, insertLineSources,
 		arg.InvoiceID,
@@ -168,6 +186,13 @@ func (q *Queries) InsertLineSources(ctx context.Context, arg InsertLineSourcesPa
 		arg.Amounts,
 		arg.Currencies,
 		arg.Dates,
+		arg.LineCounts,
+		arg.PointGsrns,
+		arg.PointAddresses,
+		arg.PriceAreas,
+		arg.ContractNames,
+		arg.PeriodFroms,
+		arg.Estimateds,
 	)
 	return err
 }
@@ -216,7 +241,7 @@ func (q *Queries) InsertTimesheetRows(ctx context.Context, arg InsertTimesheetRo
 }
 
 const invoicedSourcesOfLines = `-- name: InvoicedSourcesOfLines :many
-SELECT id, line_id, invoice_id, source_kind, source_id, source_revision, source_subkind, project_id, quantity, amount, currency, state, source_date FROM invoices.line_sources
+SELECT id, line_id, invoice_id, source_kind, source_id, source_revision, source_subkind, project_id, quantity, amount, currency, state, source_date, line_count, point_gsrn, point_address, price_area, contract_name, period_from, estimated FROM invoices.line_sources
 WHERE line_id = ANY($1::bigint[]) AND state = 'invoiced'
 ORDER BY source_kind, source_id
 `
@@ -246,6 +271,13 @@ func (q *Queries) InvoicedSourcesOfLines(ctx context.Context, lineIds []int64) (
 			&i.Currency,
 			&i.State,
 			&i.SourceDate,
+			&i.LineCount,
+			&i.PointGsrn,
+			&i.PointAddress,
+			&i.PriceArea,
+			&i.ContractName,
+			&i.PeriodFrom,
+			&i.Estimated,
 		); err != nil {
 			return nil, err
 		}
@@ -259,7 +291,7 @@ func (q *Queries) InvoicedSourcesOfLines(ctx context.Context, lineIds []int64) (
 
 const lineSourcesOf = `-- name: LineSourcesOf :many
 
-SELECT s.id, s.line_id, s.invoice_id, s.source_kind, s.source_id, s.source_revision, s.source_subkind, s.project_id, s.quantity, s.amount, s.currency, s.state, s.source_date, l.position AS line_position
+SELECT s.id, s.line_id, s.invoice_id, s.source_kind, s.source_id, s.source_revision, s.source_subkind, s.project_id, s.quantity, s.amount, s.currency, s.state, s.source_date, s.line_count, s.point_gsrn, s.point_address, s.price_area, s.contract_name, s.period_from, s.estimated, l.position AS line_position
 FROM invoices.line_sources s
 JOIN invoices.lines l ON l.id = s.line_id
 WHERE s.invoice_id = $1
@@ -274,12 +306,19 @@ type LineSourcesOfRow struct {
 	SourceID       int64
 	SourceRevision int32
 	SourceSubkind  *string
-	ProjectID      int32
+	ProjectID      *int32
 	Quantity       pgtype.Numeric
 	Amount         pgtype.Numeric
 	Currency       string
 	State          string
 	SourceDate     pgtype.Date
+	LineCount      int32
+	PointGsrn      *string
+	PointAddress   *string
+	PriceArea      *string
+	ContractName   *string
+	PeriodFrom     pgtype.Date
+	Estimated      *bool
 	LinePosition   int32
 }
 
@@ -314,6 +353,13 @@ func (q *Queries) LineSourcesOf(ctx context.Context, invoiceID int64) ([]LineSou
 			&i.Currency,
 			&i.State,
 			&i.SourceDate,
+			&i.LineCount,
+			&i.PointGsrn,
+			&i.PointAddress,
+			&i.PriceArea,
+			&i.ContractName,
+			&i.PeriodFrom,
+			&i.Estimated,
 			&i.LinePosition,
 		); err != nil {
 			return nil, err
@@ -478,7 +524,7 @@ func (q *Queries) PruneTimesheetRows(ctx context.Context, arg PruneTimesheetRows
 const releaseSources = `-- name: ReleaseSources :many
 UPDATE invoices.line_sources SET state = 'released'
 WHERE id = ANY($1::bigint[]) AND state = 'invoiced'
-RETURNING id, line_id, invoice_id, source_kind, source_id, source_revision, source_subkind, project_id, quantity, amount, currency, state, source_date
+RETURNING id, line_id, invoice_id, source_kind, source_id, source_revision, source_subkind, project_id, quantity, amount, currency, state, source_date, line_count, point_gsrn, point_address, price_area, contract_name, period_from, estimated
 `
 
 // ReleaseSources moves the given invoiced rows to released — the one change
@@ -506,6 +552,13 @@ func (q *Queries) ReleaseSources(ctx context.Context, ids []int64) ([]InvoicesLi
 			&i.Currency,
 			&i.State,
 			&i.SourceDate,
+			&i.LineCount,
+			&i.PointGsrn,
+			&i.PointAddress,
+			&i.PriceArea,
+			&i.ContractName,
+			&i.PeriodFrom,
+			&i.Estimated,
 		); err != nil {
 			return nil, err
 		}

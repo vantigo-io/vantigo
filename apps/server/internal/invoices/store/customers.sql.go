@@ -671,7 +671,7 @@ func (q *Queries) HoldsOfDocuments(ctx context.Context, invoiceIds []int64) ([]I
 }
 
 const linesOf = `-- name: LinesOf :many
-SELECT id, invoice_id, position, description, quantity, unit, unit_price, discount_percent, vat_code_id, credits_line_id, line_gross, line_allowance, line_net, vat_rate_percent, vat_category, saf_t_code, exemption_reason, deducts_invoice_id FROM invoices.lines WHERE invoice_id = ANY($1::bigint[]) ORDER BY invoice_id, position
+SELECT id, invoice_id, position, description, quantity, unit, unit_price, discount_percent, vat_code_id, credits_line_id, line_gross, line_allowance, line_net, vat_rate_percent, vat_category, saf_t_code, exemption_reason, deducts_invoice_id, correction FROM invoices.lines WHERE invoice_id = ANY($1::bigint[]) ORDER BY invoice_id, position
 `
 
 // LinesOf is the lines of several documents at once, in their documents'
@@ -704,6 +704,7 @@ func (q *Queries) LinesOf(ctx context.Context, invoiceIds []int64) ([]InvoicesLi
 			&i.SafTCode,
 			&i.ExemptionReason,
 			&i.DeductsInvoiceID,
+			&i.Correction,
 		); err != nil {
 			return nil, err
 		}

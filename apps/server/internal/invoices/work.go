@@ -321,7 +321,7 @@ func (s *server) workView(ctx context.Context, q *store.Queries, currency string
 			return view, fmt.Errorf("invoices: read what drafts hold: %w", err)
 		}
 		for _, r := range rows {
-			onDrafts[r.ProjectID] = append(onDrafts[r.ProjectID], gen.InvoicesWorkHeldOnDraft{InvoiceId: r.InvoiceID, Kind: r.SourceKind, Count: r.Held})
+			onDrafts[derefInt32(r.ProjectID)] = append(onDrafts[derefInt32(r.ProjectID)], gen.InvoicesWorkHeldOnDraft{InvoiceId: r.InvoiceID, Kind: r.SourceKind, Count: r.Held})
 		}
 	}
 	// D15: a supplier invoice whose supplier and number another row of this
@@ -787,7 +787,7 @@ func storedLines(rows []store.InvoicesLine) ([]draftLine, error) {
 	for _, r := range rows {
 		l := draftLine{
 			description: r.Description, unit: r.Unit, vatCodeID: r.VatCodeID, creditsLineID: r.CreditsLineID,
-			deductsInvoiceID: r.DeductsInvoiceID, sourcesGiven: true,
+			deductsInvoiceID: r.DeductsInvoiceID, sourcesGiven: true, correction: r.Correction,
 		}
 		var err error
 		if l.quantity, err = ratFromNumeric(r.Quantity); err != nil {

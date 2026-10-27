@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/holidays"
@@ -55,7 +56,7 @@ const (
 	msgSourceTwice     = "A source is named on one line, once"
 	msgSourcesOnCreate = "Work is added to a draft through the uninvoiced view"
 	msgSourcesOnCredit = "A credit note adds no work"
-	msgSourceKind      = "A source's kind is time.entry, expenses.entry or projects.milestone, and its id is positive"
+	msgSourceKind      = "A source's kind is time.entry, expenses.entry, projects.milestone or energy.settlement, and its id is positive"
 )
 
 // sourceRef is one piece of work by identity.
@@ -81,22 +82,52 @@ func sourceRefs(refs []sourceRef) *[]gen.InvoicesSourceRef {
 }
 
 // heldSource is one line_sources row as this module reasons about it: the
-// snapshot the draft took from the source, and the line (by position) that
-// bills it.
+// snapshot the draft took from the source, and the lines (by position) that
+// bill it — the one at linePosition and, for an energy settlement, the
+// lineCount−1 after it (plan reading 2).
 type heldSource struct {
 	kind             contracts.WorkSourceKind
 	id               int64
 	revision         int32
 	subkind          *string
-	projectID        int32
+	projectID        int32 // 0 for a settlement, which carries no project
 	quantity, amount *big.Rat
 	currency         string
 	date             time.Time
 	state            string
 	linePosition     int32
+	lineCount        int32
+	point            *settlementPoint // a settlement's snapshot, nil for work
+}
+
+// settlementPoint is what a settlement's row keeps of its metering point and
+// period for the document to print from (energy consumption billing design
+// D9): the period's last day is the row's date.
+type settlementPoint struct {
+	gsrn, address, priceArea, contractName string
+	periodFrom                             time.Time
+	estimated                              bool
 }
 
 func (h heldSource) ref() sourceRef { return sourceRef{kind: h.kind, id: h.id} }
+
+// lines is how many lines bill the source: 1 for work, the settlement's own
+// count for a settlement.
+func (h heldSource) lines() int32 { return max(h.lineCount, 1) }
+
+// billsLine reports whether the line at position bills the source.
+func (h heldSource) billsLine(position int32) bool {
+	return position >= h.linePosition && position < h.linePosition+h.lines()
+}
+
+// isSettlement reports whether the source is an energy settlement.
+func (h heldSource) isSettlement() bool { return h.kind == contracts.WorkSourceSettlement }
+
+// isCorrection reports whether the source is an energy correction
+// settlement, whose lines may be negative (plan reading 3).
+func (h heldSource) isCorrection() bool {
+	return h.isSettlement() && h.subkind != nil && *h.subkind == contracts.SettlementCorrection
+}
 
 // heldSources reads the rows of LineSourcesOf as exact decimals.
 func heldSources(rows []store.LineSourcesOfRow) ([]heldSource, error) {
@@ -112,11 +143,31 @@ func heldSources(rows []store.LineSourcesOfRow) ([]heldSource, error) {
 		}
 		out = append(out, heldSource{
 			kind: contracts.WorkSourceKind(r.SourceKind), id: r.SourceID, revision: r.SourceRevision, subkind: r.SourceSubkind,
-			projectID: r.ProjectID, quantity: quantity, amount: amount, currency: r.Currency, date: r.SourceDate.Time,
-			state: r.State, linePosition: r.LinePosition,
+			projectID: derefInt32(r.ProjectID), quantity: quantity, amount: amount, currency: r.Currency, date: r.SourceDate.Time,
+			state: r.State, linePosition: r.LinePosition, lineCount: r.LineCount,
+			point: pointOf(r.PointGsrn, r.PointAddress, r.PriceArea, r.ContractName, r.PeriodFrom, r.Estimated),
 		})
 	}
 	return out, nil
+}
+
+// pointOf is a row's settlement snapshot, nil for a work row (whose columns
+// are NULL, ck_line_sources_point).
+func pointOf(gsrn, address, area, contract *string, from pgtype.Date, estimated *bool) *settlementPoint {
+	if gsrn == nil {
+		return nil
+	}
+	return &settlementPoint{
+		gsrn: *gsrn, address: deref(address), priceArea: deref(area), contractName: deref(contract),
+		periodFrom: from.Time, estimated: estimated != nil && *estimated,
+	}
+}
+
+func derefInt32(p *int32) int32 {
+	if p == nil {
+		return 0
+	}
+	return *p
 }
 
 // sourcesOf is a document's line sources, read on q.
@@ -128,12 +179,14 @@ func sourcesOf(ctx context.Context, q *store.Queries, invoiceID int64) ([]heldSo
 	return heldSources(rows)
 }
 
-// workKinds are the kinds an invoice line may name as its source: the three
-// kinds of work. contracts.InvoicedWorkOrder also names energy's settlements
-// (energy consumption billing design D6), which this module learns to build
-// lines from in its own delivery (design D7); until then a request naming one
-// is refused as a kind this module does not know, as it was before.
+// workKinds are the three kinds of work, the ones the uninvoiced view's
+// wizard takes (POST /invoices/from-work) and the ones that carry a project.
 var workKinds = []contracts.WorkSourceKind{contracts.WorkSourceMilestone, contracts.WorkSourceExpense, contracts.WorkSourceHours}
+
+// lineSourceKinds are the kinds an invoice line may name as its source: the
+// work, and energy's settlements (energy consumption billing design D7),
+// which the From consumption wizard takes (POST /invoices/from-consumption).
+var lineSourceKinds = append(slices.Clone(workKinds), contracts.WorkSourceSettlement)
 
 // parseLineSources is line i's sources as the request names them: nil when
 // the field is absent, empty for [], and a 400 on lines[i].sources for a kind
@@ -146,7 +199,7 @@ func parseLineSources(i int, l gen.InvoicesLineRequest) ([]sourceRef, map[string
 	out := make([]sourceRef, 0, len(*l.Sources))
 	for _, s := range *l.Sources {
 		kind := contracts.WorkSourceKind(s.Kind)
-		if !slices.Contains(workKinds, kind) || s.Id <= 0 {
+		if !slices.Contains(lineSourceKinds, kind) || s.Id <= 0 {
 			if errs == nil {
 				errs = fieldError(fmt.Sprintf("lines[%d].sources", i), msgSourceKind)
 			}
@@ -235,11 +288,19 @@ func insertSources(ctx context.Context, txq *store.Queries, invoiceID int64, lin
 		if r.subkind != nil {
 			subkind = *r.subkind
 		}
+		point := settlementPoint{periodFrom: r.date}
+		if r.point != nil {
+			point = *r.point
+		}
 		p.LineIds = append(p.LineIds, lineIDs[r.linePosition-1])
 		p.Kinds, p.Ids, p.Revisions = append(p.Kinds, string(r.kind)), append(p.Ids, r.id), append(p.Revisions, r.revision)
 		p.Subkinds, p.ProjectIds = append(p.Subkinds, subkind), append(p.ProjectIds, r.projectID)
 		p.Quantities, p.Amounts = append(p.Quantities, quantity), append(p.Amounts, amount)
 		p.Currencies, p.Dates = append(p.Currencies, r.currency), append(p.Dates, pgDate(r.date))
+		p.LineCounts = append(p.LineCounts, r.lines())
+		p.PointGsrns, p.PointAddresses = append(p.PointGsrns, point.gsrn), append(p.PointAddresses, point.address)
+		p.PriceAreas, p.ContractNames = append(p.PriceAreas, point.priceArea), append(p.ContractNames, point.contractName)
+		p.PeriodFroms, p.Estimateds = append(p.PeriodFroms, pgDate(point.periodFrom)), append(p.Estimateds, point.estimated)
 	}
 	err := txq.InsertLineSources(ctx, p)
 	var pgErr *pgconn.PgError
@@ -362,10 +423,7 @@ func withSources(held []heldSource, draft bool, lines []store.InvoicesLine, resp
 		rows := byLine[l.Position]
 		sources := make([]gen.InvoicesLineSource, 0, len(rows))
 		for _, r := range rows {
-			sources = append(sources, gen.InvoicesLineSource{
-				Kind: string(r.kind), Id: r.id, ProjectId: r.projectID, Date: wireDate(r.date),
-				Quantity: floatFromRat(r.quantity, 3), Amount: floatFromRat(r.amount, 8), State: r.state,
-			})
+			sources = append(sources, lineSourceWire(r))
 		}
 		warnings := []string{}
 		if draft && len(rows) > 0 {
@@ -384,6 +442,25 @@ func withSources(held []heldSource, draft bool, lines []store.InvoicesLine, resp
 		resp.Warnings = append(resp.Warnings, warningLineDiffersFromSources)
 	}
 	return nil
+}
+
+// lineSourceWire is one held row on the wire (D2): work with its project; a
+// settlement (energy consumption billing design D7) with its subkind, its
+// line count and the snapshot of its metering point instead.
+func lineSourceWire(r heldSource) gen.InvoicesLineSource {
+	out := gen.InvoicesLineSource{
+		Kind: string(r.kind), Id: r.id, Date: wireDate(r.date),
+		Quantity: floatFromRat(r.quantity, 3), Amount: floatFromRat(r.amount, 8), State: r.state,
+	}
+	if r.point == nil {
+		out.ProjectId = ptr(r.projectID)
+		return out
+	}
+	p := r.point
+	out.Subkind, out.LineCount = r.subkind, ptr(r.lines())
+	out.Gsrn, out.Address, out.PriceArea, out.ContractName = &p.gsrn, &p.address, &p.priceArea, &p.contractName
+	out.PeriodFrom, out.Estimated = ptr(wireDate(p.periodFrom)), &p.estimated
+	return out
 }
 
 // withReleased names on a save's answer the work the save dropped.
