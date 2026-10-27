@@ -75,3 +75,17 @@ func TestKnownUnitCode(t *testing.T) {
 		}
 	}
 }
+
+// The unit words an energy line carries (invoices from consumption plan
+// reading 3), in both languages, map to KWH, MON, ANN and C62 — the codes
+// the energy golden carries (reading 9).
+func TestUnitCode_TheEnergyUnits(t *testing.T) {
+	t.Parallel()
+	for _, c := range []struct{ unit, want string }{
+		{"kWh", "KWH"}, {"mnd", "MON"}, {"month", "MON"}, {"år", "ANN"}, {"year", "ANN"}, {"stk", "C62"}, {"pcs", "C62"},
+	} {
+		if got := ehf.UnitCode(c.unit); got != c.want {
+			t.Errorf("UnitCode(%q) = %q, want %q", c.unit, got, c.want)
+		}
+	}
+}

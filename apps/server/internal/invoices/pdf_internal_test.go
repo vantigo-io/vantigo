@@ -5,13 +5,17 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"flag"
 	"fmt"
 	"math/big"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/store"
 )
 
@@ -338,5 +342,220 @@ func TestPDF_TheProjectLine(t *testing.T) {
 	}
 	if m := buildPDFModel(anInvoice()); slices.ContainsFunc(m.meta, func(kv [2]string) bool { return kv[0] == "Prosjekt" }) {
 		t.Errorf("without a project the meta = %q", m.meta)
+	}
+}
+
+// The energy document (energy consumption billing design D9, invoices from
+// consumption plan reading 9), pinned as text in testdata/invoices/: every
+// word the model prints, in order, the metering points' blocks above their
+// lines. `go test -run TestPDF_EnergyGoldens -update-pdf` rewrites them.
+var updatePDFText = flag.Bool("update-pdf", false, "rewrite testdata/invoices from the energy document's model")
+
+// pdfModelText is every word of a model, in the order it prints, with the
+// blocks above the lines they head.
+func pdfModelText(m pdfModel) string {
+	var out []string
+	add := func(s ...string) { out = append(out, s...) }
+	pairs := func(kvs [][2]string) {
+		for _, kv := range kvs {
+			add(kv[0] + ": " + kv[1])
+		}
+	}
+	add("# "+m.title, "## seller")
+	add(m.seller...)
+	add("## buyer")
+	add(m.buyer...)
+	add("## meta")
+	pairs(m.meta)
+	add("## lines", strings.Join(m.lineHeader, " | "))
+	blocks := m.pointBlocks
+	for i, l := range m.lines {
+		for len(blocks) > 0 && blocks[0].before == i {
+			add("### point")
+			pairs(blocks[0].rows)
+			if blocks[0].note != "" {
+				add(blocks[0].note)
+			}
+			blocks = blocks[1:]
+		}
+		add(strings.Join(l, " | "))
+	}
+	add("## vat", strings.Join(m.vatHeader, " | "))
+	for _, r := range m.vatRows {
+		add(strings.Join(r, " | "))
+	}
+	add(m.reasons...)
+	add("## totals")
+	pairs(m.totals)
+	add("## payment")
+	pairs(m.payment)
+	add(m.paymentNote, "## note", m.note, "## footer", m.footer, m.energyNotice)
+	return strings.Join(out, "\n") + "\n"
+}
+
+// energyRows is an issued invoice to a person for two metering points' month,
+// as the store holds it: Oslo's kWh at an eight-decimal price and its fixed
+// charge (one settlement over two lines, estimated), Tromsø's two lines (a
+// household in the north, Z), Oslo's correction of August after them — a
+// save moved it, so Oslo's lines run twice — and a line of work, which no
+// block heads.
+func energyRows(t *testing.T, language string) (store.InvoicesInvoice, []store.InvoicesLine, []store.InvoicesVatSummary, []heldSource) {
+	t.Helper()
+	s := func(v string) *string { return &v }
+	b := func(v bool) *bool { return &v }
+	number, issuedAt := int64(1060), time.Date(2026, 10, 5, 9, 0, 0, 0, time.UTC)
+	inv := store.InvoicesInvoice{
+		ID: 60, Kind: kindInvoice, Status: statusIssued, Number: &number, Currency: "NOK",
+		IssueDate: pgDate(time.Date(2026, 10, 5, 0, 0, 0, 0, time.UTC)), DueDate: pgDate(time.Date(2026, 10, 19, 0, 0, 0, 0, time.UTC)),
+		DeliveryFrom: pgDate(time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC)), DeliveryTo: pgDate(time.Date(2026, 9, 30, 0, 0, 0, 0, time.UTC)),
+		YourReference: "Kari Nordmann", PaymentTermsDays: ptr(int32(14)),
+		BuyerType: s("person"), BuyerName: s("Kari Nordmann"), BuyerAddressLine1: s("Storgata 1"), BuyerPostalCode: s("0155"),
+		BuyerCity: s("Oslo"), BuyerCountry: s("NO"), BuyerLanguage: s(language),
+		SellerLegalName: s("Nordkraft AS"), SellerOrganisationNumber: s("923456783"), SellerVatRegistered: b(true),
+		SellerInForetaksregisteret: b(true), SellerAddressLine1: s("Kraftveien 1"), SellerPostalCode: s("0150"), SellerCity: s("Oslo"),
+		SellerCountry: s("NO"), SellerBankAccount: s("86011117947"),
+		NetTotal: num(t, "3011.09", 2), VatTotal: num(t, "514.43", 2), GrossTotal: num(t, "3525.52", 2), IssuedAt: &issuedAt,
+	}
+	line := func(position int32, description, unit, quantity, price, net, rate, category string) store.InvoicesLine {
+		return store.InvoicesLine{Position: position, Description: description, Unit: unit, Quantity: num(t, quantity, 3),
+			UnitPrice: num(t, price, 8), DiscountPercent: num(t, "0", 2), LineGross: num(t, net, 2), LineAllowance: num(t, "0", 2),
+			LineNet: num(t, net, 2), VatRatePercent: num(t, rate, 2), VatCategory: s(category), SafTCode: s("3")}
+	}
+	lines := []store.InvoicesLine{
+		line(1, "Strøm, 707057500012345671 Storgata 1, 0155 Oslo, 01.09.2026–30.09.2026", "kWh", "1234.567", "1.23456789", "1524.16", "25", "S"),
+		line(2, "Fastledd, 707057500012345671 Storgata 1, 0155 Oslo, 01.09.2026–30.09.2026", "mnd", "1", "49", "49.00", "25", "S"),
+		line(3, "Strøm, 707057500098765431 Storgata 9, 9008 Tromsø, 01.09.2026–30.09.2026", "kWh", "800", "0.4567", "365.36", "0", "Z"),
+		line(4, "Fastbeløp, 707057500098765431 Storgata 9, 9008 Tromsø, 01.09.2026–30.09.2026", "år", "1", "588", "588.00", "0", "Z"),
+		line(5, "Korreksjon Strøm, 707057500012345671 Storgata 1, 0155 Oslo, 01.08.2026–31.08.2026: -12,5 kWh", "stk", "-1", "15.43", "-15.43", "25", "S"),
+		line(6, "Montering av måler", "timer", "2", "250", "500.00", "25", "S"),
+	}
+	day := func(m time.Month, d int) time.Time { return time.Date(2026, m, d, 0, 0, 0, 0, time.UTC) }
+	point := func(gsrn, address, area string, from time.Time, estimated bool) *settlementPoint {
+		return &settlementPoint{gsrn: gsrn, address: address, priceArea: area, contractName: "Spotpris", periodFrom: from, estimated: estimated}
+	}
+	settlement := func(id int64, subkind string, position, count int32, kWh string, to time.Time, p *settlementPoint) heldSource {
+		return heldSource{kind: contracts.WorkSourceSettlement, id: id, subkind: &subkind, quantity: rat(kWh), amount: rat("0"),
+			currency: "NOK", date: to, linePosition: position, lineCount: count, point: p}
+	}
+	oslo := "707057500012345671"
+	held := []heldSource{
+		settlement(11, contracts.SettlementRegular, 1, 2, "1234.567", day(9, 30), point(oslo, "Storgata 1, 0155 Oslo", "NO1", day(9, 1), true)),
+		settlement(12, contracts.SettlementRegular, 3, 2, "800", day(9, 30), point("707057500098765431", "Storgata 9, 9008 Tromsø", "NO4", day(9, 1), false)),
+		settlement(13, contracts.SettlementCorrection, 5, 1, "-12.5", day(8, 31), point(oslo, "Storgata 1, 0155 Oslo", "NO1", day(8, 1), false)),
+		{kind: contracts.WorkSourceHours, id: 7, projectID: 41, quantity: rat("2"), amount: rat("500"), currency: "NOK", date: day(9, 15), linePosition: 6, lineCount: 1},
+	}
+	sums := []store.InvoicesVatSummary{
+		{VatCategory: "S", RatePercent: num(t, "25", 2), SafTCode: "3", TaxableAmount: num(t, "2057.73", 2), VatAmount: num(t, "514.43", 2)},
+		{VatCategory: "Z", RatePercent: num(t, "0", 2), SafTCode: "5", ExemptionReason: s("Elektrisk kraft til husholdningsbruk i Nord-Norge, mval. § 6-6"),
+			TaxableAmount: num(t, "953.36", 2), VatAmount: num(t, "0", 2)},
+	}
+	return inv, lines, sums, held
+}
+
+// energyModel is energyRows' document as its PDF prints it, through
+// pdfDocumentOf and meteringPointsOf as renderIssued assembles it.
+func energyModel(t *testing.T, language string, mutate func(*store.InvoicesInvoice, *[]heldSource)) pdfModel {
+	t.Helper()
+	inv, lines, sums, held := energyRows(t, language)
+	if mutate != nil {
+		mutate(&inv, &held)
+	}
+	d, err := pdfDocumentOf(inv, lines, sums, nil, nil)
+	if err != nil {
+		t.Fatalf("pdfDocumentOf: %v", err)
+	}
+	d.points = meteringPointsOf(lines, held)
+	return buildPDFModel(d)
+}
+
+// Each metering point's block above the first line of each run of its lines
+// — GSRN, address, price area, contract, its settlements' span, the regular
+// kWh with the corrections' difference beside it, the estimate's note — and
+// the consumer's notice for a person, in each language; a unit price with
+// its own eight decimals; the line of work under no block.
+func TestPDF_EnergyGoldens(t *testing.T) {
+	t.Parallel()
+	for _, language := range []string{"nb", "en"} {
+		m := energyModel(t, language, nil)
+		if _, err := renderPDF(m); err != nil {
+			t.Fatalf("%s: render: %v", language, err)
+		}
+		got := pdfModelText(m)
+		path := filepath.Join("testdata", "invoices", "energy-"+language+".txt")
+		if *updatePDFText {
+			if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(path, []byte(got), 0o644); err != nil { //nolint:gosec // a golden file in the repository
+				t.Fatal(err)
+			}
+			continue
+		}
+		want, err := os.ReadFile(path) //nolint:gosec // a golden file in the repository
+		if err != nil {
+			t.Fatalf("read %s (run with -update-pdf to write it): %v", path, err)
+		}
+		if got != string(want) {
+			t.Errorf("%s differs from the model:\n--- got\n%s\n--- want\n%s", path, got, want)
+		}
+	}
+}
+
+// The blocks' placement and figures, and when the notice prints: a person
+// billed for consumption only — never a business, never a person billed for
+// work alone.
+func TestPDF_EnergyBlocksAndNotice(t *testing.T) {
+	t.Parallel()
+	m := energyModel(t, "nb", nil)
+	var before []int
+	for _, b := range m.pointBlocks {
+		before = append(before, b.before)
+	}
+	if want := []int{0, 2, 4}; !slices.Equal(before, want) {
+		t.Errorf("blocks above lines %v, want %v (Oslo's twice, its lines interleaved)", before, want)
+	}
+	oslo := m.pointBlocks[0]
+	if want := [][2]string{
+		{"Målepunkt-ID", "707057500012345671"}, {"Adresse", "Storgata 1, 0155 Oslo"}, {"Prisområde", "NO1"}, {"Avtale", "Spotpris"},
+		{"Periode", "01.08.2026 – 30.09.2026"}, {"Forbruk", "1\u00a0234,567 kWh (korreksjon -12,5 kWh)"},
+	}; !slices.Equal(oslo.rows, want) || oslo.note != "Forbruket er delvis stipulert" {
+		t.Errorf("Oslo's block = %q %q", oslo.rows, oslo.note)
+	}
+	if m.pointBlocks[2].rows[0] != oslo.rows[0] {
+		t.Errorf("the second run's block = %q, want Oslo's again", m.pointBlocks[2].rows)
+	}
+	if tromso := m.pointBlocks[1]; tromso.rows[5] != [2]string{"Forbruk", "800 kWh"} || tromso.note != "" {
+		t.Errorf("Tromsø's block = %q %q, want 800 kWh and no note", tromso.rows, tromso.note)
+	}
+	if m.lines[0][3] != "1,23456789" || m.lines[2][3] != "0,4567" || m.lines[1][3] != "49,00" {
+		t.Errorf("unit prices = %q %q %q, want their own decimals", m.lines[0][3], m.lines[2][3], m.lines[1][3])
+	}
+	if !strings.HasPrefix(m.energyNotice, "Prisene på strøm kan sammenlignes på strømpris.no.") {
+		t.Errorf("a person's notice = %q", m.energyNotice)
+	}
+	if en := energyModel(t, "en", nil); en.pointBlocks[0].rows[5] != [2]string{"Consumption", "1,234.567 kWh (correction -12.5 kWh)"} ||
+		en.pointBlocks[0].note != "The consumption is partly estimated" || !strings.HasPrefix(en.energyNotice, "Electricity prices can be compared") {
+		t.Errorf("en = %q %q %q", en.pointBlocks[0].rows, en.pointBlocks[0].note, en.energyNotice)
+	}
+
+	business := energyModel(t, "nb", func(inv *store.InvoicesInvoice, _ *[]heldSource) {
+		inv.BuyerType, inv.BuyerOrganisationNumber = ptr("business"), ptr("987654325")
+	})
+	if business.energyNotice != "" || len(business.pointBlocks) != 3 {
+		t.Errorf("a business = notice %q, %d blocks; want no notice and the blocks", business.energyNotice, len(business.pointBlocks))
+	}
+	work := energyModel(t, "nb", func(_ *store.InvoicesInvoice, held *[]heldSource) { *held = (*held)[3:] })
+	if work.energyNotice != "" || len(work.pointBlocks) != 0 {
+		t.Errorf("work alone = notice %q, %d blocks; want neither", work.energyNotice, len(work.pointBlocks))
+	}
+	// A positive correction is signed, and a point of corrections alone
+	// prints the difference without a kWh of its own.
+	onlyCorrection := energyModel(t, "nb", func(_ *store.InvoicesInvoice, held *[]heldSource) {
+		c := (*held)[2]
+		c.quantity = rat("3")
+		*held = []heldSource{c}
+	})
+	if got := onlyCorrection.pointBlocks[0].rows[5]; got != [2]string{"Forbruk", "korreksjon +3 kWh"} {
+		t.Errorf("a correction alone = %q", got)
 	}
 }

@@ -1,0 +1,224 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Invoice xmlns="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2" xmlns:cac="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2" xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2">
+  <cbc:CustomizationID>urn:cen.eu:en16931:2017#compliant#urn:fdc:peppol.eu:2017:poacc:billing:3.0</cbc:CustomizationID>
+  <cbc:ProfileID>urn:fdc:peppol.eu:2017:poacc:billing:01:1.0</cbc:ProfileID>
+  <cbc:ID>10060</cbc:ID>
+  <cbc:IssueDate>2026-10-01</cbc:IssueDate>
+  <cbc:DueDate>2026-10-15</cbc:DueDate>
+  <cbc:InvoiceTypeCode>380</cbc:InvoiceTypeCode>
+  <cbc:DocumentCurrencyCode>NOK</cbc:DocumentCurrencyCode>
+  <cbc:BuyerReference>Kari Nordmann</cbc:BuyerReference>
+  <cac:InvoicePeriod>
+    <cbc:StartDate>2026-08-01</cbc:StartDate>
+    <cbc:EndDate>2026-09-30</cbc:EndDate>
+  </cac:InvoicePeriod>
+  <cac:AdditionalDocumentReference>
+    <cbc:ID>10060</cbc:ID>
+    <cbc:DocumentDescription>Faktura (PDF)</cbc:DocumentDescription>
+    <cac:Attachment>
+      <cbc:EmbeddedDocumentBinaryObject mimeCode="application/pdf" filename="faktura-10060.pdf">JVBERi0xLjQKMSAwIG9iajw8L1R5cGUvQ2F0YWxvZy9QYWdlcyAyIDAgUj4+ZW5kb2JqCjIgMCBvYmo8PC9UeXBlL1BhZ2VzL0tpZHNbMyAwIFJdL0NvdW50IDE+PmVuZG9iagozIDAgb2JqPDwvVHlwZS9QYWdlL1BhcmVudCAyIDAgUi9NZWRpYUJveFswIDAgNTk1IDg0Ml0+PmVuZG9iagp0cmFpbGVyPDwvUm9vdCAxIDAgUj4+CiUlRU9GCg==</cbc:EmbeddedDocumentBinaryObject>
+    </cac:Attachment>
+  </cac:AdditionalDocumentReference>
+  <cac:AccountingSupplierParty>
+    <cac:Party>
+      <cbc:EndpointID schemeID="0192">923456783</cbc:EndpointID>
+      <cac:PartyName>
+        <cbc:Name>Fjordkraft Konsult AS</cbc:Name>
+      </cac:PartyName>
+      <cac:PostalAddress>
+        <cbc:StreetName>Storgata 1</cbc:StreetName>
+        <cbc:AdditionalStreetName>3. etasje</cbc:AdditionalStreetName>
+        <cbc:CityName>Oslo</cbc:CityName>
+        <cbc:PostalZone>0155</cbc:PostalZone>
+        <cac:Country>
+          <cbc:IdentificationCode>NO</cbc:IdentificationCode>
+        </cac:Country>
+      </cac:PostalAddress>
+      <cac:PartyTaxScheme>
+        <cbc:CompanyID>NO923456783MVA</cbc:CompanyID>
+        <cac:TaxScheme>
+          <cbc:ID>VAT</cbc:ID>
+        </cac:TaxScheme>
+      </cac:PartyTaxScheme>
+      <cac:PartyTaxScheme>
+        <cbc:CompanyID>Foretaksregisteret</cbc:CompanyID>
+        <cac:TaxScheme>
+          <cbc:ID>TAX</cbc:ID>
+        </cac:TaxScheme>
+      </cac:PartyTaxScheme>
+      <cac:PartyLegalEntity>
+        <cbc:RegistrationName>Fjordkraft Konsult AS</cbc:RegistrationName>
+        <cbc:CompanyID schemeID="0192">923456783</cbc:CompanyID>
+      </cac:PartyLegalEntity>
+      <cac:Contact>
+        <cbc:ElectronicMail>faktura@fjordkraft-konsult.example</cbc:ElectronicMail>
+      </cac:Contact>
+    </cac:Party>
+  </cac:AccountingSupplierParty>
+  <cac:AccountingCustomerParty>
+    <cac:Party>
+      <cbc:EndpointID schemeID="0088">7080000000012</cbc:EndpointID>
+      <cac:PostalAddress>
+        <cbc:StreetName>Ullevålsveien 40</cbc:StreetName>
+        <cbc:CityName>Oslo</cbc:CityName>
+        <cbc:PostalZone>0171</cbc:PostalZone>
+        <cac:Country>
+          <cbc:IdentificationCode>NO</cbc:IdentificationCode>
+        </cac:Country>
+      </cac:PostalAddress>
+      <cac:PartyLegalEntity>
+        <cbc:RegistrationName>Kari Nordmann</cbc:RegistrationName>
+      </cac:PartyLegalEntity>
+    </cac:Party>
+  </cac:AccountingCustomerParty>
+  <cac:PaymentMeans>
+    <cbc:PaymentMeansCode>30</cbc:PaymentMeansCode>
+    <cac:PayeeFinancialAccount>
+      <cbc:ID>86011117947</cbc:ID>
+    </cac:PayeeFinancialAccount>
+  </cac:PaymentMeans>
+  <cac:PaymentTerms>
+    <cbc:Note>Forfall 15.10.2026</cbc:Note>
+  </cac:PaymentTerms>
+  <cac:TaxTotal>
+    <cbc:TaxAmount currencyID="NOK">389.43</cbc:TaxAmount>
+    <cac:TaxSubtotal>
+      <cbc:TaxableAmount currencyID="NOK">1557.73</cbc:TaxableAmount>
+      <cbc:TaxAmount currencyID="NOK">389.43</cbc:TaxAmount>
+      <cac:TaxCategory>
+        <cbc:ID>S</cbc:ID>
+        <cbc:Percent>25.00</cbc:Percent>
+        <cac:TaxScheme>
+          <cbc:ID>VAT</cbc:ID>
+        </cac:TaxScheme>
+      </cac:TaxCategory>
+    </cac:TaxSubtotal>
+    <cac:TaxSubtotal>
+      <cbc:TaxableAmount currencyID="NOK">953.36</cbc:TaxableAmount>
+      <cbc:TaxAmount currencyID="NOK">0.00</cbc:TaxAmount>
+      <cac:TaxCategory>
+        <cbc:ID>Z</cbc:ID>
+        <cbc:Percent>0.00</cbc:Percent>
+        <cac:TaxScheme>
+          <cbc:ID>VAT</cbc:ID>
+        </cac:TaxScheme>
+      </cac:TaxCategory>
+    </cac:TaxSubtotal>
+  </cac:TaxTotal>
+  <cac:LegalMonetaryTotal>
+    <cbc:LineExtensionAmount currencyID="NOK">2511.09</cbc:LineExtensionAmount>
+    <cbc:TaxExclusiveAmount currencyID="NOK">2511.09</cbc:TaxExclusiveAmount>
+    <cbc:TaxInclusiveAmount currencyID="NOK">2900.52</cbc:TaxInclusiveAmount>
+    <cbc:PayableAmount currencyID="NOK">2900.52</cbc:PayableAmount>
+  </cac:LegalMonetaryTotal>
+  <cac:InvoiceLine>
+    <cbc:ID>1</cbc:ID>
+    <cbc:InvoicedQuantity unitCode="KWH">1234.567</cbc:InvoicedQuantity>
+    <cbc:LineExtensionAmount currencyID="NOK">1524.16</cbc:LineExtensionAmount>
+    <cac:Item>
+      <cbc:Name>Strøm, 707057500012345671 Storgata 1, 0155 Oslo, 01.09.2026–30.09.2026</cbc:Name>
+      <cac:ClassifiedTaxCategory>
+        <cbc:ID>S</cbc:ID>
+        <cbc:Percent>25.00</cbc:Percent>
+        <cac:TaxScheme>
+          <cbc:ID>VAT</cbc:ID>
+        </cac:TaxScheme>
+      </cac:ClassifiedTaxCategory>
+      <cac:AdditionalItemProperty>
+        <cbc:Name>Målepunkt-ID</cbc:Name>
+        <cbc:Value>707057500012345671</cbc:Value>
+      </cac:AdditionalItemProperty>
+    </cac:Item>
+    <cac:Price>
+      <cbc:PriceAmount currencyID="NOK">1.23456789</cbc:PriceAmount>
+    </cac:Price>
+  </cac:InvoiceLine>
+  <cac:InvoiceLine>
+    <cbc:ID>2</cbc:ID>
+    <cbc:InvoicedQuantity unitCode="MON">1.000</cbc:InvoicedQuantity>
+    <cbc:LineExtensionAmount currencyID="NOK">49.00</cbc:LineExtensionAmount>
+    <cac:Item>
+      <cbc:Name>Fastledd, 707057500012345671 Storgata 1, 0155 Oslo, 01.09.2026–30.09.2026</cbc:Name>
+      <cac:ClassifiedTaxCategory>
+        <cbc:ID>S</cbc:ID>
+        <cbc:Percent>25.00</cbc:Percent>
+        <cac:TaxScheme>
+          <cbc:ID>VAT</cbc:ID>
+        </cac:TaxScheme>
+      </cac:ClassifiedTaxCategory>
+      <cac:AdditionalItemProperty>
+        <cbc:Name>Målepunkt-ID</cbc:Name>
+        <cbc:Value>707057500012345671</cbc:Value>
+      </cac:AdditionalItemProperty>
+    </cac:Item>
+    <cac:Price>
+      <cbc:PriceAmount currencyID="NOK">49.0000</cbc:PriceAmount>
+    </cac:Price>
+  </cac:InvoiceLine>
+  <cac:InvoiceLine>
+    <cbc:ID>3</cbc:ID>
+    <cbc:InvoicedQuantity unitCode="C62">-1.000</cbc:InvoicedQuantity>
+    <cbc:LineExtensionAmount currencyID="NOK">-15.43</cbc:LineExtensionAmount>
+    <cac:Item>
+      <cbc:Name>Korreksjon Strøm, 707057500012345671 Storgata 1, 0155 Oslo, 01.08.2026–31.08.2026: -12,5 kWh, tidligere fakturert 10031</cbc:Name>
+      <cac:ClassifiedTaxCategory>
+        <cbc:ID>S</cbc:ID>
+        <cbc:Percent>25.00</cbc:Percent>
+        <cac:TaxScheme>
+          <cbc:ID>VAT</cbc:ID>
+        </cac:TaxScheme>
+      </cac:ClassifiedTaxCategory>
+      <cac:AdditionalItemProperty>
+        <cbc:Name>Målepunkt-ID</cbc:Name>
+        <cbc:Value>707057500012345671</cbc:Value>
+      </cac:AdditionalItemProperty>
+    </cac:Item>
+    <cac:Price>
+      <cbc:PriceAmount currencyID="NOK">15.4300</cbc:PriceAmount>
+    </cac:Price>
+  </cac:InvoiceLine>
+  <cac:InvoiceLine>
+    <cbc:ID>4</cbc:ID>
+    <cbc:InvoicedQuantity unitCode="KWH">800.000</cbc:InvoicedQuantity>
+    <cbc:LineExtensionAmount currencyID="NOK">365.36</cbc:LineExtensionAmount>
+    <cac:Item>
+      <cbc:Name>Strøm, 707057500098765431 Storgata 9, 9008 Tromsø, 01.09.2026–30.09.2026</cbc:Name>
+      <cac:ClassifiedTaxCategory>
+        <cbc:ID>Z</cbc:ID>
+        <cbc:Percent>0.00</cbc:Percent>
+        <cac:TaxScheme>
+          <cbc:ID>VAT</cbc:ID>
+        </cac:TaxScheme>
+      </cac:ClassifiedTaxCategory>
+      <cac:AdditionalItemProperty>
+        <cbc:Name>Målepunkt-ID</cbc:Name>
+        <cbc:Value>707057500098765431</cbc:Value>
+      </cac:AdditionalItemProperty>
+    </cac:Item>
+    <cac:Price>
+      <cbc:PriceAmount currencyID="NOK">0.4567</cbc:PriceAmount>
+    </cac:Price>
+  </cac:InvoiceLine>
+  <cac:InvoiceLine>
+    <cbc:ID>5</cbc:ID>
+    <cbc:InvoicedQuantity unitCode="ANN">1.000</cbc:InvoicedQuantity>
+    <cbc:LineExtensionAmount currencyID="NOK">588.00</cbc:LineExtensionAmount>
+    <cac:Item>
+      <cbc:Name>Fastbeløp, 707057500098765431 Storgata 9, 9008 Tromsø, 01.09.2026–30.09.2026</cbc:Name>
+      <cac:ClassifiedTaxCategory>
+        <cbc:ID>Z</cbc:ID>
+        <cbc:Percent>0.00</cbc:Percent>
+        <cac:TaxScheme>
+          <cbc:ID>VAT</cbc:ID>
+        </cac:TaxScheme>
+      </cac:ClassifiedTaxCategory>
+      <cac:AdditionalItemProperty>
+        <cbc:Name>Målepunkt-ID</cbc:Name>
+        <cbc:Value>707057500098765431</cbc:Value>
+      </cac:AdditionalItemProperty>
+    </cac:Item>
+    <cac:Price>
+      <cbc:PriceAmount currencyID="NOK">588.0000</cbc:PriceAmount>
+    </cac:Price>
+  </cac:InvoiceLine>
+</Invoice>

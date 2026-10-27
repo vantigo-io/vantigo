@@ -106,7 +106,7 @@ type Line struct {
 	ID          string // the position
 	Description string
 	Unit        string // free text; UnitCode maps it
-	// Quantity (3 decimals) and UnitPrice (4) at their stored scale;
+	// Quantity (3 decimals) and UnitPrice (up to 8) at their stored scale;
 	// DiscountPercent; Gross, Allowance and Net (2) as computed at save.
 	Quantity, UnitPrice, DiscountPercent *big.Rat
 	Gross, Allowance, Net                *big.Rat
@@ -114,7 +114,20 @@ type Line struct {
 	// its percentage, both from the issue snapshot.
 	Category string
 	Rate     *big.Rat
+	// Properties are the item's additional properties (BG-32), in order: a
+	// line billing an energy settlement names its metering point (energy
+	// consumption billing design D9). None for any other line.
+	Properties []ItemProperty
 }
+
+// ItemProperty is one of an item's additional properties (BT-160, BT-161).
+type ItemProperty struct {
+	Name, Value string
+}
+
+// MeteringPointProperty is the name a line's metering point (its GSRN) is
+// carried under (invoices from consumption plan reading 9).
+const MeteringPointProperty = "Målepunkt-ID"
 
 // VATRow is one (category, rate) row of the document's VAT summary.
 type VATRow struct {

@@ -68,7 +68,7 @@ func TestEHFDocumentOf_TheRows(t *testing.T) {
 	t.Parallel()
 	inv, lines, sums := issuedRows(t)
 	pdf := []byte("%PDF-1.4 stored")
-	d, err := ehfDocumentOf(inv, lines, sums, nil, nil, "0192:923456783", pdf)
+	d, err := ehfDocumentOf(inv, lines, sums, nil, nil, nil, "0192:923456783", pdf)
 	if err != nil {
 		t.Fatalf("ehfDocumentOf: %v", err)
 	}
@@ -147,7 +147,7 @@ func TestEHFDocumentOf_ACreditNoteToAPerson(t *testing.T) {
 	inv.Kind, inv.DueDate, inv.Kid, inv.KidAlgorithm = kindCreditNote, pgtype.Date{}, nil, nil
 	person, en := "person", "en"
 	inv.BuyerType, inv.BuyerOrganisationNumber, inv.BuyerLanguage = &person, nil, &en
-	d, err := ehfDocumentOf(inv, lines, sums, &original, nil, "0192:923456783", []byte("%PDF"))
+	d, err := ehfDocumentOf(inv, lines, sums, &original, nil, nil, "0192:923456783", []byte("%PDF"))
 	if err != nil {
 		t.Fatalf("ehfDocumentOf: %v", err)
 	}
@@ -179,7 +179,7 @@ func TestEHFDocumentOf_Refuses(t *testing.T) {
 	} {
 		inv, lines, sums := issuedRows(t)
 		mutate(&inv, lines)
-		if _, err := ehfDocumentOf(inv, lines, sums, nil, nil, "0192:923456783", nil); err == nil {
+		if _, err := ehfDocumentOf(inv, lines, sums, nil, nil, nil, "0192:923456783", nil); err == nil {
 			t.Errorf("%s: no error", name)
 		}
 	}
@@ -190,13 +190,13 @@ func TestEHFDocumentOf_Refuses(t *testing.T) {
 func TestEHFDocumentOf_TheProjectReference(t *testing.T) {
 	t.Parallel()
 	inv, lines, sums := issuedRows(t)
-	d, err := ehfDocumentOf(inv, lines, sums, nil, nil, "0192:923456783", []byte("%PDF"))
+	d, err := ehfDocumentOf(inv, lines, sums, nil, nil, nil, "0192:923456783", []byte("%PDF"))
 	if err != nil || d.ProjectReference != "" {
 		t.Fatalf("without a project = %q, %v; want none", d.ProjectReference, err)
 	}
 	project, reference := int32(41), "P-41"
 	inv.ProjectID, inv.ProjectReference = &project, &reference
-	if d, err = ehfDocumentOf(inv, lines, sums, nil, nil, "0192:923456783", []byte("%PDF")); err != nil || d.ProjectReference != "P-41" {
+	if d, err = ehfDocumentOf(inv, lines, sums, nil, nil, nil, "0192:923456783", []byte("%PDF")); err != nil || d.ProjectReference != "P-41" {
 		t.Errorf("with a project = %q, %v; want P-41", d.ProjectReference, err)
 	}
 }
@@ -222,7 +222,7 @@ func TestEHF_ASettlementHasTwoBillingReferences(t *testing.T) {
 		{number: first, issueDate: time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC)},
 		{number: second, issueDate: time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)},
 	}
-	d, err := ehfDocumentOf(inv, lines, sums, nil, deducted, "0192:923456783", []byte("%PDF"))
+	d, err := ehfDocumentOf(inv, lines, sums, nil, deducted, nil, "0192:923456783", []byte("%PDF"))
 	if err != nil {
 		t.Fatalf("ehfDocumentOf: %v", err)
 	}
@@ -255,11 +255,42 @@ func TestEHF_ASettlementHasTwoBillingReferences(t *testing.T) {
 
 	original := inv
 	inv.Kind, inv.DueDate, inv.Kid, inv.KidAlgorithm = kindCreditNote, pgtype.Date{}, nil, nil
-	c, err := ehfDocumentOf(inv, lines, sums, &original, deducted, "0192:923456783", []byte("%PDF"))
+	c, err := ehfDocumentOf(inv, lines, sums, &original, deducted, nil, "0192:923456783", []byte("%PDF"))
 	if err != nil {
 		t.Fatalf("ehfDocumentOf of a credit note: %v", err)
 	}
 	if len(c.Deducted) != 0 || c.Original == nil || c.Original.Number != "1001" {
 		t.Errorf("a settlement's credit note = deducted %+v, original %+v; want its original alone", c.Deducted, c.Original)
+	}
+}
+
+// Each line a settlement's span bills carries its metering point's GSRN as
+// an item property, read from the document's own line sources (energy
+// consumption billing design D9, invoices from consumption plan reading 9);
+// the line of work none; the eight-decimal price as stored.
+func TestEHFDocumentOf_TheMeteringPoint(t *testing.T) {
+	t.Parallel()
+	inv, lines, sums, held := energyRows(t, "nb")
+	d, err := ehfDocumentOf(inv, lines, sums, nil, nil, held, "0192:923456783", []byte("%PDF"))
+	if err != nil {
+		t.Fatalf("ehfDocumentOf: %v", err)
+	}
+	oslo, tromso := "707057500012345671", "707057500098765431"
+	for i, want := range []string{oslo, oslo, tromso, tromso, oslo, ""} {
+		var got string
+		if p := d.Lines[i].Properties; len(p) == 1 && p[0].Name == ehf.MeteringPointProperty {
+			got = p[0].Value
+		} else if len(p) != 0 {
+			t.Errorf("line %d properties = %+v", i+1, p)
+		}
+		if got != want {
+			t.Errorf("line %d metering point = %q, want %q", i+1, got, want)
+		}
+	}
+	if d.Lines[0].UnitPrice.Cmp(rat("1.23456789")) != 0 || d.Lines[4].Quantity.Cmp(rat("-1")) != 0 {
+		t.Errorf("line 1 price %s, line 5 quantity %s", d.Lines[0].UnitPrice.FloatString(8), d.Lines[4].Quantity.FloatString(3))
+	}
+	if d, err = ehfDocumentOf(inv, lines, sums, nil, nil, nil, "0192:923456783", []byte("%PDF")); err != nil || len(d.Lines[0].Properties) != 0 {
+		t.Errorf("without sources = %+v, %v; want no property", d.Lines[0].Properties, err)
 	}
 }

@@ -4,6 +4,7 @@ import (
 	_ "embed"
 	"fmt"
 	"math/big"
+	"slices"
 	"strings"
 	"time"
 
@@ -78,6 +79,9 @@ type pdfLabels struct {
 	// The timesheet block (invoices work design D5): its title, its columns
 	// but the description, a person's total and the whole's.
 	timesheet, sheetDate, sheetPerson, sheetWorkType, sheetHours, sheetTotalFor, sheetTotal string
+	// The metering point's block and the consumer's notice (energy
+	// consumption billing design D9, invoices from consumption plan reading 9).
+	pointID, pointAddress, priceArea, contract, period, consumption, correction, estimated, energyNotice string
 }
 
 var labels = map[string]pdfLabels{
@@ -97,6 +101,9 @@ var labels = map[string]pdfLabels{
 		deducted:     "Fratrukket a konto", deductedRef: "Faktura %d av %s",
 		timesheet: "Timeliste", sheetDate: "Dato", sheetPerson: "Person", sheetWorkType: "Arbeidstype", sheetHours: "Timer",
 		sheetTotalFor: "Sum %s", sheetTotal: "Sum timer",
+		pointID: "Målepunkt-ID", pointAddress: "Adresse", priceArea: "Prisområde", contract: "Avtale", period: "Periode",
+		consumption: "Forbruk", correction: "korreksjon %s", estimated: "Forbruket er delvis stipulert",
+		energyNotice: "Prisene på strøm kan sammenlignes på strømpris.no. Klager kan rettes til Elklagenemnda, elklagenemnda.no",
 	},
 	"en": {
 		invoice: "Invoice", creditNote: "Credit note", number: "Number", issueDate: "Invoice date",
@@ -114,6 +121,9 @@ var labels = map[string]pdfLabels{
 		deducted:     "Deducted on account", deductedRef: "Invoice %d of %s",
 		timesheet: "Timesheet", sheetDate: "Date", sheetPerson: "Person", sheetWorkType: "Work type", sheetHours: "Hours",
 		sheetTotalFor: "Total %s", sheetTotal: "Total hours",
+		pointID: "Metering point ID", pointAddress: "Address", priceArea: "Price area", contract: "Contract", period: "Period",
+		consumption: "Consumption", correction: "correction %s", estimated: "The consumption is partly estimated",
+		energyNotice: "Electricity prices can be compared at strømpris.no. Complaints can be made to Elklagenemnda, elklagenemnda.no",
 	},
 }
 
@@ -169,8 +179,27 @@ type pdfDocument struct {
 	// timesheet is the document's timesheet rows as stored (invoices work
 	// design D5), in order; none without one.
 	timesheet []pdfTimesheetRow
-	created   time.Time
-	preview   bool
+	// points is each metering point the document's settlements bill, from its
+	// own line sources (meteringPointsOf); none for a document of work.
+	points []pdfPoint
+	// buyerPerson is the buyer snapshot's type, a person: with points, the
+	// consumer's notice prints (energy consumption billing design D9).
+	buyerPerson bool
+	created     time.Time
+	preview     bool
+}
+
+// pdfPoint is one metering point as its block prints it (energy consumption
+// billing design D9, invoices from consumption plan reading 9): the snapshot
+// its settlements took, the span of their periods, the regular settlements'
+// kWh and — when it has corrections — their summed difference, whether any
+// settlement is estimated, and the lines (by index) its settlements bill.
+type pdfPoint struct {
+	gsrn, address, priceArea, contractName string
+	from, to                               time.Time
+	kWh, correctionKWh                     *big.Rat // nil without a regular settlement, without a correction
+	estimated                              bool
+	lines                                  []int
 }
 
 // pdfTimesheetRow is one timesheet row as a document prints it.
@@ -191,6 +220,9 @@ type pdfModel struct {
 	creditsLine string
 	lineHeader  []string
 	lines       [][]string
+	// pointBlocks are the metering points' blocks, each printed above the
+	// line at its index (energy consumption billing design D9), in order.
+	pointBlocks []pdfPointBlock
 	vatHeader   []string
 	vatRows     [][]string
 	reasons     []string
@@ -201,10 +233,22 @@ type pdfModel struct {
 	// the URL under the payment block (D15); empty for none.
 	payLink      [2]string
 	note, footer string
+	// energyNotice is the consumer's notice — strømpris.no and Elklagenemnda —
+	// for a person billed for consumption (energy consumption billing design
+	// D9); empty otherwise.
+	energyNotice string
 	// timesheet is the timesheet block (invoices work design D5), on its own
 	// pages after everything else; nil without one.
 	timesheet *pdfTimesheet
 	created   time.Time
+}
+
+// pdfPointBlock is a metering point's block as it prints: above the line at
+// index before, its labelled values and the estimate's note, empty for none.
+type pdfPointBlock struct {
+	before int
+	rows   [][2]string
+	note   string
 }
 
 // pdfTimesheet is a timesheet block as it prints: its title, its column
@@ -399,15 +443,19 @@ func buildPDFModel(d pdfDocument) pdfModel {
 	}
 	inCurrency := func(label string) string { return label + " (" + currency + ")" }
 
-	// The lines.
+	// The lines. A unit price prints with its own decimals, two to eight (an
+	// energy line's price takes eight, invoices from consumption plan reading
+	// 3); a price of four or fewer prints as it always has.
 	m.lineHeader = []string{l.description, l.quantity, l.unit, l.unitPrice, l.discount, l.vat, inCurrency(l.amount)}
 	for _, line := range d.lines {
 		m.lines = append(m.lines, []string{
 			line.description, formatDecimal(line.quantity, 0, 3, lang), line.unit,
-			formatDecimal(line.unitPrice, 2, 4, lang), formatDecimal(line.discount, 0, 2, lang),
+			formatDecimal(line.unitPrice, 2, 8, lang), formatDecimal(line.discount, 0, 2, lang),
 			formatDecimal(line.rate, 0, 2, lang), money(line.net, lang),
 		})
 	}
+
+	m.pointBlocks = pointBlocks(d.points, l, lang)
 
 	// VAT per (category, rate), 0 % categories included, and under it each
 	// non-S category's reason — the reverse-charge text in Norwegian always.
@@ -460,8 +508,54 @@ func buildPDFModel(d pdfDocument) pdfModel {
 		}
 	}
 	m.note, m.footer = d.note, d.footer
+	if d.buyerPerson && len(d.points) > 0 {
+		m.energyNotice = l.energyNotice
+	}
 	m.timesheet = timesheetBlock(d.timesheet, l, lang)
 	return m
+}
+
+// pointBlocks are the metering points' blocks as words (energy consumption
+// billing design D9, invoices from consumption plan reading 9): one above the
+// first line of each run of a point's lines — a save that interleaved them
+// repeats the block above each run — ordered by the line they print above.
+func pointBlocks(points []pdfPoint, l pdfLabels, lang string) []pdfPointBlock {
+	var out []pdfPointBlock
+	for _, p := range points {
+		kWh := func(v *big.Rat) string { return formatDecimal(v, 0, 3, lang) + " kWh" }
+		var consumption string
+		if p.kWh != nil {
+			consumption = kWh(p.kWh)
+		}
+		if p.correctionKWh != nil {
+			diff := kWh(p.correctionKWh)
+			if p.correctionKWh.Sign() > 0 {
+				diff = "+" + diff
+			}
+			diff = fmt.Sprintf(l.correction, diff)
+			if consumption == "" {
+				consumption = diff
+			} else {
+				consumption += " (" + diff + ")"
+			}
+		}
+		block := pdfPointBlock{rows: [][2]string{
+			{l.pointID, p.gsrn}, {l.pointAddress, p.address},
+			{l.priceArea, p.priceArea}, {l.contract, p.contractName},
+			{l.period, formatDate(p.from, lang) + " – " + formatDate(p.to, lang)}, {l.consumption, consumption},
+		}}
+		if p.estimated {
+			block.note = l.estimated
+		}
+		for i, line := range p.lines {
+			if i == 0 || p.lines[i-1] != line-1 {
+				block.before = line
+				out = append(out, block)
+			}
+		}
+	}
+	slices.SortStableFunc(out, func(a, b pdfPointBlock) int { return a.before - b.before })
+	return out
 }
 
 // timesheetBlock is D5's timesheet as words, nil without rows: one row per
@@ -575,7 +669,12 @@ func layoutPDF(m pdfModel) (core.Maroto, error) {
 		return doc.AddAutoRow(cols...)
 	}
 	tableRow(m.lineHeader, true)
-	for _, l := range m.lines {
+	blocks := m.pointBlocks
+	for i, l := range m.lines {
+		for len(blocks) > 0 && blocks[0].before == i {
+			renderPointBlock(doc, blocks[0])
+			blocks = blocks[1:]
+		}
 		tableRow(l, false)
 	}
 	doc.AddRows(line.NewRow(4))
@@ -616,12 +715,32 @@ func layoutPDF(m pdfModel) (core.Maroto, error) {
 	if m.footer != "" {
 		doc.AddAutoRow(text.NewCol(12, m.footer, props.Text{Top: 3, Size: 8}))
 	}
+	if m.energyNotice != "" {
+		doc.AddAutoRow(text.NewCol(12, m.energyNotice, props.Text{Top: 3, Size: 8}))
+	}
 	if m.timesheet != nil {
 		if err := renderTimesheet(doc, m.timesheet); err != nil {
 			return nil, err
 		}
 	}
 	return doc, nil
+}
+
+// renderPointBlock lays a metering point's block out above its lines: its
+// values two to a row, label and value, then the estimate's note.
+func renderPointBlock(doc core.Maroto, b pdfPointBlock) {
+	bold := props.Text{Style: fontstyle.Bold, Size: 8, Top: 1}
+	plain := props.Text{Size: 8, Top: 1}
+	for i := 0; i < len(b.rows); i += 2 {
+		cols := []core.Col{text.NewCol(2, b.rows[i][0], bold), text.NewCol(4, b.rows[i][1], plain)}
+		if i+1 < len(b.rows) {
+			cols = append(cols, text.NewCol(2, b.rows[i+1][0], bold), text.NewCol(4, b.rows[i+1][1], plain))
+		}
+		doc.AddAutoRow(cols...)
+	}
+	if b.note != "" {
+		doc.AddAutoRow(text.NewCol(12, b.note, plain))
+	}
 }
 
 // renderTimesheet lays the timesheet out on pages of its own after the

@@ -1,0 +1,67 @@
+# Faktura
+## seller
+Nordkraft AS
+Kraftveien 1
+0150 Oslo
+Org.nr. 923 456 783 MVA
+Foretaksregisteret
+## buyer
+Kari Nordmann
+Storgata 1
+0155 Oslo
+## meta
+Nummer: 1060
+Fakturadato: 05.10.2026
+Leveringsperiode: 01.08.2026 – 30.09.2026
+Forfallsdato: 19.10.2026
+Betalingsbetingelser: 14 dager
+Deres ref.: Kari Nordmann
+## lines
+Beskrivelse | Antall | Enhet | Enhetspris | Rabatt % | MVA % | Beløp (NOK)
+### point
+Målepunkt-ID: 707057500012345671
+Adresse: Storgata 1, 0155 Oslo
+Prisområde: NO1
+Avtale: Spotpris
+Periode: 01.08.2026 – 30.09.2026
+Forbruk: 1 234,567 kWh (korreksjon -12,5 kWh)
+Forbruket er delvis stipulert
+Strøm, 707057500012345671 Storgata 1, 0155 Oslo, 01.09.2026–30.09.2026 | 1 234,567 | kWh | 1,23456789 | 0 | 25 | 1 524,16
+Fastledd, 707057500012345671 Storgata 1, 0155 Oslo, 01.09.2026–30.09.2026 | 1 | mnd | 49,00 | 0 | 25 | 49,00
+### point
+Målepunkt-ID: 707057500098765431
+Adresse: Storgata 9, 9008 Tromsø
+Prisområde: NO4
+Avtale: Spotpris
+Periode: 01.09.2026 – 30.09.2026
+Forbruk: 800 kWh
+Strøm, 707057500098765431 Storgata 9, 9008 Tromsø, 01.09.2026–30.09.2026 | 800 | kWh | 0,4567 | 0 | 0 | 365,36
+Fastbeløp, 707057500098765431 Storgata 9, 9008 Tromsø, 01.09.2026–30.09.2026 | 1 | år | 588,00 | 0 | 0 | 588,00
+### point
+Målepunkt-ID: 707057500012345671
+Adresse: Storgata 1, 0155 Oslo
+Prisområde: NO1
+Avtale: Spotpris
+Periode: 01.08.2026 – 30.09.2026
+Forbruk: 1 234,567 kWh (korreksjon -12,5 kWh)
+Forbruket er delvis stipulert
+Korreksjon Strøm, 707057500012345671 Storgata 1, 0155 Oslo, 01.08.2026–31.08.2026: -12,5 kWh | -1 | stk | 15,43 | 0 | 25 | -15,43
+Montering av måler | 2 | timer | 250,00 | 0 | 25 | 500,00
+## vat
+MVA-sats | Grunnlag | MVA (NOK)
+S 25 % | 2 057,73 | 514,43
+Z 0 % | 953,36 | 0,00
+Elektrisk kraft til husholdningsbruk i Nord-Norge, mval. § 6-6
+## totals
+Sum eks. MVA: 3 011,09
+MVA: 514,43
+Å betale: NOK 3 525,52
+## payment
+Kontonummer: 86011117947
+Forfallsdato: 19.10.2026
+Vennligst oppgi fakturanummer ved betaling
+## note
+
+## footer
+
+Prisene på strøm kan sammenlignes på strømpris.no. Klager kan rettes til Elklagenemnda, elklagenemnda.no
