@@ -19,10 +19,12 @@ import (
 // (/users/{id}/calendars/{id}/events), patched and deleted by
 // /users/{id}/events/{id}, and listed in pages of $top (10 when absent,
 // Graph's default) with an @odata.nextLink. A single-value extended
-// property is kept as it was written, filtered on with Graph's lambda —
-// singleValueExtendedProperties/Any(ep: ep/id eq '…' and startswith(ep/value,
-// '…')), the one filter the fake takes — and answered only when $expand asks
-// for it by id. A user marked MailboxDenied answers 403 ErrorAccessDenied
+// property — an event's or a calendar's — is kept as it was written, and
+// answered only when $expand asks for it by id; events are filtered on with
+// Graph's lambda — singleValueExtendedProperties/Any(ep: ep/id eq '…' and
+// startswith(ep/value, '…')), optionally followed by and start/dateTime ge
+// '…' (compared as the stored dateTime's text, whatever its zone) — the one
+// filter the events take, and calendars on name eq '…'. A user marked MailboxDenied answers 403 ErrorAccessDenied
 // (outside an RBAC for Applications scope), NoMailbox 404
 // MailboxNotEnabledForRESTAPI; a calendar or an event that is not there is
 // 404 ErrorItemNotFound; a second calendar of a name is 409
@@ -34,6 +36,8 @@ type Calendar struct {
 	ID      string
 	Name    string
 	Default bool
+	// Properties are the calendar's single-value extended properties by id.
+	Properties map[string]string
 }
 
 // DateTimeZone is an event's start or end as Graph takes it.
@@ -77,26 +81,44 @@ func (g *FakeGraph) ThrottleBatch(n int) {
 	g.batchThrottle += n
 }
 
+// ThrottleBatchFor is ThrottleBatch with a Retry-After of seconds, answered
+// in the $batch as a JSON number rather than a string; seconds 0 goes back
+// to ThrottleBatch's string "1".
+func (g *FakeGraph) ThrottleBatchFor(n, seconds int) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.batchThrottle += n
+	g.batchWait = seconds
+}
+
 // Calendars is the user's calendars, the default one first.
 func (g *FakeGraph) Calendars(userID string) []Calendar {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	var out []Calendar
 	for _, c := range g.mailboxOf(userID).calendars {
-		out = append(out, *c)
+		out = append(out, copyCalendar(c))
 	}
 	return out
 }
 
-// AddCalendar seeds a secondary calendar named name in the user's mailbox
-// and answers it.
-func (g *FakeGraph) AddCalendar(userID, name string) Calendar {
+// AddCalendar seeds a secondary calendar named name in the user's mailbox,
+// carrying properties (id → value) when any are given, and answers it.
+func (g *FakeGraph) AddCalendar(userID, name string, properties ...map[string]string) Calendar {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	c := &Calendar{ID: g.itemID(), Name: name}
+	for _, props := range properties {
+		for k, v := range props {
+			if c.Properties == nil {
+				c.Properties = map[string]string{}
+			}
+			c.Properties[k] = v
+		}
+	}
 	mb := g.mailboxOf(userID)
 	mb.calendars = append(mb.calendars, c)
-	return *c
+	return copyCalendar(c)
 }
 
 // Events is the user's events in the calendar calendarID — "" the default
@@ -235,7 +257,10 @@ func (g *FakeGraph) mailboxRoute(u *User, method string, seg []string, query url
 	}
 	switch {
 	case len(seg) == 2 && method == http.MethodGet:
-		return answer{status: http.StatusOK, body: calendarJSON(cal)}
+		if x := query.Get("$expand"); x != "" && !markerExpand.MatchString(x) {
+			return graphError(http.StatusBadRequest, "ErrorInvalidUrlQuery", "The $expand is not valid.")
+		}
+		return answer{status: http.StatusOK, body: calendarJSON(cal, query)}
 	case len(seg) == 2 && method == http.MethodDelete:
 		if cal.Default {
 			return graphError(http.StatusBadRequest, "ErrorInvalidRequest", "The default calendar cannot be deleted.")
@@ -251,8 +276,16 @@ func (g *FakeGraph) mailboxRoute(u *User, method string, seg []string, query url
 	return graphError(http.StatusBadRequest, "BadRequest", "Unsupported request: "+method+" users/{id}/"+strings.Join(seg, "/")+".")
 }
 
-func calendarJSON(c *Calendar) map[string]any {
-	return map[string]any{"id": c.ID, "name": c.Name, "isDefaultCalendar": c.Default, "canEdit": true}
+// calendarJSON is c as Graph answers it, with the property $expand names
+// when the calendar has it.
+func calendarJSON(c *Calendar, query url.Values) map[string]any {
+	out := map[string]any{"id": c.ID, "name": c.Name, "isDefaultCalendar": c.Default, "canEdit": true}
+	if m := markerExpand.FindStringSubmatch(query.Get("$expand")); m != nil {
+		if v, ok := c.Properties[m[1]]; ok {
+			out["singleValueExtendedProperties"] = []any{map[string]any{"id": m[1], "value": v}}
+		}
+	}
+	return out
 }
 
 // calendarNameFilter is the one $filter the calendars' list takes.
@@ -267,10 +300,13 @@ func listCalendars(mb *mailbox, query url.Values) answer {
 		}
 		name, filtered = strings.ReplaceAll(m[1], "''", "'"), true
 	}
+	if x := query.Get("$expand"); x != "" && !markerExpand.MatchString(x) {
+		return graphError(http.StatusBadRequest, "ErrorInvalidUrlQuery", "The $expand is not valid.")
+	}
 	out := []any{}
 	for _, c := range mb.calendars {
 		if !filtered || strings.EqualFold(c.Name, name) {
-			out = append(out, calendarJSON(c))
+			out = append(out, calendarJSON(c, query))
 		}
 	}
 	return answer{status: http.StatusOK, body: map[string]any{"value": out}}
@@ -278,19 +314,33 @@ func listCalendars(mb *mailbox, query url.Values) answer {
 
 func (g *FakeGraph) createCalendar(mb *mailbox, body []byte) answer {
 	var in struct {
-		Name string `json:"name"`
+		Name       string `json:"name"`
+		Properties []struct {
+			ID    string `json:"id"`
+			Value string `json:"value"`
+		} `json:"singleValueExtendedProperties"`
 	}
 	if err := json.Unmarshal(body, &in); err != nil || strings.TrimSpace(in.Name) == "" {
 		return graphError(http.StatusBadRequest, "ErrorInvalidRequest", "A calendar needs a name.")
+	}
+	var props map[string]string
+	for _, p := range in.Properties {
+		if !propertyID.MatchString(p.ID) {
+			return graphError(http.StatusBadRequest, "ErrorInvalidProperty", "The extended property's id is not valid.")
+		}
+		if props == nil {
+			props = map[string]string{}
+		}
+		props[p.ID] = p.Value
 	}
 	for _, c := range mb.calendars {
 		if strings.EqualFold(c.Name, in.Name) {
 			return graphError(http.StatusConflict, "ErrorFolderExists", "A folder with the specified name already exists.")
 		}
 	}
-	c := &Calendar{ID: g.itemID(), Name: in.Name}
+	c := &Calendar{ID: g.itemID(), Name: in.Name, Properties: props}
 	mb.calendars = append(mb.calendars, c)
-	return answer{status: http.StatusCreated, body: calendarJSON(c)}
+	return answer{status: http.StatusCreated, body: calendarJSON(c, nil)}
 }
 
 // The values Graph takes for an event's enumerations.
@@ -418,7 +468,7 @@ func (g *FakeGraph) writeEvent(e *Event, body []byte, create bool) (answer, bool
 
 // The $filter and $expand the events' list takes.
 var (
-	markerFilter = regexp.MustCompile(`^singleValueExtendedProperties/Any\(ep: ep/id eq '([^']+)' and startswith\(ep/value, '([^']*)'\)\)$`)
+	markerFilter = regexp.MustCompile(`^singleValueExtendedProperties/Any\(ep: ep/id eq '([^']+)' and startswith\(ep/value, '([^']*)'\)\)(?: and start/dateTime ge '(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})')?$`)
 	markerExpand = regexp.MustCompile(`^singleValueExtendedProperties\(\$filter=id eq '([^']+)'\)$`)
 )
 
@@ -442,13 +492,13 @@ func (g *FakeGraph) listEvents(u *User, mb *mailbox, cal *Calendar, query url.Va
 		}
 		skip = n
 	}
-	var filterID, filterPrefix string
+	var filterID, filterPrefix, filterFrom string
 	if f := query.Get("$filter"); f != "" {
 		m := markerFilter.FindStringSubmatch(f)
 		if m == nil {
 			return graphError(http.StatusBadRequest, "ErrorInvalidUrlQueryFilter", "The query filter contains one or more invalid nodes.")
 		}
-		filterID, filterPrefix = m[1], m[2]
+		filterID, filterPrefix, filterFrom = m[1], m[2], m[3]
 	}
 	if x := query.Get("$expand"); x != "" && !markerExpand.MatchString(x) {
 		return graphError(http.StatusBadRequest, "ErrorInvalidUrlQuery", "The $expand is not valid.")
@@ -463,6 +513,9 @@ func (g *FakeGraph) listEvents(u *User, mb *mailbox, cal *Calendar, query url.Va
 			if !ok || !strings.HasPrefix(v, filterPrefix) {
 				continue
 			}
+		}
+		if filterFrom != "" && e.Start.DateTime < filterFrom {
+			continue
 		}
 		all = append(all, e)
 	}
@@ -519,6 +572,17 @@ func headerOf(h map[string]string, name string) string {
 		}
 	}
 	return ""
+}
+
+func copyCalendar(c *Calendar) Calendar {
+	out := *c
+	if c.Properties != nil {
+		out.Properties = make(map[string]string, len(c.Properties))
+		for k, v := range c.Properties {
+			out.Properties[k] = v
+		}
+	}
+	return out
 }
 
 func copyEvent(e *Event) Event {

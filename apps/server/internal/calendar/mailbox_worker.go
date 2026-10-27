@@ -26,7 +26,9 @@ import (
 // replicas from syncing the same person. Everything else reads and writes the
 // pool in short transactions, and no transaction is open while the provider,
 // identity, Staff or a calendar source is asked (contractscalls.go refuses
-// such a call).
+// such a call). Each person's sync has three minutes (mailboxPersonDeadline)
+// for everything it asks the neighbours, so one slow mailbox cannot hold the
+// cycle; the person's own rows are written past it.
 //
 // For each person, in order:
 //
@@ -38,40 +40,48 @@ import (
 //     (O8). Then: off when turned off; unavailable (error unavailable) when
 //     the person or the provider cannot go on; otherwise — a target change —
 //     the sync goes on at once, from a reconcile.
-//  3. Workforce.DirectoryAccount under AsUser: none, or another provider's,
-//     cleans up what was written with the mailbox stored and is unavailable,
-//     error no_account. A different mailbox than the stored one cleans the
+//  3. Workforce.DirectoryAccount under AsUser: none, a disabled one (a
+//     leaver's) or another provider's, cleans up what was written with the
+//     mailbox stored and is unavailable, error no_account. A different mailbox than the stored one cleans the
 //     old one up first and starts over on the new from a reconcile.
 //  4. Target own: EnsureCalendar named Vantigo; a changed id forgets the map.
 //  5. Reconcile — the first sync, a create whose outcome is unknown, a
-//     clean-up, and the first sync of each business day: Find, and an event
+//     clean-up, and the first sync of each business day: Find from the
+//     window's first instant (only events carrying this installation's
+//     marker are answered), and an event
 //     carrying a key the desired set holds and the map does not is adopted
 //     (mapped with an empty hash, so it is rewritten); a second event
 //     carrying a key already mapped — the duplicate an unknown create
-//     leaves — is deleted; a mapped event Find no longer sees is forgotten,
-//     to be made anew. An event carrying a key the set does not hold is left
-//     alone: Find has no window, and such an event is most often a copy that
-//     slid before the window and was forgotten on purpose (step 6) — the
-//     past stays. An event with no key — in the Vantigo calendar, one the
-//     person made there — is left alone too.
+//     leaves — is deleted; a mapped event starting in the window that Find no
+//     longer sees is forgotten, to be made anew. An event carrying a key the
+//     set does not hold is left alone: such an event is most often a copy
+//     that slid before the window and was forgotten on purpose (step 6) — the
+//     past stays until a clean-up.
 //  6. The diff against the map (mailbox_push.go's desired set): creates,
 //     updates where the hash changed, deletes of mapped keys the set no
 //     longer holds that start inside the window; a mapped key that now
 //     starts before it is forgotten, its copy left in the past.
 //  7. Apply in slices of 100, the map written after each in a short
 //     transaction; an update whose event is gone becomes a create in a later
-//     slice.
+//     slice. The first op that fails — throttled, or any failure to retry —
+//     stops the person's sync after its slice: the rest wait for the next.
 //  8. The result, written only if the PUT has not moved the revision on: a
 //     sync that worked is active, the next due a poll later
 //     (CALENDAR_MAILBOX_SYNC_POLL); a refusal (mailbox_denied, mailbox_gone)
 //     is unavailable with its code, retried in six hours; a failure backs
 //     off 1, 5, 15, 60 minutes, then hourly, and is failed from the fifth.
 //
-// The clean-up (O8): target own deletes the Vantigo calendar, the default
-// calendar has each mapped event deleted (allowed in cleanup); a mailbox that
-// cannot be reached — gone, unknown, denied, the provider unusable — has its
-// copies forgotten and the fact logged. Then the map is emptied. Nothing of a
-// person's mailbox or their copies' titles is ever logged.
+// The clean-up (O8): target own deletes the Vantigo calendar — only one the
+// provider made; for any other (ErrCalendarNotOurs) the copies in it are
+// deleted one by one instead — and the default calendar has every event
+// deleted that carries this installation's marker, whatever its date (Find
+// with no bound), and every mapped one (deletes are allowed in cleanup). Only
+// a mailbox that is no longer there — gone, or an account the provider no
+// longer manages — has its copies forgotten unremoved, the fact logged; a
+// mailbox denied, a provider unusable or a failure keeps the map and the
+// clean-up owed, retried on the backoff. Then the map is emptied. Nothing of
+// a person's mailbox, their copies' titles or the provider's words (which
+// carry the mailbox's paths) is ever logged: an error is logged by its code.
 
 const (
 	// mailboxWorkerName is what the runner logs this worker as.
@@ -90,6 +100,10 @@ const (
 
 	// mailboxSlice is the most ops one Apply is handed.
 	mailboxSlice = 100
+
+	// mailboxPersonDeadline bounds what one person's sync asks the
+	// neighbours, so one slow mailbox cannot hold the cycle.
+	mailboxPersonDeadline = 3 * time.Minute
 
 	// mailboxFindBound is Find's bound: a list that long may be cut, so
 	// nothing mapped is forgotten for being absent from it.
@@ -249,9 +263,15 @@ type mailboxResult struct {
 // syncPerson is one person's sync, from the row as the cycle claimed it. It
 // answers an error only when the module's own database fails it; whatever a
 // neighbour answered is recorded on the row.
+//
+// call, ctx bounded by mailboxPersonDeadline, is what every call out of the
+// module is made on; the person's rows are written on ctx, so a sync cut
+// short is still recorded.
 func (w *MailboxSyncWorker) syncPerson(ctx context.Context, r store.CalendarMailboxSync, loc *time.Location) error {
+	call, cancel := context.WithTimeout(ctx, mailboxPersonDeadline)
+	defer cancel()
 	now := w.deps.Clock()
-	st, err := w.srv.mailboxStatus(ctx)
+	st, err := w.srv.mailboxStatus(call)
 	if err != nil {
 		return w.failed(ctx, r, now, "read the provider's status", err)
 	}
@@ -265,13 +285,13 @@ func (w *MailboxSyncWorker) syncPerson(ctx context.Context, r store.CalendarMail
 			attempts: r.Attempts, reconcile: true,
 		})
 	}
-	holds, err := w.srv.accessUserHolds(ctx, r.UserID, "calendar:access")
+	holds, err := w.srv.accessUserHolds(call, r.UserID, "calendar:access")
 	if err != nil {
 		return w.failed(ctx, r, now, "check the person's access", err)
 	}
 	cannotGoOn := !holds || st.State == contracts.MailboxCleanup
 	if cannotGoOn || r.State == mailboxStateStopping {
-		if err := w.cleanup(ctx, &r, now); err != nil {
+		if err := w.cleanup(ctx, call, &r, now); err != nil {
 			return w.failed(ctx, r, now, "clean up", err)
 		}
 		switch {
@@ -287,7 +307,7 @@ func (w *MailboxSyncWorker) syncPerson(ctx context.Context, r store.CalendarMail
 		r.State = mailboxStatePending
 	}
 
-	acct, err := w.srv.workforceDirectoryAccount(contracts.AsUser(withoutRequest{ctx}, r.UserID))
+	acct, err := w.srv.workforceDirectoryAccount(contracts.AsUser(withoutRequest{call}, r.UserID))
 	if err != nil {
 		return w.failed(ctx, r, now, "read the person's directory account", err)
 	}
@@ -295,8 +315,8 @@ func (w *MailboxSyncWorker) syncPerson(ctx context.Context, r store.CalendarMail
 	if p := w.srv.mailboxCalendar(); p != nil {
 		key = p.Key()
 	}
-	if acct == nil || acct.Provider != key || acct.ExternalID == "" {
-		if err := w.cleanup(ctx, &r, now); err != nil {
+	if !usableAccount(acct, key) {
+		if err := w.cleanup(ctx, call, &r, now); err != nil {
 			return w.failed(ctx, r, now, "clean up", err)
 		}
 		return w.write(ctx, r, now, mailboxResult{
@@ -306,7 +326,7 @@ func (w *MailboxSyncWorker) syncPerson(ctx context.Context, r store.CalendarMail
 	}
 	mailbox := acct.ExternalID
 	if r.Mailbox != nil && *r.Mailbox != mailbox {
-		if err := w.cleanup(ctx, &r, now); err != nil {
+		if err := w.cleanup(ctx, call, &r, now); err != nil {
 			return w.failed(ctx, r, now, "clean up the previous mailbox", err)
 		}
 	}
@@ -323,7 +343,7 @@ func (w *MailboxSyncWorker) syncPerson(ctx context.Context, r store.CalendarMail
 		if r.CalendarID != nil {
 			known = *r.CalendarID
 		}
-		id, err := w.srv.mailboxEnsure(ctx, mailbox, known, mailboxCalendarName)
+		id, err := w.srv.mailboxEnsure(call, mailbox, known, mailboxCalendarName)
 		if err != nil {
 			return w.refusedOrFailed(ctx, r, now, "ensure the Vantigo calendar", err)
 		}
@@ -344,7 +364,7 @@ func (w *MailboxSyncWorker) syncPerson(ctx context.Context, r store.CalendarMail
 		return w.failed(ctx, r, now, "read today", err)
 	}
 	lang := langEnglish
-	u, err := w.srv.usersUser(ctx, r.UserID)
+	u, err := w.srv.usersUser(call, r.UserID)
 	if err != nil {
 		return w.failed(ctx, r, now, "read the person", err)
 	}
@@ -352,7 +372,7 @@ func (w *MailboxSyncWorker) syncPerson(ctx context.Context, r store.CalendarMail
 		lang = languageOf(u.PreferredLanguage)
 	}
 	p := mailboxPush{userID: r.UserID, row: r, today: civil(today), w: mailboxWindow(today, loc), words: wordsFor(lang)}
-	desired, err := w.srv.mailboxDesired(ctx, p)
+	desired, err := w.srv.mailboxDesired(call, p)
 	if err != nil {
 		return w.failed(ctx, r, now, "build the desired set", err)
 	}
@@ -365,18 +385,18 @@ func (w *MailboxSyncWorker) syncPerson(ctx context.Context, r store.CalendarMail
 	}
 	d.load(rows)
 	if reconcile {
-		refs, err := w.srv.mailboxFind(ctx, mailbox, calendarID)
+		refs, err := w.srv.mailboxFind(call, mailbox, calendarID, p.w.fromAt)
 		if err != nil {
 			return w.refusedOrFailed(ctx, r, now, "list the mailbox's copies", err)
 		}
-		d.reconcile(refs, len(refs) < mailboxFindBound)
+		d.reconcile(refs, len(refs) < mailboxFindBound, p.w.from)
 	}
 	ops := d.ops(p.w.from)
 	if err := w.writeMap(ctx, now, d.takeWrites()); err != nil {
 		return err
 	}
 
-	stop, opErr, createUnknown, err := w.apply(ctx, r.UserID, mailbox, calendarID, ops, d, now)
+	stop, opErr, createUnknown, err := w.apply(ctx, call, r.UserID, mailbox, calendarID, ops, now)
 	if err != nil {
 		return err
 	}
@@ -442,17 +462,19 @@ func (d *mailboxDiff) load(rows []store.CalendarMailboxEvent) {
 	}
 }
 
-// reconcile holds the map against what the mailbox holds (step 5). complete
-// is whether refs is the whole list, so an absent mapped event is truly
-// gone.
-func (d *mailboxDiff) reconcile(refs []contracts.MailboxEventRef, complete bool) {
+// reconcile holds the map against what the mailbox holds (step 5): refs, the
+// events Find answered from the window's first instant. complete is whether
+// refs is the whole list, so an absent mapped event is truly gone — judged
+// only for one starting on or after from, the window's first day, as one
+// that starts before it Find was never asked about.
+func (d *mailboxDiff) reconcile(refs []contracts.MailboxEventRef, complete bool, from time.Time) {
 	found := map[string]bool{}
 	for _, ref := range refs {
 		found[ref.EventID] = true
 	}
 	mine := map[string]bool{}
 	for key, e := range d.mapped {
-		if !found[e.eventID] && complete {
+		if !found[e.eventID] && complete && !e.startsOn.Before(from) {
 			delete(d.mapped, key)
 			d.writes = append(d.writes, mapWrite{userID: d.userID, key: key})
 			continue
@@ -527,13 +549,15 @@ func createOp(it *mailboxItem) pendingOp {
 	return pendingOp{op: contracts.MailboxOp{Kind: contracts.MailboxOpCreate, Key: it.key, Event: &ev}, key: it.key, item: it}
 }
 
-// apply runs ops in slices (step 7), writing the map after each. It answers
-// the refusal that stopped the person (stop), or the last op's failure
-// (opErr) and whether a create's outcome is unknown, or the database's error.
-func (w *MailboxSyncWorker) apply(ctx context.Context, userID uuid.UUID, mailbox, calendarID string, queue []pendingOp, d *mailboxDiff, now time.Time) (stop, opErr error, createUnknown bool, err error) {
+// apply runs ops in slices (step 7) on call, writing the map after each on
+// ctx. It answers the refusal that stopped the person (stop), or the first
+// failure among a slice's ops (opErr) — throttled or any other, after which
+// no further slice is sent — and whether a create's outcome is unknown, or
+// the database's error.
+func (w *MailboxSyncWorker) apply(ctx, call context.Context, userID uuid.UUID, mailbox, calendarID string, queue []pendingOp, now time.Time) (stop, opErr error, createUnknown bool, err error) {
 	for len(queue) > 0 {
-		if ctx.Err() != nil {
-			return nil, ctx.Err(), false, nil
+		if call.Err() != nil {
+			return nil, call.Err(), false, nil
 		}
 		n := min(len(queue), mailboxSlice)
 		slice := queue[:n]
@@ -542,7 +566,7 @@ func (w *MailboxSyncWorker) apply(ctx context.Context, userID uuid.UUID, mailbox
 		for i, p := range slice {
 			ops[i] = p.op
 		}
-		results, callErr := w.srv.mailboxApply(ctx, mailbox, calendarID, ops)
+		results, callErr := w.srv.mailboxApply(call, mailbox, calendarID, ops)
 		if callErr != nil {
 			if mailboxRefusal(callErr) {
 				return callErr, nil, false, nil
@@ -557,12 +581,13 @@ func (w *MailboxSyncWorker) apply(ctx context.Context, userID uuid.UUID, mailbox
 			p := slice[i]
 			switch {
 			case res.Err != nil:
-				if mailboxRefusal(res.Err) {
+				switch {
+				case mailboxRefusal(res.Err):
 					stop = res.Err
-				} else {
+				case opErr == nil:
 					opErr = res.Err
-					createUnknown = createUnknown || p.op.Kind == contracts.MailboxOpCreate
 				}
+				createUnknown = createUnknown || (!mailboxRefusal(res.Err) && p.op.Kind == contracts.MailboxOpCreate)
 			case p.op.Kind == contracts.MailboxOpDelete:
 				if p.key != "" {
 					writes = append(writes, mapWrite{userID: userID, key: p.key})
@@ -583,37 +608,45 @@ func (w *MailboxSyncWorker) apply(ctx context.Context, userID uuid.UUID, mailbox
 		if stop != nil {
 			return stop, nil, false, nil
 		}
-	}
-	return nil, opErr, createUnknown, nil
-}
-
-// cleanup removes the person's copies (O8) from the mailbox stored on r:
-// the Vantigo calendar when one was made, otherwise each mapped event of the
-// default calendar. A mailbox that cannot be reached has its copies
-// forgotten and logged. Then the map is emptied, the calendar forgotten and
-// the next sync made a reconcile; r is changed to match. It answers an error
-// for a failure to retry, with the map as the deletes that worked left it.
-func (w *MailboxSyncWorker) cleanup(ctx context.Context, r *store.CalendarMailboxSync, now time.Time) error {
-	var unreachable error
-	if r.Mailbox != nil {
-		mailbox := *r.Mailbox
-		if r.CalendarID != nil {
-			if err := w.srv.mailboxDeleteCalendar(ctx, mailbox, *r.CalendarID); err != nil {
-				if !mailboxRefusal(err) {
-					return err
-				}
-				unreachable = err
-			}
-		} else if err := w.cleanupEvents(ctx, r.UserID, mailbox, now); err != nil {
-			if !mailboxRefusal(err) {
-				return err
-			}
-			unreachable = err
+		if opErr != nil {
+			return nil, opErr, createUnknown, nil
 		}
 	}
-	if unreachable != nil {
-		w.deps.Logger.WarnContext(ctx, "calendar: a person's Outlook copies could not be reached for the clean-up; they are forgotten",
-			"worker", mailboxWorkerName, "user_id", r.UserID.String(), "error", unreachable.Error())
+	return nil, nil, false, nil
+}
+
+// cleanup removes the person's copies (O8) from the mailbox stored on r,
+// asking the provider on call: the Vantigo calendar when one was made — or,
+// when the provider says it is not one it made (ErrCalendarNotOurs), the
+// copies in it — otherwise every copy of the default calendar. A mailbox no
+// longer there (gone, or an account the provider no longer manages) has its
+// copies forgotten and the fact logged. Then the map is emptied, the
+// calendar forgotten and the next sync made a reconcile; r is changed to
+// match. Anything else — the mailbox denied, the provider unusable, a
+// failure — is answered as the error, with the map as the deletes that
+// worked left it and the clean-up still owed.
+func (w *MailboxSyncWorker) cleanup(ctx, call context.Context, r *store.CalendarMailboxSync, now time.Time) error {
+	if r.Mailbox != nil {
+		mailbox := *r.Mailbox
+		var err error
+		if r.CalendarID != nil {
+			err = w.srv.mailboxDeleteCalendar(call, mailbox, *r.CalendarID)
+			if errors.Is(err, contracts.ErrCalendarNotOurs) {
+				w.deps.Logger.WarnContext(ctx, "calendar: a person's Vantigo calendar is not one the provider made; only the copies in it are deleted",
+					"worker", mailboxWorkerName, "user_id", r.UserID.String())
+				err = w.cleanupEvents(ctx, call, r.UserID, mailbox, *r.CalendarID, now)
+			}
+		} else {
+			err = w.cleanupEvents(ctx, call, r.UserID, mailbox, "", now)
+		}
+		switch {
+		case err == nil:
+		case errors.Is(err, contracts.ErrMailboxGone) || errors.Is(err, contracts.ErrMailboxUnknown):
+			w.deps.Logger.WarnContext(ctx, "calendar: a person's mailbox is no longer there for the clean-up; their Outlook copies are forgotten",
+				"worker", mailboxWorkerName, "user_id", r.UserID.String(), "error", mailboxErrorCode(err))
+		default:
+			return err
+		}
 	}
 	if err := w.forgetAll(ctx, r.UserID); err != nil {
 		return err
@@ -622,20 +655,43 @@ func (w *MailboxSyncWorker) cleanup(ctx context.Context, r *store.CalendarMailbo
 	return w.setMailbox(ctx, *r, now)
 }
 
-// cleanupEvents deletes every mapped event from the default calendar, in
-// slices, forgetting each one done or gone. A refusal is answered as is.
-func (w *MailboxSyncWorker) cleanupEvents(ctx context.Context, userID uuid.UUID, mailbox string, now time.Time) error {
+// cleanupEvents deletes, from calendarID ("" the default calendar), every
+// event Find answers with no bound — every copy of this installation's,
+// whatever its date — and every mapped one besides, in slices, forgetting
+// each one done or gone. A refusal is answered as is; a list as long as
+// Find's bound is answered as a failure once its deletes are done, so the
+// rest are deleted on the retry.
+func (w *MailboxSyncWorker) cleanupEvents(ctx, call context.Context, userID uuid.UUID, mailbox, calendarID string, now time.Time) error {
+	refs, err := w.srv.mailboxFind(call, mailbox, calendarID, time.Time{})
+	if err != nil {
+		return err
+	}
 	rows, err := w.srv.queries().ListMailboxEvents(ctx, userID)
 	if err != nil {
 		return fmt.Errorf("calendar: read the mailbox map: %w", err)
 	}
-	for start := 0; start < len(rows); start += mailboxSlice {
-		slice := rows[start:min(start+mailboxSlice, len(rows))]
-		ops := make([]contracts.MailboxOp, len(slice))
-		for i, row := range slice {
-			ops[i] = contracts.MailboxOp{Kind: contracts.MailboxOpDelete, EventID: row.EventID}
+	keyOf := map[string]string{}
+	var ids []string
+	for _, row := range rows {
+		keyOf[row.EventID] = row.ItemKey
+	}
+	for _, ref := range refs {
+		if !slices.Contains(ids, ref.EventID) {
+			ids = append(ids, ref.EventID)
 		}
-		results, err := w.srv.mailboxApply(ctx, mailbox, "", ops)
+	}
+	for _, row := range rows {
+		if !slices.Contains(ids, row.EventID) {
+			ids = append(ids, row.EventID)
+		}
+	}
+	for start := 0; start < len(ids); start += mailboxSlice {
+		slice := ids[start:min(start+mailboxSlice, len(ids))]
+		ops := make([]contracts.MailboxOp, len(slice))
+		for i, id := range slice {
+			ops[i] = contracts.MailboxOp{Kind: contracts.MailboxOpDelete, EventID: id}
+		}
+		results, err := w.srv.mailboxApply(call, mailbox, calendarID, ops)
 		if err != nil {
 			return err
 		}
@@ -643,13 +699,15 @@ func (w *MailboxSyncWorker) cleanupEvents(ctx context.Context, userID uuid.UUID,
 			return fmt.Errorf("calendar: the provider answered %d results for %d deletes", len(results), len(slice))
 		}
 		var writes []mapWrite
-		var failure error
+		var failure, refused error
 		for i, res := range results {
 			switch {
 			case res.Err == nil:
-				writes = append(writes, mapWrite{userID: userID, key: slice[i].ItemKey})
+				if key, ok := keyOf[slice[i]]; ok {
+					writes = append(writes, mapWrite{userID: userID, key: key})
+				}
 			case mailboxRefusal(res.Err):
-				return res.Err
+				refused = res.Err
 			default:
 				failure = res.Err
 			}
@@ -657,9 +715,15 @@ func (w *MailboxSyncWorker) cleanupEvents(ctx context.Context, userID uuid.UUID,
 		if err := w.writeMap(ctx, now, writes); err != nil {
 			return err
 		}
+		if refused != nil {
+			return refused
+		}
 		if failure != nil {
 			return failure
 		}
+	}
+	if len(refs) >= mailboxFindBound {
+		return errors.New("calendar: more copies remain than one list holds")
 	}
 	return nil
 }
@@ -698,10 +762,20 @@ func (w *MailboxSyncWorker) refusedOrFailed(ctx context.Context, r store.Calenda
 }
 
 // failed records a failure to retry: the attempts counted, the backoff, the
-// state failed from the fifth in a row — a clean-up owed stays owed.
+// state failed from the fifth in a row — a clean-up owed stays owed, and
+// stays due. The error code is the refusal's when a clean-up met one
+// (mailbox_denied, unavailable), failed otherwise; the log names the step and
+// the code, never the error's words.
 func (w *MailboxSyncWorker) failed(ctx context.Context, r store.CalendarMailboxSync, now time.Time, what string, err error) error {
 	w.deps.Logger.WarnContext(ctx, "calendar: a person's mailbox sync failed; it is retried",
-		"worker", mailboxWorkerName, "user_id", r.UserID.String(), "step", what, "error", err.Error())
+		"worker", mailboxWorkerName, "user_id", r.UserID.String(), "step", what, "error", mailboxErrorCode(err))
+	code := mailboxErrFailed
+	switch {
+	case errors.Is(err, contracts.ErrMailboxDenied):
+		code = mailboxErrDenied
+	case errors.Is(err, contracts.ErrMailboxUnavailable):
+		code = mailboxErrUnavailable
+	}
 	attempts := r.Attempts + 1
 	wait := mailboxBackoff[min(int(attempts), len(mailboxBackoff))-1]
 	state := mailboxStatePending
@@ -714,8 +788,31 @@ func (w *MailboxSyncWorker) failed(ctx context.Context, r store.CalendarMailboxS
 		state = mailboxStateActive
 	}
 	return w.write(ctx, r, now, mailboxResult{
-		state: state, code: mailboxErrFailed, next: timePtr(now.Add(wait)), attempts: attempts, reconcile: r.Reconcile,
+		state: state, code: code, next: timePtr(now.Add(wait)), attempts: attempts, reconcile: r.Reconcile,
 	})
+}
+
+// mailboxErrorCode is err as the log names it: the provider's sentinel, or
+// the context's, by a code — never the error's words, which may carry the
+// mailbox's paths.
+func mailboxErrorCode(err error) string {
+	switch {
+	case errors.Is(err, contracts.ErrMailboxDenied):
+		return mailboxErrDenied
+	case errors.Is(err, contracts.ErrMailboxGone):
+		return mailboxErrGone
+	case errors.Is(err, contracts.ErrMailboxUnknown):
+		return "mailbox_unknown"
+	case errors.Is(err, contracts.ErrMailboxUnavailable):
+		return mailboxErrUnavailable
+	case errors.Is(err, contracts.ErrCalendarNotOurs):
+		return "calendar_not_ours"
+	case errors.Is(err, context.DeadlineExceeded):
+		return "deadline"
+	case errors.Is(err, context.Canceled):
+		return "canceled"
+	}
+	return mailboxErrFailed
 }
 
 // write records res on r's row, unless a PUT has moved the revision on — the

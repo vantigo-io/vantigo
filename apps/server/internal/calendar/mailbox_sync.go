@@ -23,11 +23,16 @@ import (
 //
 // Whether the sync can run is the availability, asked of the neighbours
 // outside any transaction: no_provider when no enabled module fills the
-// MailboxCalendar slot; the provider's Status — switch_off and
-// permission_missing for a provider in cleanup with that reason, unavailable
-// otherwise; and no_account when Staff links the caller to no account of
-// the provider's (Workforce.DirectoryAccount, design O3). Nothing of a
-// person's mailbox is ever guessed.
+// MailboxCalendar slot; the provider's Status — available, switch_off
+// whenever the provider's reason is switch_off, whatever its state (a
+// switch off with no working credential is unavailable to the provider, but
+// off is what the person needs to hear), unavailable otherwise;
+// and no_account when Staff links the caller to no enabled account of the
+// provider's (Workforce.DirectoryAccount, design O3) — a disabled account,
+// a leaver's, is none. Nothing of a person's mailbox is ever guessed. The
+// availability permission_missing is the contract's still but never
+// answered: the provider's token may not show a permission granted with
+// Exchange RBAC for Applications, so it never refuses for it (design O2).
 
 // The values of calendar.mailbox_sync's columns (design O5), held by the
 // module's validation rather than a CHECK.
@@ -47,6 +52,8 @@ const (
 	// codeMailboxSyncUnavailable is a PUT turning the sync on, or a Sync now,
 	// while it cannot run.
 	codeMailboxSyncUnavailable = "mailbox_sync_unavailable"
+	// codeMailboxSyncOff is a Sync now of a sync that is turned off.
+	codeMailboxSyncOff = "mailbox_sync_off"
 
 	invalidMailboxSyncTitle = "Invalid Outlook sync"
 )
@@ -151,8 +158,9 @@ func (s *server) PutCalendarMailboxSync(ctx context.Context, req gen.PutCalendar
 // PostCalendarMailboxSyncRun Sync the caller's calendar now
 // (POST /api/v1/calendar/mailbox-sync/run)
 //
-// The sync is made due at once; the revision stays. A sync that is off, or
-// cannot run, is 409 mailbox_sync_unavailable.
+// The sync is made due at once; the revision stays. A sync that cannot run
+// is 409 mailbox_sync_unavailable, its detail the availability; one that is
+// off 409 mailbox_sync_off.
 func (s *server) PostCalendarMailboxSyncRun(ctx context.Context, _ gen.PostCalendarMailboxSyncRunRequestObject) (gen.PostCalendarMailboxSyncRunResponseObject, error) {
 	me := callerID(ctx)
 	availability, kinds, err := s.mailboxAvailability(ctx)
@@ -168,7 +176,8 @@ func (s *server) PostCalendarMailboxSyncRun(ctx context.Context, _ gen.PostCalen
 	case availability != gen.MailboxSyncAvailabilityAvailable:
 		return gen.PostCalendarMailboxSyncRun409ApplicationProblemPlusJSONResponse(mailboxSyncUnavailable(string(availability))), nil
 	case row == nil || !row.Enabled:
-		return gen.PostCalendarMailboxSyncRun409ApplicationProblemPlusJSONResponse(mailboxSyncUnavailable(mailboxStateOff)), nil
+		return gen.PostCalendarMailboxSyncRun409ApplicationProblemPlusJSONResponse(
+			conflict(codeMailboxSyncOff, "Outlook sync off", "Turn the Outlook sync on before syncing now.")), nil
 	}
 	if err := q.NudgeMailboxSync(ctx, store.NudgeMailboxSyncParams{Now: s.deps.Clock(), UserIds: []uuid.UUID{me}}); err != nil {
 		return nil, fmt.Errorf("calendar: make the Outlook sync due: %w", err)
@@ -210,23 +219,30 @@ func (s *server) mailboxAvailability(ctx context.Context) (gen.MailboxSyncAvaila
 	if err != nil {
 		return "", nil, fmt.Errorf("calendar: read the caller's directory account: %w", err)
 	}
-	if acct == nil || acct.Provider != provider.Key() || acct.ExternalID == "" {
+	if !usableAccount(acct, provider.Key()) {
 		return gen.MailboxSyncAvailabilityNoAccount, kinds, nil
 	}
 	return gen.MailboxSyncAvailabilityAvailable, kinds, nil
 }
 
-// availabilityOf is the provider's status as the person's availability.
+// availabilityOf is the provider's status as the person's availability:
+// available, switch_off whenever the reason is switch_off — cleanup or
+// unavailable alike — and unavailable otherwise.
 func availabilityOf(st contracts.MailboxStatus) gen.MailboxSyncAvailability {
 	switch {
 	case st.State == contracts.MailboxAvailable:
 		return gen.MailboxSyncAvailabilityAvailable
-	case st.State == contracts.MailboxCleanup && st.Reason == "switch_off":
+	case st.Reason == "switch_off":
 		return gen.MailboxSyncAvailabilitySwitchOff
-	case st.State == contracts.MailboxCleanup && st.Reason == "permission_missing":
-		return gen.MailboxSyncAvailabilityPermissionMissing
 	}
 	return gen.MailboxSyncAvailabilityUnavailable
+}
+
+// usableAccount reports whether acct is a mailbox the sync may write: the
+// provider's (key), with an external id, and enabled — a disabled link, a
+// leaver's, is no account (design O3).
+func usableAccount(acct *contracts.DirectoryAccount, key string) bool {
+	return acct != nil && acct.Enabled && acct.Provider == key && acct.ExternalID != ""
 }
 
 // mailboxSyncRow is the person's row, nil when they never turned the sync

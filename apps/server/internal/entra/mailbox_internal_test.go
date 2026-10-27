@@ -15,9 +15,10 @@ import (
 
 // TestMailboxStatusOf pins the mailbox provider's state and reason by the
 // switch, the connection's status and the permission the last test saw
-// (design O2, O4): available only on, connected and permitted; cleanup
-// while a credential still works and the switch is off or the permission
-// missing; unavailable otherwise, with the connection's reason.
+// (design O2, O4): available on and connected, the permission in the token
+// or not (an Exchange RBAC grant never shows there); cleanup while a
+// credential still works and the switch is off; unavailable otherwise, with
+// the connection's reason.
 func TestMailboxStatusOf(t *testing.T) {
 	now := time.Date(2026, time.October, 27, 9, 0, 0, 0, time.UTC)
 	tenant, client := uuid.New(), uuid.New()
@@ -39,7 +40,7 @@ func TestMailboxStatusOf(t *testing.T) {
 		{"a secret expiring is still available", conn(true, "connected", nil, cal), []store.EntraCredential{{ID: 1, ExpiresAt: now.Add(time.Hour), CreatedAt: now}}, contracts.MailboxAvailable, ""},
 		{"the switch off", conn(false, "connected", nil, cal), good, contracts.MailboxCleanup, reasonSwitchOff},
 		{"the switch off, failing", conn(false, "failing", str("tenant_unreachable"), cal), good, contracts.MailboxCleanup, reasonSwitchOff},
-		{"the permission missing", conn(true, "connected", nil, "User.ReadWrite.All"), good, contracts.MailboxCleanup, reasonPermissionMissing},
+		{"the permission not in the token", conn(true, "connected", nil, "User.ReadWrite.All"), good, contracts.MailboxAvailable, ""},
 		{"the switch off, the secret refused", conn(false, "failing", str("credential_invalid"), cal), good, contracts.MailboxUnavailable, reasonSwitchOff},
 		{"the permission missing, failing", conn(true, "failing", str("consent_missing")), good, contracts.MailboxUnavailable, "consent_missing"},
 		{"failing", conn(true, "failing", str("tenant_unreachable"), cal), good, contracts.MailboxUnavailable, "tenant_unreachable"},
@@ -122,7 +123,7 @@ func TestEventOf(t *testing.T) {
 		StartsAt: time.Date(2026, 11, 2, 9, 0, 0, 0, oslo), EndsAt: time.Date(2026, 11, 2, 9, 30, 0, 0, oslo),
 		ShowAs: contracts.ShowAsTentative, Private: true,
 	}
-	create, err := eventOf(contracts.MailboxOp{Kind: contracts.MailboxOpCreate, Key: "appointment:42", Event: timed})
+	create, err := eventOf(contracts.MailboxOp{Kind: contracts.MailboxOpCreate, Key: "appointment:42", Event: timed}, testPrefix)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -140,7 +141,7 @@ func TestEventOf(t *testing.T) {
 		"sensitivity":  "private",
 		"isReminderOn": false,
 		"singleValueExtendedProperties": []any{map[string]any{
-			"id": "String {7b1c5e3a-6f0d-4d5e-9a40-3c7a5e2b9d11} Name VantigoKey", "value": "vantigo:appointment:42",
+			"id": "String {7b1c5e3a-6f0d-4d5e-9a40-3c7a5e2b9d11} Name VantigoKey", "value": testPrefix + "appointment:42",
 		}},
 	}
 	wantRaw, _ := json.Marshal(want)
@@ -152,7 +153,7 @@ func TestEventOf(t *testing.T) {
 		Subject: "Ferie", AllDay: true, TimeZone: "Europe/Oslo", ShowAs: contracts.ShowAsOOF,
 		StartDate: time.Date(2026, 12, 24, 0, 0, 0, 0, time.UTC), EndDate: time.Date(2026, 12, 26, 0, 0, 0, 0, time.UTC),
 	}
-	update, err := eventOf(contracts.MailboxOp{Kind: contracts.MailboxOpUpdate, EventID: "AAMk", Event: allDay})
+	update, err := eventOf(contracts.MailboxOp{Kind: contracts.MailboxOpUpdate, EventID: "AAMk", Event: allDay}, testPrefix)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -175,10 +176,10 @@ func TestEventOf(t *testing.T) {
 	}
 	noZone := *allDay
 	noZone.TimeZone = ""
-	if ev, _ := eventOf(contracts.MailboxOp{Kind: contracts.MailboxOpCreate, Key: "k", Event: &noZone}); ev.Start.TimeZone != "UTC" {
+	if ev, _ := eventOf(contracts.MailboxOp{Kind: contracts.MailboxOpCreate, Key: "k", Event: &noZone}, testPrefix); ev.Start.TimeZone != "UTC" {
 		t.Errorf("an all-day event with no zone: %+v, want UTC", ev.Start)
 	}
-	createNoLocation, _ := eventOf(contracts.MailboxOp{Kind: contracts.MailboxOpCreate, Key: "k", Event: allDay})
+	createNoLocation, _ := eventOf(contracts.MailboxOp{Kind: contracts.MailboxOpCreate, Key: "k", Event: allDay}, testPrefix)
 	if createNoLocation.Location != nil {
 		t.Errorf("a create with no location sends one: %+v", createNoLocation.Location)
 	}
@@ -188,12 +189,53 @@ func TestEventOf(t *testing.T) {
 		"an all-day end before":   {AllDay: true, StartDate: allDay.EndDate, EndDate: allDay.StartDate},
 		"an unknown showAs":       {StartsAt: timed.StartsAt, EndsAt: timed.EndsAt, ShowAs: "away"},
 	} {
-		if _, err := eventOf(contracts.MailboxOp{Kind: contracts.MailboxOpCreate, Key: "k", Event: e}); err == nil {
+		if _, err := eventOf(contracts.MailboxOp{Kind: contracts.MailboxOpCreate, Key: "k", Event: e}, testPrefix); err == nil {
 			t.Errorf("%s: no error", name)
 		}
 	}
-	if _, err := eventOf(contracts.MailboxOp{Kind: contracts.MailboxOpCreate, Key: "k"}); err == nil {
+	if _, err := eventOf(contracts.MailboxOp{Kind: contracts.MailboxOpCreate, Key: "k"}, testPrefix); err == nil {
 		t.Error("a create with no event: no error")
+	}
+}
+
+// testPrefix is the marker's prefix of an installation whose client id is
+// 0f1e2d3c-4b5a-4968-8776-655443322110.
+const testPrefix = "vantigo:0f1e2d3c-4b5a-4968-8776-655443322110:"
+
+// TestValidID: an id Graph could have answered passes; nothing empty, too
+// long, spaced, or a dot segment — bare, percent-encoded in either case, or
+// encoded twice — reaches a $batch request's URL.
+func TestValidID(t *testing.T) {
+	for _, id := range []string{"AAMkAGI2TG93AAA=", "AAMk-_x.y", "a.b", "..."} {
+		if !validID(id) {
+			t.Errorf("validID(%q) = false, want true", id)
+		}
+	}
+	for _, id := range []string{"", ".", "..", "%2e", "%2E", "%2e%2E", ".%2e", "%252e%252e", "a b", "a\x00", strings.Repeat("A", 513)} {
+		if validID(id) {
+			t.Errorf("validID(%q) = true, want false", id)
+		}
+	}
+}
+
+// TestBatchHeader: a $batch answer's header is read whatever its case,
+// whether Graph sent a string or a number, and an answer with a header of
+// another type still decodes.
+func TestBatchHeader(t *testing.T) {
+	var answer batchAnswer
+	raw := `{"responses":[{"id":"0","status":429,"headers":{"retry-after":7,"X-Flag":true,"Content-Type":"application/json"}},
+		{"id":"1","status":429,"headers":{"Retry-After":"3"}}]}`
+	if err := json.Unmarshal([]byte(raw), &answer); err != nil {
+		t.Fatal(err)
+	}
+	if got := batchHeader(answer.Responses[0].Headers, "Retry-After"); got != "7" {
+		t.Errorf("a number: %q, want 7", got)
+	}
+	if got := batchHeader(answer.Responses[1].Headers, "Retry-After"); got != "3" {
+		t.Errorf("a string: %q, want 3", got)
+	}
+	if got := batchHeader(answer.Responses[0].Headers, "X-Flag"); got != "" {
+		t.Errorf("a boolean: %q, want none", got)
 	}
 }
 

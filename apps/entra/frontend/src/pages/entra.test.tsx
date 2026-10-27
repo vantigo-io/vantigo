@@ -423,7 +423,9 @@ describe("EntraPage — calendar sync", () => {
       body: { calendarSync: true, upnDomain: "contoso.no" },
     });
     expect(
-      await within(form).findByText("Add Calendars.ReadWrite, grant admin consent and test the connection again."),
+      await within(form).findByText(
+        "Calendars.ReadWrite is not in the token. That is expected if you granted it with Exchange RBAC for Applications; otherwise add it, grant admin consent and test again.",
+      ),
     ).toBeInTheDocument();
     expect(within(form).getByRole("switch", { name: /^Let people sync/ })).toBeChecked();
 
@@ -468,6 +470,19 @@ describe("EntraPage — calendar sync", () => {
       ).toBeChecked();
       expect(screen.getByText("Kalendersynkronisering")).toBeInTheDocument();
       expect(screen.getByText("Klar")).toBeInTheDocument();
+    } finally {
+      setLanguagePreference("auto");
+    }
+  });
+
+  it("says in Norwegian that the role may be granted outside the token", async () => {
+    setLanguagePreference("nb");
+    try {
+      stubEntraApi({ connection: connected({ calendarSync: { enabled: true, status: "permission_missing" } }) });
+      renderWithProviders(<EntraPage signIn={() => null} provisioning={() => null} />);
+      expect(
+        await screen.findByText(/^Calendars\.ReadWrite er ikke i tokenet\. Det er som ventet hvis du ga den med Exchange RBAC for Applications/),
+      ).toBeInTheDocument();
     } finally {
       setLanguagePreference("auto");
     }

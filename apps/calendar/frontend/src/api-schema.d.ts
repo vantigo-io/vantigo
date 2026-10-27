@@ -236,7 +236,7 @@ export interface paths {
         get: operations["getCalendarMailboxSync"];
         /**
          * Change the caller's Outlook sync
-         * @description Replaces the caller's Outlook sync setting whole (calendar Outlook sync design O5). Turning it on, or keeping it on, while availability is not available is a 409 mailbox_sync_unavailable whose detail is the availability; turning it off is always taken. Turning it off, or changing the target, starts the clean-up of the copies already written (O8); every write makes the sync due at once. The first write turns the defaults into the caller's row.
+         * @description Replaces the caller's Outlook sync setting whole (calendar Outlook sync design O5). Turning it on, or keeping it on, while availability is not available is a 409 mailbox_sync_unavailable whose detail is the availability; turning it off is always taken. Turning it off, or changing the target, starts the clean-up of the copies already written (O8); every write makes the sync due at once. The first write turns the defaults into the caller's row. Rate limited to 10 per client address in 10 minutes (calendar-mailbox-sync-write): each write makes a sync due.
          */
         put: operations["putCalendarMailboxSync"];
         post?: never;
@@ -257,7 +257,7 @@ export interface paths {
         put?: never;
         /**
          * Sync the caller's calendar now
-         * @description Syncs the caller's calendar now — the screen's Sync now: the sync is made due at once and the worker takes it within a minute. It writes nothing of the setting, so the revision stays. 409 mailbox_sync_unavailable, with the availability as its detail, while the sync is off or cannot run. Rate limited to 6 per client address a minute (calendar-mailbox-run).
+         * @description Syncs the caller's calendar now — the screen's Sync now: the sync is made due at once and the worker takes it within a minute. It writes nothing of the setting, so the revision stays. 409 mailbox_sync_off while the sync is turned off, and 409 mailbox_sync_unavailable, with the availability as its detail, while it cannot run. Rate limited to 6 per client address a minute (calendar-mailbox-run).
          */
         post: operations["postCalendarMailboxSyncRun"];
         delete?: never;
@@ -709,7 +709,7 @@ export interface components {
              */
             today: string;
         };
-        /** @description An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: revision_mismatch (409: the If-Match revision has moved on), occurrence_not_in_series (409: the series' rule never produces that date), appointment_cancelled (409: the appointment is cancelled and nothing of it changes), invitations_unavailable (503: the mail driver is not smtp, so no invitation can be sent), subscription_limit (409: the caller has ten subscriptions already) and mailbox_sync_unavailable (409: the Outlook sync cannot run now; detail carries the availability — switch_off, no_provider, unavailable, permission_missing or no_account). errors carries the field errors of a 400, keyed by the request's camelCase field (a nested one as recurrence.rule, an element of a list as attendees[0]). A request the server could not decode answers a bare 400 with neither. */
+        /** @description An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: revision_mismatch (409: the If-Match revision has moved on), occurrence_not_in_series (409: the series' rule never produces that date), appointment_cancelled (409: the appointment is cancelled and nothing of it changes), invitations_unavailable (503: the mail driver is not smtp, so no invitation can be sent), subscription_limit (409: the caller has ten subscriptions already), mailbox_sync_unavailable (409: the Outlook sync cannot run now; detail carries the availability — switch_off, no_provider, unavailable or no_account) and mailbox_sync_off (409: Sync now of an Outlook sync that is turned off). errors carries the field errors of a 400, keyed by the request's camelCase field (a nested one as recurrence.rule, an element of a list as attendees[0]). A request the server could not decode answers a bare 400 with neither. */
         CalendarProblem: {
             code?: string | null;
             detail?: string | null;
@@ -807,7 +807,7 @@ export interface components {
          * @enum {string}
          */
         FeedVariant: "full" | "busy";
-        /** @description The caller's Outlook sync (calendar Outlook sync design O5): their setting, the worker's state, and whether it can run. availability is available, or why not — switch_off (an Owner has not turned on Calendar sync in the Entra module), no_provider (no enabled module writes mailboxes), unavailable (the provider's connection is not working), permission_missing (the connection lacks the calendar permission) or no_account (the caller has no account in the directory that Staff links to them). availableKinds are the kinds the caller may choose: the appointment kind and the kinds the calendar sources declare today. state is pending (on, not yet synced), active, stopping (the copies are being removed), off, unavailable or failed; error is the last refusal's code, absent after a sync that worked. A caller who never turned it on is answered the defaults at revision 0. */
+        /** @description The caller's Outlook sync (calendar Outlook sync design O5): their setting, the worker's state, and whether it can run. availability is available, or why not — switch_off (an Owner has not turned on Calendar sync in the Entra module), no_provider (no enabled module writes mailboxes), unavailable (the provider's connection is not working), permission_missing (reserved and no longer answered: the calendar permission may be granted with Exchange RBAC for Applications, which no token shows, so a mailbox outside the grant is the sync's mailbox_denied error instead) or no_account (the caller has no account in the directory that Staff links to them). availableKinds are the kinds the caller may choose: the appointment kind and the kinds the calendar sources declare today. state is pending (on, not yet synced), active, stopping (the copies are being removed), off, unavailable or failed; error is the last refusal's code, absent after a sync that worked. A caller who never turned it on is answered the defaults at revision 0. */
         MailboxSync: {
             /** @enum {string} */
             availability: "available" | "switch_off" | "no_provider" | "unavailable" | "permission_missing" | "no_account";
@@ -1889,6 +1889,16 @@ export interface operations {
                     "application/problem+json": components["schemas"]["CalendarProblem"];
                 };
             };
+            /** @description Too Many Requests — calendar-mailbox-sync-write's limit for this client address. */
+            429: {
+                headers: {
+                    "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
         };
     };
     postCalendarMailboxSyncRun: {
@@ -1927,7 +1937,7 @@ export interface operations {
                     "application/json": components["schemas"]["AuthErrorResponse"];
                 };
             };
-            /** @description Conflict — mailbox_sync_unavailable, with the availability as its detail. */
+            /** @description Conflict — mailbox_sync_off, or mailbox_sync_unavailable with the availability as its detail. */
             409: {
                 headers: {
                     [name: string]: unknown;

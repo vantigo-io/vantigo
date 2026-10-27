@@ -132,6 +132,7 @@ type FakeGraph struct {
 	tokens        map[string]time.Time
 	throttle      int
 	batchThrottle int
+	batchWait     int // seconds, ThrottleBatchFor's; 0 is 1 as a string
 	failNext      []int
 	calls         []Call
 	mailboxes     map[string]*mailbox
@@ -1560,6 +1561,9 @@ func (g *FakeGraph) batch(body []byte) answer {
 			g.batchThrottle--
 			a = graphError(http.StatusTooManyRequests, "ApplicationThrottled", "Application is over its MailboxConcurrency limit.")
 			a.header = http.Header{"Retry-After": []string{"1"}}
+			if g.batchWait > 0 {
+				a.header.Set("Retry-After", strconv.Itoa(g.batchWait))
+			}
 		default:
 			a = g.route(strings.ToUpper(r.Method), u.Path, u.Query(), "application/json", r.Body)
 		}
@@ -1568,7 +1572,11 @@ func (g *FakeGraph) batch(body []byte) answer {
 		if a.body != nil {
 			item["body"] = a.body
 		}
-		if a.header != nil {
+		switch {
+		case a.header != nil && g.batchWait > 0:
+			// ThrottleBatchFor's answers carry the header as a number.
+			item["headers"] = map[string]any{"Retry-After": g.batchWait}
+		case a.header != nil:
 			item["headers"] = map[string]string{"Retry-After": a.header.Get("Retry-After")}
 		}
 		responses = append(responses, item)

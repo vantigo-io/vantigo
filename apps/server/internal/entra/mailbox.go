@@ -34,17 +34,31 @@ import (
 // module does not manage. The writes go in $batch requests of at most
 // twenty, one after another (Outlook's four concurrent requests per
 // mailbox); an event's marker, a single-value extended property, is written
-// on create and never again. Graph's words are never logged — an event's
+// on create and never again, and a calendar the module makes carries a
+// marker of its own. Both markers' values start "vantigo:<client id>" — the
+// Entra application's, which tells two installations sharing a tenant apart
+// — and a calendar or an event without this installation's is never the
+// module's: never adopted, deleted or answered by Find. Graph's words are never logged — an event's
 // subject or body may come back in them — nor is any subject, body or
 // address: a refusal is logged by its status and codes alone.
 
 // The mailbox's figures and names (the design's O4).
 const (
 	// mailboxMarker is the extended property every event the module writes
-	// carries, its value mailboxKeyPrefix and the calendar's key.
+	// carries, its value the session's keyPrefix and the calendar's key.
 	mailboxMarker = "String {7b1c5e3a-6f0d-4d5e-9a40-3c7a5e2b9d11} Name VantigoKey"
-	// mailboxKeyPrefix starts the marker's value.
+	// calendarMarker is the extended property every calendar the module
+	// makes carries, its value the session's calendarMark.
+	calendarMarker = "String {7b1c5e3a-6f0d-4d5e-9a40-3c7a5e2b9d11} Name VantigoCalendar"
+	// mailboxKeyPrefix starts both markers' values, the client id after it.
 	mailboxKeyPrefix = "vantigo:"
+	// mailboxCalendarNames is how many names EnsureCalendar tries — name,
+	// then "name (2)" up to "name (5)" — past calendars not the module's.
+	mailboxCalendarNames = 5
+	// mailboxMaxRetryAfter is the longest Retry-After a throttled op of a
+	// $batch is waited for; a longer one is the op's failure, so one mailbox
+	// never holds the calendar's worker.
+	mailboxMaxRetryAfter = 30 * time.Second
 	// mailboxBatchSize is the most requests one $batch holds, Graph's limit.
 	mailboxBatchSize = 20
 	// mailboxFindPage is the page size Find asks for.
@@ -58,11 +72,9 @@ const (
 	mailboxMaxName = 255
 )
 
-// The status reasons the provider answers besides the connection's own.
-const (
-	reasonSwitchOff         = "switch_off"
-	reasonPermissionMissing = "permission_missing"
-)
+// reasonSwitchOff is the status reason the provider answers besides the
+// connection's own.
+const reasonSwitchOff = "switch_off"
 
 // mailboxGoneCodes are the codes of Graph's refusal for a mailbox that is no
 // longer there: a user with no mailbox in Exchange Online (soft-deleted,
@@ -114,30 +126,30 @@ func (m *mailboxCalendar) Status(ctx context.Context) (contracts.MailboxStatus, 
 
 // mailboxStatusOf is the provider's state at now:
 //
-//   - available while the switch is on, the connection connected (statusOf)
-//     and the last test's token carried Calendars.ReadWrite;
-//   - cleanup while a credential still works — the tenant and the client
-//     set, a secret unrevoked and unexpired, and the tenant not refusing it
-//     (failing credential_invalid) — and the switch is off (switch_off), or
-//     the switch is on and the connection connected but the permission
-//     missing (permission_missing): a person's copies can still be removed;
+//   - available while the switch is on and the connection connected
+//     (statusOf), whether or not the last test's token carried
+//     Calendars.ReadWrite: a grant made with Exchange RBAC for Applications
+//     never shows in the token, so the role is advisory (GET /connection's
+//     permission_missing) and a mailbox outside the grant answers its own
+//     403, ErrMailboxDenied (calendar Outlook sync design O2);
+//   - cleanup while the switch is off (switch_off) and a credential still
+//     works — the tenant and the client set, a secret unrevoked and
+//     unexpired, and the tenant not refusing it (failing
+//     credential_invalid): a person's copies can still be removed;
 //   - else unavailable: switch_off while the switch is off, else the
 //     connection's reason, or its status when it names none.
 func mailboxStatusOf(conn store.EntraConnection, creds []store.EntraCredential, now time.Time) contracts.MailboxStatus {
 	status, reason := statusOf(conn, creds, now)
 	connected := status == contracts.ProviderConnected
-	permitted := slices.Contains(conn.PermissionsPresent, permissionCalendarsReadWrite)
 	working := conn.TenantID != nil && conn.ClientID != nil && len(usableCredentials(creds, now)) > 0 &&
 		(status != contracts.ProviderFailing || reason != reasonCredentialInvalid)
 	switch {
-	case conn.CalendarSync && connected && permitted:
+	case conn.CalendarSync && connected:
 		return contracts.MailboxStatus{State: contracts.MailboxAvailable}
 	case !conn.CalendarSync && working:
 		return contracts.MailboxStatus{State: contracts.MailboxCleanup, Reason: reasonSwitchOff}
 	case !conn.CalendarSync:
 		return contracts.MailboxStatus{State: contracts.MailboxUnavailable, Reason: reasonSwitchOff}
-	case connected:
-		return contracts.MailboxStatus{State: contracts.MailboxCleanup, Reason: reasonPermissionMissing}
 	}
 	if reason == "" {
 		reason = status
@@ -198,11 +210,37 @@ func (m *mailboxCalendar) open(ctx context.Context, mailbox string, cleanupAllow
 	return mailboxSession{q: q, cred: cred, oid: oid, cleanup: st.State == contracts.MailboxCleanup}, nil
 }
 
+// keyPrefix starts the value of the marker of an event this installation
+// writes: "vantigo:<client id>:", the client id a lower-case GUID.
+func (s mailboxSession) keyPrefix() string {
+	return mailboxKeyPrefix + s.cred.clientID.String() + ":"
+}
+
+// calendarMark is the value of the marker of a calendar this installation
+// makes: "vantigo:<client id>".
+func (s mailboxSession) calendarMark() string {
+	return mailboxKeyPrefix + s.cred.clientID.String()
+}
+
 // validID reports whether id is one Graph could have answered: present,
-// bounded, and printable with no space.
+// bounded, printable with no space, and no path segment of its own — "." or
+// "..", bare or percent-encoded — which would move a $batch request's URL
+// off the item it names.
 func validID(id string) bool {
 	if id == "" || len(id) > mailboxMaxID {
 		return false
+	}
+	// Each decoding of a percent-encoded id is judged too ("%2e", "%252E"),
+	// so no proxy or server decoding it again can find a dot segment.
+	for v, n := id, 0; n < 4; n++ {
+		if v == "." || v == ".." {
+			return false
+		}
+		decoded, err := url.PathUnescape(v)
+		if err != nil || decoded == v {
+			break
+		}
+		v = decoded
 	}
 	for _, r := range id {
 		if r <= ' ' || r == 0x7f {
@@ -258,15 +296,40 @@ func itemMissing(err error) bool {
 	return ok && g.Status == http.StatusNotFound && !mailboxGone(g)
 }
 
-// EnsureCalendar answers the calendar named name the module made in
-// mailbox: known when GET /users/{oid}/calendars/{known} still finds it,
-// else a new one, POST /users/{oid}/calendars — or, when the mailbox
-// already holds a calendar of that name (a create whose answer was lost),
-// that one. Refused under cleanup.
+// graphCalendar is a calendar as Graph answers it, with the marker $expand
+// asked for.
+type graphCalendar struct {
+	ID         string          `json:"id"`
+	Name       string          `json:"name"`
+	Properties []graphProperty `json:"singleValueExtendedProperties"`
+}
+
+// ours reports whether c carries this installation's calendar marker.
+func (s mailboxSession) ours(c graphCalendar) bool {
+	for _, p := range c.Properties {
+		if strings.EqualFold(p.ID, calendarMarker) && p.Value == s.calendarMark() {
+			return true
+		}
+	}
+	return false
+}
+
+// calendarExpand is the $expand that answers a calendar's marker.
+var calendarExpand = "singleValueExtendedProperties($filter=id eq '" + calendarMarker + "')"
+
+// EnsureCalendar answers a calendar the module made in mailbox (calendar
+// Outlook sync design O4): known when GET /users/{oid}/calendars/{known}
+// still finds it carrying this installation's marker, else a new one, POST
+// /users/{oid}/calendars with the marker. A create the mailbox refuses as a
+// name already there (409 ErrorFolderExists) adopts the calendar of that
+// name only when it carries the marker — a create whose answer was lost —
+// and otherwise tries the next name, "name (2)" up to "name (5)", then
+// fails: a calendar of the person's own is never adopted. Refused under
+// cleanup.
 func (m *mailboxCalendar) EnsureCalendar(ctx context.Context, mailbox, known, name string) (string, error) {
 	name = strings.TrimSpace(name)
-	if name == "" || len(name) > mailboxMaxName {
-		return "", errors.New("entra: a calendar's name is 1 to 255 characters")
+	if name == "" || len(name) > mailboxMaxName-len(" (5)") {
+		return "", errors.New("entra: a calendar's name is 1 to 251 characters")
 	}
 	if known != "" && !validID(known) {
 		return "", errors.New("entra: a calendar id that is no id")
@@ -276,56 +339,77 @@ func (m *mailboxCalendar) EnsureCalendar(ctx context.Context, mailbox, known, na
 		return "", err
 	}
 	if known != "" {
-		var cal struct {
-			ID string `json:"id"`
-		}
-		err := m.client.get(ctx, s.cred, s.calendarPath(known, "?", query(url.Values{"$select": {"id"}})), &cal, noWords)
+		var cal graphCalendar
+		err := m.client.get(ctx, s.cred, s.calendarPath(known, "?", query(url.Values{"$select": {"id,name"}, "$expand": {calendarExpand}})), &cal, noWords)
 		switch {
-		case err == nil && cal.ID != "":
+		case err == nil && cal.ID != "" && s.ours(cal):
 			return cal.ID, nil
 		case err == nil, itemMissing(err):
 		default:
 			return "", mailboxRefusal(err)
 		}
 	}
-	var made struct {
-		ID string `json:"id"`
+	for n := 1; n <= mailboxCalendarNames; n++ {
+		want := name
+		if n > 1 {
+			want = fmt.Sprintf("%s (%d)", name, n)
+		}
+		var made struct {
+			ID string `json:"id"`
+		}
+		body := map[string]any{
+			"name":                          want,
+			"singleValueExtendedProperties": []graphProperty{{ID: calendarMarker, Value: s.calendarMark()}},
+		}
+		err = m.client.post(ctx, s.cred, userPath(s.oid, "/calendars"), body, &made, noRetry)
+		switch {
+		case isStatus(err, http.StatusConflict) || isCode(err, "ErrorFolderExists"):
+			id, err := m.calendarNamed(ctx, s, want)
+			if err != nil || id != "" {
+				return id, err
+			}
+			continue
+		case err != nil:
+			return "", mailboxRefusal(err)
+		case made.ID == "":
+			return "", fmt.Errorf("%w: a calendar made with no id", errTenantUnreachable)
+		}
+		return made.ID, nil
 	}
-	err = m.client.post(ctx, s.cred, userPath(s.oid, "/calendars"), map[string]string{"name": name}, &made, noRetry)
-	switch {
-	case isStatus(err, http.StatusConflict) || isCode(err, "ErrorFolderExists"):
-		return m.calendarNamed(ctx, s, name)
-	case err != nil:
-		return "", mailboxRefusal(err)
-	case made.ID == "":
-		return "", fmt.Errorf("%w: a calendar made with no id", errTenantUnreachable)
-	}
-	return made.ID, nil
+	return "", fmt.Errorf("entra: the mailbox holds calendars named %q to %q the module did not make", name, fmt.Sprintf("%s (%d)", name, mailboxCalendarNames))
 }
 
-// calendarNamed is the id of the mailbox's calendar named name.
+// calendarNamed is the id of the mailbox's calendar named name that carries
+// this installation's marker, "" when the one of that name does not.
 func (m *mailboxCalendar) calendarNamed(ctx context.Context, s mailboxSession, name string) (string, error) {
 	filter := "name eq '" + strings.ReplaceAll(name, "'", "''") + "'"
 	var page struct {
-		Value []struct {
-			ID   string `json:"id"`
-			Name string `json:"name"`
-		} `json:"value"`
+		Value []graphCalendar `json:"value"`
 	}
-	if err := m.client.get(ctx, s.cred, userPath(s.oid, "/calendars?", query(url.Values{"$filter": {filter}, "$select": {"id,name"}})), &page, noWords); err != nil {
+	params := url.Values{"$filter": {filter}, "$select": {"id,name"}, "$expand": {calendarExpand}}
+	if err := m.client.get(ctx, s.cred, userPath(s.oid, "/calendars?", query(params)), &page, noWords); err != nil {
 		return "", mailboxRefusal(err)
 	}
+	listed := false
 	for _, c := range page.Value {
-		if strings.EqualFold(c.Name, name) && c.ID != "" {
+		if !strings.EqualFold(c.Name, name) || c.ID == "" {
+			continue
+		}
+		listed = true
+		if s.ours(c) {
 			return c.ID, nil
 		}
 	}
-	return "", fmt.Errorf("%w: the calendar the mailbox says exists is not listed", errTenantUnreachable)
+	if !listed {
+		return "", fmt.Errorf("%w: the calendar the mailbox says exists is not listed", errTenantUnreachable)
+	}
+	return "", nil
 }
 
 // DeleteCalendar deletes the calendar and its events, DELETE
-// /users/{oid}/calendars/{id}; a calendar already gone (404) is done.
-// Allowed under cleanup.
+// /users/{oid}/calendars/{id} — only once GET of it with its marker shows it
+// carries this installation's; any other is ErrCalendarNotOurs, deleted
+// never. A calendar already gone (404) is done. Allowed under cleanup.
 func (m *mailboxCalendar) DeleteCalendar(ctx context.Context, mailbox, calendarID string) error {
 	if !validID(calendarID) {
 		return errors.New("entra: a calendar id that is no id")
@@ -333,6 +417,16 @@ func (m *mailboxCalendar) DeleteCalendar(ctx context.Context, mailbox, calendarI
 	s, err := m.open(ctx, mailbox, true)
 	if err != nil {
 		return err
+	}
+	var cal graphCalendar
+	err = m.client.get(ctx, s.cred, s.calendarPath(calendarID, "?", query(url.Values{"$select": {"id,name"}, "$expand": {calendarExpand}})), &cal, noWords)
+	switch {
+	case itemMissing(err):
+		return nil
+	case err != nil:
+		return mailboxRefusal(err)
+	case !s.ours(cal):
+		return fmt.Errorf("entra: the calendar carries no marker of this installation: %w", contracts.ErrCalendarNotOurs)
 	}
 	err = m.client.del(ctx, s.cred, s.calendarPath(calendarID), noWords)
 	if err == nil || itemMissing(err) {
@@ -380,8 +474,8 @@ const graphLocalTime = "2006-01-02T15:04:05"
 // dropped is cleared; a timed event's instants in UTC, an all-day event's
 // days at midnight in the Windows name of its zone, the end the day after
 // the last; showAs; sensitivity private or normal; no reminder; and, on
-// create only, the marker carrying the key.
-func eventOf(op contracts.MailboxOp) (graphEvent, error) {
+// create only, the marker carrying prefix and the key.
+func eventOf(op contracts.MailboxOp, prefix string) (graphEvent, error) {
 	e := op.Event
 	if e == nil {
 		return graphEvent{}, errors.New("entra: a " + op.Kind + " with no event")
@@ -423,7 +517,7 @@ func eventOf(op contracts.MailboxOp) (graphEvent, error) {
 		out.End = graphDateTimeZone{DateTime: e.EndsAt.UTC().Format(graphLocalTime), TimeZone: "UTC"}
 	}
 	if op.Kind == contracts.MailboxOpCreate {
-		out.Properties = []graphProperty{{ID: mailboxMarker, Value: mailboxKeyPrefix + op.Key}}
+		out.Properties = []graphProperty{{ID: mailboxMarker, Value: prefix + op.Key}}
 	}
 	return out, nil
 }
@@ -452,7 +546,7 @@ func (s mailboxSession) requestOf(op contracts.MailboxOp, calendarID string) (ma
 		if op.Key == "" {
 			return mailboxRequest{}, errors.New("entra: a create with no key")
 		}
-		ev, err := eventOf(op)
+		ev, err := eventOf(op, s.keyPrefix())
 		if err != nil {
 			return mailboxRequest{}, err
 		}
@@ -462,7 +556,7 @@ func (s mailboxSession) requestOf(op contracts.MailboxOp, calendarID string) (ma
 		if !validID(op.EventID) {
 			return mailboxRequest{}, errors.New("entra: an update of an event that is no id")
 		}
-		ev, err := eventOf(op)
+		ev, err := eventOf(op, s.keyPrefix())
 		if err != nil {
 			return mailboxRequest{}, err
 		}
@@ -483,10 +577,11 @@ func (s mailboxSession) requestOf(op contracts.MailboxOp, calendarID string) (ma
 // ErrMailboxUnavailable unsent. Each answer is judged on its own: 2xx done
 // (a create's id and the change key read from its answer), 404 on an update
 // or a delete Gone (a delete is then done), 403 ErrMailboxDenied, a mailbox
-// gone ErrMailboxGone, 429 sent again once after its Retry-After then
-// errThrottled, anything else Graph's refusal. Once an op is refused for its
-// mailbox, the ops not yet sent answer the same, unsent. A $batch that fails
-// whole — Graph unreachable, a 5xx — fails the call, and no result is
+// gone ErrMailboxGone, 429 sent again once after its Retry-After — when
+// that is at most mailboxMaxRetryAfter — then errThrottled, anything else
+// Graph's refusal. Once an op is refused for its mailbox, the ops not yet
+// sent answer the same, unsent. A $batch that fails whole — Graph
+// unreachable, a 5xx, the context done — fails the call, and no result is
 // answered.
 func (m *mailboxCalendar) Apply(ctx context.Context, mailbox, calendarID string, ops []contracts.MailboxOp) ([]contracts.MailboxResult, error) {
 	if calendarID != "" && !validID(calendarID) {
@@ -521,6 +616,9 @@ func (m *mailboxCalendar) Apply(ctx context.Context, mailbox, calendarID string,
 			}
 			continue
 		}
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		if err := m.batch(ctx, s, ops, requests, chunk, results); err != nil {
 			return nil, err
 		}
@@ -535,14 +633,36 @@ func (m *mailboxCalendar) Apply(ctx context.Context, mailbox, calendarID string,
 }
 
 // batchAnswer is a $batch's answer: each request's id, status, headers and
-// body.
+// body. A header's value is kept raw — Graph answers strings, but a number
+// must not fail the whole answer's decoding.
 type batchAnswer struct {
 	Responses []struct {
-		ID      string            `json:"id"`
-		Status  int               `json:"status"`
-		Headers map[string]string `json:"headers"`
-		Body    json.RawMessage   `json:"body"`
+		ID      string                     `json:"id"`
+		Status  int                        `json:"status"`
+		Headers map[string]json.RawMessage `json:"headers"`
+		Body    json.RawMessage            `json:"body"`
 	} `json:"responses"`
+}
+
+// batchHeader is the value of the header name, whatever its case, in an
+// answer's headers: a string as it is, a number in its digits, anything else
+// "".
+func batchHeader(h map[string]json.RawMessage, name string) string {
+	for k, raw := range h {
+		if !strings.EqualFold(k, name) {
+			continue
+		}
+		var str string
+		if err := json.Unmarshal(raw, &str); err == nil {
+			return str
+		}
+		var num json.Number
+		if err := json.Unmarshal(raw, &num); err == nil {
+			return num.String()
+		}
+		return ""
+	}
+	return ""
 }
 
 // batch sends the ops at chunk (indices into ops) as one $batch and writes
@@ -580,8 +700,8 @@ func (m *mailboxCalendar) batch(ctx context.Context, s mailboxSession, ops []con
 			}
 			r := answer.Responses[n]
 			if r.Status == http.StatusTooManyRequests {
-				d, ok := retryAfter(http.Header{"Retry-After": {r.Headers["Retry-After"]}}, m.client.now())
-				if attempt == 1 && ok {
+				d, ok := retryAfter(http.Header{"Retry-After": {batchHeader(r.Headers, "Retry-After")}}, m.client.now())
+				if attempt == 1 && ok && d <= mailboxMaxRetryAfter {
 					throttled = append(throttled, i)
 					wait = max(wait, d)
 					continue
@@ -639,12 +759,14 @@ func (m *mailboxCalendar) result(ctx context.Context, s mailboxSession, op contr
 	return contracts.MailboxResult{Err: g}
 }
 
-// Find answers the events carrying the marker in mailbox's default calendar
-// — GET /users/{oid}/events filtered on the marker — or every event of the
-// secondary calendar calendarID, each with the key its marker carries (""
-// for one without), in pages of a hundred following @odata.nextLink, at
-// most mailboxFindMax. Allowed under cleanup.
-func (m *mailboxCalendar) Find(ctx context.Context, mailbox, calendarID string) ([]contracts.MailboxEventRef, error) {
+// Find answers the events of the calendar — mailbox's default one,
+// GET /users/{oid}/events, or the secondary calendarID's,
+// GET /users/{oid}/calendars/{id}/events — filtered on this installation's
+// marker (its value starting keyPrefix) and, when from is set, on a start at
+// or after it, each with the key its marker carries, in pages of a hundred
+// following @odata.nextLink, at most mailboxFindMax. An event whose marker
+// another installation wrote is never answered. Allowed under cleanup.
+func (m *mailboxCalendar) Find(ctx context.Context, mailbox, calendarID string, from time.Time) ([]contracts.MailboxEventRef, error) {
 	if calendarID != "" && !validID(calendarID) {
 		return nil, errors.New("entra: a calendar id that is no id")
 	}
@@ -652,17 +774,23 @@ func (m *mailboxCalendar) Find(ctx context.Context, mailbox, calendarID string) 
 	if err != nil {
 		return nil, err
 	}
+	prefix := s.keyPrefix()
+	filter := "singleValueExtendedProperties/Any(ep: ep/id eq '" + mailboxMarker + "' and startswith(ep/value, '" + prefix + "'))"
+	if !from.IsZero() {
+		filter += " and start/dateTime ge '" + from.UTC().Format(graphLocalTime) + "'"
+	}
 	params := url.Values{
 		"$expand": {"singleValueExtendedProperties($filter=id eq '" + mailboxMarker + "')"},
+		"$filter": {filter},
 		"$select": {"id"},
 		"$top":    {strconv.Itoa(mailboxFindPage)},
-	}
-	if calendarID == "" {
-		params.Set("$filter", "singleValueExtendedProperties/Any(ep: ep/id eq '"+mailboxMarker+"' and startswith(ep/value, '"+mailboxKeyPrefix+"'))")
 	}
 	path := s.eventsPath(calendarID) + "?" + query(params)
 	out := []contracts.MailboxEventRef{}
 	for path != "" && len(out) < mailboxFindMax {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		var page struct {
 			Value []struct {
 				ID         string          `json:"id"`
@@ -677,13 +805,13 @@ func (m *mailboxCalendar) Find(ctx context.Context, mailbox, calendarID string) 
 			if ev.ID == "" {
 				continue
 			}
-			key, marked := "", false
+			key := ""
 			for _, p := range ev.Properties {
-				if v, ok := strings.CutPrefix(p.Value, mailboxKeyPrefix); ok && strings.EqualFold(p.ID, mailboxMarker) {
-					key, marked = v, true
+				if v, ok := strings.CutPrefix(p.Value, prefix); ok && strings.EqualFold(p.ID, mailboxMarker) {
+					key = v
 				}
 			}
-			if calendarID == "" && !marked {
+			if key == "" {
 				continue
 			}
 			out = append(out, contracts.MailboxEventRef{EventID: ev.ID, Key: key})

@@ -71,7 +71,11 @@ var permissions = []contracts.Permission{
 // calendar-subscription-fetch, 30 per client per 10 minutes: each is an
 // outbound request of up to twenty seconds made on a click, and nobody
 // saving their own calendars clicks thirty times in ten minutes, while a
-// script turning the server into a fetcher would.
+// script turning the server into a fetcher would. The Outlook sync's PUT,
+// calendar-mailbox-sync-write, 10 per client per 10 minutes, and its Sync
+// now, calendar-mailbox-run, 6 a minute: each makes the person's sync due,
+// and the worker syncs one person at a time (calendar Outlook sync design
+// O7), so nobody's clicking keeps it busy for everyone else.
 var limits = map[string]ratelimit.Policy{
 	"postCalendarRsvpRead":                 {Name: "calendar-rsvp-read", Limit: 60, Window: 10 * time.Minute},
 	"postCalendarRsvp":                     {Name: "calendar-rsvp", Limit: 30, Window: 10 * time.Minute},
@@ -79,6 +83,7 @@ var limits = map[string]ratelimit.Policy{
 	"postCalendarSubscriptions":            subscriptionFetchLimit,
 	"putCalendarSubscriptionsById":         subscriptionFetchLimit,
 	"postCalendarSubscriptionsByIdRefresh": subscriptionFetchLimit,
+	"putCalendarMailboxSync":               {Name: "calendar-mailbox-sync-write", Limit: 10, Window: 10 * time.Minute},
 	"postCalendarMailboxSyncRun":           {Name: "calendar-mailbox-run", Limit: 6, Window: time.Minute},
 }
 
