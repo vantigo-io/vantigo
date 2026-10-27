@@ -1358,7 +1358,8 @@ nothing written before the last step:
 3. **409 `consumption_unavailable`** when Energy is off (`Deps.Consumption` nil).
 4. **409 `billing_run_active`**, with `runId`, while a run is `queued` or `running`.
 5. **The customers.** Named, each must be known to the customer directory, read in
-   chunks of 2 000 — an unknown one is a 400 on `customerIds[i]`. Not named, Energy's
+   chunks of 2 000 — an unknown one is a 400 on `customerIds[i]`; without a composed
+   directory the ids are taken as given. Not named, Energy's
    `DueSupplies` with **`Every`** through the start of the day after `through`, as the
    wizard's `Through` is ([The two views](#the-two-views);
    [the consumption contract](/en/reference/energy/#the-consumption-contract)): the
@@ -1387,6 +1388,16 @@ item, a run with no `queued` item left becomes **`done`** (`finished_at`). Energ
 read on the pool, before any transaction of the item, through the accessors in
 `contractscalls.go`.
 
+**The sweep.** Every cycle starts by ending what no claim will: a `running` run with no
+`queued` item left — its last item recorded, its finish lost to a crash or a failed
+write — becomes `done`, so it never refuses new runs for good; and a `queued` item of a
+`cancelled` run whose lease has run out — its claim never recorded an outcome — becomes
+`cancelled`. **A panic** while an item is carried is an error like any other: it counts
+an attempt. **A shutdown** while an item is carried puts it back due at once, its lease
+cleared and no attempt counted. A crash in the instant between the wizard's commit and
+the write that lists the new draft on the item (`invoice_ids`) leaves a draft the item
+does not list; its settlements are then held, and the next attempt leaves them out.
+
 **The actor** (design reading on the record 10). The item's context carries **the run's
 creator** as its principal (`contracts.WithPrincipal` with the creator's id and nothing
 else), so everything the code path stamps with its caller is the creator's: the draft's
@@ -1400,7 +1411,10 @@ again: they were judged when the run was made.
 2. **`Settle`** for the customer through the start of the day after `through`. The
    settlements a live document of this module already holds are left out: the run bills
    what is not being invoiced yet — and the documents an earlier attempt of this item
-   made are among those. Nothing left — `skipped` `no_consumption_due`.
+   made are among those. An answer with `More` (more than 5 000 settlements) —
+   `skipped` `too_many_sources`. Nothing left and no document of an earlier attempt
+   still there — `skipped` `no_consumption_due`. When the run issues, the drafts an
+   earlier attempt made are issued first; a refusal there fails the item.
 3. **The split** ([below](#the-split)) into one or more documents.
 4. **Per document**, in turn: `fromConsumption` with the customer, `through` and the
    document's `settlementIds` — so the wizard judges every settlement by name: a blocked
@@ -1440,7 +1454,7 @@ refuses `too_many_lines`, and the item is `skipped` with it.
 `POST /billing-runs/{id}/cancel` (`permission:invoices:access+invoices:create`): a run
 `queued` or `running` becomes **`cancelled`** (`finished_at` now), and so do its
 `queued` items no live lease holds. An item the worker is carrying finishes and records
-its outcome. The documents already made stay as they are. 404 for an unknown run; 409
+its outcome — or, when it ends in an error, is `cancelled` rather than retried. The documents already made stay as they are. 404 for an unknown run; 409
 **`billing_run_finished`** for one `done` or `cancelled` already. 200 with the run.
 
 ### The reads

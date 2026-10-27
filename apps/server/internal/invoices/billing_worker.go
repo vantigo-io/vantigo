@@ -127,6 +127,9 @@ func (w *BillingWorker) Run(ctx context.Context) error {
 // RunCycle carries at most billingPerCycle items, one at a time, and stops
 // early when none is due.
 func (w *BillingWorker) RunCycle(ctx context.Context) error {
+	if err := w.sweep(ctx); err != nil {
+		return err
+	}
 	for range billingPerCycle {
 		if ctx.Err() != nil {
 			return nil
@@ -135,6 +138,25 @@ func (w *BillingWorker) RunCycle(ctx context.Context) error {
 		if err != nil || !processed {
 			return err
 		}
+	}
+	return nil
+}
+
+// sweep ends what no claim will: a running run with no queued item left —
+// its last item recorded, its FinishBillingRun lost to a crash or a failed
+// write — is done, and a queued item of a cancelled run whose lease ran out
+// — its claim never recorded an outcome — is cancelled (the review's
+// findings). Without it the first would refuse every new run.
+func (w *BillingWorker) sweep(ctx context.Context) error {
+	if w.srvErr != nil {
+		return w.srvErr
+	}
+	q, now := store.New(w.deps.Pool), w.now()
+	if _, err := q.CancelAbandonedBillingRunItems(ctx, now); err != nil {
+		return fmt.Errorf("invoices: cancel the abandoned items of cancelled billing runs: %w", err)
+	}
+	if _, err := q.FinishIdleBillingRuns(ctx, now); err != nil {
+		return fmt.Errorf("invoices: finish the billing runs with nothing left: %w", err)
 	}
 	return nil
 }
@@ -158,7 +180,9 @@ func (w *BillingWorker) ProcessOne(ctx context.Context) (bool, error) {
 		return false, fmt.Errorf("invoices: claim a billing run item: %w", err)
 	}
 	c := &billingClaim{w: w, s: w.srv, row: row, lease: lease}
-	if err := q.StartBillingRun(ctx, store.StartBillingRunParams{Now: now, ID: row.RunID}); err != nil {
+	// One err for the whole chain: a step's failure, and the retry that
+	// records it, is what ProcessOne answers.
+	if err = q.StartBillingRun(ctx, store.StartBillingRunParams{Now: now, ID: row.RunID}); err != nil {
 		err = c.retry(ctx, fmt.Errorf("invoices: start billing run %d: %w", row.RunID, err))
 	} else if c.run, err = q.GetBillingRun(ctx, row.RunID); err != nil {
 		err = c.retry(ctx, fmt.Errorf("invoices: read billing run %d: %w", row.RunID, err))
@@ -199,8 +223,12 @@ func (c *billingClaim) carry(ctx context.Context) error {
 	itemCtx, cancel := context.WithTimeout(ctx, max(billingLease-billingLeaseMargin, billingLeaseMargin))
 	defer cancel()
 	itemCtx = contracts.WithPrincipal(itemCtx, contracts.Principal{UserID: c.run.CreatedByUserID})
-	out, err := c.bill(itemCtx)
+	out, err := c.billRecovered(itemCtx)
 	switch {
+	case ctx.Err() != nil && err != nil:
+		// The worker is stopping: the item goes back uncounted, for the next
+		// claim — a deploy is not an attempt.
+		return c.release(ctx)
 	case errors.Is(err, errBillingLeaseLost):
 		c.w.logger().DebugContext(ctx, "invoices: a billing run item moved under the claim; nothing recorded",
 			"worker", billingWorkerName, "item_id", c.row.ID, "run_id", c.row.RunID)
@@ -209,6 +237,30 @@ func (c *billingClaim) carry(ctx context.Context) error {
 		return c.retry(ctx, err)
 	}
 	return c.complete(ctx, out)
+}
+
+// billRecovered is bill with a panic turned into an error, so it counts an
+// attempt as any error does: an item that panics every time fails after
+// its last attempt instead of killing the worker and being claimed again
+// after every restart.
+func (c *billingClaim) billRecovered(ctx context.Context) (out itemOutcome, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			out, err = itemOutcome{}, fmt.Errorf("invoices: billing customer %d panicked: %v", c.row.CustomerID, r)
+		}
+	}()
+	return c.bill(ctx)
+}
+
+// release puts the claimed item back, due at once and uncounted, on a
+// context the worker's shutdown does not reach.
+func (c *billingClaim) release(ctx context.Context) error {
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), billingMarkTimeout)
+	defer cancel()
+	n, err := store.New(c.w.deps.Pool).ReleaseBillingRunItem(ctx, store.ReleaseBillingRunItemParams{
+		Now: c.w.now(), ID: c.row.ID, LeaseID: c.lease,
+	})
+	return c.done(ctx, "release", n, err)
 }
 
 // bill is the item's steps up to its outcome.

@@ -169,7 +169,8 @@ Communications' outbox is the working example.
    of `Directory`, `Users` or `Accounts` — a bug in the binary's module list, which
    Compose refuses — panic. After `Workforce` it resolves `Projects`, then the three
    `Billable*` reads and `Consumption`, through the very helpers Compose calls
-   (`withProjects`, then `withBillables`), in Compose's order and keeping a preset
+   (`withProjects`, then `withBillables`), in that order as Compose does (Compose
+   resolves them before `Workforce`), keeping a preset
    value when no enabled module provides one: Invoices' `invoices-billing` worker
    drafts and issues through the From consumption wizard's and the issue's own code
    paths, which read them ([Billing runs](/en/reference/invoices/#billing-runs)). Two

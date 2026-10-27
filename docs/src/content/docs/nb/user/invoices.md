@@ -15,9 +15,9 @@ sources:
 Fakturaer-appen utsteder salgsdokumentene i bokføringen din: et utkast blir en
 nummerert faktura eller kreditnota i det øyeblikket det utstedes, får en PDF, og endres
 aldri etter det. Appen har sju områder i sidemenyen: **Fakturaer**, **Hurtigfaktura**
-(vist bare for den som har både `invoices:create` og `invoices:issue`),
-**Fakturakjøringer** (vist med `invoices:create`), **Fakturajournal**,
-**Forfalt** (de forfalte fakturaene og purringene deres), **Innbetalinger** (bankens
+(vist bare for den som har både `invoices:create` og `invoices:issue`), **Fakturajournal**,
+**Forfalt** (de forfalte fakturaene og purringene deres), **Fakturakjøringer** (vist
+med `invoices:create`), **Innbetalinger** (bankens
 filer og avvikskøen, og dagens Vipps-betalinger, vist bare med `invoices:payments`) og **Fakturainnstillinger**. Alle beløp er i NOK i denne fasen. En faktura leveres som
 PDF — ved nedlasting eller på e-post — eller som EHF-faktura i Peppol-nettverket, når
 installasjonen er satt opp for det
@@ -579,7 +579,8 @@ som du kan filtrere på utfall:
   veiviseren ville gjort: ingenting skulle faktureres, eller et målepunkt er ikke klart
   ennå — raden nevner målepunktet, for eksempel når faktureringsperioden fortsatt er
   åpen, avlesninger eller spotpriser mangler, eller det er årlig fakturering av en
-  person. Rett det i Energi og fakturer kunden senere, fra kortet eller i en ny kjøring.
+  person — eller ett målepunkt alene blir mer enn 500 linjer, eller det er mer enn 5 000
+  avregninger å fakturere. Rett det i Energi og fakturer kunden senere, fra kortet eller i en ny kjøring.
 - **Feilet** — fakturaen ble laget, men kunne ikke utstedes (grunnen står der);
   utkastet blir liggende og er lenket, så du kan rette det og utstede for hånd. En kunde
   som gang på gang støtte på en feil, feiler også, etter tre forsøk.

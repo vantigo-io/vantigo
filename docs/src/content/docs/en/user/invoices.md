@@ -15,9 +15,9 @@ sources:
 The Invoices app issues the sales documents of your bookkeeping: a draft becomes a
 numbered invoice or credit note the moment it is issued, gets a PDF, and from then on
 never changes. The app has seven areas in its sidebar: **Invoices**, **Quick invoice**
-(shown only to someone who holds both `invoices:create` and `invoices:issue`), **Billing
-runs** (shown with `invoices:create`), **Invoice
-journal**, **Overdue** (the overdue invoices and their reminders), **Payments** (the
+(shown only to someone who holds both `invoices:create` and `invoices:issue`), **Invoice
+journal**, **Overdue** (the overdue invoices and their reminders), **Billing runs**
+(shown with `invoices:create`), **Payments** (the
 bank's files and the exception queue, and the day's Vipps payments, shown only with
 `invoices:payments`) and **Invoice
 settings**. Every amount is in NOK in this phase. An invoice is
@@ -572,7 +572,9 @@ which you can filter by outcome:
 - **Skipped** — the customer could not be invoiced, and the row says why in words, as
   the wizard would: nothing was due, or a metering point is not ready yet — the row
   names the metering point, for instance when its billing period is still open, its
-  readings or spot prices are missing, or it is a yearly supply of a person. Fix it in
+  readings or spot prices are missing, or it is a yearly supply of a person — or one
+  metering point alone makes more than 500 lines, or there are more than 5 000
+  settlements to invoice. Fix it in
   Energy and invoice the customer later, from the card or in a new run.
 - **Failed** — the invoice was made but could not be issued (the reason is given); the
   draft stays and is linked, to fix and issue by hand. A customer that kept running
