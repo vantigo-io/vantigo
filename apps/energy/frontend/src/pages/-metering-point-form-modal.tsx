@@ -15,6 +15,7 @@ import {
   type MeteringPointUpdateInput,
   updateMeteringPoint,
 } from "../api/energy";
+import { invalidateTariffs } from "../api/tariffs";
 import { taxClassKey, useTariffOptions } from "../lib/billing";
 import "../i18n";
 
@@ -130,7 +131,9 @@ export const MeteringPointFormModal = ({
         ? updateMeteringPoint(state.meteringPoint.id, input as MeteringPointUpdateInput)
         : createMeteringPoint(input as MeteringPointInput),
     onSuccess: () => {
-      void client.invalidateQueries({ queryKey: ["energy", "metering-points"] });
+      // The tariffs too: a grid tariff assigned or dropped changes their usage
+      // counts and whether Delete is offered (invalidateTariffs).
+      void invalidateTariffs(client);
       notifications.show({
         color: "teal",
         title: isEdit ? t("meteringPointUpdated") : t("meteringPointCreated"),

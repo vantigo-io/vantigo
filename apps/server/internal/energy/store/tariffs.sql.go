@@ -86,6 +86,36 @@ func (q *Queries) GetTariff(ctx context.Context, id int32) (EnergyTariff, error)
 	return i, err
 }
 
+const getTariffForShare = `-- name: GetTariffForShare :one
+SELECT id, kind, name, status
+FROM energy.tariffs
+WHERE id = $1
+FOR SHARE
+`
+
+type GetTariffForShareRow struct {
+	ID     int32
+	Kind   string
+	Name   string
+	Status string
+}
+
+// GetTariffForShare is the assignment's read (energy tariffs plan, reading
+// 5), inside the write's transaction: FOR SHARE, so an archive or a delete of
+// the tariff (both FOR UPDATE, GetTariffForUpdate) in flight is waited for and
+// its outcome seen, and none can start until the assignment commits.
+func (q *Queries) GetTariffForShare(ctx context.Context, id int32) (GetTariffForShareRow, error) {
+	row := q.db.QueryRow(ctx, getTariffForShare, id)
+	var i GetTariffForShareRow
+	err := row.Scan(
+		&i.ID,
+		&i.Kind,
+		&i.Name,
+		&i.Status,
+	)
+	return i, err
+}
+
 const getTariffForUpdate = `-- name: GetTariffForUpdate :one
 SELECT id, kind, name, description, status, created_at, updated_at
 FROM energy.tariffs

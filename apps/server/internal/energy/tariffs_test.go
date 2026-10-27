@@ -463,10 +463,15 @@ func TestDeleteTariff(t *testing.T) {
 	})
 }
 
-// TestDeleteTariff_BackstopNamesTheForeignKeys pins the names the delete's
-// backstop matches (tariffUseConstraints) against the schema: were the
-// foreign keys named otherwise, a delete racing an assignment would answer
-// a 500, not the 409.
+// TestDeleteTariff_BackstopNamesTheForeignKeys pins the foreign keys' names
+// against the schema, which two backstops match: the delete's
+// (tariffUseConstraints), its 409 for a row that names the tariff after the
+// usage count, and the assignment's (tariff_assign.go), the field's 400
+// "does not exist" for a write whose tariff is gone. Both are backstops only —
+// an assignment holds the tariff FOR SHARE and the delete takes it FOR UPDATE,
+// so they serialise (TestTariffAssignment_RacesADeleteAndAnArchive) — but were
+// the keys named otherwise, a violation that did reach either would answer a
+// 500.
 func TestDeleteTariff_BackstopNamesTheForeignKeys(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)

@@ -193,22 +193,19 @@ func meteringPointOfListRow(r store.ListMeteringPointsRow) store.EnergyMeteringP
 
 // validateBillingFacts checks the point's billing facts a create or a replace
 // carries (energy consumption billing design D3, D4): the tax class's word and
-// the grid tariff's assignability (checkTariffAssignable; current is the
-// tariff the point holds now, nil on a create). It answers the class read and
-// adds each refusal to errs under its field.
-func validateBillingFacts(ctx context.Context, q *store.Queries, errs map[string][]string, gridTariffID *int32, taxClass *string, current *int32) (string, error) {
+// the grid tariff's assignability (tariffRefusal against tariff, read by
+// shareTariff inside the write's transaction; current is the tariff the point
+// holds now, nil on a create). It answers the class read and adds each refusal
+// to errs under its field.
+func validateBillingFacts(errs map[string][]string, tariff *store.GetTariffForShareRow, gridTariffID *int32, taxClass *string, current *int32) string {
 	class, ok := parseTaxClass(taxClass)
 	if !ok {
 		errs["electricityTaxClass"] = []string{taxClassMessage}
 	}
-	msg, err := checkTariffAssignable(ctx, q, gridTariffID, tariffKindGrid, current)
-	if err != nil {
-		return "", err
-	}
-	if msg != "" {
+	if msg := tariffRefusal(gridTariffID, tariff, tariffKindGrid, current); msg != "" {
 		errs["gridTariffId"] = []string{msg}
 	}
-	return class, nil
+	return class
 }
 
 // boolOrFalse is an optional request flag: absent is false.
@@ -319,8 +316,11 @@ func (s *server) GetEnergyMeteringPoints(ctx context.Context, req gen.GetEnergyM
 // (POST /api/v1/energy/metering-points)
 //
 // CreateMeteringPointEndpoint.cs:16-25: field validation (including the
-// initial meter's number) -> duplicate-GSRN pre-check (409) -> insert the
-// metering point and its first meter together, in one transaction.
+// initial meter's number and the billing facts) -> duplicate-GSRN pre-check
+// (409) -> insert the metering point and its first meter together, in one
+// transaction. The grid tariff is judged inside that transaction, read FOR
+// SHARE first (energy tariffs plan, reading 5), so a racing archive or delete
+// is seen; a foreign-key violation on it answers the same 400 "does not exist".
 func (s *server) PostEnergyMeteringPoints(ctx context.Context, req gen.PostEnergyMeteringPointsRequestObject) (gen.PostEnergyMeteringPointsResponseObject, error) {
 	body := gen.MeteringPointRequest{}
 	if req.Body != nil {
@@ -331,34 +331,35 @@ func (s *server) PostEnergyMeteringPoints(ctx context.Context, req gen.PostEnerg
 	if msg := validateMeterNumber(body.MeterNumber); msg != "" {
 		errs["meterNumber"] = []string{msg}
 	}
-	q := store.New(s.deps.Pool)
-	taxClass, err := validateBillingFacts(ctx, q, errs, body.GridTariffId, body.ElectricityTaxClass, nil)
-	if err != nil {
-		return nil, err
-	}
-	if len(errs) > 0 {
-		return gen.PostEnergyMeteringPoints400ApplicationProblemPlusJSONResponse(apicommon.ValidationProblem("Invalid metering point", errs)), nil
-	}
-
-	exists, err := q.GsrnExists(ctx, *body.Gsrn)
-	if err != nil {
-		return nil, fmt.Errorf("energy: check gsrn: %w", err)
-	}
-	if exists {
-		return gen.PostEnergyMeteringPoints409ApplicationProblemPlusJSONResponse(apicommon.ProblemStatus(
-			"Duplicate GSRN", "A metering point with that GSRN already exists.", http.StatusConflict)), nil
-	}
-
-	now := s.deps.Clock()
-	connStatus, _ := parseConnectionStatus(body.ConnectionStatus)
-	expected, err := numericFromFloatPtr(body.ExpectedAnnualConsumptionKwh)
-	if err != nil {
-		return nil, fmt.Errorf("energy: create metering point: %w", err)
-	}
 	var created store.EnergyMeteringPoint
-	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
+	refused, duplicate := false, false
+	err := db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
+		txq := store.New(tx)
+		tariff, terr := shareTariff(ctx, txq, body.GridTariffId)
+		if terr != nil {
+			return terr
+		}
+		taxClass := validateBillingFacts(errs, tariff, body.GridTariffId, body.ElectricityTaxClass, nil)
+		// A refusal is the outcome, not an error: nothing is written.
+		if len(errs) > 0 {
+			refused = true
+			return nil
+		}
+		exists, gerr := txq.GsrnExists(ctx, *body.Gsrn)
+		if gerr != nil {
+			return fmt.Errorf("check gsrn: %w", gerr)
+		}
+		if exists {
+			duplicate = true
+			return nil
+		}
+		connStatus, _ := parseConnectionStatus(body.ConnectionStatus)
+		expected, nerr := numericFromFloatPtr(body.ExpectedAnnualConsumptionKwh)
+		if nerr != nil {
+			return nerr
+		}
 		var ierr error
-		created, ierr = insertMeteringPoint(ctx, store.New(tx), store.InsertMeteringPointParams{
+		created, ierr = insertMeteringPoint(ctx, txq, store.InsertMeteringPointParams{
 			Gsrn:                         *body.Gsrn,
 			StreetAddress:                strings.TrimSpace(*body.Address.StreetAddress),
 			PostalCode:                   strings.TrimSpace(*body.Address.PostalCode),
@@ -370,17 +371,27 @@ func (s *server) PostEnergyMeteringPoints(ctx context.Context, req gen.PostEnerg
 			Latitude:                     body.Latitude,
 			Longitude:                    body.Longitude,
 			ConnectionStatus:             connStatus,
-			Now:                          now,
+			Now:                          s.deps.Clock(),
 			GridTariffID:                 body.GridTariffId,
 			Household:                    boolOrFalse(body.Household),
 			ElectricityTaxClass:          taxClass,
 		}, strings.TrimSpace(*body.MeterNumber))
 		return ierr
 	})
-	if err != nil {
+	if fk := tariffFKRefusal(err, meteringPointGridFK, "gridTariffId", body.GridTariffId); fk != nil {
+		errs, refused, err = fk, true, nil
+	}
+	switch {
+	case err != nil:
 		return nil, fmt.Errorf("energy: create metering point: %w", err)
+	case refused:
+		return gen.PostEnergyMeteringPoints400ApplicationProblemPlusJSONResponse(apicommon.ValidationProblem("Invalid metering point", errs)), nil
+	case duplicate:
+		return gen.PostEnergyMeteringPoints409ApplicationProblemPlusJSONResponse(apicommon.ProblemStatus(
+			"Duplicate GSRN", "A metering point with that GSRN already exists.", http.StatusConflict)), nil
 	}
 
+	q := store.New(s.deps.Pool)
 	resp, err := meteringPointResponse(ctx, q, created)
 	if err != nil {
 		return nil, err
@@ -431,7 +442,11 @@ func (s *server) GetEnergyMeteringPoint(ctx context.Context, req gen.GetEnergyMe
 // line 32/§8 oddity 3) -> existence (404) -> the billing facts (400, energy
 // tariffs plan reading 7: absent means no grid tariff, not a household,
 // ordinary) -> duplicate-GSRN pre-check excluding self (409) -> apply. Meters
-// are never touched here.
+// are never touched here. Everything after the field validation is one
+// transaction: the grid tariff read FOR SHARE (reading 5), then the point read
+// FOR NO KEY UPDATE, so the tariff is judged against the one the point holds
+// as it is written and a racing archive or delete is seen; a foreign-key
+// violation on the tariff answers the same 400 "does not exist".
 func (s *server) PutEnergyMeteringPointsById(ctx context.Context, req gen.PutEnergyMeteringPointsByIdRequestObject) (gen.PutEnergyMeteringPointsByIdResponseObject, error) {
 	body := gen.MeteringPointUpdateRequest{}
 	if req.Body != nil {
@@ -443,59 +458,80 @@ func (s *server) PutEnergyMeteringPointsById(ctx context.Context, req gen.PutEne
 		return gen.PutEnergyMeteringPointsById400ApplicationProblemPlusJSONResponse(apicommon.ValidationProblem("Invalid metering point", errs)), nil
 	}
 
-	q := store.New(s.deps.Pool)
-	stored, err := q.GetMeteringPointByID(ctx, req.Id)
-	if errors.Is(err, pgx.ErrNoRows) {
+	var updated store.EnergyMeteringPoint
+	notFound, refused, duplicate := false, false, false
+	err := db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
+		txq := store.New(tx)
+		// The tariff before the point's row, as every assignment takes them
+		// (shareTariff).
+		tariff, terr := shareTariff(ctx, txq, body.GridTariffId)
+		if terr != nil {
+			return terr
+		}
+		stored, gerr := txq.GetMeteringPointByIDForUpdate(ctx, req.Id)
+		if errors.Is(gerr, pgx.ErrNoRows) {
+			notFound = true
+			return nil
+		} else if gerr != nil {
+			return fmt.Errorf("get metering point: %w", gerr)
+		}
+		// The billing facts are judged after the existence check: whether the
+		// grid tariff may be written depends on the one the point holds.
+		taxClass := validateBillingFacts(errs, tariff, body.GridTariffId, body.ElectricityTaxClass, stored.GridTariffID)
+		if len(errs) > 0 {
+			refused = true
+			return nil
+		}
+		dupExists, derr := txq.GsrnExistsExcludingID(ctx, store.GsrnExistsExcludingIDParams{ID: req.Id, Gsrn: *body.Gsrn})
+		if derr != nil {
+			return fmt.Errorf("check gsrn: %w", derr)
+		}
+		if dupExists {
+			duplicate = true
+			return nil
+		}
+		connStatus, _ := parseConnectionStatus(body.ConnectionStatus)
+		expected, nerr := numericFromFloatPtr(body.ExpectedAnnualConsumptionKwh)
+		if nerr != nil {
+			return nerr
+		}
+		var uerr error
+		updated, uerr = txq.UpdateMeteringPoint(ctx, store.UpdateMeteringPointParams{
+			ID:                           req.Id,
+			Gsrn:                         *body.Gsrn,
+			StreetAddress:                strings.TrimSpace(*body.Address.StreetAddress),
+			PostalCode:                   strings.TrimSpace(*body.Address.PostalCode),
+			City:                         strings.TrimSpace(*body.Address.City),
+			CountryCode:                  resolveCountryCode(body.Address.CountryCode),
+			PriceArea:                    *body.PriceArea,
+			GridArea:                     trimmedOrNil(body.GridArea),
+			ExpectedAnnualConsumptionKwh: expected,
+			Latitude:                     body.Latitude,
+			Longitude:                    body.Longitude,
+			ConnectionStatus:             connStatus,
+			UpdatedAt:                    s.deps.Clock(),
+			GridTariffID:                 body.GridTariffId,
+			Household:                    boolOrFalse(body.Household),
+			ElectricityTaxClass:          taxClass,
+		})
+		return uerr
+	})
+	if fk := tariffFKRefusal(err, meteringPointGridFK, "gridTariffId", body.GridTariffId); fk != nil {
+		errs, refused, err = fk, true, nil
+	}
+	switch {
+	case err != nil:
+		return nil, fmt.Errorf("energy: update metering point: %w", err)
+	case notFound:
 		return gen.PutEnergyMeteringPointsById404Response{}, nil
-	} else if err != nil {
-		return nil, fmt.Errorf("energy: get metering point: %w", err)
-	}
-	// The billing facts are judged after the existence check: whether the
-	// grid tariff may be written depends on the one the point holds.
-	taxClass, err := validateBillingFacts(ctx, q, errs, body.GridTariffId, body.ElectricityTaxClass, stored.GridTariffID)
-	if err != nil {
-		return nil, err
-	}
-	if len(errs) > 0 {
+	case refused:
 		return gen.PutEnergyMeteringPointsById400ApplicationProblemPlusJSONResponse(apicommon.ValidationProblem("Invalid metering point", errs)), nil
-	}
-
-	dupExists, err := q.GsrnExistsExcludingID(ctx, store.GsrnExistsExcludingIDParams{ID: req.Id, Gsrn: *body.Gsrn})
-	if err != nil {
-		return nil, fmt.Errorf("energy: check gsrn: %w", err)
-	}
-	if dupExists {
+	case duplicate:
 		return gen.PutEnergyMeteringPointsById409ApplicationProblemPlusJSONResponse(apicommon.ProblemStatus(
 			"Duplicate GSRN", "A metering point with that GSRN already exists.", http.StatusConflict)), nil
 	}
 
-	connStatus, _ := parseConnectionStatus(body.ConnectionStatus)
-	expected, err := numericFromFloatPtr(body.ExpectedAnnualConsumptionKwh)
-	if err != nil {
-		return nil, fmt.Errorf("energy: update metering point: %w", err)
-	}
-	updated, err := q.UpdateMeteringPoint(ctx, store.UpdateMeteringPointParams{
-		ID:                           req.Id,
-		Gsrn:                         *body.Gsrn,
-		StreetAddress:                strings.TrimSpace(*body.Address.StreetAddress),
-		PostalCode:                   strings.TrimSpace(*body.Address.PostalCode),
-		City:                         strings.TrimSpace(*body.Address.City),
-		CountryCode:                  resolveCountryCode(body.Address.CountryCode),
-		PriceArea:                    *body.PriceArea,
-		GridArea:                     trimmedOrNil(body.GridArea),
-		ExpectedAnnualConsumptionKwh: expected,
-		Latitude:                     body.Latitude,
-		Longitude:                    body.Longitude,
-		ConnectionStatus:             connStatus,
-		UpdatedAt:                    s.deps.Clock(),
-		GridTariffID:                 body.GridTariffId,
-		Household:                    boolOrFalse(body.Household),
-		ElectricityTaxClass:          taxClass,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("energy: update metering point: %w", err)
-	}
-
+	q := store.New(s.deps.Pool)
 	resp, err := meteringPointResponse(ctx, q, updated)
 	if err != nil {
 		return nil, err

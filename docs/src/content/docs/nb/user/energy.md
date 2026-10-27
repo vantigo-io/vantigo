@@ -11,7 +11,7 @@ sources:
 Energi-appen holder orden på målepunktene organisasjonen din leverer strøm til: hvor
 hvert av dem er, hvilken måler som sitter på det, hvilken kunde det leveres til og hvor
 lenge, og forbruket som er lest av fra det, spotprisene forbruket prises etter, og
-kraft- og nettariffene det skal faktureres etter. Appen har tre områder,
+kraftavtalene og nettleien det skal faktureres etter. Appen har tre områder,
 **Målepunkter**, **Priser** og **Tariffer**, og den legger til en **Energi**-fane på
 hver kunde i Kunder-appen.
 
@@ -97,8 +97,8 @@ trenger i tillegg **Målernummer**, **Gateadresse**, **Postnummer**, **Poststed*
    lest, med hver feil markert i cellen sin. Valgene lagres mens du gjør dem. Ved
    oppdatering endres bare feltene som er valgt; en tom celle i et valgt valgfritt felt
    tømmer det. En import endrer aldri et målepunkts **Fakturering**: et nytt
-   målepunkt har ingen nettariff, er ikke merket for husholdning og har den ordinære
-   elavgiftsklassen, og et oppdatert målepunkt beholder sine (se [Rediger et
+   målepunkt har ingen nettleie, er ikke merket for husholdning og har den ordinære
+   elavgiftssatsen, og et oppdatert målepunkt beholder sine (se [Rediger et
    målepunkt](#rediger-et-målepunkt)).
 3. **Kontroller filen.** Hver rad prøves akkurat som importen ville gjort, uten at noe
    lagres. Resultatet teller radene som **Ville blitt opprettet**, **Ville blitt
@@ -137,7 +137,7 @@ trenger en startdato. Derfor leser importen kunden og datoen hver for seg:
   hva datoen sier.
 
 En leveranseperiode importen skriver, når raden importeres, bytter kunde eller knyttes
-til senere, har ingen krafttariff og faktureringsintervallet **Månedlig**: filen har
+til senere, har ingen kraftavtale og faktureringen **Månedlig**: filen har
 ingen avtale. Gi hver periode tariffen sin etterpå med **Endre vilkår**, se [Endre
 vilkårene for en leveranseperiode](#endre-vilkårene-for-en-leveranseperiode).
 
@@ -195,17 +195,17 @@ allerede har, avvises. Å redigere krever `energy:metering-points-manage`.
 
 Dialogen har også målepunktets faktureringsopplysninger, som et oppgjør vil trenge:
 
-- **Nettariff**: nettariffen organisasjonen din fakturerer punktets nettjenester
+- **Nettleie**: nettleien organisasjonen din fakturerer punktets nettjenester
   etter, når den er nettselskap her; la den stå tom når nettselskapet fakturerer dem
-  selv, det vanlige for en kraftleverandør. Bare aktive nettariffer tilbys; en tariff
+  selv, det vanlige for en kraftleverandør. Bare aktive nettleietariffer tilbys; en tariff
   som er arkivert etter at den ble valgt, blir stående på punktet til du endrer den.
   Listen vises når du har `energy:tariffs-view`; ellers vises tariffens navn, og den
   kan ikke endres her.
 - **Husholdning**: kryss av når punktet leveres til husholdningsbruk. Vantigo kan
   ikke vite dette; du setter det.
-- **Elavgiftsklasse**: **Ordinær** for de fleste punkter, **Redusert** eller
+- **Elavgift**: **Ordinær sats** for de fleste punkter, **Redusert sats** eller
   **Fritatt** for et punkt som har krav på det, som avgjør hvilken elavgiftssats
-  nettariffen bruker.
+  nettleien bruker.
 
 Dialogen beholder de tre som de er når du bare redigerer adressen eller et annet
 felt.
@@ -216,17 +216,17 @@ Siden har GSRN og adressen som overskrift, og fem kort:
 
 - **Detaljer om målepunkt**: målernummer, prisområde, nettområde, tilkoblingsstatus og
   forventet årsforbruk.
-- **Fakturering**: **Nettariff** (eller ingen), **Husholdning**, **Elavgiftsklasse**
-  og **Mva-behandling**. Mva-behandlingen settes ikke for hånd: den er *fritatt
-  (husholdning, Nord-Norge)* når punktet er til husholdningsbruk, landet er `NO` og
+- **Fakturering**: **Nettleie** (eller ingen), **Husholdning**, **Elavgift**
+  og **Mva.**. Mva. settes ikke for hånd: den er *Fritatt – husholdning i Nord-Norge
+  (mval. § 6-6)* når punktet er til husholdningsbruk, landet er `NO` og
   postnummeret er fra 8000 til 9999 – elektrisk kraft til husholdningsbruk i
-  Nordland, Troms og Finnmark er fritatt for merverdiavgift – og *standard* ellers.
+  Nordland, Troms og Finnmark er fritatt for merverdiavgift – og *Ordinær* ellers.
   Den vises slik at et feil postnummer eller en glemt **Husholdning** blir sett her,
   før en faktura lages.
 - **Målerhistorikk**: hver måler som har sittet på punktet, med tidspunkt for
   **Installert** og **Fjernet**. Den nåværende måleren har ikke noe fjernet-tidspunkt.
 - **Leveranseperioder**: hvilken kunde punktet har levert til, fra når til når, etter
-  hvilken **Krafttariff** og hvilket **Faktureringsintervall**, med statusen
+  hvilken **Kraftavtale** og hvilken **Fakturering**, med statusen
   **Aktiv**, **Avsluttet** eller **Kansellert**. En slutt som ikke er satt, vises som
   **Åpen slutt**.
 - **Forbruk**: avlesningene for et datointervall, som diagram og tabell.
@@ -248,10 +248,10 @@ Under **Leveranseperioder** heter knappen **Tildel kunde** når punktet ikke har
 aktiv periode, og **Bytt kunde** når det har en. Begge åpner den samme dialogen: velg
 **Kunde** (skriv for å søke) og **Byttedato**, og vilkårene kunden leveres på:
 
-- **Krafttariff**: kundens avtale, en av de aktive krafttariffene (se
-  [Tariffer](#tariffer)). Den kan stå tom, men en periode uten krafttariff kan ikke
+- **Kraftavtale**: kundens avtale, en av de aktive kraftavtalene (se
+  [Tariffer](#tariffer)). Den kan stå tom, men en periode uten kraftavtale kan ikke
   faktureres. Listen vises når du har `energy:tariffs-view`.
-- **Faktureringsintervall**: hvor ofte perioden faktureres, **Månedlig** (standard),
+- **Fakturering**: hvor ofte perioden faktureres, **Månedlig** (standard),
   **Kvartalsvis** eller **Årlig**. En forbruker kan faktureres høyst kvartalsvis;
   Vantigo godtar **Årlig** her for alle kunder, og faktureringen vil avvise det for en
   privatperson.
@@ -261,7 +261,7 @@ aktiv periode, og **Bytt kunde** når det har en. Begge åpner den samme dialoge
   kunden på samme dato. Byttedatoen må være senere enn den aktive periodens start, og
   kunden må være en annen; dialogen viser grunnen på feltet. Den nye kundens periode
   starter på vilkårene i dialogen; den overtar ikke den avsluttede periodens
-  krafttariff eller faktureringsintervall.
+  kraftavtale eller fakturering.
 
 Dialogen avviser når punktet allerede har en ikke-kansellert periode som dekker den
 datoen, og ber deg avslutte den eksisterende perioden først. Perioden starter ved
@@ -273,11 +273,11 @@ En leveranseperiode kan også startes fra kundens side, se
 ## Endre vilkårene for en leveranseperiode
 
 Klikk **Endre vilkår** på raden under **Leveranseperioder**. Dialogen har periodens
-**Krafttariff** og **Faktureringsintervall**, som da den ble startet; endre dem og
+**Kraftavtale** og **Fakturering**, som da den ble startet; endre dem og
 lagre. Slik får en periode som ble startet uten tariff, av en import eller før
 tariffene fantes, en tariff. En aktiv eller en avsluttet periode kan endres; en
 kansellert kan ikke. En tariff som er arkivert etter at perioden fikk den, blir stående
-som den er, så du kan endre bare faktureringsintervallet, men en annen arkivert tariff
+som den er, så du kan endre bare faktureringen, men en annen arkivert tariff
 kan ikke velges. Krever `energy:supply-periods-manage`.
 
 ## Avslutt en leveranseperiode
@@ -394,7 +394,7 @@ målepunkt for å begynne å følge forbruket.*
 
 **Knytt til målepunkt** åpner en dialog der du søker i **Målepunkt** etter GSRN eller
 målernummer og velger en **Start**-dato; dette starter en **Aktiv** leveranseperiode
-for kunden på det punktet, uten krafttariff og med faktureringsintervallet
+for kunden på det punktet, uten kraftavtale og med faktureringen
 **Månedlig**; sett dem på målepunktets side med **Endre vilkår**. Det avvises med *Dette målepunktet har allerede en
 overlappende leveranseperiode* når punktet allerede leveres til på den datoen, og med
 *Kunne ikke knytte til målepunktet* ellers. Knappen tilbys ikke på en kunde som er
@@ -617,18 +617,18 @@ De fullstendige reglene står i [Spot prices](/en/reference/energy/#spot-prices)
 **Tariffer** holder prislistene forbruket skal faktureres etter, i tillegg til
 spotprisen. Det finnes to slag:
 
-- En **krafttariff** er avtalen din med en kunde: en spotpris eller en fastpris, et
-  påslag og et månedsbeløp, for eksempel. Den velges på kundens leveranseperiode.
-- En **nettariff** er din egen nettariff, for målepunktene organisasjonen din er
+- En **kraftavtale** er avtalen din med en kunde: en spotpris eller en fastpris, et
+  påslag og en månedsavgift, for eksempel. Den velges på kundens leveranseperiode.
+- En **nettleie** er din egen nettleietariff, for målepunktene organisasjonen din er
   nettselskap for: energileddet, kapasitetsleddet, fastleddet, elavgiften og
-  Enova-avgiften. Den velges på målepunktet. Når nettselskapet fakturerer
+  Enovaavgiften. Den velges på målepunktet. Når nettselskapet fakturerer
   nettjenestene selv, trenger du ingen.
 
 En tariff har **versjoner** etter dato, og hver versjon en liste med **komponenter**,
 én linje på fakturaen hver. Når prisene endres, legger du til en versjon fra dagen de
 endres; den gamle versjonen blir stående for periodene den priset.
 
-Åpne **Energi** → **Tariffer**. Listen viser hver tariffs navn, slag, status,
+Åpne **Energi** → **Tariffer**. Listen viser hver tariffs navn, type, status,
 versjonen som gjelder i dag og hvor mange leveranseperioder og målepunkter som bruker
 den, aktive tariffer først; avgrens den etter slag eller status. Siden krever
 `energy:tariffs-view`; å opprette, redigere, arkivere og slette krever i tillegg
@@ -640,17 +640,18 @@ leveranseperiodene og målepunktene.
 
 ### Opprett en tariff
 
-Klikk **Ny tariff**. Velg slaget, **Kraft** eller **Nett** (det kan ikke endres
-etterpå), og gi tariffen et **Navn**, som skrives på fakturaen som avtalens navn, og
+Klikk **Ny tariff**. Velg **Type**, **Kraftavtale** eller **Nettleie** (det kan
+ikke endres etterpå), og gi tariffen et **Navn**, som skrives på fakturaen som avtalens navn, og
 eventuelt en beskrivelse. Legg så til minst én versjon med minst én komponent, og
-lagre. Klikk på en rad i listen for å åpne en tariff og redigere den på samme måte.
+lagre. For å endre en tariff senere klikker du **Rediger** på raden (krever
+`energy:tariffs-manage`) for å åpne tariffen og redigere den på samme måte.
 
 Dialogen markerer hver feil på feltet den gjelder, som en sats som mangler eller to
 versjoner med datoer som overlapper.
 
 ### Legg til versjoner
 
-Hver versjon har **Gyldig fra** og **Gyldig til**. **Gyldig fra** er den første dagen
+Hver versjon har **Gyldig fra** og **Gyldig til (ikke medregnet)**. **Gyldig fra** er den første dagen
 versjonen gjelder; **Gyldig til** er den første dagen den ikke lenger gjelder, så en
 versjon fra 1. januar gyldig til 1. juli dekker januar til juni. La **Gyldig til** stå
 tom for en versjon som gjelder inntil videre. Dagene er norske kalenderdager.
@@ -662,36 +663,39 @@ fra den.
 
 ### Legg til komponenter
 
-Legg til komponenter i en versjon etter slag; hver har et **Navn**, teksten på linjen
+Legg til komponenter i en versjon etter slag; hver har en **Linjetekst**, teksten på linjen
 sin på fakturaen. Flytt dem opp eller ned for å bestemme rekkefølgen linjene skrives
-i. Satsene er i NOK. En krafttariff kan ha:
+i. Satsene er i NOK. En kraftavtale kan ha:
 
 - **Spotpris**: energien til timens eller kvarterets spotpris. Ingen sats.
 - **Fastpris**: energien til en fast pris per kWh.
 - **Påslag**: en pris per kWh i tillegg til energiprisen. En versjon kan ha flere.
-- **Månedsbeløp**: et fast beløp per måned, forholdsmessig når leveringen dekker en
+- **Månedsavgift**: et fast beløp per måned, forholdsmessig når leveringen dekker en
   del av en måned.
 
-Hver versjon av en krafttariff har nøyaktig én **Spotpris** eller **Fastpris**.
+Hver versjon av en kraftavtale har nøyaktig én **Spotpris** eller **Fastpris**.
 
-En nettariff kan ha:
+En nettleie kan ha:
 
 - **Energiledd**: en pris per kWh på dagtid, og eventuelt en nattsats med timene
-  dagsatsen gjelder (fra og til, hele timer) og om nattsatsen gjelder hele helgen.
+  dagsatsen gjelder (fra og til, hele timer) og om nattsatsen gjelder hele helgen. Slå på bryteren
+  **Natt- og helgesats** for å sette den: skriv inn **Nattsats (kr/kWh)**, og når dagen starter
+  (**Dag starter (time)**) og slutter (**Dag slutter (time, ikke medregnet)**), og kryss av
+  **Dagsats bare på hverdager** hvis dagsatsen ikke skal gjelde i helgen.
 - **Kapasitetsledd**: et beløp per måned etter trinnene nedenfor.
 - **Fastledd**: et fast beløp per måned.
 - **Elavgift**: den ordinære og den reduserte satsen per kWh; målepunktets
-  **Elavgiftsklasse** avgjør hvilken som gjelder, eller ingen.
-- **Enova-avgift**: husholdningssatsen per kWh, og beløpet per år et punkt som ikke er
+  **Elavgift** avgjør hvilken som gjelder, eller ingen.
+- **Enovaavgift**: husholdningssatsen per kWh, og beløpet per år et punkt som ikke er
   til husholdningsbruk, betaler.
-- **Månedsbeløp**: som for en krafttariff.
+- **Månedsavgift**: som for en kraftavtale.
 
 En versjon har høyst ett hver av energiledd, kapasitetsledd, elavgift og
-Enova-avgift.
+Enovaavgift.
 
 ### Sett kapasitetstrinnene
 
-Kapasitetsleddet er en tabell med trinn: **Fra kW** og prisen **Per måned**. Hver
+Kapasitetsleddet er en tabell med trinn: **Fra kW** og prisen i **Kr per måned**. Hver
 måned finnes punktets trinn ut fra snittet av de tre høyeste timeforbrukene, på tre
 forskjellige dager. Det første trinnet starter på 0 kW, og hvert neste må starte
 høyere; en tabell har høyst 50 trinn.

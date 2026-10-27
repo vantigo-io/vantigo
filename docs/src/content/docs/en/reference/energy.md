@@ -89,9 +89,9 @@ at a time.
   `cadence` is `monthly`.
 
 **The terms.** The create and the switch take `tariffId` and `cadence` too, judged
-after their own checks — the customer, then `tariffId`, then `cadence`
-(`parseSupplyTerms`) — and before the overlap pre-check, every refusal a `400` keyed
-by its field:
+after their own checks — the customer, then the terms (`tariffId` and `cadence`,
+each refused on its own key in one `400`; `parseSupplyTerms`, `supplyTermsRefusal`) — and before the
+overlap pre-check, every refusal a `400` keyed by its field:
 
 - `tariffId` absent or `null` is none: the period is not priced (a settlement blocks
   it as `no_tariff`). Otherwise it must name an **active power** tariff: *"Tariff 1004
@@ -107,8 +107,10 @@ by its field:
 - A switch does **not** inherit the ended period's tariff or cadence: the new
   customer's period is billed on the body's terms.
 
-Every `SupplyPeriodResponse` carries `tariffId`, `tariffName` (both `null` without a
-tariff) and `cadence`.
+Every `SupplyPeriodResponse` carries `cadence`, and `tariffId` and `tariffName` when
+the period has a tariff; without one they are left out of the JSON, not sent as
+`null`. They are optional in the schema because the recorded .NET exchanges predate
+them.
 
 The create's write (`insertSupplyPeriod`) and the switch's transaction body
 (`switchSupplyPeriod`) are functions of their own, which the import calls too, with
@@ -185,7 +187,9 @@ fourth is derived:
 absent `gridTariffId` is none, an absent `household` `false` and an absent
 `electricityTaxClass` `ordinary`, so a client that edits the address sends the three
 back. Every `MeteringPointResponse` — the list, the point, a customer's points —
-carries the five. A metering-point import never changes them: a point it creates has
+carries `household`, `electricityTaxClass` and `vatTreatment`, and `gridTariffId` and
+`gridTariffName` when the point has a grid tariff; without one they are left out of
+the JSON, not sent as `null`. A metering-point import never changes them: a point it creates has
 none, `false` and `ordinary`, and a point it updates keeps its own.
 
 ## Importing metering points
@@ -1188,7 +1192,8 @@ names.
   kind does not use absent or `null`, so a body says only what will price.
   `grid_energy`'s night rate is all or nothing: `rateNight`, `dayFrom` and `dayTo`
   together, whole hours with `0 ≤ dayFrom < dayTo ≤ 24`, and `weekdaysOnly` only with
-  them.
+  them. `weekdaysOnly: false` counts as absent; `true` is allowed only on
+  `grid_energy` and needs `rateNight`, `dayFrom` and `dayTo` together.
 - Rates are `0 ≤ rate < 1 000 000`, rounded to six decimals as they are stored.
 - `tiers` holds 1–50 entries, the first `fromKw` 0 and each next one strictly higher,
   `0 ≤ fromKw < 100 000` (three decimals) and `0 ≤ perMonth < 1 000 000` (two
@@ -1204,12 +1209,21 @@ kind cannot be changed."* The `PUT` does not touch `status`.
 ### Assigning a tariff
 
 A supply period's `tariffId` must name an **active power** tariff and a metering
-point's `gridTariffId` an **active grid** tariff (`checkTariffAssignable`), else a
+point's `gridTariffId` an **active grid** tariff, else a
 `400` on the field: *"Tariff 1004 does not exist."*, *"Tariff 1004 is a grid tariff,
 not a power tariff."*, *"Tariff 1004 is archived."*. `null` is none and always passes.
 A tariff archived after it was assigned stays assigned: the metering point's `PUT` and
 the supply period's terms `PUT` accept the tariff the row already holds even when it
 is archived, so a write that repeats it is not refused for a status it cannot change.
+The tariff is judged inside the write's own transaction, read `FOR SHARE`
+(`shareTariff`, then `tariffRefusal`) before the write's other locks: an archive or a
+delete of it in flight (both take `FOR UPDATE`) is waited for and its outcome seen —
+the `400` *"… is archived."* or *"… does not exist."*, never an archived tariff newly
+assigned — and neither can start until the write commits. The terms `PUT` reads the
+period again under its supply-period lock and the metering point's `PUT` reads the
+point `FOR NO KEY UPDATE`, so the tariff the row holds is judged as it is written. A
+foreign-key violation on the tariff, the backstop, is answered as the same *"Tariff
+1004 does not exist."*
 Assigning needs only the write's own permission — `energy:supply-periods-manage` or
 `energy:metering-points-manage` — not a tariff permission.
 

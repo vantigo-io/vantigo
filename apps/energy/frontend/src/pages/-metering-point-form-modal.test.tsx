@@ -85,6 +85,16 @@ describe("MeteringPointFormModal", () => {
     });
   });
 
+  it("refreshes the tariffs on a save, so their usage and Delete follow the grid tariff", async () => {
+    const { fetchMock, onClose } = renderModal({ mode: "edit", meteringPoint: point }, true);
+    const tariffReads = () =>
+      fetchMock.mock.calls.filter(([url]) => String(url).startsWith("/api/v1/energy/tariffs")).length;
+    await waitFor(() => expect(tariffReads()).toBe(1));
+    await userEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    await waitFor(() => expect(tariffReads()).toBe(2));
+  });
+
   it("sends the grid tariff chosen, and none once cleared", async () => {
     const { onClose, written } = renderModal({ mode: "edit", meteringPoint: point }, true);
     await userEvent.click(await screen.findByRole("combobox", { name: /^Grid tariff/ }));

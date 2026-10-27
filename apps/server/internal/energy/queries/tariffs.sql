@@ -29,6 +29,16 @@ FROM energy.tariffs
 WHERE id = @id
 FOR UPDATE;
 
+-- name: GetTariffForShare :one
+-- GetTariffForShare is the assignment's read (energy tariffs plan, reading
+-- 5), inside the write's transaction: FOR SHARE, so an archive or a delete of
+-- the tariff (both FOR UPDATE, GetTariffForUpdate) in flight is waited for and
+-- its outcome seen, and none can start until the assignment commits.
+SELECT id, kind, name, status
+FROM energy.tariffs
+WHERE id = @id
+FOR SHARE;
+
 -- name: ListTariffs :many
 -- ListTariffs is GET /tariffs: every tariff, narrowed by kind and status when
 -- given, active first, then by kind and name; each with its version count, the
