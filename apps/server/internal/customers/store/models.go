@@ -245,6 +245,7 @@ type CustomersImportRow struct {
 	Outcome    *string
 	CustomerID *int32
 	Errors     []byte
+	Preview    []byte
 }
 
 type CustomersObjectDeletion struct {

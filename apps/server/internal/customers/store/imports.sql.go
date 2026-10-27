@@ -14,7 +14,7 @@ import (
 
 const clearImportRowResults = `-- name: ClearImportRowResults :exec
 UPDATE customers.import_rows
-SET outcome = NULL, customer_id = NULL, errors = NULL
+SET outcome = NULL, customer_id = NULL, errors = NULL, preview = NULL
 WHERE import_id = $1
 `
 
@@ -321,7 +321,7 @@ func (q *Queries) ImportRowsChunk(ctx context.Context, arg ImportRowsChunkParams
 }
 
 const importRowsPage = `-- name: ImportRowsPage :many
-SELECT r.row_no, r.cells, r.outcome, r.customer_id, r.errors, c.customer_number
+SELECT r.row_no, r.cells, r.outcome, r.customer_id, r.errors, r.preview, c.customer_number
 FROM customers.import_rows r
 LEFT JOIN customers.customers c ON c.id = r.customer_id
 WHERE r.import_id = $1 AND ($4::text IS NULL OR r.outcome = $4::text)
@@ -342,6 +342,7 @@ type ImportRowsPageRow struct {
 	Outcome        *string
 	CustomerID     *int32
 	Errors         []byte
+	Preview        []byte
 	CustomerNumber *int64
 }
 
@@ -367,6 +368,7 @@ func (q *Queries) ImportRowsPage(ctx context.Context, arg ImportRowsPageParams) 
 			&i.Outcome,
 			&i.CustomerID,
 			&i.Errors,
+			&i.Preview,
 			&i.CustomerNumber,
 		); err != nil {
 			return nil, err
@@ -587,6 +589,29 @@ func (q *Queries) NextQueuedImport(ctx context.Context) (CustomersImport, error)
 	return i, err
 }
 
+const recheckUnstartedRun = `-- name: RecheckUnstartedRun :execrows
+UPDATE customers.imports
+SET state = 'checking', requested_at = $2, processed = 0, created = 0, updated = 0, failed = 0, skipped = 0, updated_at = $2
+WHERE id = $1 AND state = 'importing' AND started_at IS NULL
+`
+
+type RecheckUnstartedRunParams struct {
+	ID          int32
+	RequestedAt *time.Time
+}
+
+// A stop on a run the worker has not started yet: the rows' results — the
+// check's previews among them — were cleared when the run was asked for, so
+// the import is checked again rather than shown as checked with nothing
+// behind its counts.
+func (q *Queries) RecheckUnstartedRun(ctx context.Context, arg RecheckUnstartedRunParams) (int64, error) {
+	result, err := q.db.Exec(ctx, recheckUnstartedRun, arg.ID, arg.RequestedAt)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const requestImportCheck = `-- name: RequestImportCheck :execrows
 UPDATE customers.imports
 SET state = 'checking', requested_at = $2, started_at = NULL, finished_at = NULL, error = NULL,
@@ -620,7 +645,8 @@ type RequestImportRunParams struct {
 }
 
 // The check's counts stay until the worker starts (it writes its own as it
-// goes), so a run stopped before it started goes back to checked with them.
+// goes); the caller clears the rows' results beside it, so a run stopped
+// before it started is checked again (RecheckUnstartedRun).
 func (q *Queries) RequestImportRun(ctx context.Context, arg RequestImportRunParams) (int64, error) {
 	result, err := q.db.Exec(ctx, requestImportRun, arg.ID, arg.RequestedAt)
 	if err != nil {
@@ -772,7 +798,7 @@ func (q *Queries) UpdateImportProgress(ctx context.Context, arg UpdateImportProg
 
 const writeImportRowOutcome = `-- name: WriteImportRowOutcome :exec
 UPDATE customers.import_rows
-SET outcome = $3, customer_id = $4, errors = $5
+SET outcome = $3, customer_id = $4, errors = $5, preview = $6
 WHERE import_id = $1 AND row_no = $2
 `
 
@@ -782,8 +808,11 @@ type WriteImportRowOutcomeParams struct {
 	Outcome    *string
 	CustomerID *int32
 	Errors     []byte
+	Preview    []byte
 }
 
+// A row's result. preview is the check's alone (a row it found would be
+// created or updated); the run writes it NULL, so no row of a run keeps one.
 func (q *Queries) WriteImportRowOutcome(ctx context.Context, arg WriteImportRowOutcomeParams) error {
 	_, err := q.db.Exec(ctx, writeImportRowOutcome,
 		arg.ImportID,
@@ -791,6 +820,7 @@ func (q *Queries) WriteImportRowOutcome(ctx context.Context, arg WriteImportRowO
 		arg.Outcome,
 		arg.CustomerID,
 		arg.Errors,
+		arg.Preview,
 	)
 	return err
 }

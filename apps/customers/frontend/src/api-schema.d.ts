@@ -848,7 +848,7 @@ export interface paths {
         put?: never;
         /**
          * Stop a customer import
-         * @description Stops a check or a run (customers import wizard design D5). One the worker has not taken up goes straight back — checking to draft, importing to checked. One under way is flagged, and the worker stops before its next chunk, within a few hundred rows; a check stopped goes back to draft with its results cleared, a run stopped finishes as done with every row committed so far kept and the rest never attempted, which processed short of rows says.
+         * @description Stops a check or a run (customers import wizard design D5). One the worker has not taken up goes straight back — a check to draft; a run, whose request already cleared the check's results, to checking, so the file is checked again and the page lands on a fresh check. One under way is flagged, and the worker stops before its next chunk, within a few hundred rows; a check stopped goes back to draft with its results cleared, a run stopped finishes as done with every row committed so far kept and the rest never attempted, which processed short of rows says.
          */
         post: operations["postCustomersImportsByImportIdStop"];
         delete?: never;
@@ -1302,6 +1302,8 @@ export interface components {
             errors: components["schemas"]["CustomerImportRowError"][];
             /** @enum {string} */
             outcome?: "created" | "updated" | "failed" | "skipped";
+            /** @description What the row resolves to — present only on a row the check found would be created or updated, absent on every other row and on every row of a run (the run clears it). */
+            preview?: components["schemas"]["CustomerImportRowPreview"];
             /** Format: int32 */
             row: number;
         };
@@ -1310,6 +1312,31 @@ export interface components {
             /** Format: int32 */
             column?: number;
             message: string;
+        };
+        /** @description What a checked row would write, as the check resolved it (the row's own values laid over the customer on file, the blanks filled from Brønnøysund). name and type are the customer's; legalIdentity is the legal identity the customer is left with, absent when it has none; postalAddress is the primary postal address the customer is left with — the row's, or on an update whose mapping leaves the postal address alone the one on file — absent when it has none; postalAddressCleared is true on an update whose row clears the primary postal address on file, which the run removes. fromRegistry lists the import's fields whose value came from Brønnøysund rather than from the file or the customer on file: name, legalName, and the postal address's postalLine1, postalLine2, postalPostalCode, postalCity and postalCountry — empty when nothing did. */
+        CustomerImportRowPreview: {
+            fromRegistry: string[];
+            legalIdentity?: components["schemas"]["CustomerImportRowPreviewIdentity"];
+            name: string;
+            postalAddress?: components["schemas"]["CustomerImportRowPreviewAddress"];
+            postalAddressCleared?: boolean;
+            type: string;
+        };
+        /** @description A checked row's primary postal address. country is the lowercase ISO code. */
+        CustomerImportRowPreviewAddress: {
+            city?: string;
+            country: string;
+            line1: string;
+            line2?: string;
+            postalCode?: string;
+            region?: string;
+        };
+        /** @description A checked row's legal identity as the customer will hold it. source is the identity's own — "brreg" for one Brønnøysund answered for, "manual" for one entered by hand; an identity kept from file because the row repeats it keeps its source. */
+        CustomerImportRowPreviewIdentity: {
+            country: string;
+            id: string;
+            name: string;
+            source: string;
         };
         /** @description One of the first rows of an import as the preview shows it (customers import wizard design D3), with the errors its cells get under the saved mapping — the row planned through the endpoints' own validators, no database asked. */
         CustomerImportSampleRow: {

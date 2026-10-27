@@ -516,9 +516,9 @@ func (s *server) PostCustomersImportsByImportIdRun(ctx context.Context, req gen.
 // PostCustomersImportsByImportIdStop Stop a customer import
 // (POST /api/v1/customers/imports/{importId}/stop)
 //
-// A run the worker has not taken up goes straight back to where it was asked
-// from; one under way is flagged, and the worker finishes it between chunks
-// (import_worker.go).
+// A check the worker has not taken up goes straight back to draft, and a run
+// to a fresh check (its request cleared the check's results); one under way
+// is flagged, and the worker finishes it between chunks (import_worker.go).
 func (s *server) PostCustomersImportsByImportIdStop(ctx context.Context, req gen.PostCustomersImportsByImportIdStopRequestObject) (gen.PostCustomersImportsByImportIdStopResponseObject, error) {
 	q := store.New(s.deps.Pool)
 	imp, err := q.GetImport(ctx, req.ImportId)
@@ -534,11 +534,16 @@ func (s *server) PostCustomersImportsByImportIdStop(ctx context.Context, req gen
 	now := s.deps.Clock()
 	reverted := int64(0)
 	if imp.StartedAt == nil {
-		back := gen.Draft
 		if importStateIs(imp.State, gen.Importing) {
-			back = gen.Checked
+			// The run's request cleared the check's results: the file is
+			// checked again, so the page never shows counts with no rows.
+			reverted, err = q.RecheckUnstartedRun(ctx, store.RecheckUnstartedRunParams{ID: imp.ID, RequestedAt: ptrTime(now)})
+			if reverted > 0 {
+				nudgeImportWorker()
+			}
+		} else {
+			reverted, err = q.RevertUnstartedImport(ctx, store.RevertUnstartedImportParams{ID: imp.ID, State: string(gen.Draft), UpdatedAt: now, State_2: imp.State})
 		}
-		reverted, err = q.RevertUnstartedImport(ctx, store.RevertUnstartedImportParams{ID: imp.ID, State: string(back), UpdatedAt: now, State_2: imp.State})
 		if err != nil {
 			return nil, fmt.Errorf("customers: revert an unstarted import: %w", err)
 		}
@@ -612,6 +617,13 @@ func (s *server) GetCustomersImportsByImportIdRows(ctx context.Context, req gen.
 			return nil, err
 		}
 		item := gen.CustomerImportRow{Row: r.RowNo, Cells: r.Cells, Errors: errs, CustomerId: r.CustomerID, CustomerNumber: r.CustomerNumber}
+		if r.Preview != nil {
+			var preview gen.CustomerImportRowPreview
+			if err := json.Unmarshal(r.Preview, &preview); err != nil {
+				return nil, fmt.Errorf("customers: decode import %d row %d's preview: %w", req.ImportId, r.RowNo, err)
+			}
+			item.Preview = &preview
+		}
 		if r.Outcome != nil {
 			o := gen.CustomerImportRowOutcome(*r.Outcome)
 			item.Outcome = &o

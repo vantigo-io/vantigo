@@ -12,7 +12,9 @@ const WAITING_FOR_WORKER_MS = 60_000;
 /**
  * The bar while the worker checks or imports (customers import wizard design
  * D5, D8): the rows done of the rows there are, the counts so far, **Stop**
- * — with a confirmation on a real run, since what is committed stays — and
+ * — with a confirmation on a real run the worker has started, since what is
+ * committed stays; a run still queued has imported nothing, and stopping it
+ * checks the file again — and
  * the two things worth saying: a whole-run failure the worker will retry,
  * and an import nobody has taken up in a minute, which is a worker that is
  * not running.
@@ -26,7 +28,7 @@ export const ImportProgress = ({ imp, now = () => Date.now() }: { imp: CustomerI
     onSuccess: (result) => queryClient.setQueryData(importQueryKey(imp.id), result),
   });
   const confirmStop = () => {
-    if (!importing) {
+    if (!importing || imp.startedAt === null) {
       stop.mutate();
       return;
     }

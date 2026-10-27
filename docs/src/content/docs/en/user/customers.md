@@ -357,11 +357,18 @@ customer list to open **Import customers**.
    mapped column is the same customer listed again — a supplier's file lists a
    customer once for every metering point — and is skipped with *Same customer as row
    N.*, not counted as an error. A repeat with a different value in a mapped column
-   is an error. **Change mapping** takes you back to step 2.
+   is an error. Below the problems, **Will be created** and **Will be updated** list
+   what each of those rows would write: its **Name**, its **Organisation number** and
+   its **Postal address** on one line — on an update, the address the customer keeps,
+   or **Will be removed** when your file's blank address cells remove it. A value
+   Vantigo filled in, in part or in whole, from Brønnøysund
+   rather than your file is marked **From Brønnøysund**, so you can see what the
+   register adds before you import. **Change mapping** takes you back to step 2.
 4. **Import** saves the rows, after a confirmation that says how many customers will
    be created and updated. You can leave the page and come back: the import runs in
    the background, and the page shows its progress. **Stop** keeps the rows already
-   saved and does not attempt the rest. When it is done the page shows **Created**,
+   saved and does not attempt the rest; pressed before the import has started, it
+   checks the file again instead. When it is done the page shows **Created**,
    **Updated**, **Skipped** and **Failed**, and lists the new customers as links and
    the skipped rows with the row each repeats. Skipped rows are not in the failed
    rows file.

@@ -2,6 +2,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   type CustomerImport,
   importQueryOptions,
+  importRowsQueryKey,
+  importRowsQueryOptions,
   importStep,
   isImportRunning,
   normalizeImport,
@@ -68,6 +70,17 @@ describe("uploadImport and saveImportMapping", () => {
     expect(putUrl).toBe("/api/v1/customers/imports/1001/mapping");
     expect(putInit.method).toBe("PUT");
     expect(JSON.parse(putInit.body as string)).toEqual(mapping);
+  });
+});
+
+describe("importRowsQueryOptions", () => {
+  it("keeps the check's rows apart from the run's, under the import's one rows key", () => {
+    const checked = importRowsQueryOptions(7, "created", 1, 50, true, "2026-10-13T10:02:00Z").queryKey;
+    const done = importRowsQueryOptions(7, "created", 1, 50, false, "2026-10-13T10:02:00Z").queryKey;
+    const nextCheck = importRowsQueryOptions(7, "created", 1, 50, true, "2026-10-13T10:09:00Z").queryKey;
+    expect(checked).not.toEqual(done);
+    expect(checked).not.toEqual(nextCheck);
+    for (const key of [checked, done, nextCheck]) expect(key.slice(0, 4)).toEqual([...importRowsQueryKey(7)]);
   });
 });
 

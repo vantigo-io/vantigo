@@ -38,7 +38,7 @@ WHERE id = $1 AND state IN ('draft', 'checked');
 
 -- name: ClearImportRowResults :exec
 UPDATE customers.import_rows
-SET outcome = NULL, customer_id = NULL, errors = NULL
+SET outcome = NULL, customer_id = NULL, errors = NULL, preview = NULL
 WHERE import_id = $1;
 
 -- name: RequestImportCheck :execrows
@@ -48,7 +48,8 @@ SET state = 'checking', requested_at = $2, started_at = NULL, finished_at = NULL
 WHERE id = $1 AND state IN ('draft', 'checked') AND mapping IS NOT NULL;
 
 -- The check's counts stay until the worker starts (it writes its own as it
--- goes), so a run stopped before it started goes back to checked with them.
+-- goes); the caller clears the rows' results beside it, so a run stopped
+-- before it started is checked again (RecheckUnstartedRun).
 -- name: RequestImportRun :execrows
 UPDATE customers.imports
 SET state = 'importing', requested_at = $2, started_at = NULL, finished_at = NULL, error = NULL,
@@ -68,6 +69,15 @@ WHERE id = $1 AND state IN ('checking', 'importing') AND started_at IS NOT NULL;
 UPDATE customers.imports
 SET state = $2, requested_at = NULL, updated_at = $3
 WHERE id = $1 AND state = $4 AND started_at IS NULL;
+
+-- A stop on a run the worker has not started yet: the rows' results — the
+-- check's previews among them — were cleared when the run was asked for, so
+-- the import is checked again rather than shown as checked with nothing
+-- behind its counts.
+-- name: RecheckUnstartedRun :execrows
+UPDATE customers.imports
+SET state = 'checking', requested_at = $2, processed = 0, created = 0, updated = 0, failed = 0, skipped = 0, updated_at = $2
+WHERE id = $1 AND state = 'importing' AND started_at IS NULL;
 
 -- name: DeleteImport :execrows
 DELETE FROM customers.imports
@@ -144,9 +154,11 @@ SELECT cells
 FROM customers.import_rows
 WHERE import_id = $1 AND row_no = $2;
 
+-- A row's result. preview is the check's alone (a row it found would be
+-- created or updated); the run writes it NULL, so no row of a run keeps one.
 -- name: WriteImportRowOutcome :exec
 UPDATE customers.import_rows
-SET outcome = $3, customer_id = $4, errors = $5
+SET outcome = $3, customer_id = $4, errors = $5, preview = $6
 WHERE import_id = $1 AND row_no = $2;
 
 -- The preview's rows: the first few, in file order.
@@ -160,7 +172,7 @@ LIMIT $2;
 -- The rows page: every row, or those of one outcome, with the customer's
 -- number beside a row that has one.
 -- name: ImportRowsPage :many
-SELECT r.row_no, r.cells, r.outcome, r.customer_id, r.errors, c.customer_number
+SELECT r.row_no, r.cells, r.outcome, r.customer_id, r.errors, r.preview, c.customer_number
 FROM customers.import_rows r
 LEFT JOIN customers.customers c ON c.id = r.customer_id
 WHERE r.import_id = $1 AND (sqlc.narg(outcome)::text IS NULL OR r.outcome = sqlc.narg(outcome)::text)

@@ -27,6 +27,7 @@ sql:
       - ../db/migrations/00044_customers_attachments.sql
       - ../db/migrations/00045_customers_imports.sql
       - ../db/migrations/00048_customers_import_skipped.sql
+      - ../db/migrations/00080_customers_import_preview.sql
     queries: queries
     gen:
       go:

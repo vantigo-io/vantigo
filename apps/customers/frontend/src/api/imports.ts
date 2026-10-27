@@ -66,6 +66,29 @@ export interface CustomerImport {
   finishedAt: string | null;
 }
 
+/**
+ * What a checked row would write (the check's preview): the customer's name
+ * and type, its legal identity and primary postal address, and the import's
+ * fields whose value Brønnøysund filled in ("name", "legalName",
+ * "postalLine1" …). Only a checked row that would be created or updated has one.
+ */
+export interface ImportRowPreview {
+  name: string;
+  type: string;
+  legalIdentity?: { country: string; id: string; name: string; source: string };
+  postalAddress?: {
+    line1: string;
+    line2?: string;
+    postalCode?: string;
+    city?: string;
+    region?: string;
+    country: string;
+  };
+  /** True on an update whose row removes the primary postal address on file. */
+  postalAddressCleared?: boolean;
+  fromRegistry: string[];
+}
+
 export interface ImportRow {
   row: number;
   cells: string[];
@@ -73,6 +96,7 @@ export interface ImportRow {
   customerId: number | null;
   customerNumber: number | null;
   errors: ImportRowError[];
+  preview: ImportRowPreview | null;
 }
 
 type RawImportRowError = { column?: number; message: string };
@@ -89,11 +113,12 @@ type RawCustomerImport = Omit<
   startedAt?: string;
   finishedAt?: string;
 };
-type RawImportRow = Omit<ImportRow, "outcome" | "customerId" | "customerNumber" | "errors"> & {
+type RawImportRow = Omit<ImportRow, "outcome" | "customerId" | "customerNumber" | "errors" | "preview"> & {
   outcome?: ImportRowOutcome;
   customerId?: number;
   customerNumber?: number;
   errors: RawImportRowError[];
+  preview?: ImportRowPreview;
 };
 
 const normalizeError = (raw: RawImportRowError): ImportRowError => ({
@@ -118,6 +143,7 @@ const normalizeRow = (raw: RawImportRow): ImportRow => ({
   customerId: raw.customerId ?? null,
   customerNumber: raw.customerNumber ?? null,
   errors: raw.errors.map(normalizeError),
+  preview: raw.preview ?? null,
 });
 
 /** The server's own cap (`maxImportUploadBytes`): a larger file is refused here rather than sent to be refused. */
@@ -167,10 +193,26 @@ export const importsQueryOptions = (page = 1, pageSize = 10) =>
       query.state.data?.data.some((item) => isImportRunning(item.state)) ? IMPORT_POLL_MS : false,
   });
 
-/** An import's rows of one outcome, in file order, a page at a time. */
-export const importRowsQueryOptions = (id: number, outcome: ImportRowOutcome, page = 1, pageSize = 50) =>
+/** The cache key every page of an import's rows sits under, the check's and the run's alike. */
+export const importRowsQueryKey = (id: number) => [...importQueryKey(id), "rows"] as const;
+
+/**
+ * An import's rows of one outcome, in file order, a page at a time. `checked`
+ * is the check's rows (its preview) rather than the run's, and `finishedAt`
+ * the check or run they are the result of: a key of their own for each, so
+ * the run's page never shows the dry run's rolled-back customers and a new
+ * check never shows the last one's rows, even for a moment.
+ */
+export const importRowsQueryOptions = (
+  id: number,
+  outcome: ImportRowOutcome,
+  page = 1,
+  pageSize = 50,
+  checked = false,
+  finishedAt: string | null = null,
+) =>
   queryOptions({
-    queryKey: [...importQueryKey(id), "rows", outcome, { page, pageSize }],
+    queryKey: [...importRowsQueryKey(id), checked ? "checked" : "done", finishedAt, outcome, { page, pageSize }],
     queryFn: async ({ signal }) => {
       const result = await request<PaginatedResponse<RawImportRow>>(
         `/api/v1/customers/imports/${id}/rows?outcome=${outcome}&page=${page}&pageSize=${pageSize}`,

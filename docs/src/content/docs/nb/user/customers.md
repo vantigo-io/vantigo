@@ -361,12 +361,19 @@ kundelisten for å åpne **Importer kunder**.
    rad med de samme verdiene i alle valgte kolonner, er den samme kunden oppført på
    nytt — en leverandørs fil lister kunden én gang for hvert målepunkt — og hoppes
    over med *Same customer as row N.*, uten å telle som feil. En gjentakelse med en
-   annen verdi i en valgt kolonne er en feil. **Endre valg av kolonner** tar deg
+   annen verdi i en valgt kolonne er en feil. Under feilene viser **Blir opprettet**
+   og **Blir oppdatert** hva hver av disse radene vil lagre: **Navn**,
+   **Organisasjonsnummer** og **Postadresse** på én linje — ved en oppdatering
+   adressen kunden beholder, eller **Blir fjernet** når tomme adresseceller i filen
+   fjerner den. En verdi Vantigo helt eller delvis har hentet fra Brønnøysund i stedet
+   for fra filen, er merket **Fra Brønnøysund**, slik at du
+   ser hva registeret legger til før du importerer. **Endre valg av kolonner** tar deg
    tilbake til steg 2.
 4. **Importer** lagrer radene, etter en bekreftelse som sier hvor mange kunder som
    opprettes og oppdateres. Du kan forlate siden og komme tilbake: importen kjører i
    bakgrunnen, og siden viser fremdriften. **Stopp** beholder radene som allerede er
-   lagret, og prøver ikke resten. Når den er ferdig, viser siden **Opprettet**,
+   lagret, og prøver ikke resten; trykker du før importen har startet, kontrolleres
+   filen på nytt i stedet. Når den er ferdig, viser siden **Opprettet**,
    **Oppdatert**, **Hoppet over** og **Feilet**, og lister de nye kundene som lenker
    og radene som ble hoppet over med raden hver av dem gjentar. Radene som ble hoppet
    over, er ikke med i filen med radene som feilet.

@@ -74,12 +74,35 @@ type importMappingColumnJSON struct {
 }
 
 type importRowJSON struct {
-	Row            int                  `json:"row"`
-	Cells          []string             `json:"cells"`
-	Outcome        string               `json:"outcome"`
-	CustomerID     *int32               `json:"customerId"`
-	CustomerNumber *int64               `json:"customerNumber"`
-	Errors         []importRowErrorJSON `json:"errors"`
+	Row            int                   `json:"row"`
+	Cells          []string              `json:"cells"`
+	Outcome        string                `json:"outcome"`
+	CustomerID     *int32                `json:"customerId"`
+	CustomerNumber *int64                `json:"customerNumber"`
+	Errors         []importRowErrorJSON  `json:"errors"`
+	Preview        *importRowPreviewJSON `json:"preview"`
+}
+
+// importRowPreviewJSON is what a checked row would write (the check's preview).
+type importRowPreviewJSON struct {
+	Name          string   `json:"name"`
+	Type          string   `json:"type"`
+	FromRegistry  []string `json:"fromRegistry"`
+	Cleared       bool     `json:"postalAddressCleared"`
+	LegalIdentity *struct {
+		Country string `json:"country"`
+		ID      string `json:"id"`
+		Name    string `json:"name"`
+		Source  string `json:"source"`
+	} `json:"legalIdentity"`
+	PostalAddress *struct {
+		Line1      string  `json:"line1"`
+		Line2      *string `json:"line2"`
+		PostalCode *string `json:"postalCode"`
+		City       *string `json:"city"`
+		Region     *string `json:"region"`
+		Country    string  `json:"country"`
+	} `json:"postalAddress"`
 }
 
 type importRowsPageJSON struct {

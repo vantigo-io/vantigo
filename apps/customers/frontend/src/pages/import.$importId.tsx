@@ -78,10 +78,12 @@ const DownloadFailedRows = ({ imp }: { imp: CustomerImport }) => {
   );
 };
 
-/** Step 2 once the check has finished: the counts, the errors, and Import. */
+/** Step 2 once the check has finished: the counts, the errors, what would be created and updated, and Import. */
 const CheckResult = ({ imp }: { imp: CustomerImport }) => {
   const { t, formatters } = useI18n("customers");
   const queryClient = useQueryClient();
+  // The check's rows are keyed by the check (importRowsQueryOptions'
+  // finishedAt): a run or a new check reads its own, never these.
   const setImport = (result: CustomerImport) => queryClient.setQueryData(importQueryKey(imp.id), result);
   const run = useMutation({
     mutationFn: () => runImport(imp.id),
@@ -125,6 +127,8 @@ const CheckResult = ({ imp }: { imp: CustomerImport }) => {
         <Figures imp={imp} done={false} />
         {imp.failed > 0 && <ImportRowsTable imp={imp} outcome="failed" />}
         <DownloadFailedRows imp={imp} />
+        {imp.created > 0 && <ImportRowsTable imp={imp} outcome="created" checked />}
+        {imp.updated > 0 && <ImportRowsTable imp={imp} outcome="updated" checked />}
         {imp.skipped > 0 && <ImportRowsTable imp={imp} outcome="skipped" />}
         <Group justify="flex-end">
           <Button variant="default" loading={backToMapping.isPending} onClick={() => backToMapping.mutate()}>
