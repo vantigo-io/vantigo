@@ -5,7 +5,7 @@ import { notifications } from "@mantine/notifications";
 import { IconCamera, IconLock, IconTrash } from "@tabler/icons-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { PROFILE_QUERY_KEY, useI18n } from "@vantigo/frontend-shell";
-import { type ChangeEvent, useRef } from "react";
+import { type ChangeEvent, type ComponentPropsWithRef, useRef } from "react";
 import { removeMyAvatar, uploadMyAvatar } from "../api/account";
 import { personPhotoUrl, removePersonPhoto, type StaffPerson, uploadPersonPhoto } from "../api/people";
 import { STAFF_QUERY_KEY } from "../api/request";
@@ -26,6 +26,15 @@ export interface PersonAvatarProps {
 }
 
 /** The longer side, in pixels, and the size in bytes a photo is sent at most without being scaled down. */
+/**
+ * A menu item's button that says it is disabled whatever the menu passes:
+ * Mantine's Menu.Item sets `aria-disabled` from its own `disabled` after the
+ * props it is given, so the attribute is set here, below it.
+ */
+const AriaDisabledButton = ({ ref, ...props }: ComponentPropsWithRef<"button">) => (
+  <button ref={ref} type="button" {...props} aria-disabled="true" />
+);
+
 const PHOTO_SIDE = 1024;
 const PHOTO_BYTES = 1024 * 1024;
 
@@ -186,7 +195,7 @@ export const PersonAvatar = ({ person, size = "lg", editable = false, self = fal
             // Not `disabled`, which the menu's arrow keys skip and a screen reader
             // never reaches: focusable, aria-disabled, and it does nothing.
             <Menu.Item
-              aria-disabled="true"
+              component={AriaDisabledButton}
               closeMenuOnClick={false}
               style={{ cursor: "default" }}
               leftSection={<IconLock size={16} />}

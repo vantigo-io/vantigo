@@ -11,6 +11,12 @@ updates:
     directory: /
     multi-ecosystem-group: all-dependencies
     patterns: ['*']
+    ignore:
+      # TypeScript 7 is the native (Go) compiler and ships no JavaScript API:
+      # openapi-typescript builds its AST with ts.factory and typescript-eslint
+      # supports TypeScript <6.1. Lift this when both support 7.
+      - dependency-name: typescript
+        update-types: ['version-update:semver-major']
   - package-ecosystem: github-actions
     directory: /.github/workflows
     multi-ecosystem-group: all-dependencies

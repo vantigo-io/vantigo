@@ -35,7 +35,7 @@ Java (Temurin 21) is there for the EHF oracle alone — see
 Nothing else needs it, and CI installs it only in the job that runs the oracle.
 
 If `bun` or `go` is not on your `PATH`, prefix the command with `mise exec --`. The
-workspace pins Bun 1.3.14, and a bare `bun` may resolve to a different installation.
+workspace pins Bun 1.4.4, and a bare `bun` may resolve to a different installation.
 
 The binary is one image with a dispatch table — the command is the first argument:
 

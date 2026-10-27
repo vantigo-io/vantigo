@@ -11,15 +11,15 @@
     "deploy": "wrangler deploy"
   },
   "dependencies": {
-    "@astrojs/starlight": "^0.42.6",
-    "astro": "^7.4.1",
+    "@astrojs/starlight": "^0.42.7",
+    "astro": "^7.4.2",
     "sharp": "^0.35.5",
     "starlight-links-validator": "^0.27.0",
     "starlight-openapi": "^0.27.0",
-    "satteri": "^0.10.3",
-    "@astrojs/markdown-remark": "^7.3.3"
+    "satteri": "^0.11.5",
+    "@astrojs/markdown-remark": "^7.3.4"
   },
   "devDependencies": {
-    "wrangler": "^4.151.3"
+    "wrangler": "^4.153.0"
   }
 }
