@@ -85,12 +85,15 @@ Communications' outbox is the working example.
 5. **One module, one mount.** A module exposes one `Module()` returning a
    `module.Module`: its name, its `Mount`, the permissions it contributes, the
    background workers it contributes, and the cross-module contracts it *provides*.
-   There are fifteen single-provider slots, each filled by at most one enabled module:
+   There are sixteen single-provider slots, each filled by at most one enabled module:
    `Directory` (`contracts.CustomerDirectory`, customers), `Users`
    (`contracts.UserDirectory`, identity), `Calendar` (`contracts.BusinessCalendar`,
    identity — the workspace's business time zone and the day an instant falls on in
    it, which every module judges "today" by), `Accounts`
-   (`contracts.AccountProvisioning`, identity — rule 11), `Products` (`contracts.ProductCatalog`,
+   (`contracts.AccountProvisioning`, identity — rule 11), `SSOConnections`
+   (`contracts.SSOConnections`, identity — the users not yet connected to the
+   workforce provider and who holds a directory account's keys, for Entra's exact
+   matches; provider-gated, rule 12), `Products` (`contracts.ProductCatalog`,
    products), `Projects` (`contracts.ProjectDirectory`, projects, incl. the
    consumer-gated `ProjectsByStatus`), `Actuals`
    (`contracts.ProjectActuals`, time), `Timesheets` (`contracts.Timesheets`, time — the
@@ -109,9 +112,10 @@ Communications' outbox is the working example.
    caller's own person, and how a proposed booking fits what each person wants; rule
    12). `module.Compose`
    mounts each module at `/api/v1/<name>/` and builds every provider before any
-   `Mount` runs, so a module's `Deps` already carries what it consumes; `Calendar`
-   and then `Accounts` are resolved right after `Users`, so the accounts provider may
-   read the user directory while it is built; `Actuals`, `Timesheets` (right after
+   `Mount` runs, so a module's `Deps` already carries what it consumes; `Calendar`,
+   then `Accounts` and then `SSOConnections` are resolved right after `Users`, so the
+   accounts provider may read the user directory while it is built (`module.Workers`
+   leaves `SSOConnections` nil: no worker connects anyone); `Actuals`, `Timesheets` (right after
    `Actuals`, the same module owning both),
    `Expenses`, `Receivables` and the three `Billable*` are resolved last, after
    `Projects` and `Directory`, so those providers' *constructors* are allowed to read
@@ -430,6 +434,16 @@ Communications' outbox is the working example.
     preference's value — is a batch over the candidates under the same rule, judged on
     the booking's own facets alone. Planning, its consumer, never re-states the rule
     ([Staff](/en/reference/staff/#the-workforce-contract)).
+    The single-provider `contracts.SSOConnections` is provider-gated too: identity, its
+    sole provider, checks the request in `ctx` against `policy:Owner+OwnerManagement`
+    through its own access and answers nothing, not an error, to anyone else or to a
+    context with no request. `Unconnected` lists the users not yet connected under the
+    configured issuer, with the address and employee number each is matched by, and
+    answers an Owner `contracts.ErrSSONotConfigured` while OIDC is off — not
+    configured is not "nobody left to connect"; `KeyHolders` answers who holds a
+    directory account's object id or principal name (`expected`, `mapped` or
+    `account`). The address is for the match alone and never leaves Entra, its consumer
+    ([Microsoft Entra ID](/en/reference/entra/#what-the-module-reads-of-identity)).
 
     Three single-provider reads are the other class, **consumer-gated**:
     `contracts.ProjectActuals` (Time → Projects), `contracts.Timesheets` (Time →
@@ -967,8 +981,10 @@ calendar and nothing would read the source. It has no background worker. With `p
 nothing else changes. See [Planning](/en/reference/planning/#contracts-consumed).
 
 **Entra depends on nobody but identity, and is called by Staff.** It reads no other
-module — in its first release not even identity: the Owner's and `entra:manage`'s
-checks are the router's — and writes nothing outside the `entra` schema. It fills one
+module, and of identity only `Deps.SSOConnections` (`contracts.SSOConnections`, rule
+12), for the directory's exact matches and the holders the search marks — the Owner's
+and `entra:manage`'s checks are the router's — and writes nothing outside the `entra`
+schema. It fills one
 slot, `IdentityProvisioner` (rule 13), and has no worker: Staff's accounts worker calls
 it, in the API and in worker mode alike, never inside a transaction. It reaches the
 network in one place, its Graph client, through `internal/netguard` with no proxy and

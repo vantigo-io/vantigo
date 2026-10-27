@@ -1,6 +1,6 @@
 ---
 title: "Microsoft Entra ID module"
-description: "Microsoft Entra ID as Staff's identity provider: the connection to one tenant, its client secrets in the plural and the connection test; the status and its reasons, read by Staff with no network call; the account rules; the guarded Graph client and its limits; the user lifecycle per step — prepared disabled, enabled on the day with the hire date, the licences and a Temporary Access Pass, kept in step, disabled with the leaver's steps, soft-deleted — with the Graph calls and the codes; the account's photo, converted to Graph's JPEG and written or cleared; the address rule; the pass; the sensitive actions and role_missing; Staff's groups in the tenant — the six traits and the cached licences, the create, or the adoption an entra:manage holder confirms, with the service principal as an owner, the team, the members by $ref, the delete or the retirement; the events, the permission, the refusals and the endpoints."
+description: "Microsoft Entra ID as Staff's identity provider: the connection to one tenant, its client secrets in the plural and the connection test; the status and its reasons, read by Staff with no network call; the account rules; the guarded Graph client and its limits; the user lifecycle per step — prepared disabled, enabled on the day with the hire date, the licences and a Temporary Access Pass, kept in step, disabled with the leaver's steps, soft-deleted — with the Graph calls and the codes; the account's photo, converted to Graph's JPEG and written or cleared; the address rule; the pass; the sensitive actions and role_missing; Staff's groups in the tenant — the six traits and the cached licences, the create, or the adoption an entra:manage holder confirms, with the service principal as an owner, the team, the members by $ref, the delete or the retirement; connecting existing users — the directory search and the exact matches, read through contracts.SSOConnections; the events, the permission, the refusals and the endpoints."
 sources:
   - apps/server/internal/entra
   - apps/entra/frontend
@@ -28,8 +28,11 @@ it did in the tenant. It has no background worker of its own. That is why `MODUL
 refuses `entra` without `staff` (`entra requires staff`): without Staff the module would
 hold a tenant-wide credential that nothing uses.
 
-It depends on nobody but identity, and in this release reads nothing of identity's
-either: the Owner's check and `entra:manage`'s are the router's. It writes nothing
+It depends on nobody but identity, and reads of identity only what
+`contracts.SSOConnections` answers an Owner — the users not yet connected to the
+workforce provider and who already holds a directory account's keys — for
+[connecting existing users](#connecting-existing-users); the Owner's check and
+`entra:manage`'s are the router's. It writes nothing
 outside its own schema, and nothing in it imports another module. It reaches the
 internet in one place, the [Graph client](#the-graph-client), and only two fixed hosts
 there.
@@ -1067,6 +1070,128 @@ retired, answers nil with no connection and no call: there is nothing to let go 
 A group Staff keeps whole — its archive while `deleteExternalAfterDays` is never — is
 renamed through `EnsureGroup`, not here.
 
+## Connecting existing users
+
+An installation that turns single sign-on on with users already in it connects each of
+them through identity's announced link
+([`POST /api/v1/identity/owner/users/{id}/sso-link`](/en/admin/authentication/#connect-an-existing-user-to-the-provider)).
+The module offers two **Owner reads** of the tenant so that the Owner picks an account
+rather than types it: the **directory search**, behind the picker in the connect
+dialog, and the **exact matches**, behind the review that connects a whole workspace.
+Neither writes anything: connecting stays identity's endpoint, which the host calls
+once per chosen pair, and identity's refusals (`sso_link_taken`, `account_linked`,
+`account_pending`) still decide what may be connected. No migration.
+
+Both are under `policy:Owner+OwnerManagement` — an Owner, with a second factor while
+`OWNERS_REQUIRE_MFA` is on — like the connection's writes, since they read the whole
+tenant and identity's addresses; a holder of `entra:manage` alone, or a SystemAdmin who
+is not an Owner, is refused 403 by the router. Each has a rate limit of its own per
+client address: the search `entra-directory`, 60 a minute (a debounced picker asks once
+per pause in typing), the matches `entra-matches`, 6 a minute (a review an Owner opens,
+not a list they refresh); 429 beyond.
+
+### What the module reads of identity
+
+The users to connect and who holds an account belong to identity, so the module reads
+them through **`contracts.SSOConnections`**, a single-provider port identity provides
+(`Deps.SSOConnections`), never identity's tables
+([module boundaries](/en/contributing/module-boundaries/) rules 5 and 12):
+
+- `Unconnected` — every user who is not pending and has neither an OIDC link nor an
+  announced link under the configured issuer, the caller excluded (an Owner connects
+  themselves by signing in), in the order the Owner's user list shows them: Owners
+  first, then by display name. Each is the user's id, address, employee number and
+  whether they are disabled; an address identity made up for an account the provider
+  created is answered empty. While OIDC is off it answers `ErrSSONotConfigured`.
+- `KeyHolders` — for each account's object id and principal name, who already holds
+  it under the configured issuer, the first of: `expected`, an Owner's announced link
+  for an existing user; `mapped`, a SCIM mapping whose `userName` is the principal
+  name or whose `externalId` is the object id; `account`, an account Staff announced
+  for a person yet to arrive, with no user. While OIDC is off it answers nothing.
+
+The port is **provider-gated**: identity checks the request in the context against
+`policy:Owner+OwnerManagement` itself and answers nothing, not an error, to anyone
+else and to a context with no request. **An OIDC link cannot be attributed to a
+directory account**: it holds the token's `sub`, which Graph never returns, so an
+account whose person has already signed in is not marked as held. That user is linked,
+so never a candidate, and the matches never propose them; the search may show their
+account unmarked, and identity's `sso_link_taken` and `account_linked` refuse what must
+be refused.
+
+**A user's address never leaves the module.** It is compared with the tenant's
+accounts and goes nowhere else: not on the wire (neither read answers a Vantigo user's
+address), not in a log, an event or an error. The Graph client logs a refused call by
+its path, never its query, so neither a search nor a filter of addresses reaches the
+log either.
+
+### The directory search
+
+`GET /api/v1/entra/directory/users?q=` searches the tenant's accounts by display name,
+mail and principal name. `q` loses every `"` and `\` (it is quoted into the search) and
+must then be **2 to 100 characters** once trimmed, else 400 `invalid_request` with the
+field `q`. The module asks Graph:
+
+```http
+GET /users?$search="displayName:<q>" OR "mail:<q>" OR "userPrincipalName:<q>"
+    &$select=id,displayName,mail,userPrincipalName,employeeId,accountEnabled
+    &$orderby=displayName&$top=25&$count=true
+ConsistencyLevel: eventual
+```
+
+— an advanced query, which Graph answers only with the `ConsistencyLevel` header. The
+answer, `EntraDirectoryUsers`, is **at most 25** accounts by display name, each its
+`objectId`, `displayName`, `userPrincipalName`, `mail` and `employeeId` when set,
+`accountEnabled`, and `holder` (`kind` `expected`, `mapped` or `account`, with the
+`userId` for the first two) when `KeyHolders` says somebody holds it. When 25 come back
+there may be more, and the picker asks the Owner to narrow the search. An account
+another user or Staff holds is shown but cannot be picked; one the user being connected
+holds already can.
+
+### The exact matches
+
+`GET /api/v1/entra/directory/matches` reads `Unconnected` — **at most 1000** users, in
+identity's order; `truncated` is true when more were waiting — and asks the tenant for
+every account any of their keys could match: `mail in (…)` and
+`userPrincipalName in (…)` by the users' addresses (trimmed, lower-cased, each once),
+and `employeeId in (…)` by the employee numbers of those who have one, in filters of
+**15 values** each (a `'` doubled, as OData quotes), `$top=999`, `$count=true` and
+`ConsistencyLevel: eventual`. It then applies the rule, **exact only**:
+
+- A user's key matches an account when the user's address equals the account's
+  `mail` (by `mail`) or its `userPrincipalName` (by `userPrincipalName`), ignoring case
+  and surrounding space, or the user's employee number equals the account's
+  `employeeId` (by `employeeId`), trimmed and ignoring case. An empty address — one
+  identity made up — and an empty number match nothing.
+- A user whose keys matched no account is neither proposed nor counted.
+- A user is **proposed** when their keys matched **exactly one** account and no other
+  user's key matched that account; `matchedBy` lists every key that matched it, in the
+  order `mail`, `userPrincipalName`, `employeeId`.
+- A user is **ambiguous** — left out and counted — when their keys matched two
+  accounts or more, or one account that another user's key matched too (whether or not
+  that user matched further accounts). Nobody is proposed by a guess between two, and
+  there is no fuzzy match.
+- A proposed account that somebody already holds (`KeyHolders`: an announced link, a
+  SCIM mapping or an account Staff announced) is then left out, and not counted as
+  ambiguous.
+
+The answer, `EntraDirectoryMatches`, is the `matches` — each `{userId, account,
+matchedBy}`, the account as the search answers it without a holder, in identity's
+order — with `candidates`, how many users were read, `ambiguous`, how many were left
+out as above, and `truncated`. The review proposes each with a checkbox, all checked
+but a disabled account's; **Connect selected** announces the chosen pairs one at a time
+through identity, and each is fulfilled at the person's next sign-in or the provider's
+next push.
+
+The search's and the matches' refusals:
+
+| Code | Status | When |
+| --- | --- | --- |
+| `invalid_request` | 400 | The search: `q` is not 2 to 100 characters once trimmed, under `errors.q`. |
+| `sso_not_configured` | 409 | The matches: single sign-on is off, so there is no issuer to connect anybody under. |
+| `credential_invalid` | 503 | No secret fetched a token, or no tenant or client is saved — as the licences' read answers it. |
+| `tenant_unreachable` | 503 | The tenant did not answer. |
+| `throttled` | 503 | Graph throttled the read twice in a row. |
+
 ## The events
 
 Every write the module makes, in the tenant or to its own connection, is a row in
@@ -1129,12 +1254,15 @@ what a client keys off, never the words:
 | `credential_in_use` | 409 | Revoking the only valid secret while the module keeps accounts. |
 | `adoption_confirmed` | 409 | Confirming an account confirmed already, or one the module created. |
 | `version_mismatch` | 412 | The connection was written since the `If-Match` version. |
-| `credential_invalid` | 503 | `GET /connection/skus`: no secret fetched a token, or no tenant or client is saved. |
-| `tenant_unreachable` | 503 | `GET /connection/skus`: the tenant did not answer. |
+| `credential_invalid` | 503 | `GET /connection/skus`, `GET /directory/users`, `GET /directory/matches`: no secret fetched a token, or no tenant or client is saved. |
+| `tenant_unreachable` | 503 | `GET /connection/skus`, `GET /directory/users`, `GET /directory/matches`: the tenant did not answer. |
+| `throttled` | 503 | `GET /directory/users`, `GET /directory/matches`: Graph throttled the read twice in a row. |
+| `sso_not_configured` | 409 | `GET /directory/matches` while single sign-on is off. |
+| `invalid_request` | 400 | `GET /directory/users`: `q` is not 2 to 100 characters once trimmed, under `errors.q`. |
 
 A request the server could not decode is a bare 400 with neither. The 401 (no session),
 the 403 (the permission, or the Owner policy — an Owner without a second factor
-included) and the 429 (`entra-owner`, `entra-skus`) are the router's.
+included) and the 429 (`entra-owner`, `entra-skus`, `entra-directory`, `entra-matches`) are the router's.
 
 ## Testing
 
@@ -1145,7 +1273,7 @@ delete, the manager, sessions, licences, the pass, the photo — a JPEG of at mo
 413 beyond, 400 for another type, 403 when told the photo is denied), groups — the create with
 `owners@odata.bind`, the nickname filter, owners and members by `$ref`, paged members,
 `$batch` of twenty, the team after a delay, and a trap that fails a test when a member's
-removal lacks `/$ref` — and can be told to throttle, fail the next call, refuse a sensitive action for a privileged user
+removal lacks `/$ref`; the directory's `$search` over display name, mail and principal name (a `$search` or a `$count` without `ConsistencyLevel: eventual` is 400 `Request_UnsupportedQuery`, as Graph answers it), `$orderby=displayName`, `$top`, and `in` filters on `mail`, `userPrincipalName` and `employeeId` — and can be told to throttle, fail the next call, refuse a sensitive action for a privileged user
 or a missing role, or answer a synchronised user. It is wired through
 `modtest.WithTransport`, so the module's real client runs against it. It lives under the
 module's own package and only the module's tests import it.
@@ -1183,6 +1311,8 @@ All under `/api/v1/entra`.
 | `POST /accounts/{objectId}/confirm` | `entra:manage` |
 | `GET /groups` | `entra:manage` |
 | `POST /groups/{objectId}/confirm` | `entra:manage` |
+| `GET /directory/users?q=` | `policy:Owner+OwnerManagement`; `entra-directory` (60 a minute per client address, its own bucket) |
+| `GET /directory/matches` | `policy:Owner+OwnerManagement`; `entra-matches` (6 a minute per client address, its own bucket) |
 
 The request and response shapes are in the contract,
 [`openapi/entra.yaml`](https://github.com/vantigo-io/vantigo/blob/main/openapi/entra.yaml),

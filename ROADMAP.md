@@ -1851,8 +1851,8 @@ Two migrations, `00070_identity_managed_avatars.sql` and `00071_staff_photo_push
 
 ### Later
 
-**The Entra module** has [a section of its own](#entra); its phase 1 is done and phase 2 is in
-flight; Staff phase 2 is built.
+**The Entra module** has [a section of its own](#entra); its phases 1 and 2 are done; Staff phase 2 is
+built.
 
 **Planning** — one module owning every booking of a person's time, reading Projects and
 Staff — has [a section of its own](#planning); its phase 1, allocations, requests and
@@ -2164,7 +2164,7 @@ left untouched. No migration.
 *Unblocks:* Staff as the authority for who exists in the company's Microsoft tenant;
 the joiner, mover and leaver without a second place to type.
 
-### Phase 2 — Connecting existing users
+### Phase 2 — Connecting existing users (done)
 
 Phase 1 made the tenant follow the register, but a company that turns single sign-on on
 later, with a workspace full of users who already sign in with a password, got nothing
@@ -2196,14 +2196,26 @@ connection…*, *Cancel the connection* and *Disconnect from single sign-on…*.
 *Unblocks:* turning single sign-on on in a workspace that already has users, one
 person at a time, with the Owner typing the principal name.
 
-**B — The directory picker**, next, on `feat/entra-directory-picker`: in the Entra
-module, a Graph search (`$search` with `ConsistencyLevel: eventual`) behind
-`GET /api/v1/entra/directory/users?q=` for an Owner, and
-`GET /api/v1/entra/directory/matches` proposing, for every unconnected user, the
-directory account whose mail or principal name equals their address or whose
-`employeeId` equals their employee number — exact matches only; the picker in the
-connect dialog in place of the typed name; and a review list with **Connect selected**,
-the bulk connect. No migration.
+**B — The directory picker (done)** on `feat/entra-directory-picker`
+([the plan](docs/superpowers/plans/2026-10-27-entra-directory-picker.md);
+[Microsoft Entra ID](docs/src/content/docs/en/reference/entra.md#connecting-existing-users);
+[the user guide](docs/src/content/docs/en/user/entra.md#connect-existing-users)): two
+Owner reads in the Entra module under `policy:Owner+OwnerManagement` —
+`GET /api/v1/entra/directory/users?q=`, a Graph `$search` over display name, mail and
+principal name with `ConsistencyLevel: eventual`, at most 25 hits, each marked with who
+already holds it (an announced link, a SCIM mapping, an account Staff announced), rate
+limited `entra-directory` (60 a minute); and `GET /api/v1/entra/directory/matches`,
+which proposes, for every user not yet connected (at most 1000, `truncated` beyond),
+the one account whose mail or principal name equals their address or whose
+`employeeId` equals their employee number, when every key that matched points to that
+account, nobody holds it and no other user matched it — exact matches only, a user
+with more than one account in play counted `ambiguous` — rate limited `entra-matches` (6 a minute). What it reads of
+identity comes through a new identity-provided port, `contracts.SSOConnections`,
+provider-gated for an Owner (`Unconnected`, `ErrSSONotConfigured` while OIDC is off;
+`KeyHolders`); the addresses never leave the module. The connect dialog gains the
+picker above the typed principal name, and the Users screen a *Find matches in the
+directory…* review with **Connect selected**, which announces each chosen pair through
+delivery A's endpoint. No migration.
 
 *Unblocks:* connecting a whole workspace in one review, not user by user.
 

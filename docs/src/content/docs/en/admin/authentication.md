@@ -539,6 +539,18 @@ rules, `account_locked` until they are enabled. An Owner or a SystemAdmin may be
 announced, and the local MFA rule stands. An announced link outranks an announced
 account for the same arrival, and an arrival never fulfils both.
 
+**With the Entra module.** While `entra` is enabled the Users screen picks the
+directory account from the tenant instead of having it typed, and offers a review of
+every user who matches exactly one account (see
+[connecting existing users](/en/reference/entra/#connecting-existing-users)); each
+chosen pair is announced through this same endpoint. What the module needs of identity
+for that — the users not yet connected, with the address and employee number they are
+matched by, and who already holds a directory account's keys — identity answers through
+the port `contracts.SSOConnections`, and only to an Owner under
+`policy:Owner+OwnerManagement`: a request from anyone else gets nothing, and while OIDC
+is off there is nothing to connect under (`sso_not_configured`). The addresses are
+compared inside the Entra module and never answered, logged or recorded.
+
 ### Disconnect a user
 
 `DELETE /api/v1/identity/owner/users/<id>/sso-link` withdraws the user's announced link
