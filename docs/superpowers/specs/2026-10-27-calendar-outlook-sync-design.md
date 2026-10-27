@@ -318,14 +318,132 @@ whatever its date (`Find` with no bound), and every mapped one besides. Only
 provider unusable or a failure keeps the clean-up owed on the backoff, with the
 refusal's code as the row's error.
 
-### O9 — B: Outlook's busy time in Vantigo (outline)
+### O9 — B: Outlook's busy time in Vantigo
 
-A delta per person over the same window (`/users/{id}/calendarView/delta`), on the same
-worker; events carrying our marker are skipped; the rest stored as `calendar.mailbox_busy
-(user_id, event_id, starts_at, ends_at | dates, show_as)` — never subject or body. A new
-kind `calendar.outlook` beside the person's own items and in `a colleague's calendar` as
-busy; Planning reads it as availability through a new `CalendarSource`-like busy read.
-`Calendars.ReadWrite` already covers it.
+Revised for delivery B on 2026-10-27, after a Microsoft Learn check of the delta
+(research §3, *Delta, as checked for B*). The busy time is read back on the same
+worker, stored as times and nothing else, and shown in three places: the person's own
+calendar, a colleague's, and Planning's board.
+
+**O9.1 — The read.** Each sync that worked (O7 step 8 reached with no refusal or
+failure) goes on to read the person's **default calendar** with
+`GET /users/{id}/calendarView/delta` — the only calendar whose delta v1.0 documents, and
+the one Exchange computes free/busy from. The push comes first, so the map already holds
+the copies just written. The delta's window is fixed in its token, so the read keeps
+a window of its own, wider than the push's: from 30 days before today to **210** days
+after, set when a delta starts and stored with its link; a delta is started afresh when
+there is no link, when the stored window ends before today + 180 days (about once a
+month), and when Graph refuses the link (O9.4). The read takes the pages Graph answers
+(`Prefer: odata.maxpagesize=50`, UTC) until the `deltaLink`, at most 40 pages a call; a
+call cut short answers the `nextLink`, which is stored, and the worker calls again while
+the person's deadline lasts — the next sync takes it up otherwise. The first call of a
+fresh delta empties the person's busy rows in the transaction that writes its first
+page.
+
+**O9.2 — Our own copies are skipped, by the map and one read.** A delta answers no
+extended property (`$expand` and `$select` are refused), so the marker cannot be seen
+in it. An event is ours when (a) its id is an `event_id` of the person's
+`calendar.mailbox_events` — every copy written under `target = default`, since a single
+event's instance in a calendar view carries the event's id — or (b) for an event that
+is not, would be stored, and is a single instance (an occurrence or exception belongs
+to a series, and the push never writes one), the provider's new **`Marked`** read
+answers it: a `$batch` of `GET /users/{id}/events/{eid}?$select=id&$expand=
+singleValueExtendedProperties($filter=id eq '<marker>')`, twenty to a request, answering
+the ids carrying this installation's marker with their keys. (b) is what catches a copy
+whose create's outcome was unknown, one forgotten as it slid before the push's window,
+and anything left over from a target change. `transactionId` was rejected: A's copies
+were written without one, and since Graph de-duplicates creates on it, a copy re-made
+after a `Gone` would collide with it. Another installation's copies are not ours: they
+are the person's busy time like any other event.
+
+**O9.3 — What is stored.** `calendar.mailbox_busy (user_id, event_id, all_day,
+starts_at, ends_at | start_date, end_date (inclusive), show_as, updated_at)`, primary key
+`(user_id, event_id)` — never a subject, body, location, organizer or attendee; those
+arrive in the delta and are not decoded. An event is stored unless it is ours (O9.2),
+`free`, or cancelled; a change to any of those deletes the row, as does `@removed`
+(whatever its reason: an event moved out of the window is answered so). `show_as` is
+`busy`, `tentative`, `oof` or `workingElsewhere` (an unknown value is `busy`). An all-day
+event's dates are its start's and end's calendar dates (the end exclusive in Graph,
+stored inclusive), rounded to the nearest midnight should Graph answer them off it. At
+most **5000** rows a person; past it a new event is not stored and the fact logged. On
+`mailbox_sync`: `busy_link` (the next or delta link), `busy_from`, `busy_to` (the
+window it was started over) and `busy_synced_at`.
+
+**O9.4 — The contract.** `contracts.MailboxCalendar` gains two calls, same lock
+discipline (rule 14), both refused under `cleanup` with `ErrMailboxUnavailable` (a read
+is never needed to remove copies):
+
+```go
+Delta(ctx, mailbox string, from, to time.Time, link string) (MailboxDelta, error)
+Marked(ctx, mailbox string, eventIDs []string) ([]MailboxEventRef, error) // ≤ 100 ids
+type MailboxDelta struct { Changes []MailboxChange; Link string; Done bool }
+type MailboxChange struct {
+    EventID string; Removed, Series, Cancelled, AllDay bool
+    StartDate, EndDate, StartsAt, EndsAt time.Time; ShowAs string
+}
+var ErrMailboxDeltaExpired // the link is refused: start the delta again
+```
+
+`from`/`to` are used only when `link` is `""`. A `link` the provider did not answer for
+this mailbox — not Graph's `…/users/{oid}/calendarView/delta?` — is refused, so a stored
+link can point it nowhere else. `ErrMailboxDeltaExpired` is Graph's `410 Gone`, or a
+4xx whose code is `syncStateNotFound`, `syncStateInvalid`, `resyncRequired` or
+`ErrorInvalidSyncStateData`; the worker forgets the link and the rows and starts again,
+once a sync. The rest of the refusals are A's.
+
+**O9.5 — The person's own calendar.** A new kind **`calendar.outlook`** (module
+`calendar`) on `GET /items`, listed in `GET /meta`'s `sources` while the caller's sync
+is on: each stored row in the window as an item with no title and
+`outlook: {showAs}`, which the screen labels *Busy in Outlook* / *Opptatt i Outlook*
+(*Tentative*, *Out of office*, *Working elsewhere* by `showAs`). Its id is the first 16
+hex of the SHA-256 of the event id — Graph's ids never reach the browser.
+
+**O9.6 — The person's own titles: deferred.** Showing a person their own Outlook
+titles means a Graph read on the request path — a network call under a person's
+request, per window shown, through the provider's rate limit — or storing them, which
+B does not. It is left to delivery C, which reads events whole for the write-back
+anyway; the item's shape (no title, `outlook.showAs`) leaves room for it.
+
+**O9.7 — A colleague's calendar.** `GET /colleagues/{userId}/items`, behind
+`calendar:view-colleagues` as today, answers the colleague's rows of `show_as` `busy` or
+`oof` — tentative and working-elsewhere are not busy, as a tentative Vantigo answer is
+not shown there today — as `calendar.outlook` items with no title, while the
+colleague's sync is on.
+
+**O9.8 — Planning: `contracts.CalendarBusy`, provider-gated.** A new single-provider
+slot `CalendarBusy` (`Module.CalendarBusy`, `Deps.CalendarBusy`), filled by the calendar
+— the first contract it provides — and read by Planning:
+
+```go
+type CalendarBusy interface {
+    Busy(ctx context.Context, userIDs []uuid.UUID, from, to time.Time) (map[uuid.UUID]BusyTime, error)
+}
+type BusyTime struct { Spans []TimeSpan; Days []DateSpan } // merged
+```
+
+A user's busy time over `from..to` (civil dates, inclusive, at most 400 days, at most
+500 users): the appointments a colleague's calendar shows as busy (owned or accepted,
+`busy`, not cancelled, each occurrence) and the Outlook rows of `busy` or `oof` while the
+user's sync is on — timed ones as merged instants, all-day ones as merged date spans.
+**Provider-gated** (rule 12): the calendar answers the principal in `ctx` under a
+request — their own id for `calendar:access`, anyone else's for
+`calendar:view-colleagues` — and nothing, not an error, for an id the caller may not
+see or a context with no request; the rule is the calendar's own colleague rule, which
+Planning cannot know. Planning's board adds, per person and week, **`busyHours`** (the
+merged timed spans inside the week, in the business zone) and **`busyDays`** (the
+all-day busy days in it), asked for the people with a `UserID` before anything is shaped
+and never inside a transaction. They are shown, not subtracted: a meeting about the
+project is often the booking's own time, so available, free and load stay Staff's and
+Planning's figures. Absent when the calendar answers nothing (the module off, the
+caller without the permission).
+
+**O9.9 — Turning off and the clean-up.** Every clean-up (O8) and every result that
+leaves the sync `off` or `unavailable` forgets the person's busy rows and their delta
+link and window; a failure on the backoff keeps them. The reads join `mailbox_sync`
+and show rows only while `enabled`.
+
+*As built:* see the plan
+[`2026-10-27-calendar-outlook-busy.md`](../plans/2026-10-27-calendar-outlook-busy.md).
 
 ### O10 — C: the write-back (outline)
 
@@ -360,7 +478,11 @@ Outlook (occurrences only, O6); categories; reminders; a holiday calendar in Out
   calendar and Entra user guides and the Entra and calendar administration pages in both
   languages, Staff's reference (the read), module boundaries (the slot, the sixth
   direction, rule 12's widened exception), the roadmap.
-- **B**: O9. **C**: O10. **D**: O11.
+- **B** (`feat/calendar-outlook-busy`): O9. Migration `00083_calendar_mailbox_busy.sql`.
+  Docs: the calendar, Entra and Planning reference, module boundaries (the `CalendarBusy`
+  slot, rule 12, rule 14's reads), the calendar and Planning user guides in both
+  languages, the roadmap.
+- **C**: O10. **D**: O11.
 
 ## Testing
 
