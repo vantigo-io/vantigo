@@ -214,6 +214,16 @@ type Deps struct {
 	// calendar calls it, never inside a transaction. nil when no enabled
 	// module provides one (entra disabled).
 	MailboxCalendar contracts.MailboxCalendar
+	// CalendarBusy is the calendar's busy time of people, provider-gated
+	// (see contracts.CalendarBusy, calendar Outlook sync design O9.8).
+	// Compose sets it, on every module's Deps copy, from whichever enabled
+	// module declares Module.CalendarBusy, last of the single-provider
+	// slots — after the mailbox calendar — so its provider may read the rest
+	// of Deps while it is built. Workers does not: no worker reads it. A
+	// preset value is kept when no enabled module provides one (the seam
+	// modtest.WithCalendarBusy fills). Only Planning reads it, never inside a
+	// transaction. nil when the calendar is disabled.
+	CalendarBusy contracts.CalendarBusy
 	// HTTPTransport is the RoundTripper a module's own outbound HTTP client
 	// (customers' Brreg lookup, so far the only one) dials through. nil in
 	// production, meaning http.DefaultTransport; a test harness sets it to a
@@ -431,4 +441,10 @@ type Module struct {
 	// Workers call it after the identity provisioners — it reads nothing
 	// while it is built — and put the result on every module's Deps.
 	MailboxCalendar func(Deps) contracts.MailboxCalendar
+	// CalendarBusy builds this module's contracts.CalendarBusy, if it answers
+	// people's busy time to other modules (calendar Outlook sync design
+	// O9.8). At most one enabled module may set it; Compose calls it last of
+	// the single-provider slots, after the mailbox calendar, and puts the
+	// result on every module's Deps. Workers never calls it.
+	CalendarBusy func(Deps) contracts.CalendarBusy
 }

@@ -27,7 +27,8 @@
 // and subscriptions_worker.go (the poll). The Outlook sync (calendar Outlook
 // sync design) is mailbox_sync.go (the person's setting and the nudge),
 // mailbox_push.go (what is pushed, and how it looks) and mailbox_worker.go
-// (the calendar-mailbox-sync worker and the clean-up).
+// (the calendar-mailbox-sync worker and the clean-up); busy.go is the
+// contracts.CalendarBusy the module provides.
 package calendar
 
 import (
@@ -94,16 +95,19 @@ var subscriptionFetchLimit = ratelimit.Policy{Name: "calendar-subscription-fetch
 // Module is calendar as a platform module: its contract mounted under
 // /api/v1/calendar/, its two permissions in the composed catalog and its
 // workers — calendar-cancellations, calendar-subscriptions and
-// calendar-mailbox-sync. It provides no contract to anyone; it reads
-// Deps.CalendarSources, Deps.Users, Deps.Calendar and, when wired,
-// Deps.Directory, Deps.Projects and Deps.Workforce, mails through
-// Deps.SMTPSend and writes people's mailboxes through Deps.MailboxCalendar.
+// calendar-mailbox-sync. It provides one contract, contracts.CalendarBusy
+// (busy.go, calendar Outlook sync design O9.8): people's busy time, which
+// Planning's board reads. It reads Deps.CalendarSources, Deps.Users,
+// Deps.Calendar and, when wired, Deps.Directory, Deps.Projects and
+// Deps.Workforce, mails through Deps.SMTPSend and writes and reads people's
+// mailboxes through Deps.MailboxCalendar.
 func Module() module.Module {
 	return module.Module{
-		Name:        "calendar",
-		Permissions: permissions,
-		Mount:       mount,
-		Workers:     workers,
+		Name:         "calendar",
+		Permissions:  permissions,
+		Mount:        mount,
+		Workers:      workers,
+		CalendarBusy: newCalendarBusy,
 	}
 }
 

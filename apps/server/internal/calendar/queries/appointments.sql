@@ -182,3 +182,45 @@ WHERE a.transparency = 'busy'
     )
   )
 ORDER BY a.id;
+
+-- name: ListBusyAppointmentsForUsers :many
+-- ListBusyAppointmentsForUsers is ListColleagueBusyAppointmentsInWindow for
+-- a batch of people (calendar Outlook sync design O9.8): the appointments
+-- that block each one's time — owned, or attended and accepted, with
+-- transparency busy and not cancelled — in the window as
+-- ListAppointmentsInWindow judges it, one row per person and appointment,
+-- busy_user_id naming whose time it blocks: an appointment one person owns
+-- and another accepted is answered for both, and once for a person who both
+-- owns and accepted it.
+WITH holds AS (
+    SELECT o.id AS appointment_id, o.owner_user_id AS user_id
+    FROM calendar.appointments o
+    WHERE o.owner_user_id = ANY(@user_ids::uuid[])
+    UNION
+    SELECT att.appointment_id, att.user_id
+    FROM calendar.appointment_attendees att
+    WHERE att.user_id = ANY(@user_ids::uuid[]) AND att.status = 'accepted'
+)
+SELECT h.user_id AS busy_user_id, sqlc.embed(a)
+FROM holds h
+JOIN calendar.appointments a ON a.id = h.appointment_id
+WHERE a.transparency = 'busy'
+  AND a.cancelled_at IS NULL
+  AND (
+    (a.rrule IS NULL AND (
+        (NOT a.all_day AND a.starts_at < @to_at::timestamptz AND a.ends_at > @from_at::timestamptz)
+        OR (a.all_day AND a.start_date <= @to_date::date AND a.end_date >= @from_date::date)
+    ))
+    OR (a.rrule IS NOT NULL
+        AND (a.starts_at < @to_at::timestamptz OR a.start_date <= @to_date::date)
+        AND (a.series_last_date IS NULL OR a.series_last_date >= @from_date::date))
+    -- An occurrence moved into the window from anywhere — before the series
+    -- starts, or past its last day.
+    OR EXISTS (
+        SELECT 1 FROM calendar.appointment_exceptions e
+        WHERE e.appointment_id = a.id AND NOT e.cancelled
+          AND ((e.starts_at < @to_at::timestamptz AND e.ends_at > @from_at::timestamptz)
+            OR (e.start_date <= @to_date::date AND e.end_date >= @from_date::date))
+    )
+  )
+ORDER BY h.user_id, a.id;

@@ -353,6 +353,113 @@ func (q *Queries) ListAppointmentsInWindow(ctx context.Context, arg ListAppointm
 	return items, nil
 }
 
+const listBusyAppointmentsForUsers = `-- name: ListBusyAppointmentsForUsers :many
+WITH holds AS (
+    SELECT o.id AS appointment_id, o.owner_user_id AS user_id
+    FROM calendar.appointments o
+    WHERE o.owner_user_id = ANY($5::uuid[])
+    UNION
+    SELECT att.appointment_id, att.user_id
+    FROM calendar.appointment_attendees att
+    WHERE att.user_id = ANY($5::uuid[]) AND att.status = 'accepted'
+)
+SELECT h.user_id AS busy_user_id, a.id, a.owner_user_id, a.title, a.description, a.location, a.all_day, a.start_date, a.end_date, a.starts_at, a.ends_at, a.time_zone, a.visibility, a.transparency, a.rrule, a.series_last_date, a.customer_id, a.project_id, a.ical_uid, a.sequence, a.revision, a.created_at, a.updated_at, a.cancelled_at
+FROM holds h
+JOIN calendar.appointments a ON a.id = h.appointment_id
+WHERE a.transparency = 'busy'
+  AND a.cancelled_at IS NULL
+  AND (
+    (a.rrule IS NULL AND (
+        (NOT a.all_day AND a.starts_at < $1::timestamptz AND a.ends_at > $2::timestamptz)
+        OR (a.all_day AND a.start_date <= $3::date AND a.end_date >= $4::date)
+    ))
+    OR (a.rrule IS NOT NULL
+        AND (a.starts_at < $1::timestamptz OR a.start_date <= $3::date)
+        AND (a.series_last_date IS NULL OR a.series_last_date >= $4::date))
+    -- An occurrence moved into the window from anywhere — before the series
+    -- starts, or past its last day.
+    OR EXISTS (
+        SELECT 1 FROM calendar.appointment_exceptions e
+        WHERE e.appointment_id = a.id AND NOT e.cancelled
+          AND ((e.starts_at < $1::timestamptz AND e.ends_at > $2::timestamptz)
+            OR (e.start_date <= $3::date AND e.end_date >= $4::date))
+    )
+  )
+ORDER BY h.user_id, a.id
+`
+
+type ListBusyAppointmentsForUsersParams struct {
+	ToAt     time.Time
+	FromAt   time.Time
+	ToDate   pgtype.Date
+	FromDate pgtype.Date
+	UserIds  []uuid.UUID
+}
+
+type ListBusyAppointmentsForUsersRow struct {
+	BusyUserID          uuid.UUID
+	CalendarAppointment CalendarAppointment
+}
+
+// ListBusyAppointmentsForUsers is ListColleagueBusyAppointmentsInWindow for
+// a batch of people (calendar Outlook sync design O9.8): the appointments
+// that block each one's time — owned, or attended and accepted, with
+// transparency busy and not cancelled — in the window as
+// ListAppointmentsInWindow judges it, one row per person and appointment,
+// busy_user_id naming whose time it blocks: an appointment one person owns
+// and another accepted is answered for both, and once for a person who both
+// owns and accepted it.
+func (q *Queries) ListBusyAppointmentsForUsers(ctx context.Context, arg ListBusyAppointmentsForUsersParams) ([]ListBusyAppointmentsForUsersRow, error) {
+	rows, err := q.db.Query(ctx, listBusyAppointmentsForUsers,
+		arg.ToAt,
+		arg.FromAt,
+		arg.ToDate,
+		arg.FromDate,
+		arg.UserIds,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListBusyAppointmentsForUsersRow
+	for rows.Next() {
+		var i ListBusyAppointmentsForUsersRow
+		if err := rows.Scan(
+			&i.BusyUserID,
+			&i.CalendarAppointment.ID,
+			&i.CalendarAppointment.OwnerUserID,
+			&i.CalendarAppointment.Title,
+			&i.CalendarAppointment.Description,
+			&i.CalendarAppointment.Location,
+			&i.CalendarAppointment.AllDay,
+			&i.CalendarAppointment.StartDate,
+			&i.CalendarAppointment.EndDate,
+			&i.CalendarAppointment.StartsAt,
+			&i.CalendarAppointment.EndsAt,
+			&i.CalendarAppointment.TimeZone,
+			&i.CalendarAppointment.Visibility,
+			&i.CalendarAppointment.Transparency,
+			&i.CalendarAppointment.Rrule,
+			&i.CalendarAppointment.SeriesLastDate,
+			&i.CalendarAppointment.CustomerID,
+			&i.CalendarAppointment.ProjectID,
+			&i.CalendarAppointment.IcalUid,
+			&i.CalendarAppointment.Sequence,
+			&i.CalendarAppointment.Revision,
+			&i.CalendarAppointment.CreatedAt,
+			&i.CalendarAppointment.UpdatedAt,
+			&i.CalendarAppointment.CancelledAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listCancelledDue = `-- name: ListCancelledDue :many
 SELECT a.id
 FROM calendar.appointments a

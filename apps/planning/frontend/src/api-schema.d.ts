@@ -1315,6 +1315,13 @@ export interface components {
              * @description Hours booked by confirmed allocations.
              */
             booked: number;
+            /** @description The days of the week the calendar shows the person busy all day — an all-day appointment, or an all-day Outlook event shown as busy or out of office (calendar Outlook sync design O9.8). Shown, not subtracted: available, free and loadPercent do not count it. Absent when the calendar answers nothing for the person (the calendar off, the caller without the permission to see their calendar, no user linked). */
+            busyDays?: number;
+            /**
+             * Format: double
+             * @description Hours the calendar shows the person busy in the week — their appointments that block time and their Outlook events shown as busy or out of office, merged so an overlap counts once, in the business time zone, rounded to 0.1 (calendar Outlook sync design O9.8). Shown, not subtracted: a meeting about the project is often the booking's own time, so available, free and loadPercent do not count it. Absent when the calendar answers nothing for the person, as busyDays.
+             */
+            busyHours?: number;
             /**
              * Format: double
              * @description Hours: the position's hours a week over five on each weekday that is not a public holiday.

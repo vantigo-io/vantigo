@@ -123,7 +123,7 @@ export interface paths {
         };
         /**
          * A colleague's calendar
-         * @description A colleague's calendar in a window (calendar design D6): their appointments — owned, or attended and accepted — that block time (transparency busy), expanded as GET /items does. A shared one carries its title and location; a private one carries an empty title, no subtitle and visibility private, which the app labels Busy. No provider is asked and sources is empty. The caller's own id answers as their own calendar would, private titles included.
+         * @description A colleague's calendar in a window (calendar design D6): their appointments — owned, or attended and accepted — that block time (transparency busy), expanded as GET /items does. A shared one carries its title and location; a private one carries an empty title, no subtitle and visibility private, which the app labels Busy. While the colleague's Outlook sync is on, the events of their Outlook calendar shown as busy or out of office come too, as calendar.outlook items with no title (calendar Outlook sync design O9.7). No provider is asked and sources is empty. The caller's own id answers as their own calendar would, private titles included.
          */
         get: operations["getCalendarColleaguesByUserIdItems"];
         put?: never;
@@ -275,7 +275,7 @@ export interface paths {
         };
         /**
          * The calendar's settings
-         * @description The business time zone and today in it, whether the caller may see colleagues' calendars, whether invitations are mailed, and every kind the enabled modules' calendar sources declare.
+         * @description The business time zone and today in it, whether the caller may see colleagues' calendars, whether invitations are mailed, and every kind the enabled modules' calendar sources declare — with calendar.subscription and calendar.outlook as CalendarMeta.sources says.
          */
         get: operations["getCalendarMeta"];
         put?: never;
@@ -631,7 +631,7 @@ export interface components {
             id: number;
             name: string;
         };
-        /** @description One thing on a person's calendar: an appointment's occurrence (kind calendar.appointment, with appointment set), a row another module projects through its calendar source (with path set), or an event of a calendar the person subscribes to (kind calendar.subscription, with subscription set — calendar feed design D8). An all-day item spans startDate..endDate inclusive; a timed one spans startsAt..endsAt, endsAt exclusive (equal to startsAt for a point in time, which the view draws at its default length). */
+        /** @description One thing on a person's calendar: an appointment's occurrence (kind calendar.appointment, with appointment set), a row another module projects through its calendar source (with path set), an event of a calendar the person subscribes to (kind calendar.subscription, with subscription set — calendar feed design D8), or an event of the person's Outlook calendar that blocks their time, read back by their Outlook sync (kind calendar.outlook, with outlook set and no title — calendar Outlook sync design O9.5). An all-day item spans startDate..endDate inclusive; a timed one spans startsAt..endsAt, endsAt exclusive (equal to startsAt for a point in time, which the view draws at its default length). */
         CalendarItem: {
             allDay: boolean;
             appointment?: components["schemas"]["CalendarItemAppointment"];
@@ -641,9 +641,9 @@ export interface components {
             endDate?: string;
             /** Format: date-time */
             endsAt?: string;
-            /** @description Stable within the kind. An appointment's "1001", or "1001:2026-11-03" for one occurrence of a series; a provider's row id; a subscription's "<subscription id>:<UID>", with ":<start>" after it for an occurrence of a rule (20261103T080000Z, or the date for an all-day one). */
+            /** @description Stable within the kind. An appointment's "1001", or "1001:2026-11-03" for one occurrence of a series; a provider's row id; a subscription's "<subscription id>:<UID>", with ":<start>" after it for an occurrence of a rule (20261103T080000Z, or the date for an all-day one); an Outlook event's the first 16 hex digits of the SHA-256 of its id in the mailbox, which never reaches the browser. */
             id: string;
-            /** @description calendar.appointment, calendar.subscription, or one of the kinds in sources. */
+            /** @description calendar.appointment, calendar.subscription, calendar.outlook, or one of the kinds in sources. */
             kind: string;
             /** @description The SPA route of the provider's record, for the link back. Absent on an appointment, which the sheet opens by id, and on a subscription's item, which opens nothing — the event's own URL is the other calendar's and is not followed. */
             path?: string;
@@ -654,8 +654,9 @@ export interface components {
             subscription?: components["schemas"]["CalendarItemSubscription"];
             /** @description One line — the customer's name, the project's code, the subscription's name. Absent when empty. */
             subtitle?: string;
-            /** @description Empty on a busy-only subscription's item, which the app labels Busy. */
+            /** @description Empty on a busy-only subscription's item, which the app labels Busy, and on an Outlook event, which the app labels by its outlook.showAs. */
             title: string;
+            outlook?: components["schemas"]["CalendarItemOutlook"];
         };
         /** @description What the view needs about the appointment behind an item. */
         CalendarItemAppointment: {
@@ -671,6 +672,11 @@ export interface components {
             recurring: boolean;
             transparency: components["schemas"]["AppointmentTransparency"];
             visibility: components["schemas"]["AppointmentVisibility"];
+        };
+        /** @description The Outlook event behind an item of kind calendar.outlook (calendar Outlook sync design O9.5): how it shows the person's time in Outlook — busy, tentative, oof (out of office) or workingElsewhere — which the app labels it by (Busy in Outlook, Tentative, Out of office, Working elsewhere). Nothing else of the event is stored or answered: a free or cancelled event is never an item. */
+        CalendarItemOutlook: {
+            /** @enum {string} */
+            showAs: "busy" | "tentative" | "oof" | "workingElsewhere";
         };
         /** @description The subscription behind an item of kind calendar.subscription (calendar feed design D8): what the app draws it by — its colour and its name — and whether it is busy only, in which case the item's title is empty and the app labels it Busy. */
         CalendarItemSubscription: {
@@ -699,7 +705,7 @@ export interface components {
             canViewColleagues: boolean;
             /** @description Whether invitations are mailed — the mail driver is smtp. When false, outside attendees are stored and marked not sent. */
             invitationsAvailable: boolean;
-            /** @description Every kind a wired provider declares, enabled modules only — for the filter, the legend and the colours — and calendar.subscription when the caller has at least one subscription. */
+            /** @description Every kind a wired provider declares, enabled modules only — for the filter, the legend and the colours — calendar.subscription when the caller has at least one subscription, and calendar.outlook while the caller's Outlook sync is on. */
             sources: components["schemas"]["CalendarSourceKind"][];
             /** @description The workspace's business time zone. */
             timeZone: string;
@@ -817,6 +823,11 @@ export interface components {
             /** @enum {string} */
             error?: "no_account" | "mailbox_denied" | "mailbox_gone" | "unavailable" | "failed";
             kinds: string[];
+            /**
+             * Format: date-time
+             * @description When the sync last read the caller's Outlook calendar to its end (calendar Outlook sync design O9.1). Absent before the first read, and once the sync is turned off.
+             */
+            busySyncedAt?: string;
             /** Format: date-time */
             lastSyncedAt?: string;
             /**

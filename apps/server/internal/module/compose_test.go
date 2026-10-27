@@ -2526,6 +2526,60 @@ func TestCompose_ResolvesTheMailboxCalendarSlot(t *testing.T) {
 	})
 }
 
+// fakeCalendarBusy is a contracts.CalendarBusy that answers nothing: these
+// tests only need distinct values to assert on, and what Deps carried when
+// it was built. The embedded nil interface panics on a call, which no test
+// here makes.
+type fakeCalendarBusy struct {
+	contracts.CalendarBusy
+	mailbox contracts.MailboxCalendar // whatever Deps carried when it was built
+}
+
+// The CalendarBusy slot (contracts.CalendarBusy, calendar Outlook sync
+// design O9.8) is a sole-provider slot, resolved last, after the mailbox
+// calendar, so its provider sees it on Deps; it reaches every module's Deps.
+// Two enabled providers are a compose error naming both.
+func TestCompose_ResolvesTheCalendarBusySlot(t *testing.T) {
+	specs := map[string]string{"alpha": alphaContract, "beta": betaContract}
+	t.Run("one provider", func(t *testing.T) {
+		mailbox := &fakeMailboxCalendar{key: "entra"}
+		var provider *fakeCalendarBusy
+		var got Deps
+		_, err := compose(Deps{Access: &fakeAccess{}}, fakeLoad(specs),
+			Module{Name: "beta", MailboxCalendar: func(Deps) contracts.MailboxCalendar { return mailbox }, Mount: staticHandler("beta")},
+			Module{Name: "alpha",
+				CalendarBusy: func(d Deps) contracts.CalendarBusy {
+					provider = &fakeCalendarBusy{mailbox: d.MailboxCalendar}
+					return provider
+				},
+				Mount: func(d Deps) (http.Handler, error) {
+					got = d
+					return staticHandler("alpha")(d)
+				}},
+		)
+		if err != nil {
+			t.Fatalf("compose: %v", err)
+		}
+		if provider == nil || got.CalendarBusy != provider {
+			t.Errorf("Deps.CalendarBusy = %v, want the provider's", got.CalendarBusy)
+		}
+		if provider != nil && provider.mailbox != mailbox {
+			t.Errorf("the provider was built seeing Deps.MailboxCalendar = %v, want the mailbox calendar resolved first", provider.mailbox)
+		}
+	})
+	t.Run("two providers", func(t *testing.T) {
+		provide := func(Deps) contracts.CalendarBusy { return &fakeCalendarBusy{} }
+		_, err := compose(Deps{Access: &fakeAccess{}}, fakeLoad(specs),
+			Module{Name: "alpha", CalendarBusy: provide, Mount: staticHandler("alpha")},
+			Module{Name: "beta", CalendarBusy: provide, Mount: staticHandler("beta")},
+		)
+		if err == nil || !strings.Contains(err.Error(), "calendar busy time") ||
+			!strings.Contains(err.Error(), "alpha") || !strings.Contains(err.Error(), "beta") {
+			t.Errorf("compose = %v, want an error naming calendar busy time, alpha and beta", err)
+		}
+	})
+}
+
 // fakeIdentityProvisioner is a contracts.IdentityProvisioner that answers
 // nothing but its key: these tests only need distinct values to collect and
 // assert on, and what Deps carried when each was built. The embedded nil

@@ -77,6 +77,18 @@ type CalendarFeedToken struct {
 	LastUsedAt        *time.Time
 }
 
+type CalendarMailboxBusy struct {
+	UserID    uuid.UUID
+	EventID   string
+	AllDay    bool
+	StartsAt  *time.Time
+	EndsAt    *time.Time
+	StartDate pgtype.Date
+	EndDate   pgtype.Date
+	ShowAs    string
+	UpdatedAt time.Time
+}
+
 type CalendarMailboxEvent struct {
 	UserID      uuid.UUID
 	ItemKey     string
@@ -104,6 +116,10 @@ type CalendarMailboxSync struct {
 	Revision     int32
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
+	BusyLink     *string
+	BusyFrom     pgtype.Date
+	BusyTo       pgtype.Date
+	BusySyncedAt *time.Time
 }
 
 type CalendarSubscription struct {

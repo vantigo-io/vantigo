@@ -143,6 +143,7 @@ type setup struct {
 	provisioners    []contracts.IdentityProvisioner
 	workforce       contracts.Workforce
 	mailboxCalendar contracts.MailboxCalendar
+	calendarBusy    contracts.CalendarBusy
 	hours           contracts.BillableHours
 	billExpenses    contracts.BillableExpenses
 	milestones      contracts.BillableMilestones
@@ -371,6 +372,15 @@ func WithWorkforce(w contracts.Workforce) Option {
 // replaces it.
 func WithMailboxCalendar(m contracts.MailboxCalendar) Option {
 	return func(s *setup) { s.mailboxCalendar = m }
+}
+
+// WithCalendarBusy sets Deps.CalendarBusy, for a module that reads the
+// calendar's busy time (Planning's board) to be tested against a fake
+// (FakeCalendarBusy) without composing the calendar beside it. module.Compose
+// keeps a value set here when no enabled module provides the slot (calendar
+// Outlook sync design O9.8); a composed calendar's own replaces it.
+func WithCalendarBusy(b contracts.CalendarBusy) Option {
+	return func(s *setup) { s.calendarBusy = b }
 }
 
 // WithBillableHours sets Deps.BillableHours directly to p, for a module under
@@ -645,6 +655,7 @@ func New(t *testing.T, opts ...Option) *Harness {
 		IdentityProvisioners:     s.provisioners,
 		Workforce:                s.workforce,
 		MailboxCalendar:          s.mailboxCalendar,
+		CalendarBusy:             s.calendarBusy,
 		BillableHours:            s.hours,
 		BillableExpenses:         s.billExpenses,
 		BillableMilestones:       s.milestones,

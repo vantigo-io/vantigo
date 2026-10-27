@@ -59,6 +59,12 @@ func TestCalendarMailboxSync_AppliesAndIsIdempotent(t *testing.T) {
 		"revision:integer:NO:1",
 		"created_at:timestamp with time zone:NO:",
 		"updated_at:timestamp with time zone:NO:",
+		// 00083's delta state, pinned by
+		// TestCalendarMailboxBusy_AppliesAndIsIdempotent.
+		"busy_link:text:YES:",
+		"busy_from:date:YES:",
+		"busy_to:date:YES:",
+		"busy_synced_at:timestamp with time zone:YES:",
 	}; !equalStrings(got, want) {
 		t.Errorf("calendar.mailbox_sync columns =\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
 	}
