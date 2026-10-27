@@ -253,7 +253,7 @@ Hver rad viser:
 - **Type**: **Ordinært**, eller **Korreksjon** for differansen som er funnet etter at
   en periode ble fakturert (se under).
 - **Status**: **Utkast** til perioden er fakturert, **Fakturert** når den er det, og
-  **Frigitt** når en kreditnota tok hele fakturaen tilbake; perioden faktureres da på
+  **Frigitt** når en kreditnota tok periodens linje tilbake i sin helhet; perioden faktureres da på
   nytt som et nytt utkast. **Estimert** ved siden av betyr at noen av avlesningene er
   estimater, noe fakturaen vil si.
 - **kWh** og **Beløp (NOK)**.

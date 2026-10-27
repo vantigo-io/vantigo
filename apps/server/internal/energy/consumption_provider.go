@@ -64,6 +64,28 @@ func duePeriodsOf(subj settlementSubject, through, now time.Time) ([]billingPeri
 	return billingPeriods(subj.SupplyStart, subj.SupplyEnd, subj.Cadence, subj.Loc, through)
 }
 
+// currentPeriodOf is the billing period of subj that starts at start as the
+// supply period stands now — its current end, closed by now — and true; or
+// false when no such period is: the supply period cancelled, or start no
+// longer one of its period boundaries (plan readings 7, 11). A settlement is
+// judged over this period, never over the one it was stored with, so a supply
+// period whose end moved is never billed beyond it.
+func currentPeriodOf(subj settlementSubject, start, now time.Time) (billingPeriod, bool, error) {
+	if subj.Loc == nil {
+		return billingPeriod{}, false, nil // the supply period is gone
+	}
+	periods, err := duePeriodsOf(subj, now, now)
+	if err != nil {
+		return billingPeriod{}, false, err
+	}
+	for _, p := range periods {
+		if p.Start.Equal(start) {
+			return p, true, nil
+		}
+	}
+	return billingPeriod{}, false, nil
+}
+
 // liveKey is a settlement's live key within one supply period: its period's
 // start and its kind (ux_settlements_live).
 type liveKey struct {
@@ -149,16 +171,23 @@ func baselineFromRows(ctx context.Context, q *store.Queries, rows []store.Energy
 	return readSettlements(ctx, q, append([]store.EnergySettlement{*regular}, corrections...))
 }
 
-// recomputeDraft is a stored draft's figures as they stand now: a regular one
-// computed over its period as stored; a correction recomputed against its
-// baseline (correctionOf). It answers false when a correction has nothing
-// left to correct — its recomputation equals what was invoiced, or its
-// original is no longer invoiced. A correction whose recomputation is blocked
+// recomputeDraft is a stored draft's figures as they stand now, over its
+// period as the supply period now holds it (currentPeriodOf): a regular one
+// computed over that period; a correction recomputed over it against its
+// baseline (correctionOf). It answers false when the draft's period is no
+// longer a period of the supply period (cancelled, or its start no longer a
+// boundary), or when a correction has nothing left to correct — its
+// recomputation equals what was invoiced, or its original is no longer
+// invoiced. A period whose end moved is recomputed over the current end, so
+// the figures differ from the stored row's. A correction whose recomputation is blocked
 // is answered as stored with the blocker, no lines and a zero amount: a
 // blocked recomputation writes no correction (plan reading 8). The answer
 // keeps the stored row's id, revision and state.
 func recomputeDraft(ctx context.Context, q *store.Queries, stored settlement, subj settlementSubject, now time.Time) (settlement, bool, error) {
-	period := billingPeriod{Start: stored.PeriodStart, End: stored.PeriodEnd}
+	period, ok, err := currentPeriodOf(subj, stored.PeriodStart, now)
+	if err != nil || !ok {
+		return settlement{}, false, err
+	}
 	computed, err := computeSettlement(ctx, q, subj, period, now)
 	if err != nil {
 		return settlement{}, false, err
@@ -349,9 +378,12 @@ func (p *consumptionProvider) Settle(ctx context.Context, req contracts.SettleRe
 }
 
 // settleSupplyPeriod is Settle for one supply period: its regular drafts, its
-// corrections and its own housekeeping — a draft whose period is no longer
-// due, or a correction draft whose original is no longer corrected, is
-// deleted. rows is every stored settlement of the supply period.
+// corrections and its own housekeeping — a regular draft whose period is no
+// longer a period of the supply period as it stands (cancelled, its end
+// moved, its start no longer a boundary), or a correction draft whose
+// original is no longer corrected, is deleted. A regular draft of a period
+// beyond through is not this Settle's to judge and is left as it is: another
+// invoice may hold it. rows is every stored settlement of the supply period.
 func (p *consumptionProvider) settleSupplyPeriod(ctx context.Context, q *store.Queries, subj settlementSubject,
 	rows []store.EnergySettlement, through, now time.Time) ([]settlement, error) {
 	periods, err := duePeriodsOf(subj, through, now)
@@ -390,8 +422,20 @@ func (p *consumptionProvider) settleSupplyPeriod(ctx context.Context, q *store.Q
 		}
 		out = append(out, corrections...)
 	}
+	current, err := duePeriodsOf(subj, now, now)
+	if err != nil {
+		return nil, err
+	}
+	stillPeriod := func(r store.EnergySettlement) bool {
+		return slices.ContainsFunc(current, func(p billingPeriod) bool {
+			return p.Start.Equal(r.PeriodStart) && p.End.Equal(r.PeriodEnd)
+		})
+	}
 	for _, r := range rows {
 		if r.State != contracts.SettlementDraft || keep[r.ID] {
+			continue
+		}
+		if r.Kind == contracts.SettlementRegular && stillPeriod(r) {
 			continue
 		}
 		if _, err := q.DeleteSettlementDraft(ctx, r.ID); err != nil {
@@ -402,12 +446,15 @@ func (p *consumptionProvider) settleSupplyPeriod(ctx context.Context, q *store.Q
 }
 
 // settleCorrections writes the correction drafts of the supply period's
-// invoiced periods (plan reading 8). A period is recomputed when a correction
-// draft is already live for it or its inputs changed after the latest
-// invoiced baseline's computation; a correction with every difference zero is
-// not written (and a live draft of it is left to the housekeeping, by not
-// being kept); a blocked recomputation writes nothing and keeps a live draft
-// as it stands. keep collects the drafts that stay.
+// invoiced periods (plan reading 8), each recomputed over its period as the
+// supply period now holds it (currentPeriodOf); one no longer a period is not
+// corrected here. A period is recomputed when a correction draft is already
+// live for it, its end moved, or its inputs changed after the latest invoiced
+// baseline's computation; a correction with every difference zero is not
+// written (and a live draft of it is left to the housekeeping, by not being
+// kept); a blocked recomputation writes nothing and keeps a live draft as it
+// stands, touched (reading 7: a kept draft is touched). keep collects the
+// drafts that stay.
 func (p *consumptionProvider) settleCorrections(ctx context.Context, q *store.Queries, subj settlementSubject,
 	rows []store.EnergySettlement, live map[liveKey]store.EnergySettlement, now time.Time, keep map[int64]bool) ([]settlement, error) {
 	windowStart := now.AddDate(0, -correctionWindowMonths, 0)
@@ -432,9 +479,16 @@ func (p *consumptionProvider) settleCorrections(ctx context.Context, q *store.Qu
 				since = b.ComputedAt
 			}
 		}
+		period, ok, err := currentPeriodOf(subj, r.PeriodStart, now)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			continue
+		}
 		draft, hasDraft := live[liveKeyOf(r.PeriodStart, contracts.SettlementCorrection)]
 		hasDraft = hasDraft && draft.State == contracts.SettlementDraft
-		if !hasDraft {
+		if !hasDraft && period.End.Equal(r.PeriodEnd) {
 			changed, err := q.SettlementInputsChangedSince(ctx, store.SettlementInputsChangedSinceParams{
 				MeteringPointID: subj.MeteringPointID, FromTs: r.PeriodStart, ToTs: r.PeriodEnd, Since: since,
 				PriceArea: subj.PriceArea, TariffIds: tariffIDs,
@@ -446,13 +500,16 @@ func (p *consumptionProvider) settleCorrections(ctx context.Context, q *store.Qu
 				continue
 			}
 		}
-		computed, err := computeSettlement(ctx, q, subj, billingPeriod{Start: r.PeriodStart, End: r.PeriodEnd}, now)
+		computed, err := computeSettlement(ctx, q, subj, period, now)
 		if err != nil {
 			return nil, err
 		}
 		if computed.Blocked != "" {
 			if hasDraft {
 				keep[draft.ID] = true
+				if err := q.TouchSettlements(ctx, store.TouchSettlementsParams{Ids: []int64{draft.ID}, Now: now}); err != nil {
+					return nil, fmt.Errorf("energy: touch settlement draft %d: %w", draft.ID, err)
+				}
 			}
 			continue
 		}
@@ -473,10 +530,12 @@ func (p *consumptionProvider) settleCorrections(ctx context.Context, q *store.Qu
 }
 
 // Settlements answers settlements by id as they stand now (plan reading 7):
-// a draft recomputed and written when a figure changed, so the revision
-// answered is the one stored; an invoiced or released one as frozen; a
-// missing id, or a correction draft with nothing left to correct (deleted
-// here), absent.
+// a draft recomputed over its period as the supply period now holds it and
+// written when a figure changed, so the revision answered is the one stored
+// (a blocked correction is answered as stored, and touched); an invoiced or
+// released one as frozen; a missing id, a draft whose period is no longer a
+// period of its supply period, or a correction draft with nothing left to
+// correct (both deleted here), absent.
 func (p *consumptionProvider) Settlements(ctx context.Context, ids []int64) (contracts.SettlementsPage, error) {
 	if err := contracts.ValidateSettlementIDs(ids); err != nil {
 		return contracts.SettlementsPage{}, err
@@ -518,7 +577,11 @@ func (p *consumptionProvider) Settlements(ctx context.Context, ids []int64) (con
 			continue
 		}
 		if s.Kind == contracts.SettlementCorrection && current.Blocked != "" {
-			out = append(out, current) // a blocked correction is not written
+			// A blocked correction is not written, only touched.
+			if err := q.TouchSettlements(ctx, store.TouchSettlementsParams{Ids: []int64{s.ID}, Now: now}); err != nil {
+				return contracts.SettlementsPage{}, fmt.Errorf("energy: touch settlement draft %d: %w", s.ID, err)
+			}
+			out = append(out, current)
 			continue
 		}
 		current.ID, current.Revision, current.State = 0, 0, contracts.SettlementDraft

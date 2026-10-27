@@ -94,11 +94,13 @@ func (s *server) GetEnergyMeteringPointsByIdSettlements(ctx context.Context, req
 					out = append(out, st)
 					continue
 				}
-				current, _, err := recomputeDraft(ctx, q, st, subj, now)
+				current, present, err := recomputeDraft(ctx, q, st, subj, now)
 				if err != nil {
 					return nil, err
 				}
-				out = append(out, current)
+				if present {
+					out = append(out, current)
+				}
 				continue
 			}
 			computed, err := computeSettlement(ctx, q, subj, period, now)
@@ -122,7 +124,9 @@ func (s *server) GetEnergyMeteringPointsByIdSettlements(ctx context.Context, req
 				out = append(out, current)
 			}
 		}
-		// A regular draft of a period no longer due is the housekeeping's.
+		// A regular draft of a period no longer due is the housekeeping's; a
+		// correction draft whose period is no longer a period of its supply
+		// period is left out (recomputeDraft answers it absent).
 	}
 
 	slices.SortFunc(out, func(a, b settlement) int {

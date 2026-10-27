@@ -335,3 +335,33 @@ func TestInvoicedWork_RefusesAForeignKind(t *testing.T) {
 		t.Errorf("err = %v, want a plain error", err)
 	}
 }
+
+// TestInvoicedWork_JudgesADraftByItsSupplyPeriod: the holder judges a draft
+// over its supply period as it stands. The end moved to 15 July: July is
+// another period now, source_changed. The supply period cancelled: July is no
+// longer a period at all, source_not_invoiceable.
+func TestInvoicedWork_JudgesADraftByItsSupplyPeriod(t *testing.T) {
+	t.Parallel()
+	f := newStlFixture(t, true)
+	draft := only(t, f.settle(t, stlAugStart))
+	holder, _ := newStlHolder(t)
+	for _, tc := range []struct {
+		name, sql, want string
+		arg             any
+	}{
+		{"the end moved", `UPDATE energy.supply_periods SET "end" = $2 WHERE id = $1`, contracts.SourceChanged,
+			time.Date(2026, time.July, 15, 0, 0, 0, 0, stlOslo)},
+		{"cancelled", `UPDATE energy.supply_periods SET status = $2 WHERE id = $1`, contracts.SourceNotInvoiceable, "Cancelled"},
+	} {
+		f.inTx(t, func(ctx context.Context, tx pgx.Tx) {
+			if _, err := tx.Exec(ctx, tc.sql, f.supply, tc.arg); err != nil {
+				t.Fatalf("%s: %v", tc.name, err)
+			}
+			err := holder.MarkInvoiced(ctx, tx, stlInvoiceRef(), []contracts.WorkSource{stlSourceOf(draft)})
+			var refusal *contracts.WorkSourceRefusal
+			if !errors.As(err, &refusal) || refusal.Code != tc.want {
+				t.Errorf("%s: err = %v, want %s", tc.name, err, tc.want)
+			}
+		})
+	}
+}

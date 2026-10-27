@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math/big"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -333,6 +334,22 @@ func TestComputeSettlement(t *testing.T) {
 			})
 	})
 
+	t.Run("a first period with no counted day prints no prorated line", func(t *testing.T) {
+		start := f.at(time.January, 31, 14, 0)
+		point, supply := f.supply(pointOpts{gridTariff: &grid}, start, &fixed)
+		f.intervals(point, start, jan.End, time.Hour, "1")
+		// 10 hours on Saturday 31 January, whose midnight is before the
+		// start: no day counted, so monthly_fee, grid_capacity, grid_fixed
+		// and the business's Enova levy would be 0.000 × their rate = 0.00.
+		assertSettlement(t, f.compute(supply, billingPeriod{Start: start, End: jan.End}),
+			`kwh=10.000 amount=12.71 count=10/10 estimated=false blocked= ""`, []string{
+				"fixed_energy|Fastpris|||10.000 kWh × 1.000000 = 10.00|standard",
+				"grid_energy|Energiledd|day||0.000 kWh × 0.400000 = 0.00|standard",
+				"grid_energy|Energiledd|night||10.000 kWh × 0.200000 = 2.00|standard",
+				"electricity_tax|Elavgift|||10.000 kWh × 0.071300 = 0.71|standard",
+			})
+	})
+
 	t.Run("a quarter across the spring DST change", func(t *testing.T) {
 		q1 := billingPeriod{Start: f.at(time.January, 1, 0, 0), End: f.at(time.April, 1, 0, 0)}
 		point, supply := f.supply(pointOpts{}, q1.Start, &fixed)
@@ -565,6 +582,14 @@ func TestCorrectionOf(t *testing.T) {
 	same.State, same.ID = contracts.SettlementDraft, 0
 	if _, ok := correctionOf(same, []settlement{regular}); ok {
 		t.Error("a correction for identical figures")
+	}
+	// A component renamed, nothing else: two offsetting lines, the kWh and
+	// the amount unchanged. A change of wording alone is not a correction.
+	renamed := same
+	renamed.Lines = slices.Clone(regular.Lines)
+	renamed.Lines[1].Text = "Fastbeløp ny"
+	if c, ok := correctionOf(renamed, []settlement{regular}); ok {
+		t.Errorf("a correction for a renamed component: %v", lineTexts(c))
 	}
 	// A blocked recomputation writes no correction.
 	stuck := recomputed

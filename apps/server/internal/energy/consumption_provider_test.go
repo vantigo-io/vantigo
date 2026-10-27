@@ -426,3 +426,108 @@ func TestConsumptionProvider_AnswersAtMostMaxBillableRows(t *testing.T) {
 		t.Errorf("first period starts %v, want 2000-01-01", page.Settlements[0].PeriodStart)
 	}
 }
+
+// TestConsumptionProvider_ADraftFollowsItsSupplyPeriod: a draft is judged
+// over its supply period as it stands, never over the period it was stored
+// with. The supply period's end moved to 15 July: Settlements answers July
+// as 1–15 July, rewritten at revision 2 with the new end stored. The supply
+// period cancelled: July is no longer a period, and Settlements answers it
+// absent and deletes it.
+func TestConsumptionProvider_ADraftFollowsItsSupplyPeriod(t *testing.T) {
+	t.Parallel()
+	f := newStlFixture(t, true)
+	ctx := context.Background()
+	draft := only(t, f.settle(t, stlAugStart))
+
+	mid := time.Date(2026, time.July, 15, 0, 0, 0, 0, stlOslo)
+	f.h.Exec(t, `UPDATE energy.supply_periods SET "end" = $2 WHERE id = $1`, f.supply, mid)
+	page, err := f.provider.Settlements(ctx, []int64{draft.ID})
+	if err != nil {
+		t.Fatalf("Settlements: %v", err)
+	}
+	got := only(t, page)
+	if got.ID != draft.ID || got.Revision != 2 || !got.PeriodEnd.Equal(mid) || got.KWh != "336.000" || got.Amount != "420.00" {
+		t.Errorf("after the end moved Settlements = id %d revision %d ends %v %s kWh %s NOK, want id %d revision 2 ending %v, 336.000 kWh, 420.00 NOK",
+			got.ID, got.Revision, got.PeriodEnd, got.KWh, got.Amount, draft.ID, mid)
+	}
+	if end := modtest.One[time.Time](t, f.h, `SELECT period_end FROM energy.settlements WHERE id = $1`, draft.ID); !end.Equal(mid) {
+		t.Errorf("stored period_end = %v, want %v", end, mid)
+	}
+
+	f.h.Exec(t, `UPDATE energy.supply_periods SET status = 'Cancelled' WHERE id = $1`, f.supply)
+	page, err = f.provider.Settlements(ctx, []int64{draft.ID})
+	if err != nil {
+		t.Fatalf("Settlements: %v", err)
+	}
+	if len(page.Settlements) != 0 {
+		t.Errorf("Settlements of a cancelled supply period's draft = %+v, want nothing", page.Settlements)
+	}
+	if n := f.h.Count(t, `SELECT count(*) FROM energy.settlements WHERE id = $1`, draft.ID); n != 0 {
+		t.Errorf("the cancelled supply period's draft survived Settlements")
+	}
+}
+
+// TestConsumptionProvider_AnEarlierThroughKeepsLaterDrafts: a Settle through
+// 1 August leaves August's draft — written by a Settle through 1 September,
+// and perhaps held by another invoice — as it is: a draft is deleted only
+// when its period is no longer a period of the supply period.
+func TestConsumptionProvider_AnEarlierThroughKeepsLaterDrafts(t *testing.T) {
+	t.Parallel()
+	f := newStlFixture(t, true)
+	stlWriteHours(t, f.h, f.point, stlAugStart, time.Date(2026, time.September, 1, 0, 0, 0, 0, stlOslo), f.h.Now())
+	page := f.settle(t, time.Date(2026, time.September, 1, 0, 0, 0, 0, stlOslo))
+	if len(page.Settlements) != 2 {
+		t.Fatalf("Settle through 1 September = %d settlements, want July and August", len(page.Settlements))
+	}
+	aug := page.Settlements[1]
+
+	only(t, f.settle(t, stlAugStart))
+	if n := f.h.Count(t, `SELECT count(*) FROM energy.settlements WHERE supply_period_id = $1 AND state = 'draft'`, f.supply); n != 2 {
+		t.Errorf("drafts after a Settle through 1 August = %d, want July and August", n)
+	}
+	got, err := f.provider.Settlements(context.Background(), []int64{aug.ID})
+	if err != nil {
+		t.Fatalf("Settlements: %v", err)
+	}
+	if s := only(t, got); s.ID != aug.ID || s.Revision != aug.Revision {
+		t.Errorf("Settlements(August) = id %d revision %d, want id %d revision %d", s.ID, s.Revision, aug.ID, aug.Revision)
+	}
+}
+
+// TestConsumptionProvider_ABlockedCorrectionIsTouched: a correction draft
+// whose recomputation is blocked is answered and kept as it stands — and
+// touched, by Settlements and by Settle alike, so the thirty-day housekeeping
+// never deletes a draft an invoice holds (plan reading 7).
+func TestConsumptionProvider_ABlockedCorrectionIsTouched(t *testing.T) {
+	t.Parallel()
+	f := newStlFixture(t, true)
+	f.stamp(t, only(t, f.settle(t, stlAugStart)))
+	f.h.Advance(time.Hour)
+	stlChangeHour(t, f.h, f.point, stlJulyStart.Add(5*time.Hour), "3", f.h.Now())
+	correction := only(t, f.settle(t, stlAugStart))
+
+	stale := f.h.Now().Add(-31 * 24 * time.Hour)
+	f.h.Exec(t, `UPDATE energy.settlements SET touched_at = $2 WHERE id = $1`, correction.ID, stale)
+	f.h.Exec(t, `DELETE FROM energy.consumption_intervals WHERE metering_point_id = $1 AND start = $2`, f.point, stlJulyStart.Add(9*time.Hour))
+	f.h.Advance(time.Hour)
+	page, err := f.provider.Settlements(context.Background(), []int64{correction.ID})
+	if err != nil {
+		t.Fatalf("Settlements: %v", err)
+	}
+	if got := only(t, page); got.Blocked != contracts.SettlementIncomplete {
+		t.Errorf("Settlements = blocked %q, want incomplete", got.Blocked)
+	}
+	if touched := modtest.One[time.Time](t, f.h, `SELECT touched_at FROM energy.settlements WHERE id = $1`, correction.ID); !touched.Equal(f.h.Now()) {
+		t.Errorf("after Settlements touched_at = %v, want %v", touched, f.h.Now())
+	}
+
+	f.h.Exec(t, `UPDATE energy.settlements SET touched_at = $2 WHERE id = $1`, correction.ID, stale)
+	f.h.Advance(time.Hour)
+	f.settle(t, stlAugStart)
+	if n := f.h.Count(t, `SELECT count(*) FROM energy.settlements WHERE id = $1`, correction.ID); n != 1 {
+		t.Fatalf("Settle deleted the blocked correction draft")
+	}
+	if touched := modtest.One[time.Time](t, f.h, `SELECT touched_at FROM energy.settlements WHERE id = $1`, correction.ID); !touched.Equal(f.h.Now()) {
+		t.Errorf("after Settle touched_at = %v, want %v", touched, f.h.Now())
+	}
+}

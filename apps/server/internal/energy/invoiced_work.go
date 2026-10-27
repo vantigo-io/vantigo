@@ -61,9 +61,12 @@ func (h *invoicedWorkHolder) Kinds() []contracts.WorkSourceKind {
 
 // MarkInvoiced locks the sources' settlements by id ascending, judges each as
 // it stands under the lock — missing, then already invoiced, then released or
-// blocked, then recomputed (a blocker, or any figure other than the stored
-// row's), then the source's revision, currency and amount — and stamps them
-// all with ref, or none: the first refusal answers and nothing is written.
+// blocked, then no longer a period of its supply period (cancelled, or its
+// start no longer a boundary: source_not_invoiceable), then recomputed over
+// its period as the supply period now holds it (a blocker, or any figure
+// other than the stored row's, its period's end among them), then the
+// source's revision, currency and amount — and stamps them all with ref, or
+// none: the first refusal answers and nothing is written.
 func (h *invoicedWorkHolder) MarkInvoiced(ctx context.Context, tx pgx.Tx, ref contracts.InvoiceRef, sources []contracts.WorkSource) error {
 	ids, err := sourceSettlementIDs(sources)
 	if err != nil || len(ids) == 0 {
@@ -224,7 +227,13 @@ func markSettlementRefusal(ctx context.Context, q *store.Queries, ref contracts.
 	if err != nil {
 		return nil, err
 	}
-	recomputed, present, err := recomputeDraft(ctx, q, stored[0], subjects[row.SupplyPeriodID], ref.IssuedAt)
+	subj := subjects[row.SupplyPeriodID]
+	if _, ok, err := currentPeriodOf(subj, row.PeriodStart, ref.IssuedAt); err != nil {
+		return nil, err
+	} else if !ok {
+		return refuse(contracts.SourceNotInvoiceable, fmt.Sprintf("Settlement %d's period is no longer a period of its supply period", source.ID)), nil
+	}
+	recomputed, present, err := recomputeDraft(ctx, q, stored[0], subj, ref.IssuedAt)
 	if err != nil {
 		return nil, err
 	}

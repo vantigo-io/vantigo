@@ -1329,8 +1329,8 @@ point's market time zone ([Consumption](#consumption)), clipped to the supply pe
 last ends at its end, and a supply period starting before **2000-01-01** is settled
 from that day, so a malformed start never enumerates centuries. A period is **due**
 when its end is on or before both the request's `Through` and now: a period still
-running is never settled, and neither is a period of an ended supply period that ends
-in the future, whose consumption cannot be there yet. A `Cancelled` supply period has
+running is never settled, and neither is the last period of a supply period whose end
+lies in the future, whose consumption cannot be there yet. A `Cancelled` supply period has
 no billing periods.
 
 ### The computation
@@ -1399,7 +1399,9 @@ words are Invoices' to add per language), and one per calendar month and version
 
 **Rounding.** Quantities have three decimals, unit prices six and amounts two. A
 prorated line (`month`, `year`) rounds its quantity **first** and takes the amount from
-it, so quantity × unit price is the amount printed; a per-kWh line's amount is the kWh
+it, so quantity × unit price is the amount printed, and is left out when its quantity and
+amount are both zero (a first period starting after its only midnight counts no day); a
+per-kWh line's amount is the kWh
 × the rate, rounded; `spot_energy`'s is Σ kWh × price, rounded once. Every figure is
 rounded half away from zero; `amount` is Σ of the
 rounded line amounts. Arithmetic inside is exact (`math/big.Rat`); the API carries JSON
@@ -1423,7 +1425,7 @@ that holds wins:
 | --- | --- | --- |
 | `period_open` | The period has not ended at the computation's moment — a guard: only due periods are settled | `the period ends <instant>` |
 | `no_tariff` | The supply period has no power tariff, or a day the period touches has no version of the power tariff or of the point's grid tariff | `no power tariff`, `<tariff name> has no version on <day>` |
-| `no_consumption` | The period has no current interval at all | `no consumption in the period` |
+| `no_consumption` | No current interval overlaps the period at all | `no consumption in the period` |
 | `incomplete` | An interval crosses the period's bound, two overlap, or intervals are missing — the first of these found | `an interval crosses <instant>`, `intervals overlap at <instant>`, `<n> of <m> intervals are missing` |
 | `price_gap` | Part of an interval has no price of the area (spot tariffs only) | `no price for <area> at <instant>` |
 | `price_preliminary` | A price the period needs is still `preliminary` (spot tariffs only) | `prices for <day> are preliminary` |
@@ -1439,7 +1441,13 @@ the next read computes it again.
 ### Drafts, revisions and housekeeping
 
 A draft is never stale by itself: `Settle` and `Settlements` recompute every draft
-they answer and write it when any figure changed — the kWh, the amount, the lines,
+they answer, over its period as the supply period now has it — the billing periods
+derived again from the supply period's current start, end and cadence. A draft whose
+start is no longer a period of a non-cancelled supply period (the supply period was
+cancelled, or its end moved before the period) is no longer a settlement: `Settlements`
+deletes it and answers it absent, the endpoint leaves it out, and the holder refuses it
+`source_not_invoiceable`; one whose end moved is recomputed over the new period, a
+changed figure like any other. They write a draft when any figure changed — the kWh, the amount, the lines,
 the blocker and its detail, `estimated`, the counts, the period's end or the contract
 name — bumping `revision`; `touched_at` is set on every answer. Each settlement is
 written in its own short transaction, its live row locked `FOR NO KEY UPDATE`,
@@ -1454,8 +1462,9 @@ Energy cannot see which drafts an invoice holds (module boundaries rule 1), so
 held by a draft invoice is refreshed by invoicing's reads and stays; one deleted from
 under it is answered absent, which invoicing already reads as
 `source_not_invoiceable`. `Settle` deletes, for each supply period it settles, the
-drafts of periods no longer due — as after the supply period was cancelled or its end
-moved — and the correction drafts with nothing left to correct; and then every draft
+drafts of periods that are no longer periods of the supply period as it stands now —
+after it was cancelled or its end moved; never a draft only because it lies beyond the
+request's `Through` — and the correction drafts with nothing left to correct; and then every draft
 untouched for thirty days. The `energy-spot-prices` worker's cycle deletes the
 untouched drafts too, when that worker runs.
 
@@ -1475,9 +1484,34 @@ baseline's for a key that vanished); its kWh the kWh's difference; a line whose
 quantity and amount are both zero is left out. A correction with no line is not
 written, and a correction draft already live is then deleted — by `Settlements` too.
 A recomputation that is blocked writes no correction, and a live correction draft is
-kept as it stands, answered with the blocker. A correction's lines keep their components' kinds;
+kept as it stands and touched: `Settlements` answers it with the blocker, and `Settle` leaves it
+out of its answer. A correction's lines keep their components' kinds;
 `correction` is the settlement's kind. Once invoiced, a correction is part of the
-baseline the next one is measured against.
+baseline the next one is measured against. A difference in wording alone — a renamed
+component, whose kWh and amount are unchanged — is not a correction: when the kWh and
+the amount differ by nothing, none is written.
+
+A correction line's quantity is the difference in quantity and its amount the
+difference in amount, each on its own: when only a rate or a price changed, the
+quantity is `0.000` and the amount is not, so quantity × unit price is not the amount
+on such a line.
+
+What a correction does not see, named:
+
+- **Its trigger is the inputs, not the terms.** A period is looked at again when an
+  interval of the point, a price of the area or one of the supply period's *current*
+  tariffs changed after the baseline was computed. Assigning another tariff to the
+  supply period (when that tariff was last edited before the baseline), or changing the
+  point's grid tariff, household use, tax class or postal code, does not by itself
+  draft a correction; the next interval or price written for the period does.
+- **The trigger reads `received_at`**, which the writer stamps from its own clock before
+  its transaction commits: an interval written by a transaction that commits after a
+  settlement was computed, but stamped before, is not seen as a change.
+- **Releasing a regular settlement leaves its invoiced corrections as they are.** A
+  credit note that returns only the regular settlement's line releases it, and the next
+  `Settle` drafts the period afresh at its full figures; the corrections invoiced
+  against the released one are then in no baseline, so their differences are billed
+  again unless their own lines are credited too.
 
 ### Endpoint
 
@@ -1485,7 +1519,7 @@ Under `/api/v1/energy/`.
 
 | Operation | Rule | What it does |
 | --- | --- | --- |
-| `GET metering-points/{id}/settlements` | `permission:energy:supply-periods-view+energy:consumption-view` | The point's settlements, **writing nothing**: for every non-cancelled supply period of the point, every billing period due through now whose end lies within the last **24 months**, each as its stored live settlement — an invoiced one as frozen, a draft recomputed in memory — or, when none is stored, computed for the answer, without an `id` and `draft`; beside them every other stored settlement in the window — invoiced and released ones as stored, a correction draft recomputed and left out when nothing is left to correct. Newest period first, then regular before correction, then by id. `404` for an unknown point. |
+| `GET metering-points/{id}/settlements` | `permission:energy:consumption-view+energy:supply-periods-view` | The point's settlements, **writing nothing**: for every non-cancelled supply period of the point, every billing period due through now whose end lies within the last **24 months**, each as its stored live settlement — an invoiced one as frozen, a draft recomputed in memory — or, when none is stored, computed for the answer, without an `id` and `draft`; beside them every other stored settlement in the window — invoiced and released ones as stored, a correction draft recomputed and left out when nothing is left to correct. Newest period first, then regular before correction, then by id. `404` for an unknown point. |
 
 Each `SettlementResponse` mirrors `contracts.Settlement`: `id` and `revision` when
 stored, `kind`, `correctsId`, the supply period, point and customer ids, `periodStart`,
@@ -1571,7 +1605,9 @@ the whole issue back:
 2. `invoiced` → `source_already_invoiced`.
 3. `released`, or blocked as stored → `source_not_invoiceable`.
 4. Recomputed inside the issue's transaction, with `ref.IssuedAt` as now (the holder's
-   only clock): a correction with nothing left to correct → `source_changed`;
+   only clock), over its period as the supply period now has it: a period that is no
+   longer one (the supply period cancelled, or its end moved before it) →
+   `source_not_invoiceable`; a correction with nothing left to correct → `source_changed`;
    blocked → `source_not_invoiceable`; any figure different from the stored row →
    `source_changed`.
 5. The source's revision, currency and amount (by value, never as text) against the
