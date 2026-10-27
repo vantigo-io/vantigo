@@ -91,7 +91,7 @@ describe("the Prices route", () => {
     expect(await screen.findByTestId("can-import")).toHaveTextContent("false");
   });
 
-  it("hands the view in the URL to the page, and writes the page's changes back in place", async () => {
+  it("hands the view in the URL to the page, and writes the page's changes back in place, without scrolling", async () => {
     withPermissions(["energy:prices-view"]);
     const { router, history } = await renderPage("/energy/prices?areas=NO1,NO2&period=year&date=2025-06-01");
     expect(JSON.parse((await screen.findByTestId("search")).textContent ?? "")).toEqual({
@@ -100,6 +100,7 @@ describe("the Prices route", () => {
       date: "2025-06-01",
     });
     const entries = history.length;
+    vi.mocked(window.scrollTo).mockClear();
 
     fireEvent.click(screen.getByRole("button", { name: "Month" }));
     await waitFor(() =>
@@ -107,6 +108,8 @@ describe("the Prices route", () => {
     );
     expect(router.state.location.searchStr).toContain("period=month");
     expect(history.length).toBe(entries);
+    // Several filters are often changed in a row: the page stays where it is.
+    expect(window.scrollTo).not.toHaveBeenCalled();
     expect(JSON.parse(screen.getByTestId("search").textContent ?? "")).toMatchObject({ period: "month" });
   });
 

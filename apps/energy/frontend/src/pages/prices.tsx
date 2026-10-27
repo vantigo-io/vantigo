@@ -32,6 +32,7 @@ import {
   marketDayStart,
   marketWeekStart,
 } from "../lib/market-time";
+import { readRememberedAreas, rememberAreas } from "../lib/remembered-areas";
 import { formatPrice, type SummaryBucket, useBucketLabel } from "../lib/spot-price-view";
 import "../i18n";
 import { ImportPricesModal } from "./-import-prices-modal";
@@ -158,9 +159,15 @@ export const PricesPage = ({
     onSearchChange?.(next);
   };
 
+  // The areas compared: the link's, else the ones this browser compared last,
+  // else the first area there is.
+  const [remembered] = useState(readRememberedAreas);
   const known = new Set(areas.map((item) => item.priceArea));
-  const chosen = (current.areas ?? []).filter((item) => known.has(item)).slice(0, MAX_COMPARED_AREAS);
-  const compared = chosen.length > 0 ? chosen : areas.slice(0, 1).map((item) => item.priceArea);
+  const usable = (list: readonly string[]) => list.filter((item) => known.has(item)).slice(0, MAX_COMPARED_AREAS);
+  const chosen = usable(current.areas ?? []);
+  const fallback = usable(remembered);
+  const compared =
+    chosen.length > 0 ? chosen : fallback.length > 0 ? fallback : areas.slice(0, 1).map((item) => item.priceArea);
   const period = current.period ?? "day";
   const [today] = useState(() => marketDayKey(new Date().toISOString()));
   const day = current.date ?? today;
@@ -418,7 +425,11 @@ export const PricesPage = ({
                 label={t("pricesCompareAreas")}
                 data={areas.map((item) => item.priceArea)}
                 value={compared}
-                onChange={(value) => value.length > 0 && update({ areas: value })}
+                onChange={(value) => {
+                  if (value.length === 0) return;
+                  rememberAreas(value);
+                  update({ areas: value });
+                }}
                 maxValues={MAX_COMPARED_AREAS}
                 miw={180}
               />
@@ -484,7 +495,9 @@ export const PricesPage = ({
                 {message}
               </Alert>
             ))}
-            {pending && <ContentSkeleton rows={1} rowHeight={280} />}
+            {/* As tall as the figures and the chart it stands in for, so the page
+                does not shrink under the filters while a new view loads. */}
+            {pending && <ContentSkeleton rows={1} rowHeight={360} />}
             {!pending &&
               charted > 0 &&
               (empty ? (
