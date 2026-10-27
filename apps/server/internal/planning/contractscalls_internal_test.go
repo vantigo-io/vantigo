@@ -124,12 +124,13 @@ func TestContractCalls_AreReportedAndRefusedInsideATransaction(t *testing.T) {
 		_, e12 := s.businessZone(ctx)
 		_, e13 := s.workforceCompetences(ctx)
 		_, e14 := s.workforceFits(ctx, []int64{1001}, contracts.Booking{From: today, To: today})
-		return []error{e1, e2, e3, e4, e5, e6, e7, e8, e9, e10, e11, e12, e13, e14}
+		_, e15 := s.calendarBusy(ctx, []uuid.UUID{user}, today, today)
+		return []error{e1, e2, e3, e4, e5, e6, e7, e8, e9, e10, e11, e12, e13, e14, e15}
 	}
 	want := []string{"Workforce.People", "Workforce.Capacity", "Workforce.Self", "Workforce.HeldCompetences",
 		"Projects.ProjectsByStatus", "Projects.Project", "Projects.Projects", "Directory.Customers",
 		"Users.User", "Users.Notify", "Users.PermissionHolders", "Calendar.Zone",
-		"Workforce.Competences", "Workforce.PreferenceFits"}
+		"Workforce.Competences", "Workforce.PreferenceFits", "CalendarBusy.Busy"}
 
 	for _, err := range call(ctx) {
 		if err != nil {
@@ -191,6 +192,17 @@ func TestContractCalls_AnEmptyBatchAsksNobody(t *testing.T) {
 	}
 	if len(capacity) != 0 || len(held) != 0 || len(projects) != 0 || len(entries) != 0 || len(names) != 0 || len(fits) != 0 {
 		t.Errorf("an empty batch answered something: %v %v %v %v %v %v", capacity, held, projects, entries, names, fits)
+	}
+}
+
+// TestContractCalls_TheCalendarNotComposedAnswersNothing: the calendar's busy
+// time is the one optional read, so a missing slot is no failure and an empty
+// batch asks nobody.
+func TestContractCalls_TheCalendarNotComposedAnswersNothing(t *testing.T) {
+	s := &server{deps: module.Deps{}}
+	got, err := s.calendarBusy(context.Background(), []uuid.UUID{uuid.New()}, day("2026-10-26"), day("2026-10-26"))
+	if err != nil || got != nil {
+		t.Errorf("calendarBusy without the slot = %v, %v; want nil, nil", got, err)
 	}
 }
 

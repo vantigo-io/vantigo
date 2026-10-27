@@ -19,7 +19,10 @@ import (
 // entries), Customers' names (deps.Directory, contracts.CustomerDirectory,
 // which Projects requires) and identity's users (deps.Users,
 // contracts.UserDirectory — the actor's name, the person's mail, the
-// permission holders). Every call is made through one of the thin accessors
+// permission holders), and, provider-gated and optional, the calendar's busy
+// time (deps.CalendarBusy, contracts.CalendarBusy — rule 12: the calendar
+// answers the caller under its own rule, and Planning shows what comes
+// back and never re-states it). Every call is made through one of the thin accessors
 // below and through nowhere else, so "what does Planning ask of its
 // neighbours, and when" has one place to read the answer and one place to
 // check it from; the business calendar's zone is read in authorize.go
@@ -221,6 +224,22 @@ func (s *server) customerNames(ctx context.Context, ids []int32) (map[int32]stri
 		out[e.ID] = e.Name
 	}
 	return out, nil
+}
+
+// calendarBusy is the busy time of userIDs over from..to as the calendar
+// answers the caller (calendar Outlook sync design O9.8): a user the caller
+// may not see, or busy at no time, is absent from the map. It answers nothing,
+// without an error, when the calendar is not composed — the board then shows
+// no busy figures — and for an empty batch without asking. The caller keeps
+// to contracts.CalendarBusyMaxUsers and CalendarBusyMaxDays.
+func (s *server) calendarBusy(ctx context.Context, userIDs []uuid.UUID, from, to time.Time) (map[uuid.UUID]contracts.BusyTime, error) {
+	if err := noteContractCall(ctx, "CalendarBusy.Busy"); err != nil {
+		return nil, err
+	}
+	if s.deps.CalendarBusy == nil || len(userIDs) == 0 {
+		return nil, nil
+	}
+	return s.deps.CalendarBusy.Busy(ctx, userIDs, from, to)
 }
 
 // usersUser is identity's user directory, the only way this module may read a
