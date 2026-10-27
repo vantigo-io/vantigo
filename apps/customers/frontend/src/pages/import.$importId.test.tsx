@@ -1,9 +1,11 @@
 import { MantineProvider } from "@mantine/core";
+import { modals } from "@mantine/modals";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { importRowsQueryOptions } from "../api/imports";
 import type { ImportCapabilities } from "./-import-mapping-step";
 import { ImportPage } from "./import.$importId";
 
@@ -97,8 +99,9 @@ const stubImport = (
   return fetchMock;
 };
 
-const renderPage = (capabilities = all) => {
+const renderPage = (capabilities = all, prefill: (queryClient: QueryClient) => void = () => {}) => {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  prefill(queryClient);
   render(
     <MantineProvider env="test">
       <QueryClientProvider client={queryClient}>
@@ -201,6 +204,24 @@ describe("ImportPage", () => {
     expect(screen.getByRole("button", { name: "Stop" })).toBeInTheDocument();
   });
 
+  it("stops a run the worker has not started without asking, and shows the file being checked again", async () => {
+    const confirm = vi.spyOn(modals, "openConfirmModal");
+    const fetchMock = stubImport(
+      wireImport({ state: "importing", requestedAt: "2026-10-13T10:03:00Z" }),
+      (url, init) =>
+        url === "/api/v1/customers/imports/7/stop" && init?.method === "POST"
+          ? json(wireImport({ state: "checking", requestedAt: "2026-10-13T10:04:00Z" }))
+          : undefined,
+    );
+    renderPage();
+
+    await userEvent.click(await screen.findByRole("button", { name: "Stop" }));
+    expect(await screen.findByText("Checking the file")).toBeInTheDocument();
+    expect(confirm).not.toHaveBeenCalled();
+    expect(fetchMock.mock.calls.some(([input]) => String(input) === "/api/v1/customers/imports/7/stop")).toBe(true);
+    confirm.mockRestore();
+  });
+
   it("shows the bar while checking, and says when nobody has taken the import up", async () => {
     stubImport(
       wireImport({
@@ -226,17 +247,84 @@ describe("ImportPage", () => {
     const failed = rowsPage([
       { row: 2, cells: ["Beta AS", "nope", "y"], outcome: "failed", errors: [{ column: 1, message: "Not an email" }] },
     ]);
+    // What the check resolved: a company named and addressed by Brønnøysund,
+    // and an update the file gave everything for.
+    const created = rowsPage([
+      {
+        row: 1,
+        cells: ["", "post@equinor.no", "x"],
+        outcome: "created",
+        customerId: 900,
+        errors: [],
+        preview: {
+          name: "EQUINOR ASA",
+          type: "business",
+          legalIdentity: { country: "no", id: "923609016", name: "EQUINOR ASA", source: "brreg" },
+          postalAddress: { line1: "Postboks 8500", postalCode: "4035", city: "STAVANGER", country: "no" },
+          fromRegistry: ["name", "legalName", "postalLine1", "postalPostalCode", "postalCity", "postalCountry"],
+        },
+      },
+      {
+        row: 2,
+        cells: ["Kontor", "post@kontor.no", "y"],
+        outcome: "created",
+        errors: [],
+        preview: {
+          name: "Kontor",
+          type: "business",
+          legalIdentity: { country: "no", id: "974760673", name: "KONTOR OG KAFFE AS", source: "brreg" },
+          postalAddress: {
+            line1: "Strandkaien 2",
+            postalCode: "5003",
+            city: "BERGEN",
+            region: "Vestland",
+            country: "no",
+          },
+          fromRegistry: ["legalName", "postalLine1", "postalPostalCode", "postalCity", "postalCountry"],
+        },
+      },
+      // A row read before the preview existed: its name as the file has it.
+      { row: 5, cells: ["Delta AS", "post@delta.no", "v"], outcome: "created", errors: [] },
+    ]);
+    const updated = rowsPage([
+      {
+        row: 4,
+        cells: ["Acme AS", "post@acme.no", "w"],
+        outcome: "updated",
+        customerId: 12,
+        customerNumber: 1012,
+        errors: [],
+        preview: {
+          name: "Acme AS",
+          type: "business",
+          postalAddress: { line1: "Storgata 1", line2: "Bakgården", postalCode: "0150", city: "Oslo", country: "no" },
+          fromRegistry: [],
+        },
+      },
+      {
+        row: 6,
+        cells: ["Epsilon AS", "", ""],
+        outcome: "updated",
+        customerId: 13,
+        customerNumber: 1013,
+        errors: [],
+        preview: { name: "Epsilon AS", type: "business", postalAddressCleared: true, fromRegistry: [] },
+      },
+    ]);
     const fetchMock = stubImport(
       wireImport({
         state: "checked",
         processed: 3,
-        created: 2,
+        created: 3,
+        updated: 2,
         failed: 1,
         skipped: 2,
         finishedAt: "2026-10-13T10:02:00Z",
       }),
       (url, init) => {
         if (url.startsWith("/api/v1/customers/imports/7/rows?outcome=failed")) return json(failed);
+        if (url.startsWith("/api/v1/customers/imports/7/rows?outcome=created")) return json(created);
+        if (url.startsWith("/api/v1/customers/imports/7/rows?outcome=updated")) return json(updated);
         if (url.startsWith("/api/v1/customers/imports/7/rows?outcome=skipped")) {
           return json(
             rowsPage([
@@ -257,7 +345,7 @@ describe("ImportPage", () => {
     );
     renderPage();
     expect(await screen.findByText("The file has been checked")).toBeInTheDocument();
-    expect(screen.getByText("Would be created").nextSibling).toHaveTextContent("2");
+    expect(screen.getByText("Would be created").nextSibling).toHaveTextContent("3");
     expect(screen.getByText("Have errors").nextSibling).toHaveTextContent("1");
     expect(screen.getByText("Would be skipped").nextSibling).toHaveTextContent("2");
     expect(await screen.findByText("Same customer as row 1.")).toBeInTheDocument();
@@ -266,6 +354,33 @@ describe("ImportPage", () => {
     expect(screen.getByText("E-post")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Download failed rows" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Change mapping" })).toBeInTheDocument();
+
+    // The preview: what would be created and updated, Brønnøysund's values marked.
+    const willCreate = (await screen.findByText("Will be created")).closest("table") as HTMLElement;
+    const equinor = within(willCreate).getByText("EQUINOR ASA").closest("tr") as HTMLElement;
+    expect(within(equinor).getByText("923609016")).toBeInTheDocument();
+    expect(within(equinor).getByText("Postboks 8500, 4035 STAVANGER, NO")).toBeInTheDocument();
+    expect(within(equinor).getAllByText("From Brønnøysund")).toHaveLength(2);
+    const willUpdate = (await screen.findByText("Will be updated")).closest("table") as HTMLElement;
+    const acme = within(willUpdate).getByText("Acme AS").closest("tr") as HTMLElement;
+    expect(within(acme).getByText("Storgata 1, Bakgården, 0150 Oslo, NO")).toBeInTheDocument();
+    expect(within(acme).queryByText("From Brønnøysund")).not.toBeInTheDocument();
+    // The file's name with the registry's legal name beneath, that alone marked.
+    const kontor = within(willCreate).getByText("Kontor").closest("tr") as HTMLElement;
+    const legalName = within(kontor).getByText("KONTOR OG KAFFE AS");
+    expect(within(legalName.parentElement as HTMLElement).getByText("From Brønnøysund")).toBeInTheDocument();
+    expect(within(kontor).getAllByText("From Brønnøysund")).toHaveLength(2);
+    expect(within(kontor).getByText("Strandkaien 2, 5003 BERGEN, Vestland, NO")).toBeInTheDocument();
+    // The marker is focusable and described by its hint.
+    const badge = within(kontor).getAllByText("From Brønnøysund")[0].closest("[tabindex]") as HTMLElement;
+    expect(badge).toHaveAttribute("tabindex", "0");
+    expect(badge).toHaveAccessibleDescription(/Brønnøysundregistrene/);
+    // A row with no preview falls back on the file's name.
+    const delta = within(willCreate).getByText("Delta AS").closest("tr") as HTMLElement;
+    expect(within(delta).getAllByText("—")).toHaveLength(2);
+    // An update that clears the address says so.
+    const epsilon = within(willUpdate).getByText("Epsilon AS").closest("tr") as HTMLElement;
+    expect(within(epsilon).getByText("Will be removed")).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: "Import" }));
     await waitFor(() =>
@@ -342,6 +457,46 @@ describe("ImportPage", () => {
     renderPage();
     expect(await screen.findByText("The import was stopped")).toBeInTheDocument();
     expect(screen.getByText("Not attempted").nextSibling).toHaveTextContent("2");
+  });
+
+  it("never shows the check's rows, with their rolled-back customers, as the run's", async () => {
+    const finishedAt = "2026-10-13T10:02:00Z";
+    stubImport(wireImport({ state: "done", processed: 1, created: 1, finishedAt }), (url) => {
+      if (url.startsWith("/api/v1/customers/imports/7/rows?outcome=created")) {
+        return json(
+          rowsPage([
+            {
+              row: 1,
+              cells: ["Acme AS", "post@acme.no", "x"],
+              outcome: "created",
+              customerId: 41,
+              customerNumber: 1041,
+              errors: [],
+            },
+          ]),
+        );
+      }
+      return url.includes("/rows?") ? json(rowsPage([])) : undefined;
+    });
+    // The check's page of the same rows, at the same moment, still cached.
+    renderPage(all, (queryClient) =>
+      queryClient.setQueryData(
+        importRowsQueryOptions(7, "created", 1, 50, true, finishedAt).queryKey,
+        rowsPage([
+          {
+            row: 1,
+            cells: ["Acme AS", "post@acme.no", "x"],
+            outcome: "created",
+            customerId: 900,
+            customerNumber: null,
+            errors: [],
+            preview: { name: "Acme AS", type: "business", fromRegistry: [] },
+          },
+        ]) as never,
+      ),
+    );
+    expect(await screen.findByText("#1041")).toBeInTheDocument();
+    expect(screen.queryByText("#900")).not.toBeInTheDocument();
   });
 
   it("shows a run's error as the worker wrote it", async () => {

@@ -2,6 +2,7 @@ package customers
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -200,7 +201,7 @@ func (w *ImportWorker) runImport(ctx context.Context, conn *pgxpool.Conn, imp st
 	if err != nil {
 		return err
 	}
-	o := importOptions{act: act, vocab: vocab, nameHolders: l.has(csvGroupIdentity) && !l.allowDuplicateIdentity}
+	o := importOptions{act: act, vocab: vocab, nameHolders: l.has(csvGroupIdentity) && !l.allowDuplicateIdentity, preview: dryRun}
 	duplicates, err := importDuplicateRows(ctx, q, imp.ID, l)
 	if err != nil {
 		return err
@@ -277,9 +278,17 @@ func (w *ImportWorker) runImport(ctx context.Context, conn *pgxpool.Conn, imp st
 						return err
 					}
 				}
+				// The check's preview: what a row it found would be created or
+				// updated would write. The run writes none (runImportRow).
+				var previewJSON []byte
+				if result.Preview != nil {
+					if previewJSON, err = json.Marshal(result.Preview); err != nil {
+						return fmt.Errorf("customers: encode import %d row %d's preview: %w", imp.ID, row.RowNo, err)
+					}
+				}
 				outcome := result.Outcome
 				if err := q.WriteImportRowOutcome(ctx, store.WriteImportRowOutcomeParams{
-					ImportID: imp.ID, RowNo: row.RowNo, Outcome: &outcome, CustomerID: result.CustomerID, Errors: errsJSON,
+					ImportID: imp.ID, RowNo: row.RowNo, Outcome: &outcome, CustomerID: result.CustomerID, Errors: errsJSON, Preview: previewJSON,
 				}); err != nil {
 					return fmt.Errorf("customers: write import %d row %d's outcome: %w", imp.ID, row.RowNo, err)
 				}

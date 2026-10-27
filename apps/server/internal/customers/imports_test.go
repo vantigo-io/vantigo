@@ -367,9 +367,14 @@ func TestImportLifecycle_TheTransitions(t *testing.T) {
 	if importing.State != "importing" {
 		t.Errorf("after run = %+v", importing)
 	}
-	// Not taken up yet: a stop goes back to checked, the check's counts intact.
-	if back := importOf(t, c.Do(http.MethodPost, importPath(checked.ID, "/stop"), nil), http.StatusOK); back.State != "checked" || back.Created != 1 {
-		t.Errorf("stop of an unstarted run = %+v, want checked with its counts", back)
+	// Not taken up yet: the run's request cleared the check's results, so a
+	// stop checks the file again — never checked with counts and no rows.
+	if back := importOf(t, c.Do(http.MethodPost, importPath(checked.ID, "/stop"), nil), http.StatusOK); back.State != "checking" || back.Created != 0 || back.RequestedAt == nil {
+		t.Errorf("stop of an unstarted run = %+v, want checking again with the counts reset", back)
+	}
+	runImportWorker(t, h)
+	if rechecked := getImport(t, c, checked.ID); rechecked.State != "checked" || rechecked.Created != 1 || len(importRowsOf(t, c, checked.ID, "created").Data) != 1 {
+		t.Errorf("after the stop's check = %+v, want checked with its row again", rechecked)
 	}
 	importOf(t, postRun(t, c, checked.ID), http.StatusOK)
 	runImportWorker(t, h)

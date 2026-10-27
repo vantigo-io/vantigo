@@ -1311,7 +1311,8 @@ times — and `customers.import_rows` its rows: each row's cells as the reader l
 them, and, once the worker has run it, its outcome (`created`, `updated`, `failed`
 or `skipped`), the customer it made or changed, and its errors (`[{column, message}]`,
 `column` the file's 0-based column index, absent for a problem with the row as a
-whole; a skipped row's one entry is the row-level "Same customer as row N."). The upload parses the file **once** and writes the rows with `CopyFrom`
+whole; a skipped row's one entry is the row-level "Same customer as row N."), and,
+for a row the check found would be created or updated, its preview (below). The upload parses the file **once** and writes the rows with `CopyFrom`
 in the transaction that creates the import; nothing reads the bytes again, and the
 bytes are not kept — the rows are the file. The database rather than the object
 store, because the worker reads by row, resumes by row and writes a result beside
@@ -1531,8 +1532,10 @@ draft ──check──▶ checking ──(worker)──▶ checked ──run─
   transaction**, beside the customer's statements, so a row is either committed with
   its outcome or neither: a process that dies mid-import loses nothing and
   double-writes nothing, and the next cycle resumes at the first row with no outcome.
-- `POST …/stop`: an import the worker has not taken up goes straight back (checking
-  to draft, importing to checked, the check's counts intact); one under way is
+- `POST …/stop`: an import the worker has not taken up goes straight back — a check
+  to draft; a run, whose request already cleared the check's results and previews,
+  to `checking` with its counts reset, so the file is checked again (`RecheckUnstartedRun`)
+  rather than shown as checked with nothing behind its counts; one under way is
   flagged, and the worker stops between chunks — a check stopped goes back to
   `draft` with its results cleared, a run stopped finishes as `done` with every row
   committed so far kept and the rest never attempted, which `processed` short of
@@ -1589,7 +1592,26 @@ exists.
 `GET …/rows?outcome=failed|created|updated|skipped&page&pageSize` (page size 1–500, default
 50) is the rows in file order, every one or those of one outcome, each with its
 cells, outcome, errors and the customer's id and number — the errors table after a
-check, the created customers after a run. `GET …/failed-rows` is the failed rows as
+check, the created customers after a run.
+
+A row the **check** found would be created or updated also carries `preview`
+(`CustomerImportRowPreview`, migration `00080`'s `import_rows.preview`): what the row
+resolves to, taken from the resolved row the dry run wrote — `name` and `type`, the
+`legalIdentity` the customer is left with (`country`, `id`, `name`, `source`; on an
+update the identity on file when the row repeats it, its own source kept, as the run
+keeps it), the primary `postalAddress` the customer is left with (`line1`, `line2`,
+`postalCode`, `city`, `region`, `country`): the row's, or — on an update whose mapping
+leaves the postal address alone — the one on file, read in the row's own transaction;
+absent when there is none. `postalAddressCleared` is `true` on an update whose postal
+cells are all blank while the customer has a primary postal address: the run removes
+it. And `fromRegistry`, the import's fields whose value Brønnøysund gave
+rather than the file or the customer on file: `name`, `legalName`, and of the postal
+address the parts it filled (`postalLine1`, `postalLine2`, `postalPostalCode`,
+`postalCity`, `postalCountry`), empty when it filled nothing. A failed or skipped row
+has none, and neither has any row of a run: `POST …/run` clears the rows' results,
+the preview with them, and the run writes its outcomes with none. The page keys the
+rows it caches by the check or run they came from (`finishedAt`), so a run's page never
+shows the check's rolled-back customer ids. `GET …/failed-rows` is the failed rows as
 a file to fix and upload again: the file's **own header**, so the same mapping is
 suggested when it comes back, behind an `error` column holding every problem of the
 row ("`<header>: message`", the message alone for the row as a whole, a nameless
@@ -3191,7 +3213,12 @@ The rules it is written to:
   answer); **Check file**. Step 2: the progress bar with the rows done, the counts
   so far and **Stop**; once checked, Rows · Would be created · Would be updated ·
   Have errors, the failed rows a page at a time (row, column as the file spells it,
-  problem), **Download failed rows**, **Change mapping** (which saves the mapping
+  problem), **Download failed rows**, **Will be created** and **Will be updated** —
+  the check's preview a page at a time (row, name, organisation number with the legal
+  name beneath when it differs, the postal address on one line with its region, or
+  **Will be removed** when the row clears it), each value from Brønnøysund marked
+  **From Brønnøysund** — a focusable badge whose hint, shown on hover and focus, is
+  also its accessible description — **Change mapping** (which saves the mapping
   as it is, returning the import to draft) and **Import** behind a confirmation
   that says the counts. Step 3: the bar with **Stop** behind a confirmation; once
   done, Created · Updated · Failed and, after a stop, Not attempted, the failed rows,

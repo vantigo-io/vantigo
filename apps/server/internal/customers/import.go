@@ -317,25 +317,62 @@ type customerState struct {
 // flag — false is "no field of it is mapped, leave it alone" — and inside a
 // touched group the whole value, the customer's own fields laid under the
 // mapped ones. A nil pointer inside a touched group is "clear it": no
-// identity, no primary address of that type, no group.
+// identity, no primary address of that type, no group. FromRegistry is the
+// import's fields whose value Brønnøysund gave rather than the file or the
+// customer on file (name, legalName, postalLine1 …), in that order — what the
+// check's preview marks (importRowPreview).
 type resolvedRow struct {
-	Name        string
-	Type        string
-	Status      string
-	HasIdentity bool
-	Identity    *legalIdentity
-	HasContact  bool
-	Contact     contactInfo
-	HasPostal   bool
-	Postal      *validatedAddress
-	HasInvoice  bool
-	Invoice     *validatedAddress
-	HasBilling  bool
-	Billing     billingProfile
-	HasGroup    bool
-	Group       *groupSnapshot
-	HasTags     bool
-	Tags        []tagSnapshot
+	Name         string
+	Type         string
+	Status       string
+	HasIdentity  bool
+	Identity     *legalIdentity
+	HasContact   bool
+	Contact      contactInfo
+	HasPostal    bool
+	Postal       *validatedAddress
+	HasInvoice   bool
+	Invoice      *validatedAddress
+	HasBilling   bool
+	Billing      billingProfile
+	HasGroup     bool
+	Group        *groupSnapshot
+	HasTags      bool
+	Tags         []tagSnapshot
+	FromRegistry []string
+}
+
+// importRowPreview is what a checked row would write (the check's preview,
+// import_worker.go): the resolved row's name, type and registry provenance,
+// with identity the legal identity the customer is left with — the row's on a
+// create, importedIdentity's on an update — and onFile the customer's primary
+// postal address before the row (nil on a create). The address is the one the
+// customer is left with: the row's when the postal group is touched, the one
+// on file when it is not; a touched group that resolves to none removes the
+// one on file, and says so (PostalAddressCleared).
+func importRowPreview(r resolvedRow, identity *legalIdentity, onFile *addressSnapshot) *gen.CustomerImportRowPreview {
+	preview := &gen.CustomerImportRowPreview{Name: r.Name, Type: r.Type, FromRegistry: append([]string{}, r.FromRegistry...)}
+	if identity != nil {
+		preview.LegalIdentity = &gen.CustomerImportRowPreviewIdentity{
+			Country: identity.Country, Id: identity.ID, Name: identity.Name, Source: identity.Source,
+		}
+	}
+	switch {
+	case r.HasPostal && r.Postal != nil:
+		preview.PostalAddress = &gen.CustomerImportRowPreviewAddress{
+			Line1: r.Postal.Line1, Line2: r.Postal.Line2, PostalCode: r.Postal.PostalCode, City: r.Postal.City,
+			Region: r.Postal.Region, Country: r.Postal.Country,
+		}
+	case r.HasPostal && onFile != nil:
+		cleared := true
+		preview.PostalAddressCleared = &cleared
+	case onFile != nil:
+		preview.PostalAddress = &gen.CustomerImportRowPreviewAddress{
+			Line1: onFile.Line1, Line2: onFile.Line2, PostalCode: onFile.PostalCode, City: onFile.City,
+			Region: onFile.Region, Country: onFile.Country,
+		}
+	}
+	return preview
 }
 
 // identityColumns is validateLegalIdentity's field keys as the import's fields.
@@ -404,12 +441,15 @@ func (l importLayout) resolve(p importPlan, cur *customerState, vocab importVoca
 	// The row: name, type, status. A new customer the row names nothing gets
 	// the registry's name.
 	nameMissing := cur == nil && strings.TrimSpace(p.Raw["name"]) == ""
+	nameFromRegistry := false
 	switch {
 	case nameMissing && answered && strings.TrimSpace(p.Registry.Record.Name) != "":
 		if name, msg := validateFriendlyName(p.Registry.Record.Name); msg != "" {
 			fail("name", msg)
 		} else {
 			r.Name = name
+			nameFromRegistry = true
+			r.FromRegistry = append(r.FromRegistry, "name")
 		}
 	case l.mapped("name"):
 		if name, msg := validateFriendlyName(p.Raw["name"]); msg != "" {
@@ -481,11 +521,14 @@ func (l importLayout) resolve(p importPlan, cur *customerState, vocab importVoca
 			fromRegistry := answered && strings.ToLower(country) == "no" && strings.ToLower(typ) == "business" &&
 				stripWhitespace(id) == p.Registry.OrgNr && strings.TrimSpace(p.Registry.Record.Name) != ""
 			sameIdentity := cur != nil && cur.Identity != nil && stripWhitespace(cur.Identity.ID) == stripWhitespace(id)
+			legalNameFromRegistry := false
 			if fromRegistry && !sameIdentity && strings.TrimSpace(p.Raw["legalName"]) == "" {
 				name = p.Registry.Record.Name
+				legalNameFromRegistry = true
 			}
 			if name == "" {
 				name = r.Name
+				legalNameFromRegistry = nameFromRegistry
 			}
 			identity, idErrs := validateLegalIdentity(country, typ, id, name, "manual")
 			failAll(func(field string) string { return identityColumns[field] }, idErrs)
@@ -494,6 +537,9 @@ func (l importLayout) resolve(p importPlan, cur *customerState, vocab importVoca
 					identity.Source = "brreg"
 				}
 				r.Identity = &identity
+				if legalNameFromRegistry {
+					r.FromRegistry = append(r.FromRegistry, "legalName")
+				}
 				if !typeFailed {
 					if mismatch := identityTypeMismatch(r.Type, r.Identity); mismatch != "" {
 						fail("legalType", mismatch)
@@ -537,8 +583,10 @@ func (l importLayout) resolve(p importPlan, cur *customerState, vocab importVoca
 		registryAddress = p.Registry.address()
 	}
 	var postalIncomplete bool
-	r.HasPostal, r.Postal, postalIncomplete = l.address(p, csvGroupPostal, "postal", curPostal, cur == nil, registryAddress, failAll)
-	r.HasInvoice, r.Invoice, _ = l.address(p, csvGroupInvoice, "invoice", curInvoice, cur == nil, nil, failAll)
+	var postalFromRegistry []string
+	r.HasPostal, r.Postal, postalIncomplete, postalFromRegistry = l.address(p, csvGroupPostal, "postal", curPostal, cur == nil, registryAddress, failAll)
+	r.FromRegistry = append(r.FromRegistry, postalFromRegistry...)
+	r.HasInvoice, r.Invoice, _, _ = l.address(p, csvGroupInvoice, "invoice", curInvoice, cur == nil, nil, failAll)
 	if postalIncomplete && p.Registry != nil && !answered && r.Identity != nil &&
 		registryOrganisationNumber(r.Identity, r.Type) == p.Registry.OrgNr {
 		registryShort = true
@@ -652,34 +700,51 @@ func (l importLayout) resolve(p importPlan, cur *customerState, vocab importVoca
 // it is a valid one; an address that fails validation has its blank parts
 // filled from it and is judged again, the file's cells winning. An address on
 // file that is complete is never touched by it. incomplete reports an
-// address that still failed.
-func (l importLayout) address(p importPlan, g csvGroup, addrType string, cur *addressSnapshot, create bool, reg *brregAddress, failAll func(func(string) string, map[string][]string)) (has bool, addr *validatedAddress, incomplete bool) {
+// address that still failed; fromRegistry is the import's fields of the
+// address the registry filled ("postalLine1" …), nil when it filled none.
+func (l importLayout) address(p importPlan, g csvGroup, addrType string, cur *addressSnapshot, create bool, reg *brregAddress, failAll func(func(string) string, map[string][]string)) (has bool, addr *validatedAddress, incomplete bool, fromRegistry []string) {
 	var parts addressParts
 	if l.has(g) {
 		parts = l.addressParts(p.Raw, addrType, cur)
 	} else if !create || reg == nil {
-		return false, nil, false
+		return false, nil, false, nil
 	}
 	if fileimport.AllBlank(parts[:]) {
 		if !create || reg == nil {
-			return true, nil, false
+			return true, nil, false, nil
 		}
 		// Nothing from the file: the registry's address, or none — never an
 		// error the file did not cause.
-		if parsed, errs := validateAddress(parts.filledFrom(reg).request(addrType)); errs == nil {
-			return true, &parsed, false
+		filled := parts.filledFrom(reg)
+		if parsed, errs := validateAddress(filled.request(addrType)); errs == nil {
+			return true, &parsed, false, parts.filledFields(filled, addrType)
 		}
-		return l.has(g), nil, false
+		return l.has(g), nil, false, nil
 	}
 	parsed, errs := validateAddress(parts.request(addrType))
 	if errs != nil && reg != nil {
-		parsed, errs = validateAddress(parts.filledFrom(reg).request(addrType))
+		filled := parts.filledFrom(reg)
+		if parsed, errs = validateAddress(filled.request(addrType)); errs == nil {
+			fromRegistry = parts.filledFields(filled, addrType)
+		}
 	}
 	failAll(func(part string) string { return addressField(addrType, part) }, errs)
 	if errs != nil {
-		return true, nil, true
+		return true, nil, true, nil
 	}
-	return true, &parsed, false
+	return true, &parsed, false, fromRegistry
+}
+
+// filledFields is the import's fields of the parts filledFrom filled in: a
+// part blank in a and not in filled.
+func (a addressParts) filledFields(filled addressParts, addrType string) []string {
+	var fields []string
+	for i, part := range addressPartNames {
+		if strings.TrimSpace(a[i]) == "" && strings.TrimSpace(filled[i]) != "" {
+			fields = append(fields, addressField(addrType, part))
+		}
+	}
+	return fields
 }
 
 // addressParts is one address group's values in addressPartNames' order.
@@ -751,6 +816,8 @@ type importOptions struct {
 	act         actor
 	vocab       importVocabulary
 	nameHolders bool
+	// preview asks for each row's preview (the check's): a dry run's alone.
+	preview bool
 }
 
 // importOutcome is what a row that succeeded did.
@@ -767,14 +834,14 @@ const (
 // an unknown number, two holders of an identity, a duplicate identity, a type
 // change, a group that needs a line — is an importRowRefusal, which rolls the
 // row back; any other error is the run's.
-func (s *server) importRow(ctx context.Context, txq *store.Queries, l importLayout, p importPlan, o importOptions) (importOutcome, int32, error) {
+func (s *server) importRow(ctx context.Context, txq *store.Queries, l importLayout, p importPlan, o importOptions) (importOutcome, int32, *gen.CustomerImportRowPreview, error) {
 	if l.creates() {
-		id, err := s.importCreate(ctx, txq, l, p, o)
-		return importCreated, id, err
+		id, preview, err := s.importCreate(ctx, txq, l, p, o)
+		return importCreated, id, preview, err
 	}
 	id, found, err := s.importFind(ctx, txq, l, p)
 	if err != nil {
-		return 0, 0, err
+		return 0, 0, nil, err
 	}
 	if !found {
 		// In createOrUpdate a row that names nobody creates — unless it names
@@ -782,13 +849,13 @@ func (s *server) importRow(ctx context.Context, txq *store.Queries, l importLayo
 		// number that is not on file is a typo, never a customer with another
 		// number. A legal id nobody holds is the case the mode is for.
 		if !importCreatesUnmatched(l, p) {
-			return 0, 0, refuseRow(p.Row, string(l.matchBy), importNoMatchMessage(l, p))
+			return 0, 0, nil, refuseRow(p.Row, string(l.matchBy), importNoMatchMessage(l, p))
 		}
-		id, err := s.importCreate(ctx, txq, l, p, o)
-		return importCreated, id, err
+		id, preview, err := s.importCreate(ctx, txq, l, p, o)
+		return importCreated, id, preview, err
 	}
-	err = s.importUpdate(ctx, txq, l, p, o, id)
-	return importUpdated, id, err
+	preview, err := s.importUpdate(ctx, txq, l, p, o, id)
+	return importUpdated, id, preview, err
 }
 
 // importCreatesUnmatched reports whether a row that matches no customer
@@ -856,25 +923,30 @@ func (s *server) importFind(ctx context.Context, txq *store.Queries, l importLay
 // row validated whole (strict), its name, type, status, identity and contact
 // info in the create's own insert, the registry record the row's lookup
 // fetched stored as a Brreg pick's is, and the rest through importRelations.
-func (s *server) importCreate(ctx context.Context, txq *store.Queries, l importLayout, p importPlan, o importOptions) (int32, error) {
+// It answers the row's preview beside the new customer's id.
+func (s *server) importCreate(ctx context.Context, txq *store.Queries, l importLayout, p importPlan, o importOptions) (int32, *gen.CustomerImportRowPreview, error) {
 	r, errs := l.resolve(p, nil, o.vocab, true)
 	if len(errs) > 0 {
-		return 0, refuseRowAll(l.sorted(errs))
+		return 0, nil, refuseRowAll(l.sorted(errs))
 	}
 	now := s.deps.Clock()
 	created, conflict, err := s.insertNewCustomer(ctx, txq,
 		newCustomer{Name: r.Name, Status: r.Status, Type: r.Type, Identity: r.Identity, Contact: r.Contact},
 		r.Identity != nil && !l.allowDuplicateIdentity, o.nameHolders, now, o.act)
 	if errors.Is(err, errDuplicateIdentity) {
-		return 0, refuseRow(p.Row, "legalId", duplicateIdentityRowMessage(conflict))
+		return 0, nil, refuseRow(p.Row, "legalId", duplicateIdentityRowMessage(conflict))
 	}
 	if err != nil {
-		return 0, err
+		return 0, nil, err
 	}
 	if err := storeImportRegistryRecord(ctx, txq, created.ID, r.Identity, p.Registry, o.act); err != nil {
-		return 0, err
+		return 0, nil, err
 	}
-	return created.ID, s.importRelations(ctx, txq, created.ID, p.Row, customerState{}, r, o)
+	var preview *gen.CustomerImportRowPreview
+	if o.preview {
+		preview = importRowPreview(r, r.Identity, nil)
+	}
+	return created.ID, preview, s.importRelations(ctx, txq, created.ID, p.Row, customerState{}, r, o)
 }
 
 // importUpdate is PUT /customers/{id} and PUT …/contact-info for a row, on the
@@ -882,8 +954,8 @@ func (s *server) importCreate(ctx context.Context, txq *store.Queries, l importL
 // address and tag write takes first, so nothing a colleague does lands
 // between a read here and the write it decides. What is on file is read
 // first, the row laid over it (resolve, strict), and only what differs is
-// written.
-func (s *server) importUpdate(ctx context.Context, txq *store.Queries, l importLayout, p importPlan, o importOptions, id int32) error {
+// written. It answers the row's preview.
+func (s *server) importUpdate(ctx context.Context, txq *store.Queries, l importLayout, p importPlan, o importOptions, id int32) (*gen.CustomerImportRowPreview, error) {
 	if _, err := lockWritableCustomer(ctx, txq, id); isReadOnlyCustomer(err) {
 		// A customer merged away or anonymised takes no more changes (customers
 		// merge design D2, GDPR design D4) — this row would otherwise restore it,
@@ -891,27 +963,27 @@ func (s *server) importUpdate(ctx context.Context, txq *store.Queries, l importL
 		// kept for bookkeeping. The row is refused; a merged-away customer's
 		// survivor is the one to import it under.
 		if isAnonymisedRefusal(err) {
-			return refuseRow(p.Row, string(l.matchBy), fmt.Sprintf("Customer %s was anonymised and takes no more changes", importMatchPhrase(l, p)))
+			return nil, refuseRow(p.Row, string(l.matchBy), fmt.Sprintf("Customer %s was anonymised and takes no more changes", importMatchPhrase(l, p)))
 		}
-		return refuseRow(p.Row, string(l.matchBy), fmt.Sprintf("Customer %s was merged into %s and takes no more changes; use that customer instead",
+		return nil, refuseRow(p.Row, string(l.matchBy), fmt.Sprintf("Customer %s was merged into %s and takes no more changes; use that customer instead",
 			importMatchPhrase(l, p), mergedAwayInto(err)))
 	} else if err != nil {
-		return err
+		return nil, err
 	}
 	existing, err := txq.GetCustomer(ctx, id)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	cur, err := s.importCurrentState(ctx, txq, l, id, existing)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	r, errs := l.resolve(p, &cur, o.vocab, true)
 	if len(errs) > 0 {
-		return refuseRowAll(l.sorted(errs))
+		return nil, refuseRowAll(l.sorted(errs))
 	}
 	if l.mapped("type") && r.Type != existing.Type {
-		return refuseRow(p.Row, "type", fmt.Sprintf("A customer's type is changed on its own, never by an import; this row says '%s', but customer %d is '%s'", r.Type, existing.CustomerNumber, existing.Type))
+		return nil, refuseRow(p.Row, "type", fmt.Sprintf("A customer's type is changed on its own, never by an import; this row says '%s', but customer %d is '%s'", r.Type, existing.CustomerNumber, existing.Type))
 	}
 
 	now := s.deps.Clock()
@@ -924,25 +996,45 @@ func (s *server) importUpdate(ctx context.Context, txq *store.Queries, l importL
 		duplicateCheck := after.Identity != nil && !identityCountryAndIDEqual(before.Identity, after.Identity) && !l.allowDuplicateIdentity
 		if _, conflict, err := s.writeCustomerCore(ctx, txq, id, existing.Type, before, after, nil, duplicateCheck, o.nameHolders, now, o.act); err != nil {
 			if errors.Is(err, errDuplicateIdentity) {
-				return refuseRow(p.Row, "legalId", duplicateIdentityRowMessage(conflict))
+				return nil, refuseRow(p.Row, "legalId", duplicateIdentityRowMessage(conflict))
 			}
-			return err
+			return nil, err
 		}
 		// An identity changed to the registry's has its record stored, as the
 		// PUT's own after-commit fetch does for a changed Brreg identity — from
 		// the answer the row already has, in the row's transaction.
 		if !identityEqual(before.Identity, after.Identity) {
 			if err := storeImportRegistryRecord(ctx, txq, id, after.Identity, p.Registry, o.act); err != nil {
-				return err
+				return nil, err
 			}
 		}
 	}
 	if r.HasContact && !contactInfoEqual(cur.Contact, r.Contact) {
 		if _, err := writeContactInfo(ctx, txq, id, cur.Contact, r.Contact, nil, now, o.act); err != nil {
-			return err
+			return nil, err
 		}
 	}
-	return s.importRelations(ctx, txq, id, p.Row, cur, r, o)
+	if err := s.importRelations(ctx, txq, id, p.Row, cur, r, o); err != nil {
+		return nil, err
+	}
+	if !o.preview {
+		return nil, nil
+	}
+	// The address on file the preview shows the customer keeping: read with
+	// the rest when the mapping touches it, and otherwise here, in the row's
+	// transaction — a row that maps no postal field leaves it as it is.
+	onFile := cur.Postal
+	if !l.has(csvGroupPostal) {
+		row, err := txq.PrimaryCustomerAddressOfType(ctx, store.PrimaryCustomerAddressOfTypeParams{CustomerID: id, Type: "postal"})
+		switch {
+		case err == nil:
+			snapshot := addressSnapshotFromRow(row)
+			onFile = &snapshot
+		case !errors.Is(err, pgx.ErrNoRows):
+			return nil, err
+		}
+	}
+	return importRowPreview(r, after.Identity, onFile), nil
 }
 
 // importMatchPhrase names the customer a row matched, as the row named it.
@@ -1201,11 +1293,13 @@ const importValueRefusal = "A value is out of range or too long for its field."
 var errImportDryRun = errors.New("customers: import dry run rolled back")
 
 // importRowResult is what one row did: its outcome, the customer it made or
-// changed, and the errors that refused it.
+// changed, the errors that refused it, and — a dry run's created or updated
+// row alone — what it would write (the check's preview).
 type importRowResult struct {
 	Outcome    string
 	CustomerID *int32
 	Errs       []importError
+	Preview    *gen.CustomerImportRowPreview
 }
 
 // runImportRow runs one row (design D5) in its own transaction on `on`, the
@@ -1228,7 +1322,7 @@ func (s *server) runImportRow(ctx context.Context, on db.TxBeginner, importID in
 		result = importRowResult{}
 		return db.WithTx(ctx, on, pgx.TxOptions{}, func(tx pgx.Tx) error {
 			txq := store.New(tx)
-			outcome, id, err := s.importRow(ctx, txq, l, p, o)
+			outcome, id, preview, err := s.importRow(ctx, txq, l, p, o)
 			if err != nil {
 				return err
 			}
@@ -1237,10 +1331,11 @@ func (s *server) runImportRow(ctx context.Context, on db.TxBeginner, importID in
 				result.Outcome = "created"
 			}
 			if dryRun {
+				result.Preview = preview
 				return errImportDryRun
 			}
 			return txq.WriteImportRowOutcome(ctx, store.WriteImportRowOutcomeParams{
-				ImportID: importID, RowNo: int32(p.Row), Outcome: &result.Outcome, CustomerID: &id, Errors: nil,
+				ImportID: importID, RowNo: int32(p.Row), Outcome: &result.Outcome, CustomerID: &id, Errors: nil, Preview: nil,
 			})
 		})
 	})

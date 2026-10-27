@@ -725,6 +725,10 @@ components:
                         - failed
                         - skipped
                     type: string
+                preview:
+                    allOf:
+                        - $ref: '#/components/schemas/CustomerImportRowPreview'
+                    description: What the row resolves to — present only on a row the check found would be created or updated, absent on every other row and on every row of a run (the run clears it).
                 row:
                     format: int32
                     type: integer
@@ -743,6 +747,64 @@ components:
                     type: string
             required:
                 - message
+            type: object
+        CustomerImportRowPreview:
+            description: "What a checked row would write, as the check resolved it (the row's own values laid over the customer on file, the blanks filled from Brønnøysund). name and type are the customer's; legalIdentity is the legal identity the customer is left with, absent when it has none; postalAddress is the primary postal address the customer is left with — the row's, or on an update whose mapping leaves the postal address alone the one on file — absent when it has none; postalAddressCleared is true on an update whose row clears the primary postal address on file, which the run removes. fromRegistry lists the import's fields whose value came from Brønnøysund rather than from the file or the customer on file: name, legalName, and the postal address's postalLine1, postalLine2, postalPostalCode, postalCity and postalCountry — empty when nothing did."
+            properties:
+                fromRegistry:
+                    items:
+                        type: string
+                    type: array
+                legalIdentity:
+                    $ref: '#/components/schemas/CustomerImportRowPreviewIdentity'
+                name:
+                    type: string
+                postalAddress:
+                    $ref: '#/components/schemas/CustomerImportRowPreviewAddress'
+                postalAddressCleared:
+                    type: boolean
+                type:
+                    type: string
+            required:
+                - name
+                - type
+                - fromRegistry
+            type: object
+        CustomerImportRowPreviewAddress:
+            description: A checked row's primary postal address. country is the lowercase ISO code.
+            properties:
+                city:
+                    type: string
+                country:
+                    type: string
+                line1:
+                    type: string
+                line2:
+                    type: string
+                postalCode:
+                    type: string
+                region:
+                    type: string
+            required:
+                - line1
+                - country
+            type: object
+        CustomerImportRowPreviewIdentity:
+            description: A checked row's legal identity as the customer will hold it. source is the identity's own — "brreg" for one Brønnøysund answered for, "manual" for one entered by hand; an identity kept from file because the row repeats it keeps its source.
+            properties:
+                country:
+                    type: string
+                id:
+                    type: string
+                name:
+                    type: string
+                source:
+                    type: string
+            required:
+                - country
+                - id
+                - name
+                - source
             type: object
         CustomerImportSampleRow:
             description: One of the first rows of an import as the preview shows it (customers import wizard design D3), with the errors its cells get under the saved mapping — the row planned through the endpoints' own validators, no database asked.
@@ -5289,7 +5351,7 @@ paths:
             x-vantigo-access: permission:customers:import+customers:view
     /api/v1/customers/imports/{importId}/stop:
         post:
-            description: Stops a check or a run (customers import wizard design D5). One the worker has not taken up goes straight back — checking to draft, importing to checked. One under way is flagged, and the worker stops before its next chunk, within a few hundred rows; a check stopped goes back to draft with its results cleared, a run stopped finishes as done with every row committed so far kept and the rest never attempted, which processed short of rows says.
+            description: Stops a check or a run (customers import wizard design D5). One the worker has not taken up goes straight back — a check to draft; a run, whose request already cleared the check's results, to checking, so the file is checked again and the page lands on a fresh check. One under way is flagged, and the worker stops before its next chunk, within a few hundred rows; a check stopped goes back to draft with its results cleared, a run stopped finishes as done with every row committed so far kept and the rest never attempted, which processed short of rows says.
             operationId: postCustomersImportsByImportIdStop
             parameters:
                 - in: path
