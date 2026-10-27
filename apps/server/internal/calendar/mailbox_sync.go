@@ -319,6 +319,7 @@ func mailboxSyncOut(row *store.CalendarMailboxSync, availability gen.MailboxSync
 		out.Error = &e
 	}
 	out.LastSyncedAt = utcPtr(row.LastSyncedAt)
+	out.BusySyncedAt = utcPtr(row.BusySyncedAt)
 	return out
 }
 

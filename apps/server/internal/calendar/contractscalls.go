@@ -19,7 +19,10 @@ import (
 // the customer directory (deps.Directory), the project directory
 // (deps.Projects), the workforce register's DirectoryAccount (deps.Workforce)
 // and the mailbox provider (deps.MailboxCalendar, calendar Outlook sync design
-// O4). Every call is made through one of the thin accessors below
+// O4) — its writes, and the busy read's Delta and Marked (O9.4) — and
+// identity's Check of the caller's permission for the CalendarBusy contract
+// this module provides (busy.go, O9.8). Every call is made through one of the
+// thin accessors below
 // and through nowhere else, so "what does Calendar ask of another module, and
 // when" has one place to read the answer and one place to check it from.
 //
@@ -326,4 +329,40 @@ func (s *server) workforceDirectoryAccount(ctx context.Context) (*contracts.Dire
 		return nil, nil
 	}
 	return s.deps.Workforce.DirectoryAccount(ctx)
+}
+
+// mailboxDelta is a page of the changes to the mailbox's default calendar
+// (design O9.4): a delta started afresh over from..to when link is "", else
+// the one link continues.
+func (s *server) mailboxDelta(ctx context.Context, mailbox string, from, to time.Time, link string) (contracts.MailboxDelta, error) {
+	if err := noteContractCall(ctx, "MailboxCalendar.Delta"); err != nil {
+		return contracts.MailboxDelta{}, err
+	}
+	if s.deps.MailboxCalendar == nil {
+		return contracts.MailboxDelta{}, contracts.ErrMailboxUnavailable
+	}
+	return s.deps.MailboxCalendar.Delta(ctx, mailbox, from, to, link)
+}
+
+// mailboxMarked is, among eventIDs — at most contracts.MailboxMarkedMax —
+// the events carrying this installation's marker (design O9.2).
+func (s *server) mailboxMarked(ctx context.Context, mailbox string, eventIDs []string) ([]contracts.MailboxEventRef, error) {
+	if err := noteContractCall(ctx, "MailboxCalendar.Marked"); err != nil {
+		return nil, err
+	}
+	if s.deps.MailboxCalendar == nil {
+		return nil, contracts.ErrMailboxUnavailable
+	}
+	return s.deps.MailboxCalendar.Marked(ctx, mailbox, eventIDs)
+}
+
+// accessHas is whether the caller of the request in ctx holds key, as
+// identity's Check answers it (contracts.HasPermission): false with no
+// request, and on any failure — the gate of the CalendarBusy contract
+// (busy.go), which another module calls with its request's context.
+func (s *server) accessHas(ctx context.Context, key string) (bool, error) {
+	if err := noteContractCall(ctx, "Access.Check"); err != nil {
+		return false, err
+	}
+	return contracts.HasPermission(ctx, s.deps.Access, key), nil
 }

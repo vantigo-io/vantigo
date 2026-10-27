@@ -38,6 +38,12 @@ DELETE FROM calendar.mailbox_busy WHERE user_id = @user_id;
 -- 5000 (O9.3).
 SELECT count(*)::integer FROM calendar.mailbox_busy WHERE user_id = @user_id;
 
+-- name: ListMailboxBusyEventIDs :many
+-- ListMailboxBusyEventIDs is the event ids of the person's busy rows,
+-- whatever their sync's state: what the worker's read holds against the cap
+-- of 5000, telling an event it stores already from a new one (O9.3).
+SELECT event_id FROM calendar.mailbox_busy WHERE user_id = @user_id;
+
 -- name: ListMailboxBusyInWindow :many
 -- ListMailboxBusyInWindow is the person's busy rows in a window, while their
 -- sync is on: a timed row overlapping from_at..to_at (the end exclusive), an
