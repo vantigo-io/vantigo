@@ -1,6 +1,6 @@
 ---
 title: Fakturaer
-description: Fakturering av arbeid, utkast, utstedelse og sending av fakturaer, kreditnotaer, betalinger, journalen og eksporten.
+description: Fakturering av arbeid og forbruk, utkast, utstedelse og sending av fakturaer, kreditnotaer, betalinger, journalen og eksporten.
 sidebar:
   order: 50
 sources:
@@ -218,6 +218,26 @@ med ([Fakturere arbeid](#fakturere-arbeid)). Det lagres med sidens **Lagre**.
   rader skrives, og en utstedt fakturas timeliste endres aldri
   ([timelisten](/en/reference/invoices/#the-timesheet)).
 
+### Forbruk til fakturering
+
+Kortet **Forbruk til fakturering** på samme side — *Mva-koden en strømlinje faktureres
+med: den vanlige satsen, og fritaket for husholdninger i Nord-Norge* — holder de to
+kodene et utkast laget av forbruk starter med ([Fakturere forbruk](#fakturere-forbruk)).
+Det lagres med sidens **Lagre**.
+
+- **Mva-kode for strøm**: koden for hver linje på et vanlig målepunkt — kraften,
+  nettleien, avgiftene. Kode 3 (25 %) til du endrer den.
+- **Mva-kode for avgiftsfri strøm (Nord-Norge)**: koden for hver linje til en husholdning
+  i Nordland, Troms eller Finnmark, som ikke betaler merverdiavgift på strøm (mval.
+  § 6-6). Vantigo legger inn kode **5N** for dette — *Fritatt – kraft til husholdninger i
+  Nord-Norge 0 %*, med lovgrunnlaget skrevet på PDF-en — og den er standard (kode 5 der
+  5N ikke kunne legges inn).
+
+Energi avgjør hvilken av de to et målepunkt får, ut fra husholdningsbruk og postnummer,
+og viser det på målepunktets side. Så lenge selgeren ikke er registrert i
+Merverdiavgiftsregisteret, faktureres hver strømlinje med kode 7 i stedet, uansett hva
+kortet sier ([mva-koder for energi](/en/reference/invoices/#vat-codes-for-energy)).
+
 ## Finne et dokument
 
 **Fakturaer** i sidemenyen lister hvert utkast og hvert utstedte dokument: utkast først,
@@ -400,6 +420,131 @@ Ingenting lages, og dialogen sier *Kunne ikke fakturere arbeidet* og hvorfor:
 Gjelder avvisningen arbeidet, nevner varselet det — *Arbeidet som ble avvist: …* — og
 listen leses på nytt, så arbeid som ikke lenger kan faktureres, faller ut av det du
 valgte. Sjekk valget og klikk knappen igjen.
+
+## Fakturere forbruk
+
+Når Energi-modulen er slått på, blir strømmen en kunde har brukt, fakturalinjer her:
+Energi priser forbruket på hvert målepunkt per faktureringsperiode — en *avregning*,
+etter spotprisene og tariffene — og Vantigo skriver én linje for hvert priselement i den,
+på kundens språk, og merker avregningen som fakturert når fakturaen utstedes
+([slik virker det](/en/reference/invoices/#invoicing-consumption)). Som fakturering av
+arbeid krever det `invoices:access` og `invoices:create`.
+
+### Hvor forbruket som skal faktureres, står
+
+På en kundes side viser fanen **Fakturaer** kortet **Forbruk** — *Målepunkter med
+faktureringsperioder som er avsluttet og ikke fakturert ennå.* — under **Ufakturert
+arbeid**. Er Energi-modulen slått av, vises ikke kortet. Én rad per leveranse:
+
+- **Målepunkt** (målepunkt-ID-en) og **Adresse**;
+- **Fakturering** — **Månedlig**, **Kvartalsvis** eller **Årlig**, slik
+  leveranseperioden er satt opp i Energi;
+- **Fakturert til og med** — den siste dagen som alt er fakturert, eller *Aldri
+  fakturert*;
+- **Forfalte perioder** — hvor mange avsluttede faktureringsperioder som ikke er
+  fakturert;
+- **Status** — *Klar til fakturering*, eller hvorfor den første forfalte perioden ikke
+  kan faktureres ennå: *Faktureringsperioden er fortsatt åpen*, *Ingen tariff gjelder*,
+  *Ikke noe forbruk i perioden*, *Avlesninger mangler*, *Spotpriser mangler* eller
+  *Spotprisene er fortsatt foreløpige*. Rett det i Energi — gi leveransen en tariff,
+  importer avlesningene eller prisene — så viser kortet den klar neste gang; her trenger
+  du ikke gjøre noe.
+
+Venter ingenting, sier kortet *Ikke noe forbruk å fakturere*. Kortet bare leser: ingenting
+avregnes før du åpner veiviseren.
+
+### Lag et utkast av det
+
+Klikk **Fra forbruk**. Dialogen **Fakturer forbruk** spør om:
+
+- **Faktureringsperioder som slutter senest** — i dag med mindre du endrer det. *Hver
+  faktureringsperiode som er avsluttet innen denne dagen og ikke fakturert, avregnes og
+  vises.* Endrer du dagen, avregnes det på nytt.
+- **Avregningene**, per målepunkt (*Avregninger for 707057500012345678*): hver
+  faktureringsperiode med kWh, beløp og linjer — kraften, nettleiens dag og natt,
+  kapasitetsleddet per måned, fastbeløpene og avgiftene — og *Korreksjon* på en som
+  korrigerer en periode som er fakturert før. *Forbruket er delvis stipulert* når noen
+  avlesninger er stipulert. Hver avregning som kan faktureres, er krysset av; fjern
+  krysset på dem som skal vente. En som ikke kan velges, sier hvorfor: hva som stopper
+  den, dokumentet som alt holder den (**På utkast 12**, **På faktura 1042**), eller
+  *Årlig fakturering av en person, som skal faktureres minst kvartalsvis* — en forbruker
+  skal faktureres minst hvert kvartal, så endre leveransens fakturering i Energi.
+- **Mva-kode for strøm** og **Mva-kode for avgiftsfri strøm (Nord-Norge)** — med kodene
+  på kortet **Forbruk til fakturering** i innstillingene som utgangspunkt, eller kode 7
+  for begge så lenge selgeren ikke er mva-registrert. Hver linje får en av de to etter
+  målepunktet sitt.
+- **Merknad** — *Skrives på fakturaen. Står den tom, foreslås en merknad om fakturaen den
+  erstatter når forbruket er kreditert før.*
+- **Legg forbruket på** — **Et nytt utkast**, eller et av kundens fakturautkast.
+
+Klikk **Opprett utkast**, eller **Legg til i utkast 12**. Utkastet åpnes; legges forbruket
+til et utkast, sier meldingen *Forbruket er lagt til i utkastet*.
+
+### Slik ser utkastet ut
+
+- **Én linje per priselement**, på kundens språk — «Strøm (dag), 707057500012345678
+  Storgata 1, 9008 Tromsø, oktober 2026» eller «… October 2026»: elementets eget navn,
+  dag- eller nattleddet eller måneden der det gjelder, målepunktet, adressen og
+  perioden. Antallet er kWh, månedene eller årene, og enhetsprisen kan ha opptil åtte
+  desimaler, slik at hver linjes beløp er nøyaktig beløpet Energi avregnet.
+- **En korreksjon** — en periode som er fakturert før, der avlesninger eller priser er
+  endret siden — faktureres som differansen: én linje per element som er endret, *1 stk*
+  til differansen (eller *-1 stk* når det er penger tilbake), med en tekst som begynner
+  med «Korreksjon» / «Correction» og gir differansen i kWh og fakturaen som fakturerte
+  perioden, *tidligere fakturert 1042* / *previously invoiced 1042*. Fakturaen som helhet
+  må fortsatt bli mer enn null.
+- **Leveringsperioden** går fra første til siste avregnede dag.
+- **PDF-en** skriver, over hvert målepunkts linjer, en blokk med **Målepunkt-ID**,
+  **Adresse**, **Prisområde**, **Avtale**, **Periode** og **Forbruk** i kWh — med
+  korreksjonens differanse ved siden av — og *Forbruket er delvis stipulert* der det er
+  det. En faktura til en privatperson slutter med *Prisene på strøm kan sammenlignes på
+  strømpris.no. Klager kan rettes til Elklagenemnda, elklagenemnda.no* (på engelsk for en
+  engelskspråklig kunde). Som EHF bærer hver linje målepunkt-ID-en.
+
+Under hver linje viser redigeringen avregningen den fakturerer — målepunktet, perioden,
+kWh og beløpet.
+
+### Redigere et utkast av forbruk
+
+Rediger linjene som på ethvert utkast ([Arbeidet på et utkast](#arbeidet-på-et-utkast)),
+med to ting i tankene:
+
+- **En avregnings linjer holdes sammen.** Du kan endre tekst, antall eller pris, fjerne
+  noen av dem eller flytte dem samlet, men ikke sette andre linjer mellom dem: **Lagre**
+  avviser det. Fjerner du alle linjene til en avregning, gis den tilbake — ufakturert
+  igjen etter **Lagre**, slik arbeid blir.
+- **Oppdater arbeidet** avregner utkastets forbruk på nytt og skriver linjene på nytt fra
+  Energis tall nå, i stedet for linjene du har redigert; en avregning som ikke lenger kan
+  faktureres, faller bort og nevnes som frigitt. Er avlesninger eller priser endret etter
+  at utkastet ble laget, sier linjene og **Verdt å se på** at arbeidet er endret: oppdater,
+  ellers avviser utstedelsen det.
+
+### Utstede og kreditere det
+
+**Utsted** som enhver faktura. Utstedelsen merker hver avregning som fakturert i Energi,
+der målepunktets kort **Oppgjør** så viser fakturanummeret. Den avvises, med linjen
+nevnt, når en avregning er endret siden utkastet ble laget, ikke lenger kan faktureres
+eller nå hører til en annen kunde: oppdater og utsted igjen. Prosjekter-modulen trenger
+ikke være slått på for et utkast med bare forbruk.
+
+**Krediter** en forbruksfaktura som enhver annen. En avregning gis tilbake — ufakturert
+igjen, avregnet på nytt neste gang — bare når kreditnotaen returnerer **hver eneste av
+linjene** dens i sin helhet; returneres én av dem, forblir avregningen fakturert.
+Avlesninger eller priser som endres etter at en periode er fakturert, trenger ingen
+kreditnota: Energi lager selv en korreksjon av differansen, og den dukker opp i
+veiviseren.
+
+### Når veiviseren avviser
+
+Ingenting lages, og dialogen sier *Kunne ikke fakturere forbruket* og hvorfor:
+Energi-modulen er slått av; *En valgt avregning kan ikke faktureres ennå*; *En valgt
+avregning gjelder årlig levering til en person, og en forbruker skal faktureres minst
+kvartalsvis*; *Ingenting er igjen å fakturere til og med denne dagen*; en valgt
+avregning ligger allerede på et annet dokument, tilhører en annen kunde, kan ikke lenger
+faktureres eller er ikke i NOK; avregningene gir mer enn 500 linjer sammen med utkastets
+egne (velg færre, eller lag et nytt utkast); eller kunden kan ikke faktureres, som for
+**Ny faktura**. Gjelder avvisningen én avregning, nevner varselet den — *Avregningen som
+ble avvist: …*.
 
 ## Redigere og slette et utkast
 
@@ -1699,11 +1844,11 @@ Ingen innebygd rolle har disse; en eier har alt
 | --- | --- |
 | Åpne appen, lese hvert dokument, laste ned PDF-er og EHF-filer, se betalinger, sendinger og EHF-tilstander, lese journalen, eksportere CSV-filen, se kortet på dashbordet, lese forfallslisten, se en fakturas purringer, purrekrav, leveringer, vent og overlevering og laste ned PDF-en til et brev, lese en kundes purreregel, inkassosatsene og purreinnstillingene, se dashbordets varsler om forfalte fakturaer og penger som skal tilbake, se en fakturas betalingslenke og Vipps-betalinger, liste dagens Vipps-betalinger og laste dem ned som CSV | `invoices:access` |
 | Lage, redigere, forhåndsvise og slette utkast | `invoices:create`, og `customers:view` for å velge kjøperen |
-| Se det ufakturerte arbeidet — timene, personene og satsene — på en kundes fane Fakturaer eller et prosjekts fane Fakturagrunnlag, lage et utkast av det eller legge det til i et, oppdatere arbeidet på et utkast, slå timelisten av eller på, trekke fra tidligere fakturaer | `invoices:create` |
-| Utstede et utkast — som merker arbeidet på det som fakturert i Timer, Utlegg og Prosjekter, uten å spørre etter rettighetene der — lage en kreditnota, sende et dokument på e-post eller som EHF, se hvor hver sending gikk, avbryte eller avklare en EHF-sending, registrere en levering manuelt eller fjerne en, lage eller trekke tilbake en betalingslenke og se adressen og QR-koden mens betaling på stedet tilbys, ta imot en Vipps-betaling på stedet | `invoices:issue` |
+| Se det ufakturerte arbeidet — timene, personene og satsene — på en kundes fane Fakturaer eller et prosjekts fane Fakturagrunnlag, lage et utkast av det eller legge det til i et, oppdatere arbeidet på et utkast, slå timelisten av eller på, trekke fra tidligere fakturaer; se en kundes forbruk som skal faktureres, og lage et utkast av det eller legge det til i et | `invoices:create` |
+| Utstede et utkast — som merker arbeidet på det som fakturert i Timer, Utlegg og Prosjekter, og forbruket i Energi, uten å spørre etter rettighetene der — lage en kreditnota, sende et dokument på e-post eller som EHF, se hvor hver sending gikk, avbryte eller avklare en EHF-sending, registrere en levering manuelt eller fjerne en, lage eller trekke tilbake en betalingslenke og se adressen og QR-koden mens betaling på stedet tilbys, ta imot en Vipps-betaling på stedet | `invoices:issue` |
 | Registrere en betaling eller fjerne en med begrunnelse; importere bankfiler, og bruke **Innbetalinger** og avvikskøen der; sette en kundes purreregel; forhåndsvise og gjøre purrekjøringer, skrive ut papirbrev, bekrefte en bunke postlagt eller skrive den ut på nytt; trekke tilbake et brev eller sende et som feilet på nytt; registrere en betaling av purrekrav, fjerne en, ettergi et purrekrav; sette en faktura på vent og fjerne den fra vent, registrere en overlevering til inkasso og trekke den tilbake, eksportere inkassofilen; registrere en dags Vipps-betalinger som avstemt; se dashbordets varsler om banklinjer, brev, utskriftsbunker og Vipps-betalinger | `invoices:payments` |
 | Lage en hurtigfaktura — laget og utstedt i ett steg, registrert som overlevert — og ta betalt for den med Vipps på stedet | `invoices:create` og `invoices:issue` |
-| Redigere selgeropplysningene, nummerserien, Peppol-ID-en, aksesspunktet, KID-avtalen, mva-kodene, kortet **Arbeid til fakturering**, inkassosatsene og purreinnstillingene, gjennomgangen av regelverket blant dem; endre en bankkontos filformat under **Innbetalinger**, som også krever `invoices:payments` for å åpnes; sette opp Vipps og betalingsinnstillingene, bekrefte kontantsalg, forlate en Vipps-betaling som står fast | `invoices:manage` |
+| Redigere selgeropplysningene, nummerserien, Peppol-ID-en, aksesspunktet, KID-avtalen, mva-kodene, kortene **Arbeid til fakturering** og **Forbruk til fakturering**, inkassosatsene og purreinnstillingene, gjennomgangen av regelverket blant dem; endre en bankkontos filformat under **Innbetalinger**, som også krever `invoices:payments` for å åpnes; sette opp Vipps og betalingsinnstillingene, bekrefte kontantsalg, forlate en Vipps-betaling som står fast | `invoices:manage` |
 
 Innbetalinger og purring har ingen egen rettighet. Purringer, avvikskøen, vent og
 overlevering til inkasso krever `invoices:payments`, ikke `invoices:issue`: en purring er

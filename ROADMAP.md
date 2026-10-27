@@ -590,8 +590,8 @@ and `energy:consumption-view`. See
 [`docs/src/content/docs/en/reference/energy.md`](docs/src/content/docs/en/reference/energy.md#settlements)
 and the [plan](docs/superpowers/plans/2026-10-27-energy-settlements.md).
 
-Energy phase 4 is done. What remains is Invoices phase 5's **D** invoices from
-consumption (the wizard) and **E** billing runs.
+Energy phase 4 is done. Invoices phase 5's **D** invoices from consumption (the
+wizard) is done too; what remains is its **E** billing runs.
 
 *Unblocks:* the Invoices module generating invoice lines from consumption
 without touching `energy` tables.
@@ -1129,14 +1129,36 @@ production.
 
 *Unblocks:* receivables without a spreadsheet; Point of sale's payment adapters.
 
-### Phase 5 — Energy consumption billing
+### Phase 5 — Energy consumption billing (one of two deliveries done)
 
 Periodic invoices per supply point and period from Energy's figures, tariff and price
 lines, batch issuing, the utilities' periodic-invoicing rules — with Energy phase 4's
 consumption contract. The design is written
 ([design](docs/superpowers/specs/2026-10-24-energy-consumption-billing-design.md)); Energy
-phase 4's deliveries A–C have landed; this phase's D (invoices from consumption) and E
-(billing runs) are next.
+phase 4's deliveries A–C have landed.
+
+**Delivery D: invoices from consumption (done)** — on `feat/invoices-energy`, migration
+`00078_invoices_energy.sql`. A customer's settled consumption becomes an invoice draft
+through the **From consumption** wizard: Energy's settlements read through
+`contracts.ConsumptionProvider`, one line per settlement line in the buyer's language —
+the component, its band or month, the GSRN, the address and the period — its VAT code
+by the line's hint (the settings' two energy codes; the north's household exemption on
+the seeded code `5N`, mval. § 6-6), a correction's lines as ±1 × the difference, a unit
+price of up to eight decimals so the amount wins. A settlement is a line source
+(`energy.settlement`, no project) held over its lines, judged fresh on a read, rebuilt
+by a refresh, refused at issue when it moved to another customer, stamped by Energy's
+holder last and released by a credit note that returns every one of its lines; a
+consumer's yearly supply is refused. The PDF prints a block per metering point and, for
+a person, the strømpris.no and Elklagenemnda footer; EHF carries the metering point on
+each line. The uninvoiced panel gains a **Consumption** section, the settings the two
+energy VAT codes. See
+[`docs/src/content/docs/en/reference/invoices.md`](docs/src/content/docs/en/reference/invoices.md#invoicing-consumption)
+and the [plan](docs/superpowers/plans/2026-10-27-invoices-energy.md).
+
+**Delivery E: billing runs (next)** — every customer `DueSupplies` names, drafted and
+optionally issued by an `invoices-billing` worker in the wizard's own code path, split
+by metering point when a document cannot hold the lines; the **Billing runs** pages;
+`module.Workers` learning the slots the run needs.
 
 *Unblocks:* the energy business's core revenue.
 

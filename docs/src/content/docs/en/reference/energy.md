@@ -185,7 +185,7 @@ fourth is derived:
   otherwise — a five-digit code, a letter in it, another country or a point not for
   household use. It is shown on the point's page so a wrong postal code is seen. It is
   a hint, not a VAT code: Invoices maps it to its settings' codes when it builds the
-  document (delivery D), for every line of the supply, the grid's and the taxes'
+  document ([VAT codes for energy](/en/reference/invoices/#vat-codes-for-energy)), for every line of the supply, the grid's and the taxes'
   included (design D8).
 
 `POST /metering-points` and `PUT /metering-points/{id}` take `gridTariffId`,
@@ -1270,8 +1270,8 @@ A **settlement** is what a customer owes for a metering point over one billing p
 of one supply period: the period's consumption priced by the spot prices and the
 tariffs, as lines an invoice is built from. Energy computes it, stores it and hands it
 to invoicing across `contracts.ConsumptionProvider`
-([below](#the-consumption-contract)); Invoices builds the document from it (delivery D)
-and stamps it invoiced through Energy's holder ([below](#the-invoiced-work-holder)).
+([below](#the-consumption-contract)); Invoices builds the document from it
+([Invoicing consumption](/en/reference/invoices/#invoicing-consumption)) and stamps it invoiced through Energy's holder ([below](#the-invoiced-work-holder)).
 The design is D4–D6 of
 [`docs/superpowers/specs/2026-10-24-energy-consumption-billing-design.md`](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-10-24-energy-consumption-billing-design.md)
 with S10 of
@@ -1411,7 +1411,7 @@ numbers and the contract decimal text.
 `standard` or `exempt_household_north`
 ([The metering point's billing facts](#the-metering-points-billing-facts)) — the grid's
 and the taxes' lines included (design D8). It is a hint: Invoices maps it to a VAT
-code (delivery D).
+code ([VAT codes for energy](/en/reference/invoices/#vat-codes-for-energy)).
 
 ### Blockers
 
@@ -1581,8 +1581,12 @@ exact decimal text at their places.
 Energy and resolved into `Deps.Consumption` by `module.Compose` after the three
 `Billable*` reads, so after `Directory`: a single-provider slot
 ([module boundaries rule 5](/en/contributing/module-boundaries/#the-rules)). It is
-**optional** for its consumer: nil when Energy is off. `module.Workers` does not
-resolve it yet; billing runs teach it (delivery E).
+**optional** for its consumer: nil when Energy is off. Its consumer is Invoices: the
+**Consumption** section of the uninvoiced panel reads `DueSupplies`, and the **From
+consumption** wizard `Settle` or `Settlements`, a draft's freshness, refresh and issue
+`Settlements` — each on the pool before any transaction of Invoices'
+([Invoicing consumption](/en/reference/invoices/#invoicing-consumption)). `module.Workers`
+does not resolve it yet; billing runs teach it (delivery E).
 
 ## The invoiced-work holder
 

@@ -72,7 +72,12 @@ Both sets live beside the writer, under
   (`invoice-settlement-rate-change`), and five credit
   notes — full, partial, final with the squaring row, one naming its project in an
   `AdditionalDocumentReference` with type code 50 (`credit-note-project`), and one of
-  the settlement, its deductions copied as negative lines (`credit-note-of-settlement`).
+  the settlement, its deductions copied as negative lines (`credit-note-of-settlement`),
+  and an invoice of electricity consumption to a person (`invoice-energy`): two metering
+  points, every line naming its GSRN as a `cac:AdditionalItemProperty` "Målepunkt-ID",
+  the delivery span as the invoice period, S 25 % lines and household-north Z 0 % lines,
+  a correction line of quantity -1 at a positive price, the units `KWH`, `MON`, `ANN`
+  and `C62`, and unit prices of up to eight decimals.
   `go test ./internal/invoices/ehf/ -update` rewrites them. After changing the writer,
   regenerate them, run the oracle, and commit them together.
 - **`invalid/`** holds hand-tampered documents: each is a golden with one change, and
