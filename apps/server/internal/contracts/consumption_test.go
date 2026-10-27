@@ -39,6 +39,9 @@ func TestConsumptionRequests_Validate(t *testing.T) {
 		{"due: too many customers", contracts.DueSuppliesRequest{CustomerIDs: int32s(contracts.MaxActualsRequests + 1), Through: through}.Validate(), false},
 		{"due: a customer twice", contracts.DueSuppliesRequest{CustomerIDs: []int32{4, 4}, Through: through}.Validate(), false},
 		{"due: no through", contracts.DueSuppliesRequest{CustomerIDs: []int32{4}}.Validate(), false},
+		{"due: every customer", contracts.DueSuppliesRequest{Every: true, Through: through}.Validate(), true},
+		{"due: every customer and customers", contracts.DueSuppliesRequest{Every: true, CustomerIDs: []int32{4}, Through: through}.Validate(), false},
+		{"due: every customer, no through", contracts.DueSuppliesRequest{Every: true}.Validate(), false},
 
 		{"settle: customers", contracts.SettleRequest{CustomerIDs: []int32{1}, Through: through}.Validate(), true},
 		{"settle: supply periods", contracts.SettleRequest{SupplyPeriodIDs: []int32{1001, 1002}, Through: through}.Validate(), true},

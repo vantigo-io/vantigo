@@ -483,41 +483,78 @@ func workRows(rows []heldSource) []heldSource {
 // live document holds, and holds the settlements in one statement. Two
 // wizards racing for one settlement end in one, as two from-work wizards do.
 func (s *server) PostInvoicesFromConsumption(ctx context.Context, req gen.PostInvoicesFromConsumptionRequestObject) (gen.PostInvoicesFromConsumptionResponseObject, error) {
-	body := *req.Body
+	out, err := s.fromConsumption(ctx, *req.Body)
+	switch {
+	case err != nil:
+		return nil, err
+	case out.notFound:
+		return gen.PostInvoicesFromConsumption404Response{}, nil
+	case out.invalid != nil:
+		return gen.PostInvoicesFromConsumption400ApplicationProblemPlusJSONResponse(invalid(invalidConsumptionTitle, out.invalid)), nil
+	case out.refusal != nil:
+		return gen.PostInvoicesFromConsumption409ApplicationProblemPlusJSONResponse(*out.refusal), nil
+	}
+	resp, err := s.invoiceResponse(ctx, store.New(s.deps.Pool), out.doc, out.profile, out.loc)
+	if err != nil {
+		return nil, err
+	}
+	if out.appended {
+		return gen.PostInvoicesFromConsumption200JSONResponse(resp), nil
+	}
+	return gen.PostInvoicesFromConsumption201JSONResponse(resp), nil
+}
+
+// consumptionOutcome is what the wizard's core made of a body: the draft
+// made or added to (appended), with the profile and the business time zone
+// its response is built with — or the refusal (a 409), the field errors (a
+// 400), or the target gone (a 404). Exactly one holds.
+type consumptionOutcome struct {
+	doc      store.InvoicesInvoice
+	profile  *contracts.CustomerBillingProfile
+	loc      *time.Location
+	appended bool
+	refusal  *gen.InvoicesConflictProblem
+	invalid  map[string][]string
+	notFound bool
+}
+
+// fromConsumption is the wizard's core (plan reading 5): the handler's and
+// the invoices-billing worker's one code path (billing runs plan reading 6).
+// Its actor is the principal on ctx — the caller, or the run's creator the
+// worker puts there (readings on the record 10) — which callerID reads.
+func (s *server) fromConsumption(ctx context.Context, body gen.InvoicesFromConsumptionRequest) (consumptionOutcome, error) {
 	q := store.New(s.deps.Pool)
 	// (1) The body. (2) An append's target, and the bound with its holds.
 	ids, named, errs := parseFromConsumption(body)
 	if len(errs) > 0 {
-		return gen.PostInvoicesFromConsumption400ApplicationProblemPlusJSONResponse(invalid(invalidConsumptionTitle, errs)), nil
+		return consumptionOutcome{invalid: errs}, nil
 	}
 	var target *store.InvoicesInvoice
 	var targetHeld []heldSource
 	if body.InvoiceId != nil {
 		t, err := q.GetInvoice(ctx, *body.InvoiceId)
 		if errors.Is(err, pgx.ErrNoRows) {
-			return gen.PostInvoicesFromConsumption404Response{}, nil
+			return consumptionOutcome{notFound: true}, nil
 		}
 		if err != nil {
-			return nil, fmt.Errorf("invoices: read document %d: %w", *body.InvoiceId, err)
+			return consumptionOutcome{}, fmt.Errorf("invoices: read document %d: %w", *body.InvoiceId, err)
 		}
 		switch {
 		case t.Status != statusDraft:
-			return gen.PostInvoicesFromConsumption409ApplicationProblemPlusJSONResponse(invoiceIssued()), nil
+			return consumptionOutcome{refusal: ptr(invoiceIssued())}, nil
 		case t.Kind != kindInvoice:
-			return gen.PostInvoicesFromConsumption400ApplicationProblemPlusJSONResponse(invalid(invalidConsumptionTitle,
-				fieldError("invoiceId", msgSourcesOnCredit))), nil
+			return consumptionOutcome{invalid: fieldError("invoiceId", msgSourcesOnCredit)}, nil
 		case t.CustomerID != body.CustomerId:
-			return gen.PostInvoicesFromConsumption400ApplicationProblemPlusJSONResponse(invalid(invalidConsumptionTitle,
-				fieldError("invoiceId", "This draft invoices another customer"))), nil
+			return consumptionOutcome{invalid: fieldError("invoiceId", "This draft invoices another customer")}, nil
 		}
 		target = &t
 		if targetHeld, err = sourcesOf(ctx, q, t.ID); err != nil {
-			return nil, err
+			return consumptionOutcome{}, err
 		}
 	}
-	tooMany := func(n int) gen.PostInvoicesFromConsumptionResponseObject {
-		return gen.PostInvoicesFromConsumption409ApplicationProblemPlusJSONResponse(conflict(codeTooManySources, cannotInvoiceConsumptionTitle,
-			fmt.Sprintf("One document holds at most %d sources; this would hold %d.", contracts.MaxBillableRows, n)))
+	tooMany := func(n int) consumptionOutcome {
+		return consumptionOutcome{refusal: ptr(conflict(codeTooManySources, cannotInvoiceConsumptionTitle,
+			fmt.Sprintf("One document holds at most %d sources; this would hold %d.", contracts.MaxBillableRows, n)))}
 	}
 	if n := len(ids) + len(targetHeld); n > contracts.MaxBillableRows {
 		return tooMany(n), nil
@@ -525,27 +562,27 @@ func (s *server) PostInvoicesFromConsumption(ctx context.Context, req gen.PostIn
 
 	// (3) Energy switched off.
 	if s.deps.Consumption == nil {
-		return gen.PostInvoicesFromConsumption409ApplicationProblemPlusJSONResponse(consumptionUnavailable()), nil
+		return consumptionOutcome{refusal: ptr(consumptionUnavailable())}, nil
 	}
 
 	// (4) The settings, the profile and the customer's gates.
 	settings, err := q.GetSettings(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("invoices: read the settings: %w", err)
+		return consumptionOutcome{}, fmt.Errorf("invoices: read the settings: %w", err)
 	}
 	profile, err := s.customerProfile(ctx, body.CustomerId)
 	if err != nil {
-		return nil, err
+		return consumptionOutcome{}, err
 	}
 	if refusal := customerGate(profile); refusal != nil {
-		return gen.PostInvoicesFromConsumption409ApplicationProblemPlusJSONResponse(*refusal), nil
+		return consumptionOutcome{refusal: refusal}, nil
 	}
 
 	// (5) The supplies' cadences, then the settlements: Settle for the
 	// customer through the date, or the named ones by id — on the pool.
 	loc, err := s.businessZone(ctx)
 	if err != nil {
-		return nil, err
+		return consumptionOutcome{}, err
 	}
 	through := holidays.DayIn(s.deps.Clock(), loc)
 	if body.Through != nil {
@@ -554,7 +591,7 @@ func (s *server) PostInvoicesFromConsumption(ctx context.Context, req gen.PostIn
 	instant := throughInstant(through)
 	due, err := s.dueSupplies(ctx, contracts.DueSuppliesRequest{CustomerIDs: []int32{body.CustomerId}, Through: instant})
 	if err != nil {
-		return nil, fmt.Errorf("invoices: read customer %d's due supplies: %w", body.CustomerId, err)
+		return consumptionOutcome{}, fmt.Errorf("invoices: read customer %d's due supplies: %w", body.CustomerId, err)
 	}
 	var page contracts.SettlementsPage
 	if named {
@@ -563,11 +600,11 @@ func (s *server) PostInvoicesFromConsumption(ctx context.Context, req gen.PostIn
 		page, err = s.settle(ctx, contracts.SettleRequest{CustomerIDs: []int32{body.CustomerId}, Through: instant})
 	}
 	if err != nil {
-		return nil, fmt.Errorf("invoices: read customer %d's settlements: %w", body.CustomerId, err)
+		return consumptionOutcome{}, fmt.Errorf("invoices: read customer %d's settlements: %w", body.CustomerId, err)
 	}
 	if page.More {
-		return gen.PostInvoicesFromConsumption409ApplicationProblemPlusJSONResponse(conflict(codeTooManySources, cannotInvoiceConsumptionTitle,
-			fmt.Sprintf("Energy has more than %d settlements to invoice for this customer; name the ones to take.", contracts.MaxBillableRows))), nil
+		return consumptionOutcome{refusal: ptr(conflict(codeTooManySources, cannotInvoiceConsumptionTitle,
+			fmt.Sprintf("Energy has more than %d settlements to invoice for this customer; name the ones to take.", contracts.MaxBillableRows)))}, nil
 	}
 
 	// (6) The judgments. Without settlementIds, what the wizard would refuse
@@ -582,7 +619,7 @@ func (s *server) PostInvoicesFromConsumption(ctx context.Context, req gen.PostIn
 	if !named {
 		held, err := settlementHolds(ctx, q, page.Settlements)
 		if err != nil {
-			return nil, err
+			return consumptionOutcome{}, err
 		}
 		left := slices.Clone(page.Settlements)
 		sortSettlements(left)
@@ -593,15 +630,15 @@ func (s *server) PostInvoicesFromConsumption(ctx context.Context, req gen.PostIn
 			ids = append(ids, st.ID)
 		}
 		if len(ids) == 0 {
-			return gen.PostInvoicesFromConsumption409ApplicationProblemPlusJSONResponse(conflict(codeNoConsumptionDue, cannotInvoiceConsumptionTitle,
-				fmt.Sprintf("No consumption of this customer's is left to invoice through %s.", through.Format(time.DateOnly)))), nil
+			return consumptionOutcome{refusal: ptr(conflict(codeNoConsumptionDue, cannotInvoiceConsumptionTitle,
+				fmt.Sprintf("No consumption of this customer's is left to invoice through %s.", through.Format(time.DateOnly))))}, nil
 		}
 		if n := len(ids) + len(targetHeld); n > contracts.MaxBillableRows {
 			return tooMany(n), nil
 		}
 	}
 	if refusal := judgeSettlements(ids, found, body.CustomerId, person, cadences, settings.DefaultCurrency); refusal != nil {
-		return gen.PostInvoicesFromConsumption409ApplicationProblemPlusJSONResponse(*refusal), nil
+		return consumptionOutcome{refusal: refusal}, nil
 	}
 	taken := make([]contracts.Settlement, 0, len(ids))
 	refs := make([]sourceRef, 0, len(ids))
@@ -613,11 +650,11 @@ func (s *server) PostInvoicesFromConsumption(ctx context.Context, req gen.PostIn
 	// (7) The VAT codes, by the hints the lines carry.
 	codes, err := vatCodesOn(ctx, q, pgDate(holidays.DayIn(s.deps.Clock(), loc)))
 	if err != nil {
-		return nil, err
+		return consumptionOutcome{}, err
 	}
 	vat, errs := resolveEnergyVatCodes(settings, body.VatCodes, taken, codes)
 	if len(errs) > 0 {
-		return gen.PostInvoicesFromConsumption400ApplicationProblemPlusJSONResponse(invalid(invalidConsumptionTitle, errs)), nil
+		return consumptionOutcome{invalid: errs}, nil
 	}
 
 	// (8) The lines, in the buyer's language, a correction naming the invoice
@@ -626,28 +663,27 @@ func (s *server) PostInvoicesFromConsumption(ctx context.Context, req gen.PostIn
 	language := lineLanguage(profile.Language)
 	invoiced, err := correctedNumbers(ctx, q, taken)
 	if err != nil {
-		return nil, err
+		return consumptionOutcome{}, err
 	}
 	lines, held, err := energyLines(language, taken, vat, invoiced)
 	if err != nil {
-		return nil, err
+		return consumptionOutcome{}, err
 	}
 	existing := 0
 	if target != nil {
 		n, err := q.Lines(ctx, target.ID)
 		if err != nil {
-			return nil, fmt.Errorf("invoices: read document %d's lines: %w", target.ID, err)
+			return consumptionOutcome{}, fmt.Errorf("invoices: read document %d's lines: %w", target.ID, err)
 		}
 		existing = len(n)
 	}
 	if existing+len(lines) > maxLines {
-		return gen.PostInvoicesFromConsumption409ApplicationProblemPlusJSONResponse(conflict(codeTooManyLines, cannotInvoiceConsumptionTitle,
-			fmt.Sprintf("The settlements make %d lines, and a document holds at most %d; choose fewer settlements.", existing+len(lines), maxLines))), nil
+		return consumptionOutcome{refusal: ptr(conflict(codeTooManyLines, cannotInvoiceConsumptionTitle,
+			fmt.Sprintf("The settlements make %d lines, and a document holds at most %d; choose fewer settlements.", existing+len(lines), maxLines)))}, nil
 	}
 	for _, l := range lines {
 		if l.quantity.Cmp(maxQuantity) > 0 || l.unitPrice.Cmp(maxUnitPrice) > 0 || l.amounts.gross.Cmp(maxLineGross) > 0 {
-			return gen.PostInvoicesFromConsumption400ApplicationProblemPlusJSONResponse(invalid(invalidConsumptionTitle,
-				fieldError("settlementIds", "A settlement makes a line too large for one invoice line"))), nil
+			return consumptionOutcome{invalid: fieldError("settlementIds", "A settlement makes a line too large for one invoice line")}, nil
 		}
 	}
 
@@ -660,7 +696,7 @@ func (s *server) PostInvoicesFromConsumption(ctx context.Context, req gen.PostIn
 	note := optionalText(body.Note)
 	if note == "" && (target == nil || target.Note == "") {
 		if note, err = rePullNote(ctx, q, language, refs); err != nil {
-			return nil, err
+			return consumptionOutcome{}, err
 		}
 	}
 	// The codes of the projects the target's work belongs to, for its derived
@@ -675,7 +711,7 @@ func (s *server) PostInvoicesFromConsumption(ctx context.Context, req gen.PostIn
 	if len(projectIDs) > 0 && s.deps.Projects != nil {
 		slices.Sort(projectIDs)
 		if entries, err = s.projectEntries(ctx, projectIDs); err != nil {
-			return nil, fmt.Errorf("invoices: read the target's projects: %w", err)
+			return consumptionOutcome{}, fmt.Errorf("invoices: read the target's projects: %w", err)
 		}
 	}
 
@@ -818,26 +854,19 @@ func (s *server) PostInvoicesFromConsumption(ctx context.Context, req gen.PostIn
 	})
 	switch {
 	case errors.Is(err, errDocumentGone):
-		return gen.PostInvoicesFromConsumption404Response{}, nil
+		return consumptionOutcome{notFound: true}, nil
 	case errors.Is(err, errSourceHeldElsewhere):
 		refusal, err := heldElsewhere(ctx, q, invoiceID, rows)
 		if err != nil {
-			return nil, err
+			return consumptionOutcome{}, err
 		}
-		return gen.PostInvoicesFromConsumption409ApplicationProblemPlusJSONResponse(refusal), nil
+		return consumptionOutcome{refusal: &refusal}, nil
 	case out.refusal != nil:
-		return gen.PostInvoicesFromConsumption409ApplicationProblemPlusJSONResponse(*out.refusal), nil
+		return consumptionOutcome{refusal: out.refusal}, nil
 	case out.invalid != nil:
-		return gen.PostInvoicesFromConsumption400ApplicationProblemPlusJSONResponse(invalid(invalidConsumptionTitle, out.invalid)), nil
+		return consumptionOutcome{invalid: out.invalid}, nil
 	case err != nil:
-		return nil, err
+		return consumptionOutcome{}, err
 	}
-	resp, err := s.invoiceResponse(ctx, q, out.doc, profile, loc)
-	if err != nil {
-		return nil, err
-	}
-	if target != nil {
-		return gen.PostInvoicesFromConsumption200JSONResponse(resp), nil
-	}
-	return gen.PostInvoicesFromConsumption201JSONResponse(resp), nil
+	return consumptionOutcome{doc: out.doc, profile: profile, loc: loc, appended: target != nil}, nil
 }

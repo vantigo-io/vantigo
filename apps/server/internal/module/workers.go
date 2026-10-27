@@ -59,6 +59,17 @@ func Workers(deps Deps, mods ...Module) []worker.Worker {
 	if err != nil {
 		panic(err.Error())
 	}
+	// The project directory, then the three billable reads and consumption,
+	// resolved as Compose resolves them (energy consumption billing design
+	// D10): the invoices-billing worker drafts and issues through the
+	// wizard's and the issue's own code paths, which read them, and worker
+	// mode never composes.
+	if deps, err = withProjects(deps, enabled); err != nil {
+		panic(err.Error())
+	}
+	if deps, err = withBillables(deps, enabled); err != nil {
+		panic(err.Error())
+	}
 	// The calendar sources, from the enabled modules only, as Compose
 	// collects them (calendar design D1): no worker reads them in phase 1, but
 	// a worker-mode Deps must not differ from a composed one in what it says
@@ -125,6 +136,62 @@ func withWorkforce(deps Deps, enabled []Module) (Deps, error) {
 	}
 	if provider != nil {
 		deps.Workforce = provider.Workforce(deps)
+	}
+	return deps, nil
+}
+
+// withProjects resolves contracts.ProjectDirectory from the enabled modules —
+// at most one may declare it — keeping a preset value when none does. Compose
+// and Workers both call it, after the directory, the users, the calendar and
+// account provisioning.
+func withProjects(deps Deps, enabled []Module) (Deps, error) {
+	provider, err := soleProvider(enabled, "a project directory", func(m Module) bool { return m.Projects != nil })
+	if err != nil {
+		return deps, err
+	}
+	if provider != nil {
+		deps.Projects = provider.Projects(deps)
+	}
+	return deps, nil
+}
+
+// withBillables resolves the three billable reads (contracts.BillableHours,
+// BillableExpenses, BillableMilestones, rule 10) and then consumption
+// (contracts.ConsumptionProvider, energy consumption billing design D1) from
+// the enabled modules — at most one may declare each — keeping a preset value
+// when none does. They come after the project directory: a provider may read
+// deps.Projects while it is built, never while it serves. Consumption is
+// last: it is what Invoices builds a consumption invoice from, as the three
+// are what it builds a work invoice from, and its provider never reads the
+// directory while it serves. Compose and Workers both call it.
+func withBillables(deps Deps, enabled []Module) (Deps, error) {
+	hours, err := soleProvider(enabled, "billable hours", func(m Module) bool { return m.BillableHours != nil })
+	if err != nil {
+		return deps, err
+	}
+	if hours != nil {
+		deps.BillableHours = hours.BillableHours(deps)
+	}
+	expenses, err := soleProvider(enabled, "billable expenses", func(m Module) bool { return m.BillableExpenses != nil })
+	if err != nil {
+		return deps, err
+	}
+	if expenses != nil {
+		deps.BillableExpenses = expenses.BillableExpenses(deps)
+	}
+	milestones, err := soleProvider(enabled, "billable milestones", func(m Module) bool { return m.BillableMilestones != nil })
+	if err != nil {
+		return deps, err
+	}
+	if milestones != nil {
+		deps.BillableMilestones = milestones.BillableMilestones(deps)
+	}
+	consumption, err := soleProvider(enabled, "consumption", func(m Module) bool { return m.Consumption != nil })
+	if err != nil {
+		return deps, err
+	}
+	if consumption != nil {
+		deps.Consumption = consumption.Consumption(deps)
 	}
 	return deps, nil
 }

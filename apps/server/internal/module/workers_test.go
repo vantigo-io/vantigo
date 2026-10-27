@@ -381,3 +381,95 @@ func TestWorkers_PanicsOnAReservedIdentityProviderKey(t *testing.T) {
 	}()
 	Workers(Deps{}, Module{Name: "alpha", IdentityProvisioner: provider})
 }
+
+// Worker mode never composes, so Workers resolves the project directory, the
+// three billable reads and consumption itself, as Compose does (energy
+// consumption billing design D10): from the enabled providers, the billable
+// ones built after the project directory and consumption after them, and the
+// caller's own when no enabled module provides one. The invoices-billing
+// worker drafts and issues through code that reads them.
+func TestWorkers_ResolveTheProjectsBillableAndConsumptionSlots(t *testing.T) {
+	var seen Deps
+	reader := Module{Name: "reader", Workers: func(d Deps) []worker.Worker {
+		seen = d
+		return nil
+	}}
+	projects := &fakeProjectDirectory{}
+	var hours *fakeBillableHours
+	var consumption *fakeConsumption
+	expenses, milestones := &fakeBillableExpenses{}, &fakeBillableMilestones{}
+	owner := Module{Name: "owner",
+		Projects: func(Deps) contracts.ProjectDirectory { return projects },
+		BillableHours: func(d Deps) contracts.BillableHours {
+			hours = &fakeBillableHours{projects: d.Projects}
+			return hours
+		},
+		BillableExpenses:   func(Deps) contracts.BillableExpenses { return expenses },
+		BillableMilestones: func(Deps) contracts.BillableMilestones { return milestones },
+	}
+	energy := Module{Name: "energy", Consumption: func(d Deps) contracts.ConsumptionProvider {
+		consumption = &fakeConsumption{milestones: d.BillableMilestones}
+		return consumption
+	}}
+	Workers(Deps{Config: &config.Config{Modules: []string{"reader", "owner", "energy"}}}, reader, owner, energy)
+	if seen.Projects != projects {
+		t.Errorf("the workers saw Deps.Projects = %v, want the enabled owner's", seen.Projects)
+	}
+	if hours == nil || seen.BillableHours != hours || seen.BillableExpenses != expenses || seen.BillableMilestones != milestones {
+		t.Errorf("the workers saw the billable reads %v, %v, %v; want the enabled owner's", seen.BillableHours, seen.BillableExpenses, seen.BillableMilestones)
+	}
+	if hours != nil && hours.projects != projects {
+		t.Errorf("billable hours were built without Deps.Projects; want the project directory resolved before them")
+	}
+	if consumption == nil || seen.Consumption != consumption {
+		t.Errorf("the workers saw Deps.Consumption = %v, want the enabled energy module's", seen.Consumption)
+	}
+	if consumption != nil && consumption.milestones != milestones {
+		t.Errorf("consumption was built before the billable reads; want it resolved last")
+	}
+
+	presetProjects, presetConsumption := &fakeProjectDirectory{}, &fakeConsumption{}
+	Workers(Deps{Config: &config.Config{Modules: []string{"reader"}}, Projects: presetProjects, Consumption: presetConsumption},
+		reader, owner, energy)
+	if seen.Projects != presetProjects || seen.Consumption != presetConsumption || seen.BillableHours != nil {
+		t.Errorf("the workers saw Projects %v, Consumption %v, BillableHours %v; want the caller's two and none, the providers being disabled",
+			seen.Projects, seen.Consumption, seen.BillableHours)
+	}
+}
+
+// Two enabled providers of one of the slots Workers learned for the billing
+// worker are a bug in the binary's module list, which Compose refuses at
+// startup; Workers has no error to return, so it panics, naming the slot.
+func TestWorkers_PanicsOnTwoProvidersOfABillingSlot(t *testing.T) {
+	cases := []struct {
+		what    string
+		declare func(*Module)
+	}{
+		{"a project directory", func(m *Module) {
+			m.Projects = func(Deps) contracts.ProjectDirectory { return &fakeProjectDirectory{} }
+		}},
+		{"billable hours", func(m *Module) {
+			m.BillableHours = func(Deps) contracts.BillableHours { return &fakeBillableHours{} }
+		}},
+		{"consumption", func(m *Module) {
+			m.Consumption = func(Deps) contracts.ConsumptionProvider { return &fakeConsumption{} }
+		}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.what, func(t *testing.T) {
+			alpha, beta := Module{Name: "alpha"}, Module{Name: "beta"}
+			tc.declare(&alpha)
+			tc.declare(&beta)
+			defer func() {
+				r := recover()
+				if r == nil {
+					t.Fatalf("Workers: want a panic when two modules declare %s", tc.what)
+				}
+				if msg := fmt.Sprint(r); !strings.Contains(msg, tc.what) {
+					t.Errorf("panic %q does not say %q", msg, tc.what)
+				}
+			}()
+			Workers(Deps{Config: &config.Config{Modules: []string{"alpha", "beta"}}}, alpha, beta)
+		})
+	}
+}

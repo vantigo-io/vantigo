@@ -13,6 +13,7 @@ sql:
       - ../db/migrations/00041_invoices_receivables.sql
       - ../db/migrations/00046_invoices_payments_port.sql
       - ../db/migrations/00078_invoices_energy.sql
+      - ../db/migrations/00079_invoices_billing_runs.sql
     queries: queries
     gen:
       go:

@@ -253,8 +253,9 @@ func settlementsBySupplyPeriod(ctx context.Context, q *store.Queries, ids []int3
 	return out, nil
 }
 
-// DueSupplies lists the customers' supply periods with a billing period
-// closed on or before Through and not invoiced (plan reading 9). It writes
+// DueSupplies lists the customers' supply periods — every customer's with
+// Every — with a billing period closed on or before Through and not
+// invoiced (plan reading 9). It writes
 // nothing: Blocked is the first such period computed in memory.
 func (p *consumptionProvider) DueSupplies(ctx context.Context, req contracts.DueSuppliesRequest) (contracts.DueSuppliesPage, error) {
 	if err := req.Validate(); err != nil {
@@ -262,7 +263,15 @@ func (p *consumptionProvider) DueSupplies(ctx context.Context, req contracts.Due
 	}
 	now := p.now()
 	q := store.New(p.pool)
-	ids, err := supplyPeriodIDsOf(ctx, q, req.CustomerIDs, nil, req.Through)
+	var ids []int32
+	var err error
+	if req.Every {
+		if ids, err = q.ListSettlementSupplyPeriodIDsAll(ctx, req.Through); err != nil {
+			err = fmt.Errorf("energy: read every supply period: %w", err)
+		}
+	} else {
+		ids, err = supplyPeriodIDsOf(ctx, q, req.CustomerIDs, nil, req.Through)
+	}
 	if err != nil {
 		return contracts.DueSuppliesPage{}, err
 	}

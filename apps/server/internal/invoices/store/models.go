@@ -88,6 +88,33 @@ type InvoicesBankTransactionEvent struct {
 	At                time.Time
 }
 
+type InvoicesBillingRun struct {
+	ID              int64
+	Through         pgtype.Date
+	Issue           bool
+	Status          string
+	Customers       int32
+	CreatedByUserID uuid.UUID
+	CreatedAt       time.Time
+	StartedAt       *time.Time
+	FinishedAt      *time.Time
+}
+
+type InvoicesBillingRunItem struct {
+	ID            int64
+	RunID         int64
+	CustomerID    int32
+	Status        string
+	InvoiceIds    []int64
+	Code          *string
+	Detail        *string
+	Attempts      int32
+	NextAttemptAt time.Time
+	LeaseID       *string
+	LeaseUntil    *time.Time
+	FinishedAt    *time.Time
+}
+
 type InvoicesChargePayment struct {
 	ID                 int64
 	InvoiceID          int64
