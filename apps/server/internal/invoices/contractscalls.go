@@ -24,7 +24,8 @@ import (
 // This file is the whole of this module's reach outside its own schema: the
 // customer, project and user directories (deps.Directory, deps.Projects,
 // deps.Users), the business calendar (deps.Calendar), the source modules' billable reads (deps.BillableHours,
-// BillableExpenses, BillableMilestones) and their invoiced-work holders
+// BillableExpenses, BillableMilestones), Energy's consumption reads
+// (deps.Consumption) and their invoiced-work holders
 // (deps.InvoicedWork), the object store (server.objects), the SMTP seam
 // (deps.SMTPSend), the Peppol network (server.peppolLookup), the access
 // point (accessPoint) and the payment provider (paymentProvider). Every call is made through one of the thin accessors
@@ -169,6 +170,33 @@ func (s *server) customerEntries(ctx context.Context, ids []int32) ([]contracts.
 func (s *server) billableHours(ctx context.Context, req contracts.BillableRequest) (contracts.BillableHoursPage, error) {
 	noteContractCall(ctx, "BillableHours.BillableHours")
 	return s.deps.BillableHours.BillableHours(ctx, req)
+}
+
+// dueSupplies, settle and settlementsByID are Energy's consumption reads
+// (contracts.ConsumptionProvider, energy consumption billing design D1, D7),
+// made on the pool and never inside withLockedTx, as the billable reads are:
+// the Consumption section and the From consumption wizard, a held
+// settlement's freshness on GET, refreshSources' reads and the issue's
+// before its transaction. settle and settlementsByID write Energy's draft
+// rows — the provider's command, in its own short transactions — which is
+// why none of them may run under this module's locks. A caller checks
+// deps.Consumption first — nil is Energy switched off.
+func (s *server) dueSupplies(ctx context.Context, req contracts.DueSuppliesRequest) (contracts.DueSuppliesPage, error) {
+	noteContractCall(ctx, "Consumption.DueSupplies")
+	return s.deps.Consumption.DueSupplies(ctx, req)
+}
+
+func (s *server) settle(ctx context.Context, req contracts.SettleRequest) (contracts.SettlementsPage, error) {
+	noteContractCall(ctx, "Consumption.Settle")
+	return s.deps.Consumption.Settle(ctx, req)
+}
+
+func (s *server) settlementsByID(ctx context.Context, ids []int64) (contracts.SettlementsPage, error) {
+	if len(ids) == 0 {
+		return contracts.SettlementsPage{}, nil
+	}
+	noteContractCall(ctx, "Consumption.Settlements")
+	return s.deps.Consumption.Settlements(ctx, ids)
 }
 
 func (s *server) billableExpenses(ctx context.Context, req contracts.BillableRequest) (contracts.BillableExpensesPage, error) {

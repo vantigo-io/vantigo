@@ -19,19 +19,30 @@ ORDER BY l.position, s.source_kind, s.source_id;
 -- ordered by (source_kind, source_id) (D2): two transactions inserting
 -- overlapping holds wait on ux_line_sources_live in the same order, so one
 -- fails with the unique violation and neither deadlocks. The arrays run in
--- parallel; an empty subkind is NULL (only an expense carries one).
+-- parallel; an empty subkind is NULL (an expense and a settlement carry
+-- one). A project of 0 is none — an energy settlement's (energy consumption
+-- billing design D7) — and only a source without one keeps the snapshot of
+-- its metering point; a work source's is NULL whatever the arrays carry.
 INSERT INTO invoices.line_sources (
     line_id, invoice_id, source_kind, source_id, source_revision, source_subkind,
-    project_id, quantity, amount, currency, source_date
+    project_id, quantity, amount, currency, source_date, line_count,
+    point_gsrn, point_address, price_area, contract_name, period_from, estimated
 )
 SELECT u.line_id, @invoice_id::bigint, u.kind, u.id, u.revision, NULLIF(u.subkind, ''),
-    u.project_id, u.quantity, u.amount, u.currency, u.source_date
+    NULLIF(u.project_id, 0), u.quantity, u.amount, u.currency, u.source_date, u.line_count,
+    CASE WHEN u.project_id = 0 THEN u.point_gsrn END, CASE WHEN u.project_id = 0 THEN u.point_address END,
+    CASE WHEN u.project_id = 0 THEN u.price_area END, CASE WHEN u.project_id = 0 THEN u.contract_name END,
+    CASE WHEN u.project_id = 0 THEN u.period_from END, CASE WHEN u.project_id = 0 THEN u.estimated END
 FROM (
     SELECT unnest(@line_ids::bigint[]) AS line_id, unnest(@kinds::text[]) AS kind,
         unnest(@ids::bigint[]) AS id, unnest(@revisions::int[]) AS revision,
         unnest(@subkinds::text[]) AS subkind, unnest(@project_ids::int[]) AS project_id,
         unnest(@quantities::numeric[]) AS quantity, unnest(@amounts::numeric[]) AS amount,
-        unnest(@currencies::text[]) AS currency, unnest(@dates::date[]) AS source_date
+        unnest(@currencies::text[]) AS currency, unnest(@dates::date[]) AS source_date,
+        unnest(@line_counts::int[]) AS line_count, unnest(@point_gsrns::text[]) AS point_gsrn,
+        unnest(@point_addresses::text[]) AS point_address, unnest(@price_areas::text[]) AS price_area,
+        unnest(@contract_names::text[]) AS contract_name, unnest(@period_froms::date[]) AS period_from,
+        unnest(@estimateds::bool[]) AS estimated
 ) AS u
 ORDER BY u.kind, u.id;
 

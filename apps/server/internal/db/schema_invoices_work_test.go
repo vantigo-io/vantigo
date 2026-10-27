@@ -120,6 +120,9 @@ func invoicesWorkObjects(t *testing.T, ctx context.Context, pool *pgxpool.Pool) 
 func TestInvoicesWork_AppliesAndIsIdempotent(t *testing.T) {
 	url := testdb.URL(t)
 	applyUpDownUp(t, url, invoicesWorkVersion) // 00040_invoices_work.sql
+	// What 00040 wrote, read at 00040: a later migration (00078's line
+	// sources and lines) changes some of it, and pins that itself.
+	migrateTo(t, url, invoicesWorkVersion)
 
 	ctx := context.Background()
 	pool, err := db.Open(ctx, url)

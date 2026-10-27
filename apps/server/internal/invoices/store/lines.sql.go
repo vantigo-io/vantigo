@@ -25,10 +25,10 @@ func (q *Queries) DeleteLines(ctx context.Context, invoiceID int64) error {
 const insertLine = `-- name: InsertLine :one
 INSERT INTO invoices.lines (
     invoice_id, position, description, quantity, unit, unit_price, discount_percent, vat_code_id,
-    credits_line_id, line_gross, line_allowance, line_net, deducts_invoice_id
+    credits_line_id, line_gross, line_allowance, line_net, deducts_invoice_id, correction
 ) VALUES (
     $1, $2, $3, $4, $5, $6, $7, $8,
-    $9, $10, $11, $12, $13
+    $9, $10, $11, $12, $13, $14
 )
 RETURNING id
 `
@@ -47,12 +47,15 @@ type InsertLineParams struct {
 	LineAllowance    pgtype.Numeric
 	LineNet          pgtype.Numeric
 	DeductsInvoiceID *int64
+	Correction       bool
 }
 
 // InsertLine writes one line of a draft with its computed amounts (D5) and
 // answers its id, which the line's sources name (invoices work design D2);
 // the VAT snapshot is the issue's to write. A deduction line names the
-// invoice it deducts (invoices work design D7).
+// invoice it deducts (invoices work design D7); a correction line bills an
+// energy correction settlement and may be negative (energy consumption
+// billing design D7).
 func (q *Queries) InsertLine(ctx context.Context, arg InsertLineParams) (int64, error) {
 	row := q.db.QueryRow(ctx, insertLine,
 		arg.InvoiceID,
@@ -68,6 +71,7 @@ func (q *Queries) InsertLine(ctx context.Context, arg InsertLineParams) (int64, 
 		arg.LineAllowance,
 		arg.LineNet,
 		arg.DeductsInvoiceID,
+		arg.Correction,
 	)
 	var id int64
 	err := row.Scan(&id)
@@ -108,7 +112,7 @@ func (q *Queries) InsertVatSummary(ctx context.Context, arg InsertVatSummaryPara
 }
 
 const lines = `-- name: Lines :many
-SELECT id, invoice_id, position, description, quantity, unit, unit_price, discount_percent, vat_code_id, credits_line_id, line_gross, line_allowance, line_net, vat_rate_percent, vat_category, saf_t_code, exemption_reason, deducts_invoice_id FROM invoices.lines WHERE invoice_id = $1 ORDER BY position
+SELECT id, invoice_id, position, description, quantity, unit, unit_price, discount_percent, vat_code_id, credits_line_id, line_gross, line_allowance, line_net, vat_rate_percent, vat_category, saf_t_code, exemption_reason, deducts_invoice_id, correction FROM invoices.lines WHERE invoice_id = $1 ORDER BY position
 `
 
 // Lines is one document's lines, in their order.
@@ -140,6 +144,7 @@ func (q *Queries) Lines(ctx context.Context, invoiceID int64) ([]InvoicesLine, e
 			&i.SafTCode,
 			&i.ExemptionReason,
 			&i.DeductsInvoiceID,
+			&i.Correction,
 		); err != nil {
 			return nil, err
 		}

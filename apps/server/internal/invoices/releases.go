@@ -86,7 +86,8 @@ func lineSource(r store.InvoicesLineSource) (heldSource, error) {
 	}
 	return heldSource{
 		kind: contracts.WorkSourceKind(r.SourceKind), id: r.SourceID, revision: r.SourceRevision, subkind: r.SourceSubkind,
-		projectID: r.ProjectID, quantity: quantity, amount: amount, currency: r.Currency, date: r.SourceDate.Time, state: r.State,
+		projectID: derefInt32(r.ProjectID), quantity: quantity, amount: amount, currency: r.Currency, date: r.SourceDate.Time, state: r.State,
+		lineCount: r.LineCount, point: pointOf(r.PointGsrn, r.PointAddress, r.PriceArea, r.ContractName, r.PeriodFrom, r.Estimated),
 	}, nil
 }
 
