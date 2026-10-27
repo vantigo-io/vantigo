@@ -4,11 +4,13 @@ import (
 	"cmp"
 	"context"
 	"fmt"
+	"math"
 	"net/http"
 	"slices"
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/planning/gen"
 	"github.com/vantigo-io/vantigo/server/internal/planning/store"
@@ -87,6 +89,11 @@ func (s *server) board(ctx context.Context, p gen.GetPlanningBoardParams) (gen.P
 		return gen.PlanningBoard{}, err
 	}
 
+	busy, err := s.busyOf(ctx, c.Zone, people, from, to)
+	if err != nil {
+		return gen.PlanningBoard{}, err
+	}
+
 	includeTentative := p.IncludeTentative == nil || *p.IncludeTentative
 	includePlanned := p.IncludePlanned == nil || *p.IncludePlanned
 	keep := func(a store.PlanningAllocation) bool {
@@ -127,12 +134,12 @@ func (s *server) board(ctx context.Context, p gen.GetPlanningBoardParams) (gen.P
 		if err != nil {
 			return gen.PlanningBoard{}, err
 		}
-		out.Rows = projectRows(w, people, listed, projects, customers, includeTentative, keep)
+		out.Rows = projectRows(w, people, listed, projects, customers, busy, includeTentative, keep)
 		return out, nil
 	}
 	for _, e := range people {
 		out.Rows = append(out.Rows, gen.PlanningBoardRow{
-			Person: ptrTo(personView(e)), Cells: cellsOf(capacityWeeks(w.inputOf(e.ID, includeTentative, keep))),
+			Person: ptrTo(personView(e)), Cells: cellsOf(busy.shown(e, capacityWeeks(w.inputOf(e.ID, includeTentative, keep)))),
 		})
 	}
 	return out, nil
@@ -141,11 +148,13 @@ func (s *server) board(ctx context.Context, p gen.GetPlanningBoardParams) (gen.P
 // projectRows is the board grouped by project: per project of the listed
 // rows, by code, a row with the sums of its people's figures on it, then a
 // row per person on it — capacity and available the person's, booked and
-// tentative their rows of that project, free what that leaves. A project the
+// tentative their rows of that project, free what that leaves, and the busy
+// figures the person's own (the calendar's, not the project's). The project's
+// own row has none: the people's busy hours are not the project's to sum. A project the
 // directory does not resolve has no row: the contract names a project row by
 // its code, name and status, which it does not have.
 func projectRows(w *window, people []contracts.PersonEntry, listed []store.PlanningAllocation, projects map[int32]contracts.ProjectEntry,
-	customers map[int32]string, includeTentative bool, keep func(store.PlanningAllocation) bool,
+	customers map[int32]string, busy *boardBusy, includeTentative bool, keep func(store.PlanningAllocation) bool,
 ) []gen.PlanningBoardRow {
 	var ids []int32
 	for _, a := range listed {
@@ -167,8 +176,8 @@ func projectRows(w *window, people []contracts.PersonEntry, listed []store.Plann
 				continue
 			}
 			figures := capacityWeeks(w.inputOf(e.ID, includeTentative, onProject))
-			weeks = append(weeks, figures)
-			under = append(under, gen.PlanningBoardRow{Person: ptrTo(personView(e)), Project: &project, Cells: cellsOf(figures)})
+			weeks = append(weeks, slices.Clone(figures))
+			under = append(under, gen.PlanningBoardRow{Person: ptrTo(personView(e)), Project: &project, Cells: cellsOf(busy.shown(e, figures))})
 		}
 		rows = append(rows, gen.PlanningBoardRow{Project: &project, Cells: cellsOf(sumWeeks(weeks))})
 		rows = append(rows, under...)
@@ -228,3 +237,86 @@ func personIDsOf(people []contracts.PersonEntry) []int64 {
 
 // ptrTo is a pointer to a copy of v.
 func ptrTo[T any](v T) *T { return &v }
+
+// boardBusy is the calendar's busy time of the board's people, by person id,
+// and the business zone its weeks are judged in. A nil *boardBusy shows
+// nothing.
+type boardBusy struct {
+	zone     *time.Location
+	byPerson map[int64]contracts.BusyTime
+}
+
+// busyOf asks the calendar, once and outside any transaction, for the busy
+// time of the people with a user over from..to — in chunks of
+// contracts.CalendarBusyMaxUsers, the window cut to
+// contracts.CalendarBusyMaxDays — and keeps what it answers by person. The
+// calendar decides who the caller may see; a person it answers nothing for
+// has no figures. Any error fails the request as the 503 every contract
+// failure the board's contract names is (the board answers no 500).
+func (s *server) busyOf(ctx context.Context, zone *time.Location, people []contracts.PersonEntry, from, to time.Time) (*boardBusy, error) {
+	last := addDays(from, contracts.CalendarBusyMaxDays-1)
+	if to.Before(last) {
+		last = to
+	}
+	var ids []uuid.UUID
+	personOf := map[uuid.UUID]int64{}
+	for _, e := range people {
+		if e.UserID != nil {
+			if _, dup := personOf[*e.UserID]; !dup {
+				ids = append(ids, *e.UserID)
+			}
+			personOf[*e.UserID] = e.ID
+		}
+	}
+	out := &boardBusy{zone: zone, byPerson: map[int64]contracts.BusyTime{}}
+	for chunk := range slices.Chunk(ids, contracts.CalendarBusyMaxUsers) {
+		answered, err := s.calendarBusy(ctx, chunk, from, last)
+		if err != nil {
+			return nil, fmt.Errorf("planning: read the calendar's busy time: %w: %w", errDependencyUnavailable, err)
+		}
+		for id, b := range answered {
+			if personID, ok := personOf[id]; ok {
+				out.byPerson[personID] = b
+			}
+		}
+	}
+	return out, nil
+}
+
+// shown is weeks with person's busy figures filled in: per week the hours of
+// the merged spans inside the week, Monday 00:00 to the next Monday 00:00 in
+// the business zone, to a tenth of an hour, and the days of the all-day spans
+// inside it. A person the calendar answered nothing for keeps none. Nothing
+// else of the weeks changes: busy time is shown, never subtracted.
+func (b *boardBusy) shown(e contracts.PersonEntry, weeks []weekFigures) []weekFigures {
+	if b == nil {
+		return weeks
+	}
+	t, ok := b.byPerson[e.ID]
+	if !ok {
+		return weeks
+	}
+	for i := range weeks {
+		monday := weeks[i].Monday
+		start := time.Date(monday.Year(), monday.Month(), monday.Day(), 0, 0, 0, 0, b.zone)
+		end := time.Date(monday.Year(), monday.Month(), monday.Day()+7, 0, 0, 0, 0, b.zone)
+		var span time.Duration
+		for _, s := range t.Spans {
+			from, to := latestOf(s.StartsAt, start), earliestOf(s.EndsAt, end)
+			if to.After(from) {
+				span += to.Sub(from)
+			}
+		}
+		hours := math.Round(span.Hours()*10) / 10
+		days := 0
+		sunday := addDays(monday, 6)
+		for _, d := range t.Days {
+			from, to := latestOf(d.From, monday), earliestOf(d.To, sunday)
+			if !to.Before(from) {
+				days += int(to.Sub(from).Hours()/24+0.5) + 1
+			}
+		}
+		weeks[i].BusyHours, weeks[i].BusyDays = &hours, &days
+	}
+	return weeks
+}

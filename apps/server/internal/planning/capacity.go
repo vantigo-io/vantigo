@@ -77,6 +77,11 @@ type weekFigures struct {
 	Capacity, Available, Booked, Tentative, Free float64
 	LoadPercent                                  *float64
 	Away                                         bool
+	// BusyHours and BusyDays are what the calendar shows the person busy in
+	// the week, nil when it answered nothing for them; shown beside the
+	// figures above and never part of them.
+	BusyHours *float64
+	BusyDays  *int
 }
 
 // capacityDays is every day of in's window with its figures, in order. The

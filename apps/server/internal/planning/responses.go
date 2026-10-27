@@ -171,5 +171,6 @@ func weekFiguresView(w weekFigures) gen.PlanningWeekFigures {
 	return gen.PlanningWeekFigures{
 		Monday: apiDate(w.Monday), Capacity: w.Capacity, Available: w.Available, Booked: w.Booked,
 		Tentative: w.Tentative, Free: w.Free, LoadPercent: w.LoadPercent, Away: w.Away,
+		BusyHours: w.BusyHours, BusyDays: w.BusyDays,
 	}
 }
