@@ -34,7 +34,8 @@ var (
 	kindExpense   = contracts.WorkSourceExpense
 	kindMilestone = contracts.WorkSourceMilestone
 	// workKinds is the work kinds in contracts.InvoicedWorkOrder's order:
-	// the order also names energy's settlements, which no test here holds.
+	// the order ends with energy's settlements (kindSettlement), which the
+	// energy tests hold beside work (energy_issue_test.go).
 	workKinds = []contracts.WorkSourceKind{kindMilestone, kindExpense, kindHours}
 )
 

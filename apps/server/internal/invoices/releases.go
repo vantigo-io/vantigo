@@ -54,17 +54,34 @@ func invoicedOn(ctx context.Context, q *store.Queries, book creditBook) ([]store
 // releasesOf is what a credit note's lines release of the original's invoiced
 // rows (D8): every row of an original line that one of lines returns in full
 // — squared[i], lines[i]'s last return — by (kind, id), the rows' order. A
-// line credited in part, or at a lower price, releases nothing.
-func releasesOf(rows []store.InvoicesLineSource, lines []store.InvoicesLine, squared []bool) ([]release, error) {
+// line credited in part, or at a lower price, releases nothing. An energy
+// settlement billed over several lines (invoices from consumption plan
+// reading 2) is released only once every line of its span on book's original
+// is returned in full — by this note's last return of it, or by the issued
+// notes before it — and this note returns at least one of them; a line
+// carrying no money is excepted, as the last note may leave it out
+// (finalReversal). Its release names the credit line returning the first of
+// the span's lines this note returns.
+func releasesOf(book creditBook, rows []store.InvoicesLineSource, lines []store.InvoicesLine, squared []bool) ([]release, error) {
 	returned := map[int64]int64{}
 	for i, l := range lines {
 		if squared[i] && l.CreditsLineID != nil {
 			returned[*l.CreditsLineID] = l.ID
 		}
 	}
+	byPosition := make(map[int32]store.InvoicesLine, len(book.lines))
+	for _, o := range book.lines {
+		byPosition[o.Position] = o
+	}
 	var out []release
 	for _, r := range rows {
 		creditLine, ok := returned[r.LineID]
+		if r.LineCount > 1 {
+			var err error
+			if creditLine, ok, err = book.spanReturned(book.lines[r.LineID].Position, r.LineCount, byPosition, returned); err != nil {
+				return nil, err
+			}
+		}
 		if !ok {
 			continue
 		}
@@ -75,6 +92,52 @@ func releasesOf(rows []store.InvoicesLineSource, lines []store.InvoicesLine, squ
 		out = append(out, release{rowID: r.ID, creditLineID: creditLine, source: source})
 	}
 	return out, nil
+}
+
+// spanReturned reports whether every line of the span of count lines from
+// first is returned in full — by this note (returned) or before it, but for
+// one carrying no money — with this note returning at least one, and
+// answers the credit line returning the first of them this note returns.
+func (b creditBook) spanReturned(first, count int32, byPosition map[int32]store.InvoicesLine, returned map[int64]int64) (int64, bool, error) {
+	var creditLine int64
+	for p := first; p < first+count; p++ {
+		o, ok := byPosition[p]
+		if !ok {
+			return 0, false, nil
+		}
+		if c, ok := returned[o.ID]; ok {
+			if creditLine == 0 {
+				creditLine = c
+			}
+			continue
+		}
+		before, err := b.returnedBefore(o)
+		if err != nil {
+			return 0, false, err
+		}
+		if before {
+			continue
+		}
+		free, err := carriesNoMoney(o)
+		if err != nil || !free {
+			return 0, false, err
+		}
+	}
+	return creditLine, creditLine != 0, nil
+}
+
+// returnedBefore reports whether the issued credit notes returned all of
+// line o, each at its own price and discount.
+func (b creditBook) returnedBefore(o store.InvoicesLine) (bool, error) {
+	c, ok := b.credited[o.ID]
+	if !ok || !c.returns {
+		return false, nil
+	}
+	want, err := ratFromNumeric(o.Quantity)
+	if err != nil {
+		return false, err
+	}
+	return c.quantity.Cmp(want) == 0, nil
 }
 
 // lineSource is one line_sources row as this module reasons about it, without
@@ -102,7 +165,7 @@ func withWouldRelease(ctx context.Context, q *store.Queries, cd creditDraft, sto
 	if err != nil || len(rows) == 0 {
 		return err
 	}
-	releases, err := releasesOf(rows, stored, cd.totals.squared)
+	releases, err := releasesOf(cd.book, rows, stored, cd.totals.squared)
 	if err != nil {
 		return err
 	}

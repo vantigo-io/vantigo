@@ -159,6 +159,18 @@ func amount(label string, v float64, places int, minimum *big.Rat, strict bool, 
 // four.
 const unitPricePlaces = 8
 
+// linePricePlaces is the decimals a request may give line's unit price: the
+// eight unit_price stores on a line billing an energy settlement — its price
+// is its settlement line's amount over its quantity (invoices from
+// consumption plan reading 3) — and four on any other; a credit note's line
+// is judged against the line it credits (putCreditDraft).
+func linePricePlaces(line draftLine) int {
+	if line.creditsLineID != nil || slices.ContainsFunc(line.sources, func(r sourceRef) bool { return r.kind == contracts.WorkSourceSettlement }) {
+		return unitPricePlaces
+	}
+	return 4
+}
+
 // The columns' own ceilings: quantity numeric(12,3), unit_price
 // numeric(18,8) — ten whole digits, as before it took eight decimals —
 // discount_percent 0-100.
@@ -305,7 +317,7 @@ func parseDraft(body gen.InvoicesInvoiceRequest, currency string) (draftInput, m
 			line.quantity, msg = amount("A quantity", l.Quantity, 3, zero, true, maxQuantity)
 		}
 		add(field("quantity"), msg)
-		line.unitPrice, msg = amount("A unit price", l.UnitPrice, 4, zero, false, maxUnitPrice)
+		line.unitPrice, msg = amount("A unit price", l.UnitPrice, linePricePlaces(line), zero, false, maxUnitPrice)
 		add(field("unitPrice"), msg)
 		discount := 0.0
 		if l.DiscountPercent != nil {
@@ -609,6 +621,38 @@ func (s *server) PutInvoicesById(ctx context.Context, req gen.PutInvoicesByIdReq
 	if err != nil {
 		return nil, err
 	}
+	// The held work, read on the pool before the save's transaction: what
+	// refreshSources asks its modules about now, and what the derived
+	// project is judged on — no contract call is made under the lock (D2).
+	held, err := sourcesOf(ctx, q, req.Id)
+	if err != nil {
+		return nil, err
+	}
+	refresh := req.Body.RefreshSources != nil && *req.Body.RefreshSources
+	var hours []contracts.BillableHour
+	if refresh {
+		now, kinds, read, settlements, err := s.billableNow(ctx, held, loc)
+		if err != nil {
+			return nil, err
+		}
+		in.refresh, hours = &sourcesRefresh{read: held, now: now, kind: kinds, settlements: settlements}, read
+		// A held settlement still invoiceable is billed by lines built anew
+		// from its current lines, in the buyer's language at the settings'
+		// codes (energy consumption billing design D7, invoices from
+		// consumption plan reading 6), before the lines are judged.
+		if len(settlements) > 0 {
+			if in.lines, err = s.refreshedLines(ctx, q, settings, profile, held, settlements, in.lines); err != nil {
+				return nil, err
+			}
+			if len(in.lines) > maxLines {
+				return gen.PutInvoicesById400ApplicationProblemPlusJSONResponse(invalid(invalidInvoiceTitle,
+					fieldError("lines", fmt.Sprintf("At most %d lines", maxLines)))), nil
+			}
+		}
+	}
+	// Whether a line bills an energy correction, and so may be negative,
+	// is the work it names, never the request's (plan reading 7).
+	markCorrections(held, in.lines)
 	codes, err := vatCodesOn(ctx, q, pgDate(holidays.DayIn(s.deps.Clock(), loc)))
 	if err != nil {
 		return nil, err
@@ -629,22 +673,6 @@ func (s *server) PutInvoicesById(ctx context.Context, req gen.PutInvoicesByIdReq
 	}
 	if duplicated != nil {
 		return gen.PutInvoicesById409ApplicationProblemPlusJSONResponse(*duplicated), nil
-	}
-	// The held work, read on the pool before the save's transaction: what
-	// refreshSources asks its modules about now, and what the derived
-	// project is judged on — no contract call is made under the lock (D2).
-	held, err := sourcesOf(ctx, q, req.Id)
-	if err != nil {
-		return nil, err
-	}
-	refresh := req.Body.RefreshSources != nil && *req.Body.RefreshSources
-	var hours []contracts.BillableHour
-	if refresh {
-		now, kinds, read, err := s.billableNow(ctx, held, loc)
-		if err != nil {
-			return nil, err
-		}
-		in.refresh, hours = &sourcesRefresh{read: held, now: now, kind: kinds}, read
 	}
 	// The timesheet (D5): the request's flag, else the draft's. Turned on, or
 	// refreshed, its rows are written anew — the hours as Time answers them
@@ -774,6 +802,19 @@ func (s *server) saveDraft(ctx context.Context, id int64, revision int32, in dra
 		if invalidSources != nil {
 			out.invalid = invalidSources
 			return errRefused
+		}
+		// The corrections as the work held under the lock has them: a line
+		// judged one on the pool read that no longer is cannot stay negative.
+		if locked.Kind == kindInvoice {
+			markCorrections(held, in.lines)
+			for i, l := range in.lines {
+				if l.quantity.Sign() < 0 && l.deductsInvoiceID == nil && !l.correction {
+					out.invalid = withFieldError(out.invalid, fmt.Sprintf("lines[%d].quantity", i), msgQuantityPositive)
+				}
+			}
+			if out.invalid != nil {
+				return errRefused
+			}
 		}
 		released = append(released, dropped...)
 		if in.refresh != nil {
@@ -905,6 +946,29 @@ func (s *server) GetInvoicesById(ctx context.Context, req gen.GetInvoicesByIdReq
 		}
 	}
 	return gen.GetInvoicesById200JSONResponse(resp), nil
+}
+
+// refreshedLines is lines with the held settlements' lines built anew by a
+// refresh (refreshSettlementLines): in the buyer's language, at the codes
+// the settings give each hint (energyDefaults), each correction naming the
+// invoice its original is on — read on the pool, before the save's
+// transaction.
+func (s *server) refreshedLines(ctx context.Context, q *store.Queries, settings store.InvoicesSetting, profile *contracts.CustomerBillingProfile,
+	held []heldSource, settlements map[int64]contracts.Settlement, lines []draftLine,
+) ([]draftLine, error) {
+	all := make([]contracts.Settlement, 0, len(settlements))
+	for _, st := range settlements {
+		all = append(all, st)
+	}
+	invoiced, err := correctedNumbers(ctx, q, all)
+	if err != nil {
+		return nil, err
+	}
+	language := ""
+	if profile != nil {
+		language = profile.Language
+	}
+	return refreshSettlementLines(lines, held, settlements, lineLanguage(language), energyDefaults(settings), invoiced)
 }
 
 // withDraftFreshness warns on an invoice draft's response which of its held

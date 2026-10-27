@@ -66,8 +66,11 @@ func (s *server) holders() (holders, error) {
 func workSources(rows []heldSource) map[contracts.WorkSourceKind][]contracts.WorkSource {
 	out := map[contracts.WorkSourceKind][]contracts.WorkSource{}
 	for _, r := range rows {
+		// A settlement's subkind is its own kind, never an expense's: Energy's
+		// holder is handed no expense kind and no project (energy consumption
+		// billing design D7).
 		expenseKind := ""
-		if r.subkind != nil {
+		if r.subkind != nil && r.kind == contracts.WorkSourceExpense {
 			expenseKind = *r.subkind
 		}
 		out[r.kind] = append(out[r.kind], contracts.WorkSource{
@@ -171,11 +174,15 @@ type issueWork struct {
 
 // readIssueWork reads, on the pool, before the issue's transaction, what the
 // write-back of draft's work needs, in order: the held rows; every kind
-// claimed by a holder, else a composition bug — logged, and a failure; the
-// project directory, else projects_unavailable; each held source's project
-// still billing draft's customer, else source_customer_changed on the first
-// line holding a source of it; the issuer's name. A draft holding no work
-// reads nothing more.
+// claimed by a holder, else a composition bug — logged, and a failure; when
+// any row is work of a project, the project directory, else
+// projects_unavailable; each held source's project still billing draft's
+// customer, else source_customer_changed on the first line holding a source
+// of it; each held energy settlement still found and still the customer's,
+// read through Consumption (energy consumption billing design D7, invoices
+// from consumption plan reading 7), else source_not_invoiceable or
+// source_customer_changed; the issuer's name. A draft holding no work reads
+// nothing more.
 func (s *server) readIssueWork(ctx context.Context, q *store.Queries, draft store.InvoicesInvoice) (issueWork, *gen.InvoicesConflictProblem, error) {
 	rows, err := sourcesOf(ctx, q, draft.ID)
 	if err != nil || len(rows) == 0 {
@@ -193,35 +200,86 @@ func (s *server) readIssueWork(ctx context.Context, q *store.Queries, draft stor
 			return issueWork{}, nil, fmt.Errorf("invoices: no holder claims %s", r.kind)
 		}
 	}
-	if s.deps.Projects == nil {
-		return issueWork{}, cannotIssue(codeProjectsUnavailable,
-			"The draft bills work, and with the projects module switched off its projects cannot be checked. Nothing was issued."), nil
-	}
 	var ids []int32
+	var settlements []heldSource
 	for _, r := range rows {
+		if r.isSettlement() {
+			settlements = append(settlements, r)
+			continue
+		}
 		ids = append(ids, r.projectID)
 	}
-	slices.Sort(ids)
-	entries, err := s.projectEntries(ctx, slices.Compact(ids))
-	if err != nil {
-		return issueWork{}, nil, fmt.Errorf("invoices: read the projects of document %d's work: %w", draft.ID, err)
-	}
-	projects := make(map[int32]contracts.ProjectEntry, len(entries))
-	for _, e := range entries {
-		projects[e.ID] = e
-	}
-	for _, r := range rows {
-		p, ok := projects[r.projectID]
-		if !ok || p.CustomerID == nil || *p.CustomerID != draft.CustomerID {
-			return issueWork{}, sourceRefusal(codeSourceCustomerChanged, fmt.Sprintf(
-				"Line %d bills work of project %d, which no longer bills this customer.", r.linePosition, r.projectID), r), nil
+	projects := map[int32]contracts.ProjectEntry{}
+	if len(ids) > 0 {
+		if s.deps.Projects == nil {
+			return issueWork{}, cannotIssue(codeProjectsUnavailable,
+				"The draft bills work, and with the projects module switched off its projects cannot be checked. Nothing was issued."), nil
 		}
+		slices.Sort(ids)
+		entries, err := s.projectEntries(ctx, slices.Compact(ids))
+		if err != nil {
+			return issueWork{}, nil, fmt.Errorf("invoices: read the projects of document %d's work: %w", draft.ID, err)
+		}
+		for _, e := range entries {
+			projects[e.ID] = e
+		}
+		for _, r := range rows {
+			if r.isSettlement() {
+				continue
+			}
+			p, ok := projects[r.projectID]
+			if !ok || p.CustomerID == nil || *p.CustomerID != draft.CustomerID {
+				return issueWork{}, sourceRefusal(codeSourceCustomerChanged, fmt.Sprintf(
+					"Line %d bills work of project %d, which no longer bills this customer.", r.linePosition, r.projectID), r), nil
+			}
+		}
+	}
+	if refusal, err := s.settlementsStillTheCustomers(ctx, draft, settlements); err != nil || refusal != nil {
+		return issueWork{}, refusal, err
 	}
 	display, err := s.issuerName(ctx)
 	if err != nil {
 		return issueWork{}, nil, err
 	}
 	return issueWork{rows: rows, holders: h, projects: projects, display: display}, nil, nil
+}
+
+// settlementsStillTheCustomers is the issue's customer check of its held
+// energy settlements (invoices from consumption plan reading 7), read through
+// Consumption on the pool before the transaction: one Energy no longer
+// answers is source_not_invoiceable, one now another customer's
+// source_customer_changed, each on the first line holding it. Whether each
+// is still a draft at its revision and amount is Energy's holder's to judge
+// under the lock. A holder claims the kind, so Energy is on; should its
+// provider not be composed, nothing can be read and the holder judges alone.
+func (s *server) settlementsStillTheCustomers(ctx context.Context, draft store.InvoicesInvoice, held []heldSource) (*gen.InvoicesConflictProblem, error) {
+	if len(held) == 0 || s.deps.Consumption == nil {
+		return nil, nil
+	}
+	ids := make([]int64, 0, len(held))
+	for _, r := range held {
+		ids = append(ids, r.id)
+	}
+	page, err := s.settlementsByID(ctx, ids)
+	if err != nil {
+		return nil, fmt.Errorf("invoices: read the settlements of document %d: %w", draft.ID, err)
+	}
+	found := make(map[int64]contracts.Settlement, len(page.Settlements))
+	for _, st := range page.Settlements {
+		found[st.ID] = st
+	}
+	for _, r := range held {
+		st, ok := found[r.id]
+		switch {
+		case !ok:
+			return sourceRefusal(codeSourceNotInvoiceable, fmt.Sprintf(
+				"Line %d bills settlement %d, which Energy no longer has.", r.linePosition, r.id), r), nil
+		case st.CustomerID != draft.CustomerID:
+			return sourceRefusal(codeSourceCustomerChanged, fmt.Sprintf(
+				"Line %d bills settlement %d, which is now another customer's.", r.linePosition, r.id), r), nil
+		}
+	}
+	return nil, nil
 }
 
 // issuerName is the caller's name as the user directory knows it, "" for a
@@ -240,17 +298,19 @@ func (s *server) issuerName(ctx context.Context) (string, error) {
 
 // sameIssueWork reports whether the draft's work under the issue's lock is
 // the work read before it: the same sources at the same revisions and
-// amounts, on the same lines.
+// amounts, on the same lines — a settlement's first line and their number
+// (invoices from consumption plan reading 2).
 func sameIssueWork(before, locked []heldSource) bool {
 	if !sameHeldSet(before, locked) {
 		return false
 	}
-	lines := make(map[sourceRef]int32, len(before))
+	type span struct{ position, count int32 }
+	lines := make(map[sourceRef]span, len(before))
 	for _, h := range before {
-		lines[h.ref()] = h.linePosition
+		lines[h.ref()] = span{h.linePosition, h.lines()}
 	}
 	for _, h := range locked {
-		if lines[h.ref()] != h.linePosition {
+		if lines[h.ref()] != (span{h.linePosition, h.lines()}) {
 			return false
 		}
 	}
@@ -260,9 +320,13 @@ func sameIssueWork(before, locked []heldSource) bool {
 // notSelectable is the wizard's rule applied again under the issue's lock
 // from the projects read before it (plan reading 19): hours of a project now
 // fixed-price or non-billable, and any work of one now non-billable, refuse
-// the issue on the first line holding such a source.
+// the issue on the first line holding such a source. An energy settlement is
+// not judged here.
 func (w issueWork) notSelectable() *gen.InvoicesConflictProblem {
 	for _, r := range w.rows {
+		if r.isSettlement() {
+			continue // an energy settlement belongs to no project
+		}
 		switch billing := w.projects[r.projectID].BillingType; {
 		case billing == billingNonBillable,
 			billing == billingFixedPrice && r.kind == contracts.WorkSourceHours:

@@ -100,8 +100,10 @@ type issuePlan struct {
 	original *store.InvoicesInvoice
 	releases []release
 	// settlement is an invoice that deducts an earlier one (invoices work
-	// design D7): its gross must be positive.
-	settlement bool
+	// design D7): its gross must be positive. correction is one with an
+	// energy correction line (energy consumption billing design D7), which
+	// may be negative: its gross must be positive too.
+	settlement, correction bool
 }
 
 // planSummary is a document's VAT rows and totals as its issue writes them.
@@ -205,6 +207,7 @@ func invoiceIssueChecks(ctx context.Context, txq *store.Queries, profile *contra
 	}
 	plan.settlement = len(deductions) > 0
 	for _, l := range lines {
+		plan.correction = plan.correction || l.Correction
 		if snap, ok := deductions[l.ID]; ok {
 			net, err := ratFromNumeric(l.LineNet)
 			if err != nil {
@@ -472,6 +475,15 @@ func (s *server) issueLocked(ctx context.Context, tx pgx.Tx, txq *store.Queries,
 	if plan.settlement && totals.gross.Sign() <= 0 {
 		refusal = cannotIssue(codeInvoiceTotalNotPositive, fmt.Sprintf(
 			"This settlement's total is %s: a settlement deducts less than it bills. A fixed price billed in full on account ends with its last a-konto.",
+			totals.gross.FloatString(2)))
+		return refused()
+	}
+	// Nor may an invoice whose energy corrections lower it below what it
+	// bills (invoices from consumption plan reading 3): a credit is a
+	// credit note's.
+	if plan.correction && totals.gross.Sign() <= 0 {
+		refusal = cannotIssue(codeInvoiceTotalNotPositive, fmt.Sprintf(
+			"This invoice's total is %s: its corrections lower it below zero. Bill the corrections together with consumption, or credit the earlier invoice.",
 			totals.gross.FloatString(2)))
 		return refused()
 	}
