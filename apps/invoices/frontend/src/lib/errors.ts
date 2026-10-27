@@ -147,7 +147,8 @@ export const fieldRefusals = (
       .replace(/^lines\[\d+\]\./, "line.")
       .replace(/^allocations\[\d+\]\./, "allocation.")
       .replace(/^sources\[\d+\]$/, "sources")
-      .replace(/^settlementIds\[\d+\]$/, "settlementIds");
+      .replace(/^settlementIds\[\d+\]$/, "settlementIds")
+      .replace(/^customerIds\[\d+\]$/, "customerIds");
     const key = `fieldInvalid.${scope ? `${scope}.` : ""}${named}`;
     const words = key in invoicesCatalog.en ? t(key) : message;
     if (hasInput(field)) onInputs[field] = words;

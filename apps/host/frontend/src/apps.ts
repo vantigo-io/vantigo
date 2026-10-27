@@ -19,6 +19,7 @@ import {
   IconClockExclamation,
   IconFileInvoice,
   IconFilePlus,
+  IconFiles,
   IconFlag,
   IconHeartHandshake,
   IconId,
@@ -380,6 +381,20 @@ export const apps: readonly AppDefinition[] = [
       to: "/invoices/overdue",
       icon: IconClockExclamation,
       requiredPermissions: ["invoices:access"],
+    },
+    {
+      // Billing runs (energy consumption billing design D10, D11): one
+      // invoice per customer with consumption due, made by the worker. Making
+      // and cancelling a run ask for invoices:access and invoices:create
+      // together; requiredPermissions is any-of, so the app's own permission
+      // is named there and invoices:create must be held as well. Issuing
+      // with a run is the page's own, behind meta's canIssue; a run's page
+      // falls under this entry.
+      label: "navigation.invoiceBillingRuns",
+      to: "/invoices/billing-runs",
+      icon: IconFiles,
+      requiredPermissions: ["invoices:access"],
+      requiredAllPermissions: ["invoices:create"],
     },
     {
       // The bank files and the exception queue (invoices payments and

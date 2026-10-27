@@ -203,6 +203,18 @@ describe("ModuleAccessGuard", () => {
     expect(screen.getByText("Allowed content")).toBeInTheDocument();
   });
 
+  // Billing runs and a run's page ask for invoices:access and invoices:create
+  // together (energy consumption billing design D10): a reader alone meets the
+  // access-denied page.
+  it.each(["/invoices/billing-runs", "/invoices/billing-runs/7"])("BillingRunsRoute_GuardedByCreate %s", (pathname) => {
+    renderGuardFor(pathname, ["invoices:access"]);
+    expect(screen.getByRole("heading", { name: "Access denied" })).toBeInTheDocument();
+
+    cleanup();
+    renderGuardFor(pathname, ["invoices:access", "invoices:create"]);
+    expect(screen.getByText("Allowed content")).toBeInTheDocument();
+  });
+
   // Staff's destinations come from the package (`staffNavItems`). People is
   // offered in the sidebar to staff:view and to staff:manage, but its URL —
   // and a person's page under it — is guarded by the app alone: a manager
