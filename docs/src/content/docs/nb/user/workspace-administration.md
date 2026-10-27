@@ -206,8 +206,17 @@ Kolonnen viser én av tre ting:
 2. Kontroller **Brukerprinsipalnavn** i **Koble _navn_ til enkel pålogging**. Feltet er
    fylt ut med kontoens adresse; endre det når personens katalogkonto har et annet
    navn. Under **Mer** er **Objekt-ID** katalogkontoens id, for når du har den i stedet
-   for eller i tillegg.
+   for eller i tillegg. Mens appen **Microsoft Entra ID** er slått på, begynner
+   dialogen med **Søk i katalogen**: skriv to tegn eller mer av personens navn eller
+   adresse og velg kontoen deres, som fyller ut begge feltene (en konto en annen bruker
+   allerede har, vises, men kan ikke velges).
 3. Velg **Koble til**. Raden viser nå **Venter på første pålogging**.
+
+**Koble til mange på en gang.** Mens appen **Microsoft Entra ID** er slått på, foreslår
+**Finn treff i katalogen…**, ved siden av søket under **Brukere**, for hver bruker som
+ikke er koblet til, den ene katalogkontoen som passer nøyaktig, og **Koble til valgte**
+kobler til dem du lar være krysset av; se
+[Koble til eksisterende brukere](/nb/user/entra/#koble-til-eksisterende-brukere).
 
 Ved personens neste innlogging gjennom leverandøren — eller når leverandøren sender
 kontoen — kobler Vantigo katalogkontoen til kontoen du pekte ut, uansett hvilken

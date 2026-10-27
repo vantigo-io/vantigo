@@ -560,6 +560,19 @@ konto, `account_locked` til de aktiveres. En eier eller en SystemAdmin kan kunng
 den lokale MFA-regelen gjelder. En kunngjort kobling går foran en kunngjort konto for
 samme ankomst, og en ankomst oppfyller aldri begge.
 
+**Med Entra-modulen.** Mens `entra` er slått på, velger brukerskjermen katalogkontoen
+fra leietakeren i stedet for at den skrives inn, og tilbyr en gjennomgang av alle
+brukere som passer nøyaktig med én konto (se
+[koble til eksisterende brukere](/en/reference/entra/#connecting-existing-users));
+hvert valgte par kunngjøres gjennom dette samme endepunktet. Det modulen trenger fra
+identitetsmodulen til dette — brukerne som ikke er koblet til, med adressen og
+ansattnummeret de sammenlignes på, og hvem som allerede har nøklene til en katalogkonto
+— svarer identitetsmodulen på gjennom porten `contracts.SSOConnections`, og bare til en
+eier under `policy:Owner+OwnerManagement`: en forespørsel fra noen andre får ingenting,
+og mens OIDC er av, finnes det ingenting å koble til under (`sso_not_configured`).
+Adressene sammenlignes inne i Entra-modulen og blir aldri svart ut, logget eller
+registrert.
+
 ### Koble fra en bruker
 
 `DELETE /api/v1/identity/owner/users/<id>/sso-link` trekker tilbake brukerens kunngjorte

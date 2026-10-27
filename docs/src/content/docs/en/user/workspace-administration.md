@@ -199,8 +199,17 @@ The column reads one of three things:
 2. In **Connect _name_ to single sign-on**, check **User principal name**. It is filled
    in with the account's address; change it when the person's directory account has
    another name. Under **More**, **Object id** is the directory account's id, for when
-   you have it instead or besides.
+   you have it instead or besides. While the **Microsoft Entra ID** app is enabled, the
+   dialog starts with **Search the directory**: type two characters or more of the
+   person's name or address and pick their account, which fills in both fields (an
+   account another user already holds is shown but cannot be picked).
 3. Choose **Connect**. The row now reads **Awaiting first sign-in**.
+
+**Connect many at once.** While the **Microsoft Entra ID** app is enabled, **Find
+matches in the directory…**, next to the search in **Users**, proposes for every user
+not yet connected the one directory account that matches them exactly, and **Connect
+selected** connects the ones you keep checked; see
+[Connect existing users](/en/user/entra/#connect-existing-users).
 
 At the person's next sign-in through the provider — or when the provider pushes their
 account — Vantigo links the directory account to the account you named, whatever

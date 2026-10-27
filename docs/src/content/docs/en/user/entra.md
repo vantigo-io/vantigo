@@ -1,6 +1,6 @@
 ---
 title: Microsoft Entra ID
-description: Connecting the company's Microsoft Entra ID tenant on the Microsoft Entra ID page — the Status card, the wizard's six steps and what Done means on each, the permissions to copy, the secret shown once, the connection test, the account rules, the Groups table and confirming a group Vantigo did not create — and who sees what.
+description: Connecting the company's Microsoft Entra ID tenant on the Microsoft Entra ID page — the Status card, the wizard's six steps and what Done means on each, the permissions to copy, the secret shown once, the connection test, the account rules, the Groups table confirming a group Vantigo did not create, connecting existing users by the directory picker and the review of exact matches — and who sees what.
 sidebar:
   order: 47
 sources:
@@ -26,6 +26,7 @@ reference](/en/reference/entra/).
 | Steps **1 Register the application**, **2 Add a client secret** and **3 Grant the permissions and the role** — **Save**, **Add the secret**, **Revoke**, **Test connection** | an **Owner**, signed in with a second factor; to anyone else with `entra:manage` they are shown read-only, with *An Owner does this step. You can see what is set, but not change it.* |
 | Step **4 Set the account rules** — **Save the account rules** | `entra:manage` |
 | Steps **5 Sign-in** and **6 Provisioning** | an **Owner**: they are the **Single sign-on** card's forms; anyone else reads the step without them |
+| **Search the directory** in the connect dialog and **Find matches in the directory…** on **Users** ([connect existing users](#connect-existing-users)) | an **Owner**, signed in with a second factor when Owners must use one |
 
 `entra:manage` is in the category Administration and cannot be delegated: only an Owner
 gives it to a role. The Owner holds it already. An Owner who signed in without a second
@@ -227,6 +228,74 @@ meanwhile.
 
 The page says *Adoption confirmed* — *Vantigo manages the group from Staff's next
 accounts run.* Confirm only a group you have checked.
+
+## Connect existing users
+
+When single sign-on is turned on in a workspace that already has users, each of them
+must be connected to their directory account before they can sign in through
+Microsoft ([Connect an account to single sign-on](/en/user/workspace-administration/#connect-an-account-to-single-sign-on)).
+While this app is enabled, you need not type the accounts: Vantigo looks them up in the
+tenant. Both ways below are an **Owner**'s, on **Workspace admin** › **Users**, signed in
+with a second factor when Owners must use one; they need the connection to the tenant
+from steps 1 to 3, and the **Single sign-on** column, which is there while single
+sign-on is on.
+
+### Review the exact matches
+
+1. In **Users**, choose **Find matches in the directory…**, next to the search.
+2. **Users who match an account in the directory** opens. A line at the top counts the
+   *Users not yet connected*, the ones *Matched exactly*, and the ones *Left out because
+   more than one account matched*. Below it each proposal is a row: the **User**, with
+   their address; the **Account in the directory**, with its display name, principal
+   name, employee ID when it has one, and *Disabled* when the account is; and
+   **Matched by**: **Mail**, **Principal name**, **Employee ID**, or several.
+3. Check the rows. Every row is checked, except one whose account is disabled. Clear
+   the ones you do not want.
+4. Choose **Connect selected**, which shows how many are checked. Vantigo connects the
+   pairs one at a time, and each row's **Result** says *Connected*, or why it was
+   refused in words — for instance that another user is already connected to the
+   account. **Users** is refreshed when it is done.
+
+A user is proposed only when the match is **exact**: their address is the account's
+mail or principal name, ignoring upper and lower case, or their employee number is
+the account's employee ID — and every one of those that matched points to the same
+account. There is no guessing on names or similar addresses. Left out are:
+
+- a user who matches more than one account, or whose account also matches another
+  user — counted as *Left out because more than one account matched*; connect them one
+  at a time;
+- an account somebody already holds: one announced for another user, one the
+  provider's provisioning gave to another user, or one Staff announced for a new
+  person;
+- users already connected, or awaiting their first sign-in; **Pending** users; and you
+  — you connect yourself by signing in through Microsoft.
+
+When no one matches, the window says so and that you connect them one at a time from
+the **Single sign-on** column. Only the first 1,000 users not yet connected are
+compared; when there are more, it says so — connect these, then look again.
+
+A connected row reads **Awaiting first sign-in** in **Users** until the person next
+signs in through Microsoft, or the provider pushes their account; then the connection
+completes and it reads **Connected**. Their name, address and roles stay as they were.
+
+### Pick the account when connecting one user
+
+**Connect…** in a user's row opens **Connect _name_ to single sign-on**, which, while
+this app is enabled, starts with **Search the directory**. Type two characters or more
+of the person's name, address or principal name; after a pause the list shows the
+matching accounts, by display name, each with its principal name, its employee ID, and
+*Disabled* when the account is. An account somebody already holds reads *Awaiting*
+and the user's name (or *Awaiting another user*), *Provisioned to another user* or
+*Announced by Staff*, and cannot be picked. At most 25 accounts are shown; when there
+are that many, it asks you to narrow the search.
+
+Picking an account fills in **User principal name** and, under **More**, **Object id**.
+Check them and choose **Connect**, as before. The typed fields stay: you can still
+type the name yourself, and they are all there is while the directory cannot be read.
+
+A search or a review can be refused when the tenant cannot be asked: the secrets are
+refused, the tenant does not answer, or it asks Vantigo to wait — try again in a
+minute. The review is refused when single sign-on is not configured.
 
 ## After the setup
 

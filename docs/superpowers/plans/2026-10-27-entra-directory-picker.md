@@ -13,7 +13,7 @@
 The spec names the endpoints and the rule; these are the choices it leaves to the plan.
 
 1. **Entra reads identity through a port, never its tables.** The matches need each unconnected user's address and employee number, both identity's (`identity.users.email`, `employee_number`), and `contracts.UserDirectory` deliberately hands out no address but a `Holder`'s, for mail. A new single-provider port, `contracts.SSOConnections`, provided by identity (`Module.SSOConnections`, `Deps.SSOConnections`, set by Compose as `Accounts` is; Workers does not need it), answers two reads:
-   - `Unconnected(ctx) ([]ConnectCandidate, error)` — every user who is not pending, has no link under the configured issuer and no announced link under it, the caller excluded (an Owner connects themselves by signing in, L2); `ConnectCandidate{UserID, Email, EmployeeNumber, Disabled}`. OIDC off answers an empty list.
+   - `Unconnected(ctx) ([]ConnectCandidate, error)` — every user who is not pending, has no link under the configured issuer and no announced link under it, the caller excluded (an Owner connects themselves by signing in, L2); `ConnectCandidate{UserID, Email, EmployeeNumber, Disabled}`. OIDC off answers an Owner `contracts.ErrSSONotConfigured` (changed in task 2 from the empty list first planned: not configured must not read as nobody left to connect, and the matches answer it 409 `sso_not_configured`); `KeyHolders` still answers nothing.
    - `KeyHolders(ctx, keys []DirectoryKey) ([]KeyHolder, error)` — for each object id or principal name, who already holds it under the configured issuer: an announced link (`expected`, with the user), a SCIM mapping (`mapped`: `userName` equal to the principal name, or `externalId` to the object id, with the user), an announced account (`account`, Staff's, no user).
    It is **provider-gated**: identity checks the request in `ctx` against `policy:Owner+OwnerManagement` through its own access and answers nothing — not an error — to anyone else or to a context with no request. The address is for matching and never leaves the Entra module: not on the wire, not in a log, not in an event.
 2. **An OIDC link cannot be attributed to a directory account.** `oidc_links` holds the token's `sub`, which Graph never returns (spec reading 1). A hit is therefore shown as held only by what names its keys — an announcement or a SCIM mapping — and an account whose person signed in already is not marked. That user is not a candidate either (they are linked), so the matches never propose them; the search may show their account unmarked, and identity's `sso_link_taken`/`account_linked` still refuse what must be refused.
@@ -26,20 +26,20 @@ The spec names the endpoints and the rule; these are the choices it leaves to th
 
 ## Tasks
 
-- [ ] **1. This plan.**
-- [ ] **2. The port, identity's side, and the contract (one worker, alone).**
+- [x] **1. This plan.**
+- [x] **2. The port, identity's side, and the contract (one worker, alone).**
   - `internal/contracts/sso_connections.go`: `SSOConnections`, `ConnectCandidate`, `DirectoryKey`, `KeyHolder` (`Kind` `expected`|`mapped`|`account`), the doc comment saying it is provider-gated (rule 12) and that the address never leaves the consumer.
   - `internal/module`: `Module.SSOConnections func(Deps) contracts.SSOConnections`, `Deps.SSOConnections`, Compose sets it with `soleProvider` after `Users`; the compose test.
   - `internal/identity`: `queries/sso_connections.sql` (`ListConnectCandidates (oidc_issuer, caller)`, `ListKeyHolders (issuer, object_ids[], upns[])`), `sqlc generate`; `sso_connections.go` implementing the port with the Owner gate; `sso_connections_test.go` (an Owner gets the candidates — pending, linked, announced and self left out; a non-Owner and a request-less context get nothing; the three holder kinds; OIDC off).
   - `openapi/entra.yaml` (and the embedded copy under `internal/openapi/specs/`): the two operations, `EntraDirectoryUser`, `EntraDirectoryHolder`, `EntraDirectoryUsers`, `EntraDirectoryMatch`, `EntraDirectoryMatches`; `go generate ./...` in `apps/server`; stub handlers answering 503 so the package builds.
-- [ ] **3. The Entra side (`internal/entra`), after 2.**
+- [x] **3. The Entra side (`internal/entra`), after 2.**
   - `directory.go`: `searchUsers`, `findByKeys` (the chunked `in` filters, the `ConsistencyLevel` header — a `callOption` or header argument on the client's `get`), the matching rule of reading 4, both handlers, the limits in `module.go`.
   - `graphtest`: reading 6, with its own tests.
   - `directory_test.go`: the search (hits, the holder marks, `q` too short, the quote stripped, the header sent), the matches (an exact proposal by mail, by principal name, by employee number; two accounts for one user left out; one account for two users left out; a held account left out; a disabled account proposed with its state; OIDC off 409; the 503s), the access (a SystemAdmin without Owner 403).
-- [ ] **4. The frontend, after 2.**
+- [x] **4. The frontend, after 2.**
   - `bun run gen:client`; `apps/entra/frontend/src/api/directory.ts`; `components/directory-picker.tsx`, `components/directory-matches.tsx`, exported from `index.ts`; the words in `i18n.ts` in `en` and `nb`; tests beside them against the package's fake server.
   - `apps/host/frontend/src/routes/workspace/users.tsx`: the picker in the connect modal, the *Find matches in the directory…* button and its modal; `catalogs/admin.ts` in `en` and `nb`; `users.test.tsx`.
-- [ ] **5. Documentation, after 3 and 4.**
+- [x] **5. Documentation, after 3 and 4.**
   - `user/entra.md` (en, nb): connecting existing users — the picker and the review. `user/workspace-administration.md` (en, nb): the connect dialog's picker, pointing to the review.
   - `reference/entra.md`: the two reads, the matching rule, the limits, the refusals. `reference/identity.md` (or where identity's ports are listed) and `contributing/module-boundaries.md` rule 5: `SSOConnections`.
   - `admin/sso-scim.md` (en, nb): the announced link's paragraph names the review.

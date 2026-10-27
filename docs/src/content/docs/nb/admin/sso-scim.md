@@ -383,6 +383,16 @@ kunngjøringen lagres i `identity.expected_links`, én per bruker, med utstedere
 gjort under, objekt-ID-en og brukerprinsipalnavnet (det ene kan mangle, ikke begge) og
 hvem som gjorde den. En katalogkonto kan bare kunngjøres for én bruker.
 
+Med Entra-modulen slått på trenger ikke eieren å skrive inn kontoen: tilkoblingsdialogen
+søker i leietakeren og fyller ut begge nøklene fra kontoen som velges, og *Finn treff i
+katalogen…* på brukerskjermen foreslår, for hver bruker som ikke er koblet til, den ene
+kontoen der e-post eller brukerprinsipalnavn er lik adressen deres, eller der ansatt-ID
+er lik ansattnummeret deres — bare nøyaktige treff — og **Koble til valgte** kunngjør
+hvert valgte par gjennom det samme endepunktet
+([koble til eksisterende brukere](/nb/user/entra/#koble-til-eksisterende-brukere);
+regelen i [referansen](/en/reference/entra/#the-exact-matches)). Ellers endres
+ingenting: hver kunngjøring oppfylles, som nedenfor, ved personens neste ankomst.
+
 **Treffet.** På begge ankomstveier leses den kunngjorte koblingen før den kunngjorte
 kontoen, og eierens handling går foran:
 
