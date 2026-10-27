@@ -1626,6 +1626,32 @@ func TestLoad_CalendarSubscriptionsWorker(t *testing.T) {
 	}
 }
 
+// CALENDAR_MAILBOX_SYNC_ENABLED and CALENDAR_MAILBOX_SYNC_POLL (calendar
+// Outlook sync design O7): the Outlook sync worker is on by default and syncs
+// each person every fifteen minutes; the poll is at least a minute, the
+// worker's own tick.
+func TestLoad_CalendarMailboxSyncWorker(t *testing.T) {
+	cfg := mustLoad(t, validEnv())
+	if !cfg.CalendarMailboxSyncEnabled {
+		t.Error("CALENDAR_MAILBOX_SYNC_ENABLED unset did not default to on")
+	}
+	if cfg.CalendarMailboxSyncPoll != 15*time.Minute {
+		t.Errorf("CalendarMailboxSyncPoll = %v, want 15m", cfg.CalendarMailboxSyncPoll)
+	}
+	tuned := mustLoad(t, with(validEnv(), "CALENDAR_MAILBOX_SYNC_ENABLED", "0", "CALENDAR_MAILBOX_SYNC_POLL", "1m"))
+	if tuned.CalendarMailboxSyncEnabled || tuned.CalendarMailboxSyncPoll != time.Minute {
+		t.Errorf("tuned = %v/%v, want off and 1m", tuned.CalendarMailboxSyncEnabled, tuned.CalendarMailboxSyncPoll)
+	}
+	if msg := loadError(t, with(validEnv(), "CALENDAR_MAILBOX_SYNC_ENABLED", "yes")); !strings.Contains(msg, `CALENDAR_MAILBOX_SYNC_ENABLED: must be "0" or "1"`) {
+		t.Errorf("error = %q", msg)
+	}
+	for _, v := range []string{"0s", "soon", "-15m", "59s"} {
+		if msg := loadError(t, with(validEnv(), "CALENDAR_MAILBOX_SYNC_POLL", v)); !strings.Contains(msg, "CALENDAR_MAILBOX_SYNC_POLL: must be a duration of at least 1m, such as 15m") {
+			t.Errorf("%s: error = %q", v, msg)
+		}
+	}
+}
+
 // PUBLIC_BASE_URL (payments port design D14): the https URL the pay page is
 // reachable at from the internet, unset by default. https only; an origin
 // plus APP_BASE_PATH and nothing else — no user, query or fragment, and the

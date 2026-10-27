@@ -44,8 +44,9 @@ const (
 )
 
 // workers is the module's background workers: calendar-cancellations unless
-// CALENDAR_CANCELLATIONS_ENABLED=0, and calendar-subscriptions unless
-// CALENDAR_SUBSCRIPTIONS_ENABLED=0. A Deps with no Config cannot say, and
+// CALENDAR_CANCELLATIONS_ENABLED=0, calendar-subscriptions unless
+// CALENDAR_SUBSCRIPTIONS_ENABLED=0, and calendar-mailbox-sync unless
+// CALENDAR_MAILBOX_SYNC_ENABLED=0. A Deps with no Config cannot say, and
 // gets none.
 func workers(d module.Deps) []worker.Worker {
 	if d.Config == nil {
@@ -57,6 +58,9 @@ func workers(d module.Deps) []worker.Worker {
 	}
 	if d.Config.CalendarSubscriptionsEnabled {
 		out = append(out, NewSubscriptionsWorker(d))
+	}
+	if d.Config.CalendarMailboxSyncEnabled {
+		out = append(out, NewMailboxSyncWorker(d))
 	}
 	return out
 }

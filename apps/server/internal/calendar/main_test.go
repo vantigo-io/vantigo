@@ -14,15 +14,10 @@ import (
 // coverage gate, which is what proves every operation is exercised.
 var recorder = contracttest.NewForModule("calendar")
 
-// pendingOperations are the contract's operations no test covers yet: the
-// Outlook sync's three, whose handlers land in task 3c of the calendar
-// Outlook sync plan. RequireCoverage fails the run if an operation is never
-// answered with a success, or if an entry listed here was in fact exercised.
-var pendingOperations = []string{
-	"getCalendarMailboxSync",
-	"putCalendarMailboxSync",
-	"postCalendarMailboxSyncRun",
-}
+// pendingOperations are the contract's operations no test covers yet: none.
+// RequireCoverage fails the run if an operation is never answered with a
+// success, or if an entry listed here was in fact exercised.
+var pendingOperations []string
 
 func TestMain(m *testing.M) {
 	// The whole suite's lock rule, installed once before any test runs: every

@@ -44,6 +44,9 @@ func (s *server) DeleteCalendarAppointmentsById(ctx context.Context, req gen.Del
 		if atts, err = txq.ListAttendees(ctx, row.ID); err != nil {
 			return fmt.Errorf("calendar: read appointment %d's attendees: %w", row.ID, err)
 		}
+		if err := s.nudgeMailboxes(ctx, txq, row.OwnerUserID, atts); err != nil {
+			return err
+		}
 		if !anyInvited(atts) {
 			if _, err := txq.DeleteAppointment(ctx, row.ID); err != nil {
 				return fmt.Errorf("calendar: delete appointment %d: %w", row.ID, err)

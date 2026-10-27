@@ -24,7 +24,10 @@
 // (the anonymous GET) and feed_ics.go (its iCalendar object); the
 // subscriptions are subscriptions.go (the rows), subscriptions_fetch.go (the
 // guarded fetch), subscriptions_parse.go and windowszones.go (parsed on read)
-// and subscriptions_worker.go (the poll).
+// and subscriptions_worker.go (the poll). The Outlook sync (calendar Outlook
+// sync design) is mailbox_sync.go (the person's setting and the nudge),
+// mailbox_push.go (what is pushed, and how it looks) and mailbox_worker.go
+// (the calendar-mailbox-sync worker and the clean-up).
 package calendar
 
 import (
@@ -84,10 +87,12 @@ var limits = map[string]ratelimit.Policy{
 var subscriptionFetchLimit = ratelimit.Policy{Name: "calendar-subscription-fetch", Limit: 30, Window: 10 * time.Minute}
 
 // Module is calendar as a platform module: its contract mounted under
-// /api/v1/calendar/, its two permissions in the composed catalog and the
-// calendar-cancellations worker. It provides no contract to anyone; it reads
+// /api/v1/calendar/, its two permissions in the composed catalog and its
+// workers — calendar-cancellations, calendar-subscriptions and
+// calendar-mailbox-sync. It provides no contract to anyone; it reads
 // Deps.CalendarSources, Deps.Users, Deps.Calendar and, when wired,
-// Deps.Directory and Deps.Projects, and mails through Deps.SMTPSend.
+// Deps.Directory, Deps.Projects and Deps.Workforce, mails through
+// Deps.SMTPSend and writes people's mailboxes through Deps.MailboxCalendar.
 func Module() module.Module {
 	return module.Module{
 		Name:        "calendar",

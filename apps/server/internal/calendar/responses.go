@@ -71,6 +71,9 @@ func (s *server) PostCalendarAppointmentsByIdResponse(ctx context.Context, req g
 		if atts, err = txq.ListAttendees(ctx, req.Id); err != nil {
 			return fmt.Errorf("calendar: read appointment %d's attendees: %w", req.Id, err)
 		}
+		if err := s.nudgeMailboxes(ctx, txq, row.OwnerUserID, atts); err != nil {
+			return err
+		}
 		excs, err = exceptionsOf(ctx, txq, row)
 		return err
 	})

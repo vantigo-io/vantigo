@@ -287,8 +287,8 @@ func (q *Queries) UpsertMailboxEvent(ctx context.Context, arg UpsertMailboxEvent
 }
 
 const upsertMailboxSync = `-- name: UpsertMailboxSync :one
-INSERT INTO calendar.mailbox_sync (user_id, enabled, target, detail, kinds, state, next_sync_at, created_at, updated_at)
-VALUES ($1, $2, $3, $4, $5::text[], $6, $7::timestamptz, $7::timestamptz, $7::timestamptz)
+INSERT INTO calendar.mailbox_sync (user_id, enabled, target, detail, kinds, state, next_sync_at, reconcile, created_at, updated_at)
+VALUES ($1, $2, $3, $4, $5::text[], $6, $7::timestamptz, $8::boolean, $7::timestamptz, $7::timestamptz)
 ON CONFLICT (user_id) DO UPDATE SET
     enabled = EXCLUDED.enabled,
     target = EXCLUDED.target,
@@ -296,26 +296,30 @@ ON CONFLICT (user_id) DO UPDATE SET
     kinds = EXCLUDED.kinds,
     state = EXCLUDED.state,
     next_sync_at = EXCLUDED.next_sync_at,
+    reconcile = EXCLUDED.reconcile,
     revision = calendar.mailbox_sync.revision + 1,
     updated_at = EXCLUDED.updated_at
 RETURNING user_id, enabled, target, detail, kinds, mailbox, calendar_id, state, error, next_sync_at, last_synced_at, attempts, reconcile, revision, created_at, updated_at
 `
 
 type UpsertMailboxSyncParams struct {
-	UserID  uuid.UUID
-	Enabled bool
-	Target  string
-	Detail  string
-	Kinds   []string
-	State   string
-	Now     time.Time
+	UserID    uuid.UUID
+	Enabled   bool
+	Target    string
+	Detail    string
+	Kinds     []string
+	State     string
+	Now       time.Time
+	Reconcile bool
 }
 
 // UpsertMailboxSync is the PUT's write: the person's toggle, target, detail
 // and kinds, the state the handler decided (pending when turned on, stopping
-// when a clean-up is owed), due at once. The first write makes the row at
-// revision 1; every later one moves revision on. The worker's record — the
-// mailbox, the calendar, the error, the last sync — is left as it was.
+// when a clean-up is owed), due at once, and whether the next sync reads the
+// mailbox's own list first (set when it is turned on or a clean-up is owed).
+// The first write makes the row at revision 1; every later one moves
+// revision on. The worker's record — the mailbox, the calendar, the error,
+// the last sync — is left as it was.
 func (q *Queries) UpsertMailboxSync(ctx context.Context, arg UpsertMailboxSyncParams) (CalendarMailboxSync, error) {
 	row := q.db.QueryRow(ctx, upsertMailboxSync,
 		arg.UserID,
@@ -325,6 +329,7 @@ func (q *Queries) UpsertMailboxSync(ctx context.Context, arg UpsertMailboxSyncPa
 		arg.Kinds,
 		arg.State,
 		arg.Now,
+		arg.Reconcile,
 	)
 	var i CalendarMailboxSync
 	err := row.Scan(
