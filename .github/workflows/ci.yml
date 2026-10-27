@@ -489,7 +489,7 @@ jobs:
       - name: 💾 Set up toolchain
         uses: jdx/mise-action@8418fedb1110381a0d3ba51a7a415d7c1b884550 # v5.2.2
         with:
-          install_args: "go bun trivy"
+          install_args: "go bun node trivy"
 
       - name: 💾 Cache Go modules and builds
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -612,7 +612,7 @@ jobs:
       - name: 💾 Set up toolchain
         uses: jdx/mise-action@8418fedb1110381a0d3ba51a7a415d7c1b884550 # v5.2.2
         with:
-          install_args: "go bun trivy aqua:sigstore/cosign"
+          install_args: "go bun node trivy aqua:sigstore/cosign"
 
       - name: 💾 Cache Go modules and builds
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -817,7 +817,7 @@ jobs:
       - name: 💾 Set up toolchain
         uses: jdx/mise-action@8418fedb1110381a0d3ba51a7a415d7c1b884550 # v5.2.2
         with:
-          install_args: "go bun aqua:goreleaser/goreleaser aqua:sigstore/cosign aqua:anchore/syft"
+          install_args: "go bun node aqua:goreleaser/goreleaser aqua:sigstore/cosign aqua:anchore/syft"
 
       - name: 💾 Cache Go modules and builds
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
