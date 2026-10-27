@@ -30,7 +30,7 @@ import (
 // once, a 5xx is retried once after a second — never for a call made
 // noRetry, the create of a user, a group or a pass, which the tenant may
 // have carried out before it failed —, a 401 fetches a fresh token once;
-// every answer read through a 1 MiB cap; and Graph's refusal parsed into a
+// every answer read through a 1 MiB cap (8 MiB for a mailbox $batch); and Graph's refusal parsed into a
 // graphError carrying the status and the codes, its words logged at debug
 // level with the tenant's id — except a noRetry call's, which may echo the
 // password or the pass it carried, and a noWords call's, which may echo a
@@ -81,6 +81,10 @@ const (
 	// graphMaxBody is the most of an answer read; a longer one is refused,
 	// errResponseTooLarge.
 	graphMaxBody = 1 << 20
+	// graphMaxBatchBody is the most of a mailbox $batch's answer read (a
+	// call made largeAnswer): twenty events, each answered whole with its
+	// body, may outgrow graphMaxBody.
+	graphMaxBatchBody = 8 << 20
 )
 
 // The client's failures. A refusal Graph answered is a *graphError; these
@@ -100,8 +104,9 @@ var (
 	// errThrottled: Graph answered 429 after the one wait, or asked for a
 	// wait longer than graphMaxRetryAfter.
 	errThrottled = errors.New("entra: Graph throttled the call")
-	// errResponseTooLarge: an answer longer than graphMaxBody.
-	errResponseTooLarge = errors.New("entra: Graph's answer is larger than 1 MiB")
+	// errResponseTooLarge: an answer longer than graphMaxBody (graphMaxBatchBody
+	// for a call made largeAnswer).
+	errResponseTooLarge = errors.New("entra: Graph's answer is larger than the client reads")
 )
 
 // graphError is a refusal Graph answered: the status, error.code and the
@@ -298,6 +303,10 @@ const noWords callOption = 2
 // reading 3). It is retried as any call.
 const eventual callOption = 3
 
+// largeAnswer is a call whose answer is read through graphMaxBatchBody
+// rather than graphMaxBody: the mailbox's $batch of events (mailbox.go).
+const largeAnswer callOption = 4
+
 // get reads path into into. path is everything after /v1.0, its query
 // already escaped (url.Values.Encode).
 func (c *graphClient) get(ctx context.Context, cred graphCredential, path string, into any, opts ...callOption) error {
@@ -326,8 +335,8 @@ func (c *graphClient) putRaw(ctx context.Context, cred graphCredential, path, co
 }
 
 // del deletes path; Graph answers 204.
-func (c *graphClient) del(ctx context.Context, cred graphCredential, path string) error {
-	return c.do(ctx, cred, http.MethodDelete, path, nil, nil)
+func (c *graphClient) del(ctx context.Context, cred graphCredential, path string, opts ...callOption) error {
+	return c.do(ctx, cred, http.MethodDelete, path, nil, nil, opts...)
 }
 
 // payload is a request's body: the bytes and their media type.
@@ -360,6 +369,10 @@ func (c *graphClient) send(ctx context.Context, cred graphCredential, method, pa
 	once := slices.Contains(opts, noRetry)
 	words := !once && !slices.Contains(opts, noWords)
 	advanced := slices.Contains(opts, eventual)
+	limit := int64(graphMaxBody)
+	if slices.Contains(opts, largeAnswer) {
+		limit = graphMaxBatchBody
+	}
 	target, err := graphURL(path)
 	if err != nil {
 		return err
@@ -370,7 +383,7 @@ func (c *graphClient) send(ctx context.Context, cred graphCredential, method, pa
 		if err != nil {
 			return err
 		}
-		status, header, data, err := c.exchange(ctx, method, target, token, body, advanced)
+		status, header, data, err := c.exchange(ctx, method, target, token, body, advanced, limit)
 		if err != nil {
 			return err
 		}
@@ -426,10 +439,10 @@ func graphURL(path string) (*url.URL, error) {
 }
 
 // exchange sends one request, body with its media type when not nil and
-// ConsistencyLevel: eventual when advanced, and answers the status, the headers and the body read through the cap. A
+// ConsistencyLevel: eventual when advanced, and answers the status, the headers and the body read through limit. A
 // request that could not be made, or was not answered in time, is
 // errTenantUnreachable; the caller's own context ending is its error.
-func (c *graphClient) exchange(ctx context.Context, method string, target *url.URL, token string, body *payload, advanced bool) (int, http.Header, []byte, error) {
+func (c *graphClient) exchange(ctx context.Context, method string, target *url.URL, token string, body *payload, advanced bool, limit int64) (int, http.Header, []byte, error) {
 	var reader io.Reader
 	if body != nil {
 		reader = bytes.NewReader(body.data)
@@ -454,7 +467,7 @@ func (c *graphClient) exchange(ctx context.Context, method string, target *url.U
 		return 0, nil, nil, fmt.Errorf("%w: %s %s: %w", errTenantUnreachable, method, target.Path, unwrapURLError(err))
 	}
 	defer func() { _ = resp.Body.Close() }()
-	data, err := readCapped(resp.Body)
+	data, err := readCapped(resp.Body, limit)
 	if err != nil {
 		if errors.Is(err, errResponseTooLarge) {
 			return 0, nil, nil, fmt.Errorf("%s %s: %w", method, target.Path, err)
@@ -477,13 +490,13 @@ func unwrapURLError(err error) error {
 	return err
 }
 
-// readCapped reads r to its end, refusing more than graphMaxBody.
-func readCapped(r io.Reader) ([]byte, error) {
-	data, err := io.ReadAll(io.LimitReader(r, graphMaxBody+1))
+// readCapped reads r to its end, refusing more than limit.
+func readCapped(r io.Reader, limit int64) ([]byte, error) {
+	data, err := io.ReadAll(io.LimitReader(r, limit+1))
 	if err != nil {
 		return nil, err
 	}
-	if len(data) > graphMaxBody {
+	if int64(len(data)) > limit {
 		return nil, errResponseTooLarge
 	}
 	return data, nil

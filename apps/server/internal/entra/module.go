@@ -11,15 +11,19 @@
 // nobody but identity, and reads of identity only what
 // contracts.SSOConnections answers an Owner — the users left to connect and
 // who holds a directory key — for the directory's exact matches (phase 2,
-// delivery B); the Owner's and entra:manage's checks are the router's. It writes
+// delivery B); the Owner's and entra:manage's checks are the router's. It
+// also fills contracts.MailboxCalendar for the calendar's Outlook sync
+// (docs/superpowers/specs/2026-10-27-calendar-outlook-sync-design.md, O2–O4):
+// behind the Owner's Calendar sync switch and Calendars.ReadWrite, it writes
+// the calendar's copies to the mailboxes of the accounts it manages. It writes
 // nothing outside its own schema; nothing here imports another module —
 // depguard enforces it, tests included — and no SQL of this module crosses a
 // schema.
 //
 // module.go is the module and its permission, server.go the operations'
 // receiver, errors.go the refusals, provisioner.go the
-// contracts.IdentityProvisioner and graphtest the fake Graph its tests run
-// against.
+// contracts.IdentityProvisioner, mailbox.go the contracts.MailboxCalendar and
+// graphtest the fake Graph its tests run against.
 package entra
 
 import (
@@ -86,15 +90,18 @@ var limits = map[string]ratelimit.Policy{
 }
 
 // Module is entra as a platform module: its contract mounted under
-// /api/v1/entra/, its one permission in the composed catalog, and its
+// /api/v1/entra/, its one permission in the composed catalog, its
 // contracts.IdentityProvisioner, which Compose and Workers collect into
-// Deps.IdentityProvisioners for Staff. It has no worker of its own.
+// Deps.IdentityProvisioners for Staff, and its contracts.MailboxCalendar,
+// which they resolve into Deps.MailboxCalendar for the calendar. It has no
+// worker of its own.
 func Module() module.Module {
 	return module.Module{
 		Name:                "entra",
 		Permissions:         permissions,
 		Mount:               mount,
 		IdentityProvisioner: newProvisioner,
+		MailboxCalendar:     newMailboxCalendar,
 	}
 }
 
