@@ -15,6 +15,11 @@ type meteringPointJSON struct {
 	Latitude                     *float64    `json:"latitude"`
 	Longitude                    *float64    `json:"longitude"`
 	ConnectionStatus             string      `json:"connectionStatus"`
+	GridTariffId                 *int32      `json:"gridTariffId"`
+	GridTariffName               *string     `json:"gridTariffName"`
+	Household                    bool        `json:"household"`
+	ElectricityTaxClass          string      `json:"electricityTaxClass"`
+	VatTreatment                 string      `json:"vatTreatment"`
 	CreatedAt                    time.Time   `json:"createdAt"`
 	UpdatedAt                    time.Time   `json:"updatedAt"`
 }
@@ -53,6 +58,9 @@ type supplyPeriodJSON struct {
 	Start           time.Time  `json:"start"`
 	End             *time.Time `json:"end"`
 	Status          string     `json:"status"`
+	TariffId        *int32     `json:"tariffId"`
+	TariffName      *string    `json:"tariffName"`
+	Cadence         string     `json:"cadence"`
 }
 
 // switchSupplyPeriodJSON decodes SwitchSupplyPeriodResponse.

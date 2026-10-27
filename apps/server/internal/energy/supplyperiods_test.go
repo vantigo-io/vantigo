@@ -1,6 +1,7 @@
 package energy_test
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"testing"
@@ -613,5 +614,183 @@ func TestCancelSupplyPeriod_NotFound(t *testing.T) {
 	r := c.Do(http.MethodDelete, "/api/v1/energy/metering-points/999999/supply-periods/999999", nil)
 	if r.Status != http.StatusNotFound {
 		t.Errorf("status %d body %s, want 404", r.Status, r.Body)
+	}
+}
+
+// archivedTariff creates a tariff from body and archives it.
+func archivedTariff(t *testing.T, c *modtest.Client, body json.RawMessage) tariffJSON {
+	t.Helper()
+	tariff := createTariff(t, c, body)
+	if r := c.Do(http.MethodPost, fmt.Sprintf("/api/v1/energy/tariffs/%d/archive", tariff.Id), nil); r.Status != http.StatusOK {
+		t.Fatalf("archive: status %d body %s", r.Status, r.Body)
+	}
+	return tariff
+}
+
+// wantFieldError asserts r is a 400 whose only error is field's, holding msg.
+func wantFieldError(t *testing.T, r *modtest.Response, field, msg string) {
+	t.Helper()
+	if r.Status != http.StatusBadRequest {
+		t.Fatalf("status %d body %s, want 400", r.Status, r.Body)
+	}
+	var problem validationProblemJSON
+	r.JSON(&problem)
+	if got := problem.Errors[field]; len(problem.Errors) != 1 || len(got) != 1 || got[0] != msg {
+		t.Errorf("errors = %v, want only %s: %q", problem.Errors, field, msg)
+	}
+}
+
+// TestSupplyPeriods_TariffAndCadence pins energy tariffs plan readings 5 and
+// 6 on the create and the switch: an active power tariff and a cadence are
+// written and answered with the tariff's name; absent is none and monthly;
+// a grid tariff, an archived one, a missing one and a cadence none of the
+// three are each 400 on their field; a switch takes the body's terms, never
+// the ended period's. Assigning needs no tariff permission.
+func TestSupplyPeriods_TariffAndCadence(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	admin := h.SignIn(t, tariffPermissions...)
+	c := h.SignIn(t, allEnergyPermissions...)
+	power := createTariff(t, admin, powerTariffBody("Spot", "2026-01-01"))
+	grid := createTariff(t, admin, gridTariffBody("Nett", "2026-01-01"))
+	archived := archivedTariff(t, admin, powerTariffBody("Old", "2025-01-01"))
+	point := createMeteringPoint(t, c)
+	periods := fmt.Sprintf("/api/v1/energy/metering-points/%d/supply-periods", point.Id)
+	start := time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC)
+
+	t.Run("refusals", func(t *testing.T) {
+		for _, tc := range []struct {
+			name  string
+			extra map[string]any
+			field string
+			msg   string
+		}{
+			{"a grid tariff", map[string]any{"tariffId": grid.Id}, "tariffId", fmt.Sprintf("Tariff %d is a grid tariff, not a power tariff.", grid.Id)},
+			{"an archived tariff", map[string]any{"tariffId": archived.Id}, "tariffId", fmt.Sprintf("Tariff %d is archived.", archived.Id)},
+			{"a missing tariff", map[string]any{"tariffId": 999999}, "tariffId", "Tariff 999999 does not exist."},
+			{"a cadence none of the three", map[string]any{"cadence": "weekly"}, "cadence", "Cadence must be monthly, quarterly or yearly."},
+		} {
+			create := map[string]any{"customerId": 1001, "start": start}
+			sw := map[string]any{"customerId": 1001, "switchAt": start}
+			for k, v := range tc.extra {
+				create[k], sw[k] = v, v
+			}
+			wantFieldError(t, c.Do(http.MethodPost, periods, create), tc.field, tc.msg)
+			wantFieldError(t, c.Do(http.MethodPost, periods+"/switch", sw), tc.field, tc.msg)
+		}
+	})
+
+	r := c.Do(http.MethodPost, periods, map[string]any{"customerId": 1001, "start": start, "tariffId": power.Id, "cadence": "quarterly"})
+	if r.Status != http.StatusCreated {
+		t.Fatalf("create: status %d body %s, want 201", r.Status, r.Body)
+	}
+	var first supplyPeriodJSON
+	r.JSON(&first)
+	if first.TariffId == nil || *first.TariffId != power.Id || first.TariffName == nil || *first.TariffName != "Spot" || first.Cadence != "quarterly" {
+		t.Errorf("created = %+v, want the Spot tariff, quarterly", first)
+	}
+
+	sw := c.Do(http.MethodPost, periods+"/switch", map[string]any{"customerId": 1002, "switchAt": start.AddDate(0, 1, 0)})
+	if sw.Status != http.StatusCreated {
+		t.Fatalf("switch: status %d body %s, want 201", sw.Status, sw.Body)
+	}
+	var switched switchSupplyPeriodJSON
+	sw.JSON(&switched)
+	if switched.NewPeriod.TariffId != nil || switched.NewPeriod.TariffName != nil || switched.NewPeriod.Cadence != "monthly" {
+		t.Errorf("new period = %+v, want no tariff and monthly: a switch inherits nothing", switched.NewPeriod)
+	}
+	if e := switched.EndedPeriod; e == nil || e.TariffId == nil || *e.TariffId != power.Id || e.TariffName == nil || *e.TariffName != "Spot" {
+		t.Errorf("ended period = %+v, want it to keep its tariff", e)
+	}
+
+	sw2 := c.Do(http.MethodPost, periods+"/switch", map[string]any{"customerId": 1001, "switchAt": start.AddDate(0, 2, 0), "tariffId": power.Id, "cadence": "yearly"})
+	if sw2.Status != http.StatusCreated {
+		t.Fatalf("switch with terms: status %d body %s, want 201", sw2.Status, sw2.Body)
+	}
+	var switched2 switchSupplyPeriodJSON
+	sw2.JSON(&switched2)
+	if switched2.NewPeriod.TariffId == nil || *switched2.NewPeriod.TariffId != power.Id || switched2.NewPeriod.Cadence != "yearly" {
+		t.Errorf("new period = %+v, want the body's tariff and yearly", switched2.NewPeriod)
+	}
+
+	var listed []supplyPeriodJSON
+	c.Do(http.MethodGet, periods, nil).JSON(&listed)
+	if len(listed) != 3 || listed[0].TariffName == nil || *listed[0].TariffName != "Spot" || listed[1].TariffId != nil || listed[2].Cadence != "yearly" {
+		t.Errorf("listed = %+v", listed)
+	}
+}
+
+// TestPutSupplyPeriodTerms pins PUT …/supply-periods/{periodId} (reading 6):
+// 404 for a period not the point's; a cancelled period refused; the terms
+// written and the tariff's name answered; the archived tariff the period
+// holds kept, an archived one new to it refused; absent is none and monthly.
+func TestPutSupplyPeriodTerms(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	admin := h.SignIn(t, tariffPermissions...)
+	c := h.SignIn(t, allEnergyPermissions...)
+	held := createTariff(t, admin, powerTariffBody("Held", "2026-01-01"))
+	other := archivedTariff(t, admin, powerTariffBody("Other", "2026-01-01"))
+	point := createMeteringPoint(t, c)
+	otherPoint := createMeteringPoint(t, c)
+	periods := fmt.Sprintf("/api/v1/energy/metering-points/%d/supply-periods", point.Id)
+
+	r := c.Do(http.MethodPost, periods, map[string]any{"customerId": 1001, "start": time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC)})
+	if r.Status != http.StatusCreated {
+		t.Fatalf("create: status %d body %s", r.Status, r.Body)
+	}
+	var period supplyPeriodJSON
+	r.JSON(&period)
+	path := fmt.Sprintf("%s/%d", periods, period.Id)
+
+	if nf := c.Do(http.MethodPut, fmt.Sprintf("/api/v1/energy/metering-points/%d/supply-periods/%d", otherPoint.Id, period.Id),
+		map[string]any{"cadence": "monthly"}); nf.Status != http.StatusNotFound {
+		t.Errorf("another point's period: status %d, want 404", nf.Status)
+	}
+	if nf := c.Do(http.MethodPut, periods+"/999999", map[string]any{"cadence": "monthly"}); nf.Status != http.StatusNotFound {
+		t.Errorf("unknown period: status %d, want 404", nf.Status)
+	}
+
+	put := c.Do(http.MethodPut, path, map[string]any{"tariffId": held.Id, "cadence": "quarterly"})
+	if put.Status != http.StatusOK {
+		t.Fatalf("put: status %d body %s, want 200", put.Status, put.Body)
+	}
+	var got supplyPeriodJSON
+	put.JSON(&got)
+	if got.TariffId == nil || *got.TariffId != held.Id || got.TariffName == nil || *got.TariffName != "Held" || got.Cadence != "quarterly" || got.Status != "Active" {
+		t.Errorf("put = %+v, want Held, quarterly, still Active", got)
+	}
+
+	// The tariff the period holds, archived since, is kept.
+	if a := admin.Do(http.MethodPost, fmt.Sprintf("/api/v1/energy/tariffs/%d/archive", held.Id), nil); a.Status != http.StatusOK {
+		t.Fatalf("archive: status %d", a.Status)
+	}
+	if again := c.Do(http.MethodPut, path, map[string]any{"tariffId": held.Id, "cadence": "yearly"}); again.Status != http.StatusOK {
+		t.Errorf("the held archived tariff: status %d body %s, want 200", again.Status, again.Body)
+	}
+	wantFieldError(t, c.Do(http.MethodPut, path, map[string]any{"tariffId": other.Id}), "tariffId", fmt.Sprintf("Tariff %d is archived.", other.Id))
+	wantFieldError(t, c.Do(http.MethodPut, path, map[string]any{"cadence": "daily"}), "cadence", "Cadence must be monthly, quarterly or yearly.")
+
+	cleared := c.Do(http.MethodPut, path, map[string]any{})
+	if cleared.Status != http.StatusOK {
+		t.Fatalf("clear: status %d body %s", cleared.Status, cleared.Body)
+	}
+	var clearedPeriod supplyPeriodJSON
+	cleared.JSON(&clearedPeriod)
+	if clearedPeriod.TariffId != nil || clearedPeriod.TariffName != nil || clearedPeriod.Cadence != "monthly" {
+		t.Errorf("cleared = %+v, want no tariff and monthly", clearedPeriod)
+	}
+
+	if d := c.Do(http.MethodDelete, path, nil); d.Status != http.StatusNoContent {
+		t.Fatalf("cancel: status %d", d.Status)
+	}
+	cancelled := c.Do(http.MethodPut, path, map[string]any{"cadence": "monthly"})
+	if cancelled.Status != http.StatusBadRequest {
+		t.Fatalf("cancelled: status %d body %s, want 400", cancelled.Status, cancelled.Body)
+	}
+	var problem problemJSON
+	cancelled.JSON(&problem)
+	if problem.Detail != "A cancelled period cannot be changed." {
+		t.Errorf("cancelled detail = %q", problem.Detail)
 	}
 }

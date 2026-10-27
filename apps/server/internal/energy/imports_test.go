@@ -996,3 +996,30 @@ func TestGetMeteringPoints_WithoutCustomer(t *testing.T) {
 		t.Errorf("withoutCustomer with search = %v, want %v", got, []int32{none})
 	}
 }
+
+// TestEnergyImport_AnUpdateKeepsThePointsBillingFacts pins energy tariffs
+// plan reading 6: the file carries no contract, so an update of a matched
+// point keeps its grid tariff, household use and tax class, whatever else it
+// writes.
+func TestEnergyImport_AnUpdateKeepsThePointsBillingFacts(t *testing.T) {
+	t.Parallel()
+	h, c, _ := importHarness(t)
+	existing := createPointByHand(t, c, gsrn1, "M-0012")
+	var tariffID int32
+	if err := h.Pool().QueryRow(t.Context(), `INSERT INTO energy.tariffs (kind, name, status, created_at, updated_at)
+		VALUES ('grid', 'Nett', 'active', now(), now()) RETURNING id`).Scan(&tariffID); err != nil {
+		t.Fatal(err)
+	}
+	h.Exec(t, `UPDATE energy.metering_points SET grid_tariff_id = $2, household = true, electricity_tax_class = 'reduced' WHERE id = $1`, existing, tariffID)
+
+	header := []string{"gsrn", "streetAddress", "postalCode", "city", "priceArea", "gridArea"}
+	updated := importEnergyNow(t, h, c, fileOf(header, []string{gsrn1, "Storgata 1", "9008", "Tromsø", "NO4", "Nett nord"}),
+		mappingByFields(header, "update", header...))
+	if updated.Updated != 1 || updated.Failed != 0 {
+		t.Fatalf("update = %+v, want the point updated", updated)
+	}
+	if n := h.Count(t, `SELECT count(*) FROM energy.metering_points
+		WHERE id = $1 AND city = 'Tromsø' AND grid_tariff_id = $2 AND household AND electricity_tax_class = 'reduced'`, existing, tariffID); n != 1 {
+		t.Error("the import's update did not keep the point's grid tariff, household use and tax class")
+	}
+}

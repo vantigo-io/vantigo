@@ -108,6 +108,9 @@ var energyEndpointCases = []energyEndpointCase{
 		body:        func(now time.Time) any { return map[string]any{"end": now} }},
 	{method: http.MethodDelete, path: "/api/v1/energy/metering-points/999999/supply-periods/999999",
 		permissions: []string{"energy:supply-periods-manage"}},
+	{method: http.MethodPut, path: "/api/v1/energy/metering-points/999999/supply-periods/999999",
+		permissions: []string{"energy:supply-periods-manage", "energy:supply-periods-view"},
+		body:        func(time.Time) any { return map[string]any{"cadence": "monthly"} }},
 	{method: http.MethodGet, path: "/api/v1/energy/customers/1001/metering-points",
 		permissions: []string{"energy:metering-points-view", "energy:meters-view", "energy:supply-periods-view"}},
 	{method: http.MethodGet, path: "/api/v1/energy/customers/1001/consumption",
@@ -131,6 +134,15 @@ var energyEndpointCases = []energyEndpointCase{
 	{method: http.MethodPost, path: "/api/v1/energy/imports/999999/attach",
 		permissions: []string{"energy:import", "energy:metering-points-view", "energy:supply-periods-manage"},
 		body:        func(now time.Time) any { return map[string]any{"start": now} }},
+	// The tariffs (energy tariffs plan, reading 10).
+	{method: http.MethodGet, path: "/api/v1/energy/tariffs", permissions: []string{"energy:tariffs-view"}},
+	{method: http.MethodPost, path: "/api/v1/energy/tariffs", permissions: []string{"energy:tariffs-manage", "energy:tariffs-view"},
+		body: func(time.Time) any { return powerTariffBody("Authorization test", "2026-01-01") }},
+	{method: http.MethodGet, path: "/api/v1/energy/tariffs/999999", permissions: []string{"energy:tariffs-view"}},
+	{method: http.MethodPut, path: "/api/v1/energy/tariffs/999999", permissions: []string{"energy:tariffs-manage", "energy:tariffs-view"},
+		body: func(time.Time) any { return powerTariffBody("Authorization test", "2026-01-01") }},
+	{method: http.MethodDelete, path: "/api/v1/energy/tariffs/999999", permissions: []string{"energy:tariffs-manage"}},
+	{method: http.MethodPost, path: "/api/v1/energy/tariffs/999999/archive", permissions: []string{"energy:tariffs-manage", "energy:tariffs-view"}},
 }
 
 // importDoor is the import's own rule (energy import design D5).
@@ -191,11 +203,11 @@ func TestEveryEnergyEndpointRequiresItsRegisteredPermission(t *testing.T) {
 
 	viewPermissions := []string{
 		"energy:metering-points-view", "energy:meters-view",
-		"energy:consumption-view", "energy:supply-periods-view",
+		"energy:consumption-view", "energy:supply-periods-view", "energy:tariffs-view",
 	}
 	managePermissions := []string{
 		"energy:metering-points-manage", "energy:meters-manage",
-		"energy:consumption-manage", "energy:supply-periods-manage",
+		"energy:consumption-manage", "energy:supply-periods-manage", "energy:tariffs-manage",
 	}
 	allPerms := allEnergyEndpointPermissions()
 

@@ -379,3 +379,115 @@ func withField(body map[string]any, field string, value any) map[string]any {
 	}
 	return out
 }
+
+// TestMeteringPoint_BillingFacts pins energy tariffs plan readings 5, 7 and
+// 8 on the metering point: the grid tariff, household use and the tax class
+// written on the create and the PUT and answered with the tariff's name and
+// the derived VAT treatment, in the item, the list and the customer's
+// points; a power tariff, an archived one new to the point and an unknown
+// class refused; the archived tariff the point holds kept; and the PUT a
+// full replace, so absent fields fall back to none, false and ordinary.
+func TestMeteringPoint_BillingFacts(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	admin := h.SignIn(t, tariffPermissions...)
+	c := h.SignIn(t, allEnergyPermissions...)
+	grid := createTariff(t, admin, gridTariffBody("Nett nord", "2026-01-01"))
+	power := createTariff(t, admin, powerTariffBody("Spot", "2026-01-01"))
+	archived := archivedTariff(t, admin, gridTariffBody("Old", "2025-01-01"))
+
+	tromso := newMeteringPointBody(gsrn(t), "Tromsø meter")
+	tromso["address"] = map[string]any{"streetAddress": "Storgata 1", "postalCode": "9008", "city": "Tromsø", "countryCode": "NO"}
+	tromso["priceArea"] = "NO4"
+	tromso["gridTariffId"] = grid.Id
+	tromso["household"] = true
+	tromso["electricityTaxClass"] = "exempt"
+	r := c.Do(http.MethodPost, "/api/v1/energy/metering-points", tromso)
+	if r.Status != http.StatusCreated {
+		t.Fatalf("create: status %d body %s, want 201", r.Status, r.Body)
+	}
+	var point meteringPointJSON
+	r.JSON(&point)
+	if point.GridTariffId == nil || *point.GridTariffId != grid.Id || point.GridTariffName == nil || *point.GridTariffName != "Nett nord" ||
+		!point.Household || point.ElectricityTaxClass != "exempt" || point.VatTreatment != "exempt_household_north" {
+		t.Errorf("Tromsø household = %+v, want Nett nord, household, exempt and exempt_household_north", point)
+	}
+
+	oslo := createMeteringPoint(t, c)
+	osloBody := withField(updateBody(oslo.Gsrn), "household", true)
+	var osloPoint meteringPointJSON
+	if put := c.Do(http.MethodPut, fmt.Sprintf("/api/v1/energy/metering-points/%d", oslo.Id), osloBody); put.Status != http.StatusOK {
+		t.Fatalf("put Oslo: status %d body %s", put.Status, put.Body)
+	} else {
+		put.JSON(&osloPoint)
+	}
+	if !osloPoint.Household || osloPoint.VatTreatment != "standard" || osloPoint.ElectricityTaxClass != "ordinary" || osloPoint.GridTariffId != nil {
+		t.Errorf("Oslo household = %+v, want household, standard, ordinary and no grid tariff", osloPoint)
+	}
+
+	t.Run("refusals", func(t *testing.T) {
+		wantFieldError(t, c.Do(http.MethodPost, "/api/v1/energy/metering-points",
+			withField(newMeteringPointBody(gsrn(t), "M"), "gridTariffId", power.Id)),
+			"gridTariffId", fmt.Sprintf("Tariff %d is a power tariff, not a grid tariff.", power.Id))
+		wantFieldError(t, c.Do(http.MethodPost, "/api/v1/energy/metering-points",
+			withField(newMeteringPointBody(gsrn(t), "M"), "gridTariffId", archived.Id)),
+			"gridTariffId", fmt.Sprintf("Tariff %d is archived.", archived.Id))
+		wantFieldError(t, c.Do(http.MethodPut, fmt.Sprintf("/api/v1/energy/metering-points/%d", oslo.Id),
+			withField(updateBody(oslo.Gsrn), "gridTariffId", 999999)),
+			"gridTariffId", "Tariff 999999 does not exist.")
+		wantFieldError(t, c.Do(http.MethodPut, fmt.Sprintf("/api/v1/energy/metering-points/%d", oslo.Id),
+			withField(updateBody(oslo.Gsrn), "electricityTaxClass", "half")),
+			"electricityTaxClass", "Electricity tax class must be ordinary, reduced or exempt.")
+	})
+
+	// The grid tariff the point holds, archived since, is kept by a PUT that
+	// repeats it.
+	if a := admin.Do(http.MethodPost, fmt.Sprintf("/api/v1/energy/tariffs/%d/archive", grid.Id), nil); a.Status != http.StatusOK {
+		t.Fatalf("archive: status %d", a.Status)
+	}
+	keep := updateBody(point.Gsrn)
+	keep["address"] = tromso["address"]
+	keep["gridTariffId"], keep["household"], keep["electricityTaxClass"] = grid.Id, true, "reduced"
+	put := c.Do(http.MethodPut, fmt.Sprintf("/api/v1/energy/metering-points/%d", point.Id), keep)
+	if put.Status != http.StatusOK {
+		t.Fatalf("put with the held archived tariff: status %d body %s, want 200", put.Status, put.Body)
+	}
+	var kept meteringPointJSON
+	put.JSON(&kept)
+	if kept.GridTariffId == nil || *kept.GridTariffId != grid.Id || kept.ElectricityTaxClass != "reduced" {
+		t.Errorf("kept = %+v, want the archived grid tariff and reduced", kept)
+	}
+
+	// Supplied to customer 1001, the customer's points carry the facts too.
+	if sp := c.Do(http.MethodPost, fmt.Sprintf("/api/v1/energy/metering-points/%d/supply-periods", point.Id),
+		map[string]any{"customerId": 1001, "start": h.Now()}); sp.Status != http.StatusCreated {
+		t.Fatalf("supply: status %d body %s", sp.Status, sp.Body)
+	}
+	var customerPoints []customerMeteringPointJSON
+	c.Do(http.MethodGet, "/api/v1/energy/customers/1001/metering-points", nil).JSON(&customerPoints)
+	if len(customerPoints) != 1 || customerPoints[0].MeteringPoint.VatTreatment != "exempt_household_north" ||
+		customerPoints[0].MeteringPoint.GridTariffName == nil || *customerPoints[0].MeteringPoint.GridTariffName != "Nett nord" {
+		t.Errorf("customer's points = %+v", customerPoints)
+	}
+	var list meteringPointListJSON
+	c.Do(http.MethodGet, "/api/v1/energy/metering-points?search="+point.Gsrn, nil).JSON(&list)
+	if len(list.Data) != 1 || list.Data[0].GridTariffName == nil || *list.Data[0].GridTariffName != "Nett nord" || !list.Data[0].Household {
+		t.Errorf("list = %+v", list.Data)
+	}
+
+	// A PUT without the three is none, false and ordinary.
+	bare := updateBody(point.Gsrn)
+	bare["address"] = tromso["address"]
+	reset := c.Do(http.MethodPut, fmt.Sprintf("/api/v1/energy/metering-points/%d", point.Id), bare)
+	if reset.Status != http.StatusOK {
+		t.Fatalf("put bare: status %d body %s", reset.Status, reset.Body)
+	}
+	var cleared meteringPointJSON
+	reset.JSON(&cleared)
+	if cleared.GridTariffId != nil || cleared.GridTariffName != nil || cleared.Household || cleared.ElectricityTaxClass != "ordinary" || cleared.VatTreatment != "standard" {
+		t.Errorf("after a bare PUT = %+v, want none, false, ordinary and standard", cleared)
+	}
+	// Released, the archived tariff cannot be put back.
+	wantFieldError(t, c.Do(http.MethodPut, fmt.Sprintf("/api/v1/energy/metering-points/%d", point.Id), keep),
+		"gridTariffId", fmt.Sprintf("Tariff %d is archived.", grid.Id))
+}
