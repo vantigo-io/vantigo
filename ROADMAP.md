@@ -1474,9 +1474,85 @@ And after the review:
 
 *Unblocks:* the Vantigo calendar on a phone, and a person's other calendars beside it.
 
+### Phase 2 — Outlook sync
+
+Researched in
+[`docs/superpowers/research/2026-10-27-calendar-outlook-sync.md`](docs/superpowers/research/2026-10-27-calendar-outlook-sync.md)
+and designed in
+[`docs/superpowers/specs/2026-10-27-calendar-outlook-sync-design.md`](docs/superpowers/specs/2026-10-27-calendar-outlook-sync-design.md):
+a person who works in Outlook sees in it what Vantigo holds for them, and in time their
+Outlook busy time in Vantigo and their edits in Outlook taken back. App-only, through the
+[Entra](#entra) module's connection: an Owner's switch, one admin consent, and a toggle
+per person. Four deliveries, each a pull request against `main` after the previous one
+lands; the design decides A in full and B–D far enough that A need not be undone.
+
+**A — The switch, the person's setting and the push, built** on
+`feat/calendar-outlook-sync`
+([the plan](docs/superpowers/plans/2026-10-27-calendar-outlook-sync.md);
+[the reference](docs/src/content/docs/en/reference/calendar.md#outlook-sync);
+[the mailbox calendar](docs/src/content/docs/en/reference/entra.md#the-mailbox-calendar);
+[the operator's page](docs/src/content/docs/en/admin/entra.md#calendar-sync)): a new
+provider-neutral contract, `contracts.MailboxCalendar`, in a new single-provider slot
+filled by Entra and resolved by Compose and Workers — the sixth sanctioned cross-module
+write, held to rule 13's lock discipline; Staff's `Workforce.DirectoryAccount`, the
+caller's own account in an external directory; the Owner's **Calendar sync** switch on
+the Entra page, which asks for `Calendars.ReadWrite` only while it is on and answers
+`calendarSync` with its status; the person's **Outlook** card on **Calendar → My
+calendar** — where (the main calendar or a separate *Vantigo* one), what (appointments
+and the provider kinds), titles (full or *Busy*), *Sync now*, and why it cannot run in
+their words; and the `calendar-mailbox-sync` worker (`CALENDAR_MAILBOX_SYNC_ENABLED`,
+`CALENDAR_MAILBOX_SYNC_POLL`), which pushes each occurrence of their appointments and
+the chosen items from 30 days back to 180 ahead, at most 1500, through Graph `$batch`,
+nudged within a minute by every appointment write, reconciled daily against the
+events carrying its marker, and cleaned up when the person, their rights, their account
+or the switch go. Two migrations, `00081_calendar_mailbox_sync.sql` and
+`00082_entra_calendar_sync.sql`.
+
+Decisions taken while building it:
+
+- **Nothing of a person's mailbox is guessed**: the mailbox is the provider link of the
+  person Staff's identity link names, and Entra writes only to an account it made or
+  whose adoption is confirmed, and not deleted.
+- **Vantigo stays the authority**: what it writes is a copy, tagged with a marker,
+  without attendees or reminders; an edit made in Outlook is put back until C.
+- **Occurrences, not series**: each occurrence its own event, so a moved one in Outlook
+  maps onto the calendar's own exception when C comes.
+- **The reconcile adopts and never sweeps**: an event carrying a wanted key is adopted, a
+  duplicate of a mapped key deleted, a mapped event no longer found forgotten — but an
+  event carrying a key not wanted is left, since it is most often a copy that slid
+  before the window and the past stays.
+- **The link is the app's**, `APP_URL` and the base path, as the feed's and the notices'
+  are — never the public host, which serves only its allowlist.
+- **The clean-up follows what was made**: the *Vantigo* calendar is deleted when one was
+  made, else each mapped event; a mailbox that cannot be reached is forgotten and logged.
+- **A stale setting is 409 `revision_mismatch`**, the module's existing refusal, and an
+  unavailable sync is 409 `mailbox_sync_unavailable` with the availability as its
+  detail.
+- **Cleanup needs a working credential**, and `permission_missing` is answered only while
+  the connection is connected; otherwise the provider is simply unavailable.
+- **The daily reconcile is derived**, not scheduled: a person's first sync on a business
+  day later than their `last_synced_at`'s reads the mailbox's list first.
+- **Graph's bare `ResourceNotFound` is not a mailbox gone**, so an event gone is never
+  read as its mailbox gone.
+
+*Unblocks:* a person's Vantigo appointments, absence and chosen items in Outlook, and
+their busy time there for colleagues.
+
+**B — Outlook's busy time in Vantigo** (next): a delta per person over the same window,
+on the same worker; events carrying the marker skipped, the rest stored as busy spans
+alone, never a subject; a new kind `calendar.outlook` on the person's calendar and in a
+colleague's as busy, and read by Planning as availability.
+
+**C — The write-back** (after B): edits, moves and deletes of one's own appointments in
+Outlook taken in through the appointment's own update path, and an event made in the
+*Vantigo* calendar becoming an appointment; Vantigo wins a conflict.
+
+**D — Change notifications** (after C): for an installation Microsoft can reach, a
+subscription per person whose notification only makes the sync due.
+
 ### Later
 
-Two-way sync with Google and Microsoft · booking pages · rooms and resources · reminders
+Two-way sync with Google · booking pages · rooms and resources · reminders
 in the app and by mail · CalDAV · the inbound `METHOD:REPLY` route · moving a projected
 item from the calendar (a write back into its module) · team calendars and delegation.
 

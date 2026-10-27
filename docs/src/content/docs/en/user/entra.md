@@ -1,6 +1,6 @@
 ---
 title: Microsoft Entra ID
-description: Connecting the company's Microsoft Entra ID tenant on the Microsoft Entra ID page — the Status card, the wizard's six steps and what Done means on each, the permissions to copy, the secret shown once, the connection test, the account rules, the Groups table confirming a group Vantigo did not create, connecting existing users by the directory picker and the review of exact matches — and who sees what.
+description: Connecting the company's Microsoft Entra ID tenant on the Microsoft Entra ID page — the Status card, the wizard's six steps and what Done means on each, the permissions to copy, the secret shown once, the connection test, the account rules and the Calendar sync switch, the Groups table confirming a group Vantigo did not create, connecting existing users by the directory picker and the review of exact matches — and who sees what.
 sidebar:
   order: 47
 sources:
@@ -122,7 +122,7 @@ Revoking only stops Vantigo using it: delete it in the portal yourself.
 ### 3 Grant the permissions and the role
 
 The card lists the eight Microsoft Graph **application** permissions to add under **API
-permissions**, each ready to copy, then **Grant admin consent**. It also says the step
+permissions** — nine while [calendar sync](#calendar-sync) is on — each ready to copy, then **Grant admin consent**. It also says the step
 no other product asks for: assign the **User Administrator** role to the application
 under **Roles & admins** — without it, Microsoft refuses to enable, disable or delete
 an account and to issue a Temporary Access Pass, even with every permission.
@@ -158,7 +158,9 @@ The rules every account follows, which anyone with `entra:manage` may change:
   lifetime (minutes)** (10 to 43,200), whether **The pass can be used once only**, and
   **Who hands over the pass**. The card says, with the path, that the tenant's
   authentication methods policy must enable the pass for the users, or Microsoft
-  refuses it.
+  refuses it;
+- **Calendar sync**: **Let people sync their Vantigo calendar to Outlook**
+  ([below](#calendar-sync)).
 
 Choose **Save the account rules**. A value outside its rule is marked on its field with
 the reason. If someone else saved the connection since you opened the page, the page
@@ -193,6 +195,34 @@ The card also offers **Open Staff's settings**, where **Default account kind** c
 **Microsoft Entra ID** for the people registered from now on
 ([Accounts](/en/user/staff/#accounts)). People already registered keep their kind until
 HR changes it on their Account tab.
+
+## Calendar sync
+
+**Calendar sync** lets the people who use Calendar keep a copy of their Vantigo calendar
+in their Outlook ([Sync with Outlook](/en/user/calendar/#sync-with-outlook)). It is off
+until someone with `entra:manage` turns it on, and each person then turns their own sync
+on or off.
+
+1. In step **4 Set the account rules**, under **Calendar sync**, turn on **Let people
+   sync their Vantigo calendar to Outlook**, and choose **Save the account rules**.
+2. Step **3 Grant the permissions and the role** now lists nine permissions: the last,
+   `Calendars.ReadWrite`, marked *(for calendar sync)*. An Owner adds it in the portal,
+   grants admin consent again and chooses **Test connection** — the [administration
+   guide](/en/admin/entra/#calendar-sync) has the steps, and how to limit it to some
+   mailboxes. Until a test sees it, step 3 is *Not done* and the **Status** card lists it
+   as missing, *(for calendar sync)*; the rest of the module works without it.
+
+Under the switch, a line says where calendar sync stands:
+
+- **Ready** — people can turn on their sync;
+- **Add Calendars.ReadWrite, grant admin consent and test the connection again.** — the
+  last test did not see the permission;
+- **Waiting for the connection** — the connection is not connected, with the reason under
+  it.
+
+Turning it off stops every person's sync and removes the copies Vantigo put in their
+Outlook — the permission is not asked for while it is off. Turning it on again resumes
+everyone who had their sync on.
 
 ## Confirm an account Vantigo did not create
 

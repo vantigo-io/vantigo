@@ -85,7 +85,7 @@ Communications' outbox is the working example.
 5. **One module, one mount.** A module exposes one `Module()` returning a
    `module.Module`: its name, its `Mount`, the permissions it contributes, the
    background workers it contributes, and the cross-module contracts it *provides*.
-   There are sixteen single-provider slots, each filled by at most one enabled module:
+   There are seventeen single-provider slots, each filled by at most one enabled module:
    `Directory` (`contracts.CustomerDirectory`, customers), `Users`
    (`contracts.UserDirectory`, identity), `Calendar` (`contracts.BusinessCalendar`,
    identity — the workspace's business time zone and the day an instant falls on in
@@ -109,8 +109,10 @@ Communications' outbox is the working example.
    consumer, nil when Energy is off), and `Workforce`
    (`contracts.Workforce`, staff — the competence catalogue, who holds which competence
    valid on a date, the people in employment and their capacity over a window, the
-   caller's own person, and how a proposed booking fits what each person wants; rule
-   12). `module.Compose`
+   caller's own person, its own account in an external directory, and how a proposed
+   booking fits what each person wants; rule 12), and `MailboxCalendar`
+   (`contracts.MailboxCalendar`, entra — a provider's mailbox calendars, which the
+   calendar's Outlook sync writes people's copies to; rule 14). `module.Compose`
    mounts each module at `/api/v1/<name>/` and builds every provider before any
    `Mount` runs, so a module's `Deps` already carries what it consumes; `Calendar`,
    then `Accounts` and then `SSOConnections` are resolved right after `Users`, so the
@@ -124,7 +126,13 @@ Communications' outbox is the working example.
    never reads a directory while it serves). `Workforce` is resolved after the business calendar — by Compose
    after the line-level reads, by `module.Workers` after `Users` and `Accounts`
    (`withWorkforce`) — so its provider reads `Deps.Calendar` while it is built, and a
-   worker-mode `Deps` answers who holds what as a composed one does.
+   worker-mode `Deps` answers who holds what as a composed one does. `MailboxCalendar`
+   is resolved by Compose and by Workers through one helper (`withMailboxCalendar`),
+   after the identity provisioners — its provider reads nothing while it is built — and
+   reaches every module's `Deps`, keeping a preset value (`modtest.WithMailboxCalendar`)
+   when no enabled module provides one: the calendar's `calendar-mailbox-sync` worker
+   writes through it in worker mode as the API does. Two providers are a compose error
+   naming both, and a panic in Workers.
    Six slots are *many-provider* instead — any number of modules may fill them,
    and Compose collects them in module order: `Workers` (background work, from
    the enabled modules), `CalendarSources` (`contracts.CalendarSource`, rule 12,
@@ -156,9 +164,10 @@ Communications' outbox is the working example.
    `modtest.WithIdentityProvisioners`, which `modtest.FakeIdentityProvisioner` fills)
    come first and keep their place. A provider's gate is asked for a user with no request
    behind them only through `contracts.AsUser`, and only by a module that has matched a
-   token to that user — today the calendar feed's, whose address names one person:
-   `HasPermission` then asks `Access.UserHolds` for that user instead of `Check` for a
-   session (rule 12).
+   token to that user — the calendar feed's, whose address names one person — or that
+   acts on a person's own standing setting — the calendar's Outlook sync worker, whose
+   row is the person's: `HasPermission` then asks `Access.UserHolds` for that user
+   instead of `Check` for a session (rule 12).
    No two invoiced-work holders may claim one source kind. `module.Workers`
    collects `CustomerPersonalData` and `InvoicedWork` as well, because worker mode
    never composes: the anonymisation worker is where rule 9's erase runs, and the
@@ -222,7 +231,7 @@ Communications' outbox is the working example.
    energy, communications and invoices ([Merging duplicates](/en/reference/customers/#merging-duplicates)).
    Another write direction needs a design of its own, not a second holder-shaped
    interface — rule 9 is that design for the second, rule 10 for the third,
-   rule 11 for the fourth and rule 13 for the fifth.
+   rule 11 for the fourth, rule 13 for the fifth and rule 14 for the sixth.
 9. **A person's data, handed over and taken out.** The second sanctioned
    cross-module direction, made for the GDPR of private-person customers:
    `contracts.CustomerPersonalData`. A module that holds anything about a
@@ -409,8 +418,11 @@ Communications' outbox is the working example.
     never inside one of its own transactions, through one accessor in its
     `contractscalls.go` that refuses such a call; a provider called without a request —
     from a worker — answers nothing. The one exception is a read on one user's behalf
-    whose caller is a token the consumer has already matched to that user — the calendar
-    feed: the consumer asks under `contracts.AsUser(ctx, userID)`, on a context that
+    where something the user made names them — a token the consumer has already matched
+    to that user (the calendar feed), or **the person's own standing setting** (the
+    calendar's Outlook sync worker, which reads the providers and Staff's
+    `DirectoryAccount` for the user whose `calendar.mailbox_sync` row it syncs, after
+    `UserHolds` has said they still hold `calendar:access`): the consumer asks under `contracts.AsUser(ctx, userID)`, on a context that
     carries no request, and `HasPermission` answers through `Access.UserHolds` — whether
     that user may act at all, by the same person checks a session is resolved under (not
     disabled, not pending, not deactivated by the directory while SCIM is configured
@@ -425,8 +437,11 @@ Communications' outbox is the working example.
     alone, `staff:manage`), and the person in employment on today or on a later day of
     the window asked — to the principal in `ctx`, under a request or `AsUser`, and
     answers nothing, not an error, to anyone else or to a context with neither; a
-    declared certificate is not held. `Self`, the caller's own person, is the one read
-    under Staff's Self rule instead, for `staff:access`. The window of `People` and
+    declared certificate is not held. `Self`, the caller's own person, is read under
+    Staff's Self rule instead, for `staff:access`; and `DirectoryAccount`, the caller's
+    own account in an external directory, under Staff's own principal alone — it needs
+    no key, being the principal's own account id and nothing more, and never answers for
+    another user. The window of `People` and
     `Capacity` is bounded — from the Monday thirteen weeks before today to three years
     after it — and their figures are derived: hours a week and whole days away, **never
     a share**, a type or a terms row. The fit for a proposed booking —
@@ -522,6 +537,36 @@ Communications' outbox is the working example.
     on the person's identity link — the provider link is never claimed itself — so the
     account is announced (rule 11's `Expect`) before it arrives
     ([the provider link](/en/reference/staff/#the-provider-link)).
+14. **The calendar writes a provider's mailbox.** The sixth sanctioned cross-module
+    direction, the calendar → a provider module, made for the copies of a person's
+    calendar in their mailbox (the calendar's Outlook sync):
+    `contracts.MailboxCalendar`, in the single-provider slot `MailboxCalendar` (rule 5),
+    which a module offering people's mail calendars fills. The first filler is
+    `internal/entra`, under the key `entra`, writing to Exchange Online through Graph
+    ([Microsoft Entra ID](/en/reference/entra/#the-mailbox-calendar)); the interface
+    names no vendor — a mailbox is an account's external id, a calendar an opaque id, an
+    event a `MailboxEvent` — so another directory's could fill it later. The calendar is
+    the authority: it decides what a person's copies are, from the appointments and the
+    projected items, keeps the map of what was written and the person's setting in its own
+    schema, and the provider writes and answers what it did. It is held to **rule 13's
+    lock discipline**: `Key` and `Status` read the provider's own state with no network,
+    and every other call reaches the network on the provider's own pool, so **the
+    calendar never calls it inside a transaction or holding a connection** — only through
+    the accessors in its `contractscalls.go` that refuse such a call, between the short
+    transactions its worker writes the map in. Every call is **idempotent or answers what
+    it did per operation**: `EnsureCalendar` answers the calendar it made or found,
+    `DeleteCalendar` is done for a calendar already gone, and `Apply` answers one result
+    per op, in order — done, `Gone`, or the op's refusal — so a slice the network cut
+    short is judged op by op and a create whose outcome is unknown is found again by its
+    key (`Find`). The provider writes **only to accounts it manages** — an object id it
+    made, or whose adoption is confirmed, and not deleted, else `ErrMailboxUnknown` —
+    and the calendar names the mailbox only from Staff's `DirectoryAccount` under the
+    person's own principal (rule 12), matched against the provider's `Key`, so neither
+    side guesses a person's mailbox. Its refusals are sentinels (`ErrMailboxUnavailable`,
+    `ErrMailboxUnknown`, `ErrMailboxDenied`, `ErrMailboxGone`); anything else is a
+    failure to retry. A provider in `cleanup` — its switch off, its permission missing,
+    a credential still working — takes deletes only, so a person's copies can always be
+    removed ([Calendar](/en/reference/calendar/#outlook-sync)).
 
 ## How they are enforced
 
@@ -989,9 +1034,10 @@ module, and of identity only `Deps.SSOConnections` (`contracts.SSOConnections`, 
 12), for the directory's exact matches and the holders the search marks, through the
 accessors in `internal/entra/contractscalls.go` and never inside a transaction — the Owner's
 and `entra:manage`'s checks are the router's — and writes nothing outside the `entra`
-schema. It fills one
-slot, `IdentityProvisioner` (rule 13), and has no worker: Staff's accounts worker calls
-it, in the API and in worker mode alike, never inside a transaction. It reaches the
+schema. It fills two
+slots, `IdentityProvisioner` (rule 13) and `MailboxCalendar` (rule 14), and has no
+worker: Staff's accounts worker and the calendar's mailbox sync worker call it, in the
+API and in worker mode alike, never inside a transaction. It reaches the
 network in one place, its Graph client, through `internal/netguard` with no proxy and
 no redirect, to two fixed hosts no setting changes; the client's transport and its
 token cache are built once per process, and `Deps.HTTPTransport` is the test seam. See [Microsoft Entra

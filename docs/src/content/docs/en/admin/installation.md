@@ -278,8 +278,9 @@ customers import worker `customers-import`, the energy import worker `energy-imp
 `INVOICES_EHF_ENABLED` is on, the invoices reminder worker `invoices-reminders`,
 always, the invoices billing worker `invoices-billing`, always, the invoices payments worker `invoices-payments` when
 `INVOICES_VIPPS_ENABLED` is on, the calendar cancellations worker
-`calendar-cancellations` unless `CALENDAR_CANCELLATIONS_ENABLED=0`, and the calendar
-subscriptions worker `calendar-subscriptions` unless `CALENDAR_SUBSCRIPTIONS_ENABLED=0`) inside the
+`calendar-cancellations` unless `CALENDAR_CANCELLATIONS_ENABLED=0`, the calendar
+subscriptions worker `calendar-subscriptions` unless `CALENDAR_SUBSCRIPTIONS_ENABLED=0`, and the
+calendar mailbox sync worker `calendar-mailbox-sync` unless `CALENDAR_MAILBOX_SYNC_ENABLED=0`) inside the
 API process: `WORKERS_IN_PROCESS=1`, the default. Deployments that scale the API
 horizontally should move them to one dedicated worker container, so that every extra
 HTTP replica does not multiply the pollers:

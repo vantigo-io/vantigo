@@ -1,6 +1,6 @@
 ---
 title: Microsoft Entra ID
-description: Å koble selskapets Microsoft Entra ID-leietaker til på siden Microsoft Entra ID — kortet Status, veiviserens seks steg og hva Ferdig betyr på hvert, tillatelsene som skal kopieres, hemmeligheten som vises én gang, tilkoblingstesten, kontoreglene, tabellen Grupper å bekrefte en gruppe Vantigo ikke opprettet, og å koble til eksisterende brukere med katalogvelgeren og gjennomgangen av nøyaktige treff — og hvem som ser hva.
+description: Å koble selskapets Microsoft Entra ID-leietaker til på siden Microsoft Entra ID — kortet Status, veiviserens seks steg og hva Ferdig betyr på hvert, tillatelsene som skal kopieres, hemmeligheten som vises én gang, tilkoblingstesten, kontoreglene og bryteren Kalendersynkronisering, tabellen Grupper å bekrefte en gruppe Vantigo ikke opprettet, og å koble til eksisterende brukere med katalogvelgeren og gjennomgangen av nøyaktige treff — og hvem som ser hva.
 sidebar:
   order: 47
 sources:
@@ -127,7 +127,8 @@ Vantigo fra å bruke den: slett den i portalen selv.
 ### 3 Gi tillatelsene og rollen
 
 Kortet lister de åtte **applikasjonstillatelsene** for Microsoft Graph som skal legges
-til under **API permissions**, hver klar til å kopieres, og så **Grant admin consent**.
+til under **API permissions** — ni mens [kalendersynkronisering](#kalendersynkronisering)
+er på — hver klar til å kopieres, og så **Grant admin consent**.
 Det sier også steget ingen andre produkter ber om: tildel rollen **User Administrator**
 til applikasjonen under **Roles & admins** — uten den nekter Microsoft å aktivere,
 deaktivere eller slette en konto og å utstede et midlertidig tilgangspass, selv med
@@ -162,7 +163,9 @@ Reglene hver konto følger, som alle med `entra:manage` kan endre:
 - **Når noen begynner**: **Skriv ansettelsesdatoen**, **Levetid for midlertidig
   tilgangspass (minutter)** (10 til 43 200), om **Passet kan bare brukes én gang**, og
   **Hvem som overleverer passet**. Kortet sier, med stien, at leietakerens policy for
-  autentiseringsmetoder må slå på passet for brukerne, ellers avviser Microsoft det.
+  autentiseringsmetoder må slå på passet for brukerne, ellers avviser Microsoft det;
+- **Kalendersynkronisering**: **La folk synkronisere Vantigo-kalenderen sin til Outlook**
+  ([nedenfor](#kalendersynkronisering)).
 
 Velg **Lagre kontoreglene**. En verdi utenfor regelen merkes på feltet med årsaken. Har
 noen andre lagret tilkoblingen siden du åpnet siden, sier siden fra og laster den inn på
@@ -197,6 +200,34 @@ Kortet tilbyr også **Åpne innstillingene til Ansatte**, der **Standard kontoty
 **Microsoft Entra ID** for personene som registreres fra nå av
 ([Kontoer](/nb/user/staff/#kontoer)). Personer som allerede er registrert, beholder
 kontotypen sin til HR endrer den på fanen Konto.
+
+## Kalendersynkronisering
+
+**Kalendersynkronisering** lar dem som bruker Kalender, ha en kopi av Vantigo-kalenderen
+sin i Outlook ([Synkroniser med Outlook](/nb/user/calendar/#synkroniser-med-outlook)).
+Den er av til noen med `entra:manage` slår den på, og hver person slår så sin egen
+synkronisering av eller på.
+
+1. I steg **4 Sett kontoreglene**, under **Kalendersynkronisering**, slår du på **La folk
+   synkronisere Vantigo-kalenderen sin til Outlook**, og velger **Lagre kontoreglene**.
+2. Steg **3 Gi tillatelsene og rollen** lister nå ni tillatelser: den siste,
+   `Calendars.ReadWrite`, merket *(for kalendersynkronisering)*. En eier legger den til
+   i portalen, gir administratorsamtykke på nytt og velger **Test tilkoblingen** —
+   [administrasjonsveiledningen](/nb/admin/entra/#kalendersynkronisering) har stegene,
+   og hvordan den begrenses til enkelte postbokser. Til en test ser den, er steg 3 *Ikke
+   gjort*, og kortet **Status** viser den som manglende, *(for kalendersynkronisering)*;
+   resten av modulen virker uten den.
+
+Under bryteren sier en linje hvor kalendersynkroniseringen står:
+
+- **Klar** — folk kan slå på synkroniseringen sin;
+- **Legg til Calendars.ReadWrite, gi administratorsamtykke og test tilkoblingen på
+  nytt.** — den siste testen så ikke tillatelsen;
+- **Venter på tilkoblingen** — tilkoblingen er ikke tilkoblet, med årsaken under.
+
+Slår du den av, stopper synkroniseringen for alle, og kopiene Vantigo la inn i Outlook
+deres, fjernes — tillatelsen etterspørres ikke mens den er av. Slår du den på igjen,
+fortsetter den for alle som hadde synkroniseringen sin på.
 
 ## Bekreft en konto Vantigo ikke opprettet
 

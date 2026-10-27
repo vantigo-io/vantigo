@@ -1,6 +1,6 @@
 ---
 title: Calendar
-description: Your appointments and what the other apps have put in your days, inviting colleagues, customers' contacts and anyone with an address, what an invitee receives and how they answer, cancelling, colleagues' busy times, repeating appointments, the dashboard's agenda, your calendar on your phone and calendars from elsewhere beside your own.
+description: Your appointments and what the other apps have put in your days, inviting colleagues, customers' contacts and anyone with an address, what an invitee receives and how they answer, cancelling, colleagues' busy times, repeating appointments, the dashboard's agenda, your calendar on your phone, calendars from elsewhere beside your own, and a copy of your calendar in Outlook.
 sidebar:
   order: 35
 sources:
@@ -430,8 +430,76 @@ These calendars are yours alone: a colleague looking at your calendar does not s
 and they are never in your own calendar address, so a phone subscribed to your Vantigo
 calendar does not get them twice.
 
+## Sync with Outlook
+
+Vantigo can keep a copy of your calendar in your Microsoft 365 mailbox, so your
+appointments show in Outlook — on your computer and your phone — beside everything else.
+In your main calendar they also show you as busy to colleagues who book meetings in
+Outlook. Vantigo stays where you make changes: the copies say **Kept by Vantigo — change
+it there:** with a link back.
+
+1. Open **Calendar → My calendar**. The **Outlook** card is under your calendar
+   addresses.
+2. Turn on **Sync to my Outlook calendar**.
+3. Choose:
+   - **Where** — **My main calendar**, which shows the time as busy to colleagues, or
+     **A separate Vantigo calendar**, which is easy to hide but does not make you busy
+     for anyone else.
+   - **What** — **Appointments** and, from the other apps, what you want beside them:
+     **Absence**, **Tasks**, **Hours**, **Travel**, **Follow-ups**, **Bookings** and the
+     like, as far as you can see them in Vantigo. Appointments and absence are ticked
+     the first time.
+   - **Titles** — **Full titles**, or **Busy only**: every title becomes *Busy*, with
+     nothing but the link.
+
+Each change is saved as you make it. The card then says **Waiting for the first
+sync…**, and soon **Last synced** and when. Vantigo syncs every quarter of an hour, and
+within a minute when one of your appointments changes; **Sync now** asks for a sync at
+once.
+
+What Outlook gets: your appointments from 30 days back to 180 days ahead — the ones you
+made and the ones you were invited to and did not decline, each occurrence of a
+repeating one as its own event — and the items you chose, in your language. An
+appointment you answered *tentative* shows as tentative, one marked free as free, and an
+absence as out of office. A private appointment is private in Outlook, and one a
+colleague made private shows as *Busy*. There are no attendees and no reminders. Never
+in it: a colleague's calendar, the calendars you subscribe to from elsewhere, and public
+holidays.
+
+**Change things in Vantigo, not in Outlook.** For now, a copy you move or edit in
+Outlook is put back the next time Vantigo syncs, and one you delete there comes back.
+Taking your changes from Outlook into Vantigo is planned.
+
+**Turn it off** with the same switch: Vantigo removes what it put in Outlook — **Removing
+what Vantigo put in Outlook…** — and the card says **Not syncing**. Choosing the other
+**Where** also removes the copies from the first place before writing them to the new
+one. In your main calendar, copies of what lies more than 30 days back stay as they were; a
+separate Vantigo calendar is removed whole.
+
+When the switch cannot be turned on, the card says why:
+
+- **Your administrator has not turned on calendar sync.** — an Owner turns on **Calendar
+  sync** on the Microsoft Entra ID page ([Microsoft Entra ID](/en/user/entra/#calendar-sync)).
+- **Calendar sync needs the Microsoft Entra ID module.** — the installation does not run
+  it.
+- **Calendar sync is waiting for your administrator to grant the calendar permission.**
+- **The connection to Microsoft 365 is not working right now.**
+- **Your Vantigo user is not connected to a Microsoft 365 account that Vantigo
+  manages.** — HR connects your person in Staff to your Microsoft account; Vantigo never
+  guesses it from your address.
+
+When the sync has stopped, the card says why instead of when it last synced: **Your
+organisation has not allowed Vantigo to reach your mailbox.** (your administrator has
+limited the mailboxes Vantigo may write), **Your mailbox could not be found.**, **The
+connection to Microsoft 365 is not working right now.**, or **The last sync failed;
+Vantigo will try again.** Nothing is needed from you for the last: Vantigo tries again,
+less often each time. If you leave, or Calendar is taken from you, your copies are
+removed.
+
 ## What comes next
 
-Both the calendar address for your phone and calendars from elsewhere are built. What
-remains is further off: two-way sync with Google and Microsoft, booking pages, rooms and
-resources, reminders in the app and by mail, CalDAV, and team calendars.
+The calendar address for your phone, calendars from elsewhere and the copy in Outlook
+are built. Next for Outlook: your Outlook busy time shown in Vantigo, then the changes
+you make to your appointments in Outlook taken into Vantigo, then faster updates. Further
+off: sync with Google, booking pages, rooms and resources, reminders in the app and by
+mail, CalDAV, and team calendars.

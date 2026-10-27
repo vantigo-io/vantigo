@@ -1,6 +1,6 @@
 ---
 title: Calendar
-description: Turning Calendar on and giving people its two permissions; what invitations to people outside the company need — the SMTP driver, a sending domain with SPF, DKIM and DMARC, the public host and its routes; the calendar feed on the public host, its rate limit and the proxy's log; the cancellations and subscriptions workers and their settings, and what Vantigo fetches from the internet; how to check that an invitation went and that the feed answers, and what can go wrong.
+description: Turning Calendar on and giving people its two permissions; what invitations to people outside the company need — the SMTP driver, a sending domain with SPF, DKIM and DMARC, the public host and its routes; the calendar feed on the public host, its rate limit and the proxy's log; the cancellations, subscriptions and mailbox sync workers and their settings, and what Vantigo fetches from the internet; how to check that an invitation went and that the feed answers, and what can go wrong.
 sidebar:
   order: 45
 sources:
@@ -12,14 +12,15 @@ sources:
   - apps/server/internal/calendar/feed_tokens.go
   - apps/server/internal/calendar/subscriptions_worker.go
   - apps/server/internal/calendar/subscriptions_fetch.go
+  - apps/server/internal/calendar/mailbox_worker.go
 ---
 
 Calendar is one view of each person's days: the appointments they make, with colleagues,
 customers' contacts and other people on them, beside what the other modules know about
 them. This page is the operator's side: turning it on, what the invitations to people
 outside the company need, the worker that tidies up after a cancellation, the calendar
-feed a phone subscribes to, and the worker that fetches the calendars people subscribe
-to from elsewhere. What the
+feed a phone subscribes to, the worker that fetches the calendars people subscribe
+to from elsewhere, and the worker that keeps their copies in Outlook. What the
 module does and the rules it checks are in [the reference](/en/reference/calendar/); what
 a person does on its screens is in [the user guide](/en/user/calendar/).
 
@@ -326,6 +327,41 @@ doing; the person can ask whoever publishes the calendar for a smaller one.
 | `CALENDAR_SUBSCRIPTIONS_ENABLED` | On/off switch for the `calendar-subscriptions` worker | `1` |
 | `CALENDAR_SUBSCRIPTIONS_POLL` | How often each subscription is fetched; a duration of at least `5m` | `30m` |
 
+## The mailbox sync worker
+
+A person can have Vantigo keep a copy of their calendar in their Microsoft 365 mailbox,
+on their **My calendar** screen ([Sync with Outlook](/en/user/calendar/#sync-with-outlook)),
+once an Owner has turned on **Calendar sync** in the Microsoft Entra ID module and granted
+its permission ([Microsoft Entra ID](/en/admin/entra/#calendar-sync)). The
+`calendar-mailbox-sync` worker writes the copies through the Entra module's connection
+([the worker](/en/reference/calendar/#the-mailbox-sync-worker)). It runs unless
+`CALENDAR_MAILBOX_SYNC_ENABLED=0`, in worker mode, and in api mode with
+`WORKERS_IN_PROCESS=1`. It **wakes every minute** — not a setting — takes an advisory
+lock so several replicas take turns, and syncs each person who is due, at most 50 a
+cycle, one at a time. A person is due `CALENDAR_MAILBOX_SYNC_POLL` (default `15m`, at
+least `1m`) after their last sync, and at once when one of their appointments changes,
+when they change their setting, or when they press **Sync now** — so an appointment
+reaches Outlook within a minute. A failed sync is tried again after 1, 5, 15 and 60
+minutes, then hourly, and shows as failed from the fifth in a row; a mailbox the tenant
+refuses is tried again in six hours; a connection that is not working, in an hour.
+
+The worker removes a person's copies when they turn the sync off, when they may no
+longer use Calendar — disabled, locked out, deactivated by the directory, or without
+`calendar:access` — when Staff no longer links them to a Microsoft Entra ID account,
+and for everyone when **Calendar sync** is turned off. **Turned off, the worker writes
+and removes nothing**: people's copies stay in their mailboxes as they last were, the
+copies of a leaver included, until it is on again.
+
+It reaches the network only through the Entra module's Graph client — the two fixed
+Microsoft hosts, with the module's own limits — and logs a person by their user id
+alone: never their mailbox, an appointment's title or Graph's words. A failed sync is
+logged at warning with the step that failed; a refused mailbox at info with its code.
+
+| Variable | Purpose | Default |
+| --- | --- | --- |
+| `CALENDAR_MAILBOX_SYNC_ENABLED` | On/off switch for the `calendar-mailbox-sync` worker | `1` |
+| `CALENDAR_MAILBOX_SYNC_POLL` | How often each person's copies are synced when nothing made them due sooner; a duration of at least `1m` | `15m` |
+
 ## Key material
 
 The answer links are sealed at rest under a key derived from `APP_SECRET` (the purpose
@@ -409,3 +445,12 @@ with nothing lost. Appointments keep their identifiers.
   internet, or reach it only through a proxy, which the fetch does not use.
 - **`CALENDAR_SUBSCRIPTIONS_POLL` refused at start.** It is not a duration, or is under
   five minutes.
+- **A person's Outlook card cannot be turned on, or says the sync stopped.** It says why
+  in a sentence; what each means for the Entra connection, and what to do, is in
+  [Microsoft Entra ID](/en/admin/entra/#what-can-go-wrong).
+- **Appointments do not reach Outlook.** The worker is off
+  (`CALENDAR_MAILBOX_SYNC_ENABLED=0`), or no process runs workers (worker mode, or
+  `WORKERS_IN_PROCESS=1`); the person's card then stays at **Waiting for the first
+  sync…**.
+- **`CALENDAR_MAILBOX_SYNC_POLL` refused at start.** It is not a duration, or is under a
+  minute.

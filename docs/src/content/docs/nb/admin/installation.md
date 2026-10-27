@@ -283,8 +283,9 @@ kundemodulens importjobb `customers-import`, energimodulens importjobb `energy-i
 fakturamodulens faktureringsjobb `invoices-billing`, alltid,
 fakturamodulens betalingsjobb `invoices-payments` når `INVOICES_VIPPS_ENABLED` er på, og
 kalendermodulens avlysningsjobb `calendar-cancellations` med mindre
-`CALENDAR_CANCELLATIONS_ENABLED=0`, og kalendermodulens abonnementsjobb
-`calendar-subscriptions` med mindre `CALENDAR_SUBSCRIPTIONS_ENABLED=0`)
+`CALENDAR_CANCELLATIONS_ENABLED=0`, kalendermodulens abonnementsjobb
+`calendar-subscriptions` med mindre `CALENDAR_SUBSCRIPTIONS_ENABLED=0`, og kalendermodulens
+postbokssynkronisering `calendar-mailbox-sync` med mindre `CALENDAR_MAILBOX_SYNC_ENABLED=0`)
 inne i API-prosessen: `WORKERS_IN_PROCESS=1`, standardverdien. Utrullinger som
 skalerer API-et horisontalt bør flytte dem til én dedikert worker-container, slik at
 hver ekstra HTTP-replika ikke mangedobler pollerne:

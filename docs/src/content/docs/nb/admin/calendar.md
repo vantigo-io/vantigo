@@ -1,6 +1,6 @@
 ---
 title: Kalender
-description: Slå på Kalender og gi folk de to rettighetene; hva invitasjoner til folk utenfor bedriften trenger — SMTP-driveren, et avsenderdomene med SPF, DKIM og DMARC, den offentlige verten og rutene dens; kalenderstrømmen på den offentlige verten, grensen for den og proxyens logg; avlysnings- og abonnementsarbeideren og innstillingene deres, og hva Vantigo henter fra internett; hvordan du sjekker at en invitasjon gikk og at strømmen svarer, og hva som kan gå galt.
+description: Slå på Kalender og gi folk de to rettighetene; hva invitasjoner til folk utenfor bedriften trenger — SMTP-driveren, et avsenderdomene med SPF, DKIM og DMARC, den offentlige verten og rutene dens; kalenderstrømmen på den offentlige verten, grensen for den og proxyens logg; avlysnings-, abonnements- og postbokssynkroniseringsarbeideren og innstillingene deres, og hva Vantigo henter fra internett; hvordan du sjekker at en invitasjon gikk og at strømmen svarer, og hva som kan gå galt.
 sidebar:
   order: 45
 sources:
@@ -12,14 +12,15 @@ sources:
   - apps/server/internal/calendar/feed_tokens.go
   - apps/server/internal/calendar/subscriptions_worker.go
   - apps/server/internal/calendar/subscriptions_fetch.go
+  - apps/server/internal/calendar/mailbox_worker.go
 ---
 
 Kalender er én oversikt over dagene til hver person: avtalene de lager, med kolleger,
 kunders kontaktpersoner og andre på, ved siden av det de andre modulene vet om dem.
 Denne siden er driftssiden: å slå modulen på, hva invitasjonene til folk utenfor
 bedriften trenger, arbeideren som rydder opp etter en avlysning, kalenderstrømmen en
-mobil abonnerer på, og arbeideren som henter kalenderne folk abonnerer på fra andre
-steder. Hva modulen gjør og
+mobil abonnerer på, arbeideren som henter kalenderne folk abonnerer på fra andre
+steder, og arbeideren som holder kopiene deres i Outlook. Hva modulen gjør og
 reglene den sjekker, står i [referansen](/en/reference/calendar/); hva en person gjør på
 skjermbildene, står i [brukerveiledningen](/nb/user/calendar/).
 
@@ -333,6 +334,43 @@ gjøres; personen kan be den som publiserer kalenderen, om en mindre en.
 | `CALENDAR_SUBSCRIPTIONS_ENABLED` | Av/på-bryter for arbeideren `calendar-subscriptions` | `1` |
 | `CALENDAR_SUBSCRIPTIONS_POLL` | Hvor ofte hvert abonnement hentes; en varighet på minst `5m` | `30m` |
 
+## Postbokssynkroniseringen
+
+En person kan la Vantigo holde en kopi av kalenderen sin i Microsoft 365-postboksen sin,
+på skjermbildet **Min kalender** ([Synkroniser med
+Outlook](/nb/user/calendar/#synkroniser-med-outlook)), når en eier har slått på
+**Kalendersynkronisering** i Microsoft Entra ID-modulen og gitt tillatelsen den trenger
+([Microsoft Entra ID](/nb/admin/entra/#kalendersynkronisering)). Arbeideren
+`calendar-mailbox-sync` skriver kopiene gjennom Entra-modulens tilkobling
+([arbeideren](/en/reference/calendar/#the-mailbox-sync-worker)). Den kjører med mindre
+`CALENDAR_MAILBOX_SYNC_ENABLED=0`, i worker-modus, og i api-modus med
+`WORKERS_IN_PROCESS=1`. Den **våkner hvert minutt** — ikke en innstilling — tar en
+rådgivende lås så flere replikaer bytter på, og synkroniserer hver person som står for
+tur, høyst 50 per runde, én om gangen. En person står for tur
+`CALENDAR_MAILBOX_SYNC_POLL` (standard `15m`, minst `1m`) etter forrige synkronisering,
+og med en gang når en av avtalene deres endres, når de endrer innstillingen sin, eller
+når de trykker **Synkroniser nå** — så en avtale når Outlook innen et minutt. En
+synkronisering som feiler, prøves igjen etter 1, 5, 15 og 60 minutter, deretter hver
+time, og vises som feilet fra den femte på rad; en postboks leietakeren avviser, prøves
+igjen om seks timer; en tilkobling som ikke virker, om en time.
+
+Arbeideren fjerner kopiene til en person når de slår synkroniseringen av, når de ikke
+lenger kan bruke Kalender — deaktivert, utestengt, deaktivert av katalogen, eller uten
+`calendar:access` — når Ansatte ikke lenger kobler dem til en Microsoft Entra ID-konto,
+og for alle når **Kalendersynkronisering** slås av. **Slått av skriver og fjerner
+arbeideren ingenting**: kopiene blir liggende i postboksene slik de sist var, også
+kopiene til en som har sluttet, til den slås på igjen.
+
+Den når nettet bare gjennom Entra-modulens Graph-klient — de to faste vertene til
+Microsoft, med modulens egne grenser — og logger en person bare med bruker-id-en: aldri
+postboksen, en avtales tittel eller Graphs ord. En synkronisering som feilet, logges på
+warning-nivå med steget som feilet; en avvist postboks på info-nivå med koden.
+
+| Variabel | Formål | Standard |
+| --- | --- | --- |
+| `CALENDAR_MAILBOX_SYNC_ENABLED` | Av/på-bryter for arbeideren `calendar-mailbox-sync` | `1` |
+| `CALENDAR_MAILBOX_SYNC_POLL` | Hvor ofte hver persons kopier synkroniseres når ingenting har gjort dem forfalt tidligere; en varighet på minst `1m` | `15m` |
+
 ## Nøkkelmateriale
 
 Svarlenkene lagres forseglet under en nøkkel avledet fra `APP_SECRET` (formålet
@@ -418,3 +456,12 @@ oppdatering — én gang, uten at noe går tapt. Avtaler beholder identifikatore
   til internett, eller bare når det gjennom en proxy, som hentingen ikke bruker.
 - **`CALENDAR_SUBSCRIPTIONS_POLL` avvist ved oppstart.** Den er ikke en varighet, eller
   er under fem minutter.
+- **En persons Outlook-kort kan ikke slås på, eller sier at synkroniseringen har
+  stoppet.** Det sier hvorfor i en setning; hva hver betyr for Entra-tilkoblingen, og hva
+  du gjør, står i [Microsoft Entra ID](/nb/admin/entra/#hva-som-kan-gå-galt).
+- **Avtaler kommer ikke til Outlook.** Arbeideren er av
+  (`CALENDAR_MAILBOX_SYNC_ENABLED=0`), eller ingen prosess kjører arbeidere
+  (worker-modus, eller `WORKERS_IN_PROCESS=1`); kortet til personen blir da stående på
+  **Venter på den første synkroniseringen …**.
+- **`CALENDAR_MAILBOX_SYNC_POLL` avvist ved oppstart.** Den er ikke en varighet, eller er
+  under ett minutt.

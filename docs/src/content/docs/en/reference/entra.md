@@ -1,6 +1,6 @@
 ---
 title: "Microsoft Entra ID module"
-description: "Microsoft Entra ID as Staff's identity provider: the connection to one tenant, its client secrets in the plural and the connection test; the status and its reasons, read by Staff with no network call; the account rules; the guarded Graph client and its limits; the user lifecycle per step — prepared disabled, enabled on the day with the hire date, the licences and a Temporary Access Pass, kept in step, disabled with the leaver's steps, soft-deleted — with the Graph calls and the codes; the account's photo, converted to Graph's JPEG and written or cleared; the address rule; the pass; the sensitive actions and role_missing; Staff's groups in the tenant — the six traits and the cached licences, the create, or the adoption an entra:manage holder confirms, with the service principal as an owner, the team, the members by $ref, the delete or the retirement; connecting existing users — the directory search and the exact matches, read through contracts.SSOConnections; the events, the permission, the refusals and the endpoints."
+description: "Microsoft Entra ID as Staff's identity provider: the connection to one tenant, its client secrets in the plural and the connection test; the status and its reasons, read by Staff with no network call; the account rules; the guarded Graph client and its limits; the user lifecycle per step — prepared disabled, enabled on the day with the hire date, the licences and a Temporary Access Pass, kept in step, disabled with the leaver's steps, soft-deleted — with the Graph calls and the codes; the account's photo, converted to Graph's JPEG and written or cleared; the address rule; the pass; the sensitive actions and role_missing; Staff's groups in the tenant — the six traits and the cached licences, the create, or the adoption an entra:manage holder confirms, with the service principal as an owner, the team, the members by $ref, the delete or the retirement; connecting existing users — the directory search and the exact matches, read through contracts.SSOConnections; the calendar sync switch and its status, Calendars.ReadWrite asked for only while it is on, and the mailbox calendar the module fills for the calendar's Outlook sync — the status rule, the account check, the Graph calls and $batch, the marker, the all-day zones and the refusals; the events, the permission, the refusals and the endpoints."
 sources:
   - apps/server/internal/entra
   - apps/entra/frontend
@@ -8,6 +8,7 @@ sources:
   - apps/server/internal/openapi/specs/entra.yaml
   - apps/server/internal/db/migrations/00061_entra_baseline.sql
   - apps/server/internal/db/migrations/00063_entra_groups.sql
+  - apps/server/internal/db/migrations/00082_entra_calendar_sync.sql
 ---
 The Microsoft Entra ID module connects one installation to one Microsoft Entra ID tenant
 and keeps the accounts of the people Staff registers in it: created disabled ahead of
@@ -42,6 +43,12 @@ tenant](#groups-in-the-tenant)): Staff decides which groups exist, who is in the
 what [traits](#the-traits) they carry; the module makes the group, with its own service
 principal and the group's owners as owners, and keeps its name, its members and its
 team in line.
+
+And it fills **the mailbox calendar** for the calendar's Outlook sync ([the mailbox
+calendar](#the-mailbox-calendar)): behind the Owner's **Calendar sync** switch and the
+permission `Calendars.ReadWrite`, it writes the calendar's copies of a person's
+appointments to the mailbox of an account it manages, in the single-provider slot
+`MailboxCalendar` ([module boundaries](/en/contributing/module-boundaries/) rule 14).
 
 ## The schema
 
@@ -123,6 +130,10 @@ Its down drops the table and the three columns; the groups the module made stay 
 tenant, the next connection test reads the service principal and the licences again,
 and the licences the module assigned are forgotten.
 
+`00082_entra_calendar_sync.sql` adds **`connection.calendar_sync`** (`boolean`, false by
+default), the [calendar sync switch](#the-calendar-sync-switch). Its down drops the
+column; the copies already in people's mailboxes stay there.
+
 The down migration drops the schema with everything in it — the connection, the sealed
 secrets, any pass not yet revealed and the trail. Nothing in the tenant is touched: the
 users the module made stay there, and a later up finds them again by employee number.
@@ -172,7 +183,9 @@ the groups present in the tenant) — whether or not anything is
 set, so the wizard can show every step before the first is done. It reads the module's
 own rows only; nothing reaches the tenant. `permissionsMissing` is the
 [required permissions](#the-required-permissions) less those the last test's token
-carried; all of them before the first test.
+carried — with `Calendars.ReadWrite` last while the calendar sync switch is on and the
+token lacks it; all of them before the first test. `calendarSync` is the
+[switch and its status](#the-calendar-sync-switch).
 
 **`PUT /connection`** (step 1) sets `tenantId` and `clientId`, both GUIDs as the
 portal's **Overview** shows them, under `If-Match` on the connection's `version` (bare
@@ -288,6 +301,15 @@ module needs, which the test compares with the token's `roles`:
 | `Domain.Read.All` | The verified domains |
 | `Organization.Read.All` | The organisation, read by the test |
 
+**`Calendars.ReadWrite`** is the ninth, and conditional: asked for only while the
+[calendar sync switch](#the-calendar-sync-switch) is on — it is then in
+`permissionsMissing`, after the eight, and in the test's `missing:` codes, until a test's
+token carries it — and never judging the connection itself: the status the test writes
+is decided by the eight alone, and a token without it is still `connected`. It is the
+[mailbox calendar's](#the-mailbox-calendar) permission, and an administrator may narrow
+it to a group of mailboxes with Exchange's RBAC for Applications ([the administration
+guide](/en/admin/entra/#calendar-sync)).
+
 Beside them, **the User Administrator directory role** must be assigned to the
 application's service principal: Graph treats enabling and disabling an account,
 setting its password, changing its principal name or phones, and deleting it as
@@ -350,6 +372,7 @@ the version on, answers the whole connection and is recorded as the event
 | `passLifetimeMinutes` | 10 to 43 200; the tenant's own policy may cap it lower | 480 |
 | `passUsableOnce` | The pass works for one sign-in | on |
 | `passDelivery` | `hr`, `manager` or `both` | `hr` |
+| `calendarSync` | Lets people sync their Vantigo calendar to Outlook ([the switch](#the-calendar-sync-switch)); on, it asks for `Calendars.ReadWrite`; off, the calendar's worker removes the copies already written | off |
 
 **`passDelivery` is stored and offered, and nothing acts on it yet**: the pass is
 revealed only on the person's Account tab in Staff, to HR, and no notice is sent to the
@@ -396,7 +419,9 @@ Staff's worker calls:
   [EnsureGroup](#ensuregroup)). A 429 and a 401, which the tenant answers before it
   acts, are retried on them as on any call.
 - **A 401 drops the cached token** and the call is retried once with a fresh one.
-- **Every response body is read through a 1 MiB cap**; a larger one is refused.
+- **Every response body is read through a 1 MiB cap**, but the [mailbox
+  calendar's](#the-mailbox-calendar) `$batch`, read through 8 MiB, since twenty events
+  each answered whole may outgrow 1 MiB; a larger one is refused.
 - **Bodies are JSON** (`get`, `post`, `patch`, `put`, `del`) but for the photo's, which
   `putRaw` sends as it is with its own media type (`image/jpeg`), under the same rules —
   the throttle, the one retry of a 5xx, the 401's fresh token.
@@ -1217,6 +1242,112 @@ The search's and the matches' refusals:
 | `tenant_unreachable` | 503 | The tenant did not answer; for the matches, also when the read took more than two minutes. |
 | `throttled` | 503 | Graph throttled the read twice in a row. |
 
+## The mailbox calendar
+
+The module fills the single-provider slot `MailboxCalendar` (`contracts.MailboxCalendar`,
+`mailbox.go`) for the calendar's [Outlook sync](/en/reference/calendar/#outlook-sync): it
+writes the calendar's copies of a person's appointments and items to their Exchange
+Online mailbox, through the [Graph client](#the-graph-client) and its token, with the
+application permission `Calendars.ReadWrite`. The calendar decides what the copies are;
+the module writes them and answers what it did, per operation ([module
+boundaries](/en/contributing/module-boundaries/) rule 14). `Key()` is `entra`, the
+provider-link key Staff's `DirectoryAccount` names, so the calendar can tell a person's
+account is this module's before it writes. The writes are not recorded in
+[`entra.events`](#the-events): they are the calendar's, and its worker keeps their
+record.
+
+### The calendar sync switch
+
+`entra.connection.calendar_sync` (migration `00082_entra_calendar_sync.sql`, false by
+default) is the Owner's switch, **Calendar sync** on [the account
+rules](#the-account-rules) — `calendarSync` in `PUT /connection/settings`. It is not a
+[required permission](#the-required-permissions) of the connection: provisioning works
+with it off, and with the permission missing. `GET /connection` answers it as
+`calendarSync: {enabled, status, reason?}`:
+
+| `status` | When |
+| --- | --- |
+| `off` | The switch is off. |
+| `ready` | On, the connection `connected`, and the last test's token carried `Calendars.ReadWrite`. |
+| `permission_missing` | On and `connected`, but the last test did not see `Calendars.ReadWrite`. |
+| `unavailable` | On, but the connection is not `connected`; `reason` is the connection's `statusReason`, when it has one. |
+
+### The status
+
+`Status` reads the connection's row and the secrets and nothing else — no network, as
+`Provider` — and answers, in this order:
+
+| State | Reason | When |
+| --- | --- | --- |
+| `available` | — | The switch is on, the connection `connected` (with or without a reason such as `secret_expiring`) and the last test's token carried `Calendars.ReadWrite`. |
+| `cleanup` | `switch_off` | The switch is off, and a credential still works: the tenant and the client saved, a secret unrevoked and unexpired, and the connection not `failing` with `credential_invalid`. |
+| `unavailable` | `switch_off` | The switch is off, and no credential works. |
+| `cleanup` | `permission_missing` | The switch is on and the connection `connected`, but the permission is missing. |
+| `unavailable` | the connection's reason, else its status | The switch is on and the connection is not `connected`. |
+
+In `cleanup` a person's copies can still be removed: `Apply` takes deletes only, and
+`DeleteCalendar` and `Find` work. Every reason is a code, never the directory's words.
+
+### The account check
+
+Every call but `Key` and `Status` checks the status first — `available` for
+`EnsureCalendar`; `available` or `cleanup` for `DeleteCalendar`, `Apply` and `Find`;
+otherwise `ErrMailboxUnavailable` — and then the mailbox. **The module writes only to an
+account it manages**: the `mailbox` must be an object id that is a row of
+`entra.accounts` the module created, or whose [adoption](#adopted-accounts) is confirmed,
+and not `deleted` — otherwise `ErrMailboxUnknown`, and nothing is sent. So the calendar
+can never point it at a mailbox the module does not own. A connection with no tenant,
+client or usable secret is `ErrMailboxUnavailable`. A calendar or event id the caller
+hands back must be at most 512 printable characters with no space, and a calendar's name
+1 to 255 characters.
+
+### The Graph calls
+
+| Call | Graph |
+| --- | --- |
+| `EnsureCalendar` | `GET /users/{oid}/calendars/{known}?$select=id` while `known` is set — found, it is the answer; a 404 for the item goes on —, then `POST /users/{oid}/calendars` `{name}`, sent once (no retry of a 5xx). A 409 or `ErrorFolderExists` — a create whose answer was lost — reads `GET /users/{oid}/calendars?$filter=name eq '<name>'&$select=id,name` and answers the calendar of that name. |
+| `DeleteCalendar` | `DELETE /users/{oid}/calendars/{id}`, which deletes its events with it; a 404 for the item is done. |
+| `Apply` | `POST /$batch` of at most 20 requests, the batches one after another — Outlook allows four concurrent requests per mailbox. A create is `POST /users/{oid}/events` (the default calendar) or `POST /users/{oid}/calendars/{id}/events`; an update `PATCH /users/{oid}/events/{id}`; a delete `DELETE /users/{oid}/events/{id}`. Each request's body carries `Content-Type: application/json`. |
+| `Find` | `GET /users/{oid}/events?$filter=singleValueExtendedProperties/Any(ep: ep/id eq '<marker>' and startswith(ep/value, 'vantigo:'))&$expand=singleValueExtendedProperties($filter=id eq '<marker>')&$select=id&$top=100` for the default calendar; for a secondary one, `GET /users/{oid}/calendars/{id}/events` with the same `$expand`, `$select` and `$top` and no `$filter`, so every event in it is answered, its key `""` when it carries none. It follows `@odata.nextLink` — refused when the link leaves Graph's base — and stops at 5000. |
+
+**The event** as Graph takes it: `subject`; `body` as `text`; `location.displayName`
+when there is one — on an update always, so a location dropped is cleared; `isAllDay`;
+`start` and `end`; `showAs` (`busy` when none was given; anything outside the five
+values refuses the op); `sensitivity` `private` or `normal`; `isReminderOn: false`; and,
+**on create only**, the marker — the single-value extended property
+`String {7b1c5e3a-6f0d-4d5e-9a40-3c7a5e2b9d11} Name VantigoKey`, its value `vantigo:` and
+the calendar's key — which is never written again. A timed event is laid in `UTC`; an
+**all-day** event runs from midnight of its first day to midnight of the day after its
+last, in the **Windows name of its zone** (`Europe/Oslo` is `W. Europe Standard Time`):
+`windowszones.go` mirrors CLDR's `windowsZones.xml`, which the calendar holds for the
+other direction, inverted, with the territory entries for the zones a territory names
+besides its golden one — and `UTC` for a zone it does not know. An event that ends
+before it starts, a create with no key and an update or delete with no id refuse that op
+alone.
+
+**Each answer is judged on its own:**
+
+| Answer | Result |
+| --- | --- |
+| 2xx | Done: a create's id and every write's `changeKey` read from the answer (a create answered with no id is a failure). |
+| A mailbox gone — `MailboxNotEnabledForRESTAPI`, `ErrorInvalidUser`, `ErrorNonExistentMailbox` or `Request_ResourceNotFound`, as the code or the first detail's code | `ErrMailboxGone` |
+| 403 | `ErrMailboxDenied` — the mailbox is outside the application's scope (an RBAC for Applications scope) |
+| 404 on an update or a delete | `Gone` (a delete is then done) |
+| 429 | Sent again once, with the others of its batch answered 429, after the longest `Retry-After` among them; a second 429, or a `Retry-After` over 60 seconds, is a throttled failure |
+| Anything else | Graph's refusal, a failure to retry |
+
+Graph's bare `ResourceNotFound` and `ErrorItemNotFound` are never read as the mailbox
+gone, so an event or a calendar gone is never mistaken for its mailbox. Once an op is
+refused for its mailbox (denied or gone), the ops in the batches not yet sent answer the
+same, unsent. Under `cleanup` an op other than a delete answers `ErrMailboxUnavailable`
+unsent. A `$batch` that fails whole — Graph unreachable, or a 5xx after its one retry —
+fails the call, and no result is answered; **a batch holding a create is sent once**,
+with no retry of a 5xx, since the tenant may have made the event — the calendar's
+[reconcile](/en/reference/calendar/#the-mailbox-sync-worker) finds it by its key. A
+response the `$batch` did not answer is a failure. A refusal is logged at debug level by
+the tenant, the op's kind, the status and the codes alone — never Graph's words, which
+may echo a subject or a body, nor any subject, body or address.
+
 ## The events
 
 Every write the module makes, in the tenant or to its own connection, is a row in
@@ -1298,7 +1429,11 @@ delete, the manager, sessions, licences, the pass, the photo — a JPEG of at mo
 413 beyond, 400 for another type, 403 when told the photo is denied), groups — the create with
 `owners@odata.bind`, the nickname filter, owners and members by `$ref`, paged members,
 `$batch` of twenty, the team after a delay, and a trap that fails a test when a member's
-removal lacks `/$ref`; the directory's `$search` over display name, mail and principal name (a `$search` or a `$count` without `ConsistencyLevel: eventual` is 400 `Request_UnsupportedQuery`, as Graph answers it), `$orderby=displayName`, `$top`, and `in` filters on `mail`, `userPrincipalName` and `employeeId` — and can be told to throttle, fail the next call, refuse a sensitive action for a privileged user
+removal lacks `/$ref`; mailboxes — calendars made, read, listed by name and deleted, events
+made in the default or a secondary calendar with the extended property, patched,
+deleted and listed with the marker filter, the `$expand` and paging, a mailbox denied
+(403 `ErrorAccessDenied`) or absent (404 `MailboxNotEnabledForRESTAPI`), and requests
+inside a `$batch` throttled one by one; the directory's `$search` over display name, mail and principal name (a `$search` or a `$count` without `ConsistencyLevel: eventual` is 400 `Request_UnsupportedQuery`, as Graph answers it), `$orderby=displayName`, `$top`, and `in` filters on `mail`, `userPrincipalName` and `employeeId` — and can be told to throttle, fail the next call, refuse a sensitive action for a privileged user
 or a missing role, or answer a synchronised user. It is wired through
 `modtest.WithTransport`, so the module's real client runs against it. It lives under the
 module's own package and only the module's tests import it.

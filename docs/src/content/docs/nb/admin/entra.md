@@ -1,6 +1,6 @@
 ---
 title: Microsoft Entra ID
-description: Å koble Vantigo til en Microsoft Entra ID-leietaker slik at kontoene Ansatte gir, lages der — appregistreringen, klienthemmeligheten, de åtte applikasjonstillatelsene og rollen User Administrator, administratorsamtykket, policyen for midlertidig tilgangspass, kontoreglene, innlogging og klargjøring; hva stegene for en som slutter gjør, og hva sletting mister; Ansattes grupper i leietakeren, applikasjonen som eier, å bekrefte en gruppe Vantigo ikke opprettet og hva en arkivert gruppe blir til; rotasjon av hemmeligheter; den merkede testen mot en ekte leietaker; og hva hver årsakskode betyr.
+description: Å koble Vantigo til en Microsoft Entra ID-leietaker slik at kontoene Ansatte gir, lages der — appregistreringen, klienthemmeligheten, de åtte applikasjonstillatelsene og rollen User Administrator, administratorsamtykket, policyen for midlertidig tilgangspass, kontoreglene, innlogging og klargjøring; kalendersynkronisering — Calendars.ReadWrite, samtykket til den, og å begrense den til enkelte postbokser med Exchange RBAC for Applications; hva stegene for en som slutter gjør, og hva sletting mister; Ansattes grupper i leietakeren, applikasjonen som eier, å bekrefte en gruppe Vantigo ikke opprettet og hva en arkivert gruppe blir til; rotasjon av hemmeligheter; den merkede testen mot en ekte leietaker; og hva hver årsakskode betyr.
 sidebar:
   order: 46
 sources:
@@ -12,6 +12,7 @@ sources:
   - apps/server/internal/entra/lifecycle_deactivate.go
   - apps/server/internal/entra/groups.go
   - apps/server/internal/entra/tenant_test.go
+  - apps/server/internal/entra/mailbox.go
 ---
 
 Microsoft Entra ID-modulen lager kontoene til personene Ansatte registrerer, i
@@ -105,6 +106,10 @@ kan bruke to om du vil.
    - `Group.ReadWrite.All`
    - `Domain.Read.All`
    - `Organization.Read.All`
+
+   En niende, `Calendars.ReadWrite`, trengs bare for
+   [kalendersynkronisering](#kalendersynkronisering), og veiviseren lister den når den
+   er slått på.
 2. Velg **Grant admin consent for** organisasjonen deres, og bekreft. Statusen til hver
    tillatelse blir *Granted*. `User.ReadWrite.All` dekker også personens bilde, som
    Vantigo skriver til kontoen: ingen ytterligere tillatelse eller samtykke.
@@ -204,6 +209,100 @@ Modulen setter den aldri selv.
   nå** på fanen Konto: kortet **Microsoft Entra ID** viser kontoen med brukerhovednavnet,
   og modulens siste hendelser viser `entra.user.prepared`. Hadde leietakeren allerede en
   bruker med det ansattnummeret, bekreft den først ([under](#kontoer-vantigo-ikke-opprettet)).
+
+## Kalendersynkronisering
+
+**Kalendersynkronisering** lar folk ha en kopi av Vantigo-kalenderen sin i Outlook
+([brukerveiledningen](/nb/user/calendar/#synkroniser-med-outlook)): kalenderens arbeider
+`calendar-mailbox-sync` skriver hver persons avtaler, og det de velger fra de andre
+appene, til Exchange Online-postboksen deres gjennom denne modulens tilkobling. Den er
+av som standard, og klargjøringen virker likt med den av eller på. Hva den skriver, og
+hvordan, står i [referansen](/en/reference/entra/#the-mailbox-calendar).
+
+### Forutsetninger
+
+- Tilkoblingen er satt opp og **Tilkoblet** ([over](#koble-til-leietakeren)), og
+  Kalender-modulen er slått på ([Kalender](/nb/admin/calendar/)).
+- De som skal synkronisere, har kontotypen **Microsoft Entra ID** i Ansatte, og kontoen
+  deres er en Vantigo opprettet, eller som er bekreftet adoptert
+  ([under](#kontoer-vantigo-ikke-opprettet)): Vantigo skriver bare til en postboks den
+  vet er personens, aldri en som er funnet ut fra adressen.
+- Kontoene deres har en Exchange Online-postboks (en lisens som omfatter Exchange
+  Online).
+
+### Slå den på
+
+1. På modulsiden, i steg **4 Sett kontoreglene**, slår du på **La folk synkronisere
+   Vantigo-kalenderen sin til Outlook** under **Kalendersynkronisering**, og velger
+   **Lagre kontoreglene** (`entra:manage`). Steg 3 lister nå `Calendars.ReadWrite` som
+   den niende tillatelsen.
+2. I registreringen, åpne **API permissions** › **Add a permission** › **Microsoft
+   Graph** › **Application permissions**, og legg til `Calendars.ReadWrite`.
+3. Velg **Grant admin consent for** organisasjonen deres, og bekreft.
+4. I steg 3 velger en eier **Test tilkoblingen**.
+
+Verifiser: linjen under bryteren sier **Klar**, og kortet **Status** viser ikke lenger
+`Calendars.ReadWrite` som manglende. En person som åpner **Kalender → Min kalender**,
+kan slå på **Synkroniser til Outlook-kalenderen min**; innen et minutt sier kortet deres
+**Sist synkronisert**, og avtalene står i Outlook. Til testen ser tillatelsen, sier
+linjen **Legg til Calendars.ReadWrite, gi administratorsamtykke og test tilkoblingen på
+nytt.**, steg 3 er *Ikke gjort*, og ingen kan slå på synkroniseringen sin — resten av
+modulen virker som før.
+
+**Slår du den av**, stopper synkroniseringen for alle, og arbeideren fjerner kopiene den
+skrev, med tilkoblingen så lenge en hemmelighet virker. Slår du den på igjen, fortsetter
+den for alle som har sin egen bryter på.
+
+### Begrens den til enkelte postbokser
+
+`Calendars.ReadWrite` som applikasjonstillatelse når **hver postboks i leietakeren**.
+Vantigo skriver bare til postboksene til kontoene den forvalter, for dem som slår på
+synkroniseringen, men legitimasjonen kan nå flere. For å begrense hva selve
+legitimasjonen når, bruk Exchange Onlines **RBAC for Applications**, i Exchange Online
+PowerShell, som Exchange-administrator:
+
+1. Lag en e-postaktivert sikkerhetsgruppe (eller en Microsoft 365-gruppe) med de
+   personene som kan få kalenderen sin synkronisert. Nestede medlemmer teller ikke.
+2. Koble til: `Connect-ExchangeOnline`.
+3. Registrer applikasjonens tjenestekontohaver i Exchange, med **Application (client)
+   ID** og **Object ID** til bedriftsapplikasjonen (ikke til appregistreringen):
+
+   ```powershell
+   New-ServicePrincipal -AppId <klient-ID> -ObjectId <bedriftsapplikasjonens objekt-ID> -DisplayName "Vantigo"
+   ```
+
+4. Lag et omfang av gruppens medlemmer, med gruppens unike navn
+   (`Get-Group <gruppe> | Select DistinguishedName`):
+
+   ```powershell
+   New-ManagementScope -Name "Vantigo calendar sync" -RecipientRestrictionFilter "MemberOfGroup -eq '<gruppens unike navn>'"
+   ```
+
+5. Gi kalenderrollen i dette omfanget:
+
+   ```powershell
+   New-ManagementRoleAssignment -App <klient-ID> -Role "Application Calendars.ReadWrite" -CustomResourceScope "Vantigo calendar sync"
+   ```
+
+6. Sjekk én postboks innenfor omfanget og én utenfor:
+
+   ```powershell
+   Test-ServicePrincipalAuthorization -Identity <klient-ID> -Resource <postboksadresse>
+   ```
+
+7. **Fjern den leietakeromfattende tildelingen i Entra**: i registreringens **API
+   permissions**, fjern `Calendars.ReadWrite` (eller trekk tilbake
+   administratorsamtykket). Exchange legger de to tildelingene sammen, så mens samtykket
+   for hele leietakeren står, begrenser omfanget ingenting.
+
+Endringene tar **30 minutter til 2 timer** å slå gjennom. Velg så **Test tilkoblingen** i
+steg 3, og se på linjen under bryteren. Vantigo bedømmer tillatelsen ut fra rollene i
+tokenet testen henter: sier den **Legg til Calendars.ReadWrite, gi administratorsamtykke
+og test tilkoblingen på nytt.** etter at samtykket er fjernet, regner Vantigo med at
+kalendersynkroniseringen mangler tillatelsen sin, og fjerner kopiene — sett samtykket
+tilbake til dette støttes. En person utenfor omfanget ser **Organisasjonen din har ikke
+gitt Vantigo tilgang til postboksen din.** på Outlook-kortet sitt: Vantigo prøver dem
+igjen hver sjette time, og leser det aldri som at tilkoblingen feiler.
 
 ## Kontoer Vantigo ikke opprettet
 
@@ -458,6 +557,17 @@ Ansattes ord.
 | `secret_expiring` | Den siste gyldige hemmeligheten som utløper, går ut innen 30 dager. | [Roter](#roter-en-hemmelighet). |
 | `role_missing` | Tre opprettelser, aktiveringer, deaktiveringer, telefonendringer eller slettinger på rad ble avvist, uten at noen har lyktes siden: rollen User Administrator er mest sannsynlig ikke tildelt. | Tildel rollen (steg 3), og **Kjør nå** på en av personene som står fast; et vellykket steg fjerner årsaken. |
 | Tillatelser mangler | Testens token mangler én eller flere av de åtte. | Legg dem til, gi samtykke igjen, test igjen. |
+
+Problemer med kalendersynkroniseringen vises på linjen under bryteren, og på hver
+persons **Outlook**-kort i Kalender:
+
+| Hvor | Betyr | Gjør |
+| --- | --- | --- |
+| *Legg til Calendars.ReadWrite, gi administratorsamtykke og test tilkoblingen på nytt.* under bryteren | Bryteren er på, tilkoblingen tilkoblet, og den siste testens token manglet `Calendars.ReadWrite`. Ingen kan slå på synkroniseringen sin, og arbeideren fjerner kopiene som allerede er skrevet. | Legg til tillatelsen, gi samtykke og test igjen ([kalendersynkronisering](#slå-den-på)). |
+| *Venter på tilkoblingen* under bryteren | Tilkoblingen er ikke tilkoblet; årsaken står under linjen. | Rett tilkoblingen slik tabellen over sier. |
+| *Organisasjonen din har ikke gitt Vantigo tilgang til postboksen din.* på en persons kort | Graph svarte 403 for postboksen (`mailbox_denied`): utenfor et omfang i RBAC for Applications. Prøves igjen hver sjette time. | Legg personen til i omfangets gruppe, eller godta det; personen trykker **Synkroniser nå** for å prøve med en gang. |
+| *Postboksen din ble ikke funnet.* på en persons kort | Brukeren har ingen Exchange Online-postboks, eller finnes ikke lenger (`mailbox_gone`). Prøves igjen hver sjette time. | Gi kontoen en lisens med Exchange Online. |
+| *Vantigo-brukeren din er ikke koblet til en Microsoft 365-konto som Vantigo styrer.* på en persons kort | Ansatte kobler brukeren til ingen konto i denne modulen, til en Vantigo ikke opprettet og ingen har bekreftet, eller til en slettet (`no_account`). | Gi personen kontotypen Microsoft Entra ID i Ansatte, eller [bekreft kontoen](#kontoer-vantigo-ikke-opprettet). |
 
 På en persons fane Konto i Ansatte sier kortet **Microsoft Entra ID** hva leietakeren
 meldte for dem:

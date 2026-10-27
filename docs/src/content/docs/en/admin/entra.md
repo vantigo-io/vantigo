@@ -1,6 +1,6 @@
 ---
 title: Microsoft Entra ID
-description: Connecting Vantigo to a Microsoft Entra ID tenant so Staff's accounts are made there — the app registration, the client secret, the eight application permissions and the User Administrator role, admin consent, the Temporary Access Pass policy, the account rules, sign-in and provisioning; what a leaver's steps do and what deleting loses; Staff's groups in the tenant, the application as their owner, confirming a group Vantigo did not create and what an archived group becomes; rotating secrets; the tagged test against a real tenant; and what each reason code means.
+description: Connecting Vantigo to a Microsoft Entra ID tenant so Staff's accounts are made there — the app registration, the client secret, the eight application permissions and the User Administrator role, admin consent, the Temporary Access Pass policy, the account rules, sign-in and provisioning; calendar sync — Calendars.ReadWrite, its consent, and narrowing it to some mailboxes with Exchange RBAC for Applications; what a leaver's steps do and what deleting loses; Staff's groups in the tenant, the application as their owner, confirming a group Vantigo did not create and what an archived group becomes; rotating secrets; the tagged test against a real tenant; and what each reason code means.
 sidebar:
   order: 46
 sources:
@@ -12,6 +12,7 @@ sources:
   - apps/server/internal/entra/lifecycle_deactivate.go
   - apps/server/internal/entra/groups.go
   - apps/server/internal/entra/tenant_test.go
+  - apps/server/internal/entra/mailbox.go
 ---
 
 The Microsoft Entra ID module makes the accounts of the people Staff registers in the
@@ -105,6 +106,9 @@ you may use two if you prefer.
    - `Group.ReadWrite.All`
    - `Domain.Read.All`
    - `Organization.Read.All`
+
+   A ninth, `Calendars.ReadWrite`, is needed only for [calendar sync](#calendar-sync),
+   and the wizard lists it once that is on.
 2. Choose **Grant admin consent for** your organisation, and confirm. Each permission's
    status turns to *Granted*. `User.ReadWrite.All` also covers the person's photo,
    which Vantigo writes to the account: no further permission or consent.
@@ -205,6 +209,100 @@ module never sets it itself.
   account with its user principal name, and the module's recent events show
   `entra.user.prepared`. If the tenant already held a user with that employee number,
   confirm it first ([below](#accounts-vantigo-did-not-create)).
+
+## Calendar sync
+
+**Calendar sync** lets people keep a copy of their Vantigo calendar in their Outlook
+([the user guide](/en/user/calendar/#sync-with-outlook)): the calendar's
+`calendar-mailbox-sync` worker writes each person's appointments, and the items they
+choose, to their Exchange Online mailbox through this module's connection. It is off by
+default, and provisioning works the same with it on or off. What it writes, and how, is
+in [the reference](/en/reference/entra/#the-mailbox-calendar).
+
+### Preconditions
+
+- The connection is set up and **Connected** ([above](#connect-the-tenant)), and the
+  Calendar module is enabled ([Calendar](/en/admin/calendar/)).
+- The people who will sync have the **Microsoft Entra ID** account kind in Staff, and
+  their account is one Vantigo made or whose adoption is confirmed
+  ([below](#accounts-vantigo-did-not-create)): Vantigo writes only to a mailbox it knows
+  is the person's, never one matched by address.
+- Their accounts have an Exchange Online mailbox (a licence that includes Exchange
+  Online).
+
+### Turn it on
+
+1. On the module page, in step **4 Set the account rules**, turn on **Let people sync
+   their Vantigo calendar to Outlook** under **Calendar sync**, and choose **Save the
+   account rules** (`entra:manage`). Step 3 now lists `Calendars.ReadWrite` as the
+   ninth permission.
+2. In the registration, open **API permissions** › **Add a permission** › **Microsoft
+   Graph** › **Application permissions**, and add `Calendars.ReadWrite`.
+3. Choose **Grant admin consent for** your organisation, and confirm.
+4. In step 3, an Owner chooses **Test connection**.
+
+Verify: the line under the switch reads **Ready**, and the **Status** card no longer
+lists `Calendars.ReadWrite` as missing. A person who opens **Calendar → My calendar**
+can turn on **Sync to my Outlook calendar**; within a minute their card says **Last
+synced** and the appointments are in Outlook. Until the test sees the permission, the
+line reads **Add Calendars.ReadWrite, grant admin consent and test the connection
+again.**, step 3 is *Not done*, and nobody can turn their sync on — the rest of the
+module works as before.
+
+**Turning it off** stops everyone's sync, and the worker removes the copies it wrote,
+using the connection while a credential still works. Turning it on again resumes
+everyone whose own toggle is on.
+
+### Limit it to some mailboxes
+
+`Calendars.ReadWrite` as an application permission reaches **every mailbox in the
+tenant**. Vantigo only writes to the mailboxes of the accounts it manages, for the
+people who turn the sync on, but the credential could reach more. To narrow what the
+credential itself may reach, use Exchange Online's **RBAC for Applications**, in
+Exchange Online PowerShell, as an Exchange administrator:
+
+1. Make a mail-enabled security group (or a Microsoft 365 group) holding the people
+   whose calendars may be synced. Nested members do not count.
+2. Connect: `Connect-ExchangeOnline`.
+3. Register the application's service principal in Exchange, with the **Application
+   (client) ID** and the **Object ID** of the enterprise application (not of the app
+   registration):
+
+   ```powershell
+   New-ServicePrincipal -AppId <client id> -ObjectId <enterprise application object id> -DisplayName "Vantigo"
+   ```
+
+4. Make a scope of the group's members, with the group's distinguished name
+   (`Get-Group <group> | Select DistinguishedName`):
+
+   ```powershell
+   New-ManagementScope -Name "Vantigo calendar sync" -RecipientRestrictionFilter "MemberOfGroup -eq '<group distinguished name>'"
+   ```
+
+5. Grant the calendar role in that scope:
+
+   ```powershell
+   New-ManagementRoleAssignment -App <client id> -Role "Application Calendars.ReadWrite" -CustomResourceScope "Vantigo calendar sync"
+   ```
+
+6. Check a mailbox inside the scope and one outside it:
+
+   ```powershell
+   Test-ServicePrincipalAuthorization -Identity <client id> -Resource <mailbox address>
+   ```
+
+7. **Remove the tenant-wide grant in Entra**: in the registration's **API permissions**,
+   remove `Calendars.ReadWrite` (or revoke its admin consent). Exchange adds the two
+   grants together, so while the tenant-wide consent stands the scope restricts nothing.
+
+The changes take **30 minutes to 2 hours** to apply. Then choose **Test connection** in
+step 3 and check the line under the switch. Vantigo judges the permission by the roles
+in the token its test fetches: if it reads **Add Calendars.ReadWrite, grant admin
+consent and test the connection again.** once the consent is removed, Vantigo treats
+calendar sync as missing its permission and removes the copies — put the consent back
+until this is supported. A person outside the scope sees **Your organisation has not
+allowed Vantigo to reach your mailbox.** on their Outlook card: Vantigo tries them again
+every six hours, and never reads it as the connection failing.
 
 ## Accounts Vantigo did not create
 
@@ -451,6 +549,17 @@ Staff's words.
 | `secret_expiring` | The last valid secret to expire ends within 30 days. | [Rotate](#rotate-a-secret). |
 | `role_missing` | Three creates, enables, disables, phone changes or deletes in a row were refused, none succeeding since: the User Administrator role is most likely not assigned. | Assign the role (step 3), then **Run now** on one of the people held up; a success clears it. |
 | Permissions missing | The test's token lacks one or more of the eight. | Add them, grant consent again, test again. |
+
+Calendar sync's troubles show on the line under its switch, and on each person's
+**Outlook** card in Calendar:
+
+| Where | Means | Do |
+| --- | --- | --- |
+| *Add Calendars.ReadWrite, grant admin consent and test the connection again.* under the switch | The switch is on, the connection connected, and the last test's token lacked `Calendars.ReadWrite`. Nobody can turn their sync on, and the worker removes the copies already written. | Add the permission, grant consent and test again ([calendar sync](#turn-it-on)). |
+| *Waiting for the connection* under the switch | The connection is not connected; its reason is under the line. | Fix the connection as the table above says. |
+| *Your organisation has not allowed Vantigo to reach your mailbox.* on a person's card | Graph answered 403 for their mailbox (`mailbox_denied`): outside an RBAC for Applications scope. Tried again every six hours. | Add the person to the scope's group, or accept it; they press **Sync now** to try at once. |
+| *Your mailbox could not be found.* on a person's card | The user has no Exchange Online mailbox, or no longer exists (`mailbox_gone`). Tried again every six hours. | Give the account a licence with Exchange Online. |
+| *Your Vantigo user is not connected to a Microsoft 365 account that Vantigo manages.* on a person's card | Staff links the user to no account of this module, or to one Vantigo did not create and nobody confirmed, or one deleted (`no_account`). | Give the person the Microsoft Entra ID kind in Staff, or [confirm the account](#accounts-vantigo-did-not-create). |
 
 On a person's Account tab in Staff, the **Microsoft Entra ID** card says what the
 tenant reported for them:
