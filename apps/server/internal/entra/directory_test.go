@@ -252,6 +252,50 @@ func TestDirectory_Matches(t *testing.T) {
 	}
 }
 
+// A guest account matches nobody: Liv's guest account by mail is not
+// proposed, nor counted ambiguous; Mona's guest account beside her member
+// account leaves the member alone, proposed. A candidate's own SCIM mapping
+// of the account does not block proposing it; another user's does. The
+// search answers a guest marked as one, a member unmarked.
+func TestDirectory_MatchesLeaveOutGuestsAndOwnMappings(t *testing.T) {
+	t.Parallel()
+	h, g, o := directoryHarness(t)
+	addUser(t, h, "liv@nordlys.no", "")
+	g.AddUser(graphtest.User{ID: uuid.NewString(), DisplayName: "Liv (guest)", UserPrincipalName: "liv_nordlys.no#EXT#@tenant.example",
+		Mail: "liv@nordlys.no", AccountEnabled: true, UserType: "Guest"})
+	mona := addUser(t, h, "mona@nordlys.no", "")
+	g.AddUser(graphtest.User{ID: uuid.NewString(), DisplayName: "Mona (guest)", UserPrincipalName: "mona_nordlys.no#EXT#@tenant.example",
+		Mail: "mona@nordlys.no", AccountEnabled: true, UserType: "Guest"})
+	monaAccount := account(g, "Mona", "mona@nordlys.no", "", "")
+	nils := addUser(t, h, "nils@nordlys.no", "")
+	nilsAccount := account(g, "Nils", "nils@nordlys.no", "", "")
+	mapAccount(t, h, nils, "Nils@nordlys.no")
+
+	r := o.Do(http.MethodGet, matchesPath, nil)
+	if r.Status != http.StatusOK {
+		t.Fatalf("matches: %d %s", r.Status, r.Body)
+	}
+	var got gen.EntraDirectoryMatches
+	r.JSON(&got)
+	if got.Candidates != 3 || got.Ambiguous != 0 || len(got.Matches) != 2 {
+		t.Fatalf("matches: %+v, want Mona's and Nils's of 3 candidates, none ambiguous", got)
+	}
+	if m := got.Matches[0]; m.UserId != mona || m.Account.ObjectId.String() != monaAccount || m.Account.Guest != nil ||
+		!slices.Equal(m.MatchedBy, []gen.EntraDirectoryMatchMatchedBy{gen.UserPrincipalName}) {
+		t.Errorf("the first match: %+v, want Mona's member account by principal name", m)
+	}
+	if m := got.Matches[1]; m.UserId != nils || m.Account.ObjectId.String() != nilsAccount {
+		t.Errorf("the second match: %+v, want Nils's own mapped account", m)
+	}
+
+	r = o.Do(http.MethodGet, directoryPath+"?"+url.Values{"q": {"mona"}}.Encode(), nil)
+	var found gen.EntraDirectoryUsers
+	r.JSON(&found)
+	if len(found.Users) != 2 || found.Users[0].Guest != nil || found.Users[1].Guest == nil || !*found.Users[1].Guest {
+		t.Errorf("search mona: %+v, want the member unmarked, then the guest marked", found.Users)
+	}
+}
+
 // Sixteen addresses are two in filters of each property; nobody with a
 // number, no employeeId filter. A quote in an address is doubled.
 func TestDirectory_MatchesChunkTheFilters(t *testing.T) {

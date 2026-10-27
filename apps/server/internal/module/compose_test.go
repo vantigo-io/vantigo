@@ -2247,7 +2247,7 @@ func TestCompose_DisabledAccountsProvider_LeavesNil(t *testing.T) {
 // the slot's tests only need a distinct value to assert on.
 type fakeSSOConnections struct{}
 
-func (*fakeSSOConnections) Unconnected(context.Context) ([]contracts.ConnectCandidate, error) {
+func (*fakeSSOConnections) Unconnected(context.Context, int) ([]contracts.ConnectCandidate, error) {
 	return nil, nil
 }
 

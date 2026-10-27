@@ -55,7 +55,7 @@ const openReview = (server: EntraServer, props: Partial<DirectoryMatchesProps> =
 const rowOf = (name: string) => screen.getAllByText(name)[0].closest("tr") as HTMLElement;
 
 describe("the directory's matches", () => {
-  it("lists each proposal with what matched, all checked but a disabled account's", async () => {
+  it("lists each proposal with what matched, checked only for an enabled account matched by principal name", async () => {
     openReview({ matches: proposals });
     expect(
       await screen.findByText(
@@ -66,9 +66,23 @@ describe("the directory's matches", () => {
     expect(within(rowOf("kari@example.com")).getByText("Principal name")).toBeInTheDocument();
     expect(within(rowOf("ola@example.com")).getByText("Employee ID")).toBeInTheDocument();
     expect(screen.getByRole("checkbox", { name: "Connect Kari Nordmann to kari@contoso.no" })).toBeChecked();
-    expect(screen.getByRole("checkbox", { name: "Connect Ola Hansen to ola@contoso.no" })).toBeChecked();
+    // An employee ID alone, or a mail alone, is a weaker key: left to the Owner to check.
+    expect(screen.getByRole("checkbox", { name: "Connect Ola Hansen to ola@contoso.no" })).not.toBeChecked();
+    expect(within(rowOf("ola@example.com")).getByText("Check this match")).toBeInTheDocument();
+    expect(within(rowOf("ola@example.com")).getByText(/Matched by mail or employee ID only/)).toBeInTheDocument();
     expect(screen.getByRole("checkbox", { name: "Connect Per Olsen to per@contoso.no" })).not.toBeChecked();
     expect(within(rowOf("per@example.com")).getByText("Disabled")).toBeInTheDocument();
+    expect(within(rowOf("kari@example.com")).queryByText("Check this match")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Connect selected (1)" })).toBeEnabled();
+  });
+
+  it("leaves an Owner's match unchecked, even by principal name, saying why", async () => {
+    openReview({ matches: proposals }, { users: [{ ...users[0], owner: true }, users[1], users[2]] });
+    const kari = await screen.findByRole("checkbox", { name: "Connect Kari Nordmann to kari@contoso.no" });
+    expect(kari).not.toBeChecked();
+    expect(within(rowOf("kari@example.com")).getByText("Check this match")).toBeInTheDocument();
+    expect(within(rowOf("kari@example.com")).getByText(/This user is an Owner/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Connect selected (0)" })).toBeDisabled();
   });
 
   it("connects the chosen pairs one at a time and marks each row", async () => {
@@ -76,7 +90,8 @@ describe("the directory's matches", () => {
       if (userId === "u-2") throw new Error("Another user is already connected to this account.");
     });
     const { onDone } = openReview({ matches: proposals }, { connect });
-    await userEvent.click(await screen.findByRole("checkbox", { name: "Connect Per Olsen to per@contoso.no" }));
+    await userEvent.click(await screen.findByRole("checkbox", { name: "Connect Ola Hansen to ola@contoso.no" }));
+    await userEvent.click(screen.getByRole("checkbox", { name: "Connect Per Olsen to per@contoso.no" }));
     await userEvent.click(screen.getByRole("button", { name: "Connect selected (3)" }));
     await waitFor(() => expect(onDone).toHaveBeenCalledTimes(1));
     expect(connect.mock.calls).toEqual([
@@ -96,9 +111,10 @@ describe("the directory's matches", () => {
   it("connects nothing it was not asked to", async () => {
     const { connect } = openReview({ matches: proposals });
     await userEvent.click(await screen.findByRole("checkbox", { name: "Connect Ola Hansen to ola@contoso.no" }));
+    await userEvent.click(screen.getByRole("checkbox", { name: "Connect Kari Nordmann to kari@contoso.no" }));
     await userEvent.click(screen.getByRole("button", { name: "Connect selected (1)" }));
     await waitFor(() => expect(connect).toHaveBeenCalledTimes(1));
-    expect(connect.mock.calls[0][0]).toBe("u-1");
+    expect(connect.mock.calls[0][0]).toBe("u-2");
   });
 
   it("says so when nothing matches exactly, and when the list was cut", async () => {

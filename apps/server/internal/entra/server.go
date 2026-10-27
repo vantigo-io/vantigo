@@ -1,6 +1,8 @@
 package entra
 
 import (
+	"golang.org/x/sync/singleflight"
+
 	"github.com/vantigo-io/vantigo/server/internal/entra/gen"
 	"github.com/vantigo-io/vantigo/server/internal/entra/store"
 	"github.com/vantigo-io/vantigo/server/internal/module"
@@ -13,6 +15,9 @@ type server struct {
 	deps   module.Deps
 	q      *store.Queries
 	client *graphClient
+	// matches is the directory matches' read in flight, by caller
+	// (GetEntraDirectoryMatches).
+	matches singleflight.Group
 }
 
 var _ gen.StrictServerInterface = (*server)(nil)

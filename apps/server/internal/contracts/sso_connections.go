@@ -50,9 +50,10 @@ type SSOConnections interface {
 	// the configured issuer and no announced link under it, the caller
 	// excluded (an Owner connects themselves by signing in), in the order
 	// the Owner's user list shows them: the Owners first, then by display
-	// name, then by id. While OIDC is off it answers an Owner
-	// ErrSSONotConfigured.
-	Unconnected(ctx context.Context) ([]ConnectCandidate, error)
+	// name, then by id — at most limit of them, so that a caller asking
+	// for one more than it reads learns whether more wait. While OIDC is
+	// off it answers an Owner ErrSSONotConfigured.
+	Unconnected(ctx context.Context, limit int) ([]ConnectCandidate, error)
 	// KeyHolders answers, for each key that is held under the configured
 	// issuer, who holds it: one KeyHolder per held key, carrying the key as
 	// given, the first holder in the order an announced link, a SCIM

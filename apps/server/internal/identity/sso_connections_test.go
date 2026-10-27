@@ -75,7 +75,7 @@ func TestSSOConnections_UnconnectedListsWhoIsLeftToConnect(t *testing.T) {
 	announcedUser := h.insertUser(t, "f-announced@example.test", identity.RoleUserID)
 	mustAnnounce(t, owner, announcedUser, map[string]any{"userPrincipalName": "f@tenant.example"})
 
-	got, err := h.ssoConnections(t).Unconnected(asCaller(t, h, ownerID))
+	got, err := h.ssoConnections(t).Unconnected(asCaller(t, h, ownerID), 100)
 	if err != nil {
 		t.Fatalf("Unconnected: %v", err)
 	}
@@ -88,10 +88,17 @@ func TestSSOConnections_UnconnectedListsWhoIsLeftToConnect(t *testing.T) {
 	if !slices.Equal(got, want) {
 		t.Errorf("Unconnected = %+v\nwant %+v", got, want)
 	}
+
+	// The limit bounds the list, in the same order.
+	got, err = h.ssoConnections(t).Unconnected(asCaller(t, h, ownerID), 2)
+	if err != nil || !slices.Equal(got, want[:2]) {
+		t.Errorf("Unconnected(2) = %+v, %v\nwant %+v", got, err, want[:2])
+	}
 }
 
-// Anyone but an Owner — a SystemAdmin, a context with no request, a request
-// with no session — gets nothing, and no error, from either read.
+// Anyone but an Owner — a SystemAdmin, a context with no request, a context carrying only a user
+// (contracts.AsUser, a read with no request behind it), a request with no
+// session — gets nothing, and no error, from either read.
 func TestSSOConnections_AnswersNothingToAnyoneElse(t *testing.T) {
 	t.Parallel()
 	f := newFakeOIDC(t)
@@ -104,7 +111,7 @@ func TestSSOConnections_AnswersNothingToAnyoneElse(t *testing.T) {
 	keys := []contracts.DirectoryKey{{ObjectID: fakeObjectID}}
 
 	// The Owner sees both, so nothing below is empty for want of data.
-	if got, err := p.Unconnected(asCaller(t, h, ownerID)); err != nil || len(got) == 0 {
+	if got, err := p.Unconnected(asCaller(t, h, ownerID), 100); err != nil || len(got) == 0 {
 		t.Fatalf("the Owner's Unconnected = %v, %v; want the candidates", got, err)
 	}
 	if got, err := p.KeyHolders(asCaller(t, h, ownerID), keys); err != nil || len(got) != 1 {
@@ -114,17 +121,51 @@ func TestSSOConnections_AnswersNothingToAnyoneElse(t *testing.T) {
 	admin := h.insertUser(t, "admin@example.test", identity.RoleSystemAdminID)
 	anonymous := contracts.WithRequest(context.Background(), httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/", nil))
 	for name, ctx := range map[string]context.Context{
-		"a SystemAdmin":         asCaller(t, h, admin),
-		"a user":                asCaller(t, h, user),
-		"no request":            context.Background(),
-		"a request, no session": anonymous,
+		"a SystemAdmin":           asCaller(t, h, admin),
+		"a user":                  asCaller(t, h, user),
+		"no request":              context.Background(),
+		"the Owner, AsUser alone": contracts.AsUser(context.Background(), ownerID),
+		"a request, no session":   anonymous,
 	} {
-		if got, err := p.Unconnected(ctx); err != nil || got != nil {
+		if got, err := p.Unconnected(ctx, 100); err != nil || got != nil {
 			t.Errorf("%s: Unconnected = %v, %v; want nothing", name, got, err)
 		}
 		if got, err := p.KeyHolders(ctx, keys); err != nil || got != nil {
 			t.Errorf("%s: KeyHolders = %v, %v; want nothing", name, got, err)
 		}
+	}
+}
+
+// While Owners are held to MFA, an Owner whose session has no second factor
+// is not admitted under policy:Owner+OwnerManagement: both reads answer
+// nothing, and no error, where the same Owner verified gets the data.
+func TestSSOConnections_AnswersNothingToAnOwnerWithoutMFA(t *testing.T) {
+	t.Parallel()
+	f := newFakeOIDC(t)
+	h := newHarness(t, append(f.options(), withEnv("OWNERS_REQUIRE_MFA", "1"))...)
+	_, ownerID := h.bootstrapOwner(t)
+	ola := h.insertUser(t, "ola@example.test", identity.RoleUserID)
+	h.exec(t, `INSERT INTO identity.scim_user_mappings (resource_id, user_id, external_id, user_name, upstream_active, version, etag, created_at, updated_at)
+	          VALUES ($1, $2, $3, 'Ola@Tenant.Example', true, 1, 'etag', $4, $4)`, uuid.New(), ola, fakeObjectID, h.now())
+	p := h.ssoConnections(t)
+	keys := []contracts.DirectoryKey{{ObjectID: fakeObjectID}}
+
+	verified := asCaller(t, h, ownerID)
+	if got, err := p.Unconnected(verified, 100); err != nil || len(got) == 0 {
+		t.Fatalf("the verified Owner's Unconnected = %v, %v; want the candidates", got, err)
+	}
+	if got, err := p.KeyHolders(verified, keys); err != nil || len(got) != 1 {
+		t.Fatalf("the verified Owner's KeyHolders = %v, %v; want the mapping", got, err)
+	}
+
+	r := httptest.NewRequest(http.MethodGet, "/", nil)
+	r.AddCookie(&http.Cookie{Name: identity.SessionCookieName, Value: h.session(t, ownerID, false)})
+	noMFA := contracts.WithRequest(context.Background(), httptest.NewRecorder(), r)
+	if got, err := p.Unconnected(noMFA, 100); err != nil || got != nil {
+		t.Errorf("Unconnected without MFA = %v, %v; want nothing", got, err)
+	}
+	if got, err := p.KeyHolders(noMFA, keys); err != nil || got != nil {
+		t.Errorf("KeyHolders without MFA = %v, %v; want nothing", got, err)
 	}
 }
 
@@ -205,14 +246,14 @@ func TestSSOConnections_OIDCOff(t *testing.T) {
 	h.insertUser(t, "kari@example.test", identity.RoleUserID)
 	p := h.ssoConnections(t)
 	ctx := asCaller(t, h, ownerID)
-	if got, err := p.Unconnected(ctx); !errors.Is(err, contracts.ErrSSONotConfigured) || got != nil {
+	if got, err := p.Unconnected(ctx, 100); !errors.Is(err, contracts.ErrSSONotConfigured) || got != nil {
 		t.Errorf("Unconnected = %v, %v; want ErrSSONotConfigured", got, err)
 	}
 	if got, err := p.KeyHolders(ctx, []contracts.DirectoryKey{{ObjectID: fakeObjectID}}); err != nil || got != nil {
 		t.Errorf("KeyHolders = %v, %v; want nothing", got, err)
 	}
 	admin := h.insertUser(t, "admin@example.test", identity.RoleSystemAdminID)
-	if got, err := p.Unconnected(asCaller(t, h, admin)); err != nil || got != nil {
+	if got, err := p.Unconnected(asCaller(t, h, admin), 100); err != nil || got != nil {
 		t.Errorf("a SystemAdmin's Unconnected = %v, %v; want nothing", got, err)
 	}
 }

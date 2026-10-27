@@ -503,9 +503,9 @@ type EntraDirectoryMatch struct {
 // EntraDirectoryMatchMatchedBy defines model for EntraDirectoryMatch.MatchedBy.
 type EntraDirectoryMatchMatchedBy string
 
-// EntraDirectoryMatches The exact matches between the users not yet connected and the tenant's accounts. Only an exact match is proposed — no fuzzy match, no guess between two. The users' addresses are compared in the server and never answered.
+// EntraDirectoryMatches The exact matches between the users not yet connected and the tenant's accounts. Only an exact match is proposed — no fuzzy match, no guess between two, never a guest account. The users' addresses are compared in the server and never answered.
 type EntraDirectoryMatches struct {
-	// Ambiguous How many candidates were left out because more than one account matched them, or because the account that matched them matched another candidate too.
+	// Ambiguous How many candidates were left out because more than one account matched them, or because the account that matched them matched another candidate too. A guest account is no match at all — it is neither proposed nor counted here.
 	Ambiguous int32 `json:"ambiguous"`
 
 	// Candidates How many users not yet connected were read — every user who is not pending and has neither a link nor an announced link under the configured issuer, the caller excluded.
@@ -525,6 +525,9 @@ type EntraDirectoryUser struct {
 
 	// EmployeeId The account's employeeId. Absent when it has none.
 	EmployeeId *string `json:"employeeId,omitempty"`
+
+	// Guest True when the account is a guest of the tenant (its userType is Guest), invited from another organisation. Absent for a member. The matches never propose a guest.
+	Guest *bool `json:"guest,omitempty"`
 
 	// Holder Who already holds a directory account's keys under the configured issuer, as identity knows it: expected, an Owner announced it for an existing user; mapped, the provider's SCIM push maps it to a user (its userName the principal name, or its externalId the object id); account, Staff announced it for a person yet to arrive, with no user. A sign-in through the provider is not shown: the link it makes names no key the directory answers.
 	Holder *EntraDirectoryHolder `json:"holder,omitempty"`

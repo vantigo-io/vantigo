@@ -60,6 +60,20 @@ SELECT EXISTS (
        OR (sqlc.narg(user_principal_name)::varchar IS NOT NULL AND user_principal_name = sqlc.narg(user_principal_name)::varchar)
 )::boolean AS named;
 
+-- name: ScimMappingNamesKeyForOther :one
+-- ScimMappingNamesKeyForOther reports whether a SCIM mapping of a user other
+-- than @user_id names either key — its externalId equal to the object id,
+-- or its userName, normalised as emails are, equal to the principal name
+-- (both given normalised): ListKeyHolders' mapped holder. The provider
+-- already holds that account for somebody else, so an Owner's announcement
+-- of it is refused sso_link_taken.
+SELECT EXISTS (
+    SELECT 1 FROM identity.scim_user_mappings
+    WHERE user_id <> @user_id
+      AND ((sqlc.narg(object_id)::varchar IS NOT NULL AND external_id = sqlc.narg(object_id)::varchar)
+        OR (sqlc.narg(user_principal_name)::varchar IS NOT NULL AND upper(btrim(user_name)) = sqlc.narg(user_principal_name)::varchar))
+)::boolean AS named;
+
 -- name: CountExpectedLinksByIssuer :one
 -- CountExpectedLinksByIssuer is how many announcements wait under the
 -- issuer: an authority change or a turn-off counts them with the links.

@@ -8,7 +8,7 @@
 -- ListConnectCandidates is every user who is not pending, holds no OIDC link
 -- under @oidc_issuer and no announced link under it, @caller excluded, in
 -- ListManagedUsers' order: the Owners first, then by display name
--- ordinally, then by id.
+-- ordinally, then by id; at most @max_rows of them.
 SELECT u.id, u.email, u.employee_number, u.is_disabled
 FROM identity.users u
 WHERE u.pending_since IS NULL
@@ -27,7 +27,8 @@ ORDER BY EXISTS (
              JOIN identity.roles r ON r.id = ur.role_id
              WHERE ur.user_id = u.id AND r.name = 'Owner'
          ) DESC,
-         u.display_name COLLATE "C", u.id;
+         u.display_name COLLATE "C", u.id
+LIMIT @max_rows::int;
 
 -- name: ListKeyHolders :many
 -- ListKeyHolders is every holder of an object id in @object_ids or a UPN in

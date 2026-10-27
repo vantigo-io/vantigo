@@ -20,6 +20,11 @@ export const DIRECTORY_SEARCH_DEBOUNCE_MS = 300;
 export interface DirectoryPickerProps {
   /** Called with the account's two keys when the Owner picks one. */
   onPick: (pick: DirectoryPick) => void;
+  /**
+   * Called when the search is changed after a pick: the field no longer names the account picked, so the host
+   * forgets the pair it was handed rather than keep keys the Owner can no longer see.
+   */
+  onClear?: () => void;
   /** The user being connected: an account they hold already stays selectable. */
   forUserId?: string;
   /** The name of a user who holds an account, when the host knows it. */
@@ -58,6 +63,11 @@ export const DirectoryAccount = ({ account, held }: { account: EntraDirectoryUse
         </Text>
       </Stack>
       <Group gap={4} wrap="nowrap">
+        {account.guest && (
+          <Badge size="sm" variant="light" color="grape">
+            {t("directoryGuest")}
+          </Badge>
+        )}
         {!account.accountEnabled && (
           <Badge size="sm" variant="light" color="gray">
             {t("directoryDisabled")}
@@ -80,7 +90,7 @@ export const DirectoryAccount = ({ account, held }: { account: EntraDirectoryUse
  * holds it already, and answers the picked account's object id and principal
  * name. An account another user or Staff holds is shown but cannot be picked.
  */
-export const DirectoryPicker = ({ onPick, forUserId, userName }: DirectoryPickerProps) => {
+export const DirectoryPicker = ({ onPick, onClear, forUserId, userName }: DirectoryPickerProps) => {
   const { t } = useI18n("entra");
   const combobox = useCombobox({ onDropdownClose: () => combobox.resetSelectedOption() });
   const [search, setSearch] = useState("");
@@ -119,6 +129,7 @@ export const DirectoryPicker = ({ onPick, forUserId, userName }: DirectoryPicker
           rightSection={users.isFetching ? <Loader size={16} /> : null}
           onChange={(event) => {
             setSearch(event.currentTarget.value);
+            if (picked !== null) onClear?.();
             setPicked(null);
             combobox.openDropdown();
             combobox.updateSelectedOptionIndex();
