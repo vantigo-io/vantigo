@@ -24,3 +24,24 @@ SELECT person_id, kind, value, weight
 FROM staff.person_preferences
 WHERE person_id = ANY(@person_ids::bigint[])
 ORDER BY person_id, kind;
+
+-- name: WorkforceDirectoryAccount :one
+-- WorkforceDirectoryAccount is the account in an external directory of the
+-- person @user_id is (calendar Outlook sync design O3): the person is found
+-- through the identity link keyed on the user's id under the predicate
+-- PersonForUser applies (authorize.sql; keep them identical) — in any state
+-- the worker left it, disabled included, so a leaver's calendar can still be
+-- cleaned up, but never one it blocked as someone else's account (mismatch,
+-- account_not_managed); then that person's provider link with an external
+-- id, enabled or disabled. A person with more than one such link answers the
+-- oldest (the lowest id). No row is a user with no person, or a person with
+-- no such link.
+SELECT pl.provider, pl.external_id::text AS external_id, pl.state
+FROM staff.identity_links il
+JOIN staff.identity_links pl ON pl.person_id = il.person_id
+WHERE il.provider = 'identity' AND il.external_id = @user_id::text
+  AND (il.state = 'linked' OR coalesce(il.blocked_reason, '') NOT IN ('mismatch', 'account_not_managed'))
+  AND pl.provider <> 'identity' AND pl.external_id IS NOT NULL
+  AND pl.state IN ('enabled', 'disabled')
+ORDER BY pl.id
+LIMIT 1;

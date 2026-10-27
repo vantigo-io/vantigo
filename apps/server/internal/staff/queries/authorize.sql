@@ -7,8 +7,9 @@
 -- manages (account_not_managed) gives its user no Self, nor anything else of
 -- the person (privacy review M1). HR's self-service link (linked) never
 -- carries either reason. No row is a user linked to nobody. links.sql's
--- PeopleLinks and LinkedPeopleOfUsers apply the same predicate (sqlc shares
--- no fragment); keep the three identical.
+-- PeopleLinks and LinkedPeopleOfUsers, and workforce.sql's
+-- WorkforceDirectoryAccount, apply the same predicate (sqlc shares no
+-- fragment); keep the four identical.
 SELECT person_id FROM staff.identity_links
 WHERE provider = 'identity' AND external_id = @external_id::text
   AND (state = 'linked' OR coalesce(blocked_reason, '') NOT IN ('mismatch', 'account_not_managed'));
