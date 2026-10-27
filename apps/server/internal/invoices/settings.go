@@ -356,6 +356,32 @@ func checkWorkVatCodes(p parsedSettings, stored store.InvoicesSetting, codes map
 	return errs
 }
 
+// checkEnergyVatCodes is the same rule for the two codes an energy line takes
+// by its hint (energy consumption billing design D8, invoices from
+// consumption plan reading 8): optional — absent keeps the stored ones — and,
+// given, each a code that exists and, when it changes, is still offered, else
+// a 400 on energyVatCodes.energy or energyVatCodes.energyExempt.
+func checkEnergyVatCodes(given *gen.InvoicesEnergyVatCodes, stored store.InvoicesSetting, codes map[int32]vatCodeOnDay, errs map[string][]string) map[string][]string {
+	if given == nil {
+		return errs
+	}
+	for _, c := range []struct {
+		field   string
+		id, was int32
+	}{
+		{"energyVatCodes.energy", given.Energy, stored.EnergyVatCode},
+		{"energyVatCodes.energyExempt", given.EnergyExempt, stored.EnergyVatCodeExempt},
+	} {
+		switch code, ok := codes[c.id]; {
+		case !ok:
+			errs = withFieldError(errs, c.field, "No VAT code has this id")
+		case !code.active && c.id != c.was:
+			errs = withFieldError(errs, c.field, "This VAT code is no longer offered for new lines")
+		}
+	}
+	return errs
+}
+
 // parseWorkVatCodes reads the required workVatCodes into p (invoices work
 // design D6): absent is a 400 on the field — a client that predates it would
 // otherwise reset the codes by leaving it out — and so is anything but three
@@ -443,6 +469,7 @@ func settingsResponse(row store.InvoicesSetting, locked bool, next int64) gen.In
 		WorkVatCodes: gen.InvoicesWorkVatCodes{
 			Hours: row.WorkVatCodeHours, Expenses: row.WorkVatCodeExpenses, Milestones: row.WorkVatCodeMilestones,
 		},
+		EnergyVatCodes:       &gen.InvoicesEnergyVatCodes{Energy: row.EnergyVatCode, EnergyExempt: row.EnergyVatCodeExempt},
 		TimesheetDefault:     row.TimesheetDefault,
 		TimesheetPersonLabel: gen.InvoicesSettingsResponseTimesheetPersonLabel(row.TimesheetPersonLabel),
 		LegalName:            row.LegalName, OrganisationNumber: row.OrganisationNumber,
@@ -501,6 +528,7 @@ func (s *server) PutInvoicesSettings(ctx context.Context, req gen.PutInvoicesSet
 		return nil, fmt.Errorf("invoices: read the settings: %w", err)
 	}
 	errs = checkWorkVatCodes(parsed, stored, codes, errs)
+	errs = checkEnergyVatCodes(req.Body.EnergyVatCodes, stored, codes, errs)
 	if len(errs) > 0 {
 		return gen.PutInvoicesSettings400ApplicationProblemPlusJSONResponse(invalid(invalidSettingsTitle, errs)), nil
 	}
@@ -529,6 +557,12 @@ func (s *server) PutInvoicesSettings(ctx context.Context, req gen.PutInvoicesSet
 				"The series has started at %d and something is issued from it, so its start can no longer change.",
 				current.SeriesStart)))
 			return errRefused
+		}
+		// The energy codes a request leaves out are kept as stored
+		// (invoices from consumption plan reading 8).
+		parsed.EnergyVatCode, parsed.EnergyVatCodeExempt = current.EnergyVatCode, current.EnergyVatCodeExempt
+		if c := req.Body.EnergyVatCodes; c != nil {
+			parsed.EnergyVatCode, parsed.EnergyVatCodeExempt = c.Energy, c.EnergyExempt
 		}
 		if msg := kidFitRefusal(parsed.KidLength, next); msg != "" {
 			unfit = withFieldError(nil, "kidLength", msg)

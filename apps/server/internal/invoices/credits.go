@@ -708,7 +708,7 @@ func creditIssueChecks(ctx context.Context, txq *store.Queries, locked store.Inv
 	if err != nil {
 		return issuePlan{}, nil, err
 	}
-	releases, err := releasesOf(invoiced, lines, t.squared)
+	releases, err := releasesOf(book, invoiced, lines, t.squared)
 	if err != nil {
 		return issuePlan{}, nil, err
 	}
@@ -724,6 +724,11 @@ func creditIssueChecks(ctx context.Context, txq *store.Queries, locked store.Inv
 		plan.lines = append(plan.lines, issued)
 	}
 	return plan, nil, nil
+}
+
+// pastFourDecimals reports whether r has more than four decimals.
+func pastFourDecimals(r *big.Rat) bool {
+	return !new(big.Rat).Mul(r, big.NewRat(10000, 1)).IsInt()
 }
 
 func derefID(id *int64) int64 {
@@ -816,7 +821,11 @@ func (s *server) putCreditDraft(ctx context.Context, q *store.Queries, current s
 			continue
 		}
 		seen[o.ID] = true
-		in.lines[i].deductsInvoiceID = o.DeductsInvoiceID
+		// A credit of an energy correction line is one too, negative as a
+		// deduction's credit may be (energy consumption billing design D7,
+		// invoices from consumption plan reading 7) — the a-konto rules
+		// (deductedOf) stay a deduction's alone.
+		in.lines[i].deductsInvoiceID, in.lines[i].correction = o.DeductsInvoiceID, o.Correction
 		if l.vatCodeID != o.VatCodeID {
 			add(field("vatCodeId"), "A credit note keeps the original line's VAT code")
 		}
@@ -834,18 +843,30 @@ func (s *server) putCreditDraft(ctx context.Context, q *store.Queries, current s
 		if err != nil {
 			return nil, err
 		}
-		// A credit line is negative exactly when the line it credits is a
-		// deduction, and is compared with it by magnitude (D7).
+		// A credit line is negative exactly when the line it credits is — a
+		// deduction, or a correction of energy that lowered the bill — and is
+		// compared with it by magnitude (D7).
 		switch c, same := magnitudeCmp(l.quantity, oQty); {
-		case !same && o.DeductsInvoiceID == nil:
-			add(field("quantity"), "A credit of an ordinary line has a quantity greater than 0")
-		case !same:
+		case !same && o.DeductsInvoiceID != nil:
 			add(field("quantity"), "A credit of a deduction line has a negative quantity, as the line it credits")
+		case !same && oQty.Sign() < 0:
+			add(field("quantity"), "A credit of a negative correction line has a negative quantity, as the line it credits")
+		case !same:
+			add(field("quantity"), "A credit of an ordinary line has a quantity greater than 0")
 		case c > 0:
 			add(field("quantity"), "A credit note may lower a quantity, never raise it")
 		}
 		if o.DeductsInvoiceID != nil && l.discount.Sign() != 0 {
 			add(field("discountPercent"), "A deduction line's credit carries no discount")
+		}
+		if o.Correction && l.discount.Sign() != 0 {
+			add(field("discountPercent"), "A correction line's credit carries no discount")
+		}
+		// A credit's price keeps the decimals its line may: four, or the
+		// eight an energy line's price has (invoices from consumption plan
+		// reading 3).
+		if pastFourDecimals(l.unitPrice) && !pastFourDecimals(oPrice) {
+			add(field("unitPrice"), "A unit price has at most 4 decimals")
 		}
 		if l.unitPrice.Cmp(oPrice) > 0 {
 			add(field("unitPrice"), "A credit note may lower a price, never raise it")

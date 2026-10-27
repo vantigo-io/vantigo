@@ -41,6 +41,10 @@ type settingsJSON struct {
 		Expenses   int32 `json:"expenses"`
 		Milestones int32 `json:"milestones"`
 	} `json:"workVatCodes"`
+	EnergyVatCodes *struct {
+		Energy       int32 `json:"energy"`
+		EnergyExempt int32 `json:"energyExempt"`
+	} `json:"energyVatCodes"`
 	TimesheetDefault     bool   `json:"timesheetDefault"`
 	TimesheetPersonLabel string `json:"timesheetPersonLabel"`
 	Revision             int32  `json:"revision"`
@@ -447,4 +451,56 @@ func TestSettings_TheThreeFieldsAreRequiredNullable(t *testing.T) {
 	if cleared := saveSeller(t, h, completeSeller(saved.Revision)); cleared.KidLength != nil || cleared.KidAlgorithm != nil {
 		t.Errorf("null = length %v algorithm %v, want the agreement cleared", cleared.KidLength, cleared.KidAlgorithm)
 	}
+}
+
+// The two VAT codes an energy line takes by its hint (energy consumption
+// billing design D8, invoices from consumption plan reading 8): read as
+// stored — 1 and the seeded 10 — kept when a replace leaves them out,
+// changed when it names them, and each one given a code that exists and,
+// when it changes, is still offered, else a 400 on its field.
+func TestSettings_TheEnergyVatCodes(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	manager := h.SignIn(t, "invoices:access", "invoices:manage")
+	read := func() settingsJSON {
+		t.Helper()
+		res := manager.Do(http.MethodGet, settingsPath, nil)
+		var s settingsJSON
+		res.JSON(&s)
+		return s
+	}
+	if s := read(); s.EnergyVatCodes == nil || s.EnergyVatCodes.Energy != vat25 || s.EnergyVatCodes.EnergyExempt != 10 {
+		t.Fatalf("energyVatCodes = %+v, want 1 and 10", s.EnergyVatCodes)
+	}
+
+	saved := saveSeller(t, h, completeSeller(1))
+	if saved.EnergyVatCodes == nil || saved.EnergyVatCodes.Energy != vat25 || saved.EnergyVatCodes.EnergyExempt != 10 {
+		t.Errorf("a replace without them answered %+v, want 1 and 10 kept", saved.EnergyVatCodes)
+	}
+	body := completeSeller(saved.Revision)
+	body["energyVatCodes"] = map[string]any{"energy": vat15, "energyExempt": vatZero}
+	saved = saveSeller(t, h, body)
+	if got := read().EnergyVatCodes; got == nil || got.Energy != vat15 || got.EnergyExempt != vatZero {
+		t.Errorf("energyVatCodes = %+v, want %d and %d", got, vat15, vatZero)
+	}
+
+	h.Exec(t, `UPDATE invoices.vat_codes SET active = false WHERE id IN ($1, $2)`, vatZero, vatExempt)
+	for _, c := range []struct {
+		codes map[string]any
+		field string
+	}{
+		{map[string]any{"energy": vatUnknownID, "energyExempt": vatZero}, "energyVatCodes.energy"},
+		{map[string]any{"energy": vat15, "energyExempt": vatExempt}, "energyVatCodes.energyExempt"},
+	} {
+		body := completeSeller(saved.Revision)
+		body["energyVatCodes"] = c.codes
+		res := manager.Do(http.MethodPut, settingsPath, body)
+		if res.Status != http.StatusBadRequest || len(problemOf(t, res).Errors[c.field]) == 0 {
+			t.Errorf("energyVatCodes %v = %d %s, want 400 on %s", c.codes, res.Status, res.Body, c.field)
+		}
+	}
+	// A code kept as stored passes, though it is no longer offered.
+	body = completeSeller(saved.Revision)
+	body["energyVatCodes"] = map[string]any{"energy": vat15, "energyExempt": vatZero}
+	saveSeller(t, h, body)
 }

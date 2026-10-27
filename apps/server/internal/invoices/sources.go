@@ -57,6 +57,7 @@ const (
 	msgSourcesOnCreate = "Work is added to a draft through the uninvoiced view"
 	msgSourcesOnCredit = "A credit note adds no work"
 	msgSourceKind      = "A source's kind is time.entry, expenses.entry, projects.milestone or energy.settlement, and its id is positive"
+	msgSpanSplit       = "A settlement's lines stay together, one after another"
 )
 
 // sourceRef is one piece of work by identity.
@@ -222,15 +223,22 @@ func withSourceError(errs map[string][]string, i int, msg string) map[string][]s
 // carrySources is D2's carry: the rows held must reappear under the lines
 // that now name them. When the draft holds work, every line names its
 // sources (absent is a 400, [] carries none); every identity named is one the
-// draft holds (a save never adds work) and is named once. rows are the held
-// snapshots under their new lines' positions; released is what the draft
-// held and no line names any more, by (kind, id).
+// draft holds (a save never adds work) and is named once per line. Work is
+// named on one line; an energy settlement on as many lines as bill it, one
+// after another (invoices from consumption plan reading 2), its row then
+// under the first of them with their number as its count — fewer lines keep
+// it with a smaller count, none releases it. rows are the held snapshots
+// under their new lines' positions; released is what the draft held and no
+// line names any more, by (kind, id).
 func carrySources(held []heldSource, lines []draftLine) (rows []heldSource, released []sourceRef, errs map[string][]string) {
 	byRef := make(map[sourceRef]heldSource, len(held))
 	for _, h := range held {
 		byRef[h.ref()] = h
 	}
-	named := map[sourceRef]bool{}
+	// at is each named source's row in rows, and last the position of the
+	// last line naming it.
+	at := map[sourceRef]int{}
+	last := map[sourceRef]int32{}
 	for i, l := range lines {
 		if !l.sourcesGiven {
 			if len(held) > 0 {
@@ -238,27 +246,50 @@ func carrySources(held []heldSource, lines []draftLine) (rows []heldSource, rele
 			}
 			continue
 		}
+		position := int32(i + 1)
 		for _, r := range l.sources {
 			h, ok := byRef[r]
+			k, named := at[r]
 			switch {
-			case named[r]:
-				errs = withSourceError(errs, i, msgSourceTwice)
 			case !ok:
 				errs = withSourceError(errs, i, msgSourceNotHeld)
+			case named && (last[r] == position || !h.isSettlement()):
+				errs = withSourceError(errs, i, msgSourceTwice)
+			case named && last[r] != position-1:
+				errs = withSourceError(errs, i, msgSpanSplit)
+			case named:
+				rows[k].lineCount++
+				last[r] = position
 			default:
-				named[r] = true
-				h.linePosition = int32(i + 1)
+				h.linePosition, h.lineCount = position, 1
+				at[r], last[r] = len(rows), position
 				rows = append(rows, h)
 			}
 		}
 	}
 	for _, h := range held {
-		if !named[h.ref()] {
+		if _, named := at[h.ref()]; !named {
 			released = append(released, h.ref())
 		}
 	}
 	slices.SortFunc(released, compareRefs)
 	return rows, released, errs
+}
+
+// markCorrections derives each line's correction flag from the sources it
+// names (energy consumption billing design D7, invoices from consumption plan
+// reading 7): a line naming a held correction settlement bills a correction,
+// and may be negative; every other line does not. Never taken from a request.
+func markCorrections(held []heldSource, lines []draftLine) {
+	corrections := map[sourceRef]bool{}
+	for _, h := range held {
+		if h.isCorrection() {
+			corrections[h.ref()] = true
+		}
+	}
+	for i := range lines {
+		lines[i].correction = slices.ContainsFunc(lines[i].sources, func(r sourceRef) bool { return corrections[r] })
+	}
 }
 
 // errSourceHeldElsewhere is an insert of line sources refused by
@@ -396,10 +427,25 @@ func lineDiffers(net *big.Rat, rows []heldSource) bool {
 	return net.Cmp(round2(sum)) != 0
 }
 
+// settlementDiffers is lineDiffers for an energy settlement (invoices from
+// consumption plan reading 2): the sum of the nets of the lines that bill it
+// against its amount, nets by position.
+func settlementDiffers(h heldSource, nets map[int32]*big.Rat) bool {
+	sum := new(big.Rat)
+	for p := h.linePosition; p < h.linePosition+h.lines(); p++ {
+		if net, ok := nets[p]; ok {
+			sum.Add(sum, net)
+		}
+	}
+	return sum.Cmp(round2(h.amount)) != 0
+}
+
 // withSources answers a document's sources on resp from its own rows (D2,
 // D17): each line's sources and, on a draft, its line_differs_from_sources;
-// the document's count by state. A document that bills no work is left as
-// it was — no block, no line field.
+// the document's count by state. A settlement is listed on every line that
+// bills it, and differs on each of them when their nets together are not its
+// amount (invoices from consumption plan reading 2). A document that bills
+// no work is left as it was — no block, no line field.
 func withSources(held []heldSource, draft bool, lines []store.InvoicesLine, resp *gen.InvoicesInvoiceResponse) error {
 	if len(held) == 0 {
 		return nil
@@ -407,7 +453,9 @@ func withSources(held []heldSource, draft bool, lines []store.InvoicesLine, resp
 	byLine := map[int32][]heldSource{}
 	block := gen.InvoicesSourcesBlock{Count: int32(len(held))}
 	for _, h := range held {
-		byLine[h.linePosition] = append(byLine[h.linePosition], h)
+		for p := h.linePosition; p < h.linePosition+h.lines(); p++ {
+			byLine[p] = append(byLine[p], h)
+		}
 		switch h.state {
 		case sourceHeld:
 			block.Held++
@@ -418,23 +466,38 @@ func withSources(held []heldSource, draft bool, lines []store.InvoicesLine, resp
 		}
 	}
 	resp.Sources = &block
-	differs := false
-	for i, l := range lines {
-		rows := byLine[l.Position]
-		sources := make([]gen.InvoicesLineSource, 0, len(rows))
-		for _, r := range rows {
-			sources = append(sources, lineSourceWire(r))
-		}
-		warnings := []string{}
-		if draft && len(rows) > 0 {
+	nets := make(map[int32]*big.Rat, len(lines))
+	if draft {
+		for _, l := range lines {
 			net, err := ratFromNumeric(l.LineNet)
 			if err != nil {
 				return err
 			}
-			if lineDiffers(net, rows) {
-				warnings = append(warnings, warningLineDiffersFromSources)
-				differs = true
+			nets[l.Position] = net
+		}
+	}
+	differs := false
+	for i, l := range lines {
+		rows := byLine[l.Position]
+		sources := make([]gen.InvoicesLineSource, 0, len(rows))
+		var work []heldSource
+		lineDiffersHere := false
+		for _, r := range rows {
+			sources = append(sources, lineSourceWire(r))
+			switch {
+			case !r.isSettlement():
+				work = append(work, r)
+			case draft && settlementDiffers(r, nets):
+				lineDiffersHere = true
 			}
+		}
+		if draft && len(work) > 0 && lineDiffers(nets[l.Position], work) {
+			lineDiffersHere = true
+		}
+		warnings := []string{}
+		if lineDiffersHere {
+			warnings = append(warnings, warningLineDiffersFromSources)
+			differs = true
 		}
 		resp.Lines[i].Sources, resp.Lines[i].Warnings = &sources, &warnings
 	}
@@ -532,8 +595,13 @@ func billableAmount(text string) (*big.Rat, error) {
 // kind whose module is off has no provider and is not judged (plan reading
 // 11) — and the hours as Time answered them, which a refresh writes the
 // timesheet from (D5). Each read names at most contracts.MaxBillableRows
-// ids, the bound a save's body keeps.
-func (s *server) billableNow(ctx context.Context, held []heldSource, loc *time.Location) (map[sourceRef]heldSource, map[contracts.WorkSourceKind]bool, []contracts.BillableHour, error) {
+// ids, the bound a save's body keeps. Energy's settlements are read through
+// Consumption (energy consumption billing design D7, invoices from
+// consumption plan reading 6): one is still billable while it is a draft
+// and not blocked, its snapshot keeping the held row's lines, and the
+// settlements it answered so are answered too, by id, for a refresh to
+// build their lines from.
+func (s *server) billableNow(ctx context.Context, held []heldSource, loc *time.Location) (map[sourceRef]heldSource, map[contracts.WorkSourceKind]bool, []contracts.BillableHour, map[int64]contracts.Settlement, error) {
 	ids := map[contracts.WorkSourceKind][]int64{}
 	for _, h := range held {
 		ids[h.kind] = append(ids[h.kind], h.id)
@@ -551,11 +619,11 @@ func (s *server) billableNow(ctx context.Context, held []heldSource, loc *time.L
 	if want := ids[contracts.WorkSourceMilestone]; len(want) > 0 && s.deps.BillableMilestones != nil {
 		page, err := s.billableMilestones(ctx, contracts.BillableRequest{IDs: want})
 		if err != nil {
-			return nil, nil, nil, fmt.Errorf("invoices: read the billable milestones: %w", err)
+			return nil, nil, nil, nil, fmt.Errorf("invoices: read the billable milestones: %w", err)
 		}
 		for _, m := range page.Milestones {
 			if err := add(milestoneSource(m, loc)); err != nil {
-				return nil, nil, nil, err
+				return nil, nil, nil, nil, err
 			}
 		}
 		read[contracts.WorkSourceMilestone] = true
@@ -563,11 +631,11 @@ func (s *server) billableNow(ctx context.Context, held []heldSource, loc *time.L
 	if want := ids[contracts.WorkSourceExpense]; len(want) > 0 && s.deps.BillableExpenses != nil {
 		page, err := s.billableExpenses(ctx, contracts.BillableRequest{IDs: want})
 		if err != nil {
-			return nil, nil, nil, fmt.Errorf("invoices: read the billable expenses: %w", err)
+			return nil, nil, nil, nil, fmt.Errorf("invoices: read the billable expenses: %w", err)
 		}
 		for _, e := range page.Expenses {
 			if err := add(expenseSource(e)); err != nil {
-				return nil, nil, nil, err
+				return nil, nil, nil, nil, err
 			}
 		}
 		read[contracts.WorkSourceExpense] = true
@@ -575,24 +643,53 @@ func (s *server) billableNow(ctx context.Context, held []heldSource, loc *time.L
 	if want := ids[contracts.WorkSourceHours]; len(want) > 0 && s.deps.BillableHours != nil {
 		page, err := s.billableHours(ctx, contracts.BillableRequest{IDs: want})
 		if err != nil {
-			return nil, nil, nil, fmt.Errorf("invoices: read the billable hours: %w", err)
+			return nil, nil, nil, nil, fmt.Errorf("invoices: read the billable hours: %w", err)
 		}
 		for _, h := range page.Hours {
 			if err := add(hourSource(h)); err != nil {
-				return nil, nil, nil, err
+				return nil, nil, nil, nil, err
 			}
 		}
 		read[contracts.WorkSourceHours] = true
 		hours = page.Hours
 	}
-	return now, read, hours, nil
+	var settlements map[int64]contracts.Settlement
+	if want := ids[contracts.WorkSourceSettlement]; len(want) > 0 && s.deps.Consumption != nil {
+		page, err := s.settlementsByID(ctx, want)
+		if err != nil {
+			return nil, nil, nil, nil, fmt.Errorf("invoices: read the held settlements: %w", err)
+		}
+		stored := map[int64]heldSource{}
+		for _, h := range held {
+			if h.isSettlement() {
+				stored[h.id] = h
+			}
+		}
+		settlements = map[int64]contracts.Settlement{}
+		for _, st := range page.Settlements {
+			h, ok := stored[st.ID]
+			if !ok || st.State != contracts.SettlementDraft || st.Blocked != "" {
+				continue
+			}
+			n, err := settlementSource(st, h.lines())
+			if err != nil {
+				return nil, nil, nil, nil, err
+			}
+			n.linePosition = h.linePosition
+			now[n.ref()], settlements[st.ID] = n, st
+		}
+		read[contracts.WorkSourceSettlement] = true
+	}
+	return now, read, hours, settlements, nil
 }
 
 // staleness judges one held source against what its module answers now, by
 // the holders' own facts (D1, D2): Time's and Projects' revision, project,
 // currency and amount; Expenses' bill amount, project, currency and kind —
 // never an expense's revision, which a reimbursement moves without touching
-// what is billed. Amounts by value. "" when it is fresh.
+// what is billed; Energy's revision, currency and amount, a settlement no
+// longer a draft or now blocked not being found (invoices from consumption
+// plan reading 6). Amounts by value. "" when it is fresh.
 func staleness(h heldSource, now heldSource, found bool) string {
 	switch {
 	case !found:
@@ -613,7 +710,7 @@ func staleness(h heldSource, now heldSource, found bool) string {
 // source_changed or source_not_invoiceable, nothing for a fresh source or one
 // whose kind's module is off.
 func (s *server) freshness(ctx context.Context, held []heldSource, loc *time.Location) (map[sourceRef]string, error) {
-	now, read, _, err := s.billableNow(ctx, held, loc)
+	now, read, _, _, err := s.billableNow(ctx, held, loc)
 	if err != nil {
 		return nil, err
 	}
@@ -630,8 +727,10 @@ func (s *server) freshness(ctx context.Context, held []heldSource, loc *time.Loc
 	return out, nil
 }
 
-// withFreshness adds freshness's verdicts to resp: each on the line that
-// bills the source, once per line, and each code once on the document.
+// withFreshness adds freshness's verdicts to resp: each on the lines that
+// bill the source — every line of a settlement's span (invoices from
+// consumption plan reading 2) — once per line, and each code once on the
+// document.
 func withFreshness(held []heldSource, verdicts map[sourceRef]string, resp *gen.InvoicesInvoiceResponse) {
 	byPosition := map[int32]int{}
 	for i, l := range resp.Lines {
@@ -642,8 +741,10 @@ func withFreshness(held []heldSource, verdicts map[sourceRef]string, resp *gen.I
 		if !ok {
 			continue
 		}
-		if i, ok := byPosition[h.linePosition]; ok && resp.Lines[i].Warnings != nil && !slices.Contains(*resp.Lines[i].Warnings, w) {
-			*resp.Lines[i].Warnings = append(*resp.Lines[i].Warnings, w)
+		for p := h.linePosition; p < h.linePosition+h.lines(); p++ {
+			if i, ok := byPosition[p]; ok && resp.Lines[i].Warnings != nil && !slices.Contains(*resp.Lines[i].Warnings, w) {
+				*resp.Lines[i].Warnings = append(*resp.Lines[i].Warnings, w)
+			}
 		}
 		if !slices.Contains(resp.Warnings, w) {
 			resp.Warnings = append(resp.Warnings, w)
@@ -657,6 +758,9 @@ type sourcesRefresh struct {
 	read []heldSource
 	now  map[sourceRef]heldSource
 	kind map[contracts.WorkSourceKind]bool
+	// settlements is the held settlements Energy answers still invoiceable,
+	// by id, whose lines the refresh built anew (refreshSettlementLines).
+	settlements map[int64]contracts.Settlement
 }
 
 // apply takes the current facts of each carried row whose module answered
@@ -665,7 +769,8 @@ type sourcesRefresh struct {
 // longer invoiceable) or answers in another currency: a source that moved
 // from the draft's currency would otherwise be taken as fresh and stamped
 // into a document in another currency without a word. A kind whose module is off is carried as
-// it stood; the issue fails closed on it.
+// it stood; the issue fails closed on it. A row keeps the lines the save
+// gives it: a settlement's, as the refresh built them.
 func (r *sourcesRefresh) apply(rows []heldSource) (kept []heldSource, dropped []sourceRef) {
 	for _, h := range rows {
 		if !r.kind[h.kind] {
@@ -677,10 +782,64 @@ func (r *sourcesRefresh) apply(rows []heldSource) (kept []heldSource, dropped []
 			dropped = append(dropped, h.ref())
 			continue
 		}
-		n.state, n.linePosition = h.state, h.linePosition
+		n.state, n.linePosition, n.lineCount = h.state, h.linePosition, h.lineCount
 		kept = append(kept, n)
 	}
 	return kept, dropped
+}
+
+// refreshSettlementLines is a refresh's rebuild of the held settlements'
+// lines (energy consumption billing design D7, invoices from consumption plan
+// reading 6): each held settlement Energy still answers invoiceable —
+// settlements, as billableNow read them — has the lines the request gave for
+// it replaced, at the first of them, by energyLines over its current lines in
+// language at codes, so their number may change; a line naming it with other
+// sources keeps those on the first line built. A settlement no longer
+// invoiceable keeps the request's lines, and the refresh drops its row as it
+// drops work (sourcesRefresh.apply).
+func refreshSettlementLines(lines []draftLine, held []heldSource, settlements map[int64]contracts.Settlement, language string,
+	codes energyVatCodes, invoiced map[int64]int64,
+) ([]draftLine, error) {
+	heldSettlement := map[sourceRef]bool{}
+	for _, h := range held {
+		if h.isSettlement() {
+			heldSettlement[h.ref()] = true
+		}
+	}
+	built := map[sourceRef]bool{}
+	out := make([]draftLine, 0, len(lines))
+	for _, l := range lines {
+		var rebuild *contracts.Settlement
+		var at sourceRef
+		var others []sourceRef
+		for _, r := range l.sources {
+			if st, ok := settlements[r.id]; ok && heldSettlement[r] && rebuild == nil {
+				rebuild, at = &st, r
+				continue
+			}
+			others = append(others, r)
+		}
+		switch {
+		case rebuild == nil:
+			out = append(out, l)
+		case built[at]:
+			if len(others) > 0 {
+				l.sources = others
+				out = append(out, l)
+			}
+		default:
+			made, _, err := energyLines(language, []contracts.Settlement{*rebuild}, codes, invoiced)
+			if err != nil {
+				return nil, err
+			}
+			if len(made) > 0 {
+				made[0].sources = append(made[0].sources, others...)
+			}
+			out = append(out, made...)
+			built[at] = true
+		}
+	}
+	return out, nil
 }
 
 // The document's project (invoices work design D9, plan reading 14): the one
@@ -704,18 +863,25 @@ func projectCodes(entries []contracts.ProjectEntry) map[int32]string {
 	return codes
 }
 
-// oneProject is the project every row belongs to, false when they span two
-// or there are none.
+// oneProject is the project every row of work belongs to, false when they
+// span two or there are none. An energy settlement carries no project and is
+// left out (invoices from consumption plan reading 5).
 func oneProject(rows []heldSource) (int32, bool) {
-	if len(rows) == 0 {
+	var work []heldSource
+	for _, r := range rows {
+		if !r.isSettlement() {
+			work = append(work, r)
+		}
+	}
+	if len(work) == 0 {
 		return 0, false
 	}
-	for _, r := range rows[1:] {
-		if r.projectID != rows[0].projectID {
+	for _, r := range work[1:] {
+		if r.projectID != work[0].projectID {
 			return 0, false
 		}
 	}
-	return rows[0].projectID, true
+	return work[0].projectID, true
 }
 
 // setDocumentProject derives D9's project from rows — every line source the

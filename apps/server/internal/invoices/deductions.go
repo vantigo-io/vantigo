@@ -199,6 +199,14 @@ func checkDeductions(lines []draftLine, left []deductible) []capBreach {
 	return breaches
 }
 
+// lowersTotal reports whether a line of lines that deducts nothing is
+// negative: an energy correction's.
+func lowersTotal(lines []draftLine) bool {
+	return slices.ContainsFunc(lines, func(l draftLine) bool {
+		return l.deductsInvoiceID == nil && l.amounts.net != nil && l.amounts.net.Sign() < 0
+	})
+}
+
 // isSettlement reports whether lines deduct anything.
 func isSettlement(lines []draftLine) bool {
 	return slices.ContainsFunc(lines, func(l draftLine) bool { return l.deductsInvoiceID != nil })
@@ -254,8 +262,13 @@ func deductibleDocument(d store.DeductedDocumentsRow, customerID int32, currency
 	return true, ""
 }
 
+// msgQuantityPositive is the 400 on a negative quantity of a line that may
+// not carry one.
+const msgQuantityPositive = "A quantity is greater than 0; only a deduction line (deductsInvoiceId) or a line billing an energy correction is negative"
+
 // deductionRules are the save's rules for an invoice draft's lines (D7),
-// added to errs: a negative quantity only on a deduction line; a deduction's
+// added to errs: a negative quantity only on a deduction line or a line
+// billing an energy correction, which carries no discount; a deduction's
 // quantity exactly -1, its price above 0, no discount and no sources; the
 // invoice it deducts an issued invoice of customerID in currency; its VAT code
 // one that invoice has a line at and deducts nothing at itself, whose snapshot
@@ -268,8 +281,15 @@ func deductionRules(ctx context.Context, q *store.Queries, customerID int32, cur
 	for i, l := range lines {
 		field := func(name string) string { return fmt.Sprintf("lines[%d].%s", i, name) }
 		if l.deductsInvoiceID == nil {
-			if l.quantity != nil && l.quantity.Sign() < 0 {
-				errs = withFieldError(errs, field("quantity"), "A quantity is greater than 0; only a deduction line (deductsInvoiceId) is negative")
+			// A line billing an energy correction may be negative as a
+			// deduction line may, and carries no discount either (energy
+			// consumption billing design D7, invoices from consumption plan
+			// reading 7); its flag is the work it names (markCorrections).
+			if l.quantity != nil && l.quantity.Sign() < 0 && !l.correction {
+				errs = withFieldError(errs, field("quantity"), msgQuantityPositive)
+			}
+			if l.correction && l.discount != nil && l.discount.Sign() != 0 {
+				errs = withFieldError(errs, field("discountPercent"), "A line billing an energy correction carries no discount")
 			}
 			continue
 		}
@@ -352,8 +372,16 @@ func deductionRules(ctx context.Context, q *store.Queries, customerID int32, cur
 // settlementWarnings are an invoice draft's settlement warnings (D7): a
 // deduction past its cap, and a gross that is not positive — both refused at
 // the issue. None for a draft that deducts nothing.
+//
+// A draft whose energy correction lines lower its total (energy consumption
+// billing design D7, invoices from consumption plan reading 7) — the only
+// lines but a deduction's that are negative — warns of a gross that is not
+// positive too.
 func settlementWarnings(ctx context.Context, q *store.Queries, inv store.InvoicesInvoice, lines []draftLine, gross *big.Rat) ([]string, error) {
 	if !isSettlement(lines) {
+		if lowersTotal(lines) && gross.Sign() <= 0 {
+			return []string{codeInvoiceTotalNotPositive}, nil
+		}
 		return nil, nil
 	}
 	var out []string
