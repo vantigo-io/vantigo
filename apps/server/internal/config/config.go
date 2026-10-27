@@ -427,6 +427,20 @@ type Config struct {
 	// minutes — a constant — so a shorter poll would promise what it cannot
 	// keep, and five minutes is the floor.
 	CalendarSubscriptionsPoll time.Duration
+	// CalendarMailboxSyncEnabled is the on/off switch for the calendar
+	// module's Outlook sync worker, calendar-mailbox-sync
+	// (CALENDAR_MAILBOX_SYNC_ENABLED, calendar Outlook sync design O7).
+	// Default ON: a person who turned the sync on expects their copies kept,
+	// and an installation that says nothing must still keep them. A 0 means
+	// the worker is never handed to the runner: nothing is written to or
+	// removed from anyone's mailbox until it is on again.
+	CalendarMailboxSyncEnabled bool
+	// CalendarMailboxSyncPoll is how often each person's copies are synced
+	// when nothing nudged them (CALENDAR_MAILBOX_SYNC_POLL, default 15
+	// minutes, never under one): an appointment write makes its people due at
+	// once, so the poll is what catches the providers' items and a change of
+	// rights. The worker wakes every minute — a constant — which is the floor.
+	CalendarMailboxSyncPoll time.Duration
 
 	// StorageProvider selects the internal/storage backend: "" (unset,
 	// STORAGE_PROVIDER) or "fs". When unset, internal/storage.New still
@@ -1006,12 +1020,18 @@ const calendarWorkersMinPoll = time.Minute
 // kept.
 const calendarSubscriptionsMinPoll = 5 * time.Minute
 
+// calendarMailboxSyncMinPoll is the shortest CALENDAR_MAILBOX_SYNC_POLL
+// accepted: the mailbox sync worker's own tick.
+const calendarMailboxSyncMinPoll = time.Minute
+
 // calendarWorkers loads the calendar workers' settings (calendar invitations
 // design D6, calendar feed design D7): the cancellations worker's switch, on
 // by default, and the poll, an hour by default and at least a minute; the
 // subscriptions worker's switch, on by default, and how often each
-// subscription is fetched, half an hour by default and at least five minutes.
-// The batches — at most two hundred appointments, and two hundred
+// subscription is fetched, half an hour by default and at least five minutes;
+// the mailbox sync worker's switch, on by default, and how often each
+// person's copies are synced, a quarter of an hour by default and at least a
+// minute (calendar Outlook sync design O7). The batches — at most two hundred appointments, and two hundred
 // subscriptions, a cycle — are constants in the workers, not knobs. Each poll
 // is read on its own, so one refused leaves the other read and both are
 // reported.
@@ -1034,6 +1054,16 @@ func calendarWorkers(p *problems, env map[string]string, c *Config) {
 			p.add("CALENDAR_SUBSCRIPTIONS_POLL", "must be a duration of at least 5m, such as 30m")
 		} else {
 			c.CalendarSubscriptionsPoll = d
+		}
+	}
+	c.CalendarMailboxSyncEnabled = boolean(p, env, "CALENDAR_MAILBOX_SYNC_ENABLED", true)
+	c.CalendarMailboxSyncPoll = 15 * time.Minute
+	if v := env["CALENDAR_MAILBOX_SYNC_POLL"]; v != "" {
+		d, err := time.ParseDuration(v)
+		if err != nil || d < calendarMailboxSyncMinPoll {
+			p.add("CALENDAR_MAILBOX_SYNC_POLL", "must be a duration of at least 1m, such as 15m")
+		} else {
+			c.CalendarMailboxSyncPoll = d
 		}
 	}
 }

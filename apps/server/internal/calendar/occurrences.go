@@ -68,8 +68,10 @@ func (s *server) PutCalendarAppointmentsByIdOccurrencesByDate(ctx context.Contex
 		if exc, err = txq.UpsertException(ctx, params); err != nil {
 			return fmt.Errorf("calendar: write appointment %d's exception on %s: %w", cur.ID, date.Format(time.DateOnly), err)
 		}
-		changed, err = touch(ctx, txq, cur.ID, s.deps.Clock())
-		return err
+		if changed, err = touch(ctx, txq, cur.ID, s.deps.Clock()); err != nil {
+			return err
+		}
+		return s.nudgeMailboxes(ctx, txq, cur.OwnerUserID, changed.atts)
 	})
 	if r, ok := asRefusal(err); ok {
 		switch r.status {
@@ -132,8 +134,10 @@ func (s *server) DeleteCalendarAppointmentsByIdOccurrencesByDate(ctx context.Con
 		if n == 0 {
 			return nil
 		}
-		changed, err = touch(ctx, txq, cur.ID, s.deps.Clock())
-		return err
+		if changed, err = touch(ctx, txq, cur.ID, s.deps.Clock()); err != nil {
+			return err
+		}
+		return s.nudgeMailboxes(ctx, txq, cur.OwnerUserID, changed.atts)
 	})
 	if r, ok := asRefusal(err); ok {
 		if r.status == http.StatusConflict {

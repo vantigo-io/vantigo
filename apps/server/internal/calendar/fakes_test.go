@@ -219,3 +219,44 @@ func (p fakeProjects) Project(_ context.Context, id int32) (*contracts.ProjectEn
 	}
 	return &contracts.ProjectEntry{ID: id, Code: v[0], Name: v[1]}, nil
 }
+
+// fakeWorkforce is the workforce register as Staff would answer the one
+// method the calendar calls, DirectoryAccount (calendar Outlook sync design
+// O3): the account set for the principal in ctx — a request's caller or the
+// person contracts.AsUser names — and nil for anyone else, under a lock
+// because the worker reads it from its own goroutine. Every other method is
+// the embedded nil interface and panics if called, which no test expects.
+type fakeWorkforce struct {
+	contracts.Workforce
+	mu       sync.Mutex
+	accounts map[uuid.UUID]contracts.DirectoryAccount
+}
+
+func newFakeWorkforce() *fakeWorkforce {
+	return &fakeWorkforce{accounts: map[uuid.UUID]contracts.DirectoryAccount{}}
+}
+
+func (f *fakeWorkforce) DirectoryAccount(ctx context.Context) (*contracts.DirectoryAccount, error) {
+	p, ok := contracts.PrincipalFrom(ctx)
+	if !ok {
+		return nil, nil
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	a, ok := f.accounts[p.UserID]
+	if !ok {
+		return nil, nil
+	}
+	return &a, nil
+}
+
+// set gives userID the account, or (a nil) takes it away.
+func (f *fakeWorkforce) set(userID uuid.UUID, a *contracts.DirectoryAccount) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if a == nil {
+		delete(f.accounts, userID)
+		return
+	}
+	f.accounts[userID] = *a
+}

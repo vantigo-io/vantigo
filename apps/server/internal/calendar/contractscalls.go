@@ -16,8 +16,10 @@ import (
 // calendar sources (deps.CalendarSources, calendar design D1), the business
 // calendar (deps.Calendar), the user directory (deps.Users), identity's
 // UserHolds for a read with no request behind it (deps.Access) and, when wired,
-// the customer directory (deps.Directory) and the project directory
-// (deps.Projects). Every call is made through one of the thin accessors below
+// the customer directory (deps.Directory), the project directory
+// (deps.Projects), the workforce register's DirectoryAccount (deps.Workforce)
+// and the mailbox provider (deps.MailboxCalendar, calendar Outlook sync design
+// O4). Every call is made through one of the thin accessors below
 // and through nowhere else, so "what does Calendar ask of another module, and
 // when" has one place to read the answer and one place to check it from.
 //
@@ -30,6 +32,11 @@ import (
 // call made inside one with errCallInsideTransaction — Staff's rule: the
 // mistake is a programming error, and failing the request loudly is better
 // than holding a lock across a directory read.
+//
+// The mailbox provider is the sixth sanctioned cross-module write and the
+// one that reaches the network (rule 13's discipline): its accessors are the
+// same guard, and the Outlook sync's worker calls them only between its short
+// transactions, never holding one open across a call.
 
 // errCallInsideTransaction is every accessor's answer to a call made inside
 // one of this module's transactions. Nothing answers it to a client except as
@@ -241,4 +248,82 @@ func (s *server) projectsProject(ctx context.Context, id int32) (*contracts.Proj
 		return nil, nil
 	}
 	return s.deps.Projects.Project(ctx, id)
+}
+
+// mailboxCalendar is the mailbox provider, nil when no enabled module fills
+// the slot (Entra off): the Outlook sync is then no_provider. Reading the
+// slot calls nobody, so it is not a reported call.
+func (s *server) mailboxCalendar() contracts.MailboxCalendar { return s.deps.MailboxCalendar }
+
+// mailboxStatus is whether the provider may write now (design O4); no
+// network. Without a provider it is unavailable.
+func (s *server) mailboxStatus(ctx context.Context) (contracts.MailboxStatus, error) {
+	if err := noteContractCall(ctx, "MailboxCalendar.Status"); err != nil {
+		return contracts.MailboxStatus{}, err
+	}
+	if s.deps.MailboxCalendar == nil {
+		return contracts.MailboxStatus{State: contracts.MailboxUnavailable}, nil
+	}
+	return s.deps.MailboxCalendar.Status(ctx)
+}
+
+// mailboxEnsure is the id of the calendar named name the provider made in
+// mailbox: known when it still exists, else a new one.
+func (s *server) mailboxEnsure(ctx context.Context, mailbox, known, name string) (string, error) {
+	if err := noteContractCall(ctx, "MailboxCalendar.EnsureCalendar"); err != nil {
+		return "", err
+	}
+	if s.deps.MailboxCalendar == nil {
+		return "", contracts.ErrMailboxUnavailable
+	}
+	return s.deps.MailboxCalendar.EnsureCalendar(ctx, mailbox, known, name)
+}
+
+// mailboxDeleteCalendar deletes the provider's calendar and every event in
+// it; one already gone is done.
+func (s *server) mailboxDeleteCalendar(ctx context.Context, mailbox, calendarID string) error {
+	if err := noteContractCall(ctx, "MailboxCalendar.DeleteCalendar"); err != nil {
+		return err
+	}
+	if s.deps.MailboxCalendar == nil {
+		return contracts.ErrMailboxUnavailable
+	}
+	return s.deps.MailboxCalendar.DeleteCalendar(ctx, mailbox, calendarID)
+}
+
+// mailboxApply runs ops against the mailbox's calendar ("" the default one)
+// and answers one result per op, in order.
+func (s *server) mailboxApply(ctx context.Context, mailbox, calendarID string, ops []contracts.MailboxOp) ([]contracts.MailboxResult, error) {
+	if err := noteContractCall(ctx, "MailboxCalendar.Apply"); err != nil {
+		return nil, err
+	}
+	if s.deps.MailboxCalendar == nil {
+		return nil, contracts.ErrMailboxUnavailable
+	}
+	return s.deps.MailboxCalendar.Apply(ctx, mailbox, calendarID, ops)
+}
+
+// mailboxFind is the events carrying a key in the mailbox's calendar — in a
+// secondary one, every event in it.
+func (s *server) mailboxFind(ctx context.Context, mailbox, calendarID string) ([]contracts.MailboxEventRef, error) {
+	if err := noteContractCall(ctx, "MailboxCalendar.Find"); err != nil {
+		return nil, err
+	}
+	if s.deps.MailboxCalendar == nil {
+		return nil, contracts.ErrMailboxUnavailable
+	}
+	return s.deps.MailboxCalendar.Find(ctx, mailbox, calendarID)
+}
+
+// workforceDirectoryAccount is the principal's own account in an external
+// directory (design O3) — the request's caller, or the person contracts.AsUser
+// names for the worker — nil when Staff is off or links them to none.
+func (s *server) workforceDirectoryAccount(ctx context.Context) (*contracts.DirectoryAccount, error) {
+	if err := noteContractCall(ctx, "Workforce.DirectoryAccount"); err != nil {
+		return nil, err
+	}
+	if s.deps.Workforce == nil {
+		return nil, nil
+	}
+	return s.deps.Workforce.DirectoryAccount(ctx)
 }

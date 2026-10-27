@@ -8,8 +8,9 @@ import (
 )
 
 // This file is what the module writes to people in their language (calendar
-// invitations design D3, D4): the invitation mail in the organiser's, and the
-// colleague notices in both — identity picks the reader's. English and
+// invitations design D3, D4): the invitation mail in the organiser's, the
+// colleague notices in both — identity picks the reader's — and the Outlook
+// sync's copies in the person's own (calendar Outlook sync design O6). English and
 // Norwegian bokmål, as the app.
 
 // The two languages.
@@ -51,6 +52,11 @@ type words struct {
 	// untitled is a subscribed event's title when it has no SUMMARY
 	// (calendar feed design D8).
 	untitled string
+
+	// The Outlook sync's copies (calendar Outlook sync design O6): the line
+	// before the link in an event's body, and the title of a copy that shows
+	// busy alone.
+	mailboxKept, mailboxBusy string
 }
 
 var english = words{
@@ -81,6 +87,9 @@ var english = words{
 	openInVantigo:   "Open it in Vantigo:",
 
 	untitled: "(untitled)",
+
+	mailboxKept: "Kept by Vantigo — change it there:",
+	mailboxBusy: "Busy",
 }
 
 var norwegian = words{
@@ -111,6 +120,9 @@ var norwegian = words{
 	openInVantigo:   "Åpne den i Vantigo:",
 
 	untitled: "(uten tittel)",
+
+	mailboxKept: "Holdes av Vantigo — endre det der:",
+	mailboxBusy: "Opptatt",
 }
 
 // wordsFor is lang's sentences, English for anything but nb.

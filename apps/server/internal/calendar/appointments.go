@@ -445,7 +445,7 @@ func (s *server) PostCalendarAppointments(ctx context.Context, req gen.PostCalen
 		if err != nil {
 			return fmt.Errorf("calendar: read appointment %d's attendees: %w", row.ID, err)
 		}
-		return nil
+		return s.nudgeMailboxes(ctx, txq, row.OwnerUserID, atts)
 	})
 	if err != nil {
 		return nil, err
@@ -610,6 +610,9 @@ func (s *server) PutCalendarAppointmentsById(ctx context.Context, req gen.PutCal
 		atts, err = txq.ListAttendees(ctx, cur.ID)
 		if err != nil {
 			return fmt.Errorf("calendar: read appointment %d's attendees: %w", cur.ID, err)
+		}
+		if err := s.nudgeMailboxes(ctx, txq, cur.OwnerUserID, atts, dropped); err != nil {
+			return err
 		}
 		excs, err = exceptionsOf(ctx, txq, row)
 		return err

@@ -19,11 +19,13 @@ SELECT * FROM calendar.mailbox_sync WHERE user_id = @user_id FOR UPDATE;
 -- name: UpsertMailboxSync :one
 -- UpsertMailboxSync is the PUT's write: the person's toggle, target, detail
 -- and kinds, the state the handler decided (pending when turned on, stopping
--- when a clean-up is owed), due at once. The first write makes the row at
--- revision 1; every later one moves revision on. The worker's record — the
--- mailbox, the calendar, the error, the last sync — is left as it was.
-INSERT INTO calendar.mailbox_sync (user_id, enabled, target, detail, kinds, state, next_sync_at, created_at, updated_at)
-VALUES (@user_id, @enabled, @target, @detail, @kinds::text[], @state, @now::timestamptz, @now::timestamptz, @now::timestamptz)
+-- when a clean-up is owed), due at once, and whether the next sync reads the
+-- mailbox's own list first (set when it is turned on or a clean-up is owed).
+-- The first write makes the row at revision 1; every later one moves
+-- revision on. The worker's record — the mailbox, the calendar, the error,
+-- the last sync — is left as it was.
+INSERT INTO calendar.mailbox_sync (user_id, enabled, target, detail, kinds, state, next_sync_at, reconcile, created_at, updated_at)
+VALUES (@user_id, @enabled, @target, @detail, @kinds::text[], @state, @now::timestamptz, @reconcile::boolean, @now::timestamptz, @now::timestamptz)
 ON CONFLICT (user_id) DO UPDATE SET
     enabled = EXCLUDED.enabled,
     target = EXCLUDED.target,
@@ -31,6 +33,7 @@ ON CONFLICT (user_id) DO UPDATE SET
     kinds = EXCLUDED.kinds,
     state = EXCLUDED.state,
     next_sync_at = EXCLUDED.next_sync_at,
+    reconcile = EXCLUDED.reconcile,
     revision = calendar.mailbox_sync.revision + 1,
     updated_at = EXCLUDED.updated_at
 RETURNING *;
