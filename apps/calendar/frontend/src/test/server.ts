@@ -2,10 +2,11 @@ import type { Appointment } from "../api/appointments";
 import type { CalendarContact } from "../api/contacts";
 import type { FeedAddress, FeedAddresses, FeedVariant } from "../api/feed";
 import type { CalendarItem, CalendarItems } from "../api/items";
+import type { MailboxSync, MailboxSyncWrite } from "../api/mailbox-sync";
 import type { CalendarMeta } from "../api/meta";
 import type { CalendarSubscription } from "../api/subscriptions";
 import type { CalendarUser } from "../api/users";
-import { jsonResponse } from "./api";
+import { jsonResponse, problemResponse } from "./api";
 import { type StubbedFetch, stubFetch } from "./fetch";
 
 export const ME = "11111111-1111-4111-8111-111111111111";
@@ -68,6 +69,23 @@ export const subscriptionFixture = (overrides: Partial<CalendarSubscription> = {
   ...overrides,
 });
 
+/** The Outlook sync as a caller who never turned it on is answered it: the defaults at revision 0. */
+export const mailboxSyncFixture = (overrides: Partial<MailboxSync> = {}): MailboxSync => ({
+  availability: "available",
+  availableKinds: [
+    { key: "calendar.appointment", module: "calendar" },
+    { key: "staff.absence", module: "staff" },
+    { key: "projects.task", module: "projects" },
+  ],
+  enabled: false,
+  target: "default",
+  detail: "full",
+  kinds: ["calendar.appointment", "staff.absence"],
+  state: "off",
+  revision: 0,
+  ...overrides,
+});
+
 export interface CalendarServer {
   meta?: CalendarMeta;
   /** What `/items` answers, whatever the window; the window asked for is echoed back. */
@@ -88,6 +106,10 @@ export interface CalendarServer {
   refreshed?: Partial<CalendarSubscription>;
   /** A response to a write, by method, instead of the default success. */
   refuse?: Partial<Record<"POST" | "PUT" | "DELETE", Response>>;
+  /** What `/mailbox-sync` answers at first; a PUT replaces it under If-Match, as the server would. */
+  mailboxSync?: MailboxSync;
+  /** A response to `PUT /mailbox-sync` instead of the fake's own. */
+  mailboxSyncRefusal?: Response;
 }
 
 /**
@@ -99,6 +121,7 @@ export const stubCalendarServer = (server: CalendarServer = {}): StubbedFetch =>
   let feed: FeedAddresses = server.feed ?? { public: true, addresses: [] };
   let subscriptions = [...(server.subscriptions ?? [])];
   let resets = 0;
+  let mailboxSync = server.mailboxSync ?? mailboxSyncFixture();
   return stubFetch(
     (input: RequestInfo | URL, init?: RequestInit) => {
       const url = new URL(String(input), "http://localhost");
@@ -151,6 +174,28 @@ export const stubCalendarServer = (server: CalendarServer = {}): StubbedFetch =>
         : undefined;
       if (method === "GET" && appointmentMatch)
         return Promise.resolve(appointment ? jsonResponse(200, appointment) : new Response(null, { status: 404 }));
+      if (path === "/mailbox-sync" && method === "GET") return Promise.resolve(jsonResponse(200, mailboxSync));
+      if (path === "/mailbox-sync" && method === "PUT") {
+        if (server.mailboxSyncRefusal) return Promise.resolve(server.mailboxSyncRefusal);
+        const ifMatch = Number(new Headers(init?.headers).get("If-Match")?.replaceAll('"', ""));
+        if (ifMatch !== mailboxSync.revision)
+          return Promise.resolve(problemResponse(409, "Conflict", { code: "revision_mismatch" }));
+        const write = JSON.parse(String(init?.body)) as MailboxSyncWrite;
+        if (write.enabled && mailboxSync.availability !== "available")
+          return Promise.resolve(
+            problemResponse(409, "Conflict", { code: "mailbox_sync_unavailable", detail: mailboxSync.availability }),
+          );
+        const state = write.enabled ? (mailboxSync.enabled ? mailboxSync.state : "pending") : "stopping";
+        mailboxSync = { ...mailboxSync, ...write, state, revision: mailboxSync.revision + 1 };
+        return Promise.resolve(jsonResponse(200, mailboxSync));
+      }
+      if (path === "/mailbox-sync/run" && method === "POST") {
+        if (!mailboxSync.enabled || mailboxSync.availability !== "available")
+          return Promise.resolve(
+            problemResponse(409, "Conflict", { code: "mailbox_sync_unavailable", detail: mailboxSync.availability }),
+          );
+        return Promise.resolve(jsonResponse(200, mailboxSync));
+      }
       const refusal = server.refuse?.[method as "POST" | "PUT" | "DELETE"];
       if (refusal) return Promise.resolve(refusal);
       const body = init?.body ? JSON.parse(String(init.body)) : undefined;

@@ -148,6 +148,9 @@ export const entraCatalog = {
     step3Path:
       "App registrations › the application › API permissions › Add a permission › Microsoft Graph › Application permissions",
     step3Body: "Add these eight application permissions, one by one.",
+    step3BodyWithCalendar:
+      "Add these nine application permissions, one by one. The last, Calendars.ReadWrite, is for calendar sync: the rest of the module works without it.",
+    permissionForCalendarSync: "(for calendar sync)",
     permissionsToAdd: "The permissions to add",
     permissionGranted: "granted",
     permissionMissing: "missing",
@@ -211,6 +214,14 @@ export const entraCatalog = {
     tapPolicy:
       "A Temporary Access Pass works only for users the tenant's authentication methods policy enables it for: turn it on for all users, or for a group every new account is in.",
     tapPolicyPath: "Protection › Authentication methods › Policies › Temporary Access Pass",
+    calendarSync: "Calendar sync",
+    calendarSyncSwitch: "Let people sync their Vantigo calendar to Outlook",
+    calendarSyncDescription:
+      "Needs the Calendars.ReadWrite application permission. You can limit it to some mailboxes with Exchange RBAC for Applications.",
+    calendarSyncStatus_ready: "Ready",
+    calendarSyncStatus_permission_missing:
+      "Add Calendars.ReadWrite, grant admin consent and test the connection again.",
+    calendarSyncStatus_unavailable: "Waiting for the connection",
     saveSettings: "Save the account rules",
     settingsSaved: "Account rules saved",
     couldNotSaveSettings: "The account rules could not be saved",
@@ -504,6 +515,9 @@ export const entraCatalog = {
     step3Path:
       "App registrations › applikasjonen › API permissions › Add a permission › Microsoft Graph › Application permissions",
     step3Body: "Legg til disse åtte applikasjonstillatelsene, én etter én.",
+    step3BodyWithCalendar:
+      "Legg til disse ni applikasjonstillatelsene, én etter én. Den siste, Calendars.ReadWrite, er for kalendersynkronisering: resten av modulen virker uten den.",
+    permissionForCalendarSync: "(for kalendersynkronisering)",
     permissionsToAdd: "Tillatelsene som skal legges til",
     permissionGranted: "gitt",
     permissionMissing: "mangler",
@@ -567,6 +581,14 @@ export const entraCatalog = {
     tapPolicy:
       "Et midlertidig tilgangspass virker bare for brukere leietakerens policy for autentiseringsmetoder slår det på for: slå det på for alle brukere, eller for en gruppe hver nye konto er med i.",
     tapPolicyPath: "Protection › Authentication methods › Policies › Temporary Access Pass",
+    calendarSync: "Kalendersynkronisering",
+    calendarSyncSwitch: "La folk synkronisere Vantigo-kalenderen sin til Outlook",
+    calendarSyncDescription:
+      "Krever applikasjonstillatelsen Calendars.ReadWrite. Du kan begrense den til enkelte postbokser med Exchange RBAC for Applications.",
+    calendarSyncStatus_ready: "Klar",
+    calendarSyncStatus_permission_missing:
+      "Legg til Calendars.ReadWrite, gi administratorsamtykke og test tilkoblingen på nytt.",
+    calendarSyncStatus_unavailable: "Venter på tilkoblingen",
     saveSettings: "Lagre kontoreglene",
     settingsSaved: "Kontoreglene er lagret",
     couldNotSaveSettings: "Kontoreglene kunne ikke lagres",

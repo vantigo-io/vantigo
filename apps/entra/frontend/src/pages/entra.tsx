@@ -10,7 +10,7 @@ import {
   connectionQueryOptions,
   type EntraConnection,
   type EntraConnectionTest,
-  requiredPermissions,
+  permissionsToAdd,
   testConnection,
   updateConnection,
 } from "../api/connection";
@@ -20,7 +20,7 @@ import { AddSecretForm, CredentialList } from "../components/credentials";
 import { GroupsCard } from "../components/groups-card";
 import { SettingsForm } from "../components/settings-form";
 import { StatusCard } from "../components/status-card";
-import { CopyValue, OwnerOnly, PortalPath, StepCard } from "../components/step-card";
+import { CopyValue, MissingPermission, OwnerOnly, PortalPath, StepCard } from "../components/step-card";
 import "../i18n";
 import { entraAuthority, stepsDone } from "../lib/steps";
 import { codeOf, fieldRefusals, isStale, reasonText, type Translate } from "../lib/words";
@@ -257,12 +257,13 @@ const RegisterRead = ({ connection }: { connection: EntraConnection }) => {
   );
 };
 
-/** Step 3: the eight permissions to copy, the User Administrator role, and the Owner's *Test connection*. */
+/** Step 3: the eight permissions to copy (nine while calendar sync is on), the User Administrator role, and the Owner's *Test connection*. */
 const PermissionsStep = ({ connection, owner }: { connection: EntraConnection; owner: boolean }) => {
   const { t } = useI18n("entra");
   const queryClient = useQueryClient();
   const [result, setResult] = useState<EntraConnectionTest>();
   const present = new Set(connection.lastCheckedAt ? connection.permissionsPresent : []);
+  const permissions = permissionsToAdd(connection);
 
   const test = useMutation({
     mutationFn: testConnection,
@@ -276,15 +277,15 @@ const PermissionsStep = ({ connection, owner }: { connection: EntraConnection; o
 
   return (
     <>
-      <Text size="sm">{t("step3Body")}</Text>
+      <Text size="sm">{t(connection.calendarSync.enabled ? "step3BodyWithCalendar" : "step3Body")}</Text>
       <Group gap="xs">
         <Text size="sm" fw={500}>
           {t("permissionsToAdd")}
         </Text>
-        <CopyValue value={requiredPermissions.join("\n")} />
+        <CopyValue value={permissions.join("\n")} />
       </Group>
       <List size="sm" spacing={2} aria-label={t("permissionsToAdd")}>
-        {requiredPermissions.map((name) => (
+        {permissions.map((name) => (
           <List.Item key={name}>
             <Group gap={4} wrap="nowrap">
               <Text size="sm" ff="monospace">
@@ -364,7 +365,9 @@ const TestResult = ({ result }: { result: EntraConnectionTest }) => {
             <Text size="sm">{t("permissionsMissingList", { count: result.permissionsMissing.length })}</Text>
             <List size="sm" aria-label={t("permissionsMissing")}>
               {result.permissionsMissing.map((name) => (
-                <List.Item key={name}>{name}</List.Item>
+                <List.Item key={name}>
+                  <MissingPermission name={name} />
+                </List.Item>
               ))}
             </List>
           </>

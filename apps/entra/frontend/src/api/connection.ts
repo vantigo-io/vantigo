@@ -17,6 +17,7 @@ export type EntraEvent = Schemas["EntraEvent"];
 export type EntraAccount = Schemas["EntraAccount"];
 export type EntraProblem = Schemas["EntraProblem"];
 export type EntraGroup = Schemas["EntraGroup"];
+export type EntraCalendarSync = Schemas["EntraCalendarSync"];
 
 /**
  * The eight application permissions the module needs (research §3.6), in the
@@ -33,6 +34,16 @@ export const requiredPermissions = [
   "Domain.Read.All",
   "Organization.Read.All",
 ] as const;
+
+/**
+ * The permission calendar sync adds (calendar Outlook sync design O2): asked
+ * for only while the switch is on, and never one the connection needs.
+ */
+export const CALENDAR_PERMISSION = "Calendars.ReadWrite";
+
+/** The permissions the wizard lists for the Owner to add: the eight, and the calendar's while calendar sync is on. */
+export const permissionsToAdd = (connection: EntraConnection): readonly string[] =>
+  connection.calendarSync.enabled ? [...requiredPermissions, CALENDAR_PERMISSION] : requiredPermissions;
 
 const base = "/api/v1/entra";
 const ifMatch = (version: number) => ({ "If-Match": String(version) });

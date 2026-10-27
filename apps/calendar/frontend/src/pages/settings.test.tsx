@@ -1,10 +1,11 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { setLanguagePreference } from "@vantigo/frontend-shell";
+import { afterEach, describe, expect, it } from "vitest";
 import "../i18n";
 import { problemResponse, sent, sentAll } from "../test/api";
 import { renderWithProviders } from "../test/render";
-import { feedAddressFixture, stubCalendarServer, subscriptionFixture } from "../test/server";
+import { feedAddressFixture, mailboxSyncFixture, stubCalendarServer, subscriptionFixture } from "../test/server";
 import { SettingsPage } from "./settings";
 
 const card = (name: string) => screen.findByRole("region", { name });
@@ -253,5 +254,163 @@ describe("SettingsPage: calendars from elsewhere", () => {
     await user.click(within(confirm).getByRole("button", { name: "Remove" }));
     await waitFor(() => expect(sent(fetchMock, "DELETE").url).toBe("/api/v1/calendar/subscriptions/1001"));
     expect(await screen.findByText("No calendars from elsewhere")).toBeInTheDocument();
+  });
+});
+
+describe("SettingsPage: Outlook", () => {
+  afterEach(() => setLanguagePreference("auto"));
+
+  const outlook = () => card("Outlook");
+  const toggle = async () => within(await outlook()).findByRole("switch", { name: "Sync to my Outlook calendar" });
+
+  it.each([
+    ["switch_off", "Your administrator has not turned on calendar sync."],
+    ["no_provider", "Calendar sync needs the Microsoft Entra ID module."],
+    ["permission_missing", "Calendar sync is waiting for your administrator to grant the calendar permission."],
+    ["unavailable", "The connection to Microsoft 365 is not working right now."],
+    ["no_account", "Your Vantigo user is not connected to a Microsoft 365 account that Vantigo manages."],
+  ] as const)("says why it cannot be turned on when %s", async (availability, words) => {
+    stubCalendarServer({ mailboxSync: mailboxSyncFixture({ availability }) });
+    renderWithProviders(<SettingsPage />);
+
+    expect(await toggle()).toBeDisabled();
+    expect(within(await outlook()).getByText(words)).toBeInTheDocument();
+  });
+
+  it("still lets a person who has it on turn it off while it cannot run", async () => {
+    const user = userEvent.setup();
+    const fetchMock = stubCalendarServer({
+      mailboxSync: mailboxSyncFixture({ availability: "switch_off", enabled: true, state: "unavailable", revision: 4 }),
+    });
+    renderWithProviders(<SettingsPage />);
+
+    const on = await toggle();
+    expect(on).toBeEnabled();
+    expect(on).toBeChecked();
+    expect(within(await outlook()).getByRole("radio", { name: /^A separate Vantigo calendar/ })).toBeDisabled();
+    expect(within(await outlook()).getByRole("button", { name: "Sync now" })).toBeDisabled();
+    await user.click(on);
+
+    await waitFor(() =>
+      expect(sent(fetchMock, "PUT")).toMatchObject({
+        url: "/api/v1/calendar/mailbox-sync",
+        headers: { "if-match": "4" },
+        body: { enabled: false },
+      }),
+    );
+    expect(await within(await outlook()).findByText("Removing what Vantigo put in Outlook…")).toBeInTheDocument();
+  });
+
+  it("turns it on at revision 0 with the defaults, then offers where, what and titles", async () => {
+    const user = userEvent.setup();
+    const fetchMock = stubCalendarServer();
+    renderWithProviders(<SettingsPage />);
+
+    const off = await toggle();
+    expect(off).not.toBeChecked();
+    expect(within(await outlook()).queryByRole("radiogroup", { name: "Where" })).not.toBeInTheDocument();
+    await user.click(off);
+
+    await waitFor(() =>
+      expect(sent(fetchMock, "PUT")).toEqual({
+        url: "/api/v1/calendar/mailbox-sync",
+        headers: expect.objectContaining({ "if-match": "0" }),
+        body: { enabled: true, target: "default", detail: "full", kinds: ["calendar.appointment", "staff.absence"] },
+      }),
+    );
+    const region = await outlook();
+    expect(await within(region).findByText("Waiting for the first sync…")).toBeInTheDocument();
+    expect(within(region).getByRole("radio", { name: /^My main calendar/ })).toBeChecked();
+    expect(
+      within(region).getByText("Shows the time as busy to colleagues booking meetings in Outlook."),
+    ).toBeInTheDocument();
+    expect(within(region).getByText("Easy to hide, but colleagues will not see the time as busy.")).toBeInTheDocument();
+    expect(within(region).getByRole("checkbox", { name: "Appointments" })).toBeChecked();
+    expect(within(region).getByRole("checkbox", { name: "Absence" })).toBeChecked();
+    expect(within(region).getByRole("checkbox", { name: "Tasks" })).not.toBeChecked();
+    expect(within(region).getByRole("radio", { name: "Full titles" })).toBeChecked();
+  });
+
+  it("saves each change at once under the revision it read: a kind, the target and the titles", async () => {
+    const user = userEvent.setup();
+    const fetchMock = stubCalendarServer({
+      mailboxSync: mailboxSyncFixture({
+        enabled: true,
+        state: "active",
+        revision: 2,
+        lastSyncedAt: new Date().toISOString(),
+      }),
+    });
+    renderWithProviders(<SettingsPage />);
+
+    const region = await outlook();
+    expect(await within(region).findByText(/^Last synced /)).toBeInTheDocument();
+    await user.click(await within(region).findByRole("checkbox", { name: "Tasks" }));
+    await waitFor(() => expect(sentAll(fetchMock, "PUT")).toHaveLength(1));
+    expect(sentAll(fetchMock, "PUT")[0]).toMatchObject({
+      headers: { "if-match": "2" },
+      body: { kinds: ["calendar.appointment", "staff.absence", "projects.task"] },
+    });
+    await waitFor(() => expect(within(region).getByRole("checkbox", { name: "Tasks" })).toBeChecked());
+
+    await user.click(within(region).getByRole("radio", { name: /^A separate Vantigo calendar/ }));
+    await waitFor(() => expect(sentAll(fetchMock, "PUT")).toHaveLength(2));
+    expect(sentAll(fetchMock, "PUT")[1]).toMatchObject({ headers: { "if-match": "3" }, body: { target: "own" } });
+
+    await waitFor(() => expect(within(region).getByRole("radio", { name: /^Busy only/ })).toBeEnabled());
+    await user.click(within(region).getByRole("radio", { name: /^Busy only/ }));
+    await waitFor(() => expect(sentAll(fetchMock, "PUT")).toHaveLength(3));
+    expect(sentAll(fetchMock, "PUT")[2]).toMatchObject({
+      headers: { "if-match": "4" },
+      body: { enabled: true, target: "own", detail: "busy" },
+    });
+  });
+
+  it("reloads when the setting moved on elsewhere", async () => {
+    const user = userEvent.setup();
+    const fetchMock = stubCalendarServer({
+      mailboxSync: mailboxSyncFixture({ enabled: true, state: "active" }),
+      mailboxSyncRefusal: problemResponse(409, "Conflict", { code: "revision_mismatch" }),
+    });
+    renderWithProviders(<SettingsPage />);
+
+    await user.click(await within(await outlook()).findByRole("checkbox", { name: "Tasks" }));
+    expect(
+      await screen.findByText("Your Outlook setting was changed elsewhere; it has been reloaded"),
+    ).toBeInTheDocument();
+    await waitFor(() =>
+      expect(sentAll(fetchMock, "GET").filter((call) => call.url === "/api/v1/calendar/mailbox-sync")).toHaveLength(2),
+    );
+  });
+
+  it("syncs now, and says why the last sync failed", async () => {
+    const user = userEvent.setup();
+    const fetchMock = stubCalendarServer({
+      mailboxSync: mailboxSyncFixture({ enabled: true, state: "failed", error: "mailbox_denied" }),
+    });
+    renderWithProviders(<SettingsPage />);
+
+    const region = await outlook();
+    expect(
+      await within(region).findByText("Your organisation has not allowed Vantigo to reach your mailbox."),
+    ).toBeInTheDocument();
+    await user.click(within(region).getByRole("button", { name: "Sync now" }));
+
+    await waitFor(() => expect(sent(fetchMock, "POST").url).toBe("/api/v1/calendar/mailbox-sync/run"));
+    expect(await screen.findByText("Vantigo will sync your calendar within a minute")).toBeInTheDocument();
+  });
+
+  it("speaks Norwegian", async () => {
+    setLanguagePreference("nb");
+    stubCalendarServer({ mailboxSync: mailboxSyncFixture({ enabled: true, state: "pending" }) });
+    renderWithProviders(<SettingsPage />);
+
+    const region = await card("Outlook");
+    expect(await within(region).findByRole("switch", { name: "Synkroniser til Outlook-kalenderen min" })).toBeChecked();
+    expect(within(region).getByRole("radio", { name: /^Hovedkalenderen min/ })).toBeChecked();
+    expect(within(region).getByRole("radio", { name: /^En egen Vantigo-kalender/ })).toBeInTheDocument();
+    expect(within(region).getByRole("checkbox", { name: "Fravær" })).toBeChecked();
+    expect(within(region).getByRole("radio", { name: "Fulle titler" })).toBeChecked();
+    expect(within(region).getByRole("button", { name: "Synkroniser nå" })).toBeInTheDocument();
   });
 });
