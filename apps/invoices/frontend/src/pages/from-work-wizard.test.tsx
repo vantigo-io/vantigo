@@ -57,6 +57,7 @@ const server = ({ view = workView(), settings: own = {}, answer, moreDrafts = fa
     if (url === "/api/v1/invoices/work?customerId=2001") {
       return jsonResponse(200, typeof view === "function" ? view() : view);
     }
+    if (url === "/api/v1/invoices/consumption?customerId=2001") return refusal(409, "consumption_unavailable");
     if (url === "/api/v1/invoices/settings") return jsonResponse(200, settings(own));
     if (url === "/api/v1/invoices/vat-codes") return jsonResponse(200, vatCodes());
     if (url === "/api/v1/invoices?customerId=2001&status=draft&kind=invoice&pageSize=100") {

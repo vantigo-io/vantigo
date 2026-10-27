@@ -2,21 +2,34 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { setLanguagePreference } from "@vantigo/frontend-shell";
 import { describe, expect, it } from "vitest";
+import type { ConsumptionView } from "../api/consumption";
 import type { WorkView } from "../api/work";
 import { jsonResponse, path, refusal } from "../test/api";
 import { stubFetch } from "../test/fetch";
-import { meta, workView } from "../test/fixtures";
+import { consumptionView, meta, workView } from "../test/fixtures";
 import { renderAtHost } from "../test/route-tree";
 import { UninvoicedWorkPanel } from "./uninvoiced-work-panel";
 
-/** The fake: meta (with `workAvailable` as asked), the view for customer 2001 and for project 41. */
-const server = (view: WorkView = workView(), options: { workAvailable?: boolean } = {}) =>
+/**
+ * The fake: meta (with `workAvailable` as asked), the view for customer 2001
+ * and for project 41, and the customer's consumption — Energy switched off
+ * unless a view is given.
+ */
+const server = (
+  view: WorkView = workView(),
+  options: { workAvailable?: boolean; consumption?: ConsumptionView | (() => Response) } = {},
+) =>
   stubFetch((input: RequestInfo | URL) => {
     const url = path(input);
     if (url === "/api/v1/invoices/meta")
       return jsonResponse(200, meta({ workAvailable: options.workAvailable ?? true }));
     if (url === "/api/v1/invoices/work?customerId=2001" || url === "/api/v1/invoices/work?projectId=41") {
       return jsonResponse(200, view);
+    }
+    if (url === "/api/v1/invoices/consumption?customerId=2001") {
+      const { consumption } = options;
+      if (typeof consumption === "function") return consumption();
+      return consumption ? jsonResponse(200, consumption) : refusal(409, "consumption_unavailable");
     }
     return new Response(null, { status: 404 });
   });
@@ -168,6 +181,107 @@ describe("the uninvoiced work panel", () => {
       expect(screen.getByRole("link", { name: "På utkast 1001" })).toBeInTheDocument();
       expect(screen.getByText("Fastprisprosjekt: timene vises, men faktureres ikke")).toBeInTheDocument();
       expect(screen.getByRole("button", { name: "Fakturer det valgte arbeidet" })).toBeInTheDocument();
+    } finally {
+      setLanguagePreference("auto");
+    }
+  });
+});
+
+describe("the panel's Consumption section", () => {
+  const section = () => screen.findByTestId("uninvoiced-consumption");
+
+  it("lists each supply's metering point, cadence, billed-through day, due periods and blocker", async () => {
+    server(workView(), { consumption: consumptionView() });
+    renderAtHost(<UninvoicedWorkPanel customerId={2001} />);
+
+    const table = await within(await section()).findByRole("table", { name: "Consumption due" });
+    const [, storgata, cabin] = within(table).getAllByRole("row");
+    expect(within(storgata).getByText("707057500000000011")).toBeInTheDocument();
+    expect(within(storgata).getByText("Storgata 1, 0155 Oslo")).toBeInTheDocument();
+    expect(within(storgata).getByText("Monthly")).toBeInTheDocument();
+    expect(within(storgata).getByText("Jul 31, 2026")).toBeInTheDocument();
+    expect(within(storgata).getByText("1")).toBeInTheDocument();
+    expect(within(storgata).getByText("Ready to invoice")).toBeInTheDocument();
+    expect(within(cabin).getByText("Quarterly")).toBeInTheDocument();
+    expect(within(cabin).getByText("Never billed")).toBeInTheDocument();
+    expect(within(cabin).getByText("2")).toBeInTheDocument();
+    expect(within(cabin).getByText("Spot prices are missing")).toBeInTheDocument();
+  });
+
+  it("opens the From consumption wizard for the customer", async () => {
+    server(workView(), { consumption: consumptionView() });
+    renderAtHost(<UninvoicedWorkPanel customerId={2001} />);
+    await userEvent.click(await within(await section()).findByRole("button", { name: "From consumption" }));
+    expect(await screen.findByRole("dialog", { name: "Invoice consumption" })).toBeInTheDocument();
+  });
+
+  it("offers no wizard where the host says no draft can be made", async () => {
+    server(workView(), { consumption: consumptionView() });
+    renderAtHost(<UninvoicedWorkPanel customerId={2001} canInvoice={false} />);
+    expect(await within(await section()).findByRole("table", { name: "Consumption due" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "From consumption" })).not.toBeInTheDocument();
+  });
+
+  it("is hidden when Energy is switched off", async () => {
+    const fetchMock = server();
+    renderAtHost(<UninvoicedWorkPanel customerId={2001} />);
+    expect(await table("Hours on P-41")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(fetchMock.actualCalls.some(([url]) => path(url) === "/api/v1/invoices/consumption?customerId=2001")).toBe(
+        true,
+      ),
+    );
+    await waitFor(() => expect(screen.queryByTestId("uninvoiced-consumption")).not.toBeInTheDocument());
+  });
+
+  it("is shown on a customer though no work can be invoiced here", async () => {
+    server(workView(), { workAvailable: false, consumption: consumptionView() });
+    renderAtHost(<UninvoicedWorkPanel customerId={2001} />);
+    expect(await within(await section()).findByRole("table", { name: "Consumption due" })).toBeInTheDocument();
+    expect(screen.queryByTestId("uninvoiced-work")).not.toBeInTheDocument();
+  });
+
+  it("is never asked for on a project's tab", async () => {
+    const fetchMock = server(workView({ projects: workView().projects.slice(0, 1) }), {
+      consumption: consumptionView(),
+    });
+    renderAtHost(<UninvoicedWorkPanel projectId={41} />);
+    expect(await table("Hours on P-41")).toBeInTheDocument();
+    expect(fetchMock.actualCalls.some(([url]) => path(url).includes("/consumption"))).toBe(false);
+  });
+
+  it("says there is no consumption to invoice, and still offers the wizard", async () => {
+    server(workView(), { consumption: consumptionView({ supplies: [] }) });
+    renderAtHost(<UninvoicedWorkPanel customerId={2001} />);
+    expect(await within(await section()).findByText("No consumption to invoice")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "From consumption" })).toBeInTheDocument();
+  });
+
+  it("says a list cut short", async () => {
+    server(workView(), { consumption: consumptionView({ warnings: ["consumption_truncated"] }) });
+    renderAtHost(<UninvoicedWorkPanel customerId={2001} />);
+    expect(await within(await section()).findByText(/Not all the consumption is listed/)).toBeInTheDocument();
+  });
+
+  it("says another refusal in words, never the server's", async () => {
+    server(workView(), { consumption: () => refusal(409, "customer_blocked") });
+    renderAtHost(<UninvoicedWorkPanel customerId={2001} />);
+    expect(await within(await section()).findByText("Could not load the consumption")).toBeInTheDocument();
+    expect(screen.queryByText("The server's English.")).not.toBeInTheDocument();
+  });
+
+  it("words the section from the nb catalog", async () => {
+    setLanguagePreference("nb");
+    try {
+      server(workView(), { consumption: consumptionView() });
+      renderAtHost(<UninvoicedWorkPanel customerId={2001} />);
+      const table = await within(await section()).findByRole("table", { name: "Forfalt forbruk" });
+      expect(within(table).getByRole("columnheader", { name: "Målepunkt" })).toBeInTheDocument();
+      expect(within(table).getByRole("columnheader", { name: "Fakturert til og med" })).toBeInTheDocument();
+      expect(within(table).getByRole("columnheader", { name: "Forfalte perioder" })).toBeInTheDocument();
+      expect(within(table).getByText("Månedlig")).toBeInTheDocument();
+      expect(within(table).getByText("Spotpriser mangler")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Fra forbruk" })).toBeInTheDocument();
     } finally {
       setLanguagePreference("auto");
     }

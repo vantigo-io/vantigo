@@ -92,12 +92,33 @@ export const workRefusalMessage = (error: unknown, t: Translate, date: (day: str
 };
 
 /**
+ * A refusal of the consumption views' and wizard's (`GET /consumption`,
+ * `GET /consumption/settlements`, `POST /from-consumption`) in words: its own
+ * wording (`consumptionRefusal.<code>`) first — what was chosen is
+ * consumption, where the work wizard's words name work — and the module's
+ * `refusal.<code>` otherwise.
+ */
+export const consumptionRefusalMessage = (
+  error: unknown,
+  t: Translate,
+  date: (day: string) => string = (d) => d,
+): string => {
+  const code = refusalCode(error);
+  if (code && `consumptionRefusal.${code}` in invoicesCatalog.en) return t(`consumptionRefusal.${code}`);
+  return refusalMessage(error, t, date);
+};
+
+/**
  * A refusal code in words, without an error to carry it — a `blockedBy` the
  * server judged ahead of the request: the catalog's `refusal.<code>`, or the
  * code itself when this version has no words for it.
  */
 export const refusalWords = (code: string, t: Translate): string =>
   `refusal.${code}` in invoicesCatalog.en ? t(`refusal.${code}`) : code;
+
+/** A settlement's blocker as Energy names it, in words: the catalog's `settlementBlocked.<code>`, or the code itself. */
+export const blockerWords = (code: string, t: Translate): string =>
+  `settlementBlocked.${code}` in invoicesCatalog.en ? t(`settlementBlocked.${code}`) : code;
 
 /**
  * A 400's refusals split by where they are shown: each field an input on
@@ -125,7 +146,8 @@ export const fieldRefusals = (
     const named = field
       .replace(/^lines\[\d+\]\./, "line.")
       .replace(/^allocations\[\d+\]\./, "allocation.")
-      .replace(/^sources\[\d+\]$/, "sources");
+      .replace(/^sources\[\d+\]$/, "sources")
+      .replace(/^settlementIds\[\d+\]$/, "settlementIds");
     const key = `fieldInvalid.${scope ? `${scope}.` : ""}${named}`;
     const words = key in invoicesCatalog.en ? t(key) : message;
     if (hasInput(field)) onInputs[field] = words;

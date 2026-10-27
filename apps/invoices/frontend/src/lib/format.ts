@@ -13,13 +13,19 @@ export const useInvoiceFormat = () => {
   return {
     t,
     money: (amount: number, currency: string) => formatters.formatCurrency(amount, currency),
-    /** A unit price, which has up to four decimals (numeric(14,4)): 33.3333 stays 33.3333, 100 is 100.00. */
+    /**
+     * A unit price, which has up to eight decimals (numeric(18,8)) — four on
+     * every line but one billing an energy settlement: 33.3333 stays 33.3333,
+     * 100 is 100.00.
+     */
     unitPrice: (amount: number, currency: string) =>
-      formatters.formatCurrency(amount, currency, { minimumFractionDigits: 2, maximumFractionDigits: 4 }),
+      formatters.formatCurrency(amount, currency, { minimumFractionDigits: 2, maximumFractionDigits: 8 }),
     number: (value: number, maxDecimals = 3) => formatters.formatNumber(value, { maximumFractionDigits: maxDecimals }),
     /** A VAT rate in percent, as the locale writes one: 25 is "25%" in en and "25 %" in nb, 12.5 keeps its decimal. */
     percent: (ratePercent: number) =>
       formatters.formatNumber(ratePercent / 100, { style: "percent", maximumFractionDigits: 2 }),
+    /** A month by a date in it, as "September 2026". */
+    month: (date: string) => formatters.formatDate(toUtc(date), { month: "long", year: "numeric", timeZone: "UTC" }),
     date: (date: string) => formatters.formatDate(toUtc(date), { dateStyle: "medium", timeZone: "UTC" }),
     /** An instant — a payment registered, a mail sent — in the reader's own time zone. */
     dateTime: (instant: string) =>

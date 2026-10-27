@@ -634,3 +634,68 @@ describe("the Work to invoice card", () => {
     ).toHaveAccessibleDescription(expect.stringContaining("Initials, number or name."));
   });
 });
+
+describe("the Consumption to invoice card", () => {
+  const energyCard = () => screen.findByTestId("energy-card");
+
+  it("shows the energy VAT codes and saves them as energyVatCodes", async () => {
+    const fetchMock = server();
+    renderWithProviders(<SettingsPage />);
+
+    const card = await energyCard();
+    await waitFor(() =>
+      expect(within(card).getByRole("combobox", { name: "VAT code for electricity" })).toHaveValue(
+        "3 — Utgående mva 25 %",
+      ),
+    );
+    expect(within(card).getByRole("combobox", { name: "VAT code for exempt electricity (Nord-Norge)" })).toHaveValue(
+      "5 — Fritatt innenlands 0 %",
+    );
+
+    await userEvent.click(within(card).getByRole("combobox", { name: "VAT code for electricity" }));
+    await userEvent.click(await screen.findByRole("option", { name: "31 — Utgående mva 15 %" }));
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(sent(fetchMock, "PUT").url).toBe("/api/v1/invoices/settings"));
+    expect(sent(fetchMock, "PUT").body).toMatchObject({ energyVatCodes: { energy: 2, energyExempt: 5 } });
+  });
+
+  it("puts a refused energy code on its own input", async () => {
+    server({
+      "PUT /api/v1/invoices/settings": jsonResponse(400, {
+        title: "Invalid invoice settings",
+        status: 400,
+        errors: { "energyVatCodes.energyExempt": ["VAT code 9 is not active"] },
+      }),
+    });
+    renderWithProviders(<SettingsPage />);
+    const card = await energyCard();
+    await userEvent.click(within(card).getByRole("combobox", { name: "VAT code for electricity" }));
+    await userEvent.click(await screen.findByRole("option", { name: "31 — Utgående mva 15 %" }));
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() =>
+      expect(
+        within(card).getByRole("combobox", { name: "VAT code for exempt electricity (Nord-Norge)" }),
+      ).toHaveAccessibleDescription("Choose a VAT code that exists and is offered for new lines."),
+    );
+    expect(screen.queryByText("Could not save the settings")).not.toBeInTheDocument();
+  });
+
+  it("leaves the codes out of the save when the server answered none", async () => {
+    const state = world();
+    state.settings = settings();
+    delete state.settings.energyVatCodes;
+    const fetchMock = server({}, state);
+    renderWithProviders(<SettingsPage />);
+    await screen.findByTestId("work-card");
+    expect(screen.queryByTestId("energy-card")).not.toBeInTheDocument();
+    await userEvent.click(
+      within(await screen.findByTestId("work-card")).getByRole("checkbox", {
+        name: "Attach a timesheet to new invoices",
+      }),
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(sent(fetchMock, "PUT").url).toBe("/api/v1/invoices/settings"));
+    expect(sent(fetchMock, "PUT").body).not.toHaveProperty("energyVatCodes");
+  });
+});

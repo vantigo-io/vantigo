@@ -3,6 +3,7 @@ import { IconAlertCircle, IconFileInvoice } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { ContentSkeleton, EmptyState } from "@vantigo/frontend-shell";
 import { type ReactNode, useState } from "react";
+import { consumptionQueryOptions, type DueSupply } from "../api/consumption";
 import { invoicesMetaQueryOptions } from "../api/meta";
 import {
   WORK_KINDS,
@@ -15,9 +16,16 @@ import {
   workQueryOptions,
 } from "../api/work";
 import { invoicesCatalog } from "../i18n";
-import { warningMessage, workRefusalMessage } from "../lib/errors";
+import {
+  blockerWords,
+  consumptionRefusalMessage,
+  refusalCode,
+  warningMessage,
+  workRefusalMessage,
+} from "../lib/errors";
 import { useInvoiceFormat } from "../lib/format";
 import { type ChosenWork, totalsOf } from "../lib/work";
+import { FromConsumptionWizard } from "../pages/-from-consumption-wizard";
 import { FromWorkWizard } from "../pages/-from-work-wizard";
 import { DocumentLink } from "./document-link";
 
@@ -63,8 +71,22 @@ const rowKey = (kind: string, id: number) => `${kind}:${id}`;
  * a list cut short — are said where they belong. The host mounts it for a
  * caller who holds `invoices:create`; an installation that invoices no work
  * shows nothing on a customer and says why on a project.
+ *
+ * On a customer the Consumption section follows (energy consumption billing
+ * design D11): the customer's metering points with billing periods due, and
+ * "From consumption", which opens that wizard. An installation with Energy
+ * switched off shows no such section.
  */
-export const UninvoicedWorkPanel = ({ customerId, projectId, canInvoice = true }: UninvoicedWorkPanelProps) => {
+export const UninvoicedWorkPanel = (props: UninvoicedWorkPanelProps) => (
+  <>
+    <UninvoicedWork {...props} />
+    {props.customerId !== undefined && (
+      <UninvoicedConsumption customerId={props.customerId} canInvoice={props.canInvoice ?? true} />
+    )}
+  </>
+);
+
+const UninvoicedWork = ({ customerId, projectId, canInvoice = true }: UninvoicedWorkPanelProps) => {
   const { t, money, unitPrice, number, date } = useInvoiceFormat();
   const scope: WorkScope = customerId !== undefined ? { customerId } : { projectId: projectId ?? 0 };
   const meta = useQuery(invoicesMetaQueryOptions());
@@ -372,5 +394,117 @@ const Reason = ({ reason, heldBy }: { reason?: string; heldBy?: WorkHeldBy }) =>
     <Text size="xs" c="dimmed">
       {`workReason.${reason}` in invoicesCatalog.en ? t(`workReason.${reason}`) : reason}
     </Text>
+  );
+};
+
+/** A billing cadence in words: monthly, quarterly or yearly, or the code itself. */
+const cadenceWords = (cadence: string, t: (key: string) => string): string =>
+  `cadence.${cadence}` in invoicesCatalog.en ? t(`cadence.${cadence}`) : cadence;
+
+/**
+ * The customer's consumption due (energy consumption billing design D11): per
+ * supply period the metering point's GSRN and address, the cadence, the day it
+ * is billed through, how many billing periods are due and, when the first one
+ * cannot be billed, why. "From consumption" opens the wizard, which settles
+ * what is due and lists it. Energy switched off (409 `consumption_unavailable`)
+ * shows nothing; nothing due says so.
+ */
+const UninvoicedConsumption = ({ customerId, canInvoice }: { customerId: number; canInvoice: boolean }) => {
+  const { t, date } = useInvoiceFormat();
+  const consumption = useQuery({
+    ...consumptionQueryOptions(customerId),
+    // A coded refusal is the module's answer, not a hiccup: it is not asked again.
+    retry: (count, error) => refusalCode(error) === undefined && count < 2,
+  });
+  const [invoicing, setInvoicing] = useState(false);
+
+  if (consumption.isPending) return null;
+  if (refusalCode(consumption.error) === "consumption_unavailable") return null;
+  const supplies: DueSupply[] = consumption.data?.supplies ?? [];
+
+  return (
+    <Card withBorder padding="lg" radius="md" mt="md" data-testid="uninvoiced-consumption">
+      <Stack gap="md">
+        <Group justify="space-between" wrap="wrap" align="flex-start">
+          <Stack gap={2}>
+            <Text fw={600} component="h3">
+              {t("consumption")}
+            </Text>
+            <Text size="sm" c="dimmed">
+              {t("consumptionDescription")}
+            </Text>
+          </Stack>
+          {consumption.data && canInvoice && (
+            <Button size="xs" leftSection={<IconFileInvoice size={14} />} onClick={() => setInvoicing(true)}>
+              {t("fromConsumption")}
+            </Button>
+          )}
+        </Group>
+        {consumption.isError && (
+          <Alert color="red" icon={<IconAlertCircle size={16} />} title={t("failedToLoadConsumption")}>
+            {consumptionRefusalMessage(consumption.error, t, date)}
+          </Alert>
+        )}
+        {consumption.data?.warnings.map((w) => (
+          <Alert key={w} color="yellow" icon={<IconAlertCircle size={16} />} data-consumption-warning={w}>
+            {warningMessage(w, t)}
+          </Alert>
+        ))}
+        {consumption.data &&
+          (supplies.length === 0 ? (
+            <EmptyState title={t("noConsumptionDue")} description={t("noConsumptionDueDescription")} size="sm" />
+          ) : (
+            <Table.ScrollContainer minWidth={640}>
+              <Table aria-label={t("consumptionTable")}>
+                <Table.Thead>
+                  <Table.Tr>
+                    <Table.Th>{t("meteringPoint")}</Table.Th>
+                    <Table.Th>{t("consumptionAddress")}</Table.Th>
+                    <Table.Th>{t("billingCadence")}</Table.Th>
+                    <Table.Th>{t("billedThrough")}</Table.Th>
+                    <Table.Th ta="right">{t("duePeriods")}</Table.Th>
+                    <Table.Th>{t("consumptionStatus")}</Table.Th>
+                  </Table.Tr>
+                </Table.Thead>
+                <Table.Tbody>
+                  {supplies.map((s) => (
+                    <Table.Tr key={s.supplyPeriodId} data-supply={s.supplyPeriodId}>
+                      <Table.Td>
+                        <Text size="sm">{s.gsrn}</Text>
+                      </Table.Td>
+                      <Table.Td>
+                        <Text size="sm">{s.address}</Text>
+                      </Table.Td>
+                      <Table.Td>
+                        <Text size="sm">{cadenceWords(s.cadence, t)}</Text>
+                      </Table.Td>
+                      <Table.Td>
+                        <Text size="sm" c={s.billedThrough ? undefined : "dimmed"}>
+                          {s.billedThrough ? date(s.billedThrough) : t("notBilledYet")}
+                        </Text>
+                      </Table.Td>
+                      <Table.Td ta="right">
+                        <Text size="sm">{s.duePeriods}</Text>
+                      </Table.Td>
+                      <Table.Td>
+                        {s.blocked ? (
+                          <Text size="xs" c="orange" data-blocked={s.blocked}>
+                            {blockerWords(s.blocked, t)}
+                          </Text>
+                        ) : (
+                          <Text size="xs" c="dimmed">
+                            {t("consumptionReady")}
+                          </Text>
+                        )}
+                      </Table.Td>
+                    </Table.Tr>
+                  ))}
+                </Table.Tbody>
+              </Table>
+            </Table.ScrollContainer>
+          ))}
+      </Stack>
+      {invoicing && <FromConsumptionWizard customerId={customerId} onClose={() => setInvoicing(false)} />}
+    </Card>
   );
 };

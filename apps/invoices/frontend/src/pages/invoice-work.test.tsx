@@ -7,6 +7,7 @@ import { customerSearch, jsonResponse, path, refusal } from "../test/api";
 import { requestTo } from "../test/document-server";
 import { stubFetch } from "../test/fetch";
 import {
+  consumptionDraft,
   creditDraft,
   deductible,
   draft,
@@ -457,5 +458,74 @@ describe("a credit-note draft of work", () => {
     expect(body.lines[1]).toMatchObject({ quantity: -0.5, creditsLineId: 5002 });
     expect(body.lines.some((l) => "deductsInvoiceId" in l || "sources" in l)).toBe(false);
     expect("timesheet" in body).toBe(false);
+  });
+});
+
+describe("an invoice draft that bills consumption", () => {
+  it("InvoiceEditor_ShowsASettlementAsItsMeteringPointAndPeriod", async () => {
+    server(consumptionDraft());
+    renderRoute("/invoices/1001");
+
+    expect(await screen.findByTestId("line-work-1")).toHaveTextContent(
+      "707057500000000011 Storgata 1, 0155 Oslo · Aug 1, 2026 – Aug 31, 2026 · 512.5 kWh · NOK 812.34",
+    );
+    // Every line of the settlement names it.
+    expect(screen.getByTestId("line-work-2")).toHaveTextContent("707057500000000011 Storgata 1, 0155 Oslo");
+    expect(screen.getByTestId("line-work-3")).toHaveTextContent(
+      /^Correction · 707057500000000011 Storgata 1, 0155 Oslo · Jul 1, 2026 – Jul 31, 2026 · -12 kWh · -NOK 15\.50 · The consumption is partly estimated$/,
+    );
+    expect(screen.queryByTestId("line-work-4")).not.toBeInTheDocument();
+  });
+
+  it("InvoiceEditor_KeepsASettlementOnEachOfItsLinesTheCorrectionsMinusOneAndTheEightDecimalPrice", async () => {
+    const fetchMock = server(consumptionDraft());
+    renderRoute("/invoices/1001");
+
+    expect(await screen.findByRole("textbox", { name: "Line 1 unit price" })).toHaveValue("1.23456789");
+    expect(screen.getByRole("textbox", { name: "Line 3 quantity" })).toHaveValue("-1");
+    // A correction line carries no discount.
+    expect(screen.getByRole("textbox", { name: "Line 3 discount" })).toBeDisabled();
+
+    await userEvent.type(screen.getByRole("textbox", { name: "Line 4 description" }), " (revidert)");
+    await save();
+
+    await waitFor(() => expect(requestTo(fetchMock, "PUT", "/api/v1/invoices/1001")).toBeDefined());
+    const body = requestTo(fetchMock, "PUT", "/api/v1/invoices/1001") as InvoiceInput;
+    expect(body.lines.map((l) => l.sources)).toEqual([
+      [{ kind: "energy.settlement", id: 4001 }],
+      [{ kind: "energy.settlement", id: 4001 }],
+      [{ kind: "energy.settlement", id: 4002 }],
+      [],
+    ]);
+    expect(body.lines[0].unitPrice).toBe(1.23456789);
+    expect(body.lines[2]).toMatchObject({ quantity: -1, unitPrice: 15.5 });
+    expect(body.lines[2]).not.toHaveProperty("correction");
+  });
+
+  it("InvoiceEditor_EstimatesTheNetOfAnEightDecimalPriceAsTheServerDoes", async () => {
+    server(consumptionDraft());
+    renderRoute("/invoices/1001");
+    const quantity = await screen.findByRole("textbox", { name: "Line 1 quantity" });
+    await userEvent.clear(quantity);
+    await userEvent.type(quantity, "1000");
+    // 1000 × 1.23456789 is 1 234.57 to the øre; at four decimals it would be 1 234.60.
+    expect(
+      await screen.findByText("An estimate while you edit; the saved draft's totals are the server's."),
+    ).toBeInTheDocument();
+    expect(screen.getAllByText("NOK 1,234.57").length).toBeGreaterThan(0);
+    expect(screen.queryByText("NOK 1,234.60")).not.toBeInTheDocument();
+  });
+
+  it("InvoiceEditor_WordsASettlementFromTheNbCatalog", async () => {
+    setLanguagePreference("nb");
+    try {
+      server(consumptionDraft());
+      renderRoute("/invoices/1001");
+      expect(await screen.findByTestId("line-work-3")).toHaveTextContent(
+        /^Korreksjon · .*Forbruket er delvis stipulert$/,
+      );
+    } finally {
+      setLanguagePreference("auto");
+    }
   });
 });
