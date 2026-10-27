@@ -227,7 +227,9 @@ type lineAcc struct {
 // component of every version valid on a day the period touches, summed over
 // the intervals of its days (kWh) and over the period's counted days
 // (proration), each rounded and in the line order. costs is each interval's
-// spot cost (priceIntervals), nil when no version prices spot.
+// spot cost (priceIntervals), nil when no version prices spot. A prorated
+// line (by the month or the year) of quantity and amount zero — a period
+// counting no day of it — is left out.
 func priceLines(books []tariffBook, intervals []settlementInterval, costs []*big.Rat, period billingPeriod, days []time.Time, subj settlementSubject) ([]settlementLine, error) {
 	accs := map[lineSlot]*lineAcc{}
 	get := func(b tariffBook, v, c int, band string, month time.Time) *lineAcc {
@@ -350,6 +352,10 @@ func priceLines(books []tariffBook, intervals []settlementInterval, costs []*big
 		line, err := acc.line(subj)
 		if err != nil {
 			return nil, err
+		}
+		if (line.Unit == contracts.SettlementUnitMonth || line.Unit == contracts.SettlementUnitYear) &&
+			line.Quantity.Sign() == 0 && line.Amount.Sign() == 0 {
+			continue // a prorated line with no counted day (a first period starting after midnight) says nothing
 		}
 		line.VATHint = hint
 		lines = append(lines, line)

@@ -69,10 +69,14 @@ billing runs and `module.Workers` learning the slot delivery E.
    DEFAULT 'NOK', contract_name varchar(120), computed_at, touched_at, created_at,
    updated_at timestamptz` and the stamp (`invoiced_invoice_id bigint`, `invoiced_number
    bigint`, `invoiced_at timestamptz`, `invoiced_by_user_id uuid`, `invoice_date date`,
-   `released_at timestamptz`, a CHECK that the first five are all set exactly when
-   `state = 'invoiced'`, and that a correction names `corrects_id` and a regular does
-   not). The floor: `ux_settlements_live UNIQUE (supply_period_id, period_start, kind)
-   WHERE state IN ('draft','invoiced')`. Indexes on `metering_point_id`, `customer_id`
+   `released_at timestamptz`, a CHECK that a draft carries none of them, an invoiced row
+   the stamp without `released_at` and a released row `released_at` with the stamp kept
+   as history, and that a correction names `corrects_id` and a regular does not). The
+   floor: `ux_settlements_live UNIQUE (supply_period_id, period_start, kind) WHERE state
+   = 'draft' OR (state = 'invoiced' AND kind = 'regular')` — an invoiced correction is
+   part of the period's baseline, not its correction slot, so the next correction is
+   drafted beside it (amended while building: the first text counted invoiced
+   corrections as live, which left reading 8's "invoiced corrections" unreachable). Indexes on `metering_point_id`, `customer_id`
    (the merge and `Settle` by customer) and `corrects_id`. `energy.settlement_lines
    (settlement_id → settlements ON DELETE CASCADE, position smallint, kind varchar(20),
    text varchar(120), band varchar(10) NULL, month date NULL, quantity numeric(14,3),
@@ -99,7 +103,8 @@ billing runs and `module.Workers` learning the slot delivery E.
    do two current intervals that overlap each other (mixed resolutions written over one
    another): the module never prices one kWh twice. The finest length present is the
    expected unit; `MissingIntervals = ceil((period length − Σ lengths) / finest)`,
-   which counts a mixed PT1H/PT15M period correctly where a plain count would not.
+   which counts a mixed PT1H/PT15M period correctly where a plain count would not. A
+   period with no interval at all expects one an hour (amended while building).
    `Estimated` is any interval of quality `Estimated` (D5's word; `Corrected` is a
    measurement, not an estimate).
 4. **The prices** (D5 + S10). A consumption interval is priced by the spot-price
@@ -178,13 +183,20 @@ billing runs and `module.Workers` learning the slot delivery E.
    in the period, or the tariffs that priced it changed after the latest invoiced
    baseline's `computed_at` (`received_at`, `received_at`, `updated_at`; or when a
    correction draft is already live). The baseline is the invoiced regular plus its
-   invoiced corrections, summed per line key `(kind, text, band, month, unit)`. The
+   invoiced corrections, summed per line key `(kind, text, band, month, unit)`, and the
+   recomputed side summed per key too (amended while building: a version change
+   mid-period gives one key two lines, which would otherwise repeat in the correction). The
    correction's lines are the differences per key in the recomputed order (keys only
    in the baseline after), quantity and amount the differences, unit price the
    recomputed line's (the baseline's for a vanished key); its kWh the kWh delta; lines
    whose quantity and amount are both zero are left out; a correction with none is not
    written and an existing correction draft is deleted. A blocked recomputation writes
-   no correction. Line kinds stay the components' kinds; `correction` is the
+   no correction, nor does one whose kWh and amount differences are both zero (a renamed
+   component; amended after the review). Named, not built: a change of the supply
+   period's tariff or of the point's billing facts does not trigger a correction by
+   itself; `received_at` is the writer's clock before its commit; releasing a regular
+   settlement leaves its invoiced corrections outside every baseline. Line kinds stay
+   the components' kinds; `correction` is the
    settlement's kind (the design lists it among line kinds too; nothing needs both).
 9. **The contract** (`srv/contracts/consumption.go`, D1's text). Beyond D1's types:
    `Settlement.BlockedDetail string` (the sentence of reading 4 and 5);
@@ -222,7 +234,7 @@ billing runs and `module.Workers` learning the slot delivery E.
     them on a released row) and warns and skips a row not carrying the stamp. Tests on
     real transactions rolled back, as Time's and Projects' are.
 12. **The endpoint.** `GET /api/v1/energy/metering-points/{id}/settlements`,
-    `x-vantigo-access: permission:energy:supply-periods-view+energy:consumption-view` —
+    `x-vantigo-access: permission:energy:consumption-view+energy:supply-periods-view` —
     the design names none: a settlement is a supply period's consumption, priced, so
     it needs exactly what reading both of those needs, and no new key. It **writes
     nothing**: for every non-cancelled supply period of the point, the due periods
@@ -232,7 +244,7 @@ billing runs and `module.Workers` learning the slot delivery E.
     released settlement and correction in the window. Newest period first, then regular
     before correction, then id. 404 for an unknown point. `SettlementResponse` mirrors
     `contracts.Settlement` with numbers as JSON numbers and `invoice` `{id, number,
-    issueDate, invoicedAt}` when stamped; kinds, states, blockers, units plain strings.
+    issueDate, invoicedAt, releasedAt?}` when stamped; kinds, states, blockers, units plain strings.
 13. **The customer merge** re-points `energy.settlements.customer_id` with the supply
     periods (`RepointSettlementsCustomer`, kind `energy.settlements` in the holder's
     answer). Settlements hold no personal data beyond the opaque customer id: the GDPR

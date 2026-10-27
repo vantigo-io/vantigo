@@ -300,6 +300,11 @@ func sumByKey(lines []settlementLine, into map[lineKey]*keyedLine, order []lineK
 // only the baseline holds; a difference whose quantity and amount are both
 // zero is left out. A line's unit price is the recomputed's first line of
 // its key, the baseline's for a vanished key.
+//
+// The text is part of the key, so a line carries its component's own name;
+// but a change of wording alone is not a correction: when the KWh and the
+// Amount differences are both zero (a component renamed gives two offsetting
+// lines and nothing else), it answers false.
 func correctionOf(recomputed settlement, baseline []settlement) (settlement, bool) {
 	if recomputed.Blocked != "" || len(baseline) == 0 {
 		return settlement{}, false
@@ -345,7 +350,9 @@ func correctionOf(recomputed settlement, baseline []settlement) (settlement, boo
 			diff(k)
 		}
 	}
-	if len(lines) == 0 {
+	kwh := new(big.Rat).Sub(ratOrZero(recomputed.KWh), baseKWh)
+	amount := sumLineAmounts(lines)
+	if len(lines) == 0 || (kwh.Sign() == 0 && amount.Sign() == 0) {
 		return settlement{}, false
 	}
 
@@ -356,9 +363,9 @@ func correctionOf(recomputed settlement, baseline []settlement) (settlement, boo
 	out.CorrectsID = &correctsID
 	out.State = contracts.SettlementDraft
 	out.Stamp = nil
-	out.KWh = new(big.Rat).Sub(ratOrZero(recomputed.KWh), baseKWh)
+	out.KWh = kwh
 	out.Lines = lines
-	out.Amount = sumLineAmounts(lines)
+	out.Amount = amount
 	return out, true
 }
 

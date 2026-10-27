@@ -251,7 +251,7 @@ Each row shows:
 - **Kind**: **Regular**, or **Correction** for the difference found after a period
   was invoiced (see below).
 - **Status**: **Draft** until the period is invoiced, **Invoiced** once it is, and
-  **Released** when a credit note took the whole invoice back; the period is then
+  **Released** when a credit note took the period's line back in full; the period is then
   billed again as a new draft. **Estimated** beside it means some of the readings are
   estimates, which the invoice will say.
 - **kWh** and **Amount (NOK)**.

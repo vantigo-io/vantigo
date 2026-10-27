@@ -68,7 +68,7 @@ describe("SettlementsCard", () => {
     expect(screen.getByText("Draft")).toBeInTheDocument();
     expect(screen.getByText("Estimated")).toBeInTheDocument();
     expect(screen.getByText(/412/)).toBeInTheDocument();
-    expect(screen.getByText(/1[\s ,]?234/)).toBeInTheDocument();
+    expect(screen.getByText(/1[\s\u00a0,]?234/)).toBeInTheDocument();
   });
 
   it("gives a blocked period's reason in words with the server's detail", async () => {

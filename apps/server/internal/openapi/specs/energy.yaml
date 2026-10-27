@@ -2919,7 +2919,7 @@ paths:
             summary: List a metering point's settlements
             tags:
                 - Energy metering points
-            x-vantigo-access: permission:energy:supply-periods-view+energy:consumption-view
+            x-vantigo-access: permission:energy:consumption-view+energy:supply-periods-view
     /api/v1/energy/metering-points/{id}/supply-periods:
         get:
             operationId: getEnergyMeteringPointsByIdSupplyPeriods
