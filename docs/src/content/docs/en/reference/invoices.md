@@ -1,11 +1,12 @@
 ---
 title: "Invoices module"
-description: "The sales document: the seller record, gap-free numbering, VAT, issue and immutability, credit notes, invoicing work and consumption, the PDF, payments, sending, the journal, the export and retention."
+description: "The sales document: the seller record, gap-free numbering, VAT, issue and immutability, credit notes, invoicing work and consumption, billing runs, the PDF, payments, sending, the journal, the export and retention."
 sources:
   - apps/server/internal/invoices
   - apps/invoices/frontend
   - openapi/invoices.yaml
   - apps/server/internal/db/migrations/00078_invoices_energy.sql
+  - apps/server/internal/db/migrations/00079_invoices_billing_runs.sql
 ---
 The Invoices module issues the sales document of Norwegian bookkeeping: a draft
 becomes a numbered, immutable invoice or credit note, rendered to a PDF that is stored
@@ -26,7 +27,8 @@ lines, marked invoiced in their own modules by the issue and released by the cre
 note that returns them ([Invoicing work](#invoicing-work)); phase 5
 ([design](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-10-24-energy-consumption-billing-design.md))
 does the same for the electricity a customer used, Energy's settlements becoming lines
-([Invoicing consumption](#invoicing-consumption)). Vantigo stays a sub-ledger: there is
+([Invoicing consumption](#invoicing-consumption)), for one customer or, in a billing
+run, for every customer with consumption due ([Billing runs](#billing-runs)). Vantigo stays a sub-ledger: there is
 no general ledger and nothing is posted — a payment here is a registration, not a
 posting, made by hand or from a bank file's line matched on its KID ([Matching](#matching)).
 
@@ -1296,6 +1298,171 @@ never read Energy (design D9).
   decimals, at least four; the units `KWH`, `MON`, `ANN` and `C62` from the unit words;
   and a correction line's −1 as `cbc:InvoicedQuantity` `-1.000`, as a deduction's.
 
+## Billing runs
+
+Phase 5's delivery E
+([design](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-10-24-energy-consumption-billing-design.md)
+D10; the readings of the
+[plan](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/plans/2026-10-27-invoices-billing-runs.md))
+invoices consumption for many customers at once: a **billing run** settles, drafts and
+— when asked — issues one invoice per customer with consumption due through a date, and
+records per customer what it made, skipped or failed. It adds no code path of its own:
+each customer goes through the **From consumption** wizard's core (`fromConsumption`,
+[From consumption to a draft](#from-consumption-to-a-draft)) and, when the run issues,
+the issue's (`issueDraft`, [Issuing](#issuing)) — the handlers of `POST
+/from-consumption` and `POST /{id}/issue` map the same outcomes to their responses. A
+worker, `invoices-billing`, carries the customers one at a time
+([The billing worker](#the-billing-worker)). **Sending is not part of a run**: the
+documents a run issued are sent afterwards by the usual paths
+([Sending a document](#sending-a-document), [Sending as EHF](#sending-as-ehf)). In the
+app the pages are **Billing runs** (`/invoices/billing-runs`), under `invoices:create`
+([the user guide](/en/user/invoices/#run-billing-for-every-customer)).
+
+### The two tables
+
+Migration `00079_invoices_billing_runs.sql`, naming no other schema:
+
+- **`invoices.billing_runs`** — `id` (from 1001), `through` (the last day a billing
+  period may end on), `issue`, `status` — `queued`, `running`, `done` or `cancelled`
+  (`ck_billing_runs_status`) —, `customers` (how many items it was made with, ≥ 0),
+  `created_by_user_id`, `created_at`, and `started_at` and `finished_at`;
+  `ck_billing_runs_finished` holds `finished_at` set exactly when the run is `done` or
+  `cancelled`. **`ux_billing_runs_active`**, a unique index on a constant over the rows
+  `queued` or `running`, lets **one run at a time** be unfinished: two creates racing end
+  in one run and a 409.
+- **`invoices.billing_run_items`** — one per customer of a run (`ux_billing_run_items_customer`
+  on `(run_id, customer_id)`), deleted with it: `customer_id` (opaque, as every customer
+  id here), `status` — `queued`, `drafted`, `issued`, `skipped`, `failed` or
+  `cancelled` —, `invoice_ids` (the documents it made, in order; more than one when the
+  customer was split, [below](#the-split)), `code` and `detail`, `attempts`,
+  `next_attempt_at`, `lease_id`, `lease_until` and `finished_at`.
+  `ck_billing_run_items_code` holds `code` set exactly when the item is `skipped` or
+  `failed`, and `ck_billing_run_items_finished` `finished_at` set exactly when it is no
+  longer `queued`. `invoice_ids` carries **no foreign key**: a draft the run made may be
+  deleted afterwards, and the reads answer only the documents that still exist.
+
+**The counts are not stored.** The reads count a run's items by status in one `GROUP
+BY`, so they are never out of step with the items; `customers` is only what the run was
+made with.
+
+### Making a run
+
+`POST /billing-runs` (`permission:invoices:access+invoices:create`, and
+`invoices:issue` when `issue`) takes `{through?, customerIds?, issue}`. **In order**,
+nothing written before the last step:
+
+1. **The body** (400 on the field): `through` a date — today in the business time zone
+   when absent ([The business day](#the-business-day)); `customerIds`, when given, 1 to
+   5 000, each positive and none twice (`customerIds`, `customerIds[i]`).
+2. **`issue` without `invoices:issue`** — 403.
+3. **409 `consumption_unavailable`** when Energy is off (`Deps.Consumption` nil).
+4. **409 `billing_run_active`**, with `runId`, while a run is `queued` or `running`.
+5. **The customers.** Named, each must be known to the customer directory, read in
+   chunks of 2 000 — an unknown one is a 400 on `customerIds[i]`. Not named, Energy's
+   `DueSupplies` with **`Every`** through the start of the day after `through`, as the
+   wizard's `Through` is ([The two views](#the-two-views);
+   [the consumption contract](/en/reference/energy/#the-consumption-contract)): the
+   distinct customers of the supplies it answers, in id order. An answer with `More`
+   (more than 5 000 supplies due) is **409 `too_many_customers`** — name the customers
+   instead —, and none at all **409 `no_consumption_due`**.
+6. **One transaction**: the run, `queued`, and one item per customer, `queued` and due
+   at once. `ux_billing_runs_active` refusing (SQLSTATE 23505) is `billing_run_active`
+   too.
+
+201 with the run. A **named** customer with nothing due still gets an item, which the
+worker skips `no_consumption_due`: the run says so rather than leaving the customer out.
+
+### The billing worker
+
+**`invoices-billing`** runs on every installation, with no setting of its own, and
+polls every **5 seconds**; a cycle carries at most **five items, one at a time**. A
+claim is one conditional `UPDATE` over a `FOR UPDATE SKIP LOCKED` pick — the oldest due
+`queued` item (`next_attempt_at`, then id) of a run `queued` or `running`, whose lease,
+if any, has run out — taking a **10-minute lease**, so two workers — two replicas —
+never carry one item (the reminder worker's shape, [The worker](#the-worker)). A run's
+first claim moves it **`queued` → `running`** (`started_at`). The item is carried on a
+context bounded by the lease less a minute, and every write of it names its lease: one
+that changes no row — another actor moved the item — is logged at debug. After each
+item, a run with no `queued` item left becomes **`done`** (`finished_at`). Energy is
+read on the pool, before any transaction of the item, through the accessors in
+`contractscalls.go`.
+
+**The actor** (design reading on the record 10). The item's context carries **the run's
+creator** as its principal (`contracts.WithPrincipal` with the creator's id and nothing
+else), so everything the code path stamps with its caller is the creator's: the draft's
+`created_by_user_id`, the issue's `issued_by_user_id`, the invoiced-work holders'
+`IssuedBy` and the issuer's name. The run does not judge the creator's permissions
+again: they were judged when the run was made.
+
+### An item, in order
+
+1. **Energy off** — `skipped` `consumption_unavailable`.
+2. **`Settle`** for the customer through the start of the day after `through`. The
+   settlements a live document of this module already holds are left out: the run bills
+   what is not being invoiced yet — and the documents an earlier attempt of this item
+   made are among those. Nothing left — `skipped` `no_consumption_due`.
+3. **The split** ([below](#the-split)) into one or more documents.
+4. **Per document**, in turn: `fromConsumption` with the customer, `through` and the
+   document's `settlementIds` — so the wizard judges every settlement by name: a blocked
+   one is its `settlement_blocked`, one of a yearly supply of a person its
+   `cadence_not_allowed`, rather than left out as the wizard leaves them without ids.
+   The new draft's id is added to the item's `invoice_ids` at once. Then, when the run
+   issues, `issueDraft` on it, with no issue date — today.
+5. **The outcome.**
+   - Every document made and, when the run issues, issued — **`drafted`** or
+     **`issued`**.
+   - **A wizard refusal** (its 409 or 400) — **`skipped`** with its code; a 400 is
+     `invalid_request`, its field errors in the detail. When the refusal names a
+     settlement the detail names its **metering point**, "Metering point
+     <GSRN>: …".
+   - **An issue refusal** — **`failed`** with its code, `storage_unavailable` included;
+     the draft stays, listed on the item.
+   - After a refusal no later document of the customer is tried; the documents made
+     before it stay, listed.
+6. **An error** — not a refusal: the energy read, the database — counts an attempt and
+   puts the item back, `queued`, due after **1 minute**, then **2**, its lease cleared;
+   the **third** error fails it, code **`billing_error`**, a fixed detail, the error
+   itself logged. Nothing refused is retried.
+
+### The split
+
+One document holds at most 500 lines (`too_many_lines`), and a customer with many
+metering points may have more. The run therefore takes the settlements in the wizard's
+order (GSRN, period, kind, id; [The lines of a settlement](#the-lines-of-a-settlement)),
+groups them **by metering point** and packs the points, one after another, into
+documents of **at most 500 lines** — a settlement counted as one line per line Energy
+gave it, at least one, the most `energyLines` makes of it. A point is never divided:
+one whose settlements alone exceed 500 lines is a document of its own, which the wizard
+refuses `too_many_lines`, and the item is `skipped` with it.
+
+### Cancel
+
+`POST /billing-runs/{id}/cancel` (`permission:invoices:access+invoices:create`): a run
+`queued` or `running` becomes **`cancelled`** (`finished_at` now), and so do its
+`queued` items no live lease holds. An item the worker is carrying finishes and records
+its outcome. The documents already made stay as they are. 404 for an unknown run; 409
+**`billing_run_finished`** for one `done` or `cancelled` already. 200 with the run.
+
+### The reads
+
+Both `permission:invoices:access`.
+
+- **`GET /billing-runs`** — the runs, newest first, paged (25, at most 100), each with
+  `id`, `through`, `issue`, `status`, `customers`, `createdByUserId`, `createdAt`,
+  `startedAt` and `finishedAt` when set, and `counts`, its items counted by status.
+- **`GET /billing-runs/{id}`** — the run and one page of its items in the order they
+  were made, of one `status` when the query names one (a 400 for a status that is none
+  of the six). Each item: `id`, `customerId`, `customerName` — from the customer
+  directory, absent when the directory is off or does not know the customer —,
+  `status`, `invoices` — the documents it made **that still exist**, each `invoiceId`,
+  `number` once issued and `status`; a draft deleted since is not listed —, `code` and
+  `detail` on `skipped` and `failed`, `attempts` and `finishedAt`. 404 for an unknown
+  run.
+
+Out of scope and named (design D12): sending after a run ("send all"), a run on a
+schedule of its own, and running a failed item again by hand — a new run naming the
+customer does it.
+
 ## Issuing
 
 `POST /invoices/{id}/issue` runs one READ COMMITTED transaction in a fixed order:
@@ -2424,8 +2591,9 @@ Two background workers carry a queued transmission to its outcome
 A third, `invoices-reminders`, sends the reminder letters and runs on every
 installation ([The worker](#the-worker)); a fourth, `invoices-payments`, carries Vipps
 payments to their end while `INVOICES_VIPPS_ENABLED` is on
-([Capture and the reservation](#capture-and-the-reservation)).
-Both run only when `INVOICES_EHF_ENABLED` is on — off, neither is handed to the
+([Capture and the reservation](#capture-and-the-reservation)); a fifth,
+`invoices-billing`, carries billing runs and runs on every installation
+([The billing worker](#the-billing-worker)). The first two run only when `INVOICES_EHF_ENABLED` is on — off, neither is handed to the
 runner — and both run with `PEPPOL_LOOKUP_ENABLED` off too: what is already submitted
 still completes, the 48-hour age cap still reaches a `queued` row (it makes no call),
 and short of it a `queued` row is left alone, unleased, said in one log line when the
@@ -4783,8 +4951,8 @@ administrator reads when building a role, say so.
 
 | Key | Sensitive | What it allows |
 | --- | --- | --- |
-| `invoices:access` | no | Use the app; read every invoice, credit note, PDF, payment and delivery, an invoice's charges, charge payments, waivers and manual deliveries, every document's EHF state and transmissions and download their UBL, the journal, the CSV export and the stats; read the collection rates, the reminder settings, the payment settings and a customer's reminder policy; the overdue list, and an issued invoice's letters, next action, hold and hand-off, and a sent letter's PDF; an invoice's pay link (its id and when it was made, not its address) and its Vipps payment attempts; the day's Vipps payments, their CSV and whether the day is reconciled (marking it is `invoices:payments`; [The day's Vipps payments](#the-days-vipps-payments)); the attention items about overdue invoices and refunds due ([Attention](#attention)). |
-| `invoices:create` | no | Create, edit and delete drafts; preview a draft; list the uninvoiced work, with its people and rates, and make a draft of it, or add it to one; refresh a draft's work and see whether it is still fresh; turn a draft's timesheet on or off; list what earlier invoices have left to deduct ([Invoicing work](#invoicing-work)); list a customer's consumption due and its settlements, and make a draft of them, or add them to one ([Invoicing consumption](#invoicing-consumption)). |
+| `invoices:access` | no | Use the app; read every invoice, credit note, PDF, payment and delivery, an invoice's charges, charge payments, waivers and manual deliveries, every document's EHF state and transmissions and download their UBL, the journal, the CSV export and the stats; read the collection rates, the reminder settings, the payment settings and a customer's reminder policy; the overdue list, and an issued invoice's letters, next action, hold and hand-off, and a sent letter's PDF; an invoice's pay link (its id and when it was made, not its address) and its Vipps payment attempts; the day's Vipps payments, their CSV and whether the day is reconciled (marking it is `invoices:payments`; [The day's Vipps payments](#the-days-vipps-payments)); the attention items about overdue invoices and refunds due ([Attention](#attention)); the billing runs and their items ([Billing runs](#billing-runs)). |
+| `invoices:create` | no | Create, edit and delete drafts; preview a draft; list the uninvoiced work, with its people and rates, and make a draft of it, or add it to one; refresh a draft's work and see whether it is still fresh; turn a draft's timesheet on or off; list what earlier invoices have left to deduct ([Invoicing work](#invoicing-work)); list a customer's consumption due and its settlements, and make a draft of them, or add them to one ([Invoicing consumption](#invoicing-consumption)); make and cancel a billing run — one that issues also needs `invoices:issue` ([Billing runs](#billing-runs)). |
 | `invoices:issue` | yes | Issue a draft — and so mark the work it bills invoiced in its modules — and create a credit-note draft, whose issue releases the work it returns; send an issued document by e-mail, and see where each send went; send it as EHF, cancel a transmission never attempted and resolve an unconfirmed one; record that an invoice was handed over or posted, and remove such a record with a reason ([The delivery fact](#the-delivery-fact)); make an invoice's pay link on demand or revoke it, and read its address and QR code while payment on site is available ([Pay links](#pay-links)); ask for a Vipps payment on site, read the request and cancel it ([Paid on site — kontantsalg](#paid-on-site--kontantsalg)). |
 | `invoices:manage` | yes | The seller record and its Peppol id, the series start, the KID agreement, the VAT code each kind of work is invoiced at, the two VAT codes energy lines take, the timesheet's default and person label, VAT codes and their rates, the access point's credentials, the Vipps credentials and the payment settings, abandoning a stuck Vipps payment attempt ([Abandon](#abandon)), the format a bank account's files are imported in, the collection rates (add one ahead of a release, delete one nothing has relied on) and the reminder settings, the regime's review among them. |
 | `invoices:payments` | yes | Register a payment against an issued invoice, and remove a registration with a reason; import bank files and read the imported files and their accounts; work the exception queue — apply, dismiss, handle a reversal, confirm a duplicate, treat one as distinct, reopen ([The exception queue](#the-exception-queue)); set a customer's reminder policy — whether, and with what charges, they are reminded; register a payment of an invoice's reminder charges and remove one, and waive charges ([Charges](#charges)); preview and make reminder runs and read them ([Runs](#runs)), see the address each letter goes to, print paper letters, confirm them posted or reprint them, and withdraw or retry a letter ([Letters](#letters)); hold a disputed invoice and lift the hold, record a hand-off to a collection agency and withdraw it, and export the collection file ([Holds and the hand-off to collection](#holds-and-the-hand-off-to-collection)); mark a day's Vipps payments reconciled ([The day's Vipps payments](#the-days-vipps-payments)); the attention items about the bank lines, the letters, the print batches and the Vipps payments ([Attention](#attention)). |
@@ -4853,6 +5021,12 @@ the invoices module mounted and `invoices:access` — and plain words otherwise.
 whoever builds the invoice sees the metering points, the kWh and the prices it will
 state. The stamp and the release run under `invoices:issue` through Energy's holder.
 
+**Billing runs add none either** (design D10). Making and cancelling a run are
+`invoices:access` and `invoices:create`, the wizard's; a run that issues also asks
+`invoices:issue` of its creator when it is made, a 403 without it. Reading the runs and
+their items is `invoices:access`. The worker then acts as the creator and does not ask
+again ([The billing worker](#the-billing-worker)).
+
 **Creating a draft in the app also needs `customers:view`**: the directory has no
 search, so the buyer picker reads the customers module's own list. The API takes a
 customer id and checks nothing more; the app hides "New invoice" without it.
@@ -4911,6 +5085,10 @@ All under `/api/v1/invoices`, every one behind `invoices:access` but the pay pag
 | `GET /consumption` | `invoices:create` | 400 no `customerId`, a `through` that is no date; 409 `consumption_unavailable` |
 | `GET /consumption/settlements` | `invoices:create` | 400 no `customerId`, a `through` that is no date; 409 `consumption_unavailable` |
 | `POST /from-consumption` | `invoices:create` | 400 on the field (`customerId`, `settlementIds`, `settlementIds[i]`, `invoiceId`, `revision`, `note`, `vatCodes.energy`, `vatCodes.energyExempt`, `lines` — the document total too large); 404 the target; 409 `invoice_issued`, `too_many_sources`, `consumption_unavailable`, the customer gates, `source_not_for_customer`, `source_not_invoiceable`, `settlement_blocked`, `cadence_not_allowed`, `currency_not_nok`, `no_consumption_due`, `too_many_lines`, a stale revision, `source_held_elsewhere` (with `heldBy`) |
+| `POST /billing-runs` | `invoices:create`, and `invoices:issue` when `issue` | 400 on the field (`through`, `customerIds` — none or more than 5 000 —, `customerIds[i]` — not positive, twice, or unknown to the customer directory); 403 `issue` without `invoices:issue`; 409 `consumption_unavailable`, `billing_run_active` (with `runId`), `too_many_customers`, `no_consumption_due` |
+| `GET /billing-runs` | | 400 paging |
+| `GET /billing-runs/{id}` | | 400 paging, an unknown `status`; 404 |
+| `POST /billing-runs/{id}/cancel` | `invoices:create` | 404; 409 `billing_run_finished` |
 | `POST /quick` | `invoices:create` and `invoices:issue` | 400 on the field (`customerId`, `lines` — none, more than ten, or the document total too large — `lines[i].<field>`, `deliveryDate`, `paymentTermsDays`, `yourReference`, `note`); 409 the customer gates and every code under [Issuing](#issuing), nothing left behind; 409 `request_id_reused`, a `requestId` used before with another body, with `invoiceId`, the invoice it issued (the same body is 200 with the first's invoice); 503 `storage_unavailable` |
 | `GET /` | | 400 paging, status, kind, state, `from` after `to` (`projectId` filters on the document's project) |
 | `POST /` | `invoices:create` | 400 on the field (`sources` and `refreshSources` included; a deduction line's `quantity`, `unitPrice`, `discountPercent`, `deductsInvoiceId`, `vatCodeId`, `sources`); 409 the customer gates, `deduction_duplicated` (with `linePosition`) |
@@ -4971,19 +5149,22 @@ All under `/api/v1/invoices`, every one behind `invoices:access` but the pay pag
 
 ## What comes next
 
-**Phase 5 is half done.** Its delivery D
+**Phase 5 is complete.** Its delivery D
 ([plan](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/plans/2026-10-27-invoices-energy.md))
 invoices consumption one customer at a time through the **From consumption** wizard
 ([Invoicing consumption](#invoicing-consumption)), on migration
-`00078_invoices_energy.sql`. Next is **delivery E, billing runs** (design D10): a run
-over every customer `DueSupplies` names through a date, drafted — and, when asked,
-issued — by an `invoices-billing` worker in the wizard's own code path, a customer
-split across documents by metering point when one document cannot hold its lines
-(`suggestedSplit`), with **Billing runs** pages; `module.Workers` then resolves the
-`Consumption` slot. Left out of the phase on purpose (design D12): advance invoicing
-and a-konto for energy, gjennomfakturering, strømstøtte and Norgespris, a line's own
-period in EHF, a VAT code per component, a reason per line within one VAT summary row,
-and eFaktura and AvtaleGiro.
+`00078_invoices_energy.sql`; delivery E
+([plan](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/plans/2026-10-27-invoices-billing-runs.md))
+added **billing runs** — every customer with consumption due through a date, or the
+ones named, drafted and, when asked, issued by the `invoices-billing` worker in the
+wizard's and the issue's own code paths, split by metering point, with the **Billing
+runs** pages ([Billing runs](#billing-runs)) — on migration
+`00079_invoices_billing_runs.sql`; `module.Workers` resolves the `Projects`,
+`Billable*` and `Consumption` slots for it. Left out of the phase on purpose (design
+D12): sending a run's documents in one go ("send all"), a run on a schedule, advance
+invoicing and a-konto for energy, gjennomfakturering, strømstøtte and Norgespris, a
+line's own period in EHF, a VAT code per component, a reason per line within one VAT
+summary row, and eFaktura and AvtaleGiro.
 
 **Phase 4 is complete.** Its second pull request, 4C
 ([design](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-10-06-invoices-payments-reminders-design.md),

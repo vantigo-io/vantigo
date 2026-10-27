@@ -590,8 +590,8 @@ and `energy:consumption-view`. See
 [`docs/src/content/docs/en/reference/energy.md`](docs/src/content/docs/en/reference/energy.md#settlements)
 and the [plan](docs/superpowers/plans/2026-10-27-energy-settlements.md).
 
-Energy phase 4 is done. Invoices phase 5's **D** invoices from consumption (the
-wizard) is done too; what remains is its **E** billing runs.
+Energy phase 4 is done, and so is Invoices phase 5, which bills it: **D** invoices
+from consumption (the wizard) and **E** billing runs.
 
 *Unblocks:* the Invoices module generating invoice lines from consumption
 without touching `energy` tables.
@@ -1129,7 +1129,7 @@ production.
 
 *Unblocks:* receivables without a spreadsheet; Point of sale's payment adapters.
 
-### Phase 5 — Energy consumption billing (one of two deliveries done)
+### Phase 5 — Energy consumption billing (done)
 
 Periodic invoices per supply point and period from Energy's figures, tariff and price
 lines, batch issuing, the utilities' periodic-invoicing rules — with Energy phase 4's
@@ -1155,10 +1155,25 @@ energy VAT codes. See
 [`docs/src/content/docs/en/reference/invoices.md`](docs/src/content/docs/en/reference/invoices.md#invoicing-consumption)
 and the [plan](docs/superpowers/plans/2026-10-27-invoices-energy.md).
 
-**Delivery E: billing runs (next)** — every customer `DueSupplies` names, drafted and
-optionally issued by an `invoices-billing` worker in the wizard's own code path, split
-by metering point when a document cannot hold the lines; the **Billing runs** pages;
-`module.Workers` learning the slots the run needs.
+**Delivery E: billing runs (done)** — on `feat/invoices-billing-runs`, migration
+`00079_invoices_billing_runs.sql`. A **billing run** settles, drafts and — when asked —
+issues one invoice per customer with consumption due through a date: every customer
+Energy's `DueSupplies` names (its new `Every` read) or the ones named, one run at a time.
+The `invoices-billing` worker carries the customers one at a time under a 10-minute
+lease, through the **From consumption** wizard's and the issue's own code paths, as the
+run's creator; a customer whose lines do not fit one document is split by metering
+point at 500 lines. Each customer's item records what it made, or why it was skipped
+(the wizard's refusal, the metering point named) or failed (the issue's refusal, or a
+third error); an error is retried after 1 and 2 minutes. A run is cancelled with its
+customers not yet reached; sending stays a step of its own. The **Billing runs** pages
+make a run, list them and follow one; `module.Workers` resolves `Projects`, the three
+`Billable*` reads and `Consumption` as Compose does. See
+[`docs/src/content/docs/en/reference/invoices.md`](docs/src/content/docs/en/reference/invoices.md#billing-runs)
+and the [plan](docs/superpowers/plans/2026-10-27-invoices-billing-runs.md).
+
+**Invoices phase 5 is complete.** Left out on purpose (design D12): sending a run's
+documents in one go, a run on a schedule, advance invoicing and a-konto for energy,
+gjennomfakturering, strømstøtte and Norgespris, eFaktura and AvtaleGiro.
 
 *Unblocks:* the energy business's core revenue.
 

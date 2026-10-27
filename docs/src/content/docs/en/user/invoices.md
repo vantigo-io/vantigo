@@ -1,6 +1,6 @@
 ---
 title: Invoices
-description: Invoicing work and consumption, drafting, issuing and sending invoices, credit notes, payments, the journal and the export.
+description: Invoicing work and consumption, billing runs, drafting, issuing and sending invoices, credit notes, payments, the journal and the export.
 sidebar:
   order: 50
 sources:
@@ -14,8 +14,9 @@ sources:
 
 The Invoices app issues the sales documents of your bookkeeping: a draft becomes a
 numbered invoice or credit note the moment it is issued, gets a PDF, and from then on
-never changes. The app has six areas in its sidebar: **Invoices**, **Quick invoice**
-(shown only to someone who holds both `invoices:create` and `invoices:issue`), **Invoice
+never changes. The app has seven areas in its sidebar: **Invoices**, **Quick invoice**
+(shown only to someone who holds both `invoices:create` and `invoices:issue`), **Billing
+runs** (shown with `invoices:create`), **Invoice
 journal**, **Overdue** (the overdue invoices and their reminders), **Payments** (the
 bank's files and the exception queue, and the day's Vipps payments, shown only with
 `invoices:payments`) and **Invoice
@@ -539,6 +540,54 @@ is not in NOK; the settlements make more than 500 lines with the draft's own (ch
 fewer, or make another draft); or the customer cannot be invoiced, as for **New
 invoice**. When the refusal is about one settlement, the alert names it — *The
 settlement refused: …*.
+
+### Run billing for every customer
+
+A **billing run** invoices the consumption of every customer who has some due — or of
+the customers you name — in one go: Vantigo makes one invoice per customer, exactly as
+**From consumption** would, and, if you ask, issues it
+([how it works](/en/reference/invoices/#billing-runs)). It needs `invoices:create`, and
+`invoices:issue` to issue the invoices. Only one run goes at a time.
+
+1. Open **Billing runs** in the sidebar and click **New billing run**.
+2. **Billing periods ending on or before** — today unless you change it.
+3. Tick **Issue the invoices** to have each invoice issued as soon as it is made, or
+   leave it to get drafts only, to look over and issue yourself. The choice is offered
+   only if you may issue.
+4. **Customer ids** — leave it empty to bill every customer with consumption due
+   through the day, or write the ids of the customers to bill only them.
+5. Click **Start the run**. It opens on its own page and works through the customers in the
+   background; the page follows it as it goes.
+
+The run is refused, and nothing is made, when the Energy module is off, when another run
+has not finished, when nothing is due through the day, or when more than 5 000 supplies
+are due — name the customers then, in more than one run.
+
+**The run's page** shows the day, whether it issues, its status — **Queued**, **Running**,
+**Done** or **Cancelled** — and how many customers ended each way, then one row per customer,
+which you can filter by outcome:
+
+- **Drafted** or **Issued** — the invoice it made, as a link. A customer with too many
+  lines for one invoice gets more than one, split by metering point.
+- **Skipped** — the customer could not be invoiced, and the row says why in words, as
+  the wizard would: nothing was due, or a metering point is not ready yet — the row
+  names the metering point, for instance when its billing period is still open, its
+  readings or spot prices are missing, or it is a yearly supply of a person. Fix it in
+  Energy and invoice the customer later, from the card or in a new run.
+- **Failed** — the invoice was made but could not be issued (the reason is given); the
+  draft stays and is linked, to fix and issue by hand. A customer that kept running
+  into an error is failed too, after three tries.
+
+An invoice the run made stays an ordinary invoice: a draft can be edited or deleted —
+a deleted one is no longer listed on the run — and an issued one is credited as any
+other.
+
+**Cancel the run** stops a run that has not finished: the customers not yet reached are
+**Cancelled**, and the one being invoiced at that moment finishes. What was made stays.
+
+**Sending is not part of a run.** Send the issued invoices afterwards from each
+document, by e-mail or as EHF ([Sending a document by e-mail](#sending-a-document-by-e-mail),
+[Sending as EHF](#sending-as-ehf)).
 
 ## Editing and deleting a draft
 
@@ -1824,7 +1873,7 @@ No built-in role holds these; an Owner holds everything
 | --- | --- |
 | Open the app, read every document, download PDFs and EHF files, see payments, sends and EHF states, read the journal, export the CSV, see the dashboard card, read the overdue list, see an invoice's reminders, charges, deliveries, hold and hand-off and download a letter's PDF, read a customer's reminder policy, the collection rates and the reminder settings, see the dashboard's notices about overdue invoices and money owed back, see an invoice's pay link and Vipps payments, list the day's Vipps payments and download them as CSV | `invoices:access` |
 | Create, edit, preview and delete drafts | `invoices:create`, and `customers:view` to pick the buyer |
-| See the uninvoiced work — its hours, people and rates — on a customer's Invoices tab or a project's Invoicing tab, make a draft of it or add it to one, refresh a draft's work, turn its timesheet on or off, deduct earlier invoices; see a customer's consumption due and make a draft of it, or add it to one | `invoices:create` |
+| See the uninvoiced work — its hours, people and rates — on a customer's Invoices tab or a project's Invoicing tab, make a draft of it or add it to one, refresh a draft's work, turn its timesheet on or off, deduct earlier invoices; see a customer's consumption due and make a draft of it, or add it to one; make, follow and cancel billing runs | `invoices:create` (and `invoices:issue` for a run that issues the invoices) |
 | Issue a draft — which marks its work invoiced in Time, Expenses and Projects, and its consumption in Energy, without asking for their permissions — make a credit note, send a document by e-mail or as EHF, see where each send went, cancel or resolve an EHF transmission, record a delivery by hand or remove one, make or revoke a pay link and see its address and QR code while payment on site is offered, take a Vipps payment on site | `invoices:issue` |
 | Register a payment or remove one with a reason; import bank files, and use **Payments** and its exception queue; set a customer's reminder policy; preview and make reminder runs, print paper letters, confirm a batch posted or reprint it; withdraw a letter or send a failed one again; register a charge payment, remove one, waive a charge; put an invoice on hold and lift the hold, record a hand-off to a collection agency and withdraw it, export the collection file; mark a day's Vipps payments reconciled; see the dashboard's notices about bank lines, letters, print batches and Vipps payments | `invoices:payments` |
 | Make a quick invoice — created and issued in one step, recorded as handed over — and take payment for it with Vipps on the spot | `invoices:create` and `invoices:issue` |
