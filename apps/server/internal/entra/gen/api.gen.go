@@ -40,6 +40,30 @@ func (e EntraAccountState) Valid() bool {
 	}
 }
 
+// Defines values for EntraCalendarSyncStatus.
+const (
+	Off               EntraCalendarSyncStatus = "off"
+	PermissionMissing EntraCalendarSyncStatus = "permission_missing"
+	Ready             EntraCalendarSyncStatus = "ready"
+	Unavailable       EntraCalendarSyncStatus = "unavailable"
+)
+
+// Valid indicates whether the value is a known member of the EntraCalendarSyncStatus enum.
+func (e EntraCalendarSyncStatus) Valid() bool {
+	switch e {
+	case Off:
+		return true
+	case PermissionMissing:
+		return true
+	case Ready:
+		return true
+	case Unavailable:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for EntraConnectionStatus.
 const (
 	EntraConnectionStatusConnected    EntraConnectionStatus = "connected"
@@ -357,10 +381,25 @@ type EntraAccountCounts struct {
 	Enabled  int32 `json:"enabled"`
 }
 
+// EntraCalendarSync The calendar sync switch (calendar Outlook sync design O2): whether people may sync their Vantigo calendar to Outlook, and whether it can run. status is off while the switch is; ready when on, connected, and the last test's token carried Calendars.ReadWrite; permission_missing when on but the last test did not see it (add it, consent, and test again); unavailable when on but the connection is not connected, reason then being the connection's statusReason.
+type EntraCalendarSync struct {
+	Enabled bool `json:"enabled"`
+
+	// Reason A code, never the directory's words; absent when there is nothing to say.
+	Reason *string                 `json:"reason,omitempty"`
+	Status EntraCalendarSyncStatus `json:"status"`
+}
+
+// EntraCalendarSyncStatus defines model for EntraCalendarSync.Status.
+type EntraCalendarSyncStatus string
+
 // EntraConnection The installation's one connection to a Microsoft Entra ID tenant (Entra design D11): the tenant and the application registered in it, what the last connection test found, the account rules, the client secrets without their values, and how many accounts and groups the module keeps. Sent whether or not anything is set, so the wizard can show every step before the first is done.
 type EntraConnection struct {
 	// Accounts How many accounts the module keeps in the tenant, by state; count is all of them, deleted included.
 	Accounts EntraAccountCounts `json:"accounts"`
+
+	// CalendarSync The calendar sync switch (calendar Outlook sync design O2): whether people may sync their Vantigo calendar to Outlook, and whether it can run. status is off while the switch is; ready when on, connected, and the last test's token carried Calendars.ReadWrite; permission_missing when on but the last test did not see it (add it, consent, and test again); unavailable when on but the connection is not connected, reason then being the connection's statusReason.
+	CalendarSync EntraCalendarSync `json:"calendarSync"`
 
 	// ClientId The application (client) id of the app registration. Absent until step 1 is saved.
 	ClientId *openapi_types.UUID `json:"clientId,omitempty"`
@@ -377,7 +416,7 @@ type EntraConnection struct {
 	// OrganisationName The tenant's organisation name as the last test read it.
 	OrganisationName *string `json:"organisationName,omitempty"`
 
-	// PermissionsMissing The application permissions the module needs (User.ReadWrite.All, User-LifeCycleInfo.ReadWrite.All, User.RevokeSessions.All, UserAuthMethod-TAP.ReadWrite.All, LicenseAssignment.ReadWrite.All, Group.ReadWrite.All, Domain.Read.All, Organization.Read.All) that the last test's token did not carry; all of them before the first test.
+	// PermissionsMissing The application permissions the module needs (User.ReadWrite.All, User-LifeCycleInfo.ReadWrite.All, User.RevokeSessions.All, UserAuthMethod-TAP.ReadWrite.All, LicenseAssignment.ReadWrite.All, Group.ReadWrite.All, Domain.Read.All, Organization.Read.All, and Calendars.ReadWrite while the calendar sync switch is on) that the last test's token did not carry; all of them before the first test.
 	PermissionsMissing []string `json:"permissionsMissing"`
 
 	// PermissionsPresent The application permissions the last test's token carried in its roles claim.
@@ -665,8 +704,11 @@ type EntraSettingsPassDelivery string
 // EntraSettingsUpnPattern How the UPN's local part is made from the folded names when the work email cannot be the UPN.
 type EntraSettingsUpnPattern string
 
-// EntraSettingsRequest Step 4, the account rules. Every field is optional, and one left out keeps its value; each refusal is a field error under its own name.
+// EntraSettingsRequest Step 4, the account rules and the calendar sync switch. Every field is optional, and one left out keeps its value; each refusal is a field error under its own name.
 type EntraSettingsRequest struct {
+	// CalendarSync Lets people sync their Vantigo calendar to Outlook (calendar Outlook sync design O2). Turning it on asks for Calendars.ReadWrite; turning it off removes the copies already written.
+	CalendarSync *bool `json:"calendarSync,omitempty"`
+
 	// DefaultUsageLocation Two letters, ISO 3166-1 alpha-2.
 	DefaultUsageLocation *string                                 `json:"defaultUsageLocation,omitempty"`
 	LeaverRemoveGroups   *EntraSettingsRequestLeaverRemoveGroups `json:"leaverRemoveGroups,omitempty"`

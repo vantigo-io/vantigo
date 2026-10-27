@@ -14,11 +14,10 @@ import "github.com/vantigo-io/vantigo/server/internal/worker"
 // through Compose's return value. It resolves each module's contribution from
 // deps as the caller passes it, plus Deps.CustomerPersonalData,
 // Deps.InvoicedWork, Deps.Directory, Deps.Users, Deps.Accounts,
-// Deps.Workforce, Deps.CalendarSources and Deps.IdentityProvisioners, which it resolves from
-// the enabled modules the way
-// Compose does — the same base Deps Compose
-// resolves Directory from, before any Mount runs, with no per-module Doc or
-// Catalog — since a background worker is a data-layer concern (Pool, Config,
+// Deps.Workforce, Deps.CalendarSources, Deps.IdentityProvisioners and
+// Deps.MailboxCalendar, which it resolves from the enabled modules the way
+// Compose does — the same base Deps Compose resolves Directory from, before
+// any Mount runs, with no per-module Doc or Catalog — since a background worker is a data-layer concern (Pool, Config,
 // Clock, Mail, Secrets, ...), not a contract one.
 func Workers(deps Deps, mods ...Module) []worker.Worker {
 	// Every module given, enabled or not, before enablement drops any: the
@@ -84,6 +83,14 @@ func Workers(deps Deps, mods ...Module) []worker.Worker {
 	if err != nil {
 		panic(err.Error())
 	}
+	// The mailbox calendars, resolved as Compose resolves them (calendar
+	// Outlook sync design O4): the calendar's sync worker writes through
+	// them, and worker mode never composes. Two providers panic, as two
+	// workforce registers do.
+	deps, err = withMailboxCalendar(deps, enabled)
+	if err != nil {
+		panic(err.Error())
+	}
 	var out []worker.Worker
 	for _, mod := range enabled {
 		if mod.Workers == nil {
@@ -136,6 +143,21 @@ func withWorkforce(deps Deps, enabled []Module) (Deps, error) {
 	}
 	if provider != nil {
 		deps.Workforce = provider.Workforce(deps)
+	}
+	return deps, nil
+}
+
+// withMailboxCalendar resolves contracts.MailboxCalendar from the enabled
+// modules — at most one may declare it — keeping a preset value when none
+// does (the seam modtest.WithMailboxCalendar fills). Compose and Workers
+// both call it, after the identity provisioners.
+func withMailboxCalendar(deps Deps, enabled []Module) (Deps, error) {
+	provider, err := soleProvider(enabled, "a mailbox calendar", func(m Module) bool { return m.MailboxCalendar != nil })
+	if err != nil {
+		return deps, err
+	}
+	if provider != nil {
+		deps.MailboxCalendar = provider.MailboxCalendar(deps)
 	}
 	return deps, nil
 }

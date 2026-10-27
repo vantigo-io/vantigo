@@ -42,6 +42,11 @@ var requiredPermissions = []string{
 	"Organization.Read.All",
 }
 
+// permissionCalendarsReadWrite is the application permission the calendar
+// sync switch needs (calendar Outlook sync design O2): asked for only while
+// the switch is on, never one of requiredPermissions.
+const permissionCalendarsReadWrite = "Calendars.ReadWrite"
+
 // The account rules' bounds.
 const (
 	minPassLifetimeMinutes = 10
@@ -108,6 +113,26 @@ func uuidPtr(u *uuid.UUID) *openapi_types.UUID {
 	return &v
 }
 
+// calendarSyncBody is the calendar sync switch as GET /connection answers
+// it (calendar Outlook sync design O2), from the switch, the connection's
+// status and reason, and the permissions the last test saw.
+func calendarSyncBody(conn store.EntraConnection, status, reason string) gen.EntraCalendarSync {
+	body := gen.EntraCalendarSync{Enabled: conn.CalendarSync, Status: gen.Off}
+	switch {
+	case !conn.CalendarSync:
+	case status != contracts.ProviderConnected:
+		body.Status = gen.Unavailable
+		if reason != "" {
+			body.Reason = &reason
+		}
+	case slices.Contains(conn.PermissionsPresent, permissionCalendarsReadWrite):
+		body.Status = gen.Ready
+	default:
+		body.Status = gen.PermissionMissing
+	}
+	return body
+}
+
 // connectionBody is the connection as GET /connection answers it at now,
 // with the counts of its accounts and of its groups present in the tenant.
 func connectionBody(conn store.EntraConnection, creds []store.EntraCredential, counts store.CountAccountsRow, groups int32, now time.Time) gen.EntraConnection {
@@ -134,10 +159,11 @@ func connectionBody(conn store.EntraConnection, creds []store.EntraCredential, c
 			PassUsableOnce:       conn.PassUsableOnce,
 			PassDelivery:         gen.EntraSettingsPassDelivery(conn.PassDelivery),
 		},
-		Credentials: credentialsBody(creds, now),
-		Accounts:    gen.EntraAccountCounts{Count: counts.Total, Enabled: counts.Enabled, Disabled: counts.Disabled, Deleted: counts.Deleted},
-		Groups:      gen.EntraGroupCounts{Count: groups},
-		Version:     conn.Version,
+		Credentials:  credentialsBody(creds, now),
+		Accounts:     gen.EntraAccountCounts{Count: counts.Total, Enabled: counts.Enabled, Disabled: counts.Disabled, Deleted: counts.Deleted},
+		Groups:       gen.EntraGroupCounts{Count: groups},
+		CalendarSync: calendarSyncBody(conn, status, reason),
+		Version:      conn.Version,
 	}
 	if reason != "" {
 		body.StatusReason = &reason
@@ -301,6 +327,7 @@ func mergeSettings(in gen.EntraSettingsRequest, conn store.EntraConnection) (sto
 		PassLifetimeMinutes:  conn.PassLifetimeMinutes,
 		PassUsableOnce:       conn.PassUsableOnce,
 		PassDelivery:         conn.PassDelivery,
+		CalendarSync:         conn.CalendarSync,
 	}
 	var f fieldErrors
 	var changed []string
@@ -369,6 +396,7 @@ func mergeSettings(in gen.EntraSettingsRequest, conn store.EntraConnection) (sto
 		{"leaverWriteLeaveDate", in.LeaverWriteLeaveDate, &p.LeaverWriteLeaveDate},
 		{"writeHireDate", in.WriteHireDate, &p.WriteHireDate},
 		{"passUsableOnce", in.PassUsableOnce, &p.PassUsableOnce},
+		{"calendarSync", in.CalendarSync, &p.CalendarSync},
 	} {
 		if b.in != nil {
 			mark(b.field, *b.to != *b.in)

@@ -36,6 +36,10 @@ func (silentWorkforce) Capacity(context.Context, time.Time, time.Time, []int64) 
 
 func (silentWorkforce) Self(context.Context) (*contracts.PersonEntry, error) { return nil, nil }
 
+func (silentWorkforce) DirectoryAccount(context.Context) (*contracts.DirectoryAccount, error) {
+	return nil, nil
+}
+
 func (silentWorkforce) HeldCompetences(context.Context, time.Time, []int64) (map[int64][]contracts.HeldCompetence, error) {
 	return nil, nil
 }

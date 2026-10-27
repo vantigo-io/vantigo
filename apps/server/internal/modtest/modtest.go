@@ -142,6 +142,7 @@ type setup struct {
 	calendarSources []contracts.CalendarSource
 	provisioners    []contracts.IdentityProvisioner
 	workforce       contracts.Workforce
+	mailboxCalendar contracts.MailboxCalendar
 	hours           contracts.BillableHours
 	billExpenses    contracts.BillableExpenses
 	milestones      contracts.BillableMilestones
@@ -359,6 +360,17 @@ func WithIdentityProvisioners(providers ...contracts.IdentityProvisioner) Option
 // "staff", and the fake is what stands in for it here.
 func WithWorkforce(w contracts.Workforce) Option {
 	return func(s *setup) { s.workforce = w }
+}
+
+// WithMailboxCalendar sets Deps.MailboxCalendar, for the calendar to be
+// tested against a fake mailbox provider (FakeMailboxCalendar) — its
+// mailboxes, its status and its refusals set by the test — without composing
+// Entra beside it: depguard keeps it out of calendar's tests. module.Compose
+// and module.Workers keep a value set here when no enabled module provides
+// the slot (calendar Outlook sync design O4); a composed Entra's own
+// replaces it.
+func WithMailboxCalendar(m contracts.MailboxCalendar) Option {
+	return func(s *setup) { s.mailboxCalendar = m }
 }
 
 // WithBillableHours sets Deps.BillableHours directly to p, for a module under
@@ -632,6 +644,7 @@ func New(t *testing.T, opts ...Option) *Harness {
 		CalendarSources:          s.calendarSources,
 		IdentityProvisioners:     s.provisioners,
 		Workforce:                s.workforce,
+		MailboxCalendar:          s.mailboxCalendar,
 		BillableHours:            s.hours,
 		BillableExpenses:         s.billExpenses,
 		BillableMilestones:       s.milestones,

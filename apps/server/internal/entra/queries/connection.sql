@@ -45,8 +45,9 @@ WHERE id = 1
 RETURNING *;
 
 -- name: UpdateConnectionSettings :one
--- UpdateConnectionSettings writes every account rule (step 4); the handler
--- has merged the request over the row, so a field the request left out is
+-- UpdateConnectionSettings writes every account rule (step 4) and the
+-- calendar sync switch (calendar Outlook sync design O2); the handler has
+-- merged the request over the row, so a field the request left out is
 -- written back as it was.
 UPDATE entra.connection SET
     upn_domain = @upn_domain,
@@ -60,6 +61,7 @@ UPDATE entra.connection SET
     pass_lifetime_minutes = @pass_lifetime_minutes,
     pass_usable_once = @pass_usable_once,
     pass_delivery = @pass_delivery,
+    calendar_sync = @calendar_sync,
     version = version + 1,
     updated_at = @now::timestamptz,
     updated_by_user_id = @updated_by_user_id
