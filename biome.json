@@ -9,7 +9,12 @@
     }
   },
   "linter": {
-    "enabled": true
+    "enabled": true,
+    "rules": {
+      "complexity": {
+        "useMathMinMax": "off"
+      }
+    }
   },
   "formatter": {
     "enabled": true,
