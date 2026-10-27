@@ -14,7 +14,7 @@ import (
 )
 
 const claimDueMailboxSyncs = `-- name: ClaimDueMailboxSyncs :many
-SELECT user_id, enabled, target, detail, kinds, mailbox, calendar_id, state, error, next_sync_at, last_synced_at, attempts, reconcile, revision, created_at, updated_at FROM calendar.mailbox_sync
+SELECT user_id, enabled, target, detail, kinds, mailbox, calendar_id, state, error, next_sync_at, last_synced_at, attempts, reconcile, revision, created_at, updated_at, busy_link, busy_from, busy_to, busy_synced_at FROM calendar.mailbox_sync
 WHERE (enabled OR state = 'stopping')
   AND (next_sync_at IS NULL OR next_sync_at <= $1::timestamptz)
 ORDER BY next_sync_at NULLS FIRST, user_id
@@ -57,6 +57,10 @@ func (q *Queries) ClaimDueMailboxSyncs(ctx context.Context, arg ClaimDueMailboxS
 			&i.Revision,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.BusyLink,
+			&i.BusyFrom,
+			&i.BusyTo,
+			&i.BusySyncedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -101,7 +105,7 @@ func (q *Queries) DeleteMailboxEvents(ctx context.Context, userID uuid.UUID) (in
 
 const getMailboxSync = `-- name: GetMailboxSync :one
 
-SELECT user_id, enabled, target, detail, kinds, mailbox, calendar_id, state, error, next_sync_at, last_synced_at, attempts, reconcile, revision, created_at, updated_at FROM calendar.mailbox_sync WHERE user_id = $1
+SELECT user_id, enabled, target, detail, kinds, mailbox, calendar_id, state, error, next_sync_at, last_synced_at, attempts, reconcile, revision, created_at, updated_at, busy_link, busy_from, busy_to, busy_synced_at FROM calendar.mailbox_sync WHERE user_id = $1
 `
 
 // The Outlook sync (calendar Outlook sync design O5, O7, O8): a person's
@@ -133,6 +137,10 @@ func (q *Queries) GetMailboxSync(ctx context.Context, userID uuid.UUID) (Calenda
 		&i.Revision,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.BusyLink,
+		&i.BusyFrom,
+		&i.BusyTo,
+		&i.BusySyncedAt,
 	)
 	return i, err
 }
@@ -174,7 +182,7 @@ func (q *Queries) ListMailboxEvents(ctx context.Context, userID uuid.UUID) ([]Ca
 }
 
 const lockMailboxSync = `-- name: LockMailboxSync :one
-SELECT user_id, enabled, target, detail, kinds, mailbox, calendar_id, state, error, next_sync_at, last_synced_at, attempts, reconcile, revision, created_at, updated_at FROM calendar.mailbox_sync WHERE user_id = $1 FOR UPDATE
+SELECT user_id, enabled, target, detail, kinds, mailbox, calendar_id, state, error, next_sync_at, last_synced_at, attempts, reconcile, revision, created_at, updated_at, busy_link, busy_from, busy_to, busy_synced_at FROM calendar.mailbox_sync WHERE user_id = $1 FOR UPDATE
 `
 
 // LockMailboxSync takes the person's row's lock for the PUT, so the If-Match
@@ -199,6 +207,10 @@ func (q *Queries) LockMailboxSync(ctx context.Context, userID uuid.UUID) (Calend
 		&i.Revision,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.BusyLink,
+		&i.BusyFrom,
+		&i.BusyTo,
+		&i.BusySyncedAt,
 	)
 	return i, err
 }
@@ -299,7 +311,7 @@ ON CONFLICT (user_id) DO UPDATE SET
     reconcile = EXCLUDED.reconcile,
     revision = calendar.mailbox_sync.revision + 1,
     updated_at = EXCLUDED.updated_at
-RETURNING user_id, enabled, target, detail, kinds, mailbox, calendar_id, state, error, next_sync_at, last_synced_at, attempts, reconcile, revision, created_at, updated_at
+RETURNING user_id, enabled, target, detail, kinds, mailbox, calendar_id, state, error, next_sync_at, last_synced_at, attempts, reconcile, revision, created_at, updated_at, busy_link, busy_from, busy_to, busy_synced_at
 `
 
 type UpsertMailboxSyncParams struct {
@@ -349,6 +361,10 @@ func (q *Queries) UpsertMailboxSync(ctx context.Context, arg UpsertMailboxSyncPa
 		&i.Revision,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.BusyLink,
+		&i.BusyFrom,
+		&i.BusyTo,
+		&i.BusySyncedAt,
 	)
 	return i, err
 }
@@ -363,7 +379,7 @@ UPDATE calendar.mailbox_sync SET
     reconcile = $6::boolean,
     updated_at = $7::timestamptz
 WHERE user_id = $8 AND revision = $9::integer
-RETURNING user_id, enabled, target, detail, kinds, mailbox, calendar_id, state, error, next_sync_at, last_synced_at, attempts, reconcile, revision, created_at, updated_at
+RETURNING user_id, enabled, target, detail, kinds, mailbox, calendar_id, state, error, next_sync_at, last_synced_at, attempts, reconcile, revision, created_at, updated_at, busy_link, busy_from, busy_to, busy_synced_at
 `
 
 type WriteMailboxSyncResultParams struct {
@@ -415,6 +431,10 @@ func (q *Queries) WriteMailboxSyncResult(ctx context.Context, arg WriteMailboxSy
 		&i.Revision,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.BusyLink,
+		&i.BusyFrom,
+		&i.BusyTo,
+		&i.BusySyncedAt,
 	)
 	return i, err
 }

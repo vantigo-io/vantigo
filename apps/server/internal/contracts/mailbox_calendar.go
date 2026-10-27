@@ -75,6 +75,36 @@ type MailboxCalendar interface {
 	// Bounded at 5000: what the calendar reconciles its map against, and
 	// what its clean-up deletes.
 	Find(ctx context.Context, mailbox, calendarID string, from time.Time) ([]MailboxEventRef, error)
+
+	// Delta reads the changes to the mailbox's default calendar — the one
+	// the directory computes free/busy from — over a window, a page at a
+	// time (calendar Outlook sync design O9.1, O9.4). link "" starts a delta
+	// afresh over from..to, answering every event whose times overlap the
+	// window; from and to are used only then, the window being fixed in the
+	// link from that call on. A link the provider answered continues it:
+	// the changes since, an event deleted or moved out of the window
+	// answered Removed. The link is the provider's opaque string and valid
+	// only for the mailbox it was answered for: one that is not — another
+	// mailbox's, or no link of the provider's at all — is refused with a
+	// failure, so a stored link can never point the provider anywhere else.
+	// ErrMailboxDeltaExpired: the provider no longer takes the link, and
+	// the caller starts again with "". Refused under MailboxCleanup with
+	// ErrMailboxUnavailable: a read is never needed to remove copies.
+	//
+	// The directory answers an event's subject, body, organizer and
+	// attendees in a delta; the contract carries none of them, and the
+	// provider decodes none — what a change answers is its times and its
+	// ShowAs (design O9.3).
+	Delta(ctx context.Context, mailbox string, from, to time.Time, link string) (MailboxDelta, error)
+
+	// Marked answers, among eventIDs — at most MailboxMarkedMax of them —
+	// the events that carry this installation's marker, each with its key,
+	// in the order asked: the read that tells a copy of the calendar's own
+	// that the delta cannot mark (it answers no extended property) from the
+	// person's own event (design O9.2). An event of the person's, or one
+	// another installation wrote, is not answered, and neither is an id no
+	// longer there. Refused under MailboxCleanup with ErrMailboxUnavailable.
+	Marked(ctx context.Context, mailbox string, eventIDs []string) ([]MailboxEventRef, error)
 }
 
 // The states of MailboxStatus.State.
@@ -163,9 +193,49 @@ type MailboxResult struct {
 	Err error
 }
 
-// MailboxEventRef is one event Find answers: its id and the key it carries.
+// MailboxEventRef is one event Find or Marked answers: its id and the key it
+// carries.
 type MailboxEventRef struct {
 	EventID, Key string
+}
+
+// MailboxMarkedMax is the most ids one Marked call takes; the caller hands it
+// slices of at most this many.
+const MailboxMarkedMax = 100
+
+// MailboxDelta is one page Delta answers (calendar Outlook sync design O9.4).
+type MailboxDelta struct {
+	// Changes are the page's changes, in the provider's order.
+	Changes []MailboxChange
+	// Link is the provider's opaque link: with Done, the delta link to keep
+	// for the next read; without, a next link to continue this one with.
+	Link string
+	// Done: the delta is read to its end, and Link is the one to keep.
+	Done bool
+}
+
+// MailboxChange is one event of the default calendar as a delta answers it:
+// its times and its ShowAs, and nothing of what it is about.
+type MailboxChange struct {
+	// EventID is the directory's id of the event, or of the occurrence.
+	EventID string
+	// Removed: the event was deleted or left the window; nothing else of
+	// the change is set.
+	Removed bool
+	// Series: the event is an occurrence or an exception of a recurring
+	// series — never a copy, which the calendar always writes single.
+	Series bool
+	// Cancelled: the meeting is cancelled.
+	Cancelled bool
+	// AllDay events are StartDate..EndDate, civil dates at midnight UTC,
+	// EndDate inclusive.
+	AllDay             bool
+	StartDate, EndDate time.Time
+	// StartsAt and EndsAt are a timed event's instants.
+	StartsAt, EndsAt time.Time
+	// ShowAs is one of the ShowAs constants, or "" when the directory
+	// answered a value the contract does not name.
+	ShowAs string
 }
 
 // The errors a mailbox provider answers. A caller tests them with errors.Is;
@@ -187,4 +257,8 @@ var (
 	// does not carry the provider's marker — one the person, or another
 	// installation, made — so it deleted nothing (design O8).
 	ErrCalendarNotOurs = errors.New("contracts: the calendar is not one the provider made")
+	// ErrMailboxDeltaExpired: the provider no longer takes Delta's link —
+	// the directory forgot the delta's state — so the caller starts it again
+	// with "" (design O9.4).
+	ErrMailboxDeltaExpired = errors.New("contracts: the mailbox delta link has expired")
 )

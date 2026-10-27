@@ -759,6 +759,21 @@ func (m *mailboxCalendar) result(ctx context.Context, s mailboxSession, op contr
 	return contracts.MailboxResult{Err: g}
 }
 
+// Delta reads the changes to the mailbox's default calendar (calendar
+// Outlook sync design O9.4). Delivery B, task 3a fills it: until then it
+// answers ErrMailboxUnavailable, so the calendar's read is refused as a
+// provider that cannot read would be.
+func (m *mailboxCalendar) Delta(context.Context, string, time.Time, time.Time, string) (contracts.MailboxDelta, error) {
+	return contracts.MailboxDelta{}, contracts.ErrMailboxUnavailable
+}
+
+// Marked answers the ids among eventIDs carrying this installation's marker
+// (design O9.2, O9.4). Delivery B, task 3a fills it: until then it answers
+// ErrMailboxUnavailable.
+func (m *mailboxCalendar) Marked(context.Context, string, []string) ([]contracts.MailboxEventRef, error) {
+	return nil, contracts.ErrMailboxUnavailable
+}
+
 // Find answers the events of the calendar — mailbox's default one,
 // GET /users/{oid}/events, or the secondary calendarID's,
 // GET /users/{oid}/calendars/{id}/events — filtered on this installation's

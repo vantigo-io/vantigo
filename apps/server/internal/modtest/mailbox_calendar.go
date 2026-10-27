@@ -6,6 +6,7 @@ import (
 	"maps"
 	"slices"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -32,11 +33,28 @@ import (
 // from when that is set (a timed event's StartsAt, an all-day one's
 // StartDate). A mailbox is made on its first use.
 //
+// Its default calendar keeps a change log, as a directory's delta does
+// (design O9.1): every create, update and delete of an event in it — a copy
+// Apply writes, an event PutEvent places, the person's own events
+// SeedForeign, MoveForeign and RemoveForeign shape — is logged with a
+// sequence, so Delta answers the calendar's copies as a real delta would,
+// beside the person's events: an event as a change with its times and its
+// ShowAs (a copy's from its MailboxEvent), Cancelled and Series as the test
+// set them. Delta with link "" answers every event of the default calendar
+// whose times overlap from..to; with a link, the events changed since it,
+// one gone or out of the window as Removed. It answers pages of at most
+// SetDeltaPageSize changes (default 1000): Done false with a next link while
+// more remain, Done true with the delta link at the end. Its links are
+// "fake-delta:<mailbox>:<n>"; one for another mailbox, or one it never
+// answered, is refused with a plain error, and ExpireDelta makes every link
+// it answered for a mailbox so far answer ErrMailboxDeltaExpired. Marked
+// answers, among the ids asked, the events carrying a key.
+//
 // Its refusals are the contract's: while the status is
 // contracts.MailboxUnavailable every call but Status answers
 // ErrMailboxUnavailable; under contracts.MailboxCleanup EnsureCalendar
 // answers it and Apply takes deletes only, every other op answering it in
-// its result. A mailbox SetUnknown marks answers ErrMailboxUnknown to every
+// its result, and Delta and Marked answer it. A mailbox SetUnknown marks answers ErrMailboxUnknown to every
 // call naming it, and SetMailboxError makes every call naming a mailbox
 // answer the error a test chooses (ErrMailboxDenied, ErrMailboxGone, a
 // failure). FailWith makes a method answer an error a test chooses, and
@@ -55,30 +73,77 @@ type FakeMailboxCalendar struct {
 	failOpErr error
 	calls     []MailboxCall
 	next      int // the last id handed out
+	pageSize  int // SetDeltaPageSize
+	links     map[string]*fakeDeltaLink
+	expired   map[string]bool // the links ExpireDelta expired
+	linkNext  int             // the last link number handed out
 }
 
+// fakeDeltaLink is what a link Delta answered stands for: the window the
+// delta was started over and, for a delta link (not next), the sequence of
+// the mailbox's log it was read to; for a next link, the changes still to
+// answer.
+type fakeDeltaLink struct {
+	from, to time.Time
+	seq      int
+	next     bool
+	pending  []contracts.MailboxChange
+}
+
+// fakeDeltaPrefix starts every link the fake answers.
+const fakeDeltaPrefix = "fake-delta:"
+
 // MailboxCall is one call a FakeMailboxCalendar recorded: the method, the
-// mailbox and the calendar it named, a copy of the ops Apply was given, and
-// the from Find was given.
+// mailbox and the calendar it named, a copy of the ops Apply was given, the
+// from Find was given, the window and the link Delta was given, and a copy
+// of the ids Marked was given.
 type MailboxCall struct {
 	Method, Mailbox, CalendarID string
 	Ops                         []contracts.MailboxOp
-	From                        time.Time
+	From, To                    time.Time
+	Link                        string
+	EventIDs                    []string
 }
 
 // FakeMailboxEvent is one event of the fake's mailbox, as Events answers it.
+// Cancelled and Series are what Delta answers of it: set only on the
+// person's own events (SeedForeign, MoveForeign).
 type FakeMailboxEvent struct {
 	ID, CalendarID, Key string
 	Event               contracts.MailboxEvent
 	ChangeKey           string
+	Cancelled, Series   bool
+}
+
+// FakeBusyEvent is one of the person's own events of the default calendar,
+// as SeedForeign and MoveForeign shape it: its times, its ShowAs, and
+// whether it is cancelled or belongs to a series. AllDay events are
+// StartDate..EndDate, civil dates at midnight UTC, EndDate inclusive.
+type FakeBusyEvent struct {
+	ID                 string
+	AllDay             bool
+	StartDate, EndDate time.Time
+	StartsAt, EndsAt   time.Time
+	ShowAs             string
+	Cancelled, Series  bool
 }
 
 // fakeMailbox is one mailbox of the fake: its secondary calendars, the ones
-// of them the provider did not make, and its events, by id.
+// of them the provider did not make, its events, by id, and its default
+// calendar's change log.
 type fakeMailbox struct {
 	calendars map[string]string // id → name
 	foreign   map[string]bool
 	events    map[string]*FakeMailboxEvent
+	seq       int // the last sequence logged
+	log       []fakeLogEntry
+}
+
+// fakeLogEntry is one change of the default calendar's log: the event
+// created, rewritten or deleted, and its sequence.
+type fakeLogEntry struct {
+	seq int
+	id  string
 }
 
 var _ contracts.MailboxCalendar = (*FakeMailboxCalendar)(nil)
@@ -98,6 +163,9 @@ func NewFakeMailboxCalendar() *FakeMailboxCalendar {
 		unknown:   map[string]bool{},
 		refusals:  map[string]error{},
 		fail:      map[string]error{},
+		pageSize:  1000,
+		links:     map[string]*fakeDeltaLink{},
+		expired:   map[string]bool{},
 	}
 }
 
@@ -143,7 +211,7 @@ func (f *FakeMailboxCalendar) SetMailboxError(mailbox string, err error) {
 }
 
 // FailWith makes every later call of method ("Status", "EnsureCalendar",
-// "DeleteCalendar", "Apply", "Find") answer err, or (err nil) clears it.
+// "DeleteCalendar", "Apply", "Find", "Delta", "Marked") answer err, or (err nil) clears it.
 func (f *FakeMailboxCalendar) FailWith(method string, err error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -170,6 +238,75 @@ func (f *FakeMailboxCalendar) PutEvent(mailbox, calendarID, key string, event co
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.create(f.mailbox(mailbox), calendarID, key, event)
+}
+
+// SeedForeign places one of the person's own events in a mailbox's default
+// calendar — no key, never the provider's — and answers its id: event.ID,
+// or a new one when that is "". It is logged, so the next delta answers it.
+func (f *FakeMailboxCalendar) SeedForeign(mailbox string, event FakeBusyEvent) string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	m := f.mailbox(mailbox)
+	id := event.ID
+	if id == "" {
+		id = f.id("event")
+	}
+	m.events[id] = &FakeMailboxEvent{ID: id, Event: busyEvent(event), ChangeKey: f.id("change"), Cancelled: event.Cancelled, Series: event.Series}
+	f.logChange(m, "", id)
+	return id
+}
+
+// MoveForeign rewrites the default calendar's event event.ID to event's
+// times, ShowAs and flags, as the person editing it in Outlook would — a
+// copy of the provider's keeps its key and its subject — and logs it; an
+// event not there is placed, as SeedForeign does.
+func (f *FakeMailboxCalendar) MoveForeign(mailbox string, event FakeBusyEvent) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	m := f.mailbox(mailbox)
+	e := m.events[event.ID]
+	if e == nil || e.CalendarID != "" {
+		e = &FakeMailboxEvent{ID: event.ID}
+		m.events[event.ID] = e
+	}
+	moved := busyEvent(event)
+	moved.Subject, moved.Body, moved.Location, moved.TimeZone, moved.Private = e.Event.Subject, e.Event.Body, e.Event.Location, e.Event.TimeZone, e.Event.Private
+	e.Event, e.Cancelled, e.Series, e.ChangeKey = moved, event.Cancelled, event.Series, f.id("change")
+	f.logChange(m, "", event.ID)
+}
+
+// RemoveForeign deletes the default calendar's event id, as the person
+// deleting it in Outlook would, and logs it.
+func (f *FakeMailboxCalendar) RemoveForeign(mailbox, id string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	m := f.mailbox(mailbox)
+	if e := m.events[id]; e != nil && e.CalendarID == "" {
+		delete(m.events, id)
+		f.logChange(m, "", id)
+	}
+}
+
+// SetDeltaPageSize makes Delta answer pages of at most n changes.
+func (f *FakeMailboxCalendar) SetDeltaPageSize(n int) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.pageSize = max(n, 1)
+}
+
+// ExpireDelta makes every link Delta answered for mailbox so far — next and
+// delta links alike — answer ErrMailboxDeltaExpired from now on, as a
+// directory that forgot the delta's state does; a delta started afresh
+// answers links that work.
+func (f *FakeMailboxCalendar) ExpireDelta(mailbox string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for link := range f.links {
+		if strings.HasPrefix(link, fakeDeltaPrefix+mailbox+":") {
+			f.expired[link] = true
+			delete(f.links, link)
+		}
+	}
 }
 
 // PutCalendar places a secondary calendar named name in a mailbox and
@@ -346,6 +483,7 @@ func (f *FakeMailboxCalendar) Apply(_ context.Context, mailbox, calendarID strin
 			}
 			e.Event = *op.Event
 			e.ChangeKey = f.id("change")
+			f.logChange(m, calendarID, op.EventID)
 			out[i] = contracts.MailboxResult{EventID: op.EventID, ChangeKey: e.ChangeKey}
 		case contracts.MailboxOpDelete:
 			e := m.events[op.EventID]
@@ -354,6 +492,7 @@ func (f *FakeMailboxCalendar) Apply(_ context.Context, mailbox, calendarID strin
 				continue
 			}
 			delete(m.events, op.EventID)
+			f.logChange(m, calendarID, op.EventID)
 			out[i] = contracts.MailboxResult{EventID: op.EventID}
 		default:
 			out[i] = contracts.MailboxResult{EventID: op.EventID, Err: errors.New("modtest: unknown op kind " + strconv.Quote(op.Kind))}
@@ -391,6 +530,134 @@ func (f *FakeMailboxCalendar) Find(_ context.Context, mailbox, calendarID string
 	}
 	slices.SortFunc(out, func(a, b contracts.MailboxEventRef) int { return compareIDs(a.EventID, b.EventID) })
 	return out, nil
+}
+
+// Delta answers a page of the default calendar's changes: with link "",
+// every event overlapping from..to; with a link, the changes since it.
+func (f *FakeMailboxCalendar) Delta(_ context.Context, mailbox string, from, to time.Time, link string) (contracts.MailboxDelta, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.calls = append(f.calls, MailboxCall{Method: "Delta", Mailbox: mailbox, From: from, To: to, Link: link})
+	if err := f.refusal("Delta", mailbox, false); err != nil {
+		return contracts.MailboxDelta{}, err
+	}
+	m := f.mailbox(mailbox)
+	var state fakeDeltaLink
+	switch {
+	case link == "":
+		state = fakeDeltaLink{from: from, to: to, seq: m.seq, pending: f.window(m, from, to)}
+	case !strings.HasPrefix(link, fakeDeltaPrefix+mailbox+":"):
+		return contracts.MailboxDelta{}, errors.New("modtest: a delta link not answered for this mailbox")
+	case f.expired[link]:
+		return contracts.MailboxDelta{}, contracts.ErrMailboxDeltaExpired
+	case f.links[link] == nil:
+		return contracts.MailboxDelta{}, errors.New("modtest: no such delta link")
+	case f.links[link].next:
+		state = *f.links[link]
+	default:
+		was := f.links[link]
+		state = fakeDeltaLink{from: was.from, to: was.to, seq: m.seq, pending: f.since(m, was)}
+	}
+	page, rest := state.pending, []contracts.MailboxChange(nil)
+	if len(page) > f.pageSize {
+		page, rest = page[:f.pageSize], page[f.pageSize:]
+	}
+	f.linkNext++
+	answered := fakeDeltaPrefix + mailbox + ":" + strconv.Itoa(f.linkNext)
+	f.links[answered] = &fakeDeltaLink{from: state.from, to: state.to, seq: state.seq, next: len(rest) > 0, pending: slices.Clone(rest)}
+	return contracts.MailboxDelta{Changes: slices.Clone(page), Link: answered, Done: len(rest) == 0}, nil
+}
+
+// Marked answers, among eventIDs, the events carrying a key, in the order
+// asked; more than contracts.MailboxMarkedMax ids is a failure.
+func (f *FakeMailboxCalendar) Marked(_ context.Context, mailbox string, eventIDs []string) ([]contracts.MailboxEventRef, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.calls = append(f.calls, MailboxCall{Method: "Marked", Mailbox: mailbox, EventIDs: slices.Clone(eventIDs)})
+	if err := f.refusal("Marked", mailbox, false); err != nil {
+		return nil, err
+	}
+	if len(eventIDs) > contracts.MailboxMarkedMax {
+		return nil, errors.New("modtest: Marked asked for more than MailboxMarkedMax ids")
+	}
+	m := f.mailbox(mailbox)
+	out := []contracts.MailboxEventRef{}
+	for _, id := range eventIDs {
+		if e := m.events[id]; e != nil && e.Key != "" {
+			out = append(out, contracts.MailboxEventRef{EventID: id, Key: e.Key})
+		}
+	}
+	return out, nil
+}
+
+// window answers every event of the default calendar overlapping from..to
+// as a change, ordered by id. f.mu is held.
+func (f *FakeMailboxCalendar) window(m *fakeMailbox, from, to time.Time) []contracts.MailboxChange {
+	var out []contracts.MailboxChange
+	for _, id := range slices.SortedFunc(maps.Keys(m.events), compareIDs) {
+		if e := m.events[id]; e.CalendarID == "" && overlaps(e, from, to) {
+			out = append(out, change(e))
+		}
+	}
+	return out
+}
+
+// since answers the events of the default calendar logged after link's
+// sequence, each once, in the order of its last change: a change when it is
+// there and overlaps link's window, else Removed. f.mu is held.
+func (f *FakeMailboxCalendar) since(m *fakeMailbox, link *fakeDeltaLink) []contracts.MailboxChange {
+	last := map[string]int{}
+	for _, entry := range m.log {
+		if entry.seq > link.seq {
+			last[entry.id] = entry.seq
+		}
+	}
+	ids := slices.SortedFunc(maps.Keys(last), func(a, b string) int { return last[a] - last[b] })
+	out := make([]contracts.MailboxChange, 0, len(ids))
+	for _, id := range ids {
+		if e := m.events[id]; e != nil && e.CalendarID == "" && overlaps(e, link.from, link.to) {
+			out = append(out, change(e))
+		} else {
+			out = append(out, contracts.MailboxChange{EventID: id, Removed: true})
+		}
+	}
+	return out
+}
+
+// logChange logs a change of the event id when it is in the default
+// calendar, the only one a delta reads. f.mu is held.
+func (f *FakeMailboxCalendar) logChange(m *fakeMailbox, calendarID, id string) {
+	if calendarID != "" {
+		return
+	}
+	m.seq++
+	m.log = append(m.log, fakeLogEntry{seq: m.seq, id: id})
+}
+
+// overlaps reports whether e's times overlap from..to: a timed event's
+// instants, an all-day one's dates (EndDate inclusive).
+func overlaps(e *FakeMailboxEvent, from, to time.Time) bool {
+	if e.Event.AllDay {
+		return e.Event.StartDate.Before(to) && e.Event.EndDate.AddDate(0, 0, 1).After(from)
+	}
+	return e.Event.StartsAt.Before(to) && e.Event.EndsAt.After(from)
+}
+
+// change is e as a delta answers it.
+func change(e *FakeMailboxEvent) contracts.MailboxChange {
+	return contracts.MailboxChange{
+		EventID: e.ID, Series: e.Series, Cancelled: e.Cancelled,
+		AllDay: e.Event.AllDay, StartDate: e.Event.StartDate, EndDate: e.Event.EndDate,
+		StartsAt: e.Event.StartsAt, EndsAt: e.Event.EndsAt, ShowAs: e.Event.ShowAs,
+	}
+}
+
+// busyEvent is event's times and ShowAs as a MailboxEvent.
+func busyEvent(event FakeBusyEvent) contracts.MailboxEvent {
+	return contracts.MailboxEvent{
+		AllDay: event.AllDay, StartDate: event.StartDate, EndDate: event.EndDate,
+		StartsAt: event.StartsAt, EndsAt: event.EndsAt, ShowAs: event.ShowAs,
+	}
 }
 
 // begin records the call and answers the refusal it meets, if any: the
@@ -436,6 +703,7 @@ func (f *FakeMailboxCalendar) mailbox(id string) *fakeMailbox {
 func (f *FakeMailboxCalendar) create(m *fakeMailbox, calendarID, key string, event contracts.MailboxEvent) string {
 	id := f.id("event")
 	m.events[id] = &FakeMailboxEvent{ID: id, CalendarID: calendarID, Key: key, Event: event, ChangeKey: f.id("change")}
+	f.logChange(m, calendarID, id)
 	return id
 }
 

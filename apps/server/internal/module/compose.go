@@ -367,6 +367,18 @@ func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.
 		return nil, err
 	}
 
+	// The calendar's busy time (contracts.CalendarBusy, calendar Outlook sync
+	// design O9.8) resolves last, after the mailbox calendar: its provider,
+	// the calendar's server, reads the rest of Deps while it is built.
+	// Workers does not resolve it — no worker reads it.
+	busyProvider, err := soleProvider(mods, "calendar busy time", func(m Module) bool { return m.CalendarBusy != nil })
+	if err != nil {
+		return nil, err
+	}
+	if busyProvider != nil {
+		deps.CalendarBusy = busyProvider.CalendarBusy(deps)
+	}
+
 	outer := http.NewServeMux()
 	mounts := make([]moduleMount, 0, len(mods))
 	order := make([]string, 0, len(mods))

@@ -122,6 +122,30 @@ func (e AppointmentVisibility) Valid() bool {
 	}
 }
 
+// Defines values for CalendarItemOutlookShowAs.
+const (
+	CalendarItemOutlookShowAsBusy             CalendarItemOutlookShowAs = "busy"
+	CalendarItemOutlookShowAsOof              CalendarItemOutlookShowAs = "oof"
+	CalendarItemOutlookShowAsTentative        CalendarItemOutlookShowAs = "tentative"
+	CalendarItemOutlookShowAsWorkingElsewhere CalendarItemOutlookShowAs = "workingElsewhere"
+)
+
+// Valid indicates whether the value is a known member of the CalendarItemOutlookShowAs enum.
+func (e CalendarItemOutlookShowAs) Valid() bool {
+	switch e {
+	case CalendarItemOutlookShowAsBusy:
+		return true
+	case CalendarItemOutlookShowAsOof:
+		return true
+	case CalendarItemOutlookShowAsTentative:
+		return true
+	case CalendarItemOutlookShowAsWorkingElsewhere:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for CalendarSubscriptionColour.
 const (
 	Blue   CalendarSubscriptionColour = "blue"
@@ -570,7 +594,7 @@ type CalendarContact struct {
 	Name  string `json:"name"`
 }
 
-// CalendarItem One thing on a person's calendar: an appointment's occurrence (kind calendar.appointment, with appointment set), a row another module projects through its calendar source (with path set), or an event of a calendar the person subscribes to (kind calendar.subscription, with subscription set — calendar feed design D8). An all-day item spans startDate..endDate inclusive; a timed one spans startsAt..endsAt, endsAt exclusive (equal to startsAt for a point in time, which the view draws at its default length).
+// CalendarItem One thing on a person's calendar: an appointment's occurrence (kind calendar.appointment, with appointment set), a row another module projects through its calendar source (with path set), an event of a calendar the person subscribes to (kind calendar.subscription, with subscription set — calendar feed design D8), or an event of the person's Outlook calendar that blocks their time, read back by their Outlook sync (kind calendar.outlook, with outlook set and no title — calendar Outlook sync design O9.5). An all-day item spans startDate..endDate inclusive; a timed one spans startsAt..endsAt, endsAt exclusive (equal to startsAt for a point in time, which the view draws at its default length).
 type CalendarItem struct {
 	AllDay bool `json:"allDay"`
 
@@ -582,11 +606,14 @@ type CalendarItem struct {
 	EndDate *openapi_types.Date `json:"endDate,omitempty"`
 	EndsAt  *time.Time          `json:"endsAt,omitempty"`
 
-	// Id Stable within the kind. An appointment's "1001", or "1001:2026-11-03" for one occurrence of a series; a provider's row id; a subscription's "<subscription id>:<UID>", with ":<start>" after it for an occurrence of a rule (20261103T080000Z, or the date for an all-day one).
+	// Id Stable within the kind. An appointment's "1001", or "1001:2026-11-03" for one occurrence of a series; a provider's row id; a subscription's "<subscription id>:<UID>", with ":<start>" after it for an occurrence of a rule (20261103T080000Z, or the date for an all-day one); an Outlook event's the first 16 hex digits of the SHA-256 of its id in the mailbox, which never reaches the browser.
 	Id string `json:"id"`
 
-	// Kind calendar.appointment, calendar.subscription, or one of the kinds in sources.
+	// Kind calendar.appointment, calendar.subscription, calendar.outlook, or one of the kinds in sources.
 	Kind string `json:"kind"`
+
+	// Outlook The Outlook event behind an item of kind calendar.outlook (calendar Outlook sync design O9.5): how it shows the person's time in Outlook — busy, tentative, oof (out of office) or workingElsewhere — which the app labels it by (Busy in Outlook, Tentative, Out of office, Working elsewhere). Nothing else of the event is stored or answered: a free or cancelled event is never an item.
+	Outlook *CalendarItemOutlook `json:"outlook,omitempty"`
 
 	// Path The SPA route of the provider's record, for the link back. Absent on an appointment, which the sheet opens by id, and on a subscription's item, which opens nothing — the event's own URL is the other calendar's and is not followed.
 	Path      *string             `json:"path,omitempty"`
@@ -599,7 +626,7 @@ type CalendarItem struct {
 	// Subtitle One line — the customer's name, the project's code, the subscription's name. Absent when empty.
 	Subtitle *string `json:"subtitle,omitempty"`
 
-	// Title Empty on a busy-only subscription's item, which the app labels Busy.
+	// Title Empty on a busy-only subscription's item, which the app labels Busy, and on an Outlook event, which the app labels by its outlook.showAs.
 	Title string `json:"title"`
 }
 
@@ -621,6 +648,14 @@ type CalendarItemAppointment struct {
 	// Visibility iCalendar's CLASS in this module's words — shared (PUBLIC) shows its title to a colleague, private (PRIVATE) shows with an empty title and nothing else, which the app labels Busy.
 	Visibility AppointmentVisibility `json:"visibility"`
 }
+
+// CalendarItemOutlook The Outlook event behind an item of kind calendar.outlook (calendar Outlook sync design O9.5): how it shows the person's time in Outlook — busy, tentative, oof (out of office) or workingElsewhere — which the app labels it by (Busy in Outlook, Tentative, Out of office, Working elsewhere). Nothing else of the event is stored or answered: a free or cancelled event is never an item.
+type CalendarItemOutlook struct {
+	ShowAs CalendarItemOutlookShowAs `json:"showAs"`
+}
+
+// CalendarItemOutlookShowAs defines model for CalendarItemOutlook.ShowAs.
+type CalendarItemOutlookShowAs string
 
 // CalendarItemSubscription The subscription behind an item of kind calendar.subscription (calendar feed design D8): what the app draws it by — its colour and its name — and whether it is busy only, in which case the item's title is empty and the app labels it Busy.
 type CalendarItemSubscription struct {
@@ -654,7 +689,7 @@ type CalendarMeta struct {
 	// InvitationsAvailable Whether invitations are mailed — the mail driver is smtp. When false, outside attendees are stored and marked not sent.
 	InvitationsAvailable bool `json:"invitationsAvailable"`
 
-	// Sources Every kind a wired provider declares, enabled modules only — for the filter, the legend and the colours — and calendar.subscription when the caller has at least one subscription.
+	// Sources Every kind a wired provider declares, enabled modules only — for the filter, the legend and the colours — calendar.subscription when the caller has at least one subscription, and calendar.outlook while the caller's Outlook sync is on.
 	Sources []CalendarSourceKind `json:"sources"`
 
 	// TimeZone The workspace's business time zone.
@@ -764,6 +799,9 @@ type FeedVariant string
 type MailboxSync struct {
 	Availability   MailboxSyncAvailability `json:"availability"`
 	AvailableKinds []MailboxSyncKind       `json:"availableKinds"`
+
+	// BusySyncedAt When the sync last read the caller's Outlook calendar to its end (calendar Outlook sync design O9.1). Absent before the first read, and once the sync is turned off.
+	BusySyncedAt *time.Time `json:"busySyncedAt,omitempty"`
 
 	// Detail What the copies show — full, the titles, the places and the links, or busy, Busy for every title and the link alone.
 	Detail       MailboxSyncDetail `json:"detail"`

@@ -176,3 +176,169 @@ func TestFakeMailboxCalendar_ForeignCalendarsAndFrom(t *testing.T) {
 		t.Errorf("the call recorded From %v", calls[len(calls)-1].From)
 	}
 }
+
+// readDelta follows Delta from link to its end and answers every change and
+// the delta link, failing the test on an error.
+func readDelta(t *testing.T, f *FakeMailboxCalendar, mailbox string, from, to time.Time, link string) ([]contracts.MailboxChange, string, int) {
+	t.Helper()
+	var all []contracts.MailboxChange
+	for pages := 1; ; pages++ {
+		d, err := f.Delta(context.Background(), mailbox, from, to, link)
+		if err != nil {
+			t.Fatalf("Delta(%q) = %v", link, err)
+		}
+		all, link = append(all, d.Changes...), d.Link
+		if d.Done {
+			return all, link, pages
+		}
+		if pages > 100 {
+			t.Fatal("Delta never answered Done")
+		}
+	}
+}
+
+func changeIDs(changes []contracts.MailboxChange) []string {
+	out := make([]string, 0, len(changes))
+	for _, c := range changes {
+		id := c.EventID
+		if c.Removed {
+			id += " removed"
+		}
+		out = append(out, id)
+	}
+	return out
+}
+
+// A fresh delta answers every event of the default calendar overlapping the
+// window — the person's own and the copies alike, with their times and
+// ShowAs — and a linked one the changes since, in pages of the size set: a
+// copy rewritten or deleted through Apply, an event moved out of the window
+// or removed answered Removed, an event of a secondary calendar never.
+func TestFakeMailboxCalendar_Delta(t *testing.T) {
+	ctx := context.Background()
+	f := NewFakeMailboxCalendar()
+	from, to := Start.AddDate(0, 0, -30), Start.AddDate(0, 0, 210)
+	day := time.Date(2026, time.September, 14, 0, 0, 0, 0, time.UTC)
+
+	meeting := f.SeedForeign("oid-1", FakeBusyEvent{ID: "AAMk-1", StartsAt: Start, EndsAt: Start.Add(time.Hour), ShowAs: contracts.ShowAsOOF, Series: true})
+	holiday := f.SeedForeign("oid-1", FakeBusyEvent{AllDay: true, StartDate: day, EndDate: day.AddDate(0, 0, 1), ShowAs: contracts.ShowAsBusy, Cancelled: true})
+	f.SeedForeign("oid-1", FakeBusyEvent{ID: "AAMk-past", StartsAt: from.AddDate(0, 0, -2), EndsAt: from.AddDate(0, 0, -1), ShowAs: contracts.ShowAsBusy})
+	res, _ := f.Apply(ctx, "oid-1", "", []contracts.MailboxOp{{Kind: contracts.MailboxOpCreate, Key: "appointment:1", Event: mailboxEvent("Standup")}})
+	copyID := res[0].EventID
+	cal, _ := f.EnsureCalendar(ctx, "oid-1", "", "Vantigo")
+	f.PutEvent("oid-1", cal, "item:1", *mailboxEvent("Elsewhere"))
+
+	f.SetDeltaPageSize(2)
+	changes, link, pages := readDelta(t, f, "oid-1", from, to, "")
+	if pages != 2 || !slices.Equal(changeIDs(changes), []string{"AAMk-1", holiday, copyID}) {
+		t.Fatalf("the fresh delta answered %v in %d pages; want the meeting, the holiday and the copy in 2", changeIDs(changes), pages)
+	}
+	if c := changes[0]; c.EventID != meeting || !c.Series || c.ShowAs != contracts.ShowAsOOF || !c.StartsAt.Equal(Start) || c.AllDay {
+		t.Errorf("the meeting answered %+v", c)
+	}
+	if c := changes[1]; !c.AllDay || !c.Cancelled || !c.StartDate.Equal(day) || !c.EndDate.Equal(day.AddDate(0, 0, 1)) {
+		t.Errorf("the holiday answered %+v", c)
+	}
+	if c := changes[2]; c.ShowAs != contracts.ShowAsBusy || c.Series || !c.EndsAt.Equal(Start.Add(time.Hour)) {
+		t.Errorf("the copy answered %+v", c)
+	}
+
+	if changes, link2, _ := readDelta(t, f, "oid-1", time.Time{}, time.Time{}, link); len(changes) != 0 || link2 == "" {
+		t.Errorf("a delta with no change answered %v, %q", changes, link2)
+	}
+
+	f.MoveForeign("oid-1", FakeBusyEvent{ID: meeting, StartsAt: to.AddDate(0, 0, 1), EndsAt: to.AddDate(0, 0, 2), ShowAs: contracts.ShowAsBusy})
+	f.RemoveForeign("oid-1", holiday)
+	moved := *mailboxEvent("Standup")
+	moved.StartsAt = Start.Add(2 * time.Hour)
+	moved.EndsAt = moved.StartsAt.Add(time.Hour)
+	if _, err := f.Apply(ctx, "oid-1", "", []contracts.MailboxOp{{Kind: contracts.MailboxOpUpdate, EventID: copyID, Event: &moved}}); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	late := f.SeedForeign("oid-1", FakeBusyEvent{StartsAt: Start.AddDate(0, 0, 3), EndsAt: Start.AddDate(0, 0, 3).Add(time.Hour), ShowAs: contracts.ShowAsTentative})
+	f.PutEvent("oid-1", cal, "item:2", *mailboxEvent("Elsewhere too"))
+	changes, link, _ = readDelta(t, f, "oid-1", time.Time{}, time.Time{}, link)
+	if want := []string{meeting + " removed", holiday + " removed", copyID, late}; !slices.Equal(changeIDs(changes), want) {
+		t.Fatalf("the linked delta answered %v, want %v", changeIDs(changes), want)
+	}
+	if !changes[2].StartsAt.Equal(moved.StartsAt) {
+		t.Errorf("the copy's update answered %+v", changes[2])
+	}
+
+	if _, err := f.Apply(ctx, "oid-1", "", []contracts.MailboxOp{{Kind: contracts.MailboxOpDelete, EventID: copyID}}); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	if changes, _, _ := readDelta(t, f, "oid-1", time.Time{}, time.Time{}, link); !slices.Equal(changeIDs(changes), []string{copyID + " removed"}) {
+		t.Errorf("the delta after the copy's delete answered %v", changeIDs(changes))
+	}
+
+	calls := f.Calls()
+	if last := calls[len(calls)-1]; last.Method != "Delta" || last.Link != link {
+		t.Errorf("the last call recorded %+v, want Delta with the link", last)
+	}
+}
+
+// A link for another mailbox, or one never answered, is refused; an expired
+// one answers ErrMailboxDeltaExpired until a fresh delta is started; Delta
+// and Marked are refused under cleanup and while unavailable, and answer a
+// mailbox's own refusal.
+func TestFakeMailboxCalendar_DeltaRefusals(t *testing.T) {
+	ctx := context.Background()
+	f := NewFakeMailboxCalendar()
+	from, to := Start.AddDate(0, 0, -30), Start.AddDate(0, 0, 210)
+	_, link, _ := readDelta(t, f, "oid-1", from, to, "")
+	if _, err := f.Delta(ctx, "oid-2", from, to, link); err == nil || errors.Is(err, contracts.ErrMailboxDeltaExpired) {
+		t.Errorf("Delta with another mailbox's link = %v, want a plain failure", err)
+	}
+	if _, err := f.Delta(ctx, "oid-1", from, to, "https://graph.microsoft.com/v1.0/users/x/calendarView/delta"); err == nil {
+		t.Error("Delta with a link it never answered = nil, want a failure")
+	}
+	f.ExpireDelta("oid-1")
+	if _, err := f.Delta(ctx, "oid-1", from, to, link); !errors.Is(err, contracts.ErrMailboxDeltaExpired) {
+		t.Errorf("Delta with an expired link = %v, want ErrMailboxDeltaExpired", err)
+	}
+	if _, fresh, _ := readDelta(t, f, "oid-1", from, to, ""); fresh == link {
+		t.Error("a fresh delta answered the expired link")
+	} else if _, err := f.Delta(ctx, "oid-1", from, to, fresh); err != nil {
+		t.Errorf("Delta with the fresh link = %v", err)
+	}
+
+	for _, state := range []string{contracts.MailboxCleanup, contracts.MailboxUnavailable} {
+		f.SetStatus(state, "switch_off")
+		if _, err := f.Delta(ctx, "oid-1", from, to, ""); !errors.Is(err, contracts.ErrMailboxUnavailable) {
+			t.Errorf("Delta under %s = %v, want ErrMailboxUnavailable", state, err)
+		}
+		if _, err := f.Marked(ctx, "oid-1", []string{"event-1"}); !errors.Is(err, contracts.ErrMailboxUnavailable) {
+			t.Errorf("Marked under %s = %v, want ErrMailboxUnavailable", state, err)
+		}
+	}
+	f.SetStatus(contracts.MailboxAvailable, "")
+	f.SetMailboxError("oid-3", contracts.ErrMailboxGone)
+	if _, err := f.Delta(ctx, "oid-3", from, to, ""); !errors.Is(err, contracts.ErrMailboxGone) {
+		t.Errorf("Delta of a gone mailbox = %v, want ErrMailboxGone", err)
+	}
+	if _, err := f.Marked(ctx, "oid-3", nil); !errors.Is(err, contracts.ErrMailboxGone) {
+		t.Errorf("Marked of a gone mailbox = %v, want ErrMailboxGone", err)
+	}
+}
+
+// Marked answers, among the ids asked and in their order, the events
+// carrying a key — not the person's own, not one gone — and refuses more
+// than MailboxMarkedMax ids.
+func TestFakeMailboxCalendar_Marked(t *testing.T) {
+	ctx := context.Background()
+	f := NewFakeMailboxCalendar()
+	theirs := f.SeedForeign("oid-1", FakeBusyEvent{StartsAt: Start, EndsAt: Start.Add(time.Hour), ShowAs: contracts.ShowAsBusy})
+	a := f.PutEvent("oid-1", "", "appointment:1", *mailboxEvent("A"))
+	b := f.PutEvent("oid-1", "", "item:7", *mailboxEvent("B"))
+	refs, err := f.Marked(ctx, "oid-1", []string{b, theirs, "event-404", a})
+	if want := []contracts.MailboxEventRef{{EventID: b, Key: "item:7"}, {EventID: a, Key: "appointment:1"}}; err != nil || !slices.Equal(refs, want) {
+		t.Errorf("Marked = %v, %v; want %v", refs, err, want)
+	}
+	if calls := f.Calls(); !slices.Equal(calls[len(calls)-1].EventIDs, []string{b, theirs, "event-404", a}) {
+		t.Errorf("the call recorded %+v", calls[len(calls)-1])
+	}
+	if _, err := f.Marked(ctx, "oid-1", make([]string, contracts.MailboxMarkedMax+1)); err == nil {
+		t.Error("Marked of 101 ids = nil, want a failure")
+	}
+}

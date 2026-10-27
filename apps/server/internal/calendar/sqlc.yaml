@@ -10,6 +10,7 @@ sql:
       - ../db/migrations/00056_calendar_invitations.sql
       - ../db/migrations/00057_calendar_feed.sql
       - ../db/migrations/00081_calendar_mailbox_sync.sql
+      - ../db/migrations/00083_calendar_mailbox_busy.sql
     queries: queries
     gen:
       go:
