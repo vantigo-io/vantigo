@@ -389,9 +389,3 @@ func (w *workforce) Self(ctx context.Context) (*contracts.PersonEntry, error) {
 	self.UserID = &user
 	return &self, nil
 }
-
-// DirectoryAccount answers nothing yet: Staff's read of the caller's own
-// provider link lands in task 3a of the calendar Outlook sync plan.
-func (w *workforce) DirectoryAccount(context.Context) (*contracts.DirectoryAccount, error) {
-	return nil, nil
-}

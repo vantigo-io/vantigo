@@ -11,6 +11,41 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const workforceDirectoryAccount = `-- name: WorkforceDirectoryAccount :one
+SELECT pl.provider, pl.external_id::text AS external_id, pl.state
+FROM staff.identity_links il
+JOIN staff.identity_links pl ON pl.person_id = il.person_id
+WHERE il.provider = 'identity' AND il.external_id = $1::text
+  AND (il.state = 'linked' OR coalesce(il.blocked_reason, '') NOT IN ('mismatch', 'account_not_managed'))
+  AND pl.provider <> 'identity' AND pl.external_id IS NOT NULL
+  AND pl.state IN ('enabled', 'disabled')
+ORDER BY pl.id
+LIMIT 1
+`
+
+type WorkforceDirectoryAccountRow struct {
+	Provider   string
+	ExternalID string
+	State      string
+}
+
+// WorkforceDirectoryAccount is the account in an external directory of the
+// person @user_id is (calendar Outlook sync design O3): the person is found
+// through the identity link keyed on the user's id under the predicate
+// PersonForUser applies (authorize.sql; keep them identical) — in any state
+// the worker left it, disabled included, so a leaver's calendar can still be
+// cleaned up, but never one it blocked as someone else's account (mismatch,
+// account_not_managed); then that person's provider link with an external
+// id, enabled or disabled. A person with more than one such link answers the
+// oldest (the lowest id). No row is a user with no person, or a person with
+// no such link.
+func (q *Queries) WorkforceDirectoryAccount(ctx context.Context, userID string) (WorkforceDirectoryAccountRow, error) {
+	row := q.db.QueryRow(ctx, workforceDirectoryAccount, userID)
+	var i WorkforceDirectoryAccountRow
+	err := row.Scan(&i.Provider, &i.ExternalID, &i.State)
+	return i, err
+}
+
 const workforceEmployments = `-- name: WorkforceEmployments :many
 
 SELECT e.id, e.person_id, e.employment_number, e.relationship_type, e.business_unit_id, e.start_date, e.end_date, e.end_reason, e.contract_signed_at, e.revision, e.created_at, e.updated_at, e.holiday_scheme_id FROM staff.employments e
