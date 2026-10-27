@@ -47,6 +47,8 @@ const (
 	eventsPath      = "/api/v1/entra/events"
 	accountsPath    = "/api/v1/entra/accounts"
 	groupsPath      = "/api/v1/entra/groups"
+	directoryPath   = "/api/v1/entra/directory/users"
+	matchesPath     = "/api/v1/entra/directory/matches"
 )
 
 // manager is a caller holding entra:manage, and nothing else.

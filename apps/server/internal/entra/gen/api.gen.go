@@ -112,6 +112,48 @@ func (e EntraCredentialRequestKind) Valid() bool {
 	}
 }
 
+// Defines values for EntraDirectoryHolderKind.
+const (
+	Account  EntraDirectoryHolderKind = "account"
+	Expected EntraDirectoryHolderKind = "expected"
+	Mapped   EntraDirectoryHolderKind = "mapped"
+)
+
+// Valid indicates whether the value is a known member of the EntraDirectoryHolderKind enum.
+func (e EntraDirectoryHolderKind) Valid() bool {
+	switch e {
+	case Account:
+		return true
+	case Expected:
+		return true
+	case Mapped:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for EntraDirectoryMatchMatchedBy.
+const (
+	EmployeeId        EntraDirectoryMatchMatchedBy = "employeeId"
+	Mail              EntraDirectoryMatchMatchedBy = "mail"
+	UserPrincipalName EntraDirectoryMatchMatchedBy = "userPrincipalName"
+)
+
+// Valid indicates whether the value is a known member of the EntraDirectoryMatchMatchedBy enum.
+func (e EntraDirectoryMatchMatchedBy) Valid() bool {
+	switch e {
+	case EmployeeId:
+		return true
+	case Mail:
+		return true
+	case UserPrincipalName:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for EntraGroupState.
 const (
 	EntraGroupStateDeleted EntraGroupState = "deleted"
@@ -437,6 +479,69 @@ type EntraCredentialRequest struct {
 // EntraCredentialRequestKind defines model for EntraCredentialRequest.Kind.
 type EntraCredentialRequestKind string
 
+// EntraDirectoryHolder Who already holds a directory account's keys under the configured issuer, as identity knows it: expected, an Owner announced it for an existing user; mapped, the provider's SCIM push maps it to a user (its userName the principal name, or its externalId the object id); account, Staff announced it for a person yet to arrive, with no user. A sign-in through the provider is not shown: the link it makes names no key the directory answers.
+type EntraDirectoryHolder struct {
+	Kind EntraDirectoryHolderKind `json:"kind"`
+
+	// UserId The user holding the account. Absent for account.
+	UserId *openapi_types.UUID `json:"userId,omitempty"`
+}
+
+// EntraDirectoryHolderKind defines model for EntraDirectoryHolder.Kind.
+type EntraDirectoryHolderKind string
+
+// EntraDirectoryMatch A user not yet connected and the one directory account that matches them exactly, proposed for connecting.
+type EntraDirectoryMatch struct {
+	// Account One account in the tenant as the directory answers it.
+	Account EntraDirectoryUser `json:"account"`
+
+	// MatchedBy What matched: the user's address equal, ignoring case, to the account's mail or its principal name; the user's employee number equal, trimmed and ignoring case, to the account's employeeId. Every key that matched points to this account.
+	MatchedBy []EntraDirectoryMatchMatchedBy `json:"matchedBy"`
+	UserId    openapi_types.UUID             `json:"userId"`
+}
+
+// EntraDirectoryMatchMatchedBy defines model for EntraDirectoryMatch.MatchedBy.
+type EntraDirectoryMatchMatchedBy string
+
+// EntraDirectoryMatches The exact matches between the users not yet connected and the tenant's accounts. Only an exact match is proposed — no fuzzy match, no guess between two. The users' addresses are compared in the server and never answered.
+type EntraDirectoryMatches struct {
+	// Ambiguous How many candidates were left out because more than one account matched them, or because the account that matched them matched another candidate too.
+	Ambiguous int32 `json:"ambiguous"`
+
+	// Candidates How many users not yet connected were read — every user who is not pending and has neither a link nor an announced link under the configured issuer, the caller excluded.
+	Candidates int32 `json:"candidates"`
+
+	// Matches The proposals, in the order identity lists the users.
+	Matches []EntraDirectoryMatch `json:"matches"`
+
+	// Truncated True when more than 1000 users were waiting and only the first 1000, in identity's order, were read.
+	Truncated bool `json:"truncated"`
+}
+
+// EntraDirectoryUser One account in the tenant as the directory answers it.
+type EntraDirectoryUser struct {
+	AccountEnabled bool   `json:"accountEnabled"`
+	DisplayName    string `json:"displayName"`
+
+	// EmployeeId The account's employeeId. Absent when it has none.
+	EmployeeId *string `json:"employeeId,omitempty"`
+
+	// Holder Who already holds a directory account's keys under the configured issuer, as identity knows it: expected, an Owner announced it for an existing user; mapped, the provider's SCIM push maps it to a user (its userName the principal name, or its externalId the object id); account, Staff announced it for a person yet to arrive, with no user. A sign-in through the provider is not shown: the link it makes names no key the directory answers.
+	Holder *EntraDirectoryHolder `json:"holder,omitempty"`
+
+	// Mail The account's mail. Absent when it has none.
+	Mail *string `json:"mail,omitempty"`
+
+	// ObjectId The account's object id in the tenant, immutable.
+	ObjectId          openapi_types.UUID `json:"objectId"`
+	UserPrincipalName string             `json:"userPrincipalName"`
+}
+
+// EntraDirectoryUsers The accounts a directory search found, by display name, at most 25. When 25 come back there may be more, and the search should be narrowed.
+type EntraDirectoryUsers struct {
+	Users []EntraDirectoryUser `json:"users"`
+}
+
 // EntraEvent One write the module made, in the tenant or to its own connection — the module's own append-only trail. It carries the codes and the UPN the module made, never an address beyond it, a secret or a pass.
 type EntraEvent struct {
 	// Action entra.connection.changed, entra.connection.tested, entra.settings.changed, entra.credential.added, entra.credential.revoked, entra.user.prepared, entra.user.activated, entra.user.deactivated, entra.user.updated, entra.user.deleted, entra.user.photo_set, entra.user.photo_cleared, entra.pass.issued, entra.pass.revealed or entra.account.adoption_confirmed.
@@ -503,7 +608,7 @@ type EntraGroupCounts struct {
 	Count int32 `json:"count"`
 }
 
-// EntraProblem An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: connection_in_use (409: the tenant or the client changes while the module keeps accounts, and confirmChange is not true), adoption_confirmed (409: the account's adoption is confirmed already), credential_in_use (409: the secret is the only valid one while the module keeps accounts), version_mismatch (412: the connection has been written since the If-Match version), credential_invalid and tenant_unreachable (503: the tenant could not be asked). errors carries the field errors of a 400, keyed by the request's camelCase field. A request the server could not decode answers a bare 400 with neither.
+// EntraProblem An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: connection_in_use (409: the tenant or the client changes while the module keeps accounts, and confirmChange is not true), adoption_confirmed (409: the account's adoption is confirmed already), credential_in_use (409: the secret is the only valid one while the module keeps accounts), version_mismatch (412: the connection has been written since the If-Match version), sso_not_configured (409: single sign-on is not configured, so there is nothing to connect under), invalid_request (400: a field is not valid), credential_invalid and tenant_unreachable (503: the tenant could not be asked), throttled (503: the tenant throttled the module twice in a row). errors carries the field errors of a 400, keyed by the request's camelCase field. A request the server could not decode answers a bare 400 with neither.
 type EntraProblem struct {
 	Code     *string              `json:"code,omitempty"`
 	Detail   *string              `json:"detail,omitempty"`
@@ -611,6 +716,12 @@ type PutEntraConnectionSettingsParams struct {
 	IfMatch string `json:"If-Match"`
 }
 
+// GetEntraDirectoryUsersParams defines parameters for GetEntraDirectoryUsers.
+type GetEntraDirectoryUsersParams struct {
+	// Q What to search for, 2 to 100 characters once trimmed. A double quote or a backslash in it is left out.
+	Q string `form:"q" json:"q"`
+}
+
 // GetEntraEventsParams defines parameters for GetEntraEvents.
 type GetEntraEventsParams struct {
 	// Limit How many, 1 to 200; 50 when absent.
@@ -655,6 +766,12 @@ type ServerInterface interface {
 	// PostEntraConnectionTest Test the connection
 	// (POST /api/v1/entra/connection/test)
 	PostEntraConnectionTest(w http.ResponseWriter, r *http.Request)
+	// GetEntraDirectoryMatches Find the directory's exact matches
+	// (GET /api/v1/entra/directory/matches)
+	GetEntraDirectoryMatches(w http.ResponseWriter, r *http.Request)
+	// GetEntraDirectoryUsers Search the directory
+	// (GET /api/v1/entra/directory/users)
+	GetEntraDirectoryUsers(w http.ResponseWriter, r *http.Request, params GetEntraDirectoryUsersParams)
 	// GetEntraEvents The module's recent events
 	// (GET /api/v1/entra/events)
 	GetEntraEvents(w http.ResponseWriter, r *http.Request, params GetEntraEventsParams)
@@ -887,6 +1004,53 @@ func (siw *ServerInterfaceWrapper) PostEntraConnectionTest(w http.ResponseWriter
 	handler.ServeHTTP(w, r)
 }
 
+// GetEntraDirectoryMatches operation middleware
+func (siw *ServerInterfaceWrapper) GetEntraDirectoryMatches(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetEntraDirectoryMatches(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetEntraDirectoryUsers operation middleware
+func (siw *ServerInterfaceWrapper) GetEntraDirectoryUsers(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetEntraDirectoryUsersParams
+
+	// ------------- Required query parameter "q" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "q", r.URL.Query(), &params.Q, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "q"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "q", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetEntraDirectoryUsers(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetEntraEvents operation middleware
 func (siw *ServerInterfaceWrapper) GetEntraEvents(w http.ResponseWriter, r *http.Request) {
 
@@ -1089,6 +1253,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/entra/connection/settings", wrapper.PutEntraConnectionSettings)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/entra/connection/skus", wrapper.GetEntraConnectionSkus)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/entra/connection/test", wrapper.PostEntraConnectionTest)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/entra/directory/matches", wrapper.GetEntraDirectoryMatches)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/entra/directory/users", wrapper.GetEntraDirectoryUsers)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/entra/events", wrapper.GetEntraEvents)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/entra/groups", wrapper.GetEntraGroups)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/entra/groups/{objectId}/confirm", wrapper.PostEntraGroupsByObjectIdConfirm)
@@ -1806,6 +1972,209 @@ func (response PostEntraConnectionTest429JSONResponse) VisitPostEntraConnectionT
 	return err
 }
 
+type GetEntraDirectoryMatchesRequestObject struct {
+}
+
+type GetEntraDirectoryMatchesResponseObject interface {
+	VisitGetEntraDirectoryMatchesResponse(w http.ResponseWriter) error
+}
+
+type GetEntraDirectoryMatches200JSONResponse EntraDirectoryMatches
+
+func (response GetEntraDirectoryMatches200JSONResponse) VisitGetEntraDirectoryMatchesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetEntraDirectoryMatches401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetEntraDirectoryMatches401JSONResponse) VisitGetEntraDirectoryMatchesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetEntraDirectoryMatches403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetEntraDirectoryMatches403JSONResponse) VisitGetEntraDirectoryMatchesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetEntraDirectoryMatches409ApplicationProblemPlusJSONResponse EntraProblem
+
+func (response GetEntraDirectoryMatches409ApplicationProblemPlusJSONResponse) VisitGetEntraDirectoryMatchesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetEntraDirectoryMatches429ResponseHeaders struct {
+	RetryAfter *string
+}
+
+type GetEntraDirectoryMatches429JSONResponse struct {
+	Body    externalRef0.AuthErrorResponse
+	Headers GetEntraDirectoryMatches429ResponseHeaders
+}
+
+func (response GetEntraDirectoryMatches429JSONResponse) VisitGetEntraDirectoryMatchesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetEntraDirectoryMatches503ApplicationProblemPlusJSONResponse EntraProblem
+
+func (response GetEntraDirectoryMatches503ApplicationProblemPlusJSONResponse) VisitGetEntraDirectoryMatchesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetEntraDirectoryUsersRequestObject struct {
+	Params GetEntraDirectoryUsersParams
+}
+
+type GetEntraDirectoryUsersResponseObject interface {
+	VisitGetEntraDirectoryUsersResponse(w http.ResponseWriter) error
+}
+
+type GetEntraDirectoryUsers200JSONResponse EntraDirectoryUsers
+
+func (response GetEntraDirectoryUsers200JSONResponse) VisitGetEntraDirectoryUsersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetEntraDirectoryUsers400ApplicationProblemPlusJSONResponse EntraProblem
+
+func (response GetEntraDirectoryUsers400ApplicationProblemPlusJSONResponse) VisitGetEntraDirectoryUsersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetEntraDirectoryUsers401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetEntraDirectoryUsers401JSONResponse) VisitGetEntraDirectoryUsersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetEntraDirectoryUsers403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetEntraDirectoryUsers403JSONResponse) VisitGetEntraDirectoryUsersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetEntraDirectoryUsers429ResponseHeaders struct {
+	RetryAfter *string
+}
+
+type GetEntraDirectoryUsers429JSONResponse struct {
+	Body    externalRef0.AuthErrorResponse
+	Headers GetEntraDirectoryUsers429ResponseHeaders
+}
+
+func (response GetEntraDirectoryUsers429JSONResponse) VisitGetEntraDirectoryUsersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetEntraDirectoryUsers503ApplicationProblemPlusJSONResponse EntraProblem
+
+func (response GetEntraDirectoryUsers503ApplicationProblemPlusJSONResponse) VisitGetEntraDirectoryUsersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetEntraEventsRequestObject struct {
 	Params GetEntraEventsParams
 }
@@ -2006,6 +2375,12 @@ type StrictServerInterface interface {
 	// PostEntraConnectionTest Test the connection
 	// (POST /api/v1/entra/connection/test)
 	PostEntraConnectionTest(ctx context.Context, request PostEntraConnectionTestRequestObject) (PostEntraConnectionTestResponseObject, error)
+	// GetEntraDirectoryMatches Find the directory's exact matches
+	// (GET /api/v1/entra/directory/matches)
+	GetEntraDirectoryMatches(ctx context.Context, request GetEntraDirectoryMatchesRequestObject) (GetEntraDirectoryMatchesResponseObject, error)
+	// GetEntraDirectoryUsers Search the directory
+	// (GET /api/v1/entra/directory/users)
+	GetEntraDirectoryUsers(ctx context.Context, request GetEntraDirectoryUsersRequestObject) (GetEntraDirectoryUsersResponseObject, error)
 	// GetEntraEvents The module's recent events
 	// (GET /api/v1/entra/events)
 	GetEntraEvents(ctx context.Context, request GetEntraEventsRequestObject) (GetEntraEventsResponseObject, error)
@@ -2294,6 +2669,56 @@ func (sh *strictHandler) PostEntraConnectionTest(w http.ResponseWriter, r *http.
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PostEntraConnectionTestResponseObject); ok {
 		if err := validResponse.VisitPostEntraConnectionTestResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetEntraDirectoryMatches operation middleware
+func (sh *strictHandler) GetEntraDirectoryMatches(w http.ResponseWriter, r *http.Request) {
+	var request GetEntraDirectoryMatchesRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetEntraDirectoryMatches(ctx, request.(GetEntraDirectoryMatchesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetEntraDirectoryMatches")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetEntraDirectoryMatchesResponseObject); ok {
+		if err := validResponse.VisitGetEntraDirectoryMatchesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetEntraDirectoryUsers operation middleware
+func (sh *strictHandler) GetEntraDirectoryUsers(w http.ResponseWriter, r *http.Request, params GetEntraDirectoryUsersParams) {
+	var request GetEntraDirectoryUsersRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetEntraDirectoryUsers(ctx, request.(GetEntraDirectoryUsersRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetEntraDirectoryUsers")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetEntraDirectoryUsersResponseObject); ok {
+		if err := validResponse.VisitGetEntraDirectoryUsersResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

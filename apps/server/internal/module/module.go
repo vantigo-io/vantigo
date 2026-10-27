@@ -73,6 +73,14 @@ type Deps struct {
 	// when no enabled module provides one, which a caller answers as
 	// "accounts are unavailable".
 	Accounts contracts.AccountProvisioning
+	// SSOConnections is what connecting existing users to the workforce
+	// provider reads of identity (see contracts.SSOConnections): the users
+	// not yet connected and who holds a directory key, gated by identity
+	// itself. Compose sets it, on every module's Deps copy, from whichever
+	// enabled module declares Module.SSOConnections, after Users; Workers
+	// does not, since no worker connects anyone. It is nil when no enabled
+	// module provides one.
+	SSOConnections contracts.SSOConnections
 	// Products is the product catalog, the one sanctioned way a module
 	// reads products' catalog data (see contracts.ProductCatalog). Compose
 	// sets it, on every module's Deps copy, from whichever enabled module
@@ -288,6 +296,11 @@ type Module struct {
 	// Workers, and the two must answer alike, as must one per process across
 	// replicas.
 	Accounts func(Deps) contracts.AccountProvisioning
+	// SSOConnections builds this module's contracts.SSOConnections
+	// implementation, if it provides one. At most one enabled module may set
+	// it; Compose calls it before any Mount runs, after Users, and puts the
+	// result on every module's Deps.
+	SSOConnections func(Deps) contracts.SSOConnections
 	// Products builds this module's contracts.ProductCatalog
 	// implementation, if it provides one. At most one enabled module may
 	// set it; Compose calls it before any Mount runs and puts the result on

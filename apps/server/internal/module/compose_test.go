@@ -2243,6 +2243,62 @@ func TestCompose_DisabledAccountsProvider_LeavesNil(t *testing.T) {
 	}
 }
 
+// fakeSSOConnections is a contracts.SSOConnections that answers nothing:
+// the slot's tests only need a distinct value to assert on.
+type fakeSSOConnections struct{}
+
+func (*fakeSSOConnections) Unconnected(context.Context) ([]contracts.ConnectCandidate, error) {
+	return nil, nil
+}
+
+func (*fakeSSOConnections) KeyHolders(context.Context, []contracts.DirectoryKey) ([]contracts.KeyHolder, error) {
+	return nil, nil
+}
+
+// The SSOConnections slot (contracts.SSOConnections) resolves the way
+// Accounts does — before any Mount runs, after Users, so its provider may
+// read deps.Users while it is built — and reaches every module's Deps, a
+// module providing none included.
+func TestCompose_InjectsTheSSOConnectionsProviderAfterUsers(t *testing.T) {
+	users := &fakeUserDirectory{}
+	connections := &fakeSSOConnections{}
+	var sawUsers contracts.UserDirectory
+	var got Deps
+	_, err := compose(Deps{Access: &fakeAccess{}}, fakeLoad(map[string]string{"alpha": alphaContract, "beta": betaContract}),
+		Module{Name: "beta", Users: func(Deps) contracts.UserDirectory { return users },
+			SSOConnections: func(d Deps) contracts.SSOConnections {
+				sawUsers = d.Users
+				return connections
+			}, Mount: staticHandler("beta")},
+		Module{Name: "alpha", Mount: func(d Deps) (http.Handler, error) {
+			got = d
+			return staticHandler("alpha")(d)
+		}},
+	)
+	if err != nil {
+		t.Fatalf("compose: %v", err)
+	}
+	if got.SSOConnections != connections {
+		t.Errorf("Deps.SSOConnections = %v, want the provider's", got.SSOConnections)
+	}
+	if sawUsers != users {
+		t.Errorf("the SSO connections provider saw Deps.Users = %v, want the user directory resolved first", sawUsers)
+	}
+}
+
+// Two modules both declaring SSOConnections is a compose error naming both.
+func TestCompose_DuplicateSSOConnectionsProvider_Fails(t *testing.T) {
+	provide := func(Deps) contracts.SSOConnections { return &fakeSSOConnections{} }
+	_, err := compose(Deps{Access: &fakeAccess{}}, fakeLoad(map[string]string{"alpha": alphaContract, "beta": betaContract}),
+		Module{Name: "alpha", SSOConnections: provide, Mount: staticHandler("alpha")},
+		Module{Name: "beta", SSOConnections: provide, Mount: staticHandler("beta")},
+	)
+	if err == nil || !strings.Contains(err.Error(), "SSO connections") ||
+		!strings.Contains(err.Error(), "alpha") || !strings.Contains(err.Error(), "beta") {
+		t.Errorf("compose = %v, want an error naming SSO connections, alpha and beta", err)
+	}
+}
+
 // fakeCalendarSource is a contracts.CalendarSource that answers nothing:
 // these tests only need distinct values to collect and assert on, and what
 // Deps carried when each was built.

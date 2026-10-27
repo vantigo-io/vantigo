@@ -218,6 +218,17 @@ func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.
 		deps.Accounts = accountsProvider.Accounts(deps)
 	}
 
+	// What connecting users to the workforce provider reads of identity
+	// (contracts.SSOConnections) resolves after the user directory, the
+	// way Accounts does; worker mode has no use for it.
+	ssoConnectionsProvider, err := soleProvider(mods, "SSO connections", func(m Module) bool { return m.SSOConnections != nil })
+	if err != nil {
+		return nil, err
+	}
+	if ssoConnectionsProvider != nil {
+		deps.SSOConnections = ssoConnectionsProvider.SSOConnections(deps)
+	}
+
 	productsProvider, err := soleProvider(mods, "a product catalog", func(m Module) bool { return m.Products != nil })
 	if err != nil {
 		return nil, err

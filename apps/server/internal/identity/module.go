@@ -132,6 +132,9 @@ func Module(a *Access) module.Module {
 		Users:    func(d module.Deps) contracts.UserDirectory { return newUserDirectory(a, d) },
 		Calendar: newBusinessCalendar,
 		Accounts: func(d module.Deps) contracts.AccountProvisioning { return newProvisioning(a, d) },
+		SSOConnections: func(d module.Deps) contracts.SSOConnections {
+			return newSSOConnections(a, d)
+		},
 	}
 }
 
