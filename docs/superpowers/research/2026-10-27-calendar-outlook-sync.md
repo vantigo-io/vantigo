@@ -97,6 +97,37 @@ Read on learn.microsoft.com on 2026-10-27.
   honours `If-Match` is not documented — the write-back (C) compares `changeKey`s itself
   rather than relying on a 412.
 
+### Delta, as checked for B (2026-10-27)
+
+Read on learn.microsoft.com ([event-delta](https://learn.microsoft.com/en-us/graph/api/event-delta?view=graph-rest-1.0),
+[delta-query-events](https://learn.microsoft.com/en-us/graph/delta-query-events),
+[delta-query-overview](https://learn.microsoft.com/en-us/graph/delta-query-overview)).
+
+- **Calendars.** v1.0 lists only `/users/{id}/calendarView/delta`, the primary calendar;
+  `/calendars/{id}/calendarView/delta` is shown in beta only. B reads the default
+  calendar, which is the one free/busy is computed from.
+- **The window** is encoded in the tokens; a moving window means a fresh delta.
+- **Token lifetime** for Outlook is not fixed — it depends on a cache — and an expired
+  token answers a 4xx with a code such as `syncStateNotFound`; the overview documents
+  `410 Gone` with a `Location` for a reset. The remedy is a fresh delta.
+- **Page size**: `Prefer: odata.maxpagesize=N` is accepted; no default or maximum is
+  documented; pages vary and may be empty with a `nextLink`.
+- **Recurrence**: single instances, occurrences and exceptions — no series master.
+- **`@removed`**: `{"id": …, "@removed": {"reason": "deleted"}}`, id only; events moved
+  outside the range are answered so.
+- **Properties**: those of `GET /calendarView` — subject, body and attendees included;
+  `$select`, `$expand`, `$filter`, `$orderby` are refused, so **no extended property**.
+  `start`/`end` in UTC unless `Prefer: outlook.timezone`; seven fractional digits, no
+  offset. `type`, `showAs`, `isAllDay`, `isCancelled`, `sensitivity` are present.
+- **`transactionId`** is returned only when the app set it; A's copies never did.
+- **Permission**: application `Calendars.Read` is the least privilege, `Calendars.ReadWrite`
+  covers it; RBAC for Applications has `Application Calendars.Read`.
+- **Throttling**: the Outlook limits per app and mailbox (10 000 requests in 10 minutes,
+  4 concurrent); nothing specific to delta.
+- **Not documented, for the real tenant**: a cancelled meeting's presence and `showAs`;
+  an all-day event's `start` under UTC; the 403 body under RBAC; whether an event's id
+  in a calendar view equals its id in `/events` (relied on for single instances).
+
 ## 4. What other products do
 
 HubSpot, Pipedrive and Odoo (calendar research §2) push their own meetings into the
