@@ -1,6 +1,6 @@
 ---
 title: "Energy module"
-description: "Metering points, meters, supply periods, consumption, the metering-point and consumption imports, spot prices and permissions."
+description: "Metering points, meters, supply periods, consumption, the metering-point and consumption imports, spot prices, tariffs, the metering point's billing facts and permissions."
 sources:
   - apps/server/internal/energy
   - openapi/energy.yaml
@@ -17,7 +17,8 @@ The Energy module keeps the metering points an energy supplier supplies: where e
 one is, which meter sits on it, which customer it is supplied to and for how long, and
 the consumption read from it. It also holds the day-ahead spot prices of each price
 area, the price dimension consumption billing is built on
-([Spot prices](#spot-prices)). It is served under `/api/v1/energy/*`
+([Spot prices](#spot-prices)), and the power and grid tariffs consumption will be
+priced by beside them ([Tariffs](#tariffs)). It is served under `/api/v1/energy/*`
 (`apps/server/internal/energy`, schema `energy`) and described by
 [`openapi/energy.yaml`](https://github.com/vantigo-io/vantigo/blob/main/openapi/energy.yaml).
 
@@ -38,7 +39,9 @@ periods, with the point's address and the monthly consumption inside each).
   (`numeric(14,3)`, not negative and, rounded to three decimals as the column stores
   it, less than 100 000 000 000), optional `latitude` (−90 to 90) and `longitude`
   (−180 to 180), and `connectionStatus` — `New`, `Connected` or `Disconnected`, matched
-  without regard to case, `New` when absent.
+  without regard to case, `New` when absent. Beside them, the point's billing facts:
+  its grid tariff, household use and electricity-tax class, and the VAT treatment
+  derived from them ([below](#the-metering-points-billing-facts)).
 - **Meter** — `meterNumber` (required, ≤ 64 after trimming), `installedAt`,
   `removedAt`. A point has at most one current meter (`removedAt` empty), enforced by
   a partial unique index. Creating a point creates its first meter at the same
@@ -47,7 +50,9 @@ periods, with the point's address and the monthly consumption inside each).
   are adjacent, never overlapping.
 - **Supply period** — the link between a point and a customer: `customerId`, `start`,
   `end` (open-ended when absent) and `status` — `Active`, `Ended` or `Cancelled`.
-  Every timestamp a request gives must be UTC.
+  Every timestamp a request gives must be UTC. Its terms: `tariffId`, the power tariff
+  the customer is supplied on (none when absent), and `cadence`, how often it is
+  billed — `monthly`, `quarterly` or `yearly`, `monthly` by default.
 - **Consumption interval** — `start`, `end` (after `start`), `quantityKwh` (≥ 0),
   `quality` (`Measured`, `Estimated`, `Corrected` or `Manual`) and `source` (`Manual`
   for a manual reading, `Import` for a consumption import, `Elhub`), in a table
@@ -76,9 +81,39 @@ at a time.
 - **End** (`POST …/supply-periods/{periodId}/end`) — `end` after the period's start; a
   cancelled period cannot be ended. **Cancel** (`DELETE …`) sets `Cancelled`, from any
   status.
+- **Change terms** (`PUT …/supply-periods/{periodId}`) — `{ tariffId, cadence }`, and
+  nothing else of the period: the unknown (period, point) pair is a `404`, a
+  `Cancelled` period a `400` *"A cancelled period cannot be changed."* (an `Active` or
+  an `Ended` one can), then the terms as below, written under `lockSupplyPeriods`. The
+  body is the whole of the terms: an absent `tariffId` removes the tariff and an absent
+  `cadence` is `monthly`.
+
+**The terms.** The create and the switch take `tariffId` and `cadence` too, judged
+after their own checks — the customer, then `tariffId`, then `cadence`
+(`parseSupplyTerms`) — and before the overlap pre-check, every refusal a `400` keyed
+by its field:
+
+- `tariffId` absent or `null` is none: the period is not priced (a settlement blocks
+  it as `no_tariff`). Otherwise it must name an **active power** tariff: *"Tariff 1004
+  does not exist."*, *"Tariff 1004 is a grid tariff, not a power tariff."*, *"Tariff
+  1004 is archived."*. The terms PUT also accepts the tariff the period already holds
+  when it has been archived since, so changing the cadence does not force a tariff
+  change ([Assigning a tariff](#assigning-a-tariff)).
+- `cadence` absent is `monthly`; anything but `monthly`, `quarterly` and `yearly` is
+  *"Cadence must be monthly, quarterly or yearly."* `yearly` is accepted for any
+  customer: the market rule that a consumer is billed at most quarterly is judged by
+  the invoicing wizard, which reads the customer's billing profile — Energy does not
+  read the directory while settling.
+- A switch does **not** inherit the ended period's tariff or cadence: the new
+  customer's period is billed on the body's terms.
+
+Every `SupplyPeriodResponse` carries `tariffId`, `tariffName` (both `null` without a
+tariff) and `cadence`.
 
 The create's write (`insertSupplyPeriod`) and the switch's transaction body
-(`switchSupplyPeriod`) are functions of their own, which the import calls too.
+(`switchSupplyPeriod`) are functions of their own, which the import calls too, with
+no tariff and the `monthly` cadence (`defaultSupplyTerms`): a file carries no
+contract.
 
 ## Consumption
 
@@ -113,6 +148,45 @@ moment of the request and whose `end` is absent or after it. A point whose only
 `Active` period starts later is listed, as is a point whose periods have all ended or
 been cancelled. `false`, or absent, is every point. It is the list to attach the points
 an import left without a customer.
+
+## The metering point's billing facts
+
+What a settlement will need of the point itself, beside its address and price area
+(design D3, D4; migration `00076_energy_tariffs.sql`). Three are set by hand, the
+fourth is derived:
+
+- **`gridTariffId`** — the installation's own grid tariff for the point, for the
+  points it is the grid operator of. None (`null`) means the grid company bills grid
+  services itself, a supplier's usual case. It must name an **active grid** tariff
+  (*"Tariff 1002 is a power tariff, not a grid tariff."*, *"… is archived."*, *"…
+  does not exist."*), except that the tariff the point already holds is accepted when
+  it has been archived since, so editing the address does not force a tariff change
+  ([Assigning a tariff](#assigning-a-tariff)). The response carries `gridTariffName`
+  beside it.
+- **`household`** — the point is supplied for household use (husholdningsbruk, mvaf
+  § 6-6-1). The module cannot know it; `false` by default.
+- **`electricityTaxClass`** — `ordinary` (the default), `reduced` or `exempt`: which of
+  a grid tariff's `electricity_tax` rates will apply, or none. Anything else is
+  *"Electricity tax class must be ordinary, reduced or exempt."*
+- **`vatTreatment`** — derived on every read, never stored (`vatTreatment` in
+  `vat.go`): `exempt_household_north` when `household` is set, the `countryCode`,
+  trimmed, is `NO` in any case, and the `postalCode`, trimmed, is exactly four digits
+  from `8000` to `9999` (Nordland, Troms and Finnmark, mval. § 6-6); `standard`
+  otherwise — a five-digit code, a letter in it, another country or a point not for
+  household use. It is shown on the point's page so a wrong postal code is seen. It is
+  a hint, not a VAT code: Invoices maps it to its settings' codes when it builds the
+  document (delivery D), for every line of the supply, the grid's and the taxes'
+  included (design D8).
+
+`POST /metering-points` and `PUT /metering-points/{id}` take `gridTariffId`,
+`household` and `electricityTaxClass`, judged with the point's other fields
+(`validateBillingFacts`) and refused as a `400` keyed `gridTariffId` or
+`electricityTaxClass`. The PUT is a full replace, as for the rest of its body: an
+absent `gridTariffId` is none, an absent `household` `false` and an absent
+`electricityTaxClass` `ordinary`, so a client that edits the address sends the three
+back. Every `MeteringPointResponse` — the list, the point, a customer's points —
+carries the five. A metering-point import never changes them: a point it creates has
+none, `false` and `ordinary`, and a point it updates keeps its own.
 
 ## Importing metering points
 
@@ -234,6 +308,13 @@ period P, the row's `link` is:
 | No P, no S | `pending` |
 | P another customer's, S given | `switched`: P ends at S and C's period starts there (`switchSupplyPeriod`); S must be after P's start, otherwise the switch's own error |
 | P another customer's, no S | `pending`, with `switch_from` set to P's customer |
+
+A period the import starts, by an assignment, a switch or the attach, has no power
+tariff and the `monthly` cadence: the file carries no contract, and the terms are set
+afterwards with the terms PUT ([above](#supply-periods-and-the-no-overlap-rule)). Nor
+does an import touch a point's billing facts: a point it creates has no grid tariff,
+`household` false and the class `ordinary`; a point it updates keeps its own
+([The metering point's billing facts](#the-metering-points-billing-facts)).
 
 Every link write runs under the point's `lockSupplyPeriods` in the row's transaction.
 Energy writes no events, so a row leaves no other trace than the points and periods
@@ -1016,6 +1097,152 @@ All under `/api/v1/energy/`.
 The coverage is read from the database alone, so the API process answers it the same
 in a split deployment, where the worker runs elsewhere.
 
+## Tariffs
+
+What consumption will be priced by beside the spot price: the supplier's **power
+tariffs**, its contracts with its customers, assigned to a supply period; and the
+installation's own **grid tariffs**, for the points it is the grid operator of,
+assigned to a metering point. The design is D3 of
+[`docs/superpowers/specs/2026-10-24-energy-consumption-billing-design.md`](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-10-24-energy-consumption-billing-design.md),
+the readings the plan
+[`docs/superpowers/plans/2026-10-27-energy-tariffs.md`](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/plans/2026-10-27-energy-tariffs.md).
+Tariffs are the business's own price lists, not a customer's data, and are in no
+customer's export.
+
+Nothing prices anything yet. The settlements to come (delivery C) read the tariff a
+supply period and its point name, the version valid on each day and its components;
+until then a tariff is stored, validated and assigned, never applied. A
+`spot_energy` component names no price state: which spot prices a settlement may use
+is the settlement's to judge.
+
+### The model
+
+Migration `00076_energy_tariffs.sql`, ids from 1001.
+
+- **Tariff** — `energy.tariffs`: `kind`, `power` or `grid`, fixed once created;
+  `name`, 1–120 characters once trimmed, what a settlement prints as the contract's
+  name; an optional `description` of at most 500; `status`, `active` on creation or
+  `archived`.
+- **Version** — `energy.tariff_versions`: `validFrom` and `validTo`, the civil days
+  `[validFrom, validTo)` in the market time zone of the point being priced, as every
+  day in the module ([Consumption](#consumption)). `validTo` is the first day the
+  version no longer applies; absent, the version is open-ended. A price change is a
+  new version from a day, and the old one stays for the periods it priced. Two
+  versions of one tariff never overlap — the validation refuses it, and a GiST
+  exclusion (`tariff_versions_no_overlap`) backs it — but they may leave a gap: a day
+  no version covers prices nothing, which a settlement will block as `no_tariff`. A
+  tariff has at least one version.
+- **Component** — `energy.tariff_components`: one priced element of a version, at its
+  `position` (from 0, the order the lines print in), with a `kind`, a `name` (1–80
+  characters once trimmed, the line's text) and the fields its kind uses — `rate`,
+  `rateNight`, `dayFrom`, `dayTo`, `weekdaysOnly`, `tiers`, `rateReduced`,
+  `rateBusiness`; a field the kind does not use is `null`. Rates are NOK per the
+  kind's unit, stored as `numeric(12,6)`. A version has at least one component.
+
+The database keeps what a row can state alone — the two tariff kinds and statuses, the
+nine component kinds, rates not negative, `0 ≤ dayFrom < dayTo ≤ 24` or neither,
+`tiers` an array, one component per position — and the validation below the rest,
+before the write.
+
+### The component kinds
+
+| Kind | Tariff | Fields | What it will price (design D3) |
+| --- | --- | --- | --- |
+| `spot_energy` | power | none | Σ kWh × each interval's NOK spot price; the line's unit price the volume-weighted average |
+| `fixed_energy` | power | `rate` (NOK/kWh) | kWh × `rate` |
+| `markup` | power | `rate` (NOK/kWh) | kWh × `rate` (øre/kWh given as NOK) |
+| `monthly_fee` | power or grid | `rate` (NOK/month) | `rate` × the months covered, prorated by civil days when the supply period or the version covers part of the billing period |
+| `grid_energy` | grid | `rate` (the day rate, NOK/kWh); optionally `rateNight` with `dayFrom`, `dayTo` (whole hours) and `weekdaysOnly` | kWh × `rate`, or × `rateNight` outside `dayFrom`–`dayTo` (and all weekend when `weekdaysOnly`) — two lines when both apply |
+| `grid_capacity` | grid | `tiers` | each calendar month, the tier whose `fromKw` is the highest not above the average of the three highest hourly kWh on three different days (kapasitetsledd) |
+| `grid_fixed` | grid | `rate` (NOK/month) | as `monthly_fee` |
+| `electricity_tax` | grid | `rate` (ordinary), `rateReduced` (both NOK/kWh) | kWh × `rate` or `rateReduced`, or nothing, by the point's `electricityTaxClass` |
+| `enova_levy` | grid | `rate` (household, NOK/kWh), `rateBusiness` (NOK/year) | a household point: kWh × `rate`; another: `rateBusiness` per year, prorated by days |
+
+A **tier** is `{ fromKw, perMonth }`: from `fromKw` kW the month costs `perMonth` NOK.
+
+### Validation
+
+`POST /tariffs` and `PUT /tariffs/{id}` take one body, `TariffRequest`: the header and
+every version with its components, as an import's mapping is one body. Every refusal
+is a `400` validation problem keyed by its place in the body, counted from 0 —
+`name`, `versions[1].validTo`, `versions[0].components[2].rate`,
+`versions[0].components[3].tiers[1].fromKw` — so the page shows it on the field it
+names.
+
+- `kind` is `power` or `grid`; `name` 1–120 characters once trimmed; `description` at
+  most 500.
+- At least one version. Each has a `validFrom`, and a `validTo`, when given, after it.
+  A version that overlaps an earlier one is refused on the later one's `validFrom`
+  (*"The version overlaps versions[0], valid from 2026-01-01."*).
+- At least one component per version, of a kind its tariff may hold — a power tariff
+  `spot_energy`, `fixed_energy`, `markup` and `monthly_fee`; a grid tariff
+  `grid_energy`, `grid_capacity`, `grid_fixed`, `electricity_tax`, `enova_levy` and
+  `monthly_fee`. Another kind is that component's error (*"A grid tariff cannot hold
+  spot_energy."*).
+- A power tariff's version holds **exactly one** of `spot_energy` and `fixed_energy`,
+  the error on `versions[i].components`. A version holds at most one each of
+  `grid_energy`, `grid_capacity`, `electricity_tax` and `enova_levy`, a second one
+  refused on its own `kind`; `markup`,
+  `monthly_fee` and `grid_fixed` may repeat (a supplier may list two markups).
+- Each kind's fields as in the table, the required ones present and every field the
+  kind does not use absent or `null`, so a body says only what will price.
+  `grid_energy`'s night rate is all or nothing: `rateNight`, `dayFrom` and `dayTo`
+  together, whole hours with `0 ≤ dayFrom < dayTo ≤ 24`, and `weekdaysOnly` only with
+  them.
+- Rates are `0 ≤ rate < 1 000 000`, rounded to six decimals as they are stored.
+- `tiers` holds 1–50 entries, the first `fromKw` 0 and each next one strictly higher,
+  `0 ≤ fromKw < 100 000` (three decimals) and `0 ≤ perMonth < 1 000 000` (two
+  decimals).
+- The component's `name` is 1–80 characters once trimmed.
+
+A `PUT` replaces the name, the description and every version with its components, in
+one transaction under the tariff's row lock: the versions and components are deleted
+and written anew, with new ids (nothing outside the tariff points at a version or a
+component). Its `kind` must be the stored one, else a `400` on `kind`, *"A tariff's
+kind cannot be changed."* The `PUT` does not touch `status`.
+
+### Assigning a tariff
+
+A supply period's `tariffId` must name an **active power** tariff and a metering
+point's `gridTariffId` an **active grid** tariff (`checkTariffAssignable`), else a
+`400` on the field: *"Tariff 1004 does not exist."*, *"Tariff 1004 is a grid tariff,
+not a power tariff."*, *"Tariff 1004 is archived."*. `null` is none and always passes.
+A tariff archived after it was assigned stays assigned: the metering point's `PUT` and
+the supply period's terms `PUT` accept the tariff the row already holds even when it
+is archived, so a write that repeats it is not refused for a status it cannot change.
+Assigning needs only the write's own permission — `energy:supply-periods-manage` or
+`energy:metering-points-manage` — not a tariff permission.
+
+### Archive and delete
+
+**Archive** (`POST /tariffs/{id}/archive`) sets `archived`, and archiving an archived
+tariff changes nothing. An archived tariff cannot be assigned anew, but still prices
+what it is assigned to, and can still be edited: a wrong figure in a version that
+priced last year's periods must stay correctable. There is no un-archive.
+
+**Delete** (`DELETE /tariffs/{id}`) removes a tariff with its versions and components,
+and only one nobody uses: when any supply period — of any status, a cancelled one
+included — or any metering point names it, the answer is `409` "Tariff in use" (a
+problem without a machine code, as Energy's other problems). The check runs under the
+tariff's row lock; the foreign keys' `RESTRICT` is the backstop, and a delete that
+races past the check meets it with the same `409`. A tariff in use is archived
+instead. `usage` on every read — `supplyPeriods` and `meteringPoints`, counted the
+same way — tells the page whether the delete can succeed.
+
+### Endpoints
+
+All under `/api/v1/energy/`.
+
+| Operation | Rule | What it does |
+| --- | --- | --- |
+| `GET tariffs?kind&status` | `permission:energy:tariffs-view` | Every tariff, not paged (a business holds a handful): active first, then by kind and name; `kind` and `status` narrow it. Each a `TariffSummary`: the header, `versionCount`, `currentVersion` — the version valid today in Europe/Oslo, `null` when none is — and `usage`. |
+| `POST tariffs` | `permission:energy:tariffs-manage+energy:tariffs-view` | Validates (`400`) and creates the tariff, `active`, with its versions and components in one transaction: `201` with the `Tariff`. |
+| `GET tariffs/{id}` | `permission:energy:tariffs-view` | The `Tariff`: the header, the versions in `validFrom` order with their components in position order, and `usage`; `404` for an unknown id. |
+| `PUT tariffs/{id}` | `permission:energy:tariffs-manage+energy:tariffs-view` | Validates (`400`), then `404`, the kind, and replaces the header and the versions ([above](#validation)): `200` with the `Tariff`. An archived tariff can be edited. |
+| `POST tariffs/{id}/archive` | `permission:energy:tariffs-manage+energy:tariffs-view` | Archives (`404` for an unknown id): `200` with the `Tariff`. |
+| `DELETE tariffs/{id}` | `permission:energy:tariffs-manage` | `404`; `409` "Tariff in use"; else `204`. |
+| `PUT metering-points/{id}/supply-periods/{periodId}` | `permission:energy:supply-periods-manage+energy:supply-periods-view` | Changes a supply period's tariff and cadence ([above](#supply-periods-and-the-no-overlap-rule)): `200` with the period. |
+
 ## Permissions
 
 | Key | Display | Sensitive |
@@ -1031,13 +1258,19 @@ in a split deployment, where the worker runs elsewhere.
 | `energy:prices-view` | View energy prices — spot prices per price area and what is held of them | no |
 | `energy:supply-periods-manage` | Manage energy supply periods | no |
 | `energy:supply-periods-view` | View energy supply periods | no |
+| `energy:tariffs-manage` | Manage energy tariffs — create, edit, archive and delete power and grid tariffs | no |
+| `energy:tariffs-view` | View energy tariffs — power and grid tariffs, their versions and their components | no |
 
 Every key is delegable and in the category Energy. Each operation's rule is its
 `x-vantigo-access` in the contract; the metering-point list and page need
 `energy:metering-points-view` and `energy:meters-view`, and creating a point
 `energy:metering-points-manage` and `energy:meters-manage` with both views. The
 Prices page needs `energy:prices-view`, and its **Import prices** also
-`energy:prices-manage`.
+`energy:prices-manage`. The Tariffs page needs `energy:tariffs-view`, and its editor,
+**Archive** and **Delete** also `energy:tariffs-manage`. Assigning a tariff needs only
+the write's own permission; the dialogs list the tariffs to choose from when the
+caller holds `energy:tariffs-view`, and otherwise show the assigned tariff's name
+read-only.
 
 ## Workers
 

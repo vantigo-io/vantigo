@@ -546,8 +546,27 @@ See
 and the
 [design](docs/superpowers/specs/2026-10-26-energy-spot-price-service-design.md).
 
-What remains: **B** tariffs and the
-metering point's billing facts, **C** settlements
+**Delivery B: tariffs and the billing facts (done)** — what consumption will be priced
+by beside the spot price, in migration `00076_energy_tariffs.sql`. The supplier's
+power tariffs and the installation's own grid tariffs, each with versions over civil
+days `[validFrom, validTo)` that never overlap, each version a list of components of
+nine kinds — spot or fixed energy, markups and monthly fees; the grid's energy charge
+with its night rate, capacity tiers, fixed charge, electricity tax and Enova levy —
+validated in one body with every refusal keyed by its place. A tariff in use is
+archived, not deleted (`409` "Tariff in use"), and an archived one still prices what
+it is assigned to and can still be corrected. A supply period gains its power tariff
+and its billing cadence (monthly, quarterly or yearly), on the create and the switch
+and through a new terms `PUT`; a metering point gains its grid tariff, household use
+and electricity-tax class, and the VAT treatment derived from household use and the
+postal code (`exempt_household_north` for 8000–9999), shown on its page as a hint
+Invoices will map. The import writes no tariff and the monthly cadence and keeps a
+point's billing facts. The **Tariffs** page and the point's **Billing** card, behind
+`energy:tariffs-view` and `energy:tariffs-manage`. Nothing prices yet: that is C's.
+See
+[`docs/src/content/docs/en/reference/energy.md`](docs/src/content/docs/en/reference/energy.md#tariffs)
+and the [plan](docs/superpowers/plans/2026-10-27-energy-tariffs.md).
+
+What remains: **C** settlements
 and the `contracts.ConsumptionProvider` contract (Energy phase 4 done), then Invoices
 phase 5's **D** invoices from consumption (the wizard) and **E** billing runs.
 

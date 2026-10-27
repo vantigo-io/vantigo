@@ -1,6 +1,6 @@
 ---
 title: Energy
-description: Metering points, meters, supply periods, consumption per customer and spot prices.
+description: Metering points, meters, supply periods, consumption per customer, spot prices and tariffs.
 sidebar:
   order: 70
 sources:
@@ -10,14 +10,15 @@ sources:
 
 The Energy app keeps the metering points your organisation supplies: where each one
 is, which meter sits on it, which customer it is supplied to and for how long, and the
-consumption read from it, and the spot prices that consumption is priced by. It has
-two areas, **Metering points** and **Prices**, and it adds an **Energy** tab to every
-customer in the Customers app.
+consumption read from it, the spot prices that consumption is priced by, and the
+power and grid tariffs it will be billed on. It has three areas, **Metering points**,
+**Prices** and **Tariffs**, and it adds an **Energy** tab to every customer in the
+Customers app.
 
 The app is shown when the energy module is switched on and you hold
-`energy:metering-points-view` and `energy:meters-view` for **Metering points**, or
-`energy:prices-view` for **Prices**; each area is offered only to whoever holds its
-permissions. Each part of a metering
+`energy:metering-points-view` and `energy:meters-view` for **Metering points**,
+`energy:prices-view` for **Prices**, or `energy:tariffs-view` for **Tariffs**; each
+area is offered only to whoever holds its permissions. Each part of a metering
 point's page needs its own permission as well; a part you lack the permission for is
 simply shown empty. The permissions are listed at the end of this page.
 
@@ -95,7 +96,10 @@ and **Price area**. To link a point to its customer, the file needs the customer
    one price area or one supply start date for every row. **Preview** shows the first
    rows as they will be read, with each problem marked on its cell. The mapping is
    saved as you change it. On an update only the mapped fields change; a blank cell
-   in a mapped optional field clears it.
+   in a mapped optional field clears it. An import never changes a point's
+   **Billing** facts: a new point has no grid tariff, is not marked for household
+   use and has the ordinary electricity-tax class, and an updated point keeps its
+   own (see [Edit a metering point](#edit-a-metering-point)).
 3. **Check file.** Every row is tried exactly as the import would, without saving
    anything. The result counts the rows that **Would be created**, **Would be
    updated**, **Would be skipped** and **Have errors**, and, when there are any,
@@ -129,6 +133,11 @@ a start date. So the import reads the customer and the date separately:
   Find these points with **Without customer** on the list and give each one a
   customer with **Assign customer**.
 - A point already supplied to that customer is left as it is, whatever the date says.
+
+A supply period the import writes, when the row is imported, switched or attached
+later, has no power tariff and the cadence **Monthly**: the file carries no contract.
+Give each period its tariff afterwards with **Change terms**, see
+[Change a supply period's terms](#change-a-supply-periods-terms).
 
 ### When a metering point switches customer
 
@@ -183,17 +192,41 @@ number: a meter is changed by replacing it, below. **Save changes** confirms wit
 *Metering point updated*. Changing the GSRN to one another metering point already has
 is refused. Editing needs `energy:metering-points-manage`.
 
+The dialog also holds the point's billing facts, which a settlement will need:
+
+- **Grid tariff**: the grid tariff your organisation bills this point's grid services
+  on, when it is the grid operator here; leave it empty when the grid company bills
+  them itself, the usual case for a supplier. Only active grid tariffs are offered; a
+  tariff archived since it was chosen stays on the point until you change it. The list
+  is shown when you hold `energy:tariffs-view`; otherwise the tariff's name is shown
+  and cannot be changed here.
+- **Household use**: tick it when the point is supplied for household use. Vantigo
+  cannot know this; you set it.
+- **Electricity tax class**: **Ordinary** for most points, **Reduced** or **Exempt**
+  for a point that qualifies, which decides the electricity-tax rate the grid tariff
+  applies.
+
+The dialog keeps the three as they are when you edit only the address or another
+field.
+
 ## Read a metering point's page
 
-The page is headed by the GSRN and the address, and has four cards:
+The page is headed by the GSRN and the address, and has five cards:
 
 - **Metering point details**: meter number, price area, grid area, connection status
   and expected annual consumption.
+- **Billing**: the **Grid tariff** (or none), **Household use**, the **Electricity
+  tax class** and the **VAT treatment**. The VAT treatment is not set by hand: it is
+  *exempt (household, Northern Norway)* when the point is for household use, its
+  country is `NO` and its postal code is from 8000 to 9999 — electricity for
+  household use in Nordland, Troms and Finnmark is exempt from VAT — and *standard*
+  otherwise. It is shown so that a wrong postal code or a forgotten **Household use**
+  is seen here, before an invoice is made.
 - **Meter history**: every meter that has sat on the point, with **Installed** and
   **Removed** times. The current meter has no removed time.
 - **Supply periods**: which customer the point has been supplied to, from when to
-  when, with the status **Active**, **Ended** or **Cancelled**. An end that is not set
-  reads **Open-ended**.
+  when, on which **Power tariff** and **Cadence**, with the status **Active**,
+  **Ended** or **Cancelled**. An end that is not set reads **Open-ended**.
 - **Consumption**: the readings for a date range, as a chart and a table.
 
 Times on this page are shown in Norwegian market time (Europe/Oslo).
@@ -211,13 +244,23 @@ meter's own installation time, otherwise the dialog refuses it on that field. Ne
 
 In **Supply periods**, the button reads **Assign customer** when the point has no
 active period and **Switch customer** when it has one. Both open the same dialog:
-choose the **Customer** (type to search) and the **Switch date**.
+choose the **Customer** (type to search) and the **Switch date**, and the terms the
+customer is supplied on:
+
+- **Power tariff**: the customer's contract, one of the active power tariffs (see
+  [Tariffs](#tariffs)). It may be left empty, but a period without one cannot be
+  billed. The list is shown when you hold `energy:tariffs-view`.
+- **Cadence**: how often the period is billed, **Monthly** (the default),
+  **Quarterly** or **Yearly**. A consumer may be billed at most quarterly; Vantigo
+  accepts **Yearly** here for any customer, and the invoicing will refuse it for a
+  private person.
 
 - With no active period, a new **Active** period starts on that date.
 - With an active period, that period is ended on the switch date and a new one starts
   for the new customer on the same date. The switch date must be later than the
   active period's start, and the customer must be a different one; the dialog shows
-  the reason on the field.
+  the reason on the field. The new customer's period starts on the terms in the
+  dialog; it does not take over the ended period's tariff or cadence.
 
 The dialog refuses when the point already has a non-cancelled period covering that
 date, and tells you to end the existing period first. The period starts at midnight
@@ -225,6 +268,16 @@ UTC on the chosen day. Needs `energy:supply-periods-manage`.
 
 A supply period can also be started from the customer's side, see
 [the Energy tab](#the-customer-pages-energy-tab) below.
+
+## Change a supply period's terms
+
+In **Supply periods**, click **Change terms** on the row. The dialog holds the
+period's **Power tariff** and **Cadence**, as when it was started; change them and
+save. This is how a period started without a tariff, by an import or before tariffs
+existed, gets one. An active or an ended period can be changed; a cancelled one
+cannot. A tariff archived since the period was given it stays as it is, so you can
+change the cadence alone, but another archived tariff cannot be chosen. Needs
+`energy:supply-periods-manage`.
 
 ## End a supply period
 
@@ -338,7 +391,8 @@ metering point to start tracking consumption.*
 
 **Attach metering point** opens a dialog where you search the **Metering points** by
 GSRN or meter number and choose a **Start** date; this starts an **Active** supply
-period for the customer on that point. It is refused with *This metering point already
+period for the customer on that point, with no power tariff and the cadence
+**Monthly**; set them on the metering point's page with **Change terms**. It is refused with *This metering point already
 has an overlapping supply period* when the point is already supplied on that date, and
 with *Could not attach metering point* otherwise. The button is not offered on a
 customer that has been merged into another or anonymised. When two customers are
@@ -552,18 +606,119 @@ What the import writes:
 
 The full rules are in [Spot prices](/en/reference/energy/#spot-prices).
 
+## Tariffs
+
+**Tariffs** holds the price lists consumption will be billed on, besides the spot
+price. There are two kinds:
+
+- A **power tariff** is your contract with a customer: a spot price or a fixed price,
+  a markup and a monthly fee, say. It is chosen on the customer's supply period.
+- A **grid tariff** is your own grid tariff, for the metering points your
+  organisation is the grid operator of: the energy charge, the capacity charge, the
+  fixed charge, the electricity tax and the Enova levy. It is chosen on the metering
+  point. When the grid company bills grid services itself, you need none.
+
+A tariff holds **versions** by date, and each version a list of **components**, one
+line of the invoice each. When the prices change, add a version from the day they
+change; the old version stays for the periods it priced.
+
+Open **Energy** → **Tariffs**. The list shows each tariff's name, kind, status, the
+version valid today and how many supply periods and metering points use it, active
+tariffs first; narrow it by kind or status. The page needs `energy:tariffs-view`;
+creating, editing, archiving and deleting need `energy:tariffs-manage` as well.
+
+Tariffs are not applied to anything yet: settling consumption on them comes in a
+later version of Vantigo. Until then you can set them up and choose them on the
+supply periods and the metering points.
+
+### Create a tariff
+
+Click **New tariff**. Choose the kind, **Power** or **Grid** (it cannot be changed
+afterwards), and give the tariff a **Name**, which is printed on the invoice as the
+contract's name, and optionally a description. Then add at least one version with at
+least one component, and save. Click a row in the list to open a tariff and edit it
+the same way.
+
+The dialog marks each problem on the field it concerns, such as a missing rate or two
+versions whose dates overlap.
+
+### Add versions
+
+Each version has **Valid from** and **Valid until**. **Valid from** is the first day
+the version applies; **Valid until** is the first day it no longer applies, so a
+version from 1 January valid until 1 July covers January to June. Leave **Valid
+until** empty for a version that applies until further notice. The days are
+Norwegian calendar days.
+
+Two versions of one tariff cannot overlap. They may leave a gap, but a day no version
+covers prices nothing. To change the prices from a day, set **Valid until** on the
+current version to that day and add a new version from it.
+
+### Add components
+
+Add components to a version by kind; each one has a **Name**, the text of its line on
+the invoice. Move them up or down to set the order the lines are printed in. Rates are
+in NOK. A power tariff may hold:
+
+- **Spot price**: the energy at the hour's or quarter's spot price. No rate.
+- **Fixed price**: the energy at a fixed price per kWh.
+- **Markup**: a price per kWh on top of the energy price. A version may have more
+  than one.
+- **Monthly fee**: a fixed amount per month, prorated when the supply covers part of a
+  month.
+
+Each version of a power tariff has exactly one **Spot price** or **Fixed price**.
+
+A grid tariff may hold:
+
+- **Energy charge**: a price per kWh in the day, and optionally a night rate with the
+  hours the day rate applies (from and to, whole hours) and whether the night rate
+  applies all weekend.
+- **Capacity charge**: an amount per month by the steps below.
+- **Fixed charge**: a fixed amount per month.
+- **Electricity tax**: the ordinary and the reduced rate per kWh; the metering point's
+  **Electricity tax class** decides which applies, or none.
+- **Enova levy**: the household rate per kWh, and the amount per year a point that is
+  not for household use pays.
+- **Monthly fee**: as for a power tariff.
+
+A version holds at most one each of the energy charge, the capacity charge, the
+electricity tax and the Enova levy.
+
+### Set the capacity steps
+
+The capacity charge is a table of steps: **From kW** and the price **Per month**. Each
+month, the point's step is found from the average of its three highest hourly
+consumptions, on three different days. The first step starts at 0 kW, and each next
+one must start higher; a table has at most 50 steps.
+
+### Archive or delete a tariff
+
+**Archive** a tariff that should no longer be chosen. An archived tariff stays on the
+supply periods and metering points that already have it and still applies to them,
+and you can still edit it, to correct a figure; it is just not offered for new
+choices.
+
+**Delete** removes a tariff for good, and only one nobody uses: no supply period, not
+even an ended or a cancelled one, and no metering point has it. For a tariff in use the
+button is disabled with the reason; archive it instead.
+
+The full rules are in [Tariffs](/en/reference/energy/#tariffs).
+
 ## Permissions
 
 | Permission | Lets you |
 | --- | --- |
 | `energy:metering-points-view` | See the list and the metering point's page, search metering points, see the Energy tab |
-| `energy:metering-points-manage` | Create and edit metering points |
+| `energy:metering-points-manage` | Create and edit metering points, their billing facts included |
 | `energy:meters-view` | See the meter history (needed with the above to see the app at all) |
 | `energy:meters-manage` | Replace a meter and register the first meter when creating |
 | `energy:supply-periods-view` | See supply periods, and a customer's metering points |
-| `energy:supply-periods-manage` | Assign, switch, end and attach supply periods |
+| `energy:supply-periods-manage` | Assign, switch, end and attach supply periods, and change their terms |
 | `energy:consumption-view` | See consumption and the Energy tab's consumption figure |
 | `energy:consumption-manage` | Add manual readings |
 | `energy:prices-view` | See **Prices**: the coverage and each area's prices |
 | `energy:prices-manage` | Import prices from a file, with `energy:prices-view` |
+| `energy:tariffs-view` | See **Tariffs**, and choose a tariff on a supply period or a metering point |
+| `energy:tariffs-manage` | Create, edit, archive and delete tariffs, with `energy:tariffs-view` |
 | `energy:import` | Import metering points from a file, with `energy:metering-points-manage`; import readings, with `energy:consumption-manage` and `energy:consumption-view`; what an import writes needs the permissions above |
