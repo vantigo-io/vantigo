@@ -2208,14 +2208,17 @@ limited `entra-directory` (60 a minute); and `GET /api/v1/entra/directory/matche
 which proposes, for every user not yet connected (at most 1000, `truncated` beyond),
 the one account whose mail or principal name equals their address or whose
 `employeeId` equals their employee number, when every key that matched points to that
-account, nobody holds it and no other user matched it — exact matches only, a user
-with more than one account in play counted `ambiguous` — rate limited `entra-matches` (6 a minute). What it reads of
+account, nobody else holds it, it is not a guest and no other user matched it — exact
+matches only, a user with more than one account in play counted `ambiguous`, the read
+bounded by two minutes and shared per caller while in flight — rate limited `entra-matches` (6 a minute). What it reads of
 identity comes through a new identity-provided port, `contracts.SSOConnections`,
 provider-gated for an Owner (`Unconnected`, `ErrSSONotConfigured` while OIDC is off;
 `KeyHolders`); the addresses never leave the module. The connect dialog gains the
 picker above the typed principal name, and the Users screen a *Find matches in the
 directory…* review with **Connect selected**, which announces each chosen pair through
-delivery A's endpoint. No migration.
+delivery A's endpoint; a row starts ticked only for an enabled account matched by its
+principal name and a user who is not an Owner. Identity's announcement now also refuses
+`sso_link_taken` when another user's SCIM mapping names either key. No migration.
 
 *Unblocks:* connecting a whole workspace in one review, not user by user.
 

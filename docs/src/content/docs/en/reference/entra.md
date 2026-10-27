@@ -1080,10 +1080,11 @@ rather than types it: the **directory search**, behind the picker in the connect
 dialog, and the **exact matches**, behind the review that connects a whole workspace.
 Neither writes anything: connecting stays identity's endpoint, which the host calls
 once per chosen pair, and identity's refusals (`sso_link_taken`, `account_linked`,
-`account_pending`) still decide what may be connected. No migration.
+`account_pending`) still decide what may be connected — `sso_link_taken` also when
+another user's SCIM mapping names either key. No migration.
 
-Both are under `policy:Owner+OwnerManagement` — an Owner, with a second factor while
-`OWNERS_REQUIRE_MFA` is on — like the connection's writes, since they read the whole
+Both are under `policy:Owner+OwnerManagement` — an Owner, with a second factor when
+Owners must use one (`OWNERS_REQUIRE_MFA`) — like the connection's writes, since they read the whole
 tenant and identity's addresses; a holder of `entra:manage` alone, or a SystemAdmin who
 is not an Owner, is refused 403 by the router. Each has a rate limit of its own per
 client address: the search `entra-directory`, 60 a minute (a debounced picker asks once
@@ -1095,12 +1096,15 @@ not a list they refresh); 429 beyond.
 The users to connect and who holds an account belong to identity, so the module reads
 them through **`contracts.SSOConnections`**, a single-provider port identity provides
 (`Deps.SSOConnections`), never identity's tables
-([module boundaries](/en/contributing/module-boundaries/) rules 5 and 12):
+([module boundaries](/en/contributing/module-boundaries/) rules 5 and 12), and only
+through the accessors in `internal/entra/contractscalls.go`, which refuse a call made
+inside one of the module's transactions:
 
 - `Unconnected` — every user who is not pending and has neither an OIDC link nor an
   announced link under the configured issuer, the caller excluded (an Owner connects
   themselves by signing in), in the order the Owner's user list shows them: Owners
-  first, then by display name. Each is the user's id, address, employee number and
+  first, then by display name — at most the limit the caller asks for (the matches ask
+  for 1001, to learn whether more than 1000 wait). Each is the user's id, address, employee number and
   whether they are disabled; an address identity made up for an account the provider
   created is answered empty. While OIDC is off it answers `ErrSSONotConfigured`.
 - `KeyHolders` — for each account's object id and principal name, who already holds
@@ -1110,7 +1114,8 @@ them through **`contracts.SSOConnections`**, a single-provider port identity pro
   for a person yet to arrive, with no user. While OIDC is off it answers nothing.
 
 The port is **provider-gated**: identity checks the request in the context against
-`policy:Owner+OwnerManagement` itself and answers nothing, not an error, to anyone
+`policy:Owner+OwnerManagement` itself — a second factor required only when Owners must
+use one, as on every Owner endpoint — and answers nothing, not an error, to anyone
 else and to a context with no request. **An OIDC link cannot be attributed to a
 directory account**: it holds the token's `sub`, which Graph never returns, so an
 account whose person has already signed in is not marked as held. That user is linked,
@@ -1121,8 +1126,9 @@ be refused.
 **A user's address never leaves the module.** It is compared with the tenant's
 accounts and goes nowhere else: not on the wire (neither read answers a Vantigo user's
 address), not in a log, an event or an error. The Graph client logs a refused call by
-its path, never its query, so neither a search nor a filter of addresses reaches the
-log either.
+its path, never its query, and both reads' calls are made without Graph's error words
+in the log (they may echo the search or the filter), so neither a search nor a filter
+of addresses reaches the log either.
 
 ### The directory search
 
@@ -1133,7 +1139,7 @@ field `q`. The module asks Graph:
 
 ```http
 GET /users?$search="displayName:<q>" OR "mail:<q>" OR "userPrincipalName:<q>"
-    &$select=id,displayName,mail,userPrincipalName,employeeId,accountEnabled
+    &$select=id,displayName,mail,userPrincipalName,employeeId,accountEnabled,userType
     &$orderby=displayName&$top=25&$count=true
 ConsistencyLevel: eventual
 ```
@@ -1141,22 +1147,28 @@ ConsistencyLevel: eventual
 — an advanced query, which Graph answers only with the `ConsistencyLevel` header. The
 answer, `EntraDirectoryUsers`, is **at most 25** accounts by display name, each its
 `objectId`, `displayName`, `userPrincipalName`, `mail` and `employeeId` when set,
-`accountEnabled`, and `holder` (`kind` `expected`, `mapped` or `account`, with the
+`accountEnabled`, `guest: true` for a guest of the tenant (`userType` `Guest`, invited
+from another organisation; absent for a member), and `holder` (`kind` `expected`, `mapped` or `account`, with the
 `userId` for the first two) when `KeyHolders` says somebody holds it. When 25 come back
 there may be more, and the picker asks the Owner to narrow the search. An account
 another user or Staff holds is shown but cannot be picked; one the user being connected
-holds already can.
+holds already can. A pick hands the host both keys as one unit: in the connect dialog,
+editing the principal name away from the picked account's clears the object id, and
+changing the search after a pick clears both.
 
 ### The exact matches
 
 `GET /api/v1/entra/directory/matches` reads `Unconnected` — **at most 1000** users, in
-identity's order; `truncated` is true when more were waiting — and asks the tenant for
+identity's order, asking identity for 1001; `truncated` is true when more were
+waiting — and asks the tenant for
 every account any of their keys could match: `mail in (…)` and
 `userPrincipalName in (…)` by the users' addresses (trimmed, lower-cased, each once),
 and `employeeId in (…)` by the employee numbers of those who have one, in filters of
 **15 values** each (a `'` doubled, as OData quotes), `$top=999`, `$count=true` and
 `ConsistencyLevel: eventual`. It then applies the rule, **exact only**:
 
+- A **guest** account (`userType` `Guest`) matches nobody: it is set aside before
+  matching, so it is never proposed and never makes a user ambiguous.
 - A user's key matches an account when the user's address equals the account's
   `mail` (by `mail`) or its `userPrincipalName` (by `userPrincipalName`), ignoring case
   and surrounding space, or the user's employee number equals the account's
@@ -1170,15 +1182,28 @@ and `employeeId in (…)` by the employee numbers of those who have one, in filt
   accounts or more, or one account that another user's key matched too (whether or not
   that user matched further accounts). Nobody is proposed by a guess between two, and
   there is no fuzzy match.
-- A proposed account that somebody already holds (`KeyHolders`: an announced link, a
-  SCIM mapping or an account Staff announced) is then left out, and not counted as
-  ambiguous.
+- A proposed account **held for somebody else** (`KeyHolders`: another user's announced
+  link or SCIM mapping, or an account Staff announced, which has no user) is then left
+  out, and not counted as ambiguous. The user's own SCIM mapping of the account does not
+  block their proposal.
 
 The answer, `EntraDirectoryMatches`, is the `matches` — each `{userId, account,
 matchedBy}`, the account as the search answers it without a holder, in identity's
 order — with `candidates`, how many users were read, `ambiguous`, how many were left
-out as above, and `truncated`. The review proposes each with a checkbox, all checked
-but a disabled account's; **Connect selected** announces the chosen pairs one at a time
+out as above, and `truncated`.
+
+The whole read — identity's candidates, the tenant's filters and the holders — is
+bounded by **two minutes**, past which it answers 503 `tenant_unreachable`. An Owner's
+second request while their first is still reading waits for it and shares its answer
+(one read in flight per caller, keyed by the caller, since what identity answers
+depends on who asks); a waiting request whose shared read was cancelled by the other
+client leaving reads again.
+
+The review proposes each with a checkbox, ticked only when the account is enabled,
+the principal name matched (`userPrincipalName` in `matchedBy`) and the user is not an
+Owner; any other row starts unticked and is marked *Check this match*, with the reason
+— matched by mail or employee ID only, or the user is an Owner, whose access whoever
+holds the account would sign in with. **Connect selected** announces the chosen pairs one at a time
 through identity, and each is fulfilled at the person's next sign-in or the provider's
 next push.
 
@@ -1189,7 +1214,7 @@ The search's and the matches' refusals:
 | `invalid_request` | 400 | The search: `q` is not 2 to 100 characters once trimmed, under `errors.q`. |
 | `sso_not_configured` | 409 | The matches: single sign-on is off, so there is no issuer to connect anybody under. |
 | `credential_invalid` | 503 | No secret fetched a token, or no tenant or client is saved — as the licences' read answers it. |
-| `tenant_unreachable` | 503 | The tenant did not answer. |
+| `tenant_unreachable` | 503 | The tenant did not answer; for the matches, also when the read took more than two minutes. |
 | `throttled` | 503 | Graph throttled the read twice in a row. |
 
 ## The events

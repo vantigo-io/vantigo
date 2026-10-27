@@ -437,12 +437,16 @@ Communications' outbox is the working example.
     The single-provider `contracts.SSOConnections` is provider-gated too: identity, its
     sole provider, checks the request in `ctx` against `policy:Owner+OwnerManagement`
     through its own access and answers nothing, not an error, to anyone else or to a
-    context with no request. `Unconnected` lists the users not yet connected under the
-    configured issuer, with the address and employee number each is matched by, and
+    context with no request; it requires a second factor only when Owners must use one
+    (`OWNERS_REQUIRE_MFA`), as every Owner endpoint does. `Unconnected(ctx, limit)`
+    lists at most `limit` users not yet connected under the configured issuer, with the
+    address and employee number each is matched by, and
     answers an Owner `contracts.ErrSSONotConfigured` while OIDC is off — not
     configured is not "nobody left to connect"; `KeyHolders` answers who holds a
     directory account's object id or principal name (`expected`, `mapped` or
-    `account`). The address is for the match alone and never leaves Entra, its consumer
+    `account`). The address is for the match alone and never leaves Entra, its consumer,
+    which calls the port only through the accessors in `internal/entra/contractscalls.go`
+    that refuse a call made inside one of its transactions
     ([Microsoft Entra ID](/en/reference/entra/#what-the-module-reads-of-identity)).
 
     Three single-provider reads are the other class, **consumer-gated**:
@@ -982,7 +986,8 @@ nothing else changes. See [Planning](/en/reference/planning/#contracts-consumed)
 
 **Entra depends on nobody but identity, and is called by Staff.** It reads no other
 module, and of identity only `Deps.SSOConnections` (`contracts.SSOConnections`, rule
-12), for the directory's exact matches and the holders the search marks — the Owner's
+12), for the directory's exact matches and the holders the search marks, through the
+accessors in `internal/entra/contractscalls.go` and never inside a transaction — the Owner's
 and `entra:manage`'s checks are the router's — and writes nothing outside the `entra`
 schema. It fills one
 slot, `IdentityProvisioner` (rule 13), and has no worker: Staff's accounts worker calls

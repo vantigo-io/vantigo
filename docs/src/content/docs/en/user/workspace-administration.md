@@ -202,13 +202,16 @@ The column reads one of three things:
    you have it instead or besides. While the **Microsoft Entra ID** app is enabled, the
    dialog starts with **Search the directory**: type two characters or more of the
    person's name or address and pick their account, which fills in both fields (an
-   account another user already holds is shown but cannot be picked).
+   account another user already holds is shown but cannot be picked). The two go
+   together: changing the principal name clears the object id, and searching again
+   clears both.
 3. Choose **Connect**. The row now reads **Awaiting first sign-in**.
 
 **Connect many at once.** While the **Microsoft Entra ID** app is enabled, **Find
 matches in the directory…**, next to the search in **Users**, proposes for every user
-not yet connected the one directory account that matches them exactly, and **Connect
-selected** connects the ones you keep checked; see
+not yet connected the one directory account that matches them exactly — ticked only
+when the principal name matched, the account is enabled and the user is not an Owner —
+and **Connect selected** connects the ones you keep checked; see
 [Connect existing users](/en/user/entra/#connect-existing-users).
 
 At the person's next sign-in through the provider — or when the provider pushes their
@@ -234,7 +237,8 @@ Connecting is refused, in words, when:
   Staff announced for them);
 - the account is already connected: disconnect it first;
 - "Another user is already connected to this account." — the directory account is
-  announced for, or already named by, another user;
+  announced for, or already named by, another user, or the provider's provisioning
+  already gave it to another user;
 - the principal name is not an address, or neither field is filled in.
 
 A disabled account can be connected: the person signs in only once you enable it.

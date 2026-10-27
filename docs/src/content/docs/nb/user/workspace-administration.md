@@ -209,12 +209,14 @@ Kolonnen viser én av tre ting:
    for eller i tillegg. Mens appen **Microsoft Entra ID** er slått på, begynner
    dialogen med **Søk i katalogen**: skriv to tegn eller mer av personens navn eller
    adresse og velg kontoen deres, som fyller ut begge feltene (en konto en annen bruker
-   allerede har, vises, men kan ikke velges).
+   allerede har, vises, men kan ikke velges). De to hører sammen: endrer du
+   brukerprinsipalnavnet, tømmes objekt-ID-en, og søker du på nytt, tømmes begge.
 3. Velg **Koble til**. Raden viser nå **Venter på første pålogging**.
 
 **Koble til mange på en gang.** Mens appen **Microsoft Entra ID** er slått på, foreslår
 **Finn treff i katalogen…**, ved siden av søket under **Brukere**, for hver bruker som
-ikke er koblet til, den ene katalogkontoen som passer nøyaktig, og **Koble til valgte**
+ikke er koblet til, den ene katalogkontoen som passer nøyaktig — krysset av bare når
+brukerprinsipalnavnet traff, kontoen er aktiv og brukeren ikke er eier — og **Koble til valgte**
 kobler til dem du lar være krysset av; se
 [Koble til eksisterende brukere](/nb/user/entra/#koble-til-eksisterende-brukere).
 
@@ -242,7 +244,8 @@ Koblingen avvises, med ord, når:
   kunngjort for vedkommende);
 - kontoen allerede er koblet til: koble den fra først;
 - «En annen bruker er allerede koblet til denne kontoen.» — katalogkontoen er kunngjort
-  for, eller allerede pekt ut av, en annen bruker;
+  for, eller allerede pekt ut av, en annen bruker, eller leverandørens klargjøring har
+  allerede gitt den til en annen bruker;
 - prinsipalnavnet ikke er en adresse, eller ingen av feltene er fylt ut.
 
 En deaktivert konto kan kobles: personen kommer først inn når du aktiverer den. Når

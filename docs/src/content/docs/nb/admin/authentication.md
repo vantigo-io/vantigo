@@ -553,7 +553,7 @@ Hva som kan gå galt, i den rekkefølgen endepunktet vurderer det:
 | 409 `sso_not_configured` | OIDC er av, så det finnes ingen utsteder å kunngjøre under |
 | 409 `account_pending` | Brukeren er ventende: veien inn er invitasjonen, eller den kunngjorte kontoen som erstatter dem |
 | 409 `account_linked` | Brukeren har allerede en kobling under den satte utstederen; koble dem fra først |
-| 409 `sso_link_taken` | Objekt-ID-en under utstederen, eller prinsipalnavnet, er kunngjort for en annen bruker, eller pekt ut av Ansattes [kunngjorte konto](#den-kunngjorte-kontoen) |
+| 409 `sso_link_taken` | Objekt-ID-en under utstederen, eller prinsipalnavnet, er kunngjort for en annen bruker, pekt ut av Ansattes [kunngjorte konto](#den-kunngjorte-kontoen), eller pekt ut av en annen brukers SCIM-tilordning (`externalId` lik objekt-ID-en, eller `userName` lik prinsipalnavnet, uten hensyn til store og små bokstaver) |
 
 En deaktivert bruker kan kunngjøres: ankomsten logger dem inn etter reglene for en koblet
 konto, `account_locked` til de aktiveres. En eier eller en SystemAdmin kan kunngjøres, og
@@ -568,10 +568,15 @@ hvert valgte par kunngjøres gjennom dette samme endepunktet. Det modulen trenge
 identitetsmodulen til dette — brukerne som ikke er koblet til, med adressen og
 ansattnummeret de sammenlignes på, og hvem som allerede har nøklene til en katalogkonto
 — svarer identitetsmodulen på gjennom porten `contracts.SSOConnections`, og bare til en
-eier under `policy:Owner+OwnerManagement`: en forespørsel fra noen andre får ingenting,
+eier under `policy:Owner+OwnerManagement`, med en andre faktor når eiere må bruke en
+(`OWNERS_REQUIRE_MFA`), som på alle eierendepunkter: en forespørsel fra noen andre får
+ingenting,
 og mens OIDC er av, finnes det ingenting å koble til under (`sso_not_configured`).
 Adressene sammenlignes inne i Entra-modulen og blir aldri svart ut, logget eller
-registrert.
+registrert. Gjennomgangen leser høyst 1000 brukere som ikke er koblet til
+(identitetsmodulen blir spurt om én til, for å se om flere venter), foreslår aldri en
+gjestekonto, og lar ikke en brukers egen SCIM-tilordning av en konto stå i veien for
+forslaget.
 
 ### Koble fra en bruker
 
