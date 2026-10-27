@@ -13,7 +13,7 @@ import {
 import { ENTRA_QUERY_KEY } from "../api/request";
 import { actionText, codeText, reasonText, refusalText } from "../lib/words";
 import { CredentialList } from "./credentials";
-import { SectionCard } from "./step-card";
+import { MissingPermission, SectionCard } from "./step-card";
 
 const Fact = ({ label, value }: { label: string; value: string }) => (
   <Stack gap={0}>
@@ -109,7 +109,9 @@ export const StatusCard = ({ connection, owner }: { connection: EntraConnection;
           </Text>
           <List size="sm" aria-label={t("permissionsMissing")}>
             {connection.permissionsMissing.map((name) => (
-              <List.Item key={name}>{name}</List.Item>
+              <List.Item key={name}>
+                <MissingPermission name={name} />
+              </List.Item>
             ))}
           </List>
         </Stack>

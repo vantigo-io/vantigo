@@ -8,7 +8,7 @@ import type {
   EntraSettings,
   EntraSku,
 } from "../api/connection";
-import { requiredPermissions } from "../api/connection";
+import { CALENDAR_PERMISSION, requiredPermissions } from "../api/connection";
 import type { EntraDirectoryMatches, EntraDirectoryUser } from "../api/directory";
 import { DIRECTORY_SEARCH_LIMIT } from "../api/directory";
 import { jsonResponse, problemResponse } from "./api";
@@ -253,12 +253,26 @@ export const stubEntraApi = (server: EntraServer = {}): EntraStub => {
     if (method === "PUT" && path === "/api/v1/entra/connection/settings") {
       const refused = stale(init);
       if (refused) return refused;
-      const request = body as Partial<EntraSettings>;
+      const { calendarSync, ...request } = body as Partial<EntraSettings> & { calendarSync?: boolean };
       if (request.upnDomain && c.verifiedDomains.length > 0 && !c.verifiedDomains.includes(request.upnDomain))
         return problemResponse(400, "Validation failed", {
           errors: { upnDomain: ["The domain must be one of the tenant's verified domains."] },
         });
-      state.connection = { ...c, settings: { ...c.settings, ...request }, version: c.version + 1 };
+      const sync = calendarSync ?? c.calendarSync.enabled;
+      // The calendar's permission is asked for only while the switch is on (calendar Outlook sync design O2).
+      const lacksCalendar = !c.permissionsPresent.includes(CALENDAR_PERMISSION);
+      const missing = c.permissionsMissing.filter((name) => name !== CALENDAR_PERMISSION);
+      state.connection = {
+        ...c,
+        settings: { ...c.settings, ...request },
+        calendarSync: !sync
+          ? { enabled: false, status: "off" }
+          : c.status !== "connected"
+            ? { enabled: true, status: "unavailable", ...(c.statusReason ? { reason: c.statusReason } : {}) }
+            : { enabled: true, status: lacksCalendar ? "permission_missing" : "ready" },
+        permissionsMissing: sync && lacksCalendar ? [...missing, CALENDAR_PERMISSION] : missing,
+        version: c.version + 1,
+      };
       return jsonResponse(200, state.connection);
     }
     return new Response(null, { status: 404 });

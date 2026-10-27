@@ -4,11 +4,13 @@ import {
   Badge,
   Button,
   Card,
+  Checkbox,
   CheckIcon,
   ColorSwatch,
   Group,
   Input,
   Modal,
+  Radio,
   SimpleGrid,
   Stack,
   Switch,
@@ -20,10 +22,11 @@ import {
 import { useForm } from "@mantine/form";
 import { modals } from "@mantine/modals";
 import { notifications } from "@mantine/notifications";
-import { IconAlertCircle, IconPlus } from "@tabler/icons-react";
+import { IconAlertCircle, IconCalendarShare, IconPlus, IconRefresh } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ContentSkeleton, EmptyState, PageHeader, useI18n } from "@vantigo/frontend-shell";
 import { useId, useState } from "react";
+import { REVISION_MISMATCH } from "../api/appointments";
 import {
   deleteFeedAddress,
   type FeedAddress,
@@ -31,6 +34,15 @@ import {
   feedAddressesQueryOptions,
   resetFeedAddress,
 } from "../api/feed";
+import {
+  MAILBOX_SYNC_UNAVAILABLE,
+  type MailboxSync,
+  type MailboxSyncWrite,
+  mailboxSyncQueryKey,
+  mailboxSyncQueryOptions,
+  runMailboxSync,
+  updateMailboxSync,
+} from "../api/mailbox-sync";
 import { ApiConflictError, ApiValidationError, CALENDAR_QUERY_KEY } from "../api/request";
 import {
   type CalendarSubscription,
@@ -44,7 +56,7 @@ import {
   updateSubscription,
 } from "../api/subscriptions";
 import "../i18n";
-import { colourForName, SUBSCRIPTION_COLOURS } from "../lib/colours";
+import { colourForKind, colourForName, kindLabelKey, SUBSCRIPTION_COLOURS } from "../lib/colours";
 
 /** "2 hours ago", "in 3 days", "now": the largest whole unit, in the viewer's language. */
 const relativeTime = (instant: string, locale: string): string => {
@@ -73,8 +85,8 @@ const hostOf = (url: string): string => {
 
 /**
  * My calendar (feed design D9): the person's own calendar addresses — the
- * full calendar and a busy-only one — and the calendars from elsewhere they
- * subscribe to. Everything on it is the caller's own; the host guards the
+ * full calendar and a busy-only one — their calendar in Outlook (Outlook
+ * sync design O5), and the calendars from elsewhere they subscribe to. Everything on it is the caller's own; the host guards the
  * route with `calendar:access`.
  */
 export const SettingsPage = () => {
@@ -83,6 +95,7 @@ export const SettingsPage = () => {
     <Stack gap="lg">
       <PageHeader title={t("settings.title")} description={t("settings.description")} />
       <FeedSection />
+      <OutlookSection />
       <SubscriptionsSection />
     </Stack>
   );
@@ -233,6 +246,239 @@ const FeedCard = ({ variant, address }: { variant: FeedVariant; address?: FeedAd
         )}
       </Stack>
     </Card>
+  );
+};
+
+/** The words of an availability or a refusal code the catalog has, else the generic failure. */
+const knownOr = (exists: (key: string) => boolean, key: string, fallback: string) => (exists(key) ? key : fallback);
+
+/**
+ * Outlook (Outlook sync design O5): the person's own copy of their Vantigo
+ * calendar in their Microsoft 365 mailbox. Every change is saved as it is
+ * made, under If-Match on the revision read; a revision that moved on
+ * reloads the card. While the sync cannot run the toggle says why and only
+ * turns it off.
+ */
+const OutlookSection = () => {
+  const { t, i18n } = useI18n("calendar");
+  const queryClient = useQueryClient();
+  const titleId = useId();
+  const sync = useQuery(mailboxSyncQueryOptions());
+  const exists = (key: string) => i18n.exists(key, { ns: "calendar" });
+  const kindLabel = (kind: string) => (exists(kindLabelKey(kind)) ? t(kindLabelKey(kind)) : kind);
+  const availabilityText = (availability: string) =>
+    t(knownOr(exists, `outlook.availability_${availability}`, "outlook.availability_unavailable"));
+
+  const onRefused = async (error: Error, title: string) => {
+    if (error instanceof ApiConflictError && error.code === REVISION_MISMATCH) {
+      notifications.show({ color: "yellow", title: t("outlook.changedElsewhere"), message: "" });
+    } else if (error instanceof ApiConflictError && error.code === MAILBOX_SYNC_UNAVAILABLE) {
+      notifications.show({ color: "red", title, message: availabilityText(error.detail ?? "") });
+    } else {
+      const message =
+        error instanceof ApiValidationError ? (Object.values(error.fieldErrors)[0] ?? error.message) : error.message;
+      notifications.show({ color: "red", title, message });
+    }
+    await queryClient.invalidateQueries({ queryKey: mailboxSyncQueryKey });
+  };
+
+  const save = useMutation({
+    mutationFn: ({ revision, write }: { revision: number; write: MailboxSyncWrite }) =>
+      updateMailboxSync(revision, write),
+    onSuccess: (answer) => queryClient.setQueryData(mailboxSyncQueryKey, answer),
+    onError: (error: Error) => onRefused(error, t("outlook.couldNotSave")),
+  });
+
+  const run = useMutation({
+    mutationFn: runMailboxSync,
+    onSuccess: (answer) => {
+      queryClient.setQueryData(mailboxSyncQueryKey, answer);
+      notifications.show({ color: "teal", title: t("outlook.syncRequested"), message: "" });
+    },
+    onError: (error: Error) => onRefused(error, t("outlook.couldNotSync")),
+  });
+
+  const data = sync.data;
+  const write = (current: MailboxSync, change: Partial<MailboxSyncWrite>) => {
+    const next = { enabled: current.enabled, target: current.target, detail: current.detail, ...change };
+    // Kinds in the order offered, and only those still offered: a kind whose module went away is dropped.
+    const chosen = new Set(change.kinds ?? current.kinds);
+    const kinds = current.availableKinds.map((kind) => kind.key).filter((key) => chosen.has(key));
+    save.mutate({ revision: current.revision, write: { ...next, kinds } });
+  };
+
+  const available = data?.availability === "available";
+  const busy = save.isPending || sync.isFetching;
+
+  return (
+    <Card withBorder padding="lg" radius="md" role="region" aria-labelledby={titleId}>
+      <Stack gap="md">
+        <Group gap="sm" wrap="nowrap" align="flex-start">
+          <IconCalendarShare size={22} stroke={1.5} aria-hidden style={{ flexShrink: 0, marginTop: 2 }} />
+          <Stack gap={0}>
+            <Title order={4} id={titleId}>
+              {t("outlook.heading")}
+            </Title>
+            <Text size="sm" c="dimmed">
+              {t("outlook.description")}
+            </Text>
+          </Stack>
+        </Group>
+
+        {sync.isError && (
+          <Alert color="red" icon={<IconAlertCircle size={16} />} title={t("outlook.couldNotLoad")}>
+            {sync.error.message}
+          </Alert>
+        )}
+        {sync.isPending && <ContentSkeleton rows={1} rowHeight={44} />}
+        {data && (
+          <>
+            <Switch
+              label={t("outlook.toggle")}
+              checked={data.enabled}
+              // Off is always taken; on only while the sync can run.
+              disabled={busy || (!available && !data.enabled)}
+              onChange={(event) => write(data, { enabled: event.currentTarget.checked })}
+            />
+            {!available && (
+              <Alert color="gray" variant="light" icon={<IconAlertCircle size={16} />}>
+                {availabilityText(data.availability)}
+              </Alert>
+            )}
+
+            {data.enabled && (
+              <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="lg">
+                <Radio.Group
+                  label={t("outlook.where")}
+                  value={data.target}
+                  onChange={(value) => write(data, { target: value as MailboxSyncWrite["target"] })}
+                >
+                  <Stack gap="xs" mt={6}>
+                    <Radio
+                      value="default"
+                      label={t("outlook.targetDefault")}
+                      description={t("outlook.targetDefaultHelp")}
+                      disabled={busy || !available}
+                    />
+                    <Radio
+                      value="own"
+                      label={t("outlook.targetOwn")}
+                      description={t("outlook.targetOwnHelp")}
+                      disabled={busy || !available}
+                    />
+                  </Stack>
+                </Radio.Group>
+                <Checkbox.Group
+                  label={t("outlook.what")}
+                  value={data.kinds}
+                  onChange={(kinds) => write(data, { kinds })}
+                >
+                  <Stack gap="xs" mt={6}>
+                    {data.availableKinds.map((kind) => (
+                      <Checkbox
+                        key={kind.key}
+                        value={kind.key}
+                        label={
+                          <Group gap={6} wrap="nowrap" component="span">
+                            <ColorSwatch
+                              component="span"
+                              color={colourForKind(kind.key)}
+                              size={10}
+                              withShadow={false}
+                            />
+                            {kindLabel(kind.key)}
+                          </Group>
+                        }
+                        disabled={busy || !available}
+                      />
+                    ))}
+                  </Stack>
+                </Checkbox.Group>
+                <Radio.Group
+                  label={t("outlook.titles")}
+                  value={data.detail}
+                  onChange={(value) => write(data, { detail: value as MailboxSyncWrite["detail"] })}
+                >
+                  <Stack gap="xs" mt={6}>
+                    <Radio value="full" label={t("outlook.detailFull")} disabled={busy || !available} />
+                    <Radio
+                      value="busy"
+                      label={t("outlook.detailBusy")}
+                      description={t("outlook.detailBusyHelp")}
+                      disabled={busy || !available}
+                    />
+                  </Stack>
+                </Radio.Group>
+              </SimpleGrid>
+            )}
+
+            {(data.enabled || data.state !== "off") && (
+              <Group justify="space-between" gap="sm">
+                <OutlookState sync={data} />
+                {data.enabled && (
+                  <Button
+                    size="xs"
+                    variant="light"
+                    leftSection={<IconRefresh size={14} />}
+                    loading={run.isPending}
+                    disabled={!available || save.isPending}
+                    onClick={() => run.mutate()}
+                  >
+                    {t("outlook.syncNow")}
+                  </Button>
+                )}
+              </Group>
+            )}
+          </>
+        )}
+      </Stack>
+    </Card>
+  );
+};
+
+/** Where the worker stands: waiting, last synced, removing, or why it stopped — in the person's words. */
+const OutlookState = ({ sync }: { sync: MailboxSync }) => {
+  const { t, i18n, locale, formatters } = useI18n("calendar");
+  const exists = (key: string) => i18n.exists(key, { ns: "calendar" });
+  const errorText = sync.error ? t(knownOr(exists, `outlook.error_${sync.error}`, "outlook.error_failed")) : undefined;
+  let text: string;
+  let colour = "dimmed";
+  switch (sync.state) {
+    case "active":
+      text = sync.lastSyncedAt
+        ? t("outlook.stateActive", { relative: relativeTime(sync.lastSyncedAt, locale) })
+        : t("outlook.statePending");
+      break;
+    case "stopping":
+      text = t("outlook.stateStopping");
+      break;
+    case "unavailable":
+      text = errorText ?? t("outlook.stateUnavailable");
+      colour = "orange";
+      break;
+    case "failed":
+      text = errorText ?? t("outlook.error_failed");
+      colour = "red";
+      break;
+    case "off":
+      text = t("outlook.stateOff");
+      break;
+    default:
+      text = t("outlook.statePending");
+  }
+  return (
+    <Text
+      size="sm"
+      c={colour}
+      role="status"
+      title={
+        sync.lastSyncedAt
+          ? formatters.formatDate(sync.lastSyncedAt, { dateStyle: "medium", timeStyle: "short" })
+          : undefined
+      }
+    >
+      {text}
+    </Text>
   );
 };
 

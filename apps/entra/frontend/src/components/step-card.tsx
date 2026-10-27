@@ -14,6 +14,7 @@ import {
 import { IconCheck, IconCopy, IconLock, IconRoute } from "@tabler/icons-react";
 import { useI18n } from "@vantigo/frontend-shell";
 import { type ReactNode, useId } from "react";
+import { CALENDAR_PERMISSION } from "../api/connection";
 
 /**
  * One card of the page: a region named by its title, so a reader of the
@@ -141,5 +142,21 @@ export const OwnerOnly = () => {
     <Alert color="gray" variant="light" icon={<IconLock size={16} />}>
       {t("ownerOnly")}
     </Alert>
+  );
+};
+
+/** A missing permission by name; the calendar's says it is calendar sync's, not one the connection needs. */
+export const MissingPermission = ({ name }: { name: string }) => {
+  const { t } = useI18n("entra");
+  return (
+    <>
+      <span>{name}</span>
+      {name === CALENDAR_PERMISSION && (
+        <Text span size="sm" c="dimmed">
+          {" "}
+          {t("permissionForCalendarSync")}
+        </Text>
+      )}
+    </>
   );
 };

@@ -1,5 +1,6 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { setLanguagePreference } from "@vantigo/frontend-shell";
 import { describe, expect, it, vi } from "vitest";
 import { requiredPermissions } from "../api/connection";
 import { sent, sentAll } from "../test/api";
@@ -393,6 +394,83 @@ describe("EntraPage — the account rules", () => {
     const form = within(region("Set the account rules")).getByRole("form", { name: "Account rules" });
     await userEvent.click(within(form).getByRole("button", { name: "Save the account rules" }));
     expect(await screen.findByText("Somebody else saved the connection; it has been reloaded")).toBeInTheDocument();
+  });
+});
+
+describe("EntraPage — calendar sync", () => {
+  it("is off by default, says nothing of its state, and does not ask for the calendar permission", async () => {
+    await openPage({ connection: connected() });
+    const form = within(region("Set the account rules")).getByRole("form", { name: "Account rules" });
+    const toggle = within(form).getByRole("switch", { name: /^Let people sync their Vantigo calendar to Outlook/ });
+    expect(toggle).not.toBeChecked();
+    expect(within(form).getByText(/Needs the Calendars.ReadWrite application permission/)).toBeInTheDocument();
+    expect(within(form).queryByRole("status")).not.toBeInTheDocument();
+    const step = region("Grant the permissions and the role");
+    expect(within(step).queryByText("Calendars.ReadWrite")).not.toBeInTheDocument();
+    expect(within(step).getByText("Add these eight application permissions, one by one.")).toBeInTheDocument();
+  });
+
+  it("is sent as calendarSync with the account rules, then asks for Calendars.ReadWrite until the token carries it", async () => {
+    const { fetchMock } = await openPage({ connection: connected() });
+    const form = within(region("Set the account rules")).getByRole("form", { name: "Account rules" });
+    await userEvent.click(within(form).getByRole("switch", { name: /^Let people sync their Vantigo calendar/ }));
+    await userEvent.click(within(form).getByRole("button", { name: "Save the account rules" }));
+
+    await waitFor(() => expect(sentAll(fetchMock, "PUT")).toHaveLength(1));
+    expect(sent(fetchMock, "PUT")).toMatchObject({
+      url: "/api/v1/entra/connection/settings",
+      headers: { "if-match": "4" },
+      body: { calendarSync: true, upnDomain: "contoso.no" },
+    });
+    expect(
+      await within(form).findByText("Add Calendars.ReadWrite, grant admin consent and test the connection again."),
+    ).toBeInTheDocument();
+    expect(within(form).getByRole("switch", { name: /^Let people sync/ })).toBeChecked();
+
+    const step = region("Grant the permissions and the role");
+    expect(within(step).getByText(/^Add these nine application permissions/)).toBeInTheDocument();
+    const list = within(step).getByRole("list", { name: "The permissions to add" });
+    expect(within(list).getByText("Calendars.ReadWrite")).toBeInTheDocument();
+    expect(within(step).getByRole("button", { name: "Copy Calendars.ReadWrite" })).toBeInTheDocument();
+
+    const status = within(region("Status")).getByRole("list", { name: "Missing permissions" });
+    expect(within(status).getByText("Calendars.ReadWrite")).toBeInTheDocument();
+    expect(within(status).getByText("(for calendar sync)")).toBeInTheDocument();
+  });
+
+  it("reads Ready once the token carries the permission", async () => {
+    await openPage({ connection: connected({ calendarSync: { enabled: true, status: "ready" } }) });
+    const form = within(region("Set the account rules")).getByRole("form", { name: "Account rules" });
+    expect(within(form).getByRole("status")).toHaveTextContent("Ready");
+  });
+
+  it("waits for the connection while it is failing, saying why", async () => {
+    await openPage({
+      connection: connected({
+        status: "failing",
+        statusReason: "credential_invalid",
+        calendarSync: { enabled: true, status: "unavailable", reason: "credential_invalid" },
+      }),
+    });
+    const form = within(region("Set the account rules")).getByRole("form", { name: "Account rules" });
+    const status = within(form).getByRole("status");
+    expect(within(status).getByText("Waiting for the connection")).toBeInTheDocument();
+    expect(within(status).getByText(/The tenant refused the client secret/)).toBeInTheDocument();
+  });
+
+  it("speaks Norwegian", async () => {
+    setLanguagePreference("nb");
+    try {
+      stubEntraApi({ connection: connected({ calendarSync: { enabled: true, status: "ready" } }) });
+      renderWithProviders(<EntraPage signIn={() => null} provisioning={() => null} />);
+      expect(
+        await screen.findByRole("switch", { name: /^La folk synkronisere Vantigo-kalenderen sin til Outlook/ }),
+      ).toBeChecked();
+      expect(screen.getByText("Kalendersynkronisering")).toBeInTheDocument();
+      expect(screen.getByText("Klar")).toBeInTheDocument();
+    } finally {
+      setLanguagePreference("auto");
+    }
   });
 });
 
