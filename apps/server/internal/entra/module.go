@@ -59,6 +59,17 @@ var ownerLimit = ratelimit.Policy{Name: "entra-owner", Limit: 30, Window: time.M
 // the tenant, nor the Owner's clicks the list's.
 var skusLimit = ratelimit.Policy{Name: "entra-skus", Limit: 30, Window: time.Minute}
 
+// directoryLimit is the directory search's, the picker's: 60 per client
+// address a minute, a bucket of its own. Every request reaches the tenant,
+// and a debounced picker asks once per pause in typing; a script walking
+// the tenant through it would ask far more.
+var directoryLimit = ratelimit.Policy{Name: "entra-directory", Limit: 60, Window: time.Minute}
+
+// matchesLimit is the exact matches' read: 6 per client address a minute,
+// a bucket of its own. One read asks the tenant for every user not yet
+// connected, in chunks — a review an Owner opens, not a list they refresh.
+var matchesLimit = ratelimit.Policy{Name: "entra-matches", Limit: 6, Window: time.Minute}
+
 // limits maps each rate-limited operationId to its policy; the router hits it
 // per client address before access is checked, and a bucket is the policy's
 // Name and the address, so the four Owner operations share one.
@@ -68,6 +79,8 @@ var limits = map[string]ratelimit.Policy{
 	"deleteEntraConnectionCredentialsById": ownerLimit,
 	"postEntraConnectionTest":              ownerLimit,
 	"getEntraConnectionSkus":               skusLimit,
+	"getEntraDirectoryUsers":               directoryLimit,
+	"getEntraDirectoryMatches":             matchesLimit,
 }
 
 // Module is entra as a platform module: its contract mounted under

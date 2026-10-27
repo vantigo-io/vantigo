@@ -13,7 +13,7 @@ import (
 // TestAccess_EveryOperation proves each operation is mounted under its
 // access rule, with OWNERS_REQUIRE_MFA on: 401 without a session, 403 for a
 // caller holding nothing; the Owner's operations (the registration, the
-// secrets, the test) 403 for entra:manage alone and for an Owner whose
+// secrets, the test, the directory's two reads) 403 for entra:manage alone and for an Owner whose
 // session verified no second factor — the Owner policy's MFA requirement
 // refuses as a 403, as identity's own Owner endpoints do — and reached by
 // an Owner with MFA; entra:manage's operations reached by entra:manage.
@@ -38,6 +38,8 @@ func TestAccess_EveryOperation(t *testing.T) {
 		{http.MethodGet, accountsPath, nil, nil, false},
 		{http.MethodGet, groupsPath, nil, nil, false},
 		{http.MethodPost, accountsPath + "/" + uuid.NewString() + "/confirm", nil, nil, false},
+		{http.MethodGet, directoryPath + "?q=kari", nil, nil, true},
+		{http.MethodGet, matchesPath, nil, nil, true},
 	} {
 		name := op.method + " " + op.path
 		if r := h.Client(t).Do(op.method, op.path, op.body, op.opts...); r.Status != http.StatusUnauthorized {

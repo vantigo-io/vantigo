@@ -258,6 +258,106 @@ components:
                 - secret
                 - expiresAt
             type: object
+        EntraDirectoryHolder:
+            description: 'Who already holds a directory account''s keys under the configured issuer, as identity knows it: expected, an Owner announced it for an existing user; mapped, the provider''s SCIM push maps it to a user (its userName the principal name, or its externalId the object id); account, Staff announced it for a person yet to arrive, with no user. A sign-in through the provider is not shown: the link it makes names no key the directory answers.'
+            properties:
+                kind:
+                    enum:
+                        - expected
+                        - mapped
+                        - account
+                    type: string
+                userId:
+                    description: The user holding the account. Absent for account.
+                    format: uuid
+                    type: string
+            required:
+                - kind
+            type: object
+        EntraDirectoryMatch:
+            description: A user not yet connected and the one directory account that matches them exactly, proposed for connecting.
+            properties:
+                account:
+                    $ref: '#/components/schemas/EntraDirectoryUser'
+                matchedBy:
+                    description: 'What matched: the user''s address equal, ignoring case, to the account''s mail or its principal name; the user''s employee number equal, trimmed and ignoring case, to the account''s employeeId. Every key that matched points to this account.'
+                    items:
+                        enum:
+                            - mail
+                            - userPrincipalName
+                            - employeeId
+                        type: string
+                    type: array
+                userId:
+                    format: uuid
+                    type: string
+            required:
+                - userId
+                - account
+                - matchedBy
+            type: object
+        EntraDirectoryMatches:
+            description: The exact matches between the users not yet connected and the tenant's accounts. Only an exact match is proposed — no fuzzy match, no guess between two. The users' addresses are compared in the server and never answered.
+            properties:
+                ambiguous:
+                    description: How many candidates were left out because more than one account matched them, or because the account that matched them matched another candidate too.
+                    format: int32
+                    type: integer
+                candidates:
+                    description: How many users not yet connected were read — every user who is not pending and has neither a link nor an announced link under the configured issuer, the caller excluded.
+                    format: int32
+                    type: integer
+                matches:
+                    description: The proposals, in the order identity lists the users.
+                    items:
+                        $ref: '#/components/schemas/EntraDirectoryMatch'
+                    type: array
+                truncated:
+                    description: True when more than 1000 users were waiting and only the first 1000, in identity's order, were read.
+                    type: boolean
+            required:
+                - matches
+                - candidates
+                - ambiguous
+                - truncated
+            type: object
+        EntraDirectoryUser:
+            description: One account in the tenant as the directory answers it.
+            properties:
+                accountEnabled:
+                    type: boolean
+                displayName:
+                    type: string
+                employeeId:
+                    description: The account's employeeId. Absent when it has none.
+                    type: string
+                holder:
+                    $ref: '#/components/schemas/EntraDirectoryHolder'
+                mail:
+                    description: The account's mail. Absent when it has none.
+                    type: string
+                objectId:
+                    description: The account's object id in the tenant, immutable.
+                    format: uuid
+                    type: string
+                userPrincipalName:
+                    type: string
+            required:
+                - objectId
+                - displayName
+                - userPrincipalName
+                - accountEnabled
+            type: object
+        EntraDirectoryUsers:
+            description: The accounts a directory search found, by display name, at most 25. When 25 come back there may be more, and the search should be narrowed.
+            properties:
+                users:
+                    items:
+                        $ref: '#/components/schemas/EntraDirectoryUser'
+                    type: array
+            required:
+                - users
+            type: object
         EntraEvent:
             description: One write the module made, in the tenant or to its own connection — the module's own append-only trail. It carries the codes and the UPN the module made, never an address beyond it, a secret or a pass.
             properties:
@@ -362,7 +462,7 @@ components:
                 - count
             type: object
         EntraProblem:
-            description: 'An RFC 9457 problem with this module''s refusal code. code names the rule that refused and is what a client keys off, never the words: connection_in_use (409: the tenant or the client changes while the module keeps accounts, and confirmChange is not true), adoption_confirmed (409: the account''s adoption is confirmed already), credential_in_use (409: the secret is the only valid one while the module keeps accounts), version_mismatch (412: the connection has been written since the If-Match version), credential_invalid and tenant_unreachable (503: the tenant could not be asked). errors carries the field errors of a 400, keyed by the request''s camelCase field. A request the server could not decode answers a bare 400 with neither.'
+            description: 'An RFC 9457 problem with this module''s refusal code. code names the rule that refused and is what a client keys off, never the words: connection_in_use (409: the tenant or the client changes while the module keeps accounts, and confirmChange is not true), adoption_confirmed (409: the account''s adoption is confirmed already), credential_in_use (409: the secret is the only valid one while the module keeps accounts), version_mismatch (412: the connection has been written since the If-Match version), sso_not_configured (409: single sign-on is not configured, so there is nothing to connect under), invalid_request (400: a field is not valid), credential_invalid and tenant_unreachable (503: the tenant could not be asked), throttled (503: the tenant throttled the module twice in a row). errors carries the field errors of a 400, keyed by the request''s camelCase field. A request the server could not decode answers a bare 400 with neither.'
             properties:
                 code:
                     nullable: true
@@ -918,6 +1018,112 @@ paths:
                             schema:
                                 type: string
             summary: Test the connection
+            tags:
+                - Entra
+            x-vantigo-access: policy:Owner+OwnerManagement
+    /api/v1/entra/directory/matches:
+        get:
+            description: 'Proposes, for every user not yet connected to the workforce provider, the one account in the tenant that matches them exactly — the review an Owner connects a whole workspace from. The candidates are identity''s: every user who is not pending and has neither a link nor an announced link under the configured issuer, the caller excluded, at most 1000 of them in identity''s order (truncated says when more wait). The tenant is asked by the candidates'' addresses (mail and userPrincipalName) and employee numbers (employeeId), exact values only. A candidate is proposed only when every key that matched points to one and the same account, and that account is neither held (an announced link, a SCIM mapping or an announced account names it) nor the one match of another candidate; everything else is left out, and counted as ambiguous when more than one account was in play. The addresses are compared here and never answered. Connecting is identity''s announced link, POST /api/v1/identity/owner/users/{id}/sso-link, once per chosen pair. 409 sso_not_configured while single sign-on is off. Rate limited to 6 per client address a minute, a bucket of its own.'
+            operationId: getEntraDirectoryMatches
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/EntraDirectoryMatches'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/EntraProblem'
+                    description: Conflict — sso_not_configured, single sign-on is not configured, so there is nothing to connect under.
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Too Many Requests — entra-matches's limit for this client address.
+                    headers:
+                        Retry-After:
+                            schema:
+                                type: string
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/EntraProblem'
+                    description: Service Unavailable — credential_invalid, no secret fetched a token; tenant_unreachable, the tenant did not answer; or throttled, the tenant throttled the module twice in a row.
+            summary: Find the directory's exact matches
+            tags:
+                - Entra
+            x-vantigo-access: policy:Owner+OwnerManagement
+    /api/v1/entra/directory/users:
+        get:
+            description: 'Searches the tenant''s accounts by display name, mail and principal name — the picker an Owner connects one user from. At most 25 accounts, by display name. Each says who already holds it under the configured issuer, as far as identity knows: an announced link, a SCIM mapping or an announced account. An account whose person signed in through the provider already is not marked: the link a sign-in makes names no key the directory answers, and identity still refuses connecting it twice. Rate limited to 60 per client address a minute, a bucket of its own.'
+            operationId: getEntraDirectoryUsers
+            parameters:
+                - description: What to search for, 2 to 100 characters once trimmed. A double quote or a backslash in it is left out.
+                  in: query
+                  name: q
+                  required: true
+                  schema:
+                    maxLength: 100
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/EntraDirectoryUsers'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/EntraProblem'
+                    description: Bad Request — invalid_request, q is not 2 to 100 characters once trimmed; errors names q.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Too Many Requests — entra-directory's limit for this client address.
+                    headers:
+                        Retry-After:
+                            schema:
+                                type: string
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/EntraProblem'
+                    description: Service Unavailable — credential_invalid, no secret fetched a token; tenant_unreachable, the tenant did not answer; or throttled, the tenant throttled the module twice in a row.
+            summary: Search the directory
             tags:
                 - Entra
             x-vantigo-access: policy:Owner+OwnerManagement
