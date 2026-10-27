@@ -25,11 +25,6 @@ type fakeConsumption struct {
 	settlements map[int64]contracts.Settlement
 	supplies    []contracts.DueSupply
 	calls       []consumptionCall
-	// onRead, when set, runs once, after the next call and outside the
-	// fake's lock: what happens between a read and a writer's lock.
-	onRead func()
-	// failure, when set, is what every call fails with.
-	failure error
 	// more is what every page answers as More.
 	more bool
 }
@@ -83,20 +78,6 @@ func (f *fakeConsumption) putSupply(d contracts.DueSupply) {
 	f.supplies = append(f.supplies, d)
 }
 
-// afterNextRead sets onRead.
-func (f *fakeConsumption) afterNextRead(fn func()) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.onRead = fn
-}
-
-// fail makes every call fail with err, nil to stop.
-func (f *fakeConsumption) fail(err error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.failure = err
-}
-
 // answerMore makes every page say More.
 func (f *fakeConsumption) answerMore(more bool) {
 	f.mu.Lock()
@@ -111,27 +92,18 @@ func (f *fakeConsumption) reads() []consumptionCall {
 	return slices.Clone(f.calls)
 }
 
-func (f *fakeConsumption) record(ctx context.Context, c consumptionCall) (func(), error) {
+func (f *fakeConsumption) record(ctx context.Context, c consumptionCall) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	c.locked = invoices.InLockedTx(ctx)
 	f.calls = append(f.calls, c)
-	after := f.onRead
-	f.onRead = nil
-	return after, f.failure
 }
 
 func (f *fakeConsumption) DueSupplies(ctx context.Context, req contracts.DueSuppliesRequest) (contracts.DueSuppliesPage, error) {
 	if err := req.Validate(); err != nil {
 		return contracts.DueSuppliesPage{}, err
 	}
-	after, err := f.record(ctx, consumptionCall{method: "DueSupplies", customers: slices.Clone(req.CustomerIDs), through: req.Through})
-	if after != nil {
-		defer after()
-	}
-	if err != nil {
-		return contracts.DueSuppliesPage{}, err
-	}
+	f.record(ctx, consumptionCall{method: "DueSupplies", customers: slices.Clone(req.CustomerIDs), through: req.Through})
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	page := contracts.DueSuppliesPage{Supplies: []contracts.DueSupply{}, More: f.more}
@@ -147,13 +119,7 @@ func (f *fakeConsumption) Settle(ctx context.Context, req contracts.SettleReques
 	if err := req.Validate(); err != nil {
 		return contracts.SettlementsPage{}, err
 	}
-	after, err := f.record(ctx, consumptionCall{method: "Settle", customers: slices.Clone(req.CustomerIDs), through: req.Through})
-	if after != nil {
-		defer after()
-	}
-	if err != nil {
-		return contracts.SettlementsPage{}, err
-	}
+	f.record(ctx, consumptionCall{method: "Settle", customers: slices.Clone(req.CustomerIDs), through: req.Through})
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	page := contracts.SettlementsPage{Settlements: []contracts.Settlement{}, More: f.more}
@@ -171,13 +137,7 @@ func (f *fakeConsumption) Settlements(ctx context.Context, ids []int64) (contrac
 	if err := contracts.ValidateSettlementIDs(ids); err != nil {
 		return contracts.SettlementsPage{}, err
 	}
-	after, err := f.record(ctx, consumptionCall{method: "Settlements", ids: slices.Clone(ids)})
-	if after != nil {
-		defer after()
-	}
-	if err != nil {
-		return contracts.SettlementsPage{}, err
-	}
+	f.record(ctx, consumptionCall{method: "Settlements", ids: slices.Clone(ids)})
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	page := contracts.SettlementsPage{Settlements: []contracts.Settlement{}, More: f.more}

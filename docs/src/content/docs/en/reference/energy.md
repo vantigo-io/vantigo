@@ -1583,7 +1583,7 @@ Energy and resolved into `Deps.Consumption` by `module.Compose` after the three
 ([module boundaries rule 5](/en/contributing/module-boundaries/#the-rules)). It is
 **optional** for its consumer: nil when Energy is off. Its consumer is Invoices: the
 **Consumption** section of the uninvoiced panel reads `DueSupplies`, and the **From
-consumption** wizard `Settle` or `Settlements`, a draft's freshness, refresh and issue
+consumption** wizard `DueSupplies`, then `Settle` or `Settlements`, a draft's freshness, refresh and issue
 `Settlements` — each on the pool before any transaction of Invoices'
 ([Invoicing consumption](/en/reference/invoices/#invoicing-consumption)). `module.Workers`
 does not resolve it yet; billing runs teach it (delivery E).

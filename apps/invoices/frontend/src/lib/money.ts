@@ -23,6 +23,17 @@ export const scaled = (v: number, places: number): bigint => {
   return BigInt(v.toFixed(places).replace(".", ""));
 };
 
+/**
+ * How many decimals v is written with in its shortest form — the text the
+ * server judges a price's decimals on; exponent notation counts as eight.
+ */
+const decimalsOf = (v: number): number => {
+  const text = String(v);
+  if (text.includes("e")) return 8;
+  const point = text.indexOf(".");
+  return point < 0 ? 0 : text.length - point - 1;
+};
+
 /** n / d rounded to the nearest integer, the half away from zero. */
 const divRound = (n: bigint, d: bigint): bigint => {
   const q = n / d;
@@ -43,8 +54,12 @@ export interface LineAmounts {
 /** A line's gross, its discount as an allowance of the rounded gross, and its net. */
 export const lineAmounts = (quantity: number, unitPrice: number, discountPercent: number): LineAmounts => {
   // A unit price has up to eight decimals (numeric(18,8)) on a line billing an
-  // energy settlement, four on any other: scaled at eight, both are exact.
-  const gross = divRound(scaled(quantity, 3) * scaled(unitPrice, 8), 1000000000n);
+  // energy settlement, four on any other. It is scaled at four when it has no
+  // more, as the server reads it: `toFixed(8)` of a large price brings the
+  // double's noise into the last decimals (2000000000.0005 is
+  // 2000000000.00049996), which could tip the øre.
+  const pricePlaces = decimalsOf(unitPrice) > 4 ? 8 : 4;
+  const gross = divRound(scaled(quantity, 3) * scaled(unitPrice, pricePlaces), 10n ** BigInt(pricePlaces + 1));
   const allowance = divRound(gross * scaled(discountPercent, 2), 10000n);
   return { gross: fromOre(gross), allowance: fromOre(allowance), net: fromOre(gross - allowance) };
 };

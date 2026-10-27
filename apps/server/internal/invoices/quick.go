@@ -110,7 +110,7 @@ func (s *server) PostInvoicesQuick(ctx context.Context, req gen.PostInvoicesQuic
 	// is issued, and handed over, the day it is issued, after the day its
 	// draft says it was delivered — never before it.
 	now := s.deps.Clock()
-	in, errs := parseDraft(quickDraft(*req.Body, wireDate(holidays.DayIn(now, loc))), settings.DefaultCurrency)
+	in, errs := parseDraft(quickDraft(*req.Body, wireDate(holidays.DayIn(now, loc))), settings.DefaultCurrency, nil)
 	switch n := len(req.Body.Lines); {
 	case n == 0:
 		errs = withFieldError(errs, "lines", "A quick invoice needs at least one line")

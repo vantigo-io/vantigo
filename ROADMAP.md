@@ -1147,7 +1147,7 @@ the seeded code `5N`, mval. § 6-6), a correction's lines as ±1 × the differen
 price of up to eight decimals so the amount wins. A settlement is a line source
 (`energy.settlement`, no project) held over its lines, judged fresh on a read, rebuilt
 by a refresh, refused at issue when it moved to another customer, stamped by Energy's
-holder last and released by a credit note that returns every one of its lines; a
+holder last and released once credit notes have returned every one of its lines; a
 consumer's yearly supply is refused. The PDF prints a block per metering point and, for
 a person, the strømpris.no and Elklagenemnda footer; EHF carries the metering point on
 each line. The uninvoiced panel gains a **Consumption** section, the settings the two

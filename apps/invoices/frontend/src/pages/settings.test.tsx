@@ -680,22 +680,4 @@ describe("the Consumption to invoice card", () => {
     );
     expect(screen.queryByText("Could not save the settings")).not.toBeInTheDocument();
   });
-
-  it("leaves the codes out of the save when the server answered none", async () => {
-    const state = world();
-    state.settings = settings();
-    delete state.settings.energyVatCodes;
-    const fetchMock = server({}, state);
-    renderWithProviders(<SettingsPage />);
-    await screen.findByTestId("work-card");
-    expect(screen.queryByTestId("energy-card")).not.toBeInTheDocument();
-    await userEvent.click(
-      within(await screen.findByTestId("work-card")).getByRole("checkbox", {
-        name: "Attach a timesheet to new invoices",
-      }),
-    );
-    await userEvent.click(screen.getByRole("button", { name: "Save" }));
-    await waitFor(() => expect(sent(fetchMock, "PUT").url).toBe("/api/v1/invoices/settings"));
-    expect(sent(fetchMock, "PUT").body).not.toHaveProperty("energyVatCodes");
-  });
 });

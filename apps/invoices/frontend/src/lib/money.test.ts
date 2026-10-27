@@ -15,6 +15,15 @@ describe("the editor's money", () => {
     expect(lineAmounts(-1, 15.5, 0)).toEqual({ gross: -15.5, allowance: 0, net: -15.5 });
   });
 
+  it("scales a four-decimal price at four, free of the double's noise", () => {
+    // toFixed(8) reads 2000000000.0005 as 2000000000.00049996: 20 000 000 000.00.
+    expect(lineAmounts(10, 2000000000.0005, 0)).toEqual({
+      gross: 20000000000.01,
+      allowance: 0,
+      net: 20000000000.01,
+    });
+  });
+
   it("takes a discount as an allowance of the rounded gross", () => {
     expect(lineAmounts(3, 33.33, 10)).toEqual({ gross: 99.99, allowance: 10, net: 89.99 });
   });

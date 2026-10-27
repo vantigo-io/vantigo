@@ -2458,6 +2458,8 @@ func TestInvoicesBaseline_AppliesAndIsIdempotent(t *testing.T) {
 		"3:S:3:25.00:2026-01-01:open", "31:S:31:15.00:2026-01-01:open", "32:S:32:11.11:2026-01-01:open",
 		"33:S:33:12.00:2026-01-01:open", "5:Z:5:0.00:2026-01-01:open", "51:AE:51:0.00:2026-01-01:open",
 		"52:G:52:0.00:2026-01-01:open", "6:E:6:0.00:2026-01-01:open", "7:O:7:0.00:2026-01-01:open",
+		// 00078's: the north's household exemption (energy consumption billing design D8).
+		"5N:Z:5:0.00:2026-01-01:open",
 	}
 	if !equalStrings(gotCodes, wantCodes) {
 		t.Errorf("seeded codes = %v, want %v", gotCodes, wantCodes)

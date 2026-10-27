@@ -106,8 +106,8 @@ func TestVatCodes_TheSeed(t *testing.T) {
 	h := newHarness(t)
 
 	codes := listVatCodes(t, h)
-	if len(codes) != 9 {
-		t.Fatalf("codes = %d, want the nine seeded", len(codes))
+	if len(codes) != 10 {
+		t.Fatalf("codes = %d, want the nine seeded and the north's household exemption", len(codes))
 	}
 	if c := codes[vatExempt]; c.Code != "6" || c.EhfCategory != "E" || periods(c) != "[0 2026-01-01..open]" || c.InUse {
 		t.Errorf("code 6 = %+v, want E at 0 from 2026-01-01, not in use", c)
@@ -117,6 +117,10 @@ func TestVatCodes_TheSeed(t *testing.T) {
 	}
 	if c := codes[vat25]; periods(c) != "[25 2026-01-01..open]" || c.ExemptionReason != nil {
 		t.Errorf("code 3 = %+v, want 25 %% open-ended and no reason", c)
+	}
+	if c := codes[10]; c.Code != "5N" || c.EhfCategory != "Z" || periods(c) != "[0 2026-01-01..open]" || c.ExemptionReason == nil ||
+		*c.ExemptionReason != "Elektrisk kraft til husholdningsbruk i Nord-Norge, mval. § 6-6" {
+		t.Errorf("code 10 = %+v, want 5N, Z at 0 from 2026-01-01 with the § 6-6 reason (00078)", c)
 	}
 }
 

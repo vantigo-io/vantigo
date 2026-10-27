@@ -562,7 +562,10 @@ func invoicesWorkHolds(t *testing.T, invoiceID, lineID int64, sources []invoices
 		kinds, subkinds, currencies []string
 		revisions, projectIDs       []int32
 		quantities, amounts         []pgtype.Numeric
-		dates                       []pgtype.Date
+		dates, periodFroms          []pgtype.Date
+		lineCounts                  []int32
+		points                      []string // a work row's snapshot columns: NULL whatever is given (00078)
+		estimateds                  []bool
 	)
 	for _, s := range sources {
 		subkind := ""
@@ -573,11 +576,15 @@ func invoicesWorkHolds(t *testing.T, invoiceID, lineID int64, sources []invoices
 		revisions, subkinds, projectIDs = append(revisions, 1), append(subkinds, subkind), append(projectIDs, 42)
 		quantities, amounts = append(quantities, quantity), append(amounts, amount)
 		currencies, dates = append(currencies, "NOK"), append(dates, date)
+		lineCounts, periodFroms = append(lineCounts, 1), append(periodFroms, date)
+		points, estimateds = append(points, ""), append(estimateds, false)
 	}
 	return map[string]any{
 		"invoice_id": invoiceID, "line_ids": lineIDs, "kinds": kinds, "ids": ids, "revisions": revisions,
 		"subkinds": subkinds, "project_ids": projectIDs, "quantities": quantities, "amounts": amounts,
-		"currencies": currencies, "dates": dates,
+		"currencies": currencies, "dates": dates, "line_counts": lineCounts, "point_gsrns": points,
+		"point_addresses": points, "price_areas": points, "contract_names": points, "period_froms": periodFroms,
+		"estimateds": estimateds,
 	}
 }
 

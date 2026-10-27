@@ -221,10 +221,14 @@ func TestCustomerPersonalData_Export(t *testing.T) {
 	// note names the invoice it credits.
 	original := issued(t, h, createDraft(t, h, draftBody(customerAcme, line("A", 1, 100, vat25))).ID)
 	creditDraft(t, h, original.ID)
+	// An energy line's price keeps its eight decimals; an ordinary one has four.
+	fine := createDraft(t, h, draftBody(customerAcme, line("Spot NO4", 1, 1, vat25)))
+	h.Exec(t, `UPDATE invoices.lines SET unit_price = 0.51234512 WHERE invoice_id = $1`, fine.ID)
 	raw = export(customerAcme)
 	for _, want := range []string{
 		`"organisationNumber":"923609016"`, `"peppolId":"0192:923609016"`, `"gln":"7080000000001"`,
 		`"drafts":[{"kind":"credit_note","credits":{"number":2,"issueDate":"2026-09-12"}`,
+		`"unitPrice":"0.51234512"`, `"unitPrice":"100.0000"`,
 	} {
 		if !strings.Contains(raw, want) {
 			t.Errorf("export %s has no %s", raw, want)

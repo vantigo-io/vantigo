@@ -166,8 +166,10 @@ func (s *server) GetInvoicesConsumption(ctx context.Context, req gen.GetInvoices
 	})
 	for _, d := range supplies {
 		var billed *openapi_types.Date
+		// Energy answers the end of the last invoiced period, exclusive; the
+		// view gives the last day billed.
 		if d.BilledThrough != nil {
-			billed = ptr(wireDate(civilDay(*d.BilledThrough)))
+			billed = ptr(wireDate(civilDay(*d.BilledThrough).AddDate(0, 0, -1)))
 		}
 		view.Supplies = append(view.Supplies, gen.InvoicesDueSupply{
 			SupplyPeriodId: d.SupplyPeriodID, MeteringPointId: d.MeteringPointID, Gsrn: d.GSRN, Address: d.Address,
