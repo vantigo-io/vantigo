@@ -125,14 +125,6 @@ func ratFromNumeric(n pgtype.Numeric) (*big.Rat, error) {
 	return value.Mul(value, scale), nil
 }
 
-// ratPtrFromNumeric is ratFromNumeric for a nullable column: NULL is nil.
-func ratPtrFromNumeric(n pgtype.Numeric) (*big.Rat, error) {
-	if !n.Valid {
-		return nil, nil
-	}
-	return ratFromNumeric(n)
-}
-
 // numericFromRat stores v at places decimals.
 func numericFromRat(v *big.Rat, places int) (pgtype.Numeric, error) {
 	var n pgtype.Numeric

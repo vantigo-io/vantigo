@@ -80,10 +80,14 @@ var bodyLimits = map[string]int64{
 // only ever reads another module's data through contracts.CustomerDirectory
 // (internal/contracts) and never provides one of its own — energy inventory
 // §1.2 calls it "a leaf module for cross-module purposes" — so Directory is
-// left nil, the same as products. The one thing it does provide is the
+// left nil, the same as products. What it does provide: the
 // contracts.CustomerReferenceHolder a customer merge re-points its supply
-// periods through (customers merge design D1) — a write the customers module
-// drives, not a read anyone makes.
+// periods and settlements through (customers merge design D1) — a write the
+// customers module drives, not a read anyone makes —; the
+// contracts.ConsumptionProvider invoicing reads and settles a customer's
+// consumption through (energy consumption billing design D1); and the
+// contracts.InvoicedWorkHolder an invoice's issue stamps and releases the
+// settlements it bills through (design D6).
 func Module() module.Module {
 	return module.Module{
 		Name:                 "energy",
@@ -91,6 +95,8 @@ func Module() module.Module {
 		Mount:                mount,
 		CustomerReferences:   newCustomerReferenceHolder,
 		CustomerPersonalData: newCustomerPersonalData,
+		Consumption:          newConsumptionProvider,
+		InvoicedWork:         newInvoicedWorkHolder,
 		Workers:              workers,
 	}
 }

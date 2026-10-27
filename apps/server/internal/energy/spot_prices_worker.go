@@ -198,6 +198,7 @@ func (w *SpotPriceWorker) RunCycle(ctx context.Context) (int, error) {
 	if w.setupErr != nil {
 		return 0, w.setupErr
 	}
+	w.deleteUntouchedSettlementDrafts(ctx)
 	requests := 0
 	if w.service != nil {
 		acquired, err := w.underLease(ctx, func(ctx context.Context, conn *pgxpool.Conn) error {
@@ -230,6 +231,19 @@ func (w *SpotPriceWorker) RunCycle(ctx context.Context) (int, error) {
 		return nil
 	})
 	return requests, err
+}
+
+// deleteUntouchedSettlementDrafts is the settlements' housekeeping in the
+// worker's cycle (energy settlements plan reading 7): drafts nobody has
+// touched for thirty days are deleted. A failure is logged and the cycle
+// goes on: prices matter more than tidiness.
+func (w *SpotPriceWorker) deleteUntouchedSettlementDrafts(ctx context.Context) {
+	if w.deps.Pool == nil {
+		return
+	}
+	if _, err := store.New(w.deps.Pool).DeleteUntouchedSettlementDrafts(ctx, w.now().Add(-untouchedDraftAge)); err != nil {
+		w.logger().Error("deleting untouched settlement drafts failed", "worker", spotPriceWorkerName, "error", err)
+	}
 }
 
 // spotFeedDue is one (area, day) the planner asks the feed for: day a civil

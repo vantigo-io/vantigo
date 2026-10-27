@@ -54,7 +54,7 @@ func TestCustomerReferences_RepointsEverySupplyPeriodOfTheAbsorbedCustomer(t *te
 
 	moved := repointEnergyCustomer(t, h, 1001, 1002, true)
 
-	if want := []contracts.RepointedReferences{{Kind: "energy.supplyPeriods", Count: 2}}; !slices.Equal(moved, want) {
+	if want := []contracts.RepointedReferences{{Kind: "energy.supplyPeriods", Count: 2}, {Kind: "energy.settlements", Count: 0}}; !slices.Equal(moved, want) {
 		t.Errorf("RepointCustomer = %+v, want %+v", moved, want)
 	}
 	for _, id := range []int32{first, second, own} {
@@ -72,13 +72,13 @@ func TestCustomerReferences_WritesOnlyInsideTheCallersTransaction(t *testing.T) 
 	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	id := insertActiveSupplyPeriod(t, h, point.Id, 1001, start, start.AddDate(0, 1, 0))
 
-	if moved := repointEnergyCustomer(t, h, 1001, 1002, false); len(moved) != 1 || moved[0].Count != 1 {
+	if moved := repointEnergyCustomer(t, h, 1001, 1002, false); len(moved) != 2 || moved[0].Count != 1 {
 		t.Fatalf("RepointCustomer = %+v, want one supply period", moved)
 	}
 	if got := modtest.One[int32](t, h, `SELECT customer_id FROM energy.supply_periods WHERE id = $1`, id); got != 1001 {
 		t.Errorf("after a rollback customer_id = %d, want 1001 still", got)
 	}
-	want := []contracts.RepointedReferences{{Kind: "energy.supplyPeriods", Count: 0}}
+	want := []contracts.RepointedReferences{{Kind: "energy.supplyPeriods", Count: 0}, {Kind: "energy.settlements", Count: 0}}
 	if moved := repointEnergyCustomer(t, h, 4242, 1002, true); !slices.Equal(moved, want) {
 		t.Errorf("RepointCustomer for a customer with no supply periods = %+v, want %+v", moved, want)
 	}
@@ -94,8 +94,29 @@ func TestCustomerReferences_RepointingACustomerOntoItselfWritesNothing(t *testin
 	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	insertActiveSupplyPeriod(t, h, point.Id, 1001, start, start.AddDate(0, 1, 0))
 
-	want := []contracts.RepointedReferences{{Kind: "energy.supplyPeriods", Count: 0}}
+	want := []contracts.RepointedReferences{{Kind: "energy.supplyPeriods", Count: 0}, {Kind: "energy.settlements", Count: 0}}
 	if moved := repointEnergyCustomer(t, h, 1001, 1001, true); !slices.Equal(moved, want) {
 		t.Errorf("RepointCustomer(1001, 1001) = %+v, want %+v", moved, want)
+	}
+}
+
+// TestCustomerReferences_RepointsTheSettlementsWithTheSupplyPeriods: a
+// settlement's copied customer id follows its supply period's (energy
+// settlements plan reading 13), invoiced ones included.
+func TestCustomerReferences_RepointsTheSettlementsWithTheSupplyPeriods(t *testing.T) {
+	t.Parallel()
+	f := newStlFixture(t, true)
+	draft := f.insertSettlement(t, f.h.Pool(), stlJulyStart, stlAugStart, contracts.SettlementDraft, "")
+	invoiced := f.insertSettlement(t, f.h.Pool(), stlJulyStart.AddDate(0, -1, 0), stlJulyStart, contracts.SettlementInvoiced, "")
+
+	moved := repointEnergyCustomer(t, f.h, 1001, 1002, true)
+
+	if want := []contracts.RepointedReferences{{Kind: "energy.supplyPeriods", Count: 1}, {Kind: "energy.settlements", Count: 2}}; !slices.Equal(moved, want) {
+		t.Errorf("RepointCustomer = %+v, want %+v", moved, want)
+	}
+	for _, id := range []int64{draft, invoiced} {
+		if got := modtest.One[int32](t, f.h, `SELECT customer_id FROM energy.settlements WHERE id = $1`, id); got != 1002 {
+			t.Errorf("settlement %d customer_id = %d, want 1002", id, got)
+		}
 	}
 }
