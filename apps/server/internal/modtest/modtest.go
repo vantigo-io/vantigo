@@ -145,6 +145,7 @@ type setup struct {
 	hours           contracts.BillableHours
 	billExpenses    contracts.BillableExpenses
 	milestones      contracts.BillableMilestones
+	consumption     contracts.ConsumptionProvider
 	smtpVerify      func(ctx context.Context, cfg config.MailConfig) error
 	smtpSend        func(ctx context.Context, cfg config.MailConfig, msg mail.Outbound) error
 	objectStore     storage.ObjectStore
@@ -380,6 +381,12 @@ func WithBillableExpenses(p contracts.BillableExpenses) Option {
 // milestones (contracts.BillableMilestones).
 func WithBillableMilestones(p contracts.BillableMilestones) Option {
 	return func(s *setup) { s.milestones = p }
+}
+
+// WithConsumption is WithBillableHours for energy's settlements
+// (contracts.ConsumptionProvider), which invoices builds lines from.
+func WithConsumption(p contracts.ConsumptionProvider) Option {
+	return func(s *setup) { s.consumption = p }
 }
 
 // WithSMTPVerify sets the function Deps.SMTPVerify carries, for a module
@@ -628,6 +635,7 @@ func New(t *testing.T, opts ...Option) *Harness {
 		BillableHours:            s.hours,
 		BillableExpenses:         s.billExpenses,
 		BillableMilestones:       s.milestones,
+		Consumption:              s.consumption,
 		SMTPVerify:               s.smtpVerify,
 		SMTPSend:                 s.smtpSend,
 		ObjectStore:              s.objectStore,
