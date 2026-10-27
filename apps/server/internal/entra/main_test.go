@@ -13,11 +13,10 @@ import (
 // which is what proves every operation is exercised.
 var recorder = contracttest.NewForModule("entra")
 
-// pendingOperations are the contract's operations no test covers yet: the
-// directory's two reads, which answer 503 until they are built (directory.go).
+// pendingOperations are the contract's operations no test covers yet: none.
 // RequireCoverage fails the run if an operation is never answered with a
 // success, or if an entry listed here was in fact exercised.
-var pendingOperations = []string{"getEntraDirectoryUsers", "getEntraDirectoryMatches"}
+var pendingOperations []string
 
 func TestMain(m *testing.M) {
 	os.Exit(contracttest.RequireCoverage(m, recorder, pendingOperations...))

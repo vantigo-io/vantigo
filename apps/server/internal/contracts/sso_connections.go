@@ -2,9 +2,15 @@ package contracts
 
 import (
 	"context"
+	"errors"
 
 	"github.com/google/uuid"
 )
+
+// ErrSSONotConfigured is SSOConnections.Unconnected's answer to an Owner
+// while OIDC is off: there is no issuer to connect anybody under, which a
+// consumer tells apart from nobody being left to connect.
+var ErrSSONotConfigured = errors.New("contracts: single sign-on is not configured")
 
 // The kinds of holder KeyHolders answers: who already holds a directory key
 // under the configured issuer.
@@ -32,8 +38,9 @@ const (
 // request in ctx (contracts.RequestFrom) against policy:Owner+OwnerManagement
 // through its own access, and answers nothing — (nil, nil), not an error —
 // to anyone else, and to a context with no request. Only a failure to read
-// is an error. While OIDC is off there is no issuer to connect under, and
-// both reads answer nothing too.
+// is an error. While OIDC is off there is no issuer to connect under:
+// Unconnected answers ErrSSONotConfigured to an Owner, and KeyHolders
+// nothing.
 //
 // A ConnectCandidate's Email is for matching a directory account and nothing
 // else: it never leaves the consumer — not on the wire, not in a log, an
@@ -43,7 +50,8 @@ type SSOConnections interface {
 	// the configured issuer and no announced link under it, the caller
 	// excluded (an Owner connects themselves by signing in), in the order
 	// the Owner's user list shows them: the Owners first, then by display
-	// name, then by id.
+	// name, then by id. While OIDC is off it answers an Owner
+	// ErrSSONotConfigured.
 	Unconnected(ctx context.Context) ([]ConnectCandidate, error)
 	// KeyHolders answers, for each key that is held under the configured
 	// issuer, who holds it: one KeyHolder per held key, carrying the key as

@@ -36,9 +36,9 @@ func newSSOConnections(a *Access, d module.Deps) contracts.SSOConnections {
 }
 
 // owner is the caller and the configured issuer for a read, or ok false
-// when the read answers nothing: a context with no request, a caller the
-// request does not admit under policy:Owner+OwnerManagement, or OIDC off.
-// The issuer is the configured authority normalised, as an OIDC link and an
+// when the read answers nothing: a context with no request, or a caller the
+// request does not admit under policy:Owner+OwnerManagement. An Owner while
+// OIDC is off is contracts.ErrSSONotConfigured. The issuer is the configured authority normalised, as an OIDC link and an
 // announced link are stored under it.
 func (c *ssoConnections) owner(ctx context.Context) (caller uuid.UUID, issuer string, ok bool, err error) {
 	r, found := contracts.RequestFrom(ctx)
@@ -57,7 +57,7 @@ func (c *ssoConnections) owner(ctx context.Context) (caller uuid.UUID, issuer st
 		return uuid.Nil, "", false, fmt.Errorf("identity: SSO connections: %w", err)
 	}
 	if settings.OIDC == nil {
-		return uuid.Nil, "", false, nil
+		return uuid.Nil, "", false, contracts.ErrSSONotConfigured
 	}
 	issuer, valid := normalizeIssuer(settings.OIDC.Authority)
 	if !valid {
@@ -67,8 +67,9 @@ func (c *ssoConnections) owner(ctx context.Context) (caller uuid.UUID, issuer st
 }
 
 // Unconnected lists the users not connected under the configured issuer,
-// for an Owner (contracts.SSOConnections). An address identity made up for
-// an account the provider created is answered as none.
+// for an Owner (contracts.SSOConnections), contracts.ErrSSONotConfigured
+// while OIDC is off. An address identity made up for an account the
+// provider created is answered as none.
 func (c *ssoConnections) Unconnected(ctx context.Context) ([]contracts.ConnectCandidate, error) {
 	caller, issuer, ok, err := c.owner(ctx)
 	if err != nil || !ok {
@@ -92,7 +93,8 @@ func (c *ssoConnections) Unconnected(ctx context.Context) ([]contracts.ConnectCa
 var holderRank = map[string]int{contracts.KeyHolderExpected: 0, contracts.KeyHolderMapped: 1, contracts.KeyHolderAccount: 2}
 
 // KeyHolders answers who holds each of keys under the configured issuer,
-// for an Owner (contracts.SSOConnections). Each key is normalised as
+// for an Owner (contracts.SSOConnections), nothing while OIDC is off. Each
+// key is normalised as
 // identity stores it — the object id as SCIM's externalId, the principal
 // name as emails are — and compared with the holders' stored keys.
 func (c *ssoConnections) KeyHolders(ctx context.Context, keys []contracts.DirectoryKey) ([]contracts.KeyHolder, error) {
@@ -100,6 +102,9 @@ func (c *ssoConnections) KeyHolders(ctx context.Context, keys []contracts.Direct
 		return nil, nil
 	}
 	_, issuer, ok, err := c.owner(ctx)
+	if errors.Is(err, contracts.ErrSSONotConfigured) {
+		return nil, nil
+	}
 	if err != nil || !ok {
 		return nil, err
 	}

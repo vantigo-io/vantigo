@@ -2,6 +2,7 @@ package identity_test
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -194,19 +195,24 @@ func holders(hs []contracts.KeyHolder) string {
 	return b.String()
 }
 
-// While OIDC is off there is no issuer to connect under: an Owner gets
-// nothing from either read.
-func TestSSOConnections_OIDCOffAnswersNothing(t *testing.T) {
+// While OIDC is off there is no issuer to connect under: an Owner is told
+// so by Unconnected (contracts.ErrSSONotConfigured) and gets nothing from
+// KeyHolders; anyone else still gets nothing, and no error, from either.
+func TestSSOConnections_OIDCOff(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
 	_, ownerID := h.bootstrapOwner(t)
 	h.insertUser(t, "kari@example.test", identity.RoleUserID)
 	p := h.ssoConnections(t)
 	ctx := asCaller(t, h, ownerID)
-	if got, err := p.Unconnected(ctx); err != nil || got != nil {
-		t.Errorf("Unconnected = %v, %v; want nothing", got, err)
+	if got, err := p.Unconnected(ctx); !errors.Is(err, contracts.ErrSSONotConfigured) || got != nil {
+		t.Errorf("Unconnected = %v, %v; want ErrSSONotConfigured", got, err)
 	}
 	if got, err := p.KeyHolders(ctx, []contracts.DirectoryKey{{ObjectID: fakeObjectID}}); err != nil || got != nil {
 		t.Errorf("KeyHolders = %v, %v; want nothing", got, err)
+	}
+	admin := h.insertUser(t, "admin@example.test", identity.RoleSystemAdminID)
+	if got, err := p.Unconnected(asCaller(t, h, admin)); err != nil || got != nil {
+		t.Errorf("a SystemAdmin's Unconnected = %v, %v; want nothing", got, err)
 	}
 }

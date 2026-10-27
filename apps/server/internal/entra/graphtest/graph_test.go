@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -420,6 +421,95 @@ func TestThrottleAndFailures(t *testing.T) {
 	// An unknown host is a transport error.
 	if _, err := (&http.Client{Transport: g}).Get("https://example.com/"); err == nil {
 		t.Error("an unknown host answered")
+	}
+}
+
+// The directory's queries (the plan's reading 6): $search over displayName,
+// mail and userPrincipalName, a case-insensitive substring per clause,
+// joined by OR; $orderby=displayName, $top and $count; an in filter on
+// mail, userPrincipalName or employeeId of at most fifteen values, a quote
+// doubled; and a $search or a $count refused without ConsistencyLevel:
+// eventual, as Graph refuses it.
+func TestDirectoryQueries(t *testing.T) {
+	now := time.Now()
+	g := tenantFake(&now)
+	c := newClient(t, g)
+	g.AddUser(graphtest.User{DisplayName: "Kari Nordmann", UserPrincipalName: "kari@nordlys.no", Mail: "Kari.N@nordlys.no", EmployeeID: "E-1"})
+	g.AddUser(graphtest.User{DisplayName: "Anne Kariussen", UserPrincipalName: "anne@nordlys.no", EmployeeID: "e-2"})
+	g.AddUser(graphtest.User{DisplayName: "Ola O'Brien", UserPrincipalName: "ola@nordlys.no", Mail: "O'Brien@nordlys.no"})
+	g.AddUser(graphtest.User{DisplayName: "Per", UserPrincipalName: "per@nordlys.no", Mail: "per.kari@nordlys.no", Deleted: true})
+
+	get := func(q url.Values, eventual bool) (int, map[string]any) {
+		t.Helper()
+		req, err := http.NewRequest(http.MethodGet, "https://graph.microsoft.com/v1.0/users?"+q.Encode(), nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Authorization", "Bearer "+c.token)
+		if eventual {
+			req.Header.Set("ConsistencyLevel", "eventual")
+		}
+		resp, err := c.http.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() { _ = resp.Body.Close() }()
+		var out map[string]any
+		_ = json.NewDecoder(resp.Body).Decode(&out)
+		return resp.StatusCode, out
+	}
+	names := func(body map[string]any) []string {
+		var out []string
+		for _, v := range body["value"].([]any) {
+			out = append(out, v.(map[string]any)["displayName"].(string))
+		}
+		return out
+	}
+
+	search := url.Values{
+		"$search": {`"displayName:KARI" OR "mail:kari" OR "userPrincipalName:kari"`}, "$select": {"id,displayName"},
+		"$orderby": {"displayName"}, "$count": {"true"},
+	}
+	if status, body := get(search, false); status != http.StatusBadRequest || errorCode(body) != "Request_UnsupportedQuery" {
+		t.Errorf("a search without ConsistencyLevel: %d %v, want 400 Request_UnsupportedQuery", status, body)
+	}
+	status, body := get(search, true)
+	if status != http.StatusOK || !slices.Equal(names(body), []string{"Anne Kariussen", "Kari Nordmann"}) || body["@odata.count"] != float64(2) {
+		t.Errorf("the search: %d %v, want both Karis by display name, counted", status, body)
+	}
+	search.Set("$top", "1")
+	if _, body := get(search, true); !slices.Equal(names(body), []string{"Anne Kariussen"}) || body["@odata.count"] != float64(2) {
+		t.Errorf("the search's first: %v", body)
+	}
+	if status, _ := get(url.Values{"$search": {"kari"}}, true); status != http.StatusBadRequest {
+		t.Errorf("an unquoted search: %d, want 400", status)
+	}
+	if status, _ := get(url.Values{"$filter": {"mail in ('kari.n@nordlys.no')"}, "$count": {"true"}}, false); status != http.StatusBadRequest {
+		t.Errorf("a count without ConsistencyLevel: %d, want 400", status)
+	}
+
+	for _, c := range []struct {
+		filter string
+		want   []string
+	}{
+		{"mail in ('kari.n@nordlys.no', 'o''brien@nordlys.no', 'per.kari@nordlys.no')", []string{"Kari Nordmann", "Ola O'Brien"}},
+		{"userPrincipalName in ('ANNE@nordlys.no')", []string{"Anne Kariussen"}},
+		{"employeeId in ('E-2','e-1')", []string{"Kari Nordmann", "Anne Kariussen"}},
+	} {
+		status, body := get(url.Values{"$filter": {c.filter}, "$select": {"id,displayName"}, "$count": {"true"}}, true)
+		if status != http.StatusOK || !slices.Equal(names(body), c.want) {
+			t.Errorf("%s: %d %v, want %v", c.filter, status, body, c.want)
+		}
+	}
+	sixteen := make([]string, 16)
+	for i := range sixteen {
+		sixteen[i] = "'x" + strconv.Itoa(i) + "@nordlys.no'"
+	}
+	if status, _ := get(url.Values{"$filter": {"mail in (" + strings.Join(sixteen, ", ") + ")"}}, true); status != http.StatusBadRequest {
+		t.Errorf("an in filter of sixteen values: %d, want 400", status)
+	}
+	if status, _ := get(url.Values{"$filter": {"displayName in ('Per')"}}, true); status != http.StatusBadRequest {
+		t.Errorf("an in filter on displayName: %d, want 400", status)
 	}
 }
 
