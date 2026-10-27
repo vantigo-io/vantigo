@@ -418,3 +418,92 @@ func TestBillingWorker_CancelledWhileCarried(t *testing.T) {
 		})
 	}
 }
+
+// runStatus is a run's status, read by SQL.
+func runStatus(t *testing.T, h *harness, runID int64) string {
+	t.Helper()
+	return modtest.One[string](t, h.Harness, `SELECT status FROM invoices.billing_runs WHERE id = $1`, runID)
+}
+
+// The cycle's sweep (the review's findings): a running run whose items are
+// all recorded but whose finish never landed is done — else it would refuse
+// every new run — and a queued item of a cancelled run whose claim was
+// abandoned is cancelled once its lease runs out, where no claim would ever
+// take it.
+func TestBillingWorker_TheSweepEndsWhatNoClaimWill(t *testing.T) {
+	t.Parallel()
+	fx := newBillingFixture(t, true)
+	h := fx.h
+	fx.energy.put(august(9101, customerAcme, 1, gsrnTromso, contracts.VATHintStandard))
+
+	stuck := fx.run(t, false, customerAcme)
+	h.Exec(t, `UPDATE invoices.billing_runs SET status = 'running', started_at = $2 WHERE id = $1`, stuck.ID, h.Now())
+	h.Exec(t, `UPDATE invoices.billing_run_items SET status = 'drafted', finished_at = $2 WHERE run_id = $1`, stuck.ID, h.Now())
+	if res := fx.maker.Do(http.MethodPost, "/api/v1/invoices/billing-runs", map[string]any{"issue": false, "customerIds": []int32{customerAcme}}); res.Status != http.StatusConflict {
+		t.Fatalf("a run beside the stuck one = %d, want 409 billing_run_active", res.Status)
+	}
+	if err := billingWorker(t, h).RunCycle(context.Background()); err != nil {
+		t.Fatalf("RunCycle: %v", err)
+	}
+	if got := runStatus(t, h, stuck.ID); got != "done" {
+		t.Errorf("the run with nothing left = %s after a cycle, want done", got)
+	}
+
+	abandoned := fx.run(t, false, customerAcme)
+	h.Exec(t, `UPDATE invoices.billing_run_items SET lease_id = 'gone', lease_until = $2 WHERE run_id = $1`, abandoned.ID, h.Now().Add(time.Minute))
+	if res := fx.maker.Do(http.MethodPost, billingRunPath(abandoned.ID)+"/cancel", nil); res.Status != http.StatusOK {
+		t.Fatalf("cancel = %d %s", res.Status, res.Body)
+	}
+	if err := billingWorker(t, h).RunCycle(context.Background()); err != nil {
+		t.Fatalf("RunCycle: %v", err)
+	}
+	if got := itemState(t, h, abandoned.ID); got != "queued a0" {
+		t.Errorf("an item under a live lease = %s, want it left queued", got)
+	}
+	h.Advance(2 * time.Minute)
+	if err := billingWorker(t, h).RunCycle(context.Background()); err != nil {
+		t.Fatalf("RunCycle: %v", err)
+	}
+	if got := itemState(t, h, abandoned.ID); got != "cancelled a0" {
+		t.Errorf("the abandoned item of a cancelled run = %s after its lease ran out, want cancelled", got)
+	}
+}
+
+// A panic while carrying an item counts an attempt as an error does — the
+// worker goes on, and an item that panics every time fails after its last
+// attempt instead of being claimed again after every restart.
+func TestBillingWorker_APanicCountsAnAttempt(t *testing.T) {
+	t.Parallel()
+	fx := newBillingFixture(t, true)
+	h := fx.h
+	fx.energy.put(august(9101, customerAcme, 1, gsrnTromso, contracts.VATHintStandard))
+	run := fx.run(t, false, customerAcme)
+	fx.energy.duringSettle(func() { panic("a nil directory") })
+	if !billOne(t, h) {
+		t.Fatal("no item was claimed")
+	}
+	if got := itemState(t, h, run.ID); got != "queued a1" {
+		t.Errorf("item after a panic = %s, want queued with one attempt", got)
+	}
+}
+
+// The worker stopped while carrying an item: the item goes back due at once,
+// its lease cleared and no attempt counted — a deploy is not an attempt.
+func TestBillingWorker_AShutdownCountsNoAttempt(t *testing.T) {
+	t.Parallel()
+	fx := newBillingFixture(t, true)
+	h := fx.h
+	fx.energy.put(august(9101, customerAcme, 1, gsrnTromso, contracts.VATHintStandard))
+	run := fx.run(t, false, customerAcme)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	fx.energy.failSettle(context.Canceled)
+	fx.energy.duringSettle(cancel)
+	if _, err := billingWorker(t, h).ProcessOne(ctx); err != nil {
+		t.Fatalf("ProcessOne: %v", err)
+	}
+	if got := modtest.One[string](t, h.Harness, `SELECT format('%s a%s %s', status, attempts, lease_id IS NULL)
+		FROM invoices.billing_run_items WHERE run_id = $1`, run.ID); got != "queued a0 t" {
+		t.Errorf("item after a shutdown = %s, want queued, no attempt, no lease", got)
+	}
+}

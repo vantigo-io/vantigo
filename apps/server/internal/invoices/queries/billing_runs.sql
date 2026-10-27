@@ -142,3 +142,30 @@ WHERE id = @id AND lease_id = @lease_id::text AND status = 'queued';
 UPDATE invoices.billing_runs r SET status = 'done', finished_at = @now::timestamptz
 WHERE r.id = @id AND r.status = 'running'
   AND NOT EXISTS (SELECT 1 FROM invoices.billing_run_items i WHERE i.run_id = r.id AND i.status = 'queued');
+
+-- name: FinishIdleBillingRuns :execrows
+-- FinishIdleBillingRuns marks done every running run with no queued item
+-- left: the sweep at the start of each cycle, for a run whose last item was
+-- recorded but whose FinishBillingRun never landed (a crash, a restart, a
+-- failed write) — it would otherwise stay running and refuse every new run.
+UPDATE invoices.billing_runs r SET status = 'done', finished_at = @now::timestamptz
+WHERE r.status = 'running'
+  AND NOT EXISTS (SELECT 1 FROM invoices.billing_run_items i WHERE i.run_id = r.id AND i.status = 'queued');
+
+-- name: CancelAbandonedBillingRunItems :execrows
+-- CancelAbandonedBillingRunItems cancels the queued items of cancelled runs
+-- whose lease, if any, has run out: an item a claim was carrying when its
+-- run was cancelled, and whose claim never recorded an outcome. No claim
+-- takes an item of a cancelled run, so without this sweep it stays queued.
+UPDATE invoices.billing_run_items i
+SET status = 'cancelled', finished_at = @now::timestamptz, lease_id = NULL, lease_until = NULL
+FROM invoices.billing_runs r
+WHERE r.id = i.run_id AND r.status = 'cancelled' AND i.status = 'queued'
+  AND (i.lease_until IS NULL OR i.lease_until <= @now::timestamptz);
+
+-- name: ReleaseBillingRunItem :execrows
+-- ReleaseBillingRunItem puts the claimed item back, due at once, its lease
+-- cleared and no attempt counted: the worker was stopped while carrying it.
+UPDATE invoices.billing_run_items
+SET next_attempt_at = @now::timestamptz, lease_id = NULL, lease_until = NULL
+WHERE id = @id AND lease_id = @lease_id::text AND status = 'queued';

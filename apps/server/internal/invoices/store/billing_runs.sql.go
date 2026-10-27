@@ -115,6 +115,26 @@ func (q *Queries) BillingRunDocuments(ctx context.Context, ids []int64) ([]Billi
 	return items, nil
 }
 
+const cancelAbandonedBillingRunItems = `-- name: CancelAbandonedBillingRunItems :execrows
+UPDATE invoices.billing_run_items i
+SET status = 'cancelled', finished_at = $1::timestamptz, lease_id = NULL, lease_until = NULL
+FROM invoices.billing_runs r
+WHERE r.id = i.run_id AND r.status = 'cancelled' AND i.status = 'queued'
+  AND (i.lease_until IS NULL OR i.lease_until <= $1::timestamptz)
+`
+
+// CancelAbandonedBillingRunItems cancels the queued items of cancelled runs
+// whose lease, if any, has run out: an item a claim was carrying when its
+// run was cancelled, and whose claim never recorded an outcome. No claim
+// takes an item of a cancelled run, so without this sweep it stays queued.
+func (q *Queries) CancelAbandonedBillingRunItems(ctx context.Context, now time.Time) (int64, error) {
+	result, err := q.db.Exec(ctx, cancelAbandonedBillingRunItems, now)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const cancelBillingRun = `-- name: CancelBillingRun :one
 UPDATE invoices.billing_runs SET status = 'cancelled', finished_at = $1::timestamptz
 WHERE id = $2 AND status IN ('queued', 'running')
@@ -326,6 +346,24 @@ func (q *Queries) FinishBillingRun(ctx context.Context, arg FinishBillingRunPara
 	return result.RowsAffected(), nil
 }
 
+const finishIdleBillingRuns = `-- name: FinishIdleBillingRuns :execrows
+UPDATE invoices.billing_runs r SET status = 'done', finished_at = $1::timestamptz
+WHERE r.status = 'running'
+  AND NOT EXISTS (SELECT 1 FROM invoices.billing_run_items i WHERE i.run_id = r.id AND i.status = 'queued')
+`
+
+// FinishIdleBillingRuns marks done every running run with no queued item
+// left: the sweep at the start of each cycle, for a run whose last item was
+// recorded but whose FinishBillingRun never landed (a crash, a restart, a
+// failed write) — it would otherwise stay running and refuse every new run.
+func (q *Queries) FinishIdleBillingRuns(ctx context.Context, now time.Time) (int64, error) {
+	result, err := q.db.Exec(ctx, finishIdleBillingRuns, now)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const getBillingRun = `-- name: GetBillingRun :one
 SELECT id, through, issue, status, customers, created_by_user_id, created_at, started_at, finished_at FROM invoices.billing_runs WHERE id = $1
 `
@@ -506,6 +544,28 @@ func (q *Queries) ListBillingRuns(ctx context.Context, arg ListBillingRunsParams
 		return nil, err
 	}
 	return items, nil
+}
+
+const releaseBillingRunItem = `-- name: ReleaseBillingRunItem :execrows
+UPDATE invoices.billing_run_items
+SET next_attempt_at = $1::timestamptz, lease_id = NULL, lease_until = NULL
+WHERE id = $2 AND lease_id = $3::text AND status = 'queued'
+`
+
+type ReleaseBillingRunItemParams struct {
+	Now     time.Time
+	ID      int64
+	LeaseID string
+}
+
+// ReleaseBillingRunItem puts the claimed item back, due at once, its lease
+// cleared and no attempt counted: the worker was stopped while carrying it.
+func (q *Queries) ReleaseBillingRunItem(ctx context.Context, arg ReleaseBillingRunItemParams) (int64, error) {
+	result, err := q.db.Exec(ctx, releaseBillingRunItem, arg.Now, arg.ID, arg.LeaseID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const retryBillingRunItem = `-- name: RetryBillingRunItem :execrows
