@@ -699,7 +699,8 @@ func TestReminderWorker_BackoffAndFailedAfter48Hours(t *testing.T) {
 
 // The workers per switch (D1): INVOICES_EHF_ENABLED adds the two EHF
 // workers, INVOICES_VIPPS_ENABLED the payments worker; the reminder worker
-// is always there.
+// and the billing worker (energy consumption billing design D10) are always
+// there.
 func TestWorkers_PerSwitch(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
@@ -707,10 +708,10 @@ func TestWorkers_PerSwitch(t *testing.T) {
 		ehf, vipps bool
 		want       []string
 	}{
-		{false, false, []string{"invoices-reminders"}},
-		{true, false, []string{"invoices-ehf", "invoices-ehf-events", "invoices-reminders"}},
-		{false, true, []string{"invoices-reminders", "invoices-payments"}},
-		{true, true, []string{"invoices-ehf", "invoices-ehf-events", "invoices-reminders", "invoices-payments"}},
+		{false, false, []string{"invoices-reminders", "invoices-billing"}},
+		{true, false, []string{"invoices-ehf", "invoices-ehf-events", "invoices-reminders", "invoices-billing"}},
+		{false, true, []string{"invoices-reminders", "invoices-billing", "invoices-payments"}},
+		{true, true, []string{"invoices-ehf", "invoices-ehf-events", "invoices-reminders", "invoices-billing", "invoices-payments"}},
 	} {
 		d := h.Deps()
 		cfg := *d.Config

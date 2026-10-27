@@ -509,21 +509,33 @@ func (q *Queries) ListBillingRuns(ctx context.Context, arg ListBillingRunsParams
 }
 
 const retryBillingRunItem = `-- name: RetryBillingRunItem :execrows
-UPDATE invoices.billing_run_items
-SET attempts = attempts + 1, next_attempt_at = $1::timestamptz, lease_id = NULL, lease_until = NULL
-WHERE id = $2 AND lease_id = $3::text AND status = 'queued'
+UPDATE invoices.billing_run_items i
+SET attempts = i.attempts + 1, next_attempt_at = $1::timestamptz, lease_id = NULL, lease_until = NULL,
+    status = CASE WHEN r.status = 'cancelled' THEN 'cancelled' ELSE i.status END,
+    finished_at = CASE WHEN r.status = 'cancelled' THEN $2::timestamptz ELSE i.finished_at END
+FROM invoices.billing_runs r
+WHERE r.id = i.run_id AND i.id = $3 AND i.lease_id = $4::text AND i.status = 'queued'
 `
 
 type RetryBillingRunItemParams struct {
 	NextAttemptAt time.Time
+	Now           time.Time
 	ID            int64
 	LeaseID       string
 }
 
 // RetryBillingRunItem counts a failed attempt of the claimed item and puts it
-// back, due at @next_attempt_at, its lease cleared.
+// back, due at @next_attempt_at, its lease cleared — or, when its run was
+// cancelled while the item was carried, ends it cancelled at @now: a claim
+// never picks an item of a cancelled run again, so put back it would stay
+// queued for ever (plan reading 9).
 func (q *Queries) RetryBillingRunItem(ctx context.Context, arg RetryBillingRunItemParams) (int64, error) {
-	result, err := q.db.Exec(ctx, retryBillingRunItem, arg.NextAttemptAt, arg.ID, arg.LeaseID)
+	result, err := q.db.Exec(ctx, retryBillingRunItem,
+		arg.NextAttemptAt,
+		arg.Now,
+		arg.ID,
+		arg.LeaseID,
+	)
 	if err != nil {
 		return 0, err
 	}

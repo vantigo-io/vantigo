@@ -153,13 +153,16 @@ func Module() module.Module {
 // invoices-payments worker, which polls, captures and releases Vipps
 // payments (D16), is handed over only when INVOICES_VIPPS_ENABLED is on: off,
 // no provider call is made on a schedule, and the reservations of attempts
-// left capturing stay counted until a manager abandons them.
+// left capturing stay counted until a manager abandons them. The
+// invoices-billing worker, which carries the billing runs' items (energy
+// consumption billing design D10), is always there too: a run is made only
+// while Energy is composed, and each item judges Energy again.
 func workers(d module.Deps) []worker.Worker {
 	var ws []worker.Worker
 	if d.Config != nil && d.Config.InvoicesEhfEnabled {
 		ws = append(ws, NewEhfWorker(d), NewEhfEventsWorker(d))
 	}
-	ws = append(ws, NewReminderWorker(d))
+	ws = append(ws, NewReminderWorker(d), NewBillingWorker(d))
 	if d.Config != nil && d.Config.InvoicesVippsEnabled {
 		ws = append(ws, NewPaymentWorker(d))
 	}
