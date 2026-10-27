@@ -1,6 +1,6 @@
 ---
 title: Energy
-description: Metering points, meters, supply periods, consumption per customer, spot prices and tariffs.
+description: Metering points, meters, supply periods, consumption per customer, spot prices, tariffs and settlements.
 sidebar:
   order: 70
 sources:
@@ -10,8 +10,9 @@ sources:
 
 The Energy app keeps the metering points your organisation supplies: where each one
 is, which meter sits on it, which customer it is supplied to and for how long, and the
-consumption read from it, the spot prices that consumption is priced by, and the
-power and grid tariffs it will be billed on. It has three areas, **Metering points**,
+consumption read from it, the spot prices that consumption is priced by, the
+power and grid tariffs it is billed on, and the settlements that price each billing
+period. It has three areas, **Metering points**,
 **Prices** and **Tariffs**, and it adds an **Energy** tab to every customer in the
 Customers app.
 
@@ -211,7 +212,7 @@ field.
 
 ## Read a metering point's page
 
-The page is headed by the GSRN and the address, and has five cards:
+The page is headed by the GSRN and the address, and has six cards:
 
 - **Metering point details**: meter number, price area, grid area, connection status
   and expected annual consumption.
@@ -227,9 +228,82 @@ The page is headed by the GSRN and the address, and has five cards:
 - **Supply periods**: which customer the point has been supplied to, from when to
   when, on which **Power tariff** and **Billing**, with the status **Active**,
   **Ended** or **Cancelled**. An end that is not set reads **Open-ended**.
+- **Settlements**: what each closed billing period comes to, see
+  [below](#read-a-metering-points-settlements).
 - **Consumption**: the readings for a date range, as a chart and a table.
 
 Times on this page are shown in Norwegian market time (Europe/Oslo).
+
+## Read a metering point's settlements
+
+A settlement is what a customer owes for the metering point over one billing period:
+the period's consumption priced by the spot prices and the tariffs, line by line. The
+**Settlements** card, under **Supply periods**, lists them for the last 24 months,
+newest period first. A billing period is the calendar month, quarter or year the
+supply period's **Billing** says, cut to the supply period's start and end, and it is
+shown once it has ended. Opening the page changes nothing: a period not yet invoiced is
+calculated afresh each time, so its figures follow the readings, the prices and the
+tariffs until it is invoiced.
+
+Each row shows:
+
+- **Period**: the first and the last day of the billing period.
+- **Kind**: **Regular**, or **Correction** for the difference found after a period
+  was invoiced (see below).
+- **Status**: **Draft** until the period is invoiced, **Invoiced** once it is, and
+  **Released** when a credit note took the whole invoice back; the period is then
+  billed again as a new draft. **Estimated** beside it means some of the readings are
+  estimates, which the invoice will say.
+- **kWh** and **Amount (NOK)**.
+- **Invoice**: the invoice's number, once invoiced; click it to open the invoice.
+- **Show lines** opens the lines the amount is made of — each with its **Line** (the
+  tariff component's name and its kind, such as *Spot energy*, *Monthly fee* or *Grid
+  capacity*), **Quantity**, **Unit price** and **Amount (NOK)** — and **Hide lines**
+  closes them.
+
+When no billing period has ended yet the card says *No billing period has closed yet.*
+
+### When a period cannot be priced
+
+A period that cannot be priced is still listed, with an amount of zero and the reason
+in red under its status, followed by the detail:
+
+- **The billing period is still open**: the period has not ended yet. Wait for it to
+  end.
+- **No tariff applies**: the supply period has no **Power tariff**, or a tariff has no
+  version for some day of the period. Give the supply period a tariff
+  ([Change a supply period's terms](#change-a-supply-periods-terms)) or add the
+  missing version to the tariff ([Add versions](#add-versions)).
+- **No consumption in the period**: there are no readings at all for the period.
+  Import the readings ([Import readings](#import-readings)) or add them by hand.
+- **Readings are missing**: some of the period's readings are missing, a reading runs
+  across the start or end of the period, or two readings overlap. Import the missing
+  readings, or correct the ones that cross or overlap.
+- **Spot prices are missing**: the price area has no spot price for part of the
+  period. Import the prices ([Import prices from a file](#import-prices-from-a-file)),
+  or wait for them to be fetched.
+- **Spot prices are still preliminary**: a price the period needs is still
+  preliminary. Wait until the prices are final
+  ([Preliminary prices](#preliminary-prices)).
+
+You do not have to do anything to the settlement itself: once the cause is fixed, the
+next time the page is opened the period is priced. The last two only concern spot-price
+contracts.
+
+### Corrections
+
+An invoiced period is never changed. When its readings, its prices or its tariffs
+change after it was invoiced — up to twelve months after the period ended — the
+difference is drafted as a **Correction** of that period the next time the customer's
+consumption is settled for invoicing: its lines are the differences, and its amount may
+be negative.
+
+Consumption is not yet invoiced from Vantigo: invoicing it comes in a later version.
+Until then the card shows what each period comes to.
+
+The card is shown when you hold both `energy:supply-periods-view` and
+`energy:consumption-view`. The rules behind the figures are in
+[Settlements](/en/reference/energy/#settlements).
 
 ## Replace a meter
 
@@ -627,9 +701,9 @@ version valid today and how many supply periods and metering points use it, acti
 tariffs first; narrow it by kind or status. The page needs `energy:tariffs-view`;
 creating, editing, archiving and deleting need `energy:tariffs-manage` as well.
 
-Tariffs are not applied to anything yet: settling consumption on them comes in a
-later version of Vantigo. Until then you can set them up and choose them on the
-supply periods and the metering points.
+The tariffs price the metering points' settlements, see
+[Read a metering point's settlements](#read-a-metering-points-settlements). A change to
+a tariff changes the settlements not yet invoiced the next time they are shown.
 
 ### Create a tariff
 
@@ -716,9 +790,9 @@ The full rules are in [Tariffs](/en/reference/energy/#tariffs).
 | `energy:metering-points-manage` | Create and edit metering points, their billing facts included |
 | `energy:meters-view` | See the meter history (needed with the above to see the app at all) |
 | `energy:meters-manage` | Replace a meter and register the first meter when creating |
-| `energy:supply-periods-view` | See supply periods, and a customer's metering points |
+| `energy:supply-periods-view` | See supply periods, and a customer's metering points; with `energy:consumption-view`, the **Settlements** card |
 | `energy:supply-periods-manage` | Assign, switch, end and attach supply periods, and change their terms |
-| `energy:consumption-view` | See consumption and the Energy tab's consumption figure |
+| `energy:consumption-view` | See consumption and the Energy tab's consumption figure; with `energy:supply-periods-view`, the **Settlements** card |
 | `energy:consumption-manage` | Add manual readings |
 | `energy:prices-view` | See **Prices**: the coverage and each area's prices |
 | `energy:prices-manage` | Import prices from a file, with `energy:prices-view` |

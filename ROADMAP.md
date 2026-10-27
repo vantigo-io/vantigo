@@ -489,7 +489,7 @@ nothing. Both read files through the shared `internal/fileimport`. See
 Vantigo on day one, with the import behind its own sensitive permission
 (`energy:import`) and every write still needing the permission it needs by hand.
 
-### Phase 4 — Invoicing groundwork (align with Invoices)
+### Phase 4 — Invoicing groundwork (align with Invoices) (done)
 
 An `internal/contracts` interface (e.g. `contracts.ConsumptionProvider`) returning
 billable consumption per customer/metering point/supply period, keeping the
@@ -566,9 +566,32 @@ See
 [`docs/src/content/docs/en/reference/energy.md`](docs/src/content/docs/en/reference/energy.md#tariffs)
 and the [plan](docs/superpowers/plans/2026-10-27-energy-tariffs.md).
 
-What remains: **C** settlements
-and the `contracts.ConsumptionProvider` contract (Energy phase 4 done), then Invoices
-phase 5's **D** invoices from consumption (the wizard) and **E** billing runs.
+**Delivery C: settlements and the consumption contract (done)** — consumption priced,
+in migration `00077_energy_settlements.sql`. Each supply period's billing periods —
+the civil month, quarter or year of its cadence in the point's market zone, clipped to
+the supply period — are priced once closed into **settlements**: the current intervals
+(a missing, crossing or overlapping one blocks the period), the final spot prices
+time-weighted over each interval (a preliminary price blocks it, so does a gap), and
+the power and grid tariff versions valid on each civil day, as one line per version and
+component — the grid's day and night bands, the capacity tier per month from the three
+highest days, monthly fees prorated by counted days, the electricity tax by the
+point's class, the Enova levy per kWh or per year — each line carrying the point's VAT
+hint. A settlement that cannot be priced is answered with its blocker (`period_open`,
+`no_tariff`, `no_consumption`, `incomplete`, `price_gap`, `price_preliminary`) and no
+lines. Drafts are recomputed on every read and written with a new revision when a
+figure changes, untouched drafts deleted after thirty days; an invoiced period changed
+later, within twelve months, gets a correction of the differences. Invoices reads them
+through `contracts.ConsumptionProvider` (`DueSupplies`, `Settle`, `Settlements`), the
+fifteenth single-provider slot, optional, and stamps and releases them through
+Energy's invoiced-work holder (`energy.settlement`, last in the lock order); a customer
+merge re-points them. The metering point's **Settlements** card lists each period with
+its state, kWh, amount, blocker, lines and invoice, behind `energy:supply-periods-view`
+and `energy:consumption-view`. See
+[`docs/src/content/docs/en/reference/energy.md`](docs/src/content/docs/en/reference/energy.md#settlements)
+and the [plan](docs/superpowers/plans/2026-10-27-energy-settlements.md).
+
+Energy phase 4 is done. What remains is Invoices phase 5's **D** invoices from
+consumption (the wizard) and **E** billing runs.
 
 *Unblocks:* the Invoices module generating invoice lines from consumption
 without touching `energy` tables.
@@ -1112,8 +1135,8 @@ Periodic invoices per supply point and period from Energy's figures, tariff and 
 lines, batch issuing, the utilities' periodic-invoicing rules — with Energy phase 4's
 consumption contract. The design is written
 ([design](docs/superpowers/specs/2026-10-24-energy-consumption-billing-design.md)); Energy
-phase 4's deliveries A–C come first, then this phase's D (invoices from consumption)
-and E (billing runs).
+phase 4's deliveries A–C have landed; this phase's D (invoices from consumption) and E
+(billing runs) are next.
 
 *Unblocks:* the energy business's core revenue.
 

@@ -24,7 +24,7 @@ serves under `/docs/`.
 | Module | What it holds |
 | --- | --- |
 | [Customers](/en/reference/customers/) | Customers, legal identity, contacts and roles, the timeline, addresses, the billing profile, registry lookups, GDPR. |
-| [Energy](/en/reference/energy/) | Metering points, meters, supply periods, consumption, the metering-point and consumption imports, the day-ahead spot prices per price area, and the power and grid tariffs with the metering point's billing facts. |
+| [Energy](/en/reference/energy/) | Metering points, meters, supply periods, consumption, the metering-point and consumption imports, the day-ahead spot prices per price area, the power and grid tariffs with the metering point's billing facts, and the settlements that price a supply period's billing periods — handed to invoicing across `contracts.ConsumptionProvider` and stamped by Energy's invoiced-work holder. |
 | [Communications](/en/reference/communications/) | Outbound business email across shared mailboxes, the outbox and retention. |
 | [Products](/en/reference/products/) | The catalog of goods and services the company sells, with prices. |
 | [Projects](/en/reference/projects/) | Projects per customer, codes, roles, financial shaping and work types. |
