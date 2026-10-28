@@ -128,6 +128,58 @@ Read on learn.microsoft.com ([event-delta](https://learn.microsoft.com/en-us/gra
   an all-day event's `start` under UTC; the 403 body under RBAC; whether an event's id
   in a calendar view equals its id in `/events` (relied on for single instances).
 
+### The write-back, as checked for C (2026-10-28)
+
+Read on learn.microsoft.com ([event-update](https://learn.microsoft.com/en-us/graph/api/event-update?view=graph-rest-1.0),
+[event-get](https://learn.microsoft.com/en-us/graph/api/event-get?view=graph-rest-1.0),
+[event resource](https://learn.microsoft.com/en-us/graph/api/resources/event?view=graph-rest-1.0),
+[event-delta v1.0](https://learn.microsoft.com/en-us/graph/api/event-delta?view=graph-rest-1.0) and
+[beta](https://learn.microsoft.com/en-us/graph/api/event-delta?view=graph-rest-beta),
+[calendar-list-calendarview](https://learn.microsoft.com/en-us/graph/api/calendar-list-calendarview?view=graph-rest-1.0),
+[user-list-events](https://learn.microsoft.com/en-us/graph/api/user-list-events?view=graph-rest-1.0),
+[singlevaluelegacyextendedproperty-get](https://learn.microsoft.com/en-us/graph/api/singlevaluelegacyextendedproperty-get?view=graph-rest-1.0),
+[outlook-immutable-id](https://learn.microsoft.com/en-us/graph/outlook-immutable-id),
+[known-issues](https://learn.microsoft.com/en-us/graph/known-issues)).
+
+- **A secondary calendar has no v1.0 delta.** v1.0 lists `/users/{id}/calendarView/delta`
+  of the primary calendar only; `/calendars/{id}/calendarView/delta` and
+  `/calendars/{id}/events/delta` are beta. The concept page's wording that a view may come
+  from "some other specified calendar" contradicts the reference; the reference wins.
+- **`GET /users/{id}/calendars/{id}/calendarView`** is v1.0, pages by `@odata.nextLink`,
+  `$top` 1–1000; it supports "some" query parameters, unnamed, and occurrences come
+  expanded. `createdDateTime` and `lastModifiedDateTime` cannot be `$select`ed there.
+- **A filter on `lastModifiedDateTime`** of events is not documented anywhere; the known
+  issues warn that query parameters may fail silently. Not relied on.
+- **`changeKey`** "identifies the version … every time the event is changed, ChangeKey
+  changes". The v1.0 delta samples are trimmed and show `@odata.etag` only; the beta
+  calendarView/delta sample shows `changeKey` beside it. `$select=id,changeKey` on a list
+  is ordinary OData.
+- **`PATCH`** answers `200 OK` with the updated event (so its `changeKey`); `If-Match`
+  and a 412 are not documented for events — the write-back compares change keys itself.
+- **`@removed`** has the one reason `deleted`, and is answered also for an event that
+  left the window: a delete and a move out of range look the same.
+- **A GET after a delete** — 404, or the item found in *Deleted Items* — is not
+  documented. A `permanentDelete` action exists, which suggests a plain delete is
+  recoverable.
+- **Ids** change when an item moves to another folder or calendar unless every request
+  sends `Prefer: IdType="ImmutableId"`; an edit in place is implied, not stated, to keep
+  the id. `iCalUId` is per occurrence and read-only.
+- **Body**: `Prefer: outlook.body-content-type="text"` is documented on GET and list
+  (answered by `Preference-Applied`), not on delta; the same pages also say bodies come
+  "in only HTML format". The answer's `body.contentType` says which it was.
+- **Organizer**: `isOrganizer` is true when the calendar's owner organizes; an event with
+  no attendees is not a draft and sends no invitation; updates mail attendees only when
+  there are attendees. `hideAttendees`, `allowNewTimeProposals` and `responseRequested`
+  matter only for meetings.
+- **Recurrence**: occurrences and exceptions carry `seriesMasterId` and `originalStart`;
+  how a deleted occurrence shows in a delta is not documented. Vantigo writes single
+  events only, so a series in Outlook is always the person's own.
+- **Not documented, for the real tenant**: a GET by id of an event the person deleted
+  (404, or found in Deleted Items) through the calendar-scoped path; `changeKey` in a
+  calendarView list; `isOrganizer` on an app-created event; that a PATCH of an event with
+  no attendees mails nobody; whether an edit in Outlook keeps the id; the body answered
+  as text.
+
 ## 4. What other products do
 
 HubSpot, Pipedrive and Odoo (calendar research §2) push their own meetings into the
