@@ -34,8 +34,8 @@ import (
 // module does not manage. The writes go in $batch requests of at most
 // twenty, one after another (Outlook's four concurrent requests per
 // mailbox); an event's marker, a single-value extended property, is written
-// on create and never again, and a calendar the module makes carries a
-// marker of its own. Both markers' values start "vantigo:<client id>" — the
+// on create, and again only by an update naming the same key (design
+// O10.2), and a calendar the module makes carries a marker of its own. Both markers' values start "vantigo:<client id>" — the
 // Entra application's, which tells two installations sharing a tenant apart
 // — and a calendar or an event without this installation's is never the
 // module's: never adopted, deleted or answered by Find or Marked.
@@ -45,8 +45,10 @@ import (
 // checked to be this mailbox's before it is followed — decoding an event's
 // id, type, times, showAs and cancelled flag and nothing of what it is
 // about; Marked reads single events by id in $batch requests of twenty to
-// tell this installation's copies by their marker. Both are refused under
-// cleanup. Graph's words are never logged — an event's subject or body may
+// tell this installation's copies by their marker; and Versions and Events
+// (design O10; mailbox_writeback.go) read the copies' change keys, and the
+// events the write-back takes, whole. All four are refused under cleanup.
+// Graph's words are never logged — an event's subject or body may
 // come back in them — nor is any subject, body or address: a refusal is
 // logged by its status and codes alone.
 
@@ -481,8 +483,11 @@ const graphLocalTime = "2006-01-02T15:04:05"
 // the location when there is one — on an update always, so a location
 // dropped is cleared; a timed event's instants in UTC, an all-day event's
 // days at midnight in the Windows name of its zone, the end the day after
-// the last; showAs; sensitivity private or normal; no reminder; and, on
-// create only, the marker carrying prefix and the key.
+// the last; showAs; sensitivity private or normal; no reminder; and the
+// marker carrying prefix and the key — on a create always, on an update
+// when the op names a Key (calendar Outlook sync design O10.2: an event the
+// calendar took in from its own calendar is tagged by the push that
+// rewrites it); an update without one leaves the marker as it is.
 func eventOf(op contracts.MailboxOp, prefix string) (graphEvent, error) {
 	e := op.Event
 	if e == nil {
@@ -524,7 +529,7 @@ func eventOf(op contracts.MailboxOp, prefix string) (graphEvent, error) {
 		out.Start = graphDateTimeZone{DateTime: e.StartsAt.UTC().Format(graphLocalTime), TimeZone: "UTC"}
 		out.End = graphDateTimeZone{DateTime: e.EndsAt.UTC().Format(graphLocalTime), TimeZone: "UTC"}
 	}
-	if op.Kind == contracts.MailboxOpCreate {
+	if op.Key != "" {
 		out.Properties = []graphProperty{{ID: mailboxMarker, Value: prefix + op.Key}}
 	}
 	return out, nil
@@ -581,7 +586,8 @@ func (s mailboxSession) requestOf(op contracts.MailboxOp, calendarID string) (ma
 
 // Apply runs ops against calendarID ("" the default calendar) in $batch
 // requests of at most twenty, one after another, and answers one result per
-// op, in order. Under cleanup an op other than a delete answers
+// op, in order. A create writes the marker with its Key, an update only
+// when it names one (eventOf). Under cleanup an op other than a delete answers
 // ErrMailboxUnavailable unsent. Each answer is judged on its own: 2xx done
 // (a create's id and the change key read from its answer), 404 on an update
 // or a delete Gone (a delete is then done), 403 ErrMailboxDenied, a mailbox

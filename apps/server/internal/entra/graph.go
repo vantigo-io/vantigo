@@ -31,7 +31,7 @@ import (
 // noRetry, the create of a user, a group or a pass, which the tenant may
 // have carried out before it failed —, a 401 fetches a fresh token once;
 // every answer read through a 1 MiB cap (8 MiB for a mailbox $batch, 16 MiB
-// for a page of the mailbox's delta); and Graph's refusal parsed into a
+// for a page of the mailbox's delta or a $batch of events read whole); and Graph's refusal parsed into a
 // graphError carrying the status and the codes, its words logged at debug
 // level with the tenant's id — except a noRetry call's, which may echo the
 // password or the pass it carried, and a noWords call's, which may echo a
@@ -89,7 +89,10 @@ const (
 	// graphMaxDeltaBody is the most of a page of the mailbox's calendar
 	// delta read (a call made deltaPage): fifty events answered whole —
 	// subject, an HTML body, attendees — about 320 KiB each, which the
-	// provider decodes none of but must read past.
+	// provider decodes none of but must read past. A $batch of twenty
+	// events read whole (wholeEvents) is read through it too: a body asked
+	// as text may still come as HTML, and twenty of those outgrow
+	// graphMaxBatchBody.
 	graphMaxDeltaBody = 16 << 20
 	// graphDeltaPrefer is the Prefer header of a deltaPage call: the
 	// event's times in UTC and fifty events a page (calendar Outlook sync
@@ -115,7 +118,7 @@ var (
 	// wait longer than graphMaxRetryAfter.
 	errThrottled = errors.New("entra: Graph throttled the call")
 	// errResponseTooLarge: an answer longer than graphMaxBody (graphMaxBatchBody
-	// for a call made largeAnswer, graphMaxDeltaBody deltaPage).
+	// for a call made largeAnswer, graphMaxDeltaBody deltaPage or wholeEvents).
 	errResponseTooLarge = errors.New("entra: Graph's answer is larger than the client reads")
 )
 
@@ -322,6 +325,12 @@ const largeAnswer callOption = 4
 // through graphMaxDeltaBody.
 const deltaPage callOption = 5
 
+// wholeEvents is a mailbox $batch reading twenty events whole
+// (mailbox_writeback.go): its answer read through graphMaxDeltaBody, as a
+// delta page's, with no Prefer of its own — each request inside carries
+// its own.
+const wholeEvents callOption = 6
+
 // get reads path into into. path is everything after /v1.0, its query
 // already escaped (url.Values.Encode).
 func (c *graphClient) get(ctx context.Context, cred graphCredential, path string, into any, opts ...callOption) error {
@@ -393,6 +402,9 @@ func (c *graphClient) send(ctx context.Context, cred graphCredential, method, pa
 	}
 	if slices.Contains(opts, deltaPage) {
 		extra.Set("Prefer", graphDeltaPrefer)
+		limit = graphMaxDeltaBody
+	}
+	if slices.Contains(opts, wholeEvents) {
 		limit = graphMaxDeltaBody
 	}
 	target, err := graphURL(path)
