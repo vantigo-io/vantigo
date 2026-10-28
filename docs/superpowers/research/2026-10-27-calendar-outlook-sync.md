@@ -180,6 +180,73 @@ Read on learn.microsoft.com ([event-update](https://learn.microsoft.com/en-us/gr
   no attendees mails nobody; whether an edit in Outlook keeps the id; the body answered
   as text.
 
+### Change notifications, as checked for D (2026-10-28)
+
+Read on learn.microsoft.com ([change-notifications-overview](https://learn.microsoft.com/en-us/graph/change-notifications-overview),
+[outlook-change-notifications-overview](https://learn.microsoft.com/en-us/graph/outlook-change-notifications-overview),
+[change-notifications-delivery-webhooks](https://learn.microsoft.com/en-us/graph/change-notifications-delivery-webhooks),
+[change-notifications-lifecycle-events](https://learn.microsoft.com/en-us/graph/change-notifications-lifecycle-events),
+[subscription resource](https://learn.microsoft.com/en-us/graph/api/resources/subscription?view=graph-rest-1.0),
+[subscription-post-subscriptions](https://learn.microsoft.com/en-us/graph/api/subscription-post-subscriptions?view=graph-rest-1.0),
+[subscription-update](https://learn.microsoft.com/en-us/graph/api/subscription-update?view=graph-rest-1.0),
+[application-rbac](https://learn.microsoft.com/en-us/exchange/permissions-exo/application-rbac)).
+
+- **The resource.** For events only `/me/events` and `/users/{id}/events` are documented
+  ("changes to all events in a user's mailbox"); `/users/{id}/calendars/{id}/events` and
+  `/users/{id}/calendar/events` are **not** listed for events. Whether `/users/{id}/events`
+  sees a **secondary calendar**'s events is not stated — "all events in a user's mailbox"
+  implies it. Use the object id, never the UPN.
+- **Create.** `POST /subscriptions` with `changeType` (`created,updated,deleted`),
+  `notificationUrl`, `resource`, `expirationDateTime`, and `clientState` (optional in the
+  reference, "required" on the webhooks page — always sent; at most **128** characters).
+  201 on success; the same `changeType` and `resource` again is **409 Conflict**
+  ("Subscription Id … already exists for the requested combination"). The create
+  validates the URL synchronously: a failed handshake is a **400**. Least privilege for
+  events is `Calendars.Read`; a page warns that subscriptions "don't support write access
+  permissions when only read access permissions are needed" — whether
+  `Calendars.ReadWrite` alone is accepted is ambiguous.
+- **Expiry.** Outlook events: at most **10 080 minutes** (under seven days) without
+  resource data, 1440 with; a request beyond the maximum "will fail" in future; under 45
+  minutes is raised to 45. Renewal: `PATCH /subscriptions/{id}` with
+  `expirationDateTime`, 200 with the subscription; an expired or unknown one is **404** —
+  create a new one. `DELETE /subscriptions/{id}` answers 204. Graph deletes an expired
+  subscription itself.
+- **The handshake.** `POST {notificationUrl}?validationToken=<opaque>` with
+  `Content-Type: text/plain`; answer **200 `text/plain`** with the **URL-decoded** token
+  within **10 seconds** (an encoded token fails); treat it as opaque and escape it. The
+  `lifecycleNotificationUrl` is validated the same way. A query string on the URL is
+  echoed back on delivery.
+- **Delivery.** A 2xx within **3 seconds**; otherwise retries for up to four hours with
+  backoff (10-second timeout). More than 10 % of answers over 3 s in ten minutes delays
+  new notifications ten minutes; more than 15 % over 10 s **drops** them for ten minutes,
+  unrecoverable. Recommended: queue, answer 202; a 5xx when it could not be queued. The
+  body is `{"value": [...]}`, items of several subscriptions mixed: `subscriptionId`,
+  `subscriptionExpirationDateTime`, `clientState`, `changeType`, `resource`, `tenantId`,
+  `resourceData {@odata.type, @odata.id, @odata.etag, id}`. A batch's maximum size is not
+  documented. Compare `clientState` with the stored value; a mismatch is invalid. Event
+  latency is documented as "unknown".
+- **Lifecycle.** `lifecycleNotificationUrl` (HTTPS, set **at create only**, may equal
+  `notificationUrl`); for Outlook events `reauthorizationRequired`, `subscriptionRemoved`
+  and `missed`, items `{subscriptionId, subscriptionExpirationDateTime, tenantId,
+  clientState, lifecycleEvent}`, batched. Answer 202 and check `clientState`.
+  `reauthorizationRequired`: `POST /subscriptions/{id}/reauthorize` or a `PATCH` of the
+  expiry (not both within ten minutes); unanswered, delivery pauses and changes in the gap
+  are lost. `subscriptionRemoved`: recreate (it may fail while access is denied) and
+  resync. `missed`: resync. The pages recommend delta for every gap.
+- **Basic notifications carry no `validationTokens`** (that array is the rich
+  notifications'); no encryption certificate is needed. Microsoft's addresses are among
+  Microsoft 365's "additional endpoints"; a firewall *may* admit only them — optional.
+- **Limits.** 1000 active subscriptions per mailbox for all applications; a quota breach
+  is 403 with the limit in its message. Per-tenant and per-app limits, and throttling of
+  creates, are not documented beyond Graph's 429s. `notificationUrl` must be public HTTPS
+  (TLS 1.2).
+- **Not documented, for the real tenant**: a secondary calendar's events under
+  `/users/{id}/events`; whether a subscription respects RBAC for Applications' scope (and
+  the create's answer outside it — 403 expected); what a scope change, a mailbox move, a
+  leaver or a removed licence does to a live subscription (`subscriptionRemoved`, or
+  silence); whether `Calendars.ReadWrite` alone is accepted for the create; an event
+  notification's `resource` shape; the batch's maximum size.
+
 ## 4. What other products do
 
 HubSpot, Pipedrive and Odoo (calendar research §2) push their own meetings into the
