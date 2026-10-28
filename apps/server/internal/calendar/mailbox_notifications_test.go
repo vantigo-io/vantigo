@@ -308,9 +308,9 @@ func TestMailboxNotifications_ANoticeMakesTheRightSyncsDue(t *testing.T) {
 	w := mailboxWorker(t, r)
 	cycle := func() int {
 		t.Helper()
-		ran, n, err := w.RunCycle(context.Background())
-		if err != nil || !ran {
-			t.Fatalf("cycle: ran %v, %v", ran, err)
+		n, err := w.RunCycle(context.Background())
+		if err != nil {
+			t.Fatalf("cycle: %v", err)
 		}
 		return n
 	}
@@ -368,9 +368,9 @@ func TestMailboxNotifications_ANoticeMarkedLateIsStillTaken(t *testing.T) {
 	w := mailboxWorker(t, r)
 	cycle := func() int {
 		t.Helper()
-		ran, n, err := w.RunCycle(context.Background())
-		if err != nil || !ran {
-			t.Fatalf("cycle: ran %v, %v", ran, err)
+		n, err := w.RunCycle(context.Background())
+		if err != nil {
+			t.Fatalf("cycle: %v", err)
 		}
 		return n
 	}
@@ -415,7 +415,7 @@ func TestMailboxNotifications_ANoticeDoesNotOverrideTheBackoff(t *testing.T) {
 			create(t, c, timed(t, "Plan", oslo, "2026-09-14T09:00", "2026-09-14T10:00"))
 			turnOn(t, c, "default", "full", "calendar.appointment")
 			r.box.FailWith(tc.method, errors.New("graph: 503"))
-			if _, _, err := w.RunCycle(context.Background()); err != nil {
+			if _, err := w.RunCycle(context.Background()); err != nil {
 				t.Fatal(err)
 			}
 			row := readSyncRow(t, r, me)
@@ -425,9 +425,9 @@ func TestMailboxNotifications_ANoticeDoesNotOverrideTheBackoff(t *testing.T) {
 			backoff := *row.next
 			r.box.Notify(mb, r.Now().Add(10*time.Second))
 			r.Advance(30 * time.Second)
-			ran, n, err := w.RunCycle(context.Background())
-			if err != nil || !ran || n != 0 {
-				t.Fatalf("cycle: ran %v, synced %d, %v; want none synced", ran, n, err)
+			n, err := w.RunCycle(context.Background())
+			if err != nil || n != 0 {
+				t.Fatalf("cycle: synced %d, %v; want none synced", n, err)
 			}
 			if row := readSyncRow(t, r, me); row.next == nil || !row.next.Equal(backoff) {
 				t.Errorf("next %v, want the backoff's %v", row.next, backoff)
@@ -453,9 +453,9 @@ func TestMailboxNotifications_AFailingNotifiedDoesNotStopTheCycle(t *testing.T) 
 	c, me, mb := r.person(t)
 	turnOn(t, c, "default", "full", "calendar.appointment")
 	r.box.FailWith("Notified", errors.New("entra: the database is down"))
-	ran, n, err := w.RunCycle(context.Background())
-	if err != nil || !ran || n != 1 {
-		t.Fatalf("cycle: ran %v, synced %d, %v", ran, n, err)
+	n, err := w.RunCycle(context.Background())
+	if err != nil || n != 1 {
+		t.Fatalf("cycle: synced %d, %v", n, err)
 	}
 	if row := readSyncRow(t, r, me); row.state != "active" {
 		t.Errorf("the row = %+v", row)
@@ -466,7 +466,7 @@ func TestMailboxNotifications_AFailingNotifiedDoesNotStopTheCycle(t *testing.T) 
 	r.box.Notify(mb, r.Now().Add(time.Second))
 	from := len(r.box.Calls())
 	r.Advance(time.Minute)
-	if _, _, err := w.RunCycle(context.Background()); err != nil {
+	if _, err := w.RunCycle(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	if asked := calls(r, from, "Notified"); len(asked) != 1 || !asked[0].From.Equal(first) {
@@ -474,36 +474,24 @@ func TestMailboxNotifications_AFailingNotifiedDoesNotStopTheCycle(t *testing.T) 
 	}
 }
 
-// The notices are taken before the lease, holding no connection: a replica
-// whose cycle finds the lease held elsewhere still makes the notified people
-// due, and a cycle never holds the lease's connection while the provider's
-// read and the mark ask the pool for another — on a small pool that starved
-// every worker and the readiness probe.
-func TestMailboxNotifications_NoticesAreTakenWithoutTheLease(t *testing.T) {
+// The notices are taken before any claim, holding no connection: a person
+// another cycle has claimed is still made due by a notice, to sync once the
+// claim is given back.
+func TestMailboxNotifications_NoticesAreTakenForAPersonClaimedElsewhere(t *testing.T) {
 	t.Parallel()
 	r := newMailboxRig(t)
 	w := mailboxWorker(t, r)
 	_, id, mailbox := watchedPerson(t, r)
 	synced := r.Now()
 
-	conn, err := r.Pool().Acquire(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer conn.Release()
-	if _, err := conn.Exec(context.Background(), `SELECT pg_advisory_lock($1)`, int64(0x43414C4D424F5831)); err != nil {
-		t.Fatal(err)
-	}
-	defer func() {
-		if _, err := conn.Exec(context.Background(), `SELECT pg_advisory_unlock($1)`, int64(0x43414C4D424F5831)); err != nil {
-			t.Error(err)
-		}
-	}()
-
 	r.Advance(5 * time.Minute)
+	if _, err := r.Pool().Exec(context.Background(), `UPDATE calendar.mailbox_sync SET claimed_until = $2 WHERE user_id = $1`,
+		id, r.Now().Add(5*time.Minute)); err != nil {
+		t.Fatal(err)
+	}
 	r.box.Notify(mailbox, synced.Add(4*time.Minute))
-	if ran, n, err := w.RunCycle(context.Background()); ran || n != 0 || err != nil {
-		t.Fatalf("with the lease held elsewhere the cycle ran %v, synced %d, %v", ran, n, err)
+	if n, err := w.RunCycle(context.Background()); n != 0 || err != nil {
+		t.Fatalf("with the person claimed elsewhere the cycle synced %d, %v", n, err)
 	}
 	if row := readSyncRow(t, r, id); row.next == nil || !row.next.Equal(r.Now()) {
 		t.Errorf("the notified person's next sync is %v, want now (%v)", row.next, r.Now())

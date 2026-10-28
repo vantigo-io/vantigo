@@ -13,6 +13,7 @@ sql:
       - ../db/migrations/00083_calendar_mailbox_busy.sql
       - ../db/migrations/00084_calendar_mailbox_writeback.sql
       - ../db/migrations/00086_calendar_mailbox_sync_mailbox.sql
+      - ../db/migrations/00087_calendar_mailbox_sync_claim.sql
     queries: queries
     gen:
       go:

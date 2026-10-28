@@ -265,9 +265,11 @@ høyst ti hver — og se hendelsene deres ved siden av sine egne
 ([subscriptions](/en/reference/calendar/#subscriptions)). Arbeideren
 `calendar-subscriptions` henter dem. Den kjører med mindre
 `CALENDAR_SUBSCRIPTIONS_ENABLED=0`, i worker-modus, og i api-modus med
-`WORKERS_IN_PROCESS=1`. Den **våkner hvert femte minutt** — ikke en innstilling — tar en
-rådgivende lås så flere replikaer bytter på, og henter hvert abonnement som er forfalt,
-høyst 200 per runde, ett om gangen. Hvert abonnement forfaller
+`WORKERS_IN_PROCESS=1`. Den **våkner hvert femte minutt** — ikke en innstilling — og
+henter hvert abonnement som er forfalt, høyst 200 per runde, ett om gangen. Hvert
+abonnement reserveres i fem minutter mens det hentes, så flere replikaer deler
+abonnementene som er forfalt og aldri henter ett to ganger samtidig, og ingen
+databasetilkobling holdes mens en kalender hentes. Hvert abonnement forfaller
 `CALENDAR_SUBSCRIPTIONS_POLL` (standard `30m`, minst `5m`) etter forrige forsøk, eller —
 etter en henting som svarte med kalenderen — senere når kalenderen selv ber om å bli lest
 sjeldnere (høyst én gang i døgnet), pluss litt tilfeldig slingring. En henting som feiler, beholder kalenderens siste gode kopi og
@@ -347,9 +349,14 @@ Outlook](/nb/user/calendar/#synkroniser-med-outlook)), når en eier har slått p
 `calendar-mailbox-sync` skriver kopiene gjennom Entra-modulens tilkobling
 ([arbeideren](/en/reference/calendar/#the-mailbox-sync-worker)). Den kjører med mindre
 `CALENDAR_MAILBOX_SYNC_ENABLED=0`, i worker-modus, og i api-modus med
-`WORKERS_IN_PROCESS=1`. Den **våkner hvert minutt** — ikke en innstilling — tar en
-rådgivende lås så flere replikaer bytter på, og synkroniserer hver person som står for
-tur, høyst 50 per runde, én om gangen, hver med tre minutter til det synkroniseringen
+`WORKERS_IN_PROCESS=1`. Den **våkner hvert minutt** — ikke en innstilling — og
+synkroniserer hver person som står for tur, høyst 50 per runde, én om gangen. Hver person
+reserveres i ti minutter før synkroniseringen og frigis etter den, så flere replikaer
+deler personene som står for tur og aldri synkroniserer én person to ganger samtidig; en
+replika som stoppes midt i en synkronisering, etterlater en reservasjon som utløper, og
+personen synkroniseres av neste runde etter det. Ingen databasetilkobling holdes mens
+Microsoft spørres, så arbeideren kan ikke sulte ut en liten tilkoblingspool. Hver persons
+synkronisering har tre minutter til det synkroniseringen
 spør Microsoft og de andre modulene om, så én treg postboks ikke holder igjen resten. En
 person står for tur
 `CALENDAR_MAILBOX_SYNC_POLL` (standard `15m`, minst `1m`) etter forrige synkronisering,

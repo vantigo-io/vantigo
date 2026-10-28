@@ -20,13 +20,16 @@ import (
 )
 
 // This file is the calendar-mailbox-sync worker (calendar Outlook sync design
-// O7, O8, O9): every minute, under an advisory lease of its own, it syncs at
-// most fifty people whose sync is due — on, or owing a clean-up, next_sync_at
-// null or past — one at a time, and reads their Outlook busy time back (step
-// 9). The due list is read in a short transaction on the lease's connection
-// and committed before the first call out, so no row lock is held while a
-// mailbox is written; the lease is what keeps two replicas from syncing the
-// same person. Everything else reads and writes the
+// O7, O8, O9): every minute it syncs at most fifty people whose sync is due —
+// on, or owing a clean-up, next_sync_at null or past — one at a time, and
+// reads their Outlook busy time back (step 9). Each person is claimed in a
+// short statement of their own (claimed_until, mailboxClaimHold ahead) whose
+// connection goes back to the pool before the first call out, and the claim
+// is given back when their sync ends: the claim, not a lease, is what keeps
+// two replicas from syncing the same person, and no connection is held while
+// the pool or a neighbour is asked — on a small pool, a worker that did so
+// starved every other and the readiness probe. Everything else reads and
+// writes the
 // pool in short transactions, and no transaction is open while the provider,
 // identity, Staff or a calendar source is asked (contractscalls.go refuses
 // such a call). Each person's sync has three minutes (mailboxPersonDeadline)
@@ -97,10 +100,8 @@ import (
 //     error is logged by its code and changes nothing; a sync whose deadline
 //     has passed does not ask, and the next one does.
 //
-// Change notifications (O11.6): each cycle, before it takes the lease —
-// never holding the lease's connection while the provider's read and the
-// mark ask the pool for another, which on a small pool starves every
-// worker doing the same and the readiness probe with them — asks
+// Change notifications (O11.6): each cycle, before it claims anyone, holding
+// no connection across the provider's read, asks
 // Notified for the mailboxes the directory notified since the latest notice
 // it took (held on the worker, the poll interval ago at its first cycle),
 // less mailboxNoticesOverlap — a notice whose mark committed after a later
@@ -140,9 +141,11 @@ const (
 	// mailboxWorkerName is what the runner logs this worker as.
 	mailboxWorkerName = "calendar-mailbox-sync"
 
-	// mailboxLeaseKey is the ASCII string "CALMBOX1" read as a big-endian
-	// 64-bit value: this worker's own advisory lease.
-	mailboxLeaseKey int64 = 0x43414C4D424F5831
+	// mailboxClaimHold is how long a cycle's claim on a person holds: the
+	// person's deadline for what it asks the neighbours, and room for the
+	// rows written past it. A claim is given back when the sync ends; this
+	// is when one a dead replica left lapses.
+	mailboxClaimHold = mailboxPersonDeadline + 7*time.Minute
 
 	// mailboxTick is how often the worker wakes: a nudged person is synced
 	// within a minute.
@@ -237,7 +240,7 @@ func (w *MailboxSyncWorker) Run(ctx context.Context) error {
 	ticker := time.NewTicker(w.Interval())
 	defer ticker.Stop()
 	for {
-		if _, _, err := w.RunCycle(ctx); err != nil && ctx.Err() == nil {
+		if _, err := w.RunCycle(ctx); err != nil && ctx.Err() == nil {
 			w.deps.Logger.Error("calendar: the mailbox sync cycle failed", "worker", mailboxWorkerName, "error", err.Error())
 		}
 		select {
@@ -248,78 +251,70 @@ func (w *MailboxSyncWorker) Run(ctx context.Context) error {
 	}
 }
 
-// RunCycle takes the notices first, holding no connection (takeNotices),
-// then runs one cycle under the lease: it reports whether it ran — false
-// when another holder has the lease — and how many people it synced,
-// whatever each sync answered. A cancelled context stops it between two
-// people. The unlock runs on a context stripped of cancellation, so a
-// cancelled cycle still gives the lease back; an unlock that fails closes
-// the connection, which ends the session and the lock with it.
-func (w *MailboxSyncWorker) RunCycle(ctx context.Context) (bool, int, error) {
+// RunCycle takes the notices (takeNotices), then syncs the people due, one
+// claim at a time, and answers how many it synced, whatever each sync
+// answered — each person once a cycle, at most mailboxBatch. Each claim (ClaimDueMailboxSync) is one short statement on the
+// pool, its connection given back before the person's sync asks anyone, so
+// the cycle never holds a connection while it asks the pool for another or
+// waits on the provider — on a small pool, a worker doing so starved every
+// other and the readiness probe with them. The claim, until
+// mailboxClaimHold past now, is what keeps two replicas from syncing one
+// person; it is given back when the sync ends, on a context stripped of
+// cancellation, and one a dead replica left lapses. A cancelled context
+// stops the cycle between two people.
+func (w *MailboxSyncWorker) RunCycle(ctx context.Context) (int, error) {
 	w.takeNotices(ctx)
 
-	conn, err := w.deps.Pool.Acquire(ctx)
-	if err != nil {
-		return false, 0, fmt.Errorf("calendar: acquire a connection for the mailbox sync lease: %w", err)
-	}
-	defer conn.Release()
-
-	var acquired bool
-	if err := conn.QueryRow(ctx, `SELECT pg_try_advisory_lock($1)`, mailboxLeaseKey).Scan(&acquired); err != nil {
-		return false, 0, fmt.Errorf("calendar: take the mailbox sync lease: %w", err)
-	}
-	if !acquired {
-		w.deps.Logger.DebugContext(ctx, "calendar: the mailbox sync lease is held elsewhere; skipping this cycle", "worker", mailboxWorkerName)
-		return false, 0, nil
-	}
-	defer func() {
-		release := context.WithoutCancel(ctx)
-		if _, err := conn.Exec(release, `SELECT pg_advisory_unlock($1)`, mailboxLeaseKey); err != nil {
-			w.deps.Logger.ErrorContext(release, "calendar: releasing the mailbox sync lease failed; discarding the connection",
-				"worker", mailboxWorkerName, "error", err.Error())
-			_ = conn.Conn().Close(release)
-		}
-	}()
-
-	tx, err := conn.Begin(ctx)
-	if err != nil {
-		return true, 0, fmt.Errorf("calendar: begin the mailbox sync due list: %w", err)
-	}
-	due, err := store.New(tx).ClaimDueMailboxSyncs(ctx, store.ClaimDueMailboxSyncsParams{
-		Now: w.deps.Clock(), RowLimit: mailboxBatch,
-	})
-	if err != nil {
-		_ = tx.Rollback(context.WithoutCancel(ctx))
-		return true, 0, fmt.Errorf("calendar: list the mailbox syncs due: %w", err)
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return true, 0, fmt.Errorf("calendar: commit the mailbox sync due list: %w", err)
-	}
-	if len(due) == 0 {
-		return true, 0, nil
-	}
-
-	loc, err := w.srv.calendarZone(ctx)
-	if err != nil {
-		return true, 0, fmt.Errorf("calendar: read the business time zone: %w", err)
-	}
-	synced := 0
-	for _, r := range due {
-		if ctx.Err() != nil {
+	var loc *time.Location
+	done := make([]uuid.UUID, 0, mailboxBatch)
+	for len(done) < mailboxBatch && ctx.Err() == nil {
+		now := w.deps.Clock()
+		until := now.Add(mailboxClaimHold)
+		r, err := w.srv.queries().ClaimDueMailboxSync(ctx, store.ClaimDueMailboxSyncParams{
+			Now: now, ClaimedUntil: until, Done: done,
+		})
+		if errors.Is(err, pgx.ErrNoRows) {
 			break
 		}
-		if err := w.syncPerson(ctx, r, loc); err != nil {
+		if err != nil {
 			if ctx.Err() != nil {
 				break
 			}
-			return true, synced, err
+			return len(done), fmt.Errorf("calendar: claim a mailbox sync due: %w", err)
 		}
-		synced++
+		if loc == nil {
+			if loc, err = w.srv.calendarZone(ctx); err != nil {
+				w.releaseClaim(ctx, r.UserID, until)
+				return len(done), fmt.Errorf("calendar: read the business time zone: %w", err)
+			}
+		}
+		err = w.syncPerson(ctx, r, loc)
+		w.releaseClaim(ctx, r.UserID, until)
+		if err != nil {
+			if ctx.Err() != nil {
+				break
+			}
+			return len(done), err
+		}
+		done = append(done, r.UserID)
 	}
-	if synced > 0 {
-		w.deps.Logger.InfoContext(ctx, "calendar: mailbox syncs run", "worker", mailboxWorkerName, "synced", synced)
+	if len(done) > 0 {
+		w.deps.Logger.InfoContext(ctx, "calendar: mailbox syncs run", "worker", mailboxWorkerName, "synced", len(done))
 	}
-	return true, synced, nil
+	return len(done), nil
+}
+
+// releaseClaim gives back the claim until on the person's row, on a context
+// stripped of cancellation so a cancelled cycle still gives it back. One
+// that fails is logged and lapses at until.
+func (w *MailboxSyncWorker) releaseClaim(ctx context.Context, userID uuid.UUID, until time.Time) {
+	release := context.WithoutCancel(ctx)
+	if err := w.srv.queries().ReleaseMailboxSyncClaim(release, store.ReleaseMailboxSyncClaimParams{
+		UserID: userID, ClaimedUntil: until,
+	}); err != nil {
+		w.deps.Logger.WarnContext(release, "calendar: giving back a mailbox sync claim failed; it lapses",
+			"worker", mailboxWorkerName, "error", err.Error())
+	}
 }
 
 // takeNotices makes the notified people's syncs due (design O11.6): it asks
@@ -328,7 +323,7 @@ func (w *MailboxSyncWorker) RunCycle(ctx context.Context) (bool, int, error) {
 // page (noticesFull), so a page of contracts.MailboxNoticesMax is followed
 // by the next rather than asked again — and marks their rows due at now in
 // one statement, holding no connection across the call — it runs before
-// the lease is taken, so every replica asks, which costs one indexed read:
+// anyone is claimed, so every replica asks, which costs one indexed read:
 // a mark is idempotent, a row synced since the notice never marked again.
 // noticesSince
 // moves on to the latest At only when that statement worked; one that

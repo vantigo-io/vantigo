@@ -13,6 +13,7 @@ sources:
   - apps/server/internal/db/migrations/00083_calendar_mailbox_busy.sql
   - apps/server/internal/db/migrations/00084_calendar_mailbox_writeback.sql
   - apps/server/internal/db/migrations/00086_calendar_mailbox_sync_mailbox.sql
+  - apps/server/internal/db/migrations/00087_calendar_mailbox_sync_claim.sql
 ---
 The Calendar module is one view of every time-bound thing Vantigo knows about one
 person — the follow-ups Customers holds for them, their absences in Staff, their tasks in
@@ -83,7 +84,7 @@ module provides.
 
 ## The schema
 
-Six migrations: `00055_calendar_baseline.sql` creates the `calendar` schema and its three
+Eight migrations: `00055_calendar_baseline.sql` creates the `calendar` schema and its three
 tables, `00056_calendar_invitations.sql` adds the attendees from outside the company
 and the cancelled state, `00057_calendar_feed.sql` adds the feed addresses and the
 subscriptions, `00081_calendar_mailbox_sync.sql` adds the [Outlook
@@ -92,7 +93,9 @@ sync's](#the-two-tables) two tables, `00083_calendar_mailbox_busy.sql` adds the
 `00084_calendar_mailbox_writeback.sql` adds the [write-back's](#the-write-back) columns
 — each copy's version and release, and the last change put back, and
 `00086_calendar_mailbox_sync_mailbox.sql` indexes `lower(mailbox)` of the rows that are on, for
-the [change notifications'](#change-notifications) marks. Every id is a `bigint` identity starting at 1001. Every foreign identifier — the
+the [change notifications'](#change-notifications) marks, and
+`00087_calendar_mailbox_sync_claim.sql` adds the [worker's](#the-mailbox-sync-worker) claim,
+`mailbox_sync.claimed_until`. Every id is a `bigint` identity starting at 1001. Every foreign identifier — the
 owner, an attendee, a customer, a project, the holder of an address — is opaque: users, customers and projects
 live in other schemas and are read through contracts, never through SQL (see [module
 boundaries](/en/contributing/module-boundaries/) rule 4). No table has a CHECK
@@ -1421,10 +1424,15 @@ The **`calendar-subscriptions`** worker keeps the subscriptions fresh. It is con
 through `Workers` behind `CALENDAR_SUBSCRIPTIONS_ENABLED` (default on), and
 `CALENDAR_SUBSCRIPTIONS_POLL` (default `30m`, at least `5m`) is how often each
 subscription is fetched. It **wakes every five minutes** — a constant, not a setting —
-takes its advisory lease, `0x43414C5355425331` ("CALSUBS1"), on one pooled connection as
-[the cancellations worker](#the-cancellations-worker) does, so several replicas take
-turns, and fetches every subscription whose `next_fetch_at` is null or past, the never-fetched
-first and then the longest due, at most **200** a cycle, one at a time. After each attempt
+and fetches every subscription whose `next_fetch_at` is null or past, the never-fetched
+first and then the longest due, at most **200** a cycle, one at a time. It takes no lease:
+each subscription is **claimed** in one short statement of its own (`FOR UPDATE SKIP
+LOCKED`) that puts its `next_fetch_at` **five minutes** ahead — the fetch's 20 seconds
+and room for its record — and gives the connection back to the pool before the owner's
+access is asked or the address fetched. The claim keeps two replicas from fetching one
+subscription, and they share the due ones; the fetch's record then sets when it is due
+next, and a fetch cut short is due again once the claim lapses. No connection is held
+while a neighbour or the address is asked. After each attempt
 — the worker's, a save's or **Refresh now**'s — it sets
 
 ```
@@ -1762,7 +1770,9 @@ gives `mailbox_sync` the delta's four columns and widens the ids 00081 stored �
 `mailbox_events.event_id` and `mailbox_sync.calendar_id` — to 512, the provider's bound
 on an id; `00084_calendar_mailbox_writeback.sql` adds the [write-back's](#the-write-back)
 five columns; `00086_calendar_mailbox_sync_mailbox.sql` adds the index on `lower(mailbox)`
-where the sync is on (the [change notifications'](#change-notifications) marks). No CHECK holds a value to its set, the
+where the sync is on (the [change notifications'](#change-notifications) marks);
+`00087_calendar_mailbox_sync_claim.sql` adds `claimed_until` (the
+[worker's](#the-mailbox-sync-worker) claim). No CHECK holds a value to its set, the
 module's validation does.
 
 - **`mailbox_sync`** — a person's setting and the worker's record of it, one row per
@@ -1775,8 +1785,9 @@ module's validation does.
   clean-up owed —, `off`, `unavailable` or `failed`), `error` (40, the last refusal's
   code, null after a sync that worked), `next_sync_at` (null is now), `last_synced_at`,
   `attempts` (failures in a row), `reconcile` (the next sync reads the mailbox's list
-  first; true by default), `revision` (from 1, the `PUT`'s `If-Match`) and the two
-  stamps. `ix_mailbox_sync_due` on `next_sync_at`, partial on `enabled OR state =
+  first; true by default), `revision` (from 1, the `PUT`'s `If-Match`), `claimed_until`
+  (null, or until when a cycle has claimed the row: no other cycle syncs it before) and
+  the two stamps. `ix_mailbox_sync_due` on `next_sync_at`, partial on `enabled OR state =
   'stopping'`, serves the worker's due list. The [busy read's](#the-busy-read) state:
   `busy_link` (the provider's next or delta link, opaque and valid for the person's
   mailbox alone), `busy_from` and `busy_to` (the dates the delta was started over) and
@@ -1911,12 +1922,22 @@ other target rewrites everything.
 The **`calendar-mailbox-sync`** worker writes the copies. It is contributed through
 `Workers` behind `CALENDAR_MAILBOX_SYNC_ENABLED` (default on); turned off, nothing is
 written to or removed from any mailbox until it is on again. It **wakes every minute** — a
-constant — takes its advisory lease, `0x43414C4D424F5831` ("CALMBOX1"), on one pooled
-connection as the other calendar workers do, and lists in a short transaction on that
-connection, committed before the first call out, the rows that are on or owe a clean-up
-and are due (`next_sync_at` null or past) — the never-synced first, then the longest
-due — at most **50** a cycle (`FOR UPDATE SKIP LOCKED`). It syncs them one at a time,
-with no transaction open while the provider, identity, Staff or a source is asked. Each
+constant — and syncs, one at a time, the rows that are on or owe a clean-up and are due
+(`next_sync_at` null or past) — the never-synced first, then the longest due — at most
+**50** a cycle, each person once. It takes no lease. Each person is **claimed** in one
+short statement of their own (`FOR UPDATE SKIP LOCKED`): the due row whose
+`claimed_until` is null or past gets `claimed_until` **ten minutes** ahead — the
+person's three minutes below and room for the rows written after them — and the
+statement's connection goes back to the pool before anything is asked. The claim is
+what keeps two replicas from syncing one person at once, and they share the due rows
+between them; it is given back when the person's sync ends, whatever it answered, and
+one a stopped replica left lapses. The `PUT`, the appointment writes' nudge and the
+[change notifications](#change-notifications) move `next_sync_at` only, never a
+claim: a person nudged while their sync runs is due again once it is given back. No
+connection is held while the provider, identity, Staff, a source or the pool is asked,
+and no transaction is open while a neighbour is: a worker holding one connection while
+it waits for another starves a small pool — `pgxpool` opens at most four, or one a
+CPU, by default — and the readiness probe with it. Each
 person has **three minutes** for everything their sync asks of the neighbours, so one
 slow mailbox cannot hold the cycle; the person's own rows are written past it. For each
 person:
@@ -2285,10 +2306,8 @@ unchanged either way.
 - **`Watch`** is the sync's last step (step 11 [above](#the-mailbox-sync-worker)).
 - **`Unwatch`** is a [clean-up](#the-clean-up)'s step, for every reason but a target
   change: the subscription is the mailbox's, not the calendar's.
-- **`Notified`** is asked **each cycle**, **before the lease is taken** — no connection
-  is held while the read and the mark ask the pool for one, which on a small pool would
-  starve the workers and the readiness probe; every replica asks, a mark being
-  idempotent — with `since` — held in memory by the worker, per process, **initially now
+- **`Notified`** is asked **each cycle**, **before anyone is claimed** — no connection
+  is held across the read; every replica asks, a mark being idempotent — with `since` — held in memory by the worker, per process, **initially now
   minus the poll interval** and advanced to the latest `At` it marked — **less 30
   seconds**: the overlap covers a notice whose write committed after a later one was read,
   and replicas whose clocks differ a little. Taking a notice twice is harmless, since the

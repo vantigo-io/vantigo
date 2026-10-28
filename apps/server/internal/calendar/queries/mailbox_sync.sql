@@ -38,17 +38,32 @@ ON CONFLICT (user_id) DO UPDATE SET
     updated_at = EXCLUDED.updated_at
 RETURNING *;
 
--- name: ClaimDueMailboxSyncs :many
--- ClaimDueMailboxSyncs is the worker's cycle (O7): the rows on, or owing a
--- clean-up, that are due at now — never synced first, then the longest due —
--- at most row_limit, locked so no other cycle takes the same one. Through
--- ix_mailbox_sync_due.
-SELECT * FROM calendar.mailbox_sync
-WHERE (enabled OR state = 'stopping')
-  AND (next_sync_at IS NULL OR next_sync_at <= @now::timestamptz)
-ORDER BY next_sync_at NULLS FIRST, user_id
-LIMIT @row_limit::integer
-FOR UPDATE SKIP LOCKED;
+-- name: ClaimDueMailboxSync :one
+-- ClaimDueMailboxSync is the worker's claim (O7): the row on, or owing a
+-- clean-up, that is due at now and not claimed — never synced first, then
+-- the longest due — and not one of done, the people the cycle has synced
+-- already, claimed until claimed_until, so no other cycle takes it while it
+-- syncs. Locked SKIP LOCKED, so two cycles claiming at once take two rows.
+-- No row is nothing left due. Through ix_mailbox_sync_due.
+UPDATE calendar.mailbox_sync SET claimed_until = @claimed_until::timestamptz
+WHERE user_id = (
+    SELECT c.user_id FROM calendar.mailbox_sync c
+    WHERE (c.enabled OR c.state = 'stopping')
+      AND (c.next_sync_at IS NULL OR c.next_sync_at <= @now::timestamptz)
+      AND (c.claimed_until IS NULL OR c.claimed_until <= @now::timestamptz)
+      AND c.user_id <> ALL(@done::uuid[])
+    ORDER BY c.next_sync_at NULLS FIRST, c.user_id
+    LIMIT 1
+    FOR UPDATE SKIP LOCKED
+)
+RETURNING *;
+
+-- name: ReleaseMailboxSyncClaim :exec
+-- ReleaseMailboxSyncClaim gives back the claim a sync took, once it ended,
+-- whatever it wrote: only that claim — one that lapsed and was taken again
+-- is the other cycle's.
+UPDATE calendar.mailbox_sync SET claimed_until = NULL
+WHERE user_id = @user_id AND claimed_until = @claimed_until::timestamptz;
 
 -- name: WriteMailboxSyncResult :one
 -- WriteMailboxSyncResult records what a sync did: the state and the error

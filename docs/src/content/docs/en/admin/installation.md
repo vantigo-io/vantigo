@@ -306,9 +306,9 @@ HTTP replica does not multiply the pollers:
 Replicas that should neither migrate nor run workers can run the `server` command
 instead of `api`; it serves only, whatever `WORKERS_IN_PROCESS` says. Whichever topology
 you use, retention cleanup, the registry workers, the EHF events worker and the
-calendar cancellations and subscriptions workers take a PostgreSQL advisory lock, so each runs on exactly one instance per cycle; the outbox,
-the `invoices-ehf` worker, the `invoices-reminders` worker, the `invoices-billing` worker
-and the `invoices-payments` worker instead take one row at a time under a time-limited lease, so any number of
+calendar cancellations worker take a PostgreSQL advisory lock, so each runs on exactly one instance per cycle; the outbox,
+the `invoices-ehf` worker, the `invoices-reminders` worker, the `invoices-billing` worker,
+the `invoices-payments` worker and the calendar subscriptions and mailbox sync workers instead take one row at a time under a time-limited lease, so any number of
 instances share the work without sending anything twice. The reminder worker sends one letter at a time, at most one a
 second per instance, and each send must finish well inside its 60-second lease
 ([The reminder worker and mail](/en/admin/payments/#the-reminder-worker-and-mail)).

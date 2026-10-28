@@ -258,8 +258,10 @@ most ten each — and see their events beside their own
 ([subscriptions](/en/reference/calendar/#subscriptions)). The `calendar-subscriptions`
 worker fetches them. It runs unless `CALENDAR_SUBSCRIPTIONS_ENABLED=0`, in worker mode,
 and in api mode with `WORKERS_IN_PROCESS=1`. It **wakes every five minutes** — not a
-setting — takes an advisory lock so several replicas take turns, and fetches each
-subscription that is due, at most 200 a cycle, one at a time. Each subscription is due
+setting — and fetches each subscription that is due, at most 200 a cycle, one at a time.
+Each is claimed for five minutes while it is fetched, so several replicas share the
+subscriptions due and never fetch one twice at once, and no database connection is held
+while a calendar is fetched. Each subscription is due
 `CALENDAR_SUBSCRIPTIONS_POLL` (default `30m`, at least `5m`) after its last attempt, or —
 after a fetch that answered the calendar — later when the calendar itself asks to be read
 less often (at most once a day), plus a little jitter. A failed fetch keeps the calendar's last good copy and records the
@@ -338,10 +340,14 @@ its permission ([Microsoft Entra ID](/en/admin/entra/#calendar-sync)). The
 `calendar-mailbox-sync` worker writes the copies through the Entra module's connection
 ([the worker](/en/reference/calendar/#the-mailbox-sync-worker)). It runs unless
 `CALENDAR_MAILBOX_SYNC_ENABLED=0`, in worker mode, and in api mode with
-`WORKERS_IN_PROCESS=1`. It **wakes every minute** — not a setting — takes an advisory
-lock so several replicas take turns, and syncs each person who is due, at most 50 a
-cycle, one at a time, each with three minutes for what their sync asks of Microsoft and
-the other modules, so one slow mailbox cannot hold the rest. A person is due `CALENDAR_MAILBOX_SYNC_POLL` (default `15m`, at
+`WORKERS_IN_PROCESS=1`. It **wakes every minute** — not a setting — and syncs each
+person who is due, at most 50 a cycle, one at a time. Each person is claimed for ten
+minutes before their sync and given back after it, so several replicas share the people
+due and never sync one person twice at once; a replica stopped mid-sync leaves a claim
+that lapses, and the person is synced by the next cycle after it. No database connection
+is held while Microsoft is asked, so the worker cannot starve a small connection pool.
+Each person has three minutes for what their sync asks of Microsoft and the other
+modules, so one slow mailbox cannot hold the rest. A person is due `CALENDAR_MAILBOX_SYNC_POLL` (default `15m`, at
 least `1m`) after their last sync, and at once when one of their appointments changes,
 when they change their setting, or when they press **Sync now** — so an appointment
 reaches Outlook within a minute. A failed sync is tried again after 1, 5, 15 and 60

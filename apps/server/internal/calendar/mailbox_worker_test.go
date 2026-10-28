@@ -38,13 +38,13 @@ func mailboxWorker(t *testing.T, r *mailboxRig) *calendar.MailboxSyncWorker {
 	return nil
 }
 
-// mailboxCycle runs one cycle, failing unless it ran, and answers how many
+// mailboxCycle runs one cycle, failing on its error, and answers how many
 // people it synced.
 func mailboxCycle(t *testing.T, r *mailboxRig) int {
 	t.Helper()
-	ran, n, err := mailboxWorker(t, r).RunCycle(context.Background())
-	if err != nil || !ran {
-		t.Fatalf("cycle: ran %v, %v", ran, err)
+	n, err := mailboxWorker(t, r).RunCycle(context.Background())
+	if err != nil {
+		t.Fatalf("cycle: %v", err)
 	}
 	return n
 }

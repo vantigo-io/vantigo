@@ -734,7 +734,12 @@ Communications' outbox is the working example.
   module's contract. A module's collaborators are composed for real or replaced by
   contract fakes through its `With*` options — `WithProjects`, `WithBillableHours`,
   `WithInvoicedWork` and the rest — and `WithPoolMaxConns` sets the size of the
-  installation's database pool, which the races above hold at two. Identity is always
+  installation's database pool, which the races above hold at two. The calendar's
+  mailbox sync and subscriptions workers are held at four with three taken by the test,
+  and the last must stay free while a sync waits on the provider (the mailbox fake's
+  `BeforeStatus` holds it there) or a fetch runs: **no worker holds a pooled connection
+  while it asks the pool for another or calls out**, which on pgxpool's default of
+  four starved every worker and the readiness probe. Identity is always
   composed and always provides `Accounts`, and Compose overwrites a preset
   `Deps.Accounts`, so `WithAccounts(p)` replaces identity's `Module.Accounts` in the
   composition — `p` is what every module's `Deps.Accounts` resolves to — and

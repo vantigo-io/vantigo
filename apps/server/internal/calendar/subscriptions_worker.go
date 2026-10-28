@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 
 	"github.com/vantigo-io/vantigo/server/internal/calendar/store"
 	"github.com/vantigo-io/vantigo/server/internal/module"
@@ -18,13 +19,14 @@ import (
 // every five minutes it fetches each subscription that is due — next_fetch_at
 // null or past, the never-fetched first and then the longest due, at most
 // two hundred a cycle, one at a time — through the same fetch a save and
-// Refresh now use, and sets when each is due next. The cancellations
-// worker's shape: one cycle under an advisory lease taken on one pooled
-// connection, every query on that connection and never on the pool;
-// another replica holding the lease means this one skips the cycle. The due
-// list is read in a short transaction of its own and committed before the
-// first fetch, so no row lock is held for the minutes a cycle may take; the
-// lease is what keeps two replicas from fetching the same row. A person who
+// Refresh now use, and sets when each is due next. It takes no lease: each
+// subscription is claimed in one short statement of its own
+// (ClaimDueSubscription, next_fetch_at put subscriptionsClaimHold ahead)
+// whose connection goes back to the pool before the fetch, so no connection
+// is held while the owner's access is asked or the address fetched — on a
+// small pool, a worker holding one while it asked for another starved every
+// other and the readiness probe. The claim is what keeps two replicas from
+// fetching the same row, and they share the rows due. A person who
 // may no longer use Calendar — disabled, locked out, deactivated by the
 // directory, or without calendar:access — is asked about once a cycle
 // (Access.UserHolds), and their subscriptions are not fetched but put off by
@@ -35,9 +37,10 @@ const (
 	// subscriptionsWorkerName is what the runner logs this worker as.
 	subscriptionsWorkerName = "calendar-subscriptions"
 
-	// subscriptionsLeaseKey is the ASCII string "CALSUBS1" read as a
-	// big-endian 64-bit value: this worker's own advisory lease.
-	subscriptionsLeaseKey int64 = 0x43414C5355425331
+	// subscriptionsClaimHold is how long a cycle's claim on a subscription
+	// holds: a fetch's budget and room for its record. The record sets
+	// when the next fetch is due; a fetch cut short is due once it lapses.
+	subscriptionsClaimHold = 5 * time.Minute
 
 	// subscriptionsTick is how often the worker wakes — a constant, not a
 	// knob: the poll (CALENDAR_SUBSCRIPTIONS_POLL) is how often each
@@ -83,7 +86,7 @@ func (w *SubscriptionsWorker) Run(ctx context.Context) error {
 	ticker := time.NewTicker(w.Interval())
 	defer ticker.Stop()
 	for {
-		if _, _, err := w.RunCycle(ctx); err != nil && ctx.Err() == nil {
+		if _, err := w.RunCycle(ctx); err != nil && ctx.Err() == nil {
 			w.deps.Logger.Error("calendar: the subscriptions cycle failed", "worker", subscriptionsWorkerName, "error", err.Error())
 		}
 		select {
@@ -94,62 +97,31 @@ func (w *SubscriptionsWorker) Run(ctx context.Context) error {
 	}
 }
 
-// RunCycle is one cycle under the lease: it reports whether it ran — false
-// when another holder has the lease — and how many subscriptions it
-// fetched, whatever each answered. A cancelled context stops it between two
-// fetches. The unlock runs on a context stripped of cancellation, so a
-// cancelled cycle still gives the lease back; an unlock that fails closes
-// the connection, which ends the session and the lock with it.
-func (w *SubscriptionsWorker) RunCycle(ctx context.Context) (bool, int, error) {
-	conn, err := w.deps.Pool.Acquire(ctx)
-	if err != nil {
-		return false, 0, fmt.Errorf("calendar: acquire a connection for the subscriptions lease: %w", err)
-	}
-	defer conn.Release()
-
-	var acquired bool
-	if err := conn.QueryRow(ctx, `SELECT pg_try_advisory_lock($1)`, subscriptionsLeaseKey).Scan(&acquired); err != nil {
-		return false, 0, fmt.Errorf("calendar: take the subscriptions lease: %w", err)
-	}
-	if !acquired {
-		w.deps.Logger.DebugContext(ctx, "calendar: the subscriptions lease is held elsewhere; skipping this cycle", "worker", subscriptionsWorkerName)
-		return false, 0, nil
-	}
-	defer func() {
-		release := context.WithoutCancel(ctx)
-		if _, err := conn.Exec(release, `SELECT pg_advisory_unlock($1)`, subscriptionsLeaseKey); err != nil {
-			w.deps.Logger.ErrorContext(release, "calendar: releasing the subscriptions lease failed; discarding the connection",
-				"worker", subscriptionsWorkerName, "error", err.Error())
-			_ = conn.Conn().Close(release)
-		}
-	}()
-
-	tx, err := conn.Begin(ctx)
-	if err != nil {
-		return true, 0, fmt.Errorf("calendar: begin the subscriptions due list: %w", err)
-	}
-	due, err := store.New(tx).ListSubscriptionsDue(ctx, store.ListSubscriptionsDueParams{
-		Now: w.deps.Clock(), RowLimit: subscriptionsBatch,
-	})
-	if err != nil {
-		_ = tx.Rollback(context.WithoutCancel(ctx))
-		return true, 0, fmt.Errorf("calendar: list the subscriptions due: %w", err)
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return true, 0, fmt.Errorf("calendar: commit the subscriptions due list: %w", err)
-	}
-
-	q := store.New(conn)
-	fetched := 0
+// RunCycle fetches the subscriptions due, one claim at a time, and answers
+// how many it fetched, whatever each answered — at most
+// subscriptionsBatch. A cancelled context stops it between two fetches.
+func (w *SubscriptionsWorker) RunCycle(ctx context.Context) (int, error) {
+	q := w.srv.queries()
+	fetched, seen := 0, 0
 	mayFetch := map[uuid.UUID]bool{}
-	for _, d := range due {
-		if ctx.Err() != nil {
+	for ; seen < subscriptionsBatch && ctx.Err() == nil; seen++ {
+		now := w.deps.Clock()
+		d, err := q.ClaimDueSubscription(ctx, store.ClaimDueSubscriptionParams{
+			Now: now, ClaimedUntil: now.Add(subscriptionsClaimHold),
+		})
+		if errors.Is(err, pgx.ErrNoRows) {
 			break
+		}
+		if err != nil {
+			if ctx.Err() != nil {
+				break
+			}
+			return fetched, fmt.Errorf("calendar: claim a subscription due: %w", err)
 		}
 		holds, asked := mayFetch[d.UserID]
 		if !asked {
 			if holds, err = w.srv.accessUserHolds(ctx, d.UserID, "calendar:access"); err != nil {
-				return true, fetched, fmt.Errorf("calendar: check a subscription's owner: %w", err)
+				return fetched, fmt.Errorf("calendar: check a subscription's owner: %w", err)
 			}
 			mayFetch[d.UserID] = holds
 		}
@@ -158,7 +130,7 @@ func (w *SubscriptionsWorker) RunCycle(ctx context.Context) (bool, int, error) {
 			if err := q.DeferSubscriptionFetch(ctx, store.DeferSubscriptionFetchParams{
 				NextFetchAt: nextFetchAt(now, w.srv.subscriptionsPoll(), 0), ID: d.ID,
 			}); err != nil {
-				return true, fetched, fmt.Errorf("calendar: put off subscription %d: %w", d.ID, err)
+				return fetched, fmt.Errorf("calendar: put off subscription %d: %w", d.ID, err)
 			}
 			w.deps.Logger.DebugContext(ctx, "calendar: a subscription's person may no longer use Calendar; it is put off",
 				"worker", subscriptionsWorkerName, "subscription_id", d.ID)
@@ -169,12 +141,12 @@ func (w *SubscriptionsWorker) RunCycle(ctx context.Context) (bool, int, error) {
 			if ctx.Err() != nil {
 				break
 			}
-			return true, fetched, err
+			return fetched, err
 		}
 		fetched++
 	}
 	if fetched > 0 {
 		w.deps.Logger.InfoContext(ctx, "calendar: subscriptions fetched", "worker", subscriptionsWorkerName, "fetched", fetched)
 	}
-	return true, fetched, nil
+	return fetched, nil
 }
