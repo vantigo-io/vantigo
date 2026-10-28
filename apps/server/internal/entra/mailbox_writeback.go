@@ -34,8 +34,9 @@ const (
 	// versionsSelect is what Versions asks of an event.
 	versionsSelect = "id,changeKey,type"
 	// eventsSelect is what Events asks of an event: the fields
-	// MailboxEventState carries, and the attendees to count.
-	eventsSelect = "id,changeKey,type,subject,body,location,start,end,isAllDay,showAs,sensitivity,isCancelled,attendees"
+	// MailboxEventState carries, the attendees to count, and the zone an
+	// all-day event was laid in (originalStartTimeZone), to read its dates.
+	eventsSelect = "id,changeKey,type,subject,body,location,start,end,isAllDay,originalStartTimeZone,showAs,sensitivity,isCancelled,attendees"
 	// eventsPrefer is the Prefer header of each of Events' requests: the
 	// times in UTC and the body as text — which Graph may not honour, the
 	// body's contentType saying which it answered.
@@ -202,19 +203,34 @@ type wholeEvent struct {
 	IsCancelled bool              `json:"isCancelled"`
 	Attendees   []struct{}        `json:"attendees"`
 	Properties  []graphProperty   `json:"singleValueExtendedProperties"`
+	// OriginalStartTimeZone is the zone the event was laid in — a Windows
+	// name, or an IANA one — which an all-day event's dates are read in.
+	OriginalStartTimeZone string `json:"originalStartTimeZone"`
 }
 
 // stateOf is ev as the contract answers it, false when its times do not
 // read. Key is this installation's key, Foreign a marker of another's (or
 // one carrying no key); the times as Delta's (changeOf): a timed event's
-// instants in UTC, an all-day event's dates rounded to the nearest
-// midnight, the end inclusive; ShowAs the contract's value, "" for one it
-// does not name; Private a private or confidential sensitivity; TimeZone "".
+// instants in UTC; an all-day event's dates the dates its UTC instants fall
+// on in the zone it was laid in (originalStartTimeZone, a Windows name
+// mapped through windowsZones, or an IANA name), the end inclusive — or,
+// when that zone does not map to a location, rounded to the nearest
+// midnight as Delta's are; ShowAs the contract's value, "" for one it does
+// not name; Private a private or confidential sensitivity; TimeZone "".
 func stateOf(ev wholeEvent, prefix string) (contracts.MailboxEventState, bool) {
 	change, ok := changeOf(deltaEvent{ID: ev.ID, Type: ev.Type, IsAllDay: ev.IsAllDay, IsCancelled: ev.IsCancelled,
 		ShowAs: ev.ShowAs, Start: ev.Start, End: ev.End})
 	if !ok {
 		return contracts.MailboxEventState{}, false
+	}
+	if loc := zoneLocation(ev.OriginalStartTimeZone); ev.IsAllDay && loc != nil {
+		start, _ := deltaTime(ev.Start)
+		end, _ := deltaTime(ev.End)
+		change.StartDate = civilIn(start, loc)
+		change.EndDate = civilIn(end, loc).AddDate(0, 0, -1)
+		if change.EndDate.Before(change.StartDate) {
+			change.EndDate = change.StartDate
+		}
 	}
 	out := contracts.MailboxEventState{
 		EventID:   ev.ID,
@@ -247,6 +263,39 @@ func stateOf(ev wholeEvent, prefix string) (contracts.MailboxEventState, bool) {
 	return out, true
 }
 
+// zoneLocation is the location of a zone Graph names: a Windows name
+// through windowsZones (CLDR's table, whatever the name's case), else an
+// IANA name; nil for "" or a zone that is neither.
+func zoneLocation(zone string) *time.Location {
+	zone = strings.TrimSpace(zone)
+	if zone == "" {
+		return nil
+	}
+	name, ok := windowsZones[zone]
+	if !ok {
+		for w, iana := range windowsZones {
+			if strings.EqualFold(w, zone) {
+				name, ok = iana, true
+				break
+			}
+		}
+	}
+	if !ok {
+		name = zone
+	}
+	loc, err := time.LoadLocation(name)
+	if err != nil {
+		return nil
+	}
+	return loc
+}
+
+// civilIn is the civil date t falls on in loc, at midnight UTC.
+func civilIn(t time.Time, loc *time.Location) time.Time {
+	y, mo, d := t.In(loc).Date()
+	return time.Date(y, mo, d, 0, 0, 0, 0, time.UTC)
+}
+
 // eventPathIn is the event id read through its calendar's own path: the
 // default calendar's /users/{oid}/calendar/events/{id}, else
 // /users/{oid}/calendars/{cid}/events/{id} — so an event moved to another
@@ -264,67 +313,83 @@ func (s mailboxSession) eventPathIn(calendarID, id string) string {
 // $select=<eventsSelect> and the marker expanded, each request carrying
 // Prefer: <eventsPrefer>, in $batch requests of twenty, one after another.
 // 200 is answered (stateOf), unless the event answered is not the one
-// asked or its times do not read — left out, counted at debug level; 404
-// (the event not in that calendar) is not answered; 429 is sent again once,
+// asked, its body is not the JSON expected or its times do not read —
+// skipped, counted at debug level; 404 (the event not in that calendar, not
+// the mailbox gone) is answered in Gone; a 403 of one event is skipped too
+// (a refusal of that event alone, never ErrMailboxDenied — the mailbox's
+// own refusal is the $batch's, or Versions'); 429 is sent again once,
 // alone, after a Retry-After of at most mailboxMaxRetryAfter, then
 // errThrottled; any other refusal fails the whole call through
-// mailboxRefusal. At most MailboxMarkedMax ids, each a validID; refused
-// under cleanup.
-func (m *mailboxCalendar) Events(ctx context.Context, mailbox, calendarID string, eventIDs []string) ([]contracts.MailboxEventState, error) {
+// mailboxRefusal. A $batch whose answer is larger than the client reads, or
+// is not the JSON expected, is sent again one id at a time, and an id whose
+// read alone still is is skipped, counted. A refusal of the $batch POST
+// itself goes through mailboxRefusal. A skipped id is neither answered nor
+// Gone. At most MailboxMarkedMax ids, each a validID; refused under
+// cleanup.
+func (m *mailboxCalendar) Events(ctx context.Context, mailbox, calendarID string, eventIDs []string) (contracts.MailboxEventsRead, error) {
 	if len(eventIDs) > contracts.MailboxMarkedMax {
-		return nil, fmt.Errorf("entra: Events takes at most %d ids", contracts.MailboxMarkedMax)
+		return contracts.MailboxEventsRead{}, fmt.Errorf("entra: Events takes at most %d ids", contracts.MailboxMarkedMax)
 	}
 	if calendarID != "" && !validID(calendarID) {
-		return nil, errors.New("entra: a calendar id that is no id")
+		return contracts.MailboxEventsRead{}, errors.New("entra: a calendar id that is no id")
 	}
 	for _, id := range eventIDs {
 		if !validID(id) {
-			return nil, errors.New("entra: an event id that is no id")
+			return contracts.MailboxEventsRead{}, errors.New("entra: an event id that is no id")
 		}
 	}
 	s, err := m.open(ctx, mailbox, false)
 	if err != nil {
-		return nil, err
+		return contracts.MailboxEventsRead{}, err
 	}
-	states := make([]*contracts.MailboxEventState, len(eventIDs))
+	r := eventsRead{states: make([]*contracts.MailboxEventState, len(eventIDs)), gone: make([]bool, len(eventIDs))}
 	all := make([]int, len(eventIDs))
 	for i := range all {
 		all[i] = i
 	}
 	for chunk := range slices.Chunk(all, mailboxBatchSize) {
 		if err := ctx.Err(); err != nil {
-			return nil, err
+			return contracts.MailboxEventsRead{}, err
 		}
-		if err := m.eventsBatch(ctx, s, calendarID, eventIDs, chunk, states); err != nil {
-			return nil, err
+		if err := m.eventsBatch(ctx, s, calendarID, eventIDs, chunk, &r); err != nil {
+			return contracts.MailboxEventsRead{}, err
 		}
 	}
-	out := []contracts.MailboxEventState{}
-	for _, st := range states {
-		if st != nil {
-			out = append(out, *st)
+	if r.skipped > 0 {
+		m.client.logger.DebugContext(ctx, "entra: an events read skipped events it could not read",
+			"tenant", s.cred.tenantID.String(), "skipped", r.skipped)
+	}
+	out := contracts.MailboxEventsRead{Events: []contracts.MailboxEventState{}, Gone: []string{}}
+	for i, st := range r.states {
+		switch {
+		case st != nil:
+			out.Events = append(out.Events, *st)
+		case r.gone[i]:
+			out.Gone = append(out.Gone, eventIDs[i])
 		}
 	}
 	return out, nil
 }
 
+// eventsRead is an Events call's answers so far, by the index of the id
+// asked: the state read, or gone; neither when it was skipped.
+type eventsRead struct {
+	states  []*contracts.MailboxEventState
+	gone    []bool
+	skipped int
+}
+
 // eventsBatch reads the events at chunk (indices into ids) as one $batch
-// and writes the state of each answered into states; the ones answered 429
-// are sent once more, alone, after the longest Retry-After among them. The
-// answer is read through graphMaxDeltaBody (wholeEvents): twenty bodies,
-// which Graph may answer as HTML whatever the Prefer, can outgrow
-// graphMaxBatchBody.
-func (m *mailboxCalendar) eventsBatch(ctx context.Context, s mailboxSession, calendarID string, ids []string, chunk []int, states []*contracts.MailboxEventState) error {
+// into r; the ones answered 429 are sent once more, alone, after the
+// longest Retry-After among them. The answer is read through
+// graphMaxDeltaBody (wholeEvents): twenty bodies, which Graph may answer as
+// HTML whatever the Prefer, can outgrow graphMaxBatchBody. One that
+// outgrows even that, or does not decode, is sent again an id at a time;
+// an id that alone still does is skipped.
+func (m *mailboxCalendar) eventsBatch(ctx context.Context, s mailboxSession, calendarID string, ids []string, chunk []int, r *eventsRead) error {
 	prefix := s.keyPrefix()
 	params := query(url.Values{"$select": {eventsSelect}, "$expand": {markedExpand}})
 	send := chunk
-	skipped := 0
-	defer func() {
-		if skipped > 0 {
-			m.client.logger.DebugContext(ctx, "entra: an events read answered events whose ids or times do not read",
-				"tenant", s.cred.tenantID.String(), "skipped", skipped)
-		}
-	}()
 	for attempt := 1; ; attempt++ {
 		requests := make([]mailboxRequest, len(send))
 		for n, i := range send {
@@ -333,11 +398,23 @@ func (m *mailboxCalendar) eventsBatch(ctx context.Context, s mailboxSession, cal
 		}
 		var answer batchAnswer
 		if err := m.client.post(ctx, s.cred, "/$batch", map[string]any{"requests": requests}, &answer, noWords, wholeEvents); err != nil {
-			return mailboxRefusal(err)
+			if !unreadableAnswer(err) {
+				return mailboxRefusal(err)
+			}
+			if len(send) == 1 {
+				r.skipped++
+				return nil
+			}
+			for _, i := range send {
+				if err := m.eventsBatch(ctx, s, calendarID, ids, []int{i}, r); err != nil {
+					return err
+				}
+			}
+			return nil
 		}
 		byID := make(map[string]int, len(answer.Responses))
-		for n, r := range answer.Responses {
-			byID[r.ID] = n
+		for n, a := range answer.Responses {
+			byID[a.ID] = n
 		}
 		var throttled []int
 		var wait time.Duration
@@ -346,35 +423,39 @@ func (m *mailboxCalendar) eventsBatch(ctx context.Context, s mailboxSession, cal
 			if !ok {
 				return fmt.Errorf("%w: the $batch did not answer a read", errTenantUnreachable)
 			}
-			r := answer.Responses[n]
-			switch r.Status {
+			a := answer.Responses[n]
+			switch a.Status {
 			case http.StatusOK:
 				var ev wholeEvent
-				if err := json.Unmarshal(r.Body, &ev); err != nil {
-					return fmt.Errorf("%w: an event read is not the JSON expected", errTenantUnreachable)
-				}
-				if ev.ID != ids[i] {
-					skipped++
+				if err := json.Unmarshal(a.Body, &ev); err != nil || ev.ID != ids[i] {
+					r.skipped++
 					continue
 				}
 				st, ok := stateOf(ev, prefix)
 				if !ok {
-					skipped++
+					r.skipped++
 					continue
 				}
-				states[i] = &st
+				r.states[i] = &st
 			case http.StatusTooManyRequests:
-				d, ok := retryAfter(http.Header{"Retry-After": {batchHeader(r.Headers, "Retry-After")}}, m.client.now())
+				d, ok := retryAfter(http.Header{"Retry-After": {batchHeader(a.Headers, "Retry-After")}}, m.client.now())
 				if attempt > 1 || !ok || d > mailboxMaxRetryAfter {
 					return errThrottled
 				}
 				throttled = append(throttled, i)
 				wait = max(wait, d)
 			default:
-				g := batchRefusal(r.Status, r.Body)
+				g := batchRefusal(a.Status, a.Body)
 				m.client.logger.DebugContext(ctx, "entra: Graph refused a mailbox read",
-					"tenant", s.cred.tenantID.String(), "status", r.Status, "code", g.Code, "detail", g.Detail)
-				if r.Status == http.StatusNotFound && !mailboxGone(g) {
+					"tenant", s.cred.tenantID.String(), "status", a.Status, "code", g.Code, "detail", g.Detail)
+				switch {
+				case mailboxGone(g):
+					return mailboxRefusal(g)
+				case a.Status == http.StatusNotFound:
+					r.gone[i] = true
+					continue
+				case a.Status == http.StatusForbidden:
+					r.skipped++
 					continue
 				}
 				return mailboxRefusal(g)
@@ -388,4 +469,15 @@ func (m *mailboxCalendar) eventsBatch(ctx context.Context, s mailboxSession, cal
 		}
 		send = throttled
 	}
+}
+
+// unreadableAnswer reports whether err is a $batch answered but not read:
+// larger than the client reads, or not the JSON expected.
+func unreadableAnswer(err error) bool {
+	if errors.Is(err, errResponseTooLarge) {
+		return true
+	}
+	var syntax *json.SyntaxError
+	var typ *json.UnmarshalTypeError
+	return errors.As(err, &syntax) || errors.As(err, &typ)
 }

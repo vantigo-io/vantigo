@@ -371,14 +371,15 @@ func (s *server) mailboxVersions(ctx context.Context, mailbox, calendarID string
 }
 
 // mailboxEvents is, among eventIDs — at most contracts.MailboxMarkedMax —
-// the events of the calendar read whole (design O10.2); an id not answered
-// is not in that calendar any more.
-func (s *server) mailboxEvents(ctx context.Context, mailbox, calendarID string, eventIDs []string) ([]contracts.MailboxEventState, error) {
+// the events of the calendar read whole (design O10.2), and the ids the
+// directory answered not in that calendar any more (Gone); an id in
+// neither was not read this time.
+func (s *server) mailboxEvents(ctx context.Context, mailbox, calendarID string, eventIDs []string) (contracts.MailboxEventsRead, error) {
 	if err := noteContractCall(ctx, "MailboxCalendar.Events"); err != nil {
-		return nil, err
+		return contracts.MailboxEventsRead{}, err
 	}
 	if s.deps.MailboxCalendar == nil {
-		return nil, contracts.ErrMailboxUnavailable
+		return contracts.MailboxEventsRead{}, contracts.ErrMailboxUnavailable
 	}
 	return s.deps.MailboxCalendar.Events(ctx, mailbox, calendarID, eventIDs)
 }

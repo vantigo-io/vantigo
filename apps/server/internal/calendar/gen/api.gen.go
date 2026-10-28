@@ -320,6 +320,7 @@ func (e MailboxSyncDetail) Valid() bool {
 // Defines values for MailboxSyncPutBackReason.
 const (
 	Conflict    MailboxSyncPutBackReason = "conflict"
+	ManyDeleted MailboxSyncPutBackReason = "many_deleted"
 	NotEditable MailboxSyncPutBackReason = "not_editable"
 	NotOwner    MailboxSyncPutBackReason = "not_owner"
 	Refused     MailboxSyncPutBackReason = "refused"
@@ -329,6 +330,8 @@ const (
 func (e MailboxSyncPutBackReason) Valid() bool {
 	switch e {
 	case Conflict:
+		return true
+	case ManyDeleted:
 		return true
 	case NotEditable:
 		return true
@@ -834,7 +837,7 @@ type MailboxSync struct {
 	Kinds        []string          `json:"kinds"`
 	LastSyncedAt *time.Time        `json:"lastSyncedAt,omitempty"`
 
-	// PutBack The last change the caller made in Outlook to a copy that the sync did not take, and put back (calendar Outlook sync design O10.3). reason is conflict (the appointment was changed in Vantigo too, and Vantigo's version won), refused (the appointment's rules refused the change), not_owner (the copy is of an appointment the caller attends, not one they own) or not_editable (the copy is of an item another module projects, or the change is one an occurrence cannot carry). Absent when nothing was put back since the sync was last turned on or cleaned up.
+	// PutBack The last change the caller made in Outlook to a copy that the sync did not take, and put back (calendar Outlook sync design O10.3). reason is conflict (the appointment was changed in Vantigo too, and Vantigo's version won), refused (the appointment's rules refused the change), not_owner (the copy is of an appointment the caller attends, not one they own), not_editable (the copy is of an item another module projects, or the change is one an occurrence cannot carry) or many_deleted (more than ten of the caller's own appointments were deleted in Outlook in one sync, so none was taken and every copy was put back; appointmentId is then absent). Absent when nothing was put back since the sync was last turned on or cleaned up.
 	PutBack *MailboxSyncPutBack `json:"putBack,omitempty"`
 
 	// Revision Send it back as If-Match on PUT /mailbox-sync.
@@ -863,7 +866,7 @@ type MailboxSyncKind struct {
 	Module string `json:"module"`
 }
 
-// MailboxSyncPutBack The last change the caller made in Outlook to a copy that the sync did not take, and put back (calendar Outlook sync design O10.3). reason is conflict (the appointment was changed in Vantigo too, and Vantigo's version won), refused (the appointment's rules refused the change), not_owner (the copy is of an appointment the caller attends, not one they own) or not_editable (the copy is of an item another module projects, or the change is one an occurrence cannot carry). Absent when nothing was put back since the sync was last turned on or cleaned up.
+// MailboxSyncPutBack The last change the caller made in Outlook to a copy that the sync did not take, and put back (calendar Outlook sync design O10.3). reason is conflict (the appointment was changed in Vantigo too, and Vantigo's version won), refused (the appointment's rules refused the change), not_owner (the copy is of an appointment the caller attends, not one they own), not_editable (the copy is of an item another module projects, or the change is one an occurrence cannot carry) or many_deleted (more than ten of the caller's own appointments were deleted in Outlook in one sync, so none was taken and every copy was put back; appointmentId is then absent). Absent when nothing was put back since the sync was last turned on or cleaned up.
 type MailboxSyncPutBack struct {
 	// AppointmentId The appointment the copy is of, when it is one.
 	AppointmentId *int64 `json:"appointmentId,omitempty"`

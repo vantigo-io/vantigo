@@ -12,7 +12,8 @@ import (
 )
 
 // TestChangeOf pins how a delta's event is read (design O9.3, O9.4): the
-// times in the zone answered — UTC, an IANA name, else read as UTC —, an
+// times in the zone answered — UTC or an IANA name; any other zone leaves
+// the event out rather than reading it as UTC —, an
 // all-day event's dates rounded to the nearest midnight with the end made
 // inclusive and never before the start, series by type, showAs whatever
 // its case, and an event whose times do not read left out.
@@ -29,8 +30,10 @@ func TestChangeOf(t *testing.T) {
 			contracts.MailboxChange{EventID: "a", ShowAs: "busy", StartsAt: time.Date(2026, 11, 3, 9, 0, 0, 0, time.UTC), EndsAt: time.Date(2026, 11, 3, 10, 30, 0, 0, time.UTC)}, true},
 		{"timed in an IANA zone", deltaEvent{ID: "b", ShowAs: "OOF", Start: dt("2026-11-03T09:00:00", "Europe/Oslo"), End: dt("2026-11-03T10:00:00", "Europe/Oslo")},
 			contracts.MailboxChange{EventID: "b", ShowAs: "oof", StartsAt: time.Date(2026, 11, 3, 8, 0, 0, 0, time.UTC), EndsAt: time.Date(2026, 11, 3, 9, 0, 0, 0, time.UTC)}, true},
-		{"a zone that is no IANA name, as UTC", deltaEvent{ID: "c", ShowAs: "workingelsewhere", Start: dt("2026-11-03T09:00:00.0000000", "W. Europe Standard Time"), End: dt("2026-11-03T10:00:00.0000000", "W. Europe Standard Time")},
-			contracts.MailboxChange{EventID: "c", ShowAs: "workingElsewhere", StartsAt: time.Date(2026, 11, 3, 9, 0, 0, 0, time.UTC), EndsAt: time.Date(2026, 11, 3, 10, 0, 0, 0, time.UTC)}, true},
+		{"a zone that is no IANA name, left out", deltaEvent{ID: "c", ShowAs: "workingelsewhere", Start: dt("2026-11-03T09:00:00.0000000", "W. Europe Standard Time"), End: dt("2026-11-03T10:00:00.0000000", "W. Europe Standard Time")},
+			contracts.MailboxChange{}, false},
+		{"one end's zone unknown, left out", deltaEvent{ID: "c2", Start: dt("2026-11-03T09:00:00", "UTC"), End: dt("2026-11-03T10:00:00", "Mars/Olympus")},
+			contracts.MailboxChange{}, false},
 		{"an end before the start", deltaEvent{ID: "d", Start: dt("2026-11-03T09:00:00", "UTC"), End: dt("2026-11-03T08:00:00", "UTC")},
 			contracts.MailboxChange{EventID: "d", StartsAt: time.Date(2026, 11, 3, 9, 0, 0, 0, time.UTC), EndsAt: time.Date(2026, 11, 3, 9, 0, 0, 0, time.UTC)}, true},
 		{"all-day at midnight", deltaEvent{ID: "e", IsAllDay: true, ShowAs: "oof", Start: dt("2026-07-06T00:00:00.0000000", "UTC"), End: dt("2026-07-25T00:00:00.0000000", "UTC")},

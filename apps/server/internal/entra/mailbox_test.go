@@ -632,6 +632,22 @@ func TestMailbox_Find(t *testing.T) {
 			t.Errorf("the calendar's list is not filtered on the marker: %s", c.Query)
 		}
 	}
+
+	// A copy the person turned into a meeting is answered Meeting, its
+	// attendees counted.
+	g.EditEvent(mailbox, inCal[0].EventID, func(e *graphtest.Event) { e.Attendees = []string{"kari@nordlys.no"} })
+	refs, err = p.Find(ctx, mailbox, cal, time.Time{})
+	if err != nil || len(refs) != 1 || !refs[0].Meeting {
+		t.Errorf("a copy made a meeting: %+v %v, want Meeting", refs, err)
+	}
+	if refs, _ := p.Find(ctx, mailbox, "", start.Add(149*time.Hour)); len(refs) != 1 || refs[0].Meeting {
+		t.Errorf("a copy with no attendees: %+v, want no meeting", refs)
+	}
+
+	// A calendar that is gone holds nothing of ours.
+	if refs, err := p.Find(ctx, mailbox, "AAMkgone=", time.Time{}); err != nil || len(refs) != 0 {
+		t.Errorf("a calendar gone: %+v %v, want none and no error", refs, err)
+	}
 }
 
 // The calendar's own marker (design O4, O8): a calendar of the name that the

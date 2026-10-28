@@ -13,6 +13,12 @@ func TestDescriptionOf_CutsAtTheKeptLineInEitherLanguage(t *testing.T) {
 		"  Line one \n line two\t\n":                                        "Line one\n line two",
 		"Kept by Vantigo — change it there:\nhttps://app/x":                 "",
 		"No kept line at all":                                               "No kept line at all",
+		// The link on the kept line itself, a no-break space, an indent.
+		"Agenda\nKept by Vantigo — change it there: https://app/x":             "Agenda",
+		"Agenda\n\u00a0Kept by\u00a0Vantigo — change it there:\nhttps://app/x": "Agenda",
+		"Agenda\n   Holdes av Vantigo — endre det der: https://app/x":          "Agenda",
+		// A line that merely holds the words, not at its start, is kept.
+		"See: Kept by Vantigo — change it there:": "See: Kept by Vantigo — change it there:",
 	} {
 		if got := descriptionOf(body); got != want {
 			t.Errorf("descriptionOf(%q) = %q, want %q", body, got, want)

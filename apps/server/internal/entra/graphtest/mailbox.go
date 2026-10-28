@@ -42,7 +42,7 @@ import (
 // pages of $top with an @odata.nextLink); a $select naming fields narrows an
 // event to them and its id; an event read by id honours Prefer:
 // outlook.timezone="UTC" (its times in UTC, Graph's seven fractional
-// digits) and outlook.body-content-type="text" (an HTML body answered as
+// digits, the zone it was written in answered as originalStartTimeZone) and outlook.body-content-type="text" (an HTML body answered as
 // text, its tags stripped) unless HTMLBodies is set; and an event's
 // attendees are answered as Graph's, with their addresses. EditEvent
 // (mailbox_delta.go) is the person's edit: the change key moves.
@@ -618,6 +618,8 @@ func eventJSON(e *Event, query url.Values) map[string]any {
 		"type":         cmp.Or(e.Type, "singleInstance"),
 		"isCancelled":  e.IsCancelled,
 		"attendees":    attendees,
+		// The zone the event was laid in, as it was written.
+		"originalStartTimeZone": cmp.Or(e.Start.TimeZone, "UTC"),
 	}
 	out := map[string]any{"id": e.ID}
 	if sel := query.Get("$select"); sel != "" {

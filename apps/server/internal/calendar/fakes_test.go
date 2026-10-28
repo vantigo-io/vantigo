@@ -2,6 +2,7 @@ package calendar_test
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"sync/atomic"
 
@@ -134,6 +135,21 @@ func (d fakeDirectory) Customer(_ context.Context, id int32) (*contracts.Custome
 		return nil, nil
 	}
 	return &contracts.CustomerEntry{ID: id, Name: name}, nil
+}
+
+// failingDirectory is a customer directory whose Customer fails while fail
+// is set — a directory down — and names nothing otherwise. Every other
+// method panics, as fakeDirectory's.
+type failingDirectory struct {
+	contracts.CustomerDirectory
+	fail *atomic.Bool
+}
+
+func (d failingDirectory) Customer(context.Context, int32) (*contracts.CustomerEntry, error) {
+	if d.fail.Load() {
+		return nil, errors.New("calendar test: the customer directory is down")
+	}
+	return nil, nil
 }
 
 // contactsDirectory is the customer directory for the invitations' tests:

@@ -242,9 +242,10 @@ func deltaDateTime(d DateTimeZone, utc bool) DateTimeZone {
 
 // windowsZones are the Windows zone names the fake reads besides IANA's.
 var windowsZones = map[string]string{
-	"W. Europe Standard Time": "Europe/Berlin",
-	"GMT Standard Time":       "Europe/London",
-	"Pacific Standard Time":   "America/Los_Angeles",
+	"W. Europe Standard Time":   "Europe/Berlin",
+	"GMT Standard Time":         "Europe/London",
+	"Pacific Standard Time":     "America/Los_Angeles",
+	"New Zealand Standard Time": "Pacific/Auckland",
 }
 
 // instantOf is d's instant: its dateTime in its zone, IANA or one of

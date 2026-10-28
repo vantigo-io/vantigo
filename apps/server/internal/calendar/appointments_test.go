@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -305,6 +306,34 @@ func TestAppointment_NamesTheCustomerAndProjectWhenTheirModulesAreWired(t *testi
 	b := create(t, c, with(timed(t, "Call", "Europe/Oslo", "2026-11-02T11:00", "2026-11-02T12:00"), "customerId", 43))
 	if b.Customer == nil || b.Customer.Id != 43 || b.Customer.Name != nil {
 		t.Errorf("unresolvable customer = %+v", b.Customer)
+	}
+}
+
+// A directory that fails fails the POST and the PUT before anything is
+// written: the links are named between the body's validation and the
+// transaction.
+func TestAppointment_ADirectoryThatFailsWritesNothing(t *testing.T) {
+	t.Parallel()
+	var down atomic.Bool
+	h := newHarness(t, modtest.WithDirectory(failingDirectory{fail: &down}))
+	c, _ := signIn(t, h, "customers:view")
+	body := with(timed(t, "Kickoff", "Europe/Oslo", "2026-11-02T09:00", "2026-11-02T10:00"), "customerId", 42)
+	a := create(t, c, body)
+
+	down.Store(true)
+	before := h.Count(t, `SELECT count(*) FROM calendar.appointments`)
+	down500 := modtest.SkipContract("a 500 is documented nowhere: the failing directory is the subject")
+	if r := c.Do(http.MethodPost, appointmentsPath, body, down500); r.Status != http.StatusInternalServerError {
+		t.Errorf("POST with the directory down: %d %s, want 500", r.Status, r.Body)
+	}
+	if n := h.Count(t, `SELECT count(*) FROM calendar.appointments`); n != before {
+		t.Errorf("%d appointments after the failed POST, want %d", n, before)
+	}
+	if r := c.Do(http.MethodPut, appointmentPath(a.Id), with(body, "title", "Moved"), ifMatch(a.Revision), down500); r.Status != http.StatusInternalServerError {
+		t.Errorf("PUT with the directory down: %d %s, want 500", r.Status, r.Body)
+	}
+	if n := h.Count(t, `SELECT count(*) FROM calendar.appointments WHERE id = $1 AND title = 'Kickoff' AND revision = $2`, a.Id, a.Revision); n != 1 {
+		t.Error("the failed PUT wrote the appointment")
 	}
 }
 

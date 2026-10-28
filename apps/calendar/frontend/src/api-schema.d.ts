@@ -850,7 +850,7 @@ export interface components {
             key: string;
             module: string;
         };
-        /** @description The last change the caller made in Outlook to a copy that the sync did not take, and put back (calendar Outlook sync design O10.3). reason is conflict (the appointment was changed in Vantigo too, and Vantigo's version won), refused (the appointment's rules refused the change), not_owner (the copy is of an appointment the caller attends, not one they own) or not_editable (the copy is of an item another module projects, or the change is one an occurrence cannot carry). Absent when nothing was put back since the sync was last turned on or cleaned up. */
+        /** @description The last change the caller made in Outlook to a copy that the sync did not take, and put back (calendar Outlook sync design O10.3). reason is conflict (the appointment was changed in Vantigo too, and Vantigo's version won), refused (the appointment's rules refused the change), not_owner (the copy is of an appointment the caller attends, not one they own), not_editable (the copy is of an item another module projects, or the change is one an occurrence cannot carry) or many_deleted (more than ten of the caller's own appointments were deleted in Outlook in one sync, so none was taken and every copy was put back; appointmentId is then absent). Absent when nothing was put back since the sync was last turned on or cleaned up. */
         MailboxSyncPutBack: {
             /**
              * Format: int64
@@ -868,7 +868,7 @@ export interface components {
              */
             occurrenceDate?: string;
             /** @enum {string} */
-            reason: "conflict" | "refused" | "not_owner" | "not_editable";
+            reason: "conflict" | "refused" | "not_owner" | "not_editable" | "many_deleted";
             /** @description The appointment's title, read live, and answered only for an appointment the caller owns or attends. */
             title?: string;
         };

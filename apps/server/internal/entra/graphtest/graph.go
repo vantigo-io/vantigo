@@ -47,6 +47,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"path"
 	"regexp"
 	"slices"
 	"strconv"
@@ -140,6 +141,15 @@ type FakeGraph struct {
 	// HTML — whatever Prefer: outlook.body-content-type asks, as Graph may
 	// (mailbox.go).
 	HTMLBodies bool
+	// ForbiddenEvents are event ids a read inside a $batch answers 403
+	// ErrorAccessDenied for, one by one — a refusal of that event alone.
+	ForbiddenEvents map[string]bool
+	// GarbledEvents are event ids whose read makes the whole $batch it is
+	// in answer a body that is not JSON.
+	GarbledEvents map[string]bool
+	// OversizedEvents are event ids whose read makes the whole $batch it is
+	// in answer a body of 17 MiB, past what the client reads.
+	OversizedEvents map[string]bool
 	// NextLinks, when set, rewrites every @odata.nextLink an events list or
 	// a calendarView answers — a test's foreign or odd-cased link.
 	NextLinks func(link string) string
@@ -1577,13 +1587,22 @@ func (g *FakeGraph) batch(body []byte) answer {
 		return graphError(http.StatusBadRequest, "BadRequest", "Number of requests in the batch exceeds the limit of 20.")
 	}
 	responses := make([]any, 0, len(req.Requests))
+	garbled, oversized := false, false
 	for _, r := range req.Requests {
 		u, err := url.Parse(r.URL)
 		var a answer
+		last := ""
+		if err == nil {
+			last = path.Base(u.Path)
+		}
+		garbled = garbled || g.GarbledEvents[last]
+		oversized = oversized || g.OversizedEvents[last]
 		switch {
 		case err != nil || !strings.HasPrefix(u.Path, "/"):
 			a = graphError(http.StatusBadRequest, "BadRequest", "Invalid request URL.")
 			u = &url.URL{}
+		case g.ForbiddenEvents[last]:
+			a = graphError(http.StatusForbidden, "ErrorAccessDenied", "Access is denied. Check credentials and try again.")
 		case len(r.Body) > 0 && !strings.HasPrefix(headerOf(r.Headers, "Content-Type"), "application/json"):
 			a = graphError(http.StatusBadRequest, "BadRequest", "Content-Type header must be specified for a request with a body.")
 		case g.batchThrottle > 0:
@@ -1612,6 +1631,12 @@ func (g *FakeGraph) batch(body []byte) answer {
 			item["headers"] = map[string]string{"Retry-After": a.header.Get("Retry-After")}
 		}
 		responses = append(responses, item)
+	}
+	switch {
+	case oversized:
+		return answer{status: http.StatusOK, header: http.Header{"Content-Type": {"application/json"}}, raw: bytes.Repeat([]byte(" "), 17<<20)}
+	case garbled:
+		return answer{status: http.StatusOK, header: http.Header{"Content-Type": {"application/json"}}, raw: []byte(`{"responses": [{"id": "0", "sta`)}
 	}
 	return answer{status: http.StatusOK, body: map[string]any{"responses": responses}}
 }
