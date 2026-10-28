@@ -1,6 +1,6 @@
 ---
 title: "Planning module"
-description: "Booking people's time on projects: the one allocation table — a person, a project, a period, a load in percent or hours a week, tentative or confirmed, a title and the planners' note; the Workforce reads it takes from Staff and the project listing it takes from Projects, both before any transaction; the schema; the three permissions, why two are sensitive and why a planner needs staff:view; the settings; the period rules, the default status by the project's, confirm and its mail; the one capacity calculation — capacity, away, available, booked, tentative and free per day and per week, and absence that never shrinks a booking; overbooking as a warning or, by a setting, a refusal of a growing excess; the board, the project's plan with its demand, the person's timeline with its flags, the unbooked list and My planning; requests — a project's need for a person not yet named, in hours a week with competence requirements, open, filled or withdrawn — and the fill that books one, the reopen when its row is deleted; a request's candidates judged for competence, availability, the terms that bind them, their wishes and the fit Staff scores; the intake of the planned projects; the competence catalogue read; an assignment's terms — the notice, the minimum term, replacement approval, the handover, the non-compete toward named customers and the reference — and the earliest release and the handover start derived from them; the non-compete as the one hard refusal, of a confirmed write and of a candidate; the person's wishes off a project or for something new, seen and resolved by the planners, with their mail; the calendar source of the caller's own confirmed bookings; the dashboard's figures and attention items; the events and their actor; the locks; the personal data held; the refusals, the switch and the endpoints."
+description: "Booking people's time on projects: the one allocation table — a person, a project, a period, a load in percent or hours a week, tentative or confirmed, a title and the planners' note; the Workforce reads it takes from Staff and the project listing it takes from Projects, both before any transaction; the schema; the three permissions, why two are sensitive and why a planner needs staff:view; the settings; the period rules, the default status by the project's, confirm and its mail; the one capacity calculation — capacity, away, available, booked, tentative and free per day and per week, and absence that never shrinks a booking; overbooking as a warning or, by a setting, a refusal of a growing excess; the board, the project's plan with its demand, the person's timeline with its flags, the unbooked list and My planning; requests — a project's need for a person not yet named, in hours a week with competence requirements, open, filled or withdrawn — and the fill that books one, the reopen when its row is deleted; a request's candidates judged for competence, availability, the terms that bind them, their wishes and the fit Staff scores; the intake of the planned projects; the competence catalogue read; an assignment's terms — the notice, the minimum term, replacement approval, the handover, the non-compete toward named customers and the reference — and the earliest release and the handover start derived from them; the non-compete as the one hard refusal, of a confirmed write and of a candidate; the person's wishes off a project or for something new, seen and resolved by the planners, with their mail; the calendar source of the caller's own confirmed bookings; the busy hours and days the board shows from the calendar's CalendarBusy, never subtracted; the dashboard's figures and attention items; the events and their actor; the locks; the personal data held; the refusals, the switch and the endpoints."
 sources:
   - apps/server/internal/planning
   - apps/planning/frontend
@@ -123,6 +123,15 @@ terms' `PUT`, an id it does not resolve a field error, and the names read again 
 response that answers the terms. **`contracts.UserDirectory`** (`Deps.Users`) for the
 actors' names, `PermissionHolders` for the planners [a new wish](#wishes) is mailed to,
 and `Notify`, the mail to the person and to the planners.
+
+**`contracts.CalendarBusy`** (`Deps.CalendarBusy`), the calendar's busy time of people,
+optional — nil when `calendar` is not composed, and the board then shows no busy
+figures. It is **provider-gated** ([module boundaries](/en/contributing/module-boundaries/)
+rule 12): the calendar answers the caller by its own colleague rule — their own id under
+`calendar:access`, anyone else's under `calendar:view-colleagues` — and leaves out, with
+no error, anyone the caller may not see; the module shows what comes back and never
+re-states the rule ([the busy time contract](/en/reference/calendar/#the-busy-time-contract)).
+It is read once, by [the board](#the-board), and nowhere else.
 
 **`Deps.CalendarSources`**, the other way: the module **fills** the many-provider slot
 when `calendar` is composed ([the calendar source](#the-calendar-source)). Nothing else
@@ -536,7 +545,8 @@ Workforce [bound](#contracts-consumed), this week and the eleven after it by def
   `groupBy=project`, the same figures per project, `{project, cells}`, the people under
   it. `projectId` keeps one project's rows and the people on it.
 - **Cells**: per row per week `{monday, capacity, available, booked, tentative, free,
-  loadPercent?, away}`, the figures of [capacity](#capacity).
+  loadPercent?, away, busyHours?, busyDays?}`, the figures of [capacity](#capacity) and
+  the calendar's busy time ([below](#busy-time)).
 - **Allocations**: every row touching the window, for the bars.
 - **No demand**: the board answers no open requests; a project's demand is on its
   [plan](#the-projects-plan) and in [the intake](#intake).
@@ -547,6 +557,30 @@ Workforce [bound](#contracts-consumed), this week and the eleven after it by def
 The app colours a cell by its load — free, fine, full, over — hatches the tentative
 share, and reads a conflict with absence red with the days away named, never a type or
 a share.
+
+### Busy time
+
+Beside the load, each person's cell carries what the calendar shows them busy in the
+week, read through [`contracts.CalendarBusy`](#contracts-consumed):
+
+- **`busyHours`** — the hours of their merged timed busy spans inside the week, Monday
+  00:00 to the next Monday 00:00 in the business zone, rounded to 0.1: the appointments
+  that block their time and, while their Outlook sync is on, their Outlook events shown
+  as busy or out of office, an overlap counted once.
+- **`busyDays`** — the days of the week inside their all-day busy spans: an all-day
+  appointment, or an all-day Outlook event shown as busy or out of office.
+
+They are **shown, never subtracted**: a meeting about the project is often the
+booking's own time, so `available`, `free` and `loadPercent` are not changed by them, and
+nor is the load colour. The module asks the calendar **once** per board, for the people
+with a `UserID`, over the board's window (cut to 400 days, 500 users a call), after
+`People` and before anything is shaped, never inside a transaction. A person the
+calendar answers nothing for — no user, the calendar off, the caller without the
+permission to see their calendar, or busy at no time — has neither figure (they are
+absent, not 0). With `groupBy=project` the people's rows under a project carry their own
+busy figures — the calendar's, not the project's — and the project's sum row carries
+none. A failing read fails the board with **503** `dependency_unavailable`: absent must
+never also mean "could not be read". The app shows them in the cell's tooltip.
 
 ## The project's plan
 
@@ -1114,7 +1148,7 @@ since the terms and the wishes are `manage`'s to read.
 ## Locks
 
 - **No call out of a transaction.** The people, their capacity, the project's entry, the
-  competence catalogue and the competences held, the preference fits, the customers a
+  competence catalogue and the competences held, the preference fits, the calendar's busy time, the customers a
   non-compete names and the target project's customer, the user directory, the planners
   a wish is mailed to, and the mail are reached before a transaction opens or
   after it commits, never inside one; each goes through its accessor, which refuses such
@@ -1181,7 +1215,7 @@ field.
 | `wish_exists` | 409 | A second `off` wish on the same project. |
 | `revision_conflict` | 409 | The `If-Match` revision of an allocation, its terms, a request or the settings has moved on — or, on the terms, a header sent on a row with no terms or left out on a row with some — or the row kept changing under a `DELETE`, a `confirm`, a `fill`, a `withdraw` or a terms `PUT` or `DELETE` three times running. |
 | `no_person` | 404 | `GET /me`, `POST /me/wishes` or `DELETE /me/wishes/{id}` for a caller `Self` answers no person for. |
-| `dependency_unavailable` | 503 | `Deps.Projects`, `Deps.Workforce` or `Deps.Directory` is nil — never so in a running `planning`, which `MODULES` refuses without them. |
+| `dependency_unavailable` | 503 | `Deps.Projects`, `Deps.Workforce` or `Deps.Directory` is nil — never so in a running `planning`, which `MODULES` refuses without them — and `GET /board` when the calendar's [busy time](#busy-time) read fails. |
 
 A caller without the operation's permission gets the access layer's uniform 403. **`PUT`**
 on an allocation, on a request and on the settings takes `If-Match` with the row's

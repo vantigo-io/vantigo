@@ -1,6 +1,6 @@
 ---
 title: Calendar
-description: Your appointments and what the other apps have put in your days, inviting colleagues, customers' contacts and anyone with an address, what an invitee receives and how they answer, cancelling, colleagues' busy times, repeating appointments, the dashboard's agenda, your calendar on your phone, calendars from elsewhere beside your own, and a copy of your calendar in Outlook.
+description: Your appointments and what the other apps have put in your days, inviting colleagues, customers' contacts and anyone with an address, what an invitee receives and how they answer, cancelling, colleagues' busy times, repeating appointments, the dashboard's agenda, your calendar on your phone, calendars from elsewhere beside your own, a copy of your calendar in Outlook, and your Outlook busy time in Vantigo.
 sidebar:
   order: 35
 sources:
@@ -71,6 +71,7 @@ of it takes you:
 | **Absence** | Your own absence, requested, approved or registered; one you have requested shows **Requested** under its name until it is decided. The name and that word are in the language set under **Language** on your Staff record | opens **My page** on its **Absence** tab |
 | **Bookings** | Your own confirmed bookings in Planning, all day over the booking's period, titled with the project's code and name; hold the pointer over one to read the load. A tentative booking, the planners' draft, is never shown | opens **My planning** in Planning |
 | **Subscriptions** | An event of a calendar you subscribe to from elsewhere, in the colour you gave it ([Calendars from elsewhere](#calendars-from-elsewhere)) | — |
+| **Outlook** | Time you are busy in your main Outlook calendar, drawn hatched with no title: **Busy in Outlook**, **Tentative in Outlook**, **Out of office** or **Working elsewhere**, as the event shows your time in Outlook. Only while [Sync with Outlook](#sync-with-outlook) is on | — |
 | **Public holidays** | Norway's public holidays, shaded on their days | — |
 
 Appointments have a look of their own: one that does not block your time (**Free**) is
@@ -277,11 +278,15 @@ see their calendar instead of yours, read-only:
 - their appointments that make them busy, with the title and location when the
   appointment is shared;
 - a private one as a hatched **Busy**, with nothing else;
+- while their Outlook sync is on, the time they are busy or out of office in their main
+  Outlook calendar, as hatched blocks with no title (**Busy in Outlook**, **Out of
+  office**) — never what the event is, and not what is only tentative or working
+  elsewhere;
 - nothing for their free appointments, and nothing from the other apps — their tasks,
   hours, follow-ups and bookings stay behind those apps' own doors.
 
-The legend shrinks to **Appointments** and **Public holidays**, and **New appointment**
-is hidden. Clear the picker to come back to your own calendar.
+The legend shrinks to **Appointments**, **Outlook** when they have Outlook busy time in
+view, and **Public holidays**, and **New appointment** is hidden. Clear the picker to come back to your own calendar.
 
 ## The dashboard
 
@@ -466,12 +471,29 @@ colleague made private shows as *Busy*. There are no attendees and no reminders.
 in it: a colleague's calendar, the calendars you subscribe to from elsewhere, and public
 holidays.
 
+**Your Outlook busy time in Vantigo.** While the sync is on, Vantigo also reads your
+main Outlook calendar — the times only, never the titles — and shows the time you are
+busy there:
+
+- in your own calendar, under the **Outlook** chip, as hatched blocks labelled **Busy in
+  Outlook**, **Tentative in Outlook**, **Out of office** or **Working elsewhere**;
+- as busy to colleagues who see your calendar (busy and out of office only);
+- in the busy hours and days on Planning's **Plan**
+  ([Planning](/en/user/planning/#the-plan)).
+
+Free and cancelled events are left out, and so are Vantigo's own copies. The card says
+so — **The time you are busy in your main Outlook calendar shows in your Vantigo
+calendar, and as busy to your colleagues and on Planning's board. Their titles are never
+read.** — and, once it has been read, **Busy time read** and when. A change in Outlook
+shows after the next sync. Your Outlook titles are not shown in Vantigo yet.
+
 **Change things in Vantigo, not in Outlook.** For now, a copy you move or edit in
 Outlook is put back the next time Vantigo syncs, and one you delete there comes back.
 Taking your changes from Outlook into Vantigo is planned.
 
 **Turn it off** with the same switch: Vantigo removes what it put in Outlook — **Removing
-what Vantigo put in Outlook…** — and the card says **Not syncing**. Choosing the other
+what Vantigo put in Outlook…** — and the card says **Not syncing**. Your Outlook busy
+time is forgotten and no longer shown anywhere. Choosing the other
 **Where** also removes the copies from the first place before writing them to the new
 one. Everything Vantigo put there goes, older copies included; a separate Vantigo calendar is
 removed whole, and a calendar you made yourself is never touched.
@@ -498,7 +520,8 @@ removed.
 ## What comes next
 
 The calendar address for your phone, calendars from elsewhere and the copy in Outlook
-are built. Next for Outlook: your Outlook busy time shown in Vantigo, then the changes
-you make to your appointments in Outlook taken into Vantigo, then faster updates. Further
+are built, and your Outlook busy time shows in Vantigo. Next for Outlook: your own
+Outlook titles beside it and the changes you make to your appointments in Outlook taken
+into Vantigo, then faster updates. Further
 off: sync with Google, booking pages, rooms and resources, reminders in the app and by
 mail, CalDAV, and team calendars.

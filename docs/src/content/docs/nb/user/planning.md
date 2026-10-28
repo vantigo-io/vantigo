@@ -82,7 +82,14 @@ Hver celle er personens uke:
 
 Hold pekeren over en celle for å lese tallene: timene satt opp av kapasiteten, de
 tentative timene, de ledige timene, og **Borte deler av uken** eller **Satt opp i en uke
-med fravær**.
+med fravær**. Når du kan se personens kalender — din egen med Kalender, en kollegas med
+`calendar:view-colleagues` — er siste linje det kalenderen viser at personen er opptatt
+den uken: **Kalender: 6 t opptatt, 1 dag** — timene i avtalene deres som gjør dem
+opptatt og, når Outlook-synkroniseringen deres er slått på, i Outlook-hendelsene deres
+som vises som opptatt eller ikke til stede, med overlapp telt én gang, og dagene de er
+opptatt hele dagen. Tallene vises, men trekkes aldri fra: et møte om prosjektet er ofte
+allokeringens egen tid, så belastningen, de ledige timene og fargen endres ikke. Under
+**Prosjekter** står de på hver persons rad, ikke på prosjektets.
 
 Over rutenettet:
 

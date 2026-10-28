@@ -215,9 +215,12 @@ Modulen setter den aldri selv.
 **Kalendersynkronisering** lar folk ha en kopi av Vantigo-kalenderen sin i Outlook
 ([brukerveiledningen](/nb/user/calendar/#synkroniser-med-outlook)): kalenderens arbeider
 `calendar-mailbox-sync` skriver hver persons avtaler, og det de velger fra de andre
-appene, til Exchange Online-postboksen deres gjennom denne modulens tilkobling. Den er
-av som standard, og klargjøringen virker likt med den av eller på. Hva den skriver, og
-hvordan, står i [referansen](/en/reference/entra/#the-mailbox-calendar).
+appene, til Exchange Online-postboksen deres gjennom denne modulens tilkobling, og leser
+etter hver synkronisering **standardkalenderen** deres tilbake — tidene for hendelsene
+som gjør dem opptatt, aldri titlene — for å vise den opptatte tiden i Vantigo.
+`Calendars.ReadWrite` dekker lesingen: det er ingenting å legge til eller samtykke til.
+Den er av som standard, og klargjøringen virker likt med den av eller på. Hva den skriver
+og leser, og hvordan, står i [referansen](/en/reference/entra/#the-mailbox-calendar).
 
 ### Forutsetninger
 
@@ -258,8 +261,10 @@ den for alle som har sin egen bryter på.
 ### Begrens den til enkelte postbokser
 
 `Calendars.ReadWrite` som applikasjonstillatelse når **hver postboks i leietakeren**.
-Vantigo skriver bare til postboksene til kontoene den forvalter, for dem som slår på
-synkroniseringen, men legitimasjonen kan nå flere. For å begrense hva selve
+Vantigo skriver bare til og leser bare postboksene til kontoene den forvalter, for dem
+som slår på synkroniseringen, men legitimasjonen kan nå flere. Et omfang begrenser
+lesingen akkurat som det begrenser skrivingen: en postboks utenfor det avvises for
+begge. For å begrense hva selve
 legitimasjonen når, bruk Exchange Onlines **RBAC for Applications**, i Exchange Online
 PowerShell, som Exchange-administrator:
 
