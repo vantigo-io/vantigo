@@ -698,6 +698,11 @@ func New(t *testing.T, opts ...Option) *Harness {
 	if identityModule.Calendar != nil {
 		h.deps.Calendar = identityModule.Calendar(h.deps)
 	}
+	// The user directory likewise, so a provider built from Deps() directly
+	// — the calendar's CalendarBusy in its tests — reads users as composed.
+	if identityModule.Users != nil {
+		h.deps.Users = identityModule.Users(h.deps)
+	}
 	mods := append([]module.Module{identityModule}, s.modules...)
 	h.mods = mods
 	api, err := module.Compose(h.deps, mods...)

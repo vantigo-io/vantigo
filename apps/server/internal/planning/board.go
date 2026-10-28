@@ -249,7 +249,8 @@ type boardBusy struct {
 // busyOf asks the calendar, once and outside any transaction, for the busy
 // time of the people with a user over from..to — in chunks of
 // contracts.CalendarBusyMaxUsers, the window cut to
-// contracts.CalendarBusyMaxDays — and keeps what it answers by person. The
+// contracts.CalendarBusyMaxDays — and keeps what it answers by person, each
+// person sharing a user given that user's figures. The
 // calendar decides who the caller may see; a person it answers nothing for
 // has no figures. Any error fails the request as the 503 every contract
 // failure the board's contract names is (the board answers no 500).
@@ -259,13 +260,13 @@ func (s *server) busyOf(ctx context.Context, zone *time.Location, people []contr
 		last = to
 	}
 	var ids []uuid.UUID
-	personOf := map[uuid.UUID]int64{}
+	personsOf := map[uuid.UUID][]int64{} // two people may share a user
 	for _, e := range people {
 		if e.UserID != nil {
-			if _, dup := personOf[*e.UserID]; !dup {
+			if _, dup := personsOf[*e.UserID]; !dup {
 				ids = append(ids, *e.UserID)
 			}
-			personOf[*e.UserID] = e.ID
+			personsOf[*e.UserID] = append(personsOf[*e.UserID], e.ID)
 		}
 	}
 	out := &boardBusy{zone: zone, byPerson: map[int64]contracts.BusyTime{}}
@@ -275,7 +276,7 @@ func (s *server) busyOf(ctx context.Context, zone *time.Location, people []contr
 			return nil, fmt.Errorf("planning: read the calendar's busy time: %w: %w", errDependencyUnavailable, err)
 		}
 		for id, b := range answered {
-			if personID, ok := personOf[id]; ok {
+			for _, personID := range personsOf[id] {
 				out.byPerson[personID] = b
 			}
 		}

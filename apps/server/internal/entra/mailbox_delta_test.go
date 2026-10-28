@@ -254,8 +254,15 @@ func TestMailboxDelta_AForeignLinkIsRefusedUnsent(t *testing.T) {
 		"plain http":          "http://graph.microsoft.com/v1.0/users/" + mailbox + "/calendarView/delta?$deltatoken=T1",
 		"beta":                "https://graph.microsoft.com/beta/users/" + mailbox + "/calendarView/delta?$deltatoken=T1",
 		"the events":          "https://graph.microsoft.com/v1.0/users/" + mailbox + "/events?$top=10",
-		"another case":        "https://graph.microsoft.com/v1.0/users/" + mailbox + "/calendarview/delta?$deltatoken=T1",
-		"an upper-case oid":   "https://graph.microsoft.com/v1.0/users/" + strings.ToUpper(mailbox) + "/calendarView/delta?$deltatoken=T1",
+		"another host's case": "https://GRAPH.microsoft.com/v1.0/users/" + mailbox + "/calendarView/delta?$deltatoken=T1",
+		"a port":              "https://graph.microsoft.com:443/v1.0/users/" + mailbox + "/calendarView/delta?$deltatoken=T1",
+		"an encoded path":     "https://graph.microsoft.com/v1.0/users/" + mailbox + "/calendarView%2Fdelta?$deltatoken=T1",
+		"an encoded letter":   "https://graph.microsoft.com/v1.0/users/" + mailbox + "/calendarView/delt%61?$deltatoken=T1",
+		"userinfo":            "https://someone@graph.microsoft.com/v1.0/users/" + mailbox + "/calendarView/delta?$deltatoken=T1",
+		"a fragment":          "https://graph.microsoft.com/v1.0/users/" + mailbox + "/calendarView/delta?$deltatoken=T1#x",
+		"no query":            "https://graph.microsoft.com/v1.0/users/" + mailbox + "/calendarView/delta",
+		"an empty query":      "https://graph.microsoft.com/v1.0/users/" + mailbox + "/calendarView/delta?",
+		"the users() form":    "https://graph.microsoft.com/v1.0/users('" + mailbox + "')/calendarView/delta?$deltatoken=T1",
 		"a path after it":     "https://graph.microsoft.com/v1.0/users/" + mailbox + "/calendarView/delta/../../x?$deltatoken=T1",
 		"a user inside":       "https://graph.microsoft.com@evil.example/v1.0/users/" + mailbox + "/calendarView/delta?x",
 		"no link of Graph's":  "not a link",
@@ -275,6 +282,70 @@ func TestMailboxDelta_AForeignLinkIsRefusedUnsent(t *testing.T) {
 	}
 	if calls := g.Calls()[before:]; len(calls) != 0 {
 		t.Errorf("a foreign link was fetched: %+v", calls)
+	}
+}
+
+// Graph may write a link's calendarview lower-case and the oid in either
+// case: such a link of this mailbox's delta is followed, the request sent on
+// the path the provider builds, never the link's.
+func TestMailboxDelta_ALinkInAnotherCaseIsFollowed(t *testing.T) {
+	ctx := context.Background()
+	h, g, _ := newMailboxHarness(t)
+	p := mailboxProvider(h)
+	mailbox := mailboxUser(t, h, g)
+	at := time.Date(2026, 11, 3, 9, 0, 0, 0, time.UTC)
+	for i := range 5 {
+		g.AddEvent(mailbox, "", ownEvent(at.Add(time.Duration(i)*time.Hour)))
+	}
+	g.Configure(func(g *graphtest.FakeGraph) { g.DeltaPageSize, g.DeltaLinksOddCase = 2, true })
+
+	d, err := p.Delta(ctx, mailbox, deltaFrom, deltaTo, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !d.Done || len(d.Changes) != 5 || !strings.Contains(d.Link, "/calendarview/delta?") || !strings.Contains(d.Link, strings.ToUpper(mailbox)) {
+		t.Fatalf("a delta whose links are lower-case: Done %v, %d changes, link %q", d.Done, len(d.Changes), d.Link)
+	}
+	if n := deltaPages(g.Calls(), mailbox); n != 3 {
+		t.Errorf("%d pages sent on the provider's path, want three", n)
+	}
+	added := g.AddEvent(mailbox, "", ownEvent(at.AddDate(0, 0, 1)))
+	next, err := p.Delta(ctx, mailbox, time.Time{}, time.Time{}, d.Link)
+	if err != nil || !next.Done || len(next.Changes) != 1 || next.Changes[0].EventID != added.ID {
+		t.Errorf("the lower-case delta link: %+v %v", next, err)
+	}
+	// A link written by hand in either case is taken too.
+	for _, link := range []string{
+		"https://graph.microsoft.com/v1.0/users/" + mailbox + "/calendarview/delta?" + strings.SplitN(next.Link, "?", 2)[1],
+		"https://graph.microsoft.com/v1.0/users/" + strings.ToUpper(mailbox) + "/CalendarView/Delta?" + strings.SplitN(next.Link, "?", 2)[1],
+	} {
+		if again, err := p.Delta(ctx, mailbox, time.Time{}, time.Time{}, link); err != nil || !again.Done {
+			t.Errorf("%s: %+v %v", link, again, err)
+		}
+	}
+	for _, c := range g.Calls() {
+		if strings.Contains(c.Path, "calendarview") || strings.Contains(c.Path, strings.ToUpper(mailbox)) {
+			t.Errorf("a request sent on the link's path: %s", c.Path)
+		}
+	}
+}
+
+// An event whose id is no id — longer than any Graph answers — is left out
+// of the delta, the rest of the page answered.
+func TestMailboxDelta_AnEventWithNoIDIsLeftOut(t *testing.T) {
+	ctx := context.Background()
+	h, g, _ := newMailboxHarness(t)
+	p := mailboxProvider(h)
+	mailbox := mailboxUser(t, h, g)
+	at := time.Date(2026, 11, 3, 9, 0, 0, 0, time.UTC)
+	g.AddEvent(mailbox, "", ownEvent(at, func(e *graphtest.Event) { e.ID = "AAMk" + strings.Repeat("x", 600) }))
+	kept := g.AddEvent(mailbox, "", ownEvent(at.Add(time.Hour)))
+	d, err := p.Delta(ctx, mailbox, deltaFrom, deltaTo, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(d.Changes) != 1 || d.Changes[0].EventID != kept.ID {
+		t.Errorf("changes %+v, want the one event with an id", d.Changes)
 	}
 }
 

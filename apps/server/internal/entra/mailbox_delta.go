@@ -36,22 +36,30 @@ var mailboxDeltaExpiredCodes = []string{
 	"syncStateNotFound", "syncStateInvalid", "resyncRequired", "ErrorInvalidSyncStateData",
 }
 
-// deltaLinkPrefix is how every link of this session's mailbox's delta
-// starts: Graph's /users/{oid}/calendarView/delta, the oid lower-case as
-// userPath writes it, and its query.
-func (s mailboxSession) deltaLinkPrefix() string {
-	return graphAPIBase + userPath(s.oid, "/calendarView/delta?")
-}
+// graphAPIPath is graphAPIBase's path: the version every link of Graph's
+// starts with.
+var graphAPIPath = strings.TrimPrefix(graphAPIBase, "https://"+graphAPIHost)
 
-// deltaPath is link's path after /v1.0, refused unless link is a link of
-// this session's mailbox's delta — so a stored link, or one Graph answered,
-// can never point the client at another mailbox or off Graph.
+// deltaPath is the path, after /v1.0, to send for link, refused unless link
+// is a link of this session's mailbox's delta — so a stored link, or one
+// Graph answered, can never point the client at another mailbox or off
+// Graph. The link must parse as https on Graph's host exactly, with no user
+// and no fragment, no percent-encoding in its path, a query, and the path
+// /v1.0/users/{oid}/calendarView/delta of this mailbox's oid, compared
+// whatever its case: Graph answers calendarview and the oid in either. The
+// path sent is ours, built from the oid, with the link's query alone after
+// it — nothing of the link's path reaches the request.
 func (s mailboxSession) deltaPath(link string) (string, bool) {
-	prefix := s.deltaLinkPrefix()
-	if !strings.HasPrefix(link, prefix) || strings.ContainsAny(link, "#\\ ") {
+	if strings.ContainsAny(link, "#\\ ") {
 		return "", false
 	}
-	return strings.TrimPrefix(link, graphAPIBase), true
+	u, err := url.Parse(link)
+	if err != nil || u.Scheme != "https" || u.Host != graphAPIHost || u.User != nil || u.Opaque != "" ||
+		u.Fragment != "" || u.RawPath != "" || u.RawQuery == "" ||
+		!strings.EqualFold(u.Path, graphAPIPath+userPath(s.oid, "/calendarView/delta")) {
+		return "", false
+	}
+	return userPath(s.oid, "/calendarView/delta?") + u.RawQuery, true
 }
 
 // deltaExpired reports whether err is Graph refusing a delta link: a 410,
@@ -135,8 +143,12 @@ func (m *mailboxCalendar) Delta(ctx context.Context, mailbox string, from, to ti
 			}
 			return contracts.MailboxDelta{}, mailboxRefusal(err)
 		}
-		skipped := 0
+		skipped, badIDs := 0, 0
 		for _, ev := range answer.Value {
+			if !validID(ev.ID) {
+				badIDs++
+				continue
+			}
 			change, ok := changeOf(ev)
 			if !ok {
 				skipped++
@@ -144,9 +156,9 @@ func (m *mailboxCalendar) Delta(ctx context.Context, mailbox string, from, to ti
 			}
 			out.Changes = append(out.Changes, change)
 		}
-		if skipped > 0 {
-			m.client.logger.DebugContext(ctx, "entra: a delta page held events whose times do not read",
-				"tenant", s.cred.tenantID.String(), "skipped", skipped)
+		if skipped > 0 || badIDs > 0 {
+			m.client.logger.DebugContext(ctx, "entra: a delta page held events whose ids or times do not read",
+				"tenant", s.cred.tenantID.String(), "skipped", skipped, "bad_ids", badIDs)
 		}
 		switch {
 		case answer.DeltaLink != "":
@@ -172,7 +184,8 @@ func (m *mailboxCalendar) Delta(ctx context.Context, mailbox string, from, to ti
 }
 
 // changeOf is ev as the contract answers it, false for one with no id or
-// whose times do not read — left out rather than failing the page, which
+// whose times do not read (an id that is no validID is left out before it,
+// so the busy rows and Marked never see one) — left out rather than failing the page, which
 // would hold the delta at it for ever. A removed event is its id alone.
 // Series is an occurrence or an exception; ShowAs the contract's value,
 // whatever Graph's case, "" for one it does not name.

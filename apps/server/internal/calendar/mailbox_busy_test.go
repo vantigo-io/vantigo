@@ -297,6 +297,39 @@ func TestMailboxBusy_ReadsEveryPage(t *testing.T) {
 	}
 }
 
+// A sync turned off while its busy read runs keeps nothing of it: the page
+// read after is not written, the rows written before are deleted, and the
+// read stops.
+func TestMailboxBusy_ASyncTurnedOffMidReadKeepsNothing(t *testing.T) {
+	t.Parallel()
+	r := newMailboxRig(t)
+	c, me, mb := r.person(t)
+	r.box.SetDeltaPageSize(2)
+	for i, id := range []string{"ev-1", "ev-2", "ev-3", "ev-4", "ev-5"} {
+		start := time.Date(2026, 9, 14+i, 10, 0, 0, 0, time.UTC)
+		r.box.SeedForeign(mb, modtest.FakeBusyEvent{ID: id, StartsAt: start, EndsAt: start.Add(time.Hour), ShowAs: contracts.ShowAsBusy})
+	}
+	turnOn(t, c, "default", "full", "calendar.appointment")
+	r.box.BeforeDelta(func(n int) {
+		if n == 2 {
+			if got := len(busyRows(t, r, me)); got != 2 {
+				t.Errorf("rows %d before the second page, want the first page's 2", got)
+			}
+			r.Exec(t, `UPDATE calendar.mailbox_sync SET enabled = false WHERE user_id = $1`, me)
+		}
+	})
+	mailboxCycle(t, r)
+	if d := calls(r, 0, "Delta"); len(d) != 2 {
+		t.Errorf("%d delta calls, want the read stopped after the second", len(d))
+	}
+	if n := len(busyRows(t, r, me)); n != 0 {
+		t.Errorf("rows %d after the sync was turned off mid-read, want none", n)
+	}
+	if st := readBusyState(t, r, me); st.synced != nil {
+		t.Errorf("the delta's state = %+v: no read reached its end", st)
+	}
+}
+
 // Not parallel: it lowers the package's cap while it runs.
 func TestMailboxBusy_KeepsAtMostTheCapAndLogsIt(t *testing.T) {
 	defer calendar.SetMailboxBusyCap(3)()
@@ -378,13 +411,18 @@ func TestMailboxBusy_IsForgottenWhenTheSyncStopsAndKeptOnAFailure(t *testing.T) 
 	t.Run("a failure keeps them", func(t *testing.T) {
 		t.Parallel()
 		r := newMailboxRig(t)
-		_, me, _, _ := syncedPerson(t, r)
+		c, me, _, _ := syncedPerson(t, r)
 		was := readBusyState(t, r, me)
 		r.box.FailWith("Delta", errors.New("graph: 503"))
 		r.Advance(15 * time.Minute)
 		mailboxCycle(t, r)
-		if row := readSyncRow(t, r, me); row.state != "active" || row.attempts != 1 || row.errCode == nil || *row.errCode != "failed" {
-			t.Fatalf("the row = %+v", row)
+		if row := readSyncRow(t, r, me); row.state != "active" || row.attempts != 1 || row.errCode == nil || *row.errCode != "failed" ||
+			row.next == nil || !row.next.Equal(r.Now().Add(time.Minute)) {
+			t.Fatalf("the row = %+v, want active, failed, retried on the backoff", row)
+		}
+		// The push worked: the sync is recorded synced at this run.
+		if got := getSync(t, c); got.LastSyncedAt == nil || !got.LastSyncedAt.Equal(r.Now()) {
+			t.Errorf("lastSyncedAt %v, want the push's %v", got.LastSyncedAt, r.Now())
 		}
 		if n := len(busyRows(t, r, me)); n != 2 {
 			t.Errorf("rows %d after a failure, want 2 kept", n)
