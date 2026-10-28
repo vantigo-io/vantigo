@@ -1,6 +1,6 @@
 ---
 title: Kalender
-description: Avtalene dine og det de andre appene har lagt inn i dagene dine, å invitere kolleger, kunders kontaktpersoner og hvem som helst med en adresse, hva en invitert får og hvordan de svarer, avlysning, når kolleger er opptatt, gjentakende avtaler, agendaen på dashbordet, kalenderen din på mobilen, kalendere fra andre steder ved siden av din egen, og en kopi av kalenderen din i Outlook.
+description: Avtalene dine og det de andre appene har lagt inn i dagene dine, å invitere kolleger, kunders kontaktpersoner og hvem som helst med en adresse, hva en invitert får og hvordan de svarer, avlysning, når kolleger er opptatt, gjentakende avtaler, agendaen på dashbordet, kalenderen din på mobilen, kalendere fra andre steder ved siden av din egen, en kopi av kalenderen din i Outlook, og når du er opptatt i Outlook, vist i Vantigo.
 sidebar:
   order: 35
 sources:
@@ -72,6 +72,7 @@ klikk på et element av den tar deg:
 | **Fravær** | Ditt eget fravær, søkt, godkjent eller registrert; et fravær du har søkt om, viser **Søkt om** under navnet til det er avgjort. Navnet og det ordet står på språket som er satt under **Språk** på personen din i Ansatte | åpner **Min side** på fanen **Fravær** |
 | **Allokeringer** | Dine egne bekreftede allokeringer i Bemanning, hele dagen gjennom allokeringens periode, med prosjektets kode og navn som tittel; hold pekeren over en for å lese belastningen. En tentativ allokering, planleggernes utkast, vises aldri | åpner **Min bemanning** i Bemanning |
 | **Abonnementer** | En hendelse i en kalender du abonnerer på fra et annet sted, i fargen du ga den ([Kalendere fra andre steder](#kalendere-fra-andre-steder)) | — |
+| **Outlook** | Tid du er opptatt i hovedkalenderen din i Outlook, tegnet skravert uten tittel: **Opptatt i Outlook**, **Foreløpig i Outlook**, **Ikke til stede** eller **Arbeider et annet sted**, etter hvordan hendelsen viser tiden din i Outlook. Bare mens [Synkroniser med Outlook](#synkroniser-med-outlook) er slått på | — |
 | **Helligdager** | Norges helligdager, skyggelagt på dagene sine | — |
 
 Avtaler har sitt eget utseende: en som ikke gjør deg opptatt (**Ledig**), tegnes med
@@ -279,10 +280,15 @@ kalenderen deres i stedet for din, uten å kunne endre noe:
 
 - avtalene som gjør dem opptatt, med tittel og sted når avtalen er delt;
 - en privat som et skravert **Opptatt**, uten noe mer;
+- mens Outlook-synkroniseringen deres er slått på, tiden de er opptatt eller ikke til
+  stede i hovedkalenderen sin i Outlook, som skraverte blokker uten tittel (**Opptatt i
+  Outlook**, **Ikke til stede**) — aldri hva hendelsen er, og ikke det som bare er
+  foreløpig eller arbeid et annet sted;
 - ingenting for de ledige avtalene deres, og ingenting fra de andre appene — oppgavene,
   timene, oppfølgingene og allokeringene deres blir værende bak de appenes egne dører.
 
-Forklaringen krymper til **Avtaler** og **Helligdager**, og **Ny avtale** skjules. Tøm
+Forklaringen krymper til **Avtaler**, **Outlook** når de har opptatt-tid fra Outlook i
+visningen, og **Helligdager**, og **Ny avtale** skjules. Tøm
 velgeren for å komme tilbake til din egen kalender.
 
 ## Dashbordet
@@ -470,12 +476,31 @@ kollega har gjort privat, vises som *Opptatt*. Det følger ingen deltakere og in
 påminnelser med. Aldri med: en kollegas kalender, kalenderne du abonnerer på fra andre
 steder, og helligdager.
 
+**Når du er opptatt i Outlook, vist i Vantigo.** Mens synkroniseringen er slått på,
+leser Vantigo også hovedkalenderen din i Outlook — bare tidene, aldri titlene — og viser
+tiden du er opptatt der:
+
+- i din egen kalender, under brikken **Outlook**, som skraverte blokker merket **Opptatt
+  i Outlook**, **Foreløpig i Outlook**, **Ikke til stede** eller **Arbeider et annet
+  sted**;
+- som opptatt for kolleger som ser kalenderen din (bare opptatt og ikke til stede);
+- i de opptatte timene og dagene på **Planen** i Bemanning
+  ([Bemanning](/nb/user/planning/#planen)).
+
+Ledige og avlyste hendelser er ikke med, og heller ikke Vantigos egne kopier. Kortet
+sier det — **Tiden du er opptatt i hovedkalenderen din i Outlook vises i
+Vantigo-kalenderen din, og som opptatt for kollegene dine og på Bemanning-tavlen.
+Titlene blir aldri lest.** — og, når den er lest, **Opptatt-tid lest** og når. En
+endring i Outlook vises etter neste synkronisering. Titlene dine fra Outlook vises ikke
+i Vantigo ennå.
+
 **Endre i Vantigo, ikke i Outlook.** Inntil videre settes en kopi du flytter eller
 endrer i Outlook, tilbake neste gang Vantigo synkroniserer, og en du sletter der, kommer
 tilbake. Det er planlagt at endringene dine i Outlook skal tas inn i Vantigo.
 
 **Slå den av** med samme bryter: Vantigo fjerner det den la inn i Outlook — **Fjerner det
-Vantigo la inn i Outlook …** — og kortet sier **Synkroniserer ikke**. Velger du det andre
+Vantigo la inn i Outlook …** — og kortet sier **Synkroniserer ikke**. Opptatt-tiden din
+fra Outlook glemmes og vises ikke lenger noe sted. Velger du det andre
 **Hvor**, fjernes også kopiene fra det første stedet før de skrives til det nye. Alt
 Vantigo la inn, forsvinner, også eldre kopier; en egen Vantigo-kalender fjernes i sin
 helhet, og en kalender du har laget selv, røres aldri.
@@ -503,7 +528,8 @@ til Kalender, fjernes kopiene dine.
 ## Hva som kommer
 
 Kalenderadressen til telefonen, kalendere fra andre steder og kopien i Outlook er
-bygget. Neste for Outlook: når du er opptatt i Outlook, vist i Vantigo, så endringene du
-gjør i avtalene dine i Outlook, tatt inn i Vantigo, og så raskere oppdateringer. Lenger
+bygget, og når du er opptatt i Outlook, vises i Vantigo. Neste for Outlook: titlene dine
+fra Outlook ved siden av, og endringene du gjør i avtalene dine i Outlook, tatt inn i
+Vantigo, og så raskere oppdateringer. Lenger
 frem: synkronisering med Google, bookingsider, rom og ressurser, påminnelser i appen og
 på e-post, CalDAV og teamkalendere.

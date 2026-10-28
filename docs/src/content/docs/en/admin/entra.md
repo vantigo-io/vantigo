@@ -215,9 +215,12 @@ module never sets it itself.
 **Calendar sync** lets people keep a copy of their Vantigo calendar in their Outlook
 ([the user guide](/en/user/calendar/#sync-with-outlook)): the calendar's
 `calendar-mailbox-sync` worker writes each person's appointments, and the items they
-choose, to their Exchange Online mailbox through this module's connection. It is off by
-default, and provisioning works the same with it on or off. What it writes, and how, is
-in [the reference](/en/reference/entra/#the-mailbox-calendar).
+choose, to their Exchange Online mailbox through this module's connection, and after
+each sync reads their **default calendar** back — the times of the events that make them
+busy, never the titles — to show that busy time in Vantigo. `Calendars.ReadWrite` covers
+the read: there is nothing to add or consent to. It is off by default, and provisioning
+works the same with it on or off. What it writes and reads, and how, is in [the
+reference](/en/reference/entra/#the-mailbox-calendar).
 
 ### Preconditions
 
@@ -258,8 +261,9 @@ everyone whose own toggle is on.
 ### Limit it to some mailboxes
 
 `Calendars.ReadWrite` as an application permission reaches **every mailbox in the
-tenant**. Vantigo only writes to the mailboxes of the accounts it manages, for the
-people who turn the sync on, but the credential could reach more. To narrow what the
+tenant**. Vantigo only writes to and reads the mailboxes of the accounts it manages, for
+the people who turn the sync on, but the credential could reach more. A scope limits the
+read exactly as it limits the writes: a mailbox outside it is refused for both. To narrow what the
 credential itself may reach, use Exchange Online's **RBAC for Applications**, in
 Exchange Online PowerShell, as an Exchange administrator:
 

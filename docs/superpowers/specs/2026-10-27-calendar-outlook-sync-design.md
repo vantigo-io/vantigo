@@ -444,6 +444,29 @@ and show rows only while `enabled`.
 
 *As built:* see the plan
 [`2026-10-27-calendar-outlook-busy.md`](../plans/2026-10-27-calendar-outlook-busy.md).
+Entra follows a link only when it holds no `#`, `\` or space and parses as `https` on
+Graph's host exactly — no user, no fragment, no percent-encoded path, a query — with the
+path `/v1.0/users/{oid}/calendarView/delta` of the mailbox's own object id, compared
+whatever its case; it sends a path of its own built from the oid with the link's query
+alone, and checks every `nextLink` and `deltaLink` Graph answers the same way; anything
+else is a failure, unsent. An event whose id breaks the provider's id rule is skipped
+before decoding. `event_id` is `varchar(512)`, the provider's bound. `CalendarBusy`
+also leaves out a user the directory does not answer as active, and answers nothing
+under the `AsUser` mark, even over a request. The busy link is written only while the
+sync is `enabled`. A page of the delta is read through a cap of its
+own, **16 MiB** (fifty events answered whole, bodies and attendees included), beside the
+1 MiB default and the `$batch`'s 8 MiB. An event whose times do not read, or with no id,
+is skipped and counted at debug level, never failing the page — which would hold the
+delta at it for ever. The 5000 cap applies to **new** events only: a row already stored
+is still rewritten or deleted past it. A read whose deadline passes between pages keeps
+the next link it reached and is **not** counted as a failure: the sync is `active` and
+the next one takes the link up (a call the deadline cuts short fails as any call does). A colleague's calendar gives the `calendar.outlook` blocks
+a **legend chip of their own** when any are in view; the caller's own id on that route
+still answers `GET /items`' appointments alone, with no Outlook rows. Planning's board
+answers **503 `dependency_unavailable`** when the `CalendarBusy` read fails, rather than
+a board without the figures; with `groupBy=project` the people's rows carry their own
+busy figures and the **project's sum row carries none**. The person's timeline in
+Planning is unchanged: the busy figures are on the board alone.
 
 ### O10 — C: the write-back (outline)
 

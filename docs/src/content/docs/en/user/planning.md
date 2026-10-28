@@ -85,7 +85,14 @@ Each cell is the person's week:
 
 Hold the pointer over a cell to read its figures: the hours booked of the capacity, the
 tentative hours, the free hours, and **Away part of the week** or **Booked in a week
-with days away**.
+with days away**. When you may see the person's calendar — your own with Calendar, a
+colleague's with `calendar:view-colleagues` — the last line is what the calendar shows
+them busy that week: **Calendar: 6 h busy, 1 day** — the hours of their appointments that
+block time and, when their Outlook sync is on, of their Outlook events shown as busy or
+out of office, an overlap counted once, and the days they are busy all day. These
+figures are shown, never subtracted: a meeting about the project is often the booking's
+own time, so the load, the free hours and the colour do not change. Under **Projects**
+they are on each person's row, not on the project's.
 
 Above the grid:
 

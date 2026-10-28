@@ -85,7 +85,7 @@ Communications' outbox is the working example.
 5. **One module, one mount.** A module exposes one `Module()` returning a
    `module.Module`: its name, its `Mount`, the permissions it contributes, the
    background workers it contributes, and the cross-module contracts it *provides*.
-   There are seventeen single-provider slots, each filled by at most one enabled module:
+   There are eighteen single-provider slots, each filled by at most one enabled module:
    `Directory` (`contracts.CustomerDirectory`, customers), `Users`
    (`contracts.UserDirectory`, identity), `Calendar` (`contracts.BusinessCalendar`,
    identity — the workspace's business time zone and the day an instant falls on in
@@ -110,9 +110,12 @@ Communications' outbox is the working example.
    (`contracts.Workforce`, staff — the competence catalogue, who holds which competence
    valid on a date, the people in employment and their capacity over a window, the
    caller's own person, its own account in an external directory, and how a proposed
-   booking fits what each person wants; rule 12), and `MailboxCalendar`
+   booking fits what each person wants; rule 12), `MailboxCalendar`
    (`contracts.MailboxCalendar`, entra — a provider's mailbox calendars, which the
-   calendar's Outlook sync writes people's copies to; rule 14). `module.Compose`
+   calendar's Outlook sync writes people's copies to and reads their busy time from;
+   rule 14), and `CalendarBusy` (`contracts.CalendarBusy`, calendar — people's busy
+   time, which Planning's board shows; provider-gated, rule 12; optional for its
+   consumer, nil when the calendar is off). `module.Compose`
    mounts each module at `/api/v1/<name>/` and builds every provider before any
    `Mount` runs, so a module's `Deps` already carries what it consumes; `Calendar`,
    then `Accounts` and then `SSOConnections` are resolved right after `Users`, so the
@@ -131,8 +134,11 @@ Communications' outbox is the working example.
    after the identity provisioners — its provider reads nothing while it is built — and
    reaches every module's `Deps`, keeping a preset value (`modtest.WithMailboxCalendar`)
    when no enabled module provides one: the calendar's `calendar-mailbox-sync` worker
-   writes through it in worker mode as the API does. Two providers are a compose error
-   naming both, and a panic in Workers.
+   writes through it in worker mode as the API does. `CalendarBusy` is resolved by
+   Compose last of all, after `MailboxCalendar`, since its provider — the calendar's
+   server — reads the rest of `Deps` while it is built; `module.Workers` leaves it nil,
+   as no worker reads it. Two providers are a compose error naming both, and a panic in
+   Workers.
    Six slots are *many-provider* instead — any number of modules may fill them,
    and Compose collects them in module order: `Workers` (background work, from
    the enabled modules), `CalendarSources` (`contracts.CalendarSource`, rule 12,
@@ -463,6 +469,17 @@ Communications' outbox is the working example.
     which calls the port only through the accessors in `internal/entra/contractscalls.go`
     that refuse a call made inside one of its transactions
     ([Microsoft Entra ID](/en/reference/entra/#what-the-module-reads-of-identity)).
+    The single-provider `contracts.CalendarBusy` is provider-gated too: the calendar,
+    its sole provider, answers the principal of the request in `ctx` by its own
+    colleague rule — their own user id under `calendar:access`, anyone else's under
+    `calendar:view-colleagues` — and nothing, not an error, for an id the caller may not
+    see or a user who is not active, and for every id when `ctx` carries no request or
+    carries the `AsUser` mark: unlike the many-provider sources, it never answers a read
+    on someone's behalf; the window is bounded (400 days,
+    500 users) and the figures merged instants and dates, never an appointment's title
+    or an Outlook event's. Planning, its consumer, calls it with the request's context,
+    never inside a transaction, and shows what comes back without re-stating the rule
+    ([Calendar](/en/reference/calendar/#the-busy-time-contract)).
 
     Three single-provider reads are the other class, **consumer-gated**:
     `contracts.ProjectActuals` (Time → Projects), `contracts.Timesheets` (Time →
@@ -569,6 +586,19 @@ Communications' outbox is the working example.
     failure to retry. A provider in `cleanup` — its switch off, a credential still
     working — takes deletes only, so a person's copies can always be
     removed ([Calendar](/en/reference/calendar/#outlook-sync)).
+    The same slot carries the calendar's **reads** of the mailbox, made for the busy
+    time it shows: `Delta`, the default calendar's changes a page at a time, and
+    `Marked`, which of a list of events carry the installation's marker. They keep the
+    same discipline — `Status` first, the network on the provider's pool, never called
+    inside a transaction, each page written by the calendar in its own short transaction
+    after the call — and are **refused under `cleanup`** (`ErrMailboxUnavailable`): a
+    read is never needed to remove copies. A delta's link is the provider's opaque
+    string, **held to the mailbox it was answered for**: the provider follows only a
+    link of that mailbox's delta and refuses any other, so a stored link can never
+    point it elsewhere. A link the directory no longer takes is
+    `ErrMailboxDeltaExpired`, and the calendar starts again. Nothing of what an event is
+    about crosses the contract — its times and how it shows the person's time alone
+    ([Microsoft Entra ID](/en/reference/entra/#the-reads)).
 
 ## How they are enforced
 
@@ -1012,7 +1042,9 @@ business modules at once: it reads `contracts.ProjectDirectory` for the projects
 person is booked on — `ProjectsByStatus`, consumer-gated, for the plannable list —
 `contracts.Workforce` for the people in employment, their capacity, the caller's own
 person, the competence catalogue and the competences held, and the fit Staff scores for
-a request's booking, and `contracts.CustomerDirectory` for the customers' names — a
+a request's booking, optionally `contracts.CalendarBusy` for the busy hours and days its
+board shows (provider-gated; nil with `calendar` off, and the board shows none), and
+`contracts.CustomerDirectory` for the customers' names — a
 project's, and those an assignment's non-compete names, each id checked on the terms'
 write; identity's `Deps.Users` gives it the actors' names, `PermissionHolders` for the
 planners a new wish is mailed to, and `Notify`, its mail: to the person whose row was

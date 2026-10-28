@@ -1552,12 +1552,46 @@ Decisions taken while building it:
 *Unblocks:* a person's Vantigo appointments, absence and chosen items in Outlook, and
 their busy time there for colleagues.
 
-**B — Outlook's busy time in Vantigo** (next): a delta per person over the same window,
-on the same worker; events carrying the marker skipped, the rest stored as busy spans
-alone, never a subject; a new kind `calendar.outlook` on the person's calendar and in a
-colleague's as busy, and read by Planning as availability.
+**B — Outlook's busy time in Vantigo, built** on `feat/calendar-outlook-busy`
+([the plan](docs/superpowers/plans/2026-10-27-calendar-outlook-busy.md);
+[the busy read](docs/src/content/docs/en/reference/calendar.md#the-busy-read);
+[the busy time contract](docs/src/content/docs/en/reference/calendar.md#the-busy-time-contract);
+[Entra's reads](docs/src/content/docs/en/reference/entra.md#the-reads)): after each push
+that worked, the same worker reads the person's default calendar through Graph's
+`calendarView/delta` — two new calls on `contracts.MailboxCalendar`, `Delta` and
+`Marked`, refused under cleanup — over its own window, 30 days back to 210 ahead,
+restarted about monthly; the calendar's own copies skipped by the map and the marker
+read; `calendar.mailbox_busy` keeping each busy, tentative, out-of-office or
+working-elsewhere event's times and `showAs` alone, never a subject, at most 5000 a
+person, forgotten when the sync goes off or unavailable. A new kind `calendar.outlook`
+on the person's calendar, labelled by `showAs`; a colleague's calendar shows their busy
+and out-of-office time as untitled blocks; and the calendar's first provided contract,
+`contracts.CalendarBusy` — a new single-provider slot, provider-gated by the calendar's
+colleague rule — from which Planning's board shows each person's busy hours and days a
+week. Migration `00083_calendar_mailbox_busy.sql`.
 
-**C — The write-back** (after B): edits, moves and deletes of one's own appointments in
+Decisions taken while building it:
+
+- **Ours by the map and one read, not `transactionId`**: a delta answers no extended
+  property, so a copy is known by the map, or by `Marked` for a single event the map
+  lacks; `transactionId` would collide with A's copies re-made after a `Gone`.
+- **A link is held to its mailbox**: Entra follows only a link of that mailbox's delta,
+  so a stored link can point it nowhere else; an expired one restarts the delta once a
+  sync.
+- **Bounded reads**: 40 pages of 50 a call, each page read through a 16 MiB cap and
+  written in its own short transaction; a read whose three minutes end between pages
+  keeps its next link and is not a failure; the 5000 cap stops new events only; an event
+  whose times do not read is skipped rather than holding the delta.
+- **Shown, never subtracted**: Planning's `busyHours` and `busyDays` stand beside the
+  load, absent when the calendar answers nothing, on each person's row and never a
+  project's sum; a failing read is the board's 503. The timeline is unchanged.
+- **The person's own Outlook titles are deferred** to C, which reads events whole
+  anyway.
+
+*Unblocks:* a person's Outlook meetings visible to the colleagues and planners who book
+them in Vantigo.
+
+**C — The write-back** (next): edits, moves and deletes of one's own appointments in
 Outlook taken in through the appointment's own update path, and an event made in the
 *Vantigo* calendar becoming an appointment; Vantigo wins a conflict.
 
