@@ -130,3 +130,11 @@ UPDATE entra.connection SET notifications_unreachable_at = sqlc.narg(unreachable
 UPDATE entra.connection SET last_notification_at = @now::timestamptz
 WHERE id = 1
   AND (last_notification_at IS NULL OR last_notification_at + interval '1 minute' < @now::timestamptz);
+
+-- name: CloseNotificationsValidating :exec
+-- CloseNotificationsValidating closes the handshake's window after a
+-- create, only while it is still the one that create opened
+-- (validating_until): a create started since keeps the window its own
+-- POST needs (O11.5). It leaves version alone.
+UPDATE entra.connection SET notifications_validating_until = NULL
+WHERE id = 1 AND notifications_validating_until = @validating_until::timestamptz;

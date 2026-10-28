@@ -31,7 +31,10 @@
 // and answer 403 for a mailbox outside the application's scope and 404
 // MailboxNotEnabledForRESTAPI for a user with none (mailbox.go); the
 // default calendar answers its calendarView/delta from a change log, in
-// pages Prefer sizes, its times in UTC when Prefer asks (mailbox_delta.go).
+// pages Prefer sizes, its times in UTC when Prefer asks (mailbox_delta.go);
+// a subscription's create validates the webhook through Handshake, 400 when
+// it fails, 409 for a second one on the same resource, and the
+// subscriptions are renewed, deleted and listed in pages (subscriptions.go).
 // Every error
 // body is Graph's
 // { "error": { "code", "message" } }, the token endpoint's OAuth's
@@ -150,9 +153,20 @@ type FakeGraph struct {
 	// OversizedEvents are event ids whose read makes the whole $batch it is
 	// in answer a body of 17 MiB, past what the client reads.
 	OversizedEvents map[string]bool
-	// NextLinks, when set, rewrites every @odata.nextLink an events list or
-	// a calendarView answers — a test's foreign or odd-cased link.
+	// NextLinks, when set, rewrites every @odata.nextLink an events list, a
+	// calendarView or the subscriptions' list answers — a test's foreign or
+	// odd-cased link.
 	NextLinks func(link string) string
+	// Handshake, when set, is the webhook a subscription's create validates
+	// (subscriptions.go): it is handed each URL and the validation token and
+	// answers the status and the body the webhook answered; anything but
+	// 200 with the very token fails the create, 400, as Graph's does. It is
+	// called under the fake's lock and must not call the fake. Nil passes
+	// every handshake.
+	Handshake func(notificationURL, validationToken string) (int, string)
+	// SubscriptionPageSize is how many subscriptions a page of GET
+	// /subscriptions holds; 100 when zero.
+	SubscriptionPageSize int
 
 	mu            sync.Mutex
 	users         []*User
@@ -166,6 +180,7 @@ type FakeGraph struct {
 	mailboxes     map[string]*mailbox
 	serial        int
 	deltas        map[string]*deltaState
+	subscriptions []*Subscription
 	// prefer is the Prefer header of the request being answered — a
 	// request's own inside a $batch.
 	prefer string
@@ -687,6 +702,8 @@ func (g *FakeGraph) route(method, path string, query url.Values, contentType str
 		return g.usersRoute(method, seg[1:], query, contentType, body)
 	case seg[0] == "groups":
 		return g.groupsRoute(method, seg[1:], query, body)
+	case seg[0] == "subscriptions":
+		return g.subscriptionsRoute(method, seg[1:], query, body)
 	}
 	return graphError(http.StatusNotFound, "Request_ResourceNotFound", "Resource not found for the segment '"+seg[0]+"'.")
 }

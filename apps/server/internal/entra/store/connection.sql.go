@@ -27,6 +27,20 @@ func (q *Queries) AddSensitiveDenied(ctx context.Context) (int32, error) {
 	return sensitive_denied_streak, err
 }
 
+const closeNotificationsValidating = `-- name: CloseNotificationsValidating :exec
+UPDATE entra.connection SET notifications_validating_until = NULL
+WHERE id = 1 AND notifications_validating_until = $1::timestamptz
+`
+
+// CloseNotificationsValidating closes the handshake's window after a
+// create, only while it is still the one that create opened
+// (validating_until): a create started since keeps the window its own
+// POST needs (O11.5). It leaves version alone.
+func (q *Queries) CloseNotificationsValidating(ctx context.Context, validatingUntil time.Time) error {
+	_, err := q.db.Exec(ctx, closeNotificationsValidating, validatingUntil)
+	return err
+}
+
 const getConnection = `-- name: GetConnection :one
 
 SELECT id, tenant_id, client_id, upn_domain, upn_pattern, default_usage_location, leaver_strip_licences, leaver_remove_groups, leaver_revoke_sessions, leaver_write_leave_date, write_hire_date, pass_lifetime_minutes, pass_usable_once, pass_delivery, status, status_reason, permissions_present, verified_domains, organisation_name, last_checked_at, sensitive_denied_streak, version, updated_at, updated_by_user_id, service_principal_id, skus, calendar_sync, notifications_validating_until, notifications_unreachable_at, last_notification_at FROM entra.connection WHERE id = 1

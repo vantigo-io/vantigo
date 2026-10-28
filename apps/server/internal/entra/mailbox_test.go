@@ -52,10 +52,11 @@ func setCalendarSync(t *testing.T, c *modtest.Client, on bool) gen.EntraConnecti
 }
 
 // newMailboxHarness is a connected tenant whose token carries
-// Calendars.ReadWrite, the switch on: the provider available.
-func newMailboxHarness(t *testing.T) (*harness, *graphtest.FakeGraph, *modtest.Client) {
+// Calendars.ReadWrite, the switch on: the provider available. opts are the
+// harness's besides.
+func newMailboxHarness(t *testing.T, opts ...modtest.Option) (*harness, *graphtest.FakeGraph, *modtest.Client) {
 	t.Helper()
-	h, g := newTenantHarness(t)
+	h, g := newTenantHarness(t, opts...)
 	g.Configure(func(g *graphtest.FakeGraph) { g.Roles = append(g.Roles, "Calendars.ReadWrite") })
 	o := connected(t, h)
 	setCalendarSync(t, o, true)

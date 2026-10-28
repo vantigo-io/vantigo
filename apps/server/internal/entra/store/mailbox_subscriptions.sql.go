@@ -130,6 +130,42 @@ func (q *Queries) ListMailboxNotified(ctx context.Context, arg ListMailboxNotifi
 	return items, nil
 }
 
+const listMailboxSubscriptionsByID = `-- name: ListMailboxSubscriptionsByID :many
+SELECT object_id, subscription_id, client_state_hash, expires_at, state, notified_at, created_at, updated_at FROM entra.mailbox_subscriptions WHERE subscription_id = ANY($1::varchar[])
+`
+
+// ListMailboxSubscriptionsByID is the rows of Graph's subscription ids, as
+// one request of notifications names them: one read for the whole request,
+// however many items it holds (O11.5).
+func (q *Queries) ListMailboxSubscriptionsByID(ctx context.Context, subscriptionIds []string) ([]EntraMailboxSubscription, error) {
+	rows, err := q.db.Query(ctx, listMailboxSubscriptionsByID, subscriptionIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []EntraMailboxSubscription
+	for rows.Next() {
+		var i EntraMailboxSubscription
+		if err := rows.Scan(
+			&i.ObjectID,
+			&i.SubscriptionID,
+			&i.ClientStateHash,
+			&i.ExpiresAt,
+			&i.State,
+			&i.NotifiedAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const markMailboxNotified = `-- name: MarkMailboxNotified :execrows
 UPDATE entra.mailbox_subscriptions SET
     notified_at = $1::timestamptz,

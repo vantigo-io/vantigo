@@ -48,6 +48,9 @@ import (
 // tell this installation's copies by their marker; and Versions and Events
 // (design O10; mailbox_writeback.go) read the copies' change keys, and the
 // events the write-back takes, whole. All four are refused under cleanup.
+// Watch, Unwatch and Notified (design O11; mailbox_notifications.go) keep a
+// Graph subscription on the mailbox's events, whose notifications the
+// module's webhook records.
 // Graph's words are never logged — an event's subject or body may
 // come back in them — nor is any subject, body or address: a refusal is
 // logged by its status and codes alone.
@@ -179,11 +182,38 @@ type mailboxSession struct {
 	cleanup bool
 }
 
-// open is a call's footing for mailbox: the status checked —
-// ErrMailboxUnavailable unless available, or cleanup when cleanupAllowed —,
-// then the account (ErrMailboxUnknown unless it is a row the module made or
-// whose adoption is confirmed, and not deleted), then a credential.
+// open is a call's footing for mailbox: checked (checked's rules), then a
+// credential.
 func (m *mailboxCalendar) open(ctx context.Context, mailbox string, cleanupAllowed bool) (mailboxSession, error) {
+	s, err := m.checked(ctx, mailbox, cleanupAllowed)
+	if err != nil {
+		return mailboxSession{}, err
+	}
+	if err := m.withCredential(ctx, &s); err != nil {
+		return mailboxSession{}, err
+	}
+	return s, nil
+}
+
+// withCredential sets s's credential, which may fetch a token: the network.
+func (m *mailboxCalendar) withCredential(ctx context.Context, s *mailboxSession) error {
+	cred, err := credentialFor(ctx, s.q, m.client)
+	switch {
+	case errors.Is(err, errNotConfigured), errors.Is(err, errNoCredential):
+		return fmt.Errorf("%w: %w", contracts.ErrMailboxUnavailable, err)
+	case err != nil:
+		return err
+	}
+	s.cred = cred
+	return nil
+}
+
+// checked is a call's footing for mailbox with no credential yet, and so
+// no network: the status checked — ErrMailboxUnavailable unless available,
+// or cleanup when cleanupAllowed —, then the account (ErrMailboxUnknown
+// unless it is a row the module made or whose adoption is confirmed, and
+// not deleted).
+func (m *mailboxCalendar) checked(ctx context.Context, mailbox string, cleanupAllowed bool) (mailboxSession, error) {
 	st, err := m.Status(ctx)
 	if err != nil {
 		return mailboxSession{}, err
@@ -210,14 +240,7 @@ func (m *mailboxCalendar) open(ctx context.Context, mailbox string, cleanupAllow
 	case row.State == stateDeleted:
 		return mailboxSession{}, fmt.Errorf("entra: the account %s is deleted: %w", oid, contracts.ErrMailboxUnknown)
 	}
-	cred, err := credentialFor(ctx, q, m.client)
-	switch {
-	case errors.Is(err, errNotConfigured), errors.Is(err, errNoCredential):
-		return mailboxSession{}, fmt.Errorf("%w: %w", contracts.ErrMailboxUnavailable, err)
-	case err != nil:
-		return mailboxSession{}, err
-	}
-	return mailboxSession{q: q, cred: cred, oid: oid, cleanup: st.State == contracts.MailboxCleanup}, nil
+	return mailboxSession{q: q, oid: oid, cleanup: st.State == contracts.MailboxCleanup}, nil
 }
 
 // keyPrefix starts the value of the marker of an event this installation

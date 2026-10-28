@@ -15,6 +15,12 @@ SELECT * FROM entra.mailbox_subscriptions WHERE object_id = @object_id;
 -- notification names it.
 SELECT * FROM entra.mailbox_subscriptions WHERE subscription_id = @subscription_id::varchar;
 
+-- name: ListMailboxSubscriptionsByID :many
+-- ListMailboxSubscriptionsByID is the rows of Graph's subscription ids, as
+-- one request of notifications names them: one read for the whole request,
+-- however many items it holds (O11.5).
+SELECT * FROM entra.mailbox_subscriptions WHERE subscription_id = ANY(@subscription_ids::varchar[]);
+
 -- name: UpsertMailboxSubscription :one
 -- UpsertMailboxSubscription is a create's write: before the POST, the
 -- clientState's hash with no id and no expiry; after Graph's 201, the id and
