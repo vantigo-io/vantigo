@@ -473,3 +473,39 @@ func TestMailboxNotifications_AFailingNotifiedDoesNotStopTheCycle(t *testing.T) 
 		t.Errorf("Notified asked %+v, want from %v", asked, first)
 	}
 }
+
+// The notices are taken before the lease, holding no connection: a replica
+// whose cycle finds the lease held elsewhere still makes the notified people
+// due, and a cycle never holds the lease's connection while the provider's
+// read and the mark ask the pool for another — on a small pool that starved
+// every worker and the readiness probe.
+func TestMailboxNotifications_NoticesAreTakenWithoutTheLease(t *testing.T) {
+	t.Parallel()
+	r := newMailboxRig(t)
+	w := mailboxWorker(t, r)
+	_, id, mailbox := watchedPerson(t, r)
+	synced := r.Now()
+
+	conn, err := r.Pool().Acquire(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Release()
+	if _, err := conn.Exec(context.Background(), `SELECT pg_advisory_lock($1)`, int64(0x43414C4D424F5831)); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if _, err := conn.Exec(context.Background(), `SELECT pg_advisory_unlock($1)`, int64(0x43414C4D424F5831)); err != nil {
+			t.Error(err)
+		}
+	}()
+
+	r.Advance(5 * time.Minute)
+	r.box.Notify(mailbox, synced.Add(4*time.Minute))
+	if ran, n, err := w.RunCycle(context.Background()); ran || n != 0 || err != nil {
+		t.Fatalf("with the lease held elsewhere the cycle ran %v, synced %d, %v", ran, n, err)
+	}
+	if row := readSyncRow(t, r, id); row.next == nil || !row.next.Equal(r.Now()) {
+		t.Errorf("the notified person's next sync is %v, want now (%v)", row.next, r.Now())
+	}
+}

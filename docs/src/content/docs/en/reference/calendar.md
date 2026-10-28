@@ -2285,8 +2285,10 @@ unchanged either way.
 - **`Watch`** is the sync's last step (step 11 [above](#the-mailbox-sync-worker)).
 - **`Unwatch`** is a [clean-up](#the-clean-up)'s step, for every reason but a target
   change: the subscription is the mailbox's, not the calendar's.
-- **`Notified`** is asked **each cycle**, under the lease, before the due rows are
-  listed, with `since` — held in memory by the worker, per process, **initially now
+- **`Notified`** is asked **each cycle**, **before the lease is taken** — no connection
+  is held while the read and the mark ask the pool for one, which on a small pool would
+  starve the workers and the readiness probe; every replica asks, a mark being
+  idempotent — with `since` — held in memory by the worker, per process, **initially now
   minus the poll interval** and advanced to the latest `At` it marked — **less 30
   seconds**: the overlap covers a notice whose write committed after a later one was read,
   and replicas whose clocks differ a little. Taking a notice twice is harmless, since the
