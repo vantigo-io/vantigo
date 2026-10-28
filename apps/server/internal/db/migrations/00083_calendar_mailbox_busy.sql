@@ -47,9 +47,18 @@ ALTER TABLE calendar.mailbox_sync
     ADD COLUMN busy_to        date,
     ADD COLUMN busy_synced_at timestamptz;  -- when a read last reached the delta link
 
+-- The ids 00081 stored are widened to the provider's bound (512), which the
+-- provider accepts an id up to: a copy or calendar with a longer id than 500
+-- would otherwise fail the map's write.
+ALTER TABLE calendar.mailbox_events ALTER COLUMN event_id TYPE varchar(512);
+ALTER TABLE calendar.mailbox_sync ALTER COLUMN calendar_id TYPE varchar(512);
+
 -- +goose Down
 -- The busy rows go with their table and the delta's state with its columns:
 -- nothing of them is held anywhere else, and the mailbox keeps its events.
+-- The ids go back to 00081's width; an id longer than 500 fails the down.
+ALTER TABLE calendar.mailbox_sync ALTER COLUMN calendar_id TYPE varchar(500);
+ALTER TABLE calendar.mailbox_events ALTER COLUMN event_id TYPE varchar(500);
 ALTER TABLE calendar.mailbox_sync
     DROP COLUMN busy_synced_at,
     DROP COLUMN busy_to,

@@ -450,10 +450,14 @@ path `/v1.0/users/{oid}/calendarView/delta` of the mailbox's own object id, comp
 whatever its case; it sends a path of its own built from the oid with the link's query
 alone, and checks every `nextLink` and `deltaLink` Graph answers the same way; anything
 else is a failure, unsent. An event whose id breaks the provider's id rule is skipped
-before decoding. `event_id` is `varchar(512)`, the provider's bound. `CalendarBusy`
+before decoding. `event_id` is `varchar(512)`, the provider's bound, and 00083 widens
+00081's `mailbox_events.event_id` and `mailbox_sync.calendar_id` to it as well. `CalendarBusy`
 also leaves out a user the directory does not answer as active, and answers nothing
 under the `AsUser` mark, even over a request. The busy link is written only while the
-sync is `enabled`. A page of the delta is read through a cap of its
+sync is `enabled`, first in each page's transaction: a sync turned off mid-read deletes
+the person's rows there and stops. A busy read that fails without a refusal leaves the
+push recorded — `active`, `last_synced_at` now, error `failed`, the backoff, never the
+`failed` state — and Planning's board gives each person sharing a user the figures. A page of the delta is read through a cap of its
 own, **16 MiB** (fifty events answered whole, bodies and attendees included), beside the
 1 MiB default and the `$batch`'s 8 MiB. An event whose times do not read, or with no id,
 is skipped and counted at debug level, never failing the page — which would hold the
