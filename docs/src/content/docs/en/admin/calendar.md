@@ -346,6 +346,17 @@ reaches Outlook within a minute. A failed sync is tried again after 1, 5, 15 and
 minutes, then hourly, and shows as failed from the fifth in a row; a mailbox the tenant
 refuses is tried again in six hours; a connection that is not working, in an hour.
 
+Before each push the worker also **takes back what people changed in Outlook**: an
+edit, a move or a delete of a copy of their own appointment changes the appointment
+through the same rules — and the same mails to colleagues and to people outside the
+company — as a change made in Vantigo, and an event made in a separate *Vantigo*
+calendar becomes an appointment ([the write-back](/en/reference/calendar/#the-write-back)).
+**A copy deleted in Outlook deletes, or cancels, the appointment in Vantigo.** Anything
+else changed in a copy is put back. It writes at most 20 appointments a person per
+sync, on that person's behalf. A read of the copies that fails lets the push go on and
+is tried again on the failure's backoff; the person's card then says the last sync
+failed.
+
 The worker removes a person's copies when they turn the sync off, when they may no
 longer use Calendar — disabled, locked out, deactivated by the directory, or without
 `calendar:access` — when Staff no longer links them to a Microsoft Entra ID account,
@@ -355,7 +366,7 @@ copies of a leaver included, until it is on again.
 
 It reaches the network only through the Entra module's Graph client — the two fixed
 Microsoft hosts, with the module's own limits — and logs a person by their user id
-alone: never their mailbox, an appointment's title or Graph's words. A failed sync is
+alone: never their mailbox, an appointment's or an event's title or Graph's words. A failed sync is
 logged at warning with the step that failed; a refused mailbox at info with its code.
 
 | Variable | Purpose | Default |

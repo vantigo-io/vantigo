@@ -13,6 +13,7 @@ sources:
   - apps/server/internal/entra/groups.go
   - apps/server/internal/entra/tenant_test.go
   - apps/server/internal/entra/mailbox.go
+  - apps/server/internal/entra/mailbox_writeback.go
 ---
 
 Microsoft Entra ID-modulen lager kontoene til personene Ansatte registrerer, i
@@ -217,9 +218,14 @@ Modulen setter den aldri selv.
 `calendar-mailbox-sync` skriver hver persons avtaler, og det de velger fra de andre
 appene, til Exchange Online-postboksen deres gjennom denne modulens tilkobling, og leser
 etter hver synkronisering **standardkalenderen** deres tilbake — tidene for hendelsene
-som gjør dem opptatt, aldri titlene — for å vise den opptatte tiden i Vantigo.
-`Calendars.ReadWrite` dekker lesingen: det er ingenting å legge til eller samtykke til.
-Den er av som standard, og klargjøringen virker likt med den av eller på. Hva den skriver
+som gjør dem opptatt, aldri titlene — for å vise den opptatte tiden i Vantigo. Før hver
+skriving leser den også Vantigos **egne kopier** — og, for en person som har valgt en egen
+*Vantigo*-kalender, hver hendelse i den kalenderen — i sin helhet, for å ta med tilbake
+endringene, flyttingene og slettingene personen gjorde i Outlook på sine egne avtaler
+([brukerveiledningen](/nb/user/calendar/#endre-avtalene-dine-i-outlook)); personens egne
+hendelser leser den aldri i sin helhet. `Calendars.ReadWrite` dekker begge lesingene:
+det er ingenting å legge til eller samtykke til. Den er av som standard, og
+klargjøringen virker likt med den av eller på. Hva den skriver
 og leser, og hvordan, står i [referansen](/en/reference/entra/#the-mailbox-calendar).
 
 ### Forutsetninger
@@ -253,6 +259,16 @@ Exchange RBAC for Applications; ellers legg den til, gi administratorsamtykke og
 nytt.** — men linjen er bare til orientering, og steg 3 venter ikke på den: folk kan slå på
 synkroniseringen sin likevel, og en postboks tillatelsen ikke når, avvises bare for den
 personen. Resten av modulen virker som før.
+
+**Hva en endring i Outlook gjør.** En persons endring eller flytting av kopien av sin
+egen avtale endrer avtalen i Vantigo ved neste synkronisering, med de samme reglene og
+e-postene som en endring gjort i Vantigo. **Sletter personen kopien i Outlook — eller
+flytter den til en annen kalender eller mappe — slettes avtalen i Vantigo**, eller den
+avlyses, med en avlysning på e-post til folk utenfor bedriften, når de er invitert; for
+én forekomst av en gjentakende avtale avlyses den forekomsten. En endring i noe annet —
+en avtale personen deltar i, et element fra en annen app — legges tilbake, og en kopi
+personen legger til deltakere på, overlates til dem. Vantigo tar med høyst 20 slike
+endringer per person per synkronisering; resten følger ved neste.
 
 **Slår du den av**, stopper synkroniseringen for alle, og arbeideren fjerner kopiene den
 skrev, med tilkoblingen så lenge en hemmelighet virker. Slår du den på igjen, fortsetter
@@ -575,6 +591,8 @@ persons **Outlook**-kort i Kalender:
 | *Venter på tilkoblingen* under bryteren | Tilkoblingen er ikke tilkoblet; årsaken står under linjen. | Rett tilkoblingen slik tabellen over sier. |
 | *Organisasjonen din har ikke gitt Vantigo tilgang til postboksen din.* på en persons kort | Graph svarte 403 for postboksen (`mailbox_denied`): utenfor et omfang i RBAC for Applications. Prøves igjen hver sjette time. | Legg personen til i omfangets gruppe, eller godta det; personen trykker **Synkroniser nå** for å prøve med en gang. |
 | *Postboksen din ble ikke funnet.* på en persons kort | Brukeren har ingen Exchange Online-postboks, eller finnes ikke lenger (`mailbox_gone`). Prøves igjen hver sjette time. | Gi kontoen en lisens med Exchange Online. |
+| *En endring fra Outlook ble ikke tatt med* på en persons kort | Personen endret noe i Outlook som Vantigo ikke tar med — en avtale som også ble endret i Vantigo, en endring reglene avviser, en annens avtale, eller feltene i en forekomst eller i et element fra en annen app — og Vantigo la kopien tilbake. Setningen under overskriften sier hvilket. | Ingenting: personen gjør den endringen i Vantigo, eller ber arrangøren av avtalen om det. |
+| En persons endring i Outlook kom ikke til Vantigo | Den gjaldt ikke personens egen avtale; det var en tittel, beskrivelse eller et sted med **Bare opptatt**; kopien var blitt et møte (personen la til deltakere), som Vantigo lar være; eller synkroniseringen står ikke som **Sist synkronisert** — en mislykket lesing viser *Den siste synkroniseringen mislyktes; Vantigo prøver igjen.*, og skrivingen i den synkroniseringen kan skrive Vantigos versjon over en endring i en kopi Vantigo også endret. | Sjekk personens kort; personen trykker **Synkroniser nå**. En endring som gikk tapt ved en mislykket lesing, gjøres på nytt i Vantigo. |
 | *Vantigo-brukeren din er ikke koblet til en Microsoft 365-konto som Vantigo styrer.* på en persons kort | Ansatte kobler brukeren til ingen konto i denne modulen, til en Vantigo ikke opprettet og ingen har bekreftet, eller til en slettet (`no_account`). | Gi personen kontotypen Microsoft Entra ID i Ansatte, eller [bekreft kontoen](#kontoer-vantigo-ikke-opprettet). |
 
 På en persons fane Konto i Ansatte sier kortet **Microsoft Entra ID** hva leietakeren

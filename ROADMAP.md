@@ -1591,11 +1591,48 @@ Decisions taken while building it:
 *Unblocks:* a person's Outlook meetings visible to the colleagues and planners who book
 them in Vantigo.
 
-**C — The write-back** (next): edits, moves and deletes of one's own appointments in
-Outlook taken in through the appointment's own update path, and an event made in the
-*Vantigo* calendar becoming an appointment; Vantigo wins a conflict.
+**C — The write-back, built** on `feat/calendar-outlook-writeback`
+([the plan](docs/superpowers/plans/2026-10-28-calendar-outlook-writeback.md);
+[the write-back](docs/src/content/docs/en/reference/calendar.md#the-write-back);
+[Entra's write-back reads](docs/src/content/docs/en/reference/entra.md#the-write-backs-reads)):
+before each push the worker asks the provider for the copies' versions — two new calls
+on `contracts.MailboxCalendar`, `Versions` (ids and change keys: the default calendar's
+marked events, or every event of the *Vantigo* calendar's view) and `Events` (read whole
+by id through the calendar's own path, in `$batch`es of twenty), both refused under
+cleanup — and reads whole only the moved, the missing and the new, at most 100 a sync.
+An owner's edit or move of a single appointment's copy becomes a `PUT` of the
+appointment, an occurrence's move a `PUT …/occurrences/{date}`, and a delete the
+module's own `DELETE` (a cancellation, with the CANCELs, once outsiders were invited) or
+an occurrence cancelled — each through the screen's own code, on the person's behalf, at
+most 20 a sync, with its `SEQUENCE`, invitations and notices. Vantigo wins a conflict;
+an attendee's copy, a projected item's and what an occurrence cannot carry are put back,
+and the person's **Outlook** card names the last change put back by its reason; a copy
+the person turned into a meeting is released, never written again; an event made in the
+*Vantigo* calendar becomes an appointment once, its map row written in the create's
+transaction. Migration `00084_calendar_mailbox_writeback.sql`.
 
-**D — Change notifications** (after C): for an installation Microsoft can reach, a
+Decisions taken while building it:
+
+- **Versions every sync, not the delta**: a delta answers no extended property, the
+  *Vantigo* calendar has no v1.0 delta, and a removal cannot tell a delete from a move;
+  a copy whose change key is unchanged is never read, and a moved one equal to what was
+  written is Exchange's noise.
+- **The screen's own paths**: the `PUT`, occurrence, `DELETE` and create handlers were
+  split into internal forms the worker calls, so validation, revisions and mails are
+  the same code.
+- **An absence is a delete only when it can be**: a complete list, the row in the
+  window, the event not found through its calendar's own path; and a reconcile after a
+  write-back that did not complete forgets nothing.
+- **A failed read does not hide the push**: it is recorded `active` with `failed` on
+  the backoff, as a failed busy read; that push may then write Vantigo's version over an
+  unread edit.
+- **The person's own Outlook titles are not shown**: only the copies and the *Vantigo*
+  calendar are read whole, never the person's own events.
+
+*Unblocks:* a person who works in Outlook, on a phone, changing their own appointments
+there.
+
+**D — Change notifications** (next): for an installation Microsoft can reach, a
 subscription per person whose notification only makes the sync due.
 
 ### Later

@@ -13,6 +13,7 @@ sources:
   - apps/server/internal/entra/groups.go
   - apps/server/internal/entra/tenant_test.go
   - apps/server/internal/entra/mailbox.go
+  - apps/server/internal/entra/mailbox_writeback.go
 ---
 
 The Microsoft Entra ID module makes the accounts of the people Staff registers in the
@@ -217,9 +218,14 @@ module never sets it itself.
 `calendar-mailbox-sync` worker writes each person's appointments, and the items they
 choose, to their Exchange Online mailbox through this module's connection, and after
 each sync reads their **default calendar** back — the times of the events that make them
-busy, never the titles — to show that busy time in Vantigo. `Calendars.ReadWrite` covers
-the read: there is nothing to add or consent to. It is off by default, and provisioning
-works the same with it on or off. What it writes and reads, and how, is in [the
+busy, never the titles — to show that busy time in Vantigo. Before each push it also
+reads Vantigo's **own copies** — and, for a person who chose a separate *Vantigo*
+calendar, every event in that calendar — whole, to take back the edits, moves and
+deletes the person made in Outlook to their own appointments
+([the user guide](/en/user/calendar/#change-your-appointments-in-outlook)); it never
+reads the person's own events whole. `Calendars.ReadWrite` covers both reads: there is
+nothing to add or consent to. It is off by default, and provisioning works the same
+with it on or off. What it writes and reads, and how, is in [the
 reference](/en/reference/entra/#the-mailbox-calendar).
 
 ### Preconditions
@@ -253,6 +259,16 @@ with Exchange RBAC for Applications; otherwise add it, grant admin consent and t
 again.** — but the line is advisory, and step 3 does not wait for it: people can turn their sync
 on all the same, and a mailbox the permission does not reach is refused for that person
 alone. The rest of the module works as before.
+
+**What a change in Outlook does.** A person's edit or move of their own appointment's
+copy changes the appointment in Vantigo at the next sync, through the same rules and
+mails as a change made in Vantigo. **Deleting the copy in Outlook — or moving it to
+another calendar or folder — deletes the appointment in Vantigo**, or cancels it, with a
+cancellation mailed to the people outside the company, once they were invited; for one
+occurrence of a repeating appointment, it cancels that occurrence. A change to anything
+else — an appointment the person attends, another app's item — is put back, and a copy
+the person adds attendees to is left to them. Vantigo takes at most 20 such changes a
+person per sync; the rest follow at the next.
 
 **Turning it off** stops everyone's sync, and the worker removes the copies it wrote,
 using the connection while a credential still works. Turning it on again resumes
@@ -566,6 +582,8 @@ Calendar sync's troubles show on the line under its switch, and on each person's
 | *Waiting for the connection* under the switch | The connection is not connected; its reason is under the line. | Fix the connection as the table above says. |
 | *Your organisation has not allowed Vantigo to reach your mailbox.* on a person's card | Graph answered 403 for their mailbox (`mailbox_denied`): outside an RBAC for Applications scope. Tried again every six hours. | Add the person to the scope's group, or accept it; they press **Sync now** to try at once. |
 | *Your mailbox could not be found.* on a person's card | The user has no Exchange Online mailbox, or no longer exists (`mailbox_gone`). Tried again every six hours. | Give the account a licence with Exchange Online. |
+| *A change from Outlook was not taken* on a person's card | The person changed something in Outlook that Vantigo does not take — an appointment changed in Vantigo too, a change its rules refuse, someone else's appointment, or an occurrence's or another app's item's fields — and Vantigo put the copy back. The sentence below the heading says which. | Nothing: the person makes that change in Vantigo, or asks the appointment's organizer. |
+| A person's edit in Outlook did not reach Vantigo | It was not to their own appointment; it was a title, description or place under **Busy only**; the copy had become a meeting (they added attendees), which Vantigo leaves alone; or the sync is not **Last synced** — a failed read shows *The last sync failed; Vantigo will try again.*, and that sync's push may write Vantigo's version over an edit to a copy Vantigo also changed. | Check the person's card; they press **Sync now**. An edit lost to a failed read is made again in Vantigo. |
 | *Your Vantigo user is not connected to a Microsoft 365 account that Vantigo manages.* on a person's card | Staff links the user to no account of this module, or to one Vantigo did not create and nobody confirmed, or one deleted (`no_account`). | Give the person the Microsoft Entra ID kind in Staff, or [confirm the account](#accounts-vantigo-did-not-create). |
 
 On a person's Account tab in Staff, the **Microsoft Entra ID** card says what the
