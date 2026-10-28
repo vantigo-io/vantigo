@@ -391,9 +391,10 @@ og pollingen går enten det kommer varsler eller ikke. Hvis forespørselen feile
 arbeideren en advarsel med feilens kode, og synkroniseringen står. Abonnementet fjernes
 sammen med kopiene — når personen slår synkroniseringen av, mister tilgangen, kobles fra
 eller flyttes til en annen postboks, eller **Kalendersynkronisering** slås av — men
-beholdes når bare personens målkalender endres. En fjerning Microsoft avviser, forblir
-skyldig og prøves på nytt med opprydningens utsettelse, som en kopi som ikke kunne
-slettes. `CALENDAR_MAILBOX_NOTIFICATIONS_ENABLED=0` slår det hele av.
+beholdes når bare personens målkalender endres. En fjerning som feiler, eller som ikke kan forsøkes fordi tilkoblingen ikke virker,
+forblir skyldig og prøves på nytt med opprydningens utsettelse, som en kopi som ikke
+kunne slettes; en Microsoft avviser rett ut (manglende tillatelse), logges og får gå ut
+innen sju dager, slik at den ikke holder opprydningen tilbake. `CALENDAR_MAILBOX_NOTIFICATIONS_ENABLED=0` slår det hele av.
 
 Den når nettet bare gjennom Entra-modulens Graph-klient — de to faste vertene til
 Microsoft, med modulens egne grenser — og logger en person bare med bruker-id-en: aldri

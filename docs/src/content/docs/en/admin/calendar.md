@@ -373,8 +373,10 @@ and the poll runs whether or not any arrive. If asking fails, the worker logs a 
 with the error's code and the sync stands. The subscription is removed with the copies —
 the person turning the sync off, losing access, being unlinked or moved to another
 mailbox, or Calendar sync being turned off — but kept when only the person's target
-calendar changes. A removal Microsoft refuses stays owed and is tried again on the
-clean-up's backoff, like a copy that could not be deleted. `CALENDAR_MAILBOX_NOTIFICATIONS_ENABLED=0`
+calendar changes. A removal that fails, or that cannot be tried because the connection is not
+working, stays owed and is tried again on the clean-up's backoff, like a copy that could
+not be deleted; one Microsoft refuses outright (permission denied) is logged and left to
+lapse, within seven days, so it cannot hold the clean-up back. `CALENDAR_MAILBOX_NOTIFICATIONS_ENABLED=0`
 turns it all off.
 
 The worker removes a person's copies when they turn the sync off, when they may no

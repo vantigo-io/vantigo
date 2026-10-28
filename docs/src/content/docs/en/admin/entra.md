@@ -383,7 +383,7 @@ Set `CALENDAR_MAILBOX_NOTIFICATIONS_ENABLED=0` and restart. Nothing new is subsc
 the poll alone runs; the line reads **Turned off by the operator …**. Subscriptions that
 exist are not deleted by this — they lapse within seven days, and a notification of one
 only makes a sync due — but each is deleted in Microsoft when the person's copies are
-cleaned up. An empty `PUBLIC_BASE_URL` has the same effect, and the line reads **Needs
+cleaned up (one Microsoft refuses to delete is left to lapse the same way). An empty `PUBLIC_BASE_URL` has the same effect, and the line reads **Needs
 PUBLIC_BASE_URL …**.
 
 #### What can go wrong
@@ -404,7 +404,16 @@ PUBLIC_BASE_URL …**.
   if that read is refused or fails, the card says so, as for any sync.
 - **Another application's subscription on the same mailbox.** Vantigo deletes only a
   subscription that is on this mailbox's events and posts to this installation's own
-  address, and never another's.
+  address, and never another's. If Microsoft refuses a new one because of a subscription
+  that is **another installation's** — two Vantigo installations sharing one application
+  registration — Vantigo logs a warning naming the tenant, does not try that mailbox
+  again for **24 hours**, and the poll alone serves it.
+- **`PUBLIC_BASE_URL` changed.** A subscription made for the old address is deleted at
+  the person's next sync and made again for the new one, so the old address is never
+  notified again. If Microsoft refuses the delete, the next sync tries it again.
+- **A failing sync is not hurried.** A notification makes a person's sync due at once
+  only when it is not backing off a failure; a person whose sync keeps failing waits for
+  its own retry times.
 - **No notifications from a busy tenant.** The webhook accepts 600 requests a minute per
   client address; Microsoft retries a refused one for hours, and the poll catches
   whatever is missed. Behind a proxy, set `TRUSTED_PROXY_HOPS` and
