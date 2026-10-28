@@ -633,6 +633,34 @@ provider read — no new cross-module direction. `Versions` and `Events` keep ru
 discipline; what an event says crosses the contract for the copies and the *Vantigo*
 calendar only, and only for the write it feeds.
 
+*As built:* see the plan
+[`2026-10-28-calendar-outlook-writeback.md`](../plans/2026-10-28-calendar-outlook-writeback.md).
+`Versions` reads each page through the 8 MiB cap with `$top=500` and follows a next
+link only when it is a page of the very list sent — B's rule generalised: host exact,
+no user or fragment, a query, the path `/v1.0` plus the path sent compared unescaped and
+whatever its case, percent-encoding only when the path sent carries it — sending its
+own path with the link's query alone; on the default calendar an event carrying no key
+of this installation's is left out. `Events` reads its `$batch`es through the 16 MiB
+cap (a body asked as text may still come as HTML), answers a 404 for the item as not
+there, retries a 429 once after at most 30 seconds, and leaves out a 200 for another id
+or with times that do not read. The 100 reads go to the moved first, then the missing,
+then the new; a missing row past them makes the write-back incomplete. The decisions
+run in this order: a meeting is released; a key no longer wanted is left to the push; a
+`Series`, `Foreign` or cancelled answer keeps its change key; an unchanged copy is
+noise; a projected item is `not_editable`; an appointment gone is left alone;
+another's is `not_owner`; a cancelled one is left alone; then the conflict. A write answered 400 is `refused`,
+409 `revision_mismatch` `conflict`, any other refusal is made stale for the push. Under
+`detail = busy` only the times, `showAs` and the sensitivity are taken (the private
+appointment's hidden copy is only ever an attendee's, so `not_owner`); a copy whose
+fields all match the appointment is rewritten with nothing written. A write that
+worked moves the row's `starts_on` with the appointment. A deleted copy of an
+occurrence of an appointment that is no longer a series, or of an appointment gone or
+cancelled, is forgotten. A released row is forgotten by the default calendar's
+clean-up without a delete; a *Vantigo* calendar deleted whole goes with everything in
+it. `putBack` is answered on the setting's `GET` alone, not by the `PUT` or the run.
+Every update the worker makes names its key, so writes the marker. When the busy read
+and the write-back both fail, the busy read's failure is the one logged.
+
 ### O11 — D: change notifications (outline)
 
 Optional, recommended: with `PUBLIC_BASE_URL` reachable, a subscription per person on

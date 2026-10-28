@@ -599,6 +599,20 @@ Communications' outbox is the working example.
     `ErrMailboxDeltaExpired`, and the calendar starts again. Nothing of what an event is
     about crosses the contract — its times and how it shows the person's time alone
     ([Microsoft Entra ID](/en/reference/entra/#the-reads)).
+    The **write-back** adds two reads under the same discipline, both refused under
+    `cleanup`: `Versions`, the copies' ids and change keys — nothing of what the events
+    say — and `Events`, events read whole by id through their calendar's own path, so an
+    id not answered is not in that calendar any more. It opens **no new direction**: the
+    calendar writes its own appointments from what the provider read, through its own
+    write paths on the person's behalf (rule 12), with no transaction open across a
+    call. **What an event says crosses the contract only for the copies and the
+    provider's own calendar** (the *Vantigo* calendar), **and only for the write it
+    feeds**: the subject, the body and the location are compared and taken into the
+    appointment, never stored elsewhere, and neither side logs a word of them; an
+    event's attendees cross as a count alone. An update that names a key writes it as
+    the marker, the same value a copy already carries
+    ([Calendar](/en/reference/calendar/#the-write-back),
+    [Microsoft Entra ID](/en/reference/entra/#the-write-backs-reads)).
 
 ## How they are enforced
 

@@ -1,6 +1,6 @@
 ---
 title: Kalender
-description: Avtalene dine og det de andre appene har lagt inn i dagene dine, å invitere kolleger, kunders kontaktpersoner og hvem som helst med en adresse, hva en invitert får og hvordan de svarer, avlysning, når kolleger er opptatt, gjentakende avtaler, agendaen på dashbordet, kalenderen din på mobilen, kalendere fra andre steder ved siden av din egen, en kopi av kalenderen din i Outlook, og når du er opptatt i Outlook, vist i Vantigo.
+description: Avtalene dine og det de andre appene har lagt inn i dagene dine, å invitere kolleger, kunders kontaktpersoner og hvem som helst med en adresse, hva en invitert får og hvordan de svarer, avlysning, når kolleger er opptatt, gjentakende avtaler, agendaen på dashbordet, kalenderen din på mobilen, kalendere fra andre steder ved siden av din egen, en kopi av kalenderen din i Outlook, å endre dine egne avtaler fra Outlook, og når du er opptatt i Outlook, vist i Vantigo.
 sidebar:
   order: 35
 sources:
@@ -445,8 +445,9 @@ din, får dem ikke to ganger.
 Vantigo kan holde en kopi av kalenderen din i Microsoft 365-postboksen din, så avtalene
 dine vises i Outlook — på datamaskinen og mobilen — ved siden av alt det andre. I
 hovedkalenderen viser de deg også som opptatt for kolleger som booker møter i Outlook.
-Endringene gjør du fortsatt i Vantigo: kopiene sier **Holdes av Vantigo — endre det
-der:** med en lenke tilbake.
+Kopiene sier **Holdes av Vantigo — endre det der:** med en lenke tilbake, men du kan
+også [endre, flytte og slette dine egne avtaler i
+Outlook](#endre-avtalene-dine-i-outlook): endringen kommer tilbake til Vantigo.
 
 1. Åpne **Kalender → Min kalender**. Kortet **Outlook** står under kalenderadressene
    dine.
@@ -491,12 +492,8 @@ Ledige og avlyste hendelser er ikke med, og heller ikke Vantigos egne kopier. Ko
 sier det — **Tiden du er opptatt i hovedkalenderen din i Outlook vises i
 Vantigo-kalenderen din, og som opptatt for kollegene dine og på Bemanning-tavlen.
 Titlene blir aldri lest.** — og, når den er lest, **Opptatt-tid lest** og når. En
-endring i Outlook vises etter neste synkronisering. Titlene dine fra Outlook vises ikke
-i Vantigo ennå.
-
-**Endre i Vantigo, ikke i Outlook.** Inntil videre settes en kopi du flytter eller
-endrer i Outlook, tilbake neste gang Vantigo synkroniserer, og en du sletter der, kommer
-tilbake. Det er planlagt at endringene dine i Outlook skal tas inn i Vantigo.
+endring i Outlook vises etter neste synkronisering. Dine egne titler fra Outlook vises
+ikke i Vantigo.
 
 **Slå den av** med samme bryter: Vantigo fjerner det den la inn i Outlook — **Fjerner det
 Vantigo la inn i Outlook …** — og kortet sier **Synkroniserer ikke**. Opptatt-tiden din
@@ -525,11 +522,76 @@ synkroniseringen mislyktes; Vantigo prøver igjen.** Det siste trenger du ikke g
 med: Vantigo prøver igjen, sjeldnere for hver gang. Slutter du, eller mister du tilgangen
 til Kalender, fjernes kopiene dine.
 
+### Endre avtalene dine i Outlook
+
+Mens synkroniseringen er på, sier kortet det: **Endringer, flyttinger og slettinger du
+gjør i Outlook på dine egne avtaler kommer tilbake til Vantigo. Endringer i avtaler du
+deltar i, og i de andre elementene, blir lagt tilbake.** Med **En egen Vantigo-kalender**
+legger det til at nye hendelser du oppretter i den kalenderen, blir til avtaler.
+
+Dine **egne** avtaler — dem du har laget i Vantigo — kan du endre i Outlook, på
+datamaskinen eller mobilen. Vantigo tar med endringen ved neste synkronisering, innen
+et kvarter, som om du hadde gjort den i Vantigo:
+
+- **Endre** tittelen, beskrivelsen, stedet, tidene, hele dagen, **Vis som** (ledig er
+  ledig i Vantigo, alt annet opptatt) eller **Privat**. Avtalen endres i Vantigo. Det
+  du skriver under linjen **Holdes av Vantigo — endre det der:**, tas ikke med, og den
+  linjen og lenken kommer tilbake. Med **Bare opptatt** tas bare tidene, **Vis som** og
+  **Privat** med; en tittel, en beskrivelse eller et sted du skriver inn, skrives
+  bare over igjen. Alt annet blir stående som i Vantigo: de som er med, hvordan den
+  gjentas, kunden og prosjektet.
+- **Flytt** den, til et annet tidspunkt eller en annen dag: avtalen flyttes.
+- **Slett** den: avtalen slettes i Vantigo, slik **Slett** gjør der. Har du invitert
+  folk utenfor bedriften, blir den [avlyst](#slett-en-avtale-du-har-invitert-folk-til),
+  og de får **Avlyst: …** på e-post. Flytter du kopien til en annen kalender eller mappe
+  i Outlook, regnes det som å slette den.
+
+Alle på avtalen får høre om endringen slik de ville fått fra Vantigo: folk utenfra får
+**Oppdatert: …** når tiden eller stedet er endret, og kollegene dine får beskjed
+([når du endrer avtalen](#når-du-endrer-avtalen)).
+
+**En gjentakende avtale** er én hendelse i Outlook for hver forekomst. Flytt én, og den
+forekomsten flyttes i Vantigo; slett én, og den forekomsten avlyses. Alle andre
+endringer i én forekomst — tittelen, for eksempel — legges tilbake: endre serien i
+Vantigo. En forekomst av en serie med klokkeslett kan ikke bli hele dagen der, og heller
+ikke omvendt.
+
+**Hva som legges tilbake.** En endring Vantigo ikke kan ta med, gjøres om i Outlook ved
+den samme synkroniseringen, og kortet sier hva som skjedde under **En endring fra
+Outlook ble ikke tatt med**, med når:
+
+- **Du endret «…» i Outlook mens den også ble endret i Vantigo; Vantigos versjon ble
+  beholdt.** — avtalen er endret i Vantigo siden forrige synkronisering.
+- **Endringen din av «…» i Outlook brøt en av Vantigos regler og ble lagt tilbake.** —
+  en tom tittel, for eksempel.
+- **«…» er en annen sin avtale; endre den i Vantigo eller be arrangøren om det.
+  Endringen din i Outlook ble lagt tilbake.** — du er invitert til den; bare arrangøren
+  endrer den.
+- **Fra Outlook kan du bare endre tidspunktene til en enkelt forekomst av en avtale, og
+  Vantigos andre elementer kan ikke endres der; endringen din ble lagt tilbake.** — de
+  andre feltene i en forekomst, eller et element fra en annen app (fravær, en oppgave,
+  timer og lignende).
+
+Kortet viser bare den siste av dem, og glemmer den når du slår av synkroniseringen. En
+kopi av en avtale du deltar i, eller av et element fra en annen app, som du sletter i
+Outlook, kommer tilbake.
+
+**Legg til folk på en kopi i Outlook**, og den blir ditt eget Outlook-møte: Outlook
+sender dem invitasjonen, og Vantigo lar den kopien være fra da av — den oppdaterer eller
+sletter den ikke lenger, og endringene dine i den kommer ikke lenger tilbake. Avtalen
+blir stående i Vantigo som den var.
+
+**Nye hendelser i den egne Vantigo-kalenderen.** Med **En egen Vantigo-kalender** blir en
+hendelse du oppretter i den kalenderen i Outlook, til en avtale som er din i Vantigo ved
+neste synkronisering — tittelen (**Uten tittel** når den ikke har noen), beskrivelsen,
+stedet, tidene, **Vis som** og **Privat** — og fra da av er den en kopi som de andre. En
+gjentakende hendelse, eller en med deltakere, blir liggende bare i Outlook. Hendelser du
+oppretter i hovedkalenderen, forblir dine i Outlook og tas aldri med.
+
 ## Hva som kommer
 
 Kalenderadressen til telefonen, kalendere fra andre steder og kopien i Outlook er
-bygget, og når du er opptatt i Outlook, vises i Vantigo. Neste for Outlook: titlene dine
-fra Outlook ved siden av, og endringene du gjør i avtalene dine i Outlook, tatt inn i
-Vantigo, og så raskere oppdateringer. Lenger
+bygget, når du er opptatt i Outlook, vises i Vantigo, og endringene du gjør i dine egne
+avtaler i Outlook, kommer tilbake. Neste for Outlook: raskere oppdateringer. Lenger
 frem: synkronisering med Google, bookingsider, rom og ressurser, påminnelser i appen og
 på e-post, CalDAV og teamkalendere.

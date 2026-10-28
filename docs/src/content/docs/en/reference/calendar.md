@@ -1,6 +1,6 @@
 ---
 title: "Calendar module"
-description: "One person's calendar: the appointments the module owns, with recurrence, colleagues, customers' contacts and typed addresses on them and their answers; the invitations mailed to the people outside, the answer by link and the cancellation; the sources contract through which other modules project their rows; the window read in the viewer's zone; a colleague's busy and free; the dashboard's agenda; the calendar feed a phone subscribes to, in a full and a busy variant; the calendars from elsewhere a person subscribes to, fetched by a worker and parsed on read; the Outlook sync — a person's setting, the copies of their appointments and chosen items a worker writes to their Microsoft 365 mailbox through the MailboxCalendar slot, the reconcile, the busy time read back from their Outlook calendar and the clean-up; the CalendarBusy contract the module provides to Planning; the permissions and the lock rules."
+description: "One person's calendar: the appointments the module owns, with recurrence, colleagues, customers' contacts and typed addresses on them and their answers; the invitations mailed to the people outside, the answer by link and the cancellation; the sources contract through which other modules project their rows; the window read in the viewer's zone; a colleague's busy and free; the dashboard's agenda; the calendar feed a phone subscribes to, in a full and a busy variant; the calendars from elsewhere a person subscribes to, fetched by a worker and parsed on read; the Outlook sync — a person's setting, the copies of their appointments and chosen items a worker writes to their Microsoft 365 mailbox through the MailboxCalendar slot, the reconcile, the write-back of their own edits, moves and deletes made in Outlook and of the events they make in the Vantigo calendar, the busy time read back from their Outlook calendar and the clean-up; the CalendarBusy contract the module provides to Planning; the permissions and the lock rules."
 sources:
   - apps/server/internal/calendar
   - apps/calendar/frontend
@@ -11,6 +11,7 @@ sources:
   - apps/server/internal/db/migrations/00057_calendar_feed.sql
   - apps/server/internal/db/migrations/00081_calendar_mailbox_sync.sql
   - apps/server/internal/db/migrations/00083_calendar_mailbox_busy.sql
+  - apps/server/internal/db/migrations/00084_calendar_mailbox_writeback.sql
 ---
 The Calendar module is one view of every time-bound thing Vantigo knows about one
 person — the follow-ups Customers holds for them, their absences in Staff, their tasks in
@@ -48,8 +49,9 @@ and a busy-only variant, behind a token hashed at rest: the module's one anonymo
 [subscriptions](#subscriptions) — which a worker fetches and the window shows beside
 their own, and which are never in their feed. And each person may have the module keep a
 copy of their calendar in their Microsoft 365 mailbox — the [Outlook
-sync](#outlook-sync) — which a worker writes through the mailbox provider, and which
-reads the busy time of their Outlook calendar back.
+sync](#outlook-sync) — which a worker writes through the mailbox provider, which
+reads the busy time of their Outlook calendar back, and which takes back into their own
+appointments the edits, moves and deletes they make to the copies in Outlook.
 
 This page grows with the module. What is here today: the [schema](#the-schema), the
 [permissions](#permissions), the [sources contract](#the-sources-contract) and its
@@ -74,18 +76,20 @@ providers](#reading-the-providers-for-the-feed) — and [subscriptions](#subscri
 parsed](#parsed-on-read); and [the Outlook sync](#outlook-sync) — [the
 contract](#the-contract), [the two tables](#the-two-tables), [the person's
 setting](#the-persons-setting), [what is pushed](#what-is-pushed), [the
-worker](#the-mailbox-sync-worker), [the busy read](#the-busy-read) and [the
-clean-up](#the-clean-up) — and [the busy time contract](#the-busy-time-contract) the
+worker](#the-mailbox-sync-worker), [the write-back](#the-write-back), [the busy
+read](#the-busy-read) and [the clean-up](#the-clean-up) — and [the busy time contract](#the-busy-time-contract) the
 module provides.
 
 ## The schema
 
-Five migrations: `00055_calendar_baseline.sql` creates the `calendar` schema and its three
+Six migrations: `00055_calendar_baseline.sql` creates the `calendar` schema and its three
 tables, `00056_calendar_invitations.sql` adds the attendees from outside the company
 and the cancelled state, `00057_calendar_feed.sql` adds the feed addresses and the
 subscriptions, `00081_calendar_mailbox_sync.sql` adds the [Outlook
-sync's](#the-two-tables) two tables, and `00083_calendar_mailbox_busy.sql` adds the
-[busy time](#the-busy-read) read back from Outlook and the delta's state. Every id is a `bigint` identity starting at 1001. Every foreign identifier — the
+sync's](#the-two-tables) two tables, `00083_calendar_mailbox_busy.sql` adds the
+[busy time](#the-busy-read) read back from Outlook and the delta's state, and
+`00084_calendar_mailbox_writeback.sql` adds the [write-back's](#the-write-back) columns
+— each copy's version and release, and the last change put back. Every id is a `bigint` identity starting at 1001. Every foreign identifier — the
 owner, an attendee, a customer, a project, the holder of an address — is opaque: users, customers and projects
 live in other schemas and are read through contracts, never through SQL (see [module
 boundaries](/en/contributing/module-boundaries/) rule 4). No table has a CHECK
@@ -150,7 +154,9 @@ The baseline's down migration drops the schema with everything in it; `00057`'s 
 the two tables, so every address stops answering and every subscription is forgotten —
 nothing of either was copied anywhere else. `00081`'s drops the Outlook sync's two
 tables; the copies already in people's mailboxes stay there, unmapped. `00083`'s drops
-`mailbox_busy` and the delta's four columns; the mailbox keeps its events.
+`mailbox_busy` and the delta's four columns; the mailbox keeps its events. `00084`'s
+drops its five columns: a released copy is then a copy again, which the next push
+rewrites whole.
 
 ## Permissions
 
@@ -266,8 +272,7 @@ module `calendar`, last, while the caller's Outlook sync is on (`enabled`), and 
 Outlook**, **Foreløpig i Outlook**, **Ikke til stede**, **Arbeider et annet sted**) and
 draws hatched, in a colour of its own; their id is the first 16 hex digits of the
 SHA-256 of the event's id in the mailbox, which never reaches the browser. The person's
-own Outlook titles are not shown: that is a later delivery's
-([below](#the-busy-read)).
+own Outlook titles are not shown ([why](#the-persons-own-outlook-titles)).
 
 | Kind | The rows | The gate | Rendered | `path` |
 | --- | --- | --- | --- | --- |
@@ -1588,12 +1593,14 @@ mailbox**, so their appointments and the items the other modules project show in
 beside everything else, and — in their main calendar — block the time for colleagues
 booking meetings there. The calendar is the authority: it decides what the copies are,
 from the appointments and the providers, and a **mailbox provider** writes them and
-answers what it did. An edit made to a copy in Outlook is put back at the next sync.
-After each push that worked the worker also [reads the busy time](#the-busy-read) of
+answers what it did. Before each push the worker [takes back](#the-write-back) what the
+person changed in Outlook to a copy of **their own appointment** — an edit, a move, a
+delete — through the appointment's own write paths, makes an event they created in the
+separate *Vantigo* calendar an appointment, and puts back anything else changed in a
+copy. After each push that worked it also [reads the busy time](#the-busy-read) of
 the person's Outlook calendar back — the times of the events that block it, and nothing
 else of them — which their own calendar, a colleague's and Planning's board show.
-Showing a person their own Outlook titles and taking edits back from Outlook are later
-deliveries.
+The person's own Outlook titles are [not shown](#the-persons-own-outlook-titles).
 
 The provider is the single-provider slot `MailboxCalendar` (`contracts.MailboxCalendar`),
 which the [Microsoft Entra ID module](/en/reference/entra/#the-mailbox-calendar) fills;
@@ -1616,6 +1623,8 @@ type MailboxCalendar interface {
     Find(ctx context.Context, mailbox, calendarID string, from time.Time) ([]MailboxEventRef, error)
     Delta(ctx context.Context, mailbox string, from, to time.Time, link string) (MailboxDelta, error)
     Marked(ctx context.Context, mailbox string, eventIDs []string) ([]MailboxEventRef, error)
+    Versions(ctx context.Context, mailbox, calendarID string, from, to time.Time) (MailboxVersions, error)
+    Events(ctx context.Context, mailbox, calendarID string, eventIDs []string) ([]MailboxEventState, error)
 }
 
 type MailboxDelta struct { Changes []MailboxChange; Link string; Done bool }
@@ -1625,6 +1634,14 @@ type MailboxChange struct {
     StartDate, EndDate time.Time // all-day: civil dates at midnight UTC, EndDate inclusive
     StartsAt, EndsAt   time.Time // timed: instants
     ShowAs string                // one of the ShowAs values, "" for one the contract does not name
+}
+
+type MailboxVersions struct { Events []MailboxEventVersion; Complete bool }
+type MailboxEventVersion struct { EventID, Key, ChangeKey string; Series bool }
+type MailboxEventState struct {
+    EventID, Key, ChangeKey string
+    Foreign, Series, Cancelled, Meeting, TextBody bool
+    Event MailboxEvent
 }
 ```
 
@@ -1641,7 +1658,10 @@ type MailboxChange struct {
   `Find` work — with the reason `switch_off`) or `unavailable`.
 - `MailboxOp{Kind, EventID, Key, Event}`: a `create` names `Key` and `Event`, an
   `update` `EventID` and `Event`, a `delete` `EventID`. `Key` is written on create as the
-  event's marker and never changed.
+  event's marker; an update writes it as the marker too when it is set — the same value
+  a copy already carries, so an event [taken in](#new-events-in-the-vantigo-calendar)
+  from the *Vantigo* calendar is tagged by the push that rewrites it — and `""` leaves
+  the marker as it is. The worker's updates always name it.
 - `MailboxEvent{Subject, Body, Location; AllDay; StartDate, EndDate; StartsAt, EndsAt;
   TimeZone; ShowAs; Private}`: the all-day pair civil dates with the end inclusive, the
   timed pair instants, `TimeZone` an IANA zone, `ShowAs` one of `free`, `tentative`,
@@ -1668,8 +1688,29 @@ type MailboxChange struct {
 - `Marked` answers, among at most 100 ids (`MailboxMarkedMax`), the events carrying
   this installation's marker with their keys, in the order asked; an event of the
   person's, one another installation wrote, or an id no longer there is not answered.
-- `Delta` and `Marked` are refused under `cleanup` with `ErrMailboxUnavailable`: a read
-  is never needed to remove copies.
+- `Versions` answers the **versions** of the events the [write-back](#the-write-back)
+  may have to take back — ids and change keys, nothing of what the events say. With
+  `calendarID` `""` it answers the default calendar's events carrying this
+  installation's marker that start at or after `from` (`Find`'s rule), each with its
+  `Key`; `to` is not used there. With a secondary calendar — the one `EnsureCalendar`
+  made — it answers every event of its view overlapping `from..to`, with no `Key`: the
+  view is not asked for the marker, the calendar being the provider's whole. At most
+  5000 (`MailboxVersionsMax`); `Complete` is false when the list was cut, and a caller
+  then infers nothing from an absence. `Series` marks an occurrence, an exception or a
+  series master.
+- `Events` reads whole, among at most 100 ids (`MailboxMarkedMax`), the events of the
+  calendar, in the order asked, each **through the calendar's own path**: an id not
+  answered is not in that calendar any more — deleted, or moved to another calendar or
+  folder. `Key` is this installation's key, `Foreign` another installation's marker,
+  `Series` as above, `Cancelled` a cancelled meeting, `Meeting` an event with attendees
+  (their count alone is decoded, never an address), `TextBody` whether the body came
+  as text, and `Event` the subject, the body, the location's display name, the times
+  (all-day dates at midnight UTC, as `Delta`'s), `ShowAs` and `Private` (a private or
+  confidential sensitivity). What an event says crosses the contract here for the
+  copies and the provider's own calendar alone, for the write it feeds, and the
+  provider never logs a word of it.
+- `Delta`, `Marked`, `Versions` and `Events` are refused under `cleanup` with
+  `ErrMailboxUnavailable`: a read is never needed to remove copies.
 - The refusals are sentinels: `ErrMailboxUnavailable` (not available, or a non-delete in
   cleanup), `ErrMailboxUnknown` (not an account the provider manages),
   `ErrMailboxDenied` (the directory refused the mailbox: outside the provider's
@@ -1680,7 +1721,8 @@ type MailboxChange struct {
 
 The module calls the provider only through the accessors in `contractscalls.go`
 (`mailboxStatus`, `mailboxEnsure`, `mailboxDeleteCalendar`, `mailboxApply`,
-`mailboxFind`, `mailboxDelta`, `mailboxMarked`, and `workforceDirectoryAccount` for Staff's read), which refuse a call
+`mailboxFind`, `mailboxDelta`, `mailboxMarked`, `mailboxVersions`, `mailboxEvents`, and
+`workforceDirectoryAccount` for Staff's read), which refuse a call
 made inside one of its transactions. Without a provider the mailbox accessors answer
 `ErrMailboxUnavailable` (`Status` answers `unavailable`), and without Staff
 `workforceDirectoryAccount` answers no account.
@@ -1690,7 +1732,8 @@ made inside one of its transactions. Without a provider the mailbox accessors an
 Migration `00081_calendar_mailbox_sync.sql` adds them, and `00083_calendar_mailbox_busy.sql`
 gives `mailbox_sync` the delta's four columns and widens the ids 00081 stored —
 `mailbox_events.event_id` and `mailbox_sync.calendar_id` — to 512, the provider's bound
-on an id; no CHECK holds a value to its set, the
+on an id; `00084_calendar_mailbox_writeback.sql` adds the [write-back's](#the-write-back)
+five columns. No CHECK holds a value to its set, the
 module's validation does.
 
 - **`mailbox_sync`** — a person's setting and the worker's record of it, one row per
@@ -1709,11 +1752,21 @@ module's validation does.
   `busy_link` (the provider's next or delta link, opaque and valid for the person's
   mailbox alone), `busy_from` and `busy_to` (the dates the delta was started over) and
   `busy_synced_at` (when a read last reached the delta link). They are written whatever
-  the revision, which the read never moves.
+  the revision, which the read never moves. The [write-back's](#the-write-back) last
+  change put back: `put_back_reason` (20 — `conflict`, `refused`, `not_owner` or
+  `not_editable`), `put_back_key` (200, the item key of the copy it was made to) and
+  `put_back_at`, also written whatever the revision, and cleared by a clean-up and by
+  turning the sync off. Nothing of what the change said is stored.
 - **`mailbox_events`** — the map of what the worker wrote: `(user_id, item_key)` the
   primary key, `event_id` (500, the event's id in the mailbox), `content_hash` (the hex
-  SHA-256 of what was written), `starts_on` (the item's first day, for the window's
-  edge) and the two stamps. Nothing else of the event is stored.
+  SHA-256 of what was written; `''` when the copy is to be rewritten whole),
+  `starts_on` (the item's first day, for the window's edge), `change_key` (512, the
+  event's version as the last write, or the write-back's last look, left it — null for
+  a row written before 00084 or adopted by a reconcile, which takes the next version
+  answered as its baseline), `released_at` (set when the person turned the copy into
+  a meeting: [never written again](#released-meetings)) and the two stamps. Nothing
+  else of the event is stored. A write that answers no change key keeps the one
+  stored.
 
 The down migration drops both: the copies already in people's mailboxes stay there,
 unmapped.
@@ -1730,7 +1783,15 @@ Three operations, each under `calendar:access` and on the caller's own row alone
   kind `calendar.appointment` first, then every kind the [sources](#the-kinds) declare,
   in module order, never `calendar.subscription`. A caller who never saved it is answered
   the defaults at revision 0: off, `default`, `full`, state `off`, and the kinds
-  `calendar.appointment` and `staff.absence` (each when offered).
+  `calendar.appointment` and `staff.absence` (each when offered). **`putBack`**
+  (`MailboxSyncPutBack`), when set, is the last change the caller made in Outlook that
+  the [write-back](#the-write-back) did not take: `reason` (`conflict`, `refused`,
+  `not_owner` or `not_editable`), `at`, and — when the copy is of an appointment —
+  `appointmentId`, `occurrenceDate` for one occurrence of a series, and `title`, read
+  live from the appointment and answered **only when the caller owns or attends it**,
+  so the stored key never names what the caller may not read. Absent when nothing was
+  put back since the sync was last turned off or cleaned up. Only this `GET` answers
+  it; the `PUT` and the run answer the setting without it.
 - **`PUT /mailbox-sync`** replaces the setting whole — `{enabled, target, detail,
   kinds}` — under `If-Match`, the revision it was read at (bare, quoted or weakly tagged;
   `0` for a caller with no row), rate limited to 10 per client address in 10 minutes
@@ -1746,6 +1807,7 @@ Three operations, each under `calendar:access` and on the caller's own row alone
   due at once, sets `reconcile` when it is turned on or a clean-up is owed (and keeps it
   set), moves the revision on (the first write makes the row at 1) and leaves the
   worker's record — the mailbox, the calendar, the error, the last sync — as it was.
+  A write that turns the sync off also forgets the last change put back.
 - **`POST /mailbox-sync/run`** — *Sync now* — makes the caller's row due at once and
   answers the setting; the revision stays. 409 `mailbox_sync_unavailable` while the
   availability is not `available` (the `detail` is the availability), and then 409
@@ -1841,7 +1903,13 @@ person:
 4. **The *Vantigo* calendar**, for target `own`: `EnsureCalendar` with the stored id; a
    changed id empties the map and makes the sync a reconcile.
 5. **The desired set** ([above](#what-is-pushed)).
-6. **Reconcile**, when `reconcile` is set (turned on, a clean-up, a refusal, a create
+6. **The write-back** ([below](#the-write-back)), after the map is read: what the person
+   changed in Outlook taken into their appointments, and the rest put back. When an
+   appointment was written, the desired set is built again, and when the map was
+   written, it is read again. A refusal of `Versions` or `Events` stops the sync as
+   `Apply`'s do; a failure lets the push and the busy read go on, and is recorded after
+   them (the table below).
+7. **Reconcile**, when `reconcile` is set (turned on, a clean-up, a refusal, a create
    whose outcome is unknown), at the first sync, and at the first sync of each business
    day (`last_synced_at` falling on an earlier day): `Find` from the window's first
    instant — only events carrying this installation's marker are answered — then
@@ -1851,24 +1919,30 @@ person:
      leaves — is **deleted**;
    - a mapped event starting in the window that `Find` no longer answers is
      **forgotten**, to be made anew — only when the list is shorter than 5000, so an
-     answer that may be cut forgets nothing;
+     answer that may be cut forgets nothing, and only when the write-back completed,
+     since an absence may then be a delete in Outlook still unread; an event the
+     write-back saw there is never forgotten (one taken in from the *Vantigo* calendar
+     carries no marker until the push tags it);
    - an event carrying a key the set does not hold is **left alone**: such an event is
      most often a copy that slid before the window and was forgotten on purpose — the
      past stays until a clean-up. An event without the marker — one the person made, in
      the *Vantigo* calendar or their own — is never answered, so never touched.
-7. **The diff** against the map: the duplicates' deletes, then a create for each new key
+8. **The diff** against the map: the duplicates' deletes, then a create for each new key
    and an update for each changed hash, in the desired set's order, then a delete for
    each mapped key the set no longer holds that starts inside the window. A mapped key
-   that now starts before the window is forgotten, its copy left in the past.
-8. **`Apply`** in slices of 100, the map written after each slice in a short
-   transaction; an update answered `Gone` becomes a create in a later slice. The first
+   that now starts before the window is forgotten, its copy left in the past. A
+   [released](#released-meetings) copy is never updated nor deleted: it is forgotten
+   once the set no longer holds it. Every update names its key, so it writes the marker.
+9. **`Apply`** in slices of 100, the map written after each slice in a short
+   transaction, with the change key each write answered; an update answered `Gone`
+   becomes a create in a later slice. The first
    op that fails — throttled, or any failure to retry — stops the person's sync after
    its slice; the rest wait for the next sync.
-9. **The busy read**, once every op worked ([below](#the-busy-read)). A refusal or
+10. **The busy read**, once every op worked ([below](#the-busy-read)). A refusal or
    failure of `Delta` or `Marked` is recorded as `Apply`'s are; a read whose three
    minutes run out between pages keeps its next link and is not a failure (one cut
    inside a call is the call's failure).
-10. **The result**, written only if the revision is still the one the sync read — a `PUT`
+11. **The result**, written only if the revision is still the one the sync read — a `PUT`
    meanwhile has made the row due again, and the sync's outcome is dropped:
 
 | Outcome | `state` | `error` | Next |
@@ -1878,7 +1952,7 @@ person:
 | `ErrMailboxGone` | `unavailable` | `mailbox_gone` | in six hours |
 | `ErrMailboxUnknown` | `unavailable` | `no_account` | in an hour |
 | `ErrMailboxUnavailable` | `unavailable` | `unavailable` | in an hour |
-| The push worked, the busy read failed (not a refusal) | `active` | `failed` | 1, 5, 15, 60 minutes, then hourly; `last_synced_at` now, `attempts` counted, never `failed` — the push it rides on works |
+| The push worked, the busy read or the write-back failed (not a refusal) | `active` | `failed` | 1, 5, 15, 60 minutes, then hourly; `last_synced_at` now, `attempts` counted, never `failed` — the push it rides on works. When both failed, the busy read's is the one logged |
 | Any other failure, or a clean-up that met a refusal | unchanged (`pending`, `active` or `stopping`); `failed` from the fifth in a row | `failed` — or the clean-up's refusal, `mailbox_denied` or `unavailable` | 1, 5, 15, 60 minutes, then hourly |
 
 A refusal of one op stops the person's sync after its slice's map is written, and so
@@ -1903,9 +1977,167 @@ goes stale for it. So an appointment reaches Outlook within a minute. The poll c
 the providers' items and a change of rights; the daily reconcile is the nightly
 re-sync.
 
+### The write-back
+
+Step 6 of each sync takes back what the person changed in Outlook
+(`mailbox_writeback.go`). It does not ride the busy read's delta: a delta answers no
+extended property, the *Vantigo* calendar has no delta in Graph v1.0, a removal cannot
+tell a delete from a move out of range, and the write-back must come before the push
+while the busy read follows it. Instead every sync asks the provider for the copies'
+**versions** and reads whole only the events whose version moved.
+
+**The versions.** `Versions` over the push's window: under target `default` the
+default calendar's events carrying this installation's marker from the window's first
+instant, each with its key; under target `own` every event of the *Vantigo*
+calendar's view over the window, so an event there without the marker is one the
+person made. Then each row of the map not [released](#released-meetings):
+
+- **no `change_key`** stored — a row written before `00084`, or adopted by a
+  reconcile — takes the version answered as its **baseline**, unread;
+- the **same** version as stored is as Vantigo left it: nothing to do;
+- a version that **moved** is read whole;
+- a row **absent** from a `Complete` answer, starting on or after the window's first
+  day, is read whole too — it may be a delete, or a copy moved before the window;
+- under target `own`, an event **neither mapped nor marked**, and not of a series, is
+  read whole as a [new event](#new-events-in-the-vantigo-calendar).
+
+**The reads.** `Events` for those ids, at most **100 a sync** — the moved first, then
+the missing, then the new. A missing row past the 100 makes the write-back
+incomplete, so nothing is inferred from it. A moved version is compared, field by
+field after normalising — line endings, trailing space, the body cut at the first
+*Kept by Vantigo — change it there:* or *Holdes av Vantigo — endre det der:* line,
+times to the second — with the copy the desired set holds for its key. **Equal is
+noise** (Exchange's own touch): only the new change key is kept.
+
+**The decisions** for a mapped copy whose version moved and that differs:
+
+| The copy | What happens |
+| --- | --- |
+| The person turned it into a meeting (`Meeting`) | [Released](#released-meetings). |
+| A key the desired set no longer holds | Nothing: the push deletes or forgets it. |
+| An occurrence, an exception or a series master (`Series`), another installation's (`Foreign`), or a cancelled meeting | Never written back: the change key is kept. |
+| A projected item (`<kind>:<id>`) | Put back, `not_editable`. |
+| An appointment the person attends, not owns | Put back, `not_owner`. |
+| A cancelled appointment, or one gone | Nothing. |
+| An owned appointment whose copy Vantigo changed since the last write (the row's hash is not the desired one) | **Vantigo wins**: put back, `conflict`. |
+| `appointment:<id>`, owned and single | The changed fields become a `PUT` of the appointment ([below](#the-fields-taken)). |
+| `appointment:<id>:<date>`, owned, an occurrence | A change of the times moves the occurrence (`PUT …/occurrences/{date}`); any other change is put back, `not_editable` — after the move, when both changed. |
+
+**Put back** clears the row's hash, keeping the version read, so the push rewrites the
+copy whole, and records the change on the person's `mailbox_sync` row (`putBack` on the
+[setting's `GET`](#the-persons-setting); the last one wins). A write that worked clears
+the hash too, so the push writes the appointment's own form back — the kept line, the
+link — and keeps the change key it answers; the row's `starts_on` moves with the
+appointment, so one moved before the window is forgotten by the push, not deleted.
+
+**Each write is the screen's own.** The worker writes an appointment through the same
+code as `PUT /appointments/{id}`, `PUT /appointments/{id}/occurrences/{date}`,
+`DELETE /appointments/{id}` and `POST /appointments` — on the person's behalf
+(`contracts.AsUser`, on a context with no request), with the person as the caller and
+no transaction open across any call out. So its validation, its revision, `SEQUENCE`,
+the updated invitations to the outside attendees and the notices to colleagues go as
+for a change made on the screen ([changing and deleting](#changing-and-deleting),
+[when it goes](#when-it-goes), [what a colleague receives](#what-a-colleague-receives)).
+A write's answer:
+
+- done — counted, the copy made stale as above;
+- a 400 (a field the appointment's rules refuse) — put back, `refused`;
+- a 409 `revision_mismatch` (the appointment moved on between the read and the write)
+  — put back, `conflict`;
+- any other refusal — gone, cancelled, no longer a day of the series — the copy made
+  stale, left to the push;
+- a failure — the write-back stops there.
+
+At most **20 writes** to appointments a sync. Whatever is left over — a version not yet
+read, a write past the 20 — keeps its old change key, so the next sync sees it again,
+and the write-back is then incomplete. The map's change keys, stale hashes, releases
+and forgets, and the put-back, are written in one short transaction after the
+decisions.
+
+#### The fields taken
+
+From the copy of an owned single appointment, each field that differs from what was
+written:
+
+| In Outlook | In the appointment |
+| --- | --- |
+| The subject | The title, trimmed. An empty one is put back, `refused`. |
+| The body above the kept line | The description; an empty one clears it. A body that did not come as text is never taken. |
+| The location | The location; an empty one clears it. |
+| The start, the end, all day | The times and `allDay`, to the second; the appointment's zone is kept. |
+| Show as | `free` is transparency `free`; any other value `busy`. |
+| Sensitivity | `private` or `confidential` is visibility `private`; anything else `shared`. |
+
+Under `detail` `busy` the subject, body and location written were placeholders, so only
+the times, show as and the sensitivity are taken; a change to the rest is simply
+rewritten by the push. Everything else of the appointment — its attendees (kept as
+they stand, so one the directory no longer answers is kept), its rule, its customer
+and project, its links — is sent back unchanged, with the revision read as its
+`If-Match`. A copy whose fields all match the appointment, though its text differs from
+the copy, is rewritten and nothing is written. An occurrence's move is held to the
+series' kind: a timed series' occurrence moved to all day, or the other way, is put
+back, `not_editable`.
+
+#### Deletes, and what is not a delete
+
+A mapped copy `Events` does not answer — no longer in **that calendar**, deleted or
+moved to another calendar or folder — is a delete in Outlook:
+
+- an owned single appointment is deleted through `DELETE /appointments/{id}`'s path,
+  which [cancels it](#cancellation), with the CANCELs, once someone outside was
+  invited;
+- an owned occurrence is cancelled (`PUT …/occurrences/{date}` with `cancelled`);
+- any other copy — an attendee's, a projected item's, a cancelled or gone
+  appointment's — is forgotten, and made again by the push while it is wanted.
+
+A copy that `Events` still answers — moved before the window, say — is a change, as
+above. The guards: the map is emptied by every clean-up, target change and mailbox
+move before anything else, and the push's own deletes forget their rows, so an absence
+is never the module's own doing; an incomplete list infers nothing; and on a sync whose
+write-back did not complete, the [reconcile](#the-mailbox-sync-worker) forgets no
+mapped event `Find` no longer sees.
+
+#### Released meetings
+
+A copy the person **turned into a meeting** in Outlook — they added attendees, and
+Outlook mailed them — is **released**: `released_at` set, and it is never written,
+deleted or taken back again, since a write would mail its attendees. The push leaves it
+alone while it is wanted and forgets it without a delete once it is not; the clean-up
+of the default calendar forgets it without a delete too. The appointment in Vantigo is
+not changed by the release.
+
+#### New events in the Vantigo calendar
+
+Under target `own`, an event of the *Vantigo* calendar that is neither mapped nor
+marked, single, not cancelled, not a meeting and not another installation's becomes an
+appointment the person owns, through `POST /appointments`' path: the subject its title
+(**Untitled** / **Uten tittel**, in the person's language, when empty), the body as
+text its description, the location, each cut to its limit, the times in the business
+zone, show as and the sensitivity as [above](#the-fields-taken). Its map row —
+`appointment:<id>`, the event's id, no hash, the change key — is written in the
+create's own transaction, so an event is never taken twice, even when the push that
+tags it with the marker fails. A refusal is logged at info by its code alone and the
+event left as it is, tried again at the next sync. A series, a meeting or another
+installation's event there is left alone.
+
+**When the write-back fails.** A refusal of `Versions` or `Events` (denied, gone,
+unavailable) stops the sync as `Apply`'s refusals do. Any other failure lets the push
+and the busy read go on, and the sync is recorded `active` with error `failed` on the
+backoff. Such a push may then overwrite an Outlook edit unread when Vantigo changed the
+same copy — Vantigo winning, unnamed. A run that wrote or put back anything is logged
+at info with the person's id and its counts; nothing an event says is ever logged.
+
+#### The person's own Outlook titles
+
+Not shown. The write-back reads whole only the copies and the *Vantigo* calendar's
+events, never the person's own events: showing their titles would mean storing the
+subjects of a private calendar or reading Graph on the request path, and a colleague's
+view must never see them. The `calendar.outlook` item stays titleless; its shape —
+no title, `outlook.showAs` — leaves room for it.
+
 ### The busy read
 
-Step 9 of each sync whose push worked reads the person's **default calendar** back
+Step 10 of each sync whose push worked reads the person's **default calendar** back
 through `Delta` — Graph's `calendarView/delta`, the only calendar whose delta is
 documented, and the one Exchange computes free/busy from. The push comes first, so the
 map already holds the copies just written.
@@ -1972,10 +2204,7 @@ the delta answers them, and the provider decodes none of them.
 [busy time contract](#the-busy-time-contract) (`busy` and `oof`) — each only while the
 person's sync is `enabled`. Nothing of an event, not even its id, is ever logged.
 
-**The person's own titles are deferred.** Showing a person the titles of their own
-Outlook events would mean either a Graph read on the request path, per window shown,
-through the provider's rate limit, or storing the titles, which this delivery does not.
-The item's shape — no title, `outlook.showAs` — leaves room for it.
+**The person's own titles are not shown** ([why](#the-persons-own-outlook-titles)).
 
 ### The clean-up
 
@@ -1989,7 +2218,9 @@ clean-up works on the mailbox stored on the row, and is decided by its `calendar
   warning) it deletes the copies in that calendar instead, one by one;
 - without one, it deletes from the default calendar **every event carrying this
   installation's marker, whatever its date** (`Find` with no bound), and every mapped
-  one besides, 100 to an `Apply`, forgetting each one done or gone. A list as long as
+  one besides, 100 to an `Apply`, forgetting each one done or gone — except a
+  [released](#released-meetings) copy, a meeting now, which is forgotten and never
+  deleted. A list as long as
   `Find`'s bound is a failure once its deletes are done, so the rest go on the retry.
 
 Only a mailbox that is no longer there — `ErrMailboxGone`, or `ErrMailboxUnknown`, an
@@ -1997,8 +2228,8 @@ account the provider no longer manages — has its copies **forgotten** unremove
 at warning with the person's id: a leaver's mailbox is soft-deleted with them. A mailbox
 denied, a provider unusable or a failure keeps the map and the clean-up owed, retried on
 the backoff (a row that owed it stays `stopping`). Then the map is emptied, the
-person's [busy rows](#the-busy-rows) and their delta forgotten, `calendar_id` cleared
-and the next sync made a reconcile.
+person's [busy rows](#the-busy-rows) and their delta forgotten, the last change put
+back cleared, `calendar_id` cleared and the next sync made a reconcile.
 Turning the switch back on resumes everyone whose toggle is on, from a reconcile.
 
 ## The busy time contract

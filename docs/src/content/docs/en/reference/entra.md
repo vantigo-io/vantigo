@@ -1,6 +1,6 @@
 ---
 title: "Microsoft Entra ID module"
-description: "Microsoft Entra ID as Staff's identity provider: the connection to one tenant, its client secrets in the plural and the connection test; the status and its reasons, read by Staff with no network call; the account rules; the guarded Graph client and its limits; the user lifecycle per step — prepared disabled, enabled on the day with the hire date, the licences and a Temporary Access Pass, kept in step, disabled with the leaver's steps, soft-deleted — with the Graph calls and the codes; the account's photo, converted to Graph's JPEG and written or cleared; the address rule; the pass; the sensitive actions and role_missing; Staff's groups in the tenant — the six traits and the cached licences, the create, or the adoption an entra:manage holder confirms, with the service principal as an owner, the team, the members by $ref, the delete or the retirement; connecting existing users — the directory search and the exact matches, read through contracts.SSOConnections; the calendar sync switch and its status, Calendars.ReadWrite asked for only while it is on, and the mailbox calendar the module fills for the calendar's Outlook sync — the status rule, the account check, the Graph calls and $batch, the marker, the all-day zones, the reads of the default calendar's delta and the marker, and the refusals; the events, the permission, the refusals and the endpoints."
+description: "Microsoft Entra ID as Staff's identity provider: the connection to one tenant, its client secrets in the plural and the connection test; the status and its reasons, read by Staff with no network call; the account rules; the guarded Graph client and its limits; the user lifecycle per step — prepared disabled, enabled on the day with the hire date, the licences and a Temporary Access Pass, kept in step, disabled with the leaver's steps, soft-deleted — with the Graph calls and the codes; the account's photo, converted to Graph's JPEG and written or cleared; the address rule; the pass; the sensitive actions and role_missing; Staff's groups in the tenant — the six traits and the cached licences, the create, or the adoption an entra:manage holder confirms, with the service principal as an owner, the team, the members by $ref, the delete or the retirement; connecting existing users — the directory search and the exact matches, read through contracts.SSOConnections; the calendar sync switch and its status, Calendars.ReadWrite asked for only while it is on, and the mailbox calendar the module fills for the calendar's Outlook sync — the status rule, the account check, the Graph calls and $batch, the marker, the all-day zones, the reads of the default calendar's delta and the marker, the write-back's reads of the copies' versions and of events whole, and the refusals; the events, the permission, the refusals and the endpoints."
 sources:
   - apps/server/internal/entra
   - apps/entra/frontend
@@ -1251,8 +1251,9 @@ The search's and the matches' refusals:
 The module fills the single-provider slot `MailboxCalendar` (`contracts.MailboxCalendar`,
 `mailbox.go`) for the calendar's [Outlook sync](/en/reference/calendar/#outlook-sync): it
 writes the calendar's copies of a person's appointments and items to their Exchange
-Online mailbox, and [reads the busy time](#the-reads) of their default calendar back,
-through the [Graph client](#the-graph-client) and its token, with the application
+Online mailbox, [reads the busy time](#the-reads) of their default calendar back, and
+[reads the copies](#the-write-backs-reads) and the *Vantigo* calendar's events for the
+calendar's write-back, through the [Graph client](#the-graph-client) and its token, with the application
 permission `Calendars.ReadWrite`, which covers the reads. The calendar decides what the copies are;
 the module writes them and answers what it did, per operation ([module
 boundaries](/en/contributing/module-boundaries/) rule 14). `Key()` is `entra`, the
@@ -1290,13 +1291,13 @@ with it off, and with the permission missing. `GET /connection` answers it as
 | `unavailable` | the connection's reason, else its status | The switch is on and the connection is not `connected`. |
 
 In `cleanup` a person's copies can still be removed: `Apply` takes deletes only, and
-`DeleteCalendar` and `Find` work; `Delta` and `Marked` do not, since a read is never
-needed to remove copies. Every reason is a code, never the directory's words.
+`DeleteCalendar` and `Find` work; `Delta`, `Marked`, `Versions` and `Events` do not,
+since a read is never needed to remove copies. Every reason is a code, never the directory's words.
 
 ### The account check
 
 Every call but `Key` and `Status` checks the status first — `available` for
-`EnsureCalendar`, `Delta` and `Marked`; `available` or `cleanup` for `DeleteCalendar`, `Apply` and `Find`;
+`EnsureCalendar`, `Delta`, `Marked`, `Versions` and `Events`; `available` or `cleanup` for `DeleteCalendar`, `Apply` and `Find`;
 otherwise `ErrMailboxUnavailable` — and then the mailbox. **The module writes only to an
 account it manages**: the `mailbox` must be an object id that is a row of
 `entra.accounts` the module created, or whose [adoption](#adopted-accounts) is confirmed,
@@ -1329,9 +1330,12 @@ installation's marker is never the module's: never adopted, deleted or answered 
 **The event** as Graph takes it: `subject`; `body` as `text`; `location.displayName`
 when there is one — on an update always, so a location dropped is cleared; `isAllDay`;
 `start` and `end`; `showAs` (`busy` when none was given; anything outside the five
-values refuses the op); `sensitivity` `private` or `normal`; `isReminderOn: false`; and,
-**on create only**, the event marker carrying `vantigo:<client id>:` and the calendar's
-key, which is never written again. A timed event is laid in `UTC`; an
+values refuses the op); `sensitivity` `private` or `normal`; `isReminderOn: false`; and
+the event marker carrying `vantigo:<client id>:` and the calendar's key — on a create
+always, and on an update when the op names a `Key`, the same value a copy already
+carries, so an event the calendar [took in](/en/reference/calendar/#new-events-in-the-vantigo-calendar)
+from the *Vantigo* calendar is tagged by the push that rewrites it; an update with no
+`Key` leaves the marker as it is. A timed event is laid in `UTC`; an
 **all-day** event runs from midnight of its first day to midnight of the day after its
 last, in the **Windows name of its zone** (`Europe/Oslo` is `W. Europe Standard Time`):
 `windowszones.go` mirrors CLDR's `windowsZones.xml`, which the calendar holds for the
@@ -1417,6 +1421,70 @@ whole call, as `Apply`'s would.
 Both log a refusal at debug level by the tenant, the status and the codes alone — never
 Graph's words, nor an event's id, subject or body.
 
+### The write-back's reads
+
+The calendar's [write-back](/en/reference/calendar/#the-write-back) asks two more things
+of the mailbox (`mailbox_writeback.go`), both refused under `cleanup`. Neither logs,
+nor wraps in an error, a word of what an event says.
+
+**`Versions`** answers the calendar's events' ids and change keys a page at a time:
+
+- `calendarID` `""` is the **default calendar**: `GET /users/{oid}/events` with `Find`'s
+  filter — `$filter=singleValueExtendedProperties/Any(ep: ep/id eq '<event marker>' and
+  startswith(ep/value, 'vantigo:<client id>:'))`, and `and start/dateTime ge '<from,
+  UTC>'` when `from` is set — `&$expand=singleValueExtendedProperties($filter=id eq
+  '<event marker>')&$select=id,changeKey,type&$top=500`. Each event's `Key` is cut from
+  its marker; one carrying no key of this installation's is left out. `to` is not used.
+- A **secondary calendar** — the *Vantigo* calendar — is
+  `GET /users/{oid}/calendars/{id}/calendarView?startDateTime=<from, UTC>&endDateTime=<to,
+  UTC>&$select=id,changeKey,type&$top=500`: every event of the view, with no `Key`. A
+  calendar id that breaks the id rule, or a window that ends before it starts, is
+  refused unsent.
+- Each page is read through the 8 MiB cap. Of each event it decodes `id`, `changeKey`,
+  `type` and the marker and nothing else; `type` `occurrence`, `exception` or
+  `seriesMaster`, whatever its case, is `Series`. An event whose id breaks the id rule
+  is left out, counted at debug level, never failing the page.
+- It follows `@odata.nextLink` only when the link is **a page of the very list sent**:
+  no `#`, `\` or space, `https` on `graph.microsoft.com` exactly, no user and no
+  fragment, a query, and the path `/v1.0` plus the path sent, compared unescaped and
+  whatever its case — percent-encoding in the path only when the path sent carries it
+  (a secondary calendar's id escaped), and then only as an encoding of the same path.
+  The path sent next is the module's own, with the link's query alone after it. Any
+  other link is a failure, unsent.
+- At most **5000** events (`MailboxVersionsMax`): past them the list is cut and
+  `Complete` is false.
+- A refusal is judged as `Apply`'s: a mailbox gone `ErrMailboxGone`, 403
+  `ErrMailboxDenied`, anything else a failure.
+
+**`Events`** reads whole, among at most 100 ids — each held to the id rule, else
+refused unsent — the events of the calendar, in the order asked:
+
+- `POST /$batch` of at most 20 `GET`s, the batches one after another, each **through
+  the calendar's own path** — `/users/{oid}/calendar/events/{id}` for the default
+  calendar, `/users/{oid}/calendars/{cid}/events/{id}` for a secondary one — so an
+  event moved to another calendar or folder is not found there. Each asks
+  `$select=id,changeKey,type,subject,body,location,start,end,isAllDay,showAs,sensitivity,isCancelled,attendees`
+  with the marker's `$expand`, and carries its own `Prefer: outlook.timezone="UTC",
+  outlook.body-content-type="text"`. The answer is read through the **16 MiB** cap, as
+  a delta page's: a body asked as text may still come as HTML, and twenty of those
+  outgrow the 8 MiB one.
+- **200** is answered: `Key` this installation's key, `Foreign` when the event carries
+  a marker that is not this installation's, `Series` as above, `Cancelled`
+  `isCancelled`, `Meeting` when it has attendees — decoded as empty objects, their
+  count alone, never an address —, `TextBody` when the body's `contentType` is `text`,
+  and the subject, the body's content, `location.displayName`, the times as `Delta`'s
+  (a timed event's instants in UTC, an all-day event's dates rounded to the nearest
+  midnight, the end inclusive), `showAs` matched to the five values, and `Private` for
+  a `private` or `confidential` sensitivity. A 200 for another id than the one asked,
+  or whose times do not read, is left out, counted at debug level.
+- **404** for the item — not a mailbox gone — is not answered: the event is not in
+  that calendar any more.
+- **429** is sent again once, alone, after the longest `Retry-After` among the
+  throttled, at most 30 seconds; else a throttled failure.
+- A mailbox gone, a 403 or any other refusal fails the whole call, as `Apply`'s would;
+  so does a response the `$batch` did not answer, or one that is not the JSON expected.
+  A refusal is logged at debug level by the tenant, the status and the codes alone.
+
 ## The events
 
 Every write the module makes, in the tenant or to its own connection, is a row in
@@ -1500,7 +1568,10 @@ delete, the manager, sessions, licences, the pass, the photo — a JPEG of at mo
 `$batch` of twenty, the team after a delay, and a trap that fails a test when a member's
 removal lacks `/$ref`; mailboxes — calendars made, read, listed by name and deleted, events
 made in the default or a secondary calendar with the extended property, patched,
-deleted and listed with the marker filter, the `$expand` and paging, a mailbox denied
+deleted and listed with the marker filter, the `$expand` and paging, each with a
+`changeKey` that moves with every write, a secondary calendar's `calendarView`, an
+event read through its calendar's own path (404 for one of another calendar), and the
+person's own edits to an event in Outlook, a mailbox denied
 (403 `ErrorAccessDenied`) or absent (404 `MailboxNotEnabledForRESTAPI`), and requests
 inside a `$batch` throttled one by one; the directory's `$search` over display name, mail and principal name (a `$search` or a `$count` without `ConsistencyLevel: eventual` is 400 `Request_UnsupportedQuery`, as Graph answers it), `$orderby=displayName`, `$top`, and `in` filters on `mail`, `userPrincipalName` and `employeeId` — and can be told to throttle, fail the next call, refuse a sensitive action for a privileged user
 or a missing role, or answer a synchronised user. It is wired through

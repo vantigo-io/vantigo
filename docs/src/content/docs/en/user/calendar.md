@@ -1,6 +1,6 @@
 ---
 title: Calendar
-description: Your appointments and what the other apps have put in your days, inviting colleagues, customers' contacts and anyone with an address, what an invitee receives and how they answer, cancelling, colleagues' busy times, repeating appointments, the dashboard's agenda, your calendar on your phone, calendars from elsewhere beside your own, a copy of your calendar in Outlook, and your Outlook busy time in Vantigo.
+description: Your appointments and what the other apps have put in your days, inviting colleagues, customers' contacts and anyone with an address, what an invitee receives and how they answer, cancelling, colleagues' busy times, repeating appointments, the dashboard's agenda, your calendar on your phone, calendars from elsewhere beside your own, a copy of your calendar in Outlook, changing your own appointments from Outlook, and your Outlook busy time in Vantigo.
 sidebar:
   order: 35
 sources:
@@ -440,8 +440,9 @@ calendar does not get them twice.
 Vantigo can keep a copy of your calendar in your Microsoft 365 mailbox, so your
 appointments show in Outlook — on your computer and your phone — beside everything else.
 In your main calendar they also show you as busy to colleagues who book meetings in
-Outlook. Vantigo stays where you make changes: the copies say **Kept by Vantigo — change
-it there:** with a link back.
+Outlook. The copies say **Kept by Vantigo — change it there:** with a link back, but
+you can also [edit, move and delete your own appointments in
+Outlook](#change-your-appointments-in-outlook): the change comes back to Vantigo.
 
 1. Open **Calendar → My calendar**. The **Outlook** card is under your calendar
    addresses.
@@ -485,11 +486,7 @@ Free and cancelled events are left out, and so are Vantigo's own copies. The car
 so — **The time you are busy in your main Outlook calendar shows in your Vantigo
 calendar, and as busy to your colleagues and on Planning's board. Their titles are never
 read.** — and, once it has been read, **Busy time read** and when. A change in Outlook
-shows after the next sync. Your Outlook titles are not shown in Vantigo yet.
-
-**Change things in Vantigo, not in Outlook.** For now, a copy you move or edit in
-Outlook is put back the next time Vantigo syncs, and one you delete there comes back.
-Taking your changes from Outlook into Vantigo is planned.
+shows after the next sync. Your own Outlook titles are not shown in Vantigo.
 
 **Turn it off** with the same switch: Vantigo removes what it put in Outlook — **Removing
 what Vantigo put in Outlook…** — and the card says **Not syncing**. Your Outlook busy
@@ -517,11 +514,77 @@ Vantigo will try again.** Nothing is needed from you for the last: Vantigo tries
 less often each time. If you leave, or Calendar is taken from you, your copies are
 removed.
 
+### Change your appointments in Outlook
+
+While the sync is on, the card says so: **Edits, moves and deletes you make in Outlook
+to your own appointments come back to Vantigo. Changes to appointments you attend, and
+to the other items, are put back.** With **A separate Vantigo calendar** it adds that
+new events you create in that calendar become appointments.
+
+Your **own** appointments — the ones you made in Vantigo — you can change in Outlook, on
+your computer or your phone. Vantigo takes the change at its next sync, within a quarter
+of an hour, as if you had made it in Vantigo:
+
+- **Edit** the title, the description, the place, the times, all day, **Show as** (free
+  is free in Vantigo, anything else busy) or **Private**. The appointment changes in
+  Vantigo. What you write below the **Kept by Vantigo — change it there:** line is not
+  taken, and that line and the link come back. With **Busy only** titles, only the
+  times, **Show as** and **Private** are taken; a title, a description or a place you
+  type is simply written over again. Everything else stays as it is in Vantigo: the people on it, how it
+  repeats, the customer and the project.
+- **Move** it, to another time or day: the appointment moves.
+- **Delete** it: the appointment is deleted in Vantigo, as **Delete** does there. If you
+  have invited people outside the company, it is
+  [cancelled](#delete-an-appointment-you-invited-people-to) and they are mailed
+  **Cancelled: …**. Moving the copy to another calendar or folder in Outlook counts as
+  deleting it.
+
+Everyone on the appointment hears of the change as they would from Vantigo: people from
+outside are sent **Updated: …** when the time or the place changed, and your colleagues
+are told ([when you change the appointment](#when-you-change-the-appointment)).
+
+**A repeating appointment** is one event in Outlook for each occurrence. Move one, and
+that occurrence moves in Vantigo; delete one, and that occurrence is cancelled. Any
+other change to one occurrence — its title, say — is put back: change the series in
+Vantigo. An occurrence of a timed series cannot become all day there, nor the other
+way round.
+
+**What is put back.** A change Vantigo cannot take is undone in Outlook at the same
+sync, and the card says what happened under **A change from Outlook was not taken**,
+with when:
+
+- **You changed “…” in Outlook while it was changed in Vantigo too; Vantigo's version
+  was kept.** — the appointment was changed in Vantigo since the last sync.
+- **Your change to “…” in Outlook broke one of Vantigo's rules and was put back.** — an
+  empty title, say.
+- **“…” is someone else's appointment; change it in Vantigo or ask its organizer. Your
+  change in Outlook was put back.** — you are invited to it; only its organizer
+  changes it.
+- **Only an appointment's own times can be changed from Outlook for a single
+  occurrence, and Vantigo's other items cannot be changed there; your change was put
+  back.** — an occurrence's other fields, or an item from another app (absence, a
+  task, hours and the like).
+
+The card shows the last of them only, and forgets it when you turn the sync off. A copy
+of an appointment you attend, or of another app's item, that you delete in Outlook
+comes back.
+
+**Add people to a copy in Outlook**, and it becomes your own Outlook meeting: Outlook
+sends them the invitation, and Vantigo leaves that copy alone from then on — it no
+longer updates or deletes it, and your changes to it no longer come back. The
+appointment stays in Vantigo as it was.
+
+**New events in the separate Vantigo calendar.** With **A separate Vantigo calendar**,
+an event you create in that calendar in Outlook becomes an appointment of yours in
+Vantigo at the next sync — its title (**Untitled** when it has none), its description,
+place, times, **Show as** and **Private** — and from then on it is a copy like the
+others. A repeating event, or one with attendees, is left in Outlook alone. Events you
+create in your main calendar stay yours in Outlook and are never taken.
+
 ## What comes next
 
 The calendar address for your phone, calendars from elsewhere and the copy in Outlook
-are built, and your Outlook busy time shows in Vantigo. Next for Outlook: your own
-Outlook titles beside it and the changes you make to your appointments in Outlook taken
-into Vantigo, then faster updates. Further
+are built, your Outlook busy time shows in Vantigo, and the changes you make to your
+own appointments in Outlook come back. Next for Outlook: faster updates. Further
 off: sync with Google, booking pages, rooms and resources, reminders in the app and by
 mail, CalDAV, and team calendars.
