@@ -27,6 +27,9 @@ const steps = [
 ];
 
 /** The page as the host mounts it, with stand-ins for identity's two forms. */
+// The change notifications' state every calendar sync fixture answers (calendar Outlook sync design O11.7).
+const notifications = { status: "not_configured", subscriptions: 0 } as const;
+
 const openPage = async (server: EntraServer = {}) => {
   const fetchMock = stubEntraApi(server);
   const signIn = vi.fn((defaults: SignInDefaults) => <p>sign-in form for {defaults.clientId}</p>);
@@ -443,7 +446,7 @@ describe("EntraPage — calendar sync", () => {
   });
 
   it("reads Ready once the token carries the permission", async () => {
-    await openPage({ connection: connected({ calendarSync: { enabled: true, status: "ready" } }) });
+    await openPage({ connection: connected({ calendarSync: { enabled: true, status: "ready", notifications } }) });
     const form = within(region("Set the account rules")).getByRole("form", { name: "Account rules" });
     expect(within(form).getByRole("status")).toHaveTextContent("Ready");
   });
@@ -453,7 +456,7 @@ describe("EntraPage — calendar sync", () => {
       connection: connected({
         status: "failing",
         statusReason: "credential_invalid",
-        calendarSync: { enabled: true, status: "unavailable", reason: "credential_invalid" },
+        calendarSync: { enabled: true, status: "unavailable", reason: "credential_invalid", notifications },
       }),
     });
     const form = within(region("Set the account rules")).getByRole("form", { name: "Account rules" });
@@ -465,7 +468,7 @@ describe("EntraPage — calendar sync", () => {
   it("speaks Norwegian", async () => {
     setLanguagePreference("nb");
     try {
-      stubEntraApi({ connection: connected({ calendarSync: { enabled: true, status: "ready" } }) });
+      stubEntraApi({ connection: connected({ calendarSync: { enabled: true, status: "ready", notifications } }) });
       renderWithProviders(<EntraPage signIn={() => null} provisioning={() => null} />);
       expect(
         await screen.findByRole("switch", { name: /^La folk synkronisere Vantigo-kalenderen sin til Outlook/ }),
@@ -480,7 +483,9 @@ describe("EntraPage — calendar sync", () => {
   it("says in Norwegian that the role may be granted outside the token", async () => {
     setLanguagePreference("nb");
     try {
-      stubEntraApi({ connection: connected({ calendarSync: { enabled: true, status: "permission_missing" } }) });
+      stubEntraApi({
+        connection: connected({ calendarSync: { enabled: true, status: "permission_missing", notifications } }),
+      });
       renderWithProviders(<EntraPage signIn={() => null} provisioning={() => null} />);
       expect(
         await screen.findByText(

@@ -171,3 +171,15 @@ UPDATE calendar.mailbox_sync SET
     put_back_key = NULL,
     put_back_at = NULL
 WHERE user_id = @user_id;
+
+-- name: MarkMailboxSyncNotified :execrows
+-- MarkMailboxSyncNotified makes due at now the syncs of the mailbox a change
+-- notification named at at (calendar Outlook sync design O11.6): the rows of
+-- that mailbox, compared case-insensitively, that are on and active or
+-- pending, whose last sync started before at, and which are not due already.
+UPDATE calendar.mailbox_sync SET next_sync_at = @now::timestamptz
+WHERE lower(mailbox) = lower(@mailbox::varchar)
+  AND enabled
+  AND state IN ('active', 'pending')
+  AND (last_synced_at IS NULL OR last_synced_at < @at::timestamptz)
+  AND (next_sync_at IS NULL OR next_sync_at > @now::timestamptz);

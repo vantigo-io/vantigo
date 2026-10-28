@@ -49,6 +49,7 @@ const (
 	groupsPath      = "/api/v1/entra/groups"
 	directoryPath   = "/api/v1/entra/directory/users"
 	matchesPath     = "/api/v1/entra/directory/matches"
+	noticesPath     = "/api/v1/entra/mailbox-notifications"
 )
 
 // manager is a caller holding entra:manage, and nothing else.

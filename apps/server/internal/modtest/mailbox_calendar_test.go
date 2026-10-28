@@ -507,3 +507,51 @@ func TestFakeMailboxCalendar_WritebackRefusals(t *testing.T) {
 		t.Errorf("Events under FailWith = %v, want boom", err)
 	}
 }
+
+// Watch and Unwatch keep the watched set, refused as the contract says —
+// Watch under cleanup, Unwatch never for the status — and Notified answers
+// the notices queued after since, oldest first.
+func TestFakeMailboxCalendar_Notifications(t *testing.T) {
+	ctx := context.Background()
+	f := NewFakeMailboxCalendar()
+	if err := f.Watch(ctx, "oid-1"); err != nil || !f.Watched("oid-1") {
+		t.Fatalf("Watch = %v, watched %v; want nil and watched", err, f.Watched("oid-1"))
+	}
+	f.SetStatus(contracts.MailboxCleanup, "switch_off")
+	if err := f.Watch(ctx, "oid-2"); !errors.Is(err, contracts.ErrMailboxUnavailable) || f.Watched("oid-2") {
+		t.Errorf("Watch under cleanup = %v, watched %v; want ErrMailboxUnavailable and not watched", err, f.Watched("oid-2"))
+	}
+	if err := f.Unwatch(ctx, "oid-1"); err != nil || f.Watched("oid-1") {
+		t.Errorf("Unwatch under cleanup = %v, watched %v; want nil and not watched", err, f.Watched("oid-1"))
+	}
+	f.SetStatus(contracts.MailboxAvailable, "")
+	if err := f.Watch(ctx, "oid-3"); err != nil {
+		t.Fatalf("Watch: %v", err)
+	}
+	f.FailWith("Unwatch", contracts.ErrMailboxDenied)
+	if err := f.Unwatch(ctx, "oid-3"); !errors.Is(err, contracts.ErrMailboxDenied) || !f.Watched("oid-3") {
+		t.Errorf("Unwatch refused = %v, watched %v; want ErrMailboxDenied and still watched", err, f.Watched("oid-3"))
+	}
+	if got, want := f.WatchCalls(), []string{"oid-1", "oid-2", "oid-3"}; !slices.Equal(got, want) {
+		t.Errorf("WatchCalls = %v, want %v", got, want)
+	}
+	if got, want := f.UnwatchCalls(), []string{"oid-1", "oid-3"}; !slices.Equal(got, want) {
+		t.Errorf("UnwatchCalls = %v, want %v", got, want)
+	}
+
+	f.Notify("oid-1", Start.Add(2*time.Minute))
+	f.Notify("oid-2", Start)
+	f.Notify("oid-3", Start.Add(time.Minute))
+	got, err := f.Notified(ctx, Start)
+	if err != nil {
+		t.Fatalf("Notified: %v", err)
+	}
+	want := []contracts.MailboxNotice{{Mailbox: "oid-3", At: Start.Add(time.Minute)}, {Mailbox: "oid-1", At: Start.Add(2 * time.Minute)}}
+	if !slices.Equal(got, want) {
+		t.Errorf("Notified = %v, want %v", got, want)
+	}
+	f.FailWith("Notified", errors.New("boom"))
+	if _, err := f.Notified(ctx, Start); err == nil {
+		t.Error("Notified under FailWith answered no error")
+	}
+}

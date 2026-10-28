@@ -148,7 +148,7 @@ func TestMailbox_StatusAndTheConnectionsCalendarSync(t *testing.T) {
 
 	// A fresh installation: off, nothing to clean up with.
 	status(contracts.MailboxUnavailable, "switch_off")
-	calendarSync(gen.Off, "", false)
+	calendarSync(gen.EntraCalendarSyncStatusOff, "", false)
 
 	// Connected without the calendar's permission: the test still connects.
 	register(t, o)
@@ -157,11 +157,11 @@ func TestMailbox_StatusAndTheConnectionsCalendarSync(t *testing.T) {
 		t.Fatalf("the test without Calendars.ReadWrite, switch off: %+v, want connected with nothing missing", result)
 	}
 	status(contracts.MailboxCleanup, "switch_off")
-	calendarSync(gen.Off, "", false)
+	calendarSync(gen.EntraCalendarSyncStatusOff, "", false)
 
 	// On, the permission missing: the test still connects and names it.
 	on := setCalendarSync(t, o, true)
-	if !on.CalendarSync.Enabled || on.CalendarSync.Status != gen.PermissionMissing {
+	if !on.CalendarSync.Enabled || on.CalendarSync.Status != gen.EntraCalendarSyncStatusPermissionMissing {
 		t.Errorf("the PUT's answer: %+v", on.CalendarSync)
 	}
 	result := testConnection(t, o)
@@ -171,13 +171,13 @@ func TestMailbox_StatusAndTheConnectionsCalendarSync(t *testing.T) {
 	// The role not in the token is advisory only — an Exchange RBAC grant
 	// never shows there — so the provider is available all the same.
 	status(contracts.MailboxAvailable, "")
-	calendarSync(gen.PermissionMissing, "", true)
+	calendarSync(gen.EntraCalendarSyncStatusPermissionMissing, "", true)
 
 	// Consented: ready, available.
 	g.Configure(func(g *graphtest.FakeGraph) { g.Roles = append(g.Roles, "Calendars.ReadWrite") })
 	testConnection(t, o)
 	status(contracts.MailboxAvailable, "")
-	calendarSync(gen.Ready, "", false)
+	calendarSync(gen.EntraCalendarSyncStatusReady, "", false)
 
 	// The tenant refusing the secret: failing, unavailable with the reason.
 	g.Configure(func(g *graphtest.FakeGraph) { g.Secrets[clientID] = []string{"another"} })
@@ -185,17 +185,17 @@ func TestMailbox_StatusAndTheConnectionsCalendarSync(t *testing.T) {
 	// The failed test saw no permission: Calendars.ReadWrite is missing with
 	// the rest while the switch is on.
 	status(contracts.MailboxUnavailable, "credential_invalid")
-	calendarSync(gen.Unavailable, "credential_invalid", true)
+	calendarSync(gen.EntraCalendarSyncStatusUnavailable, "credential_invalid", true)
 
 	// Every secret revoked: unconfigured.
 	h.Exec(t, `UPDATE entra.credentials SET revoked_at = $1`, h.Now())
 	status(contracts.MailboxUnavailable, "unconfigured")
-	calendarSync(gen.Unavailable, "", true)
+	calendarSync(gen.EntraCalendarSyncStatusUnavailable, "", true)
 
 	// The switch's changes are audited as settings changes.
 	setCalendarSync(t, o, false)
 	status(contracts.MailboxUnavailable, "switch_off")
-	calendarSync(gen.Off, "", false)
+	calendarSync(gen.EntraCalendarSyncStatusOff, "", false)
 	if n := h.Count(t, `SELECT count(*) FROM entra.events WHERE action = 'entra.settings.changed' AND 'calendarSync' = ANY(codes)`); n != 2 {
 		t.Errorf("%d settings events naming calendarSync, want 2 (on, off)", n)
 	}

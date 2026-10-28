@@ -11,7 +11,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/oapi-codegen/runtime"
@@ -42,22 +44,46 @@ func (e EntraAccountState) Valid() bool {
 
 // Defines values for EntraCalendarSyncStatus.
 const (
-	Off               EntraCalendarSyncStatus = "off"
-	PermissionMissing EntraCalendarSyncStatus = "permission_missing"
-	Ready             EntraCalendarSyncStatus = "ready"
-	Unavailable       EntraCalendarSyncStatus = "unavailable"
+	EntraCalendarSyncStatusOff               EntraCalendarSyncStatus = "off"
+	EntraCalendarSyncStatusPermissionMissing EntraCalendarSyncStatus = "permission_missing"
+	EntraCalendarSyncStatusReady             EntraCalendarSyncStatus = "ready"
+	EntraCalendarSyncStatusUnavailable       EntraCalendarSyncStatus = "unavailable"
 )
 
 // Valid indicates whether the value is a known member of the EntraCalendarSyncStatus enum.
 func (e EntraCalendarSyncStatus) Valid() bool {
 	switch e {
-	case Off:
+	case EntraCalendarSyncStatusOff:
 		return true
-	case PermissionMissing:
+	case EntraCalendarSyncStatusPermissionMissing:
 		return true
-	case Ready:
+	case EntraCalendarSyncStatusReady:
 		return true
-	case Unavailable:
+	case EntraCalendarSyncStatusUnavailable:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for EntraCalendarSyncNotificationsStatus.
+const (
+	EntraCalendarSyncNotificationsStatusActive        EntraCalendarSyncNotificationsStatus = "active"
+	EntraCalendarSyncNotificationsStatusNotConfigured EntraCalendarSyncNotificationsStatus = "not_configured"
+	EntraCalendarSyncNotificationsStatusOff           EntraCalendarSyncNotificationsStatus = "off"
+	EntraCalendarSyncNotificationsStatusUnreachable   EntraCalendarSyncNotificationsStatus = "unreachable"
+)
+
+// Valid indicates whether the value is a known member of the EntraCalendarSyncNotificationsStatus enum.
+func (e EntraCalendarSyncNotificationsStatus) Valid() bool {
+	switch e {
+	case EntraCalendarSyncNotificationsStatusActive:
+		return true
+	case EntraCalendarSyncNotificationsStatusNotConfigured:
+		return true
+	case EntraCalendarSyncNotificationsStatusOff:
+		return true
+	case EntraCalendarSyncNotificationsStatusUnreachable:
 		return true
 	default:
 		return false
@@ -385,6 +411,9 @@ type EntraAccountCounts struct {
 type EntraCalendarSync struct {
 	Enabled bool `json:"enabled"`
 
+	// Notifications The change notifications from Outlook (calendar Outlook sync design O11.7): with them, a change in a synced mailbox makes its sync due at once rather than at the next poll, which runs either way. status is off while CALENDAR_MAILBOX_NOTIFICATIONS_ENABLED is 0; not_configured while PUBLIC_BASE_URL is unset, Microsoft needing a public HTTPS address; unreachable when Microsoft could not reach the webhook to validate a subscription within the last hour, no subscription being asked for until then; active otherwise.
+	Notifications EntraCalendarSyncNotifications `json:"notifications"`
+
 	// Reason A code, never the directory's words; absent when there is nothing to say.
 	Reason *string                 `json:"reason,omitempty"`
 	Status EntraCalendarSyncStatus `json:"status"`
@@ -392,6 +421,22 @@ type EntraCalendarSync struct {
 
 // EntraCalendarSyncStatus defines model for EntraCalendarSync.Status.
 type EntraCalendarSyncStatus string
+
+// EntraCalendarSyncNotifications The change notifications from Outlook (calendar Outlook sync design O11.7): with them, a change in a synced mailbox makes its sync due at once rather than at the next poll, which runs either way. status is off while CALENDAR_MAILBOX_NOTIFICATIONS_ENABLED is 0; not_configured while PUBLIC_BASE_URL is unset, Microsoft needing a public HTTPS address; unreachable when Microsoft could not reach the webhook to validate a subscription within the last hour, no subscription being asked for until then; active otherwise.
+type EntraCalendarSyncNotifications struct {
+	// LastNotificationAt When a notification last came, to within a minute. Absent until one has.
+	LastNotificationAt *time.Time                           `json:"lastNotificationAt,omitempty"`
+	Status             EntraCalendarSyncNotificationsStatus `json:"status"`
+
+	// Subscriptions The mailboxes with a live subscription.
+	Subscriptions int32 `json:"subscriptions"`
+
+	// UnreachableAt When Microsoft last could not reach the webhook. Present while status is unreachable.
+	UnreachableAt *time.Time `json:"unreachableAt,omitempty"`
+}
+
+// EntraCalendarSyncNotificationsStatus defines model for EntraCalendarSyncNotifications.Status.
+type EntraCalendarSyncNotificationsStatus string
 
 // EntraConnection The installation's one connection to a Microsoft Entra ID tenant (Entra design D11): the tenant and the application registered in it, what the last connection test found, the account rules, the client secrets without their values, and how many accounts and groups the module keeps. Sent whether or not anything is set, so the wizard can show every step before the first is done.
 type EntraConnection struct {
@@ -773,6 +818,18 @@ type GetEntraEventsParams struct {
 	Limit *int32 `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
+// PostEntraMailboxNotificationsJSONBody defines parameters for PostEntraMailboxNotifications.
+type PostEntraMailboxNotificationsJSONBody map[string]interface{}
+
+// PostEntraMailboxNotificationsTextBody defines parameters for PostEntraMailboxNotifications.
+type PostEntraMailboxNotificationsTextBody = string
+
+// PostEntraMailboxNotificationsParams defines parameters for PostEntraMailboxNotifications.
+type PostEntraMailboxNotificationsParams struct {
+	// ValidationToken Graph's validation token, present on the handshake alone and answered back as it came, decoded.
+	ValidationToken *string `form:"validationToken,omitempty" json:"validationToken,omitempty"`
+}
+
 // PutEntraConnectionJSONRequestBody defines body for PutEntraConnection for application/json ContentType.
 type PutEntraConnectionJSONRequestBody = EntraConnectionRequest
 
@@ -781,6 +838,12 @@ type PostEntraConnectionCredentialsJSONRequestBody = EntraCredentialRequest
 
 // PutEntraConnectionSettingsJSONRequestBody defines body for PutEntraConnectionSettings for application/json ContentType.
 type PutEntraConnectionSettingsJSONRequestBody = EntraSettingsRequest
+
+// PostEntraMailboxNotificationsJSONRequestBody defines body for PostEntraMailboxNotifications for application/json ContentType.
+type PostEntraMailboxNotificationsJSONRequestBody PostEntraMailboxNotificationsJSONBody
+
+// PostEntraMailboxNotificationsTextRequestBody defines body for PostEntraMailboxNotifications for text/plain ContentType.
+type PostEntraMailboxNotificationsTextRequestBody = PostEntraMailboxNotificationsTextBody
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
@@ -826,6 +889,9 @@ type ServerInterface interface {
 	// PostEntraGroupsByObjectIdConfirm Confirm an adopted group
 	// (POST /api/v1/entra/groups/{objectId}/confirm)
 	PostEntraGroupsByObjectIdConfirm(w http.ResponseWriter, r *http.Request, objectId openapi_types.UUID)
+	// PostEntraMailboxNotifications Microsoft's change notifications
+	// (POST /api/v1/entra/mailbox-notifications)
+	PostEntraMailboxNotifications(w http.ResponseWriter, r *http.Request, params PostEntraMailboxNotificationsParams)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -1169,6 +1235,39 @@ func (siw *ServerInterfaceWrapper) PostEntraGroupsByObjectIdConfirm(w http.Respo
 	handler.ServeHTTP(w, r)
 }
 
+// PostEntraMailboxNotifications operation middleware
+func (siw *ServerInterfaceWrapper) PostEntraMailboxNotifications(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params PostEntraMailboxNotificationsParams
+
+	// ------------- Optional query parameter "validationToken" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "validationToken", r.URL.Query(), &params.ValidationToken, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "validationToken"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "validationToken", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostEntraMailboxNotifications(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 type UnescapedCookieParamError struct {
 	ParamName string
 	Err       error
@@ -1303,6 +1402,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/entra/events", wrapper.GetEntraEvents)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/entra/groups", wrapper.GetEntraGroups)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/entra/groups/{objectId}/confirm", wrapper.PostEntraGroupsByObjectIdConfirm)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/entra/mailbox-notifications", wrapper.PostEntraMailboxNotifications)
 
 	return m
 }
@@ -2391,6 +2491,116 @@ func (response PostEntraGroupsByObjectIdConfirm404Response) VisitPostEntraGroups
 	return nil
 }
 
+type PostEntraMailboxNotificationsRequestObject struct {
+	Params   PostEntraMailboxNotificationsParams
+	JSONBody *PostEntraMailboxNotificationsJSONRequestBody
+	TextBody *PostEntraMailboxNotificationsTextRequestBody
+}
+
+type PostEntraMailboxNotificationsResponseObject interface {
+	VisitPostEntraMailboxNotificationsResponse(w http.ResponseWriter) error
+}
+
+type PostEntraMailboxNotifications200ResponseHeaders struct {
+	CacheControl        *string
+	XContentTypeOptions *string
+}
+
+type PostEntraMailboxNotifications200TextplainCharsetUtf8Response struct {
+	Body          io.Reader
+	Headers       PostEntraMailboxNotifications200ResponseHeaders
+	ContentLength int64
+}
+
+func (response PostEntraMailboxNotifications200TextplainCharsetUtf8Response) VisitPostEntraMailboxNotificationsResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	if response.Headers.CacheControl != nil {
+		w.Header().Set("Cache-Control", fmt.Sprint(*response.Headers.CacheControl))
+	}
+	if response.Headers.XContentTypeOptions != nil {
+		w.Header().Set("X-Content-Type-Options", fmt.Sprint(*response.Headers.XContentTypeOptions))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type PostEntraMailboxNotifications202Response struct {
+}
+
+func (response PostEntraMailboxNotifications202Response) VisitPostEntraMailboxNotificationsResponse(w http.ResponseWriter) error {
+	w.WriteHeader(202)
+	return nil
+}
+
+type PostEntraMailboxNotifications400ApplicationProblemPlusJSONResponse EntraProblem
+
+func (response PostEntraMailboxNotifications400ApplicationProblemPlusJSONResponse) VisitPostEntraMailboxNotificationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostEntraMailboxNotifications404Response struct {
+}
+
+func (response PostEntraMailboxNotifications404Response) VisitPostEntraMailboxNotificationsResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostEntraMailboxNotifications429ResponseHeaders struct {
+	RetryAfter *string
+}
+
+type PostEntraMailboxNotifications429JSONResponse struct {
+	Body    externalRef0.AuthErrorResponse
+	Headers PostEntraMailboxNotifications429ResponseHeaders
+}
+
+func (response PostEntraMailboxNotifications429JSONResponse) VisitPostEntraMailboxNotificationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostEntraMailboxNotifications503ApplicationProblemPlusJSONResponse EntraProblem
+
+func (response PostEntraMailboxNotifications503ApplicationProblemPlusJSONResponse) VisitPostEntraMailboxNotificationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
 	// GetEntraAccounts The module's accounts
@@ -2435,6 +2645,9 @@ type StrictServerInterface interface {
 	// PostEntraGroupsByObjectIdConfirm Confirm an adopted group
 	// (POST /api/v1/entra/groups/{objectId}/confirm)
 	PostEntraGroupsByObjectIdConfirm(ctx context.Context, request PostEntraGroupsByObjectIdConfirmRequestObject) (PostEntraGroupsByObjectIdConfirmResponseObject, error)
+	// PostEntraMailboxNotifications Microsoft's change notifications
+	// (POST /api/v1/entra/mailbox-notifications)
+	PostEntraMailboxNotifications(ctx context.Context, request PostEntraMailboxNotificationsRequestObject) (PostEntraMailboxNotificationsResponseObject, error)
 }
 
 type StrictHandlerFunc func(ctx context.Context, w http.ResponseWriter, r *http.Request, request any) (any, error)
@@ -2840,6 +3053,55 @@ func (sh *strictHandler) PostEntraGroupsByObjectIdConfirm(w http.ResponseWriter,
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PostEntraGroupsByObjectIdConfirmResponseObject); ok {
 		if err := validResponse.VisitPostEntraGroupsByObjectIdConfirmResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostEntraMailboxNotifications operation middleware
+func (sh *strictHandler) PostEntraMailboxNotifications(w http.ResponseWriter, r *http.Request, params PostEntraMailboxNotificationsParams) {
+	var request PostEntraMailboxNotificationsRequestObject
+
+	request.Params = params
+	if strings.HasPrefix(r.Header.Get("Content-Type"), "application/json") {
+
+		var body PostEntraMailboxNotificationsJSONRequestBody
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			if !errors.Is(err, io.EOF) {
+				sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+				return
+			}
+		} else {
+			request.JSONBody = &body
+		}
+	}
+	if strings.HasPrefix(r.Header.Get("Content-Type"), "text/plain") {
+		data, err := io.ReadAll(r.Body)
+		if err != nil {
+			sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't read body: %w", err))
+			return
+		}
+		if len(data) > 0 {
+			body := PostEntraMailboxNotificationsTextRequestBody(data)
+			request.TextBody = &body
+		}
+	}
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostEntraMailboxNotifications(ctx, request.(PostEntraMailboxNotificationsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostEntraMailboxNotifications")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostEntraMailboxNotificationsResponseObject); ok {
+		if err := validResponse.VisitPostEntraMailboxNotificationsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

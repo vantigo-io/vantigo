@@ -441,6 +441,13 @@ type Config struct {
 	// once, so the poll is what catches the providers' items and a change of
 	// rights. The worker wakes every minute — a constant — which is the floor.
 	CalendarMailboxSyncPoll time.Duration
+	// CalendarMailboxNotificationsEnabled is the switch for the change
+	// notifications from Outlook (CALENDAR_MAILBOX_NOTIFICATIONS_ENABLED,
+	// calendar Outlook sync design O11.1). Default ON: they are asked for
+	// only while PUBLIC_BASE_URL is set too, Microsoft needing a public HTTPS
+	// address. A 0 is the operator's off switch for a public host Microsoft
+	// cannot reach: nothing is subscribed, and the poll alone runs.
+	CalendarMailboxNotificationsEnabled bool
 
 	// StorageProvider selects the internal/storage backend: "" (unset,
 	// STORAGE_PROVIDER) or "fs". When unset, internal/storage.New still
@@ -1066,6 +1073,7 @@ func calendarWorkers(p *problems, env map[string]string, c *Config) {
 			c.CalendarMailboxSyncPoll = d
 		}
 	}
+	c.CalendarMailboxNotificationsEnabled = boolean(p, env, "CALENDAR_MAILBOX_NOTIFICATIONS_ENABLED", true)
 }
 
 // defaultStorecoveBaseURL is Storecove's production API (EHF and KID design

@@ -241,6 +241,33 @@ func (q *Queries) LockMailboxSync(ctx context.Context, userID uuid.UUID) (Calend
 	return i, err
 }
 
+const markMailboxSyncNotified = `-- name: MarkMailboxSyncNotified :execrows
+UPDATE calendar.mailbox_sync SET next_sync_at = $1::timestamptz
+WHERE lower(mailbox) = lower($2::varchar)
+  AND enabled
+  AND state IN ('active', 'pending')
+  AND (last_synced_at IS NULL OR last_synced_at < $3::timestamptz)
+  AND (next_sync_at IS NULL OR next_sync_at > $1::timestamptz)
+`
+
+type MarkMailboxSyncNotifiedParams struct {
+	Now     time.Time
+	Mailbox string
+	At      time.Time
+}
+
+// MarkMailboxSyncNotified makes due at now the syncs of the mailbox a change
+// notification named at at (calendar Outlook sync design O11.6): the rows of
+// that mailbox, compared case-insensitively, that are on and active or
+// pending, whose last sync started before at, and which are not due already.
+func (q *Queries) MarkMailboxSyncNotified(ctx context.Context, arg MarkMailboxSyncNotifiedParams) (int64, error) {
+	result, err := q.db.Exec(ctx, markMailboxSyncNotified, arg.Now, arg.Mailbox, arg.At)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const nudgeMailboxSync = `-- name: NudgeMailboxSync :exec
 UPDATE calendar.mailbox_sync SET next_sync_at = $1::timestamptz
 WHERE user_id = ANY($2::uuid[])
