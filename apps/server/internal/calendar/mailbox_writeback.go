@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -30,9 +31,13 @@ import (
 // each mapped row not released compared by its change key — none stored is a
 // baseline, taken unread; the same is as Vantigo left it; a moved one, one
 // missing from a complete list that starts in the window, and under target
-// own an event neither mapped nor marked are read whole with Events, at most
-// mailboxReadMax ids a sync; then the decisions of O10.6–O10.9, at most
-// mailboxWriteBackMax writes to appointments a sync, each on the person's
+// own (while the person's copies include their appointments) an event
+// neither mapped nor marked are read whole with Events, at most
+// mailboxReadMax ids a sync — a row is deleted only when the directory
+// answered it not found (Gone), and one neither answered nor Gone is left
+// for the next sync; then the decisions of O10.6–O10.9, at most
+// mailboxWriteBackMax writes to appointments a sync and none of the
+// deletes when more than mailboxMassDeleteMax would be taken, each on the person's
 // behalf (contracts.AsUser) through the same code the screen runs, with no
 // transaction open across any call out; then the map's change keys, stale
 // hashes, releases and forgets, and the put-back, in one short transaction.
@@ -48,6 +53,9 @@ const (
 	mailboxReadMax = contracts.MailboxMarkedMax
 	// mailboxWriteBackMax is the most writes to appointments one sync makes.
 	mailboxWriteBackMax = 20
+	// mailboxMassDeleteMax is the most deletes of the person's own
+	// appointments one sync takes from Outlook; past it none is taken.
+	mailboxMassDeleteMax = 10
 )
 
 // The reasons a change made in Outlook was put back (design O10.3), as
@@ -57,6 +65,10 @@ const (
 	putBackRefused     = "refused"
 	putBackNotOwner    = "not_owner"
 	putBackNotEditable = "not_editable"
+	// putBackManyDeleted: more than mailboxMassDeleteMax of the person's
+	// own appointments were deleted in Outlook in one sync, and none was
+	// taken; recorded with no key.
+	putBackManyDeleted = "many_deleted"
 )
 
 // writeBackResult is what a write-back did, for the rest of the sync.
@@ -152,9 +164,10 @@ func (w *MailboxSyncWorker) writeBack(ctx, call context.Context, r store.Calenda
 		}
 	}
 	// Under target own, an event of the Vantigo calendar neither mapped nor
-	// marked may be one the person made there (O10.9).
+	// marked may be one the person made there (O10.9) — taken only while
+	// the person's copies include their appointments.
 	var fresh []string
-	if calendarID != "" {
+	if calendarID != "" && slices.Contains(r.Kinds, appointmentKind) {
 		for _, v := range versions.Events {
 			if !known[v.EventID] && v.Key == "" && !v.Series {
 				fresh = append(fresh, v.EventID)
@@ -185,33 +198,47 @@ func (w *MailboxSyncWorker) writeBack(ctx, call context.Context, r store.Calenda
 	ids = append(ids, fresh...)
 
 	if len(ids) > 0 {
-		states, callErr := w.srv.mailboxEvents(call, mailbox, calendarID, ids)
+		read, callErr := w.srv.mailboxEvents(call, mailbox, calendarID, ids)
 		if callErr != nil {
 			if err := run.commit(); err != nil {
 				return run.out, nil, err
 			}
 			return run.out, callErr, nil
 		}
-		got := make(map[string]contracts.MailboxEventState, len(states))
-		for _, st := range states {
+		got := make(map[string]contracts.MailboxEventState, len(read.Events))
+		for _, st := range read.Events {
 			got[st.EventID] = st
 		}
+		gone := make(map[string]bool, len(read.Gone))
+		for _, id := range read.Gone {
+			gone[id] = true
+		}
+		// An answered row is compared; a Gone one — the directory's own "not
+		// found", whether it was missing from the list or its version moved
+		// moments ago — is deleted; a row neither answered nor Gone was not
+		// read this time, and keeps its version for the next sync: a missing
+		// one so unread leaves the reconcile inferring nothing.
+		var deletes []*store.CalendarMailboxEvent
 		for _, row := range append(reads, missing...) {
 			if run.callErr != nil {
 				break
 			}
 			st, answered := got[row.EventID]
-			if answered {
+			switch {
+			case answered:
 				run.out.present[row.EventID] = true
 				if err := run.change(*row, st); err != nil {
 					return run.out, nil, err
 				}
-				continue
+			case gone[row.EventID]:
+				delete(run.out.present, row.EventID)
+				deletes = append(deletes, row)
+			default:
+				run.out.complete = false
 			}
-			delete(run.out.present, row.EventID)
-			if err := run.deleted(*row); err != nil {
-				return run.out, nil, err
-			}
+		}
+		if err := run.deletedAll(deletes); err != nil {
+			return run.out, nil, err
 		}
 		for _, id := range fresh {
 			if run.callErr != nil {
@@ -335,6 +362,13 @@ func (run *writeBackRun) change(row store.CalendarMailboxEvent, st contracts.Mai
 		run.writes = append(run.writes, wbMapWrite{kind: "change_key", key: key, changeKey: st.ChangeKey})
 		return nil
 	}
+	if row.ContentHash == "" {
+		// A copy whose last write is unknown — a put-back, a take or an
+		// adoption whose push then failed — is never taken: put back, with
+		// no record, as the push rewrites it whole.
+		run.stale(key, st.ChangeKey)
+		return nil
+	}
 	id, date, ok := appointmentKey(key)
 	if !ok {
 		run.putBackAs(key, st.ChangeKey, putBackNotEditable)
@@ -350,7 +384,14 @@ func (run *writeBackRun) change(row store.CalendarMailboxEvent, st contracts.Mai
 		return nil
 	case a.CancelledAt != nil:
 		return nil
-	case row.ContentHash != "" && row.ContentHash != it.hash:
+	case row.ContentHash != it.hash:
+		if run.asWritten(row, st, it) {
+			// The event is exactly what the push last wrote — Exchange
+			// moved its version alone — so it is no edit: the version is
+			// kept, and the push rewrites it, the hash being the old one.
+			run.writes = append(run.writes, wbMapWrite{kind: "change_key", key: key, changeKey: st.ChangeKey})
+			return nil
+		}
 		run.putBackAs(key, st.ChangeKey, putBackConflict)
 		return nil
 	}
@@ -405,7 +446,7 @@ func (run *writeBackRun) takeSingle(key string, a store.CalendarAppointment, att
 	if !run.mayWrite() {
 		return nil
 	}
-	_, err := run.w.srv.replaceAppointment(run.as, run.r.UserID, a.ID, a.Revision, body)
+	_, err := run.w.srv.replaceAppointment(run.as, run.r.UserID, a.ID, a.Revision, body, nil)
 	return run.written(key, st, err)
 }
 
@@ -482,33 +523,106 @@ func (run *writeBackRun) written(key string, st contracts.MailboxEventState, err
 	return nil
 }
 
-// deleted is a mapped copy no longer in its calendar (O10.8): the person's
-// own single appointment is deleted through the DELETE's path, their own
-// occurrence cancelled; any other copy is forgotten, and made again by the
-// push while it is wanted.
-func (run *writeBackRun) deleted(row store.CalendarMailboxEvent) error {
-	key := row.ItemKey
-	if run.want[key] == nil {
+// The fates of a mapped copy no longer in its calendar (deletion).
+const (
+	delNone     = iota // left to the push: no longer wanted
+	delForget          // forgotten, made again by the push while wanted
+	delSilent          // put back with no record: its last write is unknown
+	delConflict        // put back: the appointment changed in Vantigo too
+	delTake            // the person's own appointment deleted, or occurrence cancelled
+)
+
+// deletion is what becomes of a mapped copy no longer in its calendar
+// (O10.8), with the appointment and the occurrence's date for a take: the
+// person's own single appointment is deleted, their own occurrence
+// cancelled — unless the row's hash is "" (its last write unknown), put
+// back with no record, or is not the hash wanted now (the appointment
+// changed in Vantigo since), put back as a conflict; any other copy is
+// forgotten, and made again by the push while it is wanted.
+func (run *writeBackRun) deletion(row store.CalendarMailboxEvent) (int, store.CalendarAppointment, *time.Time, error) {
+	var none store.CalendarAppointment
+	it := run.want[row.ItemKey]
+	if it == nil {
 		// The push deletes or forgets it.
-		return nil
+		return delNone, none, nil, nil
 	}
-	forget := wbMapWrite{kind: "forget", key: key}
-	id, date, ok := appointmentKey(key)
+	id, date, ok := appointmentKey(row.ItemKey)
 	if !ok {
-		run.writes = append(run.writes, forget)
-		return nil
+		return delForget, none, nil, nil
 	}
 	a, _, found, err := run.appointment(id)
 	if err != nil {
-		return err
+		return delNone, none, nil, err
 	}
-	if !found || a.OwnerUserID != run.r.UserID || a.CancelledAt != nil || (date != nil && a.Rrule == nil) {
-		run.writes = append(run.writes, forget)
+	switch {
+	case !found || a.OwnerUserID != run.r.UserID || a.CancelledAt != nil || (date != nil && a.Rrule == nil):
+		return delForget, none, nil, nil
+	case row.ContentHash == "":
+		return delSilent, none, nil, nil
+	case row.ContentHash != it.hash:
+		return delConflict, none, nil, nil
+	}
+	return delTake, a, date, nil
+}
+
+// deletedAll is the mapped copies the directory answered no longer in
+// their calendar (O10.8), each to its fate (deletion). When more than
+// mailboxMassDeleteMax of them would delete or cancel the person's own
+// appointments in this one sync — a calendar emptied, a client gone wrong,
+// more likely than a person's intent — none is taken: every one of them is
+// put back (made stale, so the push re-creates it), the put-back recorded
+// many_deleted with no key, and the counts logged.
+func (run *writeBackRun) deletedAll(rows []*store.CalendarMailboxEvent) error {
+	type taking struct {
+		row  store.CalendarMailboxEvent
+		a    store.CalendarAppointment
+		date *time.Time
+	}
+	var takes []taking
+	for _, row := range rows {
+		fate, a, date, err := run.deletion(*row)
+		if err != nil {
+			return err
+		}
+		switch fate {
+		case delForget:
+			run.writes = append(run.writes, wbMapWrite{kind: "forget", key: row.ItemKey})
+		case delSilent:
+			run.stale(row.ItemKey, "")
+		case delConflict:
+			run.putBackAs(row.ItemKey, "", putBackConflict)
+		case delTake:
+			takes = append(takes, taking{row: *row, a: a, date: date})
+		}
+	}
+	if len(takes) > mailboxMassDeleteMax {
+		for _, t := range takes {
+			run.stale(t.row.ItemKey, "")
+		}
+		run.putBack = &wbMapWrite{kind: putBackManyDeleted}
+		run.putBacks += len(takes)
+		run.w.deps.Logger.WarnContext(run.ctx, "calendar: many copies were deleted in Outlook at once; none was taken, every one put back",
+			"worker", mailboxWorkerName, "user_id", run.r.UserID.String(), "deleted", len(takes), "limit", mailboxMassDeleteMax)
 		return nil
 	}
+	for _, t := range takes {
+		if run.callErr != nil {
+			return nil
+		}
+		run.deleted(t.row.ItemKey, t.a, t.date)
+	}
+	return nil
+}
+
+// deleted deletes the person's own single appointment a through the
+// DELETE's path, or cancels its occurrence on date, for its copy deleted
+// in Outlook, and forgets the copy; a refusal forgets it too, the push
+// making it again while it is wanted.
+func (run *writeBackRun) deleted(key string, a store.CalendarAppointment, date *time.Time) {
 	if !run.mayWrite() {
-		return nil
+		return
 	}
+	var err error
 	if date == nil {
 		err = run.w.srv.deleteAppointment(run.as, run.r.UserID, a.ID)
 	} else {
@@ -517,13 +631,24 @@ func (run *writeBackRun) deleted(row store.CalendarMailboxEvent) error {
 	}
 	if _, refused := asRefusal(err); err != nil && !refused {
 		run.callErr = err
-		return nil
+		return
 	}
 	if err == nil {
 		run.out.wrote++
 	}
-	run.writes = append(run.writes, forget)
-	return nil
+	run.writes = append(run.writes, wbMapWrite{kind: "forget", key: key})
+}
+
+// asWritten reports whether the event read is exactly the copy the push
+// last wrote: turned into a MailboxEvent with the row's target — the zone
+// the copy was written in, the read carrying none, and its line endings
+// made \n — and hashed the way newMailboxItem hashes, it is row's hash.
+func (run *writeBackRun) asWritten(row store.CalendarMailboxEvent, st contracts.MailboxEventState, it *mailboxItem) bool {
+	ev := st.Event
+	ev.TimeZone = it.event.TimeZone
+	ev.Body = strings.ReplaceAll(ev.Body, "\r\n", "\n")
+	read, err := newMailboxItem(row.ItemKey, ev, it.startsOn, run.r.Target)
+	return err == nil && read.hash == row.ContentHash
 }
 
 // take makes the person's own new event of the Vantigo calendar an
@@ -540,7 +665,7 @@ func (run *writeBackRun) take(st contracts.MailboxEventState) error {
 		return nil
 	}
 	body, startsOn := newAppointmentOf(st, run.p)
-	_, err := run.w.srv.createAppointment(run.as, run.r.UserID, body, func(ctx context.Context, txq *store.Queries, row store.CalendarAppointment) error {
+	_, err := run.w.srv.createAppointment(run.as, run.r.UserID, body, nil, func(ctx context.Context, txq *store.Queries, row store.CalendarAppointment) error {
 		changeKey := optional(st.ChangeKey)
 		return txq.UpsertMailboxEvent(ctx, store.UpsertMailboxEventParams{
 			UserID: run.r.UserID, ItemKey: "appointment:" + strconv.FormatInt(row.ID, 10), EventID: st.EventID,
@@ -699,12 +824,13 @@ func normalText(s string) string {
 }
 
 // descriptionOf is a copy's body as a description: normalised and cut at the
-// first line that is the kept line in either language, with the link after
-// it.
+// first line that starts with the kept line in either language — trimmed,
+// a no-break space read as a space — with the link after it.
 func descriptionOf(body string) string {
 	lines := strings.Split(normalText(body), "\n")
 	for i, l := range lines {
-		if l = strings.TrimSpace(l); l == english.mailboxKept || l == norwegian.mailboxKept {
+		l = strings.TrimSpace(strings.ReplaceAll(l, "\u00a0", " "))
+		if strings.HasPrefix(l, english.mailboxKept) || strings.HasPrefix(l, norwegian.mailboxKept) {
 			lines = lines[:i]
 			break
 		}

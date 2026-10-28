@@ -199,7 +199,8 @@ type appointmentLinks struct {
 }
 
 // linksFor names the links for the viewer in ctx through the customer and
-// project directories — before any transaction. Each name is answered only to
+// project directories — before any transaction: a write's handler runs it
+// through linksInto, between the body's validation and the write. Each name is answered only to
 // a viewer who may read it in its own module: the customer's to a holder of
 // customers:view, the project's code and name to a holder of
 // projects:view-all or projects:manage-all, or of a role on that project —
@@ -407,14 +408,11 @@ func (s *server) PostCalendarAppointments(ctx context.Context, req gen.PostCalen
 		body = *req.Body
 	}
 	me := callerID(ctx)
-	saved, err := s.createAppointment(ctx, me, body, nil)
+	var links appointmentLinks
+	saved, err := s.createAppointment(ctx, me, body, s.linksInto(ctx, &links), nil)
 	if r, ok := asRefusal(err); ok {
 		return gen.PostCalendarAppointments400ApplicationProblemPlusJSONResponse(r.problem), nil
 	}
-	if err != nil {
-		return nil, err
-	}
-	links, err := s.linksFor(ctx, saved.row.CustomerID, saved.row.ProjectID)
 	if err != nil {
 		return nil, err
 	}
@@ -431,19 +429,44 @@ type savedAppointment struct {
 	ppl  people
 }
 
+// linksHook is what a write runs on the links of the body it validated,
+// after the validation and before its transaction: the screen's handlers
+// name the links there (linksInto), so a directory that fails fails the
+// request before anything is written. nil runs nothing — the Outlook
+// write-back answers no appointment.
+type linksHook func(customerID, projectID *int32) error
+
+// linksInto is the hook that names the links for the viewer in ctx into
+// out (linksFor).
+func (s *server) linksInto(ctx context.Context, out *appointmentLinks) linksHook {
+	return func(customerID, projectID *int32) error {
+		links, err := s.linksFor(ctx, customerID, projectID)
+		*out = links
+		return err
+	}
+}
+
 // createAppointment is the create of an appointment me owns from body — the
 // screen's POST and the Outlook write-back's new event (calendar Outlook sync
-// design O10.9) alike: held to every rule, inserted with its attendees under
-// one transaction, inTx's statement (nil for none) run in that transaction on
-// the new row, and, after the commit, every outside attendee sent a REQUEST
-// and every colleague a notice. A body that breaks a rule is a 400 refusal.
-func (s *server) createAppointment(ctx context.Context, me uuid.UUID, body gen.AppointmentWrite, inTx func(ctx context.Context, txq *store.Queries, row store.CalendarAppointment) error) (savedAppointment, error) {
+// design O10.9) alike: held to every rule, links run on the body's links
+// once it is valid and before any write (nil for none), inserted with its
+// attendees under one transaction, inTx's statement (nil for none) run in
+// that transaction on the new row, and, after the commit, every outside
+// attendee sent a REQUEST and every colleague a notice. A body that breaks a
+// rule is a 400 refusal; links' failure is answered as it is, nothing
+// written.
+func (s *server) createAppointment(ctx context.Context, me uuid.UUID, body gen.AppointmentWrite, links linksHook, inTx func(ctx context.Context, txq *store.Queries, row store.CalendarAppointment) error) (savedAppointment, error) {
 	in, ppl, f, err := s.readAppointment(ctx, body, me, nil)
 	if err != nil {
 		return savedAppointment{}, err
 	}
 	if f.failed() {
 		return savedAppointment{}, refuse(http.StatusBadRequest, invalid(invalidAppointmentTitle, f))
+	}
+	if links != nil {
+		if err := links(in.customerID, in.projectID); err != nil {
+			return savedAppointment{}, err
+		}
 	}
 	var (
 		row  store.CalendarAppointment
@@ -577,7 +600,8 @@ func (s *server) PutCalendarAppointmentsById(ctx context.Context, req gen.PutCal
 		body = *req.Body
 	}
 	me := callerID(ctx)
-	saved, err := s.replaceAppointment(ctx, me, req.Id, revision, body)
+	var links appointmentLinks
+	saved, err := s.replaceAppointment(ctx, me, req.Id, revision, body, s.linksInto(ctx, &links))
 	if r, ok := asRefusal(err); ok {
 		switch r.status {
 		case http.StatusBadRequest:
@@ -590,20 +614,18 @@ func (s *server) PutCalendarAppointmentsById(ctx context.Context, req gen.PutCal
 	if err != nil {
 		return nil, err
 	}
-	links, err := s.linksFor(ctx, saved.row.CustomerID, saved.row.ProjectID)
-	if err != nil {
-		return nil, err
-	}
 	return gen.PutCalendarAppointmentsById200JSONResponse(appointmentOut(saved.row, saved.atts, saved.excs, me, saved.ppl, links)), nil
 }
 
 // replaceAppointment replaces the appointment id me owns with body at
 // revision — the screen's PUT and the Outlook write-back's edit (calendar
-// Outlook sync design O10.7) alike, as the PUT's comment above tells. Its
-// refusals: a body that breaks a rule is 400, an appointment me does not own
-// 404, a revision moved on 409 revision_mismatch and a cancelled appointment
-// 409 appointment_cancelled.
-func (s *server) replaceAppointment(ctx context.Context, me uuid.UUID, id int64, revision int32, body gen.AppointmentWrite) (savedAppointment, error) {
+// Outlook sync design O10.7) alike, as the PUT's comment above tells — links
+// run on the body's links once it is valid and before the transaction (nil
+// for none; its failure answered as it is, nothing written). Its refusals: a
+// body that breaks a rule is 400, an appointment me does not own 404, a
+// revision moved on 409 revision_mismatch and a cancelled appointment 409
+// appointment_cancelled.
+func (s *server) replaceAppointment(ctx context.Context, me uuid.UUID, id int64, revision int32, body gen.AppointmentWrite, links linksHook) (savedAppointment, error) {
 	current, err := s.currentAttendees(ctx, id, me)
 	if err != nil {
 		return savedAppointment{}, err
@@ -614,6 +636,11 @@ func (s *server) replaceAppointment(ctx context.Context, me uuid.UUID, id int64,
 	}
 	if f.failed() {
 		return savedAppointment{}, refuse(http.StatusBadRequest, invalid(invalidAppointmentTitle, f))
+	}
+	if links != nil {
+		if err := links(in.customerID, in.projectID); err != nil {
+			return savedAppointment{}, err
+		}
 	}
 	var (
 		row            store.CalendarAppointment

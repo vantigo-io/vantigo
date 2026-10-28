@@ -50,7 +50,7 @@ import (
 //  5. Reconcile — the first sync, a create whose outcome is unknown, a
 //     clean-up, and the first sync of each business day: Find from the
 //     window's first instant (only events carrying this installation's
-//     marker are answered), and an event
+//     marker are answered), and an event — never a meeting —
 //     carrying a key the desired set holds and the map does not is adopted
 //     (mapped with an empty hash, so it is rewritten); a second event
 //     carrying a key already mapped — the duplicate an unknown create
@@ -92,8 +92,10 @@ import (
 //     8's are.
 //
 // The clean-up (O8): target own deletes the Vantigo calendar — only one the
-// provider made; for any other (ErrCalendarNotOurs) the copies in it are
-// deleted one by one instead — and the default calendar has every event
+// provider made, and only when it holds no meeting (none Find answers as
+// one, no released row); otherwise, and for a calendar not the provider's
+// (ErrCalendarNotOurs), the copies in it are deleted one by one instead,
+// never a meeting, and the calendar left — and the default calendar has every event
 // deleted that carries this installation's marker, whatever its date (Find
 // with no bound), and every mapped one (deletes are allowed in cleanup). Only
 // a mailbox that is no longer there — gone, or an account the provider no
@@ -527,14 +529,21 @@ func (d *mailboxDiff) load(rows []store.CalendarMailboxEvent) {
 // write-back did not complete, as an absence may then be a delete still
 // unread (design O10.8). present is the events the write-back saw there,
 // never forgotten: an event taken in from the Vantigo calendar carries no
-// marker until the push tags it.
+// marker until the push tags it. A meeting Find answers (design O10.8) is
+// never adopted nor deleted as a duplicate — the person turned it into
+// theirs — and a mapped one is held as released for this sync, never
+// written nor deleted by its push, until the write-back releases its row.
 func (d *mailboxDiff) reconcile(refs []contracts.MailboxEventRef, complete bool, from time.Time, present map[string]bool) {
 	found := map[string]bool{}
 	for id := range present {
 		found[id] = true
 	}
+	meeting := map[string]bool{}
 	for _, ref := range refs {
 		found[ref.EventID] = true
+		if ref.Meeting {
+			meeting[ref.EventID] = true
+		}
 	}
 	mine := map[string]bool{}
 	for key, e := range d.mapped {
@@ -543,10 +552,14 @@ func (d *mailboxDiff) reconcile(refs []contracts.MailboxEventRef, complete bool,
 			d.writes = append(d.writes, mapWrite{userID: d.userID, key: key})
 			continue
 		}
+		if meeting[e.eventID] && !e.released {
+			e.released = true
+			d.mapped[key] = e
+		}
 		mine[e.eventID] = true
 	}
 	for _, ref := range refs {
-		if ref.Key == "" || mine[ref.EventID] {
+		if ref.Key == "" || ref.Meeting || mine[ref.EventID] {
 			continue
 		}
 		it, wanted := d.want[ref.Key]
@@ -702,11 +715,21 @@ func (w *MailboxSyncWorker) cleanup(ctx, call context.Context, r *store.Calendar
 		mailbox := *r.Mailbox
 		var err error
 		if r.CalendarID != nil {
-			err = w.srv.mailboxDeleteCalendar(call, mailbox, *r.CalendarID)
-			if errors.Is(err, contracts.ErrCalendarNotOurs) {
-				w.deps.Logger.WarnContext(ctx, "calendar: a person's Vantigo calendar is not one the provider made; only the copies in it are deleted",
-					"worker", mailboxWorkerName, "user_id", r.UserID.String())
+			var meetings, released int
+			meetings, released, err = w.meetingsIn(ctx, call, r.UserID, mailbox, *r.CalendarID)
+			switch {
+			case err != nil:
+			case meetings > 0 || released > 0:
+				w.deps.Logger.InfoContext(ctx, "calendar: a person's Vantigo calendar holds meetings; only the copies in it are deleted, the calendar left",
+					"worker", mailboxWorkerName, "user_id", r.UserID.String(), "meetings", meetings, "released", released)
 				err = w.cleanupEvents(ctx, call, r.UserID, mailbox, *r.CalendarID, now)
+			default:
+				err = w.srv.mailboxDeleteCalendar(call, mailbox, *r.CalendarID)
+				if errors.Is(err, contracts.ErrCalendarNotOurs) {
+					w.deps.Logger.WarnContext(ctx, "calendar: a person's Vantigo calendar is not one the provider made; only the copies in it are deleted",
+						"worker", mailboxWorkerName, "user_id", r.UserID.String())
+					err = w.cleanupEvents(ctx, call, r.UserID, mailbox, *r.CalendarID, now)
+				}
 			}
 		} else {
 			err = w.cleanupEvents(ctx, call, r.UserID, mailbox, "", now)
@@ -734,12 +757,40 @@ func (w *MailboxSyncWorker) cleanup(ctx, call context.Context, r *store.Calendar
 	return w.setMailbox(ctx, *r, now)
 }
 
+// meetingsIn counts what keeps the Vantigo calendar calendarID from being
+// deleted whole (design O8, O10.8): the events Find answers there that are
+// meetings, and the person's released rows — a copy they turned into a
+// meeting, whatever Find now says of it.
+func (w *MailboxSyncWorker) meetingsIn(ctx, call context.Context, userID uuid.UUID, mailbox, calendarID string) (int, int, error) {
+	refs, err := w.srv.mailboxFind(call, mailbox, calendarID, time.Time{})
+	if err != nil {
+		return 0, 0, err
+	}
+	rows, err := w.srv.queries().ListMailboxEvents(ctx, userID)
+	if err != nil {
+		return 0, 0, fmt.Errorf("calendar: read the mailbox map: %w", err)
+	}
+	meetings, released := 0, 0
+	for _, ref := range refs {
+		if ref.Meeting {
+			meetings++
+		}
+	}
+	for _, row := range rows {
+		if row.ReleasedAt != nil {
+			released++
+		}
+	}
+	return meetings, released, nil
+}
+
 // cleanupEvents deletes, from calendarID ("" the default calendar), every
 // event Find answers with no bound — every copy of this installation's,
 // whatever its date — and every mapped one besides, in slices, forgetting
-// each one done or gone. A refusal is answered as is; a list as long as
-// Find's bound is answered as a failure once its deletes are done, so the
-// rest are deleted on the retry.
+// each one done or gone. A meeting — one Find answers as such, or a
+// released row's event — is never deleted, only forgotten. A refusal is
+// answered as is; a list as long as Find's bound is answered as a failure
+// once its deletes are done, so the rest are deleted on the retry.
 func (w *MailboxSyncWorker) cleanupEvents(ctx, call context.Context, userID uuid.UUID, mailbox, calendarID string, now time.Time) error {
 	refs, err := w.srv.mailboxFind(call, mailbox, calendarID, time.Time{})
 	if err != nil {
@@ -751,16 +802,23 @@ func (w *MailboxSyncWorker) cleanupEvents(ctx, call context.Context, userID uuid
 	}
 	keyOf := map[string]string{}
 	released := map[string]bool{}
+	for _, ref := range refs {
+		if ref.Meeting {
+			released[ref.EventID] = true
+		}
+	}
 	var ids []string
 	var forget []mapWrite
 	for _, row := range rows {
 		keyOf[row.EventID] = row.ItemKey
 		if row.ReleasedAt != nil {
 			released[row.EventID] = true
+		}
+		if released[row.EventID] {
 			forget = append(forget, mapWrite{userID: userID, key: row.ItemKey})
 		}
 	}
-	// A released copy — a meeting now — is forgotten, never deleted.
+	// A released copy, or any meeting, is forgotten, never deleted.
 	if err := w.writeMap(ctx, now, forget); err != nil {
 		return err
 	}

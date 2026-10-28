@@ -100,3 +100,37 @@ func TestStateOf(t *testing.T) {
 		t.Error("times that do not read: taken")
 	}
 }
+
+// TestStateOfAllDayInItsZone: an all-day event's dates are the dates its
+// UTC instants fall on in the zone it was laid in — a Windows name or an
+// IANA one — so a zone thirteen hours ahead (Auckland's summer) reads the
+// day it was laid on, where the nearest midnight would read the day before;
+// a zone that maps to no location falls back to the nearest midnight.
+func TestStateOfAllDayInItsZone(t *testing.T) {
+	day := func(m time.Month, d int) time.Time { return time.Date(2026, m, d, 0, 0, 0, 0, time.UTC) }
+	utc := func(v string) graphDateTimeZone { return graphDateTimeZone{DateTime: v, TimeZone: "UTC"} }
+	for name, c := range map[string]struct {
+		zone       string
+		start, end string
+		from, to   time.Time
+	}{
+		// 1–2 December in Auckland (UTC+13): 30 Nov 11:00 to 2 Dec 11:00 UTC.
+		"Windows, +13":  {"New Zealand Standard Time", "2026-11-30T11:00:00.0000000", "2026-12-02T11:00:00.0000000", day(12, 1), day(12, 2)},
+		"IANA, +13":     {"Pacific/Auckland", "2026-11-30T11:00:00.0000000", "2026-12-02T11:00:00.0000000", day(12, 1), day(12, 2)},
+		"Windows, Oslo": {"W. Europe Standard Time", "2026-07-05T22:00:00.0000000", "2026-07-06T22:00:00.0000000", day(7, 6), day(7, 6)},
+		"odd case":      {"new zealand standard time", "2026-11-30T11:00:00.0000000", "2026-12-01T11:00:00.0000000", day(12, 1), day(12, 1)},
+		"no such zone":  {"Mars Standard Time", "2026-07-05T22:00:00.0000000", "2026-07-06T22:00:00.0000000", day(7, 6), day(7, 6)},
+		"none answered": {"", "2026-07-06T00:00:00.0000000", "2026-07-08T00:00:00.0000000", day(7, 6), day(7, 7)},
+		"west of UTC":   {"Pacific Standard Time", "2026-07-06T07:00:00.0000000", "2026-07-08T07:00:00.0000000", day(7, 6), day(7, 7)},
+	} {
+		st, ok := stateOf(wholeEvent{ID: "a", IsAllDay: true, Start: utc(c.start), End: utc(c.end), OriginalStartTimeZone: c.zone}, testPrefix)
+		if !ok || !st.Event.AllDay || !st.Event.StartDate.Equal(c.from) || !st.Event.EndDate.Equal(c.to) {
+			t.Errorf("%s: %v..%v %v, want %v..%v", name, st.Event.StartDate, st.Event.EndDate, ok, c.from, c.to)
+		}
+	}
+	// A timed event's instants are the instants, whatever the zone.
+	st, ok := stateOf(wholeEvent{ID: "b", Start: utc("2026-11-30T11:00:00"), End: utc("2026-11-30T12:00:00"), OriginalStartTimeZone: "New Zealand Standard Time"}, testPrefix)
+	if !ok || st.Event.AllDay || !st.Event.StartsAt.Equal(time.Date(2026, 11, 30, 11, 0, 0, 0, time.UTC)) {
+		t.Errorf("a timed event: %+v", st.Event)
+	}
+}

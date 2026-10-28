@@ -539,3 +539,266 @@ func TestMailboxWriteBack_TakesOnlyTheTimesUnderBusyAndNoBodyThatIsNotText(t *te
 		}
 	})
 }
+
+func TestMailboxWriteBack_AnEventNotReadIsNeitherTakenNorDeleted(t *testing.T) {
+	t.Parallel()
+	t.Run("a moved version", func(t *testing.T) {
+		t.Parallel()
+		r := newMailboxRig(t)
+		c, me, mb, a := writeBackPerson(t, r, "full")
+		ev := copyOf(t, r, mb, "", key(a.Id))
+		r.box.EditEvent(mb, ev.ID, func(e *contracts.MailboxEvent) { e.Subject = "Edited" })
+		r.box.SetUnreadable(mb, ev.ID, true)
+		nextSync(t, r)
+		if got := appointment(t, c, a.Id); got.Title != "Standup" || got.Revision != a.Revision {
+			t.Errorf("an event not read was taken: %+v", got)
+		}
+		if changeKey(t, r, me, key(a.Id)) != ev.ChangeKey || mapped(t, r, me) != 1 {
+			t.Error("an event not read had its old version replaced, or was forgotten")
+		}
+		// Read again, the edit is taken.
+		r.box.SetUnreadable(mb, ev.ID, false)
+		nextSync(t, r)
+		if got := appointment(t, c, a.Id); got.Title != "Edited" {
+			t.Errorf("the edit read at last = %q", got.Title)
+		}
+	})
+	t.Run("missing from the list", func(t *testing.T) {
+		t.Parallel()
+		r := newMailboxRig(t)
+		c, me, mb, a := writeBackPerson(t, r, "full")
+		ev := copyOf(t, r, mb, "", key(a.Id))
+		// Out of Versions' list — its marker another's — and not read.
+		r.box.SetOtherInstallation(mb, ev.ID, true)
+		r.box.SetUnreadable(mb, ev.ID, true)
+		r.Exec(t, `UPDATE calendar.mailbox_sync SET reconcile = true WHERE user_id = $1`, me)
+		nextSync(t, r)
+		if got := appointment(t, c, a.Id); got.CancelledAt != nil || got.Revision != a.Revision {
+			t.Errorf("a copy not read was taken as deleted: %+v", got)
+		}
+		if mapped(t, r, me) != 1 {
+			t.Error("a copy not read was forgotten")
+		}
+	})
+}
+
+func TestMailboxWriteBack_AMeetingIsNeverAdoptedNorDeleted(t *testing.T) {
+	t.Parallel()
+	r := newMailboxRig(t)
+	c, me, mb, a := writeBackPerson(t, r, "full")
+	meeting := copyOf(t, r, mb, "", key(a.Id))
+	r.box.SetMeeting(mb, meeting.ID, true)
+	// The map forgets the copy before the write-back saw the meeting: the
+	// reconcile meets it carrying a key the set holds.
+	r.Exec(t, `DELETE FROM calendar.mailbox_events WHERE user_id = $1`, me)
+	r.Exec(t, `UPDATE calendar.mailbox_sync SET reconcile = true WHERE user_id = $1`, me)
+	before := len(r.box.Calls())
+	nextSync(t, r)
+	for _, op := range opsOf(calls(r, before, "Apply")) {
+		if op.EventID == meeting.ID {
+			t.Errorf("the meeting was written or deleted: %+v", op)
+		}
+	}
+	if id := modtest.One[string](t, r.Harness, `SELECT event_id FROM calendar.mailbox_events WHERE user_id = $1`, me); id == meeting.ID {
+		t.Fatal("the meeting was adopted")
+	}
+	// A second reconcile sees the meeting beside the new copy, both carrying
+	// the key: the meeting is no duplicate to delete.
+	r.Exec(t, `UPDATE calendar.mailbox_sync SET reconcile = true WHERE user_id = $1`, me)
+	before = len(r.box.Calls())
+	nextSync(t, r)
+	for _, op := range opsOf(calls(r, before, "Apply")) {
+		if op.EventID == meeting.ID {
+			t.Errorf("the meeting was deleted as a duplicate: %+v", op)
+		}
+	}
+	// The clean-up deletes the copy and leaves the meeting.
+	putSync(t, c, getSync(t, c).Revision, syncBody(false, "default", "full", "calendar.appointment"))
+	nextSync(t, r)
+	if e := r.box.EventsIn(mb, ""); len(e) != 1 || e[0].ID != meeting.ID {
+		t.Errorf("after the clean-up: %+v, want the meeting alone", e)
+	}
+}
+
+func TestMailboxWriteBack_TheVantigoCalendarHoldingAMeetingIsNotDeleted(t *testing.T) {
+	t.Parallel()
+	for name, released := range map[string]bool{"a meeting Find answers": false, "a released row, Find saying no meeting": true} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			r := newMailboxRig(t)
+			c, me, mb := r.person(t)
+			turnOn(t, c, "own", "full", "calendar.appointment")
+			a := create(t, c, timed(t, "Standup", oslo, "2026-09-14T09:00", "2026-09-14T09:30"))
+			b := create(t, c, timed(t, "Review", oslo, "2026-09-15T09:00", "2026-09-15T09:30"))
+			mailboxCycle(t, r)
+			cal := modtest.One[string](t, r.Harness, `SELECT calendar_id FROM calendar.mailbox_sync WHERE user_id = $1`, me)
+			meeting := copyOf(t, r, mb, cal, key(a.Id))
+			r.box.SetMeeting(mb, meeting.ID, true)
+			if released {
+				nextSync(t, r)
+				if n := r.Count(t, `SELECT count(*) FROM calendar.mailbox_events WHERE user_id = $1 AND released_at IS NOT NULL`, me); n != 1 {
+					t.Fatalf("released %d", n)
+				}
+				// Its attendees taken away again: Find no longer says meeting.
+				r.box.SetMeeting(mb, meeting.ID, false)
+			}
+			before := len(r.box.Calls())
+			putSync(t, c, getSync(t, c).Revision, syncBody(false, "own", "full", "calendar.appointment"))
+			nextSync(t, r)
+			if n := len(calls(r, before, "DeleteCalendar")); n != 0 {
+				t.Errorf("the calendar holding a meeting was deleted (%d calls)", n)
+			}
+			if _, ok := r.box.Calendars(mb)[cal]; !ok {
+				t.Fatal("the Vantigo calendar is gone")
+			}
+			e := r.box.EventsIn(mb, cal)
+			if len(e) != 1 || e[0].ID != meeting.ID {
+				t.Errorf("the calendar after the clean-up: %+v, want the meeting alone (the copy of %d deleted)", e, b.Id)
+			}
+			if mapped(t, r, me) != 0 {
+				t.Error("the clean-up kept the map")
+			}
+		})
+	}
+}
+
+func TestMailboxWriteBack_ManyDeletesAtOnceAreAllPutBack(t *testing.T) {
+	t.Parallel()
+	r := newMailboxRig(t)
+	c, me, mb := r.person(t)
+	turnOn(t, c, "default", "full", "calendar.appointment")
+	var made []gen.Appointment
+	for i := range 11 {
+		d := time.Date(2026, 9, 14+i, 0, 0, 0, 0, time.UTC).Format(time.DateOnly)
+		made = append(made, create(t, c, timed(t, "Day "+strconv.Itoa(i), oslo, d+"T09:00", d+"T10:00")))
+	}
+	mailboxCycle(t, r)
+	for _, e := range r.box.EventsIn(mb, "") {
+		r.box.DeleteEvent(mb, e.ID)
+	}
+	nextSync(t, r)
+	for _, a := range made {
+		if got := appointment(t, c, a.Id); got.CancelledAt != nil {
+			t.Errorf("appointment %d was cancelled", a.Id)
+		}
+	}
+	if n := r.Count(t, `SELECT count(*) FROM calendar.appointments WHERE owner_user_id = $1`, me); n != 11 {
+		t.Errorf("%d appointments left, want 11", n)
+	}
+	if n := len(r.box.EventsIn(mb, "")); n != 11 || mapped(t, r, me) != 11 {
+		t.Errorf("%d copies made again, %d mapped; want 11", n, mapped(t, r, me))
+	}
+	if pb := getSync(t, c).PutBack; pb == nil || pb.Reason != gen.ManyDeleted || pb.AppointmentId != nil || pb.Title != nil {
+		t.Errorf("putBack = %+v, want many_deleted naming nothing", pb)
+	}
+
+	// Ten at once are taken.
+	for _, e := range r.box.EventsIn(mb, "")[:10] {
+		r.box.DeleteEvent(mb, e.ID)
+	}
+	nextSync(t, r)
+	if n := r.Count(t, `SELECT count(*) FROM calendar.appointments WHERE owner_user_id = $1`, me); n != 1 {
+		t.Errorf("%d appointments left after ten deletes, want 1", n)
+	}
+}
+
+func TestMailboxWriteBack_ADeleteOfAnAppointmentChangedInVantigoIsPutBack(t *testing.T) {
+	t.Parallel()
+	r := newMailboxRig(t)
+	c, _, mb, a := writeBackPerson(t, r, "full")
+	r.box.DeleteEvent(mb, copyOf(t, r, mb, "", key(a.Id)).ID)
+	do(t, c, http.MethodPut, appointmentPath(a.Id), timed(t, "Vantigo's title", oslo, "2026-09-14T09:00", "2026-09-14T09:30"), http.StatusOK, nil, ifMatch(a.Revision))
+	nextSync(t, r)
+	if got := appointment(t, c, a.Id); got.Title != "Vantigo's title" || got.CancelledAt != nil {
+		t.Errorf("the appointment = %+v", got)
+	}
+	if cp := copyOf(t, r, mb, "", key(a.Id)); cp.Event.Subject != "Vantigo's title" {
+		t.Errorf("the copy made again = %q", cp.Event.Subject)
+	}
+	if pb := getSync(t, c).PutBack; pb == nil || pb.Reason != gen.Conflict || pb.AppointmentId == nil || *pb.AppointmentId != a.Id {
+		t.Errorf("putBack = %+v", pb)
+	}
+}
+
+func TestMailboxWriteBack_ACopyWhoseLastWriteIsUnknownIsNeverTaken(t *testing.T) {
+	t.Parallel()
+	r := newMailboxRig(t)
+	c, me, mb, a := writeBackPerson(t, r, "full")
+	ev := copyOf(t, r, mb, "", key(a.Id))
+	r.Exec(t, `UPDATE calendar.mailbox_events SET content_hash = '' WHERE user_id = $1`, me)
+	r.box.EditEvent(mb, ev.ID, func(e *contracts.MailboxEvent) { e.Subject = "Edited" })
+	nextSync(t, r)
+	if got := appointment(t, c, a.Id); got.Title != "Standup" || got.Revision != a.Revision {
+		t.Errorf("an edit of a copy with no hash was taken: %+v", got)
+	}
+	if cp := copyOf(t, r, mb, "", key(a.Id)); cp.Event.Subject != "Standup" {
+		t.Errorf("the copy was not put back: %q", cp.Event.Subject)
+	}
+
+	r.Exec(t, `UPDATE calendar.mailbox_events SET content_hash = '' WHERE user_id = $1`, me)
+	r.box.DeleteEvent(mb, copyOf(t, r, mb, "", key(a.Id)).ID)
+	nextSync(t, r)
+	if got := appointment(t, c, a.Id); got.CancelledAt != nil {
+		t.Errorf("a delete of a copy with no hash was taken: %+v", got)
+	}
+	if cp := copyOf(t, r, mb, "", key(a.Id)); cp.Event.Subject != "Standup" {
+		t.Errorf("the copy was not made again: %+v", cp)
+	}
+	if pb := getSync(t, c).PutBack; pb != nil {
+		t.Errorf("a silent put-back was recorded: %+v", pb)
+	}
+}
+
+func TestMailboxWriteBack_NewEventsAreTakenOnlyWithTheAppointmentKind(t *testing.T) {
+	t.Parallel()
+	r := newMailboxRig(t)
+	c, me, mb := r.person(t)
+	turnOn(t, c, "own", "full", "staff.absence")
+	mailboxCycle(t, r)
+	cal := modtest.One[string](t, r.Harness, `SELECT calendar_id FROM calendar.mailbox_sync WHERE user_id = $1`, me)
+	r.box.PutOwnEvent(mb, cal, contracts.MailboxEvent{Subject: "Dentist", StartsAt: at(t, oslo, "2026-09-17T08:00"), EndsAt: at(t, oslo, "2026-09-17T09:00")})
+	nextSync(t, r)
+	if n := r.Count(t, `SELECT count(*) FROM calendar.appointments WHERE owner_user_id = $1`, me); n != 0 {
+		t.Errorf("%d appointments taken in without the appointment kind", n)
+	}
+}
+
+func TestMailboxWriteBack_ATouchBesideAVantigoChangeIsNoConflict(t *testing.T) {
+	t.Parallel()
+	r := newMailboxRig(t)
+	c, _, mb, a := writeBackPerson(t, r, "full")
+	r.box.TouchEvent(mb, copyOf(t, r, mb, "", key(a.Id)).ID)
+	do(t, c, http.MethodPut, appointmentPath(a.Id), timed(t, "Vantigo's title", oslo, "2026-09-14T09:00", "2026-09-14T09:30"), http.StatusOK, nil, ifMatch(a.Revision))
+	nextSync(t, r)
+	if cp := copyOf(t, r, mb, "", key(a.Id)); cp.Event.Subject != "Vantigo's title" {
+		t.Errorf("the copy = %q", cp.Event.Subject)
+	}
+	if pb := getSync(t, c).PutBack; pb != nil {
+		t.Errorf("Exchange's touch was called a conflict: %+v", pb)
+	}
+}
+
+func TestMailboxSync_ThePutAndSyncNowAnswerThePutBack(t *testing.T) {
+	t.Parallel()
+	r := newMailboxRig(t)
+	c, _, mb, a := writeBackPerson(t, r, "full")
+	r.box.EditEvent(mb, copyOf(t, r, mb, "", key(a.Id)).ID, func(e *contracts.MailboxEvent) { e.Subject = "Outlook's title" })
+	do(t, c, http.MethodPut, appointmentPath(a.Id), timed(t, "Vantigo's title", oslo, "2026-09-14T09:00", "2026-09-14T09:30"), http.StatusOK, nil, ifMatch(a.Revision))
+	nextSync(t, r)
+	want := getSync(t, c).PutBack
+	if want == nil || want.Reason != gen.Conflict {
+		t.Fatalf("putBack = %+v", want)
+	}
+	var run gen.MailboxSync
+	do(t, c, http.MethodPost, mailboxSyncRunPath, nil, http.StatusOK, &run)
+	if pb := run.PutBack; pb == nil || pb.Reason != want.Reason || pb.Title == nil || *pb.Title != *want.Title || *pb.AppointmentId != a.Id {
+		t.Errorf("Sync now's putBack = %+v, want %+v", pb, want)
+	}
+	kept := putSync(t, c, run.Revision, syncBody(true, "default", "busy", "calendar.appointment", "staff.absence"))
+	if pb := kept.PutBack; pb == nil || pb.Reason != want.Reason || *pb.AppointmentId != a.Id {
+		t.Errorf("the PUT keeping it on answered putBack %+v, want %+v", pb, want)
+	}
+	if off := putSync(t, c, kept.Revision, syncBody(false, "default", "busy", "calendar.appointment")); off.PutBack != nil {
+		t.Errorf("the PUT turning it off answered putBack %+v", off.PutBack)
+	}
+}

@@ -14,8 +14,9 @@
 --
 -- calendar.mailbox_sync gains the last change made in Outlook that the
 -- write-back did not take (O10.3): put_back_reason ('conflict', 'refused',
--- 'not_owner' or 'not_editable'), put_back_key, the item key of the copy it
--- was made to, and put_back_at, when it was put back. The setting's GET
+-- 'not_owner', 'not_editable' or 'many_deleted'), put_back_key, the item key
+-- of the copy it was made to ('' for many_deleted, which names none), and
+-- put_back_at, when it was put back. The setting's GET
 -- answers them; a clean-up, and turning the sync off, clear them. Nothing of
 -- what the change said is stored.
 --
@@ -26,7 +27,7 @@ ALTER TABLE calendar.mailbox_events
     ADD COLUMN released_at timestamptz;    -- when the copy became a meeting, never written again
 
 ALTER TABLE calendar.mailbox_sync
-    ADD COLUMN put_back_reason varchar(20),   -- 'conflict' | 'refused' | 'not_owner' | 'not_editable'
+    ADD COLUMN put_back_reason varchar(20),   -- 'conflict' | 'refused' | 'not_owner' | 'not_editable' | 'many_deleted'
     ADD COLUMN put_back_key    varchar(200),  -- the item key of the copy the change was made to
     ADD COLUMN put_back_at     timestamptz;   -- when the change was put back
 

@@ -321,7 +321,16 @@ func TestMailboxWriteBack_Refusals(t *testing.T) {
 		if _, err := p.Versions(ctx, c.mailbox, "AAMkcal=", deltaFrom, deltaTo); !errors.Is(err, c.want) {
 			t.Errorf("Versions of a calendar, %s: %v, want %v", name, err, c.want)
 		}
-		if _, err := p.Events(ctx, c.mailbox, "", []string{"AAMkone="}); !errors.Is(err, c.want) {
+		read, err := p.Events(ctx, c.mailbox, "", []string{"AAMkone="})
+		if name == "denied" {
+			// Inside the $batch a 403 is that event's alone: skipped,
+			// neither answered nor gone — Versions answers the refusal.
+			if err != nil || len(read.Events) != 0 || len(read.Gone) != 0 {
+				t.Errorf("Events, denied: %+v %v, want nothing read and no error", read, err)
+			}
+			continue
+		}
+		if !errors.Is(err, c.want) {
 			t.Errorf("Events, %s: %v, want %v", name, err, c.want)
 		}
 	}
@@ -397,9 +406,13 @@ func TestMailboxEvents_TheDefaultCalendar(t *testing.T) {
 	elsewhere := g.AddEvent(mailbox, family.ID, ownEvent(at))
 
 	ids := []string{allDay.ID, ours, made[1].EventID, others.ID, own.ID, meeting.ID, series.ID, elsewhere.ID}
-	states, err := p.Events(ctx, mailbox, "", ids)
+	read, err := p.Events(ctx, mailbox, "", ids)
 	if err != nil {
 		t.Fatal(err)
+	}
+	states := read.Events
+	if len(read.Gone) != 2 || read.Gone[0] != made[1].EventID || read.Gone[1] != elsewhere.ID {
+		t.Errorf("gone %v, want the deleted copy and the event of another calendar", read.Gone)
 	}
 	wantOrder := []string{allDay.ID, ours, others.ID, own.ID, meeting.ID, series.ID}
 	if len(states) != len(wantOrder) {
@@ -443,7 +456,8 @@ func TestMailboxEvents_TheDefaultCalendar(t *testing.T) {
 			continue
 		}
 		reads++
-		if c.Prefer != eventsPrefer || !strings.Contains(c.Query, "attendees") || !strings.Contains(c.Query, "VantigoKey") {
+		if c.Prefer != eventsPrefer || !strings.Contains(c.Query, "attendees") || !strings.Contains(c.Query, "VantigoKey") ||
+			!strings.Contains(c.Query, "originalStartTimeZone") {
 			t.Errorf("a read: prefer %q, query %s", c.Prefer, c.Query)
 		}
 	}
@@ -453,13 +467,14 @@ func TestMailboxEvents_TheDefaultCalendar(t *testing.T) {
 
 	// A body Graph answers as HTML whatever the Prefer is not text.
 	g.Configure(func(g *graphtest.FakeGraph) { g.HTMLBodies = true })
-	states, err = p.Events(ctx, mailbox, "", []string{own.ID})
+	read, err = p.Events(ctx, mailbox, "", []string{own.ID})
+	states = read.Events
 	if err != nil || len(states) != 1 || states[0].TextBody || states[0].Event.Body != "<p>Confidential</p>" {
 		t.Errorf("an HTML body: %+v %v, want TextBody false", states, err)
 	}
 
-	if states, err := p.Events(ctx, mailbox, "", nil); err != nil || states == nil || len(states) != 0 {
-		t.Errorf("no ids: %+v %v, want none", states, err)
+	if read, err := p.Events(ctx, mailbox, "", nil); err != nil || read.Events == nil || len(read.Events) != 0 || read.Gone == nil || len(read.Gone) != 0 {
+		t.Errorf("no ids: %+v %v, want none", read, err)
 	}
 }
 
@@ -481,9 +496,13 @@ func TestMailboxEvents_ASecondaryCalendar(t *testing.T) {
 	}
 	mine := g.AddEvent(mailbox, cal, ownEvent(at))
 	inDefault := g.AddEvent(mailbox, "", ownEvent(at))
-	states, err := p.Events(ctx, mailbox, cal, []string{made[0].EventID, inDefault.ID, mine.ID})
+	read, err := p.Events(ctx, mailbox, cal, []string{made[0].EventID, inDefault.ID, mine.ID})
 	if err != nil {
 		t.Fatal(err)
+	}
+	states := read.Events
+	if len(read.Gone) != 1 || read.Gone[0] != inDefault.ID {
+		t.Errorf("gone %v, want the default calendar's event", read.Gone)
 	}
 	if len(states) != 2 || states[0].Key != "appointment:0" || states[1].EventID != mine.ID || states[1].Key != "" {
 		t.Errorf("states %+v, want the copy and the person's event of the calendar", states)
@@ -498,7 +517,8 @@ func TestMailboxEvents_ASecondaryCalendar(t *testing.T) {
 
 // Events across batches of twenty; a throttled read is sent again once,
 // then the call fails; more than a hundred ids, or one that is no id, is
-// refused unsent; a 403 inside the batch is ErrMailboxDenied.
+// refused unsent; a 403 inside the batch skips that event, a 403 of the
+// $batch itself is ErrMailboxDenied.
 func TestMailboxEvents_BatchesAndRefusals(t *testing.T) {
 	ctx := context.Background()
 	h, g, _ := newMailboxHarness(t)
@@ -515,7 +535,8 @@ func TestMailboxEvents_BatchesAndRefusals(t *testing.T) {
 	}
 	before := batches(g.Calls())
 	g.ThrottleBatch(1)
-	states, err := p.Events(ctx, mailbox, "", ids)
+	read, err := p.Events(ctx, mailbox, "", ids)
+	states := read.Events
 	if err != nil || len(states) != 22 {
 		t.Fatalf("22 copies and a throttle: %d states, %v", len(states), err)
 	}
@@ -547,10 +568,60 @@ func TestMailboxEvents_BatchesAndRefusals(t *testing.T) {
 		t.Errorf("%d calls for refused ids, want none", n)
 	}
 
-	denied := mailboxUser(t, h, g, func(u *graphtest.User) { u.MailboxDenied = true })
-	if _, err := p.Events(ctx, denied, "", ids[:1]); !errors.Is(err, contracts.ErrMailboxDenied) {
-		t.Errorf("a denied mailbox: %v, want ErrMailboxDenied", err)
+	// A 403 of one event inside the $batch skips it alone; the rest are
+	// read.
+	g.Configure(func(g *graphtest.FakeGraph) { g.ForbiddenEvents = map[string]bool{ids[1]: true} })
+	read, err = p.Events(ctx, mailbox, "", ids[:3])
+	if err != nil || len(read.Events) != 2 || read.Events[0].EventID != ids[0] || read.Events[1].EventID != ids[2] || len(read.Gone) != 0 {
+		t.Errorf("a 403 of one event: %+v %v, want the other two read, none gone", read, err)
 	}
+	g.Configure(func(g *graphtest.FakeGraph) { g.ForbiddenEvents = nil })
+
+	// A refusal of the $batch POST itself is the mailbox's.
+	g.FailNext(http.StatusForbidden)
+	if _, err := p.Events(ctx, mailbox, "", ids[:1]); !errors.Is(err, contracts.ErrMailboxDenied) {
+		t.Errorf("the $batch refused 403: %v, want ErrMailboxDenied", err)
+	}
+}
+
+// A $batch whose answer does not decode, or is larger than the client
+// reads, is sent again an id at a time; the id whose read alone still
+// fails is skipped, neither answered nor gone, and the rest are read.
+func TestMailboxEvents_AnUnreadableBatchIsReadOneByOne(t *testing.T) {
+	ctx := context.Background()
+	h, g, _ := newMailboxHarness(t)
+	p := mailboxProvider(h)
+	mailbox := mailboxUser(t, h, g)
+	at := time.Date(2026, 11, 3, 9, 0, 0, 0, time.UTC)
+	made, err := p.Apply(ctx, mailbox, "", creates(4, at))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids := make([]string, len(made))
+	for i, r := range made {
+		ids[i] = r.EventID
+	}
+	gone := g.AddEvent(mailbox, "", ownEvent(at)).ID
+	g.RemoveEvent(mailbox, gone)
+	for name, set := range map[string]func(g *graphtest.FakeGraph){
+		"not JSON":  func(g *graphtest.FakeGraph) { g.GarbledEvents = map[string]bool{ids[1]: true} },
+		"too large": func(g *graphtest.FakeGraph) { g.OversizedEvents = map[string]bool{ids[2]: true} },
+	} {
+		g.Configure(func(g *graphtest.FakeGraph) { g.GarbledEvents, g.OversizedEvents = nil, nil })
+		g.Configure(set)
+		before := batches(g.Calls())
+		read, err := p.Events(ctx, mailbox, "", append(append([]string{}, ids...), gone))
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if len(read.Events) != 3 || len(read.Gone) != 1 || read.Gone[0] != gone {
+			t.Errorf("%s: %d read, gone %v; want three read and the deleted one gone", name, len(read.Events), read.Gone)
+		}
+		if n := batches(g.Calls()) - before; n != 1+len(ids)+1 {
+			t.Errorf("%s: %d batches, want the one and one per id", name, n)
+		}
+	}
+	g.Configure(func(g *graphtest.FakeGraph) { g.GarbledEvents, g.OversizedEvents = nil, nil })
 }
 
 // An update naming a Key writes the marker — an event the calendar took in
@@ -590,8 +661,8 @@ func TestMailboxApply_AnUpdateWithAKeyCarriesTheMarker(t *testing.T) {
 			}
 		}
 	}
-	states, err := p.Events(ctx, mailbox, cal, []string{taken.ID})
-	if err != nil || len(states) != 1 || states[0].Key != "appointment:7" {
-		t.Errorf("the tagged event read back: %+v %v", states, err)
+	read, err := p.Events(ctx, mailbox, cal, []string{taken.ID})
+	if err != nil || len(read.Events) != 1 || read.Events[0].Key != "appointment:7" {
+		t.Errorf("the tagged event read back: %+v %v", read, err)
 	}
 }

@@ -64,9 +64,10 @@ import (
 // after from (Find's rule), each with its key and change key; for a
 // secondary calendar every event of it overlapping from..to, with no key;
 // ordered by id, at most contracts.MailboxVersionsMax, Complete when not
-// cut. Events answers, among the ids asked, the events of that calendar —
-// an event of another calendar, or one gone, is not answered — whole, in
-// the order asked.
+// cut. Events answers, among the ids asked, the events of that calendar
+// whole, in the order asked — an event of another calendar, or one gone, in
+// Gone, and one SetUnreadable marks in neither. Find answers Meeting for an
+// event SetMeeting made one.
 //
 // Its refusals are the contract's: while the status is
 // contracts.MailboxUnavailable every call but Status answers
@@ -138,6 +139,8 @@ type FakeMailboxEvent struct {
 	Cancelled, Series   bool
 	Meeting, HTMLBody   bool
 	OtherInstallation   bool
+	// Unreadable: Events skips it (SetUnreadable).
+	Unreadable bool
 }
 
 // FakeBusyEvent is one of the person's own events of the default calendar,
@@ -444,6 +447,17 @@ func (f *FakeMailboxCalendar) SetMeeting(mailbox, id string, on bool) {
 	}
 }
 
+// SetUnreadable makes Events skip the event id — neither answered nor
+// Gone, as a provider that could not read it this time — or (on false)
+// read it again.
+func (f *FakeMailboxCalendar) SetUnreadable(mailbox, id string, on bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if e := f.mailbox(mailbox).events[id]; e != nil {
+		e.Unreadable = on
+	}
+}
+
 // SetHTMLBody makes the event id's body come as HTML to Events (TextBody
 // false), or (on false) as text again. It is how the body is answered, not
 // a write: the change key stays, so a test pairs it with EditEvent.
@@ -649,7 +663,8 @@ func (f *FakeMailboxCalendar) Apply(_ context.Context, mailbox, calendarID strin
 }
 
 // Find answers the events of the calendar carrying a key, starting at or
-// after from when it is set, ordered by id.
+// after from when it is set, ordered by id, each Meeting as SetMeeting made
+// it; a secondary calendar the mailbox does not hold answers none.
 func (f *FakeMailboxCalendar) Find(_ context.Context, mailbox, calendarID string, from time.Time) ([]contracts.MailboxEventRef, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -658,10 +673,11 @@ func (f *FakeMailboxCalendar) Find(_ context.Context, mailbox, calendarID string
 		return nil, err
 	}
 	m := f.mailbox(mailbox)
-	if _, ok := m.calendars[calendarID]; calendarID != "" && !ok {
-		return nil, errFakeNoSuchCalendar
-	}
 	var out []contracts.MailboxEventRef
+	if _, ok := m.calendars[calendarID]; calendarID != "" && !ok {
+		// A calendar that is gone holds nothing of ours.
+		return out, nil
+	}
 	for _, e := range m.events {
 		if e.CalendarID != calendarID || e.Key == "" {
 			continue
@@ -669,7 +685,7 @@ func (f *FakeMailboxCalendar) Find(_ context.Context, mailbox, calendarID string
 		if !from.IsZero() && start(e).Before(from) {
 			continue
 		}
-		out = append(out, contracts.MailboxEventRef{EventID: e.ID, Key: e.Key})
+		out = append(out, contracts.MailboxEventRef{EventID: e.ID, Key: e.Key, Meeting: e.Meeting})
 	}
 	slices.SortFunc(out, func(a, b contracts.MailboxEventRef) int { return compareIDs(a.EventID, b.EventID) })
 	return out, nil
@@ -781,29 +797,34 @@ func (f *FakeMailboxCalendar) Versions(_ context.Context, mailbox, calendarID st
 }
 
 // Events answers, among eventIDs, the events of the calendar whole, in the
-// order asked; an id of another calendar, or gone, is not answered, and
-// more than contracts.MailboxMarkedMax ids is a failure.
-func (f *FakeMailboxCalendar) Events(_ context.Context, mailbox, calendarID string, eventIDs []string) ([]contracts.MailboxEventState, error) {
+// order asked; an id of another calendar, or gone, is answered in Gone, one
+// SetUnreadable marks in neither, and more than contracts.MailboxMarkedMax
+// ids is a failure.
+func (f *FakeMailboxCalendar) Events(_ context.Context, mailbox, calendarID string, eventIDs []string) (contracts.MailboxEventsRead, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.calls = append(f.calls, MailboxCall{Method: "Events", Mailbox: mailbox, CalendarID: calendarID, EventIDs: slices.Clone(eventIDs)})
 	if err := f.refusal("Events", mailbox, false); err != nil {
-		return nil, err
+		return contracts.MailboxEventsRead{}, err
 	}
 	if len(eventIDs) > contracts.MailboxMarkedMax {
-		return nil, errors.New("modtest: Events asked for more than MailboxMarkedMax ids")
+		return contracts.MailboxEventsRead{}, errors.New("modtest: Events asked for more than MailboxMarkedMax ids")
 	}
 	m := f.mailbox(mailbox)
 	if _, ok := m.calendars[calendarID]; calendarID != "" && !ok {
-		return nil, errFakeNoSuchCalendar
+		return contracts.MailboxEventsRead{}, errFakeNoSuchCalendar
 	}
-	out := []contracts.MailboxEventState{}
+	out := contracts.MailboxEventsRead{Events: []contracts.MailboxEventState{}, Gone: []string{}}
 	for _, id := range eventIDs {
 		e := m.events[id]
 		if e == nil || e.CalendarID != calendarID {
+			out.Gone = append(out.Gone, id)
 			continue
 		}
-		out = append(out, contracts.MailboxEventState{
+		if e.Unreadable {
+			continue
+		}
+		out.Events = append(out.Events, contracts.MailboxEventState{
 			EventID: id, Key: e.Key, ChangeKey: e.ChangeKey,
 			Foreign: e.OtherInstallation, Series: e.Series, Cancelled: e.Cancelled,
 			Meeting: e.Meeting, TextBody: !e.HTMLBody, Event: e.Event,

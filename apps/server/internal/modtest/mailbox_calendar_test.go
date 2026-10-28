@@ -425,9 +425,13 @@ func TestFakeMailboxCalendar_EventsAndEdits(t *testing.T) {
 		t.Error("SetMeeting left the change key")
 	}
 
-	got, err := f.Events(ctx, "oid-1", "", []string{b, elsewhere, "event-404", a})
+	read, err := f.Events(ctx, "oid-1", "", []string{b, elsewhere, "event-404", a})
+	got := read.Events
 	if err != nil || len(got) != 2 {
 		t.Fatalf("Events = %+v, %v; want b and a alone", got, err)
+	}
+	if !slices.Equal(read.Gone, []string{elsewhere, "event-404"}) {
+		t.Errorf("Gone = %v, want the other calendar's event and the missing one", read.Gone)
 	}
 	if got[0].EventID != b || !got[0].Meeting || got[0].TextBody || got[0].Key != "appointment:2" {
 		t.Errorf("Events[0] = %+v, want b, a meeting, its body HTML", got[0])
@@ -438,23 +442,31 @@ func TestFakeMailboxCalendar_EventsAndEdits(t *testing.T) {
 	if c := f.Calls(); c[len(c)-1].Method != "Events" || !slices.Equal(c[len(c)-1].EventIDs, []string{b, elsewhere, "event-404", a}) {
 		t.Errorf("the call recorded %+v", c[len(c)-1])
 	}
+	f.SetUnreadable("oid-1", a, true)
+	if r, _ := f.Events(ctx, "oid-1", "", []string{a}); len(r.Events) != 0 || len(r.Gone) != 0 {
+		t.Errorf("an unreadable event = %+v, want neither answered nor gone", r)
+	}
+	f.SetUnreadable("oid-1", a, false)
+	if refs, _ := f.Find(ctx, "oid-1", "", time.Time{}); len(refs) != 2 || refs[0].Meeting == refs[1].Meeting {
+		t.Errorf("Find = %+v, want b alone a meeting", refs)
+	}
 
 	moved := f.MoveEvent("oid-1", a, cal)
 	if moved == "" || moved == a {
 		t.Fatalf("MoveEvent = %q, want a new id", moved)
 	}
-	if got, _ := f.Events(ctx, "oid-1", "", []string{a, moved}); len(got) != 0 {
+	if got, _ := f.Events(ctx, "oid-1", "", []string{a, moved}); len(got.Events) != 0 || len(got.Gone) != 2 {
 		t.Errorf("Events(default) after the move = %+v, want neither id", got)
 	}
-	if got, _ := f.Events(ctx, "oid-1", cal, []string{moved}); len(got) != 1 || got[0].Key != "appointment:1" {
+	if got, _ := f.Events(ctx, "oid-1", cal, []string{moved}); len(got.Events) != 1 || got.Events[0].Key != "appointment:1" {
 		t.Errorf("Events(secondary) after the move = %+v, want the moved event, its key kept", got)
 	}
 	f.SetOtherInstallation("oid-1", b, true)
-	if got, _ := f.Events(ctx, "oid-1", "", []string{b}); len(got) != 1 || !got[0].Foreign || got[0].Key != "" {
+	if got, _ := f.Events(ctx, "oid-1", "", []string{b}); len(got.Events) != 1 || !got.Events[0].Foreign || got.Events[0].Key != "" {
 		t.Errorf("Events of another installation's event = %+v, want Foreign, no key", got)
 	}
 	f.DeleteEvent("oid-1", b)
-	if got, _ := f.Events(ctx, "oid-1", "", []string{b}); len(got) != 0 {
+	if got, _ := f.Events(ctx, "oid-1", "", []string{b}); len(got.Events) != 0 || len(got.Gone) != 1 {
 		t.Errorf("Events after DeleteEvent = %+v, want none", got)
 	}
 	if _, err := f.Events(ctx, "oid-1", "", make([]string, contracts.MailboxMarkedMax+1)); err == nil {

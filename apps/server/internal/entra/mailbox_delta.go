@@ -229,13 +229,16 @@ func changeOf(ev deltaEvent) (contracts.MailboxChange, bool) {
 
 // deltaTime is d's instant: its dateTime — seven fractional digits, no
 // offset — in its timeZone, UTC as asked; a zone that is not UTC is read as
-// an IANA name, and as UTC when it is none.
+// an IANA name, and false when it is none — the event is then left out
+// (changeOf), never read as UTC and so placed hours off.
 func deltaTime(d graphDateTimeZone) (time.Time, bool) {
 	loc := time.UTC
 	if z := strings.TrimSpace(d.TimeZone); z != "" && !strings.EqualFold(z, "UTC") {
-		if l, err := time.LoadLocation(z); err == nil {
-			loc = l
+		l, err := time.LoadLocation(z)
+		if err != nil {
+			return time.Time{}, false
 		}
+		loc = l
 	}
 	t, err := time.ParseInLocation(graphLocalTime, d.DateTime, loc)
 	return t, err == nil

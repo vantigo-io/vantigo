@@ -304,6 +304,8 @@ export const calendarCatalog = {
         "“{{title}}” is someone else's appointment; change it in Vantigo or ask its organizer. Your change in Outlook was put back.",
       putBack_not_editable:
         "Only an appointment's own times can be changed from Outlook for a single occurrence, and Vantigo's other items cannot be changed there; your change was put back.",
+      putBack_many_deleted:
+        "Many of your appointments were deleted in Outlook at once, so Vantigo kept them and put them back. If you meant to delete them, delete them in Vantigo.",
       toggle: "Sync to my Outlook calendar",
       couldNotLoad: "Your Outlook setting could not be loaded",
       availability_switch_off: "Your administrator has not turned on calendar sync.",
@@ -656,6 +658,8 @@ export const calendarCatalog = {
         "«{{title}}» er en annen sin avtale; endre den i Vantigo eller be arrangøren om det. Endringen din i Outlook ble lagt tilbake.",
       putBack_not_editable:
         "Fra Outlook kan du bare endre tidspunktene til en enkelt forekomst av en avtale, og Vantigos andre elementer kan ikke endres der; endringen din ble lagt tilbake.",
+      putBack_many_deleted:
+        "Mange av avtalene dine ble slettet i Outlook på én gang, så Vantigo beholdt dem og la dem tilbake. Hvis du mente å slette dem, slett dem i Vantigo.",
       toggle: "Synkroniser til Outlook-kalenderen min",
       couldNotLoad: "Outlook-innstillingen din kunne ikke lastes",
       availability_switch_off: "Administratoren din har ikke slått på kalendersynkronisering.",

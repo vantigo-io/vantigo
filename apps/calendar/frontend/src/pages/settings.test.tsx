@@ -446,6 +446,10 @@ describe("SettingsPage: Outlook", () => {
       "not_editable",
       "Only an appointment's own times can be changed from Outlook for a single occurrence, and Vantigo's other items cannot be changed there; your change was put back.",
     ],
+    [
+      "many_deleted",
+      "Many of your appointments were deleted in Outlook at once, so Vantigo kept them and put them back. If you meant to delete them, delete them in Vantigo.",
+    ],
   ] as const)("names what was put back: %s", async (reason, words) => {
     stubCalendarServer({
       mailboxSync: mailboxSyncFixture({
@@ -476,6 +480,24 @@ describe("SettingsPage: Outlook", () => {
     });
     renderWithProviders(<SettingsPage />);
     expect(await within(await outlook()).findByText(/You changed “an appointment” in Outlook/)).toBeInTheDocument();
+  });
+
+  it("says many deletes were put back, naming no appointment", async () => {
+    setLanguagePreference("nb");
+    stubCalendarServer({
+      mailboxSync: mailboxSyncFixture({
+        enabled: true,
+        state: "active",
+        putBack: { reason: "many_deleted", at: new Date().toISOString() },
+      }),
+    });
+    renderWithProviders(<SettingsPage />);
+    const region = await card("Outlook");
+    expect(
+      await within(region).findByText(
+        "Mange av avtalene dine ble slettet i Outlook på én gang, så Vantigo beholdt dem og la dem tilbake. Hvis du mente å slette dem, slett dem i Vantigo.",
+      ),
+    ).toBeInTheDocument();
   });
 
   it("speaks Norwegian about two-way and what was put back", async () => {

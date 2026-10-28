@@ -68,7 +68,8 @@ type MailboxCalendar interface {
 	Apply(ctx context.Context, mailbox, calendarID string, ops []MailboxOp) ([]MailboxResult, error)
 
 	// Find answers the events of the calendar — calendarID "" the default
-	// one — that carry this installation's marker, each with its key, and no
+	// one — that carry this installation's marker, each with its key and
+	// whether it has become a meeting (MailboxEventRef.Meeting), and no
 	// other: an event of the person's own, or one another installation
 	// sharing the tenant wrote, is never answered. A from that is not zero
 	// answers only the events that start at or after it; zero is no bound.
@@ -122,12 +123,16 @@ type MailboxCalendar interface {
 	// Events reads whole, among eventIDs — at most MailboxMarkedMax of them —
 	// the events of the calendar (calendarID "" the default one), in the
 	// order asked (design O10.2). Each id is read through the calendar's own
-	// path, so an id not answered is not in that calendar any more: deleted,
-	// or moved to another calendar or folder. What an event says crosses
-	// the contract here for the copies and the provider's own calendar only,
-	// for the write it feeds, and a provider never logs a word of it.
-	// Refused under MailboxCleanup with ErrMailboxUnavailable.
-	Events(ctx context.Context, mailbox, calendarID string, eventIDs []string) ([]MailboxEventState, error)
+	// path, so an id the directory answered "not found" for is not in that
+	// calendar any more — deleted, or moved to another calendar or folder —
+	// and is answered in Gone. An id neither answered nor Gone is one the
+	// provider could not read this time (an answer that did not decode, a
+	// refusal of that one event): the caller infers nothing from it and asks
+	// again later. What an event says crosses the contract here for the
+	// copies and the provider's own calendar only, for the write it feeds,
+	// and a provider never logs a word of it. Refused under MailboxCleanup
+	// with ErrMailboxUnavailable.
+	Events(ctx context.Context, mailbox, calendarID string, eventIDs []string) (MailboxEventsRead, error)
 }
 
 // The states of MailboxStatus.State.
@@ -223,6 +228,22 @@ type MailboxResult struct {
 // carries.
 type MailboxEventRef struct {
 	EventID, Key string
+	// Meeting: the event has attendees — the person turned the copy into a
+	// meeting — their count alone decoded, never an address. Find answers
+	// it, so a meeting is never adopted nor deleted by the calendar (design
+	// O10.8); Marked leaves it false.
+	Meeting bool
+}
+
+// MailboxEventsRead is what Events answers (calendar Outlook sync design
+// O10.2).
+type MailboxEventsRead struct {
+	// Events are the events read whole, in the order asked.
+	Events []MailboxEventState
+	// Gone are the ids the directory answered "not found" for in that
+	// calendar — deleted, or moved out of it — never a mailbox gone, which
+	// fails the whole call. An id in neither list was not read this time.
+	Gone []string
 }
 
 // MailboxMarkedMax is the most ids one Marked call takes; the caller hands it

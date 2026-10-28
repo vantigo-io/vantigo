@@ -777,9 +777,12 @@ func (m *mailboxCalendar) result(ctx context.Context, s mailboxSession, op contr
 // GET /users/{oid}/events, or the secondary calendarID's,
 // GET /users/{oid}/calendars/{id}/events — filtered on this installation's
 // marker (its value starting keyPrefix) and, when from is set, on a start at
-// or after it, each with the key its marker carries, in pages of a hundred
-// following @odata.nextLink, at most mailboxFindMax. An event whose marker
-// another installation wrote is never answered. Allowed under cleanup.
+// or after it, each with the key its marker carries and Meeting when it has
+// attendees ($select=id,attendees — their count alone decoded, never an
+// address), in pages of a hundred following @odata.nextLink, at most
+// mailboxFindMax. An event whose marker another installation wrote is never
+// answered. A secondary calendar that is gone (its list answered 404, not
+// the mailbox gone) answers no events. Allowed under cleanup.
 func (m *mailboxCalendar) Find(ctx context.Context, mailbox, calendarID string, from time.Time) ([]contracts.MailboxEventRef, error) {
 	if calendarID != "" && !validID(calendarID) {
 		return nil, errors.New("entra: a calendar id that is no id")
@@ -796,7 +799,7 @@ func (m *mailboxCalendar) Find(ctx context.Context, mailbox, calendarID string, 
 	params := url.Values{
 		"$expand": {"singleValueExtendedProperties($filter=id eq '" + mailboxMarker + "')"},
 		"$filter": {filter},
-		"$select": {"id"},
+		"$select": {"id,attendees"},
 		"$top":    {strconv.Itoa(mailboxFindPage)},
 	}
 	path := s.eventsPath(calendarID) + "?" + query(params)
@@ -808,11 +811,16 @@ func (m *mailboxCalendar) Find(ctx context.Context, mailbox, calendarID string, 
 		var page struct {
 			Value []struct {
 				ID         string          `json:"id"`
+				Attendees  []struct{}      `json:"attendees"`
 				Properties []graphProperty `json:"singleValueExtendedProperties"`
 			} `json:"value"`
 			NextLink string `json:"@odata.nextLink"`
 		}
 		if err := m.client.get(ctx, s.cred, path, &page, noWords); err != nil {
+			if calendarID != "" && len(out) == 0 && itemMissing(err) {
+				// The calendar itself is gone: it holds nothing of ours.
+				return out, nil
+			}
 			return nil, mailboxRefusal(err)
 		}
 		for _, ev := range page.Value {
@@ -828,7 +836,7 @@ func (m *mailboxCalendar) Find(ctx context.Context, mailbox, calendarID string, 
 			if key == "" {
 				continue
 			}
-			out = append(out, contracts.MailboxEventRef{EventID: ev.ID, Key: key})
+			out = append(out, contracts.MailboxEventRef{EventID: ev.ID, Key: key, Meeting: len(ev.Attendees) > 0})
 			if len(out) == mailboxFindMax {
 				break
 			}

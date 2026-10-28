@@ -132,7 +132,8 @@ func (s *server) putBackOut(ctx context.Context, row *store.CalendarMailboxSync,
 // worker removes the copies (O8), then sets off, or pending to sync anew.
 // Otherwise on is pending and off is off. Every write is due at once, and
 // turning it on, or owing a clean-up, makes the next sync read the mailbox's
-// own list first.
+// own list first. The answer carries the put-back as the GET's does —
+// absent once the sync is turned off, which forgets it.
 func (s *server) PutCalendarMailboxSync(ctx context.Context, req gen.PutCalendarMailboxSyncRequestObject) (gen.PutCalendarMailboxSyncResponseObject, error) {
 	revision, ok := parseMailboxRevision(req.Params.IfMatch)
 	if !ok {
@@ -202,13 +203,18 @@ func (s *server) PutCalendarMailboxSync(ctx context.Context, req gen.PutCalendar
 	if err != nil {
 		return nil, err
 	}
-	return gen.PutCalendarMailboxSync200JSONResponse(mailboxSyncOut(&row, availability, available)), nil
+	out := mailboxSyncOut(&row, availability, available)
+	if out.PutBack, err = s.putBackOut(ctx, &row, me); err != nil {
+		return nil, err
+	}
+	return gen.PutCalendarMailboxSync200JSONResponse(out), nil
 }
 
 // PostCalendarMailboxSyncRun Sync the caller's calendar now
 // (POST /api/v1/calendar/mailbox-sync/run)
 //
-// The sync is made due at once; the revision stays. A sync that cannot run
+// The sync is made due at once; the revision stays, and the answer carries
+// the put-back as the GET's does. A sync that cannot run
 // is 409 mailbox_sync_unavailable, its detail the availability; one that is
 // off 409 mailbox_sync_off.
 func (s *server) PostCalendarMailboxSyncRun(ctx context.Context, _ gen.PostCalendarMailboxSyncRunRequestObject) (gen.PostCalendarMailboxSyncRunResponseObject, error) {
@@ -235,7 +241,11 @@ func (s *server) PostCalendarMailboxSyncRun(ctx context.Context, _ gen.PostCalen
 	if row, err = s.mailboxSyncRow(ctx, q, me, false); err != nil {
 		return nil, err
 	}
-	return gen.PostCalendarMailboxSyncRun200JSONResponse(mailboxSyncOut(row, availability, kinds)), nil
+	out := mailboxSyncOut(row, availability, kinds)
+	if out.PutBack, err = s.putBackOut(ctx, row, me); err != nil {
+		return nil, err
+	}
+	return gen.PostCalendarMailboxSyncRun200JSONResponse(out), nil
 }
 
 // mailboxAvailability is whether the caller's sync can run (see the top of
