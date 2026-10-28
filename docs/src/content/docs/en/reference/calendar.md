@@ -1625,7 +1625,12 @@ type MailboxCalendar interface {
     Marked(ctx context.Context, mailbox string, eventIDs []string) ([]MailboxEventRef, error)
     Versions(ctx context.Context, mailbox, calendarID string, from, to time.Time) (MailboxVersions, error)
     Events(ctx context.Context, mailbox, calendarID string, eventIDs []string) (MailboxEventsRead, error)
+    Watch(ctx context.Context, mailbox string) error
+    Unwatch(ctx context.Context, mailbox string) error
+    Notified(ctx context.Context, since time.Time) ([]MailboxNotice, error) // no network
 }
+
+type MailboxNotice struct { Mailbox string; At time.Time }
 
 type MailboxEventRef struct { EventID, Key string; Meeting bool }
 
@@ -1656,6 +1661,18 @@ type MailboxEventState struct {
   `Vantigo (5)`). `DeleteCalendar` deletes a calendar the provider made and every
   event in it; any other is refused `ErrCalendarNotOurs` and left whole, and one
   already gone is done.
+- `Watch`, `Unwatch` and `Notified` are the [change notifications](#change-notifications)'
+  three calls. `Watch` makes sure the mailbox's changes are notified — nothing while a
+  live subscription has more than three days left, a renewal when less, a create when
+  none — and answers nil, calling nothing, where the provider offers no notifications on
+  this installation or holds creates off. `Unwatch` deletes the subscription, idempotent
+  (a mailbox not watched, or a subscription already gone, is nil), and is allowed under
+  `cleanup`; a refusal or failure is returned and the delete stays owed. `Notified`
+  answers the mailboxes notified after `since`, oldest first, at most 5000
+  (`MailboxNoticesMax`), from the provider's own rows with no network; `Mailbox` is as
+  the provider holds the account's external id, so the caller compares it
+  case-insensitively. The module's answers are in [the Entra
+  reference](/en/reference/entra/#change-notifications).
 - `Status` answers `MailboxStatus{State, Reason}`: `available` (the provider may write),
   `cleanup` (it may only remove — `Apply` takes deletes alone, and `DeleteCalendar` and
   `Find` work — with the reason `switch_off`) or `unavailable`.
@@ -1959,7 +1976,12 @@ person:
    failure of `Delta` or `Marked` is recorded as `Apply`'s are; a read whose three
    minutes run out between pages keeps its next link and is not a failure (one cut
    inside a call is the call's failure).
-11. **The result**, written only if the revision is still the one the sync read — a `PUT`
+11. **Watch** — last, after the result is written, on a sync that pushed and left the
+    person `active`: one that worked, and one whose busy read or write-back failed beside
+    a push that stood. `Watch` on the mailbox, with the sync's own deadline: past it, it
+    is not asked, and the next sync does. Its error is logged at warning by its code and
+    changes nothing — the row is written already, and the poll runs either way.
+12. **The result**, written only if the revision is still the one the sync read — a `PUT`
    meanwhile has made the row due again, and the sync's outcome is dropped:
 
 | Outcome | `state` | `error` | Next |
@@ -2244,6 +2266,32 @@ person's sync is `enabled`. Nothing of an event, not even its id, is ever logged
 
 **The person's own titles are not shown** ([why](#the-persons-own-outlook-titles)).
 
+### Change notifications
+
+Where Microsoft can reach the installation, a change made in a person's mailbox makes
+their sync due at once instead of at the next poll. **A notification is a nudge and
+nothing more**: it sets one time, and the reads stay the truth. The three calls are
+[`Watch`, `Unwatch` and `Notified`](#the-contract); the provider's side — one Graph
+subscription per mailbox, the webhook, its checks — is in [the Entra
+reference](/en/reference/entra/#change-notifications). It is asked for only while
+`PUBLIC_BASE_URL` is set and `CALENDAR_MAILBOX_NOTIFICATIONS_ENABLED` (default `true`)
+is on; otherwise nothing is subscribed. The poll (`CALENDAR_MAILBOX_SYNC_POLL`) is
+unchanged either way.
+
+- **`Watch`** is the sync's last step (step 11 [above](#the-mailbox-sync-worker)).
+- **`Unwatch`** is a [clean-up](#the-clean-up)'s step, for every reason but a target
+  change: the subscription is the mailbox's, not the calendar's.
+- **`Notified`** is asked **each cycle**, under the lease, before the due rows are
+  listed, with `since` — held in memory by the worker, per process, **initially now
+  minus the poll interval** and advanced to the latest `At` it marked. Each notice
+  makes due, at now, the rows of that mailbox — compared case-insensitively — that are on,
+  `active` or `pending`, whose last sync **started before the notice** and that are not
+  due already (`MarkMailboxSyncNotified`, one short statement a notice, no transaction
+  held across the call). The revision is left alone, as the nudge does. A notice whose
+  mark fails stops the marking there and is asked for again next cycle; a `Notified` that
+  fails is logged at warning by its code and the cycle goes on. A provider with none
+  asks nothing.
+
 ### The clean-up
 
 A person's copies are removed when they turn the toggle off or change the target, when
@@ -2263,6 +2311,14 @@ clean-up works on the mailbox stored on the row, and is decided by its `calendar
   [released](#released-meetings) copy or any event `Find` answers as a `Meeting`, which
   is forgotten and never deleted. A list as long as
   `Find`'s bound is a failure once its deletes are done, so the rest go on the retry.
+
+**The subscription.** Every clean-up but a target change's also calls `Unwatch` on the
+mailbox, **after the copies are removed or forgotten** — they are what the person sees, so
+a refused `Unwatch` holds nothing back — and before the clean-up is finished. A refusal
+(`ErrMailboxDenied`), an unusable provider (`ErrMailboxUnavailable`) or a failure keeps the
+clean-up owed whole, retried on the backoff, the deletes it repeats being done or gone by
+then; the row stays `stopping`. `ErrMailboxGone` and `ErrMailboxUnknown` forget it,
+logged at info.
 
 Only a mailbox that is no longer there — `ErrMailboxGone`, or `ErrMailboxUnknown`, an
 account the provider no longer manages — has its copies **forgotten** unremoved, logged

@@ -819,6 +819,30 @@ answered 202, unknown.
 provider, the direction that exists; the endpoint writes Entra's own rows and never
 calls the calendar.
 
+*As built:* the build keeps O11 and adds or differs in these places.
+`Unwatch` **skips the account check** — only the provider's status (`available` or
+`cleanup`) — so a clean-up can still remove a subscription after the account is gone or
+unconfirmed; `Watch` keeps it. A **failed handshake is recognised** by a 400 from
+`POST /subscriptions` whose error names a validation request (and is not a mailbox gone):
+it sets `notifications_unreachable_at`, forgets the half-made row and answers nil, and a
+create that works clears the mark. `Watch` also runs **beside a push that stood but whose
+busy read or write-back failed** (`pushedButFailed`), not only after a clean success, and
+not past the sync's deadline. **`subscriptionRemoved` beats `reauthorizationRequired`**
+when one request carries both for a subscription, and a lifecycle state is written even
+inside the five-second coalescing. The validation window is **closed conditionally**
+(`validating_until` equal to the value that create opened), so a create started since
+keeps its own window, and closed on a context that outlives the create's cancellation.
+A 409 lists `GET /subscriptions` through at most ten pages, following `@odata.nextLink`
+only within Graph's base, and deletes only a subscription on this mailbox's
+`/users/{oid}/events` with exactly this installation's `notificationUrl`, then creates
+once more. The stored expiry is the one Graph granted, or the one asked when its answer
+is unusable; a subscription id that is no GUID is `tenant_unreachable`. The endpoint
+reads the connection once for a request and the rows in one query; a tenant id is
+compared case-insensitively. The Entra page shows nothing for the line while the
+calendar sync switch is off, and `subscriptions` counts live rows whatever the status.
+`Notified` is capped at 5000 notices (`MailboxNoticesMax`) a call, and the worker advances
+`since` only as far as the notices it marked.
+
 ### O12 — Out of scope
 
 Per-person delegated OAuth; Google; attendees round-tripping; a whole series edited from

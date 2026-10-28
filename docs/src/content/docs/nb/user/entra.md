@@ -231,6 +231,21 @@ Under bryteren sier en linje hvor kalendersynkroniseringen står:
   det på kortet sitt;
 - **Venter på tilkoblingen** — tilkoblingen er ikke tilkoblet, med årsaken under.
 
+Under den, mens bryteren er på, sier **Endringsvarsler** om Microsoft gir Vantigo beskjed
+om endringer gjort i Outlook, slik at de tas på omtrent ett minutt i stedet for ved
+neste synkronisering, hvert 15. minutt:
+
+- **På, overvåker 3 postbokser. Siste varsel: …** — det virker; tidspunktet er siste
+  varsel som kom, eller *ingen ennå*;
+- **Slått av av driftsansvarlig …** eller **Krever PUBLIC_BASE_URL …** — driftsansvarlig
+  har slått det av, eller installasjonen har ingen offentlig adresse; endringer i Outlook
+  kommer ved neste synkronisering;
+- **Microsoft har ikke nådd adressen siden …** — Vantigo prøver igjen innen en time;
+  endringene kommer ved neste synkronisering i mellomtiden. [Driftsveiledningen](/nb/admin/entra/#endringsvarsler)
+  sier hva som bør sjekkes.
+
+Her er det ingenting å velge: linjen melder bare.
+
 Slår du den av, stopper synkroniseringen for alle, og kopiene Vantigo la inn i Outlook
 deres, fjernes — tillatelsen etterspørres ikke mens den er av. Slår du den på igjen,
 fortsetter den for alle som hadde synkroniseringen sin på.

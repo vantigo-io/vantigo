@@ -291,7 +291,7 @@ tidssone, som jobben leser når den registrerer hver betaling.
 
 **Webhooks støttes ikke ennå.** Vantigo følger hver Vipps-betaling ved å lese den
 (polling); den registrerer ingen webhook hos Vipps, og ingenting fra Vipps trenger å nå
-den. Den offentlige vertens tillatelsesliste har ingen sti for webhooks: en slik sti
+den. Den offentlige vertens tillatelsesliste har ingen sti for Vipps-webhooks: en slik sti
 legges til sammen med selve webhooken, aldri før.
 
 **Mens et trekk fullføres, er beløpet reservert** på fakturaen: en manuell betaling, en
@@ -528,6 +528,7 @@ kodet `/`, `%2F`), står ikke på noen liste.
 | `POST` | `/api/v1/calendar/rsvp/read` (den sidens lesing; tokenet i innholdet) |
 | `POST` | `/api/v1/calendar/rsvp` (en mottakers svar) |
 | `GET` | `/api/v1/calendar/feed/{token}.ics` (kalenderstrømmen i Kalender, en kalenderadresse; nøyaktig ett segment) |
+| `POST` | `/api/v1/entra/mailbox-notifications` (Microsofts endringsvarsler for Outlook-synkroniseringen i Kalender, anonym; nøyaktig denne stien) |
 | `GET`, `HEAD` | `/health/…` (prober) |
 
 **Kontroller** utenfra, mot den offentlige verten:

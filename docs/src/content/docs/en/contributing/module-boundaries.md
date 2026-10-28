@@ -616,6 +616,20 @@ Communications' outbox is the working example.
     the marker, the same value a copy already carries
     ([Calendar](/en/reference/calendar/#the-write-back),
     [Microsoft Entra ID](/en/reference/entra/#the-write-backs-reads)).
+    The **change notifications** add three calls to the same slot, in the same
+    direction — calendar into provider, never the reverse: `Watch`, which makes sure a
+    mailbox's changes are notified (nothing, a renewal or a create), `Unwatch`, which
+    deletes the subscription, and `Notified`, which answers the mailboxes notified since a
+    time. They keep the same discipline: the first two reach the network on the provider's
+    pool through the calendar's accessors, never inside a transaction, and `Notified` reads
+    the provider's own rows with no network. `Watch` is refused under `cleanup`;
+    **`Unwatch` is allowed there**, so a clean-up can still remove a subscription, and
+    answers nil for one already gone, so a refusal is the only thing that leaves the delete
+    owed. `Notified` answers only a mailbox and a time: **a notification is a nudge and
+    nothing more**, and what changed is read by the calls above. The provider's webhook,
+    anonymous and on the public host, writes the provider's own rows and **never calls the
+    calendar** ([Calendar](/en/reference/calendar/#change-notifications),
+    [Microsoft Entra ID](/en/reference/entra/#change-notifications)).
 
 ## How they are enforced
 

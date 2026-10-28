@@ -1474,7 +1474,7 @@ And after the review:
 
 *Unblocks:* the Vantigo calendar on a phone, and a person's other calendars beside it.
 
-### Phase 2 — Outlook sync
+### Phase 2 — Outlook sync (done)
 
 Researched in
 [`docs/superpowers/research/2026-10-27-calendar-outlook-sync.md`](docs/superpowers/research/2026-10-27-calendar-outlook-sync.md)
@@ -1639,8 +1639,40 @@ Decisions taken while building it:
 *Unblocks:* a person who works in Outlook, on a phone, changing their own appointments
 there.
 
-**D — Change notifications** (next): for an installation Microsoft can reach, a
-subscription per person whose notification only makes the sync due.
+**D — Change notifications, built** on `feat/calendar-outlook-notifications`
+([the plan](docs/superpowers/plans/2026-10-28-calendar-outlook-notifications.md);
+[the calendar's side](docs/src/content/docs/en/reference/calendar.md#change-notifications);
+[Entra's subscriptions and webhook](docs/src/content/docs/en/reference/entra.md#change-notifications)):
+for an installation Microsoft can reach (`PUBLIC_BASE_URL`, and
+`CALENDAR_MAILBOX_NOTIFICATIONS_ENABLED`, on by default), a change made in a person's
+Outlook makes their sync due within about a minute instead of at the next poll. Three
+new calls on `contracts.MailboxCalendar`: `Watch` (one Graph subscription per mailbox on
+`/users/{id}/events`, renewed within three days of its expiry or when Microsoft asks to
+reauthorize it), `Unwatch` (in every clean-up but a target change's) and `Notified` (the
+mailboxes notified since a time, each cycle). Entra's anonymous webhook,
+`POST /api/v1/entra/mailbox-notifications`, is on the public host's list; the Entra page
+shows the state under *Calendar sync*. Migration `00085_entra_mailbox_subscriptions.sql`.
+
+Decisions taken while building it:
+
+- **A notification is a nudge**: it sets one time and is trusted for nothing else; the
+  poll runs unchanged, so an unreachable address or a refused mailbox costs only latency.
+- **The webhook reveals nothing**: anonymous, 600 a minute a client, answering the
+  handshake only while a create is in flight, and 202 to any body that decodes — a wrong
+  client state, an unknown subscription and a valid one alike. The client state is drawn
+  per create and only its SHA-256 is kept, compared in constant time.
+- **An unreachable address is not retried per person**: a create whose handshake fails
+  holds every create off for an hour.
+- **A clean-up owes the delete**: `Unwatch` skips the account check, so a subscription
+  can go after the account has; a refusal keeps the clean-up owed.
+- **Notified, not a callback**: the provider never calls the calendar; the worker asks
+  each cycle, from a time held in memory.
+
+*Unblocks:* a change made in Outlook arriving as fast as one made in Vantigo.
+
+Phase 2 is complete. What is left is out of scope for now (the *Later* list below), and
+checked against a real tenant: whether the subscription also sees the *Vantigo* calendar
+and how fast Graph notifies.
 
 ### Later
 

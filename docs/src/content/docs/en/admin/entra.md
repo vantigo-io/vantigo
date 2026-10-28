@@ -14,6 +14,8 @@ sources:
   - apps/server/internal/entra/tenant_test.go
   - apps/server/internal/entra/mailbox.go
   - apps/server/internal/entra/mailbox_writeback.go
+  - apps/server/internal/entra/mailbox_notifications.go
+  - apps/server/internal/entra/mailbox_notifications_endpoint.go
 ---
 
 The Microsoft Entra ID module makes the accounts of the people Staff registers in the
@@ -328,6 +330,87 @@ and the sync goes on. Verify with a person inside the scope: their card says **L
 synced**. A person outside the scope sees **Your organisation has not
 allowed Vantigo to reach your mailbox.** on their Outlook card: Vantigo tries them again
 every six hours, and never reads it as the connection failing.
+
+### Change notifications
+
+By default Vantigo takes a change made in Outlook at the next sync, every 15 minutes.
+With **change notifications**, Microsoft tells Vantigo when something changes in a synced
+mailbox, and the person's sync becomes due at once: the change is taken within about a
+minute. Vantigo asks for one notification subscription per synced mailbox, on that
+mailbox's events, and renews it before it lapses. **A notification is a nudge and nothing
+more**: it carries no appointment, and Vantigo still reads the mailbox as before; the
+15-minute poll runs whether notifications work or not, so nothing depends on them. What
+Vantigo asks and answers is in [the
+reference](/en/reference/entra/#change-notifications).
+
+#### Preconditions
+
+- Calendar sync is on and working ([above](#turn-it-on)). Notifications need no extra
+  permission: `Calendars.ReadWrite` covers them.
+- **`PUBLIC_BASE_URL` is set**, and Microsoft can reach it from the internet over
+  https: a host name with a certificate a public authority signed. Set up the public host
+  as for the pay page ([The public host](/en/admin/payments/#the-public-host)); the same
+  proxy rules apply. It must pass `POST /api/v1/entra/mailbox-notifications` through to
+  Vantigo — the one path Entra puts on the public host's list, anonymous because
+  Microsoft sends no session.
+- `CALENDAR_MAILBOX_NOTIFICATIONS_ENABLED` is not `0` (the default is on).
+
+#### Turn it on
+
+1. Set `PUBLIC_BASE_URL` in `vantigo.env` (a restart reads it) and leave
+   `CALENDAR_MAILBOX_NOTIFICATIONS_ENABLED` unset, or `1`.
+2. From outside, check that the path gets through. A notification with nothing in it is
+   accepted, and Microsoft's handshake — which Vantigo answers only while it is creating
+   a subscription — is not:
+
+   ```sh
+   curl -i -X POST https://pay.example.com/api/v1/entra/mailbox-notifications \
+     -H 'Content-Type: application/json' -d '{"value":[]}'                    # 202
+   curl -i -X POST 'https://pay.example.com/api/v1/entra/mailbox-notifications?validationToken=x'   # 404
+   ```
+
+3. Wait for the next sync of a person who has it on: after one that worked, Vantigo
+   subscribes their mailbox.
+
+Verify: on the module page, under **Calendar sync**, **Change notifications** reads
+**On, watching 1 mailbox. Last notification: none yet.** (the number grows with the
+mailboxes). Change an appointment's copy in that person's Outlook: within a minute the
+change is in Vantigo and **Last notification** shows the time.
+
+#### Turn it off
+
+Set `CALENDAR_MAILBOX_NOTIFICATIONS_ENABLED=0` and restart. Nothing new is subscribed and
+the poll alone runs; the line reads **Turned off by the operator …**. Subscriptions that
+exist are not deleted by this — they lapse within seven days, and a notification of one
+only makes a sync due — but each is deleted in Microsoft when the person's copies are
+cleaned up. An empty `PUBLIC_BASE_URL` has the same effect, and the line reads **Needs
+PUBLIC_BASE_URL …**.
+
+#### What can go wrong
+
+- **Microsoft could not reach the address since …** When Microsoft creates a
+  subscription it first posts a validation request to the address, and that failed.
+  Vantigo makes no subscription for **an hour**, so one wrong address does not cost an
+  attempt per person, and then tries again. Check from outside that
+  `PUBLIC_BASE_URL` resolves, its certificate is valid and its chain complete, that the
+  proxy passes the path through with `Host` set to the public host, and that no firewall
+  or web application filter drops requests from Microsoft. The line clears at the first
+  subscription that works. Meanwhile the poll takes the changes.
+- **Watching fewer mailboxes than people.** A mailbox Microsoft refuses — one outside
+  an Exchange RBAC scope ([above](#limit-it-to-some-mailboxes)) — is refused for
+  notifications as it is for the sync, and that person's changes come at the poll. A
+  person whose sync has not pushed yet is subscribed after the first one that does.
+- **A notification arrives, nothing changes.** The sync it makes due reads the mailbox;
+  if that read is refused or fails, the card says so, as for any sync.
+- **Another application's subscription on the same mailbox.** Vantigo deletes only a
+  subscription that is on this mailbox's events and posts to this installation's own
+  address, and never another's.
+- **No notifications from a busy tenant.** The webhook accepts 600 requests a minute per
+  client address; Microsoft retries a refused one for hours, and the poll catches
+  whatever is missed. Behind a proxy, set `TRUSTED_PROXY_HOPS` and
+  `TRUSTED_PROXY_CIDRS` so Microsoft's addresses are told apart from the proxy's
+  ([Forwarded headers and
+  HTTPS](/en/admin/authentication/#forwarded-headers-and-https)).
 
 ## Accounts Vantigo did not create
 
