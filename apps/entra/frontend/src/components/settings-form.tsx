@@ -101,6 +101,8 @@ const passMinutes = { min: 10, max: 43200 };
  */
 export const SettingsForm = ({ connection }: { connection: EntraConnection }) => {
   const { t, formatters } = useI18n("entra");
+  const formatTime = (value: string) =>
+    formatters.formatDate(new Date(value), { dateStyle: "medium", timeStyle: "short" });
   const queryClient = useQueryClient();
   const form = useForm<SettingsValues>({
     initialValues: valuesOf(connection.settings, connection.calendarSync),
@@ -269,6 +271,7 @@ export const SettingsForm = ({ connection }: { connection: EntraConnection }) =>
             {...form.getInputProps("calendarSync", { type: "checkbox" })}
           />
           <CalendarSyncStatus calendarSync={connection.calendarSync} t={t} />
+          <ChangeNotifications calendarSync={connection.calendarSync} t={t} formatTime={formatTime} />
           <Group justify="flex-end">
             <Button type="submit" loading={save.isPending}>
               {t("saveSettings")}
@@ -324,6 +327,45 @@ const CalendarSyncStatus = ({ calendarSync, t }: { calendarSync: EntraCalendarSy
           {reasonText(calendarSync.reason, t)}
         </Text>
       )}
+    </Stack>
+  );
+};
+
+/**
+ * The change notifications' state, under the sync's own: nothing while the
+ * switch is off (calendar Outlook sync design O11.7). Active names the
+ * mailboxes watched and the last notification; the others say why changes
+ * arrive with the next sync instead.
+ */
+const ChangeNotifications = ({
+  calendarSync,
+  t,
+  formatTime,
+}: {
+  calendarSync: EntraCalendarSync;
+  t: Translate;
+  formatTime: (value: string) => string;
+}) => {
+  if (calendarSync.status === "off") return null;
+  const { status, subscriptions, lastNotificationAt, unreachableAt } = calendarSync.notifications;
+  const colour = { active: "teal", off: "dimmed", not_configured: "orange", unreachable: "orange" }[status];
+  const text =
+    status === "active"
+      ? t("changeNotifications_active", {
+          count: subscriptions,
+          last: lastNotificationAt ? formatTime(lastNotificationAt) : t("changeNotificationsNoneYet"),
+        })
+      : status === "unreachable"
+        ? t("changeNotifications_unreachable", { since: unreachableAt ? formatTime(unreachableAt) : "" })
+        : t(`changeNotifications_${status}`);
+  return (
+    <Stack gap={0} aria-label={t("changeNotifications")} role="group">
+      <Text size="sm" fw={500}>
+        {t("changeNotifications")}
+      </Text>
+      <Text size="sm" c={colour}>
+        {text}
+      </Text>
     </Stack>
   );
 };

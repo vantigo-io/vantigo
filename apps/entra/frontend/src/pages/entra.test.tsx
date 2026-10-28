@@ -465,6 +465,64 @@ describe("EntraPage — calendar sync", () => {
     expect(within(status).getByText(/The tenant refused the client secret/)).toBeInTheDocument();
   });
 
+  it("says nothing of change notifications while calendar sync is off", async () => {
+    await openPage({ connection: connected() });
+    expect(screen.queryByText("Change notifications")).not.toBeInTheDocument();
+  });
+
+  const stateCases = [
+    {
+      name: "active",
+      notifications: { status: "active", subscriptions: 3, lastNotificationAt: "2026-10-28T09:30:00Z" },
+      en: [/On, watching 3 mailboxes\. Last notification: .*2026/],
+      nb: [/På, overvåker 3 postbokser\. Siste varsel: .*2026/],
+    },
+    {
+      name: "active before any notification",
+      notifications: { status: "active", subscriptions: 1 },
+      en: [/On, watching 1 mailbox\. Last notification: none yet\./],
+      nb: [/På, overvåker 1 postboks\. Siste varsel: ingen ennå\./],
+    },
+    {
+      name: "off",
+      notifications: { status: "off", subscriptions: 0 },
+      en: [/Turned off by the operator \(CALENDAR_MAILBOX_NOTIFICATIONS_ENABLED\)/],
+      nb: [/Slått av av driftsansvarlig \(CALENDAR_MAILBOX_NOTIFICATIONS_ENABLED\)/],
+    },
+    {
+      name: "not configured",
+      notifications: { status: "not_configured", subscriptions: 0 },
+      en: [/Needs PUBLIC_BASE_URL, an address Microsoft can reach\..*every 15 minutes/],
+      nb: [/Krever PUBLIC_BASE_URL, en adresse Microsoft kan nå\..*hvert 15\. minutt/],
+    },
+    {
+      name: "unreachable",
+      notifications: { status: "unreachable", subscriptions: 2, unreachableAt: "2026-10-28T08:00:00Z" },
+      en: [/Microsoft could not reach the address since .*2026.*tries again within the hour/],
+      nb: [/Microsoft har ikke nådd adressen siden .*2026.*prøver igjen innen en time/],
+    },
+  ] as const;
+
+  for (const lang of ["en", "nb"] as const) {
+    for (const c of stateCases) {
+      it(`shows the change notifications as ${c.name} in ${lang}`, async () => {
+        if (lang === "nb") setLanguagePreference("nb");
+        try {
+          stubEntraApi({
+            connection: connected({ calendarSync: { enabled: true, status: "ready", notifications: c.notifications } }),
+          });
+          renderWithProviders(<EntraPage signIn={() => null} provisioning={() => null} />);
+          const title = lang === "en" ? "Change notifications" : "Endringsvarsler";
+          const status = await screen.findByRole("group", { name: title });
+          expect(within(status).getByText(title)).toBeInTheDocument();
+          expect(within(status).getByText(c[lang][0])).toBeInTheDocument();
+        } finally {
+          setLanguagePreference("auto");
+        }
+      });
+    }
+  }
+
   it("speaks Norwegian", async () => {
     setLanguagePreference("nb");
     try {
