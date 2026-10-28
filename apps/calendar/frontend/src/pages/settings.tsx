@@ -425,6 +425,14 @@ const OutlookSection = () => {
               </Stack>
             )}
 
+            {data.enabled && (
+              <Text size="sm" c="dimmed">
+                {t(data.target === "own" ? "outlook.twoWayOwn" : "outlook.twoWay")}
+              </Text>
+            )}
+
+            {data.enabled && data.putBack && <OutlookPutBack putBack={data.putBack} />}
+
             {(data.enabled || data.state !== "off") && (
               <Group justify="space-between" gap="sm">
                 <OutlookState sync={data} />
@@ -446,6 +454,28 @@ const OutlookSection = () => {
         )}
       </Stack>
     </Card>
+  );
+};
+
+/** The last change from Outlook that Vantigo did not take, and why it was put back. */
+const OutlookPutBack = ({ putBack }: { putBack: NonNullable<MailboxSync["putBack"]> }) => {
+  const { t, i18n, locale, formatters } = useI18n("calendar");
+  const reason = i18n.exists(`outlook.putBack_${putBack.reason}`, { ns: "calendar" }) ? putBack.reason : "not_editable";
+  const title =
+    putBack.title ?? t(reason === "not_editable" ? "outlook.putBackAnItem" : "outlook.putBackAnAppointment");
+  return (
+    <Alert color="yellow" icon={<IconAlertCircle size={16} />} title={t("outlook.putBackHeading")}>
+      <Stack gap={2}>
+        <Text size="sm">{t(`outlook.putBack_${reason}`, { title })}</Text>
+        <Text
+          size="xs"
+          c="dimmed"
+          title={formatters.formatDate(putBack.at, { dateStyle: "medium", timeStyle: "short" })}
+        >
+          {relativeTime(putBack.at, locale)}
+        </Text>
+      </Stack>
+    </Alert>
   );
 };
 
