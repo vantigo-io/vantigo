@@ -351,8 +351,12 @@ edit, a move or a delete of a copy of their own appointment changes the appointm
 through the same rules — and the same mails to colleagues and to people outside the
 company — as a change made in Vantigo, and an event made in a separate *Vantigo*
 calendar becomes an appointment ([the write-back](/en/reference/calendar/#the-write-back)).
-**A copy deleted in Outlook deletes, or cancels, the appointment in Vantigo.** Anything
-else changed in a copy is put back. It writes at most 20 appointments a person per
+**A copy deleted in Outlook deletes, or cancels, the appointment in Vantigo** — only
+when Microsoft answers that the copy is not found, never when a read fails, and not when
+the appointment was changed in Vantigo since the last sync. **More than ten such deletes
+of one person's appointments in one sync are none of them taken**: the copies come
+back, the person's card says so, and the worker logs a warning with the person's id and
+the count. Anything else changed in a copy is put back. It writes at most 20 appointments a person per
 sync, on that person's behalf. A read of the copies that fails lets the push go on and
 is tried again on the failure's backoff; the person's card then says the last sync
 failed.

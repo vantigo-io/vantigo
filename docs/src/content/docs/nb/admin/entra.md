@@ -265,7 +265,9 @@ egen avtale endrer avtalen i Vantigo ved neste synkronisering, med de samme regl
 e-postene som en endring gjort i Vantigo. **Sletter personen kopien i Outlook — eller
 flytter den til en annen kalender eller mappe — slettes avtalen i Vantigo**, eller den
 avlyses, med en avlysning på e-post til folk utenfor bedriften, når de er invitert; for
-én forekomst av en gjentakende avtale avlyses den forekomsten. En endring i noe annet —
+én forekomst av en gjentakende avtale avlyses den forekomsten. Mer enn ti slike
+slettinger av én persons avtaler i én synkronisering tas ingen av med — kopiene legges
+tilbake — så en kalender som tømmes ved en feil, tømmer ikke Vantigo. En endring i noe annet —
 en avtale personen deltar i, et element fra en annen app — legges tilbake, og en kopi
 personen legger til deltakere på, overlates til dem. Vantigo tar med høyst 20 slike
 endringer per person per synkronisering; resten følger ved neste.

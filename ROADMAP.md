@@ -1621,8 +1621,15 @@ Decisions taken while building it:
   split into internal forms the worker calls, so validation, revisions and mails are
   the same code.
 - **An absence is a delete only when it can be**: a complete list, the row in the
-  window, the event not found through its calendar's own path; and a reconcile after a
+  window, the directory's own 404 through the calendar's own path (`Events` answers it
+  in `Gone`; an id it could not read infers nothing); and a reconcile after a
   write-back that did not complete forgets nothing.
+- **A breaker on deletes**: more than ten of a person's own appointments deleted in
+  Outlook in one sync are none of them taken — every copy put back, the card saying
+  so (`many_deleted`); a delete of an appointment Vantigo changed since is put back as a
+  conflict, and a copy whose last write is unknown is never taken.
+- **A meeting is the person's**: one `Find` answers as a meeting is never adopted nor
+  deleted, and the *Vantigo* calendar is not deleted whole while it holds one.
 - **A failed read does not hide the push**: it is recorded `active` with `failed` on
   the backoff, as a failed busy read; that push may then write Vantigo's version over an
   unread edit.

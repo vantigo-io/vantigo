@@ -493,7 +493,9 @@ what Vantigo put in Outlook…** — and the card says **Not syncing**. Your Out
 time is forgotten and no longer shown anywhere. Choosing the other
 **Where** also removes the copies from the first place before writing them to the new
 one. Everything Vantigo put there goes, older copies included; a separate Vantigo calendar is
-removed whole, and a calendar you made yourself is never touched.
+removed whole — unless a copy in it has become [your own Outlook
+meeting](#change-your-appointments-in-outlook): then only Vantigo's copies go, and the
+calendar and the meeting stay — and a calendar you made yourself is never touched.
 
 When the switch cannot be turned on, the card says why:
 
@@ -537,7 +539,8 @@ of an hour, as if you had made it in Vantigo:
   have invited people outside the company, it is
   [cancelled](#delete-an-appointment-you-invited-people-to) and they are mailed
   **Cancelled: …**. Moving the copy to another calendar or folder in Outlook counts as
-  deleting it.
+  deleting it. If the appointment was changed in Vantigo since the last sync, the delete
+  is not taken: the copy comes back, as a change made in both places does.
 
 Everyone on the appointment hears of the change as they would from Vantigo: people from
 outside are sent **Updated: …** when the time or the place changed, and your colleagues
@@ -564,6 +567,10 @@ with when:
   occurrence, and Vantigo's other items cannot be changed there; your change was put
   back.** — an occurrence's other fields, or an item from another app (absence, a
   task, hours and the like).
+- **Many of your appointments were deleted in Outlook at once, so Vantigo kept them and
+  put them back. If you meant to delete them, delete them in Vantigo.** — more than ten
+  of your own appointments were deleted in Outlook before one sync, as when a whole
+  calendar is emptied: none of those deletes is taken.
 
 The card shows the last of them only, and forgets it when you turn the sync off. A copy
 of an appointment you attend, or of another app's item, that you delete in Outlook
@@ -575,7 +582,7 @@ longer updates or deletes it, and your changes to it no longer come back. The
 appointment stays in Vantigo as it was.
 
 **New events in the separate Vantigo calendar.** With **A separate Vantigo calendar**,
-an event you create in that calendar in Outlook becomes an appointment of yours in
+and **Appointments** ticked under **What**, an event you create in that calendar in Outlook becomes an appointment of yours in
 Vantigo at the next sync — its title (**Untitled** when it has none), its description,
 place, times, **Show as** and **Private** — and from then on it is a copy like the
 others. A repeating event, or one with attendees, is left in Outlook alone. Events you

@@ -500,7 +500,9 @@ Vantigo la inn i Outlook …** — og kortet sier **Synkroniserer ikke**. Opptat
 fra Outlook glemmes og vises ikke lenger noe sted. Velger du det andre
 **Hvor**, fjernes også kopiene fra det første stedet før de skrives til det nye. Alt
 Vantigo la inn, forsvinner, også eldre kopier; en egen Vantigo-kalender fjernes i sin
-helhet, og en kalender du har laget selv, røres aldri.
+helhet — med mindre en kopi i den har blitt [ditt eget
+Outlook-møte](#endre-avtalene-dine-i-outlook): da forsvinner bare Vantigos kopier, og
+kalenderen og møtet blir stående — og en kalender du har laget selv, røres aldri.
 
 Når bryteren ikke kan slås på, sier kortet hvorfor:
 
@@ -544,7 +546,9 @@ et kvarter, som om du hadde gjort den i Vantigo:
 - **Slett** den: avtalen slettes i Vantigo, slik **Slett** gjør der. Har du invitert
   folk utenfor bedriften, blir den [avlyst](#slett-en-avtale-du-har-invitert-folk-til),
   og de får **Avlyst: …** på e-post. Flytter du kopien til en annen kalender eller mappe
-  i Outlook, regnes det som å slette den.
+  i Outlook, regnes det som å slette den. Er avtalen endret i Vantigo siden forrige
+  synkronisering, tas slettingen ikke med: kopien kommer tilbake, slik en endring gjort
+  begge steder gjør.
 
 Alle på avtalen får høre om endringen slik de ville fått fra Vantigo: folk utenfra får
 **Oppdatert: …** når tiden eller stedet er endret, og kollegene dine får beskjed
@@ -571,6 +575,10 @@ Outlook ble ikke tatt med**, med når:
   Vantigos andre elementer kan ikke endres der; endringen din ble lagt tilbake.** — de
   andre feltene i en forekomst, eller et element fra en annen app (fravær, en oppgave,
   timer og lignende).
+- **Mange av avtalene dine ble slettet i Outlook på én gang, så Vantigo beholdt dem og
+  la dem tilbake. Hvis du mente å slette dem, slett dem i Vantigo.** — mer enn ti av
+  dine egne avtaler ble slettet i Outlook før én synkronisering, som når en hel kalender
+  tømmes: ingen av de slettingene tas med.
 
 Kortet viser bare den siste av dem, og glemmer den når du slår av synkroniseringen. En
 kopi av en avtale du deltar i, eller av et element fra en annen app, som du sletter i
@@ -581,8 +589,8 @@ sender dem invitasjonen, og Vantigo lar den kopien være fra da av — den oppda
 sletter den ikke lenger, og endringene dine i den kommer ikke lenger tilbake. Avtalen
 blir stående i Vantigo som den var.
 
-**Nye hendelser i den egne Vantigo-kalenderen.** Med **En egen Vantigo-kalender** blir en
-hendelse du oppretter i den kalenderen i Outlook, til en avtale som er din i Vantigo ved
+**Nye hendelser i den egne Vantigo-kalenderen.** Med **En egen Vantigo-kalender**, og
+**Avtaler** huket av under **Hva**, blir en hendelse du oppretter i den kalenderen i Outlook, til en avtale som er din i Vantigo ved
 neste synkronisering — tittelen (**Uten tittel** når den ikke har noen), beskrivelsen,
 stedet, tidene, **Vis som** og **Privat** — og fra da av er den en kopi som de andre. En
 gjentakende hendelse, eller en med deltakere, blir liggende bare i Outlook. Hendelser du

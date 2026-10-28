@@ -1624,8 +1624,10 @@ type MailboxCalendar interface {
     Delta(ctx context.Context, mailbox string, from, to time.Time, link string) (MailboxDelta, error)
     Marked(ctx context.Context, mailbox string, eventIDs []string) ([]MailboxEventRef, error)
     Versions(ctx context.Context, mailbox, calendarID string, from, to time.Time) (MailboxVersions, error)
-    Events(ctx context.Context, mailbox, calendarID string, eventIDs []string) ([]MailboxEventState, error)
+    Events(ctx context.Context, mailbox, calendarID string, eventIDs []string) (MailboxEventsRead, error)
 }
+
+type MailboxEventRef struct { EventID, Key string; Meeting bool }
 
 type MailboxDelta struct { Changes []MailboxChange; Link string; Done bool }
 type MailboxChange struct {
@@ -1638,6 +1640,7 @@ type MailboxChange struct {
 
 type MailboxVersions struct { Events []MailboxEventVersion; Complete bool }
 type MailboxEventVersion struct { EventID, Key, ChangeKey string; Series bool }
+type MailboxEventsRead struct { Events []MailboxEventState; Gone []string }
 type MailboxEventState struct {
     EventID, Key, ChangeKey string
     Foreign, Series, Cancelled, Meeting, TextBody bool
@@ -1670,10 +1673,12 @@ type MailboxEventState struct {
   an update or delete of an event that no longer exists is `Gone` — a delete is then
   done, an update the caller's to re-create. A returned error is the whole call failing,
   with no result.
-- `Find` answers `{EventID, Key}` for the events of the calendar that carry this
-  installation's marker, and no other — never an event of the person's own, nor one
-  another installation sharing the tenant wrote — starting at or after `from` unless it
-  is zero, at most 5000.
+- `Find` answers `{EventID, Key, Meeting}` for the events of the calendar that carry
+  this installation's marker, and no other — never an event of the person's own, nor
+  one another installation sharing the tenant wrote — starting at or after `from` unless
+  it is zero, at most 5000. `Meeting` is an event with attendees — the person turned the
+  copy into a meeting — their count alone decoded, never an address; `Marked` leaves it
+  false. A secondary calendar that is gone answers no events.
 - `Delta` reads the changes to the mailbox's **default calendar** — the one the
   directory computes free/busy from — a page at a time. `link` `""` starts a delta
   afresh over `from..to`, answering every event overlapping the window; `from` and `to`
@@ -1699,9 +1704,12 @@ type MailboxEventState struct {
   then infers nothing from an absence. `Series` marks an occurrence, an exception or a
   series master.
 - `Events` reads whole, among at most 100 ids (`MailboxMarkedMax`), the events of the
-  calendar, in the order asked, each **through the calendar's own path**: an id not
-  answered is not in that calendar any more — deleted, or moved to another calendar or
-  folder. `Key` is this installation's key, `Foreign` another installation's marker,
+  calendar, in the order asked, each **through the calendar's own path**, and answers
+  `MailboxEventsRead`: `Events`, the events read, and `Gone`, the ids the directory
+  answered "not found" for in that calendar — deleted, or moved to another calendar or
+  folder; never a mailbox gone, which fails the whole call. An id **in neither list**
+  was not read this time — an answer that did not decode, a refusal of that one event —
+  and the caller infers nothing from it. `Key` is this installation's key, `Foreign` another installation's marker,
   `Series` as above, `Cancelled` a cancelled meeting, `Meeting` an event with attendees
   (their count alone is decoded, never an address), `TextBody` whether the body came
   as text, and `Event` the subject, the body, the location's display name, the times
@@ -1753,8 +1761,9 @@ module's validation does.
   mailbox alone), `busy_from` and `busy_to` (the dates the delta was started over) and
   `busy_synced_at` (when a read last reached the delta link). They are written whatever
   the revision, which the read never moves. The [write-back's](#the-write-back) last
-  change put back: `put_back_reason` (20 — `conflict`, `refused`, `not_owner` or
-  `not_editable`), `put_back_key` (200, the item key of the copy it was made to) and
+  change put back: `put_back_reason` (20 — `conflict`, `refused`, `not_owner`,
+  `not_editable` or `many_deleted`), `put_back_key` (200, the item key of the copy it
+  was made to; `''` for `many_deleted`) and
   `put_back_at`, also written whatever the revision, and cleared by a clean-up and by
   turning the sync off. Nothing of what the change said is stored.
 - **`mailbox_events`** — the map of what the worker wrote: `(user_id, item_key)` the
@@ -1786,12 +1795,16 @@ Three operations, each under `calendar:access` and on the caller's own row alone
   `calendar.appointment` and `staff.absence` (each when offered). **`putBack`**
   (`MailboxSyncPutBack`), when set, is the last change the caller made in Outlook that
   the [write-back](#the-write-back) did not take: `reason` (`conflict`, `refused`,
-  `not_owner` or `not_editable`), `at`, and — when the copy is of an appointment —
+  `not_owner`, `not_editable` or `many_deleted` — more than ten of the caller's own
+  appointments deleted in Outlook in one sync, none taken and every copy put back,
+  [below](#deletes-and-what-is-not-a-delete)), `at`, and — when the copy is of an
+  appointment, so never for `many_deleted` —
   `appointmentId`, `occurrenceDate` for one occurrence of a series, and `title`, read
   live from the appointment and answered **only when the caller owns or attends it**,
   so the stored key never names what the caller may not read. Absent when nothing was
-  put back since the sync was last turned off or cleaned up. Only this `GET` answers
-  it; the `PUT` and the run answer the setting without it.
+  put back since the sync was last turned off or cleaned up. The `PUT` and the run
+  answer it as the `GET` does — a `PUT` that turns the sync off answers it absent,
+  since turning it off forgets it.
 - **`PUT /mailbox-sync`** replaces the setting whole — `{enabled, target, detail,
   kinds}` — under `If-Match`, the revision it was read at (bare, quoted or weakly tagged;
   `0` for a caller with no row), rate limited to 10 per client address in 10 minutes
@@ -1914,9 +1927,13 @@ person:
    day (`last_synced_at` falling on an earlier day): `Find` from the window's first
    instant — only events carrying this installation's marker are answered — then
    - an event carrying a key the desired set holds and the map does not is **adopted**
-     (mapped with no hash, so it is rewritten);
+     (mapped with no hash, so it is rewritten) — never one `Find` answers as a
+     `Meeting`;
    - a second event carrying a key already mapped — the duplicate an unknown create
-     leaves — is **deleted**;
+     leaves — is **deleted**, never a `Meeting`;
+   - a mapped event `Find` answers as a `Meeting` is held as
+     [released](#released-meetings) for this sync — neither written nor deleted by its
+     push — until the write-back releases its row;
    - a mapped event starting in the window that `Find` no longer answers is
      **forgotten**, to be made anew — only when the list is shorter than 5000, so an
      answer that may be cut forgets nothing, and only when the write-back completed,
@@ -1998,16 +2015,23 @@ person made. Then each row of the map not [released](#released-meetings):
 - a version that **moved** is read whole;
 - a row **absent** from a `Complete` answer, starting on or after the window's first
   day, is read whole too — it may be a delete, or a copy moved before the window;
-- under target `own`, an event **neither mapped nor marked**, and not of a series, is
-  read whole as a [new event](#new-events-in-the-vantigo-calendar).
+- under target `own`, while the person's kinds include `calendar.appointment`, an
+  event **neither mapped nor marked**, and not of a series, is read whole as a [new
+  event](#new-events-in-the-vantigo-calendar).
 
 **The reads.** `Events` for those ids, at most **100 a sync** — the moved first, then
 the missing, then the new. A missing row past the 100 makes the write-back
-incomplete, so nothing is inferred from it. A moved version is compared, field by
-field after normalising — line endings, trailing space, the body cut at the first
-*Kept by Vantigo — change it there:* or *Holdes av Vantigo — endre det der:* line,
-times to the second — with the copy the desired set holds for its key. **Equal is
-noise** (Exchange's own touch): only the new change key is kept.
+incomplete, so nothing is inferred from it. A row `Events` answers is compared; one in
+`Gone` — the directory's own "not found" — is a [delete](#deletes-and-what-is-not-a-delete);
+one **neither answered nor `Gone`** was not read this time: it keeps its old change key
+for the next sync, and when it was a missing row the write-back is incomplete. A moved
+version is compared, field by field after normalising — line endings, trailing space
+(a no-break space read as a space), the body cut at the first line that *starts with*
+*Kept by Vantigo — change it there:* or *Holdes av Vantigo — endre det der:*, times to
+the second — with the copy the desired set holds for its key. **Equal is noise**
+(Exchange's own touch): only the new change key is kept. So is an event **exactly as
+the push last wrote it** (its hash, in the row's target and zone, is the row's) beside
+a change made in Vantigo: no conflict, the change key kept, and the push rewrites it.
 
 **The decisions** for a mapped copy whose version moved and that differs:
 
@@ -2016,6 +2040,7 @@ noise** (Exchange's own touch): only the new change key is kept.
 | The person turned it into a meeting (`Meeting`) | [Released](#released-meetings). |
 | A key the desired set no longer holds | Nothing: the push deletes or forgets it. |
 | An occurrence, an exception or a series master (`Series`), another installation's (`Foreign`), or a cancelled meeting | Never written back: the change key is kept. |
+| A copy whose last write is unknown (the row's hash is `''` — a put-back, a take or an adoption whose push then failed) | **Never taken**: put back with no record, as the push rewrites it whole. |
 | A projected item (`<kind>:<id>`) | Put back, `not_editable`. |
 | An appointment the person attends, not owns | Put back, `not_owner`. |
 | A cancelled appointment, or one gone | Nothing. |
@@ -2080,22 +2105,33 @@ back, `not_editable`.
 
 #### Deletes, and what is not a delete
 
-A mapped copy `Events` does not answer — no longer in **that calendar**, deleted or
-moved to another calendar or folder — is a delete in Outlook:
+A mapped copy `Events` answers in `Gone` — the directory's own "not found": no longer
+in **that calendar**, deleted or moved to another calendar or folder — is a delete in
+Outlook. An id `Events` neither answered nor called `Gone` is never one: it is left for
+the next sync. Each delete goes to the first of these that holds:
 
-- an owned single appointment is deleted through `DELETE /appointments/{id}`'s path,
-  which [cancels it](#cancellation), with the CANCELs, once someone outside was
-  invited;
-- an owned occurrence is cancelled (`PUT …/occurrences/{date}` with `cancelled`);
-- any other copy — an attendee's, a projected item's, a cancelled or gone
-  appointment's — is forgotten, and made again by the push while it is wanted.
+| The copy | What happens |
+| --- | --- |
+| A key the desired set no longer holds | Nothing: left to the push. |
+| Not an appointment's key (a projected item's), an appointment gone, one the person attends but does not own, a cancelled one, or an occurrence of an appointment no longer a series | Forgotten, and made again by the push while it is wanted. |
+| The row's hash is `''` (its last write unknown) | Put back with no record: the push re-creates it. |
+| The row's hash is not the desired one (the appointment changed in Vantigo since the last write) | **Vantigo wins**: put back, `conflict`; nothing is deleted. |
+| An owned single appointment | Deleted through `DELETE /appointments/{id}`'s path, which [cancels it](#cancellation), with the CANCELs, once someone outside was invited. |
+| An owned occurrence | Cancelled (`PUT …/occurrences/{date}` with `cancelled`). |
+
+**Many at once.** When more than **10** deletes or cancellations of the person's own
+appointments would be taken in one sync — a calendar emptied, a client gone wrong, more
+likely than the person's intent — **none is taken**: every one of those copies is put
+back (made stale, so the push re-creates it), the put-back recorded `many_deleted` with
+no key, and the counts logged at warning with the person's id. The other fates above
+are taken as usual.
 
 A copy that `Events` still answers — moved before the window, say — is a change, as
 above. The guards: the map is emptied by every clean-up, target change and mailbox
 move before anything else, and the push's own deletes forget their rows, so an absence
-is never the module's own doing; an incomplete list infers nothing; and on a sync whose
-write-back did not complete, the [reconcile](#the-mailbox-sync-worker) forgets no
-mapped event `Find` no longer sees.
+is never the module's own doing; only the directory's own "not found" deletes; an
+incomplete list infers nothing; and on a sync whose write-back did not complete, the
+[reconcile](#the-mailbox-sync-worker) forgets no mapped event `Find` no longer sees.
 
 #### Released meetings
 
@@ -2103,13 +2139,15 @@ A copy the person **turned into a meeting** in Outlook — they added attendees,
 Outlook mailed them — is **released**: `released_at` set, and it is never written,
 deleted or taken back again, since a write would mail its attendees. The push leaves it
 alone while it is wanted and forgets it without a delete once it is not; the clean-up
-of the default calendar forgets it without a delete too. The appointment in Vantigo is
-not changed by the release.
+forgets it without a delete too. A copy `Find` answers as a meeting is treated as one
+before the write-back has read it: the reconcile never adopts nor deletes it, and a
+mapped one is held as released for that sync. The appointment in Vantigo is not changed
+by the release.
 
 #### New events in the Vantigo calendar
 
-Under target `own`, an event of the *Vantigo* calendar that is neither mapped nor
-marked, single, not cancelled, not a meeting and not another installation's becomes an
+Under target `own`, and only while the person's kinds include `calendar.appointment`,
+an event of the *Vantigo* calendar that is neither mapped nor marked, single, not cancelled, not a meeting and not another installation's becomes an
 appointment the person owns, through `POST /appointments`' path: the subject its title
 (**Untitled** / **Uten tittel**, in the person's language, when empty), the body as
 text its description, the location, each cut to its limit, the times in the business
@@ -2214,13 +2252,16 @@ another), and when the provider is in `cleanup` — the Owner's switch turned of
 clean-up works on the mailbox stored on the row, and is decided by its `calendar_id`:
 
 - with one, it deletes the *Vantigo* calendar (`DeleteCalendar`, with everything in it)
-  — only a calendar the provider made; for any other (`ErrCalendarNotOurs`, logged at
-  warning) it deletes the copies in that calendar instead, one by one;
+  — only a calendar the provider made, and only while it holds **no meeting**: no event
+  `Find` answers there as a `Meeting` and no [released](#released-meetings) row. One
+  that holds a meeting (logged at info with the counts), and one not the provider's
+  (`ErrCalendarNotOurs`, logged at warning), is left: the copies in it are deleted one
+  by one instead, never a meeting;
 - without one, it deletes from the default calendar **every event carrying this
   installation's marker, whatever its date** (`Find` with no bound), and every mapped
   one besides, 100 to an `Apply`, forgetting each one done or gone — except a
-  [released](#released-meetings) copy, a meeting now, which is forgotten and never
-  deleted. A list as long as
+  [released](#released-meetings) copy or any event `Find` answers as a `Meeting`, which
+  is forgotten and never deleted. A list as long as
   `Find`'s bound is a failure once its deletes are done, so the rest go on the retry.
 
 Only a mailbox that is no longer there — `ErrMailboxGone`, or `ErrMailboxUnknown`, an
