@@ -289,7 +289,21 @@ export const calendarCatalog = {
     outlook: {
       heading: "Outlook",
       description:
-        "Vantigo keeps a copy of your calendar in your Microsoft 365 mailbox, so it shows in Outlook beside everything else. Make your changes here in Vantigo.",
+        "Vantigo keeps a copy of your calendar in your Microsoft 365 mailbox, so it shows in Outlook beside everything else.",
+      twoWay:
+        "Edits, moves and deletes you make in Outlook to your own appointments come back to Vantigo. Changes to appointments you attend, and to the other items, are put back.",
+      twoWayOwn:
+        "Edits, moves and deletes you make in Outlook to your own appointments come back to Vantigo, and so do new events you create in this calendar, which become appointments. Changes to appointments you attend, and to the other items, are put back.",
+      putBackHeading: "A change from Outlook was not taken",
+      putBackAnAppointment: "an appointment",
+      putBackAnItem: "an item",
+      putBack_conflict:
+        "You changed “{{title}}” in Outlook while it was changed in Vantigo too; Vantigo's version was kept.",
+      putBack_refused: "Your change to “{{title}}” in Outlook broke one of Vantigo's rules and was put back.",
+      putBack_not_owner:
+        "“{{title}}” is someone else's appointment; change it in Vantigo or ask its organizer. Your change in Outlook was put back.",
+      putBack_not_editable:
+        "Only an appointment's own times can be changed from Outlook for a single occurrence, and Vantigo's other items cannot be changed there; your change was put back.",
       toggle: "Sync to my Outlook calendar",
       couldNotLoad: "Your Outlook setting could not be loaded",
       availability_switch_off: "Your administrator has not turned on calendar sync.",
@@ -627,7 +641,21 @@ export const calendarCatalog = {
     outlook: {
       heading: "Outlook",
       description:
-        "Vantigo holder en kopi av kalenderen din i Microsoft 365-postboksen din, så den vises i Outlook ved siden av alt det andre. Gjør endringene dine her i Vantigo.",
+        "Vantigo holder en kopi av kalenderen din i Microsoft 365-postboksen din, så den vises i Outlook ved siden av alt det andre.",
+      twoWay:
+        "Endringer, flyttinger og slettinger du gjør i Outlook på dine egne avtaler kommer tilbake til Vantigo. Endringer i avtaler du deltar i, og i de andre elementene, blir lagt tilbake.",
+      twoWayOwn:
+        "Endringer, flyttinger og slettinger du gjør i Outlook på dine egne avtaler kommer tilbake til Vantigo, og det gjør også nye hendelser du oppretter i denne kalenderen; de blir til avtaler. Endringer i avtaler du deltar i, og i de andre elementene, blir lagt tilbake.",
+      putBackHeading: "En endring fra Outlook ble ikke tatt med",
+      putBackAnAppointment: "en avtale",
+      putBackAnItem: "et element",
+      putBack_conflict:
+        "Du endret «{{title}}» i Outlook mens den også ble endret i Vantigo; Vantigos versjon ble beholdt.",
+      putBack_refused: "Endringen din av «{{title}}» i Outlook brøt en av Vantigos regler og ble lagt tilbake.",
+      putBack_not_owner:
+        "«{{title}}» er en annen sin avtale; endre den i Vantigo eller be arrangøren om det. Endringen din i Outlook ble lagt tilbake.",
+      putBack_not_editable:
+        "Fra Outlook kan du bare endre tidspunktene til en enkelt forekomst av en avtale, og Vantigos andre elementer kan ikke endres der; endringen din ble lagt tilbake.",
       toggle: "Synkroniser til Outlook-kalenderen min",
       couldNotLoad: "Outlook-innstillingen din kunne ikke lastes",
       availability_switch_off: "Administratoren din har ikke slått på kalendersynkronisering.",

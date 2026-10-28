@@ -419,6 +419,82 @@ describe("SettingsPage: Outlook", () => {
     expect(within(region).getByText("Busy time read 2 hours ago")).toBeInTheDocument();
   });
 
+  it("explains the two-way sync, and the extra for a separate calendar", async () => {
+    stubCalendarServer({ mailboxSync: mailboxSyncFixture({ enabled: true, state: "active" }) });
+    renderWithProviders(<SettingsPage />);
+    const region = await outlook();
+    expect(
+      await within(region).findByText(/come back to Vantigo\. Changes to appointments you attend/),
+    ).toBeInTheDocument();
+    expect(within(region).queryByText(/new events you create in this calendar/)).not.toBeInTheDocument();
+  });
+
+  it("says new events become appointments under a separate calendar", async () => {
+    stubCalendarServer({ mailboxSync: mailboxSyncFixture({ enabled: true, state: "active", target: "own" }) });
+    renderWithProviders(<SettingsPage />);
+    expect(await within(await outlook()).findByText(/new events you create in this calendar/)).toBeInTheDocument();
+  });
+
+  it.each([
+    ["conflict", "You changed “Review” in Outlook while it was changed in Vantigo too; Vantigo's version was kept."],
+    ["refused", "Your change to “Review” in Outlook broke one of Vantigo's rules and was put back."],
+    [
+      "not_owner",
+      "“Review” is someone else's appointment; change it in Vantigo or ask its organizer. Your change in Outlook was put back.",
+    ],
+    [
+      "not_editable",
+      "Only an appointment's own times can be changed from Outlook for a single occurrence, and Vantigo's other items cannot be changed there; your change was put back.",
+    ],
+  ] as const)("names what was put back: %s", async (reason, words) => {
+    stubCalendarServer({
+      mailboxSync: mailboxSyncFixture({
+        enabled: true,
+        state: "active",
+        putBack: {
+          reason,
+          at: new Date(Date.now() - 2 * 3600 * 1000).toISOString(),
+          appointmentId: 7,
+          title: "Review",
+        },
+      }),
+    });
+    renderWithProviders(<SettingsPage />);
+    const region = await outlook();
+    expect(await within(region).findByText("A change from Outlook was not taken")).toBeInTheDocument();
+    expect(within(region).getByText(words)).toBeInTheDocument();
+    expect(within(region).getByText("2 hours ago")).toBeInTheDocument();
+  });
+
+  it("falls back to a generic name when the title is absent", async () => {
+    stubCalendarServer({
+      mailboxSync: mailboxSyncFixture({
+        enabled: true,
+        state: "active",
+        putBack: { reason: "conflict", at: new Date().toISOString() },
+      }),
+    });
+    renderWithProviders(<SettingsPage />);
+    expect(await within(await outlook()).findByText(/You changed “an appointment” in Outlook/)).toBeInTheDocument();
+  });
+
+  it("speaks Norwegian about two-way and what was put back", async () => {
+    setLanguagePreference("nb");
+    stubCalendarServer({
+      mailboxSync: mailboxSyncFixture({
+        enabled: true,
+        state: "active",
+        target: "own",
+        putBack: { reason: "not_owner", at: new Date().toISOString(), title: "Gjennomgang" },
+      }),
+    });
+    renderWithProviders(<SettingsPage />);
+    const region = await card("Outlook");
+    expect(await within(region).findByText(/nye hendelser du oppretter i denne kalenderen/)).toBeInTheDocument();
+    expect(within(region).getByText("En endring fra Outlook ble ikke tatt med")).toBeInTheDocument();
+    expect(within(region).getByText(/«Gjennomgang» er en annen sin avtale/)).toBeInTheDocument();
+  });
+
   it("speaks Norwegian", async () => {
     setLanguagePreference("nb");
     stubCalendarServer({ mailboxSync: mailboxSyncFixture({ enabled: true, state: "pending" }) });
