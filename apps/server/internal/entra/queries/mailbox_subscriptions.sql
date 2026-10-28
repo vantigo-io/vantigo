@@ -23,14 +23,16 @@ SELECT * FROM entra.mailbox_subscriptions WHERE subscription_id = ANY(@subscript
 
 -- name: UpsertMailboxSubscription :one
 -- UpsertMailboxSubscription is a create's write: before the POST, the
--- clientState's hash with no id and no expiry; after Graph's 201, the id and
--- the expiry it answered, with the same hash. Either way the row is active
--- and when it was last notified is kept.
-INSERT INTO entra.mailbox_subscriptions (object_id, subscription_id, client_state_hash, expires_at, state, created_at, updated_at)
-VALUES (@object_id, sqlc.narg(subscription_id)::varchar, @client_state_hash, sqlc.narg(expires_at)::timestamptz, 'active', @now::timestamptz, @now::timestamptz)
+-- clientState's hash and the webhook's address with no id and no expiry;
+-- after Graph's 201, the id and the expiry it answered, with the same hash
+-- and address. Either way the row is active and when it was last notified
+-- is kept.
+INSERT INTO entra.mailbox_subscriptions (object_id, subscription_id, client_state_hash, notification_url, expires_at, state, created_at, updated_at)
+VALUES (@object_id, sqlc.narg(subscription_id)::varchar, @client_state_hash, @notification_url::varchar, sqlc.narg(expires_at)::timestamptz, 'active', @now::timestamptz, @now::timestamptz)
 ON CONFLICT (object_id) DO UPDATE SET
     subscription_id = EXCLUDED.subscription_id,
     client_state_hash = EXCLUDED.client_state_hash,
+    notification_url = EXCLUDED.notification_url,
     expires_at = EXCLUDED.expires_at,
     state = 'active',
     updated_at = EXCLUDED.updated_at
@@ -38,16 +40,22 @@ RETURNING *;
 
 -- name: RenewMailboxSubscription :exec
 -- RenewMailboxSubscription records a renewal's new expiry, which
--- reauthorizes the subscription too: the row is active again.
+-- reauthorizes the subscription too: the row is active again — only while
+-- it still holds the subscription renewed and Graph has not removed it
+-- since the Watch read it (a lifecycle notification racing the PATCH), so a
+-- removed row is never made active again.
 UPDATE entra.mailbox_subscriptions SET
     expires_at = @expires_at::timestamptz,
     state = 'active',
     updated_at = @now::timestamptz
-WHERE object_id = @object_id;
+WHERE object_id = @object_id
+  AND subscription_id = @subscription_id::varchar
+  AND state <> 'removed';
 
 -- name: SetMailboxSubscriptionState :exec
 -- SetMailboxSubscriptionState sets the row's state: 'deleting' when Graph
--- refused the delete, so it is owed.
+-- refused the delete, so it is owed; 'conflict' when another installation's
+-- subscription holds the mailbox, so no create is tried for a day.
 UPDATE entra.mailbox_subscriptions SET state = @state, updated_at = @now::timestamptz
 WHERE object_id = @object_id;
 
@@ -56,20 +64,29 @@ WHERE object_id = @object_id;
 -- Graph, gone there, or past its expiry.
 DELETE FROM entra.mailbox_subscriptions WHERE object_id = @object_id;
 
--- name: MarkMailboxNotified :execrows
--- MarkMailboxNotified is a valid notification's one write (O11.5): the row
--- notified at now and, for a lifecycle event, its state ('reauthorize',
--- 'removed'). A row marked within the last five seconds is left alone unless
--- a lifecycle state is given, so a flood of notifications only makes the
--- mailbox due, one UPDATE at most per five seconds.
+-- name: MarkMailboxesNotified :execrows
+-- MarkMailboxesNotified is the plain notifications' one write for a whole
+-- request (O11.5): the rows of the subscription ids marked notified at now,
+-- in one UPDATE however many items named them. A row marked within the last
+-- five seconds is left alone, so a flood of notifications only makes the
+-- mailbox due, one write at most per five seconds.
 UPDATE entra.mailbox_subscriptions SET
     notified_at = @now::timestamptz,
-    state = COALESCE(sqlc.narg(lifecycle_state)::varchar, state),
     updated_at = @now::timestamptz
-WHERE subscription_id = @subscription_id::varchar
-  AND (notified_at IS NULL
-       OR notified_at + interval '5 seconds' < @now::timestamptz
-       OR sqlc.narg(lifecycle_state)::varchar IS NOT NULL);
+WHERE subscription_id = ANY(@subscription_ids::varchar[])
+  AND (notified_at IS NULL OR notified_at + interval '5 seconds' < @now::timestamptz);
+
+-- name: MarkMailboxLifecycle :execrows
+-- MarkMailboxLifecycle is a lifecycle notification's write, one row at a
+-- time (they are rare): the row notified at now, whatever it was marked
+-- within the last five seconds, and its state set ('reauthorize',
+-- 'removed') — unless it is 'deleting', a delete owed that no lifecycle
+-- event may forget.
+UPDATE entra.mailbox_subscriptions SET
+    notified_at = @now::timestamptz,
+    state = CASE WHEN state = 'deleting' THEN state ELSE @lifecycle_state::varchar END,
+    updated_at = @now::timestamptz
+WHERE subscription_id = @subscription_id::varchar;
 
 -- name: ListMailboxNotified :many
 -- ListMailboxNotified is what Notified answers: the mailboxes notified after
@@ -86,4 +103,4 @@ LIMIT @row_limit::integer;
 -- their expiry, not removed by Graph, and not owed a delete.
 SELECT count(*)::integer FROM entra.mailbox_subscriptions
 WHERE expires_at > @now::timestamptz
-  AND state NOT IN ('removed', 'deleting');
+  AND state NOT IN ('removed', 'deleting', 'conflict');

@@ -32,9 +32,14 @@ import (
 // has more than three days left, nor while a create's handshake failed
 // within the hour — and renews (PATCH) or creates (POST /subscriptions).
 // A create's clientState is 32 random bytes sent once and never stored: the
-// row keeps its SHA-256, written before the POST, so a notification racing
-// the 201 already finds it. The handshake's window on the connection row is
-// opened for 30 seconds before the POST and closed after it. Unwatch
+// row keeps its SHA-256, written before the POST with no subscription id —
+// a notification racing the 201 names an id no row holds yet and is ignored
+// like any unknown one; the person's next poll, and the next notification,
+// cover the change it carried. The handshake's window on the connection row
+// is opened for 30 seconds before the POST and closed after it. The row
+// keeps the webhook's address the create gave Graph: a Watch after
+// PUBLIC_BASE_URL moved deletes that subscription and creates one at the
+// new address, never renewing one whose notifications go elsewhere. Unwatch
 // deletes the subscription, keeping the row 'deleting' while Graph refuses.
 // Notified reads the rows and nothing else. No transaction and no pool
 // connection is held across a call to Graph: each query takes the pool and
@@ -66,6 +71,11 @@ const (
 	// clientStateBytes is the clientState's randomness: 32 bytes, 43
 	// characters of base64url without padding.
 	clientStateBytes = 32
+	// subscriptionConflictHold is how long a mailbox whose events another
+	// installation's subscription holds — the application shared, Graph
+	// answering 409 with none of this installation's to clear — is not
+	// tried again.
+	subscriptionConflictHold = 24 * time.Hour
 )
 
 // The states of a subscription's row (O11.4).
@@ -74,6 +84,7 @@ const (
 	subscriptionReauthorize = "reauthorize"
 	subscriptionRemoved     = "removed"
 	subscriptionDeleting    = "deleting"
+	subscriptionConflict    = "conflict"
 )
 
 // notificationsURL is the webhook's address, PUBLIC_BASE_URL +
@@ -142,13 +153,18 @@ func readSubscription(ctx context.Context, q *store.Queries, oid uuid.UUID) (*st
 //     mailbox the module does not manage;
 //   - nil, with no network, when the provider offers no notifications
 //     (notificationsURL), while a live subscription — an id, active, more
-//     than three days left — is held, and while a create's handshake failed
-//     within the last hour (O11.7);
+//     than three days left, made for the webhook's present address — is
+//     held, while a create's handshake failed within the last hour (O11.7),
+//     and while another installation's subscription held the mailbox
+//     within the last day (the row 'conflict', subscriptionConflictHold);
 //   - a renewal, PATCH /subscriptions/{id} with a new expiry, when the
 //     subscription is live with three days or less left, or marked
 //     reauthorize; a 404 there forgets the row and creates;
 //   - a create otherwise: no row, one removed or deleting, one whose create
-//     never answered, or past its expiry.
+//     never answered, past its expiry, or made for another address — that
+//     one deleted first (DELETE /subscriptions/{id}, a 404 done; any other
+//     refusal answered, the row kept for the next Watch), so the old
+//     address is never notified again.
 //
 // A 403 is ErrMailboxDenied, a mailbox gone ErrMailboxGone (mailboxRefusal).
 func (m *mailboxCalendar) Watch(ctx context.Context, mailbox string) error {
@@ -165,8 +181,12 @@ func (m *mailboxCalendar) Watch(ctx context.Context, mailbox string) error {
 	if err != nil {
 		return err
 	}
-	live := row != nil && row.SubscriptionID != nil && row.ExpiresAt != nil && row.ExpiresAt.After(now) &&
-		(row.State == subscriptionActive || row.State == subscriptionReauthorize)
+	if row != nil && row.State == subscriptionConflict && now.Sub(row.UpdatedAt) < subscriptionConflictHold {
+		return nil
+	}
+	held := row != nil && row.SubscriptionID != nil && row.ExpiresAt != nil && row.ExpiresAt.After(now)
+	moved := held && (row.NotificationUrl == nil || *row.NotificationUrl != target)
+	live := held && !moved && (row.State == subscriptionActive || row.State == subscriptionReauthorize)
 	if live && row.State == subscriptionActive && row.ExpiresAt.After(now.Add(subscriptionRenewWithin)) {
 		return nil
 	}
@@ -180,6 +200,15 @@ func (m *mailboxCalendar) Watch(ctx context.Context, mailbox string) error {
 	if err := m.withCredential(ctx, &s); err != nil {
 		return err
 	}
+	if moved && row.State != subscriptionRemoved {
+		sid, ok := subscriptionID(*row.SubscriptionID)
+		if !ok {
+			return fmt.Errorf("%w: a stored subscription id that is no GUID", errTenantUnreachable)
+		}
+		if err := m.client.del(ctx, s.cred, subscriptionPath(sid), noWords); err != nil && !isStatus(err, http.StatusNotFound) {
+			return mailboxRefusal(err)
+		}
+	}
 	if live {
 		renewed, err := m.renew(ctx, s, *row.SubscriptionID, now)
 		if err != nil || renewed {
@@ -191,7 +220,9 @@ func (m *mailboxCalendar) Watch(ctx context.Context, mailbox string) error {
 
 // renew is the renewal of the subscription id: PATCH of its expiry to now +
 // subscriptionLifetime, which reauthorizes it too, and the row active with
-// the expiry Graph answered. false with no error when Graph no longer holds
+// the expiry Graph answered — unless the row no longer holds id, or a
+// lifecycle notification marked it removed meanwhile: left as it is, for
+// the next Watch. false with no error when Graph no longer holds
 // it (404): the row is forgotten, for the caller to create.
 func (m *mailboxCalendar) renew(ctx context.Context, s mailboxSession, id string, now time.Time) (bool, error) {
 	sid, ok := subscriptionID(id)
@@ -212,7 +243,7 @@ func (m *mailboxCalendar) renew(ctx context.Context, s mailboxSession, id string
 		return false, mailboxRefusal(err)
 	}
 	if err := s.q.RenewMailboxSubscription(ctx, store.RenewMailboxSubscriptionParams{
-		ExpiresAt: expiryOf(answer.Expiration, asked, now), Now: m.client.now(), ObjectID: s.oid,
+		ExpiresAt: expiryOf(answer.Expiration, asked, now), Now: m.client.now(), ObjectID: s.oid, SubscriptionID: sid.String(),
 	}); err != nil {
 		return false, fmt.Errorf("entra: record the subscription's renewal: %w", err)
 	}
@@ -220,7 +251,8 @@ func (m *mailboxCalendar) renew(ctx context.Context, s mailboxSession, id string
 }
 
 // create subscribes to the mailbox's events (design O11.2): a fresh
-// clientState, its hash upserted on the row with no id before the POST, the
+// clientState, its hash and target upserted on the row with no id before
+// the POST, the
 // handshake's window opened for subscriptionValidationWindow and closed
 // after; 201 stores the id — a GUID, strictly — and the expiry, and clears
 // the connection's unreachable mark when unreachable says one was set. A 400
@@ -229,7 +261,12 @@ func (m *mailboxCalendar) renew(ctx context.Context, s mailboxSession, id string
 // not reach the webhook, and no create is tried for an hour. A 409 — Graph
 // holds a subscription of this application on the resource, its row lost —
 // clears this installation's (clearConflict) and, when retry, creates once
-// more. Anything else through mailboxRefusal, the row kept for the next
+// more; when clearConflict read the whole list and found none of this
+// installation's, the
+// subscription is another installation's sharing the application, and the
+// row is marked 'conflict' and nil answered: no create is tried on that
+// mailbox for subscriptionConflictHold, and the poll alone runs for it.
+// Anything else through mailboxRefusal, the row kept for the next
 // Watch.
 func (m *mailboxCalendar) create(ctx context.Context, s mailboxSession, target string, unreachable, retry bool) error {
 	secret := make([]byte, clientStateBytes)
@@ -240,7 +277,7 @@ func (m *mailboxCalendar) create(ctx context.Context, s mailboxSession, target s
 	hash := sha256.Sum256([]byte(clientState))
 	now := m.client.now()
 	if _, err := s.q.UpsertMailboxSubscription(ctx, store.UpsertMailboxSubscriptionParams{
-		ObjectID: s.oid, ClientStateHash: hash[:], Now: now,
+		ObjectID: s.oid, ClientStateHash: hash[:], NotificationUrl: target, Now: now,
 	}); err != nil {
 		return fmt.Errorf("entra: record the subscription's create: %w", err)
 	}
@@ -273,8 +310,19 @@ func (m *mailboxCalendar) create(ctx context.Context, s mailboxSession, target s
 		}
 		return nil
 	case refused && g.Status == http.StatusConflict && retry:
-		if err := m.clearConflict(ctx, s, target); err != nil {
+		foreign, err := m.clearConflict(ctx, s, target)
+		if err != nil {
 			return err
+		}
+		if foreign {
+			m.client.logger.WarnContext(ctx, "entra: another installation's subscription holds a mailbox's changes; it is not watched for a day",
+				"tenant", s.cred.tenantID.String())
+			if err := s.q.SetMailboxSubscriptionState(ctx, store.SetMailboxSubscriptionStateParams{
+				State: subscriptionConflict, Now: m.client.now(), ObjectID: s.oid,
+			}); err != nil {
+				return fmt.Errorf("entra: record the subscription's conflict: %w", err)
+			}
+			return nil
 		}
 		return m.create(ctx, s, target, unreachable, false)
 	default:
@@ -287,7 +335,7 @@ func (m *mailboxCalendar) create(ctx context.Context, s mailboxSession, target s
 	id := sid.String()
 	expires := expiryOf(answer.Expiration, asked, now)
 	if _, err := s.q.UpsertMailboxSubscription(ctx, store.UpsertMailboxSubscriptionParams{
-		ObjectID: s.oid, SubscriptionID: &id, ClientStateHash: hash[:], ExpiresAt: &expires, Now: m.client.now(),
+		ObjectID: s.oid, SubscriptionID: &id, ClientStateHash: hash[:], NotificationUrl: target, ExpiresAt: &expires, Now: m.client.now(),
 	}); err != nil {
 		return fmt.Errorf("entra: record the subscription: %w", err)
 	}
@@ -324,21 +372,23 @@ func (m *mailboxCalendar) withValidationWindow(ctx context.Context, q *store.Que
 // (listPath); a subscription is deleted when its resource names this
 // mailbox's events, whatever its case and its leading slash, and its
 // notificationUrl is target exactly — another installation's sharing the
-// application is left alone. A delete answered 404 is done.
-func (m *mailboxCalendar) clearConflict(ctx context.Context, s mailboxSession, target string) error {
+// application is left alone. A delete answered 404 is done. foreign is true
+// when the whole list was read and none of this installation's was on the
+// mailbox: the conflict is another installation's.
+func (m *mailboxCalendar) clearConflict(ctx context.Context, s mailboxSession, target string) (foreign bool, err error) {
 	resource := strings.ToLower(strings.TrimPrefix(userPath(s.oid, "/events"), "/"))
 	var ours []uuid.UUID
 	path := "/subscriptions"
 	for page := 1; path != "" && page <= subscriptionListPages; page++ {
 		if err := ctx.Err(); err != nil {
-			return err
+			return false, err
 		}
 		var answer struct {
 			Value    []graphSubscription `json:"value"`
 			NextLink string              `json:"@odata.nextLink"`
 		}
 		if err := m.client.get(ctx, s.cred, path, &answer, noWords); err != nil {
-			return mailboxRefusal(err)
+			return false, mailboxRefusal(err)
 		}
 		for _, sub := range answer.Value {
 			if strings.ToLower(strings.TrimPrefix(sub.Resource, "/")) != resource || sub.NotificationURL != target {
@@ -352,17 +402,17 @@ func (m *mailboxCalendar) clearConflict(ctx context.Context, s mailboxSession, t
 		if answer.NextLink != "" {
 			next, ok := listPath(answer.NextLink, "/subscriptions")
 			if !ok {
-				return fmt.Errorf("%w: a next page off the subscriptions' list", errTenantUnreachable)
+				return false, fmt.Errorf("%w: a next page off the subscriptions' list", errTenantUnreachable)
 			}
 			path = next
 		}
 	}
 	for _, id := range ours {
 		if err := m.client.del(ctx, s.cred, subscriptionPath(id), noWords); err != nil && !isStatus(err, http.StatusNotFound) {
-			return mailboxRefusal(err)
+			return false, mailboxRefusal(err)
 		}
 	}
-	return nil
+	return path == "" && len(ours) == 0, nil
 }
 
 // Unwatch deletes the mailbox's subscription (design O11.3). No row — the

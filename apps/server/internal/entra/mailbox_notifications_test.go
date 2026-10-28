@@ -11,9 +11,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/entra/gen"
 	"github.com/vantigo-io/vantigo/server/internal/entra/graphtest"
+	"github.com/vantigo-io/vantigo/server/internal/entra/store"
 	"github.com/vantigo-io/vantigo/server/internal/modtest"
 )
 
@@ -128,8 +131,9 @@ func TestMailboxWatch_Creates(t *testing.T) {
 	}
 	hash := sha256.Sum256([]byte(s.ClientState))
 	if n := h.Count(t, `SELECT count(*) FROM entra.mailbox_subscriptions
-	                    WHERE object_id = $1 AND subscription_id = $2 AND client_state_hash = $3 AND expires_at = $4 AND state = 'active'`,
-		mailbox, s.ID, hash[:], s.Expiration); n != 1 {
+	                    WHERE object_id = $1 AND subscription_id = $2 AND client_state_hash = $3 AND expires_at = $4 AND state = 'active'
+	                      AND notification_url = $5`,
+		mailbox, s.ID, hash[:], s.Expiration, webhookURL); n != 1 {
 		t.Errorf("the row of %s is not the subscription", mailbox)
 	}
 	if n := h.Count(t, `SELECT count(*) FROM entra.mailbox_subscriptions m WHERE m::text LIKE '%' || $1 || '%'`, s.ClientState); n != 0 {
@@ -285,15 +289,135 @@ func TestMailboxWatch_Conflict(t *testing.T) {
 		t.Error("another mailbox's subscription was deleted")
 	}
 
-	// Another installation's on a third mailbox: left alone, the create fails.
+	// Another installation's on a third mailbox: left alone, the row marked
+	// conflict and nil answered; for a day no Watch of that mailbox calls
+	// anything, and after it the create is tried again.
 	third := mailboxUser(t, h, g)
 	foreign := g.AddSubscription(graphtest.Subscription{Resource: "/users/" + third + "/events", ChangeType: "created,updated,deleted",
-		NotificationURL: "https://another.example.com/api/v1/entra/mailbox-notifications", Expiration: expires})
-	if err := p.Watch(ctx, third); err == nil || errors.Is(err, contracts.ErrMailboxDenied) {
-		t.Errorf("Watch beside another installation's: %v, want a failure", err)
+		NotificationURL: "https://another.example.com/api/v1/entra/mailbox-notifications", Expiration: expires.Add(48 * time.Hour)})
+	if err := p.Watch(ctx, third); err != nil {
+		t.Errorf("Watch beside another installation's: %v, want nil", err)
 	}
 	if subscriptionOf(t, g, third).ID != foreign.ID {
 		t.Error("another installation's subscription was deleted")
+	}
+	if n := h.Count(t, `SELECT count(*) FROM entra.mailbox_subscriptions WHERE object_id = $1 AND state = 'conflict' AND subscription_id IS NULL`, third); n != 1 {
+		t.Error("the conflict is not recorded on the row")
+	}
+	h.Advance(23 * time.Hour)
+	before := len(g.Calls())
+	if err := p.Watch(ctx, third); err != nil || len(g.Calls()) != before {
+		t.Errorf("Watch within the day: %v, called %v", err, methods(g.Calls()[before:]))
+	}
+	h.Advance(2 * time.Hour)
+	before = len(g.Calls())
+	if err := p.Watch(ctx, third); err != nil {
+		t.Errorf("Watch after the day: %v", err)
+	}
+	if got := methods(subscriptionCalls(g.Calls()[before:])); len(got) == 0 || got[0] != "POST Conflict" {
+		t.Errorf("Watch after the day called %v, want the create tried again", got)
+	}
+}
+
+// A subscription made for another address — PUBLIC_BASE_URL has moved since
+// its create — is never renewed: Watch deletes it, by the row's id, and
+// creates one at the present address, which the row then holds; a delete
+// Graph answers 404 is done. A delete refused keeps the row, and its
+// refusal is answered.
+func TestMailboxWatch_AMovedAddressIsResubscribed(t *testing.T) {
+	ctx := context.Background()
+	h, g, _ := newNoticesHarness(t)
+	p := mailboxProvider(h)
+	mailbox := mailboxUser(t, h, g)
+	const oldURL = "https://old.example.com" + noticesPath
+	moved := func() graphtest.Subscription {
+		t.Helper()
+		if err := p.Watch(ctx, mailbox); err != nil {
+			t.Fatal(err)
+		}
+		s := subscriptionOf(t, g, mailbox)
+		h.Exec(t, `UPDATE entra.mailbox_subscriptions SET notification_url = $2 WHERE object_id = $1`, mailbox, oldURL)
+		return s
+	}
+
+	old := moved()
+	before := len(g.Calls())
+	if err := p.Watch(ctx, mailbox); err != nil {
+		t.Fatalf("Watch after the move: %v", err)
+	}
+	if got := strings.Join(methods(subscriptionCalls(g.Calls()[before:])), ","); got != "DELETE No Content,POST Created" {
+		t.Errorf("Watch after the move called %s, want the old one deleted and a create", got)
+	}
+	made := subscriptionOf(t, g, mailbox)
+	if made.ID == old.ID || made.NotificationURL != webhookURL {
+		t.Errorf("the subscription after the move: %+v", made)
+	}
+	if n := h.Count(t, `SELECT count(*) FROM entra.mailbox_subscriptions WHERE object_id = $1 AND subscription_id = $2 AND notification_url = $3`,
+		mailbox, made.ID, webhookURL); n != 1 {
+		t.Error("the row does not hold the new subscription at the present address")
+	}
+
+	// Gone from Graph already: the 404 is done, and the create follows.
+	g.RemoveSubscription(moved().ID)
+	before = len(g.Calls())
+	if err := p.Watch(ctx, mailbox); err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(methods(subscriptionCalls(g.Calls()[before:])), ","); got != "DELETE Not Found,POST Created" {
+		t.Errorf("Watch after the move, the old one gone: %s", got)
+	}
+
+	// Refused: answered, the row kept as it was, nothing created.
+	kept := moved()
+	g.EditUser(mailbox, func(u *graphtest.User) { u.MailboxDenied = true })
+	before = len(g.Calls())
+	if err := p.Watch(ctx, mailbox); !errors.Is(err, contracts.ErrMailboxDenied) {
+		t.Errorf("Watch, the delete refused: %v, want ErrMailboxDenied", err)
+	}
+	if got := strings.Join(methods(subscriptionCalls(g.Calls()[before:])), ","); got != "DELETE Forbidden" {
+		t.Errorf("Watch, the delete refused, called %s", got)
+	}
+	if n := h.Count(t, `SELECT count(*) FROM entra.mailbox_subscriptions WHERE object_id = $1 AND subscription_id = $2 AND notification_url = $3`,
+		mailbox, kept.ID, oldURL); n != 1 {
+		t.Error("the row of the refused delete was not kept")
+	}
+}
+
+// A renewal's write only touches the row that still holds the subscription
+// renewed and that Graph has not removed meanwhile: a removed row is never
+// made active again.
+func TestMailboxWatch_ARenewalNeverRevivesARemovedRow(t *testing.T) {
+	ctx := context.Background()
+	h, g, _ := newNoticesHarness(t)
+	mailbox := mailboxUser(t, h, g)
+	if err := mailboxProvider(h).Watch(ctx, mailbox); err != nil {
+		t.Fatal(err)
+	}
+	s := subscriptionOf(t, g, mailbox)
+	q := store.New(h.Pool())
+	oid := uuid.MustParse(mailbox)
+	renew := func(id string) {
+		t.Helper()
+		if err := q.RenewMailboxSubscription(ctx, store.RenewMailboxSubscriptionParams{
+			ExpiresAt: h.Now().Add(time.Hour), Now: h.Now(), ObjectID: oid, SubscriptionID: id,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	h.Exec(t, `UPDATE entra.mailbox_subscriptions SET state = 'removed' WHERE object_id = $1`, mailbox)
+	renew(s.ID)
+	if n := h.Count(t, `SELECT count(*) FROM entra.mailbox_subscriptions WHERE object_id = $1 AND state = 'removed'`, mailbox); n != 1 {
+		t.Error("a renewal made a removed row active")
+	}
+	h.Exec(t, `UPDATE entra.mailbox_subscriptions SET state = 'reauthorize' WHERE object_id = $1`, mailbox)
+	renew(uuid.NewString())
+	if n := h.Count(t, `SELECT count(*) FROM entra.mailbox_subscriptions WHERE object_id = $1 AND state = 'reauthorize'`, mailbox); n != 1 {
+		t.Error("a renewal of another subscription wrote the row")
+	}
+	renew(s.ID)
+	if n := h.Count(t, `SELECT count(*) FROM entra.mailbox_subscriptions WHERE object_id = $1 AND state = 'active' AND expires_at = $2`,
+		mailbox, h.Now().Add(time.Hour)); n != 1 {
+		t.Error("the renewal of the row's subscription was not written")
 	}
 }
 

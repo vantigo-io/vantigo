@@ -202,6 +202,25 @@ func TestMailboxNotifications_AMovedMailboxUnwatchesTheOldOne(t *testing.T) {
 	}
 }
 
+// An Unwatch denied does not hold a mailbox's move back: the old one's
+// copies are cleaned up, the new mailbox synced and watched.
+func TestMailboxNotifications_AMoveGoesOnWhenTheOldUnwatchIsDenied(t *testing.T) {
+	t.Parallel()
+	r := newMailboxRig(t)
+	_, me, mb := watchedPerson(t, r)
+	r.box.FailWith("Unwatch", contracts.ErrMailboxDenied)
+	r.staff.set(me, &contracts.DirectoryAccount{Provider: "entra", ExternalID: "oid-new", Enabled: true})
+	r.Advance(16 * time.Minute)
+	mailboxCycle(t, r)
+	if row := readSyncRow(t, r, me); row.state != "active" || row.errCode != nil {
+		t.Errorf("the row = %+v, want active with no error", row)
+	}
+	if len(r.box.EventsIn(mb, "")) != 0 || len(r.box.EventsIn("oid-new", "")) != 1 || !r.box.Watched("oid-new") {
+		t.Errorf("old events %d, new events %d, new watched %v: the move did not go on",
+			len(r.box.EventsIn(mb, "")), len(r.box.EventsIn("oid-new", "")), r.box.Watched("oid-new"))
+	}
+}
+
 func TestMailboxNotifications_ATargetChangeKeepsTheSubscription(t *testing.T) {
 	t.Parallel()
 	r := newMailboxRig(t)
@@ -226,7 +245,6 @@ func TestMailboxNotifications_AnUnwatchRefusedKeepsTheCleanUpOwed(t *testing.T) 
 		err  error
 		code string
 	}{
-		{"denied", contracts.ErrMailboxDenied, "mailbox_denied"},
 		{"the provider unusable", contracts.ErrMailboxUnavailable, "unavailable"},
 		{"a failure", errors.New("graph: 503"), "failed"},
 	} {
@@ -254,7 +272,9 @@ func TestMailboxNotifications_AnUnwatchRefusedKeepsTheCleanUpOwed(t *testing.T) 
 			}
 		})
 	}
-	for _, err := range []error{contracts.ErrMailboxGone, contracts.ErrMailboxUnknown} {
+	// Gone, unknown or denied: the subscription is left to the provider —
+	// a denied delete lapses within seven days — and the clean-up goes on.
+	for _, err := range []error{contracts.ErrMailboxGone, contracts.ErrMailboxUnknown, contracts.ErrMailboxDenied} {
 		t.Run(err.Error(), func(t *testing.T) {
 			t.Parallel()
 			r := newMailboxRig(t)
@@ -334,8 +354,85 @@ func TestMailboxNotifications_ANoticeMakesTheRightSyncsDue(t *testing.T) {
 		t.Errorf("synced %d on the next cycle, want none", n)
 	}
 	asked := calls(r, from, "Notified")
-	if len(asked) != 1 || !asked[0].From.Equal(synced.Add(4*time.Minute)) {
-		t.Errorf("Notified asked %+v, want from the latest notice taken", asked)
+	if len(asked) != 1 || !asked[0].From.Equal(synced.Add(4*time.Minute-30*time.Second)) {
+		t.Errorf("Notified asked %+v, want from the latest notice taken, less the overlap", asked)
+	}
+}
+
+// Notified is asked from 30 seconds before the latest notice taken: a
+// notice marked late — at an instant before one already taken — still
+// makes its person due, and the notice taken again makes no one due twice.
+func TestMailboxNotifications_ANoticeMarkedLateIsStillTaken(t *testing.T) {
+	t.Parallel()
+	r := newMailboxRig(t)
+	w := mailboxWorker(t, r)
+	cycle := func() int {
+		t.Helper()
+		ran, n, err := w.RunCycle(context.Background())
+		if err != nil || !ran {
+			t.Fatalf("cycle: ran %v, %v", ran, err)
+		}
+		return n
+	}
+	_, first, mbFirst := watchedPerson(t, r)
+	_, late, mbLate := watchedPerson(t, r)
+	synced := r.Now()
+
+	r.Advance(5 * time.Minute)
+	taken := synced.Add(4 * time.Minute)
+	r.box.Notify(mbFirst, taken)
+	if n := cycle(); n != 1 || !lastSynced(t, r, first).Equal(r.Now()) {
+		t.Fatalf("synced %d, want the first notified person", n)
+	}
+
+	// Marked after the cycle read, at an instant before the notice taken.
+	r.box.Notify(mbLate, taken.Add(-10*time.Second))
+	r.Advance(time.Minute)
+	if n := cycle(); n != 1 || !lastSynced(t, r, late).Equal(r.Now()) {
+		t.Errorf("synced %d, want the person notified late", n)
+	}
+	if !lastSynced(t, r, first).Equal(r.Now().Add(-time.Minute)) {
+		t.Error("the notice taken again made the first person due twice")
+	}
+}
+
+// A notice never overrides the backoff: a person whose last sync failed —
+// beside a push that stood, or wholly — is synced when the backoff says,
+// not when a notice comes.
+func TestMailboxNotifications_ANoticeDoesNotOverrideTheBackoff(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name, method, state string
+	}{
+		{"pushed but the busy read failed", "Delta", "active"},
+		{"the push failed", "Apply", "pending"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			r := newMailboxRig(t)
+			w := mailboxWorker(t, r)
+			c, me, mb := r.person(t)
+			create(t, c, timed(t, "Plan", oslo, "2026-09-14T09:00", "2026-09-14T10:00"))
+			turnOn(t, c, "default", "full", "calendar.appointment")
+			r.box.FailWith(tc.method, errors.New("graph: 503"))
+			if _, _, err := w.RunCycle(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			row := readSyncRow(t, r, me)
+			if row.state != tc.state || row.attempts != 1 || row.next == nil || !row.next.Equal(r.Now().Add(time.Minute)) {
+				t.Fatalf("the row = %+v, want %s on the backoff", row, tc.state)
+			}
+			backoff := *row.next
+			r.box.Notify(mb, r.Now().Add(10*time.Second))
+			r.Advance(30 * time.Second)
+			ran, n, err := w.RunCycle(context.Background())
+			if err != nil || !ran || n != 0 {
+				t.Fatalf("cycle: ran %v, synced %d, %v; want none synced", ran, n, err)
+			}
+			if row := readSyncRow(t, r, me); row.next == nil || !row.next.Equal(backoff) {
+				t.Errorf("next %v, want the backoff's %v", row.next, backoff)
+			}
+		})
 	}
 }
 
@@ -344,8 +441,8 @@ func TestMailboxNotifications_TheFirstCycleAsksFromAPollAgo(t *testing.T) {
 	r := newMailboxRig(t)
 	mailboxCycle(t, r)
 	asked := calls(r, 0, "Notified")
-	if len(asked) != 1 || !asked[0].From.Equal(r.Now().Add(-15*time.Minute)) {
-		t.Errorf("Notified asked %+v, want from a poll ago", asked)
+	if len(asked) != 1 || !asked[0].From.Equal(r.Now().Add(-15*time.Minute-30*time.Second)) {
+		t.Errorf("Notified asked %+v, want from a poll ago, less the overlap", asked)
 	}
 }
 

@@ -242,26 +242,37 @@ func (q *Queries) LockMailboxSync(ctx context.Context, userID uuid.UUID) (Calend
 }
 
 const markMailboxSyncNotified = `-- name: MarkMailboxSyncNotified :execrows
-UPDATE calendar.mailbox_sync SET next_sync_at = $1::timestamptz
-WHERE lower(mailbox) = lower($2::varchar)
-  AND enabled
-  AND state IN ('active', 'pending')
-  AND (last_synced_at IS NULL OR last_synced_at < $3::timestamptz)
-  AND (next_sync_at IS NULL OR next_sync_at > $1::timestamptz)
+UPDATE calendar.mailbox_sync s SET next_sync_at = $1::timestamptz
+FROM (
+    SELECT lower(n.mailbox) AS mailbox, max(n.at) AS at
+    FROM (SELECT unnest($2::text[]) AS mailbox, unnest($3::timestamptz[]) AS at) AS n
+    GROUP BY lower(n.mailbox)
+) AS notice
+WHERE lower(s.mailbox) = notice.mailbox
+  AND s.enabled
+  AND s.state IN ('active', 'pending')
+  AND s.attempts = 0
+  AND (s.last_synced_at IS NULL OR s.last_synced_at < notice.at)
+  AND (s.next_sync_at IS NULL OR s.next_sync_at > $1::timestamptz)
 `
 
 type MarkMailboxSyncNotifiedParams struct {
-	Now     time.Time
-	Mailbox string
-	At      time.Time
+	Now       time.Time
+	Mailboxes []string
+	Ats       []time.Time
 }
 
-// MarkMailboxSyncNotified makes due at now the syncs of the mailbox a change
-// notification named at at (calendar Outlook sync design O11.6): the rows of
-// that mailbox, compared case-insensitively, that are on and active or
-// pending, whose last sync started before at, and which are not due already.
+// MarkMailboxSyncNotified makes due at now the syncs of the mailboxes a
+// cycle's change notices named, each at its at (calendar Outlook sync
+// design O11.6), in one statement for the whole cycle — the two arrays,
+// of equal length, unnested side by side and, per mailbox compared case-insensitively, the
+// latest at kept: the rows of that mailbox that are on and active or
+// pending, not backing off a failure (attempts 0: a notice never overrides
+// the backoff), whose last sync started before at, and which are not due
+// already. A notice asked for twice marks nothing the second time once the
+// row has synced since. Through the index on lower(mailbox) of the rows on.
 func (q *Queries) MarkMailboxSyncNotified(ctx context.Context, arg MarkMailboxSyncNotifiedParams) (int64, error) {
-	result, err := q.db.Exec(ctx, markMailboxSyncNotified, arg.Now, arg.Mailbox, arg.At)
+	result, err := q.db.Exec(ctx, markMailboxSyncNotified, arg.Now, arg.Mailboxes, arg.Ats)
 	if err != nil {
 		return 0, err
 	}

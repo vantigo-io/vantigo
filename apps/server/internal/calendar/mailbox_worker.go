@@ -100,11 +100,15 @@ import (
 // Change notifications (O11.6): each cycle, before it picks the due, asks
 // Notified for the mailboxes the directory notified since the latest notice
 // it took (held on the worker, the poll interval ago at its first cycle),
-// and makes due at once — one short statement a notice — each row of that
-// mailbox, compared case-insensitively, that is on, active or pending, last
-// synced before the notice and not due already. A notice is a nudge: the
-// reads stay the truth. A Notified that fails is logged and the cycle goes
-// on; the poll runs either way.
+// less mailboxNoticesOverlap — a notice whose mark committed after a later
+// one was read, or stamped by another replica's slightly slower clock, is
+// asked for again rather than lost — and makes due at once, in one
+// statement for the cycle's notices, each row of a notified mailbox,
+// compared case-insensitively, that is on, active or pending, not backing
+// off a failure, last synced before the notice and not due already. A
+// notice asked for twice marks nothing once the row has synced since. A
+// notice is a nudge: the reads stay the truth. A Notified that fails is
+// logged and the cycle goes on; the poll runs either way.
 //
 // The clean-up (O8): target own deletes the Vantigo calendar — only one the
 // provider made, and only when it holds no meeting (none Find answers as
@@ -121,8 +125,11 @@ import (
 // result that leaves the sync off or unavailable (O9.9). Every clean-up but
 // a target change's also Unwatches the mailbox it cleans (O11.6), once its
 // copies are removed or forgotten: the subscription is the mailbox's, so a
-// target change keeps it. Unwatch refused as gone or unknown is forgotten;
-// anything else keeps the clean-up owed as a refused delete does. Nothing of
+// target change keeps it. Unwatch refused as gone, unknown or denied is
+// logged by its code and the clean-up goes on — a subscription Graph will
+// not let the module delete lapses within seven days, and its notifications
+// name no sync; the provider unusable or a failure keeps the clean-up owed
+// as a refused delete does. Nothing of
 // a person's mailbox, their copies' titles or the provider's words (which
 // carry the mailbox's paths) is ever logged: an error is logged by its code.
 
@@ -137,6 +144,13 @@ const (
 	// mailboxTick is how often the worker wakes: a nudged person is synced
 	// within a minute.
 	mailboxTick = time.Minute
+
+	// mailboxNoticesOverlap is how far before the latest notice taken the
+	// next Notified asks from (design O11.6): a notice marked late — its
+	// write committed after a later one was read, or stamped by a replica
+	// whose clock runs a little behind — is still taken. Taking a notice
+	// twice is harmless: the person has synced since.
+	mailboxNoticesOverlap = 30 * time.Second
 
 	// mailboxBatch bounds one cycle; a backlog drains over cycles.
 	mailboxBatch = 50
@@ -189,6 +203,10 @@ type MailboxSyncWorker struct {
 	// (design O11.6): zero until the first cycle sets it a poll ago.
 	noticesMu    sync.Mutex
 	noticesSince time.Time
+	// noticesFull is whether the last Notified answered
+	// contracts.MailboxNoticesMax: the next asks from noticesSince exactly,
+	// the next page, not with the overlap that would answer the same page.
+	noticesFull bool
 }
 
 var _ worker.Worker = (*MailboxSyncWorker)(nil)
@@ -301,12 +319,15 @@ func (w *MailboxSyncWorker) RunCycle(ctx context.Context) (bool, int, error) {
 }
 
 // takeNotices makes the notified people's syncs due (design O11.6): it asks
-// the provider for the mailboxes notified since the latest notice taken and
-// marks each one's rows due at now, one short statement a notice, holding no
-// transaction across the call. noticesSince moves on to the latest At
-// marked; a notice whose mark fails stops the marking there, so it is asked
-// for again next cycle. Without a provider nothing is asked; a failing
-// Notified is logged by its code and the cycle goes on.
+// the provider for the mailboxes notified since mailboxNoticesOverlap
+// before the latest notice taken — since that notice itself after a full
+// page (noticesFull), so a page of contracts.MailboxNoticesMax is followed
+// by the next rather than asked again — and marks their rows due at now in
+// one statement, holding no transaction across the call. noticesSince
+// moves on to the latest At only when that statement worked; one that
+// fails is logged, and the same notices are asked for again next cycle.
+// Without a provider nothing is asked; a failing Notified is logged by its
+// code and the cycle goes on.
 func (w *MailboxSyncWorker) takeNotices(ctx context.Context) {
 	if w.srv.mailboxCalendar() == nil {
 		return
@@ -317,31 +338,39 @@ func (w *MailboxSyncWorker) takeNotices(ctx context.Context) {
 	if w.noticesSince.IsZero() {
 		w.noticesSince = now.Add(-w.poll())
 	}
-	notices, err := w.srv.mailboxNotified(ctx, w.noticesSince)
+	since := w.noticesSince.Add(-mailboxNoticesOverlap)
+	if w.noticesFull {
+		since = w.noticesSince
+	}
+	notices, err := w.srv.mailboxNotified(ctx, since)
 	if err != nil {
 		w.deps.Logger.WarnContext(ctx, "calendar: the mailboxes notified could not be read; the poll goes on",
 			"worker", mailboxWorkerName, "error", mailboxErrorCode(err))
 		return
 	}
-	marked := int64(0)
-	for _, n := range notices {
-		rows, err := w.srv.queries().MarkMailboxSyncNotified(ctx, store.MarkMailboxSyncNotifiedParams{
-			Now: now, Mailbox: n.Mailbox, At: n.At,
-		})
-		if err != nil {
-			w.deps.Logger.WarnContext(ctx, "calendar: a notified mailbox's sync could not be made due; it is asked for again",
-				"worker", mailboxWorkerName, "error", mailboxErrorCode(err))
-			break
-		}
-		marked += rows
-		if n.At.After(w.noticesSince) {
-			w.noticesSince = n.At
+	if len(notices) == 0 {
+		w.noticesFull = false
+		return
+	}
+	mailboxes, ats := make([]string, len(notices)), make([]time.Time, len(notices))
+	latest := w.noticesSince
+	for i, n := range notices {
+		mailboxes[i], ats[i] = n.Mailbox, n.At
+		if n.At.After(latest) {
+			latest = n.At
 		}
 	}
-	if len(notices) > 0 {
-		w.deps.Logger.DebugContext(ctx, "calendar: mailbox change notices taken",
-			"worker", mailboxWorkerName, "notices", len(notices), "due", marked)
+	marked, err := w.srv.queries().MarkMailboxSyncNotified(ctx, store.MarkMailboxSyncNotifiedParams{
+		Now: now, Mailboxes: mailboxes, Ats: ats,
+	})
+	if err != nil {
+		w.deps.Logger.WarnContext(ctx, "calendar: the notified mailboxes' syncs could not be made due; they are asked for again",
+			"worker", mailboxWorkerName, "error", mailboxErrorCode(err))
+		return
 	}
+	w.noticesSince, w.noticesFull = latest, len(notices) >= contracts.MailboxNoticesMax
+	w.deps.Logger.DebugContext(ctx, "calendar: mailbox change notices taken",
+		"worker", mailboxWorkerName, "notices", len(notices), "due", marked)
 }
 
 // mailboxResult is what one person's sync writes to their row.
@@ -808,10 +837,12 @@ func (w *MailboxSyncWorker) apply(ctx, call context.Context, userID uuid.UUID, m
 // unwatch (every clean-up but a target change's) also deletes the mailbox's
 // subscription (design O11.6), after the copies — they are what the person
 // sees, so an Unwatch refused does not hold them back — and before anything
-// is forgotten, so an Unwatch denied, unusable or failed keeps the clean-up
-// owed whole, retried as a refused delete is (the deletes it repeats are
-// done or gone by then). Gone or unknown, the subscription is forgotten
-// with the mailbox.
+// is forgotten, so an Unwatch the provider could not make (unusable) or that
+// failed keeps the clean-up owed whole, retried as a refused delete is (the
+// deletes it repeats are done or gone by then). Gone, unknown or denied, the
+// subscription is left to the provider — a denied delete stays owed there,
+// and Graph's subscription lapses within seven days — and the clean-up,
+// a mailbox move's among them, goes on.
 func (w *MailboxSyncWorker) cleanup(ctx, call context.Context, r *store.CalendarMailboxSync, now time.Time, unwatch bool) error {
 	if r.Mailbox != nil {
 		mailbox := *r.Mailbox
@@ -848,8 +879,9 @@ func (w *MailboxSyncWorker) cleanup(ctx, call context.Context, r *store.Calendar
 			err := w.srv.mailboxUnwatch(call, mailbox)
 			switch {
 			case err == nil:
-			case errors.Is(err, contracts.ErrMailboxGone) || errors.Is(err, contracts.ErrMailboxUnknown):
-				w.deps.Logger.InfoContext(ctx, "calendar: a person's mailbox is no longer there to unwatch; its subscription is forgotten",
+			case errors.Is(err, contracts.ErrMailboxGone) || errors.Is(err, contracts.ErrMailboxUnknown) ||
+				errors.Is(err, contracts.ErrMailboxDenied):
+				w.deps.Logger.InfoContext(ctx, "calendar: a person's mailbox could not be unwatched; its subscription is left to lapse and the clean-up goes on",
 					"worker", mailboxWorkerName, "user_id", r.UserID.String(), "error", mailboxErrorCode(err))
 			default:
 				return err

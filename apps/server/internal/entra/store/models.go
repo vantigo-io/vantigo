@@ -107,6 +107,7 @@ type EntraMailboxSubscription struct {
 	ObjectID        uuid.UUID
 	SubscriptionID  *string
 	ClientStateHash []byte
+	NotificationUrl *string
 	ExpiresAt       *time.Time
 	State           string
 	NotifiedAt      *time.Time

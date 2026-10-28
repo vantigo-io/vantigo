@@ -15,7 +15,7 @@ import (
 const countLiveMailboxSubscriptions = `-- name: CountLiveMailboxSubscriptions :one
 SELECT count(*)::integer FROM entra.mailbox_subscriptions
 WHERE expires_at > $1::timestamptz
-  AND state NOT IN ('removed', 'deleting')
+  AND state NOT IN ('removed', 'deleting', 'conflict')
 `
 
 // CountLiveMailboxSubscriptions is GET /connection's count (O11.7): the
@@ -41,7 +41,7 @@ func (q *Queries) DeleteMailboxSubscription(ctx context.Context, objectID uuid.U
 
 const getMailboxSubscription = `-- name: GetMailboxSubscription :one
 
-SELECT object_id, subscription_id, client_state_hash, expires_at, state, notified_at, created_at, updated_at FROM entra.mailbox_subscriptions WHERE object_id = $1
+SELECT object_id, subscription_id, client_state_hash, notification_url, expires_at, state, notified_at, created_at, updated_at FROM entra.mailbox_subscriptions WHERE object_id = $1
 `
 
 // The change notifications' subscriptions (calendar Outlook sync design
@@ -59,6 +59,7 @@ func (q *Queries) GetMailboxSubscription(ctx context.Context, objectID uuid.UUID
 		&i.ObjectID,
 		&i.SubscriptionID,
 		&i.ClientStateHash,
+		&i.NotificationUrl,
 		&i.ExpiresAt,
 		&i.State,
 		&i.NotifiedAt,
@@ -69,7 +70,7 @@ func (q *Queries) GetMailboxSubscription(ctx context.Context, objectID uuid.UUID
 }
 
 const getMailboxSubscriptionByID = `-- name: GetMailboxSubscriptionByID :one
-SELECT object_id, subscription_id, client_state_hash, expires_at, state, notified_at, created_at, updated_at FROM entra.mailbox_subscriptions WHERE subscription_id = $1::varchar
+SELECT object_id, subscription_id, client_state_hash, notification_url, expires_at, state, notified_at, created_at, updated_at FROM entra.mailbox_subscriptions WHERE subscription_id = $1::varchar
 `
 
 // GetMailboxSubscriptionByID is the row of Graph's subscription id, as a
@@ -81,6 +82,7 @@ func (q *Queries) GetMailboxSubscriptionByID(ctx context.Context, subscriptionID
 		&i.ObjectID,
 		&i.SubscriptionID,
 		&i.ClientStateHash,
+		&i.NotificationUrl,
 		&i.ExpiresAt,
 		&i.State,
 		&i.NotifiedAt,
@@ -131,7 +133,7 @@ func (q *Queries) ListMailboxNotified(ctx context.Context, arg ListMailboxNotifi
 }
 
 const listMailboxSubscriptionsByID = `-- name: ListMailboxSubscriptionsByID :many
-SELECT object_id, subscription_id, client_state_hash, expires_at, state, notified_at, created_at, updated_at FROM entra.mailbox_subscriptions WHERE subscription_id = ANY($1::varchar[])
+SELECT object_id, subscription_id, client_state_hash, notification_url, expires_at, state, notified_at, created_at, updated_at FROM entra.mailbox_subscriptions WHERE subscription_id = ANY($1::varchar[])
 `
 
 // ListMailboxSubscriptionsByID is the rows of Graph's subscription ids, as
@@ -150,6 +152,7 @@ func (q *Queries) ListMailboxSubscriptionsByID(ctx context.Context, subscription
 			&i.ObjectID,
 			&i.SubscriptionID,
 			&i.ClientStateHash,
+			&i.NotificationUrl,
 			&i.ExpiresAt,
 			&i.State,
 			&i.NotifiedAt,
@@ -166,30 +169,53 @@ func (q *Queries) ListMailboxSubscriptionsByID(ctx context.Context, subscription
 	return items, nil
 }
 
-const markMailboxNotified = `-- name: MarkMailboxNotified :execrows
+const markMailboxLifecycle = `-- name: MarkMailboxLifecycle :execrows
 UPDATE entra.mailbox_subscriptions SET
     notified_at = $1::timestamptz,
-    state = COALESCE($2::varchar, state),
+    state = CASE WHEN state = 'deleting' THEN state ELSE $2::varchar END,
     updated_at = $1::timestamptz
 WHERE subscription_id = $3::varchar
-  AND (notified_at IS NULL
-       OR notified_at + interval '5 seconds' < $1::timestamptz
-       OR $2::varchar IS NOT NULL)
 `
 
-type MarkMailboxNotifiedParams struct {
+type MarkMailboxLifecycleParams struct {
 	Now            time.Time
-	LifecycleState *string
+	LifecycleState string
 	SubscriptionID string
 }
 
-// MarkMailboxNotified is a valid notification's one write (O11.5): the row
-// notified at now and, for a lifecycle event, its state ('reauthorize',
-// 'removed'). A row marked within the last five seconds is left alone unless
-// a lifecycle state is given, so a flood of notifications only makes the
-// mailbox due, one UPDATE at most per five seconds.
-func (q *Queries) MarkMailboxNotified(ctx context.Context, arg MarkMailboxNotifiedParams) (int64, error) {
-	result, err := q.db.Exec(ctx, markMailboxNotified, arg.Now, arg.LifecycleState, arg.SubscriptionID)
+// MarkMailboxLifecycle is a lifecycle notification's write, one row at a
+// time (they are rare): the row notified at now, whatever it was marked
+// within the last five seconds, and its state set ('reauthorize',
+// 'removed') — unless it is 'deleting', a delete owed that no lifecycle
+// event may forget.
+func (q *Queries) MarkMailboxLifecycle(ctx context.Context, arg MarkMailboxLifecycleParams) (int64, error) {
+	result, err := q.db.Exec(ctx, markMailboxLifecycle, arg.Now, arg.LifecycleState, arg.SubscriptionID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const markMailboxesNotified = `-- name: MarkMailboxesNotified :execrows
+UPDATE entra.mailbox_subscriptions SET
+    notified_at = $1::timestamptz,
+    updated_at = $1::timestamptz
+WHERE subscription_id = ANY($2::varchar[])
+  AND (notified_at IS NULL OR notified_at + interval '5 seconds' < $1::timestamptz)
+`
+
+type MarkMailboxesNotifiedParams struct {
+	Now             time.Time
+	SubscriptionIds []string
+}
+
+// MarkMailboxesNotified is the plain notifications' one write for a whole
+// request (O11.5): the rows of the subscription ids marked notified at now,
+// in one UPDATE however many items named them. A row marked within the last
+// five seconds is left alone, so a flood of notifications only makes the
+// mailbox due, one write at most per five seconds.
+func (q *Queries) MarkMailboxesNotified(ctx context.Context, arg MarkMailboxesNotifiedParams) (int64, error) {
+	result, err := q.db.Exec(ctx, markMailboxesNotified, arg.Now, arg.SubscriptionIds)
 	if err != nil {
 		return 0, err
 	}
@@ -202,18 +228,29 @@ UPDATE entra.mailbox_subscriptions SET
     state = 'active',
     updated_at = $2::timestamptz
 WHERE object_id = $3
+  AND subscription_id = $4::varchar
+  AND state <> 'removed'
 `
 
 type RenewMailboxSubscriptionParams struct {
-	ExpiresAt time.Time
-	Now       time.Time
-	ObjectID  uuid.UUID
+	ExpiresAt      time.Time
+	Now            time.Time
+	ObjectID       uuid.UUID
+	SubscriptionID string
 }
 
 // RenewMailboxSubscription records a renewal's new expiry, which
-// reauthorizes the subscription too: the row is active again.
+// reauthorizes the subscription too: the row is active again — only while
+// it still holds the subscription renewed and Graph has not removed it
+// since the Watch read it (a lifecycle notification racing the PATCH), so a
+// removed row is never made active again.
 func (q *Queries) RenewMailboxSubscription(ctx context.Context, arg RenewMailboxSubscriptionParams) error {
-	_, err := q.db.Exec(ctx, renewMailboxSubscription, arg.ExpiresAt, arg.Now, arg.ObjectID)
+	_, err := q.db.Exec(ctx, renewMailboxSubscription,
+		arg.ExpiresAt,
+		arg.Now,
+		arg.ObjectID,
+		arg.SubscriptionID,
+	)
 	return err
 }
 
@@ -229,41 +266,46 @@ type SetMailboxSubscriptionStateParams struct {
 }
 
 // SetMailboxSubscriptionState sets the row's state: 'deleting' when Graph
-// refused the delete, so it is owed.
+// refused the delete, so it is owed; 'conflict' when another installation's
+// subscription holds the mailbox, so no create is tried for a day.
 func (q *Queries) SetMailboxSubscriptionState(ctx context.Context, arg SetMailboxSubscriptionStateParams) error {
 	_, err := q.db.Exec(ctx, setMailboxSubscriptionState, arg.State, arg.Now, arg.ObjectID)
 	return err
 }
 
 const upsertMailboxSubscription = `-- name: UpsertMailboxSubscription :one
-INSERT INTO entra.mailbox_subscriptions (object_id, subscription_id, client_state_hash, expires_at, state, created_at, updated_at)
-VALUES ($1, $2::varchar, $3, $4::timestamptz, 'active', $5::timestamptz, $5::timestamptz)
+INSERT INTO entra.mailbox_subscriptions (object_id, subscription_id, client_state_hash, notification_url, expires_at, state, created_at, updated_at)
+VALUES ($1, $2::varchar, $3, $4::varchar, $5::timestamptz, 'active', $6::timestamptz, $6::timestamptz)
 ON CONFLICT (object_id) DO UPDATE SET
     subscription_id = EXCLUDED.subscription_id,
     client_state_hash = EXCLUDED.client_state_hash,
+    notification_url = EXCLUDED.notification_url,
     expires_at = EXCLUDED.expires_at,
     state = 'active',
     updated_at = EXCLUDED.updated_at
-RETURNING object_id, subscription_id, client_state_hash, expires_at, state, notified_at, created_at, updated_at
+RETURNING object_id, subscription_id, client_state_hash, notification_url, expires_at, state, notified_at, created_at, updated_at
 `
 
 type UpsertMailboxSubscriptionParams struct {
 	ObjectID        uuid.UUID
 	SubscriptionID  *string
 	ClientStateHash []byte
+	NotificationUrl string
 	ExpiresAt       *time.Time
 	Now             time.Time
 }
 
 // UpsertMailboxSubscription is a create's write: before the POST, the
-// clientState's hash with no id and no expiry; after Graph's 201, the id and
-// the expiry it answered, with the same hash. Either way the row is active
-// and when it was last notified is kept.
+// clientState's hash and the webhook's address with no id and no expiry;
+// after Graph's 201, the id and the expiry it answered, with the same hash
+// and address. Either way the row is active and when it was last notified
+// is kept.
 func (q *Queries) UpsertMailboxSubscription(ctx context.Context, arg UpsertMailboxSubscriptionParams) (EntraMailboxSubscription, error) {
 	row := q.db.QueryRow(ctx, upsertMailboxSubscription,
 		arg.ObjectID,
 		arg.SubscriptionID,
 		arg.ClientStateHash,
+		arg.NotificationUrl,
 		arg.ExpiresAt,
 		arg.Now,
 	)
@@ -272,6 +314,7 @@ func (q *Queries) UpsertMailboxSubscription(ctx context.Context, arg UpsertMailb
 		&i.ObjectID,
 		&i.SubscriptionID,
 		&i.ClientStateHash,
+		&i.NotificationUrl,
 		&i.ExpiresAt,
 		&i.State,
 		&i.NotifiedAt,

@@ -129,7 +129,9 @@ var (
 // Exists, a reference added that is there already ("One or more added
 // object references already exist"), and Validation, a subscription's
 // create whose handshake with the webhook failed ("Subscription validation
-// request failed…", "…validation request timed out").
+// request failed…", "…validation request timed out"), read from the message
+// alone: the code ValidationError is any 400's whose body did not validate,
+// which must stay an ordinary failure, not the webhook unreachable.
 type graphError struct {
 	Status     int
 	Code       string
@@ -594,7 +596,7 @@ func (c *graphClient) refusal(ctx context.Context, cred graphCredential, method 
 	message := strings.ToLower(body.Error.Message)
 	e := &graphError{Status: status, Code: body.Error.Code,
 		Exists:     strings.Contains(message, "already exist"),
-		Validation: strings.Contains(message, "validation request") || strings.EqualFold(body.Error.Code, "ValidationError")}
+		Validation: strings.Contains(message, "validation request")}
 	if len(body.Error.Details) > 0 {
 		e.Detail = body.Error.Details[0].Code
 	}
