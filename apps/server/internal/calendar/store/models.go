@@ -97,29 +97,34 @@ type CalendarMailboxEvent struct {
 	StartsOn    pgtype.Date
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
+	ChangeKey   *string
+	ReleasedAt  *time.Time
 }
 
 type CalendarMailboxSync struct {
-	UserID       uuid.UUID
-	Enabled      bool
-	Target       string
-	Detail       string
-	Kinds        []string
-	Mailbox      *string
-	CalendarID   *string
-	State        string
-	Error        *string
-	NextSyncAt   *time.Time
-	LastSyncedAt *time.Time
-	Attempts     int32
-	Reconcile    bool
-	Revision     int32
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
-	BusyLink     *string
-	BusyFrom     pgtype.Date
-	BusyTo       pgtype.Date
-	BusySyncedAt *time.Time
+	UserID        uuid.UUID
+	Enabled       bool
+	Target        string
+	Detail        string
+	Kinds         []string
+	Mailbox       *string
+	CalendarID    *string
+	State         string
+	Error         *string
+	NextSyncAt    *time.Time
+	LastSyncedAt  *time.Time
+	Attempts      int32
+	Reconcile     bool
+	Revision      int32
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
+	BusyLink      *string
+	BusyFrom      pgtype.Date
+	BusyTo        pgtype.Date
+	BusySyncedAt  *time.Time
+	PutBackReason *string
+	PutBackKey    *string
+	PutBackAt     *time.Time
 }
 
 type CalendarSubscription struct {

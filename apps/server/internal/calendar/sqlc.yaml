@@ -11,6 +11,7 @@ sql:
       - ../db/migrations/00057_calendar_feed.sql
       - ../db/migrations/00081_calendar_mailbox_sync.sql
       - ../db/migrations/00083_calendar_mailbox_busy.sql
+      - ../db/migrations/00084_calendar_mailbox_writeback.sql
     queries: queries
     gen:
       go:

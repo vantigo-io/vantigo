@@ -65,6 +65,11 @@ func TestCalendarMailboxSync_AppliesAndIsIdempotent(t *testing.T) {
 		"busy_from:date:YES:",
 		"busy_to:date:YES:",
 		"busy_synced_at:timestamp with time zone:YES:",
+		// 00084's put-back, pinned by
+		// TestCalendarMailboxWriteback_AppliesAndIsIdempotent.
+		"put_back_reason:character varying(20):YES:",
+		"put_back_key:character varying(200):YES:",
+		"put_back_at:timestamp with time zone:YES:",
 	}; !equalStrings(got, want) {
 		t.Errorf("calendar.mailbox_sync columns =\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
 	}
@@ -76,6 +81,10 @@ func TestCalendarMailboxSync_AppliesAndIsIdempotent(t *testing.T) {
 		"starts_on:date:NO:",
 		"created_at:timestamp with time zone:NO:",
 		"updated_at:timestamp with time zone:NO:",
+		// 00084's version and release, pinned by
+		// TestCalendarMailboxWriteback_AppliesAndIsIdempotent.
+		"change_key:character varying(512):YES:",
+		"released_at:timestamp with time zone:YES:",
 	}; !equalStrings(got, want) {
 		t.Errorf("calendar.mailbox_events columns =\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
 	}

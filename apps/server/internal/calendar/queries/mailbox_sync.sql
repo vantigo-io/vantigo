@@ -99,14 +99,46 @@ ORDER BY item_key;
 
 -- name: UpsertMailboxEvent :exec
 -- UpsertMailboxEvent maps an item to the event written for it, or records
--- that the event was rewritten (a new id after a re-create, a new hash).
-INSERT INTO calendar.mailbox_events (user_id, item_key, event_id, content_hash, starts_on, created_at, updated_at)
-VALUES (@user_id, @item_key, @event_id, @content_hash, @starts_on, @now::timestamptz, @now::timestamptz)
+-- that the event was rewritten (a new id after a re-create, a new hash), with
+-- the event's version the write answered (O10.3): null keeps the one stored,
+-- for a provider that answers none.
+INSERT INTO calendar.mailbox_events (user_id, item_key, event_id, content_hash, starts_on, change_key, created_at, updated_at)
+VALUES (@user_id, @item_key, @event_id, @content_hash, @starts_on, sqlc.narg(change_key)::varchar, @now::timestamptz, @now::timestamptz)
 ON CONFLICT (user_id, item_key) DO UPDATE SET
     event_id = EXCLUDED.event_id,
     content_hash = EXCLUDED.content_hash,
     starts_on = EXCLUDED.starts_on,
+    change_key = COALESCE(EXCLUDED.change_key, calendar.mailbox_events.change_key),
     updated_at = EXCLUDED.updated_at;
+
+-- name: SetMailboxEventChangeKey :exec
+-- SetMailboxEventChangeKey keeps the version a look at the event answered
+-- (O10.4): the baseline of a row that had none, or Exchange's own touch,
+-- which changed nothing the copy says. The hash is left as it is.
+UPDATE calendar.mailbox_events SET
+    change_key = @change_key::varchar,
+    updated_at = @now::timestamptz
+WHERE user_id = @user_id AND item_key = @item_key;
+
+-- name: StaleMailboxEvent :exec
+-- StaleMailboxEvent clears the row's hash, so the push rewrites the copy
+-- whole (O10.6): a change in Outlook put back, or an appointment written
+-- from it. The version read is kept when given (null keeps the stored one),
+-- so the copy is not read again before the push.
+UPDATE calendar.mailbox_events SET
+    content_hash = '',
+    change_key = COALESCE(sqlc.narg(change_key)::varchar, change_key),
+    updated_at = @now::timestamptz
+WHERE user_id = @user_id AND item_key = @item_key;
+
+-- name: ReleaseMailboxEvent :exec
+-- ReleaseMailboxEvent releases the copy the person turned into a meeting in
+-- Outlook (O10.8): never written, deleted or taken back again, and forgotten
+-- without a delete by the push and the clean-up.
+UPDATE calendar.mailbox_events SET
+    released_at = @now::timestamptz,
+    updated_at = @now::timestamptz
+WHERE user_id = @user_id AND item_key = @item_key;
 
 -- name: DeleteMailboxEvent :exec
 -- DeleteMailboxEvent forgets one item: its event was deleted, was gone, or
@@ -118,3 +150,24 @@ WHERE user_id = @user_id AND item_key = @item_key;
 -- DeleteMailboxEvents empties the person's map, after a clean-up or a
 -- calendar that changed (O8).
 DELETE FROM calendar.mailbox_events WHERE user_id = @user_id;
+
+-- name: SetMailboxPutBack :exec
+-- SetMailboxPutBack records the last change made in Outlook that the
+-- write-back did not take (O10.3): the reason's code, the copy's item key
+-- and when, whatever revision the row holds — nothing of what the change
+-- said.
+UPDATE calendar.mailbox_sync SET
+    put_back_reason = @reason::varchar,
+    put_back_key = @key::varchar,
+    put_back_at = @at::timestamptz,
+    updated_at = @at::timestamptz
+WHERE user_id = @user_id;
+
+-- name: ClearMailboxPutBack :exec
+-- ClearMailboxPutBack forgets the put-back, after a clean-up or the sync
+-- turned off.
+UPDATE calendar.mailbox_sync SET
+    put_back_reason = NULL,
+    put_back_key = NULL,
+    put_back_at = NULL
+WHERE user_id = @user_id;

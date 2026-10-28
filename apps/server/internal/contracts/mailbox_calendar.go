@@ -105,6 +105,29 @@ type MailboxCalendar interface {
 	// another installation wrote, is not answered, and neither is an id no
 	// longer there. Refused under MailboxCleanup with ErrMailboxUnavailable.
 	Marked(ctx context.Context, mailbox string, eventIDs []string) ([]MailboxEventRef, error)
+
+	// Versions answers the versions of the events the calendar may have to
+	// take back from the mailbox — ids and change keys, nothing of what the
+	// events say (calendar Outlook sync design O10.1, O10.2). calendarID ""
+	// is the default calendar: only the events carrying this installation's
+	// marker that start at or after from (Find's rule), each with its Key;
+	// to is not used there. A secondary calendar — the one EnsureCalendar
+	// made — answers every event of its view whose times overlap from..to,
+	// with no Key: the view is not asked for the marker, the calendar being
+	// the provider's whole. At most MailboxVersionsMax, Complete false when
+	// the list was cut, so a caller infers nothing from an absence then.
+	// Refused under MailboxCleanup with ErrMailboxUnavailable.
+	Versions(ctx context.Context, mailbox, calendarID string, from, to time.Time) (MailboxVersions, error)
+
+	// Events reads whole, among eventIDs — at most MailboxMarkedMax of them —
+	// the events of the calendar (calendarID "" the default one), in the
+	// order asked (design O10.2). Each id is read through the calendar's own
+	// path, so an id not answered is not in that calendar any more: deleted,
+	// or moved to another calendar or folder. What an event says crosses
+	// the contract here for the copies and the provider's own calendar only,
+	// for the write it feeds, and a provider never logs a word of it.
+	// Refused under MailboxCleanup with ErrMailboxUnavailable.
+	Events(ctx context.Context, mailbox, calendarID string, eventIDs []string) ([]MailboxEventState, error)
 }
 
 // The states of MailboxStatus.State.
@@ -141,12 +164,15 @@ const (
 )
 
 // MailboxOp is one write Apply makes. A create names Key and Event; an update
-// EventID and Event; a delete EventID.
+// EventID and Event, and Key when it writes the marker too; a delete EventID.
 type MailboxOp struct {
 	Kind    string
 	EventID string
-	// Key is written on create as the event's marker and never changed: the
-	// calendar's own key for the item ("appointment:42").
+	// Key is written on create as the event's marker: the calendar's own key
+	// for the item ("appointment:42"). An update writes it as the marker when
+	// it is set — the same value a copy already carries — so an event the
+	// calendar took in from its own calendar is tagged by the push that
+	// rewrites it (design O10.2); "" leaves the marker as it is.
 	Key   string
 	Event *MailboxEvent
 }
@@ -202,6 +228,65 @@ type MailboxEventRef struct {
 // MailboxMarkedMax is the most ids one Marked call takes; the caller hands it
 // slices of at most this many.
 const MailboxMarkedMax = 100
+
+// MailboxVersionsMax is the most events one Versions call answers; past it
+// the list is cut and MailboxVersions.Complete is false.
+const MailboxVersionsMax = 5000
+
+// MailboxVersions is what Versions answers (calendar Outlook sync design
+// O10.2).
+type MailboxVersions struct {
+	// Events are the events' versions, in the provider's order.
+	Events []MailboxEventVersion
+	// Complete: every event asked for is answered. False when the list was
+	// cut at MailboxVersionsMax — an event not answered may then still be
+	// there.
+	Complete bool
+}
+
+// MailboxEventVersion is one event's version as Versions answers it: its id,
+// the key it carries and its change key, nothing of what it is about.
+type MailboxEventVersion struct {
+	// EventID is the directory's id of the event.
+	EventID string
+	// Key is this installation's key the event carries; "" when the read
+	// was not asked for the marker (a secondary calendar's view).
+	Key string
+	// ChangeKey is the event's version: it moves with every write to the
+	// event, the person's, the directory's own or the calendar's.
+	ChangeKey string
+	// Series: the event is an occurrence, an exception or a series master.
+	Series bool
+}
+
+// MailboxEventState is one event as Events reads it whole (calendar Outlook
+// sync design O10.2): what the write-back compares with the copy the
+// calendar wrote, and what it takes from an edit.
+type MailboxEventState struct {
+	// EventID is the directory's id of the event.
+	EventID string
+	// Key is this installation's key the event carries; "" when it carries
+	// none.
+	Key string
+	// ChangeKey is the event's version as read.
+	ChangeKey string
+	// Foreign: the event carries another installation's marker, never
+	// written back.
+	Foreign bool
+	// Series: the event is an occurrence, an exception or a series master.
+	Series bool
+	// Cancelled: the meeting is cancelled.
+	Cancelled bool
+	// Meeting: the event has attendees — their count alone is decoded,
+	// never an address.
+	Meeting bool
+	// TextBody: the body came as text; one that did not is never taken.
+	TextBody bool
+	// Event is the subject, the body, the location's display name, the
+	// times (all-day dates at midnight UTC, as Delta's), ShowAs and
+	// Private (a private or confidential sensitivity).
+	Event MailboxEvent
+}
 
 // MailboxDelta is one page Delta answers (calendar Outlook sync design O9.4).
 type MailboxDelta struct {
