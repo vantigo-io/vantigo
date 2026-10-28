@@ -317,6 +317,30 @@ func (e MailboxSyncDetail) Valid() bool {
 	}
 }
 
+// Defines values for MailboxSyncPutBackReason.
+const (
+	Conflict    MailboxSyncPutBackReason = "conflict"
+	NotEditable MailboxSyncPutBackReason = "not_editable"
+	NotOwner    MailboxSyncPutBackReason = "not_owner"
+	Refused     MailboxSyncPutBackReason = "refused"
+)
+
+// Valid indicates whether the value is a known member of the MailboxSyncPutBackReason enum.
+func (e MailboxSyncPutBackReason) Valid() bool {
+	switch e {
+	case Conflict:
+		return true
+	case NotEditable:
+		return true
+	case NotOwner:
+		return true
+	case Refused:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for MailboxSyncTarget.
 const (
 	Default MailboxSyncTarget = "default"
@@ -810,6 +834,9 @@ type MailboxSync struct {
 	Kinds        []string          `json:"kinds"`
 	LastSyncedAt *time.Time        `json:"lastSyncedAt,omitempty"`
 
+	// PutBack The last change the caller made in Outlook to a copy that the sync did not take, and put back (calendar Outlook sync design O10.3). reason is conflict (the appointment was changed in Vantigo too, and Vantigo's version won), refused (the appointment's rules refused the change), not_owner (the copy is of an appointment the caller attends, not one they own) or not_editable (the copy is of an item another module projects, or the change is one an occurrence cannot carry). Absent when nothing was put back since the sync was last turned on or cleaned up.
+	PutBack *MailboxSyncPutBack `json:"putBack,omitempty"`
+
 	// Revision Send it back as If-Match on PUT /mailbox-sync.
 	Revision int32            `json:"revision"`
 	State    MailboxSyncState `json:"state"`
@@ -835,6 +862,25 @@ type MailboxSyncKind struct {
 	Key    string `json:"key"`
 	Module string `json:"module"`
 }
+
+// MailboxSyncPutBack The last change the caller made in Outlook to a copy that the sync did not take, and put back (calendar Outlook sync design O10.3). reason is conflict (the appointment was changed in Vantigo too, and Vantigo's version won), refused (the appointment's rules refused the change), not_owner (the copy is of an appointment the caller attends, not one they own) or not_editable (the copy is of an item another module projects, or the change is one an occurrence cannot carry). Absent when nothing was put back since the sync was last turned on or cleaned up.
+type MailboxSyncPutBack struct {
+	// AppointmentId The appointment the copy is of, when it is one.
+	AppointmentId *int64 `json:"appointmentId,omitempty"`
+
+	// At When the change was put back.
+	At time.Time `json:"at"`
+
+	// OccurrenceDate The occurrence's day, when the copy is of one occurrence of a series.
+	OccurrenceDate *openapi_types.Date      `json:"occurrenceDate,omitempty"`
+	Reason         MailboxSyncPutBackReason `json:"reason"`
+
+	// Title The appointment's title, read live, and answered only for an appointment the caller owns or attends.
+	Title *string `json:"title,omitempty"`
+}
+
+// MailboxSyncPutBackReason defines model for MailboxSyncPutBack.Reason.
+type MailboxSyncPutBackReason string
 
 // MailboxSyncTarget Where the copies go — default, the caller's main calendar, which shows them busy to colleagues, or own, a separate calendar named Vantigo.
 type MailboxSyncTarget string

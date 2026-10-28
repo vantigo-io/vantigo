@@ -27,8 +27,11 @@ import (
 // calendar of the provider's and its events, refuses a foreign one with
 // ErrCalendarNotOurs, and a calendar already gone is done; Apply creates an
 // event carrying the op's Key and answers its new id, rewrites or deletes an
-// existing one, and answers Gone for an update or a delete of an event that
-// no longer exists; Find answers the events carrying a key in any calendar
+// existing one — an update naming a Key writes it as the event's marker, so
+// an unmarked event becomes a copy — and answers Gone for an update or a
+// delete of an event that no longer exists; every event carries a ChangeKey
+// that moves with each write to it, and each create's and update's result
+// answers the new one; Find answers the events carrying a key in any calendar
 // — an event with none is never the provider's — starting at or after its
 // from when that is set (a timed event's StartsAt, an all-day one's
 // StartDate). A mailbox is made on its first use.
@@ -50,11 +53,27 @@ import (
 // it answered for a mailbox so far answer ErrMailboxDeltaExpired. Marked
 // answers, among the ids asked, the events carrying a key.
 //
+// The person's edits in Outlook are shaped as the write-back reads them
+// (design O10): EditEvent rewrites an event as they would, TouchEvent moves
+// its change key alone (Exchange's own touch), DeleteEvent deletes it,
+// MoveEvent moves it to another calendar under a new id, SetMeeting gives it
+// attendees, SetHTMLBody makes its body come as HTML, SetOtherInstallation
+// gives it another installation's marker, and PutOwnEvent places an
+// unmarked single event of the person's in any calendar. Versions answers,
+// for the default calendar, the events carrying a key that start at or
+// after from (Find's rule), each with its key and change key; for a
+// secondary calendar every event of it overlapping from..to, with no key;
+// ordered by id, at most contracts.MailboxVersionsMax, Complete when not
+// cut. Events answers, among the ids asked, the events of that calendar —
+// an event of another calendar, or one gone, is not answered — whole, in
+// the order asked.
+//
 // Its refusals are the contract's: while the status is
 // contracts.MailboxUnavailable every call but Status answers
 // ErrMailboxUnavailable; under contracts.MailboxCleanup EnsureCalendar
 // answers it and Apply takes deletes only, every other op answering it in
-// its result, and Delta and Marked answer it. A mailbox SetUnknown marks answers ErrMailboxUnknown to every
+// its result, and Delta, Marked, Versions and Events answer it. A mailbox
+// SetUnknown marks answers ErrMailboxUnknown to every
 // call naming it, and SetMailboxError makes every call naming a mailbox
 // answer the error a test chooses (ErrMailboxDenied, ErrMailboxGone, a
 // failure). FailWith makes a method answer an error a test chooses, and
@@ -107,14 +126,18 @@ type MailboxCall struct {
 	EventIDs                    []string
 }
 
-// FakeMailboxEvent is one event of the fake's mailbox, as Events answers it.
-// Cancelled and Series are what Delta answers of it: set only on the
-// person's own events (SeedForeign, MoveForeign).
+// FakeMailboxEvent is one event of the fake's mailbox, as EventsIn answers
+// it. Cancelled and Series are what Delta, Versions and Events answer of it:
+// set only on the person's own events (SeedForeign, MoveForeign). Meeting,
+// HTMLBody and OtherInstallation are what Events answers of it, as
+// SetMeeting, SetHTMLBody and SetOtherInstallation set them.
 type FakeMailboxEvent struct {
 	ID, CalendarID, Key string
 	Event               contracts.MailboxEvent
 	ChangeKey           string
 	Cancelled, Series   bool
+	Meeting, HTMLBody   bool
+	OtherInstallation   bool
 }
 
 // FakeBusyEvent is one of the person's own events of the default calendar,
@@ -213,7 +236,8 @@ func (f *FakeMailboxCalendar) SetMailboxError(mailbox string, err error) {
 }
 
 // FailWith makes every later call of method ("Status", "EnsureCalendar",
-// "DeleteCalendar", "Apply", "Find", "Delta", "Marked") answer err, or (err nil) clears it.
+// "DeleteCalendar", "Apply", "Find", "Delta", "Marked", "Versions",
+// "Events") answer err, or (err nil) clears it.
 func (f *FakeMailboxCalendar) FailWith(method string, err error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -345,9 +369,119 @@ func (f *FakeMailboxCalendar) Calendars(mailbox string) map[string]string {
 	return map[string]string{}
 }
 
-// Events answers the events in a mailbox's calendar — calendarID "" the
+// EditEvent rewrites the event id, in whichever calendar of the mailbox
+// holds it, by fn, as the person editing it in Outlook would: its key and
+// its flags kept, its change key moved, the change logged. An event not
+// there is left so.
+func (f *FakeMailboxCalendar) EditEvent(mailbox, id string, fn func(*contracts.MailboxEvent)) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	m := f.mailbox(mailbox)
+	if e := m.events[id]; e != nil {
+		fn(&e.Event)
+		e.ChangeKey = f.id("change")
+		f.logChange(m, e.CalendarID, id)
+	}
+}
+
+// TouchEvent moves the event id's change key and nothing else, as Exchange
+// touching an event of its own accord does, and logs it.
+func (f *FakeMailboxCalendar) TouchEvent(mailbox, id string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	m := f.mailbox(mailbox)
+	if e := m.events[id]; e != nil {
+		e.ChangeKey = f.id("change")
+		f.logChange(m, e.CalendarID, id)
+	}
+}
+
+// DeleteEvent deletes the event id, in whichever calendar holds it, as the
+// person deleting it in Outlook would, and logs it.
+func (f *FakeMailboxCalendar) DeleteEvent(mailbox, id string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	m := f.mailbox(mailbox)
+	if e := m.events[id]; e != nil {
+		delete(m.events, id)
+		f.logChange(m, e.CalendarID, id)
+	}
+}
+
+// MoveEvent moves the event id to the calendar toCalendarID ("" the default
+// one), as the person dragging it there in Outlook would, and answers its
+// new id: a directory without immutable ids gives a moved event a new one.
+// Its key, its words and its flags go with it, its change key moves, and
+// both calendars log the change. An event not there answers "".
+func (f *FakeMailboxCalendar) MoveEvent(mailbox, id, toCalendarID string) string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	m := f.mailbox(mailbox)
+	e := m.events[id]
+	if e == nil {
+		return ""
+	}
+	delete(m.events, id)
+	f.logChange(m, e.CalendarID, id)
+	moved := *e
+	moved.ID, moved.CalendarID, moved.ChangeKey = f.id("event"), toCalendarID, f.id("change")
+	m.events[moved.ID] = &moved
+	f.logChange(m, toCalendarID, moved.ID)
+	return moved.ID
+}
+
+// SetMeeting gives the event id attendees, or (on false) takes them away,
+// as the person inviting someone to it in Outlook would: its change key
+// moves and the change is logged.
+func (f *FakeMailboxCalendar) SetMeeting(mailbox, id string, on bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	m := f.mailbox(mailbox)
+	if e := m.events[id]; e != nil {
+		e.Meeting = on
+		e.ChangeKey = f.id("change")
+		f.logChange(m, e.CalendarID, id)
+	}
+}
+
+// SetHTMLBody makes the event id's body come as HTML to Events (TextBody
+// false), or (on false) as text again. It is how the body is answered, not
+// a write: the change key stays, so a test pairs it with EditEvent.
+func (f *FakeMailboxCalendar) SetHTMLBody(mailbox, id string, on bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if e := f.mailbox(mailbox).events[id]; e != nil {
+		e.HTMLBody = on
+	}
+}
+
+// SetOtherInstallation gives the event id another installation's marker in
+// place of this one's — its key cleared, Events answering it Foreign — or
+// (on false) takes that marker away. The change key stays.
+func (f *FakeMailboxCalendar) SetOtherInstallation(mailbox, id string, on bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if e := f.mailbox(mailbox).events[id]; e != nil {
+		e.OtherInstallation = on
+		if on {
+			e.Key = ""
+		}
+	}
+}
+
+// PutOwnEvent places one of the person's own events — single, no marker —
+// in a mailbox's calendar (calendarID "" the default one) and answers its
+// id: an event they made in Outlook, in the provider's own calendar what
+// the write-back takes in (design O10.9). It is logged.
+func (f *FakeMailboxCalendar) PutOwnEvent(mailbox, calendarID string, event contracts.MailboxEvent) string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.create(f.mailbox(mailbox), calendarID, "", event)
+}
+
+// EventsIn answers the events in a mailbox's calendar — calendarID "" the
 // default one — ordered by id.
-func (f *FakeMailboxCalendar) Events(mailbox, calendarID string) []FakeMailboxEvent {
+func (f *FakeMailboxCalendar) EventsIn(mailbox, calendarID string) []FakeMailboxEvent {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	var out []FakeMailboxEvent
@@ -492,6 +626,9 @@ func (f *FakeMailboxCalendar) Apply(_ context.Context, mailbox, calendarID strin
 				continue
 			}
 			e.Event = *op.Event
+			if op.Key != "" {
+				e.Key, e.OtherInstallation = op.Key, false
+			}
 			e.ChangeKey = f.id("change")
 			f.logChange(m, calendarID, op.EventID)
 			out[i] = contracts.MailboxResult{EventID: op.EventID, ChangeKey: e.ChangeKey}
@@ -529,11 +666,7 @@ func (f *FakeMailboxCalendar) Find(_ context.Context, mailbox, calendarID string
 		if e.CalendarID != calendarID || e.Key == "" {
 			continue
 		}
-		start := e.Event.StartsAt
-		if e.Event.AllDay {
-			start = e.Event.StartDate
-		}
-		if !from.IsZero() && start.Before(from) {
+		if !from.IsZero() && start(e).Before(from) {
 			continue
 		}
 		out = append(out, contracts.MailboxEventRef{EventID: e.ID, Key: e.Key})
@@ -607,6 +740,78 @@ func (f *FakeMailboxCalendar) Marked(_ context.Context, mailbox string, eventIDs
 	return out, nil
 }
 
+// Versions answers the versions of the calendar's events: for the default
+// one, those carrying a key that start at or after from when it is set,
+// with their keys; for a secondary one, every event of it overlapping
+// from..to, with no key; ordered by id, cut at
+// contracts.MailboxVersionsMax.
+func (f *FakeMailboxCalendar) Versions(_ context.Context, mailbox, calendarID string, from, to time.Time) (contracts.MailboxVersions, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.calls = append(f.calls, MailboxCall{Method: "Versions", Mailbox: mailbox, CalendarID: calendarID, From: from, To: to})
+	if err := f.refusal("Versions", mailbox, false); err != nil {
+		return contracts.MailboxVersions{}, err
+	}
+	m := f.mailbox(mailbox)
+	if _, ok := m.calendars[calendarID]; calendarID != "" && !ok {
+		return contracts.MailboxVersions{}, errFakeNoSuchCalendar
+	}
+	out := contracts.MailboxVersions{Events: []contracts.MailboxEventVersion{}, Complete: true}
+	for _, id := range slices.SortedFunc(maps.Keys(m.events), compareIDs) {
+		e := m.events[id]
+		if e.CalendarID != calendarID {
+			continue
+		}
+		version := contracts.MailboxEventVersion{EventID: id, ChangeKey: e.ChangeKey, Series: e.Series}
+		if calendarID == "" {
+			if e.Key == "" || !from.IsZero() && start(e).Before(from) {
+				continue
+			}
+			version.Key = e.Key
+		} else if !overlaps(e, from, to) {
+			continue
+		}
+		if len(out.Events) == contracts.MailboxVersionsMax {
+			out.Complete = false
+			break
+		}
+		out.Events = append(out.Events, version)
+	}
+	return out, nil
+}
+
+// Events answers, among eventIDs, the events of the calendar whole, in the
+// order asked; an id of another calendar, or gone, is not answered, and
+// more than contracts.MailboxMarkedMax ids is a failure.
+func (f *FakeMailboxCalendar) Events(_ context.Context, mailbox, calendarID string, eventIDs []string) ([]contracts.MailboxEventState, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.calls = append(f.calls, MailboxCall{Method: "Events", Mailbox: mailbox, CalendarID: calendarID, EventIDs: slices.Clone(eventIDs)})
+	if err := f.refusal("Events", mailbox, false); err != nil {
+		return nil, err
+	}
+	if len(eventIDs) > contracts.MailboxMarkedMax {
+		return nil, errors.New("modtest: Events asked for more than MailboxMarkedMax ids")
+	}
+	m := f.mailbox(mailbox)
+	if _, ok := m.calendars[calendarID]; calendarID != "" && !ok {
+		return nil, errFakeNoSuchCalendar
+	}
+	out := []contracts.MailboxEventState{}
+	for _, id := range eventIDs {
+		e := m.events[id]
+		if e == nil || e.CalendarID != calendarID {
+			continue
+		}
+		out = append(out, contracts.MailboxEventState{
+			EventID: id, Key: e.Key, ChangeKey: e.ChangeKey,
+			Foreign: e.OtherInstallation, Series: e.Series, Cancelled: e.Cancelled,
+			Meeting: e.Meeting, TextBody: !e.HTMLBody, Event: e.Event,
+		})
+	}
+	return out, nil
+}
+
 // window answers every event of the default calendar overlapping from..to
 // as a change, ordered by id. f.mu is held.
 func (f *FakeMailboxCalendar) window(m *fakeMailbox, from, to time.Time) []contracts.MailboxChange {
@@ -649,6 +854,15 @@ func (f *FakeMailboxCalendar) logChange(m *fakeMailbox, calendarID, id string) {
 	}
 	m.seq++
 	m.log = append(m.log, fakeLogEntry{seq: m.seq, id: id})
+}
+
+// start is e's first instant: a timed event's StartsAt, an all-day one's
+// StartDate.
+func start(e *FakeMailboxEvent) time.Time {
+	if e.Event.AllDay {
+		return e.Event.StartDate
+	}
+	return e.Event.StartsAt
 }
 
 // overlaps reports whether e's times overlap from..to: a timed event's

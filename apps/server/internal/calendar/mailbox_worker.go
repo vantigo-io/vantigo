@@ -446,13 +446,15 @@ type pendingOp struct {
 }
 
 // mapWrite is one change to the person's map: an upsert, or a forget when
-// eventID is "".
+// eventID is "". changeKey is the event's version the write answered (design
+// O10.3); nil keeps the one stored.
 type mapWrite struct {
-	userID   uuid.UUID
-	key      string
-	eventID  string
-	hash     string
-	startsOn time.Time
+	userID    uuid.UUID
+	key       string
+	eventID   string
+	hash      string
+	startsOn  time.Time
+	changeKey *string
 }
 
 // mapEntry is one row of the person's map as the diff holds it.
@@ -624,7 +626,11 @@ func (w *MailboxSyncWorker) apply(ctx, call context.Context, userID uuid.UUID, m
 				if id == "" {
 					id = p.op.EventID
 				}
-				writes = append(writes, mapWrite{userID: userID, key: p.key, eventID: id, hash: p.item.hash, startsOn: p.item.startsOn})
+				var changeKey *string
+				if res.ChangeKey != "" {
+					changeKey = &res.ChangeKey
+				}
+				writes = append(writes, mapWrite{userID: userID, key: p.key, eventID: id, hash: p.item.hash, startsOn: p.item.startsOn, changeKey: changeKey})
 			}
 		}
 		if err := w.writeMap(ctx, now, writes); err != nil {
@@ -929,7 +935,7 @@ func (w *MailboxSyncWorker) writeMap(ctx context.Context, now time.Time, writes 
 			} else {
 				err = txq.UpsertMailboxEvent(ctx, store.UpsertMailboxEventParams{
 					UserID: m.userID, ItemKey: m.key, EventID: m.eventID, ContentHash: m.hash,
-					StartsOn: pgDate(m.startsOn), Now: now,
+					StartsOn: pgDate(m.startsOn), ChangeKey: m.changeKey, Now: now,
 				})
 			}
 			if err != nil {

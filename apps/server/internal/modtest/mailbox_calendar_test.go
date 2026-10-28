@@ -50,13 +50,13 @@ func TestFakeMailboxCalendar_ApplyAndFind(t *testing.T) {
 	if err != nil || res[0].Gone || res[0].Err != nil {
 		t.Fatalf("the update = %v, %v", res, err)
 	}
-	if got := f.Events("oid-1", ""); len(got) != 2 || got[1].Event.Subject != "Retro" || got[1].Key != "appointment:1" {
+	if got := f.EventsIn("oid-1", ""); len(got) != 2 || got[1].Event.Subject != "Retro" || got[1].Key != "appointment:1" {
 		t.Errorf("Events = %+v, want the foreign event and the rewritten one, its key kept", got)
 	}
 	if res, err := f.Apply(ctx, "oid-1", "", []contracts.MailboxOp{{Kind: contracts.MailboxOpDelete, EventID: created}}); err != nil || res[0].Gone {
 		t.Errorf("the delete = %v, %v; want done", res, err)
 	}
-	if got := f.Events("oid-1", ""); len(got) != 1 || got[0].ID != foreign {
+	if got := f.EventsIn("oid-1", ""); len(got) != 1 || got[0].ID != foreign {
 		t.Errorf("Events after the delete = %+v, want the foreign event alone", got)
 	}
 	if got := len(f.Calls()); got != 4 {
@@ -85,7 +85,7 @@ func TestFakeMailboxCalendar_Calendars(t *testing.T) {
 	if err := f.DeleteCalendar(ctx, "oid-1", id); err != nil {
 		t.Fatalf("DeleteCalendar: %v", err)
 	}
-	if len(f.Calendars("oid-1")) != 0 || len(f.Events("oid-1", id)) != 0 {
+	if len(f.Calendars("oid-1")) != 0 || len(f.EventsIn("oid-1", id)) != 0 {
 		t.Errorf("the calendar or its events survived the delete")
 	}
 	if err := f.DeleteCalendar(ctx, "oid-1", id); err != nil {
@@ -340,5 +340,158 @@ func TestFakeMailboxCalendar_Marked(t *testing.T) {
 	}
 	if _, err := f.Marked(ctx, "oid-1", make([]string, contracts.MailboxMarkedMax+1)); err == nil {
 		t.Error("Marked of 101 ids = nil, want a failure")
+	}
+}
+
+// Versions answers the default calendar's keyed events from from, with
+// their keys and change keys, and a secondary calendar's every event
+// overlapping the window with no key; an update naming a Key marks the
+// event, and every write moves the change key Apply answers.
+func TestFakeMailboxCalendar_Versions(t *testing.T) {
+	ctx := context.Background()
+	f := NewFakeMailboxCalendar()
+	f.SeedForeign("oid-1", FakeBusyEvent{StartsAt: Start, EndsAt: Start.Add(time.Hour), ShowAs: contracts.ShowAsBusy})
+	early := *mailboxEvent("Early")
+	early.StartsAt, early.EndsAt = Start.Add(-48*time.Hour), Start.Add(-47*time.Hour)
+	f.PutEvent("oid-1", "", "appointment:9", early)
+	copied := f.PutEvent("oid-1", "", "appointment:1", *mailboxEvent("Standup"))
+	cal := f.PutCalendar("oid-1", "Vantigo", true)
+	own := f.PutOwnEvent("oid-1", cal, *mailboxEvent("Made in Outlook"))
+	tagged := f.PutEvent("oid-1", cal, "appointment:2", *mailboxEvent("Tagged"))
+	past := *mailboxEvent("Past")
+	past.StartsAt, past.EndsAt = Start.AddDate(0, 0, -60), Start.AddDate(0, 0, -60).Add(time.Hour)
+	f.PutOwnEvent("oid-1", cal, past)
+
+	v, err := f.Versions(ctx, "oid-1", "", Start, time.Time{})
+	if err != nil || !v.Complete || len(v.Events) != 1 || v.Events[0].EventID != copied || v.Events[0].Key != "appointment:1" || v.Events[0].ChangeKey == "" {
+		t.Fatalf("Versions(default) = %+v, %v; want the keyed event from Start alone", v, err)
+	}
+	from, to := Start.AddDate(0, 0, -30), Start.AddDate(0, 0, 30)
+	v, err = f.Versions(ctx, "oid-1", cal, from, to)
+	if err != nil || !v.Complete || len(v.Events) != 2 || v.Events[0].EventID != own || v.Events[1].EventID != tagged || v.Events[0].Key != "" || v.Events[1].Key != "" {
+		t.Errorf("Versions(secondary) = %+v, %v; want both events of the window, no key", v, err)
+	}
+	if c := f.Calls(); c[len(c)-1].Method != "Versions" || !c[len(c)-1].From.Equal(from) || !c[len(c)-1].To.Equal(to) {
+		t.Errorf("the call recorded %+v", c[len(c)-1])
+	}
+
+	was := v.Events[0].ChangeKey
+	res, err := f.Apply(ctx, "oid-1", cal, []contracts.MailboxOp{{Kind: contracts.MailboxOpUpdate, EventID: own, Key: "appointment:3", Event: mailboxEvent("Taken in")}})
+	if err != nil || res[0].ChangeKey == "" || res[0].ChangeKey == was {
+		t.Fatalf("the update = %+v, %v; want a new change key", res, err)
+	}
+	if got := f.EventsIn("oid-1", cal); got[0].Key != "appointment:3" || got[0].ChangeKey != res[0].ChangeKey {
+		t.Errorf("after the update %+v, want the event marked and its change key the one answered", got[0])
+	}
+}
+
+// Events answers the events of that calendar whole, in the order asked —
+// not one of another calendar, not one gone — with the flags the person's
+// edits set; EditEvent, TouchEvent, SetMeeting and MoveEvent move the
+// change key, SetHTMLBody does not, and MoveEvent answers a new id.
+func TestFakeMailboxCalendar_EventsAndEdits(t *testing.T) {
+	ctx := context.Background()
+	f := NewFakeMailboxCalendar()
+	a := f.PutEvent("oid-1", "", "appointment:1", *mailboxEvent("A"))
+	b := f.PutEvent("oid-1", "", "appointment:2", *mailboxEvent("B"))
+	cal := f.PutCalendar("oid-1", "Vantigo", true)
+	elsewhere := f.PutEvent("oid-1", cal, "appointment:3", *mailboxEvent("C"))
+	changeKey := func(id string) string {
+		for _, e := range append(f.EventsIn("oid-1", ""), f.EventsIn("oid-1", cal)...) {
+			if e.ID == id {
+				return e.ChangeKey
+			}
+		}
+		return ""
+	}
+
+	was := changeKey(a)
+	f.EditEvent("oid-1", a, func(e *contracts.MailboxEvent) { e.Subject = "A, edited" })
+	if changeKey(a) == was {
+		t.Error("EditEvent left the change key")
+	}
+	was = changeKey(b)
+	f.TouchEvent("oid-1", b)
+	if changeKey(b) == was {
+		t.Error("TouchEvent left the change key")
+	}
+	was = changeKey(b)
+	f.SetHTMLBody("oid-1", b, true)
+	if changeKey(b) != was {
+		t.Error("SetHTMLBody moved the change key")
+	}
+	f.SetMeeting("oid-1", b, true)
+	if changeKey(b) == was {
+		t.Error("SetMeeting left the change key")
+	}
+
+	got, err := f.Events(ctx, "oid-1", "", []string{b, elsewhere, "event-404", a})
+	if err != nil || len(got) != 2 {
+		t.Fatalf("Events = %+v, %v; want b and a alone", got, err)
+	}
+	if got[0].EventID != b || !got[0].Meeting || got[0].TextBody || got[0].Key != "appointment:2" {
+		t.Errorf("Events[0] = %+v, want b, a meeting, its body HTML", got[0])
+	}
+	if got[1].EventID != a || got[1].Event.Subject != "A, edited" || !got[1].TextBody || got[1].ChangeKey != changeKey(a) || got[1].Foreign {
+		t.Errorf("Events[1] = %+v, want a as edited, its body text", got[1])
+	}
+	if c := f.Calls(); c[len(c)-1].Method != "Events" || !slices.Equal(c[len(c)-1].EventIDs, []string{b, elsewhere, "event-404", a}) {
+		t.Errorf("the call recorded %+v", c[len(c)-1])
+	}
+
+	moved := f.MoveEvent("oid-1", a, cal)
+	if moved == "" || moved == a {
+		t.Fatalf("MoveEvent = %q, want a new id", moved)
+	}
+	if got, _ := f.Events(ctx, "oid-1", "", []string{a, moved}); len(got) != 0 {
+		t.Errorf("Events(default) after the move = %+v, want neither id", got)
+	}
+	if got, _ := f.Events(ctx, "oid-1", cal, []string{moved}); len(got) != 1 || got[0].Key != "appointment:1" {
+		t.Errorf("Events(secondary) after the move = %+v, want the moved event, its key kept", got)
+	}
+	f.SetOtherInstallation("oid-1", b, true)
+	if got, _ := f.Events(ctx, "oid-1", "", []string{b}); len(got) != 1 || !got[0].Foreign || got[0].Key != "" {
+		t.Errorf("Events of another installation's event = %+v, want Foreign, no key", got)
+	}
+	f.DeleteEvent("oid-1", b)
+	if got, _ := f.Events(ctx, "oid-1", "", []string{b}); len(got) != 0 {
+		t.Errorf("Events after DeleteEvent = %+v, want none", got)
+	}
+	if _, err := f.Events(ctx, "oid-1", "", make([]string, contracts.MailboxMarkedMax+1)); err == nil {
+		t.Error("Events of 101 ids = nil, want a failure")
+	}
+}
+
+// Versions and Events are refused under cleanup and while unavailable, and
+// answer a mailbox's own refusal and FailWith's error.
+func TestFakeMailboxCalendar_WritebackRefusals(t *testing.T) {
+	ctx := context.Background()
+	f := NewFakeMailboxCalendar()
+	for _, state := range []string{contracts.MailboxCleanup, contracts.MailboxUnavailable} {
+		f.SetStatus(state, "switch_off")
+		if _, err := f.Versions(ctx, "oid-1", "", Start, time.Time{}); !errors.Is(err, contracts.ErrMailboxUnavailable) {
+			t.Errorf("Versions under %s = %v, want ErrMailboxUnavailable", state, err)
+		}
+		if _, err := f.Events(ctx, "oid-1", "", []string{"event-1"}); !errors.Is(err, contracts.ErrMailboxUnavailable) {
+			t.Errorf("Events under %s = %v, want ErrMailboxUnavailable", state, err)
+		}
+	}
+	f.SetStatus(contracts.MailboxAvailable, "")
+	f.SetUnknown("oid-2", true)
+	if _, err := f.Versions(ctx, "oid-2", "", Start, time.Time{}); !errors.Is(err, contracts.ErrMailboxUnknown) {
+		t.Errorf("Versions of an unknown mailbox = %v, want ErrMailboxUnknown", err)
+	}
+	f.SetMailboxError("oid-3", contracts.ErrMailboxDenied)
+	if _, err := f.Events(ctx, "oid-3", "", nil); !errors.Is(err, contracts.ErrMailboxDenied) {
+		t.Errorf("Events of a denied mailbox = %v, want ErrMailboxDenied", err)
+	}
+	boom := errors.New("boom")
+	f.FailWith("Versions", boom)
+	f.FailWith("Events", boom)
+	if _, err := f.Versions(ctx, "oid-1", "", Start, time.Time{}); !errors.Is(err, boom) {
+		t.Errorf("Versions under FailWith = %v, want boom", err)
+	}
+	if _, err := f.Events(ctx, "oid-1", "", nil); !errors.Is(err, boom) {
+		t.Errorf("Events under FailWith = %v, want boom", err)
 	}
 }

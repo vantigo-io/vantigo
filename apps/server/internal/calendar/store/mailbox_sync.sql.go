@@ -14,7 +14,7 @@ import (
 )
 
 const claimDueMailboxSyncs = `-- name: ClaimDueMailboxSyncs :many
-SELECT user_id, enabled, target, detail, kinds, mailbox, calendar_id, state, error, next_sync_at, last_synced_at, attempts, reconcile, revision, created_at, updated_at, busy_link, busy_from, busy_to, busy_synced_at FROM calendar.mailbox_sync
+SELECT user_id, enabled, target, detail, kinds, mailbox, calendar_id, state, error, next_sync_at, last_synced_at, attempts, reconcile, revision, created_at, updated_at, busy_link, busy_from, busy_to, busy_synced_at, put_back_reason, put_back_key, put_back_at FROM calendar.mailbox_sync
 WHERE (enabled OR state = 'stopping')
   AND (next_sync_at IS NULL OR next_sync_at <= $1::timestamptz)
 ORDER BY next_sync_at NULLS FIRST, user_id
@@ -61,6 +61,9 @@ func (q *Queries) ClaimDueMailboxSyncs(ctx context.Context, arg ClaimDueMailboxS
 			&i.BusyFrom,
 			&i.BusyTo,
 			&i.BusySyncedAt,
+			&i.PutBackReason,
+			&i.PutBackKey,
+			&i.PutBackAt,
 		); err != nil {
 			return nil, err
 		}
@@ -70,6 +73,21 @@ func (q *Queries) ClaimDueMailboxSyncs(ctx context.Context, arg ClaimDueMailboxS
 		return nil, err
 	}
 	return items, nil
+}
+
+const clearMailboxPutBack = `-- name: ClearMailboxPutBack :exec
+UPDATE calendar.mailbox_sync SET
+    put_back_reason = NULL,
+    put_back_key = NULL,
+    put_back_at = NULL
+WHERE user_id = $1
+`
+
+// ClearMailboxPutBack forgets the put-back, after a clean-up or the sync
+// turned off.
+func (q *Queries) ClearMailboxPutBack(ctx context.Context, userID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, clearMailboxPutBack, userID)
+	return err
 }
 
 const deleteMailboxEvent = `-- name: DeleteMailboxEvent :exec
@@ -105,7 +123,7 @@ func (q *Queries) DeleteMailboxEvents(ctx context.Context, userID uuid.UUID) (in
 
 const getMailboxSync = `-- name: GetMailboxSync :one
 
-SELECT user_id, enabled, target, detail, kinds, mailbox, calendar_id, state, error, next_sync_at, last_synced_at, attempts, reconcile, revision, created_at, updated_at, busy_link, busy_from, busy_to, busy_synced_at FROM calendar.mailbox_sync WHERE user_id = $1
+SELECT user_id, enabled, target, detail, kinds, mailbox, calendar_id, state, error, next_sync_at, last_synced_at, attempts, reconcile, revision, created_at, updated_at, busy_link, busy_from, busy_to, busy_synced_at, put_back_reason, put_back_key, put_back_at FROM calendar.mailbox_sync WHERE user_id = $1
 `
 
 // The Outlook sync (calendar Outlook sync design O5, O7, O8): a person's
@@ -141,12 +159,15 @@ func (q *Queries) GetMailboxSync(ctx context.Context, userID uuid.UUID) (Calenda
 		&i.BusyFrom,
 		&i.BusyTo,
 		&i.BusySyncedAt,
+		&i.PutBackReason,
+		&i.PutBackKey,
+		&i.PutBackAt,
 	)
 	return i, err
 }
 
 const listMailboxEvents = `-- name: ListMailboxEvents :many
-SELECT user_id, item_key, event_id, content_hash, starts_on, created_at, updated_at FROM calendar.mailbox_events
+SELECT user_id, item_key, event_id, content_hash, starts_on, created_at, updated_at, change_key, released_at FROM calendar.mailbox_events
 WHERE user_id = $1
 ORDER BY item_key
 `
@@ -170,6 +191,8 @@ func (q *Queries) ListMailboxEvents(ctx context.Context, userID uuid.UUID) ([]Ca
 			&i.StartsOn,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.ChangeKey,
+			&i.ReleasedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -182,7 +205,7 @@ func (q *Queries) ListMailboxEvents(ctx context.Context, userID uuid.UUID) ([]Ca
 }
 
 const lockMailboxSync = `-- name: LockMailboxSync :one
-SELECT user_id, enabled, target, detail, kinds, mailbox, calendar_id, state, error, next_sync_at, last_synced_at, attempts, reconcile, revision, created_at, updated_at, busy_link, busy_from, busy_to, busy_synced_at FROM calendar.mailbox_sync WHERE user_id = $1 FOR UPDATE
+SELECT user_id, enabled, target, detail, kinds, mailbox, calendar_id, state, error, next_sync_at, last_synced_at, attempts, reconcile, revision, created_at, updated_at, busy_link, busy_from, busy_to, busy_synced_at, put_back_reason, put_back_key, put_back_at FROM calendar.mailbox_sync WHERE user_id = $1 FOR UPDATE
 `
 
 // LockMailboxSync takes the person's row's lock for the PUT, so the If-Match
@@ -211,6 +234,9 @@ func (q *Queries) LockMailboxSync(ctx context.Context, userID uuid.UUID) (Calend
 		&i.BusyFrom,
 		&i.BusyTo,
 		&i.BusySyncedAt,
+		&i.PutBackReason,
+		&i.PutBackKey,
+		&i.PutBackAt,
 	)
 	return i, err
 }
@@ -233,6 +259,84 @@ type NudgeMailboxSyncParams struct {
 // are touched.
 func (q *Queries) NudgeMailboxSync(ctx context.Context, arg NudgeMailboxSyncParams) error {
 	_, err := q.db.Exec(ctx, nudgeMailboxSync, arg.Now, arg.UserIds)
+	return err
+}
+
+const releaseMailboxEvent = `-- name: ReleaseMailboxEvent :exec
+UPDATE calendar.mailbox_events SET
+    released_at = $1::timestamptz,
+    updated_at = $1::timestamptz
+WHERE user_id = $2 AND item_key = $3
+`
+
+type ReleaseMailboxEventParams struct {
+	Now     time.Time
+	UserID  uuid.UUID
+	ItemKey string
+}
+
+// ReleaseMailboxEvent releases the copy the person turned into a meeting in
+// Outlook (O10.8): never written, deleted or taken back again, and forgotten
+// without a delete by the push and the clean-up.
+func (q *Queries) ReleaseMailboxEvent(ctx context.Context, arg ReleaseMailboxEventParams) error {
+	_, err := q.db.Exec(ctx, releaseMailboxEvent, arg.Now, arg.UserID, arg.ItemKey)
+	return err
+}
+
+const setMailboxEventChangeKey = `-- name: SetMailboxEventChangeKey :exec
+UPDATE calendar.mailbox_events SET
+    change_key = $1::varchar,
+    updated_at = $2::timestamptz
+WHERE user_id = $3 AND item_key = $4
+`
+
+type SetMailboxEventChangeKeyParams struct {
+	ChangeKey string
+	Now       time.Time
+	UserID    uuid.UUID
+	ItemKey   string
+}
+
+// SetMailboxEventChangeKey keeps the version a look at the event answered
+// (O10.4): the baseline of a row that had none, or Exchange's own touch,
+// which changed nothing the copy says. The hash is left as it is.
+func (q *Queries) SetMailboxEventChangeKey(ctx context.Context, arg SetMailboxEventChangeKeyParams) error {
+	_, err := q.db.Exec(ctx, setMailboxEventChangeKey,
+		arg.ChangeKey,
+		arg.Now,
+		arg.UserID,
+		arg.ItemKey,
+	)
+	return err
+}
+
+const setMailboxPutBack = `-- name: SetMailboxPutBack :exec
+UPDATE calendar.mailbox_sync SET
+    put_back_reason = $1::varchar,
+    put_back_key = $2::varchar,
+    put_back_at = $3::timestamptz,
+    updated_at = $3::timestamptz
+WHERE user_id = $4
+`
+
+type SetMailboxPutBackParams struct {
+	Reason string
+	Key    string
+	At     time.Time
+	UserID uuid.UUID
+}
+
+// SetMailboxPutBack records the last change made in Outlook that the
+// write-back did not take (O10.3): the reason's code, the copy's item key
+// and when, whatever revision the row holds — nothing of what the change
+// said.
+func (q *Queries) SetMailboxPutBack(ctx context.Context, arg SetMailboxPutBackParams) error {
+	_, err := q.db.Exec(ctx, setMailboxPutBack,
+		arg.Reason,
+		arg.Key,
+		arg.At,
+		arg.UserID,
+	)
 	return err
 }
 
@@ -265,13 +369,43 @@ func (q *Queries) SetMailboxSyncMailbox(ctx context.Context, arg SetMailboxSyncM
 	return err
 }
 
+const staleMailboxEvent = `-- name: StaleMailboxEvent :exec
+UPDATE calendar.mailbox_events SET
+    content_hash = '',
+    change_key = COALESCE($1::varchar, change_key),
+    updated_at = $2::timestamptz
+WHERE user_id = $3 AND item_key = $4
+`
+
+type StaleMailboxEventParams struct {
+	ChangeKey *string
+	Now       time.Time
+	UserID    uuid.UUID
+	ItemKey   string
+}
+
+// StaleMailboxEvent clears the row's hash, so the push rewrites the copy
+// whole (O10.6): a change in Outlook put back, or an appointment written
+// from it. The version read is kept when given (null keeps the stored one),
+// so the copy is not read again before the push.
+func (q *Queries) StaleMailboxEvent(ctx context.Context, arg StaleMailboxEventParams) error {
+	_, err := q.db.Exec(ctx, staleMailboxEvent,
+		arg.ChangeKey,
+		arg.Now,
+		arg.UserID,
+		arg.ItemKey,
+	)
+	return err
+}
+
 const upsertMailboxEvent = `-- name: UpsertMailboxEvent :exec
-INSERT INTO calendar.mailbox_events (user_id, item_key, event_id, content_hash, starts_on, created_at, updated_at)
-VALUES ($1, $2, $3, $4, $5, $6::timestamptz, $6::timestamptz)
+INSERT INTO calendar.mailbox_events (user_id, item_key, event_id, content_hash, starts_on, change_key, created_at, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6::varchar, $7::timestamptz, $7::timestamptz)
 ON CONFLICT (user_id, item_key) DO UPDATE SET
     event_id = EXCLUDED.event_id,
     content_hash = EXCLUDED.content_hash,
     starts_on = EXCLUDED.starts_on,
+    change_key = COALESCE(EXCLUDED.change_key, calendar.mailbox_events.change_key),
     updated_at = EXCLUDED.updated_at
 `
 
@@ -281,11 +415,14 @@ type UpsertMailboxEventParams struct {
 	EventID     string
 	ContentHash string
 	StartsOn    pgtype.Date
+	ChangeKey   *string
 	Now         time.Time
 }
 
 // UpsertMailboxEvent maps an item to the event written for it, or records
-// that the event was rewritten (a new id after a re-create, a new hash).
+// that the event was rewritten (a new id after a re-create, a new hash), with
+// the event's version the write answered (O10.3): null keeps the one stored,
+// for a provider that answers none.
 func (q *Queries) UpsertMailboxEvent(ctx context.Context, arg UpsertMailboxEventParams) error {
 	_, err := q.db.Exec(ctx, upsertMailboxEvent,
 		arg.UserID,
@@ -293,6 +430,7 @@ func (q *Queries) UpsertMailboxEvent(ctx context.Context, arg UpsertMailboxEvent
 		arg.EventID,
 		arg.ContentHash,
 		arg.StartsOn,
+		arg.ChangeKey,
 		arg.Now,
 	)
 	return err
@@ -311,7 +449,7 @@ ON CONFLICT (user_id) DO UPDATE SET
     reconcile = EXCLUDED.reconcile,
     revision = calendar.mailbox_sync.revision + 1,
     updated_at = EXCLUDED.updated_at
-RETURNING user_id, enabled, target, detail, kinds, mailbox, calendar_id, state, error, next_sync_at, last_synced_at, attempts, reconcile, revision, created_at, updated_at, busy_link, busy_from, busy_to, busy_synced_at
+RETURNING user_id, enabled, target, detail, kinds, mailbox, calendar_id, state, error, next_sync_at, last_synced_at, attempts, reconcile, revision, created_at, updated_at, busy_link, busy_from, busy_to, busy_synced_at, put_back_reason, put_back_key, put_back_at
 `
 
 type UpsertMailboxSyncParams struct {
@@ -365,6 +503,9 @@ func (q *Queries) UpsertMailboxSync(ctx context.Context, arg UpsertMailboxSyncPa
 		&i.BusyFrom,
 		&i.BusyTo,
 		&i.BusySyncedAt,
+		&i.PutBackReason,
+		&i.PutBackKey,
+		&i.PutBackAt,
 	)
 	return i, err
 }
@@ -379,7 +520,7 @@ UPDATE calendar.mailbox_sync SET
     reconcile = $6::boolean,
     updated_at = $7::timestamptz
 WHERE user_id = $8 AND revision = $9::integer
-RETURNING user_id, enabled, target, detail, kinds, mailbox, calendar_id, state, error, next_sync_at, last_synced_at, attempts, reconcile, revision, created_at, updated_at, busy_link, busy_from, busy_to, busy_synced_at
+RETURNING user_id, enabled, target, detail, kinds, mailbox, calendar_id, state, error, next_sync_at, last_synced_at, attempts, reconcile, revision, created_at, updated_at, busy_link, busy_from, busy_to, busy_synced_at, put_back_reason, put_back_key, put_back_at
 `
 
 type WriteMailboxSyncResultParams struct {
@@ -435,6 +576,9 @@ func (q *Queries) WriteMailboxSyncResult(ctx context.Context, arg WriteMailboxSy
 		&i.BusyFrom,
 		&i.BusyTo,
 		&i.BusySyncedAt,
+		&i.PutBackReason,
+		&i.PutBackKey,
+		&i.PutBackAt,
 	)
 	return i, err
 }

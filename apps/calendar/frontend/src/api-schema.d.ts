@@ -830,6 +830,7 @@ export interface components {
             busySyncedAt?: string;
             /** Format: date-time */
             lastSyncedAt?: string;
+            putBack?: components["schemas"]["MailboxSyncPutBack"];
             /**
              * Format: int32
              * @description Send it back as If-Match on PUT /mailbox-sync.
@@ -848,6 +849,28 @@ export interface components {
         MailboxSyncKind: {
             key: string;
             module: string;
+        };
+        /** @description The last change the caller made in Outlook to a copy that the sync did not take, and put back (calendar Outlook sync design O10.3). reason is conflict (the appointment was changed in Vantigo too, and Vantigo's version won), refused (the appointment's rules refused the change), not_owner (the copy is of an appointment the caller attends, not one they own) or not_editable (the copy is of an item another module projects, or the change is one an occurrence cannot carry). Absent when nothing was put back since the sync was last turned on or cleaned up. */
+        MailboxSyncPutBack: {
+            /**
+             * Format: int64
+             * @description The appointment the copy is of, when it is one.
+             */
+            appointmentId?: number;
+            /**
+             * Format: date-time
+             * @description When the change was put back.
+             */
+            at: string;
+            /**
+             * Format: date
+             * @description The occurrence's day, when the copy is of one occurrence of a series.
+             */
+            occurrenceDate?: string;
+            /** @enum {string} */
+            reason: "conflict" | "refused" | "not_owner" | "not_editable";
+            /** @description The appointment's title, read live, and answered only for an appointment the caller owns or attends. */
+            title?: string;
         };
         /**
          * @description Where the copies go — default, the caller's main calendar, which shows them busy to colleagues, or own, a separate calendar named Vantigo.
