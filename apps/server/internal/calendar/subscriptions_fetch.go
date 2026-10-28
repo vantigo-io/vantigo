@@ -286,8 +286,7 @@ func nextFetchAt(now time.Time, poll, refresh time.Duration) time.Time {
 var errSubscriptionGone = errors.New("calendar: the subscription was deleted while it was fetched")
 
 // refreshSubscription fetches t under the fetch budget and writes the
-// outcome through q — the pool's queries from a handler, the lease
-// connection's from the worker — answering the row as it then stands. A
+// outcome through q, the pool's queries, answering the row as it then stands. A
 // caller that went away before the fetch answered (a shutdown, a closed
 // request) records nothing: that is no failure of the address. The write
 // itself is not cancelled with the caller, so a fetch that answered is

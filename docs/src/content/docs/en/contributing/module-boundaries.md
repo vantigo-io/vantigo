@@ -738,8 +738,8 @@ Communications' outbox is the working example.
   mailbox sync and subscriptions workers are held at four with three taken by the test,
   and the last must stay free while a sync waits on the provider (the mailbox fake's
   `BeforeStatus` holds it there) or a fetch runs: **no worker holds a pooled connection
-  while it asks the pool for another or calls out**, which on pgxpool's default of
-  four starved every worker and the readiness probe. Identity is always
+  while it asks the pool for another or calls out**, which on pgxpool's default — four,
+  or one a CPU on a larger machine — starved every worker and the readiness probe. Identity is always
   composed and always provides `Accounts`, and Compose overwrites a preset
   `Deps.Accounts`, so `WithAccounts(p)` replaces identity's `Module.Accounts` in the
   composition — `p` is what every module's `Deps.Accounts` resolves to — and

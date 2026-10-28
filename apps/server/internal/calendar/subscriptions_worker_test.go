@@ -185,7 +185,13 @@ func TestSubscriptionsWorker_AClaimKeepsAnotherCycleOff(t *testing.T) {
 	id := insertDue(t, h, "/due.ics")
 	first, second := calendar.NewSubscriptionsWorker(h.Deps()), calendar.NewSubscriptionsWorker(h.Deps())
 	done := make(chan int, 1)
-	go func() { done <- cycle(t, first) }()
+	go func() {
+		n, err := first.RunCycle(context.Background())
+		if err != nil {
+			t.Error(err)
+		}
+		done <- n
+	}()
 	<-inFetch
 	if next := nextFetch(t, h, id); !next.After(h.Now()) {
 		t.Errorf("while it is fetched the subscription is due at %v, want claimed past now", next)

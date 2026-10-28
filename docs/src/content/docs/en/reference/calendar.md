@@ -1927,17 +1927,22 @@ constant — and syncs, one at a time, the rows that are on or owe a clean-up an
 **50** a cycle, each person once. It takes no lease. Each person is **claimed** in one
 short statement of their own (`FOR UPDATE SKIP LOCKED`): the due row whose
 `claimed_until` is null or past gets `claimed_until` **ten minutes** ahead — the
-person's three minutes below and room for the rows written after them — and the
+person's three minutes below and room for the rows written after them, which have nine
+minutes from the claim — and the
 statement's connection goes back to the pool before anything is asked. The claim is
 what keeps two replicas from syncing one person at once, and they share the due rows
 between them; it is given back when the person's sync ends, whatever it answered, and
 one a stopped replica left lapses. The `PUT`, the appointment writes' nudge and the
 [change notifications](#change-notifications) move `next_sync_at` only, never a
-claim: a person nudged while their sync runs is due again once it is given back. No
+claim. A `PUT` while the sync runs moves the revision on, so the sync's result writes
+nothing and the person is due again once the claim is given back; a nudge or a notice
+while it runs finds the row due already and changes nothing, and the result then sets
+the next sync a poll later — the change reaches the mailbox by that poll, as it did
+under the lease. No
 connection is held while the provider, identity, Staff, a source or the pool is asked,
 and no transaction is open while a neighbour is: a worker holding one connection while
-it waits for another starves a small pool — `pgxpool` opens at most four, or one a
-CPU, by default — and the readiness probe with it. Each
+it waits for another starves a small pool — `pgxpool` opens four, or one a CPU on a
+larger machine, by default — and the readiness probe with it. Each
 person has **three minutes** for everything their sync asks of the neighbours, so one
 slow mailbox cannot hold the cycle; the person's own rows are written past it. For each
 person:
