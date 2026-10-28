@@ -97,7 +97,10 @@ import (
 //     error is logged by its code and changes nothing; a sync whose deadline
 //     has passed does not ask, and the next one does.
 //
-// Change notifications (O11.6): each cycle, before it picks the due, asks
+// Change notifications (O11.6): each cycle, before it takes the lease —
+// never holding the lease's connection while the provider's read and the
+// mark ask the pool for another, which on a small pool starves every
+// worker doing the same and the readiness probe with them — asks
 // Notified for the mailboxes the directory notified since the latest notice
 // it took (held on the worker, the poll interval ago at its first cycle),
 // less mailboxNoticesOverlap — a notice whose mark committed after a later
@@ -245,13 +248,16 @@ func (w *MailboxSyncWorker) Run(ctx context.Context) error {
 	}
 }
 
-// RunCycle is one cycle under the lease: it reports whether it ran — false
+// RunCycle takes the notices first, holding no connection (takeNotices),
+// then runs one cycle under the lease: it reports whether it ran — false
 // when another holder has the lease — and how many people it synced,
 // whatever each sync answered. A cancelled context stops it between two
 // people. The unlock runs on a context stripped of cancellation, so a
 // cancelled cycle still gives the lease back; an unlock that fails closes
 // the connection, which ends the session and the lock with it.
 func (w *MailboxSyncWorker) RunCycle(ctx context.Context) (bool, int, error) {
+	w.takeNotices(ctx)
+
 	conn, err := w.deps.Pool.Acquire(ctx)
 	if err != nil {
 		return false, 0, fmt.Errorf("calendar: acquire a connection for the mailbox sync lease: %w", err)
@@ -274,8 +280,6 @@ func (w *MailboxSyncWorker) RunCycle(ctx context.Context) (bool, int, error) {
 			_ = conn.Conn().Close(release)
 		}
 	}()
-
-	w.takeNotices(ctx)
 
 	tx, err := conn.Begin(ctx)
 	if err != nil {
@@ -323,7 +327,10 @@ func (w *MailboxSyncWorker) RunCycle(ctx context.Context) (bool, int, error) {
 // before the latest notice taken — since that notice itself after a full
 // page (noticesFull), so a page of contracts.MailboxNoticesMax is followed
 // by the next rather than asked again — and marks their rows due at now in
-// one statement, holding no transaction across the call. noticesSince
+// one statement, holding no connection across the call — it runs before
+// the lease is taken, so every replica asks, which costs one indexed read:
+// a mark is idempotent, a row synced since the notice never marked again.
+// noticesSince
 // moves on to the latest At only when that statement worked; one that
 // fails is logged, and the same notices are asked for again next cycle.
 // Without a provider nothing is asked; a failing Notified is logged by its
