@@ -427,7 +427,10 @@ func (w *MailboxSyncWorker) syncPerson(ctx context.Context, r store.CalendarMail
 		return err
 	}
 	if callErr != nil {
-		return w.refusedOrFailed(ctx, r, now, "read the busy time", callErr)
+		if mailboxRefused(callErr) {
+			return w.refusedOrFailed(ctx, r, now, "read the busy time", callErr)
+		}
+		return w.busyFailed(ctx, r, now, callErr)
 	}
 	return w.write(ctx, r, now, mailboxResult{
 		state: mailboxStateActive, next: timePtr(now.Add(w.poll())), synced: true,
@@ -784,6 +787,29 @@ func (w *MailboxSyncWorker) refusedOrFailed(ctx context.Context, r store.Calenda
 		"worker", mailboxWorkerName, "user_id", r.UserID.String(), "code", code)
 	return w.write(ctx, r, now, mailboxResult{
 		state: mailboxStateUnavailable, code: code, next: timePtr(now.Add(retry)), reconcile: true,
+	})
+}
+
+// mailboxRefused reports whether err is the provider refusing the person's
+// mailbox, which refusedOrFailed records as unavailable.
+func mailboxRefused(err error) bool {
+	return errors.Is(err, contracts.ErrMailboxDenied) || errors.Is(err, contracts.ErrMailboxGone) ||
+		errors.Is(err, contracts.ErrMailboxUnknown) || errors.Is(err, contracts.ErrMailboxUnavailable)
+}
+
+// busyFailed records a busy read that failed after the push worked (design
+// O9.1): the sync active and synced at now, as the push left it, with the
+// error failed, the attempts counted and the next sync on the failure's
+// backoff — so the failure is retried soon and does not hide that the push
+// reached the mailbox. A busy read that keeps failing never turns the row
+// failed: the push it rides on works.
+func (w *MailboxSyncWorker) busyFailed(ctx context.Context, r store.CalendarMailboxSync, now time.Time, err error) error {
+	w.deps.Logger.WarnContext(ctx, "calendar: a person's mailbox sync failed; it is retried",
+		"worker", mailboxWorkerName, "user_id", r.UserID.String(), "step", "read the busy time", "error", mailboxErrorCode(err))
+	attempts := r.Attempts + 1
+	return w.write(ctx, r, now, mailboxResult{
+		state: mailboxStateActive, code: mailboxErrFailed, synced: true, attempts: attempts,
+		next: timePtr(now.Add(mailboxBackoff[min(int(attempts), len(mailboxBackoff))-1])),
 	})
 }
 

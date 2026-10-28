@@ -132,6 +132,10 @@ type FakeGraph struct {
 	// delta holds, whatever Prefer: odata.maxpagesize asks — Graph's pages
 	// vary (mailbox_delta.go).
 	DeltaPageSize int
+	// DeltaLinksOddCase, when set, writes a calendar delta's next and delta
+	// links as Graph may: calendarview lower-case and the user's id
+	// upper-case (mailbox_delta.go).
+	DeltaLinksOddCase bool
 
 	mu            sync.Mutex
 	users         []*User

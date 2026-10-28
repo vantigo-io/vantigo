@@ -161,3 +161,42 @@ func TestCalendarBusy_AnswersNothingToACallerWithoutCalendar(t *testing.T) {
 		t.Errorf("a caller without calendar:access: %+v, %v", got, err)
 	}
 }
+
+// A read on someone's behalf — the AsUser mark, even over a request — is
+// answered nothing: the provider-gated read is for a request's own
+// principal alone.
+func TestCalendarBusy_AnswersNothingUnderAsUser(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, me := signIn(t, h, "calendar:view-colleagues")
+	create(t, c, timed(t, "Mine", oslo, "2026-11-06T09:00", "2026-11-06T10:00"))
+	from, to := day("2026-11-01"), day("2026-11-30")
+	if got, err := provider(h).Busy(busyCaller(t, h, me), []uuid.UUID{me}, from, to); err != nil || len(got) != 1 {
+		t.Fatalf("the request's own: %+v, %v", got, err)
+	}
+	for name, ctx := range map[string]context.Context{
+		"AsUser alone":          contracts.AsUser(context.Background(), me),
+		"AsUser over a request": contracts.AsUser(busyCaller(t, h, me), me),
+	} {
+		if got, err := provider(h).Busy(ctx, []uuid.UUID{me}, from, to); err != nil || len(got) != 0 {
+			t.Errorf("%s: %+v, %v, want nothing", name, got, err)
+		}
+	}
+}
+
+// A user who is not active in the directory is busy at no time.
+func TestCalendarBusy_LeavesOutAUserWhoIsNotActive(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	colleague, colleagueID := signIn(t, h)
+	create(t, colleague, timed(t, "Theirs", oslo, "2026-11-06T09:00", "2026-11-06T10:00"))
+	_, viewerID := signIn(t, h, "calendar:view-colleagues")
+	from, to := day("2026-11-01"), day("2026-11-30")
+	if got, err := provider(h).Busy(busyCaller(t, h, viewerID), []uuid.UUID{colleagueID}, from, to); err != nil || len(got) != 1 {
+		t.Fatalf("an active colleague: %+v, %v", got, err)
+	}
+	h.Exec(t, `UPDATE identity.users SET is_disabled = true WHERE id = $1`, colleagueID)
+	if got, err := provider(h).Busy(busyCaller(t, h, viewerID), []uuid.UUID{colleagueID}, from, to); err != nil || len(got) != 0 {
+		t.Errorf("a disabled colleague: %+v, %v, want nothing", got, err)
+	}
+}

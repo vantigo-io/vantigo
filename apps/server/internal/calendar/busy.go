@@ -22,8 +22,8 @@ import (
 // colleague rule, which a consumer cannot know: it answers the principal of
 // the request in ctx — their own id when they hold calendar:access, anyone
 // else's when they hold calendar:view-colleagues — and nothing, not an
-// error, for an id the caller may not see, or for every id when ctx carries
-// no request. A user's busy time is what a colleague's calendar shows as
+// error, for an id the caller may not see or a user who is not active, or
+// for every id when ctx carries no request or carries the AsUser mark. A user's busy time is what a colleague's calendar shows as
 // busy: the appointments they own or accepted, transparency busy, not
 // cancelled, each occurrence in the window (a cancelled occurrence dropped,
 // a moved one at its new time), expanded in the business zone; and, while
@@ -90,11 +90,16 @@ func (b calendarBusy) Busy(ctx context.Context, userIDs []uuid.UUID, from, to ti
 }
 
 // allowed is, of userIDs, the ones the caller of the request in ctx may see,
-// each once: their own id under calendar:access, anyone else's under
-// calendar:view-colleagues. Nobody without a request, or without a
-// principal.
+// each once and active in the directory: their own id under calendar:access,
+// anyone else's under calendar:view-colleagues. Nobody without a request,
+// without a principal, or when ctx carries the AsUser mark — a
+// provider-gated read answers a request's own principal alone, never a read
+// on someone's behalf.
 func (b calendarBusy) allowed(ctx context.Context, userIDs []uuid.UUID) ([]uuid.UUID, error) {
 	if _, ok := contracts.RequestFrom(ctx); !ok {
+		return nil, nil
+	}
+	if _, ok := contracts.AsUserFrom(ctx); ok {
 		return nil, nil
 	}
 	p, ok := contracts.PrincipalFrom(ctx)
@@ -124,7 +129,21 @@ func (b calendarBusy) allowed(ctx context.Context, userIDs []uuid.UUID) ([]uuid.
 			out = append(out, id)
 		}
 	}
-	return out, nil
+	return b.active(ctx, out)
+}
+
+// active is, of ids, the users the directory answers as active, in one
+// batch: a user who left is busy at no time.
+func (b calendarBusy) active(ctx context.Context, ids []uuid.UUID) ([]uuid.UUID, error) {
+	users, err := b.s.usersBatch(ctx, ids)
+	if err != nil {
+		return nil, fmt.Errorf("calendar: read the users: %w", err)
+	}
+	on := make(map[uuid.UUID]bool, len(users))
+	for _, u := range users {
+		on[u.ID] = u.Active
+	}
+	return slices.DeleteFunc(ids, func(id uuid.UUID) bool { return !on[id] }), nil
 }
 
 // appointmentSpans adds to spans each user's appointment occurrences in the

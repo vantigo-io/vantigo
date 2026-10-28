@@ -26,7 +26,7 @@
 -- does.
 CREATE TABLE calendar.mailbox_busy (
     user_id    uuid         NOT NULL,
-    event_id   varchar(500) NOT NULL,  -- the event's id in the mailbox
+    event_id   varchar(512) NOT NULL,  -- the event's id in the mailbox, at most the provider's bound
     all_day    boolean      NOT NULL,
     starts_at  timestamptz,            -- a timed event's start
     ends_at    timestamptz,            -- a timed event's end, exclusive

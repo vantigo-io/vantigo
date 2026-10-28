@@ -116,10 +116,11 @@ func (w *MailboxSyncWorker) readBusy(ctx, call context.Context, r store.Calendar
 		for _, id := range marked {
 			b.ours[id] = true
 		}
-		if err := w.writeBusyPage(ctx, &b, page, now); err != nil {
+		stopped, err := w.writeBusyPage(ctx, &b, page, now)
+		if err != nil {
 			return nil, err
 		}
-		if page.Done {
+		if stopped || page.Done {
 			return nil, nil
 		}
 	}
@@ -165,12 +166,14 @@ func keeps(c contracts.MailboxChange) bool {
 	return !c.Removed && !c.Cancelled && c.ShowAs != contracts.ShowAsFree
 }
 
-// writeBusyPage writes one page in one short transaction: a fresh delta's
-// first page empties the person's rows first; then each change is a delete
+// writeBusyPage writes one page in one short transaction: the link, with the
+// delta's window, first and only while the sync is on — when it is not, the
+// person's rows are deleted and the read stops (stopped), nothing kept; a
+// fresh delta's first page empties the person's rows first; then each change is a delete
 // (removed, cancelled, free, or ours) or an upsert — but a new event past
 // the cap is not stored, the fact logged once a sync by the person's id —
-// and the link, with the delta's window, and the read's time at its end.
-func (w *MailboxSyncWorker) writeBusyPage(ctx context.Context, b *busyRead, page contracts.MailboxDelta, now time.Time) error {
+// and the read's time at its end.
+func (w *MailboxSyncWorker) writeBusyPage(ctx context.Context, b *busyRead, page contracts.MailboxDelta, now time.Time) (stopped bool, err error) {
 	fresh := b.fresh
 	stored := make(map[string]bool, len(b.stored))
 	for id := range b.stored {
@@ -180,7 +183,22 @@ func (w *MailboxSyncWorker) writeBusyPage(ctx context.Context, b *busyRead, page
 		stored = map[string]bool{}
 	}
 	capped := false
-	err := w.srv.withLockedTx(ctx, func(ctx context.Context, txq *store.Queries) error {
+	err = w.srv.withLockedTx(ctx, func(ctx context.Context, txq *store.Queries) error {
+		// The link first, only while the sync is on: a sync turned off
+		// during the read keeps nothing of it.
+		n, err := txq.SetMailboxBusyLink(ctx, store.SetMailboxBusyLinkParams{
+			BusyLink: page.Link, BusyFrom: pgDate(b.from), BusyTo: pgDate(b.to), Now: now, UserID: b.userID,
+		})
+		if err != nil {
+			return fmt.Errorf("calendar: record the busy link: %w", err)
+		}
+		if n == 0 {
+			stopped = true
+			if _, err := txq.DeleteMailboxBusyForUser(ctx, b.userID); err != nil {
+				return fmt.Errorf("calendar: forget the busy rows: %w", err)
+			}
+			return nil
+		}
 		if fresh {
 			if _, err := txq.DeleteMailboxBusyForUser(ctx, b.userID); err != nil {
 				return fmt.Errorf("calendar: empty the busy rows: %w", err)
@@ -203,11 +221,6 @@ func (w *MailboxSyncWorker) writeBusyPage(ctx context.Context, b *busyRead, page
 			}
 			stored[c.EventID] = true
 		}
-		if err := txq.SetMailboxBusyLink(ctx, store.SetMailboxBusyLinkParams{
-			BusyLink: page.Link, BusyFrom: pgDate(b.from), BusyTo: pgDate(b.to), Now: now, UserID: b.userID,
-		}); err != nil {
-			return fmt.Errorf("calendar: record the busy link: %w", err)
-		}
 		if page.Done {
 			if err := txq.SetMailboxBusySynced(ctx, store.SetMailboxBusySyncedParams{Now: now, UserID: b.userID}); err != nil {
 				return fmt.Errorf("calendar: record the busy read: %w", err)
@@ -215,8 +228,8 @@ func (w *MailboxSyncWorker) writeBusyPage(ctx context.Context, b *busyRead, page
 		}
 		return nil
 	})
-	if err != nil {
-		return err
+	if err != nil || stopped {
+		return stopped, err
 	}
 	b.stored, b.fresh, b.link = stored, false, page.Link
 	if capped && !b.capped {
@@ -224,7 +237,7 @@ func (w *MailboxSyncWorker) writeBusyPage(ctx context.Context, b *busyRead, page
 		w.deps.Logger.WarnContext(ctx, "calendar: a person's Outlook busy time is past its cap; new events are not stored",
 			"worker", mailboxWorkerName, "user_id", b.userID.String(), "cap", mailboxBusyCap)
 	}
-	return nil
+	return false, nil
 }
 
 // busyRow is a change as its row: an all-day event's dates (end inclusive),

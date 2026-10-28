@@ -155,6 +155,9 @@ func (g *FakeGraph) delta(userID string, query url.Values, prefer string) answer
 	}
 	body := map[string]any{"value": value}
 	link := "https://" + GraphHost + "/v1.0/users/" + u.ID + "/calendarView/delta?"
+	if g.DeltaLinksOddCase {
+		link = "https://" + GraphHost + "/v1.0/users/" + strings.ToUpper(u.ID) + "/calendarview/delta?"
+	}
 	if end < len(changes) {
 		next := st
 		next.offset = end

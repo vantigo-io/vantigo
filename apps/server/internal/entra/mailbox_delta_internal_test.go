@@ -81,20 +81,34 @@ func TestDeltaExpired(t *testing.T) {
 	}
 }
 
-// TestDeltaPath pins the link check: the session's own delta, case for
-// case, and nothing else.
+// TestDeltaPath pins the link check: the session's own delta, whatever the
+// case of its path, answered on the canonical path built from the oid, and
+// nothing else.
 func TestDeltaPath(t *testing.T) {
 	oid := uuid.MustParse("6f1c2b3a-4d5e-4f60-8a7b-9c0d1e2f3a4b")
 	s := mailboxSession{oid: oid}
 	base := "https://graph.microsoft.com/v1.0/users/"
-	if path, ok := s.deltaPath(base + oid.String() + "/calendarView/delta?$deltatoken=abc"); !ok || path != "/users/"+oid.String()+"/calendarView/delta?$deltatoken=abc" {
-		t.Errorf("the session's own link: %q %v", path, ok)
+	want := "/users/" + oid.String() + "/calendarView/delta?$deltatoken=abc"
+	for _, link := range []string{
+		base + oid.String() + "/calendarView/delta?$deltatoken=abc",
+		base + oid.String() + "/calendarview/delta?$deltatoken=abc",
+		base + "6F1C2B3A-4D5E-4F60-8A7B-9C0D1E2F3A4B/calendarView/delta?$deltatoken=abc",
+		"https://graph.microsoft.com/V1.0/USERS/6F1C2B3A-4D5E-4F60-8A7B-9C0D1E2F3A4B/CALENDARVIEW/DELTA?$deltatoken=abc",
+	} {
+		if path, ok := s.deltaPath(link); !ok || path != want {
+			t.Errorf("deltaPath(%q) = %q %v, want %q", link, path, ok, want)
+		}
 	}
 	for _, link := range []string{
 		"",
 		base + oid.String() + "/calendarView/delta",
-		base + oid.String() + "/calendarview/delta?$deltatoken=abc",
-		base + "6F1C2B3A-4D5E-4F60-8A7B-9C0D1E2F3A4B/calendarView/delta?$deltatoken=abc",
+		base + oid.String() + "/calendarView/delta?",
+		"https://GRAPH.microsoft.com/v1.0/users/" + oid.String() + "/calendarView/delta?$deltatoken=abc",
+		"https://graph.microsoft.com:443/v1.0/users/" + oid.String() + "/calendarView/delta?$deltatoken=abc",
+		"https://x@graph.microsoft.com/v1.0/users/" + oid.String() + "/calendarView/delta?$deltatoken=abc",
+		base + oid.String() + "/calendarView%2Fdelta?$deltatoken=abc",
+		base + oid.String() + "/calendarView/delt%61?$deltatoken=abc",
+		base + "('" + oid.String() + "')/calendarView/delta?$deltatoken=abc",
 		base + uuid.NewString() + "/calendarView/delta?$deltatoken=abc",
 		base + oid.String() + "/calendarView/delta?$deltatoken=abc#x",
 		base + oid.String() + "/calendarView/delta?$deltatoken=a b",

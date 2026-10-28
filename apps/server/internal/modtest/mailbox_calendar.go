@@ -77,6 +77,8 @@ type FakeMailboxCalendar struct {
 	links     map[string]*fakeDeltaLink
 	expired   map[string]bool // the links ExpireDelta expired
 	linkNext  int             // the last link number handed out
+	onDelta   func(n int)     // BeforeDelta's
+	deltas    int             // the Delta calls so far
 }
 
 // fakeDeltaLink is what a link Delta answered stands for: the window the
@@ -285,6 +287,14 @@ func (f *FakeMailboxCalendar) RemoveForeign(mailbox, id string) {
 		delete(m.events, id)
 		f.logChange(m, "", id)
 	}
+}
+
+// BeforeDelta makes every Delta call fn first, with no lock held, numbered
+// from 1 — for a test changing the person's setting in the middle of a read.
+func (f *FakeMailboxCalendar) BeforeDelta(fn func(n int)) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.onDelta = fn
 }
 
 // SetDeltaPageSize makes Delta answer pages of at most n changes.
@@ -535,6 +545,13 @@ func (f *FakeMailboxCalendar) Find(_ context.Context, mailbox, calendarID string
 // Delta answers a page of the default calendar's changes: with link "",
 // every event overlapping from..to; with a link, the changes since it.
 func (f *FakeMailboxCalendar) Delta(_ context.Context, mailbox string, from, to time.Time, link string) (contracts.MailboxDelta, error) {
+	f.mu.Lock()
+	f.deltas++
+	fn, n := f.onDelta, f.deltas
+	f.mu.Unlock()
+	if fn != nil {
+		fn(n)
+	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.calls = append(f.calls, MailboxCall{Method: "Delta", Mailbox: mailbox, From: from, To: to, Link: link})

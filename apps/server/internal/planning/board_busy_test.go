@@ -144,3 +144,34 @@ func TestBoard_BusyByProject(t *testing.T) {
 		t.Errorf("Kari's row under the project lacks her week 38 busy hours: %+v", b.Rows)
 	}
 }
+
+// Two people sharing a user each get that user's busy figures, the calendar
+// asked for the user once.
+func TestBoard_BusyOfAUserSharedByTwoPeople(t *testing.T) {
+	t.Parallel()
+	fake := modtest.NewFakeCalendarBusy()
+	h := newHarness(t, modtest.WithCalendarBusy(fake))
+	h.SetBusinessTimeZone(t, "Europe/Oslo")
+	c, user := signIn(t, h, "planning:view")
+	h.workforce.link(user, personKari)
+	h.workforce.link(user, personOla)
+	seedAllocation(t, h, seedRow{person: personKari, project: projectActive, from: week38, to: "2026-09-27", load: 50})
+	seedAllocation(t, h, seedRow{person: personOla, project: projectActive, from: week38, to: "2026-09-27", load: 50})
+	fake.SetBusy(user, contracts.BusyTime{Spans: []contracts.TimeSpan{
+		{StartsAt: at("2026-09-15T09:00:00Z"), EndsAt: at("2026-09-15T10:30:00Z")},
+	}})
+	var b gen.PlanningBoard
+	if res := c.Do(http.MethodGet, boardPath, nil); res.Status != http.StatusOK {
+		t.Fatalf("board = %d", res.Status)
+	} else {
+		res.JSON(&b)
+	}
+	for name, person := range map[string]int64{"Kari": personKari, "Ola": personOla} {
+		if k := cellOf(t, rowOf(t, b, person), week38); k.BusyHours == nil || *k.BusyHours != 1.5 {
+			t.Errorf("%s's week 38 busy = %v h, want the shared user's 1.5", name, k.BusyHours)
+		}
+	}
+	if calls := fake.Calls(); len(calls) != 1 || len(calls[0].UserIDs) != 1 || calls[0].UserIDs[0] != user {
+		t.Errorf("calls = %+v, want one, for the user once", calls)
+	}
+}

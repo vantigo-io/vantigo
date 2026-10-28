@@ -75,17 +75,19 @@ WHERE b.user_id = ANY(@user_ids::uuid[])
   )
 ORDER BY b.user_id, b.all_day, b.starts_at, b.start_date, b.event_id;
 
--- name: SetMailboxBusyLink :exec
+-- name: SetMailboxBusyLink :execrows
 -- SetMailboxBusyLink records the delta's link after a page — a next link
 -- while one is read, the delta link at its end — and the window it was
 -- started over, whatever revision the row holds, as SetMailboxSyncMailbox
--- does: the link answers for the mailbox's state, not for the setting.
+-- does: the link answers for the mailbox's state, not for the setting. Only
+-- while the sync is on: no row is a sync turned off during the read, whose
+-- page is then not kept.
 UPDATE calendar.mailbox_sync SET
     busy_link = @busy_link::text,
     busy_from = @busy_from::date,
     busy_to = @busy_to::date,
     updated_at = @now::timestamptz
-WHERE user_id = @user_id;
+WHERE user_id = @user_id AND enabled;
 
 -- name: SetMailboxBusySynced :exec
 -- SetMailboxBusySynced records that a read reached the delta link at now.

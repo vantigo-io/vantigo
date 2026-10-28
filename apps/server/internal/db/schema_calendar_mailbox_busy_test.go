@@ -38,7 +38,7 @@ func TestCalendarMailboxBusy_AppliesAndIsIdempotent(t *testing.T) {
 	}
 	if got, want := columns("mailbox_busy", "%"), []string{
 		"user_id:uuid:NO:",
-		"event_id:character varying(500):NO:",
+		"event_id:character varying(512):NO:",
 		"all_day:boolean:NO:",
 		"starts_at:timestamp with time zone:YES:",
 		"ends_at:timestamp with time zone:YES:",

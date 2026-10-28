@@ -229,13 +229,13 @@ func (q *Queries) ListMailboxBusyInWindow(ctx context.Context, arg ListMailboxBu
 	return items, nil
 }
 
-const setMailboxBusyLink = `-- name: SetMailboxBusyLink :exec
+const setMailboxBusyLink = `-- name: SetMailboxBusyLink :execrows
 UPDATE calendar.mailbox_sync SET
     busy_link = $1::text,
     busy_from = $2::date,
     busy_to = $3::date,
     updated_at = $4::timestamptz
-WHERE user_id = $5
+WHERE user_id = $5 AND enabled
 `
 
 type SetMailboxBusyLinkParams struct {
@@ -249,16 +249,21 @@ type SetMailboxBusyLinkParams struct {
 // SetMailboxBusyLink records the delta's link after a page — a next link
 // while one is read, the delta link at its end — and the window it was
 // started over, whatever revision the row holds, as SetMailboxSyncMailbox
-// does: the link answers for the mailbox's state, not for the setting.
-func (q *Queries) SetMailboxBusyLink(ctx context.Context, arg SetMailboxBusyLinkParams) error {
-	_, err := q.db.Exec(ctx, setMailboxBusyLink,
+// does: the link answers for the mailbox's state, not for the setting. Only
+// while the sync is on: no row is a sync turned off during the read, whose
+// page is then not kept.
+func (q *Queries) SetMailboxBusyLink(ctx context.Context, arg SetMailboxBusyLinkParams) (int64, error) {
+	result, err := q.db.Exec(ctx, setMailboxBusyLink,
 		arg.BusyLink,
 		arg.BusyFrom,
 		arg.BusyTo,
 		arg.Now,
 		arg.UserID,
 	)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const setMailboxBusySynced = `-- name: SetMailboxBusySynced :exec
