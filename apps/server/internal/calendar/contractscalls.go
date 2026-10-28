@@ -19,7 +19,8 @@ import (
 // the customer directory (deps.Directory), the project directory
 // (deps.Projects), the workforce register's DirectoryAccount (deps.Workforce)
 // and the mailbox provider (deps.MailboxCalendar, calendar Outlook sync design
-// O4) — its writes, and the busy read's Delta and Marked (O9.4) — and
+// O4) — its writes, the busy read's Delta and Marked (O9.4), and the
+// write-back's Versions and Events (O10.2) — and
 // identity's Check of the caller's permission for the CalendarBusy contract
 // this module provides (busy.go, O9.8). Every call is made through one of the
 // thin accessors below
@@ -354,6 +355,32 @@ func (s *server) mailboxMarked(ctx context.Context, mailbox string, eventIDs []s
 		return nil, contracts.ErrMailboxUnavailable
 	}
 	return s.deps.MailboxCalendar.Marked(ctx, mailbox, eventIDs)
+}
+
+// mailboxVersions is the versions of the copies the write-back may have to
+// take back (design O10.1, O10.2): calendarID "" the default calendar's
+// marked events from from, a secondary calendar's every event over from..to.
+func (s *server) mailboxVersions(ctx context.Context, mailbox, calendarID string, from, to time.Time) (contracts.MailboxVersions, error) {
+	if err := noteContractCall(ctx, "MailboxCalendar.Versions"); err != nil {
+		return contracts.MailboxVersions{}, err
+	}
+	if s.deps.MailboxCalendar == nil {
+		return contracts.MailboxVersions{}, contracts.ErrMailboxUnavailable
+	}
+	return s.deps.MailboxCalendar.Versions(ctx, mailbox, calendarID, from, to)
+}
+
+// mailboxEvents is, among eventIDs — at most contracts.MailboxMarkedMax —
+// the events of the calendar read whole (design O10.2); an id not answered
+// is not in that calendar any more.
+func (s *server) mailboxEvents(ctx context.Context, mailbox, calendarID string, eventIDs []string) ([]contracts.MailboxEventState, error) {
+	if err := noteContractCall(ctx, "MailboxCalendar.Events"); err != nil {
+		return nil, err
+	}
+	if s.deps.MailboxCalendar == nil {
+		return nil, contracts.ErrMailboxUnavailable
+	}
+	return s.deps.MailboxCalendar.Events(ctx, mailbox, calendarID, eventIDs)
 }
 
 // accessHas is whether the caller of the request in ctx holds key, as

@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/google/uuid"
+
 	"github.com/vantigo-io/vantigo/server/internal/calendar/gen"
 	"github.com/vantigo-io/vantigo/server/internal/calendar/store"
 )
@@ -29,7 +31,26 @@ import (
 // who had been sent an invitation and the notice to every colleague. A cancelled series keeps its exceptions,
 // so the CANCEL names what it cancels.
 func (s *server) DeleteCalendarAppointmentsById(ctx context.Context, req gen.DeleteCalendarAppointmentsByIdRequestObject) (gen.DeleteCalendarAppointmentsByIdResponseObject, error) {
-	me := callerID(ctx)
+	err := s.deleteAppointment(ctx, callerID(ctx), req.Id)
+	if r, ok := asRefusal(err); ok {
+		if r.status == http.StatusConflict {
+			return gen.DeleteCalendarAppointmentsById409ApplicationProblemPlusJSONResponse(r.problem), nil
+		}
+		return gen.DeleteCalendarAppointmentsById404Response{}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return gen.DeleteCalendarAppointmentsById204Response{}, nil
+}
+
+// deleteAppointment deletes, or cancels, the appointment id me owns — the
+// screen's DELETE and the Outlook write-back's delete of a copy (calendar
+// Outlook sync design O10.8) alike, as the DELETE's comment above tells —
+// and, after the commit, sends the CANCELs and the notices. Its refusals: an
+// appointment me does not own 404, a cancelled one 409
+// appointment_cancelled.
+func (s *server) deleteAppointment(ctx context.Context, me uuid.UUID, id int64) error {
 	var (
 		row       store.CalendarAppointment
 		atts      []store.CalendarAppointmentAttendee
@@ -38,7 +59,7 @@ func (s *server) DeleteCalendarAppointmentsById(ctx context.Context, req gen.Del
 	)
 	err := s.withLockedTx(ctx, func(ctx context.Context, txq *store.Queries) error {
 		var err error
-		if row, err = lockWritable(ctx, txq, req.Id, me); err != nil {
+		if row, err = lockWritable(ctx, txq, id, me); err != nil {
 			return err
 		}
 		if atts, err = txq.ListAttendees(ctx, row.ID); err != nil {
@@ -57,19 +78,13 @@ func (s *server) DeleteCalendarAppointmentsById(ctx context.Context, req gen.Del
 			return err
 		}
 		if row, err = txq.CancelAppointment(ctx, store.CancelAppointmentParams{ID: row.ID, CancelledAt: s.deps.Clock()}); err != nil {
-			return fmt.Errorf("calendar: cancel appointment %d: %w", req.Id, err)
+			return fmt.Errorf("calendar: cancel appointment %d: %w", id, err)
 		}
 		cancelled = true
 		return nil
 	})
-	if r, ok := asRefusal(err); ok {
-		if r.status == http.StatusConflict {
-			return gen.DeleteCalendarAppointmentsById409ApplicationProblemPlusJSONResponse(r.problem), nil
-		}
-		return gen.DeleteCalendarAppointmentsById404Response{}, nil
-	}
 	if err != nil {
-		return nil, err
+		return err
 	}
 	b := s.newBudget(ctx, afterCommitBudget)
 	defer b.done()
@@ -77,7 +92,7 @@ func (s *server) DeleteCalendarAppointmentsById(ctx context.Context, req gen.Del
 		s.sendInvitations(b, invitationJob{appt: row, excs: excs, listed: atts, to: atts, method: methodCancel})
 	}
 	s.notifyUsers(b, row, userAttendees(atts), noticeCancelled)
-	return gen.DeleteCalendarAppointmentsById204Response{}, nil
+	return nil
 }
 
 // anyInvited reports whether an outside attendee has ever been sent an

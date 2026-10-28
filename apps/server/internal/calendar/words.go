@@ -55,8 +55,9 @@ type words struct {
 
 	// The Outlook sync's copies (calendar Outlook sync design O6): the line
 	// before the link in an event's body, and the title of a copy that shows
-	// busy alone.
-	mailboxKept, mailboxBusy string
+	// busy alone; and the title of an appointment taken in from an event
+	// with no subject (design O10.9).
+	mailboxKept, mailboxBusy, mailboxUntitled string
 }
 
 var english = words{
@@ -88,8 +89,9 @@ var english = words{
 
 	untitled: "(untitled)",
 
-	mailboxKept: "Kept by Vantigo — change it there:",
-	mailboxBusy: "Busy",
+	mailboxKept:     "Kept by Vantigo — change it there:",
+	mailboxBusy:     "Busy",
+	mailboxUntitled: "Untitled",
 }
 
 var norwegian = words{
@@ -121,8 +123,9 @@ var norwegian = words{
 
 	untitled: "(uten tittel)",
 
-	mailboxKept: "Holdes av Vantigo — endre det der:",
-	mailboxBusy: "Opptatt",
+	mailboxKept:     "Holdes av Vantigo — endre det der:",
+	mailboxBusy:     "Opptatt",
+	mailboxUntitled: "Uten tittel",
 }
 
 // wordsFor is lang's sentences, English for anything but nb.
