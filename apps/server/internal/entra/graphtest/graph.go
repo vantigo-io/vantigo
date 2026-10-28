@@ -136,6 +136,13 @@ type FakeGraph struct {
 	// links as Graph may: calendarview lower-case and the user's id
 	// upper-case (mailbox_delta.go).
 	DeltaLinksOddCase bool
+	// HTMLBodies, when set, answers an event's body as it was written —
+	// HTML — whatever Prefer: outlook.body-content-type asks, as Graph may
+	// (mailbox.go).
+	HTMLBodies bool
+	// NextLinks, when set, rewrites every @odata.nextLink an events list or
+	// a calendarView answers — a test's foreign or odd-cased link.
+	NextLinks func(link string) string
 
 	mu            sync.Mutex
 	users         []*User
@@ -149,6 +156,9 @@ type FakeGraph struct {
 	mailboxes     map[string]*mailbox
 	serial        int
 	deltas        map[string]*deltaState
+	// prefer is the Prefer header of the request being answered — a
+	// request's own inside a $batch.
+	prefer string
 }
 
 // Domain is one of the tenant's domains.
@@ -285,6 +295,8 @@ type Call struct {
 	Query  string
 	Status int
 	Batch  bool
+	// Prefer is the Prefer header a request inside a $batch carried.
+	Prefer string
 }
 
 // New is an empty tenant answering any tenant id, with no client yet.
@@ -627,6 +639,8 @@ func (g *FakeGraph) api(req *http.Request, body []byte) answer {
 		return graphError(http.StatusBadRequest, "Request_UnsupportedQuery",
 			"Request with $search or $count query parameters only works with 'ConsistencyLevel' header set to 'eventual'.")
 	}
+	g.prefer = req.Header.Get("Prefer")
+	defer func() { g.prefer = "" }()
 	return g.route(req.Method, path, req.URL.Query(), req.Header.Get("Content-Type"), body)
 }
 
@@ -748,7 +762,7 @@ func (g *FakeGraph) usersRoute(method string, seg []string, query url.Values, co
 		return g.createPass(u, body)
 	case rest == "photo/$value":
 		return g.photo(u, method, contentType, body)
-	case len(seg) > 1 && (seg[1] == "calendars" || seg[1] == "events"):
+	case len(seg) > 1 && (seg[1] == "calendars" || seg[1] == "calendar" || seg[1] == "events"):
 		return g.mailboxRoute(u, method, seg[1:], query, body)
 	}
 	return graphError(http.StatusBadRequest, "BadRequest", "Unsupported request: "+method+" users/{id}/"+rest+".")
@@ -1580,9 +1594,12 @@ func (g *FakeGraph) batch(body []byte) answer {
 				a.header.Set("Retry-After", strconv.Itoa(g.batchWait))
 			}
 		default:
+			g.prefer = headerOf(r.Headers, "Prefer")
 			a = g.route(strings.ToUpper(r.Method), u.Path, u.Query(), "application/json", r.Body)
+			g.prefer = ""
 		}
-		g.calls = append(g.calls, Call{Method: strings.ToUpper(r.Method), Host: GraphHost, Path: "/v1.0" + u.Path, Query: u.RawQuery, Status: a.status, Batch: true})
+		g.calls = append(g.calls, Call{Method: strings.ToUpper(r.Method), Host: GraphHost, Path: "/v1.0" + u.Path, Query: u.RawQuery,
+			Status: a.status, Batch: true, Prefer: headerOf(r.Headers, "Prefer")})
 		item := map[string]any{"id": r.ID, "status": a.status}
 		if a.body != nil {
 			item["body"] = a.body

@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -31,6 +32,20 @@ import (
 // 404 ErrorItemNotFound; a second calendar of a name is 409
 // ErrorFolderExists. ThrottleBatch makes requests inside a $batch answer
 // 429 with Retry-After, one by one.
+//
+// For the write-back's reads (calendar Outlook sync, delivery C's plan
+// reading 10): an event is read by id through its calendar's own path too —
+// /users/{id}/calendar/events/{id} for the default calendar,
+// /users/{id}/calendars/{id}/events/{id} for another — 404 for an event of
+// another calendar; a secondary calendar answers its calendarView
+// (startDateTime and endDateTime required, every event overlapping them, in
+// pages of $top with an @odata.nextLink); a $select naming fields narrows an
+// event to them and its id; an event read by id honours Prefer:
+// outlook.timezone="UTC" (its times in UTC, Graph's seven fractional
+// digits) and outlook.body-content-type="text" (an HTML body answered as
+// text, its tags stripped) unless HTMLBodies is set; and an event's
+// attendees are answered as Graph's, with their addresses. EditEvent
+// (mailbox_delta.go) is the person's edit: the change key moves.
 
 // Calendar is a calendar in a user's mailbox.
 type Calendar struct {
@@ -61,9 +76,12 @@ type Event struct {
 	ShowAs       string
 	Sensitivity  string
 	IsReminderOn bool
-	// Type is singleInstance ("" is one), occurrence or exception.
+	// Type is singleInstance ("" is one), occurrence, exception or
+	// seriesMaster.
 	Type        string
 	IsCancelled bool
+	// Attendees are the attendees' addresses: a meeting has some.
+	Attendees []string
 	// Properties are the event's single-value extended properties by id.
 	Properties map[string]string
 	// LastWrite is the body of the create or the PATCH that last wrote the
@@ -229,6 +247,13 @@ func (g *FakeGraph) mailboxRoute(u *User, method string, seg []string, query url
 		return a
 	}
 	mb := g.mailboxOf(u.ID)
+	if seg[0] == "calendar" {
+		// The default calendar's own path: an event read by id.
+		if len(seg) == 3 && seg[1] == "events" && method == http.MethodGet {
+			return g.getEventIn(mb, mb.calendar(""), seg[2], query)
+		}
+		return graphError(http.StatusBadRequest, "BadRequest", "Unsupported request: "+method+" users/{id}/"+strings.Join(seg, "/")+".")
+	}
 	if seg[0] == "events" {
 		switch {
 		case len(seg) == 1 && method == http.MethodGet:
@@ -285,6 +310,10 @@ func (g *FakeGraph) mailboxRoute(u *User, method string, seg []string, query url
 		return g.listEvents(u, mb, cal, query)
 	case len(seg) == 3 && seg[2] == "events" && method == http.MethodPost:
 		return g.createEvent(mb, cal, body)
+	case len(seg) == 4 && seg[2] == "events" && method == http.MethodGet:
+		return g.getEventIn(mb, cal, seg[3], query)
+	case len(seg) == 3 && seg[2] == "calendarView" && method == http.MethodGet:
+		return g.calendarView(u, mb, cal, query)
 	}
 	return graphError(http.StatusBadRequest, "BadRequest", "Unsupported request: "+method+" users/{id}/"+strings.Join(seg, "/")+".")
 }
@@ -561,28 +590,46 @@ func (g *FakeGraph) listEvents(u *User, mb *mailbox, cal *Calendar, query url.Va
 		if !cal.Default {
 			path = "/users/" + u.ID + "/calendars/" + url.PathEscape(cal.ID) + "/events"
 		}
-		body["@odata.nextLink"] = "https://" + GraphHost + "/v1.0" + path + "?" + strings.ReplaceAll(next.Encode(), "+", "%20")
+		body["@odata.nextLink"] = g.nextLink("https://" + GraphHost + "/v1.0" + path + "?" + strings.ReplaceAll(next.Encode(), "+", "%20"))
 	}
 	return answer{status: http.StatusOK, body: body}
 }
 
-// eventJSON is e as Graph answers it: every property, or the id alone
-// under $select=id; with the property $expand names when the event has it.
+// eventJSON is e as Graph answers it: every property, or under $select the
+// id and the properties it names; with the property $expand names when the
+// event has it.
 func eventJSON(e *Event, query url.Values) map[string]any {
+	attendees := []any{}
+	for _, a := range e.Attendees {
+		attendees = append(attendees, map[string]any{"type": "required",
+			"emailAddress": map[string]any{"address": a, "name": a}, "status": map[string]any{"response": "none"}})
+	}
+	all := map[string]any{
+		"changeKey":    e.ChangeKey,
+		"subject":      e.Subject,
+		"body":         map[string]any{"contentType": e.BodyType, "content": e.Body},
+		"location":     map[string]any{"displayName": e.Location},
+		"isAllDay":     e.IsAllDay,
+		"start":        e.Start,
+		"end":          e.End,
+		"showAs":       e.ShowAs,
+		"sensitivity":  e.Sensitivity,
+		"isReminderOn": e.IsReminderOn,
+		"type":         cmp.Or(e.Type, "singleInstance"),
+		"isCancelled":  e.IsCancelled,
+		"attendees":    attendees,
+	}
 	out := map[string]any{"id": e.ID}
-	if query.Get("$select") != "id" {
-		out["changeKey"] = e.ChangeKey
-		out["subject"] = e.Subject
-		out["body"] = map[string]any{"contentType": e.BodyType, "content": e.Body}
-		out["location"] = map[string]any{"displayName": e.Location}
-		out["isAllDay"] = e.IsAllDay
-		out["start"] = e.Start
-		out["end"] = e.End
-		out["showAs"] = e.ShowAs
-		out["sensitivity"] = e.Sensitivity
-		out["isReminderOn"] = e.IsReminderOn
-		out["type"] = cmp.Or(e.Type, "singleInstance")
-		out["isCancelled"] = e.IsCancelled
+	if sel := query.Get("$select"); sel != "" {
+		for _, f := range strings.Split(sel, ",") {
+			if v, ok := all[strings.TrimSpace(f)]; ok {
+				out[strings.TrimSpace(f)] = v
+			}
+		}
+	} else {
+		for k, v := range all {
+			out[k] = v
+		}
 	}
 	if m := markerExpand.FindStringSubmatch(query.Get("$expand")); m != nil {
 		if v, ok := e.Properties[m[1]]; ok {
@@ -628,4 +675,98 @@ func copyEvent(e *Event) Event {
 		}
 	}
 	return c
+}
+
+// getEventIn answers GET of the event id through cal's own path: 404 when
+// it is not in cal, else the event as eventJSON answers it, under the
+// request's Prefer (preferred).
+func (g *FakeGraph) getEventIn(mb *mailbox, cal *Calendar, id string, query url.Values) answer {
+	e := mb.event(id)
+	if e == nil || cal == nil || e.CalendarID != cal.ID {
+		return itemNotFound()
+	}
+	if x := query.Get("$expand"); x != "" && !markerExpand.MatchString(x) {
+		return graphError(http.StatusBadRequest, "ErrorInvalidUrlQuery", "The $expand is not valid.")
+	}
+	return answer{status: http.StatusOK, body: g.preferred(e, eventJSON(e, query))}
+}
+
+// preferred is out, e's answer, under the request's Prefer: its times in
+// UTC with seven fractional digits for outlook.timezone="UTC", and an HTML
+// body answered as text, its tags stripped, for
+// outlook.body-content-type="text" — unless HTMLBodies is set.
+func (g *FakeGraph) preferred(e *Event, out map[string]any) map[string]any {
+	if strings.Contains(g.prefer, `outlook.timezone="UTC"`) {
+		if _, ok := out["start"]; ok {
+			out["start"], out["end"] = deltaDateTime(e.Start, true), deltaDateTime(e.End, true)
+		}
+	}
+	if _, ok := out["body"]; ok && strings.Contains(g.prefer, `outlook.body-content-type="text"`) && !g.HTMLBodies &&
+		strings.EqualFold(e.BodyType, "html") {
+		out["body"] = map[string]any{"contentType": "text", "content": strings.TrimSpace(htmlTag.ReplaceAllString(e.Body, ""))}
+	}
+	return out
+}
+
+// htmlTag is a tag the fake strips from an HTML body answered as text.
+var htmlTag = regexp.MustCompile(`<[^>]*>`)
+
+// calendarView answers GET /users/{id}/calendars/{id}/calendarView: every
+// event of cal overlapping startDateTime..endDateTime (400 without them),
+// in pages of $top with an @odata.nextLink carrying a $skiptoken.
+func (g *FakeGraph) calendarView(u *User, mb *mailbox, cal *Calendar, query url.Values) answer {
+	from, err1 := time.Parse(time.RFC3339, query.Get("startDateTime"))
+	to, err2 := time.Parse(time.RFC3339, query.Get("endDateTime"))
+	if err1 != nil || err2 != nil || !to.After(from) {
+		return graphError(http.StatusBadRequest, "ErrorInvalidParameter", "startDateTime and endDateTime are required.")
+	}
+	if query.Has("$filter") || query.Has("$expand") {
+		return graphError(http.StatusBadRequest, "ErrorInvalidUrlQuery", "The fake's calendarView takes no $filter or $expand.")
+	}
+	top := 10
+	if v := query.Get("$top"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 1 || n > 1000 {
+			return graphError(http.StatusBadRequest, "ErrorInvalidUrlQuery", "The value of $top is not valid.")
+		}
+		top = n
+	}
+	skip := 0
+	if v := query.Get("$skiptoken"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 0 {
+			return graphError(http.StatusBadRequest, "ErrorInvalidUrlQuery", "Invalid skip token.")
+		}
+		skip = n
+	}
+	var all []*Event
+	for _, e := range mb.events {
+		if e.CalendarID == cal.ID && overlaps(e, from, to) {
+			all = append(all, e)
+		}
+	}
+	out := []any{}
+	for i := skip; i < len(all) && i < skip+top; i++ {
+		out = append(out, eventJSON(all[i], query))
+	}
+	body := map[string]any{"value": out}
+	if skip+top < len(all) {
+		next := url.Values{}
+		for k, v := range query {
+			next[k] = slices.Clone(v)
+		}
+		next.Set("$top", strconv.Itoa(top))
+		next.Set("$skiptoken", strconv.Itoa(skip+top))
+		body["@odata.nextLink"] = g.nextLink("https://" + GraphHost + "/v1.0/users/" + u.ID + "/calendars/" + url.PathEscape(cal.ID) +
+			"/calendarView?" + strings.ReplaceAll(next.Encode(), "+", "%20"))
+	}
+	return answer{status: http.StatusOK, body: body}
+}
+
+// nextLink is link through NextLinks when it is set.
+func (g *FakeGraph) nextLink(link string) string {
+	if g.NextLinks != nil {
+		return g.NextLinks(link)
+	}
+	return link
 }
