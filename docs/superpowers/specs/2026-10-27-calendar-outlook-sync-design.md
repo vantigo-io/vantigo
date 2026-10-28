@@ -698,12 +698,126 @@ events are taken only while the person's kinds include `calendar.appointment`. *
 `POST /mailbox-sync/run`. The `POST` and `PUT` of an appointment read its links again
 before the write, so a failing directory writes nothing.
 
-### O11 — D: change notifications (outline)
+### O11 — D: change notifications
 
-Optional, recommended: with `PUBLIC_BASE_URL` reachable, a subscription per person on
-`/users/{id}/events` (renewed before its seven days, lifecycle notifications handled),
-whose notification only sets `next_sync_at = now` — the delta remains the truth. The
-anonymous endpoint joins the public host's list.
+Revised for delivery D on 2026-10-28, after a Microsoft Learn check (research §3, *Change
+notifications, as checked for D*). Optional and recommended: on an installation Microsoft
+can reach, a change in a person's mailbox makes their sync due at once instead of at the
+next poll. **A notification is a nudge and nothing more**: it sets nothing but a time,
+and the reads — B's delta, C's `Versions` and `Events` — stay the truth. Nothing a
+notification says is trusted beyond "this subscription fired", nor stored.
+
+**O11.1 — When.** Only while `PUBLIC_BASE_URL` is set (Graph needs a public HTTPS address)
+and `CALENDAR_MAILBOX_NOTIFICATIONS_ENABLED` (default `true`) is on — the operator's off
+switch for a public host Microsoft cannot reach. Otherwise nothing is subscribed and the
+poll alone runs, as before. The poll is unchanged either way (`CALENDAR_MAILBOX_SYNC_POLL`):
+a secondary calendar's coverage and an event notification's latency are not documented.
+
+**O11.2 — One subscription per mailbox.** `resource` `/users/{oid}/events` — the only
+event resource documented; a calendar-scoped path is not — `changeType`
+`created,updated,deleted`, no resource data (no `includeResourceData`, no certificate:
+nothing of an event is wanted), `expirationDateTime` now + **10 000 minutes** (under the
+10 080 limit), `clientState` a fresh 32 random bytes, base64url (43 characters), and
+`notificationUrl` and `lifecycleNotificationUrl` both
+`PUBLIC_BASE_URL/api/v1/entra/mailbox-notifications`. Whether the subscription sees the
+*Vantigo* calendar is for the real tenant; the poll covers it either way.
+
+**O11.3 — The contract.** `contracts.MailboxCalendar` gains three calls, rule 14's
+discipline (never in a transaction or holding a connection, through `contractscalls.go`):
+
+```go
+// Watch makes sure the mailbox's changes are notified: nothing when a live
+// subscription has more than three days left, a renewal when less (or when the
+// directory asked to reauthorize), a create otherwise. nil also when the provider
+// offers no notifications on this installation, or holds creates off (O11.7).
+// Refused under cleanup.
+Watch(ctx context.Context, mailbox string) error
+// Unwatch deletes the mailbox's subscription. Idempotent; allowed under cleanup;
+// a refusal or failure keeps it owed (answered as an error), never forgotten.
+Unwatch(ctx context.Context, mailbox string) error
+// Notified answers the mailboxes notified after since, oldest first, at most
+// MailboxNoticesMax: no network, the provider's own rows.
+Notified(ctx context.Context, since time.Time) ([]MailboxNotice, error)
+type MailboxNotice struct { Mailbox string; At time.Time }
+```
+
+`Watch`: no row, or one removed → **create** (O11.4); a row whose expiry is within three
+days, or marked `reauthorize` → **`PATCH` the expiry** to now + 10 000 minutes (which
+reauthorizes too); a 404 there forgets the row and creates. A create answered **409**
+(Graph already holds one for that resource and this application — a row lost) lists the
+application's subscriptions (`GET /subscriptions`, at most 10 pages), deletes those whose
+`resource` names this mailbox's object id and whose `notificationUrl` is exactly this
+installation's, and creates once more. A 403 is `ErrMailboxDenied`, a mailbox gone
+`ErrMailboxGone`, as for the other calls. `Unwatch`: a row past its expiry is forgotten
+with no call (Graph deleted it); else `DELETE /subscriptions/{id}` — 204 or 404 forget
+the row; anything else marks it `deleting` and answers the error. Every subscription id
+read from Graph or stored is a GUID, parsed strictly; any other is a failure.
+
+**O11.4 — Storage (Entra).** `entra.mailbox_subscriptions`, one row per mailbox:
+`object_id` (primary key, the account's), `subscription_id` (Graph's, unique, null while
+creating), `client_state_hash` (SHA-256 of the `clientState` — a 256-bit random secret,
+so a hash is enough; the plain value is sent once, at create, and never stored),
+`expires_at`, `state` (`active`, `reauthorize`, `removed`, `deleting`), `notified_at`,
+`created_at`, `updated_at`. `entra.connection` gains `notifications_validating_until`
+(O11.5), `notifications_unreachable_at` (O11.7) and `last_notification_at`.
+
+**O11.5 — The endpoint.** `POST /api/v1/entra/mailbox-notifications`, anonymous, added to
+the public host's allowlist (and served on the app's host too, as the RSVP operations
+are). Rate limited `entra-mailbox-notifications`, 600 per client address a minute (Graph
+retries a 429). The body is capped at 1 MiB.
+
+- **The handshake**: a request carrying `validationToken` is answered **200 `text/plain`**
+  (`nosniff`, `no-store`) with the decoded token — only while a create is in flight
+  (`notifications_validating_until`, set to now + 30 s before each `POST /subscriptions`
+  and cleared after it) and only for a token of at most 1024 bytes with no control
+  character; otherwise 404 with no body. The answer never waits on anything but that one
+  row.
+- **A notification**: `{"value": [...]}`, at most 1000 items read. Per item: the
+  `subscriptionId` a GUID, a row of it, the `clientState`'s SHA-256 equal to the row's
+  (compared in **constant time**), and the `tenantId` the connection's — else the item is
+  ignored. A valid item sets the row's `notified_at` (one `UPDATE` per subscription per
+  request, skipped when it moved within the last five seconds — a flood only marks a row
+  due); a `lifecycleEvent` of `reauthorizationRequired` also sets `reauthorize`,
+  `subscriptionRemoved` `removed`; `missed` is a notification like any other.
+  `last_notification_at` moves at most once a minute.
+- **The answer**: **202** with no body for any body that decodes, whatever it named —
+  an unknown subscription, a wrong `clientState` and a valid one are answered alike, so
+  the endpoint reveals nothing; 400 for one that does not; **503** when the database
+  could not be written within two seconds (Graph retries). Everything is done before
+  answering, within the three seconds: a few indexed writes.
+- **Logs**: counts and codes at debug; ignored items counted at warning, never an id, a
+  `clientState`, a resource or a tenant.
+
+**O11.6 — The calendar's side.** (1) Each sync that reached the push and left the person
+`active` calls `Watch(mailbox)` last; its error is logged by its code and changes
+nothing — the push and the busy read stand. (2) Every clean-up (O8) — the toggle off, the
+target changed, `calendar:access` lost, the account gone or moved, the admin switch off —
+calls `Unwatch` on the mailbox it cleans; `ErrMailboxGone` and `ErrMailboxUnknown` forget
+it, anything else keeps the clean-up owed on the backoff as the other clean-up steps do.
+A target change keeps the subscription (it is the mailbox's, not the calendar's): the
+clean-up there skips `Unwatch`. (3) Each cycle, before it picks the due, the worker asks
+`Notified(since)` — `since` the latest `At` it has taken, held in memory, the poll
+interval ago at start — and sets `next_sync_at = now` on each enabled, `active` or
+`pending` row of that mailbox whose last sync started before the notice's `At` and which
+is not due already. A failing `Notified` is logged and the cycle goes on.
+
+**O11.7 — What an Owner sees.** `GET /connection`'s `calendarSync` gains
+`notifications {status, subscriptions, lastNotificationAt?, unreachableAt?}`: `off`
+(`CALENDAR_MAILBOX_NOTIFICATIONS_ENABLED` false), `not_configured` (`PUBLIC_BASE_URL`
+unset), `unreachable` (a create's handshake failed — Graph answered 400 — within the last
+hour: every `Watch` then answers nil without calling, so one unreachable address does not
+cost a create per person), `active` otherwise; `subscriptions` the live rows. The Entra
+page shows it under *Calendar sync*. The person's Outlook card shows nothing new.
+
+**O11.8 — What is not done.** No rich notifications or encryption; no IP allowlist
+(optional in Microsoft's words, and their ranges move — an operator may add one at the
+proxy); no delta of the *Vantigo* calendar (none in v1.0). A connection deleted forgets
+its rows: Graph's subscriptions lapse within seven days and their notifications are
+answered 202, unknown.
+
+**O11.9 — Rule 14.** `Watch`, `Unwatch` and `Notified` are calls of the calendar into the
+provider, the direction that exists; the endpoint writes Entra's own rows and never
+calls the calendar.
 
 ### O12 — Out of scope
 
@@ -725,7 +839,12 @@ Outlook (occurrences only, O6); categories; reminders; a holiday calendar in Out
   Plan [`2026-10-28-calendar-outlook-writeback.md`](../plans/2026-10-28-calendar-outlook-writeback.md).
   Docs: the calendar and Entra reference, module boundaries (rule 14's reads), the
   calendar user guide and the Entra administration page in both languages, the roadmap.
-- **D**: O11.
+- **D** (`feat/calendar-outlook-notifications`): O11. Migration
+  `00085_entra_mailbox_subscriptions.sql`. Plan
+  [`2026-10-28-calendar-outlook-notifications.md`](../plans/2026-10-28-calendar-outlook-notifications.md).
+  Docs: the calendar and Entra reference, module boundaries (rule 14's calls), the Entra
+  and calendar administration pages and `admin/installation.md` in both languages, the
+  roadmap.
 
 ## Testing
 
