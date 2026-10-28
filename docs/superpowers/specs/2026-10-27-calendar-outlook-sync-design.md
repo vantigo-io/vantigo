@@ -257,6 +257,15 @@ One cycle every minute under an advisory lease (the subscriptions worker's shape
 most 50 people a cycle, the due first (`next_sync_at` null or past). For each, holding
 no transaction or connection while calling out:
 
+*As built (2026-10-28, after delivery D):* no lease. The advisory lease held its pooled
+connection for the whole cycle while each sync asked the pool for another, and on a pool
+of four (pgxpool's default on a small machine) the workers and the readiness probe
+starved. Each person is now claimed in one short statement — `claimed_until`, migration
+00087, ten minutes ahead, `FOR UPDATE SKIP LOCKED` — whose connection goes back before the
+sync, and given back when it ends. The claim, not `next_sync_at` (which the PUT, the nudge
+and the notices move), is what keeps two replicas off one person. The subscriptions worker
+claims the same way, by putting `next_fetch_at` ahead.
+
 1. `Access.UserHolds(user, calendar:access)`; false → O8's clean-up.
 2. `MailboxCalendar.Status`; `unavailable` → state `unavailable` (kept, retried hourly);
    `cleanup` → O8's clean-up, state `unavailable` after.

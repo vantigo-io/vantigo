@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"slices"
+	"sync"
 	"testing"
 	"time"
 
@@ -289,26 +290,90 @@ func TestMailboxSyncWorker_IsContributedUnlessTurnedOffAndTicksEveryMinute(t *te
 	}
 }
 
-func TestMailboxSyncWorker_SkipsTheCycleWhileTheLeaseIsHeldElsewhere(t *testing.T) {
+// A person another cycle has claimed is skipped until the claim is given
+// back or lapses; a sync gives its own claim back when it ends.
+func TestMailboxSyncWorker_SkipsAPersonClaimedElsewhere(t *testing.T) {
 	t.Parallel()
 	r := newMailboxRig(t)
-	conn, err := r.Pool().Acquire(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer conn.Release()
-	if _, err := conn.Exec(context.Background(), `SELECT pg_advisory_lock($1)`, int64(0x43414C4D424F5831)); err != nil {
+	c, me, _ := r.person(t)
+	turnOn(t, c, "default", "full", "calendar.appointment")
+	ctx := context.Background()
+	if _, err := r.Pool().Exec(ctx, `UPDATE calendar.mailbox_sync SET claimed_until = $2 WHERE user_id = $1`,
+		me, r.Now().Add(5*time.Minute)); err != nil {
 		t.Fatal(err)
 	}
 	w := mailboxWorker(t, r)
-	if ran, n, err := w.RunCycle(context.Background()); ran || n != 0 || err != nil {
-		t.Errorf("with the lease held elsewhere the cycle ran %v, synced %d, %v", ran, n, err)
+	if n, err := w.RunCycle(ctx); n != 0 || err != nil {
+		t.Errorf("with the person claimed elsewhere the cycle synced %d, %v", n, err)
 	}
-	if _, err := conn.Exec(context.Background(), `SELECT pg_advisory_unlock($1)`, int64(0x43414C4D424F5831)); err != nil {
-		t.Fatal(err)
+	r.Advance(5 * time.Minute)
+	if n, err := w.RunCycle(ctx); n != 1 || err != nil {
+		t.Errorf("with the claim lapsed the cycle synced %d, %v", n, err)
 	}
-	if ran, _, err := w.RunCycle(context.Background()); !ran || err != nil {
-		t.Errorf("with the lease free the cycle ran %v, %v", ran, err)
+	if n := r.Count(t, `SELECT count(*) FROM calendar.mailbox_sync WHERE user_id = $1 AND claimed_until IS NOT NULL`, me); n != 0 {
+		t.Errorf("the sync left its claim on the row")
+	}
+}
+
+// The cycle holds no connection while it syncs (design O7): on a pool of
+// four, three held by others — the other workers, a request — the fourth
+// stays free while a person's sync waits on the provider, and the cycle
+// ends. A cycle holding a lease's connection across the sync took that
+// fourth and then waited for a fifth: every worker and the readiness probe
+// starved with it.
+func TestMailboxSyncWorker_ASmallPoolStaysUsableWhileACycleSyncs(t *testing.T) {
+	t.Parallel()
+	r := newMailboxRig(t, modtest.WithPoolMaxConns(4))
+	for range 3 {
+		c, _, _ := r.person(t)
+		create(t, c, timed(t, "Plan", oslo, "2026-09-14T09:00", "2026-09-14T10:00"))
+		turnOn(t, c, "default", "full", "calendar.appointment")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	for range 3 {
+		conn, err := r.Pool().Acquire(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer conn.Release()
+	}
+
+	inStatus, proceed := make(chan struct{}), make(chan struct{})
+	var once sync.Once
+	r.box.BeforeStatus(func() {
+		once.Do(func() {
+			close(inStatus)
+			<-proceed
+		})
+	})
+	w := mailboxWorker(t, r)
+	type result struct {
+		n   int
+		err error
+	}
+	done := make(chan result, 1)
+	go func() {
+		n, err := w.RunCycle(ctx)
+		done <- result{n, err}
+	}()
+
+	select {
+	case <-inStatus:
+	case res := <-done:
+		t.Fatalf("the cycle ended before it asked the provider: synced %d, %v", res.n, res.err)
+	case <-ctx.Done():
+		t.Fatal("the cycle never asked the provider: it waited for a connection")
+	}
+	ping, cancelPing := context.WithTimeout(ctx, 5*time.Second)
+	err := r.Pool().Ping(ping)
+	cancelPing()
+	close(proceed)
+	if err != nil {
+		t.Errorf("the pool's last connection was not free while a sync waited on the provider: %v", err)
+	}
+	if res := <-done; res.err != nil || res.n != 3 {
+		t.Errorf("the cycle synced %d, %v; want all three", res.n, res.err)
 	}
 }
 

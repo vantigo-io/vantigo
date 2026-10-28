@@ -106,6 +106,7 @@ type FakeMailboxCalendar struct {
 	expired   map[string]bool           // the links ExpireDelta expired
 	linkNext  int                       // the last link number handed out
 	onDelta   func(n int)               // BeforeDelta's
+	onStatus  func()                    // BeforeStatus's
 	deltas    int                       // the Delta calls so far
 	watched   map[string]bool           // the mailboxes Watch watches
 	watches   []string                  // every mailbox Watch was asked for, in order
@@ -330,6 +331,14 @@ func (f *FakeMailboxCalendar) RemoveForeign(mailbox, id string) {
 	}
 }
 
+// BeforeStatus makes every Status call fn first, with no lock held — for a
+// test holding a sync in the middle of its calls out.
+func (f *FakeMailboxCalendar) BeforeStatus(fn func()) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.onStatus = fn
+}
+
 // BeforeDelta makes every Delta call fn first, with no lock held, numbered
 // from 1 — for a test changing the person's setting in the middle of a read.
 func (f *FakeMailboxCalendar) BeforeDelta(fn func(n int)) {
@@ -538,8 +547,15 @@ func (f *FakeMailboxCalendar) Key() string {
 	return f.key
 }
 
-// Status answers what SetStatus set, or FailWith's error.
+// Status answers what SetStatus set, or FailWith's error, BeforeStatus's fn
+// called first.
 func (f *FakeMailboxCalendar) Status(context.Context) (contracts.MailboxStatus, error) {
+	f.mu.Lock()
+	fn := f.onStatus
+	f.mu.Unlock()
+	if fn != nil {
+		fn()
+	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.calls = append(f.calls, MailboxCall{Method: "Status"})

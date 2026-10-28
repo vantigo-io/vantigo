@@ -114,17 +114,23 @@ RETURNING *;
 SELECT * FROM calendar.subscriptions
 WHERE id = @id;
 
--- name: ListSubscriptionsDue :many
--- ListSubscriptionsDue is the worker's cycle: the subscriptions due at now,
--- never fetched first and then the longest due, at most row_limit, locked so
--- no other cycle fetches the same one. It carries what a fetch sends and not
--- the body, which a cycle of two hundred would otherwise read for nothing.
-SELECT id, user_id, url, etag, last_modified
-FROM calendar.subscriptions
-WHERE next_fetch_at IS NULL OR next_fetch_at <= @now::timestamptz
-ORDER BY next_fetch_at NULLS FIRST, id
-LIMIT @row_limit::integer
-FOR UPDATE SKIP LOCKED;
+-- name: ClaimDueSubscription :one
+-- ClaimDueSubscription is the worker's claim: the subscription due at now —
+-- never fetched first, then the longest due — put off until claimed_until,
+-- so no other cycle fetches it while this one does; the fetch's record then
+-- sets when it is due next, and a fetch cut short leaves it due once the
+-- claim lapses. Locked SKIP LOCKED, so two cycles claiming at once take two
+-- rows; no row is nothing left due. It carries what a fetch sends and not
+-- the body.
+UPDATE calendar.subscriptions SET next_fetch_at = @claimed_until::timestamptz
+WHERE id = (
+    SELECT c.id FROM calendar.subscriptions c
+    WHERE c.next_fetch_at IS NULL OR c.next_fetch_at <= @now::timestamptz
+    ORDER BY c.next_fetch_at NULLS FIRST, c.id
+    LIMIT 1
+    FOR UPDATE SKIP LOCKED
+)
+RETURNING id, user_id, url, etag, last_modified;
 
 -- name: DeferSubscriptionFetch :exec
 -- DeferSubscriptionFetch puts a subscription off until next_fetch_at without

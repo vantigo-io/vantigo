@@ -16,15 +16,13 @@ import (
 
 // The calendar-subscriptions worker (calendar feed design D7).
 
-const subscriptionsLease = int64(0x43414C5355425331) // "CALSUBS1"
-
-// cycle runs one cycle of the worker, failing unless it ran, and answers how
+// cycle runs one cycle of the worker, failing on its error, and answers how
 // many it fetched.
 func cycle(t *testing.T, w *calendar.SubscriptionsWorker) int {
 	t.Helper()
-	ran, n, err := w.RunCycle(context.Background())
-	if err != nil || !ran {
-		t.Fatalf("cycle: ran %v, %v", ran, err)
+	n, err := w.RunCycle(context.Background())
+	if err != nil {
+		t.Fatalf("cycle: %v", err)
 	}
 	return n
 }
@@ -172,28 +170,86 @@ func TestSubscriptionsWorker_DefersThoseOfAPersonWhoMayNoLongerUseCalendar(t *te
 	}
 }
 
-func TestSubscriptionsWorker_SkipsTheCycleWhileTheLeaseIsHeldElsewhere(t *testing.T) {
+// A claimed subscription is put off until its claim lapses, and the fetch's
+// record sets when it is due next; a second cycle finds nothing due.
+func TestSubscriptionsWorker_AClaimKeepsAnotherCycleOff(t *testing.T) {
 	t.Parallel()
 	h, f := newSubscribing(t)
-	f.serveCalendar("/due.ics", matchCalendar, "")
-	insertDue(t, h, "/due.ics")
-	conn, err := h.Pool().Acquire(context.Background())
-	if err != nil {
-		t.Fatal(err)
+	inFetch, proceed := make(chan struct{}), make(chan struct{})
+	f.serve("/due.ics", func(w http.ResponseWriter, _ *http.Request) {
+		close(inFetch)
+		<-proceed
+		w.Header().Set("Content-Type", "text/calendar; charset=utf-8")
+		_, _ = w.Write([]byte(matchCalendar))
+	})
+	id := insertDue(t, h, "/due.ics")
+	first, second := calendar.NewSubscriptionsWorker(h.Deps()), calendar.NewSubscriptionsWorker(h.Deps())
+	done := make(chan int, 1)
+	go func() { done <- cycle(t, first) }()
+	<-inFetch
+	if next := nextFetch(t, h, id); !next.After(h.Now()) {
+		t.Errorf("while it is fetched the subscription is due at %v, want claimed past now", next)
 	}
-	defer conn.Release()
-	if _, err := conn.Exec(context.Background(), `SELECT pg_advisory_lock($1)`, subscriptionsLease); err != nil {
-		t.Fatal(err)
+	if n := cycle(t, second); n != 0 {
+		t.Errorf("a second cycle fetched %d of a claimed subscription", n)
+	}
+	close(proceed)
+	if n := <-done; n != 1 {
+		t.Errorf("the first cycle fetched %d", n)
+	}
+	if next := nextFetch(t, h, id); next.Before(h.Now().Add(30 * time.Minute)) {
+		t.Errorf("after the fetch the next is due %v, want a poll ahead, not the claim's", next)
+	}
+}
+
+// The cycle holds no connection while it fetches: on a pool of four, three
+// held by others, the fourth stays free while an address is fetched.
+func TestSubscriptionsWorker_ASmallPoolStaysUsableWhileACycleFetches(t *testing.T) {
+	t.Parallel()
+	h, f := newSubscribing(t, modtest.WithPoolMaxConns(4))
+	inFetch, proceed := make(chan struct{}), make(chan struct{})
+	f.serve("/due.ics", func(w http.ResponseWriter, _ *http.Request) {
+		close(inFetch)
+		<-proceed
+		w.Header().Set("Content-Type", "text/calendar; charset=utf-8")
+		_, _ = w.Write([]byte(matchCalendar))
+	})
+	insertDue(t, h, "/due.ics")
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	for range 3 {
+		conn, err := h.Pool().Acquire(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer conn.Release()
 	}
 	w := calendar.NewSubscriptionsWorker(h.Deps())
-	if ran, n, err := w.RunCycle(context.Background()); ran || n != 0 || err != nil || len(f.requests()) != 0 {
-		t.Errorf("with the lease held elsewhere the cycle ran %v, fetched %d, %v", ran, n, err)
+	type result struct {
+		n   int
+		err error
 	}
-	if _, err := conn.Exec(context.Background(), `SELECT pg_advisory_unlock($1)`, subscriptionsLease); err != nil {
-		t.Fatal(err)
+	done := make(chan result, 1)
+	go func() {
+		n, err := w.RunCycle(ctx)
+		done <- result{n, err}
+	}()
+	select {
+	case <-inFetch:
+	case res := <-done:
+		t.Fatalf("the cycle ended before it fetched: %d, %v", res.n, res.err)
+	case <-ctx.Done():
+		t.Fatal("the cycle never fetched: it waited for a connection")
 	}
-	if ran, n, err := w.RunCycle(context.Background()); !ran || n != 1 || err != nil {
-		t.Errorf("with the lease free the cycle ran %v, fetched %d, %v", ran, n, err)
+	ping, cancelPing := context.WithTimeout(ctx, 5*time.Second)
+	err := h.Pool().Ping(ping)
+	cancelPing()
+	close(proceed)
+	if err != nil {
+		t.Errorf("the pool's last connection was not free while a fetch ran: %v", err)
+	}
+	if res := <-done; res.err != nil || res.n != 1 {
+		t.Errorf("the cycle fetched %d, %v", res.n, res.err)
 	}
 }
 

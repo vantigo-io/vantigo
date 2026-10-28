@@ -125,6 +125,7 @@ type CalendarMailboxSync struct {
 	PutBackReason *string
 	PutBackKey    *string
 	PutBackAt     *time.Time
+	ClaimedUntil  *time.Time
 }
 
 type CalendarSubscription struct {

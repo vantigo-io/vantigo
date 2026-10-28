@@ -13,66 +13,63 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const claimDueMailboxSyncs = `-- name: ClaimDueMailboxSyncs :many
-SELECT user_id, enabled, target, detail, kinds, mailbox, calendar_id, state, error, next_sync_at, last_synced_at, attempts, reconcile, revision, created_at, updated_at, busy_link, busy_from, busy_to, busy_synced_at, put_back_reason, put_back_key, put_back_at FROM calendar.mailbox_sync
-WHERE (enabled OR state = 'stopping')
-  AND (next_sync_at IS NULL OR next_sync_at <= $1::timestamptz)
-ORDER BY next_sync_at NULLS FIRST, user_id
-LIMIT $2::integer
-FOR UPDATE SKIP LOCKED
+const claimDueMailboxSync = `-- name: ClaimDueMailboxSync :one
+UPDATE calendar.mailbox_sync SET claimed_until = $1::timestamptz
+WHERE user_id = (
+    SELECT c.user_id FROM calendar.mailbox_sync c
+    WHERE (c.enabled OR c.state = 'stopping')
+      AND (c.next_sync_at IS NULL OR c.next_sync_at <= $2::timestamptz)
+      AND (c.claimed_until IS NULL OR c.claimed_until <= $2::timestamptz)
+      AND c.user_id <> ALL($3::uuid[])
+    ORDER BY c.next_sync_at NULLS FIRST, c.user_id
+    LIMIT 1
+    FOR UPDATE SKIP LOCKED
+)
+RETURNING user_id, enabled, target, detail, kinds, mailbox, calendar_id, state, error, next_sync_at, last_synced_at, attempts, reconcile, revision, created_at, updated_at, busy_link, busy_from, busy_to, busy_synced_at, put_back_reason, put_back_key, put_back_at, claimed_until
 `
 
-type ClaimDueMailboxSyncsParams struct {
-	Now      time.Time
-	RowLimit int32
+type ClaimDueMailboxSyncParams struct {
+	ClaimedUntil time.Time
+	Now          time.Time
+	Done         []uuid.UUID
 }
 
-// ClaimDueMailboxSyncs is the worker's cycle (O7): the rows on, or owing a
-// clean-up, that are due at now — never synced first, then the longest due —
-// at most row_limit, locked so no other cycle takes the same one. Through
-// ix_mailbox_sync_due.
-func (q *Queries) ClaimDueMailboxSyncs(ctx context.Context, arg ClaimDueMailboxSyncsParams) ([]CalendarMailboxSync, error) {
-	rows, err := q.db.Query(ctx, claimDueMailboxSyncs, arg.Now, arg.RowLimit)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []CalendarMailboxSync
-	for rows.Next() {
-		var i CalendarMailboxSync
-		if err := rows.Scan(
-			&i.UserID,
-			&i.Enabled,
-			&i.Target,
-			&i.Detail,
-			&i.Kinds,
-			&i.Mailbox,
-			&i.CalendarID,
-			&i.State,
-			&i.Error,
-			&i.NextSyncAt,
-			&i.LastSyncedAt,
-			&i.Attempts,
-			&i.Reconcile,
-			&i.Revision,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-			&i.BusyLink,
-			&i.BusyFrom,
-			&i.BusyTo,
-			&i.BusySyncedAt,
-			&i.PutBackReason,
-			&i.PutBackKey,
-			&i.PutBackAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+// ClaimDueMailboxSync is the worker's claim (O7): the row on, or owing a
+// clean-up, that is due at now and not claimed — never synced first, then
+// the longest due — and not one of done, the people the cycle has synced
+// already, claimed until claimed_until, so no other cycle takes it while it
+// syncs. Locked SKIP LOCKED, so two cycles claiming at once take two rows.
+// No row is nothing left due. Through ix_mailbox_sync_due.
+func (q *Queries) ClaimDueMailboxSync(ctx context.Context, arg ClaimDueMailboxSyncParams) (CalendarMailboxSync, error) {
+	row := q.db.QueryRow(ctx, claimDueMailboxSync, arg.ClaimedUntil, arg.Now, arg.Done)
+	var i CalendarMailboxSync
+	err := row.Scan(
+		&i.UserID,
+		&i.Enabled,
+		&i.Target,
+		&i.Detail,
+		&i.Kinds,
+		&i.Mailbox,
+		&i.CalendarID,
+		&i.State,
+		&i.Error,
+		&i.NextSyncAt,
+		&i.LastSyncedAt,
+		&i.Attempts,
+		&i.Reconcile,
+		&i.Revision,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.BusyLink,
+		&i.BusyFrom,
+		&i.BusyTo,
+		&i.BusySyncedAt,
+		&i.PutBackReason,
+		&i.PutBackKey,
+		&i.PutBackAt,
+		&i.ClaimedUntil,
+	)
+	return i, err
 }
 
 const clearMailboxPutBack = `-- name: ClearMailboxPutBack :exec
@@ -123,7 +120,7 @@ func (q *Queries) DeleteMailboxEvents(ctx context.Context, userID uuid.UUID) (in
 
 const getMailboxSync = `-- name: GetMailboxSync :one
 
-SELECT user_id, enabled, target, detail, kinds, mailbox, calendar_id, state, error, next_sync_at, last_synced_at, attempts, reconcile, revision, created_at, updated_at, busy_link, busy_from, busy_to, busy_synced_at, put_back_reason, put_back_key, put_back_at FROM calendar.mailbox_sync WHERE user_id = $1
+SELECT user_id, enabled, target, detail, kinds, mailbox, calendar_id, state, error, next_sync_at, last_synced_at, attempts, reconcile, revision, created_at, updated_at, busy_link, busy_from, busy_to, busy_synced_at, put_back_reason, put_back_key, put_back_at, claimed_until FROM calendar.mailbox_sync WHERE user_id = $1
 `
 
 // The Outlook sync (calendar Outlook sync design O5, O7, O8): a person's
@@ -162,6 +159,7 @@ func (q *Queries) GetMailboxSync(ctx context.Context, userID uuid.UUID) (Calenda
 		&i.PutBackReason,
 		&i.PutBackKey,
 		&i.PutBackAt,
+		&i.ClaimedUntil,
 	)
 	return i, err
 }
@@ -205,7 +203,7 @@ func (q *Queries) ListMailboxEvents(ctx context.Context, userID uuid.UUID) ([]Ca
 }
 
 const lockMailboxSync = `-- name: LockMailboxSync :one
-SELECT user_id, enabled, target, detail, kinds, mailbox, calendar_id, state, error, next_sync_at, last_synced_at, attempts, reconcile, revision, created_at, updated_at, busy_link, busy_from, busy_to, busy_synced_at, put_back_reason, put_back_key, put_back_at FROM calendar.mailbox_sync WHERE user_id = $1 FOR UPDATE
+SELECT user_id, enabled, target, detail, kinds, mailbox, calendar_id, state, error, next_sync_at, last_synced_at, attempts, reconcile, revision, created_at, updated_at, busy_link, busy_from, busy_to, busy_synced_at, put_back_reason, put_back_key, put_back_at, claimed_until FROM calendar.mailbox_sync WHERE user_id = $1 FOR UPDATE
 `
 
 // LockMailboxSync takes the person's row's lock for the PUT, so the If-Match
@@ -237,6 +235,7 @@ func (q *Queries) LockMailboxSync(ctx context.Context, userID uuid.UUID) (Calend
 		&i.PutBackReason,
 		&i.PutBackKey,
 		&i.PutBackAt,
+		&i.ClaimedUntil,
 	)
 	return i, err
 }
@@ -318,6 +317,24 @@ type ReleaseMailboxEventParams struct {
 // without a delete by the push and the clean-up.
 func (q *Queries) ReleaseMailboxEvent(ctx context.Context, arg ReleaseMailboxEventParams) error {
 	_, err := q.db.Exec(ctx, releaseMailboxEvent, arg.Now, arg.UserID, arg.ItemKey)
+	return err
+}
+
+const releaseMailboxSyncClaim = `-- name: ReleaseMailboxSyncClaim :exec
+UPDATE calendar.mailbox_sync SET claimed_until = NULL
+WHERE user_id = $1 AND claimed_until = $2::timestamptz
+`
+
+type ReleaseMailboxSyncClaimParams struct {
+	UserID       uuid.UUID
+	ClaimedUntil time.Time
+}
+
+// ReleaseMailboxSyncClaim gives back the claim a sync took, once it ended,
+// whatever it wrote: only that claim — one that lapsed and was taken again
+// is the other cycle's.
+func (q *Queries) ReleaseMailboxSyncClaim(ctx context.Context, arg ReleaseMailboxSyncClaimParams) error {
+	_, err := q.db.Exec(ctx, releaseMailboxSyncClaim, arg.UserID, arg.ClaimedUntil)
 	return err
 }
 
@@ -487,7 +504,7 @@ ON CONFLICT (user_id) DO UPDATE SET
     reconcile = EXCLUDED.reconcile,
     revision = calendar.mailbox_sync.revision + 1,
     updated_at = EXCLUDED.updated_at
-RETURNING user_id, enabled, target, detail, kinds, mailbox, calendar_id, state, error, next_sync_at, last_synced_at, attempts, reconcile, revision, created_at, updated_at, busy_link, busy_from, busy_to, busy_synced_at, put_back_reason, put_back_key, put_back_at
+RETURNING user_id, enabled, target, detail, kinds, mailbox, calendar_id, state, error, next_sync_at, last_synced_at, attempts, reconcile, revision, created_at, updated_at, busy_link, busy_from, busy_to, busy_synced_at, put_back_reason, put_back_key, put_back_at, claimed_until
 `
 
 type UpsertMailboxSyncParams struct {
@@ -544,6 +561,7 @@ func (q *Queries) UpsertMailboxSync(ctx context.Context, arg UpsertMailboxSyncPa
 		&i.PutBackReason,
 		&i.PutBackKey,
 		&i.PutBackAt,
+		&i.ClaimedUntil,
 	)
 	return i, err
 }
@@ -558,7 +576,7 @@ UPDATE calendar.mailbox_sync SET
     reconcile = $6::boolean,
     updated_at = $7::timestamptz
 WHERE user_id = $8 AND revision = $9::integer
-RETURNING user_id, enabled, target, detail, kinds, mailbox, calendar_id, state, error, next_sync_at, last_synced_at, attempts, reconcile, revision, created_at, updated_at, busy_link, busy_from, busy_to, busy_synced_at, put_back_reason, put_back_key, put_back_at
+RETURNING user_id, enabled, target, detail, kinds, mailbox, calendar_id, state, error, next_sync_at, last_synced_at, attempts, reconcile, revision, created_at, updated_at, busy_link, busy_from, busy_to, busy_synced_at, put_back_reason, put_back_key, put_back_at, claimed_until
 `
 
 type WriteMailboxSyncResultParams struct {
@@ -617,6 +635,7 @@ func (q *Queries) WriteMailboxSyncResult(ctx context.Context, arg WriteMailboxSy
 		&i.PutBackReason,
 		&i.PutBackKey,
 		&i.PutBackAt,
+		&i.ClaimedUntil,
 	)
 	return i, err
 }

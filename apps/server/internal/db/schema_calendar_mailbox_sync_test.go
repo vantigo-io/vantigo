@@ -70,6 +70,9 @@ func TestCalendarMailboxSync_AppliesAndIsIdempotent(t *testing.T) {
 		"put_back_reason:character varying(20):YES:",
 		"put_back_key:character varying(200):YES:",
 		"put_back_at:timestamp with time zone:YES:",
+		// 00087's claim, pinned by
+		// TestCalendarMailboxSyncClaim_AppliesAndIsIdempotent.
+		"claimed_until:timestamp with time zone:YES:",
 	}; !equalStrings(got, want) {
 		t.Errorf("calendar.mailbox_sync columns =\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
 	}

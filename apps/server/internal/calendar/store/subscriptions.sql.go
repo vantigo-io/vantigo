@@ -12,6 +12,51 @@ import (
 	"github.com/google/uuid"
 )
 
+const claimDueSubscription = `-- name: ClaimDueSubscription :one
+UPDATE calendar.subscriptions SET next_fetch_at = $1::timestamptz
+WHERE id = (
+    SELECT c.id FROM calendar.subscriptions c
+    WHERE c.next_fetch_at IS NULL OR c.next_fetch_at <= $2::timestamptz
+    ORDER BY c.next_fetch_at NULLS FIRST, c.id
+    LIMIT 1
+    FOR UPDATE SKIP LOCKED
+)
+RETURNING id, user_id, url, etag, last_modified
+`
+
+type ClaimDueSubscriptionParams struct {
+	ClaimedUntil time.Time
+	Now          time.Time
+}
+
+type ClaimDueSubscriptionRow struct {
+	ID           int64
+	UserID       uuid.UUID
+	Url          string
+	Etag         *string
+	LastModified *string
+}
+
+// ClaimDueSubscription is the worker's claim: the subscription due at now —
+// never fetched first, then the longest due — put off until claimed_until,
+// so no other cycle fetches it while this one does; the fetch's record then
+// sets when it is due next, and a fetch cut short leaves it due once the
+// claim lapses. Locked SKIP LOCKED, so two cycles claiming at once take two
+// rows; no row is nothing left due. It carries what a fetch sends and not
+// the body.
+func (q *Queries) ClaimDueSubscription(ctx context.Context, arg ClaimDueSubscriptionParams) (ClaimDueSubscriptionRow, error) {
+	row := q.db.QueryRow(ctx, claimDueSubscription, arg.ClaimedUntil, arg.Now)
+	var i ClaimDueSubscriptionRow
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.Url,
+		&i.Etag,
+		&i.LastModified,
+	)
+	return i, err
+}
+
 const countSubscriptions = `-- name: CountSubscriptions :one
 SELECT count(*) FROM calendar.subscriptions
 WHERE user_id = $1
@@ -260,58 +305,6 @@ func (q *Queries) ListSubscriptions(ctx context.Context, userID uuid.UUID) ([]Ca
 			&i.Error,
 			&i.CreatedAt,
 			&i.UpdatedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listSubscriptionsDue = `-- name: ListSubscriptionsDue :many
-SELECT id, user_id, url, etag, last_modified
-FROM calendar.subscriptions
-WHERE next_fetch_at IS NULL OR next_fetch_at <= $1::timestamptz
-ORDER BY next_fetch_at NULLS FIRST, id
-LIMIT $2::integer
-FOR UPDATE SKIP LOCKED
-`
-
-type ListSubscriptionsDueParams struct {
-	Now      time.Time
-	RowLimit int32
-}
-
-type ListSubscriptionsDueRow struct {
-	ID           int64
-	UserID       uuid.UUID
-	Url          string
-	Etag         *string
-	LastModified *string
-}
-
-// ListSubscriptionsDue is the worker's cycle: the subscriptions due at now,
-// never fetched first and then the longest due, at most row_limit, locked so
-// no other cycle fetches the same one. It carries what a fetch sends and not
-// the body, which a cycle of two hundred would otherwise read for nothing.
-func (q *Queries) ListSubscriptionsDue(ctx context.Context, arg ListSubscriptionsDueParams) ([]ListSubscriptionsDueRow, error) {
-	rows, err := q.db.Query(ctx, listSubscriptionsDue, arg.Now, arg.RowLimit)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []ListSubscriptionsDueRow
-	for rows.Next() {
-		var i ListSubscriptionsDueRow
-		if err := rows.Scan(
-			&i.ID,
-			&i.UserID,
-			&i.Url,
-			&i.Etag,
-			&i.LastModified,
 		); err != nil {
 			return nil, err
 		}

@@ -312,9 +312,10 @@ hver ekstra HTTP-replika ikke mangedobler pollerne:
 Replikaer som verken skal migrere eller kjøre bakgrunnsjobber kan kjøre kommandoen
 `server` i stedet for `api`; den serverer bare, uansett hva `WORKERS_IN_PROCESS` sier.
 Uansett topologi tar oppbevaringsoppryddingen, registerjobbene, EHF-hendelsesjobben og
-kalenderens avlysnings- og abonnementsjobb en rådgivende lås (advisory lock) i PostgreSQL, så hver av dem kjører på nøyaktig én
+kalenderens avlysningsjobb en rådgivende lås (advisory lock) i PostgreSQL, så hver av dem kjører på nøyaktig én
 instans per syklus; utboksen, `invoices-ehf`-jobben, `invoices-reminders`-jobben,
-`invoices-billing`-jobben og `invoices-payments`-jobben tar i stedet én rad om gangen under en tidsbegrenset lås, så
+`invoices-billing`-jobben, `invoices-payments`-jobben og kalenderens abonnements- og
+postboksjobb tar i stedet én rad om gangen under en tidsbegrenset lås, så
 et hvilket som helst antall instanser deler arbeidet uten å sende noe to ganger. Purrejobben sender ett brev om
 gangen, høyst ett i sekundet per instans, og hver sending må bli ferdig godt innenfor
 låsen på 60 sekunder
