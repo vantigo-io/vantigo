@@ -265,7 +265,9 @@ copy changes the appointment in Vantigo at the next sync, through the same rules
 mails as a change made in Vantigo. **Deleting the copy in Outlook — or moving it to
 another calendar or folder — deletes the appointment in Vantigo**, or cancels it, with a
 cancellation mailed to the people outside the company, once they were invited; for one
-occurrence of a repeating appointment, it cancels that occurrence. A change to anything
+occurrence of a repeating appointment, it cancels that occurrence. More than ten such
+deletes of one person's appointments in one sync are none of them taken — the copies
+are put back — so a calendar emptied by mistake does not empty Vantigo. A change to anything
 else — an appointment the person attends, another app's item — is put back, and a copy
 the person adds attendees to is left to them. Vantigo takes at most 20 such changes a
 person per sync; the rest follow at the next.

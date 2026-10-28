@@ -361,8 +361,12 @@ endring, flytting eller sletting av en kopi av deres egen avtale endrer avtalen 
 samme reglene — og de samme e-postene til kolleger og til folk utenfor bedriften — som
 en endring gjort i Vantigo, og en hendelse laget i en egen *Vantigo*-kalender blir til en
 avtale ([tilbakeskrivingen](/en/reference/calendar/#the-write-back)). **En kopi som
-slettes i Outlook, sletter eller avlyser avtalen i Vantigo.** Alt annet som endres i en
-kopi, legges tilbake. Den skriver høyst 20 avtaler per person per synkronisering, på
+slettes i Outlook, sletter eller avlyser avtalen i Vantigo** — bare når Microsoft svarer
+at kopien ikke finnes, aldri når en lesing feiler, og ikke når avtalen er endret i
+Vantigo siden forrige synkronisering. **Mer enn ti slike slettinger av én persons avtaler
+i én synkronisering tas ingen av med**: kopiene kommer tilbake, kortet til personen sier
+det, og arbeideren logger en advarsel med personens id og antallet. Alt annet som endres
+i en kopi, legges tilbake. Den skriver høyst 20 avtaler per person per synkronisering, på
 vegne av den personen. En lesing av kopiene som feiler, lar skrivingen fortsette og
 prøves igjen etter feilens ventetid; kortet til personen sier da at den siste
 synkroniseringen mislyktes.

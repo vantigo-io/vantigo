@@ -601,8 +601,11 @@ Communications' outbox is the working example.
     ([Microsoft Entra ID](/en/reference/entra/#the-reads)).
     The **write-back** adds two reads under the same discipline, both refused under
     `cleanup`: `Versions`, the copies' ids and change keys — nothing of what the events
-    say — and `Events`, events read whole by id through their calendar's own path, so an
-    id not answered is not in that calendar any more. It opens **no new direction**: the
+    say — and `Events`, events read whole by id through their calendar's own path, with
+    the ids the directory answered "not found" for in that calendar apart (`Gone`), so
+    only the directory's own answer makes a delete and an id read neither way infers
+    nothing; `Find` answers whether an event has become a meeting, by its attendees'
+    count alone. It opens **no new direction**: the
     calendar writes its own appointments from what the provider read, through its own
     write paths on the person's behalf (rule 12), with no transaction open across a
     call. **What an event says crosses the contract only for the copies and the

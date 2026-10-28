@@ -656,10 +656,47 @@ fields all match the appointment is rewritten with nothing written. A write that
 worked moves the row's `starts_on` with the appointment. A deleted copy of an
 occurrence of an appointment that is no longer a series, or of an appointment gone or
 cancelled, is forgotten. A released row is forgotten by the default calendar's
-clean-up without a delete; a *Vantigo* calendar deleted whole goes with everything in
-it. `putBack` is answered on the setting's `GET` alone, not by the `PUT` or the run.
+clean-up without a delete; a *Vantigo* calendar is deleted whole only while it holds no
+meeting and no released copy (see below). `putBack` is answered by the setting's `GET`,
+`PUT` and run alike.
 Every update the worker makes names its key, so writes the marker. When the busy read
 and the write-back both fail, the busy read's failure is the one logged.
+
+*After the review* (these supersede the text above where they differ). **O10.2:**
+`Events` answers `MailboxEventsRead{Events, Gone}` — `Gone` the ids the directory
+answered 404 for in that calendar; an id in neither list (an answer that did not
+decode, a per-item 403, an id skipped) was not read this time and infers nothing. A
+`$batch` whose answer outgrows the 16 MiB cap or does not decode is sent again an id at
+a time, an id still failing alone skipped; a 403 of the `$batch` itself is
+`ErrMailboxDenied`. `Events` selects `originalStartTimeZone` and reads an all-day
+event's dates in that zone (a Windows name through CLDR's table, or an IANA one), the
+nearest midnight only when it maps to none; a zone that is neither UTC nor IANA makes
+the event unreadable — skipped in `Events`, left out of B's delta too — never read as
+UTC. `Find` answers `MailboxEventRef.Meeting` (`$select=id,attendees`, the count alone),
+and a gone secondary calendar answers no events. **O10.8:** a delete is taken only for an
+id in `Gone`; a missing row neither answered nor `Gone` keeps its change key and makes
+the write-back incomplete. Each delete's fate, first match: a key no longer wanted is
+left to the push; not an appointment key, an appointment gone, not the person's own,
+cancelled, or an occurrence of one no longer a series is forgotten; a row hash `""` is
+put back with no record; a row hash not the wanted one (Vantigo changed it since) is a
+`conflict`, nothing deleted; else the delete or the cancellation. **The breaker:** more
+than ten deletes or cancellations of the person's own appointments in one sync take none
+— every one put back (made stale), the put-back recorded `many_deleted` with no key
+(`MailboxSyncPutBack.reason` gains it, `appointmentId` absent), the counts logged at
+warning. **The meeting rule:** a meeting `Find` answers is never adopted nor deleted
+by the reconcile or the clean-up, and a mapped one is held as released for the sync
+until the write-back releases its row; under `target = own` the clean-up deletes the
+*Vantigo* calendar whole only while it holds no meeting and no released row, and
+otherwise deletes the non-meeting copies one by one and leaves the calendar. **O10.6:**
+after the noise check, a copy whose row hash is `""` (its last write unknown) is never
+taken but put back with no record; an event exactly as the push last wrote it (its hash
+in the row's target equals the row's) beside a Vantigo change is no conflict — its
+change key kept, the push rewriting it. The kept line is cut at the first line that
+*starts with* either language's text, a no-break space read as a space. **O10.9:** new
+events are taken only while the person's kinds include `calendar.appointment`. **O10.3:**
+`putBack` is answered by the `GET`, the `PUT` (absent once it turns the sync off) and
+`POST /mailbox-sync/run`. The `POST` and `PUT` of an appointment read its links again
+before the write, so a failing directory writes nothing.
 
 ### O11 — D: change notifications (outline)
 

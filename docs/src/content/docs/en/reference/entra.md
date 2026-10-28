@@ -1325,7 +1325,7 @@ installation's marker is never the module's: never adopted, deleted or answered 
 | `EnsureCalendar` | `GET /users/{oid}/calendars/{known}?$select=id,name&$expand=singleValueExtendedProperties($filter=id eq '<calendar marker>')` while `known` is set — found carrying this installation's marker, it is the answer; a 404 for the item, or a calendar without the marker, goes on —, then `POST /users/{oid}/calendars` `{name, singleValueExtendedProperties: [the marker]}`, sent once (no retry of a 5xx). A 409 or `ErrorFolderExists` reads `GET /users/{oid}/calendars?$filter=name eq '<name>'&$select=id,name&$expand=…` and adopts the calendar of that name only when it carries the marker — a create whose answer was lost; otherwise it tries the next name, `<name> (2)` up to `<name> (5)`, then fails. A calendar of the person's own is never adopted. |
 | `DeleteCalendar` | `GET /users/{oid}/calendars/{id}` with the marker's `$expand` first: a calendar without this installation's marker is `ErrCalendarNotOurs` and is never deleted; then `DELETE /users/{oid}/calendars/{id}`, which deletes its events with it. A 404 for the item is done. |
 | `Apply` | `POST /$batch` of at most 20 requests, the batches one after another — Outlook allows four concurrent requests per mailbox. A create is `POST /users/{oid}/events` (the default calendar) or `POST /users/{oid}/calendars/{id}/events`; an update `PATCH /users/{oid}/events/{id}`; a delete `DELETE /users/{oid}/events/{id}`. Each request's body carries `Content-Type: application/json`. |
-| `Find` | `GET /users/{oid}/events` (the default calendar) or `GET /users/{oid}/calendars/{id}/events`, with `$filter=singleValueExtendedProperties/Any(ep: ep/id eq '<event marker>' and startswith(ep/value, 'vantigo:<client id>:'))` — and `and start/dateTime ge '<from, UTC>'` when `from` is set — `&$expand=singleValueExtendedProperties($filter=id eq '<event marker>')&$select=id&$top=100`, in either calendar: only this installation's events are answered, each with its key. It follows `@odata.nextLink` — refused when the link leaves Graph's base — and stops at 5000. |
+| `Find` | `GET /users/{oid}/events` (the default calendar) or `GET /users/{oid}/calendars/{id}/events`, with `$filter=singleValueExtendedProperties/Any(ep: ep/id eq '<event marker>' and startswith(ep/value, 'vantigo:<client id>:'))` — and `and start/dateTime ge '<from, UTC>'` when `from` is set — `&$expand=singleValueExtendedProperties($filter=id eq '<event marker>')&$select=id,attendees&$top=100`, in either calendar: only this installation's events are answered, each with its key and `Meeting` when it has attendees — decoded as empty objects, their count alone, never an address. It follows `@odata.nextLink` — refused when the link leaves Graph's base — and stops at 5000. A secondary calendar whose list answers 404 for the item on the first page — the calendar gone, not the mailbox — answers no events. |
 
 **The event** as Graph takes it: `subject`; `body` as `text`; `location.displayName`
 when there is one — on an update always, so a location dropped is cleared; `isAllDay`;
@@ -1399,7 +1399,8 @@ person's mailbox. Neither decodes, logs or answers anything of what an event is 
   five values whatever its case, `""` for another. An event whose id breaks the id
   rule above is left out before anything else, so neither the calendar's rows nor
   `Marked` ever see one. A timed event's `start` and `end`
-  are instants (UTC as asked; a zone that is not is read as an IANA name); an all-day
+  are instants (UTC as asked; a zone that is not is read as an IANA name, and one that
+  is neither does not read — never taken as UTC and so placed hours off); an all-day
   event's are rounded to the nearest midnight, the end made inclusive. An event with no
   id, or whose times do not read, is left out — counted at debug level with the tenant,
   never named — rather than failing a page the delta would otherwise stop at for ever.
@@ -1463,7 +1464,7 @@ refused unsent — the events of the calendar, in the order asked:
   the calendar's own path** — `/users/{oid}/calendar/events/{id}` for the default
   calendar, `/users/{oid}/calendars/{cid}/events/{id}` for a secondary one — so an
   event moved to another calendar or folder is not found there. Each asks
-  `$select=id,changeKey,type,subject,body,location,start,end,isAllDay,showAs,sensitivity,isCancelled,attendees`
+  `$select=id,changeKey,type,subject,body,location,start,end,isAllDay,originalStartTimeZone,showAs,sensitivity,isCancelled,attendees`
   with the marker's `$expand`, and carries its own `Prefer: outlook.timezone="UTC",
   outlook.body-content-type="text"`. The answer is read through the **16 MiB** cap, as
   a delta page's: a body asked as text may still come as HTML, and twenty of those
@@ -1472,18 +1473,30 @@ refused unsent — the events of the calendar, in the order asked:
   a marker that is not this installation's, `Series` as above, `Cancelled`
   `isCancelled`, `Meeting` when it has attendees — decoded as empty objects, their
   count alone, never an address —, `TextBody` when the body's `contentType` is `text`,
-  and the subject, the body's content, `location.displayName`, the times as `Delta`'s
-  (a timed event's instants in UTC, an all-day event's dates rounded to the nearest
-  midnight, the end inclusive), `showAs` matched to the five values, and `Private` for
-  a `private` or `confidential` sensitivity. A 200 for another id than the one asked,
-  or whose times do not read, is left out, counted at debug level.
-- **404** for the item — not a mailbox gone — is not answered: the event is not in
-  that calendar any more.
+  and the subject, the body's content, `location.displayName`, the times (a timed
+  event's instants in UTC; an all-day event's the dates its UTC instants fall on in the
+  zone it was laid in, `originalStartTimeZone` — a Windows name mapped through CLDR's
+  table, whatever its case, or an IANA name — the end inclusive, and, when that zone
+  maps to no location, rounded to the nearest midnight as `Delta`'s are), `showAs`
+  matched to the five values, and `Private` for a `private` or `confidential`
+  sensitivity. A 200 for another id than the one asked, whose body is not the JSON
+  expected, or whose times do not read, is **skipped**, counted at debug level.
+- **404** for the item — not a mailbox gone — is answered in `Gone`: the event is not
+  in that calendar any more.
+- **403** for one event is skipped too: a refusal of that event alone, never
+  `ErrMailboxDenied`, which is the mailbox's own refusal — of the `$batch` itself, or
+  of `Versions`.
 - **429** is sent again once, alone, after the longest `Retry-After` among the
   throttled, at most 30 seconds; else a throttled failure.
-- A mailbox gone, a 403 or any other refusal fails the whole call, as `Apply`'s would;
-  so does a response the `$batch` did not answer, or one that is not the JSON expected.
-  A refusal is logged at debug level by the tenant, the status and the codes alone.
+- A `$batch` whose answer is larger than the 16 MiB cap, or is not the JSON expected,
+  is sent again **one id at a time**; an id whose read alone still is is skipped,
+  counted. A skipped id is neither answered nor `Gone`, so the calendar infers nothing
+  from it and asks again at the next sync.
+- A refusal of the `$batch` POST itself goes as `Apply`'s would — a 403 there is
+  `ErrMailboxDenied` (`mailbox_denied`) —, and so does any other refusal of one event —
+  a mailbox gone, say —, failing the whole call; so does a response the `$batch` did
+  not answer. A refusal is logged at debug level by the tenant, the status and the
+  codes alone.
 
 ## The events
 
