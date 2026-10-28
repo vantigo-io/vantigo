@@ -116,17 +116,32 @@ func statusOf(conn store.EntraConnection, creds []store.EntraCredential, now tim
 }
 
 // notificationsBody is the change notifications' state as GET /connection
-// answers it (calendar Outlook sync design O11.7), from cfg: off while
-// CALENDAR_MAILBOX_NOTIFICATIONS_ENABLED is 0, not_configured while
-// PUBLIC_BASE_URL is unset (or no configuration is at hand), else active.
-// The provider makes no subscription yet, so it counts none.
-func notificationsBody(cfg *config.Config) gen.EntraCalendarSyncNotifications {
-	body := gen.EntraCalendarSyncNotifications{Status: gen.EntraCalendarSyncNotificationsStatusActive}
+// answers it at now (calendar Outlook sync design O11.7): off while
+// CALENDAR_MAILBOX_NOTIFICATIONS_ENABLED is 0; not_configured while
+// PUBLIC_BASE_URL is unset (or no configuration is at hand); unreachable,
+// with when, while a create's handshake failed within the last hour — no
+// subscription is then made (Watch); else active. Whatever the status, the
+// live subscriptions are counted (CountLiveMailboxSubscriptions: one made
+// before notifications were turned off is still Graph's until it lapses or
+// is deleted) and when a notification last came is said.
+func notificationsBody(ctx context.Context, q *store.Queries, cfg *config.Config, conn store.EntraConnection, now time.Time) (gen.EntraCalendarSyncNotifications, error) {
+	live, err := q.CountLiveMailboxSubscriptions(ctx, now)
+	if err != nil {
+		return gen.EntraCalendarSyncNotifications{}, fmt.Errorf("entra: count the subscriptions: %w", err)
+	}
+	body := gen.EntraCalendarSyncNotifications{
+		Status:             gen.EntraCalendarSyncNotificationsStatusActive,
+		Subscriptions:      live,
+		LastNotificationAt: conn.LastNotificationAt,
+	}
 	switch {
 	case cfg != nil && !cfg.CalendarMailboxNotificationsEnabled:
 		body.Status = gen.EntraCalendarSyncNotificationsStatusOff
 	case cfg == nil || cfg.PublicBaseURL == "":
 		body.Status = gen.EntraCalendarSyncNotificationsStatusNotConfigured
+	case conn.NotificationsUnreachableAt != nil && now.Sub(*conn.NotificationsUnreachableAt) < notificationsUnreachableHold:
+		body.Status = gen.EntraCalendarSyncNotificationsStatusUnreachable
+		body.UnreachableAt = conn.NotificationsUnreachableAt
 	}
-	return body
+	return body, nil
 }

@@ -195,7 +195,11 @@ func readConnection(ctx context.Context, q *store.Queries, cfg *config.Config, c
 	if err != nil {
 		return gen.EntraConnection{}, fmt.Errorf("entra: count the groups: %w", err)
 	}
-	return connectionBody(conn, creds, counts, groups, notificationsBody(cfg), now), nil
+	notifications, err := notificationsBody(ctx, q, cfg, conn, now)
+	if err != nil {
+		return gen.EntraConnection{}, err
+	}
+	return connectionBody(conn, creds, counts, groups, notifications, now), nil
 }
 
 // GetEntraConnection answers the connection from the module's rows; nothing

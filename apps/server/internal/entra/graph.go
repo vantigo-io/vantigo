@@ -124,15 +124,18 @@ var (
 
 // graphError is a refusal Graph answered: the status, error.code and the
 // first error.details[].code (a taken UPN is Request_BadRequest with the
-// detail ObjectConflict). The message is logged, never kept here; Exists
-// alone is read from it — a reference added that is there already ("One or
-// more added object references already exist"), which Graph names by no
-// code of its own.
+// detail ObjectConflict). The message is logged, never kept here; two flags
+// alone are read from it, as Graph names neither by a code of its own:
+// Exists, a reference added that is there already ("One or more added
+// object references already exist"), and Validation, a subscription's
+// create whose handshake with the webhook failed ("Subscription validation
+// request failed…", "…validation request timed out").
 type graphError struct {
-	Status int
-	Code   string
-	Detail string
-	Exists bool
+	Status     int
+	Code       string
+	Detail     string
+	Exists     bool
+	Validation bool
 }
 
 func (e *graphError) Error() string {
@@ -588,8 +591,10 @@ type graphErrorBody struct {
 func (c *graphClient) refusal(ctx context.Context, cred graphCredential, method string, target *url.URL, status int, data []byte, words bool) error {
 	var body graphErrorBody
 	_ = json.Unmarshal(data, &body)
+	message := strings.ToLower(body.Error.Message)
 	e := &graphError{Status: status, Code: body.Error.Code,
-		Exists: strings.Contains(strings.ToLower(body.Error.Message), "already exist")}
+		Exists:     strings.Contains(message, "already exist"),
+		Validation: strings.Contains(message, "validation request") || strings.EqualFold(body.Error.Code, "ValidationError")}
 	if len(body.Error.Details) > 0 {
 		e.Detail = body.Error.Details[0].Code
 	}
