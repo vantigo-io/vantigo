@@ -15,6 +15,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
+	"github.com/vantigo-io/vantigo/server/internal/config"
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/db"
 	"github.com/vantigo-io/vantigo/server/internal/entra/gen"
@@ -121,27 +122,29 @@ func uuidPtr(u *uuid.UUID) *openapi_types.UUID {
 
 // calendarSyncBody is the calendar sync switch as GET /connection answers
 // it (calendar Outlook sync design O2), from the switch, the connection's
-// status and reason, and the permissions the last test saw.
-func calendarSyncBody(conn store.EntraConnection, status, reason string) gen.EntraCalendarSync {
-	body := gen.EntraCalendarSync{Enabled: conn.CalendarSync, Status: gen.Off}
+// status and reason, and the permissions the last test saw, with the change
+// notifications' state (O11.7).
+func calendarSyncBody(conn store.EntraConnection, status, reason string, notifications gen.EntraCalendarSyncNotifications) gen.EntraCalendarSync {
+	body := gen.EntraCalendarSync{Enabled: conn.CalendarSync, Status: gen.EntraCalendarSyncStatusOff, Notifications: notifications}
 	switch {
 	case !conn.CalendarSync:
 	case status != contracts.ProviderConnected:
-		body.Status = gen.Unavailable
+		body.Status = gen.EntraCalendarSyncStatusUnavailable
 		if reason != "" {
 			body.Reason = &reason
 		}
 	case slices.Contains(conn.PermissionsPresent, permissionCalendarsReadWrite):
-		body.Status = gen.Ready
+		body.Status = gen.EntraCalendarSyncStatusReady
 	default:
-		body.Status = gen.PermissionMissing
+		body.Status = gen.EntraCalendarSyncStatusPermissionMissing
 	}
 	return body
 }
 
 // connectionBody is the connection as GET /connection answers it at now,
-// with the counts of its accounts and of its groups present in the tenant.
-func connectionBody(conn store.EntraConnection, creds []store.EntraCredential, counts store.CountAccountsRow, groups int32, now time.Time) gen.EntraConnection {
+// with the counts of its accounts and of its groups present in the tenant,
+// and the change notifications' state.
+func connectionBody(conn store.EntraConnection, creds []store.EntraCredential, counts store.CountAccountsRow, groups int32, notifications gen.EntraCalendarSyncNotifications, now time.Time) gen.EntraConnection {
 	status, reason := statusOf(conn, creds, now)
 	body := gen.EntraConnection{
 		Status:             gen.EntraConnectionStatus(status),
@@ -168,7 +171,7 @@ func connectionBody(conn store.EntraConnection, creds []store.EntraCredential, c
 		Credentials:  credentialsBody(creds, now),
 		Accounts:     gen.EntraAccountCounts{Count: counts.Total, Enabled: counts.Enabled, Disabled: counts.Disabled, Deleted: counts.Deleted},
 		Groups:       gen.EntraGroupCounts{Count: groups},
-		CalendarSync: calendarSyncBody(conn, status, reason),
+		CalendarSync: calendarSyncBody(conn, status, reason, notifications),
 		Version:      conn.Version,
 	}
 	if reason != "" {
@@ -177,8 +180,9 @@ func connectionBody(conn store.EntraConnection, creds []store.EntraCredential, c
 	return body
 }
 
-// readConnection is the connection's body read through q at now.
-func readConnection(ctx context.Context, q *store.Queries, conn store.EntraConnection, now time.Time) (gen.EntraConnection, error) {
+// readConnection is the connection's body read through q at now, the
+// change notifications' state from cfg.
+func readConnection(ctx context.Context, q *store.Queries, cfg *config.Config, conn store.EntraConnection, now time.Time) (gen.EntraConnection, error) {
 	creds, err := q.ListCredentials(ctx)
 	if err != nil {
 		return gen.EntraConnection{}, fmt.Errorf("entra: read the secrets: %w", err)
@@ -191,7 +195,7 @@ func readConnection(ctx context.Context, q *store.Queries, conn store.EntraConne
 	if err != nil {
 		return gen.EntraConnection{}, fmt.Errorf("entra: count the groups: %w", err)
 	}
-	return connectionBody(conn, creds, counts, groups, now), nil
+	return connectionBody(conn, creds, counts, groups, notificationsBody(cfg), now), nil
 }
 
 // GetEntraConnection answers the connection from the module's rows; nothing
@@ -201,7 +205,7 @@ func (s *server) GetEntraConnection(ctx context.Context, _ gen.GetEntraConnectio
 	if err != nil {
 		return nil, fmt.Errorf("entra: read the connection: %w", err)
 	}
-	body, err := readConnection(ctx, s.q, conn, s.deps.Clock())
+	body, err := readConnection(ctx, s.q, s.deps.Config, conn, s.deps.Clock())
 	if err != nil {
 		return nil, err
 	}
@@ -285,7 +289,7 @@ func (s *server) PutEntraConnection(ctx context.Context, req gen.PutEntraConnect
 			}
 			conn = updated
 		}
-		body, err = readConnection(ctx, q, conn, now)
+		body, err = readConnection(ctx, q, s.deps.Config, conn, now)
 		return err
 	})
 	var r refusal
@@ -452,7 +456,7 @@ func (s *server) PutEntraConnectionSettings(ctx context.Context, req gen.PutEntr
 		if err := recordEvent(ctx, q, now, actor, actionSettingsChanged, nil, "", changed); err != nil {
 			return err
 		}
-		body, err = readConnection(ctx, q, updated, now)
+		body, err = readConnection(ctx, q, s.deps.Config, updated, now)
 		return err
 	})
 	var r refusal

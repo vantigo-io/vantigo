@@ -6,7 +6,9 @@ import (
 	"regexp"
 	"time"
 
+	"github.com/vantigo-io/vantigo/server/internal/config"
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
+	"github.com/vantigo-io/vantigo/server/internal/entra/gen"
 	"github.com/vantigo-io/vantigo/server/internal/entra/store"
 )
 
@@ -111,4 +113,20 @@ func statusOf(conn store.EntraConnection, creds []store.EntraCredential, now tim
 		reason = ""
 	}
 	return conn.Status, reason
+}
+
+// notificationsBody is the change notifications' state as GET /connection
+// answers it (calendar Outlook sync design O11.7), from cfg: off while
+// CALENDAR_MAILBOX_NOTIFICATIONS_ENABLED is 0, not_configured while
+// PUBLIC_BASE_URL is unset (or no configuration is at hand), else active.
+// The provider makes no subscription yet, so it counts none.
+func notificationsBody(cfg *config.Config) gen.EntraCalendarSyncNotifications {
+	body := gen.EntraCalendarSyncNotifications{Status: gen.EntraCalendarSyncNotificationsStatusActive}
+	switch {
+	case cfg != nil && !cfg.CalendarMailboxNotificationsEnabled:
+		body.Status = gen.EntraCalendarSyncNotificationsStatusOff
+	case cfg == nil || cfg.PublicBaseURL == "":
+		body.Status = gen.EntraCalendarSyncNotificationsStatusNotConfigured
+	}
+	return body
 }

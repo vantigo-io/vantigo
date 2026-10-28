@@ -40,7 +40,7 @@ export const unconfigured = (): EntraConnection => ({
   credentials: [],
   accounts: { count: 0, enabled: 0, disabled: 0, deleted: 0 },
   groups: { count: 0 },
-  calendarSync: { enabled: false, status: "off" },
+  calendarSync: { enabled: false, status: "off", notifications: { status: "not_configured", subscriptions: 0 } },
   version: 1,
 });
 
@@ -69,7 +69,7 @@ export const connected = (overrides: Partial<EntraConnection> = {}): EntraConnec
   credentials: [credential()],
   accounts: { count: 3, enabled: 2, disabled: 1, deleted: 0 },
   groups: { count: 0 },
-  calendarSync: { enabled: false, status: "off" },
+  calendarSync: { enabled: false, status: "off", notifications: { status: "not_configured", subscriptions: 0 } },
   version: 4,
   ...overrides,
 });
@@ -265,11 +265,14 @@ export const stubEntraApi = (server: EntraServer = {}): EntraStub => {
       state.connection = {
         ...c,
         settings: { ...c.settings, ...request },
-        calendarSync: !sync
-          ? { enabled: false, status: "off" }
-          : c.status !== "connected"
-            ? { enabled: true, status: "unavailable", ...(c.statusReason ? { reason: c.statusReason } : {}) }
-            : { enabled: true, status: lacksCalendar ? "permission_missing" : "ready" },
+        calendarSync: {
+          ...(!sync
+            ? { enabled: false, status: "off" as const }
+            : c.status !== "connected"
+              ? { enabled: true, status: "unavailable" as const, ...(c.statusReason ? { reason: c.statusReason } : {}) }
+              : { enabled: true, status: lacksCalendar ? ("permission_missing" as const) : ("ready" as const) }),
+          notifications: c.calendarSync.notifications,
+        },
         permissionsMissing: sync && lacksCalendar ? [...missing, CALENDAR_PERMISSION] : missing,
         version: c.version + 1,
       };

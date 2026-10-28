@@ -11,8 +11,12 @@ import (
 // today, another directory's mail later. The calendar is the authority — it
 // decides what a person's copies are, from their appointments and the
 // projected items — and the provider writes them to the person's mailbox and
-// answers what it did. The interface names no vendor: a mailbox is an
-// account's external id, a calendar an opaque id, an event a MailboxEvent.
+// answers what it did. It reads the mailbox back too — the busy times, and
+// the person's edits of the copies — and, where the provider offers them,
+// keeps the mailbox's changes notified (Watch, Unwatch, Notified), so a
+// change made in the mailbox makes its sync due at once rather than at the
+// next poll. The interface names no vendor: a mailbox is an account's
+// external id, a calendar an opaque id, an event a MailboxEvent.
 //
 // It is the sixth sanctioned cross-module write, the calendar into a
 // provider's directory, held to rule 13's discipline: every call runs on the
@@ -133,7 +137,41 @@ type MailboxCalendar interface {
 	// and a provider never logs a word of it. Refused under MailboxCleanup
 	// with ErrMailboxUnavailable.
 	Events(ctx context.Context, mailbox, calendarID string, eventIDs []string) (MailboxEventsRead, error)
+
+	// Watch makes sure the mailbox's changes are notified (calendar Outlook
+	// sync design O11.3): nothing when a live subscription has more than
+	// three days left, a renewal when less (or when the directory asked to
+	// reauthorize it), a create otherwise. nil also when the provider offers
+	// no notifications on this installation, or holds creates off because
+	// the directory could not reach it (O11.7): the poll runs either way.
+	// ErrMailboxUnknown, ErrMailboxDenied and ErrMailboxGone as the other
+	// calls answer them; refused under MailboxCleanup with
+	// ErrMailboxUnavailable.
+	Watch(ctx context.Context, mailbox string) error
+	// Unwatch deletes the mailbox's subscription. Idempotent: a mailbox not
+	// watched, or a subscription already gone, answers nil. Allowed under
+	// MailboxCleanup, so a clean-up can still remove it. A refusal or a
+	// failure is answered as an error and the delete stays owed — never
+	// forgotten.
+	Unwatch(ctx context.Context, mailbox string) error
+	// Notified answers the mailboxes notified after since, oldest first, at
+	// most MailboxNoticesMax: the provider's own rows, no network. A notice
+	// is a nudge and nothing more — the reads stay the truth. Its Mailbox is
+	// the DirectoryAccount.ExternalID the other calls take, as the provider
+	// holds it, so the caller compares it case-insensitively.
+	Notified(ctx context.Context, since time.Time) ([]MailboxNotice, error)
 }
+
+// MailboxNotice is one mailbox Notified answers: the mailbox, and when the
+// directory last notified a change in it.
+type MailboxNotice struct {
+	Mailbox string
+	At      time.Time
+}
+
+// MailboxNoticesMax is the most notices one Notified call answers; the caller
+// asks again from the latest At it took.
+const MailboxNoticesMax = 5000
 
 // The states of MailboxStatus.State.
 const (

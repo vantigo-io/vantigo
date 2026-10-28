@@ -18,7 +18,9 @@ type gateRequest struct {
 // reading 23: the pay page reads with POST /invoices/pay/read, so the token
 // never travels in an API URL), and the calendar's answer page on the same
 // pattern (calendar invitations design D5), and the calendar feed, the one
-// anonymous GET with a token in its path (calendar feed design D2).
+// anonymous GET with a token in its path (calendar feed design D2), and
+// Entra's webhook for Microsoft's change notifications (calendar Outlook sync
+// design O11.5), a POST, its handshake's token in the query.
 var publicHostAllowed = []gateRequest{
 	{http.MethodGet, "/pay?token=x"},
 	{http.MethodGet, "/pay"},
@@ -39,6 +41,8 @@ var publicHostAllowed = []gateRequest{
 	{http.MethodPost, "/api/v1/calendar/rsvp/read"},
 	{http.MethodPost, "/api/v1/calendar/rsvp"},
 	{http.MethodGet, "/api/v1/calendar/feed/abc.ics"},
+	{http.MethodPost, "/api/v1/entra/mailbox-notifications"},
+	{http.MethodPost, "/api/v1/entra/mailbox-notifications?validationToken=x"},
 }
 
 // A sample of every other kind: the SPA's other paths, sign-in and setup,
@@ -94,6 +98,13 @@ var publicHostRefused = []gateRequest{
 	{http.MethodGet, "/api/v1/calendar/feed/"},
 	{http.MethodGet, "/api/v1/calendar/feed"},
 	{http.MethodGet, "/api/v1/calendar/feed/abc/def"},
+	{http.MethodGet, "/api/v1/entra/mailbox-notifications"},
+	{http.MethodGet, "/api/v1/entra/mailbox-notifications?validationToken=x"},
+	{http.MethodPut, "/api/v1/entra/mailbox-notifications"},
+	{http.MethodPost, "/api/v1/entra/mailbox-notifications/x"},
+	{http.MethodPost, "/api/v1/entra/mailbox-notifications/"},
+	{http.MethodGet, "/api/v1/entra/connection"},
+	{http.MethodPost, "/api/v1/entra/connection/test"},
 }
 
 // publicHostRefusedEscaped are paths whose escaping is not the canonical one

@@ -9,6 +9,7 @@ sql:
       - ../db/migrations/00061_entra_baseline.sql
       - ../db/migrations/00063_entra_groups.sql
       - ../db/migrations/00082_entra_calendar_sync.sql
+      - ../db/migrations/00085_entra_mailbox_subscriptions.sql
     queries: queries
     gen:
       go:

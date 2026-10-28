@@ -30,33 +30,36 @@ type EntraAccount struct {
 }
 
 type EntraConnection struct {
-	ID                    int16
-	TenantID              *uuid.UUID
-	ClientID              *uuid.UUID
-	UpnDomain             *string
-	UpnPattern            string
-	DefaultUsageLocation  string
-	LeaverStripLicences   bool
-	LeaverRemoveGroups    string
-	LeaverRevokeSessions  bool
-	LeaverWriteLeaveDate  bool
-	WriteHireDate         bool
-	PassLifetimeMinutes   int32
-	PassUsableOnce        bool
-	PassDelivery          string
-	Status                string
-	StatusReason          *string
-	PermissionsPresent    []string
-	VerifiedDomains       []string
-	OrganisationName      *string
-	LastCheckedAt         *time.Time
-	SensitiveDeniedStreak int32
-	Version               int32
-	UpdatedAt             time.Time
-	UpdatedByUserID       *uuid.UUID
-	ServicePrincipalID    *uuid.UUID
-	Skus                  []byte
-	CalendarSync          bool
+	ID                           int16
+	TenantID                     *uuid.UUID
+	ClientID                     *uuid.UUID
+	UpnDomain                    *string
+	UpnPattern                   string
+	DefaultUsageLocation         string
+	LeaverStripLicences          bool
+	LeaverRemoveGroups           string
+	LeaverRevokeSessions         bool
+	LeaverWriteLeaveDate         bool
+	WriteHireDate                bool
+	PassLifetimeMinutes          int32
+	PassUsableOnce               bool
+	PassDelivery                 string
+	Status                       string
+	StatusReason                 *string
+	PermissionsPresent           []string
+	VerifiedDomains              []string
+	OrganisationName             *string
+	LastCheckedAt                *time.Time
+	SensitiveDeniedStreak        int32
+	Version                      int32
+	UpdatedAt                    time.Time
+	UpdatedByUserID              *uuid.UUID
+	ServicePrincipalID           *uuid.UUID
+	Skus                         []byte
+	CalendarSync                 bool
+	NotificationsValidatingUntil *time.Time
+	NotificationsUnreachableAt   *time.Time
+	LastNotificationAt           *time.Time
 }
 
 type EntraCredential struct {
@@ -98,4 +101,15 @@ type EntraGroup struct {
 	UpdatedAt                 time.Time
 	AdoptionConfirmedAt       *time.Time
 	AdoptionConfirmedByUserID *uuid.UUID
+}
+
+type EntraMailboxSubscription struct {
+	ObjectID        uuid.UUID
+	SubscriptionID  *string
+	ClientStateHash []byte
+	ExpiresAt       *time.Time
+	State           string
+	NotifiedAt      *time.Time
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
 }

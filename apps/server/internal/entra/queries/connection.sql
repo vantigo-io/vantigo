@@ -109,3 +109,24 @@ WHERE id = 1 AND service_principal_id IS DISTINCT FROM @service_principal_id::uu
 -- consumed }, which the caller bounds — so GroupTraits declares the licences
 -- trait with no network (plan reading 1). It leaves version alone.
 UPDATE entra.connection SET skus = @skus::jsonb WHERE id = 1;
+
+-- name: SetNotificationsValidating :exec
+-- SetNotificationsValidating opens the window in which the webhook answers
+-- Graph's handshake, until validating_until, before each create of a
+-- subscription, and (null) closes it after (calendar Outlook sync design
+-- O11.5). It leaves version alone.
+UPDATE entra.connection SET notifications_validating_until = sqlc.narg(validating_until)::timestamptz WHERE id = 1;
+
+-- name: SetNotificationsUnreachable :exec
+-- SetNotificationsUnreachable records when a create's handshake failed, as
+-- Microsoft could not reach the webhook, or (null) clears it after a
+-- create that worked (O11.7). It leaves version alone.
+UPDATE entra.connection SET notifications_unreachable_at = sqlc.narg(unreachable_at)::timestamptz WHERE id = 1;
+
+-- name: TouchLastNotification :exec
+-- TouchLastNotification records that a notification came at now, at most
+-- once a minute, so a flood writes the row no more often (O11.5). It leaves
+-- version alone.
+UPDATE entra.connection SET last_notification_at = @now::timestamptz
+WHERE id = 1
+  AND (last_notification_at IS NULL OR last_notification_at + interval '1 minute' < @now::timestamptz);

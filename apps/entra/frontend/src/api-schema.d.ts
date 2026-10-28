@@ -266,6 +266,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/entra/mailbox-notifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Microsoft's change notifications
+         * @description Microsoft Graph's webhook for the change notifications of the Outlook sync (calendar Outlook sync design O11.5): Graph posts here, to PUBLIC_BASE_URL, on the public host's allowlist and on the app's host alike. Anonymous: Graph sends no session, and a signed-in caller is answered alike. A notification is a nudge — it makes the mailbox's sync due and nothing more; nothing it says is trusted beyond "this subscription fired", nor stored. The handshake: a request carrying validationToken is answered 200 text/plain with the token, only while the module is creating a subscription (for 30 seconds before each create) and only for a token of at most 1024 bytes with no control character; else 404 with no body. A notification: {"value": [...]}, at most 1000 items read, each taken only when its subscriptionId is a GUID the module holds, its clientState's SHA-256 equals the one stored (compared in constant time) and its tenantId is the connection's; a valid one marks its subscription notified, and a lifecycle event of reauthorizationRequired or subscriptionRemoved marks the subscription for renewal or as removed. 202 with no body for any body that decodes, whatever it named — an unknown subscription and a valid one are answered alike. The body is capped at 1 MiB. Rate limited to 600 per client address a minute (entra-mailbox-notifications). Served by the generated strict wrapper: it reads a text/plain body as a string and a JSON one as a free-form object, and answers the handshake as text/plain.
+         */
+        post: operations["postEntraMailboxNotifications"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -316,6 +336,27 @@ export interface components {
             reason?: string;
             /** @enum {string} */
             status: "off" | "ready" | "permission_missing" | "unavailable";
+            notifications: components["schemas"]["EntraCalendarSyncNotifications"];
+        };
+        /** @description The change notifications from Outlook (calendar Outlook sync design O11.7): with them, a change in a synced mailbox makes its sync due at once rather than at the next poll, which runs either way. status is off while CALENDAR_MAILBOX_NOTIFICATIONS_ENABLED is 0; not_configured while PUBLIC_BASE_URL is unset, Microsoft needing a public HTTPS address; unreachable when Microsoft could not reach the webhook to validate a subscription within the last hour, no subscription being asked for until then; active otherwise. */
+        EntraCalendarSyncNotifications: {
+            /**
+             * Format: date-time
+             * @description When a notification last came, to within a minute. Absent until one has.
+             */
+            lastNotificationAt?: string;
+            /** @enum {string} */
+            status: "off" | "not_configured" | "active" | "unreachable";
+            /**
+             * Format: int32
+             * @description The mailboxes with a live subscription.
+             */
+            subscriptions: number;
+            /**
+             * Format: date-time
+             * @description When Microsoft last could not reach the webhook. Present while status is unreachable.
+             */
+            unreachableAt?: string;
         };
         /** @description The installation's one connection to a Microsoft Entra ID tenant (Entra design D11): the tenant and the application registered in it, what the last connection test found, the account rules, the client secrets without their values, and how many accounts and groups the module keeps. Sent whether or not anything is set, so the wizard can show every step before the first is done. */
         EntraConnection: {
@@ -1438,6 +1479,80 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    postEntraMailboxNotifications: {
+        parameters: {
+            query?: {
+                /** @description Graph's validation token, present on the handshake alone and answered back as it came, decoded. */
+                validationToken?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    [key: string]: unknown;
+                };
+                "text/plain": string;
+            };
+        };
+        responses: {
+            /** @description OK — the handshake, answered with the validation token. */
+            200: {
+                headers: {
+                    "Cache-Control"?: string;
+                    "X-Content-Type-Options"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/plain; charset=utf-8": string;
+                };
+            };
+            /** @description Accepted — the body decoded; whatever it named, nothing more is said. The body is empty. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Bad Request — a body that does not decode. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["EntraProblem"];
+                };
+            };
+            /** @description Not Found — a handshake outside a create in flight, or a token too long or carrying a control character. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Too Many Requests — entra-mailbox-notifications's limit for this client address. Graph retries. */
+            429: {
+                headers: {
+                    "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable — the notification could not be recorded within two seconds. Graph retries. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["EntraProblem"];
+                };
             };
         };
     };

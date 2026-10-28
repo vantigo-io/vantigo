@@ -2,6 +2,7 @@ package db_test
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"testing"
 
@@ -340,8 +341,12 @@ func TestEntraGroups_AppliesAndIsIdempotent(t *testing.T) {
 		t.Errorf("entra.groups columns =\n%s\nwant\n%s", strings.Join(columns("groups"), "\n"), strings.Join(want, "\n"))
 	}
 	// 00082's calendar_sync follows them, pinned by
-	// TestEntraCalendarSync_AppliesAndIsIdempotent.
-	connection := columns("connection")
+	// TestEntraCalendarSync_AppliesAndIsIdempotent; 00085's notification
+	// columns come after it, pinned by
+	// TestEntraMailboxSubscriptions_AppliesAndIsIdempotent, and are left out.
+	connection := slices.DeleteFunc(columns("connection"), func(c string) bool {
+		return strings.HasPrefix(c, "notifications_") || strings.HasPrefix(c, "last_notification_at:")
+	})
 	if tail := connection[max(len(connection)-3, 0):]; !equalStrings(tail, []string{
 		"service_principal_id:uuid:YES:",
 		"skus:jsonb:NO:'[]'::jsonb",

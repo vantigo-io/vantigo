@@ -1652,6 +1652,21 @@ func TestLoad_CalendarMailboxSyncWorker(t *testing.T) {
 	}
 }
 
+// CALENDAR_MAILBOX_NOTIFICATIONS_ENABLED (calendar Outlook sync design
+// O11.1): the change notifications from Outlook are on by default, and 0
+// turns them off.
+func TestLoad_CalendarMailboxNotifications(t *testing.T) {
+	if cfg := mustLoad(t, validEnv()); !cfg.CalendarMailboxNotificationsEnabled {
+		t.Error("CALENDAR_MAILBOX_NOTIFICATIONS_ENABLED unset did not default to on")
+	}
+	if cfg := mustLoad(t, with(validEnv(), "CALENDAR_MAILBOX_NOTIFICATIONS_ENABLED", "0")); cfg.CalendarMailboxNotificationsEnabled {
+		t.Error("CALENDAR_MAILBOX_NOTIFICATIONS_ENABLED=0 left them on")
+	}
+	if msg := loadError(t, with(validEnv(), "CALENDAR_MAILBOX_NOTIFICATIONS_ENABLED", "yes")); !strings.Contains(msg, `CALENDAR_MAILBOX_NOTIFICATIONS_ENABLED: must be "0" or "1"`) {
+		t.Errorf("error = %q", msg)
+	}
+}
+
 // PUBLIC_BASE_URL (payments port design D14): the https URL the pay page is
 // reachable at from the internet, unset by default. https only; an origin
 // plus APP_BASE_PATH and nothing else — no user, query or fragment, and the

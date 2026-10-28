@@ -69,11 +69,19 @@ import (
 // Gone, and one SetUnreadable marks in neither. Find answers Meeting for an
 // event SetMeeting made one.
 //
+// Its notifications are a set and a queue (design O11.3): Watch adds the
+// mailbox to the watched set and Unwatch takes it out — Watched, WatchCalls
+// and UnwatchCalls answer them — and Notify queues a notice a directory
+// would have sent, which Notified answers once its At is after since, oldest
+// first, at most contracts.MailboxNoticesMax.
+//
 // Its refusals are the contract's: while the status is
 // contracts.MailboxUnavailable every call but Status answers
 // ErrMailboxUnavailable; under contracts.MailboxCleanup EnsureCalendar
 // answers it and Apply takes deletes only, every other op answering it in
-// its result, and Delta, Marked, Versions and Events answer it. A mailbox
+// its result, and Delta, Marked, Versions, Events and Watch answer it;
+// Unwatch is allowed, and Notified, the provider's own rows, answers under
+// any status. A mailbox
 // SetUnknown marks answers ErrMailboxUnknown to every
 // call naming it, and SetMailboxError makes every call naming a mailbox
 // answer the error a test chooses (ErrMailboxDenied, ErrMailboxGone, a
@@ -95,10 +103,14 @@ type FakeMailboxCalendar struct {
 	next      int // the last id handed out
 	pageSize  int // SetDeltaPageSize
 	links     map[string]*fakeDeltaLink
-	expired   map[string]bool // the links ExpireDelta expired
-	linkNext  int             // the last link number handed out
-	onDelta   func(n int)     // BeforeDelta's
-	deltas    int             // the Delta calls so far
+	expired   map[string]bool           // the links ExpireDelta expired
+	linkNext  int                       // the last link number handed out
+	onDelta   func(n int)               // BeforeDelta's
+	deltas    int                       // the Delta calls so far
+	watched   map[string]bool           // the mailboxes Watch watches
+	watches   []string                  // every mailbox Watch was asked for, in order
+	unwatches []string                  // every mailbox Unwatch was asked for, in order
+	notices   []contracts.MailboxNotice // Notify's
 }
 
 // fakeDeltaLink is what a link Delta answered stands for: the window the
@@ -194,6 +206,7 @@ func NewFakeMailboxCalendar() *FakeMailboxCalendar {
 		pageSize:  1000,
 		links:     map[string]*fakeDeltaLink{},
 		expired:   map[string]bool{},
+		watched:   map[string]bool{},
 	}
 }
 
@@ -240,7 +253,8 @@ func (f *FakeMailboxCalendar) SetMailboxError(mailbox string, err error) {
 
 // FailWith makes every later call of method ("Status", "EnsureCalendar",
 // "DeleteCalendar", "Apply", "Find", "Delta", "Marked", "Versions",
-// "Events") answer err, or (err nil) clears it.
+// "Events", "Watch", "Unwatch", "Notified") answer err, or (err nil) clears
+// it. A Watch or an Unwatch refused so changes nothing.
 func (f *FakeMailboxCalendar) FailWith(method string, err error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -831,6 +845,86 @@ func (f *FakeMailboxCalendar) Events(_ context.Context, mailbox, calendarID stri
 		})
 	}
 	return out, nil
+}
+
+// Watch watches the mailbox: it joins the watched set, unless the call is
+// refused.
+func (f *FakeMailboxCalendar) Watch(_ context.Context, mailbox string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.watches = append(f.watches, mailbox)
+	if err := f.begin("Watch", mailbox, "", nil, false); err != nil {
+		return err
+	}
+	f.watched[mailbox] = true
+	return nil
+}
+
+// Unwatch stops watching the mailbox, allowed under cleanup: it leaves the
+// watched set, unless the call is refused. A mailbox not watched is done.
+func (f *FakeMailboxCalendar) Unwatch(_ context.Context, mailbox string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.unwatches = append(f.unwatches, mailbox)
+	if err := f.begin("Unwatch", mailbox, "", nil, true); err != nil {
+		return err
+	}
+	delete(f.watched, mailbox)
+	return nil
+}
+
+// Notified answers the notices Notify queued whose At is after since, oldest
+// first, at most contracts.MailboxNoticesMax; its From is since in Calls.
+func (f *FakeMailboxCalendar) Notified(_ context.Context, since time.Time) ([]contracts.MailboxNotice, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.calls = append(f.calls, MailboxCall{Method: "Notified", From: since})
+	if err := f.fail["Notified"]; err != nil {
+		return nil, err
+	}
+	out := []contracts.MailboxNotice{}
+	for _, n := range f.notices {
+		if n.At.After(since) {
+			out = append(out, n)
+		}
+	}
+	slices.SortStableFunc(out, func(a, b contracts.MailboxNotice) int { return a.At.Compare(b.At) })
+	if len(out) > contracts.MailboxNoticesMax {
+		out = out[:contracts.MailboxNoticesMax]
+	}
+	return out, nil
+}
+
+// Notify queues a notice that mailbox changed at at, as a directory's
+// notification would, for Notified to answer.
+func (f *FakeMailboxCalendar) Notify(mailbox string, at time.Time) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.notices = append(f.notices, contracts.MailboxNotice{Mailbox: mailbox, At: at})
+}
+
+// Watched reports whether the mailbox is watched: a Watch done and no
+// Unwatch since.
+func (f *FakeMailboxCalendar) Watched(mailbox string) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.watched[mailbox]
+}
+
+// WatchCalls answers every mailbox Watch was asked for, in order, refused
+// or not.
+func (f *FakeMailboxCalendar) WatchCalls() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return slices.Clone(f.watches)
+}
+
+// UnwatchCalls answers every mailbox Unwatch was asked for, in order,
+// refused or not.
+func (f *FakeMailboxCalendar) UnwatchCalls() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return slices.Clone(f.unwatches)
 }
 
 // window answers every event of the default calendar overlapping from..to
