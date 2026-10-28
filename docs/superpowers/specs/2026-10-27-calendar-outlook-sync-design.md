@@ -472,19 +472,166 @@ a board without the figures; with `groupBy=project` the people's rows carry thei
 busy figures and the **project's sum row carries none**. The person's timeline in
 Planning is unchanged: the busy figures are on the board alone.
 
-### O10 — C: the write-back (outline)
+### O10 — C: the write-back
 
-The same delta sees changes to events carrying our marker. For an
-`appointment:<id>[:<date>]` key whose owner is the mailbox's person: a changed subject,
-body above the "Kept by Vantigo" line, location, times, all-day, `showAs`
-(busy/free) or sensitivity is a `PUT` of the appointment — or of the occurrence — through
-the appointment's own update path, with its validation, its `SEQUENCE` and its mails; a
-deleted event is a delete in Vantigo, a cancellation when outsiders were told (reading 1).
-An attendee's copy, or a projected item's, is put back at the next push. Conflict: when
-both sides changed between two reads, Vantigo wins and the person's state names the
-overwritten change. An event created in the *Vantigo* calendar (`target = own`) becomes
-an appointment the person owns, then is tagged. The worker remembers each event's
-`changeKey` so reading back its own write is not a change.
+Revised for delivery C on 2026-10-28, after a Microsoft Learn check (research §3, *The
+write-back, as checked for C*). An edit, a move or a delete a person makes in Outlook to
+a copy of **their own appointment** reaches the appointment through its own update path;
+an event they make in the separate *Vantigo* calendar becomes an appointment; anything
+else they change in a copy is put back.
+
+**O10.1 — Not the delta: the copies' versions, every sync.** The write-back does not
+ride B's delta. A delta answers no extended property, its `changeKey` is not shown in
+v1.0's samples, the *Vantigo* calendar has no v1.0 delta (`/calendars/{id}/…/delta` is
+beta), `@removed` cannot tell a delete from a move out of range, and B's read follows the
+push while the write-back must precede it (O10.5). Instead each sync asks the provider
+for the **versions** of what it may have to take back — ids and change keys, nothing of
+what the events say — and reads whole only the events whose version moved:
+
+- `target = default`: the events of the default calendar carrying this installation's
+  marker that start at or after the window's first instant (A's `Find` filter, which is
+  documented on `/users/{id}/events`), `$select=id,changeKey`, with the marker's key.
+- `target = own`: every event of the *Vantigo* calendar's `calendarView` over the push's
+  window (documented in v1.0), `$select=id,changeKey,type` — the calendar is Vantigo's
+  whole, so an event without the marker in it is one the person made there.
+
+A filter on `lastModifiedDateTime` was rejected: no page documents it for events, and the
+known issues warn a query parameter may fail silently. B's delta is unchanged: it still
+reads the default calendar for the busy rows and still skips the copies.
+
+**O10.2 — The contract.** `contracts.MailboxCalendar` gains two reads, rule 14's lock
+discipline, both refused under `cleanup` (`ErrMailboxUnavailable`):
+
+```go
+Versions(ctx, mailbox, calendarID string, from, to time.Time) (MailboxVersions, error)
+Events(ctx, mailbox, calendarID string, eventIDs []string) ([]MailboxEventState, error) // ≤ MailboxMarkedMax
+type MailboxVersions struct { Events []MailboxEventVersion; Complete bool }
+type MailboxEventVersion struct { EventID, Key, ChangeKey string; Series bool }
+type MailboxEventState struct {
+    EventID, Key, ChangeKey string
+    Foreign, Series, Cancelled, Meeting, TextBody bool
+    Event MailboxEvent
+}
+```
+
+`Versions` with `calendarID ""` answers O10.1's marked events (`Key` set), with a
+secondary calendar every event of the view (`Key` unset: the view is not asked for the
+marker); at most 5000, `Complete` false when cut. `Events` reads each id through the
+**calendar's own path** (`/users/{oid}/calendar/events/{id}`, or
+`/calendars/{cid}/events/{id}`), in `$batch`es of twenty, with `Prefer:
+outlook.timezone="UTC", outlook.body-content-type="text"` and the marker expanded: an id
+not answered is not in that calendar any more (deleted, or moved to another calendar or
+folder); `Key` is this installation's key, `Foreign` another installation's marker,
+`Series` an occurrence, exception or series master, `Meeting` an event with attendees
+(their count is decoded, never an address), `TextBody` whether the body came as text,
+and `Event` the subject, the body, the location's display name, the times (all-day dates
+rounded to midnight as B's), `showAs` and `sensitivity` (`private` and `confidential`
+are `Private`). Nothing of it is logged or stored but what the appointment's update
+writes. `Apply`'s update writes the op's `Key` as the marker when it is set — the same
+value a copy already carries — so an event taken in is tagged by the push that rewrites
+it. `MailboxResult.ChangeKey` (A's) is now kept.
+
+**O10.3 — What is stored.** `calendar.mailbox_events` gains `change_key` (the version the
+last write, or the last look, left) and `released_at` (O10.8). `calendar.mailbox_sync`
+gains `put_back_reason`, `put_back_key` and `put_back_at`: the last change in Outlook that
+was not taken, which the setting's `GET` answers as `putBack {reason, at, appointmentId?,
+occurrenceDate?, title?}` — `title` read live from the appointment, only for one the
+person owns or attends. Reasons: `conflict` (Vantigo changed it too, O10.6), `refused`
+(the appointment's rules refused the change), `not_owner` (an attendee's copy),
+`not_editable` (a projected item's copy, or what an occurrence cannot carry). Cleared by a
+clean-up and when the sync is turned off.
+
+**O10.4 — Telling an edit from our own write.** A mapped event whose `ChangeKey` equals
+the row's `change_key` is as Vantigo left it. A row with no `change_key` (written before
+C, or adopted by a reconcile) takes the version answered as its baseline, unread. A
+version that moved is read whole (`Events`) and compared, field by field after
+normalising (line endings, trailing space, the body cut at the first "Kept by Vantigo" /
+"Holdes av Vantigo" line, times to the second), with the copy the desired set holds for
+its key: equal is noise — Exchange's own touch — and only the new `change_key` is kept.
+
+**O10.5 — Order in the sync.** After O7 step 6's desired set is built and the map loaded,
+before the reconcile and the push: (1) `Versions`; (2) `Events` for the moved, the new and
+the missing, at most 100 ids a sync; (3) the decisions below, at most **20** writes to
+appointments a sync, each through the module's own path on the worker's context with no
+transaction open across a call; (4) the map's change keys, forgets and stale hashes in one
+short transaction; (5) when an appointment was written, the desired set built again. Then
+the reconcile, the push and the busy read as before. Whatever is left over — a version
+not yet read, a write past the 20 — keeps its old `change_key`, so the next sync sees it
+again. A refusal from `Versions` or `Events` stops the sync as A's do
+(`refusedOrFailed`); a failure skips the write-back, lets the push and the busy read go
+on, and records the sync `active` with error `failed` on the backoff, as a failed busy
+read does (O9's as-built) — and the push of that sync may then overwrite an Outlook edit
+unread, Vantigo winning unnamed.
+
+**O10.6 — The decisions.** For a mapped key whose version moved, read whole:
+
+| The copy | Vantigo's copy changed since the last write | What happens |
+| --- | --- | --- |
+| `appointment:<id>`, owned by the mailbox's person, single | no | the changed fields become a `PUT` of the appointment (O10.7) |
+| `appointment:<id>:<date>`, owned, an occurrence | no | a change of the times moves the occurrence (`PUT …/occurrences/{date}`); any other change is put back, `not_editable` |
+| an owned appointment | yes (the row's hash is not the desired one) | **Vantigo wins**: put back, `conflict` |
+| an appointment the person attends | — | put back, `not_owner` |
+| a projected item (`<kind>:<id>`) | — | put back, `not_editable` |
+| a key the desired set no longer holds | — | nothing: the push deletes or forgets it |
+
+"Put back" clears the row's hash, so the push rewrites the copy whole. A write that
+worked clears it too, so the push writes the appointment's own form back (the "Kept by
+Vantigo" line, the link) and keeps the `ChangeKey` it answers. A refusal by the
+appointment's rules is put back, `refused`. A cancelled appointment, a `Series` or
+`Foreign` answer, and an event that turned into a meeting (O10.8) are never written back.
+
+**O10.7 — The fields.** Taken from an owned single appointment's copy, when they differ
+from what was written: the subject (the title, trimmed; empty is refused), the body
+above the kept line (the description; empty clears it; a body that did not come as text
+is not taken), the location, the times and all-day (the appointment's zone kept), `showAs`
+(`free` is transparency free, any other value busy) and the sensitivity (private or
+confidential is visibility private, anything else shared). Under `detail = busy`, and
+for a private appointment's hidden copy, the subject, body and location written were
+placeholders, so only the times, `showAs` and the sensitivity are taken. Everything else
+of the appointment — its attendees, its rule, its customer and project — is sent back
+as it stands, through `readAppointment` (`current` its attendees, so one the directory
+no longer answers is kept), with the row's revision as `If-Match`: a revision moved on
+in between is a `conflict`. The update's `SEQUENCE`, its REQUESTs to the outside
+attendees and its notices to colleagues go as for a `PUT` from the screen. An
+occurrence's move is held to the series' kind (a timed series' occurrence stays timed).
+
+**O10.8 — Deletes, and what is not a delete.** A mapped key absent from a `Complete`
+`Versions` answer, and starting in the window, is read with `Events`. Not answered — the
+event is no longer in **that calendar** — is a delete in Outlook: an owned single
+appointment is deleted through the module's delete path, which cancels it, with the
+CANCELs, when outsiders were invited (reading 1); an owned occurrence is cancelled
+(`PUT …/occurrences/{date}` with `cancelled`); any other key is forgotten and made again
+by the push. Answered — it is still there, moved before the window — it is a change
+(O10.6). The guards: the map is emptied before anything else by every clean-up, target
+change and mailbox move, and the push's own deletes forget their rows, so an absence is
+never the module's own doing; an incomplete list infers nothing; and on a sync whose
+write-back did not complete, the reconcile does not forget mapped events Find no longer
+sees (they could be deletes still unread). An event the person **turned into a meeting**
+(`Meeting`: they added attendees) is **released**: `released_at` set, never written,
+deleted or taken back again — a write would mail its attendees — and forgotten without
+a delete by the push and the clean-up.
+
+**O10.9 — New events in the *Vantigo* calendar.** Under `target = own`, an event of the
+calendar that is neither mapped nor marked, single, not cancelled and not a meeting is
+read whole and becomes an appointment the person owns — the subject its title
+("Untitled" / "Uten tittel" when empty), the body its description (cut to the limit), the
+location, the times in the business zone, `showAs` and sensitivity as O10.7 — through
+the module's create path, its map row (`appointment:<id>`, the event id, no hash, the
+change key) written in the same transaction, so an event taken in is never taken twice
+even if the push that tags it fails. A refusal is logged by its code, the event left as
+it is and its id remembered for the sync (it is tried again at the next).
+A series, a meeting, or another installation's event there is left alone.
+
+**O10.10 — The person's own Outlook titles (O9.6): not shown.** C reads only the copies
+and the *Vantigo* calendar's events whole, never the person's own events; showing their
+titles would mean storing the subjects of a private calendar or reading Graph on the
+request path, and a colleague's view must never see them. The `calendar.outlook` item
+stays titleless; the item's shape leaves room for it later.
+
+**O10.11 — Rule 14.** The write-back is the calendar writing its own data from what the
+provider read — no new cross-module direction. `Versions` and `Events` keep rule 14's
+discipline; what an event says crosses the contract for the copies and the *Vantigo*
+calendar only, and only for the write it feeds.
 
 ### O11 — D: change notifications (outline)
 
@@ -509,7 +656,11 @@ Outlook (occurrences only, O6); categories; reminders; a holiday calendar in Out
   Docs: the calendar, Entra and Planning reference, module boundaries (the `CalendarBusy`
   slot, rule 12, rule 14's reads), the calendar and Planning user guides in both
   languages, the roadmap.
-- **C**: O10. **D**: O11.
+- **C** (`feat/calendar-outlook-writeback`): O10. Migration `00084_calendar_mailbox_writeback.sql`.
+  Plan [`2026-10-28-calendar-outlook-writeback.md`](../plans/2026-10-28-calendar-outlook-writeback.md).
+  Docs: the calendar and Entra reference, module boundaries (rule 14's reads), the
+  calendar user guide and the Entra administration page in both languages, the roadmap.
+- **D**: O11.
 
 ## Testing
 
