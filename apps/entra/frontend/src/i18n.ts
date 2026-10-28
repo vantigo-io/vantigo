@@ -222,6 +222,16 @@ export const entraCatalog = {
     calendarSyncStatus_permission_missing:
       "Calendars.ReadWrite is not in the token. That is expected if you granted it with Exchange RBAC for Applications; otherwise add it, grant admin consent and test again.",
     calendarSyncStatus_unavailable: "Waiting for the connection",
+    changeNotifications: "Change notifications",
+    changeNotificationsNoneYet: "none yet",
+    changeNotifications_active_one: "On, watching {{count}} mailbox. Last notification: {{last}}.",
+    changeNotifications_active_other: "On, watching {{count}} mailboxes. Last notification: {{last}}.",
+    changeNotifications_off:
+      "Turned off by the operator (CALENDAR_MAILBOX_NOTIFICATIONS_ENABLED). Changes in Outlook arrive at the next sync, every 15 minutes.",
+    changeNotifications_not_configured:
+      "Needs PUBLIC_BASE_URL, an address Microsoft can reach. Until then changes in Outlook arrive at the next sync, every 15 minutes.",
+    changeNotifications_unreachable:
+      "Microsoft could not reach the address since {{since}}. Vantigo tries again within the hour; changes arrive at the next sync meanwhile.",
     saveSettings: "Save the account rules",
     settingsSaved: "Account rules saved",
     couldNotSaveSettings: "The account rules could not be saved",
@@ -589,6 +599,16 @@ export const entraCatalog = {
     calendarSyncStatus_permission_missing:
       "Calendars.ReadWrite er ikke i tokenet. Det er som ventet hvis du ga den med Exchange RBAC for Applications; ellers legg den til, gi administratorsamtykke og test på nytt.",
     calendarSyncStatus_unavailable: "Venter på tilkoblingen",
+    changeNotifications: "Endringsvarsler",
+    changeNotificationsNoneYet: "ingen ennå",
+    changeNotifications_active_one: "På, overvåker {{count}} postboks. Siste varsel: {{last}}.",
+    changeNotifications_active_other: "På, overvåker {{count}} postbokser. Siste varsel: {{last}}.",
+    changeNotifications_off:
+      "Slått av av driftsansvarlig (CALENDAR_MAILBOX_NOTIFICATIONS_ENABLED). Endringer i Outlook kommer ved neste synkronisering, hvert 15. minutt.",
+    changeNotifications_not_configured:
+      "Krever PUBLIC_BASE_URL, en adresse Microsoft kan nå. Til da kommer endringer i Outlook ved neste synkronisering, hvert 15. minutt.",
+    changeNotifications_unreachable:
+      "Microsoft har ikke nådd adressen siden {{since}}. Vantigo prøver igjen innen en time; endringene kommer ved neste synkronisering i mellomtiden.",
     saveSettings: "Lagre kontoreglene",
     settingsSaved: "Kontoreglene er lagret",
     couldNotSaveSettings: "Kontoreglene kunne ikke lagres",
