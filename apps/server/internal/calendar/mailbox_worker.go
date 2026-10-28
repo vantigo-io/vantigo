@@ -259,7 +259,9 @@ func (w *MailboxSyncWorker) Run(ctx context.Context) error {
 // waits on the provider — on a small pool, a worker doing so starved every
 // other and the readiness probe with them. The claim, until
 // mailboxClaimHold past now, is what keeps two replicas from syncing one
-// person; it is given back when the sync ends, on a context stripped of
+// person; the sync, its own writes past its deadline included, ends a
+// minute before the claim lapses, so no other cycle can take the person
+// while this one still writes. The claim is given back when the sync ends, on a context stripped of
 // cancellation, and one a dead replica left lapses. A cancelled context
 // stops the cycle between two people.
 func (w *MailboxSyncWorker) RunCycle(ctx context.Context) (int, error) {
@@ -288,7 +290,9 @@ func (w *MailboxSyncWorker) RunCycle(ctx context.Context) (int, error) {
 				return len(done), fmt.Errorf("calendar: read the business time zone: %w", err)
 			}
 		}
-		err = w.syncPerson(ctx, r, loc)
+		sync, cancel := context.WithTimeout(ctx, mailboxClaimHold-time.Minute)
+		err = w.syncPerson(sync, r, loc)
+		cancel()
 		w.releaseClaim(ctx, r.UserID, until)
 		if err != nil {
 			if ctx.Err() != nil {

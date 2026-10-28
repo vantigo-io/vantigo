@@ -20,7 +20,7 @@ WHERE user_id = (
     WHERE (c.enabled OR c.state = 'stopping')
       AND (c.next_sync_at IS NULL OR c.next_sync_at <= $2::timestamptz)
       AND (c.claimed_until IS NULL OR c.claimed_until <= $2::timestamptz)
-      AND c.user_id <> ALL($3::uuid[])
+      AND NOT (c.user_id = ANY(COALESCE($3::uuid[], '{}')))
     ORDER BY c.next_sync_at NULLS FIRST, c.user_id
     LIMIT 1
     FOR UPDATE SKIP LOCKED

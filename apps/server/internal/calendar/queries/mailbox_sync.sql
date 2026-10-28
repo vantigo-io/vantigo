@@ -51,7 +51,7 @@ WHERE user_id = (
     WHERE (c.enabled OR c.state = 'stopping')
       AND (c.next_sync_at IS NULL OR c.next_sync_at <= @now::timestamptz)
       AND (c.claimed_until IS NULL OR c.claimed_until <= @now::timestamptz)
-      AND c.user_id <> ALL(@done::uuid[])
+      AND NOT (c.user_id = ANY(COALESCE(@done::uuid[], '{}')))
     ORDER BY c.next_sync_at NULLS FIRST, c.user_id
     LIMIT 1
     FOR UPDATE SKIP LOCKED
