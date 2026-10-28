@@ -3,12 +3,14 @@ package entra
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"log/slog"
 	"net"
 	"net/http"
 	"net/netip"
+	"net/url"
 	"strings"
 	"sync"
 	"testing"
@@ -581,5 +583,29 @@ func TestGraphClient_TheSurface(t *testing.T) {
 	}
 	if err := f.c.get(ctx, cred, "/users/"+created.ID, nil); !isStatus(err, http.StatusNotFound) {
 		t.Errorf("a deleted user: %v, want a 404 refusal", err)
+	}
+}
+
+// Validation — a subscription's handshake with the webhook failed — is read
+// from Graph's message alone: a 400 coded ValidationError whose message says
+// something else is an ordinary refusal, not the webhook unreachable.
+func TestGraphClient_ValidationIsReadFromTheMessageAlone(t *testing.T) {
+	f := newClientFixture(t, nil)
+	cred := f.credential(t, testSecret)
+	target := &url.URL{Path: "/v1.0/subscriptions"}
+	for _, tc := range []struct {
+		name, code, message string
+		want                bool
+	}{
+		{"the handshake failed", "InvalidRequest", "Subscription validation request failed. Notification endpoint must respond with 200 OK to validation request.", true},
+		{"the handshake timed out", "ValidationError", "Subscription Validation Request timed out.", true},
+		{"another ValidationError", "ValidationError", "The expiration date is invalid.", false},
+		{"another 400", "BadRequest", "Resource not found for the segment 'events'.", false},
+	} {
+		body, _ := json.Marshal(map[string]any{"error": map[string]any{"code": tc.code, "message": tc.message}})
+		g, ok := asGraphError(f.c.refusal(context.Background(), cred, http.MethodPost, target, http.StatusBadRequest, body, false))
+		if !ok || g.Validation != tc.want {
+			t.Errorf("%s: %#v, want Validation %v", tc.name, g, tc.want)
+		}
 	}
 }

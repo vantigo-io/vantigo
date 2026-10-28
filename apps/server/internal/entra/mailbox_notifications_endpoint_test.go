@@ -302,6 +302,79 @@ func TestMailboxNotifications_Lifecycle(t *testing.T) {
 	}
 }
 
+// A lifecycle event never forgets a delete owed: a row 'deleting' stays
+// so, notified all the same.
+func TestMailboxNotifications_ALifecycleEventKeepsADeleteOwed(t *testing.T) {
+	ctx := context.Background()
+	h, g, _ := newNoticesHarness(t)
+	c := h.Client(t)
+	mailbox, s := watched(t, h, g)
+	h.Exec(t, `UPDATE entra.mailbox_subscriptions SET state = 'deleting' WHERE object_id = $1`, mailbox)
+	for _, event := range []string{"reauthorizationRequired", "subscriptionRemoved"} {
+		h.Advance(time.Second)
+		post(c, notice(s, func(it map[string]any) { it["lifecycleEvent"] = event }))
+		var st string
+		if err := h.Pool().QueryRow(ctx, `SELECT state FROM entra.mailbox_subscriptions WHERE object_id = $1`, mailbox).Scan(&st); err != nil {
+			t.Fatal(err)
+		}
+		if st != "deleting" || !notifiedAt(t, h, mailbox).Equal(h.Now()) {
+			t.Errorf("after %s: %s notified at %s, want deleting and notified now", event, st, notifiedAt(t, h, mailbox))
+		}
+	}
+}
+
+// A request holding no item shaped as this installation's — a GUID for the
+// subscription and the tenant, a clientState of 43 base64url characters —
+// reads nothing: it is answered 202 while the tables are locked, where a
+// plausible one waits for them and is answered 503. The ignored are counted
+// at warning at most once a minute, at debug always.
+func TestMailboxNotifications_NonsenseReadsNothing(t *testing.T) {
+	ctx := context.Background()
+	h, g, _ := newNoticesHarness(t)
+	c := h.Client(t)
+	_, s := watched(t, h, g)
+	set := func(key string, v any) func(map[string]any) { return func(it map[string]any) { it[key] = v } }
+
+	tx, err := h.Pool().Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if _, err := tx.Exec(ctx, `LOCK TABLE entra.connection, entra.mailbox_subscriptions IN ACCESS EXCLUSIVE MODE`); err != nil {
+		t.Fatal(err)
+	}
+	for name, item := range map[string]map[string]any{
+		"a short clientState":         notice(s, set("clientState", "wrong")),
+		"a clientState of 43 others":  notice(s, set("clientState", strings.Repeat("+", 43))),
+		"a tenant that is no GUID":    notice(s, set("tenantId", "nordlys.no")),
+		"a subscription with braces":  notice(s, set("subscriptionId", "{"+s.ID+"}")),
+		"a clientState of 44 letters": notice(s, set("clientState", strings.Repeat("a", 44))),
+	} {
+		if r := post(c, item); r.Status != http.StatusAccepted {
+			t.Errorf("%s: status %d, want 202 with no read", name, r.Status)
+		}
+	}
+	if r := post(c, notice(s)); r.Status != http.StatusServiceUnavailable {
+		t.Errorf("a plausible item with the tables locked: status %d, want 503", r.Status)
+	}
+	_ = tx.Rollback(ctx)
+
+	warnings := func() int {
+		return strings.Count(h.Logs(), `"level":"WARN","msg":"entra: change notifications ignored"`)
+	}
+	if n := warnings(); n != 1 {
+		t.Errorf("%d warnings of the ignored within a minute, want 1", n)
+	}
+	if n := strings.Count(h.Logs(), `"msg":"entra: change notifications received","items":1,"subscriptions":0,"written":0,"ignored":1`); n < 5 {
+		t.Errorf("%d of the ignored counted at debug, want each request's", n)
+	}
+	h.Advance(61 * time.Second)
+	post(c, notice(s, set("clientState", "wrong")))
+	if n := warnings(); n != 2 {
+		t.Errorf("%d warnings of the ignored after the minute, want 2", n)
+	}
+}
+
 // At most 1000 items are read: a valid item at the 1001st place is
 // ignored, at the 1000th taken.
 func TestMailboxNotifications_AThousandItems(t *testing.T) {

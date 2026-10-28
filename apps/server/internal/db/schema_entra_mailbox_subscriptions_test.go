@@ -19,7 +19,7 @@ const entraMailboxSubscriptionsVersion = 85
 // TestEntraMailboxSubscriptions_AppliesAndIsIdempotent proves the migration
 // applies, rolls back and re-applies cleanly, and pins what the provider's
 // queries rest on: entra.mailbox_subscriptions with every column's type,
-// nullability and default, one per mailbox, Graph's id unique, the index on
+// nullability and default — the webhook's address among them — one per mailbox, Graph's id unique, the index on
 // notified_at; the connection's three columns, null. The Down drops them.
 func TestEntraMailboxSubscriptions_AppliesAndIsIdempotent(t *testing.T) {
 	url := testdb.URL(t)
@@ -44,6 +44,7 @@ func TestEntraMailboxSubscriptions_AppliesAndIsIdempotent(t *testing.T) {
 		"object_id:uuid:NO:",
 		"subscription_id:character varying(64):YES:",
 		"client_state_hash:bytea:NO:",
+		"notification_url:character varying(2048):YES:",
 		"expires_at:timestamp with time zone:YES:",
 		"state:character varying(20):NO:'active'::character varying",
 		"notified_at:timestamp with time zone:YES:",

@@ -173,13 +173,24 @@ UPDATE calendar.mailbox_sync SET
 WHERE user_id = @user_id;
 
 -- name: MarkMailboxSyncNotified :execrows
--- MarkMailboxSyncNotified makes due at now the syncs of the mailbox a change
--- notification named at at (calendar Outlook sync design O11.6): the rows of
--- that mailbox, compared case-insensitively, that are on and active or
--- pending, whose last sync started before at, and which are not due already.
-UPDATE calendar.mailbox_sync SET next_sync_at = @now::timestamptz
-WHERE lower(mailbox) = lower(@mailbox::varchar)
-  AND enabled
-  AND state IN ('active', 'pending')
-  AND (last_synced_at IS NULL OR last_synced_at < @at::timestamptz)
-  AND (next_sync_at IS NULL OR next_sync_at > @now::timestamptz);
+-- MarkMailboxSyncNotified makes due at now the syncs of the mailboxes a
+-- cycle's change notices named, each at its at (calendar Outlook sync
+-- design O11.6), in one statement for the whole cycle — the two arrays,
+-- of equal length, unnested side by side and, per mailbox compared case-insensitively, the
+-- latest at kept: the rows of that mailbox that are on and active or
+-- pending, not backing off a failure (attempts 0: a notice never overrides
+-- the backoff), whose last sync started before at, and which are not due
+-- already. A notice asked for twice marks nothing the second time once the
+-- row has synced since. Through the index on lower(mailbox) of the rows on.
+UPDATE calendar.mailbox_sync s SET next_sync_at = @now::timestamptz
+FROM (
+    SELECT lower(n.mailbox) AS mailbox, max(n.at) AS at
+    FROM (SELECT unnest(@mailboxes::text[]) AS mailbox, unnest(@ats::timestamptz[]) AS at) AS n
+    GROUP BY lower(n.mailbox)
+) AS notice
+WHERE lower(s.mailbox) = notice.mailbox
+  AND s.enabled
+  AND s.state IN ('active', 'pending')
+  AND s.attempts = 0
+  AND (s.last_synced_at IS NULL OR s.last_synced_at < notice.at)
+  AND (s.next_sync_at IS NULL OR s.next_sync_at > @now::timestamptz);

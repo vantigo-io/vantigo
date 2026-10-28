@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"crypto/subtle"
+	"encoding/base64"
 	"fmt"
 	"net/http"
 	"strings"
@@ -40,6 +41,10 @@ const (
 	// notificationsDBBudget bounds the database work of one request: Graph
 	// wants an answer within three seconds.
 	notificationsDBBudget = 2 * time.Second
+	// notificationsIgnoredWarnEvery is how often at most the ignored items
+	// are counted at warning; between, at debug, so a caller posting
+	// nonsense cannot fill the logs.
+	notificationsIgnoredWarnEvery = time.Minute
 )
 
 // The lifecycle events (research §3), and the row's state each sets.
@@ -140,14 +145,39 @@ func notificationItems(body *gen.PostEntraMailboxNotificationsJSONRequestBody) (
 	return items, true
 }
 
+// plausible reports whether it may be one of this installation's
+// notifications, read with no database access: its subscriptionId and its
+// tenantId GUIDs in their canonical 36 characters, its clientState 43
+// characters of the base64url alphabet — the shape every create's has
+// (clientStateBytes). Only a request holding one is read further, so
+// nonsense costs no query.
+func plausible(it notificationItem) bool {
+	if _, ok := subscriptionID(it.subscriptionID); !ok {
+		return false
+	}
+	if _, ok := subscriptionID(it.tenantID); !ok {
+		return false
+	}
+	if len(it.clientState) != base64.RawURLEncoding.EncodedLen(clientStateBytes) {
+		return false
+	}
+	// The decoder skips line breaks: the bytes decoded are counted too.
+	raw, err := base64.RawURLEncoding.DecodeString(it.clientState)
+	return err == nil && len(raw) == clientStateBytes
+}
+
 // notified records the valid items among the first notificationsMaxItems,
-// within notificationsDBBudget. An item is valid when its subscriptionId is
-// a GUID (strictly), a row holds it, its clientState's SHA-256 equals the
-// row's (compared in constant time) and its tenantId is the connection's,
-// whatever its case. Each subscription named validly is marked once
-// (MarkMailboxNotified) — with the strongest lifecycle state among its
-// items, removed over reauthorize — and the connection's last notification
-// touched when any was. The error is the database's.
+// within notificationsDBBudget. An item is valid when it is plausible, a
+// row holds its subscriptionId, its clientState's SHA-256 equals the row's
+// (compared in constant time) and its tenantId is the connection's,
+// whatever its case; a request with no plausible item reads nothing. The
+// subscriptions named validly with no lifecycle event are marked in one
+// statement (MarkMailboxesNotified); one named with a lifecycle event is
+// marked alone (MarkMailboxLifecycle) with the strongest state among its
+// items, removed over reauthorize. The connection's last notification is
+// touched when any was valid. The ignored are counted at debug, and at
+// warning at most once every notificationsIgnoredWarnEvery. The error is
+// the database's.
 func (s *server) notified(ctx context.Context, items []notificationItem) error {
 	ctx, cancel := context.WithTimeout(ctx, notificationsDBBudget)
 	defer cancel()
@@ -158,8 +188,14 @@ func (s *server) notified(ctx context.Context, items []notificationItem) error {
 	}
 	var ids []string
 	seen := map[string]bool{}
+	kept := items[:0:0]
 	for _, it := range items {
-		if id, ok := subscriptionID(it.subscriptionID); ok && !seen[id.String()] {
+		if !plausible(it) {
+			ignored++
+			continue
+		}
+		kept = append(kept, it)
+		if id, _ := subscriptionID(it.subscriptionID); !seen[id.String()] {
 			seen[id.String()] = true
 			ids = append(ids, id.String())
 		}
@@ -186,15 +222,11 @@ func (s *server) notified(ctx context.Context, items []notificationItem) error {
 	}
 	marks := map[string]string{} // subscription id → lifecycle state, "" for none
 	var order []string
-	for _, it := range items {
-		id, ok := subscriptionID(it.subscriptionID)
-		if !ok {
-			ignored++
-			continue
-		}
+	for _, it := range kept {
+		id, _ := subscriptionID(it.subscriptionID)
 		row, ok := rows[id.String()]
 		hash := sha256.Sum256([]byte(it.clientState))
-		if !ok || it.clientState == "" || len(row.ClientStateHash) != len(hash) ||
+		if !ok || len(row.ClientStateHash) != len(hash) ||
 			subtle.ConstantTimeCompare(hash[:], row.ClientStateHash) != 1 ||
 			tenant == "" || len(it.tenantID) != len(tenant) || !strings.EqualFold(it.tenantID, tenant) {
 			ignored++
@@ -211,17 +243,26 @@ func (s *server) notified(ctx context.Context, items []notificationItem) error {
 		marks[id.String()] = state
 	}
 	now := s.deps.Clock()
-	written := 0
+	written := int64(0)
+	var plain []string
 	for _, id := range order {
-		var lifecycle *string
-		if state := marks[id]; state != "" {
-			lifecycle = &state
+		state := marks[id]
+		if state == "" {
+			plain = append(plain, id)
+			continue
 		}
-		n, err := s.q.MarkMailboxNotified(ctx, store.MarkMailboxNotifiedParams{Now: now, LifecycleState: lifecycle, SubscriptionID: id})
+		n, err := s.q.MarkMailboxLifecycle(ctx, store.MarkMailboxLifecycleParams{Now: now, LifecycleState: state, SubscriptionID: id})
 		if err != nil {
-			return fmt.Errorf("entra: mark the subscription notified: %w", err)
+			return fmt.Errorf("entra: mark the subscription's lifecycle: %w", err)
 		}
-		written += int(n)
+		written += n
+	}
+	if len(plain) > 0 {
+		n, err := s.q.MarkMailboxesNotified(ctx, store.MarkMailboxesNotifiedParams{Now: now, SubscriptionIds: plain})
+		if err != nil {
+			return fmt.Errorf("entra: mark the subscriptions notified: %w", err)
+		}
+		written += n
 	}
 	if len(order) > 0 {
 		if err := s.q.TouchLastNotification(ctx, now); err != nil {
@@ -229,9 +270,20 @@ func (s *server) notified(ctx context.Context, items []notificationItem) error {
 		}
 	}
 	s.client.logger.DebugContext(ctx, "entra: change notifications received",
-		"items", total, "subscriptions", len(order), "written", written)
-	if ignored > 0 {
+		"items", total, "subscriptions", len(order), "written", written, "ignored", ignored)
+	if ignored > 0 && s.warnIgnored(now) {
 		s.client.logger.WarnContext(ctx, "entra: change notifications ignored", "ignored", ignored)
 	}
 	return nil
+}
+
+// warnIgnored reports whether the ignored items may be counted at warning
+// now: when notificationsIgnoredWarnEvery has passed since the last that
+// was, in this process.
+func (s *server) warnIgnored(now time.Time) bool {
+	last := s.ignoredWarnedAt.Load()
+	if last != 0 && now.Sub(time.Unix(0, last)) < notificationsIgnoredWarnEvery {
+		return false
+	}
+	return s.ignoredWarnedAt.CompareAndSwap(last, now.UnixNano())
 }

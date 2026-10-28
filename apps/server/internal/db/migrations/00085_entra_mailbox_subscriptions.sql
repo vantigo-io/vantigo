@@ -7,10 +7,14 @@
 -- mailbox (O11.4), by the account's object id: subscription_id is Graph's
 -- (a GUID, null while the create is in flight), client_state_hash the
 -- SHA-256 of the clientState sent with the create — a 256-bit random secret,
--- so a hash is enough, and the plain value is never stored — expires_at the
--- expiry Graph granted, state 'active', 'reauthorize', 'removed' or
--- 'deleting', and notified_at when a valid notification last named it: what
--- the calendar's worker asks for (Notified), through the index on it.
+-- so a hash is enough, and the plain value is never stored —
+-- notification_url the webhook's address the create gave Graph (a Watch
+-- after PUBLIC_BASE_URL moved deletes the subscription and creates it at the
+-- new one), expires_at the expiry Graph granted, state 'active',
+-- 'reauthorize', 'removed', 'deleting' or 'conflict' (another installation
+-- sharing the application holds the mailbox; no create for a day), and
+-- notified_at when a valid notification last named it: what the calendar's
+-- worker asks for (Notified), through the index on it.
 --
 -- entra.connection gains notifications_validating_until, the end of the
 -- window in which the webhook answers Graph's handshake (set before each
@@ -25,8 +29,9 @@ CREATE TABLE entra.mailbox_subscriptions (
     object_id         uuid         PRIMARY KEY,
     subscription_id   varchar(64)  UNIQUE,
     client_state_hash bytea        NOT NULL,
+    notification_url  varchar(2048),
     expires_at        timestamptz,
-    state             varchar(20)  NOT NULL DEFAULT 'active',  -- 'active' | 'reauthorize' | 'removed' | 'deleting'
+    state             varchar(20)  NOT NULL DEFAULT 'active',  -- 'active' | 'reauthorize' | 'removed' | 'deleting' | 'conflict'
     notified_at       timestamptz,
     created_at        timestamptz  NOT NULL,
     updated_at        timestamptz  NOT NULL
