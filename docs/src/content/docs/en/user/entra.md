@@ -224,6 +224,21 @@ Under the switch, a line says where calendar sync stands:
 - **Waiting for the connection** — the connection is not connected, with the reason under
   it.
 
+Under it, while the switch is on, **Change notifications** says whether Microsoft tells
+Vantigo of changes made in Outlook, so they are taken within about a minute instead of
+at the next sync, every 15 minutes:
+
+- **On, watching 3 mailboxes. Last notification: …** — it works; the time is the last
+  notification received, or *none yet*;
+- **Turned off by the operator …** or **Needs PUBLIC_BASE_URL …** — the operator turned
+  it off, or the installation has no public address; changes in Outlook arrive
+  at the next sync;
+- **Microsoft could not reach the address since …** — Vantigo tries again within the
+  hour; changes arrive at the next sync meanwhile. The [administration
+  guide](/en/admin/entra/#change-notifications) has what to check.
+
+Nothing here needs choosing: the line only reports.
+
 Turning it off stops every person's sync and removes the copies Vantigo put in their
 Outlook — the permission is not asked for while it is off. Turning it on again resumes
 everyone who had their sync on.

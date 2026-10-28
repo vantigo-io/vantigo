@@ -174,7 +174,9 @@ The allowlist is derived from `APP_URL`'s hostname plus `localhost`, `127.0.0.1`
 reaches the application. The port is ignored in the comparison.
 
 When `PUBLIC_BASE_URL` names a host of its own, the Invoices pay page's public host is
-admitted too — and on it the server serves only the pay page's allowlist: anything else
+admitted too — and on it the server serves only the public host's allowlist (the pay page,
+Calendar's answer page and feed, and the webhook for Outlook change notifications
+from Microsoft): anything else
 answers 404 before routing, a problem document under `/api/` and an empty body
 elsewhere, while the same request on `APP_URL`'s host is served as before. Sign-in, the
 rest of the API and the documentation are therefore never reachable through the public

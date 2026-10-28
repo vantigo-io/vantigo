@@ -291,8 +291,8 @@ zone, which the worker reads as it registers each payment.
 
 **Webhooks are not supported yet.** Vantigo follows every Vipps payment by reading it
 (polling); it registers no webhook with Vipps, and nothing needs to reach it from Vipps.
-The public host's allowlist names no webhook path: a webhook path is added to it with
-the webhook itself, never before.
+The public host's allowlist names no Vipps webhook path: a webhook path is added to it
+with the webhook itself, never before.
 
 **While a capture is being completed, its amount is reserved** on the invoice: a manual
 payment, a bank file or a reminder cannot take it, and a refusal says a Vipps payment is
@@ -526,6 +526,7 @@ on no list.
 | `POST` | `/api/v1/calendar/rsvp/read` (that page's read; the token in the body) |
 | `POST` | `/api/v1/calendar/rsvp` (an invitee's answer) |
 | `GET` | `/api/v1/calendar/feed/{token}.ics` (Calendar's feed, a calendar address; exactly one segment) |
+| `POST` | `/api/v1/entra/mailbox-notifications` (Microsoft's change notifications for Calendar's Outlook sync, anonymous; exactly this path) |
 | `GET`, `HEAD` | `/health/…` (probes) |
 
 **Verify** from outside, against the public host:

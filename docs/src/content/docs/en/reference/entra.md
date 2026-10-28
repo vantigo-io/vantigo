@@ -9,6 +9,7 @@ sources:
   - apps/server/internal/db/migrations/00061_entra_baseline.sql
   - apps/server/internal/db/migrations/00063_entra_groups.sql
   - apps/server/internal/db/migrations/00082_entra_calendar_sync.sql
+  - apps/server/internal/db/migrations/00085_entra_mailbox_subscriptions.sql
 ---
 The Microsoft Entra ID module connects one installation to one Microsoft Entra ID tenant
 and keeps the accounts of the people Staff registers in it: created disabled ahead of
@@ -1254,7 +1255,9 @@ writes the calendar's copies of a person's appointments and items to their Excha
 Online mailbox, [reads the busy time](#the-reads) of their default calendar back, and
 [reads the copies](#the-write-backs-reads) and the *Vantigo* calendar's events for the
 calendar's write-back, through the [Graph client](#the-graph-client) and its token, with the application
-permission `Calendars.ReadWrite`, which covers the reads. The calendar decides what the copies are;
+permission `Calendars.ReadWrite`, which covers the reads. Where Microsoft can reach the installation it also
+keeps each synced mailbox's changes [notified](#change-notifications), so a change made in Outlook makes the
+person's sync due at once. The calendar decides what the copies are;
 the module writes them and answers what it did, per operation ([module
 boundaries](/en/contributing/module-boundaries/) rule 14). `Key()` is `entra`, the
 provider-link key Staff's `DirectoryAccount` names, so the calendar can tell a person's
@@ -1277,6 +1280,9 @@ with it off, and with the permission missing. `GET /connection` answers it as
 | `ready` | On, the connection `connected`, and the last test's token carried `Calendars.ReadWrite`. |
 | `permission_missing` | On and `connected`, but the last test's token did not carry `Calendars.ReadWrite`. **Advisory**: expected when the permission was granted with Exchange RBAC for Applications, and otherwise a sign to add it; the sync runs either way. |
 | `unavailable` | On, but the connection is not `connected`; `reason` is the connection's `statusReason`, when it has one. |
+
+`calendarSync` also carries `notifications: {status, subscriptions, lastNotificationAt?,
+unreachableAt?}`, the state of [the change notifications](#change-notifications).
 
 ### The status
 
@@ -1498,6 +1504,114 @@ refused unsent — the events of the calendar, in the order asked:
   not answer. A refusal is logged at debug level by the tenant, the status and the
   codes alone.
 
+### Change notifications
+
+A change made in a person's mailbox makes their sync due at once, instead of at the
+next poll, when Microsoft Graph can post to the installation. **A notification is a
+nudge and nothing more**: it sets one time, and what changed is read by the same calls as
+ever (`Delta`, `Versions`, `Events`). Nothing a notification says is trusted beyond
+"this subscription fired", and nothing of it is stored. The poll
+(`CALENDAR_MAILBOX_SYNC_POLL`, 15 minutes) runs either way.
+
+**When.** Only while `PUBLIC_BASE_URL` is set — Graph needs a public HTTPS address — and
+`CALENDAR_MAILBOX_NOTIFICATIONS_ENABLED` (default `true`) is on. Otherwise nothing is
+subscribed.
+
+**The calls.** `contracts.MailboxCalendar` has three more ([module
+boundaries](/en/contributing/module-boundaries/) rule 14):
+
+| Call | What it does |
+| --- | --- |
+| `Watch(mailbox)` | The [account check](#the-account-check) first (`available` only), then, with a live subscription that has more than three days left, nothing. With less — or in the state `reauthorize` — a renewal, `PATCH /subscriptions/{id}` with an expiry of now plus 10 000 minutes; a 404 forgets the row and goes on to a create. With none, a create: `POST /subscriptions` with `changeType` `created,updated,deleted`, `resource` `/users/{oid}/events`, `notificationUrl` and `lifecycleNotificationUrl` both `PUBLIC_BASE_URL/api/v1/entra/mailbox-notifications`, an `expirationDateTime` of now plus 10 000 minutes (the limit is 10 080), and a `clientState` of 32 random bytes in base64url, 43 characters. No resource data is asked for, and no certificate. Answers nil, without calling Graph, when notifications are off, `PUBLIC_BASE_URL` is unset, or the address was found [unreachable](#the-webhook-and-unreachable) within the hour. |
+| `Unwatch(mailbox)` | Deletes the mailbox's subscription. A mailbox with no row answers nil; a row with no subscription id, or one whose expiry has passed, is forgotten without a call. Otherwise `DELETE /subscriptions/{id}`: a 204 or a 404 forgets the row; any other answer leaves it, in the state `deleting`, and is returned as the refusal or failure it is, so the delete stays owed. **No account check**: only the status (`available` or `cleanup`), so a clean-up can still remove a subscription after the account is gone. |
+| `Notified(since)` | The mailboxes notified after `since`, oldest first, at most 5000 (`contracts.MailboxNoticesMax`): the module's own rows, no network and no credential. Each notice is the account's object id and the time of the notification. |
+
+**The client state is a secret that is never kept.** It is drawn at each create and sent
+to Graph once; only its SHA-256 is stored, compared in constant time against what a
+notification carries.
+
+**A create that finds one already there.** A 409 lists `GET /subscriptions` (at most 10
+pages, `@odata.nextLink` followed only within Graph's base), deletes each subscription whose
+`resource` names this mailbox's `/users/{oid}/events` and whose `notificationUrl` is
+exactly this installation's — only ours — and creates once more. Another application's
+subscription is never touched. A second 409 is a refusal.
+
+**The expiry** stored is the one Graph granted, or the one asked for when its answer is
+unusable. A subscription id Graph gives that is not a GUID is `tenant_unreachable`.
+
+#### The webhook and unreachable
+
+A create is validated by Graph posting a `validationToken` to the `notificationUrl` before it
+answers. The webhook answers that only inside a window: `notifications_validating_until`
+is set to now plus 30 seconds before each `POST /subscriptions` and closed after it — and
+only if still the one that create opened, so a create started since keeps its own. A
+create that fails with a 400 whose message names a validation request means Graph could
+not reach the address: `notifications_unreachable_at` is set, the half-made row is
+forgotten, and **no `Watch` calls Graph for an hour**, so one unreachable address does not
+cost a create per person. A create that works clears it.
+
+#### Storage
+
+`entra.mailbox_subscriptions` (migration `00085_entra_mailbox_subscriptions.sql`), one row
+per mailbox:
+
+| Column | Meaning |
+| --- | --- |
+| `object_id` | Primary key: the account's. |
+| `subscription_id` | Graph's, unique; null while the create is in flight. |
+| `client_state_hash` | SHA-256 of the client state. |
+| `expires_at` | The expiry Graph granted. |
+| `state` | `active`, `reauthorize`, `removed` or `deleting`. |
+| `notified_at` | When a valid notification last named it. |
+
+`entra.connection` gains `notifications_validating_until`, `notifications_unreachable_at`
+and `last_notification_at`. A connection deleted forgets its rows: Graph's subscriptions
+lapse within seven days, and a notification of one is answered 202 and ignored.
+
+#### The endpoint
+
+`POST /api/v1/entra/mailbox-notifications` (`postEntraMailboxNotifications`) is **anonymous**
+— Graph carries no session — and is on [the public host's
+list](/en/admin/payments/#the-public-host), under `POST` and that exact path.
+It is limited to 600 a minute per client address (`entra-mailbox-notifications`, its own
+bucket; Graph retries a 429), and the body is capped at 1 MiB.
+
+- **The handshake.** A request with `validationToken` is answered `200`,
+  `text/plain; charset=utf-8`, `X-Content-Type-Options: nosniff`, `Cache-Control: no-store`,
+  the token as its body — only while the window above is open, and only for a token of 1 to
+  1024 bytes, valid UTF-8, with no control character. Anything else is a `404` with no body.
+- **A notification** is `{"value": [...]}`; at most 1000 items are read. An item counts
+  only when its `subscriptionId` is a GUID, a row has it, the SHA-256 of its `clientState`
+  equals the row's (constant time), and its `tenantId` equals the connection's, ignoring
+  case. Any other item is ignored. A valid one sets the row's `notified_at` — one write per
+  subscription per request, skipped when it moved within five seconds, so a flood only
+  makes a mailbox due, once. A `lifecycleEvent` of `reauthorizationRequired` also sets the
+  state `reauthorize`, and `subscriptionRemoved` the state `removed`, which wins when a
+  request carries both; `missed` is a notification like any other. `last_notification_at`
+  moves at most once a minute.
+- **The answer.** `202` with no body for any body that decodes, whatever it named: an
+  unknown subscription, a wrong client state and a valid one are answered alike, so the
+  endpoint tells a stranger nothing. `400` for a body that does not decode as a notification.
+  `503` when the writes could not be done within two seconds, so Graph sends it again.
+- **The log** holds counts: the items received, the subscriptions marked, the rows written
+  at debug, and the number ignored at warning. Never a subscription id, a client state, a
+  resource or a tenant.
+
+#### The status
+
+`calendarSync.notifications.status` on `GET /connection`:
+
+| `status` | When |
+| --- | --- |
+| `off` | `CALENDAR_MAILBOX_NOTIFICATIONS_ENABLED` is off. |
+| `not_configured` | `PUBLIC_BASE_URL` is not set. |
+| `unreachable` | A create's handshake failed within the last hour; `unreachableAt` says when. |
+| `active` | Otherwise. |
+
+`subscriptions` counts the live rows whatever the status — one made before notifications
+were turned off is Graph's until it lapses or is deleted — and `lastNotificationAt`, when
+there is one, is the last notification, to within a minute.
+
 ## The events
 
 Every write the module makes, in the tenant or to its own connection, is a row in
@@ -1626,6 +1740,7 @@ All under `/api/v1/entra`.
 | `POST /groups/{objectId}/confirm` | `entra:manage` |
 | `GET /directory/users?q=` | `policy:Owner+OwnerManagement`; `entra-directory` (60 a minute per client address, its own bucket) |
 | `GET /directory/matches` | `policy:Owner+OwnerManagement`; `entra-matches` (6 a minute per client address, its own bucket) |
+| `POST /mailbox-notifications` | none: anonymous, on the public host's list; the client state decides what counts; `entra-mailbox-notifications` (600 a minute per client address, its own bucket) |
 
 The request and response shapes are in the contract,
 [`openapi/entra.yaml`](https://github.com/vantigo-io/vantigo/blob/main/openapi/entra.yaml),

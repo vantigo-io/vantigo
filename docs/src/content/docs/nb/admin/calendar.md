@@ -119,7 +119,10 @@ den, ellers deler alle mottakere proxyens ene bøtte
 Lenkens token står bare i spørrestrengen til forespørselen etter siden: Vantigos egen
 forespørselslogg skriver stien og aldri spørrestrengen, og siden poster tokenet i stedet
 for å legge det i en API-adresse. Hold proxyens tilgangslogg til stien for hele den
-offentlige verten, slik stegene for betalingssiden viser.
+offentlige verten, slik stegene for betalingssiden viser. Den offentlige verten slipper
+også inn, ved siden av disse, én rute fra Microsoft Entra ID-modulen:
+`POST /api/v1/entra/mailbox-notifications`, webhooken for
+[endringsvarslene](#postbokssynkroniseringen) til Outlook-synkroniseringen.
 
 ### Kontroller
 
@@ -378,6 +381,20 @@ og for alle når **Kalendersynkronisering** slås av. **Slått av skriver og fje
 arbeideren ingenting**: kopiene blir liggende i postboksene slik de sist var, også
 kopiene til en som har sluttet, til den slås på igjen.
 
+**Endringsvarsler.** Der Microsoft kan nå `PUBLIC_BASE_URL`, venter ikke en endring gjort
+i Outlook på polling. Etter en synkronisering som skrev, ber arbeideren Entra-modulen
+be Microsoft varsle om endringer i personens postboks
+([Microsoft Entra ID](/nb/admin/entra/#endringsvarsler)), og i hver runde gjør den
+forfalt de personene hvis postbokser det er varslet om, slik at endringen tas på omtrent
+ett minutt. Et varsel er et puff og ingenting mer: arbeideren leser fortsatt postboksen,
+og pollingen går enten det kommer varsler eller ikke. Hvis forespørselen feiler, logger
+arbeideren en advarsel med feilens kode, og synkroniseringen står. Abonnementet fjernes
+sammen med kopiene — når personen slår synkroniseringen av, mister tilgangen, kobles fra
+eller flyttes til en annen postboks, eller **Kalendersynkronisering** slås av — men
+beholdes når bare personens målkalender endres. En fjerning Microsoft avviser, forblir
+skyldig og prøves på nytt med opprydningens utsettelse, som en kopi som ikke kunne
+slettes. `CALENDAR_MAILBOX_NOTIFICATIONS_ENABLED=0` slår det hele av.
+
 Den når nettet bare gjennom Entra-modulens Graph-klient — de to faste vertene til
 Microsoft, med modulens egne grenser — og logger en person bare med bruker-id-en: aldri
 postboksen, tittelen til en avtale eller en hendelse eller Graphs ord. En synkronisering som feilet, logges på
@@ -387,6 +404,7 @@ warning-nivå med steget som feilet; en avvist postboks på info-nivå med koden
 | --- | --- | --- |
 | `CALENDAR_MAILBOX_SYNC_ENABLED` | Av/på-bryter for arbeideren `calendar-mailbox-sync` | `1` |
 | `CALENDAR_MAILBOX_SYNC_POLL` | Hvor ofte hver persons kopier synkroniseres når ingenting har gjort dem forfalt tidligere; en varighet på minst `1m` | `15m` |
+| `CALENDAR_MAILBOX_NOTIFICATIONS_ENABLED` | Om Microsoft bes varsle om endringer i synkroniserte postbokser, slik at en endring gjort i Outlook tas på omtrent ett minutt; krever `PUBLIC_BASE_URL`. `0` er for en offentlig vert Microsoft ikke kan nå | `1` |
 
 ## Nøkkelmateriale
 
@@ -482,3 +500,8 @@ oppdatering — én gang, uten at noe går tapt. Avtaler beholder identifikatore
   **Venter på den første synkroniseringen …**.
 - **`CALENDAR_MAILBOX_SYNC_POLL` avvist ved oppstart.** Den er ikke en varighet, eller er
   under ett minutt.
+- **Endringer gjort i Outlook kommer bare ved pollingen.** Endringsvarsler er slått av
+  (`CALENDAR_MAILBOX_NOTIFICATIONS_ENABLED=0`), `PUBLIC_BASE_URL` er ikke satt, eller
+  Microsoft kunne ikke nå den; Entra-siden sier hvilket
+  ([Microsoft Entra ID](/nb/admin/entra/#endringsvarsler)). Ingenting går tapt: pollingen
+  tar dem hver `CALENDAR_MAILBOX_SYNC_POLL`.

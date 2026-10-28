@@ -14,6 +14,8 @@ sources:
   - apps/server/internal/entra/tenant_test.go
   - apps/server/internal/entra/mailbox.go
   - apps/server/internal/entra/mailbox_writeback.go
+  - apps/server/internal/entra/mailbox_notifications.go
+  - apps/server/internal/entra/mailbox_notifications_endpoint.go
 ---
 
 Microsoft Entra ID-modulen lager kontoene til personene Ansatte registrerer, i
@@ -329,6 +331,87 @@ og synkroniseringen fortsetter. Verifiser med en person innenfor omfanget: korte
 sier **Sist synkronisert**. En person utenfor omfanget ser **Organisasjonen din har ikke
 gitt Vantigo tilgang til postboksen din.** på Outlook-kortet sitt: Vantigo prøver dem
 igjen hver sjette time, og leser det aldri som at tilkoblingen feiler.
+
+### Endringsvarsler
+
+Som standard tar Vantigo en endring gjort i Outlook ved neste synkronisering, hvert 15.
+minutt. Med **endringsvarsler** sier Microsoft fra til Vantigo når noe endres i en
+synkronisert postboks, og personens synkronisering blir forfalt med en gang: endringen
+tas på omtrent ett minutt. Vantigo ber om ett varselabonnement per synkronisert
+postboks, på postboksens hendelser, og fornyer det før det går ut. **Et varsel er et puff
+og ingenting mer**: det inneholder ingen avtale, og Vantigo leser postboksen som før;
+pollingen hvert 15. minutt går enten varslene virker eller ikke, så ingenting avhenger av
+dem. Hva Vantigo ber om og svarer, står i [referansen](/en/reference/entra/#change-notifications).
+
+#### Forutsetninger
+
+- Kalendersynkronisering er slått på og virker ([over](#slå-den-på)). Varslene trenger
+  ingen ekstra tillatelse: `Calendars.ReadWrite` dekker dem.
+- **`PUBLIC_BASE_URL` er satt**, og Microsoft kan nå den fra internett over https: et
+  vertsnavn med et sertifikat en offentlig utsteder har signert. Sett opp den offentlige
+  verten som for betalingssiden ([Den offentlige
+  verten](/nb/admin/payments/#den-offentlige-verten)); de samme proxy-reglene gjelder. Den
+  må slippe `POST /api/v1/entra/mailbox-notifications` gjennom til Vantigo — den ene stien
+  Entra legger på den offentlige vertens liste, anonym fordi Microsoft ikke sender noen
+  økt.
+- `CALENDAR_MAILBOX_NOTIFICATIONS_ENABLED` er ikke `0` (standarden er på).
+
+#### Slå dem på
+
+1. Sett `PUBLIC_BASE_URL` i `vantigo.env` (en omstart leser den), og la
+   `CALENDAR_MAILBOX_NOTIFICATIONS_ENABLED` stå usatt, eller `1`.
+2. Sjekk utenfra at stien kommer gjennom. Et varsel uten innhold godtas, og Microsofts
+   håndtrykk — som Vantigo bare svarer på mens det oppretter et abonnement — gjør det ikke:
+
+   ```sh
+   curl -i -X POST https://pay.example.com/api/v1/entra/mailbox-notifications \
+     -H 'Content-Type: application/json' -d '{"value":[]}'                    # 202
+   curl -i -X POST 'https://pay.example.com/api/v1/entra/mailbox-notifications?validationToken=x'   # 404
+   ```
+
+3. Vent på neste synkronisering for en person som har den på: etter en som virket,
+   abonnerer Vantigo på postboksen.
+
+Verifiser: på modulsiden, under **Kalendersynkronisering**, står **Endringsvarsler** som
+**På, overvåker 1 postboks. Siste varsel: ingen ennå.** (tallet vokser med postboksene).
+Endre kopien av en avtale i personens Outlook: innen et minutt er endringen i Vantigo, og
+**Siste varsel** viser tidspunktet.
+
+#### Slå dem av
+
+Sett `CALENDAR_MAILBOX_NOTIFICATIONS_ENABLED=0` og start på nytt. Ingenting nytt
+abonneres, og bare pollingen går; linjen sier **Slått av av driftsansvarlig …**.
+Abonnementer som finnes, slettes ikke av dette — de går ut innen sju dager, og et varsel
+om ett gjør bare en synkronisering forfalt — men hvert slettes hos Microsoft når
+personens kopier ryddes bort. En tom `PUBLIC_BASE_URL` gir samme virkning, og linjen sier
+**Krever PUBLIC_BASE_URL …**.
+
+#### Hva som kan gå galt
+
+- **Microsoft har ikke nådd adressen siden …** Når Microsoft oppretter et abonnement,
+  sender det først en valideringsforespørsel til adressen, og den feilet. Vantigo oppretter
+  ingen abonnement på **en time**, slik at én gal adresse ikke koster ett forsøk per
+  person, og prøver så på nytt. Sjekk utenfra at `PUBLIC_BASE_URL` slår opp, at
+  sertifikatet er gyldig og kjeden komplett, at proxyen slipper stien gjennom med `Host`
+  satt til den offentlige verten, og at ingen brannmur eller webapplikasjonsfilter stopper
+  forespørsler fra Microsoft. Linjen forsvinner ved det første abonnementet som virker.
+  I mellomtiden tar pollingen endringene.
+- **Overvåker færre postbokser enn personer.** En postboks Microsoft avviser — en utenfor
+  et Exchange RBAC-omfang ([over](#begrens-den-til-enkelte-postbokser)) — avvises for
+  varsler slik den er for synkroniseringen, og den personens endringer kommer ved
+  pollingen. En person hvis synkronisering ennå ikke har skrevet, abonneres etter sin første
+  som gjør det.
+- **Et varsel kommer, men ingenting endres.** Synkroniseringen det gjør forfalt, leser
+  postboksen; hvis den lesingen avvises eller feiler, sier kortet det, som for enhver
+  synkronisering.
+- **Et annet programs abonnement på samme postboks.** Vantigo sletter bare et abonnement
+  som ligger på denne postboksens hendelser og sender til denne installasjonens egen
+  adresse, aldri et annets.
+- **Ingen varsler fra en travel leietaker.** Webhooken godtar 600 forespørsler i minuttet
+  per klientadresse; Microsoft prøver en avvist på nytt i timevis, og pollingen fanger det
+  som mangler. Bak en proxy, sett `TRUSTED_PROXY_HOPS` og `TRUSTED_PROXY_CIDRS` slik at
+  Microsofts adresser skilles fra proxyens ([Videresendte headere og
+  HTTPS](/nb/admin/authentication/#videresendte-headere-og-https)).
 
 ## Kontoer Vantigo ikke opprettet
 

@@ -569,6 +569,12 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
   keeping the pay link's token out of the proxy's logs — is its own procedure
   ([The public host](/en/admin/payments/#the-public-host)); the proxy in front of the
   public host must send `Host` as the public host name, a constant, never the client's.
+  The same public host now also carries Microsoft's change notifications for Calendar's
+  Outlook sync, `POST /api/v1/entra/mailbox-notifications`, which the proxy must pass
+  through, and `CALENDAR_MAILBOX_NOTIFICATIONS_ENABLED` (default on; `0` for a public
+  host Microsoft cannot reach) switches them off
+  ([Microsoft Entra ID](/en/admin/entra/#change-notifications),
+  [Calendar](/en/admin/calendar/#the-mailbox-sync-worker)).
 - `vantigo.env.example` also documents `STAFF_IMPORT_MAX_ROWS`, how many people one
   Staff import takes and one Staff export writes
   ([Staff](/en/admin/staff/#import-and-export-the-register)), and the Staff retention

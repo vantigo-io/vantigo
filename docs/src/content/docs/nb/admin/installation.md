@@ -587,7 +587,12 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
   holde tokenet i betalingslenken ute av proxyens logger — er en egen prosedyre
   ([Den offentlige verten](/nb/admin/payments/#den-offentlige-verten)); proxyen foran
   den offentlige verten må sende `Host` som det offentlige vertsnavnet, en konstant,
-  aldri klientens.
+  aldri klientens. Den samme offentlige verten bærer nå også Microsofts endringsvarsler
+  for Outlook-synkroniseringen i Kalender, `POST /api/v1/entra/mailbox-notifications`, som
+  proxyen må slippe gjennom, og `CALENDAR_MAILBOX_NOTIFICATIONS_ENABLED` (standard på; `0`
+  for en offentlig vert Microsoft ikke kan nå) slår dem av
+  ([Microsoft Entra ID](/nb/admin/entra/#endringsvarsler),
+  [Kalender](/nb/admin/calendar/#postbokssynkroniseringen)).
 - `vantigo.env.example` dokumenterer også `STAFF_IMPORT_MAX_ROWS`, hvor mange personer
   én import i Ansatte tar og én eksport skriver
   ([Ansatte](/nb/admin/staff/#importer-og-eksporter-registeret)), og

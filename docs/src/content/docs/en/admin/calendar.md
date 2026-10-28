@@ -114,7 +114,9 @@ answers in ten minutes — so behind a proxy, `TRUSTED_PROXY_HOPS` and
 The link's token is in the query of the page request alone: Vantigo's request log
 writes the path and never the query, and the page posts the token rather than putting
 it in an API address. Keep the proxy's access log to the path for the whole public host,
-as the pay page's steps show.
+as the pay page's steps show. The public host also admits, beside these, one route of the
+Microsoft Entra ID module: `POST /api/v1/entra/mailbox-notifications`, the webhook of the
+Outlook sync's [change notifications](#the-mailbox-sync-worker).
 
 ### Verify
 
@@ -361,6 +363,20 @@ sync, on that person's behalf. A read of the copies that fails lets the push go 
 is tried again on the failure's backoff; the person's card then says the last sync
 failed.
 
+**Change notifications.** Where Microsoft can reach `PUBLIC_BASE_URL`, a change made in
+Outlook does not wait for the poll. After a sync that pushed, the worker has the Entra
+module ask Microsoft to notify it of changes in that person's mailbox
+([Microsoft Entra ID](/en/admin/entra/#change-notifications)), and each cycle it makes
+due the people whose mailboxes were notified, so the change is taken within about a
+minute. A notification is a nudge and nothing more: the worker still reads the mailbox,
+and the poll runs whether or not any arrive. If asking fails, the worker logs a warning
+with the error's code and the sync stands. The subscription is removed with the copies —
+the person turning the sync off, losing access, being unlinked or moved to another
+mailbox, or Calendar sync being turned off — but kept when only the person's target
+calendar changes. A removal Microsoft refuses stays owed and is tried again on the
+clean-up's backoff, like a copy that could not be deleted. `CALENDAR_MAILBOX_NOTIFICATIONS_ENABLED=0`
+turns it all off.
+
 The worker removes a person's copies when they turn the sync off, when they may no
 longer use Calendar — disabled, locked out, deactivated by the directory, or without
 `calendar:access` — when Staff no longer links them to a Microsoft Entra ID account,
@@ -377,6 +393,7 @@ logged at warning with the step that failed; a refused mailbox at info with its 
 | --- | --- | --- |
 | `CALENDAR_MAILBOX_SYNC_ENABLED` | On/off switch for the `calendar-mailbox-sync` worker | `1` |
 | `CALENDAR_MAILBOX_SYNC_POLL` | How often each person's copies are synced when nothing made them due sooner; a duration of at least `1m` | `15m` |
+| `CALENDAR_MAILBOX_NOTIFICATIONS_ENABLED` | Whether Microsoft is asked to notify changes in synced mailboxes, so a change made in Outlook is taken within about a minute; needs `PUBLIC_BASE_URL`. `0` is for a public host Microsoft cannot reach | `1` |
 
 ## Key material
 
@@ -470,3 +487,8 @@ with nothing lost. Appointments keep their identifiers.
   sync…**.
 - **`CALENDAR_MAILBOX_SYNC_POLL` refused at start.** It is not a duration, or is under a
   minute.
+- **Changes made in Outlook arrive only at the poll.** Change notifications are off
+  (`CALENDAR_MAILBOX_NOTIFICATIONS_ENABLED=0`), `PUBLIC_BASE_URL` is not set, or Microsoft
+  could not reach it; the Entra page says which
+  ([Microsoft Entra ID](/en/admin/entra/#change-notifications)). Nothing is lost: the poll
+  takes them every `CALENDAR_MAILBOX_SYNC_POLL`.

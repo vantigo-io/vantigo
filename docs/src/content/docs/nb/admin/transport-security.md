@@ -176,8 +176,9 @@ og `::1`; en forespørsel som bærer en annen `Host` besvares med et 400-problem
 når applikasjonen. Porten ignoreres i sammenligningen.
 
 Når `PUBLIC_BASE_URL` angir en egen vert, slippes også den offentlige verten for
-betalingssiden i Faktura inn — og på den serverer serveren bare betalingssidens
-tillatelsesliste: alt annet svarer 404 før rutingen, et problemdokument under `/api/` og
+betalingssiden i Faktura inn — og på den serverer serveren bare den offentlige vertens
+tillatelsesliste (betalingssiden, svarsiden og strømmen i Kalender, og webhooken for
+endringsvarsler fra Microsoft til Outlook): alt annet svarer 404 før rutingen, et problemdokument under `/api/` og
 et tomt innhold ellers, mens den samme forespørselen på verten til `APP_URL` betjenes som
 før. Innloggingen, resten av API-et og dokumentasjonen kan derfor aldri nås gjennom den
 offentlige verten. Når `PUBLIC_BASE_URL` er opprinnelsen til `APP_URL` selv, finnes det
