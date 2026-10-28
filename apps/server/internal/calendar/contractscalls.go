@@ -19,8 +19,9 @@ import (
 // the customer directory (deps.Directory), the project directory
 // (deps.Projects), the workforce register's DirectoryAccount (deps.Workforce)
 // and the mailbox provider (deps.MailboxCalendar, calendar Outlook sync design
-// O4) — its writes, the busy read's Delta and Marked (O9.4), and the
-// write-back's Versions and Events (O10.2) — and
+// O4) — its writes, the busy read's Delta and Marked (O9.4), the
+// write-back's Versions and Events (O10.2), and the change notifications'
+// Watch, Unwatch and Notified (O11.3) — and
 // identity's Check of the caller's permission for the CalendarBusy contract
 // this module provides (busy.go, O9.8). Every call is made through one of the
 // thin accessors below
@@ -382,6 +383,44 @@ func (s *server) mailboxEvents(ctx context.Context, mailbox, calendarID string, 
 		return contracts.MailboxEventsRead{}, contracts.ErrMailboxUnavailable
 	}
 	return s.deps.MailboxCalendar.Events(ctx, mailbox, calendarID, eventIDs)
+}
+
+// mailboxWatch makes sure the mailbox's changes are notified (design
+// O11.3): a subscription made or renewed, or nothing when a live one has
+// time left or the provider offers none. Refused under cleanup.
+func (s *server) mailboxWatch(ctx context.Context, mailbox string) error {
+	if err := noteContractCall(ctx, "MailboxCalendar.Watch"); err != nil {
+		return err
+	}
+	if s.deps.MailboxCalendar == nil {
+		return contracts.ErrMailboxUnavailable
+	}
+	return s.deps.MailboxCalendar.Watch(ctx, mailbox)
+}
+
+// mailboxUnwatch deletes the mailbox's subscription (design O11.3); one not
+// there is done. Allowed under cleanup, so the clean-up (O8) can remove it.
+func (s *server) mailboxUnwatch(ctx context.Context, mailbox string) error {
+	if err := noteContractCall(ctx, "MailboxCalendar.Unwatch"); err != nil {
+		return err
+	}
+	if s.deps.MailboxCalendar == nil {
+		return contracts.ErrMailboxUnavailable
+	}
+	return s.deps.MailboxCalendar.Unwatch(ctx, mailbox)
+}
+
+// mailboxNotified is the mailboxes the directory notified after since,
+// oldest first, at most contracts.MailboxNoticesMax (design O11.3): the
+// provider's own rows, no network.
+func (s *server) mailboxNotified(ctx context.Context, since time.Time) ([]contracts.MailboxNotice, error) {
+	if err := noteContractCall(ctx, "MailboxCalendar.Notified"); err != nil {
+		return nil, err
+	}
+	if s.deps.MailboxCalendar == nil {
+		return nil, contracts.ErrMailboxUnavailable
+	}
+	return s.deps.MailboxCalendar.Notified(ctx, since)
 }
 
 // accessHas is whether the caller of the request in ctx holds key, as

@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
+	"github.com/vantigo-io/vantigo/server/internal/modtest"
 	"github.com/vantigo-io/vantigo/server/internal/module"
 )
 
@@ -69,5 +70,56 @@ func TestWriteBackAccessors_WithNoProviderAreUnavailable(t *testing.T) {
 	}
 	if _, err := s.mailboxEvents(context.Background(), "oid", "", nil); !errors.Is(err, contracts.ErrMailboxUnavailable) {
 		t.Errorf("Events with no provider: %v", err)
+	}
+}
+
+// The change notifications' accessors with no provider wired answer it
+// unavailable; their lock rule is the harness's, as the busy read's, and
+// TestNotificationAccessors_RefuseACallInsideATransaction's.
+func TestNotificationAccessors_WithNoProviderAreUnavailable(t *testing.T) {
+	t.Parallel()
+	s := newServer(module.Deps{Logger: slog.New(slog.NewTextHandler(io.Discard, nil))})
+	if err := s.mailboxWatch(context.Background(), "oid"); !errors.Is(err, contracts.ErrMailboxUnavailable) {
+		t.Errorf("Watch with no provider: %v", err)
+	}
+	if err := s.mailboxUnwatch(context.Background(), "oid"); !errors.Is(err, contracts.ErrMailboxUnavailable) {
+		t.Errorf("Unwatch with no provider: %v", err)
+	}
+	if _, err := s.mailboxNotified(context.Background(), time.Time{}); !errors.Is(err, contracts.ErrMailboxUnavailable) {
+		t.Errorf("Notified with no provider: %v", err)
+	}
+}
+
+// The change notifications' accessors refuse a call made inside one of the
+// module's transactions, and the provider is never asked. The test is not
+// parallel on purpose: the locked calls it makes are recorded by the
+// package's hook (TestMain), and no harness of a parallel test exists while
+// the sequential tests run, so none counts them against itself.
+func TestNotificationAccessors_RefuseACallInsideATransaction(t *testing.T) {
+	box := modtest.NewFakeMailboxCalendar()
+	s := newServer(module.Deps{Logger: slog.New(slog.NewTextHandler(io.Discard, nil)), MailboxCalendar: box})
+	locked := context.WithValue(context.Background(), lockedTxKey{}, true)
+	if err := s.mailboxWatch(locked, "oid"); !errors.Is(err, errCallInsideTransaction) {
+		t.Errorf("Watch inside a transaction: %v", err)
+	}
+	if err := s.mailboxUnwatch(locked, "oid"); !errors.Is(err, errCallInsideTransaction) {
+		t.Errorf("Unwatch inside a transaction: %v", err)
+	}
+	if _, err := s.mailboxNotified(locked, time.Time{}); !errors.Is(err, errCallInsideTransaction) {
+		t.Errorf("Notified inside a transaction: %v", err)
+	}
+	if got := box.Calls(); len(got) != 0 {
+		t.Errorf("the provider was asked from inside a transaction: %+v", got)
+	}
+	// Outside one, each goes through.
+	ctx := context.Background()
+	if err := s.mailboxWatch(ctx, "oid"); err != nil || !box.Watched("oid") {
+		t.Errorf("Watch: %v, watched %v", err, box.Watched("oid"))
+	}
+	if err := s.mailboxUnwatch(ctx, "oid"); err != nil || box.Watched("oid") {
+		t.Errorf("Unwatch: %v, watched %v", err, box.Watched("oid"))
+	}
+	if _, err := s.mailboxNotified(ctx, time.Time{}); err != nil {
+		t.Errorf("Notified: %v", err)
 	}
 }

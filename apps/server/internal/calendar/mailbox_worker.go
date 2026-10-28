@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"slices"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -90,6 +91,20 @@ import (
 //     a fresh delta's first emptying the person's rows; at most 5000 rows a
 //     person. A refusal or failure of Delta or Marked is recorded as step
 //     8's are.
+//  10. Watch (O11.6), last, on a sync that pushed and left the person active
+//     — one that worked, and one whose busy read or write-back failed beside
+//     a push that stood: the mailbox's changes notified from now on. Its
+//     error is logged by its code and changes nothing; a sync whose deadline
+//     has passed does not ask, and the next one does.
+//
+// Change notifications (O11.6): each cycle, before it picks the due, asks
+// Notified for the mailboxes the directory notified since the latest notice
+// it took (held on the worker, the poll interval ago at its first cycle),
+// and makes due at once — one short statement a notice — each row of that
+// mailbox, compared case-insensitively, that is on, active or pending, last
+// synced before the notice and not due already. A notice is a nudge: the
+// reads stay the truth. A Notified that fails is logged and the cycle goes
+// on; the poll runs either way.
 //
 // The clean-up (O8): target own deletes the Vantigo calendar — only one the
 // provider made, and only when it holds no meeting (none Find answers as
@@ -103,7 +118,11 @@ import (
 // mailbox denied, a provider unusable or a failure keeps the map and the
 // clean-up owed, retried on the backoff. Then the map is emptied, and the
 // person's busy rows and their delta link forgotten — as they are by every
-// result that leaves the sync off or unavailable (O9.9). Nothing of
+// result that leaves the sync off or unavailable (O9.9). Every clean-up but
+// a target change's also Unwatches the mailbox it cleans (O11.6), once its
+// copies are removed or forgotten: the subscription is the mailbox's, so a
+// target change keeps it. Unwatch refused as gone or unknown is forgotten;
+// anything else keeps the clean-up owed as a refused delete does. Nothing of
 // a person's mailbox, their copies' titles or the provider's words (which
 // carry the mailbox's paths) is ever logged: an error is logged by its code.
 
@@ -165,6 +184,11 @@ const (
 type MailboxSyncWorker struct {
 	deps module.Deps
 	srv  *server
+
+	// noticesMu guards noticesSince, the latest notice's At a cycle took
+	// (design O11.6): zero until the first cycle sets it a poll ago.
+	noticesMu    sync.Mutex
+	noticesSince time.Time
 }
 
 var _ worker.Worker = (*MailboxSyncWorker)(nil)
@@ -233,6 +257,8 @@ func (w *MailboxSyncWorker) RunCycle(ctx context.Context) (bool, int, error) {
 		}
 	}()
 
+	w.takeNotices(ctx)
+
 	tx, err := conn.Begin(ctx)
 	if err != nil {
 		return true, 0, fmt.Errorf("calendar: begin the mailbox sync due list: %w", err)
@@ -272,6 +298,50 @@ func (w *MailboxSyncWorker) RunCycle(ctx context.Context) (bool, int, error) {
 		w.deps.Logger.InfoContext(ctx, "calendar: mailbox syncs run", "worker", mailboxWorkerName, "synced", synced)
 	}
 	return true, synced, nil
+}
+
+// takeNotices makes the notified people's syncs due (design O11.6): it asks
+// the provider for the mailboxes notified since the latest notice taken and
+// marks each one's rows due at now, one short statement a notice, holding no
+// transaction across the call. noticesSince moves on to the latest At
+// marked; a notice whose mark fails stops the marking there, so it is asked
+// for again next cycle. Without a provider nothing is asked; a failing
+// Notified is logged by its code and the cycle goes on.
+func (w *MailboxSyncWorker) takeNotices(ctx context.Context) {
+	if w.srv.mailboxCalendar() == nil {
+		return
+	}
+	w.noticesMu.Lock()
+	defer w.noticesMu.Unlock()
+	now := w.deps.Clock()
+	if w.noticesSince.IsZero() {
+		w.noticesSince = now.Add(-w.poll())
+	}
+	notices, err := w.srv.mailboxNotified(ctx, w.noticesSince)
+	if err != nil {
+		w.deps.Logger.WarnContext(ctx, "calendar: the mailboxes notified could not be read; the poll goes on",
+			"worker", mailboxWorkerName, "error", mailboxErrorCode(err))
+		return
+	}
+	marked := int64(0)
+	for _, n := range notices {
+		rows, err := w.srv.queries().MarkMailboxSyncNotified(ctx, store.MarkMailboxSyncNotifiedParams{
+			Now: now, Mailbox: n.Mailbox, At: n.At,
+		})
+		if err != nil {
+			w.deps.Logger.WarnContext(ctx, "calendar: a notified mailbox's sync could not be made due; it is asked for again",
+				"worker", mailboxWorkerName, "error", mailboxErrorCode(err))
+			break
+		}
+		marked += rows
+		if n.At.After(w.noticesSince) {
+			w.noticesSince = n.At
+		}
+	}
+	if len(notices) > 0 {
+		w.deps.Logger.DebugContext(ctx, "calendar: mailbox change notices taken",
+			"worker", mailboxWorkerName, "notices", len(notices), "due", marked)
+	}
 }
 
 // mailboxResult is what one person's sync writes to their row.
@@ -315,7 +385,9 @@ func (w *MailboxSyncWorker) syncPerson(ctx context.Context, r store.CalendarMail
 	}
 	cannotGoOn := !holds || st.State == contracts.MailboxCleanup
 	if cannotGoOn || r.State == mailboxStateStopping {
-		if err := w.cleanup(ctx, call, &r, now); err != nil {
+		// A target change — still on, and able to go on — keeps the
+		// mailbox's subscription; every other clean-up removes it.
+		if err := w.cleanup(ctx, call, &r, now, !r.Enabled || cannotGoOn); err != nil {
 			return w.failed(ctx, r, now, "clean up", err)
 		}
 		switch {
@@ -340,7 +412,7 @@ func (w *MailboxSyncWorker) syncPerson(ctx context.Context, r store.CalendarMail
 		key = p.Key()
 	}
 	if !usableAccount(acct, key) {
-		if err := w.cleanup(ctx, call, &r, now); err != nil {
+		if err := w.cleanup(ctx, call, &r, now, true); err != nil {
 			return w.failed(ctx, r, now, "clean up", err)
 		}
 		return w.write(ctx, r, now, mailboxResult{
@@ -350,7 +422,7 @@ func (w *MailboxSyncWorker) syncPerson(ctx context.Context, r store.CalendarMail
 	}
 	mailbox := acct.ExternalID
 	if r.Mailbox != nil && *r.Mailbox != mailbox {
-		if err := w.cleanup(ctx, call, &r, now); err != nil {
+		if err := w.cleanup(ctx, call, &r, now, true); err != nil {
 			return w.failed(ctx, r, now, "clean up the previous mailbox", err)
 		}
 	}
@@ -452,18 +524,40 @@ func (w *MailboxSyncWorker) syncPerson(ctx context.Context, r store.CalendarMail
 	if err != nil {
 		return err
 	}
-	if callErr != nil {
-		if mailboxRefused(callErr) {
-			return w.refusedOrFailed(ctx, r, now, "read the busy time", callErr)
-		}
-		return w.pushedButFailed(ctx, r, now, "read the busy time", callErr)
+	if callErr != nil && mailboxRefused(callErr) {
+		return w.refusedOrFailed(ctx, r, now, "read the busy time", callErr)
 	}
-	if writeBackErr != nil {
-		return w.pushedButFailed(ctx, r, now, "take the changes made in Outlook", writeBackErr)
+	// The push stood: the person is active whatever else failed beside it.
+	switch {
+	case callErr != nil:
+		err = w.pushedButFailed(ctx, r, now, "read the busy time", callErr)
+	case writeBackErr != nil:
+		err = w.pushedButFailed(ctx, r, now, "take the changes made in Outlook", writeBackErr)
+	default:
+		err = w.write(ctx, r, now, mailboxResult{
+			state: mailboxStateActive, next: timePtr(now.Add(w.poll())), synced: true,
+		})
 	}
-	return w.write(ctx, r, now, mailboxResult{
-		state: mailboxStateActive, next: timePtr(now.Add(w.poll())), synced: true,
-	})
+	if err != nil {
+		return err
+	}
+	w.watch(ctx, call, r.UserID, mailbox)
+	return nil
+}
+
+// watch asks the provider to keep the mailbox's changes notified (design
+// O11.6), last in a sync that pushed and left the person active, on call —
+// not at all once its deadline has passed: the next sync asks. Its error is
+// logged by its code and changes nothing: the row is already written, and
+// the poll runs either way.
+func (w *MailboxSyncWorker) watch(ctx, call context.Context, userID uuid.UUID, mailbox string) {
+	if call.Err() != nil {
+		return
+	}
+	if err := w.srv.mailboxWatch(call, mailbox); err != nil {
+		w.deps.Logger.WarnContext(ctx, "calendar: a person's mailbox could not be watched for changes; the poll goes on",
+			"worker", mailboxWorkerName, "user_id", userID.String(), "error", mailboxErrorCode(err))
+	}
 }
 
 // pendingOp is one op of a sync with the copy it writes (nil for a delete)
@@ -710,7 +804,15 @@ func (w *MailboxSyncWorker) apply(ctx, call context.Context, userID uuid.UUID, m
 // the next sync made a reconcile; r is changed to match. Anything else — the mailbox denied, the provider unusable, a
 // failure — is answered as the error, with the map as the deletes that
 // worked left it and the clean-up still owed.
-func (w *MailboxSyncWorker) cleanup(ctx, call context.Context, r *store.CalendarMailboxSync, now time.Time) error {
+//
+// unwatch (every clean-up but a target change's) also deletes the mailbox's
+// subscription (design O11.6), after the copies — they are what the person
+// sees, so an Unwatch refused does not hold them back — and before anything
+// is forgotten, so an Unwatch denied, unusable or failed keeps the clean-up
+// owed whole, retried as a refused delete is (the deletes it repeats are
+// done or gone by then). Gone or unknown, the subscription is forgotten
+// with the mailbox.
+func (w *MailboxSyncWorker) cleanup(ctx, call context.Context, r *store.CalendarMailboxSync, now time.Time, unwatch bool) error {
 	if r.Mailbox != nil {
 		mailbox := *r.Mailbox
 		var err error
@@ -741,6 +843,17 @@ func (w *MailboxSyncWorker) cleanup(ctx, call context.Context, r *store.Calendar
 				"worker", mailboxWorkerName, "user_id", r.UserID.String(), "error", mailboxErrorCode(err))
 		default:
 			return err
+		}
+		if unwatch {
+			err := w.srv.mailboxUnwatch(call, mailbox)
+			switch {
+			case err == nil:
+			case errors.Is(err, contracts.ErrMailboxGone) || errors.Is(err, contracts.ErrMailboxUnknown):
+				w.deps.Logger.InfoContext(ctx, "calendar: a person's mailbox is no longer there to unwatch; its subscription is forgotten",
+					"worker", mailboxWorkerName, "user_id", r.UserID.String(), "error", mailboxErrorCode(err))
+			default:
+				return err
+			}
 		}
 	}
 	if err := w.forgetAll(ctx, r.UserID); err != nil {
