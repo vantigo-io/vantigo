@@ -1688,7 +1688,9 @@ made inside one of its transactions. Without a provider the mailbox accessors an
 ### The two tables
 
 Migration `00081_calendar_mailbox_sync.sql` adds them, and `00083_calendar_mailbox_busy.sql`
-gives `mailbox_sync` the delta's four columns; no CHECK holds a value to its set, the
+gives `mailbox_sync` the delta's four columns and widens the ids 00081 stored —
+`mailbox_events.event_id` and `mailbox_sync.calendar_id` — to 512, the provider's bound
+on an id; no CHECK holds a value to its set, the
 module's validation does.
 
 - **`mailbox_sync`** — a person's setting and the worker's record of it, one row per
@@ -1876,6 +1878,7 @@ person:
 | `ErrMailboxGone` | `unavailable` | `mailbox_gone` | in six hours |
 | `ErrMailboxUnknown` | `unavailable` | `no_account` | in an hour |
 | `ErrMailboxUnavailable` | `unavailable` | `unavailable` | in an hour |
+| The push worked, the busy read failed (not a refusal) | `active` | `failed` | 1, 5, 15, 60 minutes, then hourly; `last_synced_at` now, `attempts` counted, never `failed` — the push it rides on works |
 | Any other failure, or a clean-up that met a refusal | unchanged (`pending`, `active` or `stopping`); `failed` from the fifth in a row | `failed` — or the clean-up's refusal, `mailbox_denied` or `unavailable` | 1, 5, 15, 60 minutes, then hourly |
 
 A refusal of one op stops the person's sync after its slice's map is written, and so
@@ -1919,11 +1922,13 @@ and link. A second expiry in the same sync is a failure.
 again while the delta is not `Done` and the person's three minutes last. A call cut
 short answers the next link, which is stored with each page, so the next sync takes it
 up. Running out of time between pages is not a failure; a call the deadline cuts short
-is, as any failure of `Delta` or `Marked`. Each page is written in **one short
-transaction** after its calls: a fresh delta's first page empties the person's rows
-first, then each change is a delete or an upsert, then the link and the window, and, at
-the delta link, `busy_synced_at`. The link is written only while the sync is on
-(`enabled`), so a sync turned off during the read keeps no link.
+is, as any failure of `Delta` or `Marked` — recorded as the busy read's failure below,
+which never hides the push that worked. Each page is written in **one short
+transaction** after its calls: the link and the window first, written only while the
+sync is on (`enabled`) — a sync turned off during the read deletes the person's rows in
+that same transaction and the read stops, keeping nothing —, then on a fresh delta's
+first page the person's rows emptied, then each change a delete or an upsert, and, at
+the delta link, `busy_synced_at`.
 
 **Our own copies are skipped**, by the map and one read, since a delta answers no
 extended property and the marker cannot be seen in it. An event is ours when its id is

@@ -49,7 +49,7 @@ func TestCalendarMailboxSync_AppliesAndIsIdempotent(t *testing.T) {
 		"detail:character varying(10):NO:'full'::character varying",
 		"kinds:ARRAY:NO:'{}'::text[]",
 		"mailbox:character varying(200):YES:",
-		"calendar_id:character varying(500):YES:",
+		"calendar_id:character varying(512):YES:",
 		"state:character varying(12):NO:'pending'::character varying",
 		"error:character varying(40):YES:",
 		"next_sync_at:timestamp with time zone:YES:",
@@ -71,7 +71,7 @@ func TestCalendarMailboxSync_AppliesAndIsIdempotent(t *testing.T) {
 	if got, want := columns("mailbox_events"), []string{
 		"user_id:uuid:NO:",
 		"item_key:character varying(200):NO:",
-		"event_id:character varying(500):NO:",
+		"event_id:character varying(512):NO:",
 		"content_hash:character varying(64):NO:",
 		"starts_on:date:NO:",
 		"created_at:timestamp with time zone:NO:",
