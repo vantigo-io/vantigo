@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/vantigo-io/vantigo/server/internal/calendar/gen"
 	"github.com/vantigo-io/vantigo/server/internal/calendar/store"
 )
@@ -32,19 +34,42 @@ func (s *server) PutCalendarAppointmentsByIdOccurrencesByDate(ctx context.Contex
 	if req.Body != nil {
 		body = *req.Body
 	}
-	me := callerID(ctx)
-	date := civil(req.Date.Time)
+	exc, err := s.writeOccurrence(ctx, callerID(ctx), req.Id, civil(req.Date.Time), body)
+	if r, ok := asRefusal(err); ok {
+		switch r.status {
+		case http.StatusBadRequest:
+			return gen.PutCalendarAppointmentsByIdOccurrencesByDate400ApplicationProblemPlusJSONResponse(r.problem), nil
+		case http.StatusConflict:
+			return gen.PutCalendarAppointmentsByIdOccurrencesByDate409ApplicationProblemPlusJSONResponse(r.problem), nil
+		}
+		return gen.PutCalendarAppointmentsByIdOccurrencesByDate404Response{}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return gen.PutCalendarAppointmentsByIdOccurrencesByDate200JSONResponse(occurrenceOut(exc)), nil
+}
+
+// writeOccurrence moves or cancels the occurrence on date of the series id
+// me owns — the screen's PUT and the Outlook write-back's move and delete of
+// an occurrence's copy (calendar Outlook sync design O10.6, O10.8) alike, as
+// the PUT's comment above tells — and, after the commit, sends the series'
+// REQUEST. Its refusals: a date too far away, a single appointment or a body
+// that breaks a rule 400; an appointment me does not own 404; a day the rule
+// never produces 409 occurrence_not_in_series and a cancelled appointment
+// 409 appointment_cancelled.
+func (s *server) writeOccurrence(ctx context.Context, me uuid.UUID, id int64, date time.Time, body gen.OccurrenceWrite) (store.CalendarAppointmentException, error) {
 	if msg := s.yearsAway(date); msg != "" {
 		var f fieldErrors
 		f.add("date", msg)
-		return gen.PutCalendarAppointmentsByIdOccurrencesByDate400ApplicationProblemPlusJSONResponse(invalid(invalidOccurrenceTitle, f)), nil
+		return store.CalendarAppointmentException{}, refuse(http.StatusBadRequest, invalid(invalidOccurrenceTitle, f))
 	}
 	var (
 		exc     store.CalendarAppointmentException
 		changed written
 	)
 	err := s.withLockedTx(ctx, func(ctx context.Context, txq *store.Queries) error {
-		cur, err := lockWritable(ctx, txq, req.Id, me)
+		cur, err := lockWritable(ctx, txq, id, me)
 		if err != nil {
 			return err
 		}
@@ -73,20 +98,11 @@ func (s *server) PutCalendarAppointmentsByIdOccurrencesByDate(ctx context.Contex
 		}
 		return s.nudgeMailboxes(ctx, txq, cur.OwnerUserID, changed.atts)
 	})
-	if r, ok := asRefusal(err); ok {
-		switch r.status {
-		case http.StatusBadRequest:
-			return gen.PutCalendarAppointmentsByIdOccurrencesByDate400ApplicationProblemPlusJSONResponse(r.problem), nil
-		case http.StatusConflict:
-			return gen.PutCalendarAppointmentsByIdOccurrencesByDate409ApplicationProblemPlusJSONResponse(r.problem), nil
-		}
-		return gen.PutCalendarAppointmentsByIdOccurrencesByDate404Response{}, nil
-	}
 	if err != nil {
-		return nil, err
+		return store.CalendarAppointmentException{}, err
 	}
 	s.tell(ctx, changed)
-	return gen.PutCalendarAppointmentsByIdOccurrencesByDate200JSONResponse(occurrenceOut(exc)), nil
+	return exc, nil
 }
 
 // readOccurrence holds an exception's body to D4: cancelled, or a move by the

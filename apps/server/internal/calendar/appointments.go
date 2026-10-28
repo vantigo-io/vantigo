@@ -407,16 +407,43 @@ func (s *server) PostCalendarAppointments(ctx context.Context, req gen.PostCalen
 		body = *req.Body
 	}
 	me := callerID(ctx)
+	saved, err := s.createAppointment(ctx, me, body, nil)
+	if r, ok := asRefusal(err); ok {
+		return gen.PostCalendarAppointments400ApplicationProblemPlusJSONResponse(r.problem), nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	links, err := s.linksFor(ctx, saved.row.CustomerID, saved.row.ProjectID)
+	if err != nil {
+		return nil, err
+	}
+	return gen.PostCalendarAppointments201JSONResponse(appointmentOut(saved.row, saved.atts, nil, me, saved.ppl, links)), nil
+}
+
+// savedAppointment is an appointment as a write left it: its row, its
+// attendees as the invitations' sends recorded them, its exceptions and the
+// names of its people.
+type savedAppointment struct {
+	row  store.CalendarAppointment
+	atts []store.CalendarAppointmentAttendee
+	excs []store.CalendarAppointmentException
+	ppl  people
+}
+
+// createAppointment is the create of an appointment me owns from body — the
+// screen's POST and the Outlook write-back's new event (calendar Outlook sync
+// design O10.9) alike: held to every rule, inserted with its attendees under
+// one transaction, inTx's statement (nil for none) run in that transaction on
+// the new row, and, after the commit, every outside attendee sent a REQUEST
+// and every colleague a notice. A body that breaks a rule is a 400 refusal.
+func (s *server) createAppointment(ctx context.Context, me uuid.UUID, body gen.AppointmentWrite, inTx func(ctx context.Context, txq *store.Queries, row store.CalendarAppointment) error) (savedAppointment, error) {
 	in, ppl, f, err := s.readAppointment(ctx, body, me, nil)
 	if err != nil {
-		return nil, err
+		return savedAppointment{}, err
 	}
 	if f.failed() {
-		return gen.PostCalendarAppointments400ApplicationProblemPlusJSONResponse(invalid(invalidAppointmentTitle, f)), nil
-	}
-	links, err := s.linksFor(ctx, in.customerID, in.projectID)
-	if err != nil {
-		return nil, err
+		return savedAppointment{}, refuse(http.StatusBadRequest, invalid(invalidAppointmentTitle, f))
 	}
 	var (
 		row  store.CalendarAppointment
@@ -445,19 +472,24 @@ func (s *server) PostCalendarAppointments(ctx context.Context, req gen.PostCalen
 		if err != nil {
 			return fmt.Errorf("calendar: read appointment %d's attendees: %w", row.ID, err)
 		}
+		if inTx != nil {
+			if err := inTx(ctx, txq, row); err != nil {
+				return err
+			}
+		}
 		return s.nudgeMailboxes(ctx, txq, row.OwnerUserID, atts)
 	})
 	if err != nil {
-		return nil, err
+		return savedAppointment{}, err
 	}
 	b := s.newBudget(ctx, afterCommitBudget)
 	s.sendInvitations(b, invitationJob{appt: row, listed: atts, to: atts, method: methodRequest})
 	s.notifyUsers(b, row, userAttendees(atts), noticeInvited)
 	b.done()
 	if atts, err = s.reread(ctx, row.ID, atts); err != nil {
-		return nil, err
+		return savedAppointment{}, err
 	}
-	return gen.PostCalendarAppointments201JSONResponse(appointmentOut(row, atts, nil, me, ppl, links)), nil
+	return savedAppointment{row: row, atts: atts, ppl: ppl}, nil
 }
 
 // reread is the appointment's attendees again after its invitations went,
@@ -545,20 +577,43 @@ func (s *server) PutCalendarAppointmentsById(ctx context.Context, req gen.PutCal
 		body = *req.Body
 	}
 	me := callerID(ctx)
-	current, err := s.currentAttendees(ctx, req.Id, me)
+	saved, err := s.replaceAppointment(ctx, me, req.Id, revision, body)
+	if r, ok := asRefusal(err); ok {
+		switch r.status {
+		case http.StatusBadRequest:
+			return gen.PutCalendarAppointmentsById400ApplicationProblemPlusJSONResponse(r.problem), nil
+		case http.StatusConflict:
+			return gen.PutCalendarAppointmentsById409ApplicationProblemPlusJSONResponse(r.problem), nil
+		}
+		return gen.PutCalendarAppointmentsById404Response{}, nil
+	}
 	if err != nil {
 		return nil, err
+	}
+	links, err := s.linksFor(ctx, saved.row.CustomerID, saved.row.ProjectID)
+	if err != nil {
+		return nil, err
+	}
+	return gen.PutCalendarAppointmentsById200JSONResponse(appointmentOut(saved.row, saved.atts, saved.excs, me, saved.ppl, links)), nil
+}
+
+// replaceAppointment replaces the appointment id me owns with body at
+// revision — the screen's PUT and the Outlook write-back's edit (calendar
+// Outlook sync design O10.7) alike, as the PUT's comment above tells. Its
+// refusals: a body that breaks a rule is 400, an appointment me does not own
+// 404, a revision moved on 409 revision_mismatch and a cancelled appointment
+// 409 appointment_cancelled.
+func (s *server) replaceAppointment(ctx context.Context, me uuid.UUID, id int64, revision int32, body gen.AppointmentWrite) (savedAppointment, error) {
+	current, err := s.currentAttendees(ctx, id, me)
+	if err != nil {
+		return savedAppointment{}, err
 	}
 	in, ppl, f, err := s.readAppointment(ctx, body, me, current)
 	if err != nil {
-		return nil, err
+		return savedAppointment{}, err
 	}
 	if f.failed() {
-		return gen.PutCalendarAppointmentsById400ApplicationProblemPlusJSONResponse(invalid(invalidAppointmentTitle, f)), nil
-	}
-	links, err := s.linksFor(ctx, in.customerID, in.projectID)
-	if err != nil {
-		return nil, err
+		return savedAppointment{}, refuse(http.StatusBadRequest, invalid(invalidAppointmentTitle, f))
 	}
 	var (
 		row            store.CalendarAppointment
@@ -569,7 +624,7 @@ func (s *server) PutCalendarAppointmentsById(ctx context.Context, req gen.PutCal
 	)
 	now := s.deps.Clock()
 	err = s.withLockedTx(ctx, func(ctx context.Context, txq *store.Queries) error {
-		cur, err := lockWritable(ctx, txq, req.Id, me)
+		cur, err := lockWritable(ctx, txq, id, me)
 		if err != nil {
 			return err
 		}
@@ -617,20 +672,48 @@ func (s *server) PutCalendarAppointmentsById(ctx context.Context, req gen.PutCal
 		excs, err = exceptionsOf(ctx, txq, row)
 		return err
 	})
-	if r, ok := asRefusal(err); ok {
-		if r.status == http.StatusConflict {
-			return gen.PutCalendarAppointmentsById409ApplicationProblemPlusJSONResponse(r.problem), nil
-		}
-		return gen.PutCalendarAppointmentsById404Response{}, nil
-	}
 	if err != nil {
-		return nil, err
+		return savedAppointment{}, err
 	}
 	s.afterChange(ctx, row, atts, excs, added, dropped, bumped)
 	if atts, err = s.reread(ctx, row.ID, atts); err != nil {
-		return nil, err
+		return savedAppointment{}, err
 	}
-	return gen.PutCalendarAppointmentsById200JSONResponse(appointmentOut(row, atts, excs, me, ppl, links)), nil
+	return savedAppointment{row: row, atts: atts, excs: excs, ppl: ppl}, nil
+}
+
+// writeOf is the appointment a with its attendees atts as a body that
+// replaces it unchanged — every attendee by their kind (a colleague by id, a
+// contact by id, an address with its name), the rule, the customer and the
+// project, the zone, the visibility, the transparency and the span — which
+// the Outlook write-back changes the taken fields of (design O10.7).
+func writeOf(a store.CalendarAppointment, atts []store.CalendarAppointmentAttendee) gen.AppointmentWrite {
+	visibility := gen.AppointmentVisibility(a.Visibility)
+	transparency := gen.AppointmentTransparency(a.Transparency)
+	list := make([]gen.AttendeeWrite, 0, len(atts))
+	for _, at := range atts {
+		switch {
+		case at.Kind == kindUser && at.UserID != nil:
+			id := *at.UserID
+			list = append(list, gen.AttendeeWrite{Kind: gen.User, UserId: &id})
+		case at.Kind == kindContact && at.ContactID != nil:
+			id := *at.ContactID
+			list = append(list, gen.AttendeeWrite{Kind: gen.Contact, ContactId: &id})
+		case at.Kind == kindEmail && at.Email != nil:
+			list = append(list, gen.AttendeeWrite{Kind: gen.Email, Email: at.Email, Name: at.Name})
+		}
+	}
+	body := gen.AppointmentWrite{
+		Title: a.Title, Description: a.Description, Location: a.Location,
+		AllDay: a.AllDay, StartDate: apiDatePtr(a.StartDate), EndDate: apiDatePtr(a.EndDate),
+		StartsAt: utcPtr(a.StartsAt), EndsAt: utcPtr(a.EndsAt), TimeZone: a.TimeZone,
+		Visibility: &visibility, Transparency: &transparency,
+		CustomerId: a.CustomerID, ProjectId: a.ProjectID, Attendees: &list,
+	}
+	if a.Rrule != nil {
+		body.Recurrence = &gen.AppointmentRecurrenceWrite{Rule: *a.Rrule}
+	}
+	return body
 }
 
 // afterChange is what a PUT that committed tells (D3's table, D4's notices),

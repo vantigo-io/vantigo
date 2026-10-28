@@ -74,7 +74,51 @@ func (s *server) GetCalendarMailboxSync(ctx context.Context, _ gen.GetCalendarMa
 	if err != nil {
 		return nil, err
 	}
-	return gen.GetCalendarMailboxSync200JSONResponse(mailboxSyncOut(row, availability, kinds)), nil
+	out := mailboxSyncOut(row, availability, kinds)
+	if out.PutBack, err = s.putBackOut(ctx, row, me); err != nil {
+		return nil, err
+	}
+	return gen.GetCalendarMailboxSync200JSONResponse(out), nil
+}
+
+// putBackOut is the last change made in Outlook that the sync put back
+// (design O10.3), nil when none: its reason and when, the appointment and
+// the occurrence its key names, and the appointment's title read live — only
+// when me owns or attends it, so a key can never name what me may not read.
+func (s *server) putBackOut(ctx context.Context, row *store.CalendarMailboxSync, me uuid.UUID) (*gen.MailboxSyncPutBack, error) {
+	if row == nil || row.PutBackReason == nil || row.PutBackAt == nil {
+		return nil, nil
+	}
+	out := &gen.MailboxSyncPutBack{Reason: gen.MailboxSyncPutBackReason(*row.PutBackReason), At: row.PutBackAt.UTC()}
+	if row.PutBackKey == nil {
+		return out, nil
+	}
+	id, date, ok := appointmentKey(*row.PutBackKey)
+	if !ok {
+		return out, nil
+	}
+	out.AppointmentId = &id
+	if date != nil {
+		d := apiDate(*date)
+		out.OccurrenceDate = &d
+	}
+	q := s.queries()
+	a, err := q.GetAppointment(ctx, id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return out, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("calendar: read appointment %d for the change put back: %w", id, err)
+	}
+	atts, err := q.ListAttendees(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("calendar: read appointment %d's attendees: %w", id, err)
+	}
+	if mayRead(a, atts, me) {
+		title := a.Title
+		out.Title = &title
+	}
+	return out, nil
 }
 
 // PutCalendarMailboxSync Change the caller's Outlook sync
@@ -143,6 +187,12 @@ func (s *server) PutCalendarMailboxSync(ctx context.Context, req gen.PutCalendar
 		})
 		if err != nil {
 			return fmt.Errorf("calendar: write the Outlook sync setting: %w", err)
+		}
+		if !body.Enabled {
+			if err := txq.ClearMailboxPutBack(ctx, me); err != nil {
+				return fmt.Errorf("calendar: forget the change put back: %w", err)
+			}
+			row.PutBackReason, row.PutBackKey, row.PutBackAt = nil, nil, nil
 		}
 		return nil
 	})

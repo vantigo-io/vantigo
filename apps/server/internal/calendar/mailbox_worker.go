@@ -59,7 +59,14 @@ import (
 //     set does not hold is left alone: such an event is most often a copy
 //     that slid before the window and was forgotten on purpose (step 6) — the
 //     past stays until a clean-up.
-//  6. The diff against the map (mailbox_push.go's desired set): creates,
+//  6. The write-back (O10, mailbox_writeback.go), after the desired set is
+//     built and the map read, before the reconcile: the copies' versions,
+//     the moved, missing and new ones read whole, the person's own edits
+//     written to their appointments and the rest put back; the desired set
+//     built again when an appointment was written. Its refusal is recorded
+//     as step 8's; its failure lets the push and the busy read go on and is
+//     recorded as a busy read's is, and the reconcile then forgets nothing.
+//     The diff against the map (mailbox_push.go's desired set): creates,
 //     updates where the hash changed, deletes of mapped keys the set no
 //     longer holds that start inside the window; a mapped key that now
 //     starts before it is forgotten, its copy left in the past.
@@ -393,18 +400,35 @@ func (w *MailboxSyncWorker) syncPerson(ctx context.Context, r store.CalendarMail
 	}
 	reconcile := r.Reconcile || r.LastSyncedAt == nil || civil(r.LastSyncedAt.In(loc)).Before(civil(today))
 
-	d := newMailboxDiff(r.UserID, desired)
 	rows, err := w.srv.queries().ListMailboxEvents(ctx, r.UserID)
 	if err != nil {
 		return fmt.Errorf("calendar: read the mailbox map: %w", err)
 	}
+	wb, writeBackErr, err := w.writeBack(ctx, call, r, mailbox, calendarID, p, desired, rows, now)
+	if err != nil {
+		return err
+	}
+	if writeBackErr != nil && mailboxRefusal(writeBackErr) {
+		return w.refusedOrFailed(ctx, r, now, "read the copies' versions", writeBackErr)
+	}
+	if wb.wrote > 0 {
+		if desired, err = w.srv.mailboxDesired(call, p); err != nil {
+			return w.failed(ctx, r, now, "build the desired set", err)
+		}
+	}
+	if wb.mapChanged {
+		if rows, err = w.srv.queries().ListMailboxEvents(ctx, r.UserID); err != nil {
+			return fmt.Errorf("calendar: read the mailbox map: %w", err)
+		}
+	}
+	d := newMailboxDiff(r.UserID, desired)
 	d.load(rows)
 	if reconcile {
 		refs, err := w.srv.mailboxFind(call, mailbox, calendarID, p.w.fromAt)
 		if err != nil {
 			return w.refusedOrFailed(ctx, r, now, "list the mailbox's copies", err)
 		}
-		d.reconcile(refs, len(refs) < mailboxFindBound, p.w.from)
+		d.reconcile(refs, len(refs) < mailboxFindBound && writeBackErr == nil && wb.complete, p.w.from, wb.present)
 	}
 	ops := d.ops(p.w.from)
 	if err := w.writeMap(ctx, now, d.takeWrites()); err != nil {
@@ -430,7 +454,10 @@ func (w *MailboxSyncWorker) syncPerson(ctx context.Context, r store.CalendarMail
 		if mailboxRefused(callErr) {
 			return w.refusedOrFailed(ctx, r, now, "read the busy time", callErr)
 		}
-		return w.busyFailed(ctx, r, now, callErr)
+		return w.pushedButFailed(ctx, r, now, "read the busy time", callErr)
+	}
+	if writeBackErr != nil {
+		return w.pushedButFailed(ctx, r, now, "take the changes made in Outlook", writeBackErr)
 	}
 	return w.write(ctx, r, now, mailboxResult{
 		state: mailboxStateActive, next: timePtr(now.Add(w.poll())), synced: true,
@@ -461,6 +488,9 @@ type mapWrite struct {
 type mapEntry struct {
 	eventID, hash string
 	startsOn      time.Time
+	// released: the person turned the copy into a meeting (design O10.8) —
+	// never written or deleted again, forgotten when no longer wanted.
+	released bool
 }
 
 // mailboxDiff is one sync's desired set against the person's map.
@@ -485,7 +515,7 @@ func newMailboxDiff(userID uuid.UUID, desired []mailboxItem) *mailboxDiff {
 func (d *mailboxDiff) load(rows []store.CalendarMailboxEvent) {
 	for _, r := range rows {
 		startsOn, _ := fromPgDate(r.StartsOn)
-		d.mapped[r.ItemKey] = mapEntry{eventID: r.EventID, hash: r.ContentHash, startsOn: startsOn}
+		d.mapped[r.ItemKey] = mapEntry{eventID: r.EventID, hash: r.ContentHash, startsOn: startsOn, released: r.ReleasedAt != nil}
 	}
 }
 
@@ -493,9 +523,16 @@ func (d *mailboxDiff) load(rows []store.CalendarMailboxEvent) {
 // events Find answered from the window's first instant. complete is whether
 // refs is the whole list, so an absent mapped event is truly gone — judged
 // only for one starting on or after from, the window's first day, as one
-// that starts before it Find was never asked about.
-func (d *mailboxDiff) reconcile(refs []contracts.MailboxEventRef, complete bool, from time.Time) {
+// that starts before it Find was never asked about — and false too when the
+// write-back did not complete, as an absence may then be a delete still
+// unread (design O10.8). present is the events the write-back saw there,
+// never forgotten: an event taken in from the Vantigo calendar carries no
+// marker until the push tags it.
+func (d *mailboxDiff) reconcile(refs []contracts.MailboxEventRef, complete bool, from time.Time, present map[string]bool) {
 	found := map[string]bool{}
+	for id := range present {
+		found[id] = true
+	}
 	for _, ref := range refs {
 		found[ref.EventID] = true
 	}
@@ -529,6 +566,9 @@ func (d *mailboxDiff) reconcile(refs []contracts.MailboxEventRef, complete bool,
 // ops is the diff (step 6): the duplicates' deletes, then the creates and
 // updates in the desired set's order, then the deletes of mapped keys no
 // longer wanted that start on or after from — those before it are forgotten.
+// A released copy (design O10.8) is never updated nor deleted: forgotten
+// once no longer wanted. An update writes the key as the marker, so an event
+// taken in from the Vantigo calendar is tagged (O10.2).
 func (d *mailboxDiff) ops(from time.Time) []pendingOp {
 	var out []pendingOp
 	for _, id := range d.foreign {
@@ -540,9 +580,10 @@ func (d *mailboxDiff) ops(from time.Time) []pendingOp {
 		switch {
 		case !ok:
 			out = append(out, createOp(it))
+		case e.released:
 		case e.hash != it.hash:
 			ev := it.event
-			out = append(out, pendingOp{op: contracts.MailboxOp{Kind: contracts.MailboxOpUpdate, EventID: e.eventID, Event: &ev}, key: it.key, item: it})
+			out = append(out, pendingOp{op: contracts.MailboxOp{Kind: contracts.MailboxOpUpdate, EventID: e.eventID, Key: it.key, Event: &ev}, key: it.key, item: it})
 		}
 	}
 	keys := make([]string, 0, len(d.mapped))
@@ -554,7 +595,7 @@ func (d *mailboxDiff) ops(from time.Time) []pendingOp {
 	slices.Sort(keys)
 	for _, key := range keys {
 		e := d.mapped[key]
-		if e.startsOn.Before(from) {
+		if e.released || e.startsOn.Before(from) {
 			d.writes = append(d.writes, mapWrite{userID: d.userID, key: key})
 			continue
 		}
@@ -685,6 +726,9 @@ func (w *MailboxSyncWorker) cleanup(ctx, call context.Context, r *store.Calendar
 	if err := w.forgetBusy(ctx, r.UserID, now); err != nil {
 		return err
 	}
+	if err := w.srv.queries().ClearMailboxPutBack(ctx, r.UserID); err != nil {
+		return fmt.Errorf("calendar: forget the change put back: %w", err)
+	}
 	r.CalendarID, r.Reconcile = nil, true
 	r.BusyLink, r.BusyFrom, r.BusyTo, r.BusySyncedAt = nil, pgtype.Date{}, pgtype.Date{}, nil
 	return w.setMailbox(ctx, *r, now)
@@ -706,17 +750,27 @@ func (w *MailboxSyncWorker) cleanupEvents(ctx, call context.Context, userID uuid
 		return fmt.Errorf("calendar: read the mailbox map: %w", err)
 	}
 	keyOf := map[string]string{}
+	released := map[string]bool{}
 	var ids []string
+	var forget []mapWrite
 	for _, row := range rows {
 		keyOf[row.EventID] = row.ItemKey
+		if row.ReleasedAt != nil {
+			released[row.EventID] = true
+			forget = append(forget, mapWrite{userID: userID, key: row.ItemKey})
+		}
+	}
+	// A released copy — a meeting now — is forgotten, never deleted.
+	if err := w.writeMap(ctx, now, forget); err != nil {
+		return err
 	}
 	for _, ref := range refs {
-		if !slices.Contains(ids, ref.EventID) {
+		if !released[ref.EventID] && !slices.Contains(ids, ref.EventID) {
 			ids = append(ids, ref.EventID)
 		}
 	}
 	for _, row := range rows {
-		if !slices.Contains(ids, row.EventID) {
+		if !released[row.EventID] && !slices.Contains(ids, row.EventID) {
 			ids = append(ids, row.EventID)
 		}
 	}
@@ -803,15 +857,16 @@ func mailboxRefused(err error) bool {
 		errors.Is(err, contracts.ErrMailboxUnknown) || errors.Is(err, contracts.ErrMailboxUnavailable)
 }
 
-// busyFailed records a busy read that failed after the push worked (design
-// O9.1): the sync active and synced at now, as the push left it, with the
-// error failed, the attempts counted and the next sync on the failure's
-// backoff — so the failure is retried soon and does not hide that the push
-// reached the mailbox. A busy read that keeps failing never turns the row
-// failed: the push it rides on works.
-func (w *MailboxSyncWorker) busyFailed(ctx context.Context, r store.CalendarMailboxSync, now time.Time, err error) error {
+// pushedButFailed records a step that failed beside a push that worked — the
+// busy read (design O9.1) or the write-back (O10.5) — what: the sync active
+// and synced at now, as the push left it, with the error failed, the
+// attempts counted and the next sync on the failure's backoff, so the
+// failure is retried soon and does not hide that the push reached the
+// mailbox. One that keeps failing never turns the row failed: the push it
+// rides on works. When both fail, the busy read's is the one recorded.
+func (w *MailboxSyncWorker) pushedButFailed(ctx context.Context, r store.CalendarMailboxSync, now time.Time, what string, err error) error {
 	w.deps.Logger.WarnContext(ctx, "calendar: a person's mailbox sync failed; it is retried",
-		"worker", mailboxWorkerName, "user_id", r.UserID.String(), "step", "read the busy time", "error", mailboxErrorCode(err))
+		"worker", mailboxWorkerName, "user_id", r.UserID.String(), "step", what, "error", mailboxErrorCode(err))
 	attempts := r.Attempts + 1
 	return w.write(ctx, r, now, mailboxResult{
 		state: mailboxStateActive, code: mailboxErrFailed, synced: true, attempts: attempts,

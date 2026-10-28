@@ -58,3 +58,16 @@ func TestBusyReadAccessors_WithNoProviderAreUnavailable(t *testing.T) {
 		t.Errorf("Marked with no provider: %v", err)
 	}
 }
+
+// The write-back's accessors with no provider wired answer it unavailable;
+// their lock rule is the harness's, as the busy read's.
+func TestWriteBackAccessors_WithNoProviderAreUnavailable(t *testing.T) {
+	t.Parallel()
+	s := newServer(module.Deps{Logger: slog.New(slog.NewTextHandler(io.Discard, nil))})
+	if _, err := s.mailboxVersions(context.Background(), "oid", "", time.Time{}, time.Time{}); !errors.Is(err, contracts.ErrMailboxUnavailable) {
+		t.Errorf("Versions with no provider: %v", err)
+	}
+	if _, err := s.mailboxEvents(context.Background(), "oid", "", nil); !errors.Is(err, contracts.ErrMailboxUnavailable) {
+		t.Errorf("Events with no provider: %v", err)
+	}
+}
