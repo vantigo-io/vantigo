@@ -383,7 +383,7 @@ Sett `CALENDAR_MAILBOX_NOTIFICATIONS_ENABLED=0` og start på nytt. Ingenting nyt
 abonneres, og bare pollingen går; linjen sier **Slått av av driftsansvarlig …**.
 Abonnementer som finnes, slettes ikke av dette — de går ut innen sju dager, og et varsel
 om ett gjør bare en synkronisering forfalt — men hvert slettes hos Microsoft når
-personens kopier ryddes bort. En tom `PUBLIC_BASE_URL` gir samme virkning, og linjen sier
+personens kopier ryddes bort (et som Microsoft nekter å slette, får gå ut på samme måte). En tom `PUBLIC_BASE_URL` gir samme virkning, og linjen sier
 **Krever PUBLIC_BASE_URL …**.
 
 #### Hva som kan gå galt
@@ -406,7 +406,17 @@ personens kopier ryddes bort. En tom `PUBLIC_BASE_URL` gir samme virkning, og li
   synkronisering.
 - **Et annet programs abonnement på samme postboks.** Vantigo sletter bare et abonnement
   som ligger på denne postboksens hendelser og sender til denne installasjonens egen
-  adresse, aldri et annets.
+  adresse, aldri et annets. Hvis Microsoft avviser et nytt på grunn av et abonnement som
+  tilhører **en annen installasjon** — to Vantigo-installasjoner som deler én
+  appregistrering — logger Vantigo en advarsel med leietakeren, prøver ikke den
+  postboksen igjen på **24 timer**, og bare pollingen betjener den.
+- **`PUBLIC_BASE_URL` er endret.** Et abonnement laget for den gamle adressen slettes ved
+  personens neste synkronisering og lages på nytt for den nye, slik at den gamle adressen
+  aldri varsles igjen. Hvis Microsoft avviser slettingen, prøver neste synkronisering den
+  på nytt.
+- **En synkronisering som feiler, haster ikke.** Et varsel gjør en persons synkronisering
+  forfalt med en gang bare når den ikke venter på en ny prøve etter en feil; en person
+  hvis synkronisering stadig feiler, venter på sine egne tidspunkter.
 - **Ingen varsler fra en travel leietaker.** Webhooken godtar 600 forespørsler i minuttet
   per klientadresse; Microsoft prøver en avvist på nytt i timevis, og pollingen fanger det
   som mangler. Bak en proxy, sett `TRUSTED_PROXY_HOPS` og `TRUSTED_PROXY_CIDRS` slik at

@@ -843,6 +843,23 @@ calendar sync switch is off, and `subscriptions` counts live rows whatever the s
 `Notified` is capped at 5000 notices (`MailboxNoticesMax`) a call, and the worker advances
 `since` only as far as the notices it marked.
 
+*As built, after review:* the row stores `notification_url`, and a `Watch` that finds a held
+subscription made for another address than the present target deletes it (a 404 done, any
+other refusal answered, the row kept) and creates again; a renewal never revives a
+`removed` row. A new row state `conflict`: a 409 whose whole subscription list held none of
+this installation's is another installation's, and holds that mailbox's `Watch` off for 24
+hours (a warning with the tenant only); `Unwatch` forgets such a row and it is not counted
+live. A notice never overrides the backoff (only rows with `attempts = 0` are made due).
+The worker asks `Notified(since − 30 s)` — the overlap covers late commits and replica
+skew — except after a full 5000 page, and marks a cycle's notices in one statement, on an
+index of `lower(mailbox)` where enabled (migration `00086`). An `Unwatch` refused as denied
+no longer keeps the clean-up owed (logged; the subscription lapses within seven days);
+unavailable and failures still do. A failed handshake is recognised from the message
+alone, never the `ValidationError` code. The webhook pre-filters items with no database
+read (strict GUIDs, a 43-character base64url clientState of 32 bytes), counts the ignored
+at debug and at warning at most once a minute a server; a lifecycle event never overwrites
+`deleting`, and plain marks go in one update.
+
 ### O12 — Out of scope
 
 Per-person delegated OAuth; Google; attendees round-tripping; a whole series edited from

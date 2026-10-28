@@ -1522,8 +1522,8 @@ boundaries](/en/contributing/module-boundaries/) rule 14):
 
 | Call | What it does |
 | --- | --- |
-| `Watch(mailbox)` | The [account check](#the-account-check) first (`available` only), then, with a live subscription that has more than three days left, nothing. With less — or in the state `reauthorize` — a renewal, `PATCH /subscriptions/{id}` with an expiry of now plus 10 000 minutes; a 404 forgets the row and goes on to a create. With none, a create: `POST /subscriptions` with `changeType` `created,updated,deleted`, `resource` `/users/{oid}/events`, `notificationUrl` and `lifecycleNotificationUrl` both `PUBLIC_BASE_URL/api/v1/entra/mailbox-notifications`, an `expirationDateTime` of now plus 10 000 minutes (the limit is 10 080), and a `clientState` of 32 random bytes in base64url, 43 characters. No resource data is asked for, and no certificate. Answers nil, without calling Graph, when notifications are off, `PUBLIC_BASE_URL` is unset, or the address was found [unreachable](#the-webhook-and-unreachable) within the hour. |
-| `Unwatch(mailbox)` | Deletes the mailbox's subscription. A mailbox with no row answers nil; a row with no subscription id, or one whose expiry has passed, is forgotten without a call. Otherwise `DELETE /subscriptions/{id}`: a 204 or a 404 forgets the row; any other answer leaves it, in the state `deleting`, and is returned as the refusal or failure it is, so the delete stays owed. **No account check**: only the status (`available` or `cleanup`), so a clean-up can still remove a subscription after the account is gone. |
+| `Watch(mailbox)` | The [account check](#the-account-check) first (`available` only), then, with a live subscription that has more than three days left, nothing. With less — or in the state `reauthorize` — a renewal (only while the row still holds that subscription and is not `removed`: a renewal never revives a removed row), `PATCH /subscriptions/{id}` with an expiry of now plus 10 000 minutes; a 404 forgets the row and goes on to a create. With none, a create: `POST /subscriptions` with `changeType` `created,updated,deleted`, `resource` `/users/{oid}/events`, `notificationUrl` and `lifecycleNotificationUrl` both `PUBLIC_BASE_URL/api/v1/entra/mailbox-notifications`, an `expirationDateTime` of now plus 10 000 minutes (the limit is 10 080), and a `clientState` of 32 random bytes in base64url, 43 characters. No resource data is asked for, and no certificate. A held subscription **made for another address** than the present `PUBLIC_BASE_URL` target (the row stores the `notification_url` the create gave Graph) is deleted first — `DELETE /subscriptions/{id}`, a 404 done, any other refusal answered and the row kept for the next `Watch` — and created again, so the old address is never notified again. Answers nil, without calling Graph, when notifications are off, `PUBLIC_BASE_URL` is unset, the address was found [unreachable](#the-webhook-and-unreachable) within the hour, or the mailbox's row is in the state `conflict` and was marked less than 24 hours ago. |
+| `Unwatch(mailbox)` | Deletes the mailbox's subscription. A mailbox with no row answers nil; a row with no subscription id (a `conflict` row among them), or one whose expiry has passed, is forgotten without a call. Otherwise `DELETE /subscriptions/{id}`: a 204 or a 404 forgets the row; any other answer leaves it, in the state `deleting`, and is returned as the refusal or failure it is, so the delete stays owed. **No account check**: only the status (`available` or `cleanup`), so a clean-up can still remove a subscription after the account is gone. |
 | `Notified(since)` | The mailboxes notified after `since`, oldest first, at most 5000 (`contracts.MailboxNoticesMax`): the module's own rows, no network and no credential. Each notice is the account's object id and the time of the notification. |
 
 **The client state is a secret that is never kept.** It is drawn at each create and sent
@@ -1534,7 +1534,10 @@ notification carries.
 pages, `@odata.nextLink` followed only within Graph's base), deletes each subscription whose
 `resource` names this mailbox's `/users/{oid}/events` and whose `notificationUrl` is
 exactly this installation's — only ours — and creates once more. Another application's
-subscription is never touched. A second 409 is a refusal.
+subscription is never touched. A second 409 is a refusal. When the **whole list was read
+and none was ours**, the conflicting subscription is another installation's sharing the
+application: the row is marked `conflict`, the warning names the tenant alone, and
+that mailbox's `Watch` answers nil for **24 hours** — the poll alone runs for it.
 
 **The expiry** stored is the one Graph granted, or the one asked for when its answer is
 unusable. A subscription id Graph gives that is not a GUID is `tenant_unreachable`.
@@ -1545,23 +1548,25 @@ A create is validated by Graph posting a `validationToken` to the `notificationU
 answers. The webhook answers that only inside a window: `notifications_validating_until`
 is set to now plus 30 seconds before each `POST /subscriptions` and closed after it — and
 only if still the one that create opened, so a create started since keeps its own. A
-create that fails with a 400 whose message names a validation request means Graph could
+create that fails with a 400 whose **message** names a validation request — read from the message
+alone, never from the code `ValidationError`, which is any 400's — means Graph could
 not reach the address: `notifications_unreachable_at` is set, the half-made row is
 forgotten, and **no `Watch` calls Graph for an hour**, so one unreachable address does not
 cost a create per person. A create that works clears it.
 
 #### Storage
 
-`entra.mailbox_subscriptions` (migration `00085_entra_mailbox_subscriptions.sql`), one row
+`entra.mailbox_subscriptions` (migration `00085_entra_mailbox_subscriptions.sql`, with `notification_url`), one row
 per mailbox:
 
 | Column | Meaning |
 | --- | --- |
 | `object_id` | Primary key: the account's. |
-| `subscription_id` | Graph's, unique; null while the create is in flight. |
+| `subscription_id` | Graph's, unique; null while the create is in flight. A notification racing the 201 names an id no row holds yet and is ignored. |
 | `client_state_hash` | SHA-256 of the client state. |
+| `notification_url` | The webhook's address the create gave Graph. |
 | `expires_at` | The expiry Graph granted. |
-| `state` | `active`, `reauthorize`, `removed` or `deleting`. |
+| `state` | `active`, `reauthorize`, `removed`, `deleting` (a delete owed) or `conflict` (another installation's subscription holds the mailbox; no create for 24 hours). |
 | `notified_at` | When a valid notification last named it. |
 
 `entra.connection` gains `notifications_validating_until`, `notifications_unreachable_at`
@@ -1580,21 +1585,25 @@ bucket; Graph retries a 429), and the body is capped at 1 MiB.
   `text/plain; charset=utf-8`, `X-Content-Type-Options: nosniff`, `Cache-Control: no-store`,
   the token as its body — only while the window above is open, and only for a token of 1 to
   1024 bytes, valid UTF-8, with no control character. Anything else is a `404` with no body.
-- **A notification** is `{"value": [...]}`; at most 1000 items are read. An item counts
-  only when its `subscriptionId` is a GUID, a row has it, the SHA-256 of its `clientState`
+- **A notification** is `{"value": [...]}`; at most 1000 items are read. Items are first
+  **pre-filtered with no database read**: the `subscriptionId` and the `tenantId` must be
+  GUIDs in their canonical 36 characters and the `clientState` 43 characters of base64url
+  that decode to 32 bytes — the shape every create's has — so a request with no such item
+  costs no query. An item then counts only when a row has its `subscriptionId`, the SHA-256 of its `clientState`
   equals the row's (constant time), and its `tenantId` equals the connection's, ignoring
-  case. Any other item is ignored. A valid one sets the row's `notified_at` — one write per
-  subscription per request, skipped when it moved within five seconds, so a flood only
-  makes a mailbox due, once. A `lifecycleEvent` of `reauthorizationRequired` also sets the
+  case. Any other item is ignored. The valid ones with no lifecycle event are marked in **one update** — `notified_at`, skipped
+  for a row marked within five seconds, so a flood only makes a mailbox due, once. A `lifecycleEvent` of `reauthorizationRequired` sets the
   state `reauthorize`, and `subscriptionRemoved` the state `removed`, which wins when a
-  request carries both; `missed` is a notification like any other. `last_notification_at`
+  request carries both; each is its own write, and **never overwrites `deleting`**, a delete
+  owed; `missed` is a notification like any other. `last_notification_at`
   moves at most once a minute.
 - **The answer.** `202` with no body for any body that decodes, whatever it named: an
   unknown subscription, a wrong client state and a valid one are answered alike, so the
   endpoint tells a stranger nothing. `400` for a body that does not decode as a notification.
   `503` when the writes could not be done within two seconds, so Graph sends it again.
 - **The log** holds counts: the items received, the subscriptions marked, the rows written
-  at debug, and the number ignored at warning. Never a subscription id, a client state, a
+  and the number ignored at debug; the ignored are counted at warning at most once a minute
+  per server, so a caller posting nonsense cannot fill the log. Never a subscription id, a client state, a
   resource or a tenant.
 
 #### The status
@@ -1608,7 +1617,7 @@ bucket; Graph retries a 429), and the body is capped at 1 MiB.
 | `unreachable` | A create's handshake failed within the last hour; `unreachableAt` says when. |
 | `active` | Otherwise. |
 
-`subscriptions` counts the live rows whatever the status — one made before notifications
+`subscriptions` counts the live rows (not `removed`, `deleting` or `conflict`) whatever the status — one made before notifications
 were turned off is Graph's until it lapses or is deleted — and `lastNotificationAt`, when
 there is one, is the last notification, to within a minute.
 

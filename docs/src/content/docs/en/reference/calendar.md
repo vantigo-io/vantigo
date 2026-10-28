@@ -12,6 +12,7 @@ sources:
   - apps/server/internal/db/migrations/00081_calendar_mailbox_sync.sql
   - apps/server/internal/db/migrations/00083_calendar_mailbox_busy.sql
   - apps/server/internal/db/migrations/00084_calendar_mailbox_writeback.sql
+  - apps/server/internal/db/migrations/00086_calendar_mailbox_sync_mailbox.sql
 ---
 The Calendar module is one view of every time-bound thing Vantigo knows about one
 person — the follow-ups Customers holds for them, their absences in Staff, their tasks in
@@ -89,7 +90,9 @@ subscriptions, `00081_calendar_mailbox_sync.sql` adds the [Outlook
 sync's](#the-two-tables) two tables, `00083_calendar_mailbox_busy.sql` adds the
 [busy time](#the-busy-read) read back from Outlook and the delta's state, and
 `00084_calendar_mailbox_writeback.sql` adds the [write-back's](#the-write-back) columns
-— each copy's version and release, and the last change put back. Every id is a `bigint` identity starting at 1001. Every foreign identifier — the
+— each copy's version and release, and the last change put back, and
+`00086_calendar_mailbox_sync_mailbox.sql` indexes `lower(mailbox)` of the rows that are on, for
+the [change notifications'](#change-notifications) marks. Every id is a `bigint` identity starting at 1001. Every foreign identifier — the
 owner, an attendee, a customer, a project, the holder of an address — is opaque: users, customers and projects
 live in other schemas and are read through contracts, never through SQL (see [module
 boundaries](/en/contributing/module-boundaries/) rule 4). No table has a CHECK
@@ -1758,7 +1761,8 @@ Migration `00081_calendar_mailbox_sync.sql` adds them, and `00083_calendar_mailb
 gives `mailbox_sync` the delta's four columns and widens the ids 00081 stored —
 `mailbox_events.event_id` and `mailbox_sync.calendar_id` — to 512, the provider's bound
 on an id; `00084_calendar_mailbox_writeback.sql` adds the [write-back's](#the-write-back)
-five columns. No CHECK holds a value to its set, the
+five columns; `00086_calendar_mailbox_sync_mailbox.sql` adds the index on `lower(mailbox)`
+where the sync is on (the [change notifications'](#change-notifications) marks). No CHECK holds a value to its set, the
 module's validation does.
 
 - **`mailbox_sync`** — a person's setting and the worker's record of it, one row per
@@ -2283,14 +2287,19 @@ unchanged either way.
   change: the subscription is the mailbox's, not the calendar's.
 - **`Notified`** is asked **each cycle**, under the lease, before the due rows are
   listed, with `since` — held in memory by the worker, per process, **initially now
-  minus the poll interval** and advanced to the latest `At` it marked. Each notice
-  makes due, at now, the rows of that mailbox — compared case-insensitively — that are on,
-  `active` or `pending`, whose last sync **started before the notice** and that are not
-  due already (`MarkMailboxSyncNotified`, one short statement a notice, no transaction
-  held across the call). The revision is left alone, as the nudge does. A notice whose
-  mark fails stops the marking there and is asked for again next cycle; a `Notified` that
-  fails is logged at warning by its code and the cycle goes on. A provider with none
-  asks nothing.
+  minus the poll interval** and advanced to the latest `At` it marked — **less 30
+  seconds**: the overlap covers a notice whose write committed after a later one was read,
+  and replicas whose clocks differ a little. Taking a notice twice is harmless, since the
+  person has synced since. After a **full page** of 5000 the next asks from `since`
+  exactly, so the next page follows. The cycle's notices are marked **in one statement**
+  (`MarkMailboxSyncNotified`, through the index on `lower(mailbox)`, no transaction held
+  across the call): per mailbox, compared case-insensitively, the latest notice makes
+  due, at now, the rows that are on, `active` or `pending`, **with `attempts` 0** — **a
+  notice never overrides the backoff** of a failing sync — whose last sync **started
+  before the notice** and that are not due already. The revision is left alone, as the
+  nudge does. If the statement fails, `since` stays, the same notices are asked for
+  again next cycle and a warning is logged; a `Notified` that fails is logged at warning
+  by its code and the cycle goes on. A provider with none asks nothing.
 
 ### The clean-up
 
@@ -2314,11 +2323,12 @@ clean-up works on the mailbox stored on the row, and is decided by its `calendar
 
 **The subscription.** Every clean-up but a target change's also calls `Unwatch` on the
 mailbox, **after the copies are removed or forgotten** — they are what the person sees, so
-a refused `Unwatch` holds nothing back — and before the clean-up is finished. A refusal
-(`ErrMailboxDenied`), an unusable provider (`ErrMailboxUnavailable`) or a failure keeps the
-clean-up owed whole, retried on the backoff, the deletes it repeats being done or gone by
-then; the row stays `stopping`. `ErrMailboxGone` and `ErrMailboxUnknown` forget it,
-logged at info.
+a refused `Unwatch` holds nothing back — and before the clean-up is finished. An unusable
+provider (`ErrMailboxUnavailable`) or a failure keeps the clean-up owed whole, retried on the
+backoff, the deletes it repeats being done or gone by then; the row stays `stopping`.
+`ErrMailboxGone`, `ErrMailboxUnknown` and **`ErrMailboxDenied`** are logged at info and the
+clean-up goes on: a subscription the provider may not delete stays `deleting` in its own
+rows and lapses within seven days, and its notifications name no sync.
 
 Only a mailbox that is no longer there — `ErrMailboxGone`, or `ErrMailboxUnknown`, an
 account the provider no longer manages — has its copies **forgotten** unremoved, logged
