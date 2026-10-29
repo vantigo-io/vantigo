@@ -59,19 +59,39 @@ type FakeChannelMailbox struct {
 	links     map[string]fakeMailDeltaLink
 	deltaPage int
 	issued    int // links issued, for their names
+
+	watched   map[string]bool
+	watches   []string
+	unwatches []string
+	notices   []contracts.MailboxNotice
+	folders   map[string]map[string]string // mailbox -> folderID -> displayName
+	folderSeq int
+}
+
+// FakeMessageState is a message's state in a FakeChannelMailbox as Mark and
+// EnsureFolder left it.
+type FakeMessageState struct {
+	IsRead     bool
+	Categories []string
+	FolderID   string // "" while in Inbox
+	FolderName string // "" while in Inbox
 }
 
 // fakeInbox is one mailbox's Inbox: its messages now, and the log of every
 // change, for the delta.
 type fakeInbox struct {
-	messages   map[string]fakeInboxMessage // by id
+	messages   map[string]fakeInboxMessage // by id, still in Inbox
+	all        map[string]fakeInboxMessage // by id, including messages moved to another folder
 	log        []contracts.MailItem        // each change, in order; Removed for a removal
 	generation int                         // ExpireDelta's
 }
 
 type fakeInboxMessage struct {
-	item contracts.MailItem
-	raw  []byte
+	item       contracts.MailItem
+	raw        []byte
+	isRead     bool
+	categories []string
+	folderID   string
 }
 
 // fakeMailDeltaLink is what a link the fake issued stands for: the items still
@@ -94,14 +114,17 @@ type FakeSend struct {
 }
 
 // ChannelMailboxCall is one call a FakeChannelMailbox recorded: the method,
-// the mailbox Forget, Send, Delta or Raw named, the address Check was given;
-// Delta's folder, link and since; Raw's message id and max.
+// the mailbox Forget, Send, Delta, Raw, Watch, Unwatch, Mark or EnsureFolder
+// named, the address Check was given; Delta's folder, link and since; Raw's
+// message id and max; Notified's since; Mark's message id, kind and folder;
+// EnsureFolder's folder name.
 type ChannelMailboxCall struct {
 	Method, Mailbox, Address string
 	Folder, Link             string
 	Since                    time.Time
 	MessageID                string
 	Max                      int64
+	MarkKind                 contracts.MailMarkKind
 }
 
 var _ contracts.ChannelMailbox = (*FakeChannelMailbox)(nil)
@@ -123,6 +146,8 @@ func NewFakeChannelMailbox() *FakeChannelMailbox {
 		inbox:      map[string]*fakeInbox{},
 		links:      map[string]fakeMailDeltaLink{},
 		deltaPage:  contracts.MailDeltaPageMax,
+		watched:    map[string]bool{},
+		folders:    map[string]map[string]string{},
 	}
 }
 
@@ -290,7 +315,13 @@ func (f *FakeChannelMailbox) AddInbox(mailbox string, item contracts.MailItem, r
 	item.Removed = false
 	item.ReceivedAt = item.ReceivedAt.UTC()
 	in := f.inboxOf(mailbox)
-	in.messages[item.ID] = fakeInboxMessage{item: item, raw: slices.Clone(raw)}
+	msg := fakeInboxMessage{item: item, raw: slices.Clone(raw)}
+	if prev, ok := in.all[item.ID]; ok {
+		msg.isRead = prev.isRead
+		msg.categories = slices.Clone(prev.categories)
+	}
+	in.messages[item.ID] = msg
+	in.all[item.ID] = msg
 	in.log = append(in.log, item)
 }
 
@@ -304,6 +335,7 @@ func (f *FakeChannelMailbox) RemoveInbox(mailbox, id string) {
 		return
 	}
 	delete(in.messages, id)
+	delete(in.all, id)
 	in.log = append(in.log, contracts.MailItem{ID: id, Removed: true})
 }
 
@@ -327,7 +359,10 @@ func (f *FakeChannelMailbox) SetDeltaPage(n int) {
 func (f *FakeChannelMailbox) inboxOf(mailbox string) *fakeInbox {
 	in, ok := f.inbox[mailbox]
 	if !ok {
-		in = &fakeInbox{messages: map[string]fakeInboxMessage{}}
+		in = &fakeInbox{
+			messages: map[string]fakeInboxMessage{},
+			all:      map[string]fakeInboxMessage{},
+		}
 		f.inbox[mailbox] = in
 	}
 	return in
@@ -429,4 +464,188 @@ func (f *FakeChannelMailbox) Raw(_ context.Context, mailbox, messageID string, m
 		return nil, contracts.ErrMailTooLarge
 	}
 	return slices.Clone(m.raw), nil
+}
+
+// Watch marks mailbox's folder ("inbox") watched.
+func (f *FakeChannelMailbox) Watch(_ context.Context, mailbox, folder string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.calls = append(f.calls, ChannelMailboxCall{Method: "Watch", Mailbox: mailbox, Folder: folder})
+	f.watches = append(f.watches, mailbox)
+	if err := f.readable("Watch", mailbox); err != nil {
+		return err
+	}
+	if !strings.EqualFold(folder, "inbox") {
+		return fmt.Errorf("modtest: the fake channel mailbox watches only the inbox, not %q", folder)
+	}
+	f.watched[mailbox] = true
+	return nil
+}
+
+// Unwatch clears mailbox's folder subscription. Idempotent: a mailbox not
+// watched answers nil.
+func (f *FakeChannelMailbox) Unwatch(_ context.Context, mailbox, folder string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.calls = append(f.calls, ChannelMailboxCall{Method: "Unwatch", Mailbox: mailbox, Folder: folder})
+	f.unwatches = append(f.unwatches, mailbox)
+	if err := f.fail["Unwatch"]; err != nil {
+		return err
+	}
+	if f.status.State != contracts.MailboxAvailable {
+		return contracts.ErrMailboxUnavailable
+	}
+	delete(f.watched, mailbox)
+	return nil
+}
+
+// Notified answers the notices Notify recorded whose At is after since,
+// oldest first, at most contracts.MailboxNoticesMax.
+func (f *FakeChannelMailbox) Notified(_ context.Context, since time.Time) ([]contracts.MailboxNotice, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.calls = append(f.calls, ChannelMailboxCall{Method: "Notified", Since: since})
+	if err := f.fail["Notified"]; err != nil {
+		return nil, err
+	}
+	out := []contracts.MailboxNotice{}
+	for _, n := range f.notices {
+		if n.At.After(since) {
+			out = append(out, n)
+		}
+	}
+	slices.SortStableFunc(out, func(a, b contracts.MailboxNotice) int { return a.At.Compare(b.At) })
+	if len(out) > contracts.MailboxNoticesMax {
+		out = out[:contracts.MailboxNoticesMax]
+	}
+	return out, nil
+}
+
+// Notify queues a notice that mailbox received mail at at, for Notified to
+// answer.
+func (f *FakeChannelMailbox) Notify(mailbox string, at time.Time) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.notices = append(f.notices, contracts.MailboxNotice{Mailbox: mailbox, At: at})
+}
+
+// Watched reports whether mailbox is currently watched (Watch succeeded and
+// no Unwatch since).
+func (f *FakeChannelMailbox) Watched(mailbox string) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.watched[mailbox]
+}
+
+// WatchCalls answers every mailbox Watch was called for, in order.
+func (f *FakeChannelMailbox) WatchCalls() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return slices.Clone(f.watches)
+}
+
+// UnwatchCalls answers every mailbox Unwatch was called for, in order.
+func (f *FakeChannelMailbox) UnwatchCalls() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return slices.Clone(f.unwatches)
+}
+
+// EnsureFolder answers the id of the folder named name in mailbox, creating
+// it if it does not yet exist.
+func (f *FakeChannelMailbox) EnsureFolder(_ context.Context, mailbox, name string) (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.calls = append(f.calls, ChannelMailboxCall{Method: "EnsureFolder", Mailbox: mailbox, Folder: name})
+	if err := f.readable("EnsureFolder", mailbox); err != nil {
+		return "", err
+	}
+	trimmed := strings.TrimSpace(name)
+	if trimmed == "" {
+		return "", errors.New("modtest: empty folder name")
+	}
+	byID := f.folders[mailbox]
+	if byID == nil {
+		byID = map[string]string{}
+		f.folders[mailbox] = byID
+	}
+	for id, existing := range byID {
+		if strings.EqualFold(existing, trimmed) {
+			return id, nil
+		}
+	}
+	f.folderSeq++
+	id := fmt.Sprintf("fake-folder-%d", f.folderSeq)
+	byID[id] = trimmed
+	return id, nil
+}
+
+// Mark changes messageID's state in mailbox: marks it read, sets its
+// categories, or moves it to op.FolderID (removing it from the Inbox while
+// keeping its immutable id reachable for later Mark calls).
+func (f *FakeChannelMailbox) Mark(_ context.Context, mailbox, messageID string, op contracts.MailMark) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.calls = append(f.calls, ChannelMailboxCall{Method: "Mark", Mailbox: mailbox, MessageID: messageID, MarkKind: op.Kind, Folder: op.FolderID})
+	if err := f.readable("Mark", mailbox); err != nil {
+		return err
+	}
+	in := f.inboxOf(mailbox)
+	msg, ok := in.all[messageID]
+	if !ok {
+		return contracts.ErrMailItemGone
+	}
+	switch op.Kind {
+	case contracts.MailMarkRead:
+		msg.isRead = true
+	case contracts.MailMarkCategory:
+		msg.categories = slices.Clone(op.Categories)
+	case contracts.MailMarkMove:
+		if op.FolderID == "" || f.folders[mailbox][op.FolderID] == "" {
+			return fmt.Errorf("modtest: unknown destination folder %q", op.FolderID)
+		}
+		if msg.folderID == "" {
+			delete(in.messages, messageID)
+			in.log = append(in.log, contracts.MailItem{ID: messageID, Removed: true})
+		}
+		msg.folderID = op.FolderID
+	default:
+		return fmt.Errorf("modtest: unknown mail mark kind %q", op.Kind)
+	}
+	in.all[messageID] = msg
+	if msg.folderID == "" {
+		in.messages[messageID] = msg
+	}
+	return nil
+}
+
+// MessageState answers messageID's state in mailbox as Mark left it.
+func (f *FakeChannelMailbox) MessageState(mailbox, messageID string) (FakeMessageState, bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	in, ok := f.inbox[mailbox]
+	if !ok {
+		return FakeMessageState{}, false
+	}
+	msg, ok := in.all[messageID]
+	if !ok {
+		return FakeMessageState{}, false
+	}
+	return FakeMessageState{
+		IsRead:     msg.isRead,
+		Categories: slices.Clone(msg.categories),
+		FolderID:   msg.folderID,
+		FolderName: f.folders[mailbox][msg.folderID],
+	}, true
+}
+
+// Folders answers mailbox's folders created via EnsureFolder, id -> name.
+func (f *FakeChannelMailbox) Folders(mailbox string) map[string]string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := map[string]string{}
+	for k, v := range f.folders[mailbox] {
+		out[k] = v
+	}
+	return out
 }

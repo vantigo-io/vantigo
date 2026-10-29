@@ -41,7 +41,7 @@ func (q *Queries) DeleteMailboxSubscription(ctx context.Context, objectID uuid.U
 
 const getMailboxSubscription = `-- name: GetMailboxSubscription :one
 
-SELECT object_id, subscription_id, client_state_hash, notification_url, expires_at, state, notified_at, created_at, updated_at FROM entra.mailbox_subscriptions WHERE object_id = $1
+SELECT object_id, subscription_id, client_state_hash, notification_url, expires_at, state, notified_at, created_at, updated_at, resource FROM entra.mailbox_subscriptions WHERE object_id = $1
 `
 
 // The change notifications' subscriptions (calendar Outlook sync design
@@ -65,12 +65,13 @@ func (q *Queries) GetMailboxSubscription(ctx context.Context, objectID uuid.UUID
 		&i.NotifiedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Resource,
 	)
 	return i, err
 }
 
 const getMailboxSubscriptionByID = `-- name: GetMailboxSubscriptionByID :one
-SELECT object_id, subscription_id, client_state_hash, notification_url, expires_at, state, notified_at, created_at, updated_at FROM entra.mailbox_subscriptions WHERE subscription_id = $1::varchar
+SELECT object_id, subscription_id, client_state_hash, notification_url, expires_at, state, notified_at, created_at, updated_at, resource FROM entra.mailbox_subscriptions WHERE subscription_id = $1::varchar
 `
 
 // GetMailboxSubscriptionByID is the row of Graph's subscription id, as a
@@ -88,6 +89,7 @@ func (q *Queries) GetMailboxSubscriptionByID(ctx context.Context, subscriptionID
 		&i.NotifiedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Resource,
 	)
 	return i, err
 }
@@ -133,7 +135,7 @@ func (q *Queries) ListMailboxNotified(ctx context.Context, arg ListMailboxNotifi
 }
 
 const listMailboxSubscriptionsByID = `-- name: ListMailboxSubscriptionsByID :many
-SELECT object_id, subscription_id, client_state_hash, notification_url, expires_at, state, notified_at, created_at, updated_at FROM entra.mailbox_subscriptions WHERE subscription_id = ANY($1::varchar[])
+SELECT object_id, subscription_id, client_state_hash, notification_url, expires_at, state, notified_at, created_at, updated_at, resource FROM entra.mailbox_subscriptions WHERE subscription_id = ANY($1::varchar[])
 `
 
 // ListMailboxSubscriptionsByID is the rows of Graph's subscription ids, as
@@ -158,6 +160,7 @@ func (q *Queries) ListMailboxSubscriptionsByID(ctx context.Context, subscription
 			&i.NotifiedAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Resource,
 		); err != nil {
 			return nil, err
 		}
@@ -283,7 +286,7 @@ ON CONFLICT (object_id) DO UPDATE SET
     expires_at = EXCLUDED.expires_at,
     state = 'active',
     updated_at = EXCLUDED.updated_at
-RETURNING object_id, subscription_id, client_state_hash, notification_url, expires_at, state, notified_at, created_at, updated_at
+RETURNING object_id, subscription_id, client_state_hash, notification_url, expires_at, state, notified_at, created_at, updated_at, resource
 `
 
 type UpsertMailboxSubscriptionParams struct {
@@ -320,6 +323,7 @@ func (q *Queries) UpsertMailboxSubscription(ctx context.Context, arg UpsertMailb
 		&i.NotifiedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Resource,
 	)
 	return i, err
 }

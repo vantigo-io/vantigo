@@ -259,3 +259,72 @@ func TestFakeChannelMailbox_Inbox(t *testing.T) {
 		t.Errorf("the first Raw's call = %+v", raw)
 	}
 }
+
+func TestFakeChannelMailbox_NotificationsAndMarks(t *testing.T) {
+	ctx := context.Background()
+	f := NewFakeChannelMailbox()
+	post := contracts.ChannelMailboxInfo{Mailbox: "0b9c1f6e-2a4d-4c38-9a51-7e0f3b2d8c11", Address: "post@example.com", Shared: true}
+	f.SetMailbox(post.Address, post)
+
+	// Watch / Unwatch / Notified.
+	if f.Watched(post.Mailbox) {
+		t.Fatal("Watched before Watch = true")
+	}
+	if err := f.Watch(ctx, post.Mailbox, "inbox"); err != nil || !f.Watched(post.Mailbox) {
+		t.Fatalf("Watch = %v, Watched = %v", err, f.Watched(post.Mailbox))
+	}
+	if err := f.Watch(ctx, post.Mailbox, "sentitems"); err == nil {
+		t.Error("Watch of sentitems succeeded, want error")
+	}
+	if err := f.Unwatch(ctx, post.Mailbox, "inbox"); err != nil || f.Watched(post.Mailbox) {
+		t.Fatalf("Unwatch = %v, Watched = %v", err, f.Watched(post.Mailbox))
+	}
+	if !slices.Equal(f.WatchCalls(), []string{post.Mailbox, post.Mailbox}) || !slices.Equal(f.UnwatchCalls(), []string{post.Mailbox}) {
+		t.Errorf("WatchCalls = %v, UnwatchCalls = %v", f.WatchCalls(), f.UnwatchCalls())
+	}
+
+	t0 := time.Date(2026, 10, 30, 10, 0, 0, 0, time.UTC)
+	f.Notify(post.Mailbox, t0.Add(2*time.Minute))
+	f.Notify("other", t0.Add(time.Minute))
+	notices, err := f.Notified(ctx, t0)
+	if err != nil || len(notices) != 2 || notices[0].Mailbox != "other" || notices[1].Mailbox != post.Mailbox {
+		t.Fatalf("Notified = %+v, %v", notices, err)
+	}
+	later, err := f.Notified(ctx, t0.Add(90*time.Second))
+	if err != nil || len(later) != 1 || later[0].Mailbox != post.Mailbox {
+		t.Fatalf("Notified after 90s = %+v, %v", later, err)
+	}
+
+	// EnsureFolder & Mark (read, category, move).
+	f.AddInbox(post.Mailbox, contracts.MailItem{ID: "m1", ReceivedAt: t0}, []byte("raw m1"))
+	folderID, err := f.EnsureFolder(ctx, post.Mailbox, "Handled in Vantigo")
+	if err != nil || folderID == "" {
+		t.Fatalf("EnsureFolder = %q, %v", folderID, err)
+	}
+	if sameID, err := f.EnsureFolder(ctx, post.Mailbox, "handled in vantigo"); err != nil || sameID != folderID {
+		t.Errorf("second EnsureFolder = %q, %v; want %q", sameID, err, folderID)
+	}
+	if err := f.Mark(ctx, post.Mailbox, "m1", contracts.MailMark{Kind: contracts.MailMarkRead}); err != nil {
+		t.Fatalf("Mark read: %v", err)
+	}
+	if err := f.Mark(ctx, post.Mailbox, "m1", contracts.MailMark{Kind: contracts.MailMarkCategory, Categories: []string{"Handled"}}); err != nil {
+		t.Fatalf("Mark category: %v", err)
+	}
+	if err := f.Mark(ctx, post.Mailbox, "m1", contracts.MailMark{Kind: contracts.MailMarkMove, FolderID: folderID}); err != nil {
+		t.Fatalf("Mark move: %v", err)
+	}
+	st, ok := f.MessageState(post.Mailbox, "m1")
+	if !ok || !st.IsRead || !slices.Equal(st.Categories, []string{"Handled"}) || st.FolderID != folderID || st.FolderName != "Handled in Vantigo" {
+		t.Errorf("MessageState = %+v, %v", st, ok)
+	}
+	// Moving removes it from Inbox Raw, while re-marking by immutable ID remains idempotent.
+	if _, err := f.Raw(ctx, post.Mailbox, "m1", 1024); !errors.Is(err, contracts.ErrMailItemGone) {
+		t.Errorf("Raw after move = %v, want ErrMailItemGone", err)
+	}
+	if err := f.Mark(ctx, post.Mailbox, "m1", contracts.MailMark{Kind: contracts.MailMarkMove, FolderID: folderID}); err != nil {
+		t.Errorf("idempotent Mark move: %v", err)
+	}
+	if err := f.Mark(ctx, post.Mailbox, "missing", contracts.MailMark{Kind: contracts.MailMarkRead}); !errors.Is(err, contracts.ErrMailItemGone) {
+		t.Errorf("Mark missing = %v, want ErrMailItemGone", err)
+	}
+}

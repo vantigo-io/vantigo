@@ -1288,6 +1288,7 @@ func TestCommunicationsBaseline_AppliesAndIsIdempotent(t *testing.T) {
 		"conversations",
 		"idempotency_records",
 		"inbound_receipts", // 00092's
+		"mailbox_marks",    // 00094's
 		"message_attachments",
 		"message_deliveries",
 		"message_events",
