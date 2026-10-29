@@ -452,11 +452,11 @@ export interface components {
             /** @description The tenant's organisation name as the last test read it. */
             organisationName?: string;
             outlookConnect: components["schemas"]["EntraOutlookConnect"];
-            /** @description The application permissions the module needs (User.ReadWrite.All, User-LifeCycleInfo.ReadWrite.All, User.RevokeSessions.All, UserAuthMethod-TAP.ReadWrite.All, LicenseAssignment.ReadWrite.All, Group.ReadWrite.All, Domain.Read.All, Organization.Read.All, and Calendars.ReadWrite while the Outlook connection switch is on) that the last test's token did not carry; all of them before the first test. */
+            /** @description The application permissions the module needs (User.ReadWrite.All, User-LifeCycleInfo.ReadWrite.All, User.RevokeSessions.All, UserAuthMethod-TAP.ReadWrite.All, LicenseAssignment.ReadWrite.All, Group.ReadWrite.All, Domain.Read.All, Organization.Read.All) that the last test's token did not carry; all of them before the first test. */
             permissionsMissing: string[];
             /** @description The application permissions the last test's token carried in its roles claim. */
             permissionsPresent: string[];
-            /** @description The application permissions the last test's token carried that the module does not use (Outlook connection design M19) — a warning, never a status: a permission granted to the application reaches every mailbox or account in the tenant, so one nobody needs is better removed in the portal. */
+            /** @description The application permissions the last test's token carried that the module does not use — any beyond the eight in permissionsMissing's list, an application Calendars.ReadWrite left from an earlier setup among them (Outlook connection design M19) — a warning, never a status: a permission granted to the application reaches every mailbox or account in the tenant, so one nobody needs is better removed in the portal. */
             permissionsUnexpected: string[];
             settings: components["schemas"]["EntraSettings"];
             /**
@@ -683,7 +683,7 @@ export interface components {
             /** @description A path on this installation, never another origin; /settings/connections when the connect named none. */
             returnTo: string;
         };
-        /** @description The Outlook connection switch (Outlook connection design M2): whether people may connect their own Outlook to Vantigo, and whether a connect can work. status is off while the switch is; unavailable when on but the connection is not connected, reason then being the connection's statusReason; permission_missing, advisory, when the last test's token lacks the Calendars.ReadWrite application permission the calendar's sync still writes with (expected when it is granted with Exchange RBAC for Applications); consent_missing when the last connect found a feature's delegated permission not consented in the tenant; ready when someone has connected since the switch was last turned on; untested otherwise. connected and reconnect count the people connected and those whose connection Microsoft refused, waiting for them to connect again. redirectUri is the redirect URI to add to the app registration's Web platform. */
+        /** @description The Outlook connection switch (Outlook connection design M2): whether people may connect their own Outlook to Vantigo, and whether a connect can work. status is off while the switch is; unavailable when on but the connection is not connected, reason then being the connection's statusReason; consent_missing when the last connect found a feature's delegated permission not consented in the tenant; ready when someone has connected since the switch was last turned on; untested otherwise. connected and reconnect count the people connected and those whose connection Microsoft refused, waiting for them to connect again. redirectUri is the redirect URI to add to the app registration's Web platform. */
         EntraOutlookConnect: {
             /** Format: int32 */
             connected: number;
@@ -696,7 +696,7 @@ export interface components {
             /** @description APP_URL with the base path and /api/v1/entra/outlook/callback. */
             redirectUri: string;
             /** @enum {string} */
-            status: "off" | "ready" | "untested" | "permission_missing" | "consent_missing" | "unavailable";
+            status: "off" | "ready" | "untested" | "consent_missing" | "unavailable";
         };
         /** @description What a connect is for, and where to return once it completes. */
         EntraOutlookConnectRequest: {

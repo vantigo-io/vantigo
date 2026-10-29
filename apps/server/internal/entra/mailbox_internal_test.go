@@ -14,9 +14,9 @@ import (
 )
 
 // TestMailboxStatusOf pins the mailbox provider's state and reason by the
-// switch, the connection's status and the permission the last test saw
-// (design O2, O4): available on and connected, the permission in the token
-// or not (an Exchange RBAC grant never shows there); cleanup while a
+// switch and the connection's status (design O4, Outlook connection design
+// M9): available on and connected, whatever application permission the
+// token carries; cleanup while a
 // credential still works and the switch is off; unavailable otherwise, with
 // the connection's reason.
 func TestMailboxStatusOf(t *testing.T) {
@@ -29,7 +29,7 @@ func TestMailboxStatusOf(t *testing.T) {
 		return store.EntraConnection{TenantID: &tenant, ClientID: &client, Status: status, StatusReason: reason,
 			OutlookConnect: on, PermissionsPresent: perms}
 	}
-	const cal = permissionCalendarsReadWrite
+	const cal = "Calendars.ReadWrite"
 	for _, c := range []struct {
 		name          string
 		conn          store.EntraConnection
@@ -60,24 +60,22 @@ func TestMailboxStatusOf(t *testing.T) {
 	}
 }
 
-// TestMissingPermissions: Calendars.ReadWrite is asked for only while the
-// switch is on and the token lacks it, after the eight the connection needs.
+// TestMissingPermissions: the eight the connection needs, in their order,
+// nothing conditional — an application Calendars.ReadWrite is never asked
+// for, and is unexpected when present (Outlook connection design M2, M19).
 func TestMissingPermissions(t *testing.T) {
-	all := append(slices.Clone(requiredPermissions), permissionCalendarsReadWrite)
-	if got := missingPermissions(requiredPermissions, false); len(got) != 0 {
-		t.Errorf("off, the eight present: %v, want none", got)
+	if got := missingPermissions(requiredPermissions); len(got) != 0 {
+		t.Errorf("the eight present: %v, want none", got)
 	}
-	if got := missingPermissions(requiredPermissions, true); !slices.Equal(got, []string{permissionCalendarsReadWrite}) {
-		t.Errorf("on, the calendar's absent: %v", got)
+	if got := missingPermissions(nil); !slices.Equal(got, requiredPermissions) {
+		t.Errorf("none present: %v", got)
 	}
-	if got := missingPermissions(all, true); len(got) != 0 {
-		t.Errorf("on, all present: %v, want none", got)
+	with := append(slices.Clone(requiredPermissions), "Calendars.ReadWrite")
+	if got := missingPermissions(with); len(got) != 0 {
+		t.Errorf("the eight and Calendars.ReadWrite: missing %v, want none", got)
 	}
-	if got := missingPermissions(nil, false); !slices.Equal(got, requiredPermissions) {
-		t.Errorf("off, none present: %v", got)
-	}
-	if got := missingPermissions(nil, true); !slices.Equal(got, all) {
-		t.Errorf("on, none present: %v", got)
+	if got := unexpectedPermissions(with); !slices.Equal(got, []string{"Calendars.ReadWrite"}) {
+		t.Errorf("the eight and Calendars.ReadWrite: unexpected %v, want Calendars.ReadWrite", got)
 	}
 }
 

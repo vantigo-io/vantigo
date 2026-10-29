@@ -8,7 +8,7 @@ import type {
   EntraSettings,
   EntraSku,
 } from "../api/connection";
-import { CALENDAR_PERMISSION, requiredPermissions } from "../api/connection";
+import { requiredPermissions } from "../api/connection";
 import type { EntraDirectoryMatches, EntraDirectoryUser } from "../api/directory";
 import { DIRECTORY_SEARCH_LIMIT } from "../api/directory";
 import type { EntraOutlookComplete, EntraOutlookConnection } from "../api/outlook";
@@ -326,9 +326,6 @@ export const stubEntraApi = (server: EntraServer = {}): EntraStub => {
           errors: { upnDomain: ["The domain must be one of the tenant's verified domains."] },
         });
       const sync = outlookConnect ?? c.outlookConnect.enabled;
-      // The calendar's permission is asked for only while the switch is on (calendar Outlook sync design O2).
-      const lacksCalendar = !c.permissionsPresent.includes(CALENDAR_PERMISSION);
-      const missing = c.permissionsMissing.filter((name) => name !== CALENDAR_PERMISSION);
       state.connection = {
         ...c,
         settings: { ...c.settings, ...request },
@@ -343,7 +340,6 @@ export const stubEntraApi = (server: EntraServer = {}): EntraStub => {
           redirectUri: c.outlookConnect.redirectUri,
           notifications: c.outlookConnect.notifications,
         },
-        permissionsMissing: sync && lacksCalendar ? [...missing, CALENDAR_PERMISSION] : missing,
         version: c.version + 1,
       };
       return jsonResponse(200, state.connection);

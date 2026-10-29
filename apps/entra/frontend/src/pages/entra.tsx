@@ -10,7 +10,7 @@ import {
   connectionQueryOptions,
   type EntraConnection,
   type EntraConnectionTest,
-  permissionsToAdd,
+  requiredPermissions,
   testConnection,
   updateConnection,
 } from "../api/connection";
@@ -257,13 +257,13 @@ const RegisterRead = ({ connection }: { connection: EntraConnection }) => {
   );
 };
 
-/** Step 3: the eight permissions to copy (nine while calendar sync is on), the User Administrator role, and the Owner's *Test connection*. */
+/** Step 3: the eight permissions to copy, the User Administrator role, and the Owner's *Test connection*. */
 const PermissionsStep = ({ connection, owner }: { connection: EntraConnection; owner: boolean }) => {
   const { t } = useI18n("entra");
   const queryClient = useQueryClient();
   const [result, setResult] = useState<EntraConnectionTest>();
   const present = new Set(connection.lastCheckedAt ? connection.permissionsPresent : []);
-  const permissions = permissionsToAdd(connection);
+  const permissions = requiredPermissions;
 
   const test = useMutation({
     mutationFn: testConnection,
@@ -277,7 +277,7 @@ const PermissionsStep = ({ connection, owner }: { connection: EntraConnection; o
 
   return (
     <>
-      <Text size="sm">{t(connection.outlookConnect.enabled ? "step3BodyWithCalendar" : "step3Body")}</Text>
+      <Text size="sm">{t("step3Body")}</Text>
       <Group gap="xs">
         <Text size="sm" fw={500}>
           {t("permissionsToAdd")}

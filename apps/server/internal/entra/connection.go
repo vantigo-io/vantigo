@@ -43,11 +43,6 @@ var requiredPermissions = []string{
 	"Organization.Read.All",
 }
 
-// permissionCalendarsReadWrite is the application permission the calendar's
-// Outlook sync needs (calendar Outlook sync design O2): asked for only while
-// the Outlook connection switch is on, never one of requiredPermissions.
-const permissionCalendarsReadWrite = "Calendars.ReadWrite"
-
 // The account rules' bounds.
 const (
 	minPassLifetimeMinutes = 10
@@ -86,33 +81,28 @@ func badIfMatch() gen.EntraProblem {
 	return invalid("Invalid If-Match", f)
 }
 
-// missingPermissions are requiredPermissions less present, in their order,
-// then Calendars.ReadWrite when outlookConnect is on and present lacks it
-// (calendar Outlook sync design O2): the calendar's permission is asked for
-// only while the switch is on, and never judges the connection itself.
-func missingPermissions(present []string, outlookConnect bool) []string {
+// missingPermissions are requiredPermissions less present, in their order:
+// the eight, nothing conditional — the calendar writes on each person's
+// own delegated connection (Outlook connection design M2, M9).
+func missingPermissions(present []string) []string {
 	out := []string{}
 	for _, p := range requiredPermissions {
 		if !slices.Contains(present, p) {
 			out = append(out, p)
 		}
 	}
-	if outlookConnect && !slices.Contains(present, permissionCalendarsReadWrite) {
-		out = append(out, permissionCalendarsReadWrite)
-	}
 	return out
 }
 
 // unexpectedPermissions are the roles in present, sorted, that the module
-// does not use (Outlook connection design M19): neither one of
-// requiredPermissions nor Calendars.ReadWrite, which the calendar's sync
-// still uses on the application permission until delivery B. The mail
-// roles count until delivery C reports them under tenant_wide. A warning,
-// never a status.
+// does not use (Outlook connection design M19): any not one of
+// requiredPermissions — an application Calendars.ReadWrite left from an
+// earlier setup among them. The mail roles count until delivery C reports
+// them under tenant_wide. A warning, never a status.
 func unexpectedPermissions(present []string) []string {
 	out := []string{}
 	for _, p := range present {
-		if !slices.Contains(requiredPermissions, p) && p != permissionCalendarsReadWrite {
+		if !slices.Contains(requiredPermissions, p) {
 			out = append(out, p)
 		}
 	}
@@ -149,12 +139,8 @@ type outlookCounts struct {
 // connection's status and reason, the people's connections, the redirect
 // URI to register and the change notifications' state (calendar Outlook
 // sync design O11.7). In order: off while the switch is; unavailable while
-// the connection is not connected, with its reason; permission_missing,
-// advisory, while the last test's token lacks Calendars.ReadWrite, the
-// application permission the calendar still syncs with until delivery B
-// (an Exchange RBAC grant never shows there) — before the people's own
-// connects, since the calendar cannot write without it whatever they do;
-// consent_missing while the last validated connect found a feature not
+// the connection is not connected, with its reason; consent_missing while
+// the last validated connect found a feature not
 // consented; ready once someone has connected since the switch was last
 // turned on; untested otherwise.
 func outlookConnectBody(conn store.EntraConnection, status, reason string, counts outlookCounts, notifications gen.EntraCalendarSyncNotifications, redirectURI string) gen.EntraOutlookConnect {
@@ -173,8 +159,6 @@ func outlookConnectBody(conn store.EntraConnection, status, reason string, count
 		if reason != "" {
 			body.Reason = &reason
 		}
-	case !slices.Contains(conn.PermissionsPresent, permissionCalendarsReadWrite):
-		body.Status = gen.EntraOutlookConnectStatusPermissionMissing
 	case conn.OutlookLastError != nil && *conn.OutlookLastError == outlookConsentMissing:
 		body.Status = gen.EntraOutlookConnectStatusConsentMissing
 	case counts.since:
@@ -198,7 +182,7 @@ func connectionBody(conn store.EntraConnection, creds []store.EntraCredential, c
 		OrganisationName:      conn.OrganisationName,
 		VerifiedDomains:       orEmpty(conn.VerifiedDomains),
 		PermissionsPresent:    orEmpty(conn.PermissionsPresent),
-		PermissionsMissing:    missingPermissions(conn.PermissionsPresent, conn.OutlookConnect),
+		PermissionsMissing:    missingPermissions(conn.PermissionsPresent),
 		PermissionsUnexpected: unexpectedPermissions(conn.PermissionsPresent),
 		LastCheckedAt:         conn.LastCheckedAt,
 		Settings: gen.EntraSettings{
@@ -584,7 +568,7 @@ func (s *server) PostEntraConnectionTest(ctx context.Context, _ gen.PostEntraCon
 			Status:                gen.EntraConnectionTestStatus(contracts.ProviderUnconfigured),
 			VerifiedDomains:       orEmpty(conn.VerifiedDomains),
 			PermissionsPresent:    []string{},
-			PermissionsMissing:    missingPermissions(nil, conn.OutlookConnect),
+			PermissionsMissing:    missingPermissions(nil),
 			PermissionsUnexpected: []string{},
 		}), nil
 	}
@@ -651,7 +635,7 @@ func (s *server) PostEntraConnectionTest(ctx context.Context, _ gen.PostEntraCon
 			}
 		}
 	}
-	missing := missingPermissions(updated.PermissionsPresent, updated.OutlookConnect)
+	missing := missingPermissions(updated.PermissionsPresent)
 	unexpected := unexpectedPermissions(updated.PermissionsPresent)
 	codes := []string{status}
 	if reason != "" {
