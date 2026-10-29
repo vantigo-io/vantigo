@@ -29,6 +29,7 @@ import {
   IconMailbox,
   IconMailOff,
   IconPackage,
+  IconPlugConnected,
   IconReceipt2,
   IconReceiptTax,
   IconReportMoney,
@@ -527,6 +528,8 @@ export const areas: readonly AreaDefinition[] = [
         items: [
           { label: "navigation.profile", to: "/settings/profile", icon: IconUser },
           { label: "navigation.security", to: "/settings/security", icon: IconShieldLock },
+          // The person's own connections, from the Entra package (Outlook connection design M8).
+          { label: "navigation.connections", to: "/settings/connections", icon: IconPlugConnected, module: "entra" },
         ],
       },
     ],
