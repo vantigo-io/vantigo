@@ -48,12 +48,12 @@ func listQuery(filter bool, top int) string {
 // The mailbox (plan reading 12): calendars made, read, refused twice by
 // name and deleted with their events; events made with the marker, patched
 // without it, deleted, and listed filtered on the marker with the property
-// expanded, in pages.
+// expanded, in pages. With the person's own delegated token.
 func TestMailbox(t *testing.T) {
 	now := time.Now()
 	g := tenantFake(&now)
-	c := newClient(t, g)
 	u := g.AddUser(graphtest.User{UserPrincipalName: "kari@nordlys.no", AccountEnabled: true})
+	c := personClient(t, g, u.ID)
 	base := "/users/" + u.ID
 
 	// A calendar.
@@ -158,24 +158,84 @@ func TestMailbox(t *testing.T) {
 	}
 }
 
-// The mailbox's refusals: 403 outside the scope, 404
+// The mailbox's refusals: 403 for a mailbox Exchange refuses, 404
 // MailboxNotEnabledForRESTAPI without a mailbox, 404 for a user that does
-// not exist.
+// not exist — each with the user's own delegated token.
 func TestMailboxRefusals(t *testing.T) {
 	now := time.Now()
 	g := tenantFake(&now)
-	c := newClient(t, g)
 	denied := g.AddUser(graphtest.User{UserPrincipalName: "ola@nordlys.no", MailboxDenied: true})
 	none := g.AddUser(graphtest.User{UserPrincipalName: "per@nordlys.no", NoMailbox: true})
 
-	if status, _, body := c.do(http.MethodPost, "/users/"+denied.ID+"/events", timedEvent("x", "k")); status != http.StatusForbidden || errorCode(body) != "ErrorAccessDenied" {
+	if status, _, body := personClient(t, g, denied.ID).do(http.MethodPost, "/users/"+denied.ID+"/events", timedEvent("x", "k")); status != http.StatusForbidden || errorCode(body) != "ErrorAccessDenied" {
 		t.Errorf("a denied mailbox: %d %v", status, body)
 	}
-	if status, _, body := c.do(http.MethodGet, "/users/"+none.ID+"/calendars", nil); status != http.StatusNotFound || errorCode(body) != "MailboxNotEnabledForRESTAPI" {
+	if status, _, body := personClient(t, g, none.ID).do(http.MethodGet, "/users/"+none.ID+"/calendars", nil); status != http.StatusNotFound || errorCode(body) != "MailboxNotEnabledForRESTAPI" {
 		t.Errorf("no mailbox: %d %v", status, body)
 	}
-	if status, _, body := c.do(http.MethodGet, "/users/"+uuidLike+"/events", nil); status != http.StatusNotFound || errorCode(body) != "Request_ResourceNotFound" {
+	if status, _, body := personClient(t, g, uuidLike).do(http.MethodGet, "/users/"+uuidLike+"/events", nil); status != http.StatusNotFound || errorCode(body) != "Request_ResourceNotFound" {
 		t.Errorf("no such user: %d %v", status, body)
+	}
+}
+
+// A mailbox is reached with its own user's delegated token alone (Outlook
+// connection design M9): the application's token, or another user's, is
+// 403 ErrorAccessDenied on every mailbox route, the calendar view's delta
+// and a $batch's requests included; a user's own read goes through, and
+// the application still reads the user itself.
+func TestMailboxTokens(t *testing.T) {
+	now := time.Now()
+	g := tenantFake(&now)
+	kari := g.AddUser(graphtest.User{UserPrincipalName: "kari@nordlys.no", AccountEnabled: true})
+	ola := g.AddUser(graphtest.User{UserPrincipalName: "ola@nordlys.no", AccountEnabled: true})
+	app := newClient(t, g)
+	own := personClient(t, g, kari.ID)
+	other := personClient(t, g, ola.ID)
+	base := "/users/" + kari.ID
+
+	for _, path := range []string{base + "/events", base + "/calendars", base + "/calendar", base + "/calendarView/delta?startDateTime=2026-11-01T00:00:00Z&endDateTime=2026-11-08T00:00:00Z"} {
+		for name, c := range map[string]*client{"the application": app, "another user": other} {
+			if status, _, body := c.do(http.MethodGet, path, nil); status != http.StatusForbidden || errorCode(body) != "ErrorAccessDenied" {
+				t.Errorf("%s on GET %s: %d %v, want 403 ErrorAccessDenied", name, path, status, body)
+			}
+		}
+	}
+	if status, _, body := own.do(http.MethodGet, base+"/calendars", nil); status != http.StatusOK {
+		t.Errorf("the user's own token: %d %v", status, body)
+	}
+	if status, _, body := app.do(http.MethodGet, base+"?%24select=accountEnabled", nil); status != http.StatusOK || body["accountEnabled"] != true {
+		t.Errorf("the application reading the user: %d %v", status, body)
+	}
+
+	jsonHeader := map[string]any{"Content-Type": "application/json"}
+	requests := map[string]any{"requests": []any{
+		map[string]any{"id": "1", "method": "POST", "url": base + "/events", "body": timedEvent("a", "k:1"), "headers": jsonHeader},
+		map[string]any{"id": "2", "method": "GET", "url": "/users/" + ola.ID + "/calendars"},
+	}}
+	for name, c := range map[string]*client{"the application": app, "another user": other} {
+		status, _, body := c.do(http.MethodPost, "/$batch", requests)
+		if status != http.StatusOK {
+			t.Fatalf("%s's $batch: %d %v", name, status, body)
+		}
+		r := body["responses"].([]any)[0].(map[string]any)
+		if r["status"] != float64(403) {
+			t.Errorf("%s's create in a $batch: %v, want 403", name, r)
+		}
+	}
+	status, _, body := own.do(http.MethodPost, "/$batch", requests)
+	if status != http.StatusOK {
+		t.Fatalf("the user's $batch: %d %v", status, body)
+	}
+	got := map[string]any{}
+	for _, r := range body["responses"].([]any) {
+		m := r.(map[string]any)
+		got[m["id"].(string)] = m["status"]
+	}
+	if got["1"] != float64(201) || got["2"] != float64(403) {
+		t.Errorf("the user's $batch: %v, want their create made and another's mailbox refused", got)
+	}
+	if n := len(g.Events(kari.ID, "")); n != 1 {
+		t.Errorf("%d events, want the user's one create", n)
 	}
 }
 
@@ -185,8 +245,8 @@ func TestMailboxRefusals(t *testing.T) {
 func TestMailboxBatch(t *testing.T) {
 	now := time.Now()
 	g := tenantFake(&now)
-	c := newClient(t, g)
 	u := g.AddUser(graphtest.User{UserPrincipalName: "kari@nordlys.no"})
+	c := personClient(t, g, u.ID)
 	jsonHeader := map[string]any{"Content-Type": "application/json"}
 	g.ThrottleBatch(1)
 	status, _, body := c.do(http.MethodPost, "/$batch", map[string]any{"requests": []any{

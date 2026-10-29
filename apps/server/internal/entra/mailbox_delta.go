@@ -111,7 +111,7 @@ func (m *mailboxCalendar) Delta(ctx context.Context, mailbox string, from, to ti
 	if link == "" && (from.IsZero() || !to.After(from)) {
 		return contracts.MailboxDelta{}, errors.New("entra: a delta's window ends before it starts")
 	}
-	s, err := m.open(ctx, mailbox, false)
+	s, err := m.open(ctx, mailbox, false, false)
 	if err != nil {
 		return contracts.MailboxDelta{}, err
 	}
@@ -137,7 +137,7 @@ func (m *mailboxCalendar) Delta(ctx context.Context, mailbox string, from, to ti
 			NextLink  string       `json:"@odata.nextLink"`
 			DeltaLink string       `json:"@odata.deltaLink"`
 		}
-		if err := m.client.get(ctx, s.cred, path, &answer, noWords, deltaPage); err != nil {
+		if err := m.client.getAs(ctx, s.src, path, &answer, noWords, deltaPage); err != nil {
 			if deltaExpired(err) {
 				return contracts.MailboxDelta{}, fmt.Errorf("%w: %w", contracts.ErrMailboxDeltaExpired, err)
 			}
@@ -158,7 +158,7 @@ func (m *mailboxCalendar) Delta(ctx context.Context, mailbox string, from, to ti
 		}
 		if skipped > 0 || badIDs > 0 {
 			m.client.logger.DebugContext(ctx, "entra: a delta page held events whose ids or times do not read",
-				"tenant", s.cred.tenantID.String(), "skipped", skipped, "bad_ids", badIDs)
+				"tenant", s.tenantID.String(), "skipped", skipped, "bad_ids", badIDs)
 		}
 		switch {
 		case answer.DeltaLink != "":
@@ -273,7 +273,7 @@ func (m *mailboxCalendar) Marked(ctx context.Context, mailbox string, eventIDs [
 			return nil, errors.New("entra: an event id that is no id")
 		}
 	}
-	s, err := m.open(ctx, mailbox, false)
+	s, err := m.open(ctx, mailbox, false, false)
 	if err != nil {
 		return nil, err
 	}
@@ -312,7 +312,7 @@ func (m *mailboxCalendar) markedBatch(ctx context.Context, s mailboxSession, ids
 				URL: s.eventPath(ids[i]) + "?" + query(url.Values{"$select": {"id"}, "$expand": {markedExpand}})}
 		}
 		var answer batchAnswer
-		if err := m.client.post(ctx, s.cred, "/$batch", map[string]any{"requests": requests}, &answer, noWords, largeAnswer); err != nil {
+		if err := m.client.postAs(ctx, s.src, "/$batch", map[string]any{"requests": requests}, &answer, noWords, largeAnswer); err != nil {
 			return mailboxRefusal(err)
 		}
 		byID := make(map[string]int, len(answer.Responses))
@@ -350,7 +350,7 @@ func (m *mailboxCalendar) markedBatch(ctx context.Context, s mailboxSession, ids
 			default:
 				g := batchRefusal(r.Status, r.Body)
 				m.client.logger.DebugContext(ctx, "entra: Graph refused a mailbox read",
-					"tenant", s.cred.tenantID.String(), "status", r.Status, "code", g.Code, "detail", g.Detail)
+					"tenant", s.tenantID.String(), "status", r.Status, "code", g.Code, "detail", g.Detail)
 				if r.Status == http.StatusNotFound && !mailboxGone(g) {
 					continue
 				}

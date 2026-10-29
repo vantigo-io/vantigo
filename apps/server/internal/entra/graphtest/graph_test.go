@@ -63,6 +63,19 @@ func newClient(t *testing.T, g *graphtest.FakeGraph) *client {
 	return c
 }
 
+// personClient is a caller of the fake with a delegated token for the user
+// oid, as a person's Outlook connection holds one: what reaches a mailbox.
+func personClient(t *testing.T, g *graphtest.FakeGraph, oid string) *client {
+	t.Helper()
+	grant := codeGrant()
+	grant.OID = oid
+	status, a := redeem(t, g, g.IssueCode(grant), nil)
+	if status != http.StatusOK || a.AccessToken == "" {
+		t.Fatalf("a delegated token for %s: %d %+v", oid, status, a)
+	}
+	return &client{t: t, http: &http.Client{Transport: g}, token: a.AccessToken}
+}
+
 func (c *client) tokenRequest(tenantID, id, secretValue string) (int, []byte) {
 	c.t.Helper()
 	form := url.Values{

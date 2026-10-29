@@ -51,29 +51,74 @@ func setOutlookConnect(t *testing.T, c *modtest.Client, on bool) gen.EntraConnec
 	return conn
 }
 
-// newMailboxHarness is a connected tenant whose token carries
-// Calendars.ReadWrite, the switch on: the provider available. opts are the
-// harness's besides.
+// newMailboxHarness is a connected tenant with the Outlook connection
+// switch on, Staff answering each person's directory account: the provider
+// available. opts are the harness's besides. The token carries no
+// application Calendars.ReadWrite: every mailbox call runs on its person's
+// own connection (mailboxUser).
 func newMailboxHarness(t *testing.T, opts ...modtest.Option) (*harness, *graphtest.FakeGraph, *modtest.Client) {
 	t.Helper()
-	h, g := newTenantHarness(t, opts...)
-	g.Configure(func(g *graphtest.FakeGraph) { g.Roles = append(g.Roles, "Calendars.ReadWrite") })
+	w := newFakeWorkforce()
+	h, g := newTenantHarness(t, append(opts, modtest.WithWorkforce(w))...)
 	o := connected(t, h)
 	setOutlookConnect(t, o, true)
+	h.outlook = &outlookFixture{h: h, g: g, o: o, w: w}
 	return h, g, o
 }
 
-// mailboxUser is an account the module made, and its user in the tenant.
+// mailboxUser is an account the module made, enabled, its user in the
+// tenant, and a person signed in whose Staff record names it and who has
+// connected Outlook through the real flow: the mailbox, its connection
+// active. h must come from newMailboxHarness.
 func mailboxUser(t *testing.T, h *harness, g *graphtest.FakeGraph, edit ...func(u *graphtest.User)) string {
 	t.Helper()
+	id, _ := mailboxPerson(t, h, g, edit...)
+	return id.String()
+}
+
+// mailboxPerson is mailboxUser with the person's client.
+func mailboxPerson(t *testing.T, h *harness, g *graphtest.FakeGraph, edit ...func(u *graphtest.User)) (uuid.UUID, *modtest.Client) {
+	t.Helper()
 	n := len(g.Users()) + 1
-	id := addAccount(t, h, fmt.Sprintf("E%03d", n), fmt.Sprintf("u%d@nordlys.no", n))
-	u := graphtest.User{ID: id.String(), UserPrincipalName: fmt.Sprintf("u%d@nordlys.no", n), AccountEnabled: true}
+	upn := fmt.Sprintf("u%d@nordlys.no", n)
+	id := addAccount(t, h, fmt.Sprintf("E%03d", n), upn)
+	u := graphtest.User{ID: id.String(), UserPrincipalName: upn, AccountEnabled: true}
 	for _, fn := range edit {
 		fn(&u)
 	}
 	g.AddUser(u)
-	return id.String()
+	return id, connectMailbox(t, h, id, upn)
+}
+
+// connectMailbox enables the account id and connects Outlook for it through
+// the real flow, as a person signed in whose Staff record names it: their
+// client. The tenant need not hold the user. h must come from
+// newMailboxHarness.
+func connectMailbox(t *testing.T, h *harness, id uuid.UUID, upn string) *modtest.Client {
+	t.Helper()
+	if h.outlook == nil {
+		t.Fatal("connectMailbox needs a harness from newMailboxHarness")
+	}
+	c, userID := h.SignInUser(t)
+	h.Exec(t, `UPDATE entra.accounts SET state = 'enabled' WHERE object_id = $1`, id)
+	h.outlook.w.set(userID, &contracts.DirectoryAccount{Provider: "entra", ExternalID: id.String(), Enabled: true})
+	if r := h.outlook.connectAs(t, c, id, upn); r.Status != http.StatusOK {
+		t.Fatalf("connect %s: %d %s", upn, r.Status, r.Body)
+	}
+	return c
+}
+
+// reconnectMailbox connects Outlook again for mailbox's account, in a fresh
+// session of the person who connected it — after the switch was turned
+// off, say.
+func reconnectMailbox(t *testing.T, h *harness, mailbox string) {
+	t.Helper()
+	id := uuid.MustParse(mailbox)
+	upn := modtest.One[string](t, h.Harness, `SELECT user_principal_name FROM entra.accounts WHERE object_id = $1`, id)
+	userID := modtest.One[uuid.UUID](t, h.Harness, `SELECT user_id FROM entra.outlook_connections WHERE object_id = $1`, id)
+	if r := h.outlook.connectAs(t, secondSession(t, h, userID), id, upn); r.Status != http.StatusOK {
+		t.Fatalf("reconnect %s: %d %s", upn, r.Status, r.Body)
+	}
 }
 
 // timed is a timed event an hour long from start.
@@ -244,6 +289,7 @@ func TestMailbox_OnlyAnAccountTheModuleManages(t *testing.T) {
 	}
 
 	h.Exec(t, `UPDATE entra.accounts SET adoption_confirmed_at = $2 WHERE object_id = $1`, adopted, h.Now())
+	connectMailbox(t, h, adopted, "adopted@nordlys.no")
 	results, err := p.Apply(ctx, adopted.String(), "", ops)
 	if err != nil || len(results) != 1 || results[0].Err != nil || results[0].EventID == "" {
 		t.Errorf("a confirmed adoption: %+v %v, want the event made", results, err)
@@ -365,7 +411,9 @@ func TestMailbox_DeniedAndGone(t *testing.T) {
 	p := mailboxProvider(h)
 	denied := mailboxUser(t, h, g, func(u *graphtest.User) { u.MailboxDenied = true })
 	noMailbox := mailboxUser(t, h, g, func(u *graphtest.User) { u.NoMailbox = true })
-	missing := addAccount(t, h, "E900", "gone@nordlys.no").String()
+	missingID := addAccount(t, h, "E900", "gone@nordlys.no")
+	connectMailbox(t, h, missingID, "gone@nordlys.no")
+	missing := missingID.String()
 
 	for name, c := range map[string]struct {
 		mailbox string

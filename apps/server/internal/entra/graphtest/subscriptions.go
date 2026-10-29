@@ -16,7 +16,12 @@ import (
 // sync, delivery D's plan reading 9; research §3, Change notifications, as
 // checked for D): POST /subscriptions, PATCH and DELETE
 // /subscriptions/{id}, and GET /subscriptions, the application's
-// subscriptions in pages of SubscriptionPageSize with an @odata.nextLink.
+// subscriptions the caller created in pages of SubscriptionPageSize with an
+// @odata.nextLink. Every one is reached with a delegated token alone
+// (graph.go's scopeRefusal): a create for another user's events is 403
+// ErrorAccessDenied, the subscription's creator the token's user
+// (CreatorID); a read, a renewal or a delete of a subscription another user
+// created is 403 too.
 //
 // What it keeps faithful: a create names a resource of a user's events
 // (/users/{id}/events, its leading slash optional), the change types, an
@@ -60,6 +65,10 @@ type Subscription struct {
 	// signs its notifications with it.
 	ClientState string
 	Expiration  time.Time
+	// CreatorID is the object id of the user whose delegated token made it,
+	// in lower case; AddSubscription takes the user its resource names when
+	// it is "".
+	CreatorID string
 }
 
 // Subscriptions is the application's subscriptions Graph still holds —
@@ -82,6 +91,9 @@ func (g *FakeGraph) AddSubscription(s Subscription) Subscription {
 	defer g.mu.Unlock()
 	if s.ID == "" {
 		s.ID = uuid.NewString()
+	}
+	if m := subscriptionResource.FindStringSubmatch(s.Resource); s.CreatorID == "" && m != nil {
+		s.CreatorID = strings.ToLower(m[1])
 	}
 	g.subscriptions = append(g.subscriptions, &s)
 	return s
@@ -192,6 +204,9 @@ func (g *FakeGraph) subscriptionsRoute(method string, seg []string, query url.Va
 	if s == nil {
 		return subscriptionNotFound()
 	}
+	if !g.createdByCaller(s) {
+		return graphError(http.StatusForbidden, "ErrorAccessDenied", "Access is denied. Check credentials and try again.")
+	}
 	if u := g.userOfSubscription(s); u != nil && u.MailboxDenied {
 		a, _ := mailboxRefused(u)
 		return a
@@ -222,6 +237,12 @@ func (g *FakeGraph) subscriptionsRoute(method string, seg []string, query url.Va
 		return answer{status: http.StatusNoContent}
 	}
 	return methodNotAllowed()
+}
+
+// createdByCaller reports whether the request's delegated token is s's
+// creator's. g.mu is held.
+func (g *FakeGraph) createdByCaller(s *Subscription) bool {
+	return g.caller != nil && strings.EqualFold(s.CreatorID, g.caller.oid)
 }
 
 // userOfSubscription is the user s's resource names, nil when none.
@@ -264,8 +285,12 @@ func (g *FakeGraph) createSubscription(body []byte) answer {
 	if !ok {
 		return a
 	}
-	if _, a, ok := g.subscriptionUser(req.Resource); !ok {
+	u, a, ok := g.subscriptionUser(req.Resource)
+	if !ok {
 		return a
+	}
+	if !g.callerIs(u.ID) {
+		return graphError(http.StatusForbidden, "ErrorAccessDenied", "Access is denied. Check credentials and try again.")
 	}
 	resource := strings.ToLower(strings.TrimPrefix(req.Resource, "/"))
 	for _, s := range g.liveSubscriptions() {
@@ -291,7 +316,7 @@ func (g *FakeGraph) createSubscription(body []byte) answer {
 	s := &Subscription{
 		ID: uuid.NewString(), Resource: req.Resource, ChangeType: req.ChangeType,
 		NotificationURL: req.NotificationURL, LifecycleNotificationURL: req.LifecycleNotificationURL,
-		ClientState: req.ClientState, Expiration: expires,
+		ClientState: req.ClientState, Expiration: expires, CreatorID: g.caller.oid,
 	}
 	g.subscriptions = append(g.subscriptions, s)
 	return answer{status: http.StatusCreated, body: subscriptionJSON(s)}
@@ -326,7 +351,12 @@ func (g *FakeGraph) listSubscriptions(query url.Values) answer {
 		}
 		skip = n
 	}
-	all := g.liveSubscriptions()
+	var all []*Subscription
+	for _, s := range g.liveSubscriptions() {
+		if g.createdByCaller(s) {
+			all = append(all, s)
+		}
+	}
 	out := []any{}
 	for i := skip; i < len(all) && i < skip+size; i++ {
 		out = append(out, subscriptionJSON(all[i]))

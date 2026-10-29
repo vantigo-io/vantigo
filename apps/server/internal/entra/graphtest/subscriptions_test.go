@@ -9,16 +9,20 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/entra/graphtest"
 )
 
-// The subscriptions (delivery D's plan reading 9): a create validated
+// The subscriptions (delivery D's plan reading 9), with the person's own
+// delegated token (Outlook connection design M9): a create validated
 // through Handshake, 400 when it fails, 409 for a second on the resource,
-// 403 for a mailbox outside the scope; a renewal, the list in pages, a
-// delete, and an expired subscription gone.
+// 403 for a mailbox Exchange refuses, for another user's events and for the
+// application's token; the creator recorded; a renewal, the list of the
+// caller's own in pages, another's subscription refused, a delete, and an
+// expired subscription gone.
 func TestSubscriptions(t *testing.T) {
 	now := time.Now()
 	g := tenantFake(&now)
-	c := newClient(t, g)
 	u := g.AddUser(graphtest.User{UserPrincipalName: "kari@nordlys.no", AccountEnabled: true})
 	denied := g.AddUser(graphtest.User{UserPrincipalName: "ola@nordlys.no", AccountEnabled: true, MailboxDenied: true})
+	c := personClient(t, g, u.ID)
+	app := newClient(t, g)
 	hook := "https://public.example.com/hook"
 	create := func(user string) map[string]any {
 		return map[string]any{
@@ -50,8 +54,19 @@ func TestSubscriptions(t *testing.T) {
 	if status, _, _ := c.do(http.MethodPost, "/subscriptions", create(strings.ToUpper(u.ID))); status != http.StatusConflict {
 		t.Errorf("a second on the resource: %d, want 409", status)
 	}
+	if subs := g.Subscriptions(); len(subs) != 1 || subs[0].CreatorID != strings.ToLower(u.ID) {
+		t.Errorf("the subscriptions = %+v, want one created by %s", subs, u.ID)
+	}
+	if status, _, body := personClient(t, g, denied.ID).do(http.MethodPost, "/subscriptions", create(denied.ID)); status != http.StatusForbidden || errorCode(body) != "ErrorAccessDenied" {
+		t.Errorf("a mailbox Exchange refuses: %d %v, want 403", status, body)
+	}
 	if status, _, body := c.do(http.MethodPost, "/subscriptions", create(denied.ID)); status != http.StatusForbidden || errorCode(body) != "ErrorAccessDenied" {
-		t.Errorf("a mailbox outside the scope: %d %v, want 403", status, body)
+		t.Errorf("another user's events: %d %v, want 403", status, body)
+	}
+	for _, path := range []string{"/subscriptions", "/subscriptions/" + id} {
+		if status, _, body := app.do(http.MethodGet, path, nil); status != http.StatusForbidden || errorCode(body) != "ErrorAccessDenied" {
+			t.Errorf("the application's token on %s: %d %v, want 403", path, status, body)
+		}
 	}
 	tooLong := create(u.ID)
 	tooLong["expirationDateTime"] = now.Add(10081 * time.Minute).UTC().Format(time.RFC3339)
@@ -63,7 +78,14 @@ func TestSubscriptions(t *testing.T) {
 	if status, _, body := c.do(http.MethodPatch, "/subscriptions/"+id, map[string]any{"expirationDateTime": later}); status != http.StatusOK || body["id"] != id {
 		t.Errorf("a renewal: %d %v", status, body)
 	}
-	g.AddSubscription(graphtest.Subscription{Resource: "/users/" + denied.ID + "/events", ChangeType: "created", NotificationURL: hook, Expiration: now.Add(time.Hour)})
+	g.AddSubscription(graphtest.Subscription{Resource: "/users/" + u.ID + "/events", ChangeType: "created", NotificationURL: hook, Expiration: now.Add(time.Hour)})
+	foreign := g.AddSubscription(graphtest.Subscription{Resource: "/users/" + denied.ID + "/events", ChangeType: "created", NotificationURL: hook, Expiration: now.Add(time.Hour)})
+	if foreign.CreatorID != strings.ToLower(denied.ID) {
+		t.Errorf("a seeded subscription's creator = %q, want its resource's user", foreign.CreatorID)
+	}
+	if status, _, body := c.do(http.MethodDelete, "/subscriptions/"+foreign.ID, nil); status != http.StatusForbidden || errorCode(body) != "ErrorAccessDenied" {
+		t.Errorf("a delete of another user's subscription: %d %v, want 403", status, body)
+	}
 	g.Configure(func(g *graphtest.FakeGraph) { g.SubscriptionPageSize = 1 })
 	status, _, page := c.do(http.MethodGet, "/subscriptions", nil)
 	next, _ := page["@odata.nextLink"].(string)

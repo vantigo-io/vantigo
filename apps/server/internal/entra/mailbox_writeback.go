@@ -97,7 +97,7 @@ func (m *mailboxCalendar) Versions(ctx context.Context, mailbox, calendarID stri
 			return contracts.MailboxVersions{}, errors.New("entra: a calendar view's window ends before it starts")
 		}
 	}
-	s, err := m.open(ctx, mailbox, false)
+	s, err := m.open(ctx, mailbox, false, false)
 	if err != nil {
 		return contracts.MailboxVersions{}, err
 	}
@@ -132,7 +132,7 @@ func (m *mailboxCalendar) Versions(ctx context.Context, mailbox, calendarID stri
 			} `json:"value"`
 			NextLink string `json:"@odata.nextLink"`
 		}
-		if err := m.client.get(ctx, s.cred, path, &page, noWords, largeAnswer); err != nil {
+		if err := m.client.getAs(ctx, s.src, path, &page, noWords, largeAnswer); err != nil {
 			return contracts.MailboxVersions{}, mailboxRefusal(err)
 		}
 		badIDs, unmarked := 0, 0
@@ -157,7 +157,7 @@ func (m *mailboxCalendar) Versions(ctx context.Context, mailbox, calendarID stri
 		}
 		if badIDs > 0 || unmarked > 0 {
 			m.client.logger.DebugContext(ctx, "entra: a versions page held events whose ids or markers do not read",
-				"tenant", s.cred.tenantID.String(), "bad_ids", badIDs, "unmarked", unmarked)
+				"tenant", s.tenantID.String(), "bad_ids", badIDs, "unmarked", unmarked)
 		}
 		if !out.Complete || page.NextLink == "" {
 			return out, nil
@@ -338,7 +338,7 @@ func (m *mailboxCalendar) Events(ctx context.Context, mailbox, calendarID string
 			return contracts.MailboxEventsRead{}, errors.New("entra: an event id that is no id")
 		}
 	}
-	s, err := m.open(ctx, mailbox, false)
+	s, err := m.open(ctx, mailbox, false, false)
 	if err != nil {
 		return contracts.MailboxEventsRead{}, err
 	}
@@ -357,7 +357,7 @@ func (m *mailboxCalendar) Events(ctx context.Context, mailbox, calendarID string
 	}
 	if r.skipped > 0 {
 		m.client.logger.DebugContext(ctx, "entra: an events read skipped events it could not read",
-			"tenant", s.cred.tenantID.String(), "skipped", r.skipped)
+			"tenant", s.tenantID.String(), "skipped", r.skipped)
 	}
 	out := contracts.MailboxEventsRead{Events: []contracts.MailboxEventState{}, Gone: []string{}}
 	for i, st := range r.states {
@@ -397,7 +397,7 @@ func (m *mailboxCalendar) eventsBatch(ctx context.Context, s mailboxSession, cal
 				URL: s.eventPathIn(calendarID, ids[i]) + "?" + params, Headers: map[string]string{"Prefer": eventsPrefer}}
 		}
 		var answer batchAnswer
-		if err := m.client.post(ctx, s.cred, "/$batch", map[string]any{"requests": requests}, &answer, noWords, wholeEvents); err != nil {
+		if err := m.client.postAs(ctx, s.src, "/$batch", map[string]any{"requests": requests}, &answer, noWords, wholeEvents); err != nil {
 			if !unreadableAnswer(err) {
 				return mailboxRefusal(err)
 			}
@@ -447,7 +447,7 @@ func (m *mailboxCalendar) eventsBatch(ctx context.Context, s mailboxSession, cal
 			default:
 				g := batchRefusal(a.Status, a.Body)
 				m.client.logger.DebugContext(ctx, "entra: Graph refused a mailbox read",
-					"tenant", s.cred.tenantID.String(), "status", a.Status, "code", g.Code, "detail", g.Detail)
+					"tenant", s.tenantID.String(), "status", a.Status, "code", g.Code, "detail", g.Detail)
 				switch {
 				case mailboxGone(g):
 					return mailboxRefusal(g)

@@ -41,7 +41,10 @@ import (
 // PUBLIC_BASE_URL moved deletes that subscription and creates one at the
 // new address, never renewing one whose notifications go elsewhere. Unwatch
 // deletes the subscription, keeping the row 'deleting' while Graph refuses.
-// Notified reads the rows and nothing else. No transaction and no pool
+// Every call to Graph runs on the person's own delegated token (Outlook
+// connection design M9): the subscription's creator is the person, and its
+// renewal and delete are theirs too. Notified and Connections read the rows
+// and nothing else. No transaction and no pool
 // connection is held across a call to Graph: each query takes the pool and
 // gives it back. Graph's answers are read by their status and codes; none
 // is logged.
@@ -166,7 +169,10 @@ func readSubscription(ctx context.Context, q *store.Queries, oid uuid.UUID) (*st
 //     refusal answered, the row kept for the next Watch), so the old
 //     address is never notified again.
 //
-// A 403 is ErrMailboxDenied, a mailbox gone ErrMailboxGone (mailboxRefusal).
+// Every call to Graph is on the person's token, asked for before anything
+// is written: a connection that cannot serve it answers
+// contracts.ErrConnectionNeeded and leaves the row as it is. A 403 is
+// ErrMailboxDenied, a mailbox gone ErrMailboxGone (mailboxRefusal).
 func (m *mailboxCalendar) Watch(ctx context.Context, mailbox string) error {
 	s, err := m.checked(ctx, mailbox, false)
 	if err != nil {
@@ -197,7 +203,10 @@ func (m *mailboxCalendar) Watch(ctx context.Context, mailbox string) error {
 	if conn.NotificationsUnreachableAt != nil && now.Sub(*conn.NotificationsUnreachableAt) < notificationsUnreachableHold {
 		return nil
 	}
-	if err := m.withCredential(ctx, &s); err != nil {
+	m.withToken(&s, false)
+	// The person's token first, so a connection that cannot serve the call
+	// writes nothing: a create records its row before the POST.
+	if _, err := s.src.token(ctx); err != nil {
 		return err
 	}
 	if moved && row.State != subscriptionRemoved {
@@ -205,7 +214,7 @@ func (m *mailboxCalendar) Watch(ctx context.Context, mailbox string) error {
 		if !ok {
 			return fmt.Errorf("%w: a stored subscription id that is no GUID", errTenantUnreachable)
 		}
-		if err := m.client.del(ctx, s.cred, subscriptionPath(sid), noWords); err != nil && !isStatus(err, http.StatusNotFound) {
+		if err := m.client.delAs(ctx, s.src, subscriptionPath(sid), noWords); err != nil && !isStatus(err, http.StatusNotFound) {
 			return mailboxRefusal(err)
 		}
 	}
@@ -231,7 +240,7 @@ func (m *mailboxCalendar) renew(ctx context.Context, s mailboxSession, id string
 	}
 	asked := now.Add(subscriptionLifetime).UTC()
 	var answer graphSubscription
-	err := m.client.do(ctx, s.cred, http.MethodPatch, subscriptionPath(sid),
+	err := m.client.doAs(ctx, s.src, http.MethodPatch, subscriptionPath(sid),
 		map[string]string{"expirationDateTime": asked.Format(time.RFC3339)}, &answer, noWords)
 	switch {
 	case isStatus(err, http.StatusNotFound):
@@ -294,14 +303,14 @@ func (m *mailboxCalendar) create(ctx context.Context, s mailboxSession, target s
 	err := m.withValidationWindow(ctx, s.q, now, func() error {
 		// noRetry: a 5xx may have made the subscription, which the next
 		// create's 409 clears; and the body carries the clientState.
-		return m.client.post(ctx, s.cred, "/subscriptions", body, &answer, noRetry)
+		return m.client.postAs(ctx, s.src, "/subscriptions", body, &answer, noRetry)
 	})
 	g, refused := asGraphError(err)
 	switch {
 	case err == nil:
 	case refused && g.Status == http.StatusBadRequest && g.Validation && !mailboxGone(g):
 		m.client.logger.WarnContext(ctx, "entra: Microsoft could not reach the change notifications' webhook; no subscription is made for an hour",
-			"tenant", s.cred.tenantID.String())
+			"tenant", s.tenantID.String())
 		if err := s.q.SetNotificationsUnreachable(ctx, &now); err != nil {
 			return fmt.Errorf("entra: record the webhook unreachable: %w", err)
 		}
@@ -316,7 +325,7 @@ func (m *mailboxCalendar) create(ctx context.Context, s mailboxSession, target s
 		}
 		if foreign {
 			m.client.logger.WarnContext(ctx, "entra: another installation's subscription holds a mailbox's changes; it is not watched for a day",
-				"tenant", s.cred.tenantID.String())
+				"tenant", s.tenantID.String())
 			if err := s.q.SetMailboxSubscriptionState(ctx, store.SetMailboxSubscriptionStateParams{
 				State: subscriptionConflict, Now: m.client.now(), ObjectID: s.oid,
 			}); err != nil {
@@ -387,7 +396,7 @@ func (m *mailboxCalendar) clearConflict(ctx context.Context, s mailboxSession, t
 			Value    []graphSubscription `json:"value"`
 			NextLink string              `json:"@odata.nextLink"`
 		}
-		if err := m.client.get(ctx, s.cred, path, &answer, noWords); err != nil {
+		if err := m.client.getAs(ctx, s.src, path, &answer, noWords); err != nil {
 			return false, mailboxRefusal(err)
 		}
 		for _, sub := range answer.Value {
@@ -408,7 +417,7 @@ func (m *mailboxCalendar) clearConflict(ctx context.Context, s mailboxSession, t
 		}
 	}
 	for _, id := range ours {
-		if err := m.client.del(ctx, s.cred, subscriptionPath(id), noWords); err != nil && !isStatus(err, http.StatusNotFound) {
+		if err := m.client.delAs(ctx, s.src, subscriptionPath(id), noWords); err != nil && !isStatus(err, http.StatusNotFound) {
 			return false, mailboxRefusal(err)
 		}
 	}
@@ -424,9 +433,11 @@ func (m *mailboxCalendar) clearConflict(ctx context.Context, s mailboxSession, t
 // cleanup, ErrMailboxUnavailable otherwise. The account is not checked: the
 // row is the module's own, made by a Watch that checked it, and a deleted
 // account's subscription is still the module's to remove. DELETE
-// /subscriptions/{id}: 204 or 404 forget the row; anything else marks it
-// deleting and answers the error, through mailboxRefusal — the delete stays
-// owed.
+// /subscriptions/{id} on the person's token, asked for as a removal: 204 or
+// 404 forget the row, and so does a connection that holds no token for it
+// (closing with none, or gone) — Graph drops a subscription whose creator's
+// grant ended, and nothing could delete it; anything else marks it deleting
+// and answers the error, through mailboxRefusal — the delete stays owed.
 func (m *mailboxCalendar) Unwatch(ctx context.Context, mailbox string) error {
 	oid, ok := objectID(mailbox)
 	if !ok {
@@ -451,19 +462,24 @@ func (m *mailboxCalendar) Unwatch(ctx context.Context, mailbox string) error {
 	if !ok {
 		return fmt.Errorf("%w: a stored subscription id that is no GUID", errTenantUnreachable)
 	}
-	st, err := m.Status(ctx)
+	conn, st, err := m.state(ctx)
 	if err != nil {
 		return err
 	}
 	if st.State != contracts.MailboxAvailable && st.State != contracts.MailboxCleanup {
 		return fmt.Errorf("entra: the mailbox provider is %s (%s): %w", st.State, st.Reason, contracts.ErrMailboxUnavailable)
 	}
-	s := mailboxSession{q: q, oid: oid, cleanup: st.State == contracts.MailboxCleanup}
-	if err := m.withCredential(ctx, &s); err != nil {
-		return err
-	}
-	err = m.client.del(ctx, s.cred, subscriptionPath(sid), noWords)
-	if err == nil || isStatus(err, http.StatusNotFound) {
+	s := sessionOf(q, oid, conn, st)
+	m.withToken(&s, true)
+	err = m.client.delAs(ctx, s.src, subscriptionPath(sid), noWords)
+	switch {
+	case err == nil, isStatus(err, http.StatusNotFound):
+		return forget()
+	case errors.Is(err, errNoRemovalToken):
+		// No connection can delete it: Graph drops a subscription whose
+		// creator's grant ended, and its notifications would name no row.
+		m.client.logger.InfoContext(ctx, "entra: a mailbox's subscription is forgotten; no Outlook connection holds a token to delete it",
+			"object_id", oid.String())
 		return forget()
 	}
 	if serr := q.SetMailboxSubscriptionState(ctx, store.SetMailboxSubscriptionStateParams{

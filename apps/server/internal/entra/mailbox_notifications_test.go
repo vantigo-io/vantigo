@@ -245,7 +245,7 @@ func TestMailboxWatch_Renews(t *testing.T) {
 }
 
 // A create answered 409 — Graph holds this application's subscription on
-// the mailbox, its row lost — lists the subscriptions page by page, deletes
+// the mailbox, its row lost — lists the person's subscriptions page by page, deletes
 // this installation's on that mailbox (the resource in any case and form)
 // and creates once more; another mailbox's is kept. One on the mailbox with
 // another installation's URL is never deleted, and the create then fails.
@@ -267,7 +267,8 @@ func TestMailboxWatch_Conflict(t *testing.T) {
 	if err := p.Watch(ctx, mailbox); err != nil {
 		t.Fatalf("Watch: %v", err)
 	}
-	want := "POST Conflict,GET OK,GET OK,GET OK,DELETE No Content,POST Created"
+	// The person's token lists their own subscriptions alone: one page.
+	want := "POST Conflict,GET OK,DELETE No Content,POST Created"
 	if got := strings.Join(methods(subscriptionCalls(g.Calls())), ","); got != want {
 		t.Errorf("calls: %s, want %s", got, want)
 	}
@@ -480,7 +481,9 @@ func TestMailboxWatch_Refusals(t *testing.T) {
 	p := mailboxProvider(h)
 	denied := mailboxUser(t, h, g, func(u *graphtest.User) { u.MailboxDenied = true })
 	noMailbox := mailboxUser(t, h, g, func(u *graphtest.User) { u.NoMailbox = true })
-	missing := addAccount(t, h, "E900", "gone@nordlys.no").String()
+	missingID := addAccount(t, h, "E900", "gone@nordlys.no")
+	connectMailbox(t, h, missingID, "gone@nordlys.no")
+	missing := missingID.String()
 	stranger := "6a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
 	for name, c := range map[string]struct {
 		mailbox string
@@ -524,8 +527,9 @@ func TestMailboxWatch_Refusals(t *testing.T) {
 // called; a live subscription is deleted (204) and its row forgotten, as is
 // one Graph no longer holds (404); one past its expiry is forgotten with
 // nothing called; a 403 keeps the row deleting and answers ErrMailboxDenied,
-// and the next Unwatch deletes it. Allowed under cleanup; while unavailable
-// an expired row is still forgotten and a live one refused.
+// and the next Unwatch deletes it. Allowed under cleanup, on the person's
+// closed connection; while unavailable an expired row is still forgotten
+// and a live one refused.
 func TestMailboxUnwatch(t *testing.T) {
 	ctx := context.Background()
 	h, g, _ := newNoticesHarness(t)
@@ -594,7 +598,10 @@ func TestMailboxUnwatch(t *testing.T) {
 	unwatch("DELETE No Content")
 
 	// Unavailable: an expired row forgotten unasked, a live one refused.
+	// The switch back on, the person connects again (the switch's turning
+	// off closed their connection).
 	setOutlookConnect(t, o, true)
+	reconnectMailbox(t, h, mailbox)
 	watch()
 	h.Exec(t, `UPDATE entra.credentials SET revoked_at = $1`, h.Now())
 	before := len(g.Calls())

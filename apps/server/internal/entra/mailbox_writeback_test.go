@@ -304,7 +304,9 @@ func TestMailboxWriteBack_Refusals(t *testing.T) {
 	p := mailboxProvider(h)
 	denied := mailboxUser(t, h, g, func(u *graphtest.User) { u.MailboxDenied = true })
 	noMailbox := mailboxUser(t, h, g, func(u *graphtest.User) { u.NoMailbox = true })
-	missing := addAccount(t, h, "E900", "gone@nordlys.no").String()
+	missingID := addAccount(t, h, "E900", "gone@nordlys.no")
+	connectMailbox(t, h, missingID, "gone@nordlys.no")
+	missing := missingID.String()
 	stranger := uuid.New()
 	g.AddUser(graphtest.User{ID: stranger.String(), UserPrincipalName: "stranger@nordlys.no", AccountEnabled: true})
 

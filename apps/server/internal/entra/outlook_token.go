@@ -34,9 +34,9 @@ import (
 // row alone. A Graph call's continuous access evaluation claims challenge
 // moves the row to reconnect with sign_in_again (delegatedSource).
 //
-// Nothing calls it in production until delivery B wires it into the
-// mailbox calls; the calendar runs on the application permission until
-// then. Nothing here logs, audits or answers a token, a code or the secret.
+// Every call of the mailbox calendar reaches it, through mailbox.go's
+// mailboxSource. Nothing here logs, audits or answers a token, a code or
+// the secret.
 
 // needsPerson is a call the person's connection cannot serve until they
 // connect again, as the contract answers it: reason is not_connected,

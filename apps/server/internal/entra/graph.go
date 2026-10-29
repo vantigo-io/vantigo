@@ -404,6 +404,16 @@ func (c *graphClient) getAs(ctx context.Context, src tokenSource, path string, i
 	return c.doAs(ctx, src, http.MethodGet, path, nil, into, opts...)
 }
 
+// postAs is post with src's token.
+func (c *graphClient) postAs(ctx context.Context, src tokenSource, path string, body, into any, opts ...callOption) error {
+	return c.doAs(ctx, src, http.MethodPost, path, body, into, opts...)
+}
+
+// delAs is del with src's token.
+func (c *graphClient) delAs(ctx context.Context, src tokenSource, path string, opts ...callOption) error {
+	return c.doAs(ctx, src, http.MethodDelete, path, nil, nil, opts...)
+}
+
 // payload is a request's body: the bytes and their media type.
 type payload struct {
 	data        []byte
