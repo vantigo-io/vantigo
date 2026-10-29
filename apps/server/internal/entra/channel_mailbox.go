@@ -387,3 +387,15 @@ func (m *channelMailbox) dropDraft(ctx context.Context, cred graphCredential, pa
 			"tenant", cred.tenantID.String(), "error", err.Error())
 	}
 }
+
+// Delta is not built yet: task 3 of delivery D replaces it in the same pull
+// request (docs/superpowers/plans/2026-10-29-communications-m365-inbound.md).
+func (m *channelMailbox) Delta(context.Context, string, string, string, time.Time) (contracts.MailDelta, error) {
+	return contracts.MailDelta{}, errors.New("entra: not built yet")
+}
+
+// Raw is not built yet: task 3 of delivery D replaces it in the same pull
+// request.
+func (m *channelMailbox) Raw(context.Context, string, string, int64) ([]byte, error) {
+	return nil, errors.New("entra: not built yet")
+}

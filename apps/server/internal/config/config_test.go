@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -93,6 +94,28 @@ func TestLoad_CommunicationsRetention(t *testing.T) {
 	} {
 		if msg := loadError(t, with(validEnv(), bad[0], bad[1])); !strings.Contains(msg, bad[0]) {
 			t.Errorf("%s=%q: error %q does not name the field", bad[0], bad[1], msg)
+		}
+	}
+}
+
+// TestLoad_CommunicationsInboundMaxBytes pins the largest inbound message
+// the mailbox sync imports (COMMUNICATIONS_INBOUND_MAX_BYTES, delivery D's
+// reading 24): 25 MiB by default, bounded to [1 MiB, 150 MiB] — Graph's
+// attachment ceiling —, and a value outside the bounds or not a number is a
+// startup error that names the variable.
+func TestLoad_CommunicationsInboundMaxBytes(t *testing.T) {
+	if got := mustLoad(t, validEnv()).CommunicationsInboundMaxBytes; got != 25*1024*1024 {
+		t.Errorf("CommunicationsInboundMaxBytes = %d, want 25 MiB", got)
+	}
+	for _, edge := range []int64{1024 * 1024, 150 * 1024 * 1024} {
+		cfg := mustLoad(t, with(validEnv(), "COMMUNICATIONS_INBOUND_MAX_BYTES", strconv.FormatInt(edge, 10)))
+		if cfg.CommunicationsInboundMaxBytes != edge {
+			t.Errorf("CommunicationsInboundMaxBytes = %d, want %d", cfg.CommunicationsInboundMaxBytes, edge)
+		}
+	}
+	for _, bad := range []string{"1048575", "157286401", "25MiB", "-1"} {
+		if msg := loadError(t, with(validEnv(), "COMMUNICATIONS_INBOUND_MAX_BYTES", bad)); !strings.Contains(msg, "COMMUNICATIONS_INBOUND_MAX_BYTES") {
+			t.Errorf("COMMUNICATIONS_INBOUND_MAX_BYTES=%q: error %q does not name the field", bad, msg)
 		}
 	}
 }

@@ -3,25 +3,27 @@ package contracts
 import (
 	"context"
 	"errors"
+	"time"
 )
 
 // ChannelMailbox is a provider's mailboxes as Communications' channels use them
 // (Outlook connection design M11, rule 15): Entra's Exchange Online shared
 // mailboxes today. Communications is the authority on which mailboxes are
-// channels; the provider writes only to a mailbox Check resolved. Key, DisplayName,
-// Status and MaxMessage make no network call; Check, Forget and Send do, and are
-// never called inside a transaction. A single-provider slot.
+// channels; the provider writes to, and reads from, only a mailbox Check
+// resolved. Key, DisplayName, Status and MaxMessage make no network call;
+// Check, Forget, Send, Delta and Raw do, and are never called inside a
+// transaction. A single-provider slot.
 //
 // A module fills it through module.Module.ChannelMailbox, and Compose and
 // Workers resolve the enabled module's into module.Deps.ChannelMailbox,
 // refusing two. A channel names its provider by Key and its mailbox by the
 // object id Check answered. The errors are MailboxCalendar's —
-// ErrMailboxUnavailable, ErrMailboxUnknown, ErrMailboxDenied, ErrMailboxGone —
-// ErrMailTooLarge and ErrBccUnsupported; anything else is a failure to retry,
-// never an answer.
+// ErrMailboxUnavailable, ErrMailboxUnknown, ErrMailboxDenied, ErrMailboxGone,
+// and ErrMailboxDeltaExpired for Delta —, ErrMailTooLarge, ErrBccUnsupported
+// and ErrMailItemGone; anything else is a failure to retry, never an answer.
 //
-// It declares only what Communications calls today; the inbound reads and
-// the notices arrive with the deliveries that call them.
+// It declares only what Communications calls today; the notices arrive with
+// the delivery that calls them.
 type ChannelMailbox interface {
 	// Key is the provider's key — a channel's provider value, "entra" —
 	// answered with no context and no network.
@@ -64,7 +66,43 @@ type ChannelMailbox interface {
 	// a failure after the provider took the message may send it again on a
 	// retry: at least once, as SMTP.
 	Send(ctx context.Context, mailbox string, mime []byte, bcc []string) error
+
+	// Delta reads one page of the changes to folder ("inbox") of mailbox, a
+	// mailbox Check recorded: link "" starts afresh with the messages
+	// received at or after since; any other link is one an earlier page
+	// answered. Items are at most MailDeltaPageMax, in no promised order.
+	// ErrMailboxDeltaExpired when the provider no longer takes link; the
+	// errors of Send otherwise. No message content is read.
+	Delta(ctx context.Context, mailbox, folder, link string, since time.Time) (MailDelta, error)
+
+	// Raw answers the message whole, as RFC 5322 bytes, at most max of them:
+	// ErrMailTooLarge above, ErrMailItemGone when the message is no longer
+	// there; the errors of Send otherwise.
+	Raw(ctx context.Context, mailbox, messageID string, max int64) ([]byte, error)
 }
+
+// MailDelta is one page Delta answered.
+type MailDelta struct {
+	Items []MailItem
+	Link  string // with Done the delta link to keep; else the next page's
+	Done  bool
+}
+
+// MailItem is one message a Delta page names; no content of it.
+type MailItem struct {
+	ID             string    // the provider's immutable id; opaque
+	ReceivedAt     time.Time // UTC
+	MessageID      string    // the Internet Message-Id as the provider answers it, "" if none
+	ConversationID string    // the provider's thread id; opaque, "" if none
+	Removed        bool      // gone from the folder: ID alone is set
+}
+
+// MailDeltaPageMax is the most items one Delta page holds.
+const MailDeltaPageMax = 50
+
+// ErrMailItemGone: the message Raw was asked for is no longer in the mailbox
+// — deleted or moved between the delta and the read. Terminal for the message.
+var ErrMailItemGone = errors.New("contracts: the mail item is gone")
 
 // ChannelMailboxInfo is the mailbox Check resolved.
 type ChannelMailboxInfo struct {

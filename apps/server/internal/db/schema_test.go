@@ -1260,7 +1260,8 @@ func TestConsumptionIntervals_EnsurePartitionCreatesMonthlyPartition(t *testing.
 // it should: exactly the 19 tables the keep/drop verdict leaves (the
 // inventory's 21 entities minus inbound_receipts and inbound_email_jobs,
 // communications inventory §7, §9) and no tenant_id column anywhere in the
-// schema.
+// schema. The up runs to the head, so the list also holds the two tables
+// 00092_communications_inbound.sql adds back in its own shape.
 func TestCommunicationsBaseline_AppliesAndIsIdempotent(t *testing.T) {
 	url := testdb.URL(t)
 	applyUpDownUp(t, url, 6) // 00006_communications_baseline.sql
@@ -1277,6 +1278,7 @@ func TestCommunicationsBaseline_AppliesAndIsIdempotent(t *testing.T) {
 		"attachment_cleanup_records",
 		"attachment_uploads",
 		"channel_credentials",
+		"channel_sync", // 00092's
 		"channels",
 		"conversation_customer_candidates",
 		"conversation_messages",
@@ -1285,6 +1287,7 @@ func TestCommunicationsBaseline_AppliesAndIsIdempotent(t *testing.T) {
 		"conversation_tags",
 		"conversations",
 		"idempotency_records",
+		"inbound_receipts", // 00092's
 		"message_attachments",
 		"message_deliveries",
 		"message_events",

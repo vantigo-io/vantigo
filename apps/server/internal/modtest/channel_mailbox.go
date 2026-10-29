@@ -2,9 +2,12 @@ package modtest
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"slices"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 )
@@ -25,6 +28,19 @@ import (
 // available. Every call but Key, DisplayName and MaxMessage — which make no
 // network call — is recorded in Calls.
 //
+// Each mailbox has an Inbox AddInbox fills and RemoveInbox empties. Delta
+// reads it as Entra's would: a fresh read (link "") answers the messages in
+// it received at or after since, then each link answers the changes since —
+// added or changed messages whatever their received time, removed ones as
+// Removed —, SetDeltaPage's number at a time (MailDeltaPageMax until then),
+// in the order they were made, a message changed twice once. Its links are
+// opaque strings it issues; ExpireDelta makes every link of a mailbox issued
+// so far answer ErrMailboxDeltaExpired, and a link it never issued, or issued
+// for another mailbox, is refused. Raw answers a message's bytes, refusing
+// one larger than max with ErrMailTooLarge and one not in the Inbox with
+// ErrMailItemGone. Both refuse a mailbox Send would not take, and answer
+// ErrMailboxUnavailable while the provider is not available.
+//
 // It is safe for concurrent use: the outbox calls it from its own goroutine
 // while a test reads it.
 type FakeChannelMailbox struct {
@@ -38,6 +54,35 @@ type FakeChannelMailbox struct {
 	sent       []FakeSend
 	forgotten  []string
 	calls      []ChannelMailboxCall
+
+	inbox     map[string]*fakeInbox // by mailbox
+	links     map[string]fakeMailDeltaLink
+	deltaPage int
+	issued    int // links issued, for their names
+}
+
+// fakeInbox is one mailbox's Inbox: its messages now, and the log of every
+// change, for the delta.
+type fakeInbox struct {
+	messages   map[string]fakeInboxMessage // by id
+	log        []contracts.MailItem        // each change, in order; Removed for a removal
+	generation int                         // ExpireDelta's
+}
+
+type fakeInboxMessage struct {
+	item contracts.MailItem
+	raw  []byte
+}
+
+// fakeMailDeltaLink is what a link the fake issued stands for: the items still
+// to answer and the log's length once they are, or (pending nil, delta true)
+// the changes after a point of the log.
+type fakeMailDeltaLink struct {
+	mailbox    string
+	generation int
+	pending    []contracts.MailItem
+	at         int // the log's length the link reads on from
+	delta      bool
 }
 
 // FakeSend is one message a FakeChannelMailbox sent: the mailbox, a copy of
@@ -49,9 +94,14 @@ type FakeSend struct {
 }
 
 // ChannelMailboxCall is one call a FakeChannelMailbox recorded: the method,
-// the mailbox Forget or Send named, the address Check was given.
+// the mailbox Forget, Send, Delta or Raw named, the address Check was given;
+// Delta's folder, link and since; Raw's message id and max.
 type ChannelMailboxCall struct {
 	Method, Mailbox, Address string
+	Folder, Link             string
+	Since                    time.Time
+	MessageID                string
+	Max                      int64
 }
 
 var _ contracts.ChannelMailbox = (*FakeChannelMailbox)(nil)
@@ -70,6 +120,9 @@ func NewFakeChannelMailbox() *FakeChannelMailbox {
 		byAddress:  map[string]contracts.ChannelMailboxInfo{},
 		known:      map[string]bool{},
 		fail:       map[string]error{},
+		inbox:      map[string]*fakeInbox{},
+		links:      map[string]fakeMailDeltaLink{},
+		deltaPage:  contracts.MailDeltaPageMax,
 	}
 }
 
@@ -111,7 +164,7 @@ func (f *FakeChannelMailbox) SetMaxMessage(n int64) {
 }
 
 // FailWith makes every later call of method ("Status", "Check", "Forget",
-// "Send") answer err, or (err nil) clears it. A call refused so changes
+// "Send", "Delta", "Raw") answer err, or (err nil) clears it. A call refused so changes
 // nothing: a Send sends nothing, a Forget forgets nothing.
 func (f *FakeChannelMailbox) FailWith(method string, err error) {
 	f.mu.Lock()
@@ -226,4 +279,154 @@ func (f *FakeChannelMailbox) Send(_ context.Context, mailbox string, mime []byte
 	}
 	f.sent = append(f.sent, FakeSend{Mailbox: mailbox, MIME: slices.Clone(mime), Bcc: slices.Clone(bcc)})
 	return nil
+}
+
+// AddInbox puts a message in mailbox's Inbox — item.ID its id, raw its bytes
+// —, or changes the one with that id, so the next Delta answers it.
+// item.Removed is ignored and ReceivedAt kept in UTC.
+func (f *FakeChannelMailbox) AddInbox(mailbox string, item contracts.MailItem, raw []byte) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	item.Removed = false
+	item.ReceivedAt = item.ReceivedAt.UTC()
+	in := f.inboxOf(mailbox)
+	in.messages[item.ID] = fakeInboxMessage{item: item, raw: slices.Clone(raw)}
+	in.log = append(in.log, item)
+}
+
+// RemoveInbox takes message id out of mailbox's Inbox: the next Delta
+// answers it Removed, and Raw ErrMailItemGone.
+func (f *FakeChannelMailbox) RemoveInbox(mailbox, id string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	in := f.inboxOf(mailbox)
+	if _, ok := in.messages[id]; !ok {
+		return
+	}
+	delete(in.messages, id)
+	in.log = append(in.log, contracts.MailItem{ID: id, Removed: true})
+}
+
+// ExpireDelta makes every link Delta issued for mailbox so far answer
+// contracts.ErrMailboxDeltaExpired; a fresh read starts anew.
+func (f *FakeChannelMailbox) ExpireDelta(mailbox string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.inboxOf(mailbox).generation++
+}
+
+// SetDeltaPage sets the most items one Delta page answers,
+// contracts.MailDeltaPageMax until then.
+func (f *FakeChannelMailbox) SetDeltaPage(n int) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.deltaPage = n
+}
+
+// inboxOf answers mailbox's Inbox, made empty on first use; f.mu held.
+func (f *FakeChannelMailbox) inboxOf(mailbox string) *fakeInbox {
+	in, ok := f.inbox[mailbox]
+	if !ok {
+		in = &fakeInbox{messages: map[string]fakeInboxMessage{}}
+		f.inbox[mailbox] = in
+	}
+	return in
+}
+
+// readable answers why mailbox may not be read, or nil; f.mu held.
+func (f *FakeChannelMailbox) readable(method, mailbox string) error {
+	if err := f.fail[method]; err != nil {
+		return err
+	}
+	if !f.known[mailbox] {
+		return contracts.ErrMailboxUnknown
+	}
+	if f.status.State != contracts.MailboxAvailable {
+		return contracts.ErrMailboxUnavailable
+	}
+	return nil
+}
+
+// Delta answers one page of the Inbox's changes, as the type's comment says.
+func (f *FakeChannelMailbox) Delta(_ context.Context, mailbox, folder, link string, since time.Time) (contracts.MailDelta, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.calls = append(f.calls, ChannelMailboxCall{Method: "Delta", Mailbox: mailbox, Folder: folder, Link: link, Since: since})
+	if err := f.readable("Delta", mailbox); err != nil {
+		return contracts.MailDelta{}, err
+	}
+	if folder != "inbox" {
+		return contracts.MailDelta{}, fmt.Errorf("modtest: the fake channel mailbox reads only the inbox, not %q", folder)
+	}
+	in := f.inboxOf(mailbox)
+	var state fakeMailDeltaLink
+	if link == "" {
+		state = fakeMailDeltaLink{mailbox: mailbox, generation: in.generation, at: len(in.log)}
+		for _, change := range latestChanges(in.log) {
+			if !change.Removed && !change.ReceivedAt.Before(since) {
+				state.pending = append(state.pending, change)
+			}
+		}
+	} else {
+		known, ok := f.links[link]
+		if !ok || known.mailbox != mailbox {
+			return contracts.MailDelta{}, errors.New("modtest: not a delta link of this mailbox")
+		}
+		if known.generation != in.generation {
+			return contracts.MailDelta{}, contracts.ErrMailboxDeltaExpired
+		}
+		state = known
+		if state.delta {
+			state = fakeMailDeltaLink{mailbox: mailbox, generation: in.generation, at: len(in.log),
+				pending: latestChanges(in.log[known.at:])}
+		}
+	}
+
+	n := min(f.deltaPage, len(state.pending))
+	page := contracts.MailDelta{Items: slices.Clone(state.pending[:n])}
+	next := fakeMailDeltaLink{mailbox: mailbox, generation: state.generation, at: state.at}
+	if rest := state.pending[n:]; len(rest) > 0 {
+		next.pending = slices.Clone(rest)
+	} else {
+		next.delta = true
+		page.Done = true
+	}
+	f.issued++
+	page.Link = fmt.Sprintf("fake-delta-%d", f.issued)
+	f.links[page.Link] = next
+	return page, nil
+}
+
+// latestChanges answers each id's last change in changes, in the order of
+// those last changes.
+func latestChanges(changes []contracts.MailItem) []contracts.MailItem {
+	last := map[string]int{}
+	for i, c := range changes {
+		last[c.ID] = i
+	}
+	var out []contracts.MailItem
+	for i, c := range changes {
+		if last[c.ID] == i {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+// Raw answers a copy of the message's bytes, as the type's comment says.
+func (f *FakeChannelMailbox) Raw(_ context.Context, mailbox, messageID string, max int64) ([]byte, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.calls = append(f.calls, ChannelMailboxCall{Method: "Raw", Mailbox: mailbox, MessageID: messageID, Max: max})
+	if err := f.readable("Raw", mailbox); err != nil {
+		return nil, err
+	}
+	m, ok := f.inboxOf(mailbox).messages[messageID]
+	if !ok {
+		return nil, contracts.ErrMailItemGone
+	}
+	if int64(len(m.raw)) > max {
+		return nil, contracts.ErrMailTooLarge
+	}
+	return slices.Clone(m.raw), nil
 }
