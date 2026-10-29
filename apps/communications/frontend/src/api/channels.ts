@@ -18,6 +18,14 @@ export type Channel = {
     useSsl: boolean | null;
     username: string | null;
   } | null;
+  /** A Microsoft 365 channel's receive state; null for SMTP, which only sends. */
+  sync?: ChannelSync | null;
+};
+export type ChannelSync = {
+  state: "pending" | "active" | "failed" | "stopped" | (string & {});
+  /** The code of the last failure: mailbox_denied, mailbox_gone, mailbox_unknown, sync_failed, provider_unavailable. */
+  error: string | null;
+  lastSyncedAt: string | null;
 };
 export type ChannelProvider = {
   key: string;

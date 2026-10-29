@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   fetchConversation: vi.fn(),
   replyToConversation: vi.fn(),
   stageConversationAttachment: vi.fn(),
+  fetchInlineImage: vi.fn(),
   navigate: vi.fn(),
   search: {} as Record<string, unknown>,
   editorText: "",
@@ -77,37 +78,44 @@ const detail = (id: string, subject: string) => ({
   replyRecipients: { canReply: true, canReplyAll: false, replyTo: participant.address, replyAllCc: [] },
 });
 
-vi.mock("../api/conversations", () => ({
-  conversationsQueryOptions: (filters: Record<string, unknown> = {}) => ({
-    queryKey: ["conversations", filters],
-    queryFn: () => mocks.fetchConversations(filters),
-  }),
-  conversationQueryOptions: (id: string) => ({
-    queryKey: ["conversation", id],
-    queryFn: () => mocks.fetchConversation(id),
-    enabled: Boolean(id),
-  }),
-  tagsQueryOptions: () => ({
-    queryKey: ["communication-tags"],
-    queryFn: () => Promise.resolve([{ id: "tag-1", name: "Billing", color: null }]),
-  }),
-  replyToConversation: mocks.replyToConversation,
-  markConversationRead: vi.fn().mockResolvedValue(undefined),
-  updateConversation: vi.fn().mockResolvedValue(undefined),
-  addConversationNote: vi.fn().mockResolvedValue(undefined),
-  addTag: vi.fn().mockResolvedValue(undefined),
-  removeTag: vi.fn().mockResolvedValue(undefined),
-  draftConversationWithAi: vi.fn().mockResolvedValue({ text: "Draft reply" }),
-  suggestConversationCustomerWithAi: vi.fn().mockResolvedValue({}),
-  attachmentDownloadUrl: (path: string) => path,
-  attachmentUploadStatusQueryOptions: (conversationId: string, attachmentId: string) => ({
-    queryKey: ["conversation-attachment-upload", conversationId, attachmentId],
-    queryFn: () => Promise.resolve(undefined),
-    enabled: false,
-  }),
-  stageConversationAttachment: mocks.stageConversationAttachment,
-  safeHtmlSrcDoc: (html: string) => html,
-}));
+vi.mock("../api/conversations", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../api/conversations")>();
+  return {
+    conversationsQueryOptions: (filters: Record<string, unknown> = {}) => ({
+      queryKey: ["conversations", filters],
+      queryFn: () => mocks.fetchConversations(filters),
+    }),
+    conversationQueryOptions: (id: string) => ({
+      queryKey: ["conversation", id],
+      queryFn: () => mocks.fetchConversation(id),
+      enabled: Boolean(id),
+    }),
+    tagsQueryOptions: () => ({
+      queryKey: ["communication-tags"],
+      queryFn: () => Promise.resolve([{ id: "tag-1", name: "Billing", color: null }]),
+    }),
+    replyToConversation: mocks.replyToConversation,
+    markConversationRead: vi.fn().mockResolvedValue(undefined),
+    updateConversation: vi.fn().mockResolvedValue(undefined),
+    addConversationNote: vi.fn().mockResolvedValue(undefined),
+    addTag: vi.fn().mockResolvedValue(undefined),
+    removeTag: vi.fn().mockResolvedValue(undefined),
+    draftConversationWithAi: vi.fn().mockResolvedValue({ text: "Draft reply" }),
+    suggestConversationCustomerWithAi: vi.fn().mockResolvedValue({}),
+    attachmentDownloadUrl: (path: string) => path,
+    attachmentUploadStatusQueryOptions: (conversationId: string, attachmentId: string) => ({
+      queryKey: ["conversation-attachment-upload", conversationId, attachmentId],
+      queryFn: () => Promise.resolve(undefined),
+      enabled: false,
+    }),
+    stageConversationAttachment: mocks.stageConversationAttachment,
+    safeHtmlSrcDoc: (html: string) => html,
+    rawMessageDownloadUrl: (path: string) => path,
+    // The real substitution, over a fetch the test answers.
+    inlineImages: (html: string, attachments: Parameters<typeof actual.inlineImages>[1]) =>
+      actual.inlineImages(html, attachments, mocks.fetchInlineImage),
+  };
+});
 
 vi.mock("@mantine/tiptap", () => {
   const Wrapper = ({ children }: { children?: ReactNode }) => <div>{children}</div>;
@@ -158,6 +166,7 @@ beforeEach(() => {
   mocks.fetchConversation.mockReset();
   mocks.replyToConversation.mockReset().mockResolvedValue({ conversationId: "c-1", messageId: "m-2", status: "sent" });
   mocks.stageConversationAttachment.mockReset();
+  mocks.fetchInlineImage.mockReset().mockResolvedValue(null);
   mocks.navigate.mockReset();
   mocks.search = {};
   mocks.editorText = "";
@@ -375,6 +384,163 @@ describe("inbox", () => {
       expect(await screen.findByText("Vedlegget er større enn denne kanalen kan sende (omtrent 2,1 MB).")).toBeTruthy();
       fireEvent.click(screen.getByRole("button", { name: "Send svar" }));
       expect(await screen.findByText("Meldingen og vedleggene er større enn denne kanalen kan sende.")).toBeTruthy();
+    });
+  });
+
+  describe("receiving", () => {
+    const attachment = (overrides: Record<string, unknown> = {}) => ({
+      id: "a-1",
+      fileName: "report.pdf",
+      contentType: "application/pdf",
+      sizeBytes: 1200,
+      contentId: null,
+      scanStatus: "unscanned",
+      isInline: false,
+      createdAt: "2026-01-01T00:00:00Z",
+      downloadAvailable: true,
+      downloadPath: "/api/v1/communications/attachments/a-1/download",
+      ...overrides,
+    });
+    const inbound = (overrides: Record<string, unknown> = {}) => ({
+      ...detail("c-1", "Question").messages[0],
+      autoSubmitted: false,
+      unreadable: false,
+      rawDownloadPath: "/api/v1/communications/messages/m-1/raw",
+      ...overrides,
+    });
+    const open = async (
+      messages: unknown[],
+      replyRecipients: unknown = { canReply: true, canReplyAll: false, replyTo: participant.address, replyAllCc: [] },
+    ) => {
+      const item = conversation("c-1", "Question");
+      mocks.fetchConversations.mockResolvedValue(page([item]));
+      mocks.fetchConversation.mockResolvedValue({ ...detail(item.id, item.subject), messages, replyRecipients });
+      renderPage();
+      await screen.findByRole("heading", { name: "Question" });
+    };
+    const frame = () => document.querySelector<HTMLIFrameElement>("iframe.message-html");
+
+    it("shows an inbound message's HTML even with a text body, and the text on Show as text", async () => {
+      await open([inbound({ textBody: "Plain words", htmlBody: "<p>Formatted <b>words</b></p>" })]);
+      await waitFor(() => expect(frame()?.getAttribute("srcdoc")).toContain("<b>words</b>"));
+      expect(frame()).toHaveAttribute("sandbox", "");
+      expect(screen.queryByText("Plain words")).toBeNull();
+
+      fireEvent.click(screen.getByRole("button", { name: "Show as text" }));
+      expect(screen.getByText("Plain words")).toBeTruthy();
+      expect(frame()).toBeNull();
+      fireEvent.click(screen.getByRole("button", { name: "Show formatted" }));
+      expect(frame()).toBeTruthy();
+    });
+
+    it("shows the text without a toggle when the message has no HTML", async () => {
+      await open([inbound()]);
+      expect(await screen.findByText("Could you help me with this?")).toBeTruthy();
+      expect(screen.queryByRole("button", { name: "Show as text" })).toBeNull();
+      expect(frame()).toBeNull();
+    });
+
+    it("turns the message's own inline image into a data: URI and fetches nothing else", async () => {
+      const inline = attachment({
+        id: "img-1",
+        fileName: "logo.png",
+        contentType: "image/png",
+        contentId: "logo@x",
+        isInline: true,
+        downloadPath: "/api/v1/communications/attachments/img-1/download",
+      });
+      const elsewhere = attachment({ id: "img-2", fileName: "other.png", contentType: "image/png", isInline: true });
+      mocks.fetchInlineImage.mockResolvedValue("data:image/png;base64,AAAA");
+      await open([
+        inbound({
+          htmlBody: '<p>Hi</p><img src="/api/v1/communications/attachments/img-1/download" alt="logo">',
+          attachments: [inline, elsewhere],
+        }),
+      ]);
+      await waitFor(() => expect(frame()?.getAttribute("srcdoc")).toContain('src="data:image/png;base64,AAAA"'));
+      expect(frame()?.getAttribute("srcdoc")).not.toContain("/api/v1/communications/attachments/img-1/download");
+      expect(mocks.fetchInlineImage).toHaveBeenCalledTimes(1);
+      expect(mocks.fetchInlineImage).toHaveBeenCalledWith("/api/v1/communications/attachments/img-1/download");
+    });
+
+    it("marks an auto-reply", async () => {
+      await open([inbound({ autoSubmitted: true })]);
+      expect(await screen.findByText("Auto-reply")).toBeTruthy();
+    });
+
+    it("says an unreadable message could not be read and offers its original", async () => {
+      await open([inbound({ unreadable: true, textBody: "Vantigo could not read this message.", htmlBody: null })]);
+      expect(await screen.findByText("Vantigo could not read this message.")).toBeTruthy();
+      expect(screen.getByRole("link", { name: "Download original" })).toHaveAttribute(
+        "href",
+        "/api/v1/communications/messages/m-1/raw",
+      );
+    });
+
+    it("offers every inbound message's original in its menu", async () => {
+      await open([inbound()]);
+      fireEvent.click(await screen.findByRole("button", { name: "Message actions" }));
+      expect(await screen.findByRole("menuitem", { name: "Download original" })).toHaveAttribute(
+        "href",
+        "/api/v1/communications/messages/m-1/raw",
+      );
+    });
+
+    it("offers an unscanned attachment with a warning", async () => {
+      await open([inbound({ attachments: [attachment()] })]);
+      const link = await screen.findByRole("link", { name: "report.pdf" });
+      expect(link).toHaveAttribute("href", "/api/v1/communications/attachments/a-1/download");
+      expect(link).toHaveAttribute("download", "report.pdf");
+      expect(screen.getByText("Not scanned. Open it only if you trust the sender.")).toBeTruthy();
+    });
+
+    it("disables Send reply when there is no message to reply to", async () => {
+      mocks.editorText = "Hello";
+      await open([], { canReply: false, canReplyAll: false, replyTo: null, replyAllCc: [] });
+      expect(screen.getByText("There is no message from the customer to reply to yet.")).toBeTruthy();
+      expect(screen.getByRole("button", { name: "Send reply" })).toBeDisabled();
+    });
+
+    it("replies to all from the latest message's Cc", async () => {
+      mocks.editorText = "Answer for everyone.";
+      const cc = (id: string, address: string) => ({ ...participant, id, address, displayName: null });
+      await open([inbound()], {
+        canReply: true,
+        canReplyAll: true,
+        replyTo: participant.address,
+        replyAllCc: [cc("p-2", "anna@example.com"), cc("p-3", "ola@example.com")],
+      });
+      fireEvent.click(screen.getByRole("combobox", { name: "Reply mode" }));
+      fireEvent.click(await screen.findByRole("option", { name: "Reply all · 3" }));
+      expect(screen.getByText("Replying to customer@example.com and 2 additional recipients")).toBeTruthy();
+      fireEvent.click(screen.getByRole("button", { name: "Send reply" }));
+      await waitFor(() =>
+        expect(mocks.replyToConversation).toHaveBeenCalledWith(
+          "c-1",
+          expect.objectContaining({ replyMode: "reply_all" }),
+          "reply-idempotency-key",
+        ),
+      );
+    });
+
+    it("shows receiving in Norwegian", async () => {
+      setLanguagePreference("nb");
+      await open([
+        inbound({ autoSubmitted: true, htmlBody: "<p>Hei</p>", attachments: [attachment()] }),
+        inbound({ id: "m-2", unreadable: true, htmlBody: null }),
+      ]);
+      expect(await screen.findByText("Autosvar")).toBeTruthy();
+      expect(screen.getByRole("button", { name: "Vis som tekst" })).toBeTruthy();
+      expect(screen.getByText("Vantigo kunne ikke lese denne meldingen.")).toBeTruthy();
+      expect(screen.getByRole("link", { name: "Last ned originalen" })).toBeTruthy();
+      expect(screen.getByText("Ikke skannet. Åpne det bare hvis du stoler på avsenderen.")).toBeTruthy();
+    });
+
+    it("says there is no message to reply to in Norwegian", async () => {
+      setLanguagePreference("nb");
+      await open([], { canReply: false, canReplyAll: false, replyTo: null, replyAllCc: [] });
+      expect(screen.getByText("Det finnes ingen melding fra kunden å svare på ennå.")).toBeTruthy();
+      expect(screen.getByRole("button", { name: "Send svar" })).toBeDisabled();
     });
   });
 });

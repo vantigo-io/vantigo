@@ -241,7 +241,7 @@ export const entraCatalog = {
     changeNotifications_unreachable:
       "Microsoft could not reach the address since {{since}}. Vantigo tries again within the hour; changes arrive at the next sync meanwhile.",
     mailChannels: "Mail channels",
-    mailChannelsSwitch: "Mail channels: let Communications send through Exchange Online shared mailboxes",
+    mailChannelsSwitch: "Mail channels: let Communications send and receive through Exchange Online shared mailboxes",
     mailChannelsDescription:
       "Each shared mailbox becomes a channel in Communications, reached with the application's own access. Grant that access in Exchange Online with the commands below, limited to the channels' mailboxes, not with Mail permissions in the app registration.",
     mailChannelsStatus_ready:
@@ -699,7 +699,7 @@ export const entraCatalog = {
     changeNotifications_unreachable:
       "Microsoft har ikke nådd adressen siden {{since}}. Vantigo prøver igjen innen en time; endringene kommer ved neste synkronisering i mellomtiden.",
     mailChannels: "E-postkanaler",
-    mailChannelsSwitch: "E-postkanaler: la Kommunikasjon sende gjennom delte postbokser i Exchange Online",
+    mailChannelsSwitch: "E-postkanaler: la Kommunikasjon sende og motta gjennom delte postbokser i Exchange Online",
     mailChannelsDescription:
       "Hver delte postboks blir en kanal i Kommunikasjon, og Vantigo når den med applikasjonens egen tilgang. Gi den tilgangen i Exchange Online med kommandoene nedenfor, avgrenset til kanalenes postbokser, og ikke med Mail-tillatelser i appregistreringen.",
     mailChannelsStatus_ready:

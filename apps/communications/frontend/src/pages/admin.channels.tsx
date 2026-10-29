@@ -5,6 +5,7 @@ import { ContentSkeleton, PageHeader, useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import {
   type Channel,
+  type ChannelSync,
   channelProvidersQueryOptions,
   channelsQueryOptions,
   switchChannelProvider,
@@ -13,7 +14,48 @@ import {
 } from "../api/channels";
 import { ChannelForm } from "../components/ChannelForm";
 import { channelErrorMessage } from "../components/channelErrors";
+import { relative } from "../components/conversationHelpers";
 import "../i18n";
+
+const syncErrors = ["mailbox_denied", "mailbox_gone", "mailbox_unknown", "provider_unavailable", "sync_failed"];
+
+/** Whether a channel receives: a Microsoft 365 channel's mailbox sync, by its state and last failure; SMTP sends only. */
+function ReceiveStatus({ sync }: { sync: ChannelSync | null | undefined }) {
+  const { t } = useI18n("communications");
+  if (!sync)
+    return (
+      <Text size="sm" c="dimmed">
+        {t("sendsOnly")}
+      </Text>
+    );
+  const reason = sync.error
+    ? t(`syncError.${syncErrors.includes(sync.error) ? sync.error : "sync_failed"}`)
+    : t("syncError.sync_failed");
+  const label =
+    sync.state === "failed"
+      ? t("sync.failed", { reason })
+      : sync.error
+        ? t("sync.retrying", { reason })
+        : sync.state === "pending"
+          ? t("sync.pending")
+          : sync.state === "stopped"
+            ? t("sync.stopped")
+            : t("sync.active");
+  const color = sync.state === "failed" ? "red" : sync.error ? "orange" : sync.state === "active" ? "teal" : "gray";
+  return (
+    <Stack gap={2}>
+      <Text size="sm" c={color === "gray" ? "dimmed" : color}>
+        {label}
+      </Text>
+      {sync.lastSyncedAt && (
+        <Text size="xs" c="dimmed">
+          {t("lastSynced", { time: relative(sync.lastSyncedAt) })}
+        </Text>
+      )}
+    </Stack>
+  );
+}
+
 export function ChannelsPage() {
   const { t, locale } = useI18n("communications");
   const query = useQuery(channelsQueryOptions());
@@ -76,13 +118,14 @@ export function ChannelsPage() {
         {query.isPending ? (
           <ContentSkeleton rows={4} rowHeight={52} />
         ) : (
-          <Table.ScrollContainer minWidth={650}>
+          <Table.ScrollContainer minWidth={800}>
             <Table highlightOnHover>
               <Table.Thead>
                 <Table.Tr>
                   <Table.Th>{t("address")}</Table.Th>
                   <Table.Th>{t("provider")}</Table.Th>
                   <Table.Th>{t("status")}</Table.Th>
+                  <Table.Th>{t("syncStatus")}</Table.Th>
                   <Table.Th>{t("actions")}</Table.Th>
                 </Table.Tr>
               </Table.Thead>
@@ -105,6 +148,9 @@ export function ChannelsPage() {
                       <Badge color={channel.isActive ? "teal" : "gray"}>
                         {channel.isActive ? t("active") : t("inactive")}
                       </Badge>
+                    </Table.Td>
+                    <Table.Td>
+                      <ReceiveStatus sync={channel.sync} />
                     </Table.Td>
                     <Table.Td>
                       <Group gap="xs">

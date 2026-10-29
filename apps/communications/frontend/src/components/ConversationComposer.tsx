@@ -30,6 +30,8 @@ export function ConversationComposer({ conversation, onSent }: ConversationCompo
   const allowanceMb =
     allowance === null ? "" : formatters.formatNumber(allowance / 1_000_000, { maximumFractionDigits: 1 });
   const [noteMode, setNoteMode] = useState(false);
+  // A reply answers the latest inbound message; with none yet there is no one to send it to.
+  const canReply = conversation.replyRecipients.canReply;
   const [body, setBody] = useState("");
   const [replyMode, setReplyMode] = useState<"reply" | "reply_all">("reply");
   const [uploads, setUploads] = useState<AttachmentUpload[]>([]);
@@ -152,11 +154,13 @@ export function ConversationComposer({ conversation, onSent }: ConversationCompo
         <Text size="xs" c="dimmed" mb="xs">
           {t("replyingTo", { address: conversation.replyRecipients.replyTo })}
           {replyMode === "reply_all"
-            ? t("additionalRecipient", {
-                count: conversation.replyRecipients.replyAllCc.length,
-                suffix: conversation.replyRecipients.replyAllCc.length === 1 ? "" : "s",
-              })
+            ? t("additionalRecipient", { count: conversation.replyRecipients.replyAllCc.length })
             : ""}
+        </Text>
+      )}
+      {!noteMode && !canReply && (
+        <Text size="xs" c="dimmed" mb="xs">
+          {t("noMessageToReplyTo")}
         </Text>
       )}
       <RichTextEditor editor={editor}>
@@ -220,7 +224,11 @@ export function ConversationComposer({ conversation, onSent }: ConversationCompo
         <Button
           leftSection={<IconSend size={15} />}
           loading={send.isPending}
-          disabled={(!editor?.getText() && !body.trim()) || currentUploads.some((file) => !file.ready)}
+          disabled={
+            (!noteMode && !canReply) ||
+            (!editor?.getText() && !body.trim()) ||
+            currentUploads.some((file) => !file.ready)
+          }
           onClick={() => send.mutate()}
         >
           {currentUploads.some((file) => !file.ready)
