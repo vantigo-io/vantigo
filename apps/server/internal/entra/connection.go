@@ -149,10 +149,14 @@ type outlookCounts struct {
 // connection's status and reason, the people's connections, the redirect
 // URI to register and the change notifications' state (calendar Outlook
 // sync design O11.7). In order: off while the switch is; unavailable while
-// the connection is not connected, with its reason; consent_missing while
-// the last validated connect found a feature not consented; ready once
-// someone has connected since the switch was last turned on; untested
-// otherwise.
+// the connection is not connected, with its reason; permission_missing,
+// advisory, while the last test's token lacks Calendars.ReadWrite, the
+// application permission the calendar still syncs with until delivery B
+// (an Exchange RBAC grant never shows there) — before the people's own
+// connects, since the calendar cannot write without it whatever they do;
+// consent_missing while the last validated connect found a feature not
+// consented; ready once someone has connected since the switch was last
+// turned on; untested otherwise.
 func outlookConnectBody(conn store.EntraConnection, status, reason string, counts outlookCounts, notifications gen.EntraCalendarSyncNotifications, redirectURI string) gen.EntraOutlookConnect {
 	body := gen.EntraOutlookConnect{
 		Enabled:       conn.OutlookConnect,
@@ -169,6 +173,8 @@ func outlookConnectBody(conn store.EntraConnection, status, reason string, count
 		if reason != "" {
 			body.Reason = &reason
 		}
+	case !slices.Contains(conn.PermissionsPresent, permissionCalendarsReadWrite):
+		body.Status = gen.EntraOutlookConnectStatusPermissionMissing
 	case conn.OutlookLastError != nil && *conn.OutlookLastError == outlookConsentMissing:
 		body.Status = gen.EntraOutlookConnectStatusConsentMissing
 	case counts.since:

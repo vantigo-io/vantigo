@@ -32,10 +32,12 @@ const (
 
 // closeOutlook closes oid's live connection through q at now by actor,
 // recording entra.outlook.closed with code when it moved the row. forget
-// also drops its token, a connection closing already included. No
-// connection is nothing to do.
-func closeOutlook(ctx context.Context, q *store.Queries, now time.Time, actor contracts.Actor, oid uuid.UUID, forget bool, code string) error {
-	_, err := q.CloseOutlookConnection(ctx, store.CloseOutlookConnectionParams{Forget: forget, Now: now, ObjectID: oid})
+// also drops its token. revision, when not nil, is the revision the caller
+// read its reason at: a row moved on since — a reconnect, say — is left
+// alone, token and all. Without one, a connection closing already has its
+// token dropped too. No connection is nothing to do.
+func closeOutlook(ctx context.Context, q *store.Queries, now time.Time, actor contracts.Actor, oid uuid.UUID, revision *int64, forget bool, code string) error {
+	_, err := q.CloseOutlookConnection(ctx, store.CloseOutlookConnectionParams{Forget: forget, Now: now, ObjectID: oid, Revision: revision})
 	moved := true
 	switch {
 	case errors.Is(err, pgx.ErrNoRows):
@@ -43,7 +45,7 @@ func closeOutlook(ctx context.Context, q *store.Queries, now time.Time, actor co
 	case err != nil:
 		return fmt.Errorf("entra: close the Outlook connection: %w", err)
 	}
-	if forget && !moved {
+	if forget && !moved && revision == nil {
 		if err := q.ForgetOutlookRefresh(ctx, store.ForgetOutlookRefreshParams{Now: now, ObjectID: oid}); err != nil {
 			return fmt.Errorf("entra: forget the Outlook connection's token: %w", err)
 		}
@@ -55,9 +57,9 @@ func closeOutlook(ctx context.Context, q *store.Queries, now time.Time, actor co
 }
 
 // closeOutlookIn is closeOutlook in a transaction of its own on pool.
-func closeOutlookIn(ctx context.Context, pool db.TxBeginner, q *store.Queries, now time.Time, actor contracts.Actor, oid uuid.UUID, forget bool, code string) error {
+func closeOutlookIn(ctx context.Context, pool db.TxBeginner, q *store.Queries, now time.Time, actor contracts.Actor, oid uuid.UUID, revision *int64, forget bool, code string) error {
 	return db.WithTx(ctx, pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
-		return closeOutlook(ctx, q.WithTx(tx), now, actor, oid, forget, code)
+		return closeOutlook(ctx, q.WithTx(tx), now, actor, oid, revision, forget, code)
 	})
 }
 

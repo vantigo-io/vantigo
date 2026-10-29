@@ -1472,4 +1472,17 @@ func TestDelete_ClosesTheOutlookConnection(t *testing.T) {
 	if n := l.h.Count(t, `SELECT count(*) FROM entra.events WHERE action = 'entra.outlook.closed' AND codes = '{deleted}' AND actor_system = 'system:staff-accounts' AND object_id IN ($1, $2)`, oid, gone); n != 2 {
 		t.Errorf("%d closed events, want 2", n)
 	}
+
+	// An unconfirmed adoption the tenant no longer holds: nothing written.
+	adopted := addAccount(t, l.h, "E-3", "per@nordlys.no")
+	l.h.Exec(t, `UPDATE entra.accounts SET created_by_us = false, adoption_confirmed_at = NULL WHERE object_id = $1`, adopted)
+	if err := l.p.Delete(ctx, staffActor, adopted.String()); err != nil {
+		t.Fatalf("Delete of an unconfirmed adoption the tenant does not hold: %v", err)
+	}
+	if n := l.h.Count(t, `SELECT count(*) FROM entra.accounts WHERE object_id = $1 AND state = 'disabled'`, adopted); n != 1 {
+		t.Error("an unconfirmed adoption was marked deleted")
+	}
+	if n := l.h.Count(t, `SELECT count(*) FROM entra.events WHERE object_id = $1`, adopted); n != 0 {
+		t.Errorf("%d events for an unconfirmed adoption, want none", n)
+	}
 }

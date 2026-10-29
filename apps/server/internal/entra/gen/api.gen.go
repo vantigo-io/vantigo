@@ -221,11 +221,12 @@ func (e EntraGroupType) Valid() bool {
 
 // Defines values for EntraOutlookConnectStatus.
 const (
-	EntraOutlookConnectStatusConsentMissing EntraOutlookConnectStatus = "consent_missing"
-	EntraOutlookConnectStatusOff            EntraOutlookConnectStatus = "off"
-	EntraOutlookConnectStatusReady          EntraOutlookConnectStatus = "ready"
-	EntraOutlookConnectStatusUnavailable    EntraOutlookConnectStatus = "unavailable"
-	EntraOutlookConnectStatusUntested       EntraOutlookConnectStatus = "untested"
+	EntraOutlookConnectStatusConsentMissing    EntraOutlookConnectStatus = "consent_missing"
+	EntraOutlookConnectStatusOff               EntraOutlookConnectStatus = "off"
+	EntraOutlookConnectStatusPermissionMissing EntraOutlookConnectStatus = "permission_missing"
+	EntraOutlookConnectStatusReady             EntraOutlookConnectStatus = "ready"
+	EntraOutlookConnectStatusUnavailable       EntraOutlookConnectStatus = "unavailable"
+	EntraOutlookConnectStatusUntested          EntraOutlookConnectStatus = "untested"
 )
 
 // Valid indicates whether the value is a known member of the EntraOutlookConnectStatus enum.
@@ -234,6 +235,8 @@ func (e EntraOutlookConnectStatus) Valid() bool {
 	case EntraOutlookConnectStatusConsentMissing:
 		return true
 	case EntraOutlookConnectStatusOff:
+		return true
+	case EntraOutlookConnectStatusPermissionMissing:
 		return true
 	case EntraOutlookConnectStatusReady:
 		return true
@@ -503,7 +506,7 @@ type EntraConnection struct {
 	// OrganisationName The tenant's organisation name as the last test read it.
 	OrganisationName *string `json:"organisationName,omitempty"`
 
-	// OutlookConnect The Outlook connection switch (Outlook connection design M2): whether people may connect their own Outlook to Vantigo, and whether a connect can work. status is off while the switch is; unavailable when on but the connection is not connected, reason then being the connection's statusReason; consent_missing when the last connect found a feature's delegated permission not consented in the tenant; ready when someone has connected since the switch was last turned on; untested otherwise. connected and reconnect count the people connected and those whose connection Microsoft refused, waiting for them to connect again. redirectUri is the redirect URI to add to the app registration's Web platform.
+	// OutlookConnect The Outlook connection switch (Outlook connection design M2): whether people may connect their own Outlook to Vantigo, and whether a connect can work. status is off while the switch is; unavailable when on but the connection is not connected, reason then being the connection's statusReason; permission_missing, advisory, when the last test's token lacks the Calendars.ReadWrite application permission the calendar's sync still writes with (expected when it is granted with Exchange RBAC for Applications); consent_missing when the last connect found a feature's delegated permission not consented in the tenant; ready when someone has connected since the switch was last turned on; untested otherwise. connected and reconnect count the people connected and those whose connection Microsoft refused, waiting for them to connect again. redirectUri is the redirect URI to add to the app registration's Web platform.
 	OutlookConnect EntraOutlookConnect `json:"outlookConnect"`
 
 	// PermissionsMissing The application permissions the module needs (User.ReadWrite.All, User-LifeCycleInfo.ReadWrite.All, User.RevokeSessions.All, UserAuthMethod-TAP.ReadWrite.All, LicenseAssignment.ReadWrite.All, Group.ReadWrite.All, Domain.Read.All, Organization.Read.All, and Calendars.ReadWrite while the Outlook connection switch is on) that the last test's token did not carry; all of them before the first test.
@@ -760,7 +763,7 @@ type EntraOutlookComplete struct {
 	ReturnTo string `json:"returnTo"`
 }
 
-// EntraOutlookConnect The Outlook connection switch (Outlook connection design M2): whether people may connect their own Outlook to Vantigo, and whether a connect can work. status is off while the switch is; unavailable when on but the connection is not connected, reason then being the connection's statusReason; consent_missing when the last connect found a feature's delegated permission not consented in the tenant; ready when someone has connected since the switch was last turned on; untested otherwise. connected and reconnect count the people connected and those whose connection Microsoft refused, waiting for them to connect again. redirectUri is the redirect URI to add to the app registration's Web platform.
+// EntraOutlookConnect The Outlook connection switch (Outlook connection design M2): whether people may connect their own Outlook to Vantigo, and whether a connect can work. status is off while the switch is; unavailable when on but the connection is not connected, reason then being the connection's statusReason; permission_missing, advisory, when the last test's token lacks the Calendars.ReadWrite application permission the calendar's sync still writes with (expected when it is granted with Exchange RBAC for Applications); consent_missing when the last connect found a feature's delegated permission not consented in the tenant; ready when someone has connected since the switch was last turned on; untested otherwise. connected and reconnect count the people connected and those whose connection Microsoft refused, waiting for them to connect again. redirectUri is the redirect URI to add to the app registration's Web platform.
 type EntraOutlookConnect struct {
 	Connected int32 `json:"connected"`
 	Enabled   bool  `json:"enabled"`

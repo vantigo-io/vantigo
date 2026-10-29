@@ -228,6 +228,39 @@ func (q *Queries) ListAccounts(ctx context.Context) ([]EntraAccount, error) {
 	return items, nil
 }
 
+const lockAccountShare = `-- name: LockAccountShare :one
+SELECT object_id, employee_number, user_principal_name, state, pass_sealed, pass_expires_at, pass_revealed_at, created_by_us, reported, last_error, last_synced_at, adoption_confirmed_at, adoption_confirmed_by_user_id, created_at, updated_at, licences_assigned FROM entra.accounts WHERE object_id = $1 FOR SHARE
+`
+
+// LockAccountShare is GetAccount under the row's share lock, for an Outlook
+// connect's complete: a leaver's Deactivate, which writes the row before it
+// closes the connection, is judged either before the connect — which then
+// sees the account disabled — or after it, when it closes what the connect
+// stored.
+func (q *Queries) LockAccountShare(ctx context.Context, objectID uuid.UUID) (EntraAccount, error) {
+	row := q.db.QueryRow(ctx, lockAccountShare, objectID)
+	var i EntraAccount
+	err := row.Scan(
+		&i.ObjectID,
+		&i.EmployeeNumber,
+		&i.UserPrincipalName,
+		&i.State,
+		&i.PassSealed,
+		&i.PassExpiresAt,
+		&i.PassRevealedAt,
+		&i.CreatedByUs,
+		&i.Reported,
+		&i.LastError,
+		&i.LastSyncedAt,
+		&i.AdoptionConfirmedAt,
+		&i.AdoptionConfirmedByUserID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.LicencesAssigned,
+	)
+	return i, err
+}
+
 const setAccountLicences = `-- name: SetAccountLicences :exec
 UPDATE entra.accounts SET licences_assigned = $1::text[], updated_at = $2::timestamptz
 WHERE object_id = $3

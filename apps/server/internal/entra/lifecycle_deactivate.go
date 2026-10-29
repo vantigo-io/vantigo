@@ -101,7 +101,7 @@ func (p *provisioner) Deactivate(ctx context.Context, actor contracts.Actor, ext
 		// The leaver's Outlook connection closes with its token forgotten
 		// (Outlook connection design M7): the steps below end the token
 		// before any clean-up could use it, and none of them may keep it.
-		return closeOutlook(ctx, q, now, actor, id, true, outlookClosedLeaver)
+		return closeOutlook(ctx, q, now, actor, id, nil, true, outlookClosedLeaver)
 	})
 	if err != nil {
 		return contracts.ExternalAccount{}, err
@@ -333,7 +333,7 @@ func (p *provisioner) Delete(ctx context.Context, actor contracts.Actor, externa
 	if err := s.q.ClearAccountPass(ctx, store.ClearAccountPassParams{Now: p.client.now(), ObjectID: id}); err != nil {
 		return fmt.Errorf("entra: clear the pass: %w", err)
 	}
-	if err := closeOutlookIn(ctx, p.deps.Pool, s.q, p.client.now(), actor, id, true, outlookClosedDeleted); err != nil {
+	if err := closeOutlookIn(ctx, p.deps.Pool, s.q, p.client.now(), actor, id, nil, true, outlookClosedDeleted); err != nil {
 		return err
 	}
 	_, err = p.settle(ctx, s, actor, actionUserDeleted, id, u.UserPrincipalName, stateDeleted, row.Reported, nil)
@@ -342,7 +342,8 @@ func (p *provisioner) Delete(ctx context.Context, actor contracts.Actor, externa
 
 // markDeleted records as deleted the row of a user the tenant answers 404
 // for, once, closing its Outlook connection with its token forgotten: a row
-// deleted already, or none, is left as it is.
+// deleted already, or none, is left as it is, and so is an unconfirmed
+// adoption, which the module never owned.
 func (p *provisioner) markDeleted(ctx context.Context, actor contracts.Actor, id uuid.UUID) error {
 	if id == uuid.Nil {
 		return nil
@@ -354,10 +355,10 @@ func (p *provisioner) markDeleted(ctx context.Context, actor contracts.Actor, id
 		return nil
 	case err != nil:
 		return fmt.Errorf("entra: read the account: %w", err)
-	case row.State == stateDeleted:
+	case row.State == stateDeleted, !trusted(row):
 		return nil
 	}
-	if err := closeOutlookIn(ctx, p.deps.Pool, q, p.client.now(), actor, id, true, outlookClosedDeleted); err != nil {
+	if err := closeOutlookIn(ctx, p.deps.Pool, q, p.client.now(), actor, id, nil, true, outlookClosedDeleted); err != nil {
 		return err
 	}
 	_, err = p.settle(ctx, session{q: q}, actor, actionUserDeleted, id, row.UserPrincipalName, stateDeleted, row.Reported, []string{"gone"})

@@ -484,12 +484,13 @@ func insertOutlookRow(t *testing.T, h *harness, oid uuid.UUID, state string) {
 	           VALUES ($1, $2, $3, '{calendars.readwrite}', '\x01', $4, $5, $5, $5, $5)`, oid, uuid.New(), tenantID, state, h.Now())
 }
 
-// outlookConnect's five statuses (Outlook connection design M2), in their
-// order — off, unavailable, consent_missing, ready, untested — and its
-// counts of the people connected and waiting to reconnect.
+// outlookConnect's six statuses (Outlook connection design M2; the
+// advisory permission_missing until delivery B), in their order — off,
+// unavailable, permission_missing, consent_missing, ready, untested — and
+// its counts of the people connected and waiting to reconnect.
 func TestConnection_OutlookConnectsStatusAndCounts(t *testing.T) {
 	t.Parallel()
-	h, _ := newTenantHarness(t)
+	h, g := newTenantHarness(t)
 	o := connected(t, h)
 	status := func(want gen.EntraOutlookConnectStatus) gen.EntraOutlookConnect {
 		t.Helper()
@@ -501,10 +502,18 @@ func TestConnection_OutlookConnectsStatusAndCounts(t *testing.T) {
 	}
 	status(gen.EntraOutlookConnectStatusOff)
 
+	// The last test's token lacks the calendar's application permission,
+	// which the calendar still writes with until delivery B.
 	on := setOutlookConnect(t, o, true)
-	if on.OutlookConnect.Status != gen.EntraOutlookConnectStatusUntested {
-		t.Errorf("turned on: %s, want untested", on.OutlookConnect.Status)
+	if on.OutlookConnect.Status != gen.EntraOutlookConnectStatusPermissionMissing {
+		t.Errorf("turned on without Calendars.ReadWrite: %s, want permission_missing", on.OutlookConnect.Status)
 	}
+	h.Exec(t, `UPDATE entra.connection SET outlook_last_error = 'consent_missing', outlook_last_error_at = $1`, h.Now())
+	status(gen.EntraOutlookConnectStatusPermissionMissing)
+	h.Exec(t, `UPDATE entra.connection SET outlook_last_error = NULL, outlook_last_error_at = NULL`)
+
+	g.Configure(func(g *graphtest.FakeGraph) { g.Roles = append(g.Roles, "Calendars.ReadWrite") })
+	testConnection(t, o)
 	if got := status(gen.EntraOutlookConnectStatusUntested); got.Connected != 0 || got.Reconnect != 0 {
 		t.Errorf("counts = %d/%d, want none", got.Connected, got.Reconnect)
 	}

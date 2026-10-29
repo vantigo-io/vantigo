@@ -214,7 +214,9 @@ func (t *outlookTokens) token(ctx context.Context, oid uuid.UUID, removal bool) 
 	return tok.value, err
 }
 
-// issue is token with what a 401 needs to act on it.
+// issue is token with what a 401 needs to act on it. The switch off allows
+// removals alone, whatever the row's state: the rows it closes may not be
+// closed yet.
 func (t *outlookTokens) issue(ctx context.Context, oid uuid.UUID, removal bool) (issued, error) {
 	row, err := t.q.GetOutlookConnection(ctx, oid)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -223,6 +225,10 @@ func (t *outlookTokens) issue(ctx context.Context, oid uuid.UUID, removal bool) 
 	if err != nil {
 		return issued{}, fmt.Errorf("entra: read the Outlook connection: %w", err)
 	}
+	conn, err := t.q.GetConnection(ctx)
+	if err != nil {
+		return issued{}, fmt.Errorf("entra: read the connection: %w", err)
+	}
 	switch {
 	case row.State == outlookReconnect:
 		reason := outlookCodeSignInAgain
@@ -230,16 +236,12 @@ func (t *outlookTokens) issue(ctx context.Context, oid uuid.UUID, removal bool) 
 			reason = *row.ErrorCode
 		}
 		return issued{}, &connectionNeeded{reason: reason}
-	case row.RefreshSealed == nil, row.State == outlookClosing && !removal:
+	case row.RefreshSealed == nil, row.State == outlookClosing && !removal, !conn.OutlookConnect && !removal:
 		return issued{}, &connectionNeeded{reason: outlookNeedsClosing}
 	case row.State == outlookActive:
-		if err := t.checkAccount(ctx, oid); err != nil {
+		if err := t.checkAccount(ctx, row); err != nil {
 			return issued{}, err
 		}
-	}
-	conn, err := t.q.GetConnection(ctx)
-	if err != nil {
-		return issued{}, fmt.Errorf("entra: read the connection: %w", err)
 	}
 	if conn.ClientID == nil {
 		return issued{}, errNotConfigured
@@ -257,9 +259,11 @@ func (t *outlookTokens) issue(ctx context.Context, oid uuid.UUID, removal bool) 
 
 // checkAccount is the connection's check on use (design M6): the account
 // must still be one the module keeps trusted and enabled, else the
-// connection closes — its token kept for the removals, which may still
-// work — and the call needs its person.
-func (t *outlookTokens) checkAccount(ctx context.Context, oid uuid.UUID) error {
+// connection closes at the revision row was read at, its token forgotten —
+// the account can no longer use it, and a leaver's removals are not this
+// token's to make —, and the call needs its person.
+func (t *outlookTokens) checkAccount(ctx context.Context, row store.EntraOutlookConnection) error {
+	oid := row.ObjectID
 	account, err := t.q.GetAccount(ctx, oid)
 	code := ""
 	switch {
@@ -275,7 +279,8 @@ func (t *outlookTokens) checkAccount(ctx context.Context, oid uuid.UUID) error {
 	if code == "" {
 		return nil
 	}
-	if err := closeOutlookIn(ctx, t.pool, t.q, t.c.now(), outlookActor, oid, false, code); err != nil {
+	revision := row.Revision
+	if err := closeOutlookIn(ctx, t.pool, t.q, t.c.now(), outlookActor, oid, &revision, true, code); err != nil {
 		return err
 	}
 	t.c.logger.InfoContext(ctx, "entra: an Outlook connection closed on use; its account is no longer enabled",
@@ -370,12 +375,14 @@ func (t *outlookTokens) refresh(ctx context.Context, row store.EntraOutlookConne
 
 // reconnect moves row to reconnect with code at the revision it was read
 // at, recording entra.outlook.reconnect_needed, and answers the call's
-// error: connectionNeeded when it moved the row; a transient failure when a
-// newer connect, close or refusal had moved it first, which the call may
-// retry against the row as it is now.
+// error: connectionNeeded when it moved the row; connectionNeeded closing
+// when the row is closing at that revision, its refused token forgotten so
+// no removal tries it again; a transient failure when a newer connect,
+// close or refusal had moved it first, which the call may retry against
+// the row as it is now.
 func (t *outlookTokens) reconnect(ctx context.Context, row store.EntraOutlookConnection, code string) error {
 	now := t.c.now()
-	moved := false
+	moved, forgotten := false, false
 	err := db.WithTx(ctx, t.pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		q := t.q.WithTx(tx)
 		n, err := q.MarkOutlookReconnect(ctx, store.MarkOutlookReconnectParams{Code: &code, Now: now, ObjectID: row.ObjectID, Revision: row.Revision})
@@ -383,6 +390,11 @@ func (t *outlookTokens) reconnect(ctx context.Context, row store.EntraOutlookCon
 			return fmt.Errorf("entra: record the Outlook connection's reconnect: %w", err)
 		}
 		if n == 0 {
+			n, err := q.ForgetClosingOutlookRefresh(ctx, store.ForgetClosingOutlookRefreshParams{Now: now, ObjectID: row.ObjectID, Revision: row.Revision})
+			if err != nil {
+				return fmt.Errorf("entra: forget the closing Outlook connection's refused token: %w", err)
+			}
+			forgotten = n > 0
 			return nil
 		}
 		moved = true
@@ -391,6 +403,11 @@ func (t *outlookTokens) reconnect(ctx context.Context, row store.EntraOutlookCon
 	})
 	if err != nil {
 		return err
+	}
+	if forgotten {
+		t.c.logger.InfoContext(ctx, "entra: a closing Outlook connection's token was refused and is forgotten",
+			"object_id", row.ObjectID.String(), "code", code)
+		return &connectionNeeded{reason: outlookNeedsClosing}
 	}
 	if !moved {
 		if current, err := t.q.GetOutlookConnection(ctx, row.ObjectID); err == nil && current.State == outlookReconnect && current.ErrorCode != nil {

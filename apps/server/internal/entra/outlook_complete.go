@@ -19,15 +19,18 @@ import (
 // connection design M3, M4, M6, M7): complete, under the session, opening
 // the connected cookie only for the person and the session that started
 // the connect, checking the switch and the certain account again — read
-// before any transaction, the lock rule — and storing the connection with
-// its refresh token sealed; GET, the caller's own connection and whether
+// before any transaction, the lock rule, then the switch and the account's
+// row once more under their locks in the transaction that stores the
+// connection, so a switch turned off or a leaver's Deactivate racing it
+// either sees the row or is seen —, with its refresh token sealed; GET, the caller's own connection and whether
 // they may connect; DELETE, a disconnect that keeps the token for the
 // removals that may still need it and never revokes the person's sessions.
 
 // PostEntraOutlookComplete completes a connect. The connected cookie is
 // cleared on every answer. 410 expired for a cookie missing, expired, or
 // another person's or session's; 409 switch_off, no_account,
-// account_mismatch or account_taken. (POST /api/v1/entra/outlook/complete)
+// account_mismatch or account_taken. A connect submitted twice is the
+// caller's own connection both times. (POST /api/v1/entra/outlook/complete)
 func (s *server) PostEntraOutlookComplete(ctx context.Context, _ gen.PostEntraOutlookCompleteRequestObject) (gen.PostEntraOutlookCompleteResponseObject, error) {
 	defer s.clearOutlookCookie(ctx, outlookConnectedCookie)
 	p, err := requestPrincipal(ctx)
@@ -76,9 +79,34 @@ func (s *server) PostEntraOutlookComplete(ctx context.Context, _ gen.PostEntraOu
 	}
 	now := s.client.now()
 	var row store.EntraOutlookConnection
-	taken := false
+	taken, switchOff, noAccount := false, false, false
 	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		q := s.q.WithTx(tx)
+		// The switch and the account again, under their locks: the
+		// connection's row FOR UPDATE — this transaction writes it, and a
+		// share lock two completes upgrade at once is a deadlock — so the
+		// switch's PUT, which closes every live row, runs wholly before or
+		// after; the account's FOR SHARE, so a leaver's Deactivate, which
+		// writes it before it closes the connection, does too.
+		locked, err := q.LockConnection(ctx)
+		if err != nil {
+			return fmt.Errorf("entra: lock the connection: %w", err)
+		}
+		if !locked.OutlookConnect || locked.TenantID == nil {
+			switchOff = true
+			return nil
+		}
+		acc, err := q.LockAccountShare(ctx, cb.OID)
+		switch {
+		case errors.Is(err, pgx.ErrNoRows):
+			noAccount = true
+			return nil
+		case err != nil:
+			return fmt.Errorf("entra: lock the account: %w", err)
+		case !trusted(acc) || acc.State != stateEnabled:
+			noAccount = true
+			return nil
+		}
 		existing, err := lockedRow(q.LockOutlookConnection(ctx, cb.OID))
 		if err != nil {
 			return err
@@ -95,7 +123,7 @@ func (s *server) PostEntraOutlookComplete(ctx context.Context, _ gen.PostEntraOu
 			// The person's account was re-pointed in Staff: their old
 			// connection closes, its token kept for the old mailbox's
 			// removals.
-			if _, err := q.CloseOutlookConnection(ctx, store.CloseOutlookConnectionParams{Forget: false, Now: now, ObjectID: mine.ObjectID}); err != nil {
+			if _, err := q.CloseOutlookConnection(ctx, store.CloseOutlookConnectionParams{Forget: false, Now: now, ObjectID: mine.ObjectID, Revision: &mine.Revision}); err != nil {
 				return fmt.Errorf("entra: close the re-pointed Outlook connection: %w", err)
 			}
 			oldOID := mine.ObjectID
@@ -122,7 +150,22 @@ func (s *server) PostEntraOutlookComplete(ctx context.Context, _ gen.PostEntraOu
 		oid := cb.OID
 		return recordEvent(ctx, q, now, actor, actionOutlookConnected, &oid, account.UserPrincipalName, []string{"feature:" + cb.Feature})
 	})
-	if taken || db.IsUniqueViolation(err) {
+	switch {
+	case switchOff:
+		return gen.PostEntraOutlookComplete409ApplicationProblemPlusJSONResponse(switchOffProblem()), nil
+	case noAccount:
+		return gen.PostEntraOutlookComplete409ApplicationProblemPlusJSONResponse(noAccountProblem()), nil
+	case db.IsUniqueViolation(err):
+		// A concurrent store won: the caller's own active row is a connect
+		// submitted twice, anyone else's is the account taken.
+		current, rerr := s.q.GetOutlookConnection(ctx, cb.OID)
+		if rerr == nil && current.UserID == p.UserID && current.State == outlookActive {
+			row, err, taken = current, nil, false
+		} else {
+			taken = true
+		}
+	}
+	if taken {
 		return gen.PostEntraOutlookComplete409ApplicationProblemPlusJSONResponse(accountTakenProblem()), nil
 	}
 	if err != nil {
@@ -205,7 +248,7 @@ func (s *server) DeleteEntraOutlookConnection(ctx context.Context, _ gen.DeleteE
 		if err != nil || live == nil {
 			return err
 		}
-		if _, err := q.CloseOutlookConnection(ctx, store.CloseOutlookConnectionParams{Forget: false, Now: now, ObjectID: live.ObjectID}); err != nil {
+		if _, err := q.CloseOutlookConnection(ctx, store.CloseOutlookConnectionParams{Forget: false, Now: now, ObjectID: live.ObjectID, Revision: &live.Revision}); err != nil {
 			return fmt.Errorf("entra: close the Outlook connection: %w", err)
 		}
 		oid := live.ObjectID

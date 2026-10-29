@@ -28,8 +28,9 @@ import (
 
 // PostEntraOutlookConnect starts connecting the caller's Outlook for a
 // feature: 422 feature_unknown, 409 switch_off, no_account or account_taken
-// (refused early here; complete still decides), else the state cookie set
-// and the authorization URL answered. (POST /api/v1/entra/outlook/connect)
+// (refused early here; complete still decides), else the state cookie set,
+// any connected cookie left from an earlier connect cleared, and the
+// authorization URL answered. (POST /api/v1/entra/outlook/connect)
 func (s *server) PostEntraOutlookConnect(ctx context.Context, req gen.PostEntraOutlookConnectRequestObject) (gen.PostEntraOutlookConnectResponseObject, error) {
 	p, err := requestPrincipal(ctx)
 	if err != nil {
@@ -107,6 +108,9 @@ func (s *server) PostEntraOutlookConnect(ctx context.Context, req gen.PostEntraO
 	if err := setOutlookCookie(ctx, s.outlookCookie(outlookStateCookie, sealed, outlookStateLifetime)); err != nil {
 		return nil, err
 	}
+	// A connected cookie an abandoned connect left behind can never
+	// complete after this one starts.
+	s.clearOutlookCookie(ctx, outlookConnectedCookie)
 	authorize := fmt.Sprintf(outlookAuthorizeEndpoint, conn.TenantID.String()) + "?" + q.Encode()
 	return gen.PostEntraOutlookConnect200JSONResponse(gen.EntraOutlookAuthorize{AuthorizeUrl: authorize}), nil
 }
