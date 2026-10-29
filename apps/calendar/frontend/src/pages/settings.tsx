@@ -25,7 +25,7 @@ import { notifications } from "@mantine/notifications";
 import { IconAlertCircle, IconCalendarShare, IconPlus, IconRefresh } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ContentSkeleton, EmptyState, PageHeader, useI18n } from "@vantigo/frontend-shell";
-import { useId, useState } from "react";
+import { type ReactNode, useId, useState } from "react";
 import { REVISION_MISMATCH } from "../api/appointments";
 import {
   deleteFeedAddress,
@@ -83,19 +83,35 @@ const hostOf = (url: string): string => {
   }
 };
 
+/** What the `connection.button` slot is handed: the feature asking, and the path to come back to after the redirect. */
+export interface ConnectionButtonProps {
+  feature: "calendar";
+  returnTo: string;
+}
+
+export interface SettingsPageProps {
+  /**
+   * The host slot `connection.button` (Outlook connection design M8): the
+   * person's Outlook connection, drawn in the Outlook card by whichever
+   * module provides one. This package names no provider; without one the
+   * card shows nothing in its place.
+   */
+  connectionButton?: (props: ConnectionButtonProps) => ReactNode;
+}
+
 /**
  * My calendar (feed design D9): the person's own calendar addresses — the
  * full calendar and a busy-only one — their calendar in Outlook (Outlook
  * sync design O5), and the calendars from elsewhere they subscribe to. Everything on it is the caller's own; the host guards the
  * route with `calendar:access`.
  */
-export const SettingsPage = () => {
+export const SettingsPage = ({ connectionButton }: SettingsPageProps = {}) => {
   const { t } = useI18n("calendar");
   return (
     <Stack gap="lg">
       <PageHeader title={t("settings.title")} description={t("settings.description")} />
       <FeedSection />
-      <OutlookSection />
+      <OutlookSection connectionButton={connectionButton} />
       <SubscriptionsSection />
     </Stack>
   );
@@ -257,9 +273,10 @@ const knownOr = (exists: (key: string) => boolean, key: string, fallback: string
  * calendar in their Microsoft 365 mailbox. Every change is saved as it is
  * made, under If-Match on the revision read; a revision that moved on
  * reloads the card. While the sync cannot run the toggle says why and only
- * turns it off.
+ * turns it off. Under the description, the `connection.button` slot shows
+ * the person's Outlook connection when the host fills it.
  */
-const OutlookSection = () => {
+const OutlookSection = ({ connectionButton }: SettingsPageProps) => {
   const { t, i18n, locale } = useI18n("calendar");
   const queryClient = useQueryClient();
   const titleId = useId();
@@ -324,6 +341,7 @@ const OutlookSection = () => {
             </Text>
           </Stack>
         </Group>
+        {connectionButton?.({ feature: "calendar", returnTo: "/calendar/settings" })}
 
         {sync.isError && (
           <Alert color="red" icon={<IconAlertCircle size={16} />} title={t("outlook.couldNotLoad")}>

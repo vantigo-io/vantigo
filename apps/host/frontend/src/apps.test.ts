@@ -566,7 +566,8 @@ describe("the administration areas", () => {
       const prefix = `/${area.key}`;
       for (const item of area.navSections.flatMap((section) => section.items)) {
         expect(item.to === prefix || item.to.startsWith(`${prefix}/`)).toBe(true);
-        expect(item.module).toBeUndefined();
+        // An area belongs to no module; only an entry a module provides, Entra's Connections, names its module.
+        expect(item.module).toBe(item.to === "/settings/connections" ? "entra" : undefined);
       }
     }
   });
@@ -600,8 +601,24 @@ describe("the administration areas", () => {
       appNavSections(areaForKey("settings"), allModules, visibility).flatMap((section) =>
         section.items.map((item) => item.to),
       ),
-    ).toEqual(["/settings/profile", "/settings/security"]);
+    ).toEqual(["/settings/profile", "/settings/security", "/settings/connections"]);
     expect(appNavSections(areaForKey("admin"), allModules, visibility)).toEqual([]);
+  });
+
+  it("shows Connections beside Profile and Security only while the Entra module is on", () => {
+    const settings = areaForKey("settings");
+    const item = settings.navSections
+      .flatMap((section) => section.items)
+      .find((one) => one.to === "/settings/connections");
+    expect(item).toMatchObject({ label: "navigation.connections", module: "entra" });
+    const withoutEntra = allModules.filter((key) => key !== "entra");
+    expect(
+      appNavSections(settings, withoutEntra, { ...visibility, enabledModules: withoutEntra }).flatMap((section) =>
+        section.items.map((one) => one.to),
+      ),
+    ).toEqual(["/settings/profile", "/settings/security"]);
+    expect(navigationCatalog.en["navigation.connections"]).toBe("Connections");
+    expect(navigationCatalog.nb["navigation.connections"]).toBe("Tilkoblinger");
   });
 
   it("names the area in the header", () => {

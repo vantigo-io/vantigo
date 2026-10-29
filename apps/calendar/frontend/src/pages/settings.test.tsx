@@ -1,12 +1,12 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { setLanguagePreference } from "@vantigo/frontend-shell";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import "../i18n";
 import { problemResponse, sent, sentAll } from "../test/api";
 import { renderWithProviders } from "../test/render";
 import { feedAddressFixture, mailboxSyncFixture, stubCalendarServer, subscriptionFixture } from "../test/server";
-import { SettingsPage } from "./settings";
+import { type ConnectionButtonProps, SettingsPage } from "./settings";
 
 const card = (name: string) => screen.findByRole("region", { name });
 
@@ -529,5 +529,32 @@ describe("SettingsPage: Outlook", () => {
     expect(within(region).getByRole("checkbox", { name: "Fravær" })).toBeChecked();
     expect(within(region).getByRole("radio", { name: "Fulle titler" })).toBeChecked();
     expect(within(region).getByRole("button", { name: "Synkroniser nå" })).toBeInTheDocument();
+  });
+});
+
+describe("SettingsPage: the connection.button slot", () => {
+  it("draws what fills the slot in the Outlook card, handing it the calendar and this page", async () => {
+    stubCalendarServer({ mailboxSync: mailboxSyncFixture() });
+    const connectionButton = vi.fn(({ feature, returnTo }: ConnectionButtonProps) => (
+      <button type="button">
+        connect {feature} back to {returnTo}
+      </button>
+    ));
+    renderWithProviders(<SettingsPage connectionButton={connectionButton} />);
+
+    const region = await card("Outlook");
+    expect(
+      within(region).getByRole("button", { name: "connect calendar back to /calendar/settings" }),
+    ).toBeInTheDocument();
+    expect(connectionButton).toHaveBeenCalledWith({ feature: "calendar", returnTo: "/calendar/settings" });
+  });
+
+  it("draws nothing in its place without a filler", async () => {
+    stubCalendarServer({ mailboxSync: mailboxSyncFixture() });
+    renderWithProviders(<SettingsPage />);
+
+    const region = await card("Outlook");
+    expect(await within(region).findByRole("switch", { name: "Sync to my Outlook calendar" })).toBeInTheDocument();
+    expect(within(region).queryByRole("button", { name: /^connect/ })).not.toBeInTheDocument();
   });
 });

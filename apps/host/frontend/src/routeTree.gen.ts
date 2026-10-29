@@ -76,6 +76,7 @@ import { Route as ProjectsProjectIdRouteImport } from './routes/projects/$projec
 import { Route as ProjectsEconomyRouteImport } from './routes/projects/economy'
 import { Route as ProjectsMyTasksRouteImport } from './routes/projects/my-tasks'
 import { Route as SettingsIndexRouteImport } from './routes/settings/index'
+import { Route as SettingsConnectionsRouteImport } from './routes/settings/connections'
 import { Route as SettingsProfileRouteImport } from './routes/settings/profile'
 import { Route as SettingsSecurityRouteImport } from './routes/settings/security'
 import { Route as StaffIndexRouteImport } from './routes/staff/index'
@@ -465,6 +466,11 @@ const SettingsIndexRoute = SettingsIndexRouteImport.update({
   path: '/',
   getParentRoute: () => SettingsRoute,
 } as any)
+const SettingsConnectionsRoute = SettingsConnectionsRouteImport.update({
+  id: '/connections',
+  path: '/connections',
+  getParentRoute: () => SettingsRoute,
+} as any)
 const SettingsProfileRoute = SettingsProfileRouteImport.update({
   id: '/profile',
   path: '/profile',
@@ -801,6 +807,7 @@ export interface FileRoutesByFullPath {
   '/projects/$projectId': typeof ProjectsProjectIdRouteWithChildren
   '/projects/economy': typeof ProjectsEconomyRoute
   '/projects/my-tasks': typeof ProjectsMyTasksRoute
+  '/settings/connections': typeof SettingsConnectionsRoute
   '/settings/profile': typeof SettingsProfileRoute
   '/settings/security': typeof SettingsSecurityRoute
   '/staff/absence': typeof StaffAbsenceRoute
@@ -905,6 +912,7 @@ export interface FileRoutesByTo {
   '/products/tax-categories': typeof ProductsTaxCategoriesRoute
   '/projects/economy': typeof ProjectsEconomyRoute
   '/projects/my-tasks': typeof ProjectsMyTasksRoute
+  '/settings/connections': typeof SettingsConnectionsRoute
   '/settings/profile': typeof SettingsProfileRoute
   '/settings/security': typeof SettingsSecurityRoute
   '/staff/absence': typeof StaffAbsenceRoute
@@ -1027,6 +1035,7 @@ export interface FileRoutesById {
   '/projects/$projectId': typeof ProjectsProjectIdRouteWithChildren
   '/projects/economy': typeof ProjectsEconomyRoute
   '/projects/my-tasks': typeof ProjectsMyTasksRoute
+  '/settings/connections': typeof SettingsConnectionsRoute
   '/settings/profile': typeof SettingsProfileRoute
   '/settings/security': typeof SettingsSecurityRoute
   '/staff/absence': typeof StaffAbsenceRoute
@@ -1150,6 +1159,7 @@ export interface FileRouteTypes {
     | '/projects/$projectId'
     | '/projects/economy'
     | '/projects/my-tasks'
+    | '/settings/connections'
     | '/settings/profile'
     | '/settings/security'
     | '/staff/absence'
@@ -1254,6 +1264,7 @@ export interface FileRouteTypes {
     | '/products/tax-categories'
     | '/projects/economy'
     | '/projects/my-tasks'
+    | '/settings/connections'
     | '/settings/profile'
     | '/settings/security'
     | '/staff/absence'
@@ -1375,6 +1386,7 @@ export interface FileRouteTypes {
     | '/projects/$projectId'
     | '/projects/economy'
     | '/projects/my-tasks'
+    | '/settings/connections'
     | '/settings/profile'
     | '/settings/security'
     | '/staff/absence'
@@ -1940,6 +1952,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/settings/'
       preLoaderRoute: typeof SettingsIndexRouteImport
+      parentRoute: typeof SettingsRoute
+    }
+    '/settings/connections': {
+      id: '/settings/connections'
+      path: '/connections'
+      fullPath: '/settings/connections'
+      preLoaderRoute: typeof SettingsConnectionsRouteImport
       parentRoute: typeof SettingsRoute
     }
     '/settings/profile': {
@@ -2575,12 +2594,14 @@ const ProjectsRouteWithChildren = ProjectsRoute._addFileChildren(
 )
 
 interface SettingsRouteChildren {
+  SettingsConnectionsRoute: typeof SettingsConnectionsRoute
   SettingsProfileRoute: typeof SettingsProfileRoute
   SettingsSecurityRoute: typeof SettingsSecurityRoute
   SettingsIndexRoute: typeof SettingsIndexRoute
 }
 
 const SettingsRouteChildren: SettingsRouteChildren = {
+  SettingsConnectionsRoute: SettingsConnectionsRoute,
   SettingsProfileRoute: SettingsProfileRoute,
   SettingsSecurityRoute: SettingsSecurityRoute,
   SettingsIndexRoute: SettingsIndexRoute,
