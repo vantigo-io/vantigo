@@ -169,6 +169,17 @@ SET status = 'retry', last_error = @last_error, next_attempt_at = @next_attempt_
     lease_id = NULL, lease_until = NULL
 WHERE id = @id;
 
+-- name: LatestMessageEvent :one
+-- The message's latest event, which tells a held try from the one that
+-- began the hold: a hold writes its 'retrying' events once, carrying the
+-- code provider_unavailable, and a later held try finds them latest and
+-- writes none (the review's follow-up).
+SELECT event_type, data_json
+FROM communications.message_events
+WHERE message_id = @message_id
+ORDER BY occurred_at DESC
+LIMIT 1;
+
 -- name: MarkMessageDeliveryAccepted :exec
 -- Step 12 (`:181-194`): the per-delivery success write.
 UPDATE communications.message_deliveries

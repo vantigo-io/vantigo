@@ -11,6 +11,7 @@ import (
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 
 	"github.com/vantigo-io/vantigo/server/internal/communications"
+	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/modtest"
 )
 
@@ -30,6 +31,7 @@ const (
 	jobsCompletedMetric          = "communications.outbox.jobs_completed"
 	jobsRetriedMetric            = "communications.outbox.jobs_retried"
 	jobsFailedMetric             = "communications.outbox.jobs_failed"
+	jobsHeldMetric               = "communications.outbox.jobs_held"
 )
 
 // meterHarness is one MeterProvider and the reader that can be asked what it
@@ -154,7 +156,18 @@ func TestOutboxMetrics_TheMeterCarriesExactlyTheFourNamedCounters(t *testing.T) 
 	// seven: each failure came after its marker was stamped, so each retry's
 	// claim counts one — the relay may have taken the message before it
 	// failed.
+	// And a Microsoft 365 channel's job held for its unavailable provider,
+	// so jobs_held — the one counter .NET did not have — is touched too.
+	held := modtest.NewFakeChannelMailbox()
+	hh := newHarness(t, modtest.WithChannelMailbox(held))
+	seedMailboxJob(t, hh, held)
+	held.FailWith("Send", contracts.ErrMailboxUnavailable)
+	if _, err := m.worker(t, hh).ProcessOne(context.Background()); err != nil {
+		t.Fatalf("held ProcessOne: %v", err)
+	}
+
 	for name, want := range map[string]int64{
+		jobsHeldMetric:               1,
 		possibleDuplicateSendsMetric: 8,
 		jobsCompletedMetric:          1,
 		jobsRetriedMetric:            7,
@@ -171,7 +184,7 @@ func TestOutboxMetrics_TheMeterCarriesExactlyTheFourNamedCounters(t *testing.T) 
 		names = append(names, md.Name)
 	}
 	slices.Sort(names)
-	want := []string{jobsCompletedMetric, jobsFailedMetric, jobsRetriedMetric, possibleDuplicateSendsMetric}
+	want := []string{jobsCompletedMetric, jobsFailedMetric, jobsHeldMetric, jobsRetriedMetric, possibleDuplicateSendsMetric}
 	slices.Sort(want)
 	if !slices.Equal(names, want) {
 		t.Errorf("meter Vantigo.Communications exports %v, want exactly %v", names, want)
