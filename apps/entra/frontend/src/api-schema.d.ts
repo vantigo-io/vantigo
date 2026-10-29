@@ -457,7 +457,7 @@ export interface components {
             permissionsMissing: string[];
             /** @description The application permissions the last test's token carried in its roles claim. */
             permissionsPresent: string[];
-            /** @description The application permissions the last test's token carried that the module does not use — any beyond the eight in permissionsMissing's list, an application Calendars.ReadWrite left from an earlier setup among them (Outlook connection design M19); the Mail.* roles are reported here only while the Mail channels switch is off, and as mailChannels' tenant_wide while it is on — a warning, never a status: a permission granted to the application reaches every mailbox or account in the tenant, so one nobody needs is better removed in the portal. */
+            /** @description The application permissions the last test's token carried that the module does not use — any beyond the eight in permissionsMissing's list, an application Calendars.ReadWrite left from an earlier setup among them (Outlook connection design M19); the tenant-wide mail roles (mailChannels' list) are reported here only while the Mail channels switch is off, and as mailChannels' tenant_wide while it is on — a warning, never a status: a permission granted to the application reaches every mailbox or account in the tenant, so one nobody needs is better removed in the portal. */
             permissionsUnexpected: string[];
             settings: components["schemas"]["EntraSettings"];
             /**
@@ -494,7 +494,7 @@ export interface components {
             organisationName?: string;
             permissionsMissing: string[];
             permissionsPresent: string[];
-            /** @description The application permissions the token carried that the module does not use (Outlook connection design M19), a warning. The Mail.* roles are left out while the Mail channels switch is on, reported as mailChannels' tenant_wide instead. */
+            /** @description The application permissions the token carried that the module does not use (Outlook connection design M19), a warning. The tenant-wide mail roles are left out while the Mail channels switch is on, reported as mailChannels' tenant_wide instead. */
             permissionsUnexpected: string[];
             /** @description Why the test failed, a code — credential_invalid, tenant_unreachable or consent_missing. Absent when it connected. */
             reason?: string;
@@ -674,7 +674,7 @@ export interface components {
             /** Format: int32 */
             count: number;
         };
-        /** @description The Mail channels switch (Outlook connection design M10): whether Communications may send and receive through Exchange Online shared mailboxes with the application's own token, its reach scoped to the channel mailboxes by Exchange RBAC for Applications. status is off while the switch is; unavailable when on but the connection is not connected, reason then being the connection's statusReason; tenant_wide when the last test's token carried an application Mail.* role (Mail.Read, Mail.ReadBasic, Mail.ReadBasic.All, Mail.ReadWrite or Mail.Send), which reaches every mailbox in the tenant — a warning, the channels work all the same; ready otherwise. The test reads only the Graph token's roles: an Exchange full_access_as_app grant and the RBAC for Applications assignments are not visible to it. */
+        /** @description The Mail channels switch (Outlook connection design M10): whether Communications may send through Exchange Online shared mailboxes with the application's own token, its reach scoped to the channel mailboxes by Exchange RBAC for Applications. status is off while the switch is; unavailable when on but the connection is not connected, reason then being the connection's statusReason; tenant_wide when the last test's token carried an application mail role reaching every mailbox in the tenant (Mail.Read, Mail.ReadBasic, Mail.ReadBasic.All, Mail.ReadWrite, Mail.Send, MailboxSettings.Read, MailboxSettings.ReadWrite, MailboxItem.Read.All, MailboxItem.ImportExport.All, MailboxFolder.Read.All or MailboxFolder.ReadWrite.All) — while it shows, anyone who manages channels in Communications can send as any shared mailbox in the tenant — a warning, the channels work all the same; ready otherwise. The test reads only the Graph token's roles: an Exchange full_access_as_app grant and the RBAC for Applications assignments are not visible to it. */
         EntraMailChannels: {
             enabled: boolean;
             /** @description A code, never the directory's words; absent when there is nothing to say. */
@@ -798,7 +798,7 @@ export interface components {
             leaverRevokeSessions?: boolean;
             leaverStripLicences?: boolean;
             leaverWriteLeaveDate?: boolean;
-            /** @description Lets Communications send and receive through Exchange Online shared mailboxes (Outlook connection design M10). Turning it off closes nothing; the channels' sends are refused as unavailable and retried until it is on again or their attempts run out. */
+            /** @description Lets Communications send through Exchange Online shared mailboxes (Outlook connection design M10). Turning it off closes nothing; the channels' sends are refused as unavailable and held, spending no attempt, until it is on again or 24 hours after each was queued, when it fails as provider_unavailable. */
             mailChannels?: boolean;
             /** @description Lets people connect their own Outlook to Vantigo (Outlook connection design M2). Turning it on records when; turning it off closes every person's connection, so each must connect again, and the calendar's copies already written are removed. */
             outlookConnect?: boolean;

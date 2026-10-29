@@ -515,6 +515,11 @@ export interface components {
             lastReadAt: string | null;
             /**
              * Format: int64
+             * @description The attachments the conversation's channel takes, in bytes as the files are (a Microsoft 365 channel's): (maxMessageBytes − 16 KiB of headroom) × 100 / 137, rounded down to 0.1 MB — what the composer shows and a staging refused as too large names. null for SMTP. Always answered; optional in the schema only because the recorded exchanges predate it.
+             */
+            maxAttachmentBytes?: number | null;
+            /**
+             * Format: int64
              * @description The largest message the conversation's channel sends, in bytes of MIME (a Microsoft 365 channel's); null for SMTP. Always answered; optional in the schema only because the recorded exchanges predate it.
              */
             maxMessageBytes?: number | null;
@@ -976,7 +981,7 @@ export interface operations {
                     "application/json": components["schemas"]["AuthErrorResponse"];
                 };
             };
-            /** @description Conflict — channel_exists (the address, or for entra the mailbox, already has a channel), mail_channels_off (the Microsoft 365 provider is not available), default_channel_conflict. */
+            /** @description Conflict — channel_exists (the address already has a channel), mailbox_exists (for entra, another channel already uses the mailbox), mail_channels_off (the Microsoft 365 provider is not available), default_channel_conflict. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -1180,7 +1185,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict — channel_exists (the mailbox already has a channel), mail_channels_off. */
+            /** @description Conflict — mailbox_exists (another channel already uses the mailbox), mail_channels_off. */
             409: {
                 headers: {
                     [name: string]: unknown;

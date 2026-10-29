@@ -112,8 +112,11 @@ export const PortalPath = ({ path }: { path: string }) => {
   );
 };
 
-/** A value the Owner pastes in the portal, with a button that copies it. */
-export const CopyValue = ({ value }: { value: string }) => {
+/**
+ * A value the Owner pastes in the portal, with a button that copies it. The button is named "Copy {value}",
+ * or "Copy {label}" when a label names a value too long to read aloud, such as a block of commands.
+ */
+export const CopyValue = ({ value, label }: { value: string; label?: string }) => {
   const { t } = useI18n("entra");
   return (
     <CopyButton value={value}>
@@ -123,7 +126,7 @@ export const CopyValue = ({ value }: { value: string }) => {
             variant="subtle"
             size="sm"
             color={copied ? "teal" : "gray"}
-            aria-label={t("copyValue", { value })}
+            aria-label={t("copyValue", { value: label ?? value })}
             onClick={copy}
           >
             {copied ? <IconCheck size={14} /> : <IconCopy size={14} />}

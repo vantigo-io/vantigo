@@ -25,8 +25,10 @@ export type ConversationComposerProps = {
 
 export function ConversationComposer({ conversation, onSent }: ConversationComposerProps) {
   const { t, formatters } = useI18n("communications");
-  const budget = conversation.maxMessageBytes ?? null;
-  const budgetMb = budget === null ? "" : formatters.formatNumber(budget / 1_000_000, { maximumFractionDigits: 1 });
+  // The attachments the channel takes, as the server words them in its refusal: never the budget of MIME.
+  const allowance = conversation.maxAttachmentBytes ?? null;
+  const allowanceMb =
+    allowance === null ? "" : formatters.formatNumber(allowance / 1_000_000, { maximumFractionDigits: 1 });
   const [noteMode, setNoteMode] = useState(false);
   const [body, setBody] = useState("");
   const [replyMode, setReplyMode] = useState<"reply" | "reply_all">("reply");
@@ -180,9 +182,9 @@ export function ConversationComposer({ conversation, onSent }: ConversationCompo
             }}
           />
         </Button>
-        {budget !== null && (
+        {allowance !== null && (
           <Text size="xs" c="dimmed">
-            {t("attachmentsLimit", { size: budgetMb })}
+            {t("attachmentsLimit", { size: allowanceMb })}
           </Text>
         )}
         {uploads.length > 0 && (
@@ -199,8 +201,8 @@ export function ConversationComposer({ conversation, onSent }: ConversationCompo
       {upload.error && (
         <Text size="xs" c="red">
           {errorCode(upload.error) === "attachment_too_large"
-            ? budget !== null
-              ? t("attachmentTooLargeForChannel", { size: budgetMb })
+            ? allowance !== null
+              ? t("attachmentTooLargeForChannel", { size: allowanceMb })
               : t("attachmentTooLarge")
             : t("attachmentCouldNotBeStaged")}
         </Text>

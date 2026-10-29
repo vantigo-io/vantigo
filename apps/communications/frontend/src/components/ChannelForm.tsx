@@ -109,7 +109,7 @@ export function ChannelForm({ opened, onClose, onCreated, providers, providerLab
               {t("sharedMailboxOnly")}
             </Text>
           )}
-          {create.error && <Alert color="red">{channelErrorMessage(create.error, t, provider, locale)}</Alert>}
+          {create.error && <Alert color="red">{channelErrorMessage(create.error, t, locale)}</Alert>}
           <Button type="submit" loading={create.isPending}>
             {t("createChannel")}
           </Button>

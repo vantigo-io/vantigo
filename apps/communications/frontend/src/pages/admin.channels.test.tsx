@@ -224,9 +224,10 @@ describe("admin channels", () => {
     [
       "mail_channels_off",
       apiError(409, "mail_channels_off"),
-      "Microsoft 365 mail channels are turned off in the Entra settings.",
+      "Microsoft 365 mail channels are not available. An Entra administrator turns on Mail channels in the Entra settings.",
     ],
-    ["channel_exists", apiError(409, "channel_exists"), "This mailbox already has a channel."],
+    ["mailbox_exists", apiError(409, "mailbox_exists"), "Another channel already uses this mailbox."],
+    ["channel_exists", apiError(409, "channel_exists"), "A channel with this address already exists."],
     [
       "provider_unreachable",
       apiError(503, "provider_unreachable"),
@@ -336,7 +337,7 @@ describe("admin channels", () => {
     renderPage();
     expect(
       await screen.findByText(
-        "Mail access is granted to every mailbox in the tenant. Limit it with RBAC for Applications and remove the tenant-wide consent.",
+        "Mail access is granted to every mailbox in the tenant. Limit it with RBAC for Applications and remove the tenant-wide consent. While this shows, anyone who manages channels in Communications can send as any shared mailbox in the tenant.",
       ),
     ).toBeTruthy();
   });
@@ -348,7 +349,7 @@ describe("admin channels", () => {
     renderPage();
     expect(
       await screen.findByText(
-        "E-posttilgangen gjelder alle postbokser i tenanten. Begrens den med RBAC for Applications og fjern samtykket for hele tenanten.",
+        "Applikasjonen har tilgang til alle postboksene i leietakeren. Begrens den med RBAC for Applications, og fjern samtykket som gjelder hele leietakeren. Så lenge denne advarselen vises, kan alle som administrerer kanaler i Kommunikasjon, sende som hvilken som helst delt postboks i leietakeren.",
       ),
     ).toBeTruthy();
   });

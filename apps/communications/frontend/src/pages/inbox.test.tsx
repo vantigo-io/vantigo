@@ -298,10 +298,16 @@ describe("inbox", () => {
   describe("the composer on a channel with a size limit", () => {
     const apiError = (status: number, code: string) => Object.assign(new Error("server words"), { status, code });
 
+    // The detail answers the budget of MIME and the attachments it takes; the composer shows the latter only.
     const openConversation = async (maxMessageBytes: number | null) => {
       const item = conversation("c-1", "Question");
+      const maxAttachmentBytes = maxMessageBytes === null ? null : 2_100_000;
       mocks.fetchConversations.mockResolvedValue(page([item]));
-      mocks.fetchConversation.mockResolvedValue({ ...detail(item.id, item.subject), maxMessageBytes });
+      mocks.fetchConversation.mockResolvedValue({
+        ...detail(item.id, item.subject),
+        maxMessageBytes,
+        maxAttachmentBytes,
+      });
       renderPage();
       await screen.findByText("Could you help me with this?");
     };
@@ -314,7 +320,7 @@ describe("inbox", () => {
 
     it("shows the channel's limit beside the attachments", async () => {
       await openConversation(3_000_000);
-      expect(screen.getByText("Attachments up to about 3 MB in total on this channel")).toBeTruthy();
+      expect(screen.getByText("Attachments up to about 2.1 MB in total on this channel")).toBeTruthy();
     });
 
     it("shows no limit on an SMTP channel", async () => {
@@ -326,7 +332,9 @@ describe("inbox", () => {
       mocks.stageConversationAttachment.mockRejectedValue(apiError(413, "attachment_too_large"));
       await openConversation(3_000_000);
       attach();
-      expect(await screen.findByText("The attachment is larger than this channel can send (about 3 MB).")).toBeTruthy();
+      expect(
+        await screen.findByText("The attachment is larger than this channel can send (about 2.1 MB)."),
+      ).toBeTruthy();
       expect(screen.queryByText(/server words|attachment_too_large/)).toBeNull();
     });
 
@@ -362,9 +370,9 @@ describe("inbox", () => {
       mocks.replyToConversation.mockRejectedValue(apiError(422, "too_large"));
       mocks.editorText = "Her er svaret.";
       await openConversation(3_000_000);
-      expect(screen.getByText("Vedlegg på opptil omtrent 3 MB til sammen på denne kanalen")).toBeTruthy();
+      expect(screen.getByText("Vedlegg på opptil omtrent 2,1 MB til sammen på denne kanalen")).toBeTruthy();
       attach();
-      expect(await screen.findByText("Vedlegget er større enn denne kanalen kan sende (omtrent 3 MB).")).toBeTruthy();
+      expect(await screen.findByText("Vedlegget er større enn denne kanalen kan sende (omtrent 2,1 MB).")).toBeTruthy();
       fireEvent.click(screen.getByRole("button", { name: "Send svar" }));
       expect(await screen.findByText("Meldingen og vedleggene er større enn denne kanalen kan sende.")).toBeTruthy();
     });
