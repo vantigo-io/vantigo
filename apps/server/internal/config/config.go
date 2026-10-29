@@ -477,6 +477,12 @@ type Config struct {
 	// Staging sets attachment_uploads.expires_at to now+this value, and
 	// communications' RetentionWorker.ExpireStagedUploads is what acts on it.
 	CommunicationsUploadExpiry time.Duration
+	// CommunicationsInboundMaxBytes is the largest inbound message, in bytes
+	// of MIME, the communications-mailbox-sync worker imports
+	// (COMMUNICATIONS_INBOUND_MAX_BYTES, default 25 MiB): a larger one is
+	// recorded skipped as too_large and never read. Bounded to [1 MiB,
+	// 150 MiB], Graph's attachment ceiling (Outlook connection design M14).
+	CommunicationsInboundMaxBytes int64
 
 	// CommunicationsRetentionDays is how old terminal communication history
 	// must be before the retention worker deletes it
@@ -1156,10 +1162,12 @@ func objectStorage(p *problems, env map[string]string, c *Config) {
 
 // communicationsAttachments loads the two settings communications' attachment
 // staging needs that .NET carried on its now-removed scanner options
-// (design doc D3): the per-file size limit and the staged-upload expiry.
+// (design doc D3): the per-file size limit and the staged-upload expiry; and
+// the largest inbound message the mailbox sync imports.
 func communicationsAttachments(p *problems, env map[string]string, c *Config) {
 	c.CommunicationsAttachmentMaxBytes = int64(integer(p, env, "COMMUNICATIONS_ATTACHMENT_MAX_BYTES", 10*1024*1024, 1, 50*1024*1024))
 	c.CommunicationsUploadExpiry = duration(p, env, "COMMUNICATIONS_UPLOAD_EXPIRY", 24*time.Hour)
+	c.CommunicationsInboundMaxBytes = int64(integer(p, env, "COMMUNICATIONS_INBOUND_MAX_BYTES", 25*1024*1024, 1024*1024, 150*1024*1024))
 }
 
 // communicationsRetention loads CommunicationsOptions.Retention

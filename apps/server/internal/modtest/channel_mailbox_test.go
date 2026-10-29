@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 )
@@ -121,5 +122,140 @@ func TestFakeChannelMailbox_APersonalMailboxIsNotSentThrough(t *testing.T) {
 	}
 	if err := f.Send(ctx, kari.Mailbox, []byte("x"), nil); !errors.Is(err, contracts.ErrMailboxUnknown) {
 		t.Errorf("Send from a personal mailbox = %v, want ErrMailboxUnknown", err)
+	}
+}
+
+// The fake's Inbox: a fresh Delta answers the messages received at or after
+// since, a page at a time, each next link then the delta link; the delta
+// link answers the changes since — an addition whatever its received time, a
+// removal as Removed —; ExpireDelta refuses every link issued so far, and a
+// link of another mailbox is refused. Raw answers the bytes under max,
+// ErrMailTooLarge above and ErrMailItemGone for a message removed; both
+// refuse an unknown mailbox, an unavailable provider and FailWith.
+func TestFakeChannelMailbox_Inbox(t *testing.T) {
+	ctx := context.Background()
+	f := NewFakeChannelMailbox()
+	post := contracts.ChannelMailboxInfo{Mailbox: "0b9c1f6e-2a4d-4c38-9a51-7e0f3b2d8c11", Address: "post@example.com", Shared: true}
+	f.SetMailbox(post.Address, post)
+	since := time.Date(2026, 10, 29, 12, 0, 0, 0, time.UTC)
+	item := func(id string, received time.Time) contracts.MailItem {
+		return contracts.MailItem{ID: id, ReceivedAt: received, MessageID: "<" + id + "@example.com>", ConversationID: "conv-" + id}
+	}
+	f.AddInbox(post.Mailbox, item("old", since.Add(-time.Hour)), []byte("old"))
+	for _, id := range []string{"a", "b", "c"} {
+		f.AddInbox(post.Mailbox, item(id, since.Add(time.Minute)), []byte("raw "+id))
+	}
+	ids := func(items []contracts.MailItem) []string {
+		var out []string
+		for _, it := range items {
+			id := it.ID
+			if it.Removed {
+				id += " removed"
+			}
+			out = append(out, id)
+		}
+		return out
+	}
+
+	f.SetDeltaPage(2)
+	first, err := f.Delta(ctx, post.Mailbox, "inbox", "", since)
+	if err != nil || first.Done || first.Link == "" || !slices.Equal(ids(first.Items), []string{"a", "b"}) {
+		t.Fatalf("the first page = %+v, %v; want a and b, a next link", first, err)
+	}
+	if first.Items[0] != item("a", since.Add(time.Minute)) {
+		t.Errorf("an item = %+v", first.Items[0])
+	}
+	second, err := f.Delta(ctx, post.Mailbox, "inbox", first.Link, time.Time{})
+	if err != nil || !second.Done || second.Link == "" || !slices.Equal(ids(second.Items), []string{"c"}) {
+		t.Fatalf("the second page = %+v, %v; want c and the delta link", second, err)
+	}
+	if empty, err := f.Delta(ctx, post.Mailbox, "inbox", second.Link, time.Time{}); err != nil || !empty.Done || len(empty.Items) != 0 {
+		t.Errorf("the delta link with no change = %+v, %v", empty, err)
+	}
+
+	f.SetDeltaPage(contracts.MailDeltaPageMax)
+	f.AddInbox(post.Mailbox, item("moved", since.Add(-48*time.Hour)), []byte("moved"))
+	f.RemoveInbox(post.Mailbox, "b")
+	f.AddInbox(post.Mailbox, item("a", since.Add(time.Minute)), []byte("raw a")) // a change: answered once
+	f.AddInbox(post.Mailbox, item("a", since.Add(time.Minute)), []byte("raw a"))
+	changes, err := f.Delta(ctx, post.Mailbox, "inbox", second.Link, time.Time{})
+	if err != nil || !changes.Done || !slices.Equal(ids(changes.Items), []string{"moved", "b removed", "a"}) {
+		t.Fatalf("the changes = %+v, %v; want moved, b removed, a", changes, err)
+	}
+	if removed := changes.Items[1]; removed != (contracts.MailItem{ID: "b", Removed: true}) {
+		t.Errorf("a removed item = %+v, want its ID alone", removed)
+	}
+
+	if _, err := NewFakeChannelMailbox().Delta(ctx, post.Mailbox, "inbox", "", since); !errors.Is(err, contracts.ErrMailboxUnknown) {
+		t.Errorf("Delta of a mailbox never checked = %v, want ErrMailboxUnknown", err)
+	}
+	other := contracts.ChannelMailboxInfo{Mailbox: "7f3e2d1c-0b9a-4876-8543-210fedcba987", Address: "other@example.com", Shared: true}
+	f.SetMailbox(other.Address, other)
+	if _, err := f.Delta(ctx, other.Mailbox, "inbox", changes.Link, time.Time{}); err == nil || errors.Is(err, contracts.ErrMailboxDeltaExpired) {
+		t.Errorf("another mailbox's link = %v, want a failure", err)
+	}
+	if _, err := f.Delta(ctx, post.Mailbox, "inbox", "not-a-link", time.Time{}); err == nil {
+		t.Error("a link never issued was followed")
+	}
+
+	f.ExpireDelta(post.Mailbox)
+	for _, link := range []string{first.Link, changes.Link} {
+		if _, err := f.Delta(ctx, post.Mailbox, "inbox", link, time.Time{}); !errors.Is(err, contracts.ErrMailboxDeltaExpired) {
+			t.Errorf("a link after ExpireDelta = %v, want ErrMailboxDeltaExpired", err)
+		}
+	}
+	fresh, err := f.Delta(ctx, post.Mailbox, "inbox", "", since)
+	if err != nil || !fresh.Done || !slices.Equal(ids(fresh.Items), []string{"c", "a"}) {
+		t.Errorf("a fresh read after ExpireDelta = %+v, %v; want c and a (b removed, the rest before since)", fresh, err)
+	}
+
+	if raw, err := f.Raw(ctx, post.Mailbox, "c", 5); err != nil || string(raw) != "raw c" {
+		t.Errorf("Raw of c at its size = %q, %v", raw, err)
+	}
+	if _, err := f.Raw(ctx, post.Mailbox, "c", 4); !errors.Is(err, contracts.ErrMailTooLarge) {
+		t.Errorf("Raw over max = %v, want ErrMailTooLarge", err)
+	}
+	if _, err := f.Raw(ctx, post.Mailbox, "b", 1<<20); !errors.Is(err, contracts.ErrMailItemGone) {
+		t.Errorf("Raw of a removed message = %v, want ErrMailItemGone", err)
+	}
+	if _, err := f.Raw(ctx, "unknown", "c", 1<<20); !errors.Is(err, contracts.ErrMailboxUnknown) {
+		t.Errorf("Raw of a mailbox not held = %v, want ErrMailboxUnknown", err)
+	}
+
+	f.SetStatus(contracts.MailboxUnavailable, "switch_off")
+	if _, err := f.Delta(ctx, post.Mailbox, "inbox", "", since); !errors.Is(err, contracts.ErrMailboxUnavailable) {
+		t.Errorf("Delta while unavailable = %v", err)
+	}
+	if _, err := f.Raw(ctx, post.Mailbox, "c", 1<<20); !errors.Is(err, contracts.ErrMailboxUnavailable) {
+		t.Errorf("Raw while unavailable = %v", err)
+	}
+	f.SetStatus(contracts.MailboxAvailable, "")
+
+	boom := errors.New("boom")
+	f.FailWith("Delta", boom)
+	f.FailWith("Raw", boom)
+	if _, err := f.Delta(ctx, post.Mailbox, "inbox", "", since); !errors.Is(err, boom) {
+		t.Errorf("Delta under FailWith = %v", err)
+	}
+	if _, err := f.Raw(ctx, post.Mailbox, "c", 1<<20); !errors.Is(err, boom) {
+		t.Errorf("Raw under FailWith = %v", err)
+	}
+
+	calls := f.Calls()
+	if c := calls[0]; c != (ChannelMailboxCall{Method: "Delta", Mailbox: post.Mailbox, Folder: "inbox", Since: since}) {
+		t.Errorf("the first Delta's call = %+v", c)
+	}
+	if c := calls[1]; c.Method != "Delta" || c.Link != first.Link {
+		t.Errorf("the second Delta's call = %+v, want its link", c)
+	}
+	var raw *ChannelMailboxCall
+	for i := range calls {
+		if calls[i].Method == "Raw" {
+			raw = &calls[i]
+			break
+		}
+	}
+	if raw == nil || *raw != (ChannelMailboxCall{Method: "Raw", Mailbox: post.Mailbox, MessageID: "c", Max: 5}) {
+		t.Errorf("the first Raw's call = %+v", raw)
 	}
 }

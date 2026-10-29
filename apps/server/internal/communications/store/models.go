@@ -80,6 +80,22 @@ type CommunicationsChannelCredential struct {
 	CreatedAt        time.Time
 }
 
+type CommunicationsChannelSync struct {
+	ChannelID    uuid.UUID
+	Folder       string
+	DeltaLink    *string
+	ImportFrom   time.Time
+	State        string
+	Error        *string
+	NextSyncAt   time.Time
+	LastSyncedAt *time.Time
+	Attempts     int32
+	LeaseID      *string
+	LeaseUntil   *time.Time
+	Notified     bool
+	UpdatedAt    time.Time
+}
+
 type CommunicationsConversation struct {
 	ID                          uuid.UUID
 	ChannelID                   uuid.UUID
@@ -142,6 +158,18 @@ type CommunicationsIdempotencyRecord struct {
 	ConversationID     uuid.UUID
 	MessageID          uuid.UUID
 	CreatedAt          time.Time
+}
+
+type CommunicationsInboundReceipt struct {
+	ID                uuid.UUID
+	ChannelID         uuid.UUID
+	ProviderMessageID string
+	RfcMessageID      *string
+	MessageID         *uuid.UUID
+	Outcome           string
+	Reason            *string
+	ReceivedAt        time.Time
+	CreatedAt         time.Time
 }
 
 type CommunicationsMessageAttachment struct {
