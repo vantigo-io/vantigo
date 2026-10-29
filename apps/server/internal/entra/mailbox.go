@@ -23,7 +23,9 @@ import (
 // This file is the module's contracts.MailboxCalendar (calendar Outlook sync
 // design O3, O4; plan readings 10–12): the calendar's copies of a person's
 // appointments and items written to their Exchange Online mailbox through
-// the module's Graph client and its token, with Calendars.ReadWrite.
+// the module's Graph client — every call on the person's own delegated
+// token (Outlook connection design M9; outlook_token.go), found by the
+// mailbox's object id, never on the application's.
 //
 // Status reads the connection's row and the secrets and nothing else. Every
 // other call checks the status first — anything but a delete needs
@@ -31,12 +33,18 @@ import (
 // the mailbox: an object id that is a row of entra.accounts the module made
 // or whose adoption is confirmed, and not deleted (ErrMailboxUnknown
 // otherwise), so a caller can never point the provider at a mailbox the
-// module does not manage. The writes go in $batch requests of at most
+// module does not manage. Then the person's token (mailboxSource): a
+// connection that cannot serve the call answers
+// contracts.ErrConnectionNeeded with its reason; the removals —
+// DeleteCalendar, Find, Unwatch, and Apply when every op it sends is a
+// delete — are served by a closing connection while it holds its token, and
+// answer ErrMailboxGone once none can. The writes go in $batch requests of at most
 // twenty, one after another (Outlook's four concurrent requests per
 // mailbox); an event's marker, a single-value extended property, is written
 // on create, and again only by an update naming the same key (design
-// O10.2), and a calendar the module makes carries a marker of its own. Both markers' values start "vantigo:<client id>" — the
-// Entra application's, which tells two installations sharing a tenant apart
+// O10.2), and a calendar the module makes carries a marker of its own.
+// Both markers' values start "vantigo:<client id>" — the connection's Entra
+// application, which tells two installations sharing a tenant apart
 // — and a calendar or an event without this installation's is never the
 // module's: never adopted, deleted or answered by Find or Marked.
 //
@@ -105,10 +113,12 @@ var showAsValues = []string{
 	contracts.ShowAsOOF, contracts.ShowAsWorkingElsewhere,
 }
 
-// mailboxCalendar is the module's contracts.MailboxCalendar over client.
+// mailboxCalendar is the module's contracts.MailboxCalendar over client,
+// the people's tokens from tokens on the same client.
 type mailboxCalendar struct {
 	deps   module.Deps
 	client *graphClient
+	tokens *outlookTokens
 }
 
 var _ contracts.MailboxCalendar = (*mailboxCalendar)(nil)
@@ -116,7 +126,8 @@ var _ contracts.MailboxCalendar = (*mailboxCalendar)(nil)
 // newMailboxCalendar builds the module's mailbox provider over d, for
 // Compose and Workers alike.
 func newMailboxCalendar(d module.Deps) contracts.MailboxCalendar {
-	return &mailboxCalendar{deps: d, client: newGraphClient(d)}
+	c := newGraphClient(d)
+	return &mailboxCalendar{deps: d, client: c, tokens: &outlookTokens{c: c, q: store.New(d.Pool), pool: d.Pool}}
 }
 
 // Key is "entra", with no context and no network.
@@ -125,30 +136,37 @@ func (m *mailboxCalendar) Key() string { return providerKey }
 // Status is whether the provider may write, from the connection's row and
 // the secrets with no network (plan reading 11).
 func (m *mailboxCalendar) Status(ctx context.Context) (contracts.MailboxStatus, error) {
+	_, st, err := m.state(ctx)
+	return st, err
+}
+
+// state is the connection's row and the status Status answers from it.
+func (m *mailboxCalendar) state(ctx context.Context) (store.EntraConnection, contracts.MailboxStatus, error) {
 	q := store.New(m.deps.Pool)
 	conn, err := q.GetConnection(ctx)
 	if err != nil {
-		return contracts.MailboxStatus{}, fmt.Errorf("entra: read the connection: %w", err)
+		return store.EntraConnection{}, contracts.MailboxStatus{}, fmt.Errorf("entra: read the connection: %w", err)
 	}
 	creds, err := q.ListCredentials(ctx)
 	if err != nil {
-		return contracts.MailboxStatus{}, fmt.Errorf("entra: read the secrets: %w", err)
+		return store.EntraConnection{}, contracts.MailboxStatus{}, fmt.Errorf("entra: read the secrets: %w", err)
 	}
-	return mailboxStatusOf(conn, creds, m.client.now()), nil
+	return conn, mailboxStatusOf(conn, creds, m.client.now()), nil
 }
 
 // mailboxStatusOf is the provider's state at now:
 //
 //   - available while the switch is on and the connection connected
-//     (statusOf), whether or not the last test's token carried
-//     Calendars.ReadWrite: a grant made with Exchange RBAC for Applications
-//     never shows in the token, so the role is advisory (GET /connection's
-//     permissionsMissing) and a mailbox outside the grant answers its own
-//     403, ErrMailboxDenied (calendar Outlook sync design O2);
+//     (statusOf): each person's call then answers
+//     contracts.ErrConnectionNeeded when their own Outlook connection cannot
+//     serve it (Outlook connection design M9), and a mailbox Exchange
+//     refuses its own 403, ErrMailboxDenied;
 //   - cleanup while the switch is off (switch_off) and a credential still
 //     works — the tenant and the client set, a secret unrevoked and
 //     unexpired, and the tenant not refusing it (failing
-//     credential_invalid): a person's copies can still be removed;
+//     credential_invalid): a person's copies can still be removed, on their
+//     own connection, which the switch's turning off closed keeping its
+//     token;
 //   - else unavailable: switch_off while the switch is off, else the
 //     connection's reason, or its status when it names none.
 func mailboxStatusOf(conn store.EntraConnection, creds []store.EntraCredential, now time.Time) contracts.MailboxStatus {
@@ -173,39 +191,77 @@ func mailboxStatusOf(conn store.EntraConnection, creds []store.EntraCredential, 
 	return contracts.MailboxStatus{State: contracts.MailboxUnavailable, Reason: reason}
 }
 
-// mailboxSession is one call's footing: the queries, the credential, the
-// mailbox's object id and whether the provider is in cleanup.
+// mailboxSession is one call's footing: the queries, the person's token,
+// the mailbox's object id, the connection's client and tenant, and whether
+// the provider is in cleanup.
 type mailboxSession struct {
-	q       *store.Queries
-	cred    graphCredential
-	oid     uuid.UUID
-	cleanup bool
+	q        *store.Queries
+	src      tokenSource
+	oid      uuid.UUID
+	clientID uuid.UUID
+	tenantID uuid.UUID
+	cleanup  bool
 }
 
-// open is a call's footing for mailbox: checked (checked's rules), then a
-// credential.
-func (m *mailboxCalendar) open(ctx context.Context, mailbox string, cleanupAllowed bool) (mailboxSession, error) {
+// open is a call's footing for mailbox: checked (checked's rules), then the
+// person's token, asked for as a removal when removal says so.
+func (m *mailboxCalendar) open(ctx context.Context, mailbox string, cleanupAllowed, removal bool) (mailboxSession, error) {
 	s, err := m.checked(ctx, mailbox, cleanupAllowed)
 	if err != nil {
 		return mailboxSession{}, err
 	}
-	if err := m.withCredential(ctx, &s); err != nil {
-		return mailboxSession{}, err
-	}
+	m.withToken(&s, removal)
 	return s, nil
 }
 
-// withCredential sets s's credential, which may fetch a token: the network.
-func (m *mailboxCalendar) withCredential(ctx context.Context, s *mailboxSession) error {
-	cred, err := credentialFor(ctx, s.q, m.client)
+// withToken sets s's token source, the person's delegated token for the
+// mailbox, asked for as a removal when removal says so. No network until
+// the first call.
+func (m *mailboxCalendar) withToken(s *mailboxSession, removal bool) {
+	s.src = mailboxSource{delegatedSource: m.tokens.source(s.oid, removal)}
+}
+
+// errNoRemovalToken is a removal no connection can make: the person's is
+// closing with no token, or gone (not_connected). It is ErrMailboxGone to
+// the contract, and tells Unwatch its subscription is past deleting.
+var errNoRemovalToken = errors.New("entra: no Outlook connection holds a token for the removal")
+
+// mailboxSource is the person's delegated token as a mailbox call answers
+// its errors (Outlook connection design M9): a connection that cannot serve
+// the call is contracts.ErrConnectionNeeded as it is, except a removal
+// whose connection is closing with no token or gone — nothing can ever
+// remove those copies —, which is ErrMailboxGone, and not
+// ErrConnectionNeeded besides; the refresh's errNotConfigured and
+// errNoCredential are ErrMailboxUnavailable; anything else, the credential
+// refused or a transient failure, passes.
+type mailboxSource struct {
+	*delegatedSource
+}
+
+func (s mailboxSource) token(ctx context.Context) (string, error) {
+	tok, err := s.delegatedSource.token(ctx)
+	return tok, s.answer(err)
+}
+
+func (s mailboxSource) challenged(ctx context.Context, header http.Header) error {
+	return s.answer(s.delegatedSource.challenged(ctx, header))
+}
+
+// answer is err as the contract answers it.
+func (s mailboxSource) answer(err error) error {
+	var needed *contracts.ConnectionNeededError
 	switch {
+	case err == nil:
+		return nil
+	case errors.As(err, &needed):
+		if s.removal && (needed.Reason == outlookNeedsClosing || needed.Reason == outlookNotConnected) {
+			return fmt.Errorf("%w: %w (%s)", contracts.ErrMailboxGone, errNoRemovalToken, needed.Reason)
+		}
+		return err
 	case errors.Is(err, errNotConfigured), errors.Is(err, errNoCredential):
 		return fmt.Errorf("%w: %w", contracts.ErrMailboxUnavailable, err)
-	case err != nil:
-		return err
 	}
-	s.cred = cred
-	return nil
+	return err
 }
 
 // checked is a call's footing for mailbox with no credential yet, and so
@@ -214,7 +270,7 @@ func (m *mailboxCalendar) withCredential(ctx context.Context, s *mailboxSession)
 // unless it is a row the module made or whose adoption is confirmed, and
 // not deleted).
 func (m *mailboxCalendar) checked(ctx context.Context, mailbox string, cleanupAllowed bool) (mailboxSession, error) {
-	st, err := m.Status(ctx)
+	conn, st, err := m.state(ctx)
 	if err != nil {
 		return mailboxSession{}, err
 	}
@@ -240,19 +296,34 @@ func (m *mailboxCalendar) checked(ctx context.Context, mailbox string, cleanupAl
 	case row.State == stateDeleted:
 		return mailboxSession{}, fmt.Errorf("entra: the account %s is deleted: %w", oid, contracts.ErrMailboxUnknown)
 	}
-	return mailboxSession{q: q, oid: oid, cleanup: st.State == contracts.MailboxCleanup}, nil
+	return sessionOf(q, oid, conn, st), nil
+}
+
+// sessionOf is the footing for oid with no token yet: the connection's
+// client and tenant, and whether st is cleanup.
+func sessionOf(q *store.Queries, oid uuid.UUID, conn store.EntraConnection, st contracts.MailboxStatus) mailboxSession {
+	s := mailboxSession{q: q, oid: oid, cleanup: st.State == contracts.MailboxCleanup}
+	if conn.ClientID != nil {
+		s.clientID = *conn.ClientID
+	}
+	if conn.TenantID != nil {
+		s.tenantID = *conn.TenantID
+	}
+	return s
 }
 
 // keyPrefix starts the value of the marker of an event this installation
-// writes: "vantigo:<client id>:", the client id a lower-case GUID.
+// writes: "vantigo:<client id>:", the connection's client id a lower-case
+// GUID — the value the application credential carried before, so a marker
+// written then still matches.
 func (s mailboxSession) keyPrefix() string {
-	return mailboxKeyPrefix + s.cred.clientID.String() + ":"
+	return mailboxKeyPrefix + s.clientID.String() + ":"
 }
 
 // calendarMark is the value of the marker of a calendar this installation
 // makes: "vantigo:<client id>".
 func (s mailboxSession) calendarMark() string {
-	return mailboxKeyPrefix + s.cred.clientID.String()
+	return mailboxKeyPrefix + s.clientID.String()
 }
 
 // validID reports whether id is one Graph could have answered: present,
@@ -367,13 +438,13 @@ func (m *mailboxCalendar) EnsureCalendar(ctx context.Context, mailbox, known, na
 	if known != "" && !validID(known) {
 		return "", errors.New("entra: a calendar id that is no id")
 	}
-	s, err := m.open(ctx, mailbox, false)
+	s, err := m.open(ctx, mailbox, false, false)
 	if err != nil {
 		return "", err
 	}
 	if known != "" {
 		var cal graphCalendar
-		err := m.client.get(ctx, s.cred, s.calendarPath(known, "?", query(url.Values{"$select": {"id,name"}, "$expand": {calendarExpand}})), &cal, noWords)
+		err := m.client.getAs(ctx, s.src, s.calendarPath(known, "?", query(url.Values{"$select": {"id,name"}, "$expand": {calendarExpand}})), &cal, noWords)
 		switch {
 		case err == nil && cal.ID != "" && s.ours(cal):
 			return cal.ID, nil
@@ -394,7 +465,7 @@ func (m *mailboxCalendar) EnsureCalendar(ctx context.Context, mailbox, known, na
 			"name":                          want,
 			"singleValueExtendedProperties": []graphProperty{{ID: calendarMarker, Value: s.calendarMark()}},
 		}
-		err = m.client.post(ctx, s.cred, userPath(s.oid, "/calendars"), body, &made, noRetry)
+		err = m.client.postAs(ctx, s.src, userPath(s.oid, "/calendars"), body, &made, noRetry)
 		switch {
 		case isStatus(err, http.StatusConflict) || isCode(err, "ErrorFolderExists"):
 			id, err := m.calendarNamed(ctx, s, want)
@@ -420,7 +491,7 @@ func (m *mailboxCalendar) calendarNamed(ctx context.Context, s mailboxSession, n
 		Value []graphCalendar `json:"value"`
 	}
 	params := url.Values{"$filter": {filter}, "$select": {"id,name"}, "$expand": {calendarExpand}}
-	if err := m.client.get(ctx, s.cred, userPath(s.oid, "/calendars?", query(params)), &page, noWords); err != nil {
+	if err := m.client.getAs(ctx, s.src, userPath(s.oid, "/calendars?", query(params)), &page, noWords); err != nil {
 		return "", mailboxRefusal(err)
 	}
 	listed := false
@@ -447,12 +518,12 @@ func (m *mailboxCalendar) DeleteCalendar(ctx context.Context, mailbox, calendarI
 	if !validID(calendarID) {
 		return errors.New("entra: a calendar id that is no id")
 	}
-	s, err := m.open(ctx, mailbox, true)
+	s, err := m.open(ctx, mailbox, true, true)
 	if err != nil {
 		return err
 	}
 	var cal graphCalendar
-	err = m.client.get(ctx, s.cred, s.calendarPath(calendarID, "?", query(url.Values{"$select": {"id,name"}, "$expand": {calendarExpand}})), &cal, noWords)
+	err = m.client.getAs(ctx, s.src, s.calendarPath(calendarID, "?", query(url.Values{"$select": {"id,name"}, "$expand": {calendarExpand}})), &cal, noWords)
 	switch {
 	case itemMissing(err):
 		return nil
@@ -461,7 +532,7 @@ func (m *mailboxCalendar) DeleteCalendar(ctx context.Context, mailbox, calendarI
 	case !s.ours(cal):
 		return fmt.Errorf("entra: the calendar carries no marker of this installation: %w", contracts.ErrCalendarNotOurs)
 	}
-	err = m.client.del(ctx, s.cred, s.calendarPath(calendarID), noWords)
+	err = m.client.delAs(ctx, s.src, s.calendarPath(calendarID), noWords)
 	if err == nil || itemMissing(err) {
 		return nil
 	}
@@ -624,10 +695,15 @@ func (m *mailboxCalendar) Apply(ctx context.Context, mailbox, calendarID string,
 	if calendarID != "" && !validID(calendarID) {
 		return nil, errors.New("entra: a calendar id that is no id")
 	}
-	s, err := m.open(ctx, mailbox, true)
+	s, err := m.checked(ctx, mailbox, true)
 	if err != nil {
 		return nil, err
 	}
+	// A removal when every op it sends is a delete: under cleanup the rest
+	// are refused unsent.
+	m.withToken(&s, s.cleanup || !slices.ContainsFunc(ops, func(op contracts.MailboxOp) bool {
+		return op.Kind != contracts.MailboxOpDelete
+	}))
 	results := make([]contracts.MailboxResult, len(ops))
 	requests := make([]mailboxRequest, len(ops))
 	var pending []int
@@ -720,7 +796,7 @@ func (m *mailboxCalendar) batch(ctx context.Context, s mailboxSession, ops []con
 			}
 		}
 		var answer batchAnswer
-		if err := m.client.post(ctx, s.cred, "/$batch", map[string]any{"requests": body}, &answer, opts...); err != nil {
+		if err := m.client.postAs(ctx, s.src, "/$batch", map[string]any{"requests": body}, &answer, opts...); err != nil {
 			return err
 		}
 		byID := make(map[string]int, len(answer.Responses))
@@ -784,7 +860,7 @@ func (m *mailboxCalendar) result(ctx context.Context, s mailboxSession, op contr
 		g.Detail = refusal.Error.Details[0].Code
 	}
 	m.client.logger.DebugContext(ctx, "entra: Graph refused a mailbox write",
-		"tenant", s.cred.tenantID.String(), "kind", op.Kind, "status", status, "code", g.Code, "detail", g.Detail)
+		"tenant", s.tenantID.String(), "kind", op.Kind, "status", status, "code", g.Code, "detail", g.Detail)
 	switch {
 	case mailboxGone(g):
 		return contracts.MailboxResult{Err: fmt.Errorf("%w: %w", contracts.ErrMailboxGone, g)}
@@ -810,7 +886,7 @@ func (m *mailboxCalendar) Find(ctx context.Context, mailbox, calendarID string, 
 	if calendarID != "" && !validID(calendarID) {
 		return nil, errors.New("entra: a calendar id that is no id")
 	}
-	s, err := m.open(ctx, mailbox, true)
+	s, err := m.open(ctx, mailbox, true, true)
 	if err != nil {
 		return nil, err
 	}
@@ -839,7 +915,7 @@ func (m *mailboxCalendar) Find(ctx context.Context, mailbox, calendarID string, 
 			} `json:"value"`
 			NextLink string `json:"@odata.nextLink"`
 		}
-		if err := m.client.get(ctx, s.cred, path, &page, noWords); err != nil {
+		if err := m.client.getAs(ctx, s.src, path, &page, noWords); err != nil {
 			if calendarID != "" && len(out) == 0 && itemMissing(err) {
 				// The calendar itself is gone: it holds nothing of ours.
 				return out, nil

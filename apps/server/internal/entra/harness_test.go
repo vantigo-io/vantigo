@@ -24,6 +24,9 @@ import (
 // the fake Graph passes modtest.WithTransport(graph) among opts.
 type harness struct {
 	*modtest.Harness
+	// outlook is the Outlook fixture newMailboxHarness made the harness
+	// with, for mailboxUser to connect its people; nil otherwise.
+	outlook *outlookFixture
 }
 
 // newHarness is an entra installation.

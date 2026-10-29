@@ -28,13 +28,17 @@
 // without ConsistencyLevel: eventual, an in filter lists at most fifteen
 // values; a user's calendars and events keep the extended property they
 // were written with, are listed in pages of $top with an @odata.nextLink,
-// and answer 403 for a mailbox outside the application's scope and 404
-// MailboxNotEnabledForRESTAPI for a user with none (mailbox.go); the
+// and answer 403 for a mailbox Exchange refuses and 404
+// MailboxNotEnabledForRESTAPI for a user with none (mailbox.go) — reached
+// only with a delegated token for that very user, every other token, the
+// application's among them, 403 ErrorAccessDenied, $batch requests
+// included; the
 // default calendar answers its calendarView/delta from a change log, in
 // pages Prefer sizes, its times in UTC when Prefer asks (mailbox_delta.go);
 // a subscription's create validates the webhook through Handshake, 400 when
 // it fails, 409 for a second one on the same resource, and the
-// subscriptions are renewed, deleted and listed in pages (subscriptions.go);
+// subscriptions are renewed, deleted and listed in pages, with the
+// delegated token of their creator alone (subscriptions.go);
 // a delegated authorization code and refresh grant, with its signed
 // id_token, its key set, GET /me and a CAE claims challenge
 // (authorize.go). Every error
@@ -189,6 +193,9 @@ type FakeGraph struct {
 	// prefer is the Prefer header of the request being answered — a
 	// request's own inside a $batch.
 	prefer string
+	// caller is who the delegated token of the request being answered is
+	// for, nil for the application's.
+	caller *delegatedToken
 	// auth is the authorization server's memory (authorize.go).
 	auth authState
 }
@@ -656,6 +663,14 @@ func (g *FakeGraph) api(req *http.Request, body []byte) answer {
 		return graphError(http.StatusBadRequest, "BadRequest", "Invalid version.")
 	}
 	if a, ok := g.delegatedCall(token, req.Method, path); ok {
+		return a
+	}
+	g.caller = nil
+	if who, ok := g.auth.delegated[token]; ok {
+		g.caller = &who
+	}
+	defer func() { g.caller = nil }()
+	if a, refused := g.scopeRefusal(path); refused {
 		return a
 	}
 	if g.throttle > 0 {
@@ -1635,6 +1650,8 @@ func (g *FakeGraph) batch(body []byte) answer {
 			u = &url.URL{}
 		case g.ForbiddenEvents[last]:
 			a = graphError(http.StatusForbidden, "ErrorAccessDenied", "Access is denied. Check credentials and try again.")
+		case g.refusedInScope(u.Path):
+			a, _ = g.scopeRefusal(u.Path)
 		case len(r.Body) > 0 && !strings.HasPrefix(headerOf(r.Headers, "Content-Type"), "application/json"):
 			a = graphError(http.StatusBadRequest, "BadRequest", "Content-Type header must be specified for a request with a body.")
 		case g.batchThrottle > 0:
@@ -1674,6 +1691,46 @@ func (g *FakeGraph) batch(body []byte) answer {
 }
 
 // --- helpers -----------------------------------------------------------------
+
+// mailboxPath is a user's mailbox calendar: its calendars, its default
+// calendar, its events and its calendar view.
+var mailboxPath = regexp.MustCompile(`(?i)^/users/([^/]+)/(calendar|calendars|events|calendarView)(/|$)`)
+
+// scopeRefusal is Graph's refusal of a token for path: a mailbox route is
+// reached only with a delegated token for that very user, and the
+// subscriptions with a delegated token — the application's, or another
+// user's, is 403 ErrorAccessDenied. g.mu is held.
+func (g *FakeGraph) scopeRefusal(path string) (answer, bool) {
+	denied := graphError(http.StatusForbidden, "ErrorAccessDenied", "Access is denied. Check credentials and try again.")
+	if m := mailboxPath.FindStringSubmatch(path); m != nil {
+		if g.caller == nil || !g.callerIs(m[1]) {
+			return denied, true
+		}
+		return answer{}, false
+	}
+	if p := strings.Trim(path, "/"); (p == "subscriptions" || strings.HasPrefix(p, "subscriptions/")) && g.caller == nil {
+		return denied, true
+	}
+	return answer{}, false
+}
+
+// refusedInScope reports whether scopeRefusal refuses path.
+func (g *FakeGraph) refusedInScope(path string) bool {
+	_, refused := g.scopeRefusal(path)
+	return refused
+}
+
+// callerIs reports whether the request's delegated token is user's: by its
+// id, or the id the path names when no such user is held. g.mu is held.
+func (g *FakeGraph) callerIs(user string) bool {
+	if g.caller == nil {
+		return false
+	}
+	if u := g.userByID(user, true); u != nil {
+		return strings.EqualFold(u.ID, g.caller.oid)
+	}
+	return strings.EqualFold(user, g.caller.oid)
+}
 
 func (g *FakeGraph) userByID(id string, includeDeleted bool) *User {
 	for _, u := range g.users {

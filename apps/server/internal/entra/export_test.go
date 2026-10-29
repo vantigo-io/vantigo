@@ -13,8 +13,7 @@ import (
 // OutlookToken is the person's delegated access token for the account oid,
 // as the module built on d answers it to a mailbox call (outlook_token.go):
 // removal asks it for a removal, which a closing connection still allows.
-// Nothing in production calls the token source until delivery B; the
-// external tests reach it here.
+// The external tests reach the token source alone here.
 func OutlookToken(ctx context.Context, d module.Deps, oid uuid.UUID, removal bool) (string, error) {
 	return newOutlookTokens(d).token(ctx, oid, removal)
 }
