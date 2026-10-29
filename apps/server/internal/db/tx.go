@@ -163,6 +163,15 @@ func IsDataException(err error) bool {
 	return errors.As(err, &pgErr) && strings.HasPrefix(pgErr.Code, "22")
 }
 
+// IsIntegrityViolation reports whether err is a PostgreSQL integrity
+// constraint violation, any SQLSTATE of class 23: a unique, foreign key,
+// check or not-null violation. A caller that already handled the
+// violations it expects may treat the rest as the row's fault.
+func IsIntegrityViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && strings.HasPrefix(pgErr.Code, "23")
+}
+
 // isConstraintViolation is the matching every exported check above does,
 // shared rather than written three times: the rules are identical and only the
 // SQLSTATE differs, so a change to how a name is matched must land in one

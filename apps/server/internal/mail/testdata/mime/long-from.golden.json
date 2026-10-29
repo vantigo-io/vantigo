@@ -1,0 +1,26 @@
+{
+  "messageId": "<long-1@example.no>",
+  "inReplyTo": "",
+  "references": null,
+  "from": null,
+  "to": [
+    {
+      "Name": "",
+      "Address": "post@example.com"
+    },
+    {
+      "Name": "",
+      "Address": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb@example.no"
+    }
+  ],
+  "cc": null,
+  "subject": "An address too long",
+  "date": "2026-10-29T08:50:00Z",
+  "autoSubmitted": false,
+  "text": "From an address of 321 characters.",
+  "html": "",
+  "htmlDropped": false,
+  "attachments": null,
+  "droppedAttachments": 0,
+  "skippedParts": 0
+}

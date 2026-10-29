@@ -16,6 +16,7 @@ import (
 
 	"github.com/vantigo-io/vantigo/server/internal/communications/store"
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
+	"github.com/vantigo-io/vantigo/server/internal/db"
 	"github.com/vantigo-io/vantigo/server/internal/module"
 	"github.com/vantigo-io/vantigo/server/internal/storage"
 	"github.com/vantigo-io/vantigo/server/internal/worker"
@@ -40,6 +41,14 @@ import (
 //  3. A page's link is stored only after every message of the page has a
 //     receipt. A cycle that stops half-way reads the same page again next
 //     time, and the receipts skip what it already imported.
+//  4. Nothing received before the retention window is read: the receipts'
+//     sweep deletes receipts by that same cutoff, so a message retention or
+//     an erase deleted is never imported again when the delta answers it once
+//     more (marked read, say).
+//  5. A message whose import fails each time would hold its page for ever: a
+//     value Postgres refuses (class 22 or 23) is given up on at once, any
+//     other failure but the provider's or the store's on its third try, with
+//     a failed import_failed receipt, and the page goes on.
 
 const (
 	// mailboxSyncWorkerName is what the runner logs this worker as.
@@ -63,6 +72,12 @@ const (
 	mailboxSyncBackoffCap = time.Hour
 	// mailboxSyncFolder is the folder a channel receives from.
 	mailboxSyncFolder = "inbox"
+	// mailboxSyncRestartMargin is how far before the earlier of the last
+	// finished sync and the newest receipt an expired delta restarts.
+	mailboxSyncRestartMargin = time.Hour
+	// mailboxImportTries is how many failed imports of one message the page
+	// is held at before it is given up on.
+	mailboxImportTries = 3
 )
 
 // errSyncLeaseLost is a cycle that found its lease taken: it stops and
@@ -72,6 +87,10 @@ var errSyncLeaseLost = errors.New("communications: the mailbox sync lost its lea
 // errSyncProviderHeld is a cycle that found no available provider: the slot
 // empty or under another key, or Status not available.
 var errSyncProviderHeld = errors.New("communications: the mail channels provider is not available")
+
+// errImportTransient marks an import's failure at the provider or the object
+// store: never counted toward giving the message up.
+var errImportTransient = errors.New("communications: the provider or the store failed")
 
 // MailboxSyncWorker reads every Microsoft 365 channel's Inbox into
 // conversations. It implements worker.Worker.
@@ -193,6 +212,8 @@ type syncCycle struct {
 	leaseID        string
 	attempts       int32
 	importFrom     time.Time
+	lastSyncedAt   *time.Time
+	restartFrom    *time.Time
 	mailbox        string
 	channelAddress string
 	provider       contracts.ChannelMailbox
@@ -210,6 +231,7 @@ func (w *MailboxSyncWorker) cycle(ctx context.Context, c *syncCycle) error {
 		return errSyncLeaseLost
 	}
 	c.attempts, c.importFrom, c.channelAddress = row.Attempts, row.ImportFrom, row.ChannelAddress
+	c.lastSyncedAt, c.restartFrom = row.LastSyncedAt, row.RestartFrom
 
 	provider, err := w.syncMailbox(ctx)
 	if err != nil {
@@ -234,23 +256,24 @@ func (w *MailboxSyncWorker) cycle(ctx context.Context, c *syncCycle) error {
 	if row.DeltaLink != nil {
 		link = *row.DeltaLink
 	}
-	page, err := mailboxDelta(ctx, provider, c.mailbox, mailboxSyncFolder, link, c.importFrom)
+	// A fresh read starts from import_from, or from the restart point an
+	// expired link left.
+	fresh := c.importFrom
+	if c.restartFrom != nil {
+		fresh = *c.restartFrom
+	}
+	page, err := mailboxDelta(ctx, provider, c.mailbox, mailboxSyncFolder, link, fresh)
 	if errors.Is(err, contracts.ErrMailboxDeltaExpired) && link != "" {
-		// The provider no longer takes the link: forget it, and read afresh
-		// from the newest message the channel has a receipt for. The
-		// receipts skip the overlap.
+		// The provider no longer takes the link: forget it, keep the restart
+		// point, and read afresh from there. The receipts skip the overlap.
+		since, rerr := w.restartPoint(ctx, q, c)
+		if rerr != nil {
+			return rerr
+		}
 		if err := w.guarded(q.ResetChannelSyncDelta(ctx, store.ResetChannelSyncDeltaParams{
-			Now: w.now(), ChannelID: c.channelID, LeaseID: &c.leaseID,
+			RestartFrom: &since, Now: w.now(), ChannelID: c.channelID, LeaseID: &c.leaseID,
 		})); err != nil {
 			return err
-		}
-		since := c.importFrom
-		newest, nerr := q.NewestInboundReceipt(ctx, c.channelID)
-		switch {
-		case nerr == nil:
-			since = newest
-		case !errors.Is(nerr, pgx.ErrNoRows):
-			return fmt.Errorf("communications: read the channel's newest receipt: %w", nerr)
 		}
 		page, err = mailboxDelta(ctx, provider, c.mailbox, mailboxSyncFolder, "", since)
 	}
@@ -258,7 +281,11 @@ func (w *MailboxSyncWorker) cycle(ctx context.Context, c *syncCycle) error {
 		return err
 	}
 
-	for _, item := range pageItems(page.Items, c.importFrom) {
+	floor := c.importFrom
+	if cutoff := w.now().AddDate(0, 0, -retentionDaysOf(w.deps)); cutoff.After(floor) {
+		floor = cutoff
+	}
+	for _, item := range pageItems(page.Items, floor) {
 		now := w.now()
 		if err := w.guarded(q.RenewChannelSyncLease(ctx, store.RenewChannelSyncLeaseParams{
 			LeaseUntil: ptrTime(now.Add(mailboxSyncLease)), Now: now, ChannelID: c.channelID, LeaseID: &c.leaseID,
@@ -275,7 +302,9 @@ func (w *MailboxSyncWorker) cycle(ctx context.Context, c *syncCycle) error {
 			continue
 		}
 		if err := w.importItem(ctx, c, item); err != nil {
-			return err
+			if gaveUp, gerr := w.giveUp(ctx, q, c, item, err); gerr != nil || !gaveUp {
+				return errors.Join(err, gerr)
+			}
 		}
 	}
 
@@ -290,16 +319,74 @@ func (w *MailboxSyncWorker) cycle(ctx context.Context, c *syncCycle) error {
 	}))
 }
 
+// restartPoint is where an expired delta reads afresh from: import_from for
+// a channel that never finished a pass — its pages come in no order, so a
+// receipt says nothing of what is left —, else an hour before the earlier of
+// the last finished sync and the newest receipt, never before import_from.
+func (w *MailboxSyncWorker) restartPoint(ctx context.Context, q *store.Queries, c *syncCycle) (time.Time, error) {
+	if c.lastSyncedAt == nil {
+		return c.importFrom, nil
+	}
+	since := *c.lastSyncedAt
+	newest, err := q.NewestInboundReceipt(ctx, c.channelID)
+	switch {
+	case err == nil:
+		if newest.Before(since) {
+			since = newest
+		}
+	case !errors.Is(err, pgx.ErrNoRows):
+		return time.Time{}, fmt.Errorf("communications: read the channel's newest receipt: %w", err)
+	}
+	since = since.Add(-mailboxSyncRestartMargin)
+	if since.Before(c.importFrom) {
+		since = c.importFrom
+	}
+	return since.UTC(), nil
+}
+
+// giveUp decides whether a failed import is given up on: a value Postgres
+// refuses at once, another failure — not the provider's or the store's, not
+// a lost lease or a cancelled cycle — on its mailboxImportTries'th try of
+// the same message, counted on the row. A message given up on gets a failed
+// import_failed receipt, and true lets the page go on.
+func (w *MailboxSyncWorker) giveUp(ctx context.Context, q *store.Queries, c *syncCycle, item contracts.MailItem, cause error) (bool, error) {
+	if ctx.Err() != nil || errors.Is(cause, errSyncLeaseLost) || errors.Is(cause, errImportTransient) {
+		return false, nil
+	}
+	if !db.IsDataException(cause) && !db.IsIntegrityViolation(cause) {
+		tries, err := q.CountChannelSyncItemFailure(ctx, store.CountChannelSyncItemFailureParams{
+			Item: &item.ID, Now: w.now(), ChannelID: c.channelID, LeaseID: &c.leaseID,
+		})
+		if errors.Is(err, pgx.ErrNoRows) {
+			return false, errSyncLeaseLost
+		}
+		if err != nil {
+			return false, fmt.Errorf("communications: count a failed import: %w", err)
+		}
+		if tries < mailboxImportTries {
+			return false, nil
+		}
+	}
+	w.logger().Warn("mailbox sync gave a message up: its import fails each time",
+		"worker", mailboxSyncWorkerName, "channel", c.channelID, "code", reasonImportFailed, "error", cause)
+	if err := w.writeReceipt(ctx, q, c, item, nil, nil, receiptFailed, reasonImportFailed); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 // pageItems are the items of a page the cycle imports: not removed — Vantigo
 // keeps a message the mailbox no longer has (M17) — and not received before
-// the channel's import_from, as the delta also answers changes to messages
-// outside its filter; oldest first, ties by id. None is dropped otherwise:
-// the page's link is kept once these are done, so an item left out here
-// would never be read again.
-func pageItems(items []contracts.MailItem, importFrom time.Time) []contracts.MailItem {
+// floor — the later of the channel's import_from and the retention window's
+// start —, as the delta also answers changes to messages outside its filter;
+// oldest first, ties by id. An item with no receivedDateTime is kept (it is
+// received when it is read). None is dropped otherwise: the page's link is
+// kept once these are done, so an item left out here would never be read
+// again.
+func pageItems(items []contracts.MailItem, floor time.Time) []contracts.MailItem {
 	out := make([]contracts.MailItem, 0, len(items))
 	for _, item := range items {
-		if item.Removed || item.ID == "" || item.ReceivedAt.Before(importFrom) {
+		if item.Removed || item.ID == "" || (!item.ReceivedAt.IsZero() && item.ReceivedAt.Before(floor)) {
 			continue
 		}
 		out = append(out, item)

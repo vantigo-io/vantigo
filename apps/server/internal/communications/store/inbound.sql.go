@@ -341,8 +341,8 @@ ORDER BY received_at DESC
 LIMIT 1
 `
 
-// The restart point of an expired delta: the latest receivedDateTime the
-// channel has a receipt for.
+// A bound on the restart point of an expired delta: the latest
+// receivedDateTime the channel has a receipt for.
 func (q *Queries) NewestInboundReceipt(ctx context.Context, channelID uuid.UUID) (time.Time, error) {
 	row := q.db.QueryRow(ctx, newestInboundReceipt, channelID)
 	var received_at time.Time
@@ -393,21 +393,32 @@ func (q *Queries) SetParticipantContact(ctx context.Context, arg SetParticipantC
 }
 
 const sweepInboundReceipts = `-- name: SweepInboundReceipts :execrows
-DELETE FROM communications.inbound_receipts r
-WHERE r.message_id IS NULL AND r.created_at < $1
-  AND r.id <> (
-      SELECT n.id FROM communications.inbound_receipts n
-      WHERE n.channel_id = r.channel_id
-      ORDER BY n.received_at DESC, n.id DESC
-      LIMIT 1
-  )
+DELETE FROM communications.inbound_receipts
+WHERE id IN (
+    SELECT r.id FROM communications.inbound_receipts r
+    WHERE r.message_id IS NULL AND r.received_at < $1
+      AND r.id <> (
+          SELECT n.id FROM communications.inbound_receipts n
+          WHERE n.channel_id = r.channel_id
+          ORDER BY n.received_at DESC, n.id DESC
+          LIMIT 1
+      )
+    LIMIT $2
+)
 `
 
-// The receipts' retention (M16): one whose message is gone, or that never had
-// one, once older than the window — except each channel's newest, the
-// restart point of an expired delta.
-func (q *Queries) SweepInboundReceipts(ctx context.Context, cutoff time.Time) (int64, error) {
-	result, err := q.db.Exec(ctx, sweepInboundReceipts, cutoff)
+type SweepInboundReceiptsParams struct {
+	Cutoff    time.Time
+	BatchSize int32
+}
+
+// The receipts' retention (M16), batch_size at a time: one whose message is
+// gone, or that never had one, received before the window — the cutoff the
+// worker reads nothing before, so a message whose receipt this deletes is
+// never read again — except each channel's newest, a bound on the restart
+// point of an expired delta.
+func (q *Queries) SweepInboundReceipts(ctx context.Context, arg SweepInboundReceiptsParams) (int64, error) {
+	result, err := q.db.Exec(ctx, sweepInboundReceipts, arg.Cutoff, arg.BatchSize)
 	if err != nil {
 		return 0, err
 	}

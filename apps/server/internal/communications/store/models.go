@@ -93,6 +93,9 @@ type CommunicationsChannelSync struct {
 	LeaseID      *string
 	LeaseUntil   *time.Time
 	Notified     bool
+	RestartFrom  *time.Time
+	FailingItem  *string
+	FailingTries int32
 	UpdatedAt    time.Time
 }
 

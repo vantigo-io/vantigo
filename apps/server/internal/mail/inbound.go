@@ -25,15 +25,18 @@ import (
 // Inbound is a received message as ParseInbound reads it: the headers
 // threading, the linker and the reply need, the bodies, and the attachments.
 // Nothing in it is sanitised: HTML is the message's own, for SanitizeHTML.
+// No string in it holds a NUL: Postgres refuses one in text and jsonb.
 type Inbound struct {
 	// MessageID and InReplyTo are bracketed ("<id>"), "" when absent;
-	// InReplyTo is the header's first id only.
+	// InReplyTo is the header's first id only. An id with a control
+	// character in it is none.
 	MessageID, InReplyTo string
 	// References are bracketed, oldest first, distinct, at most
 	// maxReferences: when a thread holds more, the first and the newest are
-	// kept.
+	// kept. A header is read for at most maxIDTokens ids.
 	References []string
-	// From is nil when no From address parses.
+	// From is nil when no From address parses. To and Cc hold at most
+	// maxAddresses each; an address longer than maxAddressLength is none.
 	From   *Address
 	To, Cc []Address
 	// Subject is RFC 2047 decoded, trimmed, at most 998 bytes.
@@ -89,6 +92,13 @@ var ErrUnparseable = errors.New("mail: the message could not be read")
 const (
 	maxSubjectBytes = 998
 	maxReferences   = 100
+	// maxIDTokens is the most ids one Message-Id, In-Reply-To or References
+	// value is read for, before References' dedupe and cap.
+	maxIDTokens = 4 * maxReferences
+	// maxAddresses is the most addresses a To or Cc answers.
+	maxAddresses = 100
+	// maxAddressLength is RFC 5321's longest path: 64 + 1 + 255.
+	maxAddressLength = 320
 )
 
 // ParseInbound reads raw, an RFC 5322 message, under limits. A damaged part
@@ -106,7 +116,7 @@ func ParseInbound(raw []byte, limits InboundLimits) (Inbound, error) {
 		MessageID:     NormalizeMessageID(header.Get("Message-Id")),
 		InReplyTo:     firstMessageID(header.Get("In-Reply-To")),
 		References:    parseReferences(header.Get("References")),
-		Subject:       truncateUTF8(strings.TrimSpace(decodeHeader(header.Get("Subject"))), maxSubjectBytes),
+		Subject:       truncateUTF8(strings.TrimSpace(withoutNUL(decodeHeader(header.Get("Subject")))), maxSubjectBytes),
 		AutoSubmitted: autoSubmitted(header),
 	}
 	if from := parseAddressList(header.Get("From")); len(from) > 0 {
@@ -120,8 +130,8 @@ func ParseInbound(raw []byte, limits InboundLimits) (Inbound, error) {
 
 	w := walker{limits: limits, in: &in}
 	w.part(header, msg.Body, 0)
-	in.Text = strings.TrimRight(strings.ReplaceAll(strings.Join(w.texts, "\n"), "\r\n", "\n"), " \t\r\n")
-	in.HTML = w.html
+	in.Text = strings.TrimRight(strings.ReplaceAll(withoutNUL(strings.Join(w.texts, "\n")), "\r\n", "\n"), " \t\r\n")
+	in.HTML = withoutNUL(w.html)
 	if int64(len(in.Text)) > limits.MaxBody {
 		in.Text = truncateUTF8(in.Text, int(limits.MaxBody)-len("…")) + "…"
 	}
@@ -168,11 +178,11 @@ func firstMessageID(value string) string { return NormalizeMessageID(value) }
 
 // messageIDs answers each id of a Message-Id, In-Reply-To or References
 // value, bracketed: the <…> tokens when there are any, else each
-// whitespace-separated word.
+// whitespace-separated word; at most maxIDTokens of them are read.
 func messageIDs(value string) []string {
 	var ids []string
 	rest := value
-	for {
+	for tokens := 0; tokens < maxIDTokens; tokens++ {
 		open := strings.IndexByte(rest, '<')
 		if open < 0 {
 			break
@@ -189,7 +199,10 @@ func messageIDs(value string) []string {
 	if len(ids) > 0 || strings.ContainsAny(value, "<>") {
 		return ids
 	}
-	for _, word := range strings.Fields(value) {
+	for i, word := range strings.Fields(value) {
+		if i == maxIDTokens {
+			break
+		}
 		if id := cleanMessageID(word); id != "" {
 			ids = append(ids, id)
 		}
@@ -197,13 +210,21 @@ func messageIDs(value string) []string {
 	return ids
 }
 
+// cleanMessageID is id bracketed, or "" when it is empty or holds a bracket,
+// a space or any control character (NUL among them).
 func cleanMessageID(id string) string {
 	id = strings.TrimSpace(id)
-	if id == "" || strings.ContainsAny(id, "<> \t\r\n") {
+	if id == "" || strings.ContainsAny(id, "<> ") || strings.IndexFunc(id, isControl) >= 0 {
 		return ""
 	}
 	return "<" + id + ">"
 }
+
+// isControl is a C0 control character or DEL.
+func isControl(r rune) bool { return r < 0x20 || r == 0x7f }
+
+// withoutNUL is s with every NUL removed.
+func withoutNUL(s string) string { return strings.ReplaceAll(s, "\x00", "") }
 
 func parseReferences(value string) []string {
 	var refs []string
@@ -262,8 +283,11 @@ func decodeHeader(value string) string {
 }
 
 // parseAddressList answers the addresses of a header that parse: the list
-// whole, else each comma-separated piece on its own.
+// whole, else each comma-separated piece on its own; NULs removed first, an
+// address longer than maxAddressLength or with a control character dropped,
+// at most maxAddresses.
 func parseAddressList(value string) []Address {
+	value = withoutNUL(value)
 	if strings.TrimSpace(value) == "" {
 		return nil
 	}
@@ -279,10 +303,13 @@ func parseAddressList(value string) []Address {
 	}
 	out := make([]Address, 0, len(list))
 	for _, a := range list {
-		if a.Address == "" {
+		if a.Address == "" || len(a.Address) > maxAddressLength || strings.IndexFunc(a.Address, isControl) >= 0 {
 			continue
 		}
-		out = append(out, Address{Name: strings.TrimSpace(a.Name), Address: strings.ToLower(a.Address)})
+		out = append(out, Address{Name: strings.TrimSpace(withoutNUL(a.Name)), Address: strings.ToLower(a.Address)})
+		if len(out) == maxAddresses {
+			break
+		}
 	}
 	if len(out) == 0 {
 		return nil
@@ -307,7 +334,13 @@ func (w *walker) part(h textproto.MIMEHeader, body io.Reader, depth int) {
 		w.in.SkippedParts++
 		return
 	}
-	mediaType, params := parseMediaType(h.Get("Content-Type"))
+	// An absent Content-Type is text/plain (RFC 2045 §5.2): a message
+	// without MIME headers keeps its body.
+	contentType := h.Get("Content-Type")
+	if strings.TrimSpace(contentType) == "" {
+		contentType = "text/plain"
+	}
+	mediaType, params := parseMediaType(contentType)
 	if strings.HasPrefix(mediaType, "multipart/") {
 		w.multipart(params["boundary"], body, depth)
 		return
@@ -365,9 +398,9 @@ func (w *walker) leaf(h textproto.MIMEHeader, mediaType string, params map[strin
 		w.in.DroppedAttachments++
 		return
 	}
-	contentID := strings.Trim(strings.TrimSpace(h.Get("Content-Id")), "<> ")
+	contentID := strings.Trim(strings.TrimSpace(withoutNUL(h.Get("Content-Id"))), "<> ")
 	w.in.Attachments = append(w.in.Attachments, InboundAttachment{
-		FileName:    fileName,
+		FileName:    withoutNUL(fileName),
 		ContentType: mediaType,
 		ContentID:   contentID,
 		Inline:      contentID != "" && disposition != "attachment",
@@ -376,8 +409,7 @@ func (w *walker) leaf(h textproto.MIMEHeader, mediaType string, params map[strin
 }
 
 // parseMediaType answers value's lower-cased media type and parameters,
-// keeping what parsed of a damaged value; an empty or unreadable type is
-// "text/plain".
+// keeping what parsed of a damaged value.
 func parseMediaType(value string) (string, map[string]string) {
 	mediaType, params, err := mime.ParseMediaType(value)
 	if err != nil && mediaType == "" {

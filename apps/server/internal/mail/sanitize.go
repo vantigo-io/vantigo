@@ -16,7 +16,8 @@ import (
 // when inlineURL answers false or a URL other than an attachment download
 // path — removes every other img but a base64 data: PNG, GIF, JPEG or WebP
 // (remote images and tracking pixels go), drops background and srcset
-// attributes, and drops a link's href unless it is http, https or mailto.
+// attributes, and drops a link's or an image map area's href unless it is
+// http, https or mailto; no relative URL is kept but the img src above.
 // bluemonday's UGC policy then removes everything executable — script,
 // style, iframe, object, embed, form, input, meta, base, link, svg, math,
 // every on* attribute — and keeps a short list of typographic and box style
@@ -42,10 +43,17 @@ func SanitizeHTML(source string, inlineURL func(contentID string) (string, bool)
 	return strings.TrimSpace(inboundPolicy.Sanitize(b.String()))
 }
 
+// inlineScheme carries a resolved cid: image through bluemonday, which keeps
+// no relative URL: the pre-pass writes the download path as
+// "vantigo-inline:<attachment id>", the policy admits that scheme on an
+// img's src alone, and RewriteSrc turns it back into the path.
+const inlineScheme = "vantigo-inline"
+
 var (
 	// inlineDownloadPath is the only relative URL an img may keep: an
 	// inbound attachment's download, which the inbox fetches and inlines.
-	inlineDownloadPath = regexp.MustCompile(`^/api/v1/communications/attachments/[0-9a-f-]{36}/download$`)
+	inlineDownloadPath = regexp.MustCompile(`^/api/v1/communications/attachments/([0-9a-f-]{36})/download$`)
+	inlineSource       = regexp.MustCompile(`^` + inlineScheme + `:[0-9a-f-]{36}$`)
 	dataImage          = regexp.MustCompile(`^data:image/(png|gif|jpeg|webp);base64,[A-Za-z0-9+/=\s]+$`)
 	inboundPolicy      = newInboundPolicy()
 )
@@ -56,8 +64,14 @@ func newInboundPolicy() *bluemonday.Policy {
 	p.RequireNoReferrerOnLinks(true)
 	p.AddTargetBlankToFullyQualifiedLinks(true)
 	p.AllowDataURIImages()
-	p.AllowAttrs("src").Matching(inlineDownloadPath).OnElements("img")
-	p.AllowRelativeURLs(true)
+	p.AllowAttrs("src").Matching(inlineSource).OnElements("img")
+	p.AllowURLSchemeWithCustomPolicy(inlineScheme, func(u *url.URL) bool { return inlineSource.MatchString(u.String()) })
+	p.RewriteSrc(func(u *url.URL) {
+		if u.Scheme == inlineScheme {
+			*u = url.URL{Path: "/api/v1/communications/attachments/" + u.Opaque + "/download"}
+		}
+	})
+	p.AllowRelativeURLs(false)
 	p.AllowStyles(
 		"color", "background-color",
 		"font-family", "font-size", "font-weight", "font-style",
@@ -98,7 +112,7 @@ func prepass(n *html.Node, inlineURL func(string) (string, bool)) {
 					c = next
 					continue
 				}
-			case atom.A:
+			case atom.A, atom.Area:
 				c.Attr = safeHref(c.Attr)
 			}
 			prepass(c, inlineURL)
@@ -124,10 +138,11 @@ func rewriteImage(n *html.Node, inlineURL func(string) (string, bool)) bool {
 				id = src[4:]
 			}
 			resolved, ok := inlineURL(strings.Trim(id, "<> "))
-			if !ok || !inlineDownloadPath.MatchString(resolved) {
+			m := inlineDownloadPath.FindStringSubmatch(resolved)
+			if !ok || m == nil {
 				return false
 			}
-			n.Attr[i].Val = resolved
+			n.Attr[i].Val = inlineScheme + ":" + m[1]
 			return true
 		}
 		return dataImage.MatchString(src)

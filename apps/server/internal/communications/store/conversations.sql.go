@@ -320,7 +320,7 @@ JOIN communications.participants p ON p.id = m.participant_id
 JOIN communications.conversations c ON c.id = m.conversation_id
 JOIN communications.channels ch ON ch.id = c.channel_id
 WHERE m.conversation_id = $1 AND m.direction = 'inbound'
-ORDER BY m.occurred_at DESC
+ORDER BY m.occurred_at DESC, m.id DESC
 LIMIT 1
 `
 
@@ -334,10 +334,10 @@ type GetReplyRecipientsSourceRow struct {
 
 // Who a reply answers (M15, inventory §4.3, §4.4; ReplyRecipients
 // `:446-455`, which QueueOutboundAsync inlines at `:277`, `:283`): the latest
-// inbound message by occurred_at with a participant — none for a conversation
-// nothing was received in, step 7's 422 recipients_missing —, its sender's
-// address, its metadata (the Cc reply-all answers, its References)
-// and Message-Id, and the channel's own address and id.
+// inbound message by occurred_at, ties by id, with a participant — none for
+// a conversation nothing was received in, step 7's 422 recipients_missing —,
+// its sender's address, its metadata (the Cc reply-all answers, its
+// References) and Message-Id, and the channel's own address and id.
 func (q *Queries) GetReplyRecipientsSource(ctx context.Context, conversationID uuid.UUID) (GetReplyRecipientsSourceRow, error) {
 	row := q.db.QueryRow(ctx, getReplyRecipientsSource, conversationID)
 	var i GetReplyRecipientsSourceRow

@@ -1,0 +1,34 @@
+{
+  "messageId": "",
+  "inReplyTo": "<ok-1@example.no>",
+  "references": ["<ok-1@example.no>"],
+  "from": {
+    "Name": "Kari Nordmann",
+    "Address": "kari@example.no"
+  },
+  "to": [
+    {
+      "Name": "",
+      "Address": "post@example.com"
+    }
+  ],
+  "cc": null,
+  "subject": "Hei der",
+  "date": "2026-10-29T08:50:00Z",
+  "autoSubmitted": false,
+  "text": "A body with a NUL.",
+  "html": "<p>HTML too</p>",
+  "htmlDropped": false,
+  "attachments": [
+    {
+      "fileName": "f.bin",
+      "contentType": "application/octet-stream",
+      "contentId": "cid@example.no",
+      "inline": false,
+      "size": 1,
+      "sha256": "2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881"
+    }
+  ],
+  "droppedAttachments": 0,
+  "skippedParts": 1
+}

@@ -46,6 +46,35 @@ func (q *Queries) ClaimChannelSync(ctx context.Context, arg ClaimChannelSyncPara
 	return result.RowsAffected(), nil
 }
 
+const countChannelSyncItemFailure = `-- name: CountChannelSyncItemFailure :one
+UPDATE communications.channel_sync
+SET failing_tries = CASE WHEN failing_item = $1 THEN failing_tries + 1 ELSE 1 END,
+    failing_item = $1, updated_at = $2
+WHERE channel_id = $3 AND lease_id = $4
+RETURNING failing_tries
+`
+
+type CountChannelSyncItemFailureParams struct {
+	Item      *string
+	Now       time.Time
+	ChannelID uuid.UUID
+	LeaseID   *string
+}
+
+// An import of item that failed: its count of failed tries, from 1 when the
+// page was held at another message.
+func (q *Queries) CountChannelSyncItemFailure(ctx context.Context, arg CountChannelSyncItemFailureParams) (int32, error) {
+	row := q.db.QueryRow(ctx, countChannelSyncItemFailure,
+		arg.Item,
+		arg.Now,
+		arg.ChannelID,
+		arg.LeaseID,
+	)
+	var failing_tries int32
+	err := row.Scan(&failing_tries)
+	return failing_tries, err
+}
+
 const deleteChannelSync = `-- name: DeleteChannelSync :exec
 DELETE FROM communications.channel_sync WHERE channel_id = $1
 `
@@ -135,6 +164,7 @@ func (q *Queries) GetChannelSyncByChannelIDs(ctx context.Context, channelIds []u
 
 const getChannelSyncForCycle = `-- name: GetChannelSyncForCycle :one
 SELECT s.channel_id, s.folder, s.delta_link, s.import_from, s.state, s.attempts, s.lease_id,
+       s.last_synced_at, s.restart_from,
        c.address AS channel_address, c.settings AS channel_settings
 FROM communications.channel_sync s
 JOIN communications.channels c ON c.id = s.channel_id
@@ -149,6 +179,8 @@ type GetChannelSyncForCycleRow struct {
 	State           string
 	Attempts        int32
 	LeaseID         *string
+	LastSyncedAt    *time.Time
+	RestartFrom     *time.Time
 	ChannelAddress  string
 	ChannelSettings []byte
 }
@@ -167,6 +199,8 @@ func (q *Queries) GetChannelSyncForCycle(ctx context.Context, channelID uuid.UUI
 		&i.State,
 		&i.Attempts,
 		&i.LeaseID,
+		&i.LastSyncedAt,
+		&i.RestartFrom,
 		&i.ChannelAddress,
 		&i.ChannelSettings,
 	)
@@ -208,9 +242,10 @@ VALUES ($1, 'inbox', $2, 'pending', $2, $2)
 ON CONFLICT (channel_id) DO UPDATE
 SET folder = 'inbox', delta_link = NULL, import_from = excluded.import_from, state = 'pending',
     error = NULL, next_sync_at = excluded.next_sync_at, last_synced_at = NULL, attempts = 0,
-    lease_id = NULL, lease_until = NULL, notified = false, updated_at = excluded.updated_at
+    lease_id = NULL, lease_until = NULL, notified = false, restart_from = NULL,
+    failing_item = NULL, failing_tries = 0, updated_at = excluded.updated_at
 RETURNING channel_id, folder, delta_link, import_from, state, error, next_sync_at, last_synced_at,
-          attempts, lease_id, lease_until, notified, updated_at
+          attempts, lease_id, lease_until, notified, restart_from, failing_item, failing_tries, updated_at
 `
 
 type InsertChannelSyncParams struct {
@@ -237,6 +272,9 @@ func (q *Queries) InsertChannelSync(ctx context.Context, arg InsertChannelSyncPa
 		&i.LeaseID,
 		&i.LeaseUntil,
 		&i.Notified,
+		&i.RestartFrom,
+		&i.FailingItem,
+		&i.FailingTries,
 		&i.UpdatedAt,
 	)
 	return i, err
@@ -271,20 +309,27 @@ func (q *Queries) RenewChannelSyncLease(ctx context.Context, arg RenewChannelSyn
 
 const resetChannelSyncDelta = `-- name: ResetChannelSyncDelta :execrows
 UPDATE communications.channel_sync
-SET delta_link = NULL, updated_at = $1
-WHERE channel_id = $2 AND lease_id = $3
+SET delta_link = NULL, restart_from = $1, updated_at = $2
+WHERE channel_id = $3 AND lease_id = $4
 `
 
 type ResetChannelSyncDeltaParams struct {
-	Now       time.Time
-	ChannelID uuid.UUID
-	LeaseID   *string
+	RestartFrom *time.Time
+	Now         time.Time
+	ChannelID   uuid.UUID
+	LeaseID     *string
 }
 
-// The provider no longer takes the stored link: forgotten, so a cycle that
-// ends before its fresh read stores one starts afresh too.
+// The provider no longer takes the stored link: forgotten, and the instant
+// the fresh read starts from kept, so a cycle that ends before its fresh read
+// stores a link starts afresh from the same instant.
 func (q *Queries) ResetChannelSyncDelta(ctx context.Context, arg ResetChannelSyncDeltaParams) (int64, error) {
-	result, err := q.db.Exec(ctx, resetChannelSyncDelta, arg.Now, arg.ChannelID, arg.LeaseID)
+	result, err := q.db.Exec(ctx, resetChannelSyncDelta,
+		arg.RestartFrom,
+		arg.Now,
+		arg.ChannelID,
+		arg.LeaseID,
+	)
 	if err != nil {
 		return 0, err
 	}
@@ -326,6 +371,9 @@ SET delta_link = $1,
     error = CASE WHEN $2::boolean THEN NULL ELSE error END,
     attempts = CASE WHEN $2::boolean THEN 0 ELSE attempts END,
     last_synced_at = CASE WHEN $2::boolean THEN $3::timestamptz ELSE last_synced_at END,
+    restart_from = CASE WHEN $2::boolean THEN NULL ELSE restart_from END,
+    notified = CASE WHEN $2::boolean THEN false ELSE notified END,
+    failing_item = NULL, failing_tries = 0,
     next_sync_at = $4,
     lease_id = NULL, lease_until = NULL,
     updated_at = $3::timestamptz
@@ -341,8 +389,9 @@ type StoreChannelSyncPageParams struct {
 	LeaseID    *string
 }
 
-// After a page whose every message has a receipt: its link kept and the lease
-// given back. With done, the delta link — the channel is active, its failure
+// After a page whose every message has a receipt: its link kept, the failed
+// tries of its messages forgotten and the lease given back. With done, the
+// delta link — the channel is active, its failure, restart point and notice
 // forgotten, synced now and due again at next_sync_at; without, the next
 // page's link and next_sync_at now, so the drain claims it again at once.
 func (q *Queries) StoreChannelSyncPage(ctx context.Context, arg StoreChannelSyncPageParams) (int64, error) {

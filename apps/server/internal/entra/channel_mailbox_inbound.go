@@ -116,9 +116,10 @@ type inboxDeltaItem struct {
 }
 
 // mailItemOf is it as the contract answers it, false for one whose id is no
-// validID or whose receivedDateTime does not read — left out rather than
-// failing the page, which would hold the delta at it for ever. A removed
-// message is its id alone.
+// validID — left out rather than failing the page, which would hold the
+// delta at it for ever. One whose receivedDateTime does not read is kept
+// with a zero ReceivedAt, which Communications reads as the moment it
+// receives it. A removed message is its id alone.
 func mailItemOf(it inboxDeltaItem) (contracts.MailItem, bool) {
 	if !validID(it.ID) {
 		return contracts.MailItem{}, false
@@ -126,11 +127,10 @@ func mailItemOf(it inboxDeltaItem) (contracts.MailItem, bool) {
 	if len(it.Removed) > 0 && string(it.Removed) != "null" {
 		return contracts.MailItem{ID: it.ID, Removed: true}, true
 	}
-	received, err := time.Parse(time.RFC3339, it.ReceivedDateTime)
-	if err != nil {
-		return contracts.MailItem{}, false
+	out := contracts.MailItem{ID: it.ID, MessageID: strings.TrimSpace(it.InternetMessageID)}
+	if received, err := time.Parse(time.RFC3339, it.ReceivedDateTime); err == nil {
+		out.ReceivedAt = received.UTC()
 	}
-	out := contracts.MailItem{ID: it.ID, ReceivedAt: received.UTC(), MessageID: strings.TrimSpace(it.InternetMessageID)}
 	if len(out.MessageID) > mailMaxMessageID {
 		out.MessageID = ""
 	}
@@ -189,18 +189,21 @@ func (m *channelMailbox) Delta(ctx context.Context, mailbox, folder, link string
 		return contracts.MailDelta{}, channelRefusal(err)
 	}
 	out := contracts.MailDelta{Items: make([]contracts.MailItem, 0, len(answer.Value))}
-	skipped := 0
+	skipped, untimed := 0, 0
 	for _, it := range answer.Value {
 		item, ok := mailItemOf(it)
 		if !ok {
 			skipped++
 			continue
 		}
+		if !item.Removed && item.ReceivedAt.IsZero() {
+			untimed++
+		}
 		out.Items = append(out.Items, item)
 	}
-	if skipped > 0 {
-		m.client.logger.DebugContext(ctx, "entra: a mail delta page held messages whose ids or times do not read",
-			"tenant", cred.tenantID.String(), "mailbox", oid.String(), "skipped", skipped)
+	if skipped > 0 || untimed > 0 {
+		m.client.logger.WarnContext(ctx, "entra: a mail delta page held messages whose ids or times do not read",
+			"tenant", cred.tenantID.String(), "mailbox", oid.String(), "skipped", skipped, "untimed", untimed)
 	}
 	switch {
 	case answer.DeltaLink != "":

@@ -375,6 +375,9 @@ func TestNormalizeMessageID(t *testing.T) {
 		"":                      "",
 		"<>":                    "",
 		"<a b@x>":               "",
+		"<a\x00b@x>":            "",
+		"<a\x01b@x>":            "",
+		"<a\x7fb@x>":            "",
 	} {
 		if got := mail.NormalizeMessageID(in); got != want {
 			t.Errorf("NormalizeMessageID(%q) = %q, want %q", in, got, want)
@@ -389,4 +392,72 @@ func mustParse(t *testing.T, name string) mail.Inbound {
 		t.Fatalf("%s: %v", name, err)
 	}
 	return in
+}
+
+// TestParseInbound_StripsNUL: no string ParseInbound answers holds a NUL —
+// Postgres refuses one in text and jsonb, and a message that always fails
+// its insert would hold its channel — and an id with a control character in
+// it is no id.
+func TestParseInbound_StripsNUL(t *testing.T) {
+	in := mustParse(t, "nul.eml")
+	if in.Subject != "Hei der" || in.SkippedParts != 1 || in.From == nil || in.From.Name != "Kari Nordmann" {
+		t.Errorf("Subject %q, SkippedParts %d, From %+v", in.Subject, in.SkippedParts, in.From)
+	}
+	if in.MessageID != "" || in.InReplyTo != "<ok-1@example.no>" || len(in.References) != 1 || in.References[0] != "<ok-1@example.no>" {
+		t.Errorf("MessageID %q, InReplyTo %q, References %q: an id with a NUL is none", in.MessageID, in.InReplyTo, in.References)
+	}
+	if in.Text != "A body with a NUL." || !strings.Contains(in.HTML, "HTML too") {
+		t.Errorf("Text %q, HTML %q", in.Text, in.HTML)
+	}
+	if len(in.Attachments) != 1 || in.Attachments[0].FileName != "f.bin" || in.Attachments[0].ContentID != "cid@example.no" {
+		t.Errorf("Attachments = %+v", in.Attachments)
+	}
+	for _, s := range []string{in.Subject, in.Text, in.HTML, in.From.Name, in.Attachments[0].FileName, in.Attachments[0].ContentID} {
+		if strings.ContainsRune(s, 0) {
+			t.Errorf("%q holds a NUL", s)
+		}
+	}
+}
+
+// TestParseInbound_DropsAnAddressTooLong: an address longer than 320
+// characters (RFC 5321's 64 + 1 + 255) is no address; 320 is one.
+func TestParseInbound_DropsAnAddressTooLong(t *testing.T) {
+	in := mustParse(t, "long-from.eml")
+	if in.From != nil {
+		t.Errorf("From = %+v, want none: 321 characters", in.From)
+	}
+	if len(in.To) != 2 || len(in.To[1].Address) != 320 {
+		t.Errorf("To = %d addresses, want both, the 320-character one kept", len(in.To))
+	}
+}
+
+// TestParseInbound_CapsAddressesAndIDs: To and Cc keep at most 100 addresses
+// each, and an id header is read for at most 400 ids.
+func TestParseInbound_CapsAddressesAndIDs(t *testing.T) {
+	var cc, refs []string
+	for i := range 5000 {
+		cc = append(cc, fmt.Sprintf("p%04d@example.com", i))
+		refs = append(refs, fmt.Sprintf("<r%04d@example.com>", i))
+	}
+	raw := "From: a@example.com\nTo: " + strings.Join(cc, ", ") + "\nCc: " + strings.Join(cc, ", ") +
+		"\nReferences: " + strings.Join(refs, " ") + "\n\nbody\n"
+	in, err := mail.ParseInbound([]byte(raw), mail.InboundLimits{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(in.To) != 100 || len(in.Cc) != 100 || in.Cc[0].Address != "p0000@example.com" || in.Cc[99].Address != "p0099@example.com" {
+		t.Errorf("To %d, Cc %d addresses, want the first 100 of each", len(in.To), len(in.Cc))
+	}
+	if len(in.References) != 100 || in.References[99] != "<r0399@example.com>" {
+		t.Errorf("References %d, last %q: want the newest of the first 400 ids", len(in.References), in.References[len(in.References)-1])
+	}
+}
+
+// TestParseInbound_NoContentTypeIsPlainText: a message with no MIME headers
+// is text/plain (RFC 2045 §5.2), its body the text.
+func TestParseInbound_NoContentTypeIsPlainText(t *testing.T) {
+	in := mustParse(t, "no-content-type.eml")
+	if in.Text != "A plain RFC 5322 message\nwithout MIME headers." || len(in.Attachments) != 0 {
+		t.Errorf("Text %q, %d attachments", in.Text, len(in.Attachments))
+	}
 }

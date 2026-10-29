@@ -22,8 +22,8 @@ import (
 // Cc reply-all's, the threading headers the outbox writes.
 
 // TestReply_FromARealImport: the detail answers the sender as replyTo and the
-// message's Cc — without the mailbox and the sender, distinct in any case, at
-// most 100 — as replyAllCc; reply-all queues one To and one Cc delivery each,
+// message's Cc — the first 100 the parser keeps, without the mailbox and the
+// sender, distinct in any case — as replyAllCc; reply-all queues one To and one Cc delivery each,
 // reply only the To; the reply's metadata carries In-Reply-To and the first
 // and last 19 of its References, and the outbox's MIME carries both.
 func TestReply_FromARealImport(t *testing.T) {
@@ -52,9 +52,11 @@ func TestReply_FromARealImport(t *testing.T) {
 	for _, p := range rr["replyAllCc"].([]any) {
 		ccAddresses = append(ccAddresses, p.(map[string]any)["address"].(string))
 	}
-	if len(ccAddresses) != 100 || ccAddresses[0] != "dup@example.test" || ccAddresses[1] != "cc000@example.test" ||
-		ccAddresses[99] != "cc098@example.test" {
-		t.Errorf("replyAllCc = %d addresses %v…, want 100: dup once, then cc000..cc098", len(ccAddresses), ccAddresses[:min(3, len(ccAddresses))])
+	// The parser keeps the header's first 100: the mailbox, the sender, dup
+	// twice and cc000..cc095.
+	if len(ccAddresses) != 97 || ccAddresses[0] != "dup@example.test" || ccAddresses[1] != "cc000@example.test" ||
+		ccAddresses[96] != "cc095@example.test" {
+		t.Errorf("replyAllCc = %d addresses %v…, want 97: dup once, then cc000..cc095", len(ccAddresses), ccAddresses[:min(3, len(ccAddresses))])
 	}
 	for _, a := range ccAddresses {
 		if strings.EqualFold(a, in.address) || strings.EqualFold(a, sender) {
@@ -81,8 +83,8 @@ func TestReply_FromARealImport(t *testing.T) {
 			ccs = append(ccs, d.address)
 		}
 	}
-	if !slices.Equal(to, []string{sender}) || len(ccs) != 100 {
-		t.Errorf("deliveries: to %v, %d cc; want the sender and the 100", to, len(ccs))
+	if !slices.Equal(to, []string{sender}) || len(ccs) != 97 {
+		t.Errorf("deliveries: to %v, %d cc; want the sender and the 97", to, len(ccs))
 	}
 
 	var metadata struct {

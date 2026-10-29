@@ -30,8 +30,8 @@ func ownedOrPending(t *testing.T, h *modtest.Harness, key string) string {
 
 // TestRetention_ReachesInboundMessages: past the window, retention deletes
 // inbound messages with their originals and attachments queued for deletion
-// and their receipts unlinked; the next batch sweeps the receipts but the
-// channel's newest.
+// and their receipts unlinked; the cycle's sweep, after its batches, deletes
+// the receipts received before the window but the channel's newest.
 func TestRetention_ReachesInboundMessages(t *testing.T) {
 	t.Parallel()
 	in := newInbox(t, nil, nil)
@@ -61,8 +61,8 @@ func TestRetention_ReachesInboundMessages(t *testing.T) {
 		}
 	}
 
-	if _, err := w.CleanupBatch(context.Background()); err != nil {
-		t.Fatal(err)
+	if ran, err := w.RunCycle(context.Background()); err != nil || !ran {
+		t.Fatalf("RunCycle = %v, %v", ran, err)
 	}
 	receipts = readReceipts(t, in.h, in.channelID)
 	if len(receipts) != 1 {
@@ -188,5 +188,114 @@ func TestChannels_SyncRow(t *testing.T) {
 	c.Do(http.MethodGet, "/api/v1/communications/channels/"+created.Id, nil).JSON(&got)
 	if got.Sync == nil || got.Sync.State != "pending" {
 		t.Errorf("get: sync %+v, want pending", got.Sync)
+	}
+}
+
+// redeliver answers message id again in the Inbox's delta, received at
+// received — the change a mailbox makes when a message is marked read.
+func (in *inbox) redeliver(id string, m testMail, received time.Time) {
+	in.fake.AddInbox(in.mailbox.Mailbox, contracts.MailItem{ID: id, ReceivedAt: received, MessageID: m.MessageID}, m.bytes())
+}
+
+// rawReads is how often Raw was asked for id.
+func (in *inbox) rawReads(id string) int {
+	n := 0
+	for _, raw := range rawCalls(in.fake) {
+		if raw == id {
+			n++
+		}
+	}
+	return n
+}
+
+// TestRetention_AMessageRetentionDeletedIsNeverImportedAgain: a message
+// retention deleted, its receipt swept, that the delta answers again — marked
+// read, say — is not read nor imported: the worker reads nothing received
+// before the retention window, the window the sweep keeps receipts for.
+func TestRetention_AMessageRetentionDeletedIsNeverImportedAgain(t *testing.T) {
+	t.Parallel()
+	in := newInbox(t, nil, nil)
+	old := in.plainMail("old")
+	in.h.Advance(time.Minute)
+	oldAt := in.h.Now()
+	oldID := in.deliver(old, oldAt, "")
+	in.sync(t)
+	in.h.Advance(24 * time.Hour)
+	in.deliver(in.plainMail("newer"), in.h.Now(), "")
+	in.sync(t)
+
+	in.h.Advance(367 * 24 * time.Hour)
+	if ran, err := communications.NewRetentionWorker(in.h.Deps()).RunCycle(context.Background()); err != nil || !ran {
+		t.Fatalf("RunCycle = %v, %v", ran, err)
+	}
+	if n := countInbound(t, in.h, in.channelID); n != 0 {
+		t.Fatalf("%d messages after retention, want none", n)
+	}
+	if _, ok := readReceipts(t, in.h, in.channelID)[oldID]; ok {
+		t.Fatal("the old message's receipt survived the sweep")
+	}
+
+	in.redeliver(oldID, old, oldAt)
+	in.sync(t)
+	if n := countInbound(t, in.h, in.channelID); n != 0 {
+		t.Errorf("%d messages, want the retention-deleted one not imported again", n)
+	}
+	if n := in.rawReads(oldID); n != 1 {
+		t.Errorf("Raw read the old message %d times, want once, before retention", n)
+	}
+	if _, ok := readReceipts(t, in.h, in.channelID)[oldID]; ok {
+		t.Error("the old message has a receipt again")
+	}
+}
+
+// TestErase_AnErasedMessageIsNeverImportedAgain: an erased message's receipt
+// stays while it is inside the retention window, so the delta answering it
+// again imports nothing; past the window the sweep deletes the receipt and
+// the worker reads nothing that old.
+func TestErase_AnErasedMessageIsNeverImportedAgain(t *testing.T) {
+	t.Parallel()
+	directory := &linkDirectory{matches: map[string][]contracts.ContactMatch{}}
+	in := newInbox(t, nil, nil, modtest.WithDirectory(directory))
+	erased := in.plainMail("Hei, strømmen er borte igjen.")
+	directory.matches[senderOf(erased)] = []contracts.ContactMatch{{ContactID: 2001, CandidateCustomerIDs: []int32{1001}}}
+	in.h.Advance(time.Minute)
+	erasedAt := in.h.Now()
+	erasedID := in.deliver(erased, erasedAt, "")
+	in.sync(t)
+	in.h.Advance(time.Hour)
+	in.deliver(in.plainMail("someone else"), in.h.Now(), "")
+	in.sync(t)
+
+	eraseCommunicationsCustomer(t, in.h, 1001, true)
+	retention := communications.NewRetentionWorker(in.h.Deps())
+	if _, err := retention.RunCycle(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	r, ok := readReceipts(t, in.h, in.channelID)[erasedID]
+	if !ok || r.messageID != nil {
+		t.Fatalf("the erased message's receipt = %+v (found %v), want kept and unlinked", r, ok)
+	}
+
+	in.h.Advance(5 * time.Minute)
+	in.redeliver(erasedID, erased, erasedAt)
+	in.sync(t)
+	if n := countInbound(t, in.h, in.channelID); n != 1 {
+		t.Errorf("%d messages, want the other one only: the erased message came back", n)
+	}
+
+	in.h.Advance(366 * 24 * time.Hour)
+	if _, err := retention.RunCycle(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := readReceipts(t, in.h, in.channelID)[erasedID]; ok {
+		t.Fatal("the erased message's receipt survived the window")
+	}
+	in.redeliver(erasedID, erased, erasedAt)
+	in.sync(t)
+	if n := countInbound(t, in.h, in.channelID); n != 0 {
+		t.Errorf("%d messages, want none", n)
+	}
+	if n := in.rawReads(erasedID); n != 1 {
+		t.Errorf("Raw read the erased message %d times, want once", n)
 	}
 }
