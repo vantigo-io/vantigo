@@ -27,7 +27,7 @@ const steps = [
 ];
 
 /** The page as the host mounts it, with stand-ins for identity's two forms. */
-// The change notifications' state every calendar sync fixture answers (calendar Outlook sync design O11.7).
+// The change notifications' state every Outlook connection fixture answers (calendar Outlook sync design O11.7).
 const notifications = { status: "not_configured", subscriptions: 0 } as const;
 
 /** The Outlook connection switch on, as GET /connection answers it, ready unless overridden. */
@@ -413,13 +413,17 @@ describe("EntraPage — the account rules", () => {
   });
 });
 
-describe("EntraPage — calendar sync", () => {
+describe("EntraPage — the Outlook connection", () => {
   it("is off by default, says nothing of its state, and does not ask for the calendar permission", async () => {
     await openPage({ connection: connected() });
     const form = within(region("Set the account rules")).getByRole("form", { name: "Account rules" });
-    const toggle = within(form).getByRole("switch", { name: /^Let people sync their Vantigo calendar to Outlook/ });
+    const toggle = within(form).getByRole("switch", {
+      name: /^Outlook connection: let people connect their Outlook to Vantigo/,
+    });
     expect(toggle).not.toBeChecked();
-    expect(within(form).getByText(/Needs the Calendars.ReadWrite application permission/)).toBeInTheDocument();
+    expect(
+      within(form).getByText(/Calendar sync still needs the Calendars.ReadWrite application permission/),
+    ).toBeInTheDocument();
     expect(within(form).queryByRole("status")).not.toBeInTheDocument();
     const step = region("Grant the permissions and the role");
     expect(within(step).queryByText("Calendars.ReadWrite")).not.toBeInTheDocument();
@@ -429,7 +433,7 @@ describe("EntraPage — calendar sync", () => {
   it("is sent as outlookConnect with the account rules, then asks for Calendars.ReadWrite until the token carries it", async () => {
     const { fetchMock } = await openPage({ connection: connected() });
     const form = within(region("Set the account rules")).getByRole("form", { name: "Account rules" });
-    await userEvent.click(within(form).getByRole("switch", { name: /^Let people sync their Vantigo calendar/ }));
+    await userEvent.click(within(form).getByRole("switch", { name: /^Outlook connection: let people connect/ }));
     await userEvent.click(within(form).getByRole("button", { name: "Save the account rules" }));
 
     await waitFor(() => expect(sentAll(fetchMock, "PUT")).toHaveLength(1));
@@ -438,8 +442,8 @@ describe("EntraPage — calendar sync", () => {
       headers: { "if-match": "4" },
       body: { outlookConnect: true, upnDomain: "contoso.no" },
     });
-    expect(await within(form).findByText("Nobody has connected yet")).toBeInTheDocument();
-    expect(within(form).getByRole("switch", { name: /^Let people sync/ })).toBeChecked();
+    expect(await within(form).findByText(/^Nobody has connected yet: connect your own Outlook/)).toBeInTheDocument();
+    expect(within(form).getByRole("switch", { name: /^Outlook connection: let people/ })).toBeChecked();
 
     const step = region("Grant the permissions and the role");
     expect(within(step).getByText(/^Add these nine application permissions/)).toBeInTheDocument();
@@ -474,7 +478,7 @@ describe("EntraPage — calendar sync", () => {
     expect(within(status).getByText(/The tenant refused the client secret/)).toBeInTheDocument();
   });
 
-  it("says nothing of change notifications while calendar sync is off", async () => {
+  it("says nothing of change notifications while the switch is off", async () => {
     await openPage({ connection: connected() });
     expect(screen.queryByText("Change notifications")).not.toBeInTheDocument();
   });
@@ -538,10 +542,12 @@ describe("EntraPage — calendar sync", () => {
       stubEntraApi({ connection: connected({ outlookConnect: outlookConnect() }) });
       renderWithProviders(<EntraPage signIn={() => null} provisioning={() => null} />);
       expect(
-        await screen.findByRole("switch", { name: /^La folk synkronisere Vantigo-kalenderen sin til Outlook/ }),
+        await screen.findByRole("switch", { name: /^Outlook-tilkobling: la folk koble Outlook til Vantigo/ }),
       ).toBeChecked();
-      expect(screen.getByText("Kalendersynkronisering")).toBeInTheDocument();
+      expect(screen.getByText("Outlook-tilkobling")).toBeInTheDocument();
       expect(screen.getByText("Klar")).toBeInTheDocument();
+      expect(screen.getByText("Omdirigerings-URI")).toBeInTheDocument();
+      expect(screen.getByText("Personer tilkoblet: 0. Venter på ny tilkobling: 0.")).toBeInTheDocument();
     } finally {
       setLanguagePreference("auto");
     }
@@ -555,6 +561,101 @@ describe("EntraPage — calendar sync", () => {
       expect(
         await screen.findByText(/^Den siste tilkoblingen manglet en delegert tillatelse: gi administratorsamtykke/),
       ).toBeInTheDocument();
+    } finally {
+      setLanguagePreference("auto");
+    }
+  });
+
+  it("shows the redirect URI whether or not the switch is on, with a button that copies it", async () => {
+    // setup() gives the test a clipboard to read back.
+    const user = userEvent.setup();
+    await openPage({ connection: connected() });
+    const form = within(region("Set the account rules")).getByRole("form", { name: "Account rules" });
+    const uri = "https://vantigo.example/api/v1/entra/outlook/callback";
+    expect(within(form).getByText("Redirect URI")).toBeInTheDocument();
+    expect(within(form).getByText(uri)).toBeInTheDocument();
+    await user.click(within(form).getByRole("button", { name: `Copy ${uri}` }));
+    expect(await navigator.clipboard.readText()).toBe(uri);
+  });
+
+  const statuses = [
+    ["ready", "Ready"],
+    ["untested", /^Nobody has connected yet: connect your own Outlook under Settings › Connections/],
+    ["consent_missing", /^The last connect lacked a delegated permission: grant admin consent/],
+    ["unavailable", "Waiting for the connection"],
+  ] as const;
+  for (const [status, text] of statuses)
+    it(`reads the status ${status} with the counts`, async () => {
+      await openPage({
+        connection: connected({ outlookConnect: outlookConnect({ status, connected: 4, reconnect: 1 }) }),
+      });
+      const form = within(region("Set the account rules")).getByRole("form", { name: "Account rules" });
+      const line = within(form).getByRole("status");
+      expect(within(line).getByText(text)).toBeInTheDocument();
+      expect(within(line).getByText("People connected: 4. Waiting to reconnect: 1.")).toBeInTheDocument();
+    });
+
+  it("asks before turning the switch off while people are connected, and saves only on yes", async () => {
+    const { fetchMock } = await openPage({
+      connection: connected({ outlookConnect: outlookConnect({ connected: 2, reconnect: 1 }) }),
+    });
+    const form = within(region("Set the account rules")).getByRole("form", { name: "Account rules" });
+    await userEvent.click(within(form).getByRole("switch", { name: /^Outlook connection: let people connect/ }));
+    await userEvent.click(within(form).getByRole("button", { name: "Save the account rules" }));
+
+    let dialog = await screen.findByRole("dialog", { name: "Turn the Outlook connection off?" });
+    expect(within(dialog).getByText(/^Everyone will have to connect Outlook again\./)).toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(sentAll(fetchMock, "PUT")).toHaveLength(0);
+
+    await userEvent.click(within(form).getByRole("button", { name: "Save the account rules" }));
+    dialog = await screen.findByRole("dialog", { name: "Turn the Outlook connection off?" });
+    await userEvent.click(within(dialog).getByRole("button", { name: "Turn off and save" }));
+    await waitFor(() => expect(sentAll(fetchMock, "PUT")).toHaveLength(1));
+    expect(sent(fetchMock, "PUT").body).toMatchObject({ outlookConnect: false });
+  });
+
+  it("turns the switch off without asking when nobody is connected", async () => {
+    const { fetchMock } = await openPage({ connection: connected({ outlookConnect: outlookConnect() }) });
+    const form = within(region("Set the account rules")).getByRole("form", { name: "Account rules" });
+    await userEvent.click(within(form).getByRole("switch", { name: /^Outlook connection: let people connect/ }));
+    await userEvent.click(within(form).getByRole("button", { name: "Save the account rules" }));
+    await waitFor(() => expect(sentAll(fetchMock, "PUT")).toHaveLength(1));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+});
+
+describe("EntraPage — permissions Vantigo does not use", () => {
+  it("warns on the Status card, naming each, while the connection stays connected", async () => {
+    await openPage({
+      connection: connected({
+        permissionsPresent: [...requiredPermissions, "Mail.ReadWrite", "Sites.Read.All"],
+        permissionsUnexpected: ["Mail.ReadWrite", "Sites.Read.All"],
+      }),
+    });
+    const status = region("Status");
+    const list = within(status).getByRole("list", { name: "The application holds permissions Vantigo does not use:" });
+    expect(within(list).getByText("Mail.ReadWrite")).toBeInTheDocument();
+    expect(within(list).getByText("Sites.Read.All")).toBeInTheDocument();
+    expect(
+      within(status).getByText(/^They may be left from an earlier setup, or wider than needed\./),
+    ).toBeInTheDocument();
+    expect(within(status).getByText("Connected")).toBeInTheDocument();
+  });
+
+  it("says nothing when the token carries only what Vantigo uses", async () => {
+    await openPage({ connection: connected() });
+    expect(within(region("Status")).queryByText(/permissions Vantigo does not use/)).not.toBeInTheDocument();
+  });
+
+  it("warns in Norwegian", async () => {
+    setLanguagePreference("nb");
+    try {
+      stubEntraApi({ connection: connected({ permissionsUnexpected: ["Mail.ReadWrite"] }) });
+      renderWithProviders(<EntraPage signIn={() => null} provisioning={() => null} />);
+      expect(await screen.findByText("Applikasjonen har tillatelser Vantigo ikke bruker:")).toBeInTheDocument();
+      expect(screen.getByText(/^De kan være igjen fra et tidligere oppsett/)).toBeInTheDocument();
     } finally {
       setLanguagePreference("auto");
     }
