@@ -13,6 +13,22 @@ export type MailboxSyncAvailability = MailboxSync["availability"];
 /** The refusal code of turning the sync on, or running it, while it cannot run; its detail is the availability. */
 export const MAILBOX_SYNC_UNAVAILABLE = "mailbox_sync_unavailable";
 
+/**
+ * Whether the sync waits for the person's own Outlook connection (Outlook
+ * connection design M9): the worker's last finding, not_connected or
+ * reconnect. The connection's button above the card is what the person
+ * does; the sync itself can still be turned on and run.
+ */
+export const waitsForConnection = (availability: MailboxSyncAvailability | undefined) =>
+  availability === "not_connected" || availability === "reconnect";
+
+/** Whether the sync may be turned on or run now: available, or waiting for the person's connection. */
+export const mailboxSyncCanRun = (availability: MailboxSyncAvailability | undefined) =>
+  availability === "available" || waitsForConnection(availability);
+
+/** How often the card is read again while it waits for the connection, so a connect shows within the worker's cycle. */
+const WAITING_REFETCH_MS = 15_000;
+
 const path = "/api/v1/calendar/mailbox-sync";
 
 export const mailboxSyncQueryKey = [CALENDAR_QUERY_KEY, "mailbox-sync"] as const;
@@ -22,6 +38,7 @@ export const mailboxSyncQueryOptions = () =>
   queryOptions({
     queryKey: mailboxSyncQueryKey,
     queryFn: ({ signal }) => request<MailboxSync>(path, { signal }),
+    refetchInterval: (query) => (waitsForConnection(query.state.data?.availability) ? WAITING_REFETCH_MS : false),
   });
 
 /** A whole replace at the revision it was read at — 0 for a caller who never turned it on. */

@@ -264,9 +264,8 @@ describe("SettingsPage: Outlook", () => {
   const toggle = async () => within(await outlook()).findByRole("switch", { name: "Sync to my Outlook calendar" });
 
   it.each([
-    ["switch_off", "Your administrator has not turned on calendar sync."],
+    ["switch_off", "Your administrator has not turned on the Outlook connection."],
     ["no_provider", "Calendar sync needs the Microsoft Entra ID module."],
-    ["permission_missing", "Calendar sync is waiting for your administrator to grant the calendar permission."],
     ["unavailable", "The connection to Microsoft 365 is not working right now."],
     ["no_account", "Your Vantigo user is not connected to a Microsoft 365 account that Vantigo manages."],
   ] as const)("says why it cannot be turned on when %s", async (availability, words) => {
@@ -275,6 +274,85 @@ describe("SettingsPage: Outlook", () => {
 
     expect(await toggle()).toBeDisabled();
     expect(within(await outlook()).getByText(words)).toBeInTheDocument();
+  });
+
+  it.each([
+    ["not_connected", "en", "Connect Outlook above to start the sync."],
+    ["reconnect", "en", "Microsoft wants you to sign in again: choose Reconnect Outlook above."],
+    ["not_connected", "nb", "Koble til Outlook ovenfor for å starte synkroniseringen."],
+    ["reconnect", "nb", "Microsoft vil at du logger på igjen: velg Koble til Outlook på nytt ovenfor."],
+  ] as const)(
+    "names the connection's button above while %s (%s), the toggle and Sync now usable",
+    async (availability, language, words) => {
+      if (language === "nb") setLanguagePreference("nb");
+      const user = userEvent.setup();
+      const fetchMock = stubCalendarServer({
+        mailboxSync: mailboxSyncFixture({
+          availability,
+          enabled: true,
+          state: "unavailable",
+          error: availability,
+          revision: 3,
+        }),
+      });
+      renderWithProviders(<SettingsPage />);
+
+      const region = await outlook();
+      const alert = await within(region).findByRole("alert");
+      expect(alert).toHaveTextContent(words);
+      expect(within(region).getByRole("switch")).toBeEnabled();
+      expect(
+        within(region).getByRole("radio", {
+          name: language === "nb" ? /^En egen Vantigo-kalender/ : /^A separate Vantigo calendar/,
+        }),
+      ).toBeEnabled();
+      const syncNow = within(region).getByRole("button", { name: language === "nb" ? "Synkroniser nå" : "Sync now" });
+      expect(syncNow).toBeEnabled();
+      await user.click(syncNow);
+      await waitFor(() => expect(sent(fetchMock, "POST").url).toBe("/api/v1/calendar/mailbox-sync/run"));
+    },
+  );
+
+  it("turns it on while waiting for the connection", async () => {
+    const user = userEvent.setup();
+    const fetchMock = stubCalendarServer({ mailboxSync: mailboxSyncFixture({ availability: "not_connected" }) });
+    renderWithProviders(<SettingsPage />);
+
+    const off = await toggle();
+    expect(off).toBeEnabled();
+    await user.click(off);
+    await waitFor(() => expect(sent(fetchMock, "PUT").body).toMatchObject({ enabled: true }));
+  });
+
+  it("refreshes the card while it waits for the connection, and not otherwise", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const gets = (fetchMock: ReturnType<typeof stubCalendarServer>) =>
+        sentAll(fetchMock, "GET").filter((one) => one.url === "/api/v1/calendar/mailbox-sync").length;
+      const waiting = stubCalendarServer({
+        mailboxSync: mailboxSyncFixture({
+          availability: "reconnect",
+          enabled: true,
+          state: "unavailable",
+          error: "reconnect",
+        }),
+      });
+      const { unmount } = renderWithProviders(<SettingsPage />);
+      await toggle();
+      const before = gets(waiting);
+      await vi.advanceTimersByTimeAsync(15_000);
+      await waitFor(() => expect(gets(waiting)).toBeGreaterThan(before));
+      unmount();
+
+      const synced = stubCalendarServer({ mailboxSync: mailboxSyncFixture({ enabled: true, state: "active" }) });
+      renderWithProviders(<SettingsPage />);
+      await toggle();
+      const once = gets(synced);
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(gets(synced)).toBe(once);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("still lets a person who has it on turn it off while it cannot run", async () => {

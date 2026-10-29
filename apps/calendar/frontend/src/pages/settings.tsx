@@ -38,10 +38,12 @@ import {
   MAILBOX_SYNC_UNAVAILABLE,
   type MailboxSync,
   type MailboxSyncWrite,
+  mailboxSyncCanRun,
   mailboxSyncQueryKey,
   mailboxSyncQueryOptions,
   runMailboxSync,
   updateMailboxSync,
+  waitsForConnection,
 } from "../api/mailbox-sync";
 import { ApiConflictError, ApiValidationError, CALENDAR_QUERY_KEY } from "../api/request";
 import {
@@ -274,7 +276,10 @@ const knownOr = (exists: (key: string) => boolean, key: string, fallback: string
  * made, under If-Match on the revision read; a revision that moved on
  * reloads the card. While the sync cannot run the toggle says why and only
  * turns it off. Under the description, the `connection.button` slot shows
- * the person's Outlook connection when the host fills it.
+ * the person's Outlook connection when the host fills it; while the sync
+ * waits for that connection (not_connected, reconnect) the card names the
+ * button above it, keeps the toggle and Sync now usable, and reads itself
+ * again until the first sync.
  */
 const OutlookSection = ({ connectionButton }: SettingsPageProps) => {
   const { t, i18n, locale } = useI18n("calendar");
@@ -324,7 +329,8 @@ const OutlookSection = ({ connectionButton }: SettingsPageProps) => {
     save.mutate({ revision: current.revision, write: { ...next, kinds } });
   };
 
-  const available = data?.availability === "available";
+  const available = mailboxSyncCanRun(data?.availability);
+  const waiting = waitsForConnection(data?.availability);
   const busy = save.isPending || sync.isFetching;
 
   return (
@@ -358,8 +364,8 @@ const OutlookSection = ({ connectionButton }: SettingsPageProps) => {
               disabled={busy || (!available && !data.enabled)}
               onChange={(event) => write(data, { enabled: event.currentTarget.checked })}
             />
-            {!available && (
-              <Alert color="gray" variant="light" icon={<IconAlertCircle size={16} />}>
+            {(!available || waiting) && (
+              <Alert color={waiting ? "orange" : "gray"} variant="light" icon={<IconAlertCircle size={16} />}>
                 {availabilityText(data.availability)}
               </Alert>
             )}
