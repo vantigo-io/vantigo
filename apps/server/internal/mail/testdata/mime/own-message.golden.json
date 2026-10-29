@@ -1,0 +1,25 @@
+{
+  "messageId": "<0123456789abcdef0123456789abcdef@vantigo.invalid>",
+  "inReplyTo": "",
+  "references": null,
+  "from": {
+    "Name": "",
+    "Address": "post@example.com"
+  },
+  "to": [
+    {
+      "Name": "",
+      "Address": "kunde@example.no"
+    }
+  ],
+  "cc": null,
+  "subject": "Our own send, seen again",
+  "date": "2026-10-29T09:20:00Z",
+  "autoSubmitted": false,
+  "text": "Sent by Vantigo.",
+  "html": "",
+  "htmlDropped": false,
+  "attachments": null,
+  "droppedAttachments": 0,
+  "skippedParts": 0
+}

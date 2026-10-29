@@ -1,0 +1,8 @@
+From: broken@example.com
+Subject: No blank line
+Content-Type: multipart/mixed; boundary="NEVER"
+This line has no colon and there is no blank line before it
+--WRONG
+Content-Type: text/plain
+
+Lost.

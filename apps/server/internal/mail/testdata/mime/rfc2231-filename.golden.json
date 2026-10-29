@@ -1,0 +1,58 @@
+{
+  "messageId": "<rfc2231-1@example.no>",
+  "inReplyTo": "",
+  "references": null,
+  "from": {
+    "Name": "",
+    "Address": "sender@example.no"
+  },
+  "to": [
+    {
+      "Name": "",
+      "Address": "post@example.com"
+    }
+  ],
+  "cc": null,
+  "subject": "Filenames",
+  "date": "2026-10-29T07:10:00Z",
+  "autoSubmitted": false,
+  "text": "Three attachments.",
+  "html": "",
+  "htmlDropped": false,
+  "attachments": [
+    {
+      "fileName": "ærlig faktura.pdf",
+      "contentType": "application/pdf",
+      "contentId": "",
+      "inline": false,
+      "size": 9,
+      "sha256": "e5c62df5dab5c87b6a015ef3d43597074d1eec433b15f51aec63b8582d0e4ab4"
+    },
+    {
+      "fileName": "prøve åæ.txt",
+      "contentType": "text/plain",
+      "contentId": "",
+      "inline": false,
+      "size": 5,
+      "sha256": "0e9352fd14e802c82efec581a8867d14ccbf24d20ea4637d6c1efac898fcf986"
+    },
+    {
+      "fileName": "lång filø.bin",
+      "contentType": "application/octet-stream",
+      "contentId": "",
+      "inline": false,
+      "size": 4,
+      "sha256": "054edec1d0211f624fed0cbca9d4f9400b0e491c43742af2c5b0abebf0c990d8"
+    },
+    {
+      "fileName": "møte.ics",
+      "contentType": "application/octet-stream",
+      "contentId": "",
+      "inline": false,
+      "size": 5,
+      "sha256": "a8402858d4f1e1d27afee976520485ebb4b96a5387355b823f0d0b8079729032"
+    }
+  ],
+  "droppedAttachments": 0,
+  "skippedParts": 0
+}

@@ -1,0 +1,22 @@
+{
+  "messageId": "<nofrom-1@example.com>",
+  "inReplyTo": "",
+  "references": null,
+  "from": null,
+  "to": [
+    {
+      "Name": "",
+      "Address": "post@example.com"
+    }
+  ],
+  "cc": null,
+  "subject": "Nobody sent this",
+  "date": "2026-10-29T08:50:00Z",
+  "autoSubmitted": false,
+  "text": "A body without a sender.",
+  "html": "",
+  "htmlDropped": false,
+  "attachments": null,
+  "droppedAttachments": 0,
+  "skippedParts": 0
+}

@@ -1,0 +1,25 @@
+{
+  "messageId": "<rfc2047-1@example.no>",
+  "inReplyTo": "",
+  "references": null,
+  "from": {
+    "Name": "Per Østbro",
+    "Address": "per@example.no"
+  },
+  "to": [
+    {
+      "Name": "",
+      "Address": "post@example.com"
+    }
+  ],
+  "cc": null,
+  "subject": "Faktura for mai – æøå og prøve",
+  "date": "2026-10-29T07:00:00Z",
+  "autoSubmitted": false,
+  "text": "Body.",
+  "html": "",
+  "htmlDropped": false,
+  "attachments": null,
+  "droppedAttachments": 0,
+  "skippedParts": 0
+}

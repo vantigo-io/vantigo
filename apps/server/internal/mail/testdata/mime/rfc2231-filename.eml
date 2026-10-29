@@ -1,0 +1,39 @@
+From: sender@example.no
+To: post@example.com
+Subject: Filenames
+Date: Thu, 29 Oct 2026 08:10:00 +0100
+Message-ID: <rfc2231-1@example.no>
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="MIX"
+
+--MIX
+Content-Type: text/plain; charset=utf-8
+
+Three attachments.
+--MIX
+Content-Type: application/pdf
+Content-Disposition: attachment; filename*=UTF-8''%C3%A6rlig%20faktura.pdf
+Content-Transfer-Encoding: base64
+
+JVBERi0xLjQK
+--MIX
+Content-Type: text/plain; charset=iso-8859-1
+Content-Disposition: attachment; filename*=iso-8859-1''pr%F8ve%20%E5%E6.txt
+Content-Transfer-Encoding: quoted-printable
+
+pr=F8ve
+--MIX
+Content-Type: application/octet-stream
+Content-Disposition: attachment;
+ filename*0*=UTF-8''l%C3%A5ng%20;
+ filename*1*=fil%C3%B8;
+ filename*2=".bin"
+Content-Transfer-Encoding: base64
+
+AAECAw==
+--MIX
+Content-Type: application/octet-stream; name="=?UTF-8?Q?m=C3=B8te.ics?="
+Content-Transfer-Encoding: base64
+
+QkVHSU4=
+--MIX--

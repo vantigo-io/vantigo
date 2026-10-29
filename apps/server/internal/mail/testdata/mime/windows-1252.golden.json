@@ -1,0 +1,25 @@
+{
+  "messageId": "<cp1252-1@example.com>",
+  "inReplyTo": "",
+  "references": null,
+  "from": {
+    "Name": "",
+    "Address": "shop@example.com"
+  },
+  "to": [
+    {
+      "Name": "",
+      "Address": "post@example.com"
+    }
+  ],
+  "cc": null,
+  "subject": "Windows-1252",
+  "date": "2026-10-29T08:05:00Z",
+  "autoSubmitted": false,
+  "text": "“Quoted” – it costs 100 € — isn’t it?",
+  "html": "",
+  "htmlDropped": false,
+  "attachments": null,
+  "droppedAttachments": 0,
+  "skippedParts": 0
+}

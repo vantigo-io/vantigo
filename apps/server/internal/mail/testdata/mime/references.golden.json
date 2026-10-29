@@ -1,0 +1,51 @@
+{
+  "messageId": "<ref-26@example.com>",
+  "inReplyTo": "<ref-25@example.com>",
+  "references": [
+    "<ref-01@example.com>",
+    "<ref-02@example.com>",
+    "<ref-03@example.com>",
+    "<ref-04@example.com>",
+    "<ref-05@example.com>",
+    "<ref-06@example.com>",
+    "<ref-07@example.com>",
+    "<ref-08@example.com>",
+    "<ref-09@example.com>",
+    "<ref-10@example.com>",
+    "<ref-11@example.com>",
+    "<ref-12@example.com>",
+    "<ref-13@example.com>",
+    "<ref-14@example.com>",
+    "<ref-15@example.com>",
+    "<ref-16@example.com>",
+    "<ref-17@example.com>",
+    "<ref-18@example.com>",
+    "<ref-19@example.com>",
+    "<ref-20@example.com>",
+    "<ref-21@example.com>",
+    "<ref-22@example.com>",
+    "<ref-23@example.com>",
+    "<ref-24@example.com>",
+    "<ref-25@example.com>"
+  ],
+  "from": {
+    "Name": "",
+    "Address": "thread@example.com"
+  },
+  "to": [
+    {
+      "Name": "",
+      "Address": "post@example.com"
+    }
+  ],
+  "cc": null,
+  "subject": "Re: Long thread",
+  "date": "2026-10-29T08:40:00Z",
+  "autoSubmitted": false,
+  "text": "The 26th message.",
+  "html": "",
+  "htmlDropped": false,
+  "attachments": null,
+  "droppedAttachments": 0,
+  "skippedParts": 0
+}

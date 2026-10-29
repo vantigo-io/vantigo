@@ -1,0 +1,30 @@
+From: designer@example.com
+To: post@example.com
+Subject: Logo
+Date: Wed, 28 Oct 2026 14:05:00 +0000
+Message-ID: <related-1@example.com>
+MIME-Version: 1.0
+Content-Type: multipart/related; boundary="REL"; type="multipart/alternative"
+
+--REL
+Content-Type: multipart/alternative; boundary="ALT"
+
+--ALT
+Content-Type: text/plain; charset=us-ascii
+
+See the logo.
+--ALT
+Content-Type: text/html; charset=us-ascii
+
+<p>See the logo: <img src="cid:logo@example.com" alt="logo"></p>
+--ALT--
+
+--REL
+Content-Type: image/png; name="logo.png"
+Content-Transfer-Encoding: base64
+Content-ID: <logo@example.com>
+Content-Disposition: inline; filename="logo.png"
+
+iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAf
+FcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg
+--REL--

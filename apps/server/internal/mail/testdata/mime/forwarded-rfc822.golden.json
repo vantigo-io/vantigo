@@ -1,0 +1,34 @@
+{
+  "messageId": "<fwd-1@example.com>",
+  "inReplyTo": "",
+  "references": null,
+  "from": {
+    "Name": "",
+    "Address": "forwarder@example.com"
+  },
+  "to": [
+    {
+      "Name": "",
+      "Address": "post@example.com"
+    }
+  ],
+  "cc": null,
+  "subject": "Fwd: Original",
+  "date": "2026-10-29T08:20:00Z",
+  "autoSubmitted": false,
+  "text": "Forwarding this one.",
+  "html": "",
+  "htmlDropped": false,
+  "attachments": [
+    {
+      "fileName": "message.eml",
+      "contentType": "message/rfc822",
+      "contentId": "",
+      "inline": false,
+      "size": 190,
+      "sha256": "00ffc3c3174d3941df8d95b356363925894bd3944713660e91118d52fbbe4b68"
+    }
+  ],
+  "droppedAttachments": 0,
+  "skippedParts": 0
+}

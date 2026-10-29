@@ -1,0 +1,18 @@
+{
+  "error": "mail: the message could not be read: no header block",
+  "messageId": "",
+  "inReplyTo": "",
+  "references": null,
+  "from": null,
+  "to": null,
+  "cc": null,
+  "subject": "",
+  "date": "",
+  "autoSubmitted": false,
+  "text": "",
+  "html": "",
+  "htmlDropped": false,
+  "attachments": null,
+  "droppedAttachments": 0,
+  "skippedParts": 0
+}
