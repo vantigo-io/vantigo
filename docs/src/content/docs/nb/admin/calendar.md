@@ -344,10 +344,10 @@ gjøres; personen kan be den som publiserer kalenderen, om en mindre en.
 En person kan la Vantigo holde en kopi av kalenderen sin i Microsoft 365-postboksen sin,
 på skjermbildet **Min kalender** ([Synkroniser med
 Outlook](/nb/user/calendar/#synkroniser-med-outlook)), når en eier har slått på
-bryteren **Outlook-tilkobling** i Microsoft Entra ID-modulen og gitt tillatelsen den trenger
-([Microsoft Entra ID](/nb/admin/entra/#kalendersynkronisering)). Arbeideren
-`calendar-mailbox-sync` skriver kopiene gjennom Entra-modulens tilkobling
-([arbeideren](/en/reference/calendar/#the-mailbox-sync-worker)). Den kjører med mindre
+bryteren **Outlook-tilkobling** i Microsoft Entra ID-modulen og personen har koblet til
+sin egen Outlook ([Microsoft Entra ID](/nb/admin/entra/#kalendersynkronisering)).
+Arbeideren `calendar-mailbox-sync` skriver kopiene gjennom Entra-modulen, på hver persons
+egen tilkobling ([arbeideren](/en/reference/calendar/#the-mailbox-sync-worker)). Den kjører med mindre
 `CALENDAR_MAILBOX_SYNC_ENABLED=0`, i worker-modus, og i api-modus med
 `WORKERS_IN_PROCESS=1`. Den **våkner hvert minutt** — ikke en innstilling — og
 synkroniserer hver person som står for tur, høyst 50 per runde, én om gangen. Hver person
@@ -365,6 +365,24 @@ når de trykker **Synkroniser nå** — så en avtale når Outlook innen et minu
 synkronisering som feiler, prøves igjen etter 1, 5, 15 og 60 minutter, deretter hver
 time, og vises som feilet fra den femte på rad; en postboks leietakeren avviser, prøves
 igjen om seks timer; en tilkobling som ikke virker, om en time.
+
+**Personer som venter på tilkoblingen sin.** En person som har synkroniseringen på, men
+ikke har koblet til Outlook, hvis tilkobling er lukket, eller hvis tilkobling Microsoft
+har avvist, **parkeres**: kortet ber dem koble til (*Koble til Outlook ovenfor for å
+starte synkroniseringen.*) eller koble til på nytt (*Microsoft vil at du logger på igjen:
+…*), og arbeideren spør igjen **én gang i døgnet**, uten å utsette det og uten å regne det
+som en feil. En person som kobler til eller kobler til på nytt, **vekkes innen en runde**
+— arbeideren leser tilkoblingene som har endret seg hvert minutt, før noen reserveres —
+så synkroniseringen kjører innen et minutt eller så, med en gang med **Synkroniser nå**.
+En tilkobling som er borte — en frakobling, bryteren slått av — får kopiene fjernet
+først, med personens tilkobling som lukkes; kopiene til en som slutter, hvis pålogging
+glemmes når kontoen deaktiveres, glemmes og **blir liggende i den deaktiverte
+postboksen**. En person som venter på ny tilkobling, beholder kopiene som de var. Loggen
+sier det på info-nivå — *a person's sync waits for their Outlook connection*, med
+personens id og koden `not_connected` eller `reconnect` — én gang ved hver daglige
+kontroll: ingenting for deg å gjøre, med mindre mange viser `reconnect` samtidig, som
+peker på en endring i betinget tilgang eller flerfaktorautentisering ([Microsoft Entra
+ID](/nb/admin/entra/#hva-som-skjer-med-en-persons-tilkobling)).
 
 Før hver skriving **tar arbeideren også med tilbake det folk har endret i Outlook**: en
 endring, flytting eller sletting av en kopi av deres egen avtale endrer avtalen med de
@@ -384,7 +402,9 @@ synkroniseringen mislyktes.
 Arbeideren fjerner kopiene til en person når de slår synkroniseringen av, når de ikke
 lenger kan bruke Kalender — deaktivert, utestengt, deaktivert av katalogen, eller uten
 `calendar:access` — når Ansatte ikke lenger kobler dem til en Microsoft Entra ID-konto,
-og for alle når bryteren **Outlook-tilkobling** slås av. **Slått av skriver og fjerner
+når de kobler fra Outlook, og for alle når bryteren **Outlook-tilkobling** slås av, hver
+med personens egen tilkobling som lukkes. Slås den på igjen, synkroniseres ingen før de
+har koblet til på nytt. **Slått av skriver og fjerner
 arbeideren ingenting**: kopiene blir liggende i postboksene slik de sist var, også
 kopiene til en som har sluttet, til den slås på igjen.
 
@@ -406,7 +426,8 @@ innen sju dager, slik at den ikke holder opprydningen tilbake. `CALENDAR_MAILBOX
 Den når nettet bare gjennom Entra-modulens Graph-klient — de to faste vertene til
 Microsoft, med modulens egne grenser — og logger en person bare med bruker-id-en: aldri
 postboksen, tittelen til en avtale eller en hendelse eller Graphs ord. En synkronisering som feilet, logges på
-warning-nivå med steget som feilet; en avvist postboks på info-nivå med koden.
+warning-nivå med steget som feilet; en avvist postboks, og en person som venter på
+tilkoblingen sin, på info-nivå med koden.
 
 | Variabel | Formål | Standard |
 | --- | --- | --- |

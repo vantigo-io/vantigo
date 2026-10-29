@@ -589,11 +589,23 @@ Communications' outbox is the working example.
     made, or whose adoption is confirmed, and not deleted, else `ErrMailboxUnknown` —
     and the calendar names the mailbox only from Staff's enabled `DirectoryAccount` under the
     person's own principal (rule 12), matched against the provider's `Key`, so neither
-    side guesses a person's mailbox. Its refusals are sentinels (`ErrMailboxUnavailable`,
-    `ErrMailboxUnknown`, `ErrMailboxDenied`, `ErrMailboxGone`, `ErrCalendarNotOurs`); anything else is a
-    failure to retry. A provider in `cleanup` — its switch off, a credential still
-    working — takes deletes only, so a person's copies can always be
-    removed ([Calendar](/en/reference/calendar/#outlook-sync)).
+    side guesses a person's mailbox. **The provider acts on the person's own delegated
+    connection** — their Outlook connection, made by them, its token the provider's to
+    hold — never on a permission granted to the application over every mailbox (Outlook
+    connection design M9). Its refusals are sentinels (`ErrMailboxUnavailable`,
+    `ErrMailboxUnknown`, `ErrMailboxDenied` — a mailbox the directory refuses, not a
+    permission scope —, `ErrMailboxGone`, `ErrCalendarNotOurs`, and
+    `ErrConnectionNeeded`, whose `*ConnectionNeededError` carries the reason: the person
+    never connected or their connection is gone, it is closing, or the code the
+    directory's refusal gave); anything else is a failure to retry. `ErrConnectionNeeded`
+    is a person-level stop the calendar parks on, never a failure. **The removals** —
+    `DeleteCalendar`, `Find`, `Unwatch`, and `Apply` when every op is a delete — are
+    served by a closing connection while it holds its token, and answer `ErrMailboxGone`
+    once nothing can remove them, so a disconnect removes the copies and a leaver's,
+    whose token is forgotten first, are forgotten. A provider in `cleanup` — its switch
+    off, a credential still working — takes deletes only, on each person's closing
+    connection, so a person's copies can always be removed while a token can
+    ([Calendar](/en/reference/calendar/#outlook-sync)).
     The same slot carries the calendar's **reads** of the mailbox, made for the busy
     time it shows: `Delta`, the default calendar's changes a page at a time, and
     `Marked`, which of a list of events carry the installation's marker. They keep the
@@ -637,7 +649,12 @@ Communications' outbox is the working example.
     nothing more**, and what changed is read by the calls above. The provider's webhook,
     anonymous and on the public host, writes the provider's own rows and **never calls the
     calendar** ([Calendar](/en/reference/calendar/#change-notifications),
-    [Microsoft Entra ID](/en/reference/entra/#change-notifications)).
+    [Microsoft Entra ID](/en/reference/entra/#change-notifications)). **`Connections`**,
+    beside `Notified` and under the same rule — the provider's own rows, no network —
+    answers the people's connections that moved since a time (a mailbox, the state it
+    moved to, when), so the calendar wakes a person who connected, reconnected or lost
+    their connection within a cycle, still in the same direction
+    ([Calendar](/en/reference/calendar/#parking-and-waking)).
 
 ## How they are enforced
 

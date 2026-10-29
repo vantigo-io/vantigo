@@ -1622,6 +1622,15 @@ account kind or an account the provider does not manage is not available, never 
 by address. It is the sixth sanctioned cross-module write ([module
 boundaries](/en/contributing/module-boundaries/) rule 14).
 
+**On the person's own connection.** The provider writes and reads each mailbox with that
+person's own delegated token — their [Outlook
+connection](/en/reference/entra/#the-outlook-connection), made on **Settings →
+Connections** — and nothing granted to the application (Outlook connection design M9,
+[`docs/superpowers/specs/2026-10-29-outlook-connection-and-mail-design.md`](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-10-29-outlook-connection-and-mail-design.md)).
+A person who has not connected, or whose connection Microsoft refused, is
+[parked](#the-mailbox-sync-worker) until they connect; a person whose connection is gone
+— disconnected, left, the switch turned off — is [cleaned up](#the-clean-up) first.
+
 ### The contract
 
 ```go
@@ -1639,9 +1648,15 @@ type MailboxCalendar interface {
     Watch(ctx context.Context, mailbox string) error
     Unwatch(ctx context.Context, mailbox string) error
     Notified(ctx context.Context, since time.Time) ([]MailboxNotice, error) // no network
+    Connections(ctx context.Context, since time.Time) ([]ConnectionChange, error) // no network
 }
 
 type MailboxNotice struct { Mailbox string; At time.Time }
+
+type ConnectionChange struct { Mailbox, State string; At time.Time } // State: active | reconnect | closing
+
+var ErrConnectionNeeded error             // errors.As to *ConnectionNeededError for its Reason
+type ConnectionNeededError struct { Reason string } // not_connected | closing | a reconnect code
 
 type MailboxEventRef struct { EventID, Key string; Meeting bool }
 
@@ -1684,6 +1699,17 @@ type MailboxEventState struct {
   the provider holds the account's external id, so the caller compares it
   case-insensitively. The module's answers are in [the Entra
   reference](/en/reference/entra/#change-notifications).
+- `Connections` answers the people's connections that moved after `since` — a connect,
+  a reconnect's refusal, a close — oldest first, at most 5000 (`ConnectionChangesMax`),
+  from the provider's own rows with no network, `Mailbox` compared case-insensitively
+  as `Notified`'s.
+- **Every per-mailbox call runs on the person's own connection** and may answer
+  `ErrConnectionNeeded`, a `*ConnectionNeededError` whose `Reason` is `not_connected`
+  (never connected, or the connection gone), `closing`, or the code Microsoft's refusal
+  gave (`expired`, `sign_in_again`, `mfa`, `blocked`, `consent_missing`). **The removals**
+  — `DeleteCalendar`, `Find`, `Unwatch`, and `Apply` when every op is a delete — are
+  served by a closing connection while it holds its token, and answer `ErrMailboxGone`
+  once nothing can remove them (no token left — a leaver's — or no connection at all).
 - `Status` answers `MailboxStatus{State, Reason}`: `available` (the provider may write),
   `cleanup` (it may only remove — `Apply` takes deletes alone, and `DeleteCalendar` and
   `Find` work — with the reason `switch_off`) or `unavailable`.
@@ -1749,15 +1775,17 @@ type MailboxEventState struct {
   `ErrMailboxUnavailable`: a read is never needed to remove copies.
 - The refusals are sentinels: `ErrMailboxUnavailable` (not available, or a non-delete in
   cleanup), `ErrMailboxUnknown` (not an account the provider manages),
-  `ErrMailboxDenied` (the directory refused the mailbox: outside the provider's
-  permission scope), `ErrMailboxGone` (no such user, or no mailbox) and
+  `ErrMailboxDenied` (the directory refused the mailbox: one without Exchange Online,
+  say), `ErrConnectionNeeded` (the person's own connection cannot serve the call, with
+  its reason), `ErrMailboxGone` (no such user, or no mailbox) and
   `ErrCalendarNotOurs` (`DeleteCalendar` of a calendar the provider did not make) and
   `ErrMailboxDeltaExpired` (`Delta`'s link is no longer taken: start again with `""`).
   Anything else is a failure to retry.
 
 The module calls the provider only through the accessors in `contractscalls.go`
 (`mailboxStatus`, `mailboxEnsure`, `mailboxDeleteCalendar`, `mailboxApply`,
-`mailboxFind`, `mailboxDelta`, `mailboxMarked`, `mailboxVersions`, `mailboxEvents`, and
+`mailboxFind`, `mailboxDelta`, `mailboxMarked`, `mailboxVersions`, `mailboxEvents`,
+`mailboxWatch`, `mailboxUnwatch`, `mailboxNotified`, `mailboxConnections`, and
 `workforceDirectoryAccount` for Staff's read), which refuse a call
 made inside one of its transactions. Without a provider the mailbox accessors answer
 `ErrMailboxUnavailable` (`Status` answers `unavailable`), and without Staff
@@ -1843,8 +1871,10 @@ Three operations, each under `calendar:access` and on the caller's own row alone
   (`calendar-mailbox-sync-write`), since each write makes the sync due. `target` and `detail` must be one of their values and
   each kind one of `availableKinds`, none twice — each a field error, "Invalid Outlook
   sync" — and the kinds are stored in `availableKinds`' order. **Turning it on, or
-  keeping it on, while `availability` is not `available` is 409
-  `mailbox_sync_unavailable`, whose `detail` is the availability**; turning it off is
+  keeping it on, while `availability` is not `available`, `not_connected` or
+  `reconnect` is 409 `mailbox_sync_unavailable`, whose `detail` is the availability** —
+  a person waiting for their connection may change their setting, and one who turns it
+  on before connecting is parked by the first cycle until they do; turning it off is
   always taken. The revision is judged under the row's lock (`LockMailboxSync`), and one
   that has moved on is 409 `revision_mismatch`, naming both. The write sets the state —
   `stopping` when a sync that was on is turned off or moved to the other target, or a
@@ -1855,7 +1885,9 @@ Three operations, each under `calendar:access` and on the caller's own row alone
   A write that turns the sync off also forgets the last change put back.
 - **`POST /mailbox-sync/run`** — *Sync now* — makes the caller's row due at once and
   answers the setting; the revision stays. 409 `mailbox_sync_unavailable` while the
-  availability is not `available` (the `detail` is the availability), and then 409
+  availability is not `available`, `not_connected` or `reconnect` (the `detail` is the
+  availability) — *Sync now* right after connecting asks at once instead of waiting for
+  the wake-up, and then 409
   `mailbox_sync_off` while the sync is turned off. Rate limited to 6 a minute per client address
   (`calendar-mailbox-run`).
 
@@ -1867,12 +1899,16 @@ Three operations, each under `calendar:access` and on the caller's own row alone
 | `switch_off` | The provider's reason is `switch_off`, whatever its state: the Owner's *Outlook connection* switch in the Entra module is off. |
 | `unavailable` | The provider's status is anything else but `available`: its connection is not working. |
 | `no_account` | `Workforce.DirectoryAccount` answers nothing for the caller, a disabled account (a leaver's), an account of another provider than the slot's `Key`, or one with no external id. |
+| `not_connected` | The caller's row is on, `unavailable`, with the error `not_connected`: the worker last found that they have not connected Outlook, or their connection closed. |
+| `reconnect` | The caller's row is on, `unavailable`, with the error `reconnect`: the worker last found that Microsoft refused their connection, until they reconnect. |
 | `available` | None of the above. |
 
-`permission_missing` stays in the contract's enum but is never answered: the calendar
-permission may be granted with Exchange RBAC for Applications, which no token shows, so
-the provider never refuses for it, and a mailbox outside the grant is that person's
-`mailbox_denied` instead.
+`not_connected` and `reconnect` are **the worker's last finding**, not a read of the
+connection: no request can ask a person's connection, so a person who turns the sync on
+before connecting is `available` until the first cycle parks them. `no_account` — a fresh
+read of Staff — comes first, since a connection needs a certain account. The reason
+Microsoft gave is not stored by the calendar: the card's [connection
+button](/en/user/connections/), Entra's, shows it.
 
 ### What is pushed
 
@@ -2021,6 +2057,8 @@ person:
 | `ErrMailboxGone` | `unavailable` | `mailbox_gone` | in six hours |
 | `ErrMailboxUnknown` | `unavailable` | `no_account` | in an hour |
 | `ErrMailboxUnavailable` | `unavailable` | `unavailable` | in an hour |
+| `ErrConnectionNeeded`, reason `not_connected` or `closing` | `unavailable` (`stopping` kept) | `not_connected` | in a day; `attempts` unchanged — [parked](#parking-and-waking), after the clean-up when the connection is gone |
+| `ErrConnectionNeeded`, any other reason | `unavailable` (`stopping` kept) | `reconnect` | in a day; `attempts` unchanged — [parked](#parking-and-waking), the copies kept |
 | The push worked, the busy read or the write-back failed (not a refusal) | `active` | `failed` | 1, 5, 15, 60 minutes, then hourly; `last_synced_at` now, `attempts` counted, never `failed` — the push it rides on works. When both failed, the busy read's is the one logged |
 | Any other failure, or a clean-up that met a refusal | unchanged (`pending`, `active` or `stopping`); `failed` from the fifth in a row | `failed` — or the clean-up's refusal, `mailbox_denied` or `unavailable` | 1, 5, 15, 60 minutes, then hourly |
 
@@ -2029,7 +2067,56 @@ does a failure. Each failure is logged at warning with the person's id, the step
 code; a refusal at info with its code. Nothing of a person's mailbox, their copies'
 titles or the provider's words — which carry the mailbox's paths — is logged: an error
 is logged by its code alone (`mailbox_denied`, `mailbox_gone`, `mailbox_unknown`,
-`unavailable`, `calendar_not_ours`, `deadline`, `canceled` or `failed`).
+`unavailable`, `not_connected`, `reconnect`, `calendar_not_ours`, `deadline`, `canceled`
+or `failed`).
+
+#### Parking and waking
+
+Every provider call runs on the person's own Outlook connection, and one that cannot
+serve it answers `ErrConnectionNeeded` (Outlook connection design M9). That is **a
+person-level stop, not a failure**: whichever step meets it — `EnsureCalendar`, the
+write-back's `Versions`, `Find`, `Apply`, the busy read — the person is **parked**:
+`unavailable` (`stopping` kept when a clean-up is owed), error `not_connected` (the
+reason `not_connected` or `closing`) or `reconnect` (any reason Microsoft named), the next
+sync **24 hours** later, **`attempts` left as they were**, and the next sync a reconcile;
+logged at info, *a person's sync waits for their Outlook connection*, with the person's
+id and the code. It never backs off, and it is not the six-hour retry of
+`mailbox_denied`.
+
+- **A connection gone** (`not_connected`) first runs [the clean-up](#the-clean-up), by
+  the removals a closing connection still serves — only for a person who has had copies
+  (a sync that worked, a calendar made, or a map row) and was not parked `not_connected`
+  already, whose clean-up then ran. A clean-up that fails is a failure on the backoff,
+  and the next sync parks again and retries it; one met by `ErrConnectionNeeded` (the
+  connection moved to `reconnect` meanwhile) parks with the clean-up owed.
+- **A reconnect** keeps the map and the copies: they stay, stale, until the person
+  reconnects, and no token could remove them meanwhile.
+- **The long re-check** is the next sync a day later. It runs the cycle's steps in order
+  before any provider call — the status (the switch off cleans everyone up),
+  `calendar:access` (lost, a clean-up), the directory account (none, a clean-up and
+  `no_account`; another, a clean-up of the old) — and its first provider call then parks
+  again or syncs. A connection closed by Entra meanwhile (a disabled account, found on
+  use or by Entra's daily read) is noticed there, or sooner by the wake-up below.
+- **A person who turns the toggle on before connecting** is written `pending`, as
+  `available`; the first cycle parks them `not_connected`, with no clean-up (they never
+  synced), and the card names the **Connect Outlook** button above it. A person who
+  turns it off while waiting to reconnect is parked `stopping`: the clean-up runs once
+  they reconnect, or once Entra closes their connection.
+
+**Waking.** In the same step as the [notices](#change-notifications), each cycle and
+before anyone is claimed, the worker asks `Connections` for the connections that moved,
+with its own cursor held in memory — initially now minus the poll interval, advanced to
+the latest `At` it marked, asked from 30 seconds before it, and from it exactly after a
+full page of 5000 — and marks them in one statement (`MarkMailboxSyncConnected`): per
+mailbox, compared case-insensitively, the latest change makes due at now the rows that
+are on or owe a clean-up, **last written before the change**, and not due already.
+**Unlike a notice, a change overrides the backoff and the parking** — no `attempts`
+condition, no state filter: it changes what the next sync can do, and changes are per
+person and rare. A row written since the change is not marked, so a change taken twice
+marks nothing. If the statement fails, the cursor stays and the changes are asked for
+again; a `Connections` that fails is logged at warning by its code and the cycle goes on.
+So a person who connects is synced within a cycle, and a disconnect, a leaver or a
+reconnect's refusal reaches their sync as soon.
 
 **Forgetting the busy time.** A result that leaves the sync `off` or `unavailable`
 forgets the person's busy rows and their delta — link, window and `busy_synced_at` — in
@@ -2325,13 +2412,22 @@ unchanged either way.
   before the notice** and that are not due already. The revision is left alone, as the
   nudge does. If the statement fails, `since` stays, the same notices are asked for
   again next cycle and a warning is logged; a `Notified` that fails is logged at warning
-  by its code and the cycle goes on. A provider with none asks nothing.
+  by its code and the cycle goes on. A provider with none asks nothing. The same step
+  then asks `Connections` ([waking](#parking-and-waking)).
+
+**A person waiting for their connection.** `Watch` runs on the person's own token and only
+after a sync that pushed, so a parked person's subscription is not renewed: one Microsoft
+asks to reauthorize **lapses** while they wait to reconnect. Once they reconnect, the
+sync works and `Watch` renews it, or creates a new one.
 
 ### The clean-up
 
 A person's copies are removed when they turn the toggle off or change the target, when
 they may no longer use Calendar, when Staff no longer names their account (or names
-another), and when the provider is in `cleanup` — the Owner's switch turned off. The
+another), when the provider is in `cleanup` — the Owner's switch turned off — and when
+their Outlook connection is gone (a disconnect, a leaver, an account closed: [parked
+`not_connected`](#parking-and-waking)). Every removal runs on the person's own
+connection, which a close keeps for removals while it holds its token. The
 clean-up works on the mailbox stored on the row, and is decided by its `calendar_id`:
 
 - with one, it deletes the *Vantigo* calendar (`DeleteCalendar`, with everything in it)
@@ -2358,12 +2454,19 @@ rows and lapses within seven days, and its notifications name no sync.
 
 Only a mailbox that is no longer there — `ErrMailboxGone`, or `ErrMailboxUnknown`, an
 account the provider no longer manages — has its copies **forgotten** unremoved, logged
-at warning with the person's id: a leaver's mailbox is soft-deleted with them. A mailbox
+at warning with the person's id: a leaver's mailbox is soft-deleted with them. **A
+leaver's connection is closed with its token forgotten**, so their removals answer
+`ErrMailboxGone` and their copies are forgotten unremoved — they **stay in the disabled
+mailbox** (Outlook connection design Q2), and the subscription row is forgotten by
+`Unwatch` too; the same for an account closed on use or by Entra's daily read. A
+disconnect keeps its token, so a person who disconnects has their copies removed. A mailbox
 denied, a provider unusable or a failure keeps the map and the clean-up owed, retried on
 the backoff (a row that owed it stays `stopping`). Then the map is emptied, the
 person's [busy rows](#the-busy-rows) and their delta forgotten, the last change put
 back cleared, `calendar_id` cleared and the next sync made a reconcile.
-Turning the switch back on resumes everyone whose toggle is on, from a reconcile.
+Turning the switch back on does not resume anyone at once: every connection was closed
+with the switch, so each person whose toggle is on is parked `not_connected` at their
+next sync until they connect again, then resumes from a reconcile.
 
 ## The busy time contract
 

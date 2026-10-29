@@ -11,9 +11,9 @@ sources:
 **Settings → Connections** lists the accounts elsewhere that you connect to Vantigo.
 Today that is your **Outlook**: you connect it once, signing in to Microsoft, and Vantigo
 keeps the connection until you disconnect it, leave, or your administrator turns it
-off. In this release nothing uses the connection yet — the calendar's [Outlook
-sync](/en/user/calendar/#sync-with-outlook) still works as before — but connecting now
-means nothing more is asked of you when it does.
+off. The calendar's [Outlook sync](/en/user/calendar/#sync-with-outlook) uses it: Vantigo
+writes your calendar's copies to your mailbox, and reads your busy time back, with your
+own connection and nothing else, so the sync works only while you are connected.
 
 ## Who sees it
 
@@ -60,8 +60,9 @@ The card says **Connected as** and your account, **Since** the day you connected
 
 Choose **Disconnect**, then **Disconnect** in *Disconnect Outlook?*. Vantigo stops using
 your Outlook until you connect it again, and the card says **Not connected**.
-Disconnecting does not sign you out of Microsoft or of Vantigo, and in this release it
-does not change the calendar's Outlook sync, which has its own switch.
+Disconnecting does not sign you out of Microsoft or of Vantigo. **Vantigo removes what
+the calendar's Outlook sync put in your Outlook**, with the connection you just closed,
+and the sync waits until you connect again; its own switch stays as you left it.
 
 ## Reconnect needed
 
@@ -77,12 +78,14 @@ reason, and the button **Reconnect Outlook** connects again in the same way:
 | *Your organisation's Conditional Access blocked the connection. Ask your administrator if it happens again.* | A Conditional Access policy refused it — a device, a place or a risk rule. |
 | *Your organisation has not consented to a permission the connection needs. Ask your administrator.* | Admin consent for the connection's permissions is missing. |
 
-Only you see this; it is not your administrator's failure, and nothing else in Vantigo
-stops. Your administrator sees how many people wait to reconnect on the Microsoft Entra
+Only you see this; it is not your administrator's failure. **The calendar's Outlook sync
+pauses** until you reconnect — what it put in Outlook stays as it was — and picks up
+where it left off once you have; nothing else in Vantigo stops. Your administrator sees how many people wait to reconnect on the Microsoft Entra
 ID page.
 
 If you leave, or your Microsoft account is disabled or deleted, the connection is closed
-for you.
+for you. What the calendar's Outlook sync put in your Outlook then stays in your mailbox,
+which is disabled with your account.
 
 ## When connecting fails
 

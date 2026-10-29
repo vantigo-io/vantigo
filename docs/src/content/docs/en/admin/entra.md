@@ -1,6 +1,6 @@
 ---
 title: Microsoft Entra ID
-description: Connecting Vantigo to a Microsoft Entra ID tenant so Staff's accounts are made there — the app registration, the client secret, the eight application permissions and the User Administrator role, admin consent, the Temporary Access Pass policy, the account rules, sign-in and provisioning; the Outlook connection — the redirect URI on APP_URL, the delegated permissions and their admin consent, the switch, verifying by connecting yourself, turning it off, what happens to a person's connection and entra-outlook-sweep, and what can go wrong; the warning for permissions Vantigo does not use; calendar sync — Calendars.ReadWrite, its consent, and narrowing it to some mailboxes with Exchange RBAC for Applications; what a leaver's steps do and what deleting loses; Staff's groups in the tenant, the application as their owner, confirming a group Vantigo did not create and what an archived group becomes; rotating secrets; the tagged test against a real tenant; and what each reason code means.
+description: Connecting Vantigo to a Microsoft Entra ID tenant so Staff's accounts are made there — the app registration, the client secret, the eight application permissions and the User Administrator role, admin consent, the Temporary Access Pass policy, the account rules, sign-in and provisioning; the Outlook connection — the redirect URI on APP_URL, the delegated permissions and their admin consent, the switch, verifying by connecting yourself, turning it off, what happens to a person's connection and entra-outlook-sweep, and what can go wrong; the warning for permissions Vantigo does not use; calendar sync on each person's own Outlook connection — the preconditions, verifying with a connected person, which mailboxes, removing an earlier setup's application Calendars.ReadWrite and its RBAC for Applications assignment, the switch off, a disconnect and a leaver's copies left in their mailbox, and change notifications; what a leaver's steps do and what deleting loses; Staff's groups in the tenant, the application as their owner, confirming a group Vantigo did not create and what an archived group becomes; rotating secrets; the tagged test against a real tenant; and what each reason code means.
 sidebar:
   order: 46
 sources:
@@ -115,9 +115,8 @@ you may use two if you prefer.
    - `Domain.Read.All`
    - `Organization.Read.All`
 
-   A ninth, `Calendars.ReadWrite`, is needed only for [calendar sync](#calendar-sync),
-   and the wizard lists it while the [Outlook connection](#outlook-connection) switch is
-   on.
+   These eight are all: [calendar sync](#calendar-sync) needs no application
+   permission, since it runs on each person's own Outlook connection.
 2. Choose **Grant admin consent for** your organisation, and confirm. Each permission's
    status turns to *Granted*. `User.ReadWrite.All` also covers the person's photo,
    which Vantigo writes to the account: no further permission or consent.
@@ -138,11 +137,13 @@ The test cannot see the directory role — Vantigo cannot read it without a furt
 permission — so check the assignment yourself under **Roles & admins**.
 
 **Permissions Vantigo does not use.** When the token carries application permissions
-beyond the eight and `Calendars.ReadWrite`, the **Status** card shows an orange notice,
+beyond the eight, the **Status** card shows an orange notice,
 *The application holds permissions Vantigo does not use:*, with the list. An application
 permission reaches every mailbox or account in the tenant, so one nobody needs is better
 gone: unless another product uses this registration, remove it under **API
-permissions** and test again. It is a warning only — the connection stays
+permissions** and test again. An application `Calendars.ReadWrite` left from an earlier
+release, when calendar sync wrote with it, is among them ([calendar
+sync](#calendar-sync)). It is a warning only — the connection stays
 **Connected** — and the test records each as *a permission Vantigo does not use* in the
 recent events. In this release the mail permissions (`Mail.*`) and
 `full_access_as_app` are listed among them.
@@ -236,10 +237,9 @@ under **Settings → Connections**, by signing in to Microsoft — usually witho
 when single sign-on answers ([the user guide](/en/user/connections/)). Vantigo then holds
 the person's delegated sign-in to their mailbox, sealed, and shows *Reconnect Outlook*
 to that person alone when Microsoft refuses it. Only a person whose Staff record names
-an account Vantigo manages can connect, and only as that account. **In this release
-nothing uses the connection yet**: the calendar's sync keeps running on the application
-permission ([calendar sync](#calendar-sync)), and the Owner's switch is the one both run
-behind. How it works is in [the reference](/en/reference/entra/#the-outlook-connection).
+an account Vantigo manages can connect, and only as that account. The calendar's sync
+runs on it ([calendar sync](#calendar-sync)): each person who connects is synced with
+their own sign-in, and nobody else. How it works is in [the reference](/en/reference/entra/#the-outlook-connection).
 
 ### What the Outlook connection needs
 
@@ -270,9 +270,9 @@ behind. How it works is in [the reference](/en/reference/entra/#the-outlook-conn
 4. Choose **Grant admin consent for** your organisation, and confirm, so nobody is asked
    to consent — or refused for want of approval — when they connect.
 5. Back on the module page, turn on **Outlook connection: let people connect their
-   Outlook to Vantigo** and choose **Save the account rules** (`entra:manage`). Step 3
-   now lists `Calendars.ReadWrite` as the ninth application permission, for calendar
-   sync ([below](#calendar-sync)).
+   Outlook to Vantigo** and choose **Save the account rules** (`entra:manage`). Calendar
+   sync is then available to everyone who connects ([below](#calendar-sync)); step 3
+   asks for nothing more.
 
 ### Verify the Outlook connection
 
@@ -280,10 +280,7 @@ Connect yourself: open **Settings → Connections** and choose **Connect Outlook
 back on the page within seconds, reading **Connected as** and your account. On the module
 page the line under the switch has moved from **Nobody has connected yet: …** to
 **Ready**, *People connected:* counts you, and the **Status** card's recent events show
-*A person connected Outlook*. While the last test's token lacks the application
-permission `Calendars.ReadWrite`, the line reads *Calendar sync needs the
-Calendars.ReadWrite application permission, …* instead, before and after —
-[calendar sync](#turn-it-on) says why that is advisory.
+*A person connected Outlook*.
 
 ### Turn the Outlook connection off
 
@@ -291,8 +288,9 @@ Turn the switch off and choose **Save the account rules**. While anyone is conne
 waiting to reconnect the page asks first — *Everyone will have to connect Outlook
 again.* — and **Turn off and save** saves it. Every person's connection closes in the
 same save, each recorded as *An Outlook connection was closed* (*the Outlook connection
-was turned off*); the calendar's sync stops for everyone and its copies are removed.
-Turned on again, each person connects again.
+was turned off*); the calendar's sync stops for everyone and its copies are removed,
+each person's with their own closing connection. Turned on again, each person connects
+again, and nobody's calendar sync resumes until they have.
 
 ### What happens to a person's connection
 
@@ -301,14 +299,19 @@ Turned on again, each person connects again.
   to *Reconnect needed*, with the reason, on that person's page; *Waiting to reconnect:*
   counts them, and the event reads *Microsoft refused a person's Outlook connection*.
   Vantigo declares the client capability `cp1`, so Microsoft tells it at once when an
-  account is disabled or its sessions revoked. Nothing else stops.
+  account is disabled or its sessions revoked. Their calendar sync pauses, their copies
+  left as they were, and picks up once they reconnect; nothing else stops.
 - **They leave.** When Staff disables the account, the connection closes and its stored
-  token is forgotten in the same step, before the leaver's other steps run.
+  token is forgotten in the same step, before the leaver's other steps run. **The copies
+  calendar sync put in their mailbox stay there**, in the disabled mailbox: nothing is
+  left that could remove them, so Vantigo forgets them.
 - **Their account is deleted or disabled** in Vantigo or in the tenant. The connection
   closes, its stored token forgotten, when it is next used, or — for one waiting to reconnect — when the worker
-  `entra-outlook-sweep` reads the account in the tenant, at most once a day.
+  `entra-outlook-sweep` reads the account in the tenant, at most once a day. Their
+  calendar copies stay, as a leaver's.
 - **They disconnect.** Vantigo closes the connection; it never signs them out of
-  Microsoft.
+  Microsoft. **Calendar sync removes their copies** with the closing connection, then
+  waits for them to connect again.
 
 A closed connection is deleted by `entra-outlook-sweep`, the module's worker, an hour at
 a time: seven days after it closed, or once a day has passed both since it was last used
@@ -333,53 +336,78 @@ and since it closed, when nothing is left for it to clean up. The worker has no 
 **Calendar sync** lets people keep a copy of their Vantigo calendar in their Outlook
 ([the user guide](/en/user/calendar/#sync-with-outlook)): the calendar's
 `calendar-mailbox-sync` worker writes each person's appointments, and the items they
-choose, to their Exchange Online mailbox through this module's connection, and after
-each sync reads their **default calendar** back — the times of the events that make them
-busy, never the titles — to show that busy time in Vantigo. Before each push it also
-reads Vantigo's **own copies** — and, for a person who chose a separate *Vantigo*
-calendar, every event in that calendar — whole, to take back the edits, moves and
-deletes the person made in Outlook to their own appointments
-([the user guide](/en/user/calendar/#change-your-appointments-in-outlook)); it never
-reads the person's own events whole. `Calendars.ReadWrite` covers both reads: there is
-nothing to add or consent to. It is off by default, and provisioning works the same
-with it on or off. It runs behind the [Outlook connection](#outlook-connection) switch,
-on the application permission: in this release it does not use the people's own
-connections. What it writes and reads, and how, is in [the
+choose, to their Exchange Online mailbox, and after each sync reads their **default
+calendar** back — the times of the events that make them busy, never the titles — to
+show that busy time in Vantigo. Before each push it also reads Vantigo's **own copies** —
+and, for a person who chose a separate *Vantigo* calendar, every event in that calendar —
+whole, to take back the edits, moves and deletes the person made in Outlook to their own
+appointments ([the user guide](/en/user/calendar/#change-your-appointments-in-outlook));
+it never reads the person's own events whole.
+
+**It runs on each person's own [Outlook connection](#outlook-connection)**: every write
+and read of a mailbox uses that person's delegated sign-in, whose delegated
+`Calendars.ReadWrite` covers it all. Nothing is granted to the application for it — no
+application permission, no Exchange role — so Vantigo can reach only the mailboxes of the
+people who connected. It is off by default, and provisioning works the same with it on or
+off. What it writes and reads, and how, is in [the
 reference](/en/reference/entra/#the-mailbox-calendar).
 
 ### Preconditions
 
 - The connection is set up and **Connected** ([above](#connect-the-tenant)), and the
   Calendar module is enabled ([Calendar](/en/admin/calendar/)).
+- The [Outlook connection](#turn-on-the-outlook-connection) is set up and on: the
+  redirect URI and the delegated permissions with admin consent.
 - The people who will sync have the **Microsoft Entra ID** account kind in Staff, and
   their account is one Vantigo made or whose adoption is confirmed
   ([below](#accounts-vantigo-did-not-create)): Vantigo writes only to a mailbox it knows
   is the person's, never one matched by address.
 - Their accounts have an Exchange Online mailbox (a licence that includes Exchange
   Online).
+- **Each person connects their own Outlook** — on **Settings → Connections**, or with
+  **Connect Outlook** on the calendar's **Outlook** card.
 
 ### Turn it on
 
-1. On the module page, in step **4 Set the account rules**, turn on **Outlook
-   connection: let people connect their Outlook to Vantigo** under **Outlook
-   connection**, and choose **Save the account rules** (`entra:manage`) — [the Outlook
-   connection](#turn-on-the-outlook-connection) has what else it needs. Step 3 now lists
-   `Calendars.ReadWrite` as the ninth permission.
-2. In the registration, open **API permissions** › **Add a permission** › **Microsoft
-   Graph** › **Application permissions**, and add `Calendars.ReadWrite`.
-3. Choose **Grant admin consent for** your organisation, and confirm.
-4. In step 3, an Owner chooses **Test connection**.
+There is nothing to turn on beyond the [Outlook
+connection](#turn-on-the-outlook-connection): with its switch on, calendar sync is
+available to everyone who connects. No application permission and no admin step besides
+the connection's delegated `Calendars.ReadWrite` and its consent.
 
-Verify: the **Status** card no longer lists `Calendars.ReadWrite` as missing. A person
-who opens **Calendar → My calendar** can turn on **Sync to my Outlook calendar**; within
-a minute their card says **Last synced** and the appointments are in Outlook. Until a
-test sees the permission, the **Status** card lists it as missing — but that is
-advisory, and step 3 does not wait for it: people can turn their sync on all the same,
-and a mailbox the permission does not reach is refused for that person alone. Meanwhile
-the line under the switch reads *Calendar sync needs the Calendars.ReadWrite application
-permission, which is not in the token. …* in place of the [Outlook
-connection's](#verify-the-outlook-connection) own, the same advisory. The rest of the
-module works as before.
+Verify with a person who has connected: they open **Calendar → My calendar** and turn on
+**Sync to my Outlook calendar**; within a minute their card says **Last synced** and the
+appointments are in Outlook. A person who turns it on before connecting sees **Connect
+Outlook above to start the sync.**: their sync waits, and starts within a minute or so of
+their connecting. The rest of the module works as before.
+
+**Which mailboxes.** Only the people who connect their own Outlook are synced, and only
+their own mailbox: the connection signs in as them, and Microsoft refuses it any other
+mailbox. There is no scope to configure and no Exchange RBAC to set up. To keep someone
+out of calendar sync, leave them unconnected — or block the connection for them with a
+Conditional Access policy on Vantigo's application, which their card then shows as
+*Reconnect needed*.
+
+**A setup from an earlier release.** Calendar sync used to write with the
+`Calendars.ReadWrite` **application** permission, sometimes narrowed with Exchange RBAC
+for Applications. Nothing uses either any more:
+
+1. In the registration's **API permissions**, remove `Calendars.ReadWrite` of type
+   *Application* (keep the *Delegated* one), and choose **Test connection** in step 3:
+   until you do, the **Status** card lists it under *The application holds permissions
+   Vantigo does not use:*.
+2. If you made an RBAC for Applications assignment, remove it in Exchange Online
+   PowerShell (`Connect-ExchangeOnline`): list the assignments of the role, and remove
+   Vantigo's by its name.
+
+   ```powershell
+   Get-ManagementRoleAssignment -Role "Application Calendars.ReadWrite" | Format-Table Name, RoleAssignee, CustomResourceScope
+   Remove-ManagementRoleAssignment "<the assignment's name>"
+   ```
+
+   Then, if nothing else uses them, the management scope (`Remove-ManagementScope
+   "Vantigo calendar sync"`) and the group.
+3. Ask the people who synced before to connect their Outlook: until they do, their card
+   asks them to, and their copies stay as they were.
 
 **What a change in Outlook does.** A person's edit or move of their own appointment's
 copy changes the appointment in Vantigo at the next sync, through the same rules and
@@ -393,62 +421,20 @@ else — an appointment the person attends, another app's item — is put back, 
 the person adds attendees to is left to them. Vantigo takes at most 20 such changes a
 person per sync; the rest follow at the next.
 
-**Turning the switch off** stops everyone's sync, and the worker removes the copies it wrote,
-using the connection while a credential still works; it also closes every person's
-[Outlook connection](#turn-the-outlook-connection-off). Turning it on again resumes
-everyone whose own toggle is on.
+**Turning the switch off** stops everyone's sync and closes every person's [Outlook
+connection](#turn-the-outlook-connection-off); the worker then removes the copies it
+wrote, each person's with their own closing connection, while a client secret still
+works. **Turning it on again resumes no one by itself**: every connection was closed, so
+each person connects again, and their sync picks up once they have.
 
-### Limit it to some mailboxes
-
-`Calendars.ReadWrite` as an application permission reaches **every mailbox in the
-tenant**. Vantigo only writes to and reads the mailboxes of the accounts it manages, for
-the people who turn the sync on, but the credential could reach more. A scope limits the
-read exactly as it limits the writes: a mailbox outside it is refused for both. To narrow what the
-credential itself may reach, use Exchange Online's **RBAC for Applications**, in
-Exchange Online PowerShell, as an Exchange administrator:
-
-1. Make a mail-enabled security group (or a Microsoft 365 group) holding the people
-   whose calendars may be synced. Nested members do not count.
-2. Connect: `Connect-ExchangeOnline`.
-3. Register the application's service principal in Exchange, with the **Application
-   (client) ID** and the **Object ID** of the enterprise application (not of the app
-   registration):
-
-   ```powershell
-   New-ServicePrincipal -AppId <client id> -ObjectId <enterprise application object id> -DisplayName "Vantigo"
-   ```
-
-4. Make a scope of the group's members, with the group's distinguished name
-   (`Get-Group <group> | Select DistinguishedName`):
-
-   ```powershell
-   New-ManagementScope -Name "Vantigo calendar sync" -RecipientRestrictionFilter "MemberOfGroup -eq '<group distinguished name>'"
-   ```
-
-5. Grant the calendar role in that scope:
-
-   ```powershell
-   New-ManagementRoleAssignment -App <client id> -Role "Application Calendars.ReadWrite" -CustomResourceScope "Vantigo calendar sync"
-   ```
-
-6. Check a mailbox inside the scope and one outside it:
-
-   ```powershell
-   Test-ServicePrincipalAuthorization -Identity <client id> -Resource <mailbox address>
-   ```
-
-7. **Remove the tenant-wide grant in Entra**: in the registration's **API permissions**,
-   remove `Calendars.ReadWrite` (or revoke its admin consent). Exchange adds the two
-   grants together, so while the tenant-wide consent stands the scope restricts nothing.
-
-The changes take **30 minutes to 2 hours** to apply. A grant made with RBAC for
-Applications never shows in the token, so once the tenant-wide consent is removed, the
-next **Test connection** lists `Calendars.ReadWrite` as missing (step 3 stays *Done*)
-and the line under the switch reads *Calendar sync needs the Calendars.ReadWrite
-application permission, …* — that is expected, and the sync goes on. Verify with a person inside the scope: their card says **Last
-synced**. A person outside the scope sees **Your organisation has not
-allowed Vantigo to reach your mailbox.** on their Outlook card: Vantigo tries them again
-every six hours, and never reads it as the connection failing.
+**A person who disconnects** has their copies removed the same way, and their sync waits
+for them to connect again. **A person waiting to reconnect** is paused, their copies left
+as they were, until they reconnect. **A leaver's copies stay in their mailbox**: Vantigo
+forgets the leaver's sign-in when it disables their account, before anything else, so
+nothing is left that could remove them, and Vantigo forgets them instead; the mailbox is
+disabled with the account. The same goes for an account disabled or deleted elsewhere.
+Remove them in Exchange yourself if you need to — they carry the marker described in [the
+reference](/en/reference/entra/#the-account-check).
 
 ### Change notifications
 
@@ -465,7 +451,8 @@ reference](/en/reference/entra/#change-notifications).
 #### Preconditions
 
 - Calendar sync is on and working ([above](#turn-it-on)). Notifications need no extra
-  permission: `Calendars.ReadWrite` covers them.
+  permission: each person's subscription is made with their own connection, and the
+  delegated `Calendars.ReadWrite` they consented to covers it.
 - **`PUBLIC_BASE_URL` is set**, and Microsoft can reach it from the internet over
   https: a host name with a certificate a public authority signed. Set up the public host
   as for the pay page ([The public host](/en/admin/payments/#the-public-host)); the same
@@ -515,10 +502,12 @@ PUBLIC_BASE_URL …**.
   proxy passes the path through with `Host` set to the public host, and that no firewall
   or web application filter drops requests from Microsoft. The line clears at the first
   subscription that works. Meanwhile the poll takes the changes.
-- **Watching fewer mailboxes than people.** A mailbox Microsoft refuses — one outside
-  an Exchange RBAC scope ([above](#limit-it-to-some-mailboxes)) — is refused for
-  notifications as it is for the sync, and that person's changes come at the poll. A
-  person whose sync has not pushed yet is subscribed after the first one that does.
+- **Watching fewer mailboxes than people.** A person who has not connected their
+  Outlook, or is waiting to reconnect, has no working sync and so no subscription — one
+  Microsoft asks to renew while they wait to reconnect is left to lapse, and made again
+  once they reconnect. A mailbox Microsoft refuses is refused for notifications as it
+  is for the sync. A person whose sync has not pushed yet is subscribed after the first
+  one that does.
 - **A notification arrives, nothing changes.** The sync it makes due reads the mailbox;
   if that read is refused or fails, the card says so, as for any sync.
 - **Another application's subscription on the same mailbox.** Vantigo deletes only a
@@ -791,9 +780,11 @@ Calendar sync's troubles show on the **Status** card, on the line under the swit
 
 | Where | Means | Do |
 | --- | --- | --- |
-| `Calendars.ReadWrite` listed missing on the **Status** card, and *Calendar sync needs the Calendars.ReadWrite application permission, …* under the switch | The switch is on and the last test's token lacked the application permission. Expected under RBAC for Applications; the sync runs either way. | Nothing under RBAC for Applications. Otherwise add the permission, grant consent and test again ([calendar sync](#turn-it-on)); until then every person's sync is refused as their own mailbox denied. |
+| `Calendars.ReadWrite` under *The application holds permissions Vantigo does not use:* on the **Status** card | The application permission left from an earlier release; calendar sync no longer uses it. | Remove it, and any RBAC for Applications assignment ([a setup from an earlier release](#turn-it-on)), and test again. |
+| *Connect Outlook above to start the sync.* on a person's card | The person has the sync on but has not connected Outlook, or their connection closed (`not_connected`). Asked again once a day, and at once when they connect. | They choose **Connect Outlook** on the card or under **Settings → Connections**. |
+| *Microsoft wants you to sign in again: choose Reconnect Outlook above.* on a person's card | Microsoft refused the person's connection (`reconnect`): a password change, revoked sessions, a Conditional Access or multi-factor rule, an expired sign-in. | They choose **Reconnect Outlook**; for one that keeps coming back, check the policy, as for [connecting](#when-connecting-fails). |
 | *Waiting for the connection* under the switch | The connection is not connected; its reason is under the line. | Fix the connection as the table above says. |
-| *Your organisation has not allowed Vantigo to reach your mailbox.* on a person's card | Graph answered 403 for their mailbox (`mailbox_denied`): outside an RBAC for Applications scope. Tried again every six hours. | Add the person to the scope's group, or accept it; they press **Sync now** to try at once. |
+| *Your organisation has not allowed Vantigo to reach your mailbox.* on a person's card | Graph answered 403 for their mailbox (`mailbox_denied`): Exchange refuses it, a mailbox without Exchange Online say. Tried again every six hours. | Check the account's mailbox and licence; they press **Sync now** to try at once. |
 | *Your mailbox could not be found.* on a person's card | The user has no Exchange Online mailbox, or no longer exists (`mailbox_gone`). Tried again every six hours. | Give the account a licence with Exchange Online. |
 | *A change from Outlook was not taken* on a person's card | The person changed something in Outlook that Vantigo does not take — an appointment changed in Vantigo too, a change its rules refuse, someone else's appointment, or an occurrence's or another app's item's fields — and Vantigo put the copy back. The sentence below the heading says which. | Nothing: the person makes that change in Vantigo, or asks the appointment's organizer. |
 | A person's edit in Outlook did not reach Vantigo | It was not to their own appointment; it was a title, description or place under **Busy only**; the copy had become a meeting (they added attendees), which Vantigo leaves alone; or the sync is not **Last synced** — a failed read shows *The last sync failed; Vantigo will try again.*, and that sync's push may write Vantigo's version over an edit to a copy Vantigo also changed. | Check the person's card; they press **Sync now**. An edit lost to a failed read is made again in Vantigo. |

@@ -11,9 +11,11 @@ sources:
 **Innstillinger → Tilkoblinger** viser kontoene andre steder som du kobler til Vantigo.
 I dag er det **Outlook**-en din: du kobler den til én gang ved å logge på Microsoft, og
 Vantigo beholder tilkoblingen til du kobler den fra, slutter, eller administratoren din
-slår den av. I denne versjonen bruker ingenting tilkoblingen ennå — kalenderens
-[Outlook-synkronisering](/nb/user/calendar/#synkroniser-med-outlook) virker som før — men
-kobler du til nå, blir du ikke bedt om mer når den tas i bruk.
+slår den av. Kalenderens
+[Outlook-synkronisering](/nb/user/calendar/#synkroniser-med-outlook) bruker den: Vantigo
+skriver kopiene av kalenderen din til postboksen din, og leser opptatt-tiden din tilbake,
+med din egen tilkobling og ikke noe annet, så synkroniseringen virker bare mens du er
+tilkoblet.
 
 ## Hvem som ser den
 
@@ -60,8 +62,10 @@ Kortet sier **Tilkoblet som** og kontoen din, **Siden** dagen du koblet til, og
 
 Velg **Koble fra**, og så **Koble fra** i *Koble fra Outlook?*. Vantigo slutter å bruke
 Outlook-en din til du kobler den til igjen, og kortet sier **Ikke tilkoblet**. Å koble
-fra logger deg ikke ut av Microsoft eller Vantigo, og i denne versjonen endrer det ikke
-kalenderens Outlook-synkronisering, som har sin egen bryter.
+fra logger deg ikke ut av Microsoft eller Vantigo. **Vantigo fjerner det kalenderens
+Outlook-synkronisering la inn i Outlook-en din**, med tilkoblingen du nettopp lukket, og
+synkroniseringen venter til du kobler til igjen; bryteren dens blir stående slik du
+forlot den.
 
 ## Må kobles til på nytt
 
@@ -77,12 +81,15 @@ og knappen **Koble til Outlook på nytt** kobler til igjen på samme måte:
 | *Organisasjonens betingede tilgang (Conditional Access) stoppet tilkoblingen. Spør administratoren din om det skjer igjen.* | En policy for betinget tilgang avviste den — en regel for enhet, sted eller risiko. |
 | *Organisasjonen har ikke gitt samtykke til en tillatelse tilkoblingen trenger. Spør administratoren din.* | Administratorsamtykke for tilkoblingens tillatelser mangler. |
 
-Bare du ser dette; det er ikke administratorens feil, og ingenting annet i Vantigo
-stopper. Administratoren ser hvor mange som venter på å koble til på nytt, på Microsoft
+Bare du ser dette; det er ikke administratorens feil. **Kalenderens
+Outlook-synkronisering tar en pause** til du kobler til på nytt — det den la inn i
+Outlook, blir som det var — og fortsetter der den slapp når du har gjort det; ingenting
+annet i Vantigo stopper. Administratoren ser hvor mange som venter på å koble til på nytt, på Microsoft
 Entra ID-siden.
 
 Slutter du, eller blir Microsoft-kontoen din deaktivert eller slettet, lukkes
-tilkoblingen for deg.
+tilkoblingen for deg. Det kalenderens Outlook-synkronisering la inn i Outlook-en din,
+blir da liggende i postboksen din, som deaktiveres sammen med kontoen din.
 
 ## Når tilkoblingen feiler
 

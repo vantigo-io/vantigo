@@ -449,10 +449,15 @@ Kopiene sier **Holdes av Vantigo — endre det der:** med en lenke tilbake, men 
 også [endre, flytte og slette dine egne avtaler i
 Outlook](#endre-avtalene-dine-i-outlook): endringen kommer tilbake til Vantigo.
 
+Vantigo skriver til postboksen din med **din egen Outlook-tilkobling**, så du kobler til
+Outlook én gang først. Det kan du gjøre fra selve kortet.
+
 1. Åpne **Kalender → Min kalender**. Kortet **Outlook** står under kalenderadressene
    dine.
-2. Slå på **Synkroniser til Outlook-kalenderen min**.
-3. Velg:
+2. Under beskrivelsen på kortet velger du **Koble til Outlook** og logger på Microsoft. Du
+   kommer tilbake til denne siden, og kortet sier **Tilkoblet som** og kontoen din.
+3. Slå på **Synkroniser til Outlook-kalenderen min**.
+4. Velg:
    - **Hvor** — **Hovedkalenderen min**, som viser tiden som opptatt for kolleger, eller
      **En egen Vantigo-kalender**, som er lett å skjule, men ikke gjør deg opptatt for
      andre.
@@ -463,13 +468,21 @@ Outlook](#endre-avtalene-dine-i-outlook): endringen kommer tilbake til Vantigo.
    - **Titler** — **Fulle titler**, eller **Bare opptatt**: alle titler blir *Opptatt*,
      med ikke noe annet enn lenken.
 
-Så lenge organisasjonen kjører Microsoft Entra ID, viser kortet også
-**Outlook-tilkoblingen** din under beskrivelsen: **Ikke tilkoblet** med **Koble til
-Outlook**, **Tilkoblet som** og kontoen din, eller **Må kobles til på nytt** med årsaken
-og **Koble til Outlook på nytt**. Knappen tar deg til Microsofts pålogging og tilbake til
-denne siden ([Tilkoblinger](/nb/user/connections/)). I denne versjonen bruker
-synkroniseringen ikke tilkoblingen ennå: den kjører på organisasjonens tillatelse enten
-du har koblet til eller ikke.
+Kortet viser **Outlook-tilkoblingen** din under beskrivelsen: **Ikke tilkoblet** med
+**Koble til Outlook**, **Tilkoblet som** og kontoen din, eller **Må kobles til på nytt**
+med årsaken og **Koble til Outlook på nytt**. Knappen tar deg til Microsofts pålogging og
+tilbake til denne siden ([Tilkoblinger](/nb/user/connections/)).
+
+Du kan slå på synkroniseringen før du kobler til: den venter på deg. Til du har koblet
+til, sier kortet **Koble til Outlook ovenfor for å starte synkroniseringen.** Når du har
+gjort det, synkroniserer Vantigo innen et par minutter, eller med en gang med
+**Synkroniser nå**; kortet merker det selv, uten at du laster siden på nytt.
+
+**Koble til på nytt.** Microsoft ber deg av og til logge på igjen — passordet ditt er
+endret, organisasjonens påloggingsregler krevde det, eller det har gått lang tid. Kortet
+sier da **Microsoft vil at du logger på igjen: velg Koble til Outlook på nytt ovenfor.**
+Synkroniseringen tar en pause, og det som ligger i Outlook, blir som det var, til du
+velger **Koble til Outlook på nytt** og logger på; så fortsetter den der den slapp.
 
 Hver endring lagres med en gang. Kortet sier så **Venter på den første
 synkroniseringen …**, og snart **Sist synkronisert** og når. Vantigo synkroniserer hvert
@@ -512,9 +525,12 @@ helhet — med mindre en kopi i den har blitt [ditt eget
 Outlook-møte](#endre-avtalene-dine-i-outlook): da forsvinner bare Vantigos kopier, og
 kalenderen og møtet blir stående — og en kalender du har laget selv, røres aldri.
 
+**Koble fra** Outlook under **Innstillinger → Tilkoblinger**, så fjerner Vantigo det den
+la inn i Outlook, som når du slår av synkroniseringen; kortet ber deg så koble til igjen.
+
 Når bryteren ikke kan slås på, sier kortet hvorfor:
 
-- **Administratoren din har ikke slått på kalendersynkronisering.** — en eier slår på
+- **Administratoren din har ikke slått på Outlook-tilkoblingen.** — en eier slår på
   **Outlook-tilkobling** på Microsoft Entra ID-siden ([Microsoft Entra
   ID](/nb/user/entra/#outlook-tilkobling)).
 - **Kalendersynkronisering krever modulen Microsoft Entra ID.** — installasjonen kjører
@@ -525,12 +541,14 @@ Når bryteren ikke kan slås på, sier kortet hvorfor:
   gjetter den aldri ut fra adressen din.
 
 Når synkroniseringen har stoppet, sier kortet hvorfor i stedet for når den sist kjørte:
-**Organisasjonen din har ikke gitt Vantigo tilgang til postboksen din.** (administratoren
-har begrenset hvilke postbokser Vantigo kan skrive til), **Postboksen din ble ikke
-funnet.**, **Tilkoblingen til Microsoft 365 virker ikke akkurat nå.** eller **Den siste
-synkroniseringen mislyktes; Vantigo prøver igjen.** Det siste trenger du ikke gjøre noe
-med: Vantigo prøver igjen, sjeldnere for hver gang. Slutter du, eller mister du tilgangen
-til Kalender, fjernes kopiene dine.
+**Koble til Outlook ovenfor for å starte synkroniseringen.**, **Microsoft vil at du
+logger på igjen: velg Koble til Outlook på nytt ovenfor.**, **Organisasjonen din har ikke
+gitt Vantigo tilgang til postboksen din.** (Microsoft 365 avviste postboksen din — spør
+administratoren din), **Postboksen din ble ikke funnet.**, **Tilkoblingen til Microsoft
+365 virker ikke akkurat nå.** eller **Den siste synkroniseringen mislyktes; Vantigo
+prøver igjen.** Det siste trenger du ikke gjøre noe med: Vantigo prøver igjen, sjeldnere
+for hver gang. Mister du tilgangen til Kalender, fjernes kopiene dine. Slutter du, blir
+de liggende i postboksen din, som deaktiveres sammen med kontoen din.
 
 ### Endre avtalene dine i Outlook
 
