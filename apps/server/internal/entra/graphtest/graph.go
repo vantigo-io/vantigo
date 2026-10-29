@@ -195,11 +195,13 @@ type FakeGraph struct {
 	serial        int
 	deltas        map[string]*deltaState
 	subscriptions []*Subscription
-	// sent, drafts, dropDraftBcc and failDraftSend are the mail's (mail.go).
+	// sent, drafts, dropDraftBcc, failDraftSend and mailSizeLimit are the
+	// mail's (mail.go).
 	sent          []SentMail
 	drafts        []*Draft
 	dropDraftBcc  bool
 	failDraftSend []int
+	mailSizeLimit int
 	// prefer is the Prefer header of the request being answered — a
 	// request's own inside a $batch.
 	prefer string

@@ -234,3 +234,12 @@ SELECT ch.provider
 FROM communications.conversations c
 JOIN communications.channels ch ON ch.id = c.channel_id
 WHERE c.id = @id;
+
+-- name: MailboxHasChannel :one
+-- MailboxHasChannel is whether a Microsoft 365 channel's settings name the
+-- mailbox: read after a channel's switch back to SMTP has committed, so its
+-- Forget is skipped when another channel took the mailbox in between.
+SELECT EXISTS (
+    SELECT 1 FROM communications.channels
+    WHERE provider = 'entra' AND settings->>'mailbox' = @mailbox::text
+);

@@ -411,7 +411,7 @@ func (s *server) PostCommunicationsChannels(ctx context.Context, req gen.PostCom
 		}
 		if db.IsUniqueViolation(txErr, "ux_channels_entra_mailbox") {
 			return gen.PostCommunicationsChannels409JSONResponse(flatErrorBody(
-				"channel_exists", "A channel for this mailbox already exists.")), nil
+				"mailbox_exists", "Another channel already uses this mailbox.")), nil
 		}
 		// The (type, is_default) partial unique index (migration
 		// 00006_communications_baseline.sql:48) is the *other* thing this
@@ -768,9 +768,22 @@ var errChannelProviderChanged = errors.New("communications: the channel's provid
 // uses, after the switch committed (M11): best-effort — the channel is SMTP
 // whatever the provider answers, and a mailbox left recorded only lets the
 // provider send through one an admin checked — and logged when it fails.
+// The channels are read again first: a channel created on, or switched to,
+// the same mailbox since the commit has had it Checked anew, and a Forget
+// now would leave that channel unable to send, so it is skipped.
 func (s *server) forgetMailbox(ctx context.Context, channelID uuid.UUID, mailbox string) {
 	m, err := s.channelMailbox(ctx)
-	if err == nil && m != nil {
+	if err == nil && m == nil {
+		return
+	}
+	var taken bool
+	if err == nil {
+		taken, err = store.New(s.deps.Pool).MailboxHasChannel(ctx, mailbox)
+	}
+	if err == nil && taken {
+		return
+	}
+	if err == nil {
 		err = s.mailboxForget(ctx, m, mailbox)
 	}
 	if err != nil {
@@ -1039,7 +1052,7 @@ func (s *server) PostCommunicationsChannelsByIdProvider(ctx context.Context, req
 		return switchProviderUnchanged(), nil
 	case db.IsUniqueViolation(txErr, "ux_channels_entra_mailbox"):
 		return gen.PostCommunicationsChannelsByIdProvider409JSONResponse(flatErrorBody(
-			"channel_exists", "A channel for this mailbox already exists.")), nil
+			"mailbox_exists", "Another channel already uses this mailbox.")), nil
 	default:
 		return nil, fmt.Errorf("communications: switch channel provider: %w", txErr)
 	}

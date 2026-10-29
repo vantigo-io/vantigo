@@ -156,6 +156,19 @@ SET status = @status, last_error = @last_error, next_attempt_at = @next_attempt_
     lease_id = NULL, lease_until = NULL
 WHERE id = @id;
 
+-- name: DeferOutboxJob :exec
+-- The hold of a job whose mail channels provider is unavailable (Outlook
+-- connection design M13; the review's finding): back to 'retry' at the
+-- caller's wait, the attempt the claim took given back, so an outage never
+-- spends the eight attempts, and the attempt marker cleared — nothing was
+-- handed to the provider, so the next claim is no possible duplicate. The
+-- lease is cleared as FailOutboxJob clears it.
+UPDATE communications.outbox_jobs
+SET status = 'retry', last_error = @last_error, next_attempt_at = @next_attempt_at,
+    attempts = GREATEST(attempts - 1, 0), delivery_attempted_at = NULL,
+    lease_id = NULL, lease_until = NULL
+WHERE id = @id;
+
 -- name: MarkMessageDeliveryAccepted :exec
 -- Step 12 (`:181-194`): the per-delivery success write.
 UPDATE communications.message_deliveries

@@ -165,6 +165,9 @@ type ConversationDetailResponse struct {
 	LastActivityAt            time.Time           `json:"lastActivityAt"`
 	LastReadAt                *time.Time          `json:"lastReadAt"`
 
+	// MaxAttachmentBytes The attachments the conversation's channel takes, in bytes as the files are (a Microsoft 365 channel's): (maxMessageBytes − 16 KiB of headroom) × 100 / 137, rounded down to 0.1 MB — what the composer shows and a staging refused as too large names. null for SMTP. Always answered; optional in the schema only because the recorded exchanges predate it.
+	MaxAttachmentBytes *int64 `json:"maxAttachmentBytes"`
+
 	// MaxMessageBytes The largest message the conversation's channel sends, in bytes of MIME (a Microsoft 365 channel's); null for SMTP. Always answered; optional in the schema only because the recorded exchanges predate it.
 	MaxMessageBytes *int64 `json:"maxMessageBytes"`
 	Messages        []struct {

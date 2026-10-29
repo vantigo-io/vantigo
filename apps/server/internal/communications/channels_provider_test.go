@@ -1,10 +1,12 @@
 package communications_test
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/google/uuid"
@@ -199,8 +201,9 @@ func TestCreateChannel_EntraRefusesAnSmtpBlock(t *testing.T) {
 }
 
 // TestCreateChannel_EntraOneChannelPerMailbox: a second channel on the same
-// mailbox is 409 channel_exists, whether by the same primary address or by
-// an alias Check answers with another (ux_channels_entra_mailbox).
+// mailbox is 409 — channel_exists by the same address, mailbox_exists by an
+// alias Check answers with another (ux_channels_entra_mailbox) — and a
+// switch of an SMTP channel on another alias is 409 mailbox_exists too.
 func TestCreateChannel_EntraOneChannelPerMailbox(t *testing.T) {
 	t.Parallel()
 	h, fake := mailboxHarness(t)
@@ -217,14 +220,22 @@ func TestCreateChannel_EntraOneChannelPerMailbox(t *testing.T) {
 	other.Address = strings.ToLower(alias)
 	fake.SetMailbox(alias, other)
 	r := c.Do(http.MethodPost, "/api/v1/communications/channels", entraChannelBody(alias))
-	wantCode(t, r, http.StatusConflict, "channel_exists")
+	wantCode(t, r, http.StatusConflict, "mailbox_exists")
 	var e commErrorJSON
 	r.JSON(&e)
-	if e.Error.Message != "A channel for this mailbox already exists." {
+	if e.Error.Message != "Another channel already uses this mailbox." {
 		t.Errorf("message = %q", e.Error.Message)
 	}
 	if n := h.Count(t, `SELECT count(*) FROM communications.channels`); n != 1 {
 		t.Errorf("channels = %d, want 1", n)
+	}
+
+	second := channelAddress(t)
+	smtp := createChannel(t, c, newChannelBody(second))
+	fake.SetMailbox(second, info)
+	wantCode(t, switchProvider(c, smtp.Id), http.StatusConflict, "mailbox_exists")
+	if p := modtest.One[string](t, h, `SELECT provider FROM communications.channels WHERE id = $1`, smtp.Id); p != "smtp" {
+		t.Errorf("the refused switch left the channel %q, want smtp", p)
 	}
 }
 
@@ -361,6 +372,65 @@ func TestUpdateChannel_EntraBackToSmtp(t *testing.T) {
 	}
 	if f := fake.Forgotten(); len(f) != 1 || f[0] != info.Mailbox {
 		t.Errorf("forgotten = %v, want [%s]", f, info.Mailbox)
+	}
+}
+
+// keyHookMailbox is the fake with a hook run, once, at the first Key after
+// it is armed — the forget's first call to the provider, made after the
+// switch back to SMTP committed.
+type keyHookMailbox struct {
+	*modtest.FakeChannelMailbox
+	mu    sync.Mutex
+	armed func()
+}
+
+func (m *keyHookMailbox) Key() string {
+	m.mu.Lock()
+	hook := m.armed
+	m.armed = nil
+	m.mu.Unlock()
+	if hook != nil {
+		hook()
+	}
+	return m.FakeChannelMailbox.Key()
+}
+
+// TestUpdateChannel_EntraBackToSmtpLeavesAMailboxAnotherChannelTook: a
+// channel switched onto the mailbox between the switch back's commit and its
+// Forget — an SMTP channel on an alias of it, Checked anew, so the provider
+// sends through it — is not undone: the channels are read again first, and
+// Forget is skipped.
+func TestUpdateChannel_EntraBackToSmtpLeavesAMailboxAnotherChannelTook(t *testing.T) {
+	t.Parallel()
+	fake := modtest.NewFakeChannelMailbox()
+	mailbox := &keyHookMailbox{FakeChannelMailbox: fake}
+	h := newHarness(t, modtest.WithChannelMailbox(mailbox))
+	c := h.SignIn(t, "communications:channels-manage")
+	address := channelAddress(t)
+	info := sharedMailbox(fake, address, "")
+	ch := createChannel(t, c, entraChannelBody(address))
+	alias := channelAddress(t)
+	fake.SetMailbox(alias, info)
+	other := createChannel(t, c, newChannelBody(alias))
+
+	var taken *modtest.Response
+	mailbox.mu.Lock()
+	mailbox.armed = func() { taken = switchProvider(c, other.Id) }
+	mailbox.mu.Unlock()
+	r := c.Do(http.MethodPut, "/api/v1/communications/channels/"+ch.Id, map[string]any{
+		"provider": "smtp", "smtp": map[string]any{"host": "smtp.example.test", "port": 587, "password": "pw"},
+	})
+	if r.Status != http.StatusOK {
+		t.Fatalf("back to SMTP: status %d body %s, want 200", r.Status, r.Body)
+	}
+	if taken == nil || taken.Status != http.StatusOK {
+		t.Fatalf("the switch in between = %+v, want 200", taken)
+	}
+	if f := fake.Forgotten(); len(f) != 0 {
+		t.Errorf("forgotten = %v, want none: another channel uses the mailbox", f)
+	}
+	if err := fake.Send(context.Background(), info.Mailbox, []byte("x"), nil); err != nil {
+		t.Errorf("Send through the mailbox the new channel uses: %v", err)
 	}
 }
 

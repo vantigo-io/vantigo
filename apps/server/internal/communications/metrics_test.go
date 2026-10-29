@@ -150,8 +150,12 @@ func TestOutboxMetrics_TheMeterCarriesExactlyTheFourNamedCounters(t *testing.T) 
 		t.Fatalf("terminal ProcessOne: %v", err)
 	}
 
+	// The possible duplicates are the crash's one and the failing job's
+	// seven: each failure came after its marker was stamped, so each retry's
+	// claim counts one — the relay may have taken the message before it
+	// failed.
 	for name, want := range map[string]int64{
-		possibleDuplicateSendsMetric: 1,
+		possibleDuplicateSendsMetric: 8,
 		jobsCompletedMetric:          1,
 		jobsRetriedMetric:            7,
 		jobsFailedMetric:             1,

@@ -24,11 +24,16 @@ import (
 //     fake does not take — and answers 202, recorded by Sent with no Bcc:
 //     Graph's MIME send is reported not to honour a Bcc header;
 //   - POST /users/{id}/messages takes the same MIME as a draft, answering
-//     201 with its id and the bccRecipients its Bcc header names (none
-//     while DropDraftBcc is set); POST …/messages/{id}/send sends it, 202,
+//     201 with the message whole, as Graph does — its id, the
+//     bccRecipients its Bcc header names (none while DropDraftBcc is set)
+//     and its body, the MIME's text —; POST …/messages/{id}/send sends it, 202,
 //     recorded by Sent with those recipients, and leaves no draft;
 //     DELETE …/messages/{id} deletes it, 204; a draft not there is 404
 //     ErrorItemNotFound. Drafts lists the drafts not sent.
+//
+// A MIME message larger than SetMailSizeLimit's bytes is refused as
+// Exchange refuses one over a mailbox's send limit: 400
+// ErrorMessageSizeExceeded, on sendMail and on a draft's create.
 //
 // A user marked MailboxDenied answers 403 ErrorAccessDenied on every mail
 // route (outside the RBAC for Applications scope), NoMailbox 404
@@ -103,6 +108,14 @@ func (g *FakeGraph) FailNextDraftSend(status int) {
 	g.failDraftSend = append(g.failDraftSend, status)
 }
 
+// SetMailSizeLimit makes a MIME message larger than n bytes refused 400
+// ErrorMessageSizeExceeded, as a mailbox's send limit is; 0 sets no limit.
+func (g *FakeGraph) SetMailSizeLimit(n int) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.mailSizeLimit = n
+}
+
 // keyForm rewrites a /users('…') path to /users/… . g.mu is held.
 func keyForm(path string) string {
 	m := keyPath.FindStringSubmatch(path)
@@ -129,14 +142,14 @@ func (g *FakeGraph) mailRoute(u *User, method string, seg []string, contentType 
 	case method == http.MethodGet && strings.EqualFold(rest, "mailFolders/inbox"):
 		return answer{status: http.StatusOK, body: map[string]any{"id": "AQMkADinbox" + strings.ReplaceAll(u.ID, "-", "")}}
 	case method == http.MethodPost && rest == "sendMail":
-		mime, a, ok := decodeMIME(contentType, body)
+		mime, a, ok := g.decodeMIME(contentType, body)
 		if !ok {
 			return a
 		}
 		g.sent = append(g.sent, SentMail{UserID: u.ID, MIME: mime})
 		return answer{status: http.StatusAccepted}
 	case method == http.MethodPost && rest == "messages":
-		mime, a, ok := decodeMIME(contentType, body)
+		mime, a, ok := g.decodeMIME(contentType, body)
 		if !ok {
 			return a
 		}
@@ -149,7 +162,10 @@ func (g *FakeGraph) mailRoute(u *User, method string, seg []string, contentType 
 		for _, addr := range d.Bcc {
 			recipients = append(recipients, map[string]any{"emailAddress": map[string]any{"address": addr}})
 		}
-		return answer{status: http.StatusCreated, body: map[string]any{"id": d.ID, "isDraft": true, "bccRecipients": recipients}}
+		return answer{status: http.StatusCreated, body: map[string]any{
+			"id": d.ID, "isDraft": true, "bccRecipients": recipients,
+			"body": map[string]any{"contentType": "text", "content": string(mime)},
+		}}
 	case len(seg) == 3 && seg[0] == "messages" && seg[2] == "send" && method == http.MethodPost:
 		i := g.draftIndex(u, seg[1])
 		if i < 0 {
@@ -182,8 +198,9 @@ func (g *FakeGraph) draftIndex(u *User, id string) int {
 }
 
 // decodeMIME is a sendMail's or a draft's body: base64 MIME as text/plain,
-// at most mailMaxBody bytes.
-func decodeMIME(contentType string, body []byte) ([]byte, answer, bool) {
+// at most mailMaxBody bytes, and the MIME within SetMailSizeLimit's. g.mu is
+// held.
+func (g *FakeGraph) decodeMIME(contentType string, body []byte) ([]byte, answer, bool) {
 	if !strings.HasPrefix(strings.ToLower(contentType), "text/plain") {
 		return nil, graphError(http.StatusBadRequest, "ErrorInvalidRequest", "The fake takes a MIME message as text/plain alone."), false
 	}
@@ -193,6 +210,9 @@ func decodeMIME(contentType string, body []byte) ([]byte, answer, bool) {
 	mime, err := base64.StdEncoding.DecodeString(string(bytes.TrimSpace(body)))
 	if err != nil || len(mime) == 0 {
 		return nil, graphError(http.StatusBadRequest, "ErrorMimeContentInvalidBase64String", "Invalid base64 string for MIME content."), false
+	}
+	if g.mailSizeLimit > 0 && len(mime) > g.mailSizeLimit {
+		return nil, graphError(http.StatusBadRequest, "ErrorMessageSizeExceeded", "The message exceeds the maximum supported size."), false
 	}
 	return mime, answer{}, true
 }

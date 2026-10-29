@@ -397,6 +397,23 @@ func (q *Queries) LockDefaultChannelSlot(ctx context.Context, lockClass int32) e
 	return err
 }
 
+const mailboxHasChannel = `-- name: MailboxHasChannel :one
+SELECT EXISTS (
+    SELECT 1 FROM communications.channels
+    WHERE provider = 'entra' AND settings->>'mailbox' = $1::text
+)
+`
+
+// MailboxHasChannel is whether a Microsoft 365 channel's settings name the
+// mailbox: read after a channel's switch back to SMTP has committed, so its
+// Forget is skipped when another channel took the mailbox in between.
+func (q *Queries) MailboxHasChannel(ctx context.Context, mailbox string) (bool, error) {
+	row := q.db.QueryRow(ctx, mailboxHasChannel, mailbox)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const setChannelSmtp = `-- name: SetChannelSmtp :exec
 UPDATE communications.channels
 SET provider = 'smtp', settings = '{}'

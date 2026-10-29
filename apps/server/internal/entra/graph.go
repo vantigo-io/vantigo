@@ -337,6 +337,15 @@ const deltaPage callOption = 5
 // its own.
 const wholeEvents callOption = 6
 
+// addressInPath is a call whose path carries an address a person typed —
+// a channel mailbox's Check, GET /users/{address}: its errors and its log
+// lines name the path addressedPath, never the path itself.
+const addressInPath callOption = 7
+
+// addressedPath is what an addressInPath call's errors and log lines name
+// in place of its path.
+const addressedPath = "/v1.0/users/{address}"
+
 // get reads path into into. path is everything after /v1.0, its query
 // already escaped (url.Values.Encode).
 func (c *graphClient) get(ctx context.Context, cred graphCredential, path string, into any, opts ...callOption) error {
@@ -481,7 +490,14 @@ func (c *graphClient) sendAs(ctx context.Context, src tokenSource, method, path 
 	}
 	target, err := graphURL(path)
 	if err != nil {
+		if slices.Contains(opts, addressInPath) {
+			return errors.New("entra: a Graph path that does not parse or leaves Graph: " + addressedPath)
+		}
 		return err
+	}
+	shown := target.Path
+	if slices.Contains(opts, addressInPath) {
+		shown = addressedPath
 	}
 	throttled, retried, reauthorised := false, false, false
 	for attempt := 1; ; attempt++ {
@@ -489,7 +505,7 @@ func (c *graphClient) sendAs(ctx context.Context, src tokenSource, method, path 
 		if err != nil {
 			return err
 		}
-		status, header, data, err := c.exchange(ctx, method, target, token, body, extra, limit)
+		status, header, data, err := c.exchange(ctx, method, target, shown, token, body, extra, limit)
 		if err != nil {
 			return err
 		}
@@ -499,14 +515,14 @@ func (c *graphClient) sendAs(ctx context.Context, src tokenSource, method, path 
 				return nil
 			}
 			if err := json.Unmarshal(data, into); err != nil {
-				return fmt.Errorf("%w: %s %s: the answer is not the JSON expected: %w", errTenantUnreachable, method, target.Path, err)
+				return fmt.Errorf("%w: %s %s: the answer is not the JSON expected: %w", errTenantUnreachable, method, shown, err)
 			}
 			return nil
 		case status == http.StatusTooManyRequests:
 			wait, ok := retryAfter(header, c.now())
 			if throttled || !ok {
 				c.logger.DebugContext(ctx, "entra: Graph throttled a call",
-					"tenant", src.tenant().String(), "method", method, "path", target.Path, "retryAfter", header.Get("Retry-After"))
+					"tenant", src.tenant().String(), "method", method, "path", shown, "retryAfter", header.Get("Retry-After"))
 				return errThrottled
 			}
 			throttled = true
@@ -523,12 +539,12 @@ func (c *graphClient) sendAs(ctx context.Context, src tokenSource, method, path 
 				return err
 			}
 			if reauthorised {
-				return c.refusal(ctx, src.tenant(), method, target, status, data, words)
+				return c.refusal(ctx, src.tenant(), method, shown, status, data, words)
 			}
 			reauthorised = true
 			src.dropped()
 		default:
-			return c.refusal(ctx, src.tenant(), method, target, status, data, words)
+			return c.refusal(ctx, src.tenant(), method, shown, status, data, words)
 		}
 	}
 }
@@ -552,17 +568,17 @@ func graphURL(path string) (*url.URL, error) {
 
 // exchange sends one request, body with its media type when not nil and
 // the extra headers, and answers the status, the headers and the body read
-// through limit. A
+// through limit; its errors name the path as shown. A
 // request that could not be made, or was not answered in time, is
 // errTenantUnreachable; the caller's own context ending is its error.
-func (c *graphClient) exchange(ctx context.Context, method string, target *url.URL, token string, body *payload, extra http.Header, limit int64) (int, http.Header, []byte, error) {
+func (c *graphClient) exchange(ctx context.Context, method string, target *url.URL, shown, token string, body *payload, extra http.Header, limit int64) (int, http.Header, []byte, error) {
 	var reader io.Reader
 	if body != nil {
 		reader = bytes.NewReader(body.data)
 	}
 	req, err := http.NewRequestWithContext(ctx, method, target.String(), reader)
 	if err != nil {
-		return 0, nil, nil, fmt.Errorf("entra: build %s %s: %w", method, target.Path, err)
+		return 0, nil, nil, fmt.Errorf("entra: build %s %s: %w", method, shown, err)
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Accept", "application/json")
@@ -577,18 +593,18 @@ func (c *graphClient) exchange(ctx context.Context, method string, target *url.U
 		if ctx.Err() != nil {
 			return 0, nil, nil, ctx.Err()
 		}
-		return 0, nil, nil, fmt.Errorf("%w: %s %s: %w", errTenantUnreachable, method, target.Path, unwrapURLError(err))
+		return 0, nil, nil, fmt.Errorf("%w: %s %s: %w", errTenantUnreachable, method, shown, unwrapURLError(err))
 	}
 	defer func() { _ = resp.Body.Close() }()
 	data, err := readCapped(resp.Body, limit)
 	if err != nil {
 		if errors.Is(err, errResponseTooLarge) {
-			return 0, nil, nil, fmt.Errorf("%s %s: %w", method, target.Path, err)
+			return 0, nil, nil, fmt.Errorf("%s %s: %w", method, shown, err)
 		}
 		if ctx.Err() != nil {
 			return 0, nil, nil, ctx.Err()
 		}
-		return 0, nil, nil, fmt.Errorf("%w: %s %s: read the answer: %w", errTenantUnreachable, method, target.Path, err)
+		return 0, nil, nil, fmt.Errorf("%w: %s %s: read the answer: %w", errTenantUnreachable, method, shown, err)
 	}
 	return resp.StatusCode, resp.Header, data, nil
 }
@@ -663,7 +679,7 @@ type graphErrorBody struct {
 // the query, which may carry an employee number — when words is true, and
 // go nowhere else; a noRetry call's refusal is logged by its status and
 // codes alone, as its words may echo the password or the pass it carried.
-func (c *graphClient) refusal(ctx context.Context, tenant uuid.UUID, method string, target *url.URL, status int, data []byte, words bool) error {
+func (c *graphClient) refusal(ctx context.Context, tenant uuid.UUID, method, path string, status int, data []byte, words bool) error {
 	var body graphErrorBody
 	_ = json.Unmarshal(data, &body)
 	message := strings.ToLower(body.Error.Message)
@@ -673,7 +689,7 @@ func (c *graphClient) refusal(ctx context.Context, tenant uuid.UUID, method stri
 	if len(body.Error.Details) > 0 {
 		e.Detail = body.Error.Details[0].Code
 	}
-	attrs := []any{"tenant", tenant.String(), "method", method, "path", target.Path,
+	attrs := []any{"tenant", tenant.String(), "method", method, "path", path,
 		"status", status, "code", e.Code, "detail", e.Detail}
 	if words {
 		attrs = append(attrs, "message", body.Error.Message)

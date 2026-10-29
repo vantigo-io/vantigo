@@ -12,8 +12,9 @@ import (
 // FakeChannelMailbox is a contracts.ChannelMailbox a test shapes, for
 // Communications' channels and its outbox to be tested without composing
 // Entra beside them (Outlook connection design M11). It holds the mailboxes
-// SetMailbox gave, by address in lower case; each is one Send may write to
-// from the start, as if Check had resolved it, until Forget drops it.
+// SetMailbox gave, by address in lower case; each shared one is one Send may
+// write to from the start, as if Check had resolved it, until Forget drops
+// it — a personal one never, as Entra records only a shared mailbox.
 //
 // Check answers the mailbox set for an address, any case, and
 // ErrMailboxUnknown for one never set; Send records the message whole in
@@ -82,12 +83,14 @@ func (f *FakeChannelMailbox) WithKey(key string) *FakeChannelMailbox {
 }
 
 // SetMailbox makes Check answer info for address, in any case, and Send
-// take info.Mailbox.
+// take info.Mailbox when it is shared.
 func (f *FakeChannelMailbox) SetMailbox(address string, info contracts.ChannelMailboxInfo) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.byAddress[strings.ToLower(address)] = info
-	f.known[info.Mailbox] = true
+	if info.Shared {
+		f.known[info.Mailbox] = true
+	}
 }
 
 // SetStatus sets what Status answers: contracts.MailboxAvailable — with
@@ -169,8 +172,8 @@ func (f *FakeChannelMailbox) Status(context.Context) (contracts.MailboxStatus, e
 	return f.status, nil
 }
 
-// Check answers the mailbox SetMailbox set for address, and makes it one
-// Send takes again after a Forget.
+// Check answers the mailbox SetMailbox set for address, and makes a shared
+// one Send takes again after a Forget.
 func (f *FakeChannelMailbox) Check(_ context.Context, address string) (contracts.ChannelMailboxInfo, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -185,7 +188,9 @@ func (f *FakeChannelMailbox) Check(_ context.Context, address string) (contracts
 	if !ok {
 		return contracts.ChannelMailboxInfo{}, contracts.ErrMailboxUnknown
 	}
-	f.known[info.Mailbox] = true
+	if info.Shared {
+		f.known[info.Mailbox] = true
+	}
 	return info, nil
 }
 

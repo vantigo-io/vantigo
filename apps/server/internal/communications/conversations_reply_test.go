@@ -998,9 +998,11 @@ func TestReply_RequiresReplyAndView(t *testing.T) {
 }
 
 // TestReply_OverTheChannelBudget: on a Microsoft 365 channel a reply whose
-// estimate — the attachments and the HTML × 1.37, the text, 16 KiB — exceeds
-// the provider's budget is 422 too_large, and nothing is written: no
-// message, no job, the attachment still staged.
+// estimate — the attachments × 1.37, the text and the HTML × 3
+// (quoted-printable's worst), 16 KiB — exceeds the provider's budget is 422
+// too_large, and nothing is written: no message, no job, the attachment
+// still staged. 4 000 bytes of text are over it as 12 000, though as they
+// are they would fit.
 func TestReply_OverTheChannelBudget(t *testing.T) {
 	t.Parallel()
 	h, fake := mailboxHarness(t)
@@ -1027,7 +1029,11 @@ func TestReply_OverTheChannelBudget(t *testing.T) {
 		t.Errorf("upload rows = %d, want it still staged", n)
 	}
 
-	body["textBody"] = strings.Repeat("y", 5_000)
+	body["textBody"] = strings.Repeat("y", 4_000)
+	if r := doReply(c, convID, uuid.NewString(), body); r.Status != http.StatusUnprocessableEntity {
+		t.Errorf("4 000 bytes of text: status %d body %s, want 422 at quoted-printable's worst", r.Status, r.Body)
+	}
+	body["textBody"] = strings.Repeat("y", 3_000)
 	if r := doReply(c, convID, uuid.NewString(), body); r.Status != http.StatusCreated {
 		t.Errorf("under the budget: status %d body %s, want 201", r.Status, r.Body)
 	}

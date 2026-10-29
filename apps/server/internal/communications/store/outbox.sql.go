@@ -72,6 +72,31 @@ func (q *Queries) CountSuppressedRecipients(ctx context.Context, addresses []str
 	return count, err
 }
 
+const deferOutboxJob = `-- name: DeferOutboxJob :exec
+UPDATE communications.outbox_jobs
+SET status = 'retry', last_error = $1, next_attempt_at = $2,
+    attempts = GREATEST(attempts - 1, 0), delivery_attempted_at = NULL,
+    lease_id = NULL, lease_until = NULL
+WHERE id = $3
+`
+
+type DeferOutboxJobParams struct {
+	LastError     *string
+	NextAttemptAt time.Time
+	ID            uuid.UUID
+}
+
+// The hold of a job whose mail channels provider is unavailable (Outlook
+// connection design M13; the review's finding): back to 'retry' at the
+// caller's wait, the attempt the claim took given back, so an outage never
+// spends the eight attempts, and the attempt marker cleared — nothing was
+// handed to the provider, so the next claim is no possible duplicate. The
+// lease is cleared as FailOutboxJob clears it.
+func (q *Queries) DeferOutboxJob(ctx context.Context, arg DeferOutboxJobParams) error {
+	_, err := q.db.Exec(ctx, deferOutboxJob, arg.LastError, arg.NextAttemptAt, arg.ID)
+	return err
+}
+
 const failOutboxJob = `-- name: FailOutboxJob :exec
 UPDATE communications.outbox_jobs
 SET status = $1, last_error = $2, next_attempt_at = $3,

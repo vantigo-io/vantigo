@@ -35,12 +35,14 @@ import (
 //
 // Check resolves an address — by its userPrincipalName, else by $filter=mail
 // eq — reads the mailbox's userPurpose and its Inbox (proving the RBAC
-// scope reaches it), and records its object id in entra.channel_mailboxes.
+// scope reaches it), and records a shared mailbox's object id in
+// entra.channel_mailboxes.
 // Send answers only for a mailbox recorded there, so Communications can
 // never point it at a mailbox no Check resolved: without blind copies it
 // posts the MIME, base64-encoded, to sendMail; with them, as a MIME draft
 // whose Bcc header Graph reads, its bccRecipients checked before it is
-// sent. Neither is retried by the client on a 5xx (noRetry): Exchange may
+// sent — a draft that lost one is ErrBccUnsupported, nothing sent. Neither
+// is retried by the client on a 5xx (noRetry): Exchange may
 // have taken the message, and the outbox's own retry is the one. Forget
 // deletes the row.
 //
@@ -66,8 +68,14 @@ const (
 )
 
 // errBccLost is a draft whose bccRecipients do not hold every blind copy
-// Send was given: deleted and not sent, a failure to retry.
-var errBccLost = errors.New("entra: the draft did not keep every Bcc recipient")
+// Send was given: deleted and not sent, contracts.ErrBccUnsupported — a
+// retry would build the same draft from the same MIME.
+var errBccLost = fmt.Errorf("%w: the draft did not keep every Bcc recipient", contracts.ErrBccUnsupported)
+
+// mailSizeCodes are the codes Exchange refuses a message too large with,
+// on a 400 rather than a 413: the mailbox's own send limit is below
+// Graph's.
+var mailSizeCodes = []string{"ErrorMessageSizeExceeded", "MessageSizeExceeded", "ErrorMessageTooBig"}
 
 // channelMailbox is the module's contracts.ChannelMailbox over client.
 type channelMailbox struct {
@@ -190,8 +198,9 @@ type channelUser struct {
 
 // channelRefusal is a refusal of a mailbox call as the contract answers it:
 // 403 ErrMailboxDenied (outside the RBAC scope, or a role missing); 404
-// with a mailbox-gone code ErrMailboxGone; 413 ErrMailTooLarge. Anything
-// else passes, a failure to retry.
+// with a mailbox-gone code ErrMailboxGone; 413, or a 400 with a size code
+// (mailSizeCodes), ErrMailTooLarge. Anything else passes, a failure to
+// retry.
 func channelRefusal(err error) error {
 	switch {
 	case err == nil:
@@ -200,17 +209,21 @@ func channelRefusal(err error) error {
 		return fmt.Errorf("%w: %w", contracts.ErrMailboxDenied, err)
 	case isStatus(err, http.StatusNotFound) && isCode(err, mailboxGoneCodes...):
 		return fmt.Errorf("%w: %w", contracts.ErrMailboxGone, err)
-	case isStatus(err, http.StatusRequestEntityTooLarge):
+	case isStatus(err, http.StatusRequestEntityTooLarge),
+		isStatus(err, http.StatusBadRequest) && isCode(err, mailSizeCodes...):
 		return fmt.Errorf("%w: %w", contracts.ErrMailTooLarge, err)
 	}
 	return err
 }
 
 // Check resolves address to a mailbox with the application's token and
-// records it: GET /users/{upn} (a 404 then tries $filter=mail eq, which
-// must find one user), GET …/mailboxSettings/userPurpose and GET
-// …/mailFolders/inbox. An address that is not a bare addr-spec is
-// ErrMailboxUnknown with no call; the switch off ErrMailboxUnavailable.
+// records it when it is shared: GET /users/{upn} (a 404 then tries
+// $filter=mail eq, which must find one user), GET
+// …/mailboxSettings/userPurpose and GET …/mailFolders/inbox. A personal
+// mailbox is answered (Shared false) but not recorded, so Send refuses it.
+// An address that is not a bare addr-spec is ErrMailboxUnknown with no
+// call; the switch off ErrMailboxUnavailable. The typed address is never
+// in an error or a log line: its call is made addressInPath.
 func (m *channelMailbox) Check(ctx context.Context, address string) (contracts.ChannelMailboxInfo, error) {
 	if !channelAddress(address) {
 		return contracts.ChannelMailboxInfo{}, fmt.Errorf("%w: not an address", contracts.ErrMailboxUnknown)
@@ -220,7 +233,7 @@ func (m *channelMailbox) Check(ctx context.Context, address string) (contracts.C
 		return contracts.ChannelMailboxInfo{}, err
 	}
 	var user channelUser
-	err = m.client.get(ctx, cred, userByAddress(address)+"?"+query(url.Values{"$select": {channelCheckSelect}}), &user, noWords)
+	err = m.client.get(ctx, cred, userByAddress(address)+"?"+query(url.Values{"$select": {channelCheckSelect}}), &user, noWords, addressInPath)
 	if isStatus(err, http.StatusNotFound) {
 		var found struct {
 			Value []channelUser `json:"value"`
@@ -263,6 +276,9 @@ func (m *channelMailbox) Check(ctx context.Context, address string) (contracts.C
 		Address:     strings.ToLower(primary),
 		DisplayName: user.DisplayName,
 		Shared:      strings.EqualFold(purpose.Value, purposeShared),
+	}
+	if !info.Shared {
+		return info, nil
 	}
 	if err := store.New(m.deps.Pool).UpsertChannelMailbox(ctx, store.UpsertChannelMailboxParams{
 		ObjectID: oid, Address: info.Address, CheckedAt: m.client.now(),
@@ -331,7 +347,10 @@ func (m *channelMailbox) sendThroughDraft(ctx context.Context, cred graphCredent
 			} `json:"emailAddress"`
 		} `json:"bccRecipients"`
 	}
-	if err := m.client.postRaw(ctx, cred, base+"/messages", "text/plain", body, &draft, noRetry); err != nil {
+	// The create answers the message whole, its body included: read
+	// through graphMaxBatchBody, as a message of MaxMessage may answer more
+	// than graphMaxBody.
+	if err := m.client.postRaw(ctx, cred, base+"/messages", "text/plain", body, &draft, noRetry, largeAnswer); err != nil {
 		return channelRefusal(err)
 	}
 	if draft.ID == "" || len(draft.ID) > mailboxMaxID {
