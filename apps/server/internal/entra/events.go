@@ -36,6 +36,17 @@ const (
 	actionAdoptionConfirmed = "entra.account.adoption_confirmed"
 )
 
+// The Outlook connection's event actions (Outlook connection design M3, M7):
+// a person connected, disconnected, and a connection closed for another
+// reason, its code saying which (repointed: the person's account changed in
+// Staff). Never a token, a code from Microsoft's words, or an address beyond
+// the account's UPN.
+const (
+	actionOutlookConnected    = "entra.outlook.connected"
+	actionOutlookDisconnected = "entra.outlook.disconnected"
+	actionOutlookClosed       = "entra.outlook.closed"
+)
+
 // The events list's bounds.
 const (
 	defaultEventsLimit = 50

@@ -68,3 +68,65 @@ func TestAccess_EveryOperation(t *testing.T) {
 		}
 	}
 }
+
+// TestAccess_OutlookOperations proves the person's Outlook operations are
+// under the session rule — 401 without a session, reached by a caller
+// holding nothing — and the callback anonymous (Outlook connection design
+// M4).
+func TestAccess_OutlookOperations(t *testing.T) {
+	t.Parallel()
+	h, _ := newTenantHarness(t)
+	for _, op := range []struct {
+		method, path string
+		body         any
+	}{
+		{http.MethodPost, "/api/v1/entra/outlook/connect", map[string]any{"feature": "calendar"}},
+		{http.MethodPost, "/api/v1/entra/outlook/complete", nil},
+		{http.MethodGet, "/api/v1/entra/outlook/connection", nil},
+		{http.MethodDelete, "/api/v1/entra/outlook/connection", nil},
+	} {
+		name := op.method + " " + op.path
+		if r := h.Client(t).Do(op.method, op.path, op.body); r.Status != http.StatusUnauthorized {
+			t.Errorf("%s without a session: %d, want 401", name, r.Status)
+		}
+		if r := h.SignIn(t).Do(op.method, op.path, op.body); r.Status == http.StatusUnauthorized || r.Status == http.StatusForbidden {
+			t.Errorf("%s holding nothing: %d, want it reached", name, r.Status)
+		}
+	}
+	if r := h.Client(t).Do(http.MethodGet, "/api/v1/entra/outlook/callback?state=x&code=y", nil); r.Status != http.StatusFound {
+		t.Errorf("the callback without a session: %d, want 302", r.Status)
+	}
+}
+
+// TestAccess_OutlookLimits proves the buckets: connect and complete share
+// entra-outlook's 30 a minute, the callback has entra-outlook-callback's
+// 60 of its own.
+func TestAccess_OutlookLimits(t *testing.T) {
+	t.Parallel()
+	h, _ := newTenantHarness(t)
+	c := h.SignIn(t)
+	for i := range 30 {
+		path := "/api/v1/entra/outlook/connect"
+		var body any = map[string]any{"feature": "calendar"}
+		if i%2 == 1 {
+			path, body = "/api/v1/entra/outlook/complete", nil
+		}
+		if r := c.Do(http.MethodPost, path, body); r.Status == http.StatusTooManyRequests {
+			t.Fatalf("request %d: 429 within the limit", i+1)
+		}
+	}
+	if r := c.Do(http.MethodPost, "/api/v1/entra/outlook/complete", nil); r.Status != http.StatusTooManyRequests {
+		t.Errorf("the 31st connect or complete: %d, want 429", r.Status)
+	}
+	for i := range 60 {
+		if r := c.Do(http.MethodGet, "/api/v1/entra/outlook/callback", nil); r.Status != http.StatusFound {
+			t.Fatalf("callback %d: %d, want 302 in its own bucket", i+1, r.Status)
+		}
+	}
+	if r := c.Do(http.MethodGet, "/api/v1/entra/outlook/callback", nil); r.Status != http.StatusTooManyRequests {
+		t.Errorf("the 61st callback: %d, want 429", r.Status)
+	}
+	if r := c.Do(http.MethodGet, "/api/v1/entra/outlook/connection", nil); r.Status != http.StatusOK {
+		t.Errorf("the person's read after both limits: %d, want 200 (unlimited)", r.Status)
+	}
+}

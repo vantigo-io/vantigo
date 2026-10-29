@@ -7,11 +7,14 @@
 // and tests the connection; entra:manage sets the account rules; and the
 // module's provisioner executes Staff's decisions against the tenant through
 // Microsoft Graph. Staff's accounts worker is the provisioner's only caller,
-// which is why MODULES refuses entra without staff. The module depends on
-// nobody but identity, and reads of identity only what
-// contracts.SSOConnections answers an Owner — the users left to connect and
-// who holds a directory key — for the directory's exact matches (phase 2,
-// delivery B); the Owner's and entra:manage's checks are the router's. It
+// which is why MODULES refuses entra without staff. It reads of identity
+// only what contracts.SSOConnections answers an Owner — the users left to
+// connect and who holds a directory key — for the directory's exact matches
+// (phase 2, delivery B), and of Staff only the caller's own directory
+// account (contracts.Workforce.DirectoryAccount) for the person's Outlook
+// connection (docs/superpowers/specs/2026-10-29-outlook-connection-and-mail-design.md,
+// M3–M8: outlook.go and its neighbours); the Owner's and entra:manage's
+// checks are the router's. It
 // also fills contracts.MailboxCalendar for the calendar's Outlook sync
 // (docs/superpowers/specs/2026-10-27-calendar-outlook-sync-design.md, O2–O4):
 // behind the Owner's Outlook connection switch and Calendars.ReadWrite, it
