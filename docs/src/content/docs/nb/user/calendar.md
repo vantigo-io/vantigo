@@ -463,6 +463,14 @@ Outlook](#endre-avtalene-dine-i-outlook): endringen kommer tilbake til Vantigo.
    - **Titler** — **Fulle titler**, eller **Bare opptatt**: alle titler blir *Opptatt*,
      med ikke noe annet enn lenken.
 
+Så lenge organisasjonen kjører Microsoft Entra ID, viser kortet også
+**Outlook-tilkoblingen** din under beskrivelsen: **Ikke tilkoblet** med **Koble til
+Outlook**, **Tilkoblet som** og kontoen din, eller **Må kobles til på nytt** med årsaken
+og **Koble til Outlook på nytt**. Knappen tar deg til Microsofts pålogging og tilbake til
+denne siden ([Tilkoblinger](/nb/user/connections/)). I denne versjonen bruker
+synkroniseringen ikke tilkoblingen ennå: den kjører på organisasjonens tillatelse enten
+du har koblet til eller ikke.
+
 Hver endring lagres med en gang. Kortet sier så **Venter på den første
 synkroniseringen …**, og snart **Sist synkronisert** og når. Vantigo synkroniserer hvert
 kvarter, og innen et minutt når en av avtalene dine endres; **Synkroniser nå** ber om en
@@ -507,8 +515,8 @@ kalenderen og møtet blir stående — og en kalender du har laget selv, røres 
 Når bryteren ikke kan slås på, sier kortet hvorfor:
 
 - **Administratoren din har ikke slått på kalendersynkronisering.** — en eier slår på
-  **Kalendersynkronisering** på Microsoft Entra ID-siden ([Microsoft Entra
-  ID](/nb/user/entra/#kalendersynkronisering)).
+  **Outlook-tilkobling** på Microsoft Entra ID-siden ([Microsoft Entra
+  ID](/nb/user/entra/#outlook-tilkobling)).
 - **Kalendersynkronisering krever modulen Microsoft Entra ID.** — installasjonen kjører
   den ikke.
 - **Tilkoblingen til Microsoft 365 virker ikke akkurat nå.**

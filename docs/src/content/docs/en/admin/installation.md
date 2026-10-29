@@ -166,8 +166,8 @@ and the recovery.
   [Rotating APP_SECRET](/en/contributing/platform-packages/#rotating-app_secret).
 - **`APP_URL`** (`vantigo.env`) — the public origin only: scheme and host, with a
   port if needed, no path and no trailing slash. Mailed links, the accepted `Host`
-  header values, the cookie `Secure` attribute and the static OIDC callback are all
-  derived from it. Requests carrying any other `Host` than this one or loopback
+  header values, the cookie `Secure` attribute, the static OIDC callback and the
+  Microsoft Entra ID Outlook connection's redirect URI are all derived from it. Requests carrying any other `Host` than this one or loopback
   (`localhost`, `127.0.0.1`, `[::1]`) are rejected with 400. The port must match
   `VANTIGO_PORT` in `.env`; nothing reconciles the two, and a mismatch raises no
   error — the stack serves, but every invitation and password-reset link it mails
@@ -280,7 +280,9 @@ always, the invoices billing worker `invoices-billing`, always, the invoices pay
 `INVOICES_VIPPS_ENABLED` is on, the calendar cancellations worker
 `calendar-cancellations` unless `CALENDAR_CANCELLATIONS_ENABLED=0`, the calendar
 subscriptions worker `calendar-subscriptions` unless `CALENDAR_SUBSCRIPTIONS_ENABLED=0`, and the
-calendar mailbox sync worker `calendar-mailbox-sync` unless `CALENDAR_MAILBOX_SYNC_ENABLED=0`) inside the
+calendar mailbox sync worker `calendar-mailbox-sync` unless `CALENDAR_MAILBOX_SYNC_ENABLED=0`, and the
+Microsoft Entra ID module's `entra-outlook-sweep`, always, which tidies the people's
+Outlook connections every hour) inside the
 API process: `WORKERS_IN_PROCESS=1`, the default. Deployments that scale the API
 horizontally should move them to one dedicated worker container, so that every extra
 HTTP replica does not multiply the pollers:
@@ -305,8 +307,8 @@ HTTP replica does not multiply the pollers:
 
 Replicas that should neither migrate nor run workers can run the `server` command
 instead of `api`; it serves only, whatever `WORKERS_IN_PROCESS` says. Whichever topology
-you use, retention cleanup, the registry workers, the EHF events worker and the
-calendar cancellations worker take a PostgreSQL advisory lock, so each runs on exactly one instance per cycle; the outbox,
+you use, retention cleanup, the registry workers, the EHF events worker, the
+calendar cancellations worker and `entra-outlook-sweep` take a PostgreSQL advisory lock, so each runs on exactly one instance per cycle; the outbox,
 the `invoices-ehf` worker, the `invoices-reminders` worker, the `invoices-billing` worker,
 the `invoices-payments` worker and the calendar subscriptions and mailbox sync workers instead take one row at a time under a time-limited lease, so any number of
 instances share the work without sending anything twice. The reminder worker sends one letter at a time, at most one a
@@ -471,7 +473,11 @@ Migrations run without the pool cap, since schema changes may legitimately run l
 
 The whole application can be served below one configurable path prefix. Set
 `APP_BASE_PATH` in `vantigo.env` and set `APP_URL` to the public scheme and host — no
-path, since the path prefix is `APP_BASE_PATH`, not part of `APP_URL`. The API
+path, since the path prefix is `APP_BASE_PATH`, not part of `APP_URL`. Redirect URIs
+registered elsewhere follow both: the Microsoft Entra ID module's Outlook connection
+answers Microsoft at `APP_URL` + `APP_BASE_PATH` + `/api/v1/entra/outlook/callback` —
+never on `PUBLIC_BASE_URL` — so a change of either means adding the new URI to the app
+registration ([Microsoft Entra ID](/en/admin/entra/#outlook-connection)). The API
 prefixes remain `/api/v1/identity`, `/api/v1/customers`, `/api/v1/products`,
 `/api/v1/energy`, `/api/v1/communications`, `/api/v1/projects`, `/api/v1/time`,
 `/api/v1/expenses`, `/api/v1/invoices`, `/api/v1/staff`, `/api/v1/planning`,
@@ -549,8 +555,8 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
   an http origin sends session cookies and the invitation and password-reset bearer
   links in the clear. See [Transport security](/en/admin/transport-security/).
 - Set `APP_URL` to the public `https://` origin. Mailed links, the accepted `Host`
-  header values, the cookie `Secure` attribute and the static OIDC callback are all
-  derived from it. The callback is fixed at `/api/v1/identity/oidc/callback`.
+  header values, the cookie `Secure` attribute, the static OIDC callback and the
+  Microsoft Entra ID Outlook connection's redirect URI are all derived from it. The callback is fixed at `/api/v1/identity/oidc/callback`.
 - The bundled PostgreSQL is reached over the private Compose network with no
   certificate authority, so `DATABASE_URL` carries no `sslmode` and pgx connects the
   way libpq's `prefer` does. If you point the stack at a PostgreSQL across a network

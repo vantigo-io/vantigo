@@ -94,7 +94,9 @@ screen you know the name of.
 ## Your account
 
 The avatar menu at the top right leads to **Settings**, with your profile (name,
-language) and your security (password, multi-factor authentication, passkeys).
+language), your security (password, multi-factor authentication, passkeys) and, while
+your organisation runs Microsoft Entra ID, your **Connections** — your own Outlook,
+connected once ([Connections](/en/user/connections/)).
 **Help** in the same menu opens this documentation, in your language, as the copy
 built into the Vantigo you are using, so it always describes the version you have.
 

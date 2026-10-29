@@ -2422,6 +2422,43 @@ principal name and a user who is not an Owner. Identity's announcement now also 
 
 *Unblocks:* connecting a whole workspace in one review, not user by user.
 
+### Phase 3 — The Outlook connection and Microsoft 365 mail
+
+Researched in
+[`docs/superpowers/research/2026-10-29-outlook-connection-and-mail.md`](docs/superpowers/research/2026-10-29-outlook-connection-and-mail.md)
+and designed in
+[`docs/superpowers/specs/2026-10-29-outlook-connection-and-mail-design.md`](docs/superpowers/specs/2026-10-29-outlook-connection-and-mail-design.md):
+a person clicks **Connect Outlook** once, and the features that work in their own
+mailbox use that connection — the calendar's Outlook sync first; a team's shared
+mailbox becomes a Communications channel that sends and receives through Microsoft 365.
+Six deliveries in two tracks; A and B ship in one release.
+
+**A — The Outlook connection, built** on `feat/entra-outlook-connection`
+([the plan](docs/superpowers/plans/2026-10-29-entra-outlook-connection.md);
+[the reference](docs/src/content/docs/en/reference/entra.md#the-outlook-connection);
+[the operator's page](docs/src/content/docs/en/admin/entra.md#outlook-connection);
+[the user guide](docs/src/content/docs/en/user/connections.md)): the Owner's switch
+renamed **Outlook connection** (`calendar_sync` → `outlook_connect`, with when it was
+turned on and the last connect's failure, migration `00088_entra_outlook_connect.sql`),
+its status `off`, `unavailable`, `consent_missing`, `ready` or `untested`, the people
+connected and waiting to reconnect, and the redirect URI on `APP_URL`; the person's
+delegated connection in `entra.outlook_connections` (`00089`), one live row per person,
+every write guarded by its revision — a confidential client's authorization code flow
+with PKCE, a nonce and `cp1` on the module's guarded client, a sealed state cookie to an
+anonymous callback and a sealed connected cookie to `complete` under the session, bound
+by a MAC of the session id, the id_token verified with go-oidc, only the person's
+certain account (Staff's `Workforce.DirectoryAccount`) accepted; the refresh, its
+refusals mapped to *reconnect* with their codes and a CAE claims challenge read as
+`sign_in_again`, built and tested and used by nothing until B; closing on disconnect,
+on a leaver's disable (the token forgotten in Deactivate's transaction), on a deleted
+account and on the switch turned off; `entra-outlook-sweep`, the module's first worker;
+`permissionsUnexpected`, a warning for the application permissions the module does not
+use; **Settings → Connections** in the host, composed from `@vantigo/entra-ui`, and the
+calendar card's `connectionButton` slot filled with the same package's button.
+
+*Next:* B moves the calendar's sync onto the person's connection and drops the
+application permission `Calendars.ReadWrite`; C–E bring Microsoft 365 mail channels.
+
 ### Later
 
 A certificate credential, and workload identity federation, for Graph · a leaver's
