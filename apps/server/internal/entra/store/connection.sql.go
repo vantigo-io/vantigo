@@ -55,7 +55,7 @@ func (q *Queries) CloseNotificationsValidating(ctx context.Context, validatingUn
 
 const getConnection = `-- name: GetConnection :one
 
-SELECT id, tenant_id, client_id, upn_domain, upn_pattern, default_usage_location, leaver_strip_licences, leaver_remove_groups, leaver_revoke_sessions, leaver_write_leave_date, write_hire_date, pass_lifetime_minutes, pass_usable_once, pass_delivery, status, status_reason, permissions_present, verified_domains, organisation_name, last_checked_at, sensitive_denied_streak, version, updated_at, updated_by_user_id, service_principal_id, skus, outlook_connect, notifications_validating_until, notifications_unreachable_at, last_notification_at, outlook_connect_at, outlook_last_error, outlook_last_error_at FROM entra.connection WHERE id = 1
+SELECT id, tenant_id, client_id, upn_domain, upn_pattern, default_usage_location, leaver_strip_licences, leaver_remove_groups, leaver_revoke_sessions, leaver_write_leave_date, write_hire_date, pass_lifetime_minutes, pass_usable_once, pass_delivery, status, status_reason, permissions_present, verified_domains, organisation_name, last_checked_at, sensitive_denied_streak, version, updated_at, updated_by_user_id, service_principal_id, skus, outlook_connect, notifications_validating_until, notifications_unreachable_at, last_notification_at, outlook_connect_at, outlook_last_error, outlook_last_error_at, mail_channels FROM entra.connection WHERE id = 1
 `
 
 // The connection (Entra design D11): the installation's one row, id 1, seeded
@@ -102,12 +102,13 @@ func (q *Queries) GetConnection(ctx context.Context) (EntraConnection, error) {
 		&i.OutlookConnectAt,
 		&i.OutlookLastError,
 		&i.OutlookLastErrorAt,
+		&i.MailChannels,
 	)
 	return i, err
 }
 
 const lockConnection = `-- name: LockConnection :one
-SELECT id, tenant_id, client_id, upn_domain, upn_pattern, default_usage_location, leaver_strip_licences, leaver_remove_groups, leaver_revoke_sessions, leaver_write_leave_date, write_hire_date, pass_lifetime_minutes, pass_usable_once, pass_delivery, status, status_reason, permissions_present, verified_domains, organisation_name, last_checked_at, sensitive_denied_streak, version, updated_at, updated_by_user_id, service_principal_id, skus, outlook_connect, notifications_validating_until, notifications_unreachable_at, last_notification_at, outlook_connect_at, outlook_last_error, outlook_last_error_at FROM entra.connection WHERE id = 1 FOR UPDATE
+SELECT id, tenant_id, client_id, upn_domain, upn_pattern, default_usage_location, leaver_strip_licences, leaver_remove_groups, leaver_revoke_sessions, leaver_write_leave_date, write_hire_date, pass_lifetime_minutes, pass_usable_once, pass_delivery, status, status_reason, permissions_present, verified_domains, organisation_name, last_checked_at, sensitive_denied_streak, version, updated_at, updated_by_user_id, service_principal_id, skus, outlook_connect, notifications_validating_until, notifications_unreachable_at, last_notification_at, outlook_connect_at, outlook_last_error, outlook_last_error_at, mail_channels FROM entra.connection WHERE id = 1 FOR UPDATE
 `
 
 // LockConnection takes the row's lock for a write of the registration or the
@@ -151,12 +152,13 @@ func (q *Queries) LockConnection(ctx context.Context) (EntraConnection, error) {
 		&i.OutlookConnectAt,
 		&i.OutlookLastError,
 		&i.OutlookLastErrorAt,
+		&i.MailChannels,
 	)
 	return i, err
 }
 
 const lockConnectionShare = `-- name: LockConnectionShare :one
-SELECT id, tenant_id, client_id, upn_domain, upn_pattern, default_usage_location, leaver_strip_licences, leaver_remove_groups, leaver_revoke_sessions, leaver_write_leave_date, write_hire_date, pass_lifetime_minutes, pass_usable_once, pass_delivery, status, status_reason, permissions_present, verified_domains, organisation_name, last_checked_at, sensitive_denied_streak, version, updated_at, updated_by_user_id, service_principal_id, skus, outlook_connect, notifications_validating_until, notifications_unreachable_at, last_notification_at, outlook_connect_at, outlook_last_error, outlook_last_error_at FROM entra.connection WHERE id = 1 FOR SHARE
+SELECT id, tenant_id, client_id, upn_domain, upn_pattern, default_usage_location, leaver_strip_licences, leaver_remove_groups, leaver_revoke_sessions, leaver_write_leave_date, write_hire_date, pass_lifetime_minutes, pass_usable_once, pass_delivery, status, status_reason, permissions_present, verified_domains, organisation_name, last_checked_at, sensitive_denied_streak, version, updated_at, updated_by_user_id, service_principal_id, skus, outlook_connect, notifications_validating_until, notifications_unreachable_at, last_notification_at, outlook_connect_at, outlook_last_error, outlook_last_error_at, mail_channels FROM entra.connection WHERE id = 1 FOR SHARE
 `
 
 // LockConnectionShare takes the row's share lock in the transaction that
@@ -201,6 +203,7 @@ func (q *Queries) LockConnectionShare(ctx context.Context) (EntraConnection, err
 		&i.OutlookConnectAt,
 		&i.OutlookLastError,
 		&i.OutlookLastErrorAt,
+		&i.MailChannels,
 	)
 	return i, err
 }
@@ -226,7 +229,7 @@ UPDATE entra.connection SET
     last_checked_at = COALESCE($6::timestamptz, last_checked_at),
     updated_at = $7::timestamptz
 WHERE id = 1
-RETURNING id, tenant_id, client_id, upn_domain, upn_pattern, default_usage_location, leaver_strip_licences, leaver_remove_groups, leaver_revoke_sessions, leaver_write_leave_date, write_hire_date, pass_lifetime_minutes, pass_usable_once, pass_delivery, status, status_reason, permissions_present, verified_domains, organisation_name, last_checked_at, sensitive_denied_streak, version, updated_at, updated_by_user_id, service_principal_id, skus, outlook_connect, notifications_validating_until, notifications_unreachable_at, last_notification_at, outlook_connect_at, outlook_last_error, outlook_last_error_at
+RETURNING id, tenant_id, client_id, upn_domain, upn_pattern, default_usage_location, leaver_strip_licences, leaver_remove_groups, leaver_revoke_sessions, leaver_write_leave_date, write_hire_date, pass_lifetime_minutes, pass_usable_once, pass_delivery, status, status_reason, permissions_present, verified_domains, organisation_name, last_checked_at, sensitive_denied_streak, version, updated_at, updated_by_user_id, service_principal_id, skus, outlook_connect, notifications_validating_until, notifications_unreachable_at, last_notification_at, outlook_connect_at, outlook_last_error, outlook_last_error_at, mail_channels
 `
 
 type SetConnectionStatusParams struct {
@@ -287,6 +290,7 @@ func (q *Queries) SetConnectionStatus(ctx context.Context, arg SetConnectionStat
 		&i.OutlookConnectAt,
 		&i.OutlookLastError,
 		&i.OutlookLastErrorAt,
+		&i.MailChannels,
 	)
 	return i, err
 }
@@ -393,7 +397,7 @@ UPDATE entra.connection SET
     updated_at = $3::timestamptz,
     updated_by_user_id = $4
 WHERE id = 1
-RETURNING id, tenant_id, client_id, upn_domain, upn_pattern, default_usage_location, leaver_strip_licences, leaver_remove_groups, leaver_revoke_sessions, leaver_write_leave_date, write_hire_date, pass_lifetime_minutes, pass_usable_once, pass_delivery, status, status_reason, permissions_present, verified_domains, organisation_name, last_checked_at, sensitive_denied_streak, version, updated_at, updated_by_user_id, service_principal_id, skus, outlook_connect, notifications_validating_until, notifications_unreachable_at, last_notification_at, outlook_connect_at, outlook_last_error, outlook_last_error_at
+RETURNING id, tenant_id, client_id, upn_domain, upn_pattern, default_usage_location, leaver_strip_licences, leaver_remove_groups, leaver_revoke_sessions, leaver_write_leave_date, write_hire_date, pass_lifetime_minutes, pass_usable_once, pass_delivery, status, status_reason, permissions_present, verified_domains, organisation_name, last_checked_at, sensitive_denied_streak, version, updated_at, updated_by_user_id, service_principal_id, skus, outlook_connect, notifications_validating_until, notifications_unreachable_at, last_notification_at, outlook_connect_at, outlook_last_error, outlook_last_error_at, mail_channels
 `
 
 type UpdateConnectionRegistrationParams struct {
@@ -448,6 +452,7 @@ func (q *Queries) UpdateConnectionRegistration(ctx context.Context, arg UpdateCo
 		&i.OutlookConnectAt,
 		&i.OutlookLastError,
 		&i.OutlookLastErrorAt,
+		&i.MailChannels,
 	)
 	return i, err
 }
@@ -472,7 +477,7 @@ UPDATE entra.connection SET
     updated_at = $13::timestamptz,
     updated_by_user_id = $14
 WHERE id = 1
-RETURNING id, tenant_id, client_id, upn_domain, upn_pattern, default_usage_location, leaver_strip_licences, leaver_remove_groups, leaver_revoke_sessions, leaver_write_leave_date, write_hire_date, pass_lifetime_minutes, pass_usable_once, pass_delivery, status, status_reason, permissions_present, verified_domains, organisation_name, last_checked_at, sensitive_denied_streak, version, updated_at, updated_by_user_id, service_principal_id, skus, outlook_connect, notifications_validating_until, notifications_unreachable_at, last_notification_at, outlook_connect_at, outlook_last_error, outlook_last_error_at
+RETURNING id, tenant_id, client_id, upn_domain, upn_pattern, default_usage_location, leaver_strip_licences, leaver_remove_groups, leaver_revoke_sessions, leaver_write_leave_date, write_hire_date, pass_lifetime_minutes, pass_usable_once, pass_delivery, status, status_reason, permissions_present, verified_domains, organisation_name, last_checked_at, sensitive_denied_streak, version, updated_at, updated_by_user_id, service_principal_id, skus, outlook_connect, notifications_validating_until, notifications_unreachable_at, last_notification_at, outlook_connect_at, outlook_last_error, outlook_last_error_at, mail_channels
 `
 
 type UpdateConnectionSettingsParams struct {
@@ -549,6 +554,7 @@ func (q *Queries) UpdateConnectionSettings(ctx context.Context, arg UpdateConnec
 		&i.OutlookConnectAt,
 		&i.OutlookLastError,
 		&i.OutlookLastErrorAt,
+		&i.MailChannels,
 	)
 	return i, err
 }

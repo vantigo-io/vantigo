@@ -69,6 +69,7 @@ type CommunicationsChannel struct {
 	IsDefault   bool
 	IsActive    bool
 	CreatedAt   time.Time
+	Settings    []byte
 }
 
 type CommunicationsChannelCredential struct {

@@ -165,7 +165,7 @@ func (q *Queries) GetChannelCredentialByChannelID(ctx context.Context, channelID
 const insertChannel = `-- name: InsertChannel :one
 INSERT INTO communications.channels (id, type, address, display_name, provider, is_default, is_active, created_at)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-RETURNING id, type, address, display_name, provider, is_default, is_active, created_at
+RETURNING id, type, address, display_name, provider, is_default, is_active, created_at, settings
 `
 
 type InsertChannelParams struct {
@@ -203,6 +203,7 @@ func (q *Queries) InsertChannel(ctx context.Context, arg InsertChannelParams) (C
 		&i.IsDefault,
 		&i.IsActive,
 		&i.CreatedAt,
+		&i.Settings,
 	)
 	return i, err
 }
@@ -366,7 +367,7 @@ const updateChannel = `-- name: UpdateChannel :one
 UPDATE communications.channels
 SET display_name = $1, is_active = $2, is_default = $3
 WHERE id = $4
-RETURNING id, type, address, display_name, provider, is_default, is_active, created_at
+RETURNING id, type, address, display_name, provider, is_default, is_active, created_at, settings
 `
 
 type UpdateChannelParams struct {
@@ -397,6 +398,7 @@ func (q *Queries) UpdateChannel(ctx context.Context, arg UpdateChannelParams) (C
 		&i.IsDefault,
 		&i.IsActive,
 		&i.CreatedAt,
+		&i.Settings,
 	)
 	return i, err
 }

@@ -5,6 +5,7 @@ sql:
   - engine: postgresql
     schema:
       - ../db/migrations/00006_communications_baseline.sql
+      - ../db/migrations/00091_communications_channel_settings.sql
     queries: queries
     gen:
       go:

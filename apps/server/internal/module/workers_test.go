@@ -347,6 +347,28 @@ func TestWorkers_ResolveTheMailboxCalendarSlot(t *testing.T) {
 	}
 }
 
+// Worker mode never composes, so Workers resolves the ChannelMailbox slot
+// itself, as Compose does (Outlook connection design M11): Communications'
+// outbox sends through it. From the enabled provider, and the caller's own
+// when no enabled module provides one.
+func TestWorkers_ResolveTheChannelMailboxSlot(t *testing.T) {
+	built, preset := &fakeChannelMailbox{key: "owner"}, &fakeChannelMailbox{key: "preset"}
+	var seen contracts.ChannelMailbox
+	reader := Module{Name: "reader", Workers: func(d Deps) []worker.Worker {
+		seen = d.ChannelMailbox
+		return nil
+	}}
+	owner := Module{Name: "owner", ChannelMailbox: func(Deps) contracts.ChannelMailbox { return built }}
+	Workers(Deps{Config: &config.Config{Modules: []string{"reader", "owner"}}, ChannelMailbox: preset}, reader, owner)
+	if seen != built {
+		t.Errorf("the workers saw Deps.ChannelMailbox = %v, want the enabled owner's", seen)
+	}
+	Workers(Deps{Config: &config.Config{Modules: []string{"reader"}}, ChannelMailbox: preset}, reader, owner)
+	if seen != preset {
+		t.Errorf("the workers saw Deps.ChannelMailbox = %v, want the caller's, the owner being disabled", seen)
+	}
+}
+
 // Worker mode never composes, so Workers collects the calendar sources itself,
 // as Compose does: from the enabled modules only (calendar design D1).
 func TestWorkers_CollectCalendarSourcesFromEnabledModulesOnly(t *testing.T) {

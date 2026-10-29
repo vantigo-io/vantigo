@@ -214,6 +214,18 @@ type Deps struct {
 	// calendar calls it, never inside a transaction. nil when no enabled
 	// module provides one (entra disabled).
 	MailboxCalendar contracts.MailboxCalendar
+	// ChannelMailbox is a provider's mailboxes as Communications' channels
+	// use them, the one sanctioned way Communications sends through a
+	// mailbox provider (see contracts.ChannelMailbox, Outlook connection
+	// design M11, rule 15). Compose sets it, on every module's Deps copy,
+	// from whichever enabled module declares Module.ChannelMailbox, after
+	// the mailbox calendar; Workers sets it too, the same way, because
+	// Communications' outbox runs in worker mode. Both keep a preset value
+	// when no enabled module provides one (the seam
+	// modtest.WithChannelMailbox fills). Only Communications calls it, never
+	// inside a transaction. nil when no enabled module provides one (entra
+	// disabled).
+	ChannelMailbox contracts.ChannelMailbox
 	// CalendarBusy is the calendar's busy time of people, provider-gated
 	// (see contracts.CalendarBusy, calendar Outlook sync design O9.8).
 	// Compose sets it, on every module's Deps copy, from whichever enabled
@@ -441,6 +453,12 @@ type Module struct {
 	// Workers call it after the identity provisioners — it reads nothing
 	// while it is built — and put the result on every module's Deps.
 	MailboxCalendar func(Deps) contracts.MailboxCalendar
+	// ChannelMailbox builds this module's contracts.ChannelMailbox, if it
+	// sends Communications' channel mail through a mailbox provider (Outlook
+	// connection design M11). At most one enabled module may set it; Compose
+	// and Workers call it after the mailbox calendar — it reads nothing
+	// while it is built — and put the result on every module's Deps.
+	ChannelMailbox func(Deps) contracts.ChannelMailbox
 	// CalendarBusy builds this module's contracts.CalendarBusy, if it answers
 	// people's busy time to other modules (calendar Outlook sync design
 	// O9.8). At most one enabled module may set it; Compose calls it last of

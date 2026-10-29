@@ -343,12 +343,14 @@ func TestEntraGroups_AppliesAndIsIdempotent(t *testing.T) {
 	// 00082's calendar_sync follows them, renamed outlook_connect by 00088
 	// (a rename keeps the ordinal), pinned by
 	// TestEntraOutlookConnect_AppliesAndIsIdempotent; 00085's notification
-	// columns and 00088's three come after it, pinned by
-	// TestEntraMailboxSubscriptions_AppliesAndIsIdempotent and the same
-	// outlook test, and are left out.
+	// columns, 00088's three and 00090's mail_channels come after it, pinned
+	// by TestEntraMailboxSubscriptions_AppliesAndIsIdempotent, the same
+	// outlook test and TestEntraMailChannels_AppliesAndIsIdempotent, and are
+	// left out.
 	connection := slices.DeleteFunc(columns("connection"), func(c string) bool {
 		return strings.HasPrefix(c, "notifications_") || strings.HasPrefix(c, "last_notification_at:") ||
-			strings.HasPrefix(c, "outlook_connect_at:") || strings.HasPrefix(c, "outlook_last_error")
+			strings.HasPrefix(c, "outlook_connect_at:") || strings.HasPrefix(c, "outlook_last_error") ||
+			strings.HasPrefix(c, "mail_channels:")
 	})
 	if tail := connection[max(len(connection)-3, 0):]; !equalStrings(tail, []string{
 		"service_principal_id:uuid:YES:",

@@ -2526,6 +2526,72 @@ func TestCompose_ResolvesTheMailboxCalendarSlot(t *testing.T) {
 	})
 }
 
+// fakeChannelMailbox is a contracts.ChannelMailbox that answers nothing but
+// its key: these tests only need distinct values to assert on. The embedded
+// nil interface panics on any other call, which no test here makes.
+type fakeChannelMailbox struct {
+	contracts.ChannelMailbox
+	key string
+}
+
+func (f *fakeChannelMailbox) Key() string { return f.key }
+
+// The ChannelMailbox slot (contracts.ChannelMailbox, Outlook connection
+// design M11) is a sole-provider slot, resolved before any Mount runs and
+// after the mailbox calendar; it reaches every module's Deps. Two enabled
+// providers are a compose error naming both, and a preset value survives
+// when no enabled module provides one.
+func TestCompose_ResolvesTheChannelMailboxSlot(t *testing.T) {
+	specs := map[string]string{"alpha": alphaContract, "beta": betaContract}
+	t.Run("one provider", func(t *testing.T) {
+		provider := &fakeChannelMailbox{key: "entra"}
+		var got Deps
+		_, err := compose(Deps{Access: &fakeAccess{}, ChannelMailbox: &fakeChannelMailbox{key: "preset"}}, fakeLoad(specs),
+			Module{Name: "beta", ChannelMailbox: func(Deps) contracts.ChannelMailbox { return provider }, Mount: staticHandler("beta")},
+			Module{Name: "alpha", Mount: func(d Deps) (http.Handler, error) {
+				got = d
+				return staticHandler("alpha")(d)
+			}},
+		)
+		if err != nil {
+			t.Fatalf("compose: %v", err)
+		}
+		if got.ChannelMailbox != provider {
+			t.Errorf("Deps.ChannelMailbox = %v, want the provider's", got.ChannelMailbox)
+		}
+	})
+	t.Run("two providers", func(t *testing.T) {
+		provide := func(Deps) contracts.ChannelMailbox { return &fakeChannelMailbox{} }
+		_, err := compose(Deps{Access: &fakeAccess{}}, fakeLoad(specs),
+			Module{Name: "alpha", ChannelMailbox: provide, Mount: staticHandler("alpha")},
+			Module{Name: "beta", ChannelMailbox: provide, Mount: staticHandler("beta")},
+		)
+		if err == nil || !strings.Contains(err.Error(), "a channel mailbox") ||
+			!strings.Contains(err.Error(), "alpha") || !strings.Contains(err.Error(), "beta") {
+			t.Errorf("compose = %v, want an error naming a channel mailbox, alpha and beta", err)
+		}
+	})
+	t.Run("preset kept", func(t *testing.T) {
+		preset := &fakeChannelMailbox{key: "preset"}
+		var got Deps
+		_, err := compose(
+			Deps{Access: &fakeAccess{}, Config: &config.Config{Modules: []string{"alpha"}}, ChannelMailbox: preset},
+			fakeLoad(specs),
+			Module{Name: "alpha", Mount: func(d Deps) (http.Handler, error) {
+				got = d
+				return staticHandler("alpha")(d)
+			}},
+			Module{Name: "beta", ChannelMailbox: func(Deps) contracts.ChannelMailbox { return &fakeChannelMailbox{key: "beta"} }, Mount: staticHandler("beta")},
+		)
+		if err != nil {
+			t.Fatalf("compose: %v", err)
+		}
+		if got.ChannelMailbox != preset {
+			t.Errorf("Deps.ChannelMailbox = %v, want the preset: beta (the provider) is disabled", got.ChannelMailbox)
+		}
+	})
+}
+
 // fakeCalendarBusy is a contracts.CalendarBusy that answers nothing: these
 // tests only need distinct values to assert on, and what Deps carried when
 // it was built. The embedded nil interface panics on a call, which no test

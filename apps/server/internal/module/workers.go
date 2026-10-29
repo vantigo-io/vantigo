@@ -14,8 +14,8 @@ import "github.com/vantigo-io/vantigo/server/internal/worker"
 // through Compose's return value. It resolves each module's contribution from
 // deps as the caller passes it, plus Deps.CustomerPersonalData,
 // Deps.InvoicedWork, Deps.Directory, Deps.Users, Deps.Accounts,
-// Deps.Workforce, Deps.CalendarSources, Deps.IdentityProvisioners and
-// Deps.MailboxCalendar, which it resolves from the enabled modules the way
+// Deps.Workforce, Deps.CalendarSources, Deps.IdentityProvisioners,
+// Deps.MailboxCalendar and Deps.ChannelMailbox, which it resolves from the enabled modules the way
 // Compose does — the same base Deps Compose resolves Directory from, before
 // any Mount runs, with no per-module Doc or Catalog — since a background worker is a data-layer concern (Pool, Config,
 // Clock, Mail, Secrets, ...), not a contract one.
@@ -91,6 +91,14 @@ func Workers(deps Deps, mods ...Module) []worker.Worker {
 	if err != nil {
 		panic(err.Error())
 	}
+	// The channel mailboxes, resolved as Compose resolves them (Outlook
+	// connection design M11): Communications' outbox sends through them, and
+	// worker mode never composes. Two providers panic, as two mailbox
+	// calendars do.
+	deps, err = withChannelMailbox(deps, enabled)
+	if err != nil {
+		panic(err.Error())
+	}
 	var out []worker.Worker
 	for _, mod := range enabled {
 		if mod.Workers == nil {
@@ -158,6 +166,21 @@ func withMailboxCalendar(deps Deps, enabled []Module) (Deps, error) {
 	}
 	if provider != nil {
 		deps.MailboxCalendar = provider.MailboxCalendar(deps)
+	}
+	return deps, nil
+}
+
+// withChannelMailbox resolves contracts.ChannelMailbox from the enabled
+// modules — at most one may declare it — keeping a preset value when none
+// does (the seam modtest.WithChannelMailbox fills). Compose and Workers both
+// call it, after the mailbox calendar.
+func withChannelMailbox(deps Deps, enabled []Module) (Deps, error) {
+	provider, err := soleProvider(enabled, "a channel mailbox", func(m Module) bool { return m.ChannelMailbox != nil })
+	if err != nil {
+		return deps, err
+	}
+	if provider != nil {
+		deps.ChannelMailbox = provider.ChannelMailbox(deps)
 	}
 	return deps, nil
 }
