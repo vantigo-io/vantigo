@@ -698,10 +698,14 @@ Exchange assignments stay until you remove them (`Remove-ManagementRoleAssignmen
   - **Last sync failed: Microsoft 365 did not answer…** (`sync_failed`): throttling or an
     outage; Vantigo backs off from one minute up to an hour and catches up by itself.
     The metric `communications.inbound.cycles_failed` counts such failures.
-  - **Receiving**, yet a message is missing: it arrived before the channel was added (it
-    is never imported), it was larger than `COMMUNICATIONS_INBOUND_MAX_BYTES` (25 MiB by
-    default; skipped), or it was not delivered to the **Inbox** — a mailbox rule moved it
-    to another folder first. Vantigo reads the Inbox only.
+  - **Receiving**, yet a message is missing: it arrived before the channel was added, or
+    longer ago than `COMMUNICATIONS_RETENTION_DAYS` (it is never imported); it was larger
+    than `COMMUNICATIONS_INBOUND_MAX_BYTES` (25 MiB by default; skipped); it was sent from
+    the channel's own address (taken as Vantigo's own); its import failed three times, or
+    a value of it was refused by the database, and it was given up — a warning *mailbox
+    sync gave a message up* with the code `import_failed` in the log, the rest of the mail
+    imported; or it was not delivered to the **Inbox** — a mailbox rule moved it to
+    another folder first. Vantigo reads the Inbox only.
 - **Drafts left in a shared mailbox's Drafts folder.** A message with a blind copy is
   sent through a draft; if Vantigo's process stops between creating the draft and sending
   it, the draft stays, and the retry makes a new one. Delete such drafts in Outlook from

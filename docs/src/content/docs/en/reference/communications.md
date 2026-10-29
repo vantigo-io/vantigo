@@ -112,9 +112,9 @@ a conversation being linked to the archived "Anonymised person" afterwards;
 linked to the customer (no customer, or another one) keeps the person's participant
 address, and the export does not list the addresses the person wrote from or was
 written to; the [receipts](#receipts) of the person's received mail keep its Message-Ids
-and Graph's ids — no address, no content — until the receipt is older than the retention
-window (the [sweep](#retention-cleanup-and-staged-objects); a channel's newest receipt
-stays longer); and a customer's
+and Graph's ids — no address, no content — until the message was received longer ago than
+the retention window (the [sweep](#retention-cleanup-and-staged-objects); a channel's
+newest receipt stays longer), so an erased message is never imported again; and a customer's
 `customer.peppol_lookup` entries keep their `smpHost`, derived from the participant id.
 
 ## Providers
@@ -446,10 +446,15 @@ the object write cannot strand the object.
 
 A received message is a message as any other here: its original (`raw_payload_storage_key`)
 and its attachments are queued on the ledger with it, by retention and by an erase alike.
-The **receipts' sweep** runs in every retention batch: a [receipt](#receipts) whose message
-is gone — or that never had one, a skipped message — is deleted once its `created_at` is
-older than the retention window, **except each channel's newest receipt**, the restart
-point of an expired delta. A receipt whose message still exists stays with it.
+The **receipts' sweep** runs once per retention cycle, after the message batches, in
+chunks of `COMMUNICATIONS_RETENTION_BATCH_SIZE`: a [receipt](#receipts) whose message is
+gone — deleted by retention or an erase, or never stored, a skipped message — is deleted
+once its `received_at` is before the retention window's start, **except each channel's
+newest receipt**, a bound on an expired delta's restart point. That is the same cutoff the
+[mailbox sync](#the-mailbox-sync) reads nothing before, so a message whose receipt the sweep
+deletes is never read again; until then the receipt, with its Message-Id, keeps an erased
+or retained-away message from being imported a second time when the delta names it once
+more (marked read, say). A receipt whose message still exists stays with it.
 
 A value outside the accepted range fails startup rather than being silently clamped,
 so a typo is a boot error instead of a retention window nobody asked for. Use a
@@ -550,7 +555,8 @@ it claims a channel due, runs one cycle on it, and claims the next, until none i
 - **The claim.** A `channel_sync` row is due when its channel is an **active** `entra`
   channel, its `state` is not `stopped` (nothing in this release sets `stopped`), its
   `next_sync_at` has come and it holds no lease — or its lease has expired. A row marked
-  `notified` comes first (nothing sets it yet), then the longest due. The claim is a
+  `notified` comes first (nothing sets it yet; a finished pass clears it), then the
+  longest due. The claim is a
   conditional update that re-asserts that predicate and writes a new `lease_id` (32 hex
   digits) and `lease_until` **two minutes** ahead; 0 rows is a lost race, and the worker
   tries the next candidate, ten times at most. There is no advisory lock.
@@ -563,24 +569,32 @@ it claims a channel due, runs one cycle on it, and claims the next, until none i
   `ErrMailboxUnavailable` — **holds** the channel: `next_sync_at` five minutes ahead,
   `error = 'provider_unavailable'`, `attempts` and `state` unchanged, the lease given back.
 - **One page a cycle.** The cycle reads one page of the Inbox's delta: with the stored
-  `delta_link` when there is one, else afresh from `import_from`. A page holds at most 50
-  messages and is **handled whole** — there is no cap per cycle below the page. Items
-  removed from the Inbox are ignored (Vantigo keeps what it imported); items received
-  before `import_from` are ignored (the delta also answers changes to older messages);
-  the rest are taken **oldest first**, ties by Graph's id. An item the channel already has
+  `delta_link` when there is one, else afresh from `import_from` (or from `restart_from`,
+  below). A page holds at most 50 messages and is **handled whole** — there is no cap per
+  cycle below the page. Items removed from the Inbox are ignored (Vantigo keeps what it
+  imported). **Nothing received before the floor is read**: the later of `import_from` and
+  the retention window's start, now − `COMMUNICATIONS_RETENTION_DAYS` (365 days by
+  default) — the delta also answers changes to older messages, and a message retention
+  deleted must not come back. An item with no `receivedDateTime` is kept and timed at the
+  moment it is read. The rest are taken **oldest first**, ties by Graph's id. An item the channel already has
   a [receipt](#receipts) for is skipped silently; every other is
   [imported](#one-messages-import).
 - **The link is kept last.** Once every item of the page has a receipt, the page's link is
   stored and the lease given back. A page that ends the delta stores the **delta link**,
-  and the channel becomes `active`, its `error` cleared, `attempts` 0, `last_synced_at` now
-  and `next_sync_at` **five minutes** ahead. A page with more to come stores the **next
+  and the channel becomes `active`, its `error`, `restart_from` and `notified` cleared,
+  `attempts` 0, `last_synced_at` now and `next_sync_at` **five minutes** ahead. Every
+  stored page forgets the count of failed tries (below). A page with more to come stores the **next
   page's link** with `next_sync_at` now, so the same drain claims the channel again at
   once. A cycle that stops half-way stores nothing, reads the same page next time, and the
   receipts skip what it already imported.
 - **An expired delta.** When Graph no longer takes the stored link
   (`ErrMailboxDeltaExpired`), the link is cleared and the cycle reads afresh in the same
-  cycle, from the `received_at` of the channel's newest receipt — or `import_from` when it
-  has none. The receipts skip the overlap.
+  cycle, from a **restart point**: `import_from` when the channel never finished a pass
+  (its pages come in no order, so a receipt says nothing of what is left); else **an hour
+  before the earlier** of its last finished sync and its newest receipt's `received_at`,
+  never before `import_from`. The point is kept in `channel_sync.restart_from` until a pass
+  finishes, so a fresh read that fails is tried again from the same instant. The receipts
+  skip the overlap.
 - **Failures.** A refusal no retry mends soon — `ErrMailboxDenied`, `ErrMailboxGone`,
   `ErrMailboxUnknown` (the channel's `settings` naming no mailbox counts as this too) —
   sets `state = 'failed'`, `error` to `mailbox_denied`, `mailbox_gone` or `mailbox_unknown`,
@@ -592,6 +606,13 @@ it claims a channel due, runs one cycle on it, and claims the next, until none i
   never an address, a subject or Graph's words — and one on
   `communications.inbound.cycles_failed` ([Metrics](#metrics)). A message whose read or
   import failed has no receipt, so it is tried again.
+- **Giving a message up.** So that one bad email cannot hold its channel for ever, a
+  message whose import fails is given up on — a receipt `failed`/`import_failed`, logged
+  at warn, and the rest of the page imports — **at once** when PostgreSQL refuses one of
+  its values (SQLSTATE class 22 or 23), and otherwise **on its third failed try**, counted
+  on the row across cycles (`channel_sync.failing_item`, `failing_tries`; a try at another
+  message starts again from one). A failure of the provider (`Raw`) or of the object store
+  is never counted: it is retried for ever, as a lost lease or a stopped worker is.
 - **New mail appears** within about five minutes of arriving: the interval after a finished
   sync, plus the 30-second poll.
 
@@ -603,13 +624,15 @@ For each item without a receipt, in this order:
    `COMMUNICATIONS_INBOUND_MAX_BYTES` (25 MiB by default). Larger is a receipt
    `skipped`/`too_large`, and nothing is stored; a message deleted or moved since the delta
    named it (`ErrMailItemGone`) is `skipped`/`gone`. Any other error ends the cycle as a
-   failure, without a receipt.
+   failure, without a receipt, and is never counted toward giving the message up.
 2. **The Message-Id** is the message's own header, bracketed — or, when its header block
    does not read or names none, the `internetMessageId` Graph answered.
 3. **Our own.** A Message-Id of the outbox's form, `<32 hex digits@vantigo.invalid>`, whose
    digits are the id of a message **of this database**, is a message Vantigo sent delivered
    back to the mailbox (the shared mailbox in Cc, say): `skipped`/`own_message`, nothing
-   stored. Another installation's id of the same form is imported as any other.
+   stored. Another installation's id of the same form is imported as any other. After the
+   parse, a message whose `From` is **the channel's own address** (in any case) is
+   `skipped`/`own_message` too, whatever its Message-Id — Exchange may rewrite ours.
 4. **A copy.** A Message-Id the channel already has an `imported` receipt for is a copy —
    the same mail delivered twice, or moved out and back under another id: a receipt
    `duplicate` whose `message_id` is the original's message, nothing stored.
@@ -673,15 +696,19 @@ channel, imported or not — which is what makes an import happen once:
 | `duplicate` | — | the original's message | a copy of a Message-Id already imported in the channel |
 | `skipped` | `too_large` | — | over `COMMUNICATIONS_INBOUND_MAX_BYTES` |
 | `skipped` | `gone` | — | deleted or moved before it was read |
-| `skipped` | `own_message` | — | a message this database sent |
+| `skipped` | `own_message` | — | a message this database sent, or one from the channel's own address |
 | `failed` | `unparseable` | the message | stored as unreadable |
+| `failed` | `import_failed` | — | given up on: its import failed each time |
 
 A receipt holds Graph's immutable id (`provider_message_id`, compared exactly — Graph's ids
 are case-sensitive), the Message-Id, `received_at` and `created_at`; no address and nothing
 of the content. Two unique indexes: `(channel_id, provider_message_id)`, and
 `(channel_id, rfc_message_id)` over `imported` receipts only, so a duplicate can carry its
-original's Message-Id. `message_id` is set to null when retention or an erase deletes the
-message; the [sweep](#retention-cleanup-and-staged-objects) deletes such receipts later.
+original's Message-Id. The stored Message-Id, of the receipt and of the message, is the
+header's, or Graph's `internetMessageId` when the header has none. `message_id` is set to
+null when retention or an erase deletes the message; the
+[sweep](#retention-cleanup-and-staged-objects) deletes such receipts once the message was
+received before the retention window.
 
 ### Parsing
 
@@ -691,7 +718,9 @@ reads the message over Go's `net/mail` and `mime/multipart`: `quoted-printable`,
 2047; file names in RFC 2231 in any charset, with continuations; and every charset
 `golang.org/x/text` knows (`iso-8859-1`, `windows-1252`, `koi8-r`…), an unknown one read as
 UTF-8 with its invalid bytes replaced. It walks at most **200 parts**, **10 levels** deep,
-and keeps at most **100 attachments**; a damaged part is skipped, not fatal.
+and keeps at most **100 attachments**; a damaged part is skipped, not fatal. A part with
+no `Content-Type` is `text/plain`. Every NUL is removed from every string it answers
+(PostgreSQL refuses one in text and `jsonb`).
 
 - **The bodies** are the parts of type `text/plain` and the first `text/html` that are not
   attachments; several plain parts are joined.
@@ -700,10 +729,12 @@ and keeps at most **100 attachments**; a damaged part is skipped, not fatal.
   is **inline**, what the HTML's `cid:` images name. A forwarded message
   (`message/rfc822`) is kept whole as an attachment, `message.eml` when it names none, not
   opened; Outlook's `application/ms-tnef` is kept as `winmail.dat`, not decoded.
-- **Threading's headers**: `Message-Id` and the first id of `In-Reply-To`, bracketed;
-  `References` bracketed, distinct, oldest first, at most 100 — the first and the newest
-  when a thread holds more. Subject decoded, trimmed, at most 998 bytes. Addresses in lower
-  case.
+- **Threading's headers**: `Message-Id` and the first id of `In-Reply-To`, bracketed — an
+  id with a control character in it counts as missing; `References` bracketed, distinct,
+  oldest first, at most 100 — the first and the newest when a thread holds more; each id
+  header is read for at most 400 ids. Subject decoded, trimmed, at most 998 bytes.
+- **Addresses** in lower case; one over 320 characters or with a control character is
+  dropped, and `To` and `Cc` keep **at most 100** each, the first.
 
 ### Sanitising
 
@@ -711,8 +742,11 @@ Received HTML is a stranger's. `mail.SanitizeHTML` parses it with `golang.org/x/
 and, before any policy, rewrites each `img` whose `src` is `cid:` to the download path of
 the message's own inline attachment — removing it when the message has no such part —,
 removes every other `img` but a base64 `data:` PNG, GIF, JPEG or WebP (so **remote images
-and tracking pixels go**), drops `background` and `srcset`, and drops a link whose scheme is
-not `http`, `https` or `mailto`. Then bluemonday's UGC policy removes everything
+and tracking pixels go**), drops `background` and `srcset`, and drops the `href` of a link or
+an image map's `area` whose scheme is not `http`, `https` or `mailto`. **No relative URL
+survives** but the inline image's own download path, which crosses the policy as a
+`vantigo-inline:` placeholder and is written back as
+`/api/v1/communications/attachments/{id}/download`. Then bluemonday's UGC policy removes everything
 executable — `script`, `style`, `iframe`, `object`, `embed`, `form`, `input`, `meta`,
 `base`, `link`, `svg`, `math`, every `on*` attribute — and keeps a short list of
 typographic and box style properties (colours, fonts, alignment, line height, margins,
@@ -786,15 +820,16 @@ imported. Vantigo does not read `Authentication-Results` itself.
 
 ### Reply and reply-all
 
-A reply answers the conversation's **latest inbound message with a sender** — the rules of
-the .NET module, ported:
+A reply answers the conversation's **latest inbound message with a sender** (by
+`occurred_at`, ties by id) — the rules of the .NET module, ported:
 
 - **To** is that message's sender alone. A conversation with no such message — one created
   through `POST /conversations` and never answered, or of an SMTP channel — answers 422
   `recipients_missing`.
 - **Reply-all's Cc** is that one message's Cc only — not its other To recipients — each a
   valid bare address, without the channel's own address and the sender, distinct in any
-  case, the first 100, resolved to the participants the import created (one missing is
+  case, the first 100 (unreachable from a real import, whose `Cc` the parser already
+  caps at 100), resolved to the participants the import created (one missing is
   left out). `reply_all` sends to them as Cc, `reply` to the sender alone; the reply's
   deduplication and suppression checks run over both.
 - **The threading headers**: the reply's channel metadata carries `inReplyTo`, that
