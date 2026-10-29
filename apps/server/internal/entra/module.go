@@ -137,9 +137,11 @@ var limits = map[string]ratelimit.Policy{
 // Module is entra as a platform module: its contract mounted under
 // /api/v1/entra/, its one permission in the composed catalog, its
 // contracts.IdentityProvisioner, which Compose and Workers collect into
-// Deps.IdentityProvisioners for Staff, and its contracts.MailboxCalendar,
-// which they resolve into Deps.MailboxCalendar for the calendar. Its one
-// worker is entra-outlook-sweep (outlook_sweep.go).
+// Deps.IdentityProvisioners for Staff, its contracts.MailboxCalendar,
+// which they resolve into Deps.MailboxCalendar for the calendar, and its
+// contracts.ChannelMailbox (channel_mailbox.go), which they resolve into
+// Deps.ChannelMailbox for Communications. Its one worker is
+// entra-outlook-sweep (outlook_sweep.go).
 func Module() module.Module {
 	return module.Module{
 		Name:                "entra",
@@ -147,6 +149,7 @@ func Module() module.Module {
 		Mount:               mount,
 		IdentityProvisioner: newProvisioner,
 		MailboxCalendar:     newMailboxCalendar,
+		ChannelMailbox:      newChannelMailbox,
 		Workers:             workers,
 	}
 }

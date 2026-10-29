@@ -38,7 +38,12 @@
 // a subscription's create validates the webhook through Handshake, 400 when
 // it fails, 409 for a second one on the same resource, and the
 // subscriptions are renewed, deleted and listed in pages, with the
-// delegated token of their creator alone (subscriptions.go);
+// delegated token of their creator alone (subscriptions.go); a shared
+// mailbox's userPurpose, its Inbox, a MIME sendMail and a MIME draft whose
+// Bcc header Graph reads, sent and deleted — with the application's token
+// or the user's own, 413 over 4 MB of body (mail.go); a user found by its
+// id or its userPrincipalName, by $filter=mail eq '…', and by the key form
+// /users('…') a userPrincipalName beginning with $ needs;
 // a delegated authorization code and refresh grant, with its signed
 // id_token, its key set, GET /me and a CAE claims challenge
 // (authorize.go). Every error
@@ -190,6 +195,11 @@ type FakeGraph struct {
 	serial        int
 	deltas        map[string]*deltaState
 	subscriptions []*Subscription
+	// sent, drafts, dropDraftBcc and failDraftSend are the mail's (mail.go).
+	sent          []SentMail
+	drafts        []*Draft
+	dropDraftBcc  bool
+	failDraftSend []int
 	// prefer is the Prefer header of the request being answered — a
 	// request's own inside a $batch.
 	prefer string
@@ -295,12 +305,15 @@ type User struct {
 	// Deleted is a soft-deleted user: gone from /users, its UPN still held.
 	Deleted bool
 	// MailboxDenied is a mailbox outside the application's RBAC for
-	// Applications scope: every calendar and event request is 403
+	// Applications scope: every calendar, event and mail request is 403
 	// ErrorAccessDenied.
 	MailboxDenied bool
-	// NoMailbox is a user with no mailbox in Exchange Online: every calendar
-	// and event request is 404 MailboxNotEnabledForRESTAPI.
+	// NoMailbox is a user with no mailbox in Exchange Online: every
+	// calendar, event and mail request is 404 MailboxNotEnabledForRESTAPI.
 	NoMailbox bool
+	// Shared is a shared mailbox: its userPurpose is shared, else user
+	// (mail.go).
+	Shared bool
 }
 
 // Group is a group in the fake tenant.
@@ -662,6 +675,12 @@ func (g *FakeGraph) api(req *http.Request, body []byte) answer {
 	if !ok {
 		return graphError(http.StatusBadRequest, "BadRequest", "Invalid version.")
 	}
+	if strings.HasPrefix(path, "/users/$") {
+		// A segment beginning with $ is a system query option's to Graph: a
+		// userPrincipalName that starts so is reached by the key form alone.
+		return graphError(http.StatusBadRequest, "BadRequest", "Resource not found for the segment '"+strings.TrimPrefix(path, "/users/")+"'.")
+	}
+	path = keyForm(path)
 	if a, ok := g.delegatedCall(token, req.Method, path); ok {
 		return a
 	}
@@ -821,6 +840,8 @@ func (g *FakeGraph) usersRoute(method string, seg []string, query url.Values, co
 		return g.photo(u, method, contentType, body)
 	case len(seg) > 1 && (seg[1] == "calendars" || seg[1] == "calendar" || seg[1] == "events"):
 		return g.mailboxRoute(u, method, seg[1:], query, body)
+	case len(seg) > 1 && (seg[1] == "sendMail" || seg[1] == "messages" || seg[1] == "mailFolders" || seg[1] == "mailboxSettings"):
+		return g.mailRoute(u, method, seg[1:], contentType, body)
 	}
 	return graphError(http.StatusBadRequest, "BadRequest", "Unsupported request: "+method+" users/{id}/"+rest+".")
 }
@@ -868,6 +889,8 @@ func (g *FakeGraph) photo(u *User, method, contentType string, body []byte) answ
 var (
 	employeeIDFilter   = regexp.MustCompile(`^employeeId eq '((?:[^']|'')*)'$`)
 	mailNicknameFilter = regexp.MustCompile(`^mailNickname eq '((?:[^']|'')*)'$`)
+	// mailFilter is a channel mailbox's lookup by its address (mail.go).
+	mailFilter = regexp.MustCompile(`^mail eq '((?:[^']|'')*)'$`)
 	// inFilter is "<property> in ('…', …)" on one of the three properties
 	// the directory's matches filter on.
 	inFilter = regexp.MustCompile(`^(mail|userPrincipalName|employeeId) in \(\s*('(?:[^']|'')*'(?:\s*,\s*'(?:[^']|'')*')*)\s*\)$`)
@@ -881,7 +904,8 @@ var (
 const inMaxValues = 15
 
 // listUsers is GET /users as the module asks it: $filter=employeeId eq '…'
-// (an account's lookup), $filter=<mail|userPrincipalName|employeeId> in
+// (an account's lookup), $filter=mail eq '…' ignoring case (a channel
+// mailbox's), $filter=<mail|userPrincipalName|employeeId> in
 // ('…', …) of at most fifteen values, compared ignoring case (the
 // directory's matches), or $search of "property:value" clauses on
 // displayName, mail and userPrincipalName joined by OR, each a
@@ -913,6 +937,9 @@ func (g *FakeGraph) listUsers(query url.Values) answer {
 			}
 			return false
 		}
+	case mailFilter.MatchString(filter):
+		address := strings.ReplaceAll(mailFilter.FindStringSubmatch(filter)[1], "''", "'")
+		match = func(u *User) bool { return u.Mail != "" && strings.EqualFold(u.Mail, address) }
 	case employeeIDFilter.MatchString(filter):
 		number := strings.ReplaceAll(employeeIDFilter.FindStringSubmatch(filter)[1], "''", "'")
 		match = func(u *User) bool { return u.EmployeeID == number }
@@ -1699,7 +1726,9 @@ var mailboxPath = regexp.MustCompile(`(?i)^/users/([^/]+)/(calendar|calendars|ev
 // scopeRefusal is Graph's refusal of a token for path: a mailbox route is
 // reached only with a delegated token for that very user, and the
 // subscriptions with a delegated token — the application's, or another
-// user's, is 403 ErrorAccessDenied. g.mu is held.
+// user's, is 403 ErrorAccessDenied; a mail route (mail.go) with the
+// application's token or a delegated token for that very user — another
+// user's is 403. g.mu is held.
 func (g *FakeGraph) scopeRefusal(path string) (answer, bool) {
 	denied := graphError(http.StatusForbidden, "ErrorAccessDenied", "Access is denied. Check credentials and try again.")
 	if m := mailboxPath.FindStringSubmatch(path); m != nil {
@@ -1709,6 +1738,9 @@ func (g *FakeGraph) scopeRefusal(path string) (answer, bool) {
 		return answer{}, false
 	}
 	if p := strings.Trim(path, "/"); (p == "subscriptions" || strings.HasPrefix(p, "subscriptions/")) && g.caller == nil {
+		return denied, true
+	}
+	if !g.mailCaller(path) {
 		return denied, true
 	}
 	return answer{}, false
@@ -1732,9 +1764,11 @@ func (g *FakeGraph) callerIs(user string) bool {
 	return strings.EqualFold(user, g.caller.oid)
 }
 
+// userByID is the user whose id or userPrincipalName is id, ignoring case,
+// as GET /users/{id | userPrincipalName} finds one.
 func (g *FakeGraph) userByID(id string, includeDeleted bool) *User {
 	for _, u := range g.users {
-		if strings.EqualFold(u.ID, id) && (includeDeleted || !u.Deleted) {
+		if (strings.EqualFold(u.ID, id) || (u.UserPrincipalName != "" && strings.EqualFold(u.UserPrincipalName, id))) && (includeDeleted || !u.Deleted) {
 			return u
 		}
 	}
