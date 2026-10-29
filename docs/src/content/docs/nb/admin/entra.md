@@ -1,6 +1,6 @@
 ---
 title: Microsoft Entra ID
-description: Å koble Vantigo til en Microsoft Entra ID-leietaker slik at kontoene Ansatte gir, lages der — appregistreringen, klienthemmeligheten, de åtte applikasjonstillatelsene og rollen User Administrator, administratorsamtykket, policyen for midlertidig tilgangspass, kontoreglene, innlogging og klargjøring; kalendersynkronisering — Calendars.ReadWrite, samtykket til den, og å begrense den til enkelte postbokser med Exchange RBAC for Applications; hva stegene for en som slutter gjør, og hva sletting mister; Ansattes grupper i leietakeren, applikasjonen som eier, å bekrefte en gruppe Vantigo ikke opprettet og hva en arkivert gruppe blir til; rotasjon av hemmeligheter; den merkede testen mot en ekte leietaker; og hva hver årsakskode betyr.
+description: Å koble Vantigo til en Microsoft Entra ID-leietaker slik at kontoene Ansatte gir, lages der — appregistreringen, klienthemmeligheten, de åtte applikasjonstillatelsene og rollen User Administrator, administratorsamtykket, policyen for midlertidig tilgangspass, kontoreglene, innlogging og klargjøring; Outlook-tilkoblingen — omdirigerings-URI-en på APP_URL, de delegerte tillatelsene og administratorsamtykket, bryteren, å verifisere ved å koble til selv, å slå den av, hva som skjer med en persons tilkobling og entra-outlook-sweep, og hva som kan gå galt; varselet om tillatelser Vantigo ikke bruker; kalendersynkronisering — Calendars.ReadWrite, samtykket til den, og å begrense den til enkelte postbokser med Exchange RBAC for Applications; hva stegene for en som slutter gjør, og hva sletting mister; Ansattes grupper i leietakeren, applikasjonen som eier, å bekrefte en gruppe Vantigo ikke opprettet og hva en arkivert gruppe blir til; rotasjon av hemmeligheter; den merkede testen mot en ekte leietaker; og hva hver årsakskode betyr.
 sidebar:
   order: 46
 sources:
@@ -16,6 +16,8 @@ sources:
   - apps/server/internal/entra/mailbox_writeback.go
   - apps/server/internal/entra/mailbox_notifications.go
   - apps/server/internal/entra/mailbox_notifications_endpoint.go
+  - apps/server/internal/entra/outlook.go
+  - apps/server/internal/entra/outlook_sweep.go
 ---
 
 Microsoft Entra ID-modulen lager kontoene til personene Ansatte registrerer, i
@@ -61,8 +63,10 @@ modulens side.
    `GET /api/v1/entra/connection` svarer 401 uten økt i stedet for 404-en en avslått
    moduls sti svarer.
 
-Modulen har ingen bakgrunnsjobb selv: Ansattes kontoarbeider, `staff-accounts`, kaller
-den ([Ansatte](/nb/admin/staff/#kontoarbeideren)).
+Ansattes kontoarbeider, `staff-accounts`, kaller modulen
+([Ansatte](/nb/admin/staff/#kontoarbeideren)). Modulens egen ene arbeider,
+`entra-outlook-sweep`, rydder i folks [Outlook-tilkoblinger](#outlook-tilkobling) hver
+time; den har ingen innstilling.
 
 ## Koble til leietakeren
 
@@ -76,7 +80,8 @@ er testet. Gå gjennom dem i rekkefølge, med portalen i en annen fane.
 1. I **Microsoft Entra admin center**, åpne **App registrations** › **New
    registration**.
 2. Gi den et navn (for eksempel `Vantigo`), velg **Accounts in this organizational
-   directory only**, og la **Redirect URI** stå tom inntil videre. Velg **Register**.
+   directory only**, og la **Redirect URI** stå tom inntil videre —
+   [Outlook-tilkoblingen](#outlook-tilkobling) legger til en senere. Velg **Register**.
 3. På registreringens **Overview**, kopier **Directory (tenant) ID** og
    **Application (client) ID**.
 4. I steg 1 i veiviseren, lim dem inn i de to feltene og velg **Lagre**.
@@ -111,8 +116,8 @@ kan bruke to om du vil.
    - `Organization.Read.All`
 
    En niende, `Calendars.ReadWrite`, trengs bare for
-   [kalendersynkronisering](#kalendersynkronisering), og veiviseren lister den når den
-   er slått på.
+   [kalendersynkronisering](#kalendersynkronisering), og veiviseren lister den mens
+   bryteren [Outlook-tilkobling](#outlook-tilkobling) er på.
 2. Velg **Grant admin consent for** organisasjonen deres, og bekreft. Statusen til hver
    tillatelse blir *Granted*. `User.ReadWrite.All` dekker også personens bilde, som
    Vantigo skriver til kontoen: ingen ytterligere tillatelse eller samtykke.
@@ -131,6 +136,15 @@ Verifiser: testen sier *Tilkoblet* organisasjonen, viser de verifiserte domenene
 En som mangler, navngis: legg den til, gi samtykke igjen og test på nytt. Testen kan
 ikke se katalogrollen — Vantigo kan ikke lese den uten en ytterligere tillatelse — så
 sjekk tildelingen selv under **Roles & admins**.
+
+**Tillatelser Vantigo ikke bruker.** Når tokenet har applikasjonstillatelser utover de
+åtte og `Calendars.ReadWrite`, viser kortet **Status** et oransje varsel, *Applikasjonen
+har tillatelser Vantigo ikke bruker:*, med listen. En applikasjonstillatelse når hver
+postboks eller konto i leietakeren, så en ingen trenger, er best fjernet: med mindre et
+annet produkt bruker denne registreringen, fjern den under **API permissions** og test
+igjen. Det er bare et varsel — tilkoblingen forblir **Tilkoblet** — og testen
+registrerer hver som *en tillatelse Vantigo ikke bruker* i de siste hendelsene. I denne
+versjonen er e-posttillatelsene (`Mail.*`) og `full_access_as_app` blant dem.
 
 ### 4. Sett kontoreglene
 
@@ -213,6 +227,104 @@ Modulen setter den aldri selv.
   og modulens siste hendelser viser `entra.user.prepared`. Hadde leietakeren allerede en
   bruker med det ansattnummeret, bekreft den først ([under](#kontoer-vantigo-ikke-opprettet)).
 
+## Outlook-tilkobling
+
+**Outlook-tilkobling** lar hver person koble sin egen Outlook til Vantigo én gang, under
+**Innstillinger → Tilkoblinger**, ved å logge på Microsoft — som regel uten noen side,
+når enkel pålogging svarer ([brukerveiledningen](/nb/user/connections/)). Vantigo holder
+så personens delegerte pålogging til postboksen, forseglet, og viser *Koble til Outlook
+på nytt* bare til den personen når Microsoft avviser den. Bare en person som
+Ansatte-oppføringen knytter til en konto Vantigo forvalter, kan koble til, og bare som
+den kontoen. **I denne versjonen bruker ingenting tilkoblingen ennå**: kalenderens
+synkronisering kjører fortsatt på applikasjonstillatelsen
+([kalendersynkronisering](#kalendersynkronisering)), og eierens bryter er den begge kjører
+bak. Hvordan det virker, står i [referansen](/en/reference/entra/#the-outlook-connection).
+
+### Det Outlook-tilkoblingen trenger
+
+- Tilkoblingen er satt opp og **Tilkoblet** ([over](#koble-til-leietakeren)).
+- De som skal koble til, har kontotypen **Microsoft Entra ID** i Ansatte, og kontoen
+  deres er en Vantigo opprettet, eller som er bekreftet adoptert
+  ([under](#kontoer-vantigo-ikke-opprettet)).
+- `APP_URL`, med `APP_BASE_PATH` når Vantigo serveres under en sti, er adressen folk når
+  Vantigo på: omdirigerings-URI-en lages av dem, aldri av `PUBLIC_BASE_URL`
+  ([Installasjon](/nb/admin/installation/#basesti-og-omvendt-proxy)). Endrer du en av dem
+  senere, endres URI-en med.
+
+### Slå på Outlook-tilkoblingen
+
+1. På modulsiden, i steg **4 Sett kontoreglene**, under **Outlook-tilkobling**, kopierer
+   du **Omdirigerings-URI** — `APP_URL`, basestien og `/api/v1/entra/outlook/callback`,
+   for eksempel `https://vantigo.example.com/api/v1/entra/outlook/callback`.
+2. I registreringen, åpne **Authentication**. Under **Web**-plattformen — den
+   innloggingen i steg 5 la til, eller **Add a platform** › **Web** hvis det ikke finnes
+   noen — legger du til URI-en som omdirigerings-URI, og velger **Save**. Det må være en
+   **Web**-plattform, ikke en enkeltsideapplikasjon: Vantigo løser inn koden på serveren
+   med klienthemmeligheten sin.
+3. Åpne **API permissions** › **Add a permission** › **Microsoft Graph** › **Delegated
+   permissions**, og legg til `openid`, `profile`, `offline_access` og
+   `Calendars.ReadWrite`. Dette er de delegerte tillatelsene, ved siden av
+   applikasjonstillatelsene fra steg 3.
+4. Velg **Grant admin consent for** organisasjonen deres, og bekreft, så ingen blir bedt
+   om samtykke — eller avvist fordi godkjenning mangler — når de kobler til.
+5. Tilbake på modulsiden slår du på **Outlook-tilkobling: la folk koble Outlook til
+   Vantigo** og velger **Lagre kontoreglene** (`entra:manage`). Steg 3 lister nå
+   `Calendars.ReadWrite` som den niende applikasjonstillatelsen, for
+   kalendersynkronisering ([under](#kalendersynkronisering)).
+
+### Verifiser Outlook-tilkoblingen
+
+Koble til selv: åpne **Innstillinger → Tilkoblinger** og velg **Koble til Outlook**. Du
+er tilbake på siden i løpet av sekunder, og den sier **Tilkoblet som** og kontoen din. På
+modulsiden har linjen under bryteren gått fra **Ingen har koblet til ennå: …** til
+**Klar**, *Personer tilkoblet:* teller deg, og de siste hendelsene på kortet **Status**
+viser *En person koblet til Outlook*.
+
+### Slå av Outlook-tilkoblingen
+
+Slå av bryteren og velg **Lagre kontoreglene**. Er noen tilkoblet eller venter på ny
+tilkobling, spør siden først — *Alle må koble til Outlook på nytt.* — og **Slå av og
+lagre** lagrer. Hver persons tilkobling lukkes i den samme lagringen, hver registrert som
+*En Outlook-tilkobling ble lukket* (*Outlook-tilkoblingen ble slått av*);
+kalendersynkroniseringen stopper for alle, og kopiene fjernes. Slås den på igjen, kobler
+hver person til på nytt.
+
+### Hva som skjer med en persons tilkobling
+
+- **Microsoft avviser den.** Et tilbakestilt passord, tilbakekalte økter, en policy for
+  betinget tilgang, et nytt krav om flerfaktorautentisering eller en pålogging som har
+  utløpt, setter tilkoblingen i *Må kobles til på nytt*, med årsaken, på den personens
+  side; *Venter på ny tilkobling:* teller dem, og hendelsen sier *Microsoft avviste en
+  persons Outlook-tilkobling*. Vantigo oppgir klientegenskapen `cp1`, så Microsoft sier
+  fra med en gang når en konto deaktiveres eller øktene tilbakekalles. Ingenting annet
+  stopper.
+- **De slutter.** Når Ansatte deaktiverer kontoen, lukkes tilkoblingen og det lagrede
+  tokenet glemmes i det samme steget, før de andre stegene for en som slutter kjører.
+- **Kontoen deres slettes eller deaktiveres** i Vantigo eller i leietakeren.
+  Tilkoblingen lukkes neste gang den brukes, eller — for en som venter på ny tilkobling
+  — når arbeideren `entra-outlook-sweep` leser kontoen i leietakeren, høyst én gang i
+  døgnet.
+- **De kobler fra.** Vantigo lukker tilkoblingen; den logger dem aldri ut av Microsoft.
+
+En lukket tilkobling slettes av `entra-outlook-sweep`, modulens arbeider, én gang i
+timen: sju dager etter at den ble lukket, eller et døgn etter at den sist ble brukt når
+det ikke er noe igjen for den å rydde. Arbeideren har ingen innstilling og kjører der
+modulens arbeidere kjører
+([Installasjon](/nb/admin/installation/#bakgrunnsjobber-og-skalering)).
+
+### Når tilkoblingen feiler
+
+| Hvor | Betyr | Gjør |
+| --- | --- | --- |
+| Microsofts side viser `AADSTS50011` (omdirigerings-URI-en stemmer ikke) | Registreringens **Web**-plattform mangler omdirigerings-URI-en nøyaktig slik Vantigo viser den — aldri lagt til, en skrivefeil, en plattform for enkeltsideapplikasjoner, eller `APP_URL` eller `APP_BASE_PATH` er endret siden. | Kopier URI-en fra modulsiden på nytt og legg den til **Web**-plattformen. |
+| Microsoft ber personen om samtykke, eller sier *Approval required* / *Need admin approval* | Administratorsamtykke er ikke gitt for de delegerte tillatelsene. | **Grant admin consent** ([over](#slå-på-outlook-tilkoblingen)) og la dem koble til på nytt. |
+| *Den siste tilkoblingen manglet en delegert tillatelse: …* under bryteren; personen ser *Organisasjonen har ikke gitt samtykke til tillatelsene tilkoblingen trenger. …* | Microsoft godtok påloggingen uten `Calendars.ReadWrite` (delegert). Ingenting ble lagret for personen. | Legg til den delegerte tillatelsen, gi administratorsamtykke og koble til på nytt; linjen forsvinner ved første tilkobling som fullføres. |
+| Folk i *Må kobles til på nytt* etter en endring i betinget tilgang eller flerfaktorautentisering | Som ventet: Microsoft vil ha en ny pålogging. *Stoppet* betyr at en policy avviste den. | De velger **Koble til Outlook på nytt**. Når betinget tilgang stoppet den, sjekk policyens betingelser (enhet, sted, risiko) for Vantigos applikasjon. |
+| Personen ser *Du logget på Microsoft med en annen konto enn den Vantigo kjenner deg ved. …* | De logget på som en annen konto enn den Ansatte knytter til personen deres (`account_mismatch`). | De kobler til på nytt som den kontoen. Knytter Ansatte feil konto, retter HR det på personens fane Konto. |
+| *En annen person i Vantigo har allerede koblet til denne Microsoft-kontoen.* | En annen bruker har en levende tilkobling til den kontoen (`account_taken`). | Finn hvem i de siste hendelsene (*En person koblet til Outlook*, med kontoen); den personen kobler fra, eller HR retter kontokoblingen. |
+| *Ingenting å koble til: …* på en persons side | Bryteren er av, eller personen har ingen konto Vantigo forvalter. | Slå på bryteren, eller gi personen kontotypen Microsoft Entra ID og bekreft kontoen. |
+| *Tilkoblingen tok for lang tid, eller ble startet i en annen økt.* | Mer enn ti minutter hos Microsoft, eller nettleseren mistet informasjonskapselen for tilkoblingen — en annen nettleser, et privat vindu som ble lukket, eller informasjonskapsler blokkert for Vantigo. | Koble til på nytt i den samme nettleseren. |
+
 ## Kalendersynkronisering
 
 **Kalendersynkronisering** lar folk ha en kopi av Vantigo-kalenderen sin i Outlook
@@ -227,7 +339,9 @@ endringene, flyttingene og slettingene personen gjorde i Outlook på sine egne a
 ([brukerveiledningen](/nb/user/calendar/#endre-avtalene-dine-i-outlook)); personens egne
 hendelser leser den aldri i sin helhet. `Calendars.ReadWrite` dekker begge lesingene:
 det er ingenting å legge til eller samtykke til. Den er av som standard, og
-klargjøringen virker likt med den av eller på. Hva den skriver
+klargjøringen virker likt med den av eller på. Den kjører bak bryteren
+[Outlook-tilkobling](#outlook-tilkobling), på applikasjonstillatelsen: i denne versjonen
+bruker den ikke folks egne tilkoblinger. Hva den skriver
 og leser, og hvordan, står i [referansen](/en/reference/entra/#the-mailbox-calendar).
 
 ### Forutsetninger
@@ -243,24 +357,25 @@ og leser, og hvordan, står i [referansen](/en/reference/entra/#the-mailbox-cale
 
 ### Slå den på
 
-1. På modulsiden, i steg **4 Sett kontoreglene**, slår du på **La folk synkronisere
-   Vantigo-kalenderen sin til Outlook** under **Kalendersynkronisering**, og velger
-   **Lagre kontoreglene** (`entra:manage`). Steg 3 lister nå `Calendars.ReadWrite` som
-   den niende tillatelsen.
+1. På modulsiden, i steg **4 Sett kontoreglene**, slår du på **Outlook-tilkobling: la
+   folk koble Outlook til Vantigo** under **Outlook-tilkobling**, og velger **Lagre
+   kontoreglene** (`entra:manage`) — [Outlook-tilkoblingen](#slå-på-outlook-tilkoblingen)
+   har det den ellers trenger. Steg 3 lister nå `Calendars.ReadWrite` som den niende
+   tillatelsen.
 2. I registreringen, åpne **API permissions** › **Add a permission** › **Microsoft
    Graph** › **Application permissions**, og legg til `Calendars.ReadWrite`.
 3. Velg **Grant admin consent for** organisasjonen deres, og bekreft.
 4. I steg 3 velger en eier **Test tilkoblingen**.
 
-Verifiser: linjen under bryteren sier **Klar**, og kortet **Status** viser ikke lenger
-`Calendars.ReadWrite` som manglende. En person som åpner **Kalender → Min kalender**,
-kan slå på **Synkroniser til Outlook-kalenderen min**; innen et minutt sier kortet deres
-**Sist synkronisert**, og avtalene står i Outlook. Til en test ser tillatelsen, sier
-linjen **Calendars.ReadWrite er ikke i tokenet. Det er som ventet hvis du ga den med
-Exchange RBAC for Applications; ellers legg den til, gi administratorsamtykke og test på
-nytt.** — men linjen er bare til orientering, og steg 3 venter ikke på den: folk kan slå på
-synkroniseringen sin likevel, og en postboks tillatelsen ikke når, avvises bare for den
-personen. Resten av modulen virker som før.
+Verifiser: kortet **Status** viser ikke lenger `Calendars.ReadWrite` som manglende. En
+person som åpner **Kalender → Min kalender**, kan slå på **Synkroniser til
+Outlook-kalenderen min**; innen et minutt sier kortet deres **Sist synkronisert**, og
+avtalene står i Outlook. Til en test ser tillatelsen, viser kortet **Status** den som
+manglende — men det er bare til orientering, og steg 3 venter ikke på den: folk kan slå
+på synkroniseringen sin likevel, og en postboks tillatelsen ikke når, avvises bare for
+den personen. Linjen under bryteren handler om folks
+[Outlook-tilkoblinger](#verifiser-outlook-tilkoblingen), ikke om denne tillatelsen.
+Resten av modulen virker som før.
 
 **Hva en endring i Outlook gjør.** En persons endring eller flytting av kopien av sin
 egen avtale endrer avtalen i Vantigo ved neste synkronisering, med de samme reglene og
@@ -274,8 +389,9 @@ en avtale personen deltar i, et element fra en annen app — legges tilbake, og 
 personen legger til deltakere på, overlates til dem. Vantigo tar med høyst 20 slike
 endringer per person per synkronisering; resten følger ved neste.
 
-**Slår du den av**, stopper synkroniseringen for alle, og arbeideren fjerner kopiene den
-skrev, med tilkoblingen så lenge en hemmelighet virker. Slår du den på igjen, fortsetter
+**Slår du av bryteren**, stopper synkroniseringen for alle, og arbeideren fjerner kopiene den
+skrev, med tilkoblingen så lenge en hemmelighet virker; den lukker også hver persons
+[Outlook-tilkobling](#slå-av-outlook-tilkoblingen). Slår du den på igjen, fortsetter
 den for alle som har sin egen bryter på.
 
 ### Begrens den til enkelte postbokser
@@ -325,9 +441,7 @@ PowerShell, som Exchange-administrator:
 Endringene tar **30 minutter til 2 timer** å slå gjennom. En tildeling gjort med RBAC for
 Applications vises aldri i tokenet, så når samtykket for hele leietakeren er fjernet,
 viser neste **Test tilkoblingen** `Calendars.ReadWrite` som manglende (steg 3 står fortsatt som
-*Ferdig*), og linjen under bryteren sier **Calendars.ReadWrite er ikke i tokenet. Det er
-som ventet hvis du ga den med Exchange RBAC for Applications; …** — det er som ventet,
-og synkroniseringen fortsetter. Verifiser med en person innenfor omfanget: kortet deres
+*Ferdig*) — det er som ventet, og synkroniseringen fortsetter. Verifiser med en person innenfor omfanget: kortet deres
 sier **Sist synkronisert**. En person utenfor omfanget ser **Organisasjonen din har ikke
 gitt Vantigo tilgang til postboksen din.** på Outlook-kortet sitt: Vantigo prøver dem
 igjen hver sjette time, og leser det aldri som at tilkoblingen feiler.
@@ -677,12 +791,12 @@ Ansattes ord.
 | `role_missing` | Tre opprettelser, aktiveringer, deaktiveringer, telefonendringer eller slettinger på rad ble avvist, uten at noen har lyktes siden: rollen User Administrator er mest sannsynlig ikke tildelt. | Tildel rollen (steg 3), og **Kjør nå** på en av personene som står fast; et vellykket steg fjerner årsaken. |
 | Tillatelser mangler | Testens token mangler én eller flere av de åtte. | Legg dem til, gi samtykke igjen, test igjen. |
 
-Problemer med kalendersynkroniseringen vises på linjen under bryteren, og på hver
-persons **Outlook**-kort i Kalender:
+Problemer med kalendersynkroniseringen vises på kortet **Status**, på linjen under bryteren, og på hver
+persons **Outlook**-kort i Kalender (Outlook-tilkoblingens egne står [over](#når-tilkoblingen-feiler)):
 
 | Hvor | Betyr | Gjør |
 | --- | --- | --- |
-| *Calendars.ReadWrite er ikke i tokenet. …* under bryteren | Bryteren er på, tilkoblingen tilkoblet, og den siste testens token manglet `Calendars.ReadWrite`. Som ventet med RBAC for Applications; synkroniseringen kjører uansett. | Ingenting med RBAC for Applications. Ellers legg til tillatelsen, gi samtykke og test igjen ([kalendersynkronisering](#slå-den-på)); til da avvises hver persons synkronisering som at postboksen deres er nektet. |
+| `Calendars.ReadWrite` vist som manglende på kortet **Status** | Bryteren er på, og den siste testens token manglet applikasjonstillatelsen. Som ventet med RBAC for Applications; synkroniseringen kjører uansett. | Ingenting med RBAC for Applications. Ellers legg til tillatelsen, gi samtykke og test igjen ([kalendersynkronisering](#slå-den-på)); til da avvises hver persons synkronisering som at postboksen deres er nektet. |
 | *Venter på tilkoblingen* under bryteren | Tilkoblingen er ikke tilkoblet; årsaken står under linjen. | Rett tilkoblingen slik tabellen over sier. |
 | *Organisasjonen din har ikke gitt Vantigo tilgang til postboksen din.* på en persons kort | Graph svarte 403 for postboksen (`mailbox_denied`): utenfor et omfang i RBAC for Applications. Prøves igjen hver sjette time. | Legg personen til i omfangets gruppe, eller godta det; personen trykker **Synkroniser nå** for å prøve med en gang. |
 | *Postboksen din ble ikke funnet.* på en persons kort | Brukeren har ingen Exchange Online-postboks, eller finnes ikke lenger (`mailbox_gone`). Prøves igjen hver sjette time. | Gi kontoen en lisens med Exchange Online. |

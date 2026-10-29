@@ -1,6 +1,6 @@
 ---
 title: "Microsoft Entra ID module"
-description: "Microsoft Entra ID as Staff's identity provider: the connection to one tenant, its client secrets in the plural and the connection test; the status and its reasons, read by Staff with no network call; the account rules; the guarded Graph client and its limits; the user lifecycle per step — prepared disabled, enabled on the day with the hire date, the licences and a Temporary Access Pass, kept in step, disabled with the leaver's steps, soft-deleted — with the Graph calls and the codes; the account's photo, converted to Graph's JPEG and written or cleared; the address rule; the pass; the sensitive actions and role_missing; Staff's groups in the tenant — the six traits and the cached licences, the create, or the adoption an entra:manage holder confirms, with the service principal as an owner, the team, the members by $ref, the delete or the retirement; connecting existing users — the directory search and the exact matches, read through contracts.SSOConnections; the calendar sync switch and its status, Calendars.ReadWrite asked for only while it is on, and the mailbox calendar the module fills for the calendar's Outlook sync — the status rule, the account check, the Graph calls and $batch, the marker, the all-day zones, the reads of the default calendar's delta and the marker, the write-back's reads of the copies' versions and of events whole, and the refusals; the events, the permission, the refusals and the endpoints."
+description: "Microsoft Entra ID as Staff's identity provider: the connection to one tenant, its client secrets in the plural and the connection test; the status and its reasons, read by Staff with no network call; the account rules; the guarded Graph client and its limits; the user lifecycle per step — prepared disabled, enabled on the day with the hire date, the licences and a Temporary Access Pass, kept in step, disabled with the leaver's steps, soft-deleted — with the Graph calls and the codes; the account's photo, converted to Graph's JPEG and written or cleared; the address rule; the pass; the sensitive actions and role_missing; Staff's groups in the tenant — the six traits and the cached licences, the create, or the adoption an entra:manage holder confirms, with the service principal as an owner, the team, the members by $ref, the delete or the retirement; connecting existing users — the directory search and the exact matches, read through contracts.SSOConnections; the Outlook connection — the switch and its status, the redirect URI, the certain account read from Staff, the flow with its two cookies, the states and the revision guard, the delegated token, its refresh and its reconnects, CAE and cp1, closing and entra-outlook-sweep; the permissions the module does not use; Calendars.ReadWrite asked for only while the switch is on, and the mailbox calendar the module fills for the calendar's Outlook sync — the status rule, the account check, the Graph calls and $batch, the marker, the all-day zones, the reads of the default calendar's delta and the marker, the write-back's reads of the copies' versions and of events whole, and the refusals; the events, the permission, the refusals and the endpoints."
 sources:
   - apps/server/internal/entra
   - apps/entra/frontend
@@ -10,6 +10,8 @@ sources:
   - apps/server/internal/db/migrations/00063_entra_groups.sql
   - apps/server/internal/db/migrations/00082_entra_calendar_sync.sql
   - apps/server/internal/db/migrations/00085_entra_mailbox_subscriptions.sql
+  - apps/server/internal/db/migrations/00088_entra_outlook_connect.sql
+  - apps/server/internal/db/migrations/00089_entra_outlook_connections.sql
 ---
 The Microsoft Entra ID module connects one installation to one Microsoft Entra ID tenant
 and keeps the accounts of the people Staff registers in it: created disabled ahead of
@@ -26,14 +28,17 @@ under the key `entra`, and Staff's accounts worker is the only caller of the slo
 ([module boundaries](/en/contributing/module-boundaries/) rule 13; [the provider
 link](/en/reference/staff/#the-provider-link)). Which person gets an account, when it is
 enabled and when it goes is Staff's decision from the register; the module answers what
-it did in the tenant. It has no background worker of its own. That is why `MODULES`
+it did in the tenant. That is why `MODULES`
 refuses `entra` without `staff` (`entra requires staff`): without Staff the module would
-hold a tenant-wide credential that nothing uses.
+hold a tenant-wide credential that nothing uses. Its one background worker,
+[`entra-outlook-sweep`](#entra-outlook-sweep), tidies the people's Outlook connections.
 
-It depends on nobody but identity, and reads of identity only what
+It reads of identity only what
 `contracts.SSOConnections` answers an Owner — the users not yet connected to the
 workforce provider and who already holds a directory account's keys — for
-[connecting existing users](#connecting-existing-users); the Owner's check and
+[connecting existing users](#connecting-existing-users), and of Staff only the caller's
+own directory account, `contracts.Workforce.DirectoryAccount`, for [the Outlook
+connection](#the-outlook-connection); the Owner's check and
 `entra:manage`'s are the router's. It writes nothing
 outside its own schema, and nothing in it imports another module. It reaches the
 internet in one place, the [Graph client](#the-graph-client), and only two fixed hosts
@@ -46,10 +51,17 @@ principal and the group's owners as owners, and keeps its name, its members and 
 team in line.
 
 And it fills **the mailbox calendar** for the calendar's Outlook sync ([the mailbox
-calendar](#the-mailbox-calendar)): behind the Owner's **Calendar sync** switch and the
+calendar](#the-mailbox-calendar)): behind the Owner's **Outlook connection** switch and the
 permission `Calendars.ReadWrite`, it writes the calendar's copies of a person's
 appointments to the mailbox of an account it manages, in the single-provider slot
 `MailboxCalendar` ([module boundaries](/en/contributing/module-boundaries/) rule 14).
+
+And it keeps **each person's Outlook connection** ([the Outlook
+connection](#the-outlook-connection)): behind the same switch, a person whose Staff
+record names an account the module manages connects their own Outlook once, on
+**Settings → Connections**, and the module holds their delegated refresh token, sealed,
+until they disconnect, leave or the switch is turned off. In this release nothing uses
+the connection yet: the calendar's sync still runs on the application permission.
 
 ## The schema
 
@@ -132,20 +144,48 @@ tenant, the next connection test reads the service principal and the licences ag
 and the licences the module assigned are forgotten.
 
 `00082_entra_calendar_sync.sql` adds **`connection.calendar_sync`** (`boolean`, false by
-default), the [calendar sync switch](#the-calendar-sync-switch). Its down drops the
+default), the switch the calendar's Outlook sync started under. Its down drops the
 column; the copies already in people's mailboxes stay there.
+
+`00088_entra_outlook_connect.sql` **renames** it **`connection.outlook_connect`**, the
+[Outlook connection switch](#the-switch-and-its-status) — the calendar never read the
+column, only the mailbox calendar's [status](#the-status), whose states do not change —
+and adds `outlook_connect_at` (when the switch was last turned on; set to now for a row
+whose switch was already on), `outlook_last_error` (40, the last validated connect's
+failure, `consent_missing`) and `outlook_last_error_at`. Its down drops the three and
+renames the column back.
+
+`00089_entra_outlook_connections.sql` adds **`outlook_connections`**, one row per
+account a person connected: `object_id` (the account's, the primary key), `user_id`
+(identity's user, opaque), `tenant_id`, `scopes` (`text[]`, as granted, lower-cased and
+sorted), `refresh_sealed` (`bytea`, the refresh token sealed under the purpose
+`entra/outlook-refresh`; null once forgotten), `state` (20: `active`, `reconnect` or
+`closing`), `error_code` (40, why a reconnect is needed), `connected_at`,
+`refreshed_at`, `used_at`, `account_checked_at` (when the sweep last read the account
+of a row in `reconnect`), `changed_at` (the last change of state), `revision` (from 1,
+the guard of every write) and the two stamps. `ux_entra_outlook_connections_user` on
+`user_id` `WHERE state <> 'closing'` holds **one live connection per person**, a closing
+one beside it allowed; `ix_entra_outlook_connections_changed` serves reads by
+`changed_at`. Its down drops the table: everyone connects again.
 
 The down migration drops the schema with everything in it — the connection, the sealed
 secrets, any pass not yet revealed and the trail. Nothing in the tenant is touched: the
 users the module made stay there, and a later up finds them again by employee number.
 
-**The two sealed purposes** are `entra/client-secret` and `entra/pass`, each its own key
-derived from `APP_SECRET` (see [platform packages](/en/contributing/platform-packages/#rotating-app_secret)).
-Neither value is ever answered by an endpoint, written to a log line, an event, an
-audit row or an error. A rotation of `APP_SECRET` leaves both unopenable: a secret
+**The five sealed purposes** are `entra/client-secret`, `entra/pass`,
+`entra/outlook-connect-state` (the [connect's state cookie](#the-flow)),
+`entra/outlook-connected` (the callback's connected cookie) and `entra/outlook-refresh`
+(a stored refresh token), each its own key derived from `APP_SECRET` (see [platform
+packages](/en/contributing/platform-packages/#rotating-app_secret)), so no cookie can be
+replayed as the other or as a stored token. A sixth key, the MAC purpose
+`entra/outlook-connect-session`, binds a connect to the session that started it. No
+sealed value is ever answered by an endpoint, written to a log line, an event, an
+audit row or an error. A rotation of `APP_SECRET` leaves them all unopenable: a secret
 that cannot be opened counts as one the tenant refused (marked failed, the next tried,
-then `credential_invalid`), so the secrets must be added again, and any pass waiting is
-lost (Staff's **Run now (new pass)** issues another).
+then `credential_invalid`), so the secrets must be added again; any pass waiting is
+lost (Staff's **Run now (new pass)** issues another); a connect under way answers
+`expired`; and a stored refresh token that cannot be opened moves its connection to
+`reconnect` with `sign_in_again` at its next use, so each person connects again.
 
 ## Permissions
 
@@ -184,9 +224,11 @@ the groups present in the tenant) — whether or not anything is
 set, so the wizard can show every step before the first is done. It reads the module's
 own rows only; nothing reaches the tenant. `permissionsMissing` is the
 [required permissions](#the-required-permissions) less those the last test's token
-carried — with `Calendars.ReadWrite` last while the calendar sync switch is on and the
-token lacks it; all of them before the first test. `calendarSync` is the
-[switch and its status](#the-calendar-sync-switch).
+carried — with `Calendars.ReadWrite` last while the Outlook connection switch is on and the
+token lacks it; all of them before the first test. `permissionsUnexpected` is the
+[permissions the module does not use](#the-permissions-the-module-does-not-use) among
+those the last test's token carried. `outlookConnect` is the
+[Outlook connection switch and its status](#the-switch-and-its-status).
 
 **`PUT /connection`** (step 1) sets `tenantId` and `clientId`, both GUIDs as the
 portal's **Overview** shows them, under `If-Match` on the connection's `version` (bare
@@ -274,7 +316,7 @@ read, so the account rules' domain stays a choice. With no tenant or client save
 test answers `unconfigured` with every permission missing and writes nothing.
 
 The answer is `{ status, organisationName?, verifiedDomains, permissionsPresent,
-permissionsMissing, roleKnown, reason? }`. **`roleKnown` is always false**: whether the
+permissionsMissing, permissionsUnexpected, roleKnown, reason? }`. **`roleKnown` is always false**: whether the
 application holds the User Administrator role cannot be read without a further
 permission, so the wizard asks the Owner to check it in the portal, and the module
 learns it from the first [sensitive action](#the-sensitive-actions-and-role_missing).
@@ -283,8 +325,9 @@ token's `oid` claim, when it carries one — to `service_principal_id`, and read
 `subscribedSkus`, writing the tenant's licences to `skus` when it answers
 ([the traits](#the-traits)); a read that fails leaves the cache, and the status the
 test found, as they were. The test does not move the connection's `version`. Recorded as the event
-`entra.connection.tested`, with the status, the reason and a `missing:<permission>` code
-for each permission missing.
+`entra.connection.tested`, with the status, the reason, a `missing:<permission>` code
+for each permission missing and then an `unexpected:<permission>` code for each
+[permission the module does not use](#the-permissions-the-module-does-not-use).
 
 ### The required permissions
 
@@ -303,7 +346,7 @@ module needs, which the test compares with the token's `roles`:
 | `Organization.Read.All` | The organisation, read by the test |
 
 **`Calendars.ReadWrite`** is the ninth, and conditional: asked for only while the
-[calendar sync switch](#the-calendar-sync-switch) is on — it is then in
+[Outlook connection switch](#the-switch-and-its-status) is on — it is then in
 `permissionsMissing`, after the eight, and in the test's `missing:` codes, until a test's
 token carries it — and never judging the connection itself: the status the test writes
 is decided by the eight alone, and a token without it is still `connected`. It is the
@@ -319,6 +362,20 @@ setting its password, changing its principal name or phones, and deleting it as
 *sensitive actions*, which an application may take only with an administrator role as
 well as the permission. The test cannot see the role; see
 [role_missing](#the-sensitive-actions-and-role_missing).
+
+### The permissions the module does not use
+
+`permissionsUnexpected`, on `GET /connection` and in the test's answer, lists the roles
+in the last test's token that are neither one of the eight nor `Calendars.ReadWrite`,
+sorted (Outlook connection design M19). An application permission reaches every
+mailbox or account in the tenant, so one nobody needs is better removed — left from an
+earlier setup, say, or wider than needed. **It is a warning, never a status**: the
+connection stays `connected` whatever it lists, and the module's page shows it on the
+**Status** card in an orange notice with the list. `Calendars.ReadWrite` is not listed,
+whether or not the switch is on, while the calendar's sync uses it on the application
+permission. In this release the mail roles (`Mail.*`) and `full_access_as_app` count as
+unexpected too, since nothing in the module uses them yet. The test audits each as an
+`unexpected:<permission>` code after the `missing:` ones.
 
 ## The status and its reasons
 
@@ -375,7 +432,7 @@ the version on, answers the whole connection and is recorded as the event
 | `passLifetimeMinutes` | 10 to 43 200; the tenant's own policy may cap it lower | 480 |
 | `passUsableOnce` | The pass works for one sign-in | on |
 | `passDelivery` | `hr`, `manager` or `both` | `hr` |
-| `calendarSync` | Lets people sync their Vantigo calendar to Outlook ([the switch](#the-calendar-sync-switch)); on, it asks for `Calendars.ReadWrite`; off, the calendar's worker removes the copies already written | off |
+| `outlookConnect` | Lets people connect their own Outlook to Vantigo ([the switch](#the-switch-and-its-status)); on, it records when and asks for `Calendars.ReadWrite`; off, it closes every person's connection in the same transaction, and the calendar's worker removes the copies already written | off |
 
 **`passDelivery` is stored and offered, and nothing acts on it yet**: the pass is
 revealed only on the person's Account tab in Staff, to HR, and no notice is sent to the
@@ -610,7 +667,10 @@ by the connection unless named always:
 1. `PATCH accountEnabled: false` — **always, first**, when the user is enabled: it is
    what continuous access evaluation reacts to. A 403 is `ErrExternalPrivileged`, and
    nothing else is tried. Any waiting pass is cleared at once, before another step can
-   fail.
+   fail, and in the same transaction the person's [Outlook
+   connection](#closing) closes with its refresh token forgotten — event
+   `entra.outlook.closed`, code `leaver`, under the call's actor — so no later step or
+   clean-up can use it.
 2. `POST /users/{id}/revokeSignInSessions` (`leaver_revoke_sessions`): every refresh
    token and session cookie stops working within minutes. An access token already
    issued lives out its hour.
@@ -673,8 +733,10 @@ Refuses an account that is still enabled (`ErrExternalEnabled`) or synchronised 
 on-premises, else `DELETE /users/{id}` — a soft delete: the user sits in the tenant's
 deleted users for 30 days and can be restored there, after which it is gone with its
 mailbox and OneDrive. A 403 is `ErrExternalPrivileged`. The row is marked `deleted`,
-its pass cleared, and kept. A user the tenant answers 404 for is deleted already: its
-row is marked `deleted` once, with the code `gone`. A rehire after a delete is a new
+its pass cleared, its [Outlook connection](#closing) closed with the token forgotten
+(code `deleted`), and kept. A user the tenant answers 404 for is deleted already: its
+row — found by the external id Staff passed — is marked `deleted` once, with the code
+`gone`, and its Outlook connection closed the same way. A rehire after a delete is a new
 account ([Prepare](#prepare)). Recorded as the event `entra.user.deleted`.
 
 ### Account
@@ -1247,6 +1309,263 @@ The search's and the matches' refusals:
 | `tenant_unreachable` | 503 | The tenant did not answer; for the matches, also when the read took more than two minutes. |
 | `throttled` | 503 | Graph throttled the read twice in a row. |
 
+## The Outlook connection
+
+A person connects **their own Outlook** to Vantigo once, and the module keeps the
+connection: a confidential client's authorization code flow with PKCE, a nonce and the
+client capability `cp1`, behind the Owner's switch, its rows in
+`entra.outlook_connections` (Outlook connection design M2–M8,
+[`docs/superpowers/specs/2026-10-29-outlook-connection-and-mail-design.md`](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-10-29-outlook-connection-and-mail-design.md)).
+The module holds each person's **delegated refresh token**, sealed, refreshes it, and
+answers *reconnect* to that person alone when Microsoft refuses it. **In this release
+nothing uses the connection**: the token source is built and tested, and the calendar's
+[mailbox calendar](#the-mailbox-calendar) still runs on the application permission
+`Calendars.ReadWrite`. The person's page is the host's **Settings → Connections**
+([the user guide](/en/user/connections/)).
+
+### The switch and its status
+
+`entra.connection.outlook_connect` (migration `00088_entra_outlook_connect.sql`, the
+column `00082` made as `calendar_sync`, renamed; false by default) is the Owner's switch,
+**Outlook connection: let people connect their Outlook to Vantigo** on [the account
+rules](#the-account-rules) — `outlookConnect` in `PUT /connection/settings`. It is not a
+[required permission](#the-required-permissions) of the connection: provisioning works
+with it off. **Turning it on** records `outlook_connect_at`. **Turning it off** closes
+every live connection in the same transaction, their tokens kept for removals, one
+`entra.outlook.closed` event each with the code `switch_off` under the caller
+([closing](#closing)): everyone must connect again once it is on. It also stops the
+calendar's sync, as before ([the status](#the-status)). The module's page asks before it
+saves a switch turned off while anyone is connected or waiting to reconnect.
+
+`GET /connection` answers it as `outlookConnect: {enabled, status, reason?, connected,
+reconnect, redirectUri, notifications}`, the status decided in this order:
+
+| `status` | When |
+| --- | --- |
+| `off` | The switch is off. |
+| `unavailable` | On, but the connection is not `connected`; `reason` is the connection's `statusReason`, when it has one. |
+| `consent_missing` | On and `connected`, and the last validated connect found its feature's delegated permission not granted (`outlook_last_error`); a connect that completes clears it. |
+| `ready` | On and `connected`, and someone has connected — a live connection made — since the switch was last turned on. |
+| `untested` | Otherwise: nobody has connected since it was turned on. |
+
+`connected` counts the connections `active`, `reconnect` those waiting for their person.
+`redirectUri` is the [redirect URI](#the-redirect-uri) to register. `notifications` is
+the state of [the change notifications](#change-notifications), unchanged.
+
+### The redirect URI
+
+The redirect URI is **`APP_URL` + `APP_BASE_PATH` + `/api/v1/entra/outlook/callback`**
+— on the application's own origin, never `PUBLIC_BASE_URL`, so the public host's list
+does not change. It must be added to the app registration's **Web** platform; the
+module's page shows it with a copy button. Microsoft compares it exactly, so a
+registration without it, or with another host or path, is refused on Microsoft's own
+page (`AADSTS50011`) before Vantigo sees anything.
+
+### The certain account
+
+Only a person with a **certain account** may connect (design M6): Staff's directory
+account for the caller, read through `contracts.Workforce.DirectoryAccount` under the
+request's own principal — it answers only the caller's own — from this provider
+(`entra`) and enabled, its external id an object id the module keeps a row of in
+`entra.accounts` that it created or whose adoption is confirmed, and `enabled`. The read
+calls out of the module through its accessor, so never inside one of its transactions.
+Without one, connect and complete answer `409 no_account` and `GET /outlook/connection`
+answers `offered: false` with `reason: no_account`. The account's `userPrincipalName` is
+what the page names as the account Vantigo knows the person by.
+
+### The flow
+
+Identity's two-cookie pattern carries it: a sealed Lax state cookie to an anonymous
+callback, then a sealed Lax connected cookie to a `complete` made under the session.
+
+| Cookie | Sealed under | Carries | Life |
+| --- | --- | --- | --- |
+| `vantigo.entra.connect` | `entra/outlook-connect-state` | the state, the nonce, the PKCE verifier, the user, the session's MAC, the feature and its scopes, `returnTo` | 10 minutes |
+| `vantigo.entra.connected` | `entra/outlook-connected` | the user, the session's MAC, the account's `oid` and `tid`, its UPN, the granted scopes, the refresh token, the feature, `returnTo` | 5 minutes |
+
+Both are `HttpOnly`, `SameSite=Lax` (Microsoft's redirect back is a cross-site
+top-level navigation, which `Strict` would not admit), `Secure` when `APP_URL` is
+https, on the path `APP_BASE_PATH` + `/api/v1/entra/outlook`, with the expiry sealed
+inside checked on the server's clock as well as `Max-Age`. **Each is single use**: every
+answer of the step that reads it clears it, a 500 included. The session's MAC is
+computed under the purpose `entra/outlook-connect-session` from the session's id.
+
+1. **`POST /outlook/connect`** (`session`) with `{feature, returnTo?}`. `feature` must be
+   one the module offers — `calendar`, which asks for `Calendars.ReadWrite` — else `422
+   feature_unknown`; the switch on and the tenant and client saved, else `409
+   switch_off`; a [certain account](#the-certain-account), else `409 no_account`; and no
+   live connection of that account held by another person, else `409 account_taken`
+   (refused early here; `complete` still decides). It seals a fresh state and nonce (256
+   random bits each), a PKCE verifier and the rest into `vantigo.entra.connect` and
+   answers `200 {authorizeUrl}`: the tenant's
+   `https://login.microsoftonline.com/{tenant}/oauth2/v2.0/authorize` with `client_id`,
+   `response_type=code`, `response_mode=query`, the redirect URI, `scope` (`openid
+   profile offline_access` and the feature's Graph scopes), `state`, `nonce`, the S256
+   `code_challenge`, `login_hint` (the account's UPN), `domain_hint` (the UPN's domain,
+   when it is one of the verified domains) and `claims` declaring `cp1`; never `prompt`.
+   Single sign-on usually answers without a page.
+2. **`GET /outlook/callback`** (anonymous — the session's `Strict` cookie is not sent on
+   Microsoft's redirect). Every answer is a `302` to `APP_BASE_PATH` +
+   `/settings/connections?outlook=complete`, or `?outlook=failed&code=<code>`, with
+   `Cache-Control: no-store`, and clears `vantigo.entra.connect`. In order:
+   1. The cookie opened and unexpired and `state` equal to its own, in constant time —
+      else `expired`, and **nothing is written anywhere**.
+   2. Microsoft's `error`: `access_denied` → `access_denied`; any other → `failed`; no
+      `code` → `failed`. `error_description` is never read; `session_state` is ignored.
+   3. The switch still on and a client secret to use — else `failed`.
+   4. The code redeemed at the tenant's token endpoint through the module's [guarded
+      client](#the-graph-client), with the verifier, the client secret, the same scope
+      and claims. A refusal is read by its `error` and `error_codes` alone:
+      `invalid_grant` with 70008 or 54005 (the code expired or redeemed already) →
+      `expired`; `invalid_client` or `unauthorized_client` → `failed`, and the secret
+      marked failed as a token request's refusal marks it; anything else, no answer, or
+      an answer without a refresh token or an id_token → `failed`.
+   5. The id_token verified with go-oidc against the tenant's published keys
+      (`/{tenant}/discovery/v2.0/keys`, kept per tenant in the process): RS256, the
+      signature, the audience (the client id) and the expiry; then `tid` the
+      connection's tenant — else `tenant_mismatch` —, the issuer
+      `https://login.microsoftonline.com/{tid}/v2.0`, the nonce in constant time and
+      `oid` an object id — else `failed`.
+   6. The granted scopes — the answer's `scope`, the Graph prefix dropped, lower-cased,
+      sorted — must hold the feature's. When they do not, the callback writes
+      `outlook_last_error = consent_missing` (the switch's status then reads
+      `consent_missing`) and answers `consent_missing`; nothing is stored. Only this
+      validated step writes, and it writes only that.
+   7. The result sealed into `vantigo.entra.connected`. A sealed value over 3,800
+      bytes — which a browser would drop silently — answers `failed`, logged at warning
+      with its length. Then `?outlook=complete`.
+
+   Logged at info with the code and a reason, never a code, a token, the state, the
+   nonce or the secret.
+3. **`POST /outlook/complete`** (`session`), sent by the page the callback lands on. The
+   connected cookie must open, be unexpired, name the caller and carry the MAC of the
+   caller's session — **else `410 expired`**, a cookie of another session or another
+   person answered as if there were none. Then the switch (`409 switch_off`); the
+   certain account read again, before any transaction (`409 no_account`); the cookie's
+   `oid` and `tid` must be that account's and the connection's tenant, else `409
+   account_mismatch`, whose detail names both: *You signed in as {UPN}; Vantigo knows you
+   as {UPN}.* Then one transaction, both rows locked: a live connection of that `oid`
+   held by another person → `409 account_taken` (a unique violation from a concurrent
+   complete answers the same); the caller's live connection of another account — their
+   account re-pointed in Staff — closes, its token kept, event `entra.outlook.closed`
+   code `repointed`; a row of that `oid` — the caller's in any state, or anyone's
+   `closing` one — is taken over, else a row is inserted, `active` at revision 1. The
+   refresh token is sealed under `entra/outlook-refresh`, `outlook_last_error` cleared,
+   and the event `entra.outlook.connected` recorded with the UPN and the code
+   `feature:calendar`. `200 {connection, returnTo}`. The cookie is cleared on every
+   answer.
+
+**`returnTo`** is held to a path on this installation, both when sealed and in the
+browser before it navigates: at most 512 bytes, a single leading `/`, no `\`, no control
+character, and neither a scheme nor a host once parsed. Anything else, and none, becomes
+`/settings/connections`. The calendar's card sends `/calendar/settings`.
+
+Connect and complete share one rate limit, `entra-outlook`, 30 requests a minute per
+client address — each mints or spends a sealed cookie; the callback has its own,
+`entra-outlook-callback`, 60 a minute. The two POSTs are under the cross-origin
+protection of every `/api` request; the callback is a safe GET acting only on a state it
+sealed.
+
+### The connection's states
+
+| `state` | Means |
+| --- | --- |
+| `active` | Connected; the token works as far as the module knows. |
+| `reconnect` | Microsoft refused the refresh token, or a Graph call's claims challenge asked for a new sign-in; `error_code` says why. Only a new connect mends it. |
+| `closing` | Disconnected, or closed for another reason ([closing](#closing)). The token, when kept, serves removals only; the sweep deletes the row. |
+
+**Every write is guarded by `revision`**, which each write moves on: a refresh that
+lost a race to another stores nothing and keeps the winner's token — both access tokens
+are valid at Microsoft —, and a refusal of a token that a newer connect has replaced
+changes nothing. Moving a row to `reconnect` needs it still `active` at the revision
+read.
+
+**`GET /outlook/connection`** (`session`) is **always 200**, so the page and the
+calendar's button can tell "not connected, may connect" from "nothing to connect":
+`{offered, reason?, state, account?, scopes, features, connectedAt?, errorCode?}`.
+`offered` is false while the switch is off (`reason: switch_off`) or the caller has no
+certain account (`reason: no_account`); `state` is `not_connected` without a row, or the
+row's state — the caller's live row, else a closing one of their certain account's still
+theirs, which the page reads as not connected; `account` the certain account's UPN;
+`features` what the granted scopes allow (`calendar`); `errorCode` only while in
+`reconnect`. **`DELETE /outlook/connection`** (`session`) closes the caller's live
+connection, its token kept for removals, event `entra.outlook.disconnected`, and answers
+`204` whether or not there was one. It never revokes the person's sign-in sessions.
+
+### The delegated token
+
+The token source answers the access token for an account's connection: a connection
+missing, closing (unless asked for a removal) or without its token needs its person
+(`not_connected`, `closing`), and one in `reconnect` needs them for its `error_code`. An
+`active` connection's account is checked on use: no longer one the module keeps trusted
+and enabled, the connection closes — token kept for removals, code `deleted` or
+`disabled` — and the call needs its person. A cached access token — keyed by the object
+id, the row's revision, the client and a digest of the sealed token, so it outlives no
+write to the row — is used until shortly before it expires; `used_at` is written at most
+once an hour. Otherwise the refresh: `grant_type=refresh_token` with the opened token,
+the client secret, the row's Graph scopes plus `offline_access`, and `claims` declaring
+`cp1`. A new refresh token is sealed and stored at the revision read; none in the answer
+keeps the stored one. A stored token that cannot be opened (another `APP_SECRET`) is
+`sign_in_again`.
+
+Microsoft's refusals are read by their AADSTS codes first, then the OAuth error:
+
+| Answer | Connection |
+| --- | --- |
+| 70008, 700082, 50173 | `reconnect`, `expired` |
+| 70043, 50132 | `reconnect`, `sign_in_again` |
+| 50076, 50078, 50079 | `reconnect`, `mfa` |
+| 53000, 53003 | `reconnect`, `blocked` (Conditional Access) |
+| 65001 | `reconnect`, `consent_missing` |
+| any other refusal (`invalid_grant`, `interaction_required` and the like) | `reconnect`, `sign_in_again` |
+| `invalid_client`, `unauthorized_client` | unchanged: the client secret's refusal — marked failed, `credential_invalid` |
+| a 5xx, a 429, `temporarily_unavailable`, a timeout or no answer | unchanged: transient |
+
+A move to `reconnect` is recorded as `entra.outlook.reconnect_needed` with the code,
+under `system:entra-outlook`, and logged at info with the object id and the code.
+
+**CAE and `cp1`.** Every connect and refresh declares the client capability `cp1`, so
+Microsoft sends a continuous access evaluation **claims challenge** — a `401` whose
+`WWW-Authenticate` carries `error="insufficient_claims"` and a `claims=` value — when
+the account is disabled or deleted, its password reset, its sessions revoked or its
+risk raised, instead of letting the access token live out its hour. On a delegated
+call, such a challenge drops the cached token and moves the row to `reconnect` with
+`sign_in_again`, without a retry; any other 401 is retried once, as for the
+application's token.
+
+### Closing
+
+| Why | When | The token | `entra.outlook.closed` code |
+| --- | --- | --- | --- |
+| The person disconnects | `DELETE /outlook/connection` | kept | — (`entra.outlook.disconnected`) |
+| A leaver | [Deactivate](#deactivate), in the transaction that disables the account | forgotten | `leaver` |
+| A deleted account | [Delete](#delete), and a user the tenant no longer holds | forgotten | `deleted` |
+| The account no longer enabled in Vantigo | on use (kept), or by the sweep for a row in `reconnect` (forgotten) | as said | `deleted` or `disabled` |
+| The switch turned off | `PUT /connection/settings`, in its transaction, every live row | kept | `switch_off` |
+| The account re-pointed in Staff | a `complete` of the person's new account | kept | `repointed` |
+
+A closing row that must forget its token has it forgotten even when it was closing
+already. A kept token is for removals only — the copies a feature wrote in the mailbox —
+and goes with the row.
+
+### entra-outlook-sweep
+
+The module's one worker, `entra-outlook-sweep`, runs every hour under its own advisory
+lock, on one pooled connection, in the API and in worker mode alike; it has no setting.
+Each cycle:
+
+- **deletes the closing connections nothing needs**: seven days after they closed, or
+  once a day has passed since they were last used (or closed) with no change
+  notification subscription of that mailbox left for a removal to delete — one
+  `entra.outlook.deleted` event each, under `system:entra-outlook`;
+- **reads the account of each connection waiting in `reconnect`**, at most once a day
+  each, oldest check first, at most 100 a cycle: an account deleted or no longer
+  enabled in Vantigo closes without asking the tenant; otherwise `accountEnabled` is
+  read in the tenant with the application's token — a 404 is `deleted`, false is
+  `disabled` — and the connection closes with its token forgotten
+  (`entra.outlook.closed`). A person who never reconnects is still let go. A tenant that
+  does not answer leaves the rest for the next cycle.
+
 ## The mailbox calendar
 
 The module fills the single-provider slot `MailboxCalendar` (`contracts.MailboxCalendar`,
@@ -1265,24 +1584,16 @@ account is this module's before it writes. The writes are not recorded in
 [`entra.events`](#the-events): they are the calendar's, and its worker keeps their
 record.
 
-### The calendar sync switch
+### The switch
 
-`entra.connection.calendar_sync` (migration `00082_entra_calendar_sync.sql`, false by
-default) is the Owner's switch, **Calendar sync** on [the account
-rules](#the-account-rules) — `calendarSync` in `PUT /connection/settings`. It is not a
-[required permission](#the-required-permissions) of the connection: provisioning works
-with it off, and with the permission missing. `GET /connection` answers it as
-`calendarSync: {enabled, status, reason?}`:
-
-| `status` | When |
-| --- | --- |
-| `off` | The switch is off. |
-| `ready` | On, the connection `connected`, and the last test's token carried `Calendars.ReadWrite`. |
-| `permission_missing` | On and `connected`, but the last test's token did not carry `Calendars.ReadWrite`. **Advisory**: expected when the permission was granted with Exchange RBAC for Applications, and otherwise a sign to add it; the sync runs either way. |
-| `unavailable` | On, but the connection is not `connected`; `reason` is the connection's `statusReason`, when it has one. |
-
-`calendarSync` also carries `notifications: {status, subscriptions, lastNotificationAt?,
-unreachableAt?}`, the state of [the change notifications](#change-notifications).
+The mailbox calendar runs behind the [Outlook connection
+switch](#the-switch-and-its-status) — `outlookConnect`, the column the calendar's sync
+started under as `calendar_sync` — and the application permission `Calendars.ReadWrite`,
+which the connection asks for only while the switch is on and which is **advisory**: a
+grant made with Exchange RBAC for Applications never shows in the token, so the sync runs
+whether or not the last test's token carried it, and a mailbox outside the grant is
+refused for that person alone. The person's own [Outlook
+connection](#the-outlook-connection) is not used by the mailbox calendar in this release.
 
 ### The status
 
@@ -1608,7 +1919,7 @@ bucket; Graph retries a 429), and the body is capped at 1 MiB.
 
 #### The status
 
-`calendarSync.notifications.status` on `GET /connection`:
+`outlookConnect.notifications.status` on `GET /connection`:
 
 | `status` | When |
 | --- | --- |
@@ -1639,23 +1950,29 @@ limit outside that is a 400) on the **Status** card:
 | `entra.account.adoption_confirmed` | `POST /accounts/{objectId}/confirm` |
 | `entra.group.created`, `entra.group.adopted`, `entra.group.updated`, `entra.group.team_created`, `entra.group.members_set`, `entra.group.deleted`, `entra.group.retired` | [the groups](#groups-in-the-tenant), with the group's `objectId` — none on a refusal before the module had one — and no UPN |
 | `entra.group.adoption_confirmed` | `POST /groups/{objectId}/confirm`, with the group's `objectId` |
+| `entra.outlook.connected`, `entra.outlook.disconnected` | [the flow's](#the-flow) `complete`, with `feature:<feature>`; `DELETE /outlook/connection` |
+| `entra.outlook.reconnect_needed` | [the delegated token](#the-delegated-token), with the reason: `expired`, `sign_in_again`, `mfa`, `blocked` or `consent_missing` |
+| `entra.outlook.closed` | [closing](#closing), with `leaver`, `deleted`, `disabled`, `switch_off` or `repointed` |
+| `entra.outlook.deleted` | [`entra-outlook-sweep`](#entra-outlook-sweep) |
 
 A lifecycle write the tenant refused is recorded under its own action with
 `refused:<code>`. The codes carry the details each section names — `tenant_before:`,
-`label:`, `expires_at:`, `missing:<permission>`, a changed field's name, `created` or
+`label:`, `expires_at:`, `missing:<permission>`, `unexpected:<permission>`, a changed field's name, `created` or
 `found`, `changed:<property>`, `enabled`, `hire_date_written`, `licences_assigned:<n>`,
 `licences_removed:<n>`, `licences_not_removed`, `pass_issued`, `disabled`,
 `sessions_revoked`, `leave_date_written`, `licences_stripped`, `groups_removed`, `gone`,
 `photo_written`, `photo_cleared`, and for a group `type:<type>`, `changed:<property>`, `owners:<n>`, `owners_added:<n>`,
 `owners_removed:<n>`, `team_pending`, `added:<n>`, `removed:<n>`, `failed:<n>`, `failed`
 (a write that failed after it changed something), `gone`, `kept_not_ours`,
-`security_kept` and `refused:<code>` (`refused:adoption_unconfirmed` among them) — and
-the reported codes. The module's page words each action and each code it knows, in
+`security_kept` and `refused:<code>` (`refused:adoption_unconfirmed` among them), and
+for an Outlook connection the reasons above — and the reported codes. The module's page words each action and each code it knows, in
 English and Norwegian, and shows one it does not know as it is. The trail is
 the module's only record of its writes: nothing goes to the platform's audit log.
 
 Each answers `id`, `at`, `actor` — the user's id, or the system's name
-(`system:staff-accounts` for Staff's worker) — `action`, `codes`, and for a user's event
+(`system:staff-accounts` for Staff's worker; `system:entra-outlook`, the module's own,
+for what the Outlook connection does with no person behind the request: a refusal
+Microsoft answered, a connection closed on use or by the sweep, a spent one deleted) — `action`, `codes`, and for a user's event
 `objectId` and `upn`. Nothing else: never an address beyond the UPN, a secret or a pass.
 
 `GET /accounts` (`entra:manage`) lists every account the module keeps, by UPN —
@@ -1688,10 +2005,19 @@ what a client keys off, never the words:
 | `throttled` | 503 | `GET /directory/users`, `GET /directory/matches`: Graph throttled the read twice in a row. |
 | `sso_not_configured` | 409 | `GET /directory/matches` while single sign-on is off. |
 | `invalid_request` | 400 | `GET /directory/users`: `q` is not 2 to 100 characters once trimmed, under `errors.q`. |
+| `feature_unknown` | 422 | `POST /outlook/connect` names no feature the module offers. |
+| `switch_off` | 409 | `POST /outlook/connect`, `POST /outlook/complete`: the Outlook connection switch is off, or the tenant or client is not saved. |
+| `no_account` | 409 | `POST /outlook/connect`, `POST /outlook/complete`: the caller has no [certain account](#the-certain-account). |
+| `account_taken` | 409 | `POST /outlook/connect`, `POST /outlook/complete`: another person's live connection holds the account. |
+| `account_mismatch` | 409 | `POST /outlook/complete`: the caller signed in to Microsoft as another account than the one Vantigo knows them by, or in another tenant; the detail names both UPNs. |
+| `expired` | 410 | `POST /outlook/complete`: the connected cookie is missing, expired, or another person's or session's. |
 
 A request the server could not decode is a bare 400 with neither. The 401 (no session),
 the 403 (the permission, or the Owner policy — an Owner without a second factor
-included) and the 429 (`entra-owner`, `entra-skus`, `entra-directory`, `entra-matches`) are the router's.
+included) and the 429 (`entra-owner`, `entra-skus`, `entra-directory`, `entra-matches`,
+`entra-outlook`, `entra-outlook-callback`) are the router's. The callback answers no
+problem: its codes — `expired`, `access_denied`, `tenant_mismatch`, `consent_missing`
+and `failed` — travel in the redirect's query ([the flow](#the-flow)).
 
 ## Testing
 
@@ -1710,7 +2036,13 @@ event read through its calendar's own path (404 for one of another calendar), an
 person's own edits to an event in Outlook, a mailbox denied
 (403 `ErrorAccessDenied`) or absent (404 `MailboxNotEnabledForRESTAPI`), and requests
 inside a `$batch` throttled one by one; the directory's `$search` over display name, mail and principal name (a `$search` or a `$count` without `ConsistencyLevel: eventual` is 400 `Request_UnsupportedQuery`, as Graph answers it), `$orderby=displayName`, `$top`, and `in` filters on `mail`, `userPrincipalName` and `employeeId` — and can be told to throttle, fail the next call, refuse a sensitive action for a privileged user
-or a missing role, or answer a synchronised user. It is wired through
+or a missing role, or answer a synchronised user. It is also **an authorization server**:
+it serves a tenant's signing keys, issues a code for a grant a test describes — checked
+at the token endpoint for the secret, the redirect URI, the PKCE verifier, single use
+(54005) and a minute's life (70008) — answers an RS256 id_token a test may tamper with,
+redeems refresh tokens (each use a new one, the old still valid), queues a refusal by
+AADSTS code, answers `GET /me` for a delegated token, and makes a user's next Graph call
+answer a claims challenge. It is wired through
 `modtest.WithTransport`, so the module's real client runs against it. It lives under the
 module's own package and only the module's tests import it.
 
@@ -1750,6 +2082,11 @@ All under `/api/v1/entra`.
 | `GET /directory/users?q=` | `policy:Owner+OwnerManagement`; `entra-directory` (60 a minute per client address, its own bucket) |
 | `GET /directory/matches` | `policy:Owner+OwnerManagement`; `entra-matches` (6 a minute per client address, its own bucket) |
 | `POST /mailbox-notifications` | none: anonymous, on the public host's list; the client state decides what counts; `entra-mailbox-notifications` (600 a minute per client address, its own bucket) |
+| `POST /outlook/connect` | `session` (any signed-in user); `entra-outlook` (30 a minute per client address, shared with complete) |
+| `GET /outlook/callback` | none: anonymous, on `APP_URL`; the sealed state decides what counts; `entra-outlook-callback` (60 a minute per client address, its own bucket) |
+| `POST /outlook/complete` | `session`; `entra-outlook` |
+| `GET /outlook/connection` | `session` |
+| `DELETE /outlook/connection` | `session` |
 
 The request and response shapes are in the contract,
 [`openapi/entra.yaml`](https://github.com/vantigo-io/vantigo/blob/main/openapi/entra.yaml),

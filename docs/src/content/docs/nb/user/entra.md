@@ -1,6 +1,6 @@
 ---
 title: Microsoft Entra ID
-description: Å koble selskapets Microsoft Entra ID-leietaker til på siden Microsoft Entra ID — kortet Status, veiviserens seks steg og hva Ferdig betyr på hvert, tillatelsene som skal kopieres, hemmeligheten som vises én gang, tilkoblingstesten, kontoreglene og bryteren Kalendersynkronisering, tabellen Grupper å bekrefte en gruppe Vantigo ikke opprettet, og å koble til eksisterende brukere med katalogvelgeren og gjennomgangen av nøyaktige treff — og hvem som ser hva.
+description: Å koble selskapets Microsoft Entra ID-leietaker til på siden Microsoft Entra ID — kortet Status, veiviserens seks steg og hva Ferdig betyr på hvert, tillatelsene som skal kopieres, hemmeligheten som vises én gang, tilkoblingstesten, kontoreglene og bryteren Outlook-tilkobling med status, antall og omdirigerings-URI, varselet om tillatelser Vantigo ikke bruker, tabellen Grupper å bekrefte en gruppe Vantigo ikke opprettet, og å koble til eksisterende brukere med katalogvelgeren og gjennomgangen av nøyaktige treff — og hvem som ser hva.
 sidebar:
   order: 47
 sources:
@@ -54,7 +54,11 @@ etter at steg 1 endres, vises det ikke:
   ble testet; **Kontoer**, hvor mange Vantigo holder i leietakeren — aktiverte,
   deaktiverte og slettede; og **Grupper**, *… holdt*, gruppene som finnes der;
 - **Tillatelser**: *Alle tillatelsene modulen trenger, er gitt.*, eller hver som
-  fortsatt mangler, ved navn, og de som er gitt;
+  fortsatt mangler, ved navn, og de som er gitt. Har applikasjonen tillatelser Vantigo
+  ikke bruker, sier et oransje varsel *Applikasjonen har tillatelser Vantigo ikke
+  bruker:* med listen, og at de kan være igjen fra et tidligere oppsett eller bredere
+  enn nødvendig — fjern dem under **API permissions** med mindre et annet produkt bruker
+  registreringen. Det er bare et varsel: tilkoblingen forblir **Tilkoblet**;
 - **Klienthemmeligheter**: hver med **Beskrivelse**, **Lagt til**, **Utløper**, **Sist
   brukt** (når den sist hentet et token) og **Tilstand** — **I bruk** for den som
   prøves først, *Trukket tilbake* og datoen, og *Avvist av leietakeren* og datoen for
@@ -127,8 +131,8 @@ Vantigo fra å bruke den: slett den i portalen selv.
 ### 3 Gi tillatelsene og rollen
 
 Kortet lister de åtte **applikasjonstillatelsene** for Microsoft Graph som skal legges
-til under **API permissions** — ni mens [kalendersynkronisering](#kalendersynkronisering)
-er på — hver klar til å kopieres, og så **Grant admin consent**.
+til under **API permissions** — ni mens [Outlook-tilkoblingen](#outlook-tilkobling)
+er på, den niende, `Calendars.ReadWrite`, merket *(for kalendersynkronisering)* — hver klar til å kopieres, og så **Grant admin consent**.
 Det sier også steget ingen andre produkter ber om: tildel rollen **User Administrator**
 til applikasjonen under **Roles & admins** — uten den nekter Microsoft å aktivere,
 deaktivere eller slette en konto og å utstede et midlertidig tilgangspass, selv med
@@ -164,8 +168,8 @@ Reglene hver konto følger, som alle med `entra:manage` kan endre:
   tilgangspass (minutter)** (10 til 43 200), om **Passet kan bare brukes én gang**, og
   **Hvem som overleverer passet**. Kortet sier, med stien, at leietakerens policy for
   autentiseringsmetoder må slå på passet for brukerne, ellers avviser Microsoft det;
-- **Kalendersynkronisering**: **La folk synkronisere Vantigo-kalenderen sin til Outlook**
-  ([nedenfor](#kalendersynkronisering)).
+- **Outlook-tilkobling**: **Outlook-tilkobling: la folk koble Outlook til Vantigo**
+  ([nedenfor](#outlook-tilkobling)).
 
 Velg **Lagre kontoreglene**. En verdi utenfor regelen merkes på feltet med årsaken. Har
 noen andre lagret tilkoblingen siden du åpnet siden, sier siden fra og laster den inn på
@@ -201,37 +205,48 @@ Kortet tilbyr også **Åpne innstillingene til Ansatte**, der **Standard kontoty
 ([Kontoer](/nb/user/staff/#kontoer)). Personer som allerede er registrert, beholder
 kontotypen sin til HR endrer den på fanen Konto.
 
-## Kalendersynkronisering
+## Outlook-tilkobling
 
-**Kalendersynkronisering** lar dem som bruker Kalender, ha en kopi av Vantigo-kalenderen
-sin i Outlook ([Synkroniser med Outlook](/nb/user/calendar/#synkroniser-med-outlook)).
-Den er av til noen med `entra:manage` slår den på, og hver person slår så sin egen
-synkronisering av eller på.
+**Outlook-tilkobling** lar hver person koble sin egen Outlook til Vantigo under
+**Innstillinger → Tilkoblinger** ved å logge på Microsoft én gang
+([Tilkoblinger](/nb/user/connections/)). Den er av til noen med `entra:manage` slår den
+på. Den samme bryteren lar folk [synkronisere kalenderen sin til
+Outlook](/nb/user/calendar/#synkroniser-med-outlook), som i denne versjonen fortsatt
+bruker applikasjonstillatelsen og ikke hver persons tilkobling.
 
-1. I steg **4 Sett kontoreglene**, under **Kalendersynkronisering**, slår du på **La folk
-   synkronisere Vantigo-kalenderen sin til Outlook**, og velger **Lagre kontoreglene**.
-2. Steg **3 Gi tillatelsene og rollen** lister nå ni tillatelser: den siste,
-   `Calendars.ReadWrite`, merket *(for kalendersynkronisering)*. En eier legger den til
-   i portalen, gir administratorsamtykke på nytt og velger **Test tilkoblingen** —
-   [administrasjonsveiledningen](/nb/admin/entra/#kalendersynkronisering) har stegene,
-   og hvordan den begrenses til enkelte postbokser. Til en test ser den, viser kortet
-   **Status** den som manglende, *(for kalendersynkronisering)* — steg 3 venter ikke på
-   den, siden tillatelsen bare er til orientering;
-   resten av modulen virker uten den. Er den gitt med Exchange RBAC for Applications i
-   stedet, viser tokenet den aldri: da blir den stående i listen, og det er som ventet —
-   synkroniseringen kjører likevel.
+1. En eier gjør appregistreringen klar først — **Omdirigerings-URI** som vises under
+   bryteren, lagt til **Web**-plattformen, og de delegerte tillatelsene `openid`,
+   `profile`, `offline_access` og `Calendars.ReadWrite` med administratorsamtykke.
+   [Administrasjonsveiledningen](/nb/admin/entra/#outlook-tilkobling) har stegene.
+2. I steg **4 Sett kontoreglene**, under **Outlook-tilkobling**, slår du på
+   **Outlook-tilkobling: la folk koble Outlook til Vantigo**, og velger **Lagre
+   kontoreglene**.
+3. Koble til din egen Outlook under **Innstillinger → Tilkoblinger** for å sjekke at det
+   virker.
 
-Under bryteren sier en linje hvor kalendersynkroniseringen står:
+Kalendersynkroniseringen trenger fortsatt også **applikasjonstillatelsen**
+`Calendars.ReadWrite`: steg **3 Gi tillatelsene og rollen** lister ni tillatelser mens
+bryteren er på, den siste merket *(for kalendersynkronisering)*, og kortet **Status**
+viser den som manglende til en test ser den — steg 3 venter ikke på den, siden
+tillatelsen bare er til orientering. Er den gitt med Exchange RBAC for Applications i
+stedet, viser tokenet den aldri: da blir den stående i listen, og det er som ventet.
 
-- **Klar** — folk kan slå på synkroniseringen sin;
-- **Calendars.ReadWrite er ikke i tokenet. Det er som ventet hvis du ga den med
-  Exchange RBAC for Applications; ellers legg den til, gi administratorsamtykke og test
-  på nytt.** — den siste testen så ikke tillatelsen; folk kan likevel slå på
-  synkroniseringen sin, og den som har en postboks tillatelsen ikke når, får beskjed om
-  det på kortet sitt;
+Under bryteren viser kortet **Omdirigerings-URI** som skal legges til registreringen,
+med en kopieringsknapp, og en linje sier hvor tilkoblingen står:
+
+- **Klar** — noen har koblet til siden bryteren ble slått på;
+- **Ingen har koblet til ennå: koble til din egen Outlook under Innstillinger ›
+  Tilkoblinger for å sjekke at det virker.**;
+- **Den siste tilkoblingen manglet en delegert tillatelse: gi administratorsamtykke for
+  den i appregistreringen og koble til på nytt.** — en persons tilkobling kom tilbake
+  uten tillatelsen den ba om;
 - **Venter på tilkoblingen** — tilkoblingen er ikke tilkoblet, med årsaken under.
 
-Under den, mens bryteren er på, sier **Endringsvarsler** om Microsoft gir Vantigo beskjed
+Under den teller *Personer tilkoblet: … Venter på ny tilkobling: …* dem som har en
+tilkobling som virker, og dem Microsoft har avvist tilkoblingen til, som ser **Koble til
+Outlook på nytt** på sin egen side.
+
+Under det, mens bryteren er på, sier **Endringsvarsler** om Microsoft gir Vantigo beskjed
 om endringer gjort i Outlook, slik at de tas på omtrent ett minutt i stedet for ved
 neste synkronisering, hvert 15. minutt:
 
@@ -244,11 +259,14 @@ neste synkronisering, hvert 15. minutt:
   endringene kommer ved neste synkronisering i mellomtiden. [Driftsveiledningen](/nb/admin/entra/#endringsvarsler)
   sier hva som bør sjekkes.
 
-Her er det ingenting å velge: linjen melder bare.
+Her er det ingenting å velge: linjene melder bare.
 
-Slår du den av, stopper synkroniseringen for alle, og kopiene Vantigo la inn i Outlook
-deres, fjernes — tillatelsen etterspørres ikke mens den er av. Slår du den på igjen,
-fortsetter den for alle som hadde synkroniseringen sin på.
+**Slår du den av**, lukkes hver persons tilkobling når du lagrer — er noen tilkoblet
+eller venter på ny tilkobling, spør siden først *Slå av Outlook-tilkoblingen?*: *Alle må
+koble til Outlook på nytt.*, og **Slå av og lagre** lagrer. Det stopper også
+kalendersynkroniseringen for alle og fjerner kopiene Vantigo la inn i Outlook deres —
+kalendertillatelsen etterspørres ikke mens den er av. Slår du den på igjen, fortsetter
+synkroniseringen for alle som hadde den på; hver person kobler til Outlook på nytt.
 
 ## Bekreft en konto Vantigo ikke opprettet
 

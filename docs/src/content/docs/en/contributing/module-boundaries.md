@@ -224,6 +224,14 @@ Communications' outbox is the working example.
    fills with another package's component, as `@vantigo/staff-ui`'s `PersonPage` does
    with `extraTabs`, through which the host adds Planning's tab to the person page —
    and the host composes it; the package that opens the slot never names what fills it.
+   `@vantigo/calendar-ui`'s `SettingsPage` opens `connectionButton` (the slot
+   `connection.button`, called with `{feature: "calendar", returnTo:
+   "/calendar/settings"}`) in its Outlook card, which the host fills with
+   `@vantigo/entra-ui`'s `OutlookConnectButton` while the Entra module is on, and draws
+   nothing without. A page may also be the host's own, composed from a module's
+   package: **Settings → Connections** (`routes/settings/connections.tsx`) renders
+   `@vantigo/entra-ui`'s `OutlookConnectionCard`, its sidebar entry and its route shown
+   only while `entra` is enabled (the route answers not found otherwise).
 8. **One sanctioned cross-module write.** A module never writes another's data —
    with one exception, made for merging customers:
    `contracts.CustomerReferenceHolder`. A module that stores customer ids in its
@@ -787,8 +795,9 @@ customer data through `contracts.CustomerDirectory`, which only Customers implem
 so enabling any of them without `customers` is rejected at startup with a message
 naming both (`projects requires customers`). Time hangs its hours off projects and
 reads them through `contracts.ProjectDirectory`, so `time` without `projects` is
-rejected the same way (`time requires projects`). Entra reads nothing of Staff's but
-is called only by Staff's accounts worker, the slot's one consumer, so `entra` without
+rejected the same way (`time requires projects`). Entra reads of Staff only the
+caller's own directory account, for the Outlook connection, and is
+called only by Staff's accounts worker, the slot's one consumer, so `entra` without
 `staff` would hold a tenant's credential nothing uses and is rejected too (`entra
 requires staff`). Planning books Staff's people on Projects' projects, so `planning`
 requires both `projects` and `staff` (`planning requires projects`, `planning requires
@@ -1099,15 +1108,19 @@ composed — its builder answers nil otherwise, since Planning does not require 
 calendar and nothing would read the source. It has no background worker. With `planning` off
 nothing else changes. See [Planning](/en/reference/planning/#contracts-consumed).
 
-**Entra depends on nobody but identity, and is called by Staff.** It reads no other
-module, and of identity only `Deps.SSOConnections` (`contracts.SSOConnections`, rule
-12), for the directory's exact matches and the holders the search marks, through the
-accessors in `internal/entra/contractscalls.go` and never inside a transaction — the Owner's
-and `entra:manage`'s checks are the router's — and writes nothing outside the `entra`
+**Entra reads identity and Staff, and is called by Staff.** It reads of identity only
+`Deps.SSOConnections` (`contracts.SSOConnections`, rule 12), for the directory's exact
+matches and the holders the search marks, and of Staff only `Deps.Workforce`'s
+`DirectoryAccount` (rule 12), the caller's own directory account under the request's
+principal, for the person's Outlook connection — both through the accessors in
+`internal/entra/contractscalls.go` and never inside a transaction; the Owner's and
+`entra:manage`'s checks are the router's — and writes nothing outside the `entra`
 schema. It fills two
-slots, `IdentityProvisioner` (rule 13) and `MailboxCalendar` (rule 14), and has no
-worker: Staff's accounts worker and the calendar's mailbox sync worker call it, in the
-API and in worker mode alike, never inside a transaction. It reaches the
+slots, `IdentityProvisioner` (rule 13) and `MailboxCalendar` (rule 14): Staff's accounts
+worker and the calendar's mailbox sync worker call it, in the API and in worker mode
+alike, never inside a transaction. Its one worker, `entra-outlook-sweep`, deletes the
+closed Outlook connections nothing needs and reads the accounts of those waiting to
+reconnect ([Microsoft Entra ID](/en/reference/entra/#entra-outlook-sweep)). It reaches the
 network in one place, its Graph client, through `internal/netguard` with no proxy and
 no redirect, to two fixed hosts no setting changes; the client's transport and its
 token cache are built once per process, and `Deps.HTTPTransport` is the test seam. See [Microsoft Entra

@@ -344,7 +344,7 @@ gjøres; personen kan be den som publiserer kalenderen, om en mindre en.
 En person kan la Vantigo holde en kopi av kalenderen sin i Microsoft 365-postboksen sin,
 på skjermbildet **Min kalender** ([Synkroniser med
 Outlook](/nb/user/calendar/#synkroniser-med-outlook)), når en eier har slått på
-**Kalendersynkronisering** i Microsoft Entra ID-modulen og gitt tillatelsen den trenger
+bryteren **Outlook-tilkobling** i Microsoft Entra ID-modulen og gitt tillatelsen den trenger
 ([Microsoft Entra ID](/nb/admin/entra/#kalendersynkronisering)). Arbeideren
 `calendar-mailbox-sync` skriver kopiene gjennom Entra-modulens tilkobling
 ([arbeideren](/en/reference/calendar/#the-mailbox-sync-worker)). Den kjører med mindre
@@ -384,7 +384,7 @@ synkroniseringen mislyktes.
 Arbeideren fjerner kopiene til en person når de slår synkroniseringen av, når de ikke
 lenger kan bruke Kalender — deaktivert, utestengt, deaktivert av katalogen, eller uten
 `calendar:access` — når Ansatte ikke lenger kobler dem til en Microsoft Entra ID-konto,
-og for alle når **Kalendersynkronisering** slås av. **Slått av skriver og fjerner
+og for alle når bryteren **Outlook-tilkobling** slås av. **Slått av skriver og fjerner
 arbeideren ingenting**: kopiene blir liggende i postboksene slik de sist var, også
 kopiene til en som har sluttet, til den slås på igjen.
 
@@ -397,7 +397,7 @@ ett minutt. Et varsel er et puff og ingenting mer: arbeideren leser fortsatt pos
 og pollingen går enten det kommer varsler eller ikke. Hvis forespørselen feiler, logger
 arbeideren en advarsel med feilens kode, og synkroniseringen står. Abonnementet fjernes
 sammen med kopiene — når personen slår synkroniseringen av, mister tilgangen, kobles fra
-eller flyttes til en annen postboks, eller **Kalendersynkronisering** slås av — men
+eller flyttes til en annen postboks, eller bryteren **Outlook-tilkobling** slås av — men
 beholdes når bare personens målkalender endres. En fjerning som feiler, eller som ikke kan forsøkes fordi tilkoblingen ikke virker,
 forblir skyldig og prøves på nytt med opprydningens utsettelse, som en kopi som ikke
 kunne slettes; en Microsoft avviser rett ut (manglende tillatelse), logges og får gå ut

@@ -1,6 +1,6 @@
 ---
 title: Microsoft Entra ID
-description: Connecting the company's Microsoft Entra ID tenant on the Microsoft Entra ID page — the Status card, the wizard's six steps and what Done means on each, the permissions to copy, the secret shown once, the connection test, the account rules and the Calendar sync switch, the Groups table confirming a group Vantigo did not create, connecting existing users by the directory picker and the review of exact matches — and who sees what.
+description: Connecting the company's Microsoft Entra ID tenant on the Microsoft Entra ID page — the Status card, the wizard's six steps and what Done means on each, the permissions to copy, the secret shown once, the connection test, the account rules and the Outlook connection switch with its status, counts and redirect URI, the warning for permissions Vantigo does not use, the Groups table confirming a group Vantigo did not create, connecting existing users by the directory picker and the review of exact matches — and who sees what.
 sidebar:
   order: 47
 sources:
@@ -53,7 +53,11 @@ that, and again after step 1 changes, it is not shown:
   last tested; **Accounts**, how many Vantigo keeps in the tenant — enabled,
   disabled and deleted; and **Groups**, *… kept*, the groups present there;
 - **Permissions**: *Every permission the module needs is granted.*, or each one still
-  missing by name, and the ones granted;
+  missing by name, and the ones granted. When the application holds permissions
+  Vantigo does not use, an orange notice says *The application holds permissions
+  Vantigo does not use:* with the list, and that they may be left from an earlier setup
+  or wider than needed — remove them under **API permissions** unless another product
+  uses the registration. It is a warning only: the connection stays **Connected**;
 - **Client secrets**: each by its **Description**, with **Added**, **Expires**, **Last
   used** (when it last fetched a token) and its **State** — **In use** for the one
   tried first, *Revoked* and the date, and *Refused by the tenant* and the date for one
@@ -122,7 +126,8 @@ Revoking only stops Vantigo using it: delete it in the portal yourself.
 ### 3 Grant the permissions and the role
 
 The card lists the eight Microsoft Graph **application** permissions to add under **API
-permissions** — nine while [calendar sync](#calendar-sync) is on — each ready to copy, then **Grant admin consent**. It also says the step
+permissions** — nine while the [Outlook connection](#outlook-connection) is on, the
+ninth, `Calendars.ReadWrite`, marked *(for calendar sync)* — each ready to copy, then **Grant admin consent**. It also says the step
 no other product asks for: assign the **User Administrator** role to the application
 under **Roles & admins** — without it, Microsoft refuses to enable, disable or delete
 an account and to issue a Temporary Access Pass, even with every permission.
@@ -159,8 +164,8 @@ The rules every account follows, which anyone with `entra:manage` may change:
   **Who hands over the pass**. The card says, with the path, that the tenant's
   authentication methods policy must enable the pass for the users, or Microsoft
   refuses it;
-- **Calendar sync**: **Let people sync their Vantigo calendar to Outlook**
-  ([below](#calendar-sync)).
+- **Outlook connection**: **Outlook connection: let people connect their Outlook to
+  Vantigo** ([below](#outlook-connection)).
 
 Choose **Save the account rules**. A value outside its rule is marked on its field with
 the reason. If someone else saved the connection since you opened the page, the page
@@ -196,35 +201,47 @@ The card also offers **Open Staff's settings**, where **Default account kind** c
 ([Accounts](/en/user/staff/#accounts)). People already registered keep their kind until
 HR changes it on their Account tab.
 
-## Calendar sync
+## Outlook connection
 
-**Calendar sync** lets the people who use Calendar keep a copy of their Vantigo calendar
-in their Outlook ([Sync with Outlook](/en/user/calendar/#sync-with-outlook)). It is off
-until someone with `entra:manage` turns it on, and each person then turns their own sync
-on or off.
+The **Outlook connection** lets each person connect their own Outlook to Vantigo under
+**Settings → Connections**, signing in to Microsoft once ([Connections](/en/user/connections/)).
+It is off until someone with `entra:manage` turns it on. The same switch lets people
+[sync their calendar to Outlook](/en/user/calendar/#sync-with-outlook), which in this
+release still uses the application permission rather than each person's connection.
 
-1. In step **4 Set the account rules**, under **Calendar sync**, turn on **Let people
-   sync their Vantigo calendar to Outlook**, and choose **Save the account rules**.
-2. Step **3 Grant the permissions and the role** now lists nine permissions: the last,
-   `Calendars.ReadWrite`, marked *(for calendar sync)*. An Owner adds it in the portal,
-   grants admin consent again and chooses **Test connection** — the [administration
-   guide](/en/admin/entra/#calendar-sync) has the steps, and how to limit it to some
-   mailboxes. Until a test sees it, the **Status** card lists it as missing, *(for
-   calendar sync)* — step 3 does not wait for it, since the permission is advisory; the rest of the module works without it. If it was
-   granted with Exchange RBAC for Applications instead, the token never shows it: then
-   it stays listed, and that is expected — the sync runs all the same.
+1. An Owner prepares the app registration first — the **Redirect URI** shown under the
+   switch added to its **Web** platform, and the delegated permissions `openid`,
+   `profile`, `offline_access` and `Calendars.ReadWrite` with admin consent. The
+   [administration guide](/en/admin/entra/#outlook-connection) has the steps.
+2. In step **4 Set the account rules**, under **Outlook connection**, turn on **Outlook
+   connection: let people connect their Outlook to Vantigo**, and choose **Save the
+   account rules**.
+3. Connect your own Outlook under **Settings → Connections** to check that it works.
 
-Under the switch, a line says where calendar sync stands:
+Calendar sync still needs the `Calendars.ReadWrite` **application** permission too:
+step **3 Grant the permissions and the role** lists nine permissions while the switch is
+on, the last marked *(for calendar sync)*, and the **Status** card lists it as missing
+until a test sees it — step 3 does not wait for it, since the permission is advisory. If
+it was granted with Exchange RBAC for Applications instead, the token never shows it:
+then it stays listed, and that is expected.
 
-- **Ready** — people can turn on their sync;
-- **Calendars.ReadWrite is not in the token. That is expected if you granted it with
-  Exchange RBAC for Applications; otherwise add it, grant admin consent and test
-  again.** — the last test did not see the permission; people can still turn their sync
-  on, and anyone whose mailbox the permission does not reach is told so on their card;
+Under the switch, the card shows the **Redirect URI** to add to the registration, with a
+copy button, and a line says where the connection stands:
+
+- **Ready** — someone has connected since the switch was turned on;
+- **Nobody has connected yet: connect your own Outlook under Settings › Connections to
+  check that it works.**;
+- **The last connect lacked a delegated permission: grant admin consent for it in the
+  app registration and connect again.** — a person's connect came back without the
+  permission it asked for;
 - **Waiting for the connection** — the connection is not connected, with the reason under
   it.
 
-Under it, while the switch is on, **Change notifications** says whether Microsoft tells
+Under it, *People connected: … Waiting to reconnect: …* counts the people whose
+connection works and those whose connection Microsoft refused, who see **Reconnect
+Outlook** on their own page.
+
+Under that, while the switch is on, **Change notifications** says whether Microsoft tells
 Vantigo of changes made in Outlook, so they are taken within about a minute instead of
 at the next sync, every 15 minutes:
 
@@ -237,11 +254,14 @@ at the next sync, every 15 minutes:
   hour; changes arrive at the next sync meanwhile. The [administration
   guide](/en/admin/entra/#change-notifications) has what to check.
 
-Nothing here needs choosing: the line only reports.
+Nothing here needs choosing: the lines only report.
 
-Turning it off stops every person's sync and removes the copies Vantigo put in their
-Outlook — the permission is not asked for while it is off. Turning it on again resumes
-everyone who had their sync on.
+**Turning it off** closes every person's connection when you save — while anyone is
+connected or waiting to reconnect, the page first asks *Turn the Outlook connection
+off?*: *Everyone will have to connect Outlook again.*, and **Turn off and save** saves
+it. It also stops every person's calendar sync and removes the copies Vantigo put in
+their Outlook — the calendar permission is not asked for while it is off. Turning it on
+again resumes everyone who had their sync on; each person connects their Outlook again.
 
 ## Confirm an account Vantigo did not create
 

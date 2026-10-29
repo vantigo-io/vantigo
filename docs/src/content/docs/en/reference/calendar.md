@@ -1864,7 +1864,7 @@ Three operations, each under `calendar:access` and on the caller's own row alone
 | `availability` | When |
 | --- | --- |
 | `no_provider` | No enabled module fills the `MailboxCalendar` slot (Entra is off). |
-| `switch_off` | The provider's reason is `switch_off`, whatever its state: the Owner's *Calendar sync* switch is off. |
+| `switch_off` | The provider's reason is `switch_off`, whatever its state: the Owner's *Outlook connection* switch in the Entra module is off. |
 | `unavailable` | The provider's status is anything else but `available`: its connection is not working. |
 | `no_account` | `Workforce.DirectoryAccount` answers nothing for the caller, a disabled account (a leaver's), an account of another provider than the slot's `Key`, or one with no external id. |
 | `available` | None of the above. |
