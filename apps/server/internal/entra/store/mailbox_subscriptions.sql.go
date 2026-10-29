@@ -29,31 +29,43 @@ func (q *Queries) CountLiveMailboxSubscriptions(ctx context.Context, now time.Ti
 }
 
 const deleteMailboxSubscription = `-- name: DeleteMailboxSubscription :exec
-DELETE FROM entra.mailbox_subscriptions WHERE object_id = $1
+DELETE FROM entra.mailbox_subscriptions WHERE object_id = $1 AND resource = $2::varchar
 `
 
-// DeleteMailboxSubscription forgets the mailbox's subscription: deleted in
-// Graph, gone there, or past its expiry.
-func (q *Queries) DeleteMailboxSubscription(ctx context.Context, objectID uuid.UUID) error {
-	_, err := q.db.Exec(ctx, deleteMailboxSubscription, objectID)
+type DeleteMailboxSubscriptionParams struct {
+	ObjectID uuid.UUID
+	Resource string
+}
+
+// DeleteMailboxSubscription forgets the mailbox's subscription for resource:
+// deleted in Graph, gone there, or past its expiry.
+func (q *Queries) DeleteMailboxSubscription(ctx context.Context, arg DeleteMailboxSubscriptionParams) error {
+	_, err := q.db.Exec(ctx, deleteMailboxSubscription, arg.ObjectID, arg.Resource)
 	return err
 }
 
 const getMailboxSubscription = `-- name: GetMailboxSubscription :one
 
-SELECT object_id, subscription_id, client_state_hash, notification_url, expires_at, state, notified_at, created_at, updated_at, resource FROM entra.mailbox_subscriptions WHERE object_id = $1
+SELECT object_id, subscription_id, client_state_hash, notification_url, expires_at, state, notified_at, created_at, updated_at, resource FROM entra.mailbox_subscriptions WHERE object_id = $1 AND resource = $2::varchar
 `
 
+type GetMailboxSubscriptionParams struct {
+	ObjectID uuid.UUID
+	Resource string
+}
+
 // The change notifications' subscriptions (calendar Outlook sync design
-// O11.4): one row per synced mailbox, by the account's object id, holding
-// Graph's subscription id, the SHA-256 of the clientState the create sent,
-// the expiry Graph granted and when a valid notification last named it.
-// Watch and Unwatch write them around their Graph calls; the webhook only
-// marks a row notified (MarkMailboxNotified); Notified reads them.
-// GetMailboxSubscription is the mailbox's subscription; no row is a mailbox
-// not watched.
-func (q *Queries) GetMailboxSubscription(ctx context.Context, objectID uuid.UUID) (EntraMailboxSubscription, error) {
-	row := q.db.QueryRow(ctx, getMailboxSubscription, objectID)
+// O11.4; Outlook connection & Microsoft 365 mail design M11, M17): one row per
+// watched (object_id, resource) pair — 'events' for a person's calendar,
+// 'messages' for a channel mailbox's Inbox — holding Graph's subscription id,
+// the SHA-256 of the clientState the create sent, the expiry Graph granted and
+// when a valid notification last named it. Watch and Unwatch write them around
+// their Graph calls; the webhook only marks a row notified
+// (MarkMailboxesNotified); Notified reads them by resource.
+// GetMailboxSubscription is the mailbox's subscription for resource; no row is
+// a mailbox not watched for that resource.
+func (q *Queries) GetMailboxSubscription(ctx context.Context, arg GetMailboxSubscriptionParams) (EntraMailboxSubscription, error) {
+	row := q.db.QueryRow(ctx, getMailboxSubscription, arg.ObjectID, arg.Resource)
 	var i EntraMailboxSubscription
 	err := row.Scan(
 		&i.ObjectID,
@@ -97,12 +109,14 @@ func (q *Queries) GetMailboxSubscriptionByID(ctx context.Context, subscriptionID
 const listMailboxNotified = `-- name: ListMailboxNotified :many
 SELECT object_id, notified_at::timestamptz AS notified_at
 FROM entra.mailbox_subscriptions
-WHERE notified_at > $1::timestamptz
+WHERE resource = $1::varchar
+  AND notified_at > $2::timestamptz
 ORDER BY notified_at, object_id
-LIMIT $2::integer
+LIMIT $3::integer
 `
 
 type ListMailboxNotifiedParams struct {
+	Resource string
 	Since    time.Time
 	RowLimit int32
 }
@@ -112,10 +126,11 @@ type ListMailboxNotifiedRow struct {
 	NotifiedAt time.Time
 }
 
-// ListMailboxNotified is what Notified answers: the mailboxes notified after
-// since, oldest first, at most row_limit. Through the index on notified_at.
+// ListMailboxNotified is what Notified answers for resource ('events' or
+// 'messages'): the mailboxes notified after since, oldest first, at most
+// row_limit. Through the index on notified_at.
 func (q *Queries) ListMailboxNotified(ctx context.Context, arg ListMailboxNotifiedParams) ([]ListMailboxNotifiedRow, error) {
-	rows, err := q.db.Query(ctx, listMailboxNotified, arg.Since, arg.RowLimit)
+	rows, err := q.db.Query(ctx, listMailboxNotified, arg.Resource, arg.Since, arg.RowLimit)
 	if err != nil {
 		return nil, err
 	}
@@ -259,27 +274,33 @@ func (q *Queries) RenewMailboxSubscription(ctx context.Context, arg RenewMailbox
 
 const setMailboxSubscriptionState = `-- name: SetMailboxSubscriptionState :exec
 UPDATE entra.mailbox_subscriptions SET state = $1, updated_at = $2::timestamptz
-WHERE object_id = $3
+WHERE object_id = $3 AND resource = $4::varchar
 `
 
 type SetMailboxSubscriptionStateParams struct {
 	State    string
 	Now      time.Time
 	ObjectID uuid.UUID
+	Resource string
 }
 
 // SetMailboxSubscriptionState sets the row's state: 'deleting' when Graph
 // refused the delete, so it is owed; 'conflict' when another installation's
 // subscription holds the mailbox, so no create is tried for a day.
 func (q *Queries) SetMailboxSubscriptionState(ctx context.Context, arg SetMailboxSubscriptionStateParams) error {
-	_, err := q.db.Exec(ctx, setMailboxSubscriptionState, arg.State, arg.Now, arg.ObjectID)
+	_, err := q.db.Exec(ctx, setMailboxSubscriptionState,
+		arg.State,
+		arg.Now,
+		arg.ObjectID,
+		arg.Resource,
+	)
 	return err
 }
 
 const upsertMailboxSubscription = `-- name: UpsertMailboxSubscription :one
-INSERT INTO entra.mailbox_subscriptions (object_id, subscription_id, client_state_hash, notification_url, expires_at, state, created_at, updated_at)
-VALUES ($1, $2::varchar, $3, $4::varchar, $5::timestamptz, 'active', $6::timestamptz, $6::timestamptz)
-ON CONFLICT (object_id) DO UPDATE SET
+INSERT INTO entra.mailbox_subscriptions (object_id, resource, subscription_id, client_state_hash, notification_url, expires_at, state, created_at, updated_at)
+VALUES ($1, $2::varchar, $3::varchar, $4, $5::varchar, $6::timestamptz, 'active', $7::timestamptz, $7::timestamptz)
+ON CONFLICT (object_id, resource) DO UPDATE SET
     subscription_id = EXCLUDED.subscription_id,
     client_state_hash = EXCLUDED.client_state_hash,
     notification_url = EXCLUDED.notification_url,
@@ -291,6 +312,7 @@ RETURNING object_id, subscription_id, client_state_hash, notification_url, expir
 
 type UpsertMailboxSubscriptionParams struct {
 	ObjectID        uuid.UUID
+	Resource        string
 	SubscriptionID  *string
 	ClientStateHash []byte
 	NotificationUrl string
@@ -306,6 +328,7 @@ type UpsertMailboxSubscriptionParams struct {
 func (q *Queries) UpsertMailboxSubscription(ctx context.Context, arg UpsertMailboxSubscriptionParams) (EntraMailboxSubscription, error) {
 	row := q.db.QueryRow(ctx, upsertMailboxSubscription,
 		arg.ObjectID,
+		arg.Resource,
 		arg.SubscriptionID,
 		arg.ClientStateHash,
 		arg.NotificationUrl,

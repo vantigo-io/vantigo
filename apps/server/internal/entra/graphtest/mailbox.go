@@ -104,6 +104,8 @@ type mailbox struct {
 	deltaExpired int
 
 	inbox            []*inboxItem
+	messages         []*inboxItem
+	folders          []*MailFolder
 	inboxRemoved     []tombstone
 	mailDeltaExpired int
 }

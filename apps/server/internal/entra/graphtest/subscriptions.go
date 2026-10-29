@@ -51,9 +51,12 @@ const (
 // graphTime is how Graph writes an instant: UTC, seven fractional digits.
 const graphTime = "2006-01-02T15:04:05.0000000Z"
 
-// subscriptionResource is a user's events, the one resource the fake
-// subscribes to.
-var subscriptionResource = regexp.MustCompile(`(?i)^/?users/([^/]+)/events$`)
+// subscriptionEventsResource is a user's calendar events; subscriptionMessagesResource
+// is a mailbox's Inbox messages.
+var (
+	subscriptionEventsResource   = regexp.MustCompile(`(?i)^/?users/([^/]+)/events$`)
+	subscriptionMessagesResource = regexp.MustCompile(`(?i)^/?users/([^/]+)/mailfolders(?:\('inbox'\)|/inbox)/messages$`)
+)
 
 // Subscription is one of the application's subscriptions.
 type Subscription struct {
@@ -151,21 +154,27 @@ func subscriptionJSON(s *Subscription) map[string]any {
 	}
 }
 
-// subscriptionUser is the user whose events resource names, and the
-// refusal when there is none or its mailbox is refused.
-func (g *FakeGraph) subscriptionUser(resource string) (*User, answer, bool) {
-	m := subscriptionResource.FindStringSubmatch(resource)
+// subscriptionUser is the user whose events or Inbox messages resource names,
+// whether the resource is Inbox messages, and the refusal when there is none
+// or its mailbox is refused.
+func (g *FakeGraph) subscriptionUser(resource string) (*User, bool, answer, bool) {
+	isMessages := false
+	m := subscriptionEventsResource.FindStringSubmatch(resource)
 	if m == nil {
-		return nil, graphError(http.StatusBadRequest, "ExtensionError", "Operation: Create; Exception: [Status Code: BadRequest; Reason: The resource is not supported.]"), false
+		m = subscriptionMessagesResource.FindStringSubmatch(resource)
+		isMessages = m != nil
+	}
+	if m == nil {
+		return nil, false, graphError(http.StatusBadRequest, "ExtensionError", "Operation: Create; Exception: [Status Code: BadRequest; Reason: The resource is not supported.]"), false
 	}
 	u := g.userByID(m[1], false)
 	if u == nil {
-		return nil, notFound(m[1]), false
+		return nil, false, notFound(m[1]), false
 	}
 	if a, refused := mailboxRefused(u); refused {
-		return nil, a, false
+		return nil, false, a, false
 	}
-	return u, answer{}, true
+	return u, isMessages, answer{}, true
 }
 
 // expiration reads a subscription's expirationDateTime: 400 when it does
@@ -239,15 +248,22 @@ func (g *FakeGraph) subscriptionsRoute(method string, seg []string, query url.Va
 	return methodNotAllowed()
 }
 
-// createdByCaller reports whether the request's delegated token is s's
-// creator's. g.mu is held.
+// createdByCaller reports whether the request's token is s's creator's:
+// CreatorID "" for the application's token, or the delegated token's oid.
+// g.mu is held.
 func (g *FakeGraph) createdByCaller(s *Subscription) bool {
-	return g.caller != nil && s.CreatorID != "" && strings.EqualFold(s.CreatorID, g.caller.oid)
+	if g.caller == nil {
+		return s.CreatorID == ""
+	}
+	return s.CreatorID != "" && strings.EqualFold(s.CreatorID, g.caller.oid)
 }
 
 // userOfSubscription is the user s's resource names, nil when none.
 func (g *FakeGraph) userOfSubscription(s *Subscription) *User {
-	m := subscriptionResource.FindStringSubmatch(s.Resource)
+	m := subscriptionEventsResource.FindStringSubmatch(s.Resource)
+	if m == nil {
+		m = subscriptionMessagesResource.FindStringSubmatch(s.Resource)
+	}
 	if m == nil {
 		return nil
 	}
@@ -285,11 +301,15 @@ func (g *FakeGraph) createSubscription(body []byte) answer {
 	if !ok {
 		return a
 	}
-	u, a, ok := g.subscriptionUser(req.Resource)
+	u, isMessages, a, ok := g.subscriptionUser(req.Resource)
 	if !ok {
 		return a
 	}
-	if !g.callerIs(u.ID) {
+	if isMessages {
+		if g.caller != nil && !g.callerIs(u.ID) {
+			return graphError(http.StatusForbidden, "ErrorAccessDenied", "Access is denied. Check credentials and try again.")
+		}
+	} else if !g.callerIs(u.ID) {
 		return graphError(http.StatusForbidden, "ErrorAccessDenied", "Access is denied. Check credentials and try again.")
 	}
 	resource := strings.ToLower(strings.TrimPrefix(req.Resource, "/"))
@@ -313,10 +333,14 @@ func (g *FakeGraph) createSubscription(body []byte) answer {
 				"Subscription validation request failed. Notification endpoint must respond with 200 OK to validation request.")
 		}
 	}
+	creatorID := ""
+	if g.caller != nil {
+		creatorID = g.caller.oid
+	}
 	s := &Subscription{
 		ID: uuid.NewString(), Resource: req.Resource, ChangeType: req.ChangeType,
 		NotificationURL: req.NotificationURL, LifecycleNotificationURL: req.LifecycleNotificationURL,
-		ClientState: req.ClientState, Expiration: expires, CreatorID: g.caller.oid,
+		ClientState: req.ClientState, Expiration: expires, CreatorID: creatorID,
 	}
 	g.subscriptions = append(g.subscriptions, s)
 	return answer{status: http.StatusCreated, body: subscriptionJSON(s)}

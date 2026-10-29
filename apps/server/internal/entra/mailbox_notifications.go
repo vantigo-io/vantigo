@@ -16,6 +16,7 @@ import (
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/entra/store"
+	"github.com/vantigo-io/vantigo/server/internal/module"
 )
 
 // This file is the module's change notifications for the mailbox calendar
@@ -81,13 +82,16 @@ const (
 	subscriptionConflictHold = 24 * time.Hour
 )
 
-// The states of a subscription's row (O11.4).
+// The states and resources of a subscription's row (O11.4, M17).
 const (
 	subscriptionActive      = "active"
 	subscriptionReauthorize = "reauthorize"
 	subscriptionRemoved     = "removed"
 	subscriptionDeleting    = "deleting"
 	subscriptionConflict    = "conflict"
+
+	subscriptionResourceEvents   = "events"
+	subscriptionResourceMessages = "messages"
 )
 
 // notificationsURL is the webhook's address, PUBLIC_BASE_URL +
@@ -95,7 +99,11 @@ const (
 // notifications: CALENDAR_MAILBOX_NOTIFICATIONS_ENABLED off, PUBLIC_BASE_URL
 // unset, or no configuration at hand.
 func (m *mailboxCalendar) notificationsURL() (string, bool) {
-	cfg := m.deps.Config
+	return notificationsURLOf(m.deps)
+}
+
+func notificationsURLOf(deps module.Deps) (string, bool) {
+	cfg := deps.Config
 	if cfg == nil || !cfg.CalendarMailboxNotificationsEnabled || cfg.PublicBaseURL == "" {
 		return "", false
 	}
@@ -137,9 +145,12 @@ func expiryOf(answered string, asked, now time.Time) time.Time {
 	return t.UTC()
 }
 
-// readSubscription is the mailbox's row, nil when it has none.
-func readSubscription(ctx context.Context, q *store.Queries, oid uuid.UUID) (*store.EntraMailboxSubscription, error) {
-	row, err := q.GetMailboxSubscription(ctx, oid)
+// readSubscription is the mailbox's row for resource, nil when it has none.
+func readSubscription(ctx context.Context, q *store.Queries, oid uuid.UUID, resource string) (*store.EntraMailboxSubscription, error) {
+	row, err := q.GetMailboxSubscription(ctx, store.GetMailboxSubscriptionParams{
+		ObjectID: oid,
+		Resource: resource,
+	})
 	switch {
 	case errors.Is(err, pgx.ErrNoRows):
 		return nil, nil
@@ -183,7 +194,7 @@ func (m *mailboxCalendar) Watch(ctx context.Context, mailbox string) error {
 		return nil
 	}
 	now := m.client.now()
-	row, err := readSubscription(ctx, s.q, s.oid)
+	row, err := readSubscription(ctx, s.q, s.oid, subscriptionResourceEvents)
 	if err != nil {
 		return err
 	}
@@ -246,7 +257,9 @@ func (m *mailboxCalendar) renew(ctx context.Context, s mailboxSession, id string
 		map[string]string{"expirationDateTime": asked.Format(time.RFC3339)}, &answer, noWords)
 	switch {
 	case isStatus(err, http.StatusNotFound), isStatus(err, http.StatusForbidden):
-		if err := s.q.DeleteMailboxSubscription(ctx, s.oid); err != nil {
+		if err := s.q.DeleteMailboxSubscription(ctx, store.DeleteMailboxSubscriptionParams{
+			ObjectID: s.oid, Resource: subscriptionResourceEvents,
+		}); err != nil {
 			return false, fmt.Errorf("entra: forget the mailbox's subscription: %w", err)
 		}
 		return false, nil
@@ -288,7 +301,7 @@ func (m *mailboxCalendar) create(ctx context.Context, s mailboxSession, target s
 	hash := sha256.Sum256([]byte(clientState))
 	now := m.client.now()
 	if _, err := s.q.UpsertMailboxSubscription(ctx, store.UpsertMailboxSubscriptionParams{
-		ObjectID: s.oid, ClientStateHash: hash[:], NotificationUrl: target, Now: now,
+		ObjectID: s.oid, Resource: subscriptionResourceEvents, ClientStateHash: hash[:], NotificationUrl: target, Now: now,
 	}); err != nil {
 		return fmt.Errorf("entra: record the subscription's create: %w", err)
 	}
@@ -302,7 +315,7 @@ func (m *mailboxCalendar) create(ctx context.Context, s mailboxSession, target s
 		"clientState":              clientState,
 	}
 	var answer graphSubscription
-	err := m.withValidationWindow(ctx, s.q, now, func() error {
+	err := withValidationWindow(ctx, s.q, now, func() error {
 		// noRetry: a 5xx may have made the subscription, which the next
 		// create's 409 clears; and the body carries the clientState.
 		return m.client.postAs(ctx, s.src, "/subscriptions", body, &answer, noRetry)
@@ -316,7 +329,9 @@ func (m *mailboxCalendar) create(ctx context.Context, s mailboxSession, target s
 		if err := s.q.SetNotificationsUnreachable(ctx, &now); err != nil {
 			return fmt.Errorf("entra: record the webhook unreachable: %w", err)
 		}
-		if err := s.q.DeleteMailboxSubscription(ctx, s.oid); err != nil {
+		if err := s.q.DeleteMailboxSubscription(ctx, store.DeleteMailboxSubscriptionParams{
+			ObjectID: s.oid, Resource: subscriptionResourceEvents,
+		}); err != nil {
 			return fmt.Errorf("entra: forget the mailbox's subscription: %w", err)
 		}
 		return nil
@@ -329,7 +344,7 @@ func (m *mailboxCalendar) create(ctx context.Context, s mailboxSession, target s
 			m.client.logger.WarnContext(ctx, "entra: another installation's subscription holds a mailbox's changes; it is not watched for a day",
 				"tenant", s.tenantID.String())
 			if err := s.q.SetMailboxSubscriptionState(ctx, store.SetMailboxSubscriptionStateParams{
-				State: subscriptionConflict, Now: m.client.now(), ObjectID: s.oid,
+				State: subscriptionConflict, Now: m.client.now(), ObjectID: s.oid, Resource: subscriptionResourceEvents,
 			}); err != nil {
 				return fmt.Errorf("entra: record the subscription's conflict: %w", err)
 			}
@@ -346,7 +361,7 @@ func (m *mailboxCalendar) create(ctx context.Context, s mailboxSession, target s
 	id := sid.String()
 	expires := expiryOf(answer.Expiration, asked, now)
 	if _, err := s.q.UpsertMailboxSubscription(ctx, store.UpsertMailboxSubscriptionParams{
-		ObjectID: s.oid, SubscriptionID: &id, ClientStateHash: hash[:], NotificationUrl: target, ExpiresAt: &expires, Now: m.client.now(),
+		ObjectID: s.oid, Resource: subscriptionResourceEvents, SubscriptionID: &id, ClientStateHash: hash[:], NotificationUrl: target, ExpiresAt: &expires, Now: m.client.now(),
 	}); err != nil {
 		return fmt.Errorf("entra: record the subscription: %w", err)
 	}
@@ -362,7 +377,7 @@ func (m *mailboxCalendar) create(ctx context.Context, s mailboxSession, target s
 // now + subscriptionValidationWindow on the connection row before, closed
 // after — whatever post answered, on a context the caller's ending does not
 // cancel — unless a create started since opened its own.
-func (m *mailboxCalendar) withValidationWindow(ctx context.Context, q *store.Queries, now time.Time, post func() error) error {
+func withValidationWindow(ctx context.Context, q *store.Queries, now time.Time, post func() error) error {
 	until := now.Add(subscriptionValidationWindow).Truncate(time.Microsecond)
 	if err := q.SetNotificationsValidating(ctx, &until); err != nil {
 		return fmt.Errorf("entra: open the handshake's window: %w", err)
@@ -448,13 +463,15 @@ func (m *mailboxCalendar) Unwatch(ctx context.Context, mailbox string) error {
 		return fmt.Errorf("entra: a mailbox that is no object id: %w", contracts.ErrMailboxUnknown)
 	}
 	q := store.New(m.deps.Pool)
-	row, err := readSubscription(ctx, q, oid)
+	row, err := readSubscription(ctx, q, oid, subscriptionResourceEvents)
 	if err != nil || row == nil {
 		return err
 	}
 	now := m.client.now()
 	forget := func() error {
-		if err := q.DeleteMailboxSubscription(ctx, oid); err != nil {
+		if err := q.DeleteMailboxSubscription(ctx, store.DeleteMailboxSubscriptionParams{
+			ObjectID: oid, Resource: subscriptionResourceEvents,
+		}); err != nil {
 			return fmt.Errorf("entra: forget the mailbox's subscription: %w", err)
 		}
 		return nil
@@ -493,7 +510,7 @@ func (m *mailboxCalendar) Unwatch(ctx context.Context, mailbox string) error {
 		return forget()
 	}
 	if serr := q.SetMailboxSubscriptionState(ctx, store.SetMailboxSubscriptionStateParams{
-		State: subscriptionDeleting, Now: m.client.now(), ObjectID: oid,
+		State: subscriptionDeleting, Now: m.client.now(), ObjectID: oid, Resource: subscriptionResourceEvents,
 	}); serr != nil {
 		return fmt.Errorf("entra: record the subscription's delete owed: %w", serr)
 	}
@@ -505,7 +522,7 @@ func (m *mailboxCalendar) Unwatch(ctx context.Context, mailbox string) error {
 // mailbox is its object id in lower case, as the other calls take it.
 func (m *mailboxCalendar) Notified(ctx context.Context, since time.Time) ([]contracts.MailboxNotice, error) {
 	rows, err := store.New(m.deps.Pool).ListMailboxNotified(ctx, store.ListMailboxNotifiedParams{
-		Since: since, RowLimit: contracts.MailboxNoticesMax,
+		Resource: subscriptionResourceEvents, Since: since, RowLimit: contracts.MailboxNoticesMax,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("entra: read the notified mailboxes: %w", err)

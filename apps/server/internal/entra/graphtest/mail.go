@@ -3,8 +3,10 @@ package graphtest
 import (
 	"bytes"
 	"encoding/base64"
+	"encoding/json"
 	"net/http"
 	"net/mail"
+	"net/url"
 	"regexp"
 	"slices"
 	"strings"
@@ -126,9 +128,12 @@ func keyForm(path string) string {
 	return "/users/" + strings.ReplaceAll(m[1], "''", "'") + m[2]
 }
 
+// mailFolderFilter is GET /users/{id}/mailFolders's $filter=displayName eq '…'.
+var mailFolderFilter = regexp.MustCompile(`^displayName eq '((?:[^']|'')*)'$`)
+
 // mailRoute answers a request to u's mail; seg starts at the route's
 // first segment after the user.
-func (g *FakeGraph) mailRoute(u *User, method string, seg []string, contentType string, body []byte) answer {
+func (g *FakeGraph) mailRoute(u *User, method string, seg []string, query url.Values, contentType string, body []byte) answer {
 	if a, refused := mailboxRefused(u); refused {
 		return a
 	}
@@ -142,6 +147,10 @@ func (g *FakeGraph) mailRoute(u *User, method string, seg []string, contentType 
 		return answer{status: http.StatusOK, body: map[string]any{"value": purpose}}
 	case method == http.MethodGet && strings.EqualFold(rest, "mailFolders/inbox"):
 		return answer{status: http.StatusOK, body: map[string]any{"id": inboxID(u)}}
+	case method == http.MethodGet && strings.EqualFold(rest, "mailFolders"):
+		return g.listMailFolders(u, query)
+	case method == http.MethodPost && strings.EqualFold(rest, "mailFolders"):
+		return g.createMailFolder(u, body)
 	case method == http.MethodPost && rest == "sendMail":
 		mime, a, ok := g.decodeMIME(contentType, body)
 		if !ok {
@@ -183,6 +192,10 @@ func (g *FakeGraph) mailRoute(u *User, method string, seg []string, contentType 
 		return answer{status: http.StatusAccepted}
 	case len(seg) == 3 && seg[0] == "messages" && seg[2] == "$value" && method == http.MethodGet:
 		return g.inboxValue(u, seg[1])
+	case len(seg) == 3 && seg[0] == "messages" && seg[2] == "move" && method == http.MethodPost:
+		return g.moveMessage(u, seg[1], body)
+	case len(seg) == 2 && seg[0] == "messages" && method == http.MethodPatch:
+		return g.patchMessage(u, seg[1], body)
 	case len(seg) == 2 && seg[0] == "messages" && method == http.MethodDelete:
 		i := g.draftIndex(u, seg[1])
 		if i < 0 {
@@ -192,6 +205,112 @@ func (g *FakeGraph) mailRoute(u *User, method string, seg []string, contentType 
 		return answer{status: http.StatusNoContent}
 	}
 	return graphError(http.StatusBadRequest, "BadRequest", "Unsupported request: "+method+" users/{id}/"+rest+".")
+}
+
+// listMailFolders is GET /users/{id}/mailFolders, optionally narrowed by
+// $filter=displayName eq '…'.
+func (g *FakeGraph) listMailFolders(u *User, query url.Values) answer {
+	mb := g.mailboxOf(u.ID)
+	var filterName string
+	hasFilter := false
+	if f := query.Get("$filter"); f != "" {
+		m := mailFolderFilter.FindStringSubmatch(f)
+		if m == nil {
+			return graphError(http.StatusBadRequest, "ErrorInvalidUrlQuery", "The query filter contains one or more invalid nodes.")
+		}
+		filterName = strings.ReplaceAll(m[1], "''", "'")
+		hasFilter = true
+	}
+	out := []any{}
+	for _, f := range mb.folders {
+		if hasFilter && !strings.EqualFold(f.DisplayName, filterName) {
+			continue
+		}
+		out = append(out, map[string]any{"id": f.ID, "displayName": f.DisplayName})
+	}
+	return answer{status: http.StatusOK, body: map[string]any{"value": out}}
+}
+
+// createMailFolder is POST /users/{id}/mailFolders: 409 ErrorFolderExists when
+// a folder of that displayName is already there.
+func (g *FakeGraph) createMailFolder(u *User, body []byte) answer {
+	var req struct {
+		DisplayName string `json:"displayName"`
+	}
+	if err := json.Unmarshal(body, &req); err != nil || strings.TrimSpace(req.DisplayName) == "" {
+		return graphError(http.StatusBadRequest, "ErrorInvalidRequest", "The folder displayName is required.")
+	}
+	mb := g.mailboxOf(u.ID)
+	for _, f := range mb.folders {
+		if strings.EqualFold(f.DisplayName, req.DisplayName) {
+			return graphError(http.StatusConflict, "ErrorFolderExists", "A folder with the specified name already exists.")
+		}
+	}
+	f := &MailFolder{ID: g.itemID(), DisplayName: req.DisplayName}
+	mb.folders = append(mb.folders, f)
+	return answer{status: http.StatusCreated, body: map[string]any{"id": f.ID, "displayName": f.DisplayName}}
+}
+
+// patchMessage is PATCH /users/{id}/messages/{id}: updates isRead and/or
+// categories on a message in the mailbox.
+func (g *FakeGraph) patchMessage(u *User, id string, body []byte) answer {
+	var req struct {
+		IsRead     *bool     `json:"isRead"`
+		Categories *[]string `json:"categories"`
+	}
+	if err := json.Unmarshal(body, &req); err != nil {
+		return graphError(http.StatusBadRequest, "ErrorInvalidRequest", "The request body is not valid.")
+	}
+	mb := g.mailboxOf(u.ID)
+	i := slices.IndexFunc(mb.messages, func(m *inboxItem) bool { return m.id == id })
+	if i < 0 {
+		return itemNotFound()
+	}
+	m := mb.messages[i]
+	if req.IsRead != nil {
+		m.isRead = *req.IsRead
+	}
+	if req.Categories != nil {
+		m.categories = slices.Clone(*req.Categories)
+	}
+	g.serial++
+	m.seq = g.serial
+	return answer{status: http.StatusOK, body: map[string]any{
+		"id": m.id, "isRead": m.isRead, "categories": orEmptyStrings(m.categories),
+	}}
+}
+
+// moveMessage is POST /users/{id}/messages/{id}/move: moves the message to
+// destinationId, removing it from the Inbox when moved elsewhere and keeping
+// its immutable id.
+func (g *FakeGraph) moveMessage(u *User, id string, body []byte) answer {
+	var req struct {
+		DestinationID string `json:"destinationId"`
+	}
+	if err := json.Unmarshal(body, &req); err != nil || strings.TrimSpace(req.DestinationID) == "" {
+		return graphError(http.StatusBadRequest, "ErrorInvalidRequest", "The destinationId is required.")
+	}
+	mb := g.mailboxOf(u.ID)
+	toInbox := strings.EqualFold(req.DestinationID, "inbox") || req.DestinationID == inboxID(u)
+	if !toInbox && !slices.ContainsFunc(mb.folders, func(f *MailFolder) bool { return f.ID == req.DestinationID }) {
+		return itemNotFound()
+	}
+	i := slices.IndexFunc(mb.messages, func(m *inboxItem) bool { return m.id == id })
+	if i < 0 {
+		return itemNotFound()
+	}
+	m := mb.messages[i]
+	if !toInbox {
+		if j := slices.IndexFunc(mb.inbox, func(x *inboxItem) bool { return x.id == id }); j >= 0 {
+			mb.inbox = slices.Delete(mb.inbox, j, j+1)
+			g.serial++
+			mb.inboxRemoved = append(mb.inboxRemoved, tombstone{id: id, seq: g.serial})
+		}
+		m.folderID = req.DestinationID
+	} else {
+		m.folderID = ""
+	}
+	return answer{status: http.StatusCreated, body: map[string]any{"id": m.id, "parentFolderId": req.DestinationID}}
 }
 
 // draftIndex is the index of u's draft id among g.drafts, -1 when there is
