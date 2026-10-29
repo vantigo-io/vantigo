@@ -544,10 +544,13 @@ the **application's own access**, not a person's, and that access is granted in
 with `Mail.*` permissions in the app registration, which would reach every mailbox in
 the tenant. It is off by default.
 
-In this release a channel **sends only**: the message is sent from the shared mailbox and
-kept in its **Sent Items**, but nothing in the mailbox is read into Vantigo yet;
-receiving comes later. How the module
-sends is in [the reference](/en/reference/entra/#mail-channels).
+A channel **sends and receives**: its replies are sent from the shared mailbox and kept
+in its **Sent Items**, and the mail arriving in the mailbox's **Inbox** from the day the
+channel is added is read into Communications' Inbox, within about five minutes. Vantigo
+only reads the Inbox — it marks, moves and deletes nothing there — and never imports the
+mail that was there before the channel. **Application Mail Full Access**, below, already
+covers reading; there is nothing more to grant. How the module sends and reads is in
+[the reference](/en/reference/entra/#mail-channels).
 
 ### Preconditions for mail channels
 
@@ -566,7 +569,7 @@ sends is in [the reference](/en/reference/entra/#mail-channels).
 ### Turn on mail channels
 
 1. On the module page, in step **4 Set the account rules**, under **Mail channels**, turn
-   on **Mail channels: let Communications send through Exchange Online shared
+   on **Mail channels: let Communications send and receive through Exchange Online shared
    mailboxes** and choose **Save the account rules**. Anyone with `entra:manage` may.
 2. Under the switch, **Commands for Exchange Online PowerShell** shows six commands with
    your application's **client id** and its **object id** filled in. If it says *Test the
@@ -619,6 +622,10 @@ sends is in [the reference](/en/reference/entra/#mail-channels).
    guide](/en/user/communications/#set-up-a-channel)). Vantigo checks it then — the
    address resolved, the mailbox shared, its Inbox reachable — and the channel is created
    active. **Verify** on its row checks again at any time.
+4. Send a mail to the mailbox from outside. Within about five minutes it is a
+   conversation in Communications' Inbox, and the channel's **Receive status** on the
+   **Channels** page reads **Receiving**, with when it last synced; until the first sync
+   it reads **Waiting for first sync**.
 
 **Exchange takes 30 minutes to 2 hours** to apply a new assignment or a newly marked
 mailbox to the application's access. Until it does, adding the channel is refused as
@@ -630,7 +637,9 @@ Turn the switch off and save. Nothing is deleted: the channels stay, Microsoft 3
 longer offered for new ones, and a Microsoft 365 channel's mail waiting to be sent is
 **held**: it spends none of its eight attempts and is tried again at most 5 minutes apart,
 until **24 hours after it was queued**, when it is given up as `provider_unavailable` and
-counted as failed. Turn it on again within that day and the mail is sent. The same holds
+counted as failed. Turn it on again within that day and the mail is sent. Receiving
+pauses too: no mail is read while the switch is off, and once it is on again the mail
+that arrived meanwhile is read — none is lost, as the mailbox keeps it. The same holds
 while the connection is failing or the Entra module is off. The
 Exchange assignments stay until you remove them (`Remove-ManagementRoleAssignment`,
 `Remove-ManagementScope`, and `Set-Mailbox … -CustomAttribute10 $null`).
@@ -672,6 +681,27 @@ Exchange assignments stay until you remove them (`Remove-ManagementRoleAssignmen
 - **A message was given up as `provider_unavailable`.** Mail channels stayed off, or the
   connection failing, for 24 hours after the message was queued. Fix the switch or the
   connection, and send again.
+- **Mail sent to the mailbox does not appear in Communications.** Look at the channel's
+  **Receive status** on Communications' **Channels** page:
+  - **Waiting for first sync** for more than a few minutes: the worker is not running —
+    check that a process runs the background workers
+    ([installation](/en/admin/installation/)) — or the channel is inactive.
+  - **Failed: The application can no longer read the mailbox…** (`mailbox_denied`): the
+    mailbox left the scope, or a role was removed. Run
+    `Test-ServicePrincipalAuthorization` as above; mark the mailbox or restore the
+    assignment, and allow for the **30 minutes to 2 hours** Exchange's cache takes.
+    Vantigo tries again **every hour** while it is refused, and reads the mail that
+    arrived meanwhile once it is allowed.
+  - **Failed: The mailbox no longer exists in Microsoft 365.** (`mailbox_gone`) or **…is
+    not known for this channel** (`mailbox_unknown`): choose **Verify** on the channel's
+    row; if the mailbox was replaced, add it anew.
+  - **Last sync failed: Microsoft 365 did not answer…** (`sync_failed`): throttling or an
+    outage; Vantigo backs off from one minute up to an hour and catches up by itself.
+    The metric `communications.inbound.cycles_failed` counts such failures.
+  - **Receiving**, yet a message is missing: it arrived before the channel was added (it
+    is never imported), it was larger than `COMMUNICATIONS_INBOUND_MAX_BYTES` (25 MiB by
+    default; skipped), or it was not delivered to the **Inbox** — a mailbox rule moved it
+    to another folder first. Vantigo reads the Inbox only.
 - **Drafts left in a shared mailbox's Drafts folder.** A message with a blind copy is
   sent through a draft; if Vantigo's process stops between creating the draft and sending
   it, the draft stays, and the retry makes a new one. Delete such drafts in Outlook from
@@ -680,13 +710,22 @@ Exchange assignments stay until you remove them (`Remove-ManagementRoleAssignmen
   address, which may be an alias of the shared mailbox rather than its primary address.
   Whether Exchange sends `From:` the alias, rewrites it or refuses it is not verified yet;
   check the first message, or add the channel anew by the primary address.
+- **A forged sender links a conversation.** Vantigo takes a received message's `From` as
+  it stands: a mail whose `From` is forged to a customer's contact address is linked to
+  that customer, and a reply — or a reply-all, which copies the message's Cc list — goes
+  to the addresses the message names. Keep Exchange Online's anti-spoofing (SPF, DKIM,
+  DMARC) and Junk filtering on for the channel mailboxes: Vantigo reads only the Inbox,
+  so what Exchange puts in Junk Email never reaches it.
 - **Exclusive management scopes** in Exchange do not restrict an application's access,
   and a scope filtered on group membership (`MemberOfGroup`) counts direct members only;
   the attribute filter above avoids both.
 - **Not verified on a real tenant yet**: that Exchange keeps Vantigo's own `Message-ID` on
-  a message sent this way, that a blind copy (Bcc) reaches its recipient, and how an alias
-  address is sent from. They are on the release's checklist; until then, check one message's headers and one blind copy
-  after setting up the first channel.
+  a message sent this way — on which it depends whether a customer's first answer to a
+  conversation Vantigo began joins it or starts a new one —, that a blind copy (Bcc)
+  reaches its recipient, how an alias address is sent from, and whether a message moved
+  into the Inbox from another folder is read. They are on the release's checklist; until
+  then, check one message's headers and one blind copy after setting up the first
+  channel, and that a customer's answer to it joins its conversation.
 
 ## Accounts Vantigo did not create
 

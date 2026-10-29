@@ -1,6 +1,6 @@
 ---
 title: Kommunikasjon
-description: Delte postkasser, samtaler med kunder, sending av e-post og blokkeringer — kanaler på SMTP eller på en delt postboks i Microsoft 365, å bytte en kanal til Microsoft 365, og størrelsen en Microsoft 365-kanal sender.
+description: Delte postkasser, samtaler med kunder, mottak og sending av e-post og blokkeringer — kanaler på SMTP eller på en delt postboks i Microsoft 365, e-post mottatt i en Microsoft 365-kanal, svar og svar alle, å bytte en kanal til Microsoft 365, og størrelsen en Microsoft 365-kanal sender.
 sidebar:
   order: 80
 sources:
@@ -14,11 +14,12 @@ der postkassene settes opp; og **Blokkeringer**, listen over adresser Vantigo ne
 skrive til. Åpner du appen, havner du i Innboks, og dashbordet Hjem viser et
 Kommunikasjon-kort med åpne, nye og lukkede samtaler.
 
-Vantigo sender e-post, men mottar den ikke ennå: ingen e-post kommer inn gjennom
-Vantigo, så en samtale inneholder bare det som er sendt fra den og notatene som er
-skrevet i den. Hva det betyr for svar, er beskrevet under
-[The outbound-only consequence](/en/reference/communications/#the-outbound-only-consequence)
-i referansen, og nevnt nedenfor der du støter på det.
+E-post som kommer til den delte postboksen til en **Microsoft 365**-kanal, kommer inn i
+Innboks av seg selv, som en samtale du kan lese og svare på. En **SMTP**-kanal sender
+bare: ingen e-post kommer inn gjennom den, så samtalene dens inneholder bare det som er
+sendt fra Vantigo og notatene som er skrevet i dem, og de kan ikke besvares. Hvordan
+mottaket virker, er beskrevet under
+[Receiving](/en/reference/communications/#receiving) i referansen.
 
 ## Finn en samtale
 
@@ -47,13 +48,33 @@ en annen. Innboks krever `communications:conversations-view`.
 En samtale samler alt som er utvekslet med én kunde om ett emne: deltakerne og emnet i
 toppen, deretter meldingene i rekkefølge. Hver melding er merket **You** for en e-post
 sendt fra Vantigo, **Internal note** for et notat en kollega har skrevet, og
-avsenderens navn for en melding fra kunden (disse merkelappene vises på engelsk). En
-melding skrevet som HTML vises i en sandkasse som blokkerer skript, skjemaer og
-nettverkstilgang. Klokkeslettet på hver melding, og på hver samtale i listen, er i din
-egen tidssone ([Velg tidssonen din](/nb/user/getting-started/#velg-tidssonen-din)).
+avsenderens navn for en melding fra kunden (disse merkelappene vises på engelsk).
+Klokkeslettet på hver melding, og på hver samtale i listen, er i din egen tidssone
+([Velg tidssonen din](/nb/user/getting-started/#velg-tidssonen-din)).
 
-Et vedlegg vises som en lenke du kan laste ned; mens det venter på å bli sjekket, vises
-det som **Skanner**, og et som ikke kan leveres, som **Vedlegg utilgjengelig**.
+**E-post fra kunder.** En e-post sendt til den delte postboksen til en Microsoft
+365-kanal vises i Innboks innen omtrent fem minutter. Et svar på en tidligere melding
+havner i samtalen til den meldingen; alt annet starter en ny samtale. En lukket samtale
+kunden skriver til igjen, åpnes igjen; en arkivert samtale blir stående som den er, og
+e-posten starter en ny samtale. Meldingen blir også liggende i den delte postboksen i
+Outlook, som den var.
+
+- En melding skrevet som HTML vises formatert, i en sandkasse som blokkerer skript,
+  skjemaer og nettverkstilgang. Bilder fra internett fjernes; bilder meldingen selv har
+  med, vises. **Vis som tekst** viser meldingens rene tekst i stedet, og **Vis formatert**
+  går tilbake.
+- Et automatisk svar — et fraværssvar, for eksempel — er merket **Autosvar**, og åpner
+  ikke en lukket samtale igjen.
+- En melding Vantigo ikke kunne lese, sier *Vantigo kunne ikke lese denne meldingen.*;
+  åpne den i e-postprogrammet ditt med **Last ned originalen**. **Meldingshandlinger** på
+  enhver melding fra en kunde tilbyr også **Last ned originalen**, e-posten nøyaktig slik
+  den kom, som en `.eml`-fil.
+
+Et vedlegg vises som en lenke du kan laste ned. Et som kom med en e-post fra en kunde, er
+merket *Ikke skannet. Åpne det bare hvis du stoler på avsenderen.* — Vantigo sjekker ikke
+filer for virus — og lastes alltid ned som en fil, åpnes aldri i nettleseren. Et vedlegg
+som venter på å bli sjekket, vises som **Skanner**, og et som ikke kan leveres, som
+**Vedlegg utilgjengelig**.
 
 Fra toppen kan du:
 
@@ -67,6 +88,11 @@ Fra toppen kan du:
 tillegg `communications:conversations-manage`.
 
 ## Knytt en samtale til en kunde
+
+Når en e-post fra en kunde kommer inn, slår Vantigo opp avsenderens adresse blant
+kundenes kontakter. Hører den til **én kunde**, knyttes samtalen til den kunden av seg
+selv; hører den til **flere**, listes de som kandidater du kan velge mellom. En samtale som
+allerede er knyttet — for hånd eller av en tidligere e-post — beholder kunden sin.
 
 Toppen av samtalen forteller hvordan den henger sammen med en kunde:
 
@@ -85,9 +111,11 @@ administratorens side av det står under
 ## Svar en kunde
 
 Skrivefeltet nederst i samtalen har overskriften **Svar**. Det forteller hvem svaret
-går til («Svarer til …»), og når samtalen har flere mottakere, tilbyr velgeren
-**Svarmodus** valgene **Svar** og **Svar alle · N**. Svaret sendes fra kanalen samtalen
-hører til; du velger ikke avsender.
+går til («Svarer til …»): avsenderen av kundens siste e-post. Når den e-posten også ble
+sendt til andre i kopi (Cc), tilbyr velgeren **Svarmodus** valgene **Svar**, bare til
+avsenderen, og **Svar alle · N**, som tar dem med i kopi også — uten den delte postboksen
+selv. Svaret sendes fra kanalen samtalen hører til; du velger ikke avsender. Det sendes
+som et svar på kundens e-post, så det havner i samme tråd i kundens e-postprogram.
 
 1. Skriv meldingen i editoren; fet, kursiv og punktlister er tilgjengelige.
 2. **Legg ved fil** klargjør en fil. Den vises som et merke med navnet sitt: grønt når
@@ -100,16 +128,17 @@ hører til; du velger ikke avsender.
    vedlegg og tekst sammen. En større fil avvises med en gang med *Vedlegget er større enn
    denne kanalen kan sende (omtrent 2,1 MB).*
 3. **Send svar**. Knappen er deaktivert til det finnes tekst, og viser **Venter på
-   vedleggsskanning** mens et vedlegg ennå ikke er klart.
+   vedleggsskanning** mens et vedlegg ennå ikke er klart. I en samtale uten e-post fra
+   kunden forblir den deaktivert, med *Det finnes ingen melding fra kunden å svare på
+   ennå.*
 
 Å sende krever `communications:conversations-reply`. Svaret legges i kø i stedet for å
 sendes på flekken — se [Etter at du har sendt](#etter-at-du-har-sendt) — og det avvises
 når:
 
 - samtalens kanal er deaktivert under Kanaler;
-- samtalen ikke har noen kundemelding å svare på. Siden Vantigo ikke mottar e-post
-  ennå, gjelder det alle samtaler i dag, så et svar kan foreløpig ikke sendes;
-  skrivefeltet er komplett og begynner å virke når innkommende e-post finnes;
+- samtalen ikke har noen kundemelding å svare på — en samtale startet fra Vantigo som
+  kunden ikke har svart på ennå, eller en på en SMTP-kanal;
 - et vedlegg ikke er klart;
 - en mottaker står på blokkeringslisten;
 - på en Microsoft 365-kanal er meldingen og vedleggene til sammen større enn kanalen
@@ -160,6 +189,16 @@ tabellen over kanaler med **Adresse** (visningsnavnet, med adressen under),
 merket **Standard** er den en samtale opprettes på når ingen er oppgitt; den første
 kanalen du oppretter, blir standard.
 
+Kolonnen **Mottaksstatus** sier om en kanal mottar e-post: **Mottar**, med *Sist
+synkronisert …*; **Venter på første synkronisering** rett etter at kanalen ble lagt til
+eller byttet; **Feilet: …** med årsaken når Vantigo ikke kan lese postboksen —
+*Applikasjonen kan ikke lenger lese postboksen. Gi den tilgang i Exchange Online.*,
+*Postboksen finnes ikke lenger i Microsoft 365.* eller *Postboksen er ikke kjent for denne
+kanalen. Bekreft kanalen.* — eller **Siste synkronisering feilet: …** når ett forsøk
+feilet og Vantigo prøver igjen (*E-postkanaler gjennom Microsoft 365 er ikke
+tilgjengelige.* mens **E-postkanaler** er av eller Entra-tilkoblingen feiler; e-posten
+venter i postboksen). En SMTP-kanal viser **Sender bare**.
+
 En kanal sender på en av to måter, sin **Leverandør**:
 
 - **SMTP** — gjennom en e-postserver, med en SMTP-konto. Administratoren må ha
@@ -169,7 +208,9 @@ En kanal sender på en av to måter, sin **Leverandør**:
   administrator setter opp for Vantigos egne invitasjoner og passordtilbakestillinger er
   noe annet og brukes ikke her.
 - **Microsoft 365** — fra en **delt postboks** i Exchange Online, gjennom Microsoft 365,
-  uten passord å legge inn. Det tilbys først når noen har slått på **E-postkanaler** i
+  uten passord å legge inn. Den **mottar** også: e-post som kommer til innboksen i den
+  delte postboksen fra den dagen kanalen legges til, kommer inn i Innboks — ikke e-posten
+  som lå der fra før. Det tilbys først når noen har slått på **E-postkanaler** i
   appen Microsoft Entra ID og en Exchange-administrator har gitt Vantigo tilgang til
   postboksen ([administrasjonsveiledningen](/nb/admin/entra/#mail-channels)). Når
   applikasjonens tilgang når alle postboksene i selskapet, sier et oransje varsel over
@@ -221,8 +262,9 @@ kanalen sende gjennom Microsoft 365 i stedet, og beholder samtalene, adressen og
 **Standard**. På raden, velg **Bytt til Microsoft 365**; dialogen advarer *SMTP-innstillingene
 slettes. For å gå tilbake må du legge dem inn på nytt.* — velg **Bytt**. Vantigo sjekker
 postboksen som når du legger til en, med de samme meldingene, og leverandøren på raden
-blir **Microsoft 365**: «Kanalen er byttet — Kanalen sender nå gjennom Microsoft 365.»
-Handlingen vises bare mens Microsoft 365 er tilgjengelig.
+blir **Microsoft 365**: «Kanalen er byttet — Kanalen sender og mottar nå gjennom
+Microsoft 365.» Fra da av kommer ny e-post i postboksen inn i Innboks; e-post som lå der
+fra før, gjør det ikke. Handlingen vises bare mens Microsoft 365 er tilgjengelig.
 
 Kanalen beholder adressen den hadde. Er adressen et alias for den delte postboksen og
 ikke den primære adressen, sjekk at den første meldingen går ut som forventet: hvordan
@@ -267,16 +309,16 @@ som spør «Tillat denne adressen å motta meldinger igjen?» Bekreftelsen lyder
 
 Blokkeringer sammenlignes uten hensyn til store og små bokstaver. Et svar til en
 blokkert adresse avvises når det sendes, og utboksen sjekker listen en gang til før
-hvert leveringsforsøk. Vantigo legger ikke til blokkeringer på egen hånd: siden ingen
-e-post mottas, når en returmelding («bounce») det aldri, så en adresse som returnerer
-e-post må legges til her for hånd. Blokkeringer krever
+hvert leveringsforsøk. Vantigo legger ikke til blokkeringer på egen hånd: en
+returmelding («bounce») som når en Microsoft 365-kanal, kommer inn i Innboks som enhver
+annen e-post, og adressen må legges til her for hånd. Blokkeringer krever
 `communications:suppressions-manage`.
 
 ## Rettigheter
 
 | For å | Trenger du |
 | --- | --- |
-| Åpne Innboks, lese samtaler, markere dem som lest, laste ned vedlegg | `communications:conversations-view` |
+| Åpne Innboks, lese samtaler, markere dem som lest, laste ned vedlegg og originaler | `communications:conversations-view` |
 | Svare, legge ved filer, skrive utkast med KI | `communications:conversations-reply`, sammen med view |
 | Endre status, tagger og kundekobling, legge til notater, be om et kundeforslag | `communications:conversations-manage`, sammen med view |
 | Se og administrere Kanaler | `communications:channels-manage` |

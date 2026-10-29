@@ -552,10 +552,13 @@ den tilgangen gis i **Exchange Online med RBAC for Applications**, avgrenset til
 postboksene du merker — ikke med `Mail.*`-tillatelser i appregistreringen, som ville nådd
 hver postboks i leietakeren. Det er av som standard.
 
-I denne versjonen **sender en kanal bare**: meldingen sendes fra den delte postboksen og
-ligger i **Sendte elementer** der, men ingenting i postboksen leses inn i Vantigo ennå;
-mottak kommer senere. Hvordan
-modulen sender, står i [referansen](/en/reference/entra/#mail-channels).
+En kanal **sender og mottar**: svarene sendes fra den delte postboksen og ligger i
+**Sendte elementer** der, og e-posten som kommer til postboksens **Innboks** fra den dagen
+kanalen legges til, leses inn i Innboks i Kommunikasjon innen omtrent fem minutter.
+Vantigo bare leser innboksen — den merker, flytter og sletter ingenting der — og henter
+aldri inn e-posten som lå der før kanalen. **Application Mail Full Access** nedenfor
+dekker allerede lesing; det er ingenting mer å gi. Hvordan modulen sender og leser, står i
+[referansen](/en/reference/entra/#mail-channels).
 
 ### Forutsetninger for e-postkanaler
 
@@ -574,7 +577,7 @@ modulen sender, står i [referansen](/en/reference/entra/#mail-channels).
 ### Slå på e-postkanaler
 
 1. På modulsiden, i steg **4 Sett kontoreglene**, under **E-postkanaler**, slå på
-   **E-postkanaler: la Kommunikasjon sende gjennom delte postbokser i Exchange
+   **E-postkanaler: la Kommunikasjon sende og motta gjennom delte postbokser i Exchange
    Online**, og velg **Lagre kontoreglene**. Alle med `entra:manage` kan gjøre det.
 2. Under bryteren viser **Kommandoer for Exchange Online PowerShell** seks kommandoer med
    applikasjonens **applikasjons-ID** og **objekt-ID** fylt inn. Står det *Test
@@ -627,6 +630,10 @@ modulen sender, står i [referansen](/en/reference/entra/#mail-channels).
    leverandøren **Microsoft 365**, adressen ([brukerveiledningen](/nb/user/communications/#sett-opp-en-kanal)).
    Vantigo sjekker den da — adressen slått opp, postboksen delt, innboksen nåbar — og
    kanalen opprettes aktiv. **Bekreft** på raden sjekker igjen når som helst.
+4. Send en e-post til postboksen utenfra. Innen omtrent fem minutter er den en samtale i
+   Innboks i Kommunikasjon, og kanalens **Mottaksstatus** på siden **Kanaler** sier
+   **Mottar**, med når den sist ble synkronisert; før første synkronisering sier den
+   **Venter på første synkronisering**.
 
 **Exchange bruker fra 30 minutter til 2 timer** på å ta i bruk en ny tildeling eller en
 nymerket postboks i applikasjonens tilgang. Til da avvises kanalen som utenfor omfanget,
@@ -639,7 +646,9 @@ ikke lenger for nye, og e-post som venter på å sendes fra en Microsoft 365-kan
 **holdes igjen**: den bruker ingen av de åtte forsøkene og prøves igjen med høyst 5
 minutters mellomrom, til **24 timer etter at den ble lagt i kø**, da den gis opp som
 `provider_unavailable` og telles som feilet. Slås bryteren på igjen innen det døgnet,
-sendes e-posten. Det samme gjelder mens tilkoblingen feiler eller Entra-modulen er av.
+sendes e-posten. Mottaket stanser også: ingen e-post leses mens bryteren er av, og når
+den er på igjen, leses e-posten som kom i mellomtiden — ingen går tapt, siden postboksen
+beholder den. Det samme gjelder mens tilkoblingen feiler eller Entra-modulen er av.
 Tildelingene i Exchange blir stående til du fjerner dem
 (`Remove-ManagementRoleAssignment`, `Remove-ManagementScope` og `Set-Mailbox …
 -CustomAttribute10 $null`).
@@ -683,6 +692,27 @@ Tildelingene i Exchange blir stående til du fjerner dem
 - **En melding ble gitt opp som `provider_unavailable`.** E-postkanaler var av, eller
   tilkoblingen feilet, i 24 timer etter at meldingen ble lagt i kø. Rett bryteren eller
   tilkoblingen, og send på nytt.
+- **E-post sendt til postboksen dukker ikke opp i Kommunikasjon.** Se på kanalens
+  **Mottaksstatus** på siden **Kanaler** i Kommunikasjon:
+  - **Venter på første synkronisering** i mer enn noen minutter: jobben kjører ikke —
+    sjekk at en prosess kjører bakgrunnsjobbene ([installasjon](/nb/admin/installation/))
+    — eller kanalen er inaktiv.
+  - **Feilet: Applikasjonen kan ikke lenger lese postboksen…** (`mailbox_denied`):
+    postboksen er tatt ut av omfanget, eller en rolle er fjernet. Kjør
+    `Test-ServicePrincipalAuthorization` som ovenfor; merk postboksen eller legg
+    tildelingen tilbake, og regn med de **30 minuttene til 2 timene** Exchanges
+    hurtigbuffer bruker. Vantigo prøver igjen **hver time** så lenge den avvises, og leser
+    e-posten som kom i mellomtiden når den slippes til.
+  - **Feilet: Postboksen finnes ikke lenger i Microsoft 365.** (`mailbox_gone`) eller
+    **…er ikke kjent for denne kanalen** (`mailbox_unknown`): velg **Bekreft** på
+    kanalens rad; er postboksen byttet ut, legg den til på nytt.
+  - **Siste synkronisering feilet: Microsoft 365 svarte ikke…** (`sync_failed`):
+    struping eller et avbrudd; Vantigo venter fra ett minutt opp til en time og tar igjen
+    av seg selv. Målingen `communications.inbound.cycles_failed` teller slike feil.
+  - **Mottar**, men en melding mangler: den kom før kanalen ble lagt til (den hentes
+    aldri inn), den var større enn `COMMUNICATIONS_INBOUND_MAX_BYTES` (25 MiB som
+    standard; hoppet over), eller den ble ikke levert til **Innboks** — en regel i
+    postboksen flyttet den til en annen mappe først. Vantigo leser bare innboksen.
 - **Utkast blir liggende i mappen Utkast i en delt postboks.** En melding med blindkopi
   sendes gjennom et utkast; stopper Vantigos prosess mellom at utkastet lages og at det
   sendes, blir utkastet liggende, og det nye forsøket lager et nytt. Slett slike utkast i
@@ -692,13 +722,22 @@ Tildelingene i Exchange blir stående til du fjerner dem
   Om Exchange sender `From:` aliaset, skriver det om eller avviser det, er ikke
   verifisert ennå; sjekk den første meldingen, eller legg til kanalen på nytt med den
   primære adressen.
+- **En forfalsket avsender knytter en samtale.** Vantigo tar `From` i en mottatt melding
+  som den står: en e-post der `From` er forfalsket til adressen til en kundes kontakt,
+  knyttes til den kunden, og et svar — eller et svar til alle, som tar med meldingens
+  Cc-liste — går til adressene meldingen oppgir. Hold antispoofing (SPF, DKIM, DMARC) og
+  søppelpostfiltreringen i Exchange Online på for kanalpostboksene: Vantigo leser bare
+  innboksen, så det Exchange legger i Søppelpost, når den aldri.
 - **Eksklusive administrasjonsomfang** i Exchange begrenser ikke en applikasjons tilgang,
   og et omfang filtrert på gruppemedlemskap (`MemberOfGroup`) teller bare direkte
   medlemmer; attributtfilteret ovenfor unngår begge deler.
 - **Ikke verifisert mot en ekte leietaker ennå**: at Exchange beholder Vantigos egen
-  `Message-ID` på en melding sendt på denne måten, at en blindkopi (Bcc) når
-  mottakeren, og hvordan det sendes fra et alias. De står på versjonens sjekkliste; til da, sjekk overskriftene i én
-  melding og én blindkopi etter at den første kanalen er satt opp.
+  `Message-ID` på en melding sendt på denne måten — det avgjør om kundens første svar i en
+  samtale Vantigo startet, havner i den eller starter en ny —, at en blindkopi (Bcc) når
+  mottakeren, hvordan det sendes fra et alias, og om en melding flyttet inn i innboksen
+  fra en annen mappe blir lest. De står på versjonens sjekkliste; til da, sjekk
+  overskriftene i én melding og én blindkopi etter at den første kanalen er satt opp, og
+  at et svar fra kunden havner i samtalen sin.
 
 ## Kontoer Vantigo ikke opprettet
 

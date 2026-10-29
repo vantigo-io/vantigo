@@ -1,6 +1,6 @@
 ---
 title: Communications
-description: Shared mailboxes, conversations with customers, sending email and suppressions — channels on SMTP or on a Microsoft 365 shared mailbox, switching a channel to Microsoft 365, and the size a Microsoft 365 channel sends.
+description: Shared mailboxes, conversations with customers, receiving and sending email and suppressions — channels on SMTP or on a Microsoft 365 shared mailbox, mail received into a Microsoft 365 channel, reply and reply all, switching a channel to Microsoft 365, and the size a Microsoft 365 channel sends.
 sidebar:
   order: 80
 sources:
@@ -14,11 +14,11 @@ answered; **Channels**, where the mailboxes are set up; and **Suppressions**, th
 of addresses Vantigo refuses to write to. Opening the app lands you in the Inbox, and
 the Home dashboard shows a Communications card with open, new and closed conversations.
 
-Vantigo sends email but does not yet receive it: no mail arrives through Vantigo, so a
-conversation only ever holds what was sent from it and the notes written in it. The
-consequences for replying are described under
-[The outbound-only consequence](/en/reference/communications/#the-outbound-only-consequence)
-in the reference, and noted below where you will meet them.
+Mail that arrives in a **Microsoft 365** channel's shared mailbox comes into the Inbox
+by itself, as a conversation you can read and answer. An **SMTP** channel only sends: no
+mail arrives through it, so its conversations hold only what was sent from Vantigo and the
+notes written in them, and they cannot be replied to. How receiving works is described
+under [Receiving](/en/reference/communications/#receiving) in the reference.
 
 ## Find a conversation
 
@@ -47,13 +47,33 @@ another one. The Inbox needs `communications:conversations-view`.
 A conversation groups everything exchanged with one customer about one subject: the
 participants and the subject in the header, then the messages in order. Each message
 is marked **You** for an email sent from Vantigo, **Internal note** for a note a
-colleague wrote, and the sender's name for a message from the customer. A message
-written as HTML is shown in a sandbox that blocks scripts, forms and network access.
-The time on each message, and on each conversation in the list, is in your own time
-zone ([Choose your time zone](/en/user/getting-started/#choose-your-time-zone)).
+colleague wrote, and the sender's name for a message from the customer. The time on each
+message, and on each conversation in the list, is in your own time zone
+([Choose your time zone](/en/user/getting-started/#choose-your-time-zone)).
 
-An attachment appears as a link you can download; while it is waiting to be checked it
-is shown as **Scanning**, and one that cannot be served as **Attachment unavailable**.
+**Mail from customers.** An email sent to a Microsoft 365 channel's shared mailbox appears
+in the Inbox within about five minutes. A reply to an earlier message joins that
+message's conversation; anything else starts a new conversation. A closed conversation
+the customer writes to again is opened again; an archived one is left as it is, and the
+email starts a new conversation. The message also stays in the shared
+mailbox in Outlook, as it was.
+
+- A message written as HTML is shown formatted, in a sandbox that blocks scripts, forms
+  and network access. Pictures from the internet are removed; pictures the message itself
+  carries are shown. **Show as text** shows the message's plain text instead, and **Show
+  formatted** goes back.
+- An automatic answer — an out-of-office reply, say — is marked **Auto-reply**, and does
+  not open a closed conversation again.
+- A message Vantigo could not read says *Vantigo could not read this message.*; open it in
+  your mail program with **Download original**. **Message actions** on any message from a
+  customer also offers **Download original**, the email exactly as it arrived, as an
+  `.eml` file.
+
+An attachment appears as a link you can download. One that came with a customer's email
+is marked *Not scanned. Open it only if you trust the sender.* — Vantigo does not check
+files for viruses — and is always downloaded as a file, never opened in the browser. An
+attachment waiting to be checked is shown as **Scanning**, and one that cannot be served
+as **Attachment unavailable**.
 
 From the header you can:
 
@@ -66,6 +86,12 @@ Reading needs `communications:conversations-view`; changing the status and the t
 needs `communications:conversations-manage` as well.
 
 ## Link a conversation to a customer
+
+When a customer's email arrives, Vantigo looks up the sender's address among the
+customers' contacts. If it belongs to **one customer**, the conversation is linked to that
+customer by itself; if it belongs to **several**, they are listed as candidates for you to
+choose between. A conversation that is already linked — by hand or by an earlier email —
+keeps its customer.
 
 The header tells you how the conversation relates to a customer:
 
@@ -85,9 +111,12 @@ unavailable." — the administrator's side of that is under
 ## Reply to a customer
 
 The composer at the bottom of the conversation is headed **Reply**. It tells you who
-the reply goes to ("Replying to …"), and when the conversation has more recipients a
-**Reply mode** selector offers **Reply** or **Reply all · N**. The reply is sent from
-the channel the conversation belongs to; you do not choose a sender.
+the reply goes to ("Replying to …"): the sender of the customer's latest email. When that
+email was also sent to others in copy (Cc), a **Reply mode** selector offers **Reply**,
+to the sender alone, or **Reply all · N**, which copies them too — the shared mailbox
+itself left out. The reply is sent from the channel the conversation belongs to; you do
+not choose a sender. It is sent as an answer to the customer's email, so it lands in the
+same thread in their mail program.
 
 1. Write the message in the editor; bold, italic and bullet lists are available.
 2. **Attach file** stages a file. It appears as a badge with its name: green when it
@@ -100,16 +129,16 @@ the channel the conversation belongs to; you do not choose a sender.
    together. A larger file is refused at once with *The attachment is larger than this
    channel can send (about 2.1 MB).*
 3. **Send reply**. The button is disabled until there is text, and reads **Waiting for
-   attachment scan** while an attachment is not ready yet.
+   attachment scan** while an attachment is not ready yet. In a conversation with no email
+   from the customer it stays disabled, with *There is no message from the customer to
+   reply to yet.*
 
 Sending needs `communications:conversations-reply`. The reply is queued rather than
 sent on the spot — see [After you send](#after-you-send) — and it is refused when:
 
 - the conversation's channel has been deactivated under Channels;
-- the conversation has no customer message to answer. Because Vantigo does not
-  receive mail yet, this is the case for every conversation today, so a reply cannot
-  currently be sent; the composer is complete and starts working once inbound mail
-  exists;
+- the conversation has no customer message to answer — a conversation started from
+  Vantigo that the customer has not answered yet, or one on an SMTP channel;
 - an attachment is not ready;
 - a recipient is on the suppression list;
 - on a Microsoft 365 channel, the message and its attachments together are larger than
@@ -160,6 +189,16 @@ it), **Provider**, **Status** (**Active** or **Inactive**) and **Actions**. The 
 marked **Default** is the one a conversation is created on when none is named; the first
 channel you create becomes the default.
 
+The **Receive status** column says whether a channel receives mail: **Receiving**, with
+*Last synced …*; **Waiting for first sync** just after the channel was added or switched;
+**Failed: …** with the reason when Vantigo cannot read the mailbox — *The application can
+no longer read the mailbox. Give it access in Exchange Online.*, *The mailbox no longer
+exists in Microsoft 365.* or *The mailbox is not known for this channel. Verify the
+channel.* — or **Last sync failed: …** when one attempt failed and Vantigo tries again
+(*Microsoft 365 mail channels are not available.* while **Mail channels** is off or the
+Entra connection is failing; the mail waits in the mailbox).
+An SMTP channel shows **Sends only**.
+
 A channel sends one of two ways, its **Provider**:
 
 - **SMTP** — through a mail server, with an SMTP account. The administrator must have the
@@ -169,7 +208,9 @@ A channel sends one of two ways, its **Provider**:
   administrator configures for Vantigo's own invitations and password resets are a
   different thing and are not used here.
 - **Microsoft 365** — from an Exchange Online **shared mailbox**, through Microsoft 365,
-  with no password to enter. It is offered only once someone has turned on **Mail
+  with no password to enter. It also **receives**: mail arriving in the shared mailbox's
+  Inbox from the day the channel is added comes into the Inbox — not the mail that was
+  there before. It is offered only once someone has turned on **Mail
   channels** in the Microsoft Entra ID app and an Exchange administrator has given
   Vantigo access to the mailbox ([the administration
   guide](/en/admin/entra/#mail-channels)). When the application's access reaches every
@@ -221,8 +262,10 @@ channel can send through Microsoft 365 instead, keeping its conversations, its a
 and its **Default** mark. On its row, choose **Switch to Microsoft 365**; the dialog
 warns *The SMTP settings are deleted. To go back you enter them again.* — choose
 **Switch**. Vantigo checks the mailbox as when adding one, with the same messages, and
-the row's provider reads **Microsoft 365**: "Channel switched — The channel now sends
-through Microsoft 365." The action is shown only while Microsoft 365 is available.
+the row's provider reads **Microsoft 365**: "Channel switched — The channel now sends and
+receives through Microsoft 365." From then on the mailbox's new mail comes into the Inbox;
+mail that was already there does not. The action is shown only while Microsoft 365 is
+available.
 
 The channel keeps the address it had. If that address is an alias of the shared mailbox
 rather than its primary address, check that the first message goes out as expected:
@@ -266,15 +309,16 @@ reads "Suppression deleted — The address can receive messages again."
 
 Suppressions are matched without regard to case. A reply to a suppressed address is
 refused when it is sent, and the outbox checks the list once more before every delivery
-attempt. Vantigo does not add suppressions on its own: since no mail is received, a
-bounce never reaches it, so an address that bounces has to be added here by hand.
+attempt. Vantigo does not add suppressions on its own: a bounce that reaches a Microsoft
+365 channel arrives in the Inbox like any other email, and the address has to be added
+here by hand.
 Suppressions need `communications:suppressions-manage`.
 
 ## Permissions
 
 | To | You need |
 | --- | --- |
-| Open the Inbox, read conversations, mark them read, download attachments | `communications:conversations-view` |
+| Open the Inbox, read conversations, mark them read, download attachments and originals | `communications:conversations-view` |
 | Reply, attach files, draft with AI | `communications:conversations-reply`, with view |
 | Change status, tags and customer link, add notes, ask for a customer suggestion | `communications:conversations-manage`, with view |
 | See and manage Channels | `communications:channels-manage` |

@@ -1,6 +1,6 @@
 ---
 title: "Microsoft Entra ID module"
-description: "Microsoft Entra ID as Staff's identity provider: the connection to one tenant, its client secrets in the plural and the connection test; the status and its reasons, read by Staff with no network call; the account rules; the guarded Graph client and its limits; the user lifecycle per step — prepared disabled, enabled on the day with the hire date, the licences and a Temporary Access Pass, kept in step, disabled with the leaver's steps, soft-deleted — with the Graph calls and the codes; the account's photo, converted to Graph's JPEG and written or cleared; the address rule; the pass; the sensitive actions and role_missing; Staff's groups in the tenant — the six traits and the cached licences, the create, or the adoption an entra:manage holder confirms, with the service principal as an owner, the team, the members by $ref, the delete or the retirement; connecting existing users — the directory search and the exact matches, read through contracts.SSOConnections; the Outlook connection — the switch and its status, the redirect URI, the certain account read from Staff, the flow with its two cookies, the states and the revision guard, the delegated token, its refresh and its reconnects, CAE and cp1, closing and entra-outlook-sweep; the permissions the module does not use, a leftover application Calendars.ReadWrite among them; the mailbox calendar the module fills for the calendar's Outlook sync, every call on the person's own delegated token — the status rule, the account check, the removals a closing connection serves, ErrConnectionNeeded and Connections, the Graph calls and $batch, the marker, the all-day zones, the reads of the default calendar's delta and the marker, the write-back's reads of the copies' versions and of events whole, and the refusals; the mail channels Communications sends through — the switch and its status, tenant_wide, the channel mailboxes the module fills for Communications on the application's token, Check, Send through sendMail or a MIME draft, MaxMessage and Forget; the events, the permission, the refusals and the endpoints."
+description: "Microsoft Entra ID as Staff's identity provider: the connection to one tenant, its client secrets in the plural and the connection test; the status and its reasons, read by Staff with no network call; the account rules; the guarded Graph client and its limits; the user lifecycle per step — prepared disabled, enabled on the day with the hire date, the licences and a Temporary Access Pass, kept in step, disabled with the leaver's steps, soft-deleted — with the Graph calls and the codes; the account's photo, converted to Graph's JPEG and written or cleared; the address rule; the pass; the sensitive actions and role_missing; Staff's groups in the tenant — the six traits and the cached licences, the create, or the adoption an entra:manage holder confirms, with the service principal as an owner, the team, the members by $ref, the delete or the retirement; connecting existing users — the directory search and the exact matches, read through contracts.SSOConnections; the Outlook connection — the switch and its status, the redirect URI, the certain account read from Staff, the flow with its two cookies, the states and the revision guard, the delegated token, its refresh and its reconnects, CAE and cp1, closing and entra-outlook-sweep; the permissions the module does not use, a leftover application Calendars.ReadWrite among them; the mailbox calendar the module fills for the calendar's Outlook sync, every call on the person's own delegated token — the status rule, the account check, the removals a closing connection serves, ErrConnectionNeeded and Connections, the Graph calls and $batch, the marker, the all-day zones, the reads of the default calendar's delta and the marker, the write-back's reads of the copies' versions and of events whole, and the refusals; the mail channels Communications sends through and receives into — the switch and its status, tenant_wide, the channel mailboxes the module fills for Communications on the application's token, Check, Send through sendMail or a MIME draft, MaxMessage, Delta over the Inbox's message delta with immutable ids and the link check, Raw through $value under the caller's cap, and Forget; the events, the permission, the refusals and the endpoints."
 sources:
   - apps/server/internal/entra
   - apps/entra/frontend
@@ -2057,21 +2057,24 @@ which mailboxes are channels; the module answers only for a mailbox its `Check` 
 and recorded ([module boundaries](/en/contributing/module-boundaries/) rule 15).
 `Key()` is `entra`, a channel's provider value; `DisplayName()` is *Microsoft 365*.
 Nothing here is recorded in [`entra.events`](#the-events): the channels' writes are
-Communications'. In this release the slot **sends only**: nothing reads a channel
-mailbox yet.
+Communications'. The slot sends ([`Send`](#send)) and reads the mailbox's Inbox for
+Communications' receiving ([`Delta` and `Raw`](#delta-and-raw)); it never marks, moves or
+deletes a message there.
 
 ### The Mail channels switch
 
 `entra.connection.mail_channels` (migration `00090_entra_mail_channels.sql`, false by
-default) is the switch **Mail channels: let Communications send through Exchange Online
-shared mailboxes** on [the account rules](#the-account-rules) — `mailChannels` in `PUT
-/connection/settings` (`entra:manage`, audited `entra.settings.changed` with
-`mailChannels`). In this release a channel only sends. It is not a [required
+default) is the switch **Mail channels: let Communications send and receive through
+Exchange Online shared mailboxes** on [the account rules](#the-account-rules) —
+`mailChannels` in `PUT /connection/settings` (`entra:manage`, audited
+`entra.settings.changed` with `mailChannels`). It is not a [required
 permission](#the-required-permissions) of the connection. **Turning it off closes
 nothing**: there is no per-person state; the channels' sends are refused as unavailable,
 and the outbox holds each message, spending no attempt, for up to 24 hours after it was
 queued before it fails it as `provider_unavailable`
-([Communications](/en/reference/communications/#delivery-semantics)).
+([Communications](/en/reference/communications/#delivery-semantics)); the mailbox sync
+holds each channel the same way, reading again five minutes later, and loses nothing —
+the mail waits in the mailbox.
 
 `GET /connection` answers it as `mailChannels: {enabled, status, reason?,
 servicePrincipalId?}`, the status decided in this order:
@@ -2109,7 +2112,7 @@ administration guide's commands](/en/admin/entra/#mail-channels).
 connection is `connected` — with the reason `tenant_wide` (`contracts.MailboxTenantWide`)
 when the [status above](#the-mail-channels-switch) would say so; else `unavailable` with
 the connection's reason, or its status when it names none. There is no `cleanup` state
-for mail. `Check` and `Send` ask it first, and answer `ErrMailboxUnavailable` when it is
+for mail. `Check`, `Send`, `Delta` and `Raw` ask it first, and answer `ErrMailboxUnavailable` when it is
 not available, or when no tenant, client or usable secret is set up to fetch a token.
 
 ### Check
@@ -2189,6 +2192,62 @@ a MIME `sendMail` or a MIME draft — no Microsoft page says so — and that a d
 `Bcc:` header reaches its blind copies; nor what Exchange does with a message `From:` an
 alias of the mailbox, which a channel switched from SMTP may send (it keeps its own
 address). The pull request's real-tenant checklist settles them.
+
+### Delta and Raw
+
+The inbound reads Communications' [mailbox sync](/en/reference/communications/#the-mailbox-sync)
+makes (`channel_mailbox_inbound.go`), on the application's token, behind **`Send`'s gate
+exactly**: the mailbox parsed as an object id and required to be a row of
+`channel_mailboxes` — `ErrMailboxUnknown` otherwise, with no call —, then `Status`
+(`ErrMailboxUnavailable` when not available), then the call. `Application Mail Full Access`
+holds `Mail.ReadWrite`, which covers both reads (`message: delta` needs
+`Mail.ReadBasic.All` at least, `$value` `Mail.Read`); there is nothing more to grant.
+Neither reads, logs nor answers anything of what a message is about.
+
+**`Delta(mailbox, folder, link, since)`** reads **one page** of
+`GET /users/{oid}/mailFolders/{folder}/messages/delta` — `folder` is `inbox` or one
+segment that is a valid id.
+
+- **A fresh read** (`link` empty) asks `$filter=receivedDateTime ge {since, RFC 3339
+  UTC}` and `$select=id,receivedDateTime,internetMessageId,conversationId` — no subject,
+  sender or body. Graph keeps both in the links it answers, so a later page asks neither.
+  A fresh read with no `since` is refused unsent.
+- **Every page** is sent with `Prefer: IdType="ImmutableId", odata.maxpagesize=50`:
+  **immutable ids**, which Graph applies only to the request that asks, so a message keeps
+  its id when it is moved between the mailbox's folders (not when it goes to an archive
+  mailbox). Its answer is read through 16 MiB under the client's 30-second budget.
+- **The link check.** A stored link, and every link Graph answers, is followed only when
+  it is `https` on `graph.microsoft.com` exactly, with no user, no fragment, no
+  percent-encoding in its path, a query, and the path
+  `/v1.0/users/{this oid}/mailFolders/{f}/messages/delta`, compared whatever its case —
+  Graph may answer `mailfolders` and the folder's id rather than `inbox`, so `f` may be
+  either. The request is **rebuilt from our own path** with the link's query alone, so
+  nothing of a link's path is ever sent. A stored link that fails is refused unsent; an
+  answered next or delta link that fails, or a page with neither, is a failure.
+- **The answer**, `contracts.MailDelta`: `Items` — each `{ID, ReceivedAt (UTC),
+  MessageID, ConversationID}`, or `{ID, Removed}` for an `@removed` entry, in no promised
+  order; an item whose id is not a valid id or whose `receivedDateTime` does not read is
+  left out (a debug line counts them), rather than failing the page and holding the delta
+  at it for ever; a Message-Id over 998 characters is answered as none — and `Link`
+  with `Done`: the next page's link, or at the end the delta link to keep.
+- **Refusals**: a **410**, or a 4xx with `syncStateNotFound`, `syncStateInvalid`,
+  `resyncRequired` or `ErrorInvalidSyncStateData` (the calendar delta's list, reused; the
+  message delta's own code is not verified), is `ErrMailboxDeltaExpired`; the rest are
+  `Send`'s — 403 `ErrMailboxDenied`, 404 with a mailbox-gone code `ErrMailboxGone`,
+  throttling and anything else a failure to retry. Graph's words are not logged
+  (`noWords`).
+
+**`Raw(mailbox, messageID, max)`** reads `GET /users/{oid}/messages/{id}/$value`, the
+message's MIME — Exchange's own `Received:` and `X-MS-Exchange-*` headers included — with
+`Prefer: IdType="ImmutableId"` and `Accept: */*`, **not decoded**, through `max` bytes,
+Communications' `COMMUNICATIONS_INBOUND_MAX_BYTES`, not a figure of the module's. It runs
+on a second `http.Client` over the same transport and redirect rule (it follows none)
+with a budget of its own, **`graphRawBudget`, 90 seconds** — 25 MiB in 30 seconds would
+need about 7 Mbit/s. An id that is not a valid id, or a `max` below one, is refused
+unsent. More than `max` is `ErrMailTooLarge`; a **404 `ErrorItemNotFound`** — the message
+deleted or moved since the delta named it — is `contracts.ErrMailItemGone`, terminal for
+the message; the rest are `Send`'s. Whether `$value` has a ceiling of its own, and how fast
+25 MiB arrives, is **not verified**.
 
 ### Forget
 
@@ -2322,7 +2381,19 @@ answers its id, `sendMail` takes base64 MIME as `text/plain` (400
 of body) and records it with no Bcc, and a MIME draft answers the `bccRecipients` its
 `Bcc:` header names — none when told to drop them — and is sent or deleted, a send told
 to fail answering 5xx. A user marked `MailboxDenied` is 403 `ErrorAccessDenied` on every
-mail route (outside the RBAC scope), `NoMailbox` 404 `MailboxNotEnabledForRESTAPI`. It is wired through
+mail route (outside the RBAC scope), `NoMailbox` 404 `MailboxNotEnabledForRESTAPI`. A
+fake user has an **Inbox** for the channels' receiving (`mail_inbox.go`): a test adds a
+message whole as MIME (`AddInboxMessage`, answering an immutable-looking id), removes it,
+marks it read, or expires the user's delta (`ExpireMailDelta`); `GET
+…/mailFolders/inbox/messages/delta` — the folder also by its id, the path in any case —
+answers from a change log with `$filter=receivedDateTime ge|gt` on a fresh query only
+(any other `$filter` 400 `ErrorInvalidUrlQuery`), `$select`, pages of `Prefer:
+odata.maxpagesize` with `$skiptoken` next links and a `$deltatoken` delta link naming the
+folder as `mailfolders/{the Inbox's id}` in lower case, updates and `@removed` entries
+since a token, 400 `syncStateNotFound` for a token it did not issue, the status a test
+chose (`ExpireMailDelta(user, status)`) once expired, and
+records the `Prefer` it saw; `GET /users/{id}/messages/{id}/$value` answers the MIME byte
+for byte, 404 `ErrorItemNotFound` for a message not in the Inbox. It is wired through
 `modtest.WithTransport`, so the module's real client runs against it. It lives under the
 module's own package and only the module's tests import it.
 

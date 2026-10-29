@@ -1078,8 +1078,10 @@ filtrerer svar.
 De to er én bryter: sett begge eller ingen. Se
 [management-lytteren](/nb/admin/management-listener/).
 
-Kommunikasjons egne innstillinger (`COMMUNICATIONS_*`) er dokumentert i
-[Kommunikasjon](/en/reference/communications/). OpenTelemetry konfigureres med de
+Kommunikasjons egne innstillinger (`COMMUNICATIONS_*`) — blant dem
+`COMMUNICATIONS_INBOUND_MAX_BYTES`, den største mottatte meldingen
+postbokssynkroniseringen leser (25 MiB som standard, 1–150 MiB) — er dokumentert i
+[Kommunikasjon](/en/reference/communications/#retention-cleanup-and-staged-objects). OpenTelemetry konfigureres med de
 standard `OTEL_EXPORTER_OTLP_*`-variablene, som leses av OTel-SDK-et og ikke av
 `config.go`.
 

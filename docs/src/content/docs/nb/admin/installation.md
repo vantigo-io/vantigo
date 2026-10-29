@@ -277,7 +277,10 @@ GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA identity, customers, products, en
 ## Bakgrunnsjobber og skalering
 
 Standardoppsettet med én container kjører bakgrunnsjobbene til hver aktivert modul
-(utboks-levering, oppbevaring, opprydding av vedlegg, kundemodulens registerjobber,
+(utboks-levering, oppbevaring, opprydding av vedlegg, Kommunikasjons
+postbokssynkronisering `communications-mailbox-sync`, alltid, som leser innboksen til hver
+Microsoft 365-kanal hvert 30. sekund — den trenger objektlageret og utgående https til
+`graph.microsoft.com` —, kundemodulens registerjobber,
 kundemodulens importjobb `customers-import`, energimodulens importjobb `energy-import`, energimodulens spotprisjobb
 `energy-spot-prices` når `ENERGY_SPOT_PRICE_SERVICE_URL` er satt eller `ENERGY_SPOT_PRICE_FEED_ENABLED=1`, fakturamodulens EHF-jobber `invoices-ehf` og `invoices-ehf-events` når
 `INVOICES_EHF_ENABLED` er på, fakturamodulens purrejobb `invoices-reminders`, alltid,
@@ -316,8 +319,8 @@ Replikaer som verken skal migrere eller kjøre bakgrunnsjobber kan kjøre komman
 Uansett topologi tar oppbevaringsoppryddingen, registerjobbene, EHF-hendelsesjobben,
 kalenderens avlysningsjobb og `entra-outlook-sweep` en rådgivende lås (advisory lock) i PostgreSQL, så hver av dem kjører på nøyaktig én
 instans per syklus; utboksen, `invoices-ehf`-jobben, `invoices-reminders`-jobben,
-`invoices-billing`-jobben, `invoices-payments`-jobben og kalenderens abonnements- og
-postboksjobb tar i stedet én rad om gangen under en tidsbegrenset lås, så
+`invoices-billing`-jobben, `invoices-payments`-jobben, `communications-mailbox-sync` og
+kalenderens abonnements- og postboksjobb tar i stedet én rad om gangen under en tidsbegrenset lås, så
 et hvilket som helst antall instanser deler arbeidet uten å sende noe to ganger. Purrejobben sender ett brev om
 gangen, høyst ett i sekundet per instans, og hver sending må bli ferdig godt innenfor
 låsen på 60 sekunder

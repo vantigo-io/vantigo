@@ -2497,8 +2497,30 @@ reply, the composer showing the attachments a channel takes; Mailgun out of the
 contract. Exchange keeping our `Message-ID` and a Bcc through the draft are the
 real-tenant checklist's to confirm.
 
-*Next:* D receives into Communications; E brings the notifications, Outlook state on
-close and the import window.
+**D — Microsoft 365 channels that receive, built** on
+`claude/communications-m365-inbound-d`
+([the plan](docs/superpowers/plans/2026-10-29-communications-m365-inbound.md);
+[the reference](docs/src/content/docs/en/reference/communications.md#receiving);
+[Entra's](docs/src/content/docs/en/reference/entra.md#delta-and-raw);
+[the operator's page](docs/src/content/docs/en/admin/entra.md#mail-channels);
+[the user guide](docs/src/content/docs/en/user/communications.md#read-a-conversation)):
+`communications-mailbox-sync`, which claims a Microsoft 365 channel's `channel_sync` row
+under a two-minute lease and reads its Inbox a page of Graph's message delta at a time,
+with immutable ids, from the day the channel was added (`00092`, with the backfill of C's
+channels); `ChannelMailbox.Delta` and `Raw` in Entra, behind `Send`'s gate, the links
+checked to be the mailbox's own; each message read whole through `$value` under
+`COMMUNICATIONS_INBOUND_MAX_BYTES`, stored raw, parsed by `mail.ParseInbound`, its HTML
+sanitised by `mail.SanitizeHTML` on bluemonday, and imported once by its receipt in
+`inbound_receipts` — duplicates, our own sends, the too large, the gone and the
+unreadable recorded; threading by `In-Reply-To`, `References` and Graph's
+`conversationId`; the sender linked to one customer or to candidates; reply and
+reply-all answering the latest inbound message with its threading headers, and the AI
+draft reading it; unscanned attachments downloaded as files, the original downloadable as
+`.eml`; each channel's receive status on the Channels page; the receipts swept by
+retention. Exchange keeping our `Message-ID`, the delta links' form and a message moved
+into the Inbox are the real-tenant checklist's to confirm.
+
+*Next:* E brings the notifications, Outlook state on close and the import window.
 
 ### Later
 

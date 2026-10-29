@@ -23,6 +23,14 @@ worker, the ClamAV client and the scanner worker. Tenancy is dropped throughout.
 
 ### 1.1 The consequence of removing inbound, stated plainly
 
+**Superseded (2026-10-29).** Receiving came back for Microsoft 365 channels: the
+`communications-mailbox-sync` worker writes inbound messages, so reply, reply-all and the AI
+draft answer from them, and steps 8–10 of reply run in production. See the Outlook
+connection and Microsoft 365 mail design's
+[M14–M16](2026-10-29-outlook-connection-and-mail-design.md#m14--receiving-d) and delivery
+D's [plan](../plans/2026-10-29-communications-m365-inbound.md). What follows still holds
+for an SMTP channel, which does not receive, and is kept as the record of the port.
+
 The reply path resolves recipients from the latest **inbound** message's participants,
 and the inbound worker was that message type's only producer. IMAP and inbound
 synchronisation were never implemented. So after this port there is no inbound path at
