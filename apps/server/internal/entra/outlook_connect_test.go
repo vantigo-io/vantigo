@@ -507,13 +507,14 @@ func TestOutlookCallback_Failures(t *testing.T) {
 		t.Errorf("a last error recorded by failures that are not consent_missing")
 	}
 
-	// The tenant refusing the secret marks it failed.
+	// The tenant refusing the secret answers failed; the anonymous callback
+	// never judges the credential, which the application token's path does.
 	f.g.Configure(func(g *graphtest.FakeGraph) { g.Secrets[clientID] = []string{"rotated-elsewhere"} })
 	if _, _, code := outcomeOf(t, f.authorizeAs(t, c, oid, upn, nil)); code != "failed" {
 		t.Errorf("invalid_client: code=%s, want failed", code)
 	}
-	if n := f.h.Count(t, `SELECT count(*) FROM entra.credentials WHERE last_failed_at IS NOT NULL`); n != 1 {
-		t.Errorf("%d secrets marked failed after invalid_client, want 1", n)
+	if n := f.h.Count(t, `SELECT count(*) FROM entra.credentials WHERE last_failed_at IS NOT NULL`); n != 0 {
+		t.Errorf("%d secrets marked failed by the callback's invalid_client, want 0", n)
 	}
 	if logs := f.h.Logs(); strings.Contains(logs, code) || strings.Contains(logs, secretValue) {
 		t.Error("the log carries a code or the secret")
@@ -810,6 +811,125 @@ func TestOutlookComplete_TwoAtOnceOneTaken(t *testing.T) {
 	}
 	if n := f.h.Count(t, `SELECT count(*) FROM entra.outlook_connections`); n != 1 {
 		t.Errorf("%d rows, want 1", n)
+	}
+}
+
+// lockGate runs stmt in a transaction of its own, holding the row locks it
+// takes until release commits it (or the test ends, rolling it back).
+func lockGate(t *testing.T, h *harness, stmt string, args ...any) (release func()) {
+	t.Helper()
+	ctx := context.Background()
+	tx, err := h.Pool().Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = tx.Rollback(ctx) })
+	if _, err := tx.Exec(ctx, stmt, args...); err != nil {
+		t.Fatal(err)
+	}
+	return func() {
+		if err := tx.Commit(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// awaitLockWaiters waits until n backends on h's database wait on a lock,
+// failing t if finished closes first or ten seconds pass (customers'
+// contacts_concurrency_test.go's, duplicated: it is another package's).
+func awaitLockWaiters(t *testing.T, h *harness, n int, finished <-chan struct{}) {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for h.Count(t, `SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock'`) < n {
+		select {
+		case <-finished:
+			t.Fatalf("the requests answered without waiting on the gate's lock")
+		default:
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("fewer than %d requests ever waited on the gate's lock", n)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+// completeBehind runs complete for each client at once while gate holds its
+// lock, waits until n of them wait on it, releases it and answers each.
+func completeBehind(t *testing.T, h *harness, release func(), n int, clients ...*modtest.Client) []*modtest.Response {
+	t.Helper()
+	out := make([]*modtest.Response, len(clients))
+	finished := make(chan struct{})
+	var wg sync.WaitGroup
+	for i, c := range clients {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			out[i] = complete(c)
+		}()
+	}
+	go func() { wg.Wait(); close(finished) }()
+	awaitLockWaiters(t, h, n, finished)
+	release()
+	<-finished
+	return out
+}
+
+// The switch turned off, or the account disabled, while complete runs: the
+// transaction reads both again under their locks, so neither a switch-off
+// nor a leaver's Deactivate can leave a live connection behind it.
+func TestOutlookComplete_RacesTheSwitchAndTheLeaver(t *testing.T) {
+	t.Parallel()
+	f := newOutlookFixture(t)
+	c, _, oid := f.person(t, "kari@nordlys.no")
+
+	f.authorizeAs(t, c, oid, "kari@nordlys.no", nil)
+	release := lockGate(t, f.h, `UPDATE entra.connection SET outlook_connect = false`)
+	if r := completeBehind(t, f.h, release, 1, c)[0]; r.Status != http.StatusConflict || codeOf(t, r) != "switch_off" {
+		t.Errorf("the switch turned off during complete: %d %s, want 409 switch_off", r.Status, r.Body)
+	}
+	if n := f.h.Count(t, `SELECT count(*) FROM entra.outlook_connections`); n != 0 {
+		t.Errorf("%d connections behind the switch-off, want 0", n)
+	}
+	f.h.Exec(t, `UPDATE entra.connection SET outlook_connect = true`)
+
+	f.authorizeAs(t, c, oid, "kari@nordlys.no", nil)
+	release = lockGate(t, f.h, `UPDATE entra.accounts SET state = 'disabled' WHERE object_id = $1`, oid)
+	if r := completeBehind(t, f.h, release, 1, c)[0]; r.Status != http.StatusConflict || codeOf(t, r) != "no_account" {
+		t.Errorf("the account disabled during complete: %d %s, want 409 no_account", r.Status, r.Body)
+	}
+	if n := f.h.Count(t, `SELECT count(*) FROM entra.outlook_connections`); n != 0 {
+		t.Errorf("%d connections behind the leaver, want 0", n)
+	}
+}
+
+// One connect submitted twice at once is the caller's own connection both
+// times, never account_taken.
+func TestOutlookComplete_ADoubleSubmitIsTheCallersOwn(t *testing.T) {
+	t.Parallel()
+	f := newOutlookFixture(t)
+	c, userID, oid := f.person(t, "kari@nordlys.no")
+	f.authorizeAs(t, c, oid, "kari@nordlys.no", nil)
+	release := lockGate(t, f.h, `SELECT 1 FROM entra.connection WHERE id = 1 FOR UPDATE`)
+	for i, r := range completeBehind(t, f.h, release, 2, c, c) {
+		if r.Status != http.StatusOK {
+			t.Errorf("submit %d: %d %s, want 200", i, r.Status, r.Body)
+		}
+	}
+	if n := f.h.Count(t, `SELECT count(*) FROM entra.outlook_connections WHERE object_id = $1 AND user_id = $2 AND state = 'active'`, oid, userID); n != 1 {
+		t.Errorf("%d active rows of the caller's, want 1", n)
+	}
+}
+
+// A new connect clears the connected cookie an abandoned one left, so it
+// can never complete after it.
+func TestOutlookConnect_ClearsAStaleConnectedCookie(t *testing.T) {
+	t.Parallel()
+	f := newOutlookFixture(t)
+	c, _, oid := f.person(t, "kari@nordlys.no")
+	f.authorizeAs(t, c, oid, "kari@nordlys.no", nil)
+	startConnect(t, c, "")
+	if r := complete(c); r.Status != http.StatusGone || codeOf(t, r) != "expired" {
+		t.Errorf("complete after a new connect: %d %s, want 410 expired", r.Status, r.Body)
 	}
 }
 

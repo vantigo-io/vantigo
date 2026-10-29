@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/vantigo-io/vantigo/server/internal/entra/graphtest"
+	"github.com/vantigo-io/vantigo/server/internal/modtest"
 	"github.com/vantigo-io/vantigo/server/internal/worker"
 )
 
@@ -78,6 +79,7 @@ func TestOutlookSweep_DeletesWhatNothingNeeds(t *testing.T) {
 		weekOld        = uuid.New()
 		active         = uuid.New()
 		reconnect      = uuid.New()
+		usedBefore     = uuid.New()
 	)
 	insertAged(t, h, recentlyClosed, "closing", time.Hour, 0)
 	insertAged(t, h, recentlyUsed, "closing", 2*day, time.Hour)
@@ -88,12 +90,15 @@ func TestOutlookSweep_DeletesWhatNothingNeeds(t *testing.T) {
 	subscribe(t, h, weekOld)
 	insertAged(t, h, active, "active", 30*day, 0)
 	insertAged(t, h, reconnect, "reconnect", 30*day, 0)
+	// Used three days ago, closed just now: a day has not passed since it
+	// closed.
+	insertAged(t, h, usedBefore, "closing", 0, 3*day)
 
 	ran, err := s.RunCycle(context.Background())
 	if err != nil || !ran {
 		t.Fatalf("RunCycle: %v %v", ran, err)
 	}
-	for _, kept := range []uuid.UUID{recentlyClosed, recentlyUsed, subscribed, active, reconnect} {
+	for _, kept := range []uuid.UUID{recentlyClosed, recentlyUsed, subscribed, active, reconnect, usedBefore} {
 		if n := h.Count(t, `SELECT count(*) FROM entra.outlook_connections WHERE object_id = $1`, kept); n != 1 {
 			t.Errorf("%s was deleted", kept)
 		}
@@ -195,5 +200,36 @@ func TestOutlookSweep_ReadsTheAccountsWaitingInReconnectOnceADay(t *testing.T) {
 	}
 	if reads(enabled) != before+1 {
 		t.Error("an account was not read again after a day")
+	}
+}
+
+// A person who reconnects while the sweep reads their account in the
+// tenant keeps the new connection and its token: the close is guarded by
+// the revision the sweep listed.
+func TestOutlookSweep_AReconnectDuringTheAccountCheckIsKept(t *testing.T) {
+	t.Parallel()
+	tap := &tokenTap{}
+	h, g := newTenantHarness(t, modtest.WithTransport(tap))
+	tap.mu.Lock()
+	tap.next = g
+	tap.mu.Unlock()
+	connected(t, h)
+	s := outlookSweep(t, h)
+	oid := addAccount(t, h, "E-1", "kari@nordlys.no")
+	h.Exec(t, `UPDATE entra.accounts SET state = 'enabled' WHERE object_id = $1`, oid)
+	g.AddUser(graphtest.User{ID: oid.String(), AccountEnabled: false, UserPrincipalName: "kari@nordlys.no"})
+	insertOutlookRow(t, h, oid, "reconnect")
+	tap.onGraph("/v1.0/users/"+oid.String(), func() *http.Response {
+		h.Exec(t, `UPDATE entra.outlook_connections SET state = 'active', error_code = NULL, refresh_sealed = '\x02', revision = revision + 1 WHERE object_id = $1`, oid)
+		return nil
+	})
+	if _, err := s.RunCycle(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if n := h.Count(t, `SELECT count(*) FROM entra.outlook_connections WHERE object_id = $1 AND state = 'active' AND refresh_sealed = '\x02'`, oid); n != 1 {
+		t.Error("the sweep closed a connection reconnected while it read the account")
+	}
+	if n := h.Count(t, `SELECT count(*) FROM entra.events WHERE action = 'entra.outlook.closed'`); n != 0 {
+		t.Errorf("%d closed events, want 0", n)
 	}
 }

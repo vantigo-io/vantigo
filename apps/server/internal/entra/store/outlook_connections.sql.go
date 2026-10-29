@@ -57,6 +57,7 @@ UPDATE entra.outlook_connections SET
     revision = revision + 1,
     updated_at = $2::timestamptz
 WHERE object_id = $3 AND state <> 'closing'
+  AND ($4::bigint IS NULL OR revision = $4)
 RETURNING user_id, revision
 `
 
@@ -64,6 +65,7 @@ type CloseOutlookConnectionParams struct {
 	Forget   bool
 	Now      time.Time
 	ObjectID uuid.UUID
+	Revision *int64
 }
 
 type CloseOutlookConnectionRow struct {
@@ -73,10 +75,18 @@ type CloseOutlookConnectionRow struct {
 
 // CloseOutlookConnection closes a live connection: a disconnect keeps the
 // token for the removals that may still need it (M7); a leaver and a
-// deleted account forget it. No row is a connection already closing, whose
-// token ForgetOutlookRefresh forgets when it must.
+// deleted account forget it. With a revision, only the row still at the
+// revision its caller read closes, so a close decided on an old read never
+// closes a newer connect or forgets its token. No row is a connection
+// already closing, or moved on since, whose token ForgetOutlookRefresh
+// forgets when it must.
 func (q *Queries) CloseOutlookConnection(ctx context.Context, arg CloseOutlookConnectionParams) (CloseOutlookConnectionRow, error) {
-	row := q.db.QueryRow(ctx, closeOutlookConnection, arg.Forget, arg.Now, arg.ObjectID)
+	row := q.db.QueryRow(ctx, closeOutlookConnection,
+		arg.Forget,
+		arg.Now,
+		arg.ObjectID,
+		arg.Revision,
+	)
 	var i CloseOutlookConnectionRow
 	err := row.Scan(&i.UserID, &i.Revision)
 	return i, err
@@ -107,7 +117,7 @@ const deleteSpentOutlookConnections = `-- name: DeleteSpentOutlookConnections :m
 DELETE FROM entra.outlook_connections c
 WHERE c.state = 'closing'
   AND (c.changed_at + interval '7 days' < $1::timestamptz
-       OR (COALESCE(c.used_at, c.changed_at) + interval '24 hours' < $1::timestamptz
+       OR (GREATEST(COALESCE(c.used_at, c.changed_at), c.changed_at) + interval '24 hours' < $1::timestamptz
            AND NOT EXISTS (SELECT 1 FROM entra.mailbox_subscriptions s
                            WHERE s.object_id = c.object_id)))
 RETURNING object_id, user_id
@@ -120,8 +130,8 @@ type DeleteSpentOutlookConnectionsRow struct {
 
 // DeleteSpentOutlookConnections is entra-outlook-sweep's one statement (M7):
 // a closing connection goes seven days after it closed, or once a day has
-// passed since it was last used (or closed) and no subscription of the
-// mailbox is left for its removals to delete.
+// passed since it was last used and since it closed, and no subscription
+// of the mailbox is left for its removals to delete.
 func (q *Queries) DeleteSpentOutlookConnections(ctx context.Context, now time.Time) ([]DeleteSpentOutlookConnectionsRow, error) {
 	rows, err := q.db.Query(ctx, deleteSpentOutlookConnections, now)
 	if err != nil {
@@ -140,6 +150,31 @@ func (q *Queries) DeleteSpentOutlookConnections(ctx context.Context, now time.Ti
 		return nil, err
 	}
 	return items, nil
+}
+
+const forgetClosingOutlookRefresh = `-- name: ForgetClosingOutlookRefresh :execrows
+UPDATE entra.outlook_connections SET
+    refresh_sealed = NULL,
+    revision = revision + 1,
+    updated_at = $1::timestamptz
+WHERE object_id = $2 AND revision = $3 AND state = 'closing' AND refresh_sealed IS NOT NULL
+`
+
+type ForgetClosingOutlookRefreshParams struct {
+	Now      time.Time
+	ObjectID uuid.UUID
+	Revision int64
+}
+
+// ForgetClosingOutlookRefresh forgets a closing connection's token Microsoft
+// refused, at the revision the refresh read: no removal can use it again.
+// No row means a newer connect or a forget won.
+func (q *Queries) ForgetClosingOutlookRefresh(ctx context.Context, arg ForgetClosingOutlookRefreshParams) (int64, error) {
+	result, err := q.db.Exec(ctx, forgetClosingOutlookRefresh, arg.Now, arg.ObjectID, arg.Revision)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const forgetOutlookRefresh = `-- name: ForgetOutlookRefresh :exec
@@ -276,7 +311,7 @@ func (q *Queries) InsertOutlookConnection(ctx context.Context, arg InsertOutlook
 }
 
 const listOutlookAccountChecks = `-- name: ListOutlookAccountChecks :many
-SELECT object_id FROM entra.outlook_connections
+SELECT object_id, revision FROM entra.outlook_connections
 WHERE state = 'reconnect'
   AND (account_checked_at IS NULL OR account_checked_at + interval '1 day' < $1::timestamptz)
 ORDER BY account_checked_at NULLS FIRST, object_id
@@ -288,23 +323,29 @@ type ListOutlookAccountChecksParams struct {
 	RowLimit int32
 }
 
+type ListOutlookAccountChecksRow struct {
+	ObjectID uuid.UUID
+	Revision int64
+}
+
 // ListOutlookAccountChecks is the connections waiting in reconnect whose
 // account entra-outlook-sweep has not read in the tenant for a day (design
 // M6): a person who never reconnects is still found once their account is
-// disabled or deleted. Oldest check first, at most row_limit.
-func (q *Queries) ListOutlookAccountChecks(ctx context.Context, arg ListOutlookAccountChecksParams) ([]uuid.UUID, error) {
+// disabled or deleted. Oldest check first, at most row_limit, each with the
+// revision a close it decides is guarded by.
+func (q *Queries) ListOutlookAccountChecks(ctx context.Context, arg ListOutlookAccountChecksParams) ([]ListOutlookAccountChecksRow, error) {
 	rows, err := q.db.Query(ctx, listOutlookAccountChecks, arg.Now, arg.RowLimit)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []uuid.UUID
+	var items []ListOutlookAccountChecksRow
 	for rows.Next() {
-		var object_id uuid.UUID
-		if err := rows.Scan(&object_id); err != nil {
+		var i ListOutlookAccountChecksRow
+		if err := rows.Scan(&i.ObjectID, &i.Revision); err != nil {
 			return nil, err
 		}
-		items = append(items, object_id)
+		items = append(items, i)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

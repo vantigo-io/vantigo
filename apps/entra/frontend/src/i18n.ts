@@ -224,6 +224,8 @@ export const entraCatalog = {
     outlookConnectStatus_ready: "Ready",
     outlookConnectStatus_untested:
       "Nobody has connected yet: connect your own Outlook under Settings › Connections to check that it works.",
+    outlookConnectStatus_permission_missing:
+      "Calendar sync needs the Calendars.ReadWrite application permission, which is not in the token. That is expected if you granted it with Exchange RBAC for Applications; otherwise add it, grant admin consent and test again.",
     outlookConnectStatus_consent_missing:
       "The last connect lacked a delegated permission: grant admin consent for it in the app registration and connect again.",
     outlookConnectStatus_unavailable: "Waiting for the connection",
@@ -669,6 +671,8 @@ export const entraCatalog = {
     outlookConnectStatus_ready: "Klar",
     outlookConnectStatus_untested:
       "Ingen har koblet til ennå: koble til din egen Outlook under Innstillinger › Tilkoblinger for å sjekke at det virker.",
+    outlookConnectStatus_permission_missing:
+      "Kalendersynkroniseringen trenger applikasjonstillatelsen Calendars.ReadWrite, som ikke er i tokenet. Det er som ventet hvis du ga den med Exchange RBAC for Applications; ellers legg den til, gi administratorsamtykke og test på nytt.",
     outlookConnectStatus_consent_missing:
       "Den siste tilkoblingen manglet en delegert tillatelse: gi administratorsamtykke for den i appregistreringen og koble til på nytt.",
     outlookConnectStatus_unavailable: "Venter på tilkoblingen",

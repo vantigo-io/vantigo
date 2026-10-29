@@ -338,15 +338,20 @@ export const SettingsForm = ({ connection }: { connection: EntraConnection }) =>
 
 /**
  * Where the Outlook connection stands, as the connection answers it: nothing
- * while the switch is off, else ready, untested, consent missing, or waiting
- * for the connection (with the connection's reason when it has one), and how
- * many people are connected and waiting to reconnect.
+ * while the switch is off, else ready, untested, the calendar's application
+ * permission missing (advisory), consent missing, or waiting for the
+ * connection (with the connection's reason when it has one), and how many
+ * people are connected and waiting to reconnect.
  */
 const OutlookConnectStatus = ({ outlookConnect, t }: { outlookConnect: EntraOutlookConnect; t: Translate }) => {
   if (outlookConnect.status === "off") return null;
-  const colour = { ready: "teal", untested: "blue", consent_missing: "orange", unavailable: "dimmed" }[
-    outlookConnect.status
-  ];
+  const colour = {
+    ready: "teal",
+    untested: "blue",
+    permission_missing: "orange",
+    consent_missing: "orange",
+    unavailable: "dimmed",
+  }[outlookConnect.status];
   return (
     <Stack gap={0} role="status">
       <Text size="sm" c={colour}>

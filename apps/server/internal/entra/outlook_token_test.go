@@ -25,15 +25,17 @@ import (
 // server, through a tap on the token endpoint for what the fake cannot
 // answer.
 
-// tokenTap stands before the fake and acts on the refresh_token grants
-// alone: it answers the next queued statuses or transport errors in the
-// fake's stead, and runs a hook once before the next refresh reaches the
-// fake.
+// tokenTap stands before the fake and acts on the refresh_token grants: it
+// answers the next queued statuses or transport errors in the fake's stead,
+// and runs a hook once before the next refresh reaches the fake. On Graph,
+// it runs the actions queued for a path, each once: an action answering a
+// response answers in the fake's stead, one answering nil goes on to it.
 type tokenTap struct {
 	next   http.RoundTripper
 	mu     sync.Mutex
 	fail   []int // a status, or 0 for a transport error
 	before func()
+	graph  map[string][]func() *http.Response
 }
 
 func (w *tokenTap) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -50,7 +52,17 @@ func (w *tokenTap) RoundTrip(req *http.Request) (*http.Response, error) {
 	}
 	w.mu.Lock()
 	next := w.next
+	var action func() *http.Response
+	if req.URL.Host == graphtest.GraphHost && len(w.graph[req.URL.Path]) > 0 {
+		action = w.graph[req.URL.Path][0]
+		w.graph[req.URL.Path] = w.graph[req.URL.Path][1:]
+	}
 	w.mu.Unlock()
+	if action != nil {
+		if resp := action(); resp != nil {
+			return resp, nil
+		}
+	}
 	if refresh {
 		w.mu.Lock()
 		var status *int
@@ -84,6 +96,16 @@ func (w *tokenTap) beforeNext(fn func()) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	w.before = fn
+}
+
+// onGraph queues fn for the next Graph call to path (/v1.0/...).
+func (w *tokenTap) onGraph(path string, fn func() *http.Response) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.graph == nil {
+		w.graph = map[string][]func() *http.Response{}
+	}
+	w.graph[path] = append(w.graph[path], fn)
 }
 
 // tokenFixture is an Outlook fixture whose transport is a tokenTap over the
@@ -422,6 +444,9 @@ func TestOutlookToken_AnAccountNoLongerEnabledClosesOnUse(t *testing.T) {
 	if r := f.row(t, f.oid); r.State != "closing" || r.Revision != 2 {
 		t.Errorf("row = %+v, want closing", r)
 	}
+	if f.refreshToken(t, f.oid) != "" {
+		t.Error("an account no longer enabled kept its connection's token")
+	}
 	if n := f.h.Count(t, `SELECT count(*) FROM entra.events WHERE action = 'entra.outlook.closed' AND object_id = $1 AND codes = '{disabled}' AND actor_system = 'system:entra-outlook'`, f.oid); n != 1 {
 		t.Errorf("%d closed events, want 1", n)
 	}
@@ -454,5 +479,67 @@ func TestOutlookToken_AClaimsChallengeAsksToSignInAgain(t *testing.T) {
 	}
 	if n := f.h.Count(t, `SELECT count(*) FROM entra.events WHERE action = 'entra.outlook.reconnect_needed' AND codes = '{sign_in_again}'`); n != 1 {
 		t.Errorf("%d reconnect_needed events, want 1", n)
+	}
+}
+
+// The switch off refuses every call but a removal, even before the rows
+// closing with it are seen.
+func TestOutlookToken_TheSwitchOffAllowsRemovalsAlone(t *testing.T) {
+	t.Parallel()
+	f := newTokenFixture(t)
+	f.h.Exec(t, `UPDATE entra.connection SET outlook_connect = false`)
+	if _, err := f.token(false); func() bool { r, ok := entra.ConnectionNeeded(err); return !ok || r != "closing" }() {
+		t.Errorf("the switch off, not a removal: %v, want connection needed closing", err)
+	}
+	if tok, err := f.token(true); err != nil || tok == "" {
+		t.Errorf("the switch off, a removal: %q %v", tok, err)
+	}
+}
+
+// A closing connection whose token Microsoft refuses forgets it: no
+// removal can use it again, and the call needs its person rather than
+// failing as transient for good.
+func TestOutlookToken_AClosingConnectionsRefusedTokenIsForgotten(t *testing.T) {
+	t.Parallel()
+	f := newTokenFixture(t)
+	if r := f.c.Do(http.MethodDelete, outlookConnectionPath, nil); r.Status != http.StatusNoContent {
+		t.Fatalf("DELETE: %d", r.Status)
+	}
+	f.g.RefuseRefresh(f.refreshToken(t, f.oid), "invalid_grant", 70008)
+	_, err := f.token(true)
+	if reason, ok := entra.ConnectionNeeded(err); !ok || reason != "closing" {
+		t.Fatalf("a removal on a refused closing token: %v, want connection needed closing", err)
+	}
+	if r := f.row(t, f.oid); r.State != "closing" || r.Revision != 3 {
+		t.Errorf("row = %+v, want closing at revision 3", r)
+	}
+	if f.refreshToken(t, f.oid) != "" {
+		t.Error("the refused token is kept")
+	}
+	calls := f.g.RefreshCalls()
+	if _, err := f.token(true); func() bool { r, ok := entra.ConnectionNeeded(err); return !ok || r != "closing" }() {
+		t.Errorf("a second removal: %v, want connection needed closing", err)
+	}
+	if f.g.RefreshCalls() != calls {
+		t.Error("a forgotten token was refreshed again")
+	}
+}
+
+// A claims challenge answered to the retry after a plain 401 is a claims
+// challenge all the same.
+func TestOutlookToken_AClaimsChallengeOnTheRetryAsksToSignInAgain(t *testing.T) {
+	t.Parallel()
+	f := newTokenFixture(t)
+	ctx := context.Background()
+	f.tap.onGraph("/v1.0/me", func() *http.Response {
+		return &http.Response{StatusCode: http.StatusUnauthorized, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(`{"error":{"code":"InvalidAuthenticationToken","message":"expired"}}`))}
+	})
+	f.g.ChallengeNext(f.oid.String())
+	_, err := entra.OutlookMe(ctx, f.h.Deps(), f.oid)
+	if reason, ok := entra.ConnectionNeeded(err); !ok || reason != "sign_in_again" {
+		t.Fatalf("GET /me, a 401 then a challenge: %v, want connection needed sign_in_again", err)
+	}
+	if r := f.row(t, f.oid); r.State != "reconnect" || r.Code != "sign_in_again" {
+		t.Errorf("row = %+v", r)
 	}
 }

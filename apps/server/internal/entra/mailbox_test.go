@@ -164,7 +164,7 @@ func TestMailbox_StatusAndTheConnectionsOutlookConnect(t *testing.T) {
 
 	// On, the permission missing: the test still connects and names it.
 	on := setOutlookConnect(t, o, true)
-	if !on.OutlookConnect.Enabled || on.OutlookConnect.Status != gen.EntraOutlookConnectStatusUntested {
+	if !on.OutlookConnect.Enabled || on.OutlookConnect.Status != gen.EntraOutlookConnectStatusPermissionMissing {
 		t.Errorf("the PUT's answer: %+v", on.OutlookConnect)
 	}
 	result := testConnection(t, o)
@@ -174,7 +174,7 @@ func TestMailbox_StatusAndTheConnectionsOutlookConnect(t *testing.T) {
 	// The role not in the token is advisory only — an Exchange RBAC grant
 	// never shows there — so the provider is available all the same.
 	status(contracts.MailboxAvailable, "")
-	outlookConnect(gen.EntraOutlookConnectStatusUntested, "", true)
+	outlookConnect(gen.EntraOutlookConnectStatusPermissionMissing, "", true)
 
 	// Consented: available, and still untested.
 	g.Configure(func(g *graphtest.FakeGraph) { g.Roles = append(g.Roles, "Calendars.ReadWrite") })
