@@ -786,9 +786,12 @@ count as unexpected.
   *As built (delivery A, 2026-10-29;
   [the plan](../plans/2026-10-29-entra-outlook-connection.md)):* where A departs from
   this design —
-  - **M2**: the `permission_missing` advisory goes in A, with the `calendarSync` object
-    that held it; what stays until B is `Calendars.ReadWrite` in `permissionsMissing`
-    while the switch is on and step 3's *(for calendar sync)* label. `outlookConnect`
+  - **M2**: the `calendarSync` object goes in A; its `permission_missing` advisory
+    moves to `outlookConnect.status` until B — while the switch is on and the
+    connection connected, when the last test's token lacks `Calendars.ReadWrite`,
+    after `unavailable` and before `consent_missing`, `ready` and `untested` — beside
+    `Calendars.ReadWrite` in `permissionsMissing` while the switch is on and step 3's
+    *(for calendar sync)* label. While the switch is off only removals get a token. `outlookConnect`
     also answers `redirectUri`, which the Entra page shows to copy. The page asks before
     it saves the switch turned off while anyone is connected or waiting to reconnect.
   - **M3**: `refresh_sealed` is `bytea`, as every sealed column of the module;
@@ -806,11 +809,17 @@ count as unexpected.
   - **M6**: the daily account read runs in A, in `entra-outlook-sweep`, for the rows in
     `reconnect` (at most 100 a cycle); an `active` row's account is checked on use
     against the module's own row, closing it (`deleted` or `disabled`) with its token
-    kept for removals.
+    forgotten. Complete reads the switch and the account again under their locks (the
+    connection's row `FOR UPDATE`, the account's `FOR SHARE`), so completes are
+    serialized. The callback never marks the client secret failed; a new connect
+    clears an earlier one's connected cookie.
   - **M7**: a leaver's row closes inside Deactivate's transaction, with the pass, its
     token nulled; `Delete` of a user the tenant no longer holds now marks that user's row
     `deleted` (it had marked nothing, for want of the object id) and closes its
-    connection. `entra.outlook.closed` carries `leaver`, `deleted`, `disabled`,
+    connection, when the module created it or its adoption is confirmed. A refused
+    refresh of a closing row forgets its token; a spent closing row goes once a day
+    has passed since both its last use and its close; every close decided on a read
+    is revision-guarded. `entra.outlook.closed` carries `leaver`, `deleted`, `disabled`,
     `switch_off` or `repointed`; the module's own system actor is
     `system:entra-outlook`.
   - **M8**: the host does import `@vantigo/entra-ui`, as it composes `EntraPage` today;
