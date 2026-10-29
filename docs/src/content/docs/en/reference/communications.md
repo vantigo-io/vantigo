@@ -1,6 +1,6 @@
 ---
 title: "Communications module"
-description: "Business email from shared mailboxes: the channels' providers — SMTP, and Microsoft 365 shared mailboxes through the Microsoft Entra ID module, created by address or switched from SMTP — the outbox and its delivery through either, the size a Microsoft 365 channel takes; receiving into a Microsoft 365 channel — the mailbox sync, receipts, parsing, sanitising, threading, the customer linker, reply and reply-all —; retention and the operator's configuration."
+description: "Business email from shared mailboxes: the channels' providers — SMTP, and Microsoft 365 shared mailboxes through the Microsoft Entra ID module, created by address or switched from SMTP, with an optional import window and Outlook on-close behavior — the outbox and its delivery through either, the size a Microsoft 365 channel takes; receiving into a Microsoft 365 channel — the mailbox sync, change notifications, receipts, parsing, sanitising, threading, the customer linker, reply and reply-all, and Outlook state on close —; retention and the operator's configuration."
 sources:
   - apps/server/internal/communications
   - apps/communications/frontend
@@ -8,6 +8,7 @@ sources:
   - apps/server/internal/openapi/specs/communications.yaml
   - apps/server/internal/db/migrations/00091_communications_channel_settings.sql
   - apps/server/internal/db/migrations/00092_communications_inbound.sql
+  - apps/server/internal/db/migrations/00094_communications_mailbox_marks.sql
 ---
 Communications is a module inside the single Vantigo binary, not a separately
 deployed service. It runs in the same process as Identity, Customers, Products and
@@ -187,26 +188,29 @@ only from a mailbox its `Check` resolved and recorded — a shared one. Someone 
 
 - **The row.** `provider = 'entra'`; `channels.settings` (migration
   `00091_communications_channel_settings.sql`, `jsonb`, `{}` by default) is
-  `{"mailbox": "<object id>"}`, the mailbox's object id in lower case; and there is
-  **no `channel_credentials` row** — no secret to seal. **One channel per mailbox**:
+  `{"mailbox": "<object id>", "onClose"?: "read"|"move", "folder"?: "<name>"}`, the
+  mailbox's object id in lower case and the optional [Outlook state on close](#outlook-state-on-close);
+  and there is **no `channel_credentials` row** — no secret to seal. **One channel per mailbox**:
   `ux_channels_entra_mailbox` on `settings->>'mailbox'` `WHERE provider = 'entra'`, so two
   aliases of one mailbox cannot make two channels; its violation is 409 `mailbox_exists`
   (*Another channel already uses this mailbox.*), apart from `channel_exists`, an address
   another channel holds.
-- **The answer.** `ChannelResponse.mailbox` is `{id}` for a Microsoft 365 channel and
-  null otherwise; `settings`, the SMTP shape (`host`, `port`, `useSsl`, `username`), is
-  null for it, and `hasCredentials` false.
+- **The answer.** `ChannelResponse.mailbox` is `{id, onClose: "none"|"read"|"move", folder: string|null}`
+  for a Microsoft 365 channel and null otherwise; `settings`, the SMTP shape (`host`,
+  `port`, `useSsl`, `username`), is null for it, and `hasCredentials` false.
 - **Every call of the slot is made outside a transaction** — before it opens or after it
   commits — through the accessors in `contractscalls.go`, which refuse one made inside
   (a programming error, answered as a 500).
-- **It receives from the day it is made.** Creating a Microsoft 365 channel, and switching
-  an SMTP one, writes its `communications.channel_sync` row in the same transaction
-  (migration `00092_communications_inbound.sql`): `state = 'pending'`, `import_from` and
-  `next_sync_at` the moment of the write. The [mailbox sync](#the-mailbox-sync) reads only
-  mail received at or after `import_from` — never the mailbox's past. A channel that
+- **The import window.** Creating a Microsoft 365 channel, and switching an SMTP one,
+  writes its `communications.channel_sync` row in the same transaction (migration
+  `00092_communications_inbound.sql`): `state = 'pending'`, `next_sync_at` the moment of
+  the write, and `import_from` set from the request's optional `importWindow` —
+  `from_now` (the default, the moment of the write), `last_30_days` (now minus 30 days) or
+  `last_90_days` (now minus 90 days). The [mailbox sync](#the-mailbox-sync) reads only
+  mail received at or after `import_from`. A channel that
   already existed when `00092` ran got its row from the migration, with `import_from` the
   moment of the upgrade, inactive channels included. The way back to SMTP deletes the row,
-  so a later switch starts again from its own day; deactivating a channel keeps it, and the
+  so a later switch starts again from its own window; deactivating a channel keeps it, and the
   worker skips an inactive channel until it is activated again.
 - **Its receive state** is `ChannelResponse.sync`, `{state, error, lastSyncedAt}`, null for
   an SMTP channel: `state` is the row's — `pending` until its first sync finishes, then
@@ -216,8 +220,13 @@ only from a mailbox its `Check` resolved and recorded — a shared one. Someone 
 #### Creating one
 
 `POST /channels` with `{type: "email", provider: "entra", address, displayName?,
-isDefault?}` and no `smtp` block (one is a 400 under `smtp`). Before the transaction, the
-provider's `Status`, then `Check(address)`:
+isDefault?, importWindow?, onClose?, folder?}` and no `smtp` block (one is a 400 under
+`smtp`; `importWindow`, `onClose` and `folder` on an `smtp` create are a 400 too).
+`importWindow` is `from_now` (default), `last_30_days` or `last_90_days`; `onClose` is
+`none` (default), `read` or `move`, and when `onClose` is `move`, `folder` (1 to 120
+characters, no `/` or `\`, defaulting to `"Handled in Vantigo"`) is ensured in the shared
+mailbox by calling `EnsureFolder` before the transaction. Before the transaction, the
+provider's `Status`, then `Check(address)` (and `EnsureFolder` when `onClose` is `move`):
 
 | What the provider answers | Result |
 | --- | --- |
@@ -240,10 +249,11 @@ channel holds is 409 `channel_exists` as for SMTP; a mailbox another channel use
 
 #### Switching provider
 
-`POST /channels/{id}/provider` with `{provider: "entra"}` (`channels-manage`) moves an
+`POST /channels/{id}/provider` with `{provider: "entra", importWindow?, onClose?, folder?}` (`channels-manage`) moves an
 SMTP channel to Microsoft 365 and keeps its **id, address, conversations and default
 flag**. Any other provider in the body is a 400; an unknown channel a bare 404; a
-channel already on `entra` 422 `provider_unchanged`. `Status` and `Check` run on the
+channel already on `entra` 422 `provider_unchanged`. `Status` and `Check` (and
+`EnsureFolder` when `onClose` is `move`) run on the
 channel's own address before the transaction, with the create's table; a mailbox another
 channel uses is 409 `mailbox_exists`. The channel **keeps its own address**, which may be
 an alias of the mailbox rather than its primary address: the mail then goes out `From:`
@@ -259,12 +269,14 @@ an admin checked, and the next `Check` rewrites it.
 **the password included** — there is no stored one to reuse (*A password is required to
 switch a channel to SMTP.*; without a block, *SMTP credentials require a host and valid
 port.*). It writes the credential row, sets the provider to `smtp` and `settings` to
-`{}`, and **after the commit** calls the provider's `Forget` for the old mailbox,
+`{}`, and **after the commit** calls the provider's `Unwatch` and `Forget` for the old mailbox,
 best-effort: a failure is logged and the 200 stands. The channels are read again first,
-and `Forget` is skipped when another channel has taken the mailbox in between, so that
-channel can still send. The channels page has no control for
+and `Unwatch` and `Forget` are skipped when another channel has taken the mailbox in between, so that
+channel can still send and receive. The channels page has no control for
 it; it is the API's. A `PUT` without `provider` keeps the channel's own, so `isActive`,
-`isDefault` or `displayName` alone on a Microsoft 365 channel need no credential; a `PUT`
+`isDefault`, `displayName`, `onClose` or `folder` alone on a Microsoft 365 channel need no
+credential (when `onClose` is set to `move`, `EnsureFolder` runs before the transaction;
+when `isActive` is set to `false`, `Unwatch` runs best-effort after the commit); a `PUT`
 naming `entra` on an SMTP channel is a 400 under `provider` (the switch is the `POST`).
 A `PUT` whose channel changed provider between its read and its transaction is a 400
 under `provider`, to read the channel again.
@@ -540,22 +552,32 @@ failure is 503 `attachment_storage_unavailable`. The detail answers each message
 ## Receiving
 
 A Microsoft 365 channel receives (Outlook connection and Microsoft 365 mail design M14,
-M15, M16): mail arriving in its shared mailbox's **Inbox** becomes an inbound message of a
+M15, M16, M17): mail arriving in its shared mailbox's **Inbox** becomes an inbound message of a
 conversation, threaded onto the one it answers or starting one, its sender linked to a
 customer when the address belongs to exactly one. Vantigo reads the mailbox with the
 application's token through the `ChannelMailbox` slot's two reads, `Delta` and `Raw`
-([Entra's inbound reads](/en/reference/entra/#delta-and-raw)), and never changes it: the
-message stays in the Inbox, read or unread as it was. An SMTP channel does not receive.
+([Entra's inbound reads](/en/reference/entra/#delta-and-raw)), subscribes the Inbox to
+change notifications when configured (`Watch`, `Unwatch`, `Notified`), and leaves the
+messages in the Inbox untouched until a conversation is closed on a channel configured to
+mark or move them ([Outlook state on close](#outlook-state-on-close)). An SMTP channel does not receive.
 
 ### The mailbox sync
 
 `communications-mailbox-sync` is a worker of this module. Every **30 seconds** it drains:
-it claims a channel due, runs one cycle on it, and claims the next, until none is due.
+it first reads any new mail change notices from the provider, then claims a channel due,
+runs one cycle on it, and claims the next — or, when no channel sync is due, claims the
+next due [on-close mark job](#outlook-state-on-close) — until none is due.
 
+- **Change notices (`takeNotices`).** Before claiming, the worker asks
+  `ChannelMailbox.Notified(since)` from an in-memory cursor initialised to one minute
+  before the worker started. Each notice's mailbox id marks its active `entra` channel's
+  `channel_sync` row `notified = true` and `next_sync_at = now` when the row is not
+  backing off a failure (`attempts = 0` and `state <> 'failed'`), so a notified channel is
+  claimed next.
 - **The claim.** A `channel_sync` row is due when its channel is an **active** `entra`
   channel, its `state` is not `stopped` (nothing in this release sets `stopped`), its
   `next_sync_at` has come and it holds no lease — or its lease has expired. A row marked
-  `notified` comes first (nothing sets it yet; a finished pass clears it), then the
+  `notified` comes first (a finished pass clears it), then the
   longest due. The claim is a
   conditional update that re-asserts that predicate and writes a new `lease_id` (32 hex
   digits) and `lease_until` **two minutes** ahead; 0 rows is a lost race, and the worker
@@ -582,7 +604,11 @@ it claims a channel due, runs one cycle on it, and claims the next, until none i
 - **The link is kept last.** Once every item of the page has a receipt, the page's link is
   stored and the lease given back. A page that ends the delta stores the **delta link**,
   and the channel becomes `active`, its `error`, `restart_from` and `notified` cleared,
-  `attempts` 0, `last_synced_at` now and `next_sync_at` **five minutes** ahead. Every
+  `attempts` 0 and `last_synced_at` now. When change notifications are active
+  (`PUBLIC_BASE_URL` is set and `CALENDAR_MAILBOX_NOTIFICATIONS_ENABLED` is on) and
+  `Watch(mailbox, "inbox")` succeeds after the pass, `next_sync_at` is set **one hour**
+  ahead as a safety net; otherwise — notifications off, `PUBLIC_BASE_URL` unset, or
+  `Watch` failing (logged at warn) — `next_sync_at` is **five minutes** ahead. Every
   stored page forgets the count of failed tries (below). A page with more to come stores the **next
   page's link** with `next_sync_at` now, so the same drain claims the channel again at
   once. A cycle that stops half-way stores nothing, reads the same page next time, and the
@@ -848,6 +874,43 @@ exchanges predate them).
 **The AI draft** builds its context from the conversation's 20 newest inbound text bodies,
 so it drafts from the customer's own words once a channel receives; the HTML body is never
 read.
+
+### Outlook state on close
+
+A Microsoft 365 channel's `settings.onClose` decides what happens in the shared mailbox in
+Outlook when a conversation on the channel transitions to `closed`
+(`PATCH /api/v1/communications/conversations/{id}` with `status: "closed"`):
+
+- `none` (the default): nothing is changed in Outlook.
+- `read`: every inbound message of the conversation is marked as read in Outlook
+  (`isRead: true`).
+- `move`: every inbound message of the conversation is moved to the channel's configured
+  top-level folder (`settings.folder`, `"Handled in Vantigo"` by default), ensured by
+  `EnsureFolder`.
+
+In the close's own transaction, when the channel is an `entra` channel whose `onClose` is
+`read` or `move`, `UpsertMailboxMark` writes or resets the conversation's row in
+`communications.mailbox_marks` (migration `00094_communications_mailbox_marks.sql`,
+`conversation_id` primary key `ON DELETE CASCADE` to `conversations(id)`): `operation`
+(`read` or `move`), `folder`, `status = 'queued'`, `attempts = 0`, `next_attempt_at` and
+`queued_at` now. Reopening and closing the conversation again resets the row to `queued` so
+any new inbound messages that arrived in between are marked or moved too.
+
+`communications-mailbox-sync` drains due `mailbox_marks` jobs (`queued` or `retry`,
+`next_attempt_at <= now`, no active lease) under a two-minute lease:
+
+- It lists the conversation's `imported` receipts' `provider_message_id`s
+  (`ListConversationInboundProviderIDs`), calls `EnsureFolder` once when `operation` is
+  `move`, and calls `Mark` for each message outside any transaction, renewing the lease
+  before each message.
+- `contracts.ErrMailItemGone` (the message was already deleted in Outlook) is treated as
+  idempotent success for that message.
+- `ErrMailboxUnavailable` holds the job (`HoldMailboxMark`: attempt given back, tried
+  again up to five minutes later) until 24 hours after `queued_at`, when it fails as
+  `provider_unavailable`.
+- `ErrMailboxDenied`, `ErrMailboxGone` and `ErrMailboxUnknown` fail the job immediately;
+  any other error retries up to 8 attempts with exponential backoff (`min(3600, 2^attempts)`
+  seconds).
 
 ### Not verified on a real tenant
 

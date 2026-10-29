@@ -545,11 +545,18 @@ with `Mail.*` permissions in the app registration, which would reach every mailb
 the tenant. It is off by default.
 
 A channel **sends and receives**: its replies are sent from the shared mailbox and kept
-in its **Sent Items**, and the mail arriving in the mailbox's **Inbox** from the day the
-channel is added is read into Communications' Inbox, within about five minutes. Vantigo
-only reads the Inbox — it marks, moves and deletes nothing there — and never imports the
-mail that was there before the channel. **Application Mail Full Access**, below, already
-covers reading; there is nothing more to grant. How the module sends and reads is in
+in its **Sent Items**, and the mail arriving in the mailbox's **Inbox** from the chosen
+import window (*From now on*, *Last 30 days* or *Last 90 days*) is read into
+Communications' Inbox — within about a minute when [change
+notifications](#change-notifications) (`PUBLIC_BASE_URL` and
+`CALENDAR_MAILBOX_NOTIFICATIONS_ENABLED`) are on, or within about five minutes otherwise.
+When notifications are on, Vantigo subscribes each active channel's Inbox on the
+application's token and keeps a one-hour safety-net poll. While a conversation is open,
+Vantigo leaves the message in the Inbox as it was; when a conversation is closed, it
+leaves it as-is, marks it as read, or moves it to a folder in the shared mailbox according
+to the channel's setting. **Application Mail Full Access**, below, already
+covers reading, subscriptions and on-close changes; there is nothing more to grant. How
+the module sends and reads is in
 [the reference](/en/reference/entra/#mail-channels).
 
 ### Preconditions for mail channels

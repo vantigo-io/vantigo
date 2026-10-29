@@ -553,11 +553,18 @@ postboksene du merker — ikke med `Mail.*`-tillatelser i appregistreringen, som
 hver postboks i leietakeren. Det er av som standard.
 
 En kanal **sender og mottar**: svarene sendes fra den delte postboksen og ligger i
-**Sendte elementer** der, og e-posten som kommer til postboksens **Innboks** fra den dagen
-kanalen legges til, leses inn i Innboks i Kommunikasjon innen omtrent fem minutter.
-Vantigo bare leser innboksen — den merker, flytter og sletter ingenting der — og henter
-aldri inn e-posten som lå der før kanalen. **Application Mail Full Access** nedenfor
-dekker allerede lesing; det er ingenting mer å gi. Hvordan modulen sender og leser, står i
+**Sendte elementer** der, og e-posten som kommer til postboksens **Innboks** fra det
+valgte importvinduet (*Fra nå av*, *Siste 30 dager* eller *Siste 90 dager*), leses inn i
+Innboks i Kommunikasjon — innen omtrent ett minutt når
+[endringsvarsler](#endringsvarsler) (`PUBLIC_BASE_URL` og
+`CALENDAR_MAILBOX_NOTIFICATIONS_ENABLED`) er på, eller innen omtrent fem minutter ellers.
+Når varsler er på, abonnerer Vantigo på hver aktive kanals innboks med applikasjonens
+token og kjører en sikkerhetspolling hver time. Så lenge samtalen er åpen, lar Vantigo
+meldingen ligge i innboksen som den var; når en samtale lukkes, lar den meldingen stå
+uendret, markerer den som lest eller flytter den til en mappe i den delte postboksen etter
+kanalens innstilling. **Application Mail Full Access** nedenfor
+dekker allerede lesing, abonnementer og endringer ved lukking; det er ingenting mer å gi.
+Hvordan modulen sender og leser, står i
 [referansen](/en/reference/entra/#mail-channels).
 
 ### Forutsetninger for e-postkanaler

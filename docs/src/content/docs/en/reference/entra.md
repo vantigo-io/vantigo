@@ -1,6 +1,6 @@
 ---
 title: "Microsoft Entra ID module"
-description: "Microsoft Entra ID as Staff's identity provider: the connection to one tenant, its client secrets in the plural and the connection test; the status and its reasons, read by Staff with no network call; the account rules; the guarded Graph client and its limits; the user lifecycle per step — prepared disabled, enabled on the day with the hire date, the licences and a Temporary Access Pass, kept in step, disabled with the leaver's steps, soft-deleted — with the Graph calls and the codes; the account's photo, converted to Graph's JPEG and written or cleared; the address rule; the pass; the sensitive actions and role_missing; Staff's groups in the tenant — the six traits and the cached licences, the create, or the adoption an entra:manage holder confirms, with the service principal as an owner, the team, the members by $ref, the delete or the retirement; connecting existing users — the directory search and the exact matches, read through contracts.SSOConnections; the Outlook connection — the switch and its status, the redirect URI, the certain account read from Staff, the flow with its two cookies, the states and the revision guard, the delegated token, its refresh and its reconnects, CAE and cp1, closing and entra-outlook-sweep; the permissions the module does not use, a leftover application Calendars.ReadWrite among them; the mailbox calendar the module fills for the calendar's Outlook sync, every call on the person's own delegated token — the status rule, the account check, the removals a closing connection serves, ErrConnectionNeeded and Connections, the Graph calls and $batch, the marker, the all-day zones, the reads of the default calendar's delta and the marker, the write-back's reads of the copies' versions and of events whole, and the refusals; the mail channels Communications sends through and receives into — the switch and its status, tenant_wide, the channel mailboxes the module fills for Communications on the application's token, Check, Send through sendMail or a MIME draft, MaxMessage, Delta over the Inbox's message delta with immutable ids and the link check, Raw through $value under the caller's cap, and Forget; the events, the permission, the refusals and the endpoints."
+description: "Microsoft Entra ID as Staff's identity provider: the connection to one tenant, its client secrets in the plural and the connection test; the status and its reasons, read by Staff with no network call; the account rules; the guarded Graph client and its limits; the user lifecycle per step — prepared disabled, enabled on the day with the hire date, the licences and a Temporary Access Pass, kept in step, disabled with the leaver's steps, soft-deleted — with the Graph calls and the codes; the account's photo, converted to Graph's JPEG and written or cleared; the address rule; the pass; the sensitive actions and role_missing; Staff's groups in the tenant — the six traits and the cached licences, the create, or the adoption an entra:manage holder confirms, with the service principal as an owner, the team, the members by $ref, the delete or the retirement; connecting existing users — the directory search and the exact matches, read through contracts.SSOConnections; the Outlook connection — the switch and its status, the redirect URI, the certain account read from Staff, the flow with its two cookies, the states and the revision guard, the delegated token, its refresh and its reconnects, CAE and cp1, closing and entra-outlook-sweep; the permissions the module does not use, a leftover application Calendars.ReadWrite among them; the mailbox calendar the module fills for the calendar's Outlook sync, every call on the person's own delegated token — the status rule, the account check, the removals a closing connection serves, ErrConnectionNeeded and Connections, the Graph calls and $batch, the marker, the all-day zones, the reads of the default calendar's delta and the marker, the write-back's reads of the copies' versions and of events whole, and the refusals; the mail channels Communications sends through and receives into — the switch and its status, tenant_wide, the channel mailboxes the module fills for Communications on the application's token, Check, Send through sendMail or a MIME draft, MaxMessage, Delta over the Inbox's message delta with immutable ids and the link check, Raw through $value under the caller's cap, Watch, Unwatch and Notified for Inbox message subscriptions, Mark and EnsureFolder for on-close changes, and Forget; the events, the permission, the refusals and the endpoints."
 sources:
   - apps/server/internal/entra
   - apps/entra/frontend
@@ -13,6 +13,7 @@ sources:
   - apps/server/internal/db/migrations/00088_entra_outlook_connect.sql
   - apps/server/internal/db/migrations/00089_entra_outlook_connections.sql
   - apps/server/internal/db/migrations/00090_entra_mail_channels.sql
+  - apps/server/internal/db/migrations/00093_entra_mailbox_subscriptions_resource.sql
 ---
 The Microsoft Entra ID module connects one installation to one Microsoft Entra ID tenant
 and keeps the accounts of the people Staff registers in it: created disabled ahead of
@@ -183,6 +184,13 @@ primary SMTP address, lower case) and `checked_at` (the last `Check` that reache
 The rows are shared mailboxes, never `accounts`; the module sends only from one listed
 here, and [`Forget`](#forget) deletes it. Its down drops the table and the column; the
 channels then find no mailbox to send from.
+
+`00093_entra_mailbox_subscriptions_resource.sql` adds **`mailbox_subscriptions.resource`**
+(`varchar(40)`, `'events'` by default, `CHECK (resource IN ('events', 'messages'))`) and
+widens the primary key to `(object_id, resource)`, with `ix_entra_mailbox_subscriptions_notified`
+on `(resource, notified_at, object_id) WHERE notified_at IS NOT NULL`, so calendar event
+subscriptions and channel mail subscriptions share the table and webhook without
+colliding. Its down deletes `'messages'` rows and restores the single-column key.
 
 The down migration drops the schema with everything in it — the connection, the sealed
 secrets, any pass not yet revealed and the trail. Nothing in the tenant is touched: the
@@ -1978,12 +1986,13 @@ cost a create per person. A create that works clears it.
 
 #### Storage
 
-`entra.mailbox_subscriptions` (migration `00085_entra_mailbox_subscriptions.sql`, with `notification_url`), one row
-per mailbox:
+`entra.mailbox_subscriptions` (migrations `00085_entra_mailbox_subscriptions.sql` and
+`00093_entra_mailbox_subscriptions_resource.sql`), one row per `(object_id, resource)`:
 
 | Column | Meaning |
 | --- | --- |
-| `object_id` | Primary key: the account's. |
+| `object_id` | Part of the primary key `(object_id, resource)`: the account's or shared mailbox's object id. |
+| `resource` | Part of the primary key: `'events'` (the calendar's) or `'messages'` (a mail channel's). |
 | `subscription_id` | Graph's, unique; null while the create is in flight. A notification racing the 201 names an id no row holds yet and is ignored. |
 | `client_state_hash` | SHA-256 of the client state. |
 | `notification_url` | The webhook's address the create gave Graph. |
@@ -2057,9 +2066,10 @@ which mailboxes are channels; the module answers only for a mailbox its `Check` 
 and recorded ([module boundaries](/en/contributing/module-boundaries/) rule 15).
 `Key()` is `entra`, a channel's provider value; `DisplayName()` is *Microsoft 365*.
 Nothing here is recorded in [`entra.events`](#the-events): the channels' writes are
-Communications'. The slot sends ([`Send`](#send)) and reads the mailbox's Inbox for
-Communications' receiving ([`Delta` and `Raw`](#delta-and-raw)); it never marks, moves or
-deletes a message there.
+Communications'. The slot sends ([`Send`](#send)), reads the mailbox's Inbox for
+Communications' receiving ([`Delta` and `Raw`](#delta-and-raw)), subscribes the Inbox to
+change notifications ([`Watch`, `Unwatch` and `Notified`](#watch-unwatch-notified-mark-and-ensurefolder)),
+and applies a channel's on-close state in Outlook (`Mark` and `EnsureFolder`).
 
 ### The Mail channels switch
 
@@ -2250,9 +2260,46 @@ deleted or moved since the delta named it — is `contracts.ErrMailItemGone`, te
 the message; the rest are `Send`'s. Whether `$value` has a ceiling of its own, and how fast
 25 MiB arrives, is **not verified**.
 
+### Watch, Unwatch, Notified, Mark and EnsureFolder
+
+**Change notifications for mail (`Watch`, `Unwatch`, `Notified`).** When
+`PUBLIC_BASE_URL` is set and `CALENDAR_MAILBOX_NOTIFICATIONS_ENABLED` is on,
+Communications' mailbox sync calls `Watch(mailbox, folder)` after each finished sync pass
+on an active Microsoft 365 channel. `Watch` checks `Send`'s gate (the mailbox in
+`channel_mailboxes`, `Status` available) and manages the `'messages'` row in
+[`entra.mailbox_subscriptions`](#storage) on the **application's token**: a live
+subscription with more than three days left is kept; one within three days or in
+`reauthorize` is renewed (`PATCH /subscriptions/{id}`, expiry now plus 10 000 minutes);
+otherwise `POST /subscriptions` creates one on
+`/users/{oid}/mailFolders('inbox')/messages` (`folder` must be `inbox`) with
+`changeType` `created` and the same webhook address, client-state hash, 30-second
+validation window, one-hour unreachable hold and 24-hour conflict hold as [the calendar's
+`Watch`](#change-notifications). `Unwatch(mailbox)` deletes the `'messages'` subscription
+on the application's token (a 204 or 404 forgets the row; any other failure leaves it
+`deleting`), and `Forget` deletes any `'messages'` subscription row for the mailbox too.
+`Notified(since)` reads `entra.mailbox_subscriptions` for `resource = 'messages'` rows
+notified after `since` (at most `contracts.MailboxNoticesMax`, 5000), with no network call.
+
+**Outlook state on close (`Mark`, `EnsureFolder`).** Behind `Send`'s gate, on the
+application's token (`noRetry` on writes):
+
+- `Mark(mailbox, messageID, op)` updates or moves one message by its immutable id, with
+  `Prefer: IdType="ImmutableId"`:
+  - `MailMarkRead`: `PATCH /users/{oid}/messages/{id}` with `{"isRead": true}`.
+  - `MailMarkCategory`: `PATCH /users/{oid}/messages/{id}` with `{"categories": [op.Category]}`.
+  - `MailMarkMove`: `POST /users/{oid}/messages/{id}/move` with `{"destinationId": op.FolderID}`.
+  A 404 `ErrorItemNotFound` is `contracts.ErrMailItemGone`; 403 `ErrMailboxDenied`; 404
+  with a mailbox-gone code `ErrMailboxGone`.
+- `EnsureFolder(mailbox, name)` trims `name` (1 to 120 characters, no `/` or `\`), looks
+  up `GET /users/{oid}/mailFolders?$filter=displayName eq '{escaped}'&$select=id,displayName`
+  and returns the matching folder's id if found; otherwise creates it with
+  `POST /users/{oid}/mailFolders` (`{"displayName": name}`, `noRetry`) and returns the new
+  id. On a 409 `ErrorFolderExists` race, it re-queries the list and returns the winner's id.
+
 ### Forget
 
-`Forget(mailbox)` deletes the mailbox's `channel_mailboxes` row, so nothing is sent from
+`Forget(mailbox)` deletes the mailbox's `'messages'` subscription row and its
+`channel_mailboxes` row, so nothing is sent from
 it until another `Check`. Idempotent: a mailbox not recorded, or not an id, is done.
 Communications calls it after a channel goes back to SMTP, unless another channel has
 taken the mailbox meanwhile — there is no delete of a

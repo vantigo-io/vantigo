@@ -682,19 +682,25 @@ Communications' outbox is the working example.
     cap **the caller** sets; neither reads a message's content into the provider's logs or
     answers, and the provider follows only links that are this very mailbox's
     ([Microsoft Entra ID](/en/reference/entra/#delta-and-raw)).
-    `Key`, `DisplayName`, `Status` and `MaxMessage` make no network call; `Check`,
-    `Forget`, `Send`, `Delta` and `Raw` do, on the provider's own pool, and **nothing is called inside a
+    `Key`, `DisplayName`, `Status`, `MaxMessage` and `Notified` make no network call;
+    `Check`, `Forget`, `Send`, `Delta`, `Raw`, `Watch`, `Unwatch`, `Mark` and `EnsureFolder`
+    do, on the provider's own pool, and **nothing is called inside a
     transaction or holding a connection** — only through the accessors in
     `internal/communications/contractscalls.go`, which refuse a call made inside one of the
     module's transactions (marked by its `withTx`) as the calendar's and Entra's do: a
-    channel's create and switch call `Status` and `Check` before their transaction, the
-    way back to SMTP calls `Forget` after its commit, the outbox calls `Send` between
-    its stamp and its completion, outside both, and the mailbox sync calls `Status`,
-    `Delta` and `Raw` before an import's transaction opens. The import's one other call
+    channel's create, switch and update call `Status`, `Check` and `EnsureFolder` before
+    their transaction, the way back to SMTP and channel deactivation call `Unwatch` and
+    `Forget` after their commit, the outbox calls `Send` between
+    its stamp and its completion, outside both, and the mailbox sync calls `Notified`,
+    `Status`, `Delta`, `Raw`, `Watch`, `EnsureFolder` and `Mark` outside any transaction.
+    The import's one other call
     out of the module, the customer directory's `ContactsByEmail` for the sender (the
     sanctioned directory read), goes through an accessor there too, so it is refused inside the
     transaction as well. **Every write is idempotent or reports its
-    outcome**: `Check` rewrites its record, `Forget` is done for a mailbox not recorded,
+    outcome**: `Check` rewrites its record, `Forget` and `Unwatch` are done for a mailbox
+    not recorded or a subscription already gone, `Watch` renews or creates, `EnsureFolder`
+    returns an existing folder or creates one, `Mark` is idempotent on a message already
+    read, moved or deleted (`ErrMailItemGone`),
     and `Send` is at least once, as SMTP is — acceptance is not delivery, and a failure
     after the provider took the message may send it again on the outbox's retry, never on
     the provider's own. Its refusals are rule 14's sentinels — `ErrMailboxUnavailable`,
@@ -702,11 +708,11 @@ Communications' outbox is the working example.
     `ErrMailboxGone` — `ErrMailTooLarge`, `ErrBccUnsupported` when the provider would
     not keep every blind copy and sent nothing, `ErrMailboxDeltaExpired` (rule 14's) when
     the provider no longer takes a `Delta` link, and `ErrMailItemGone` when the message
-    `Raw` was asked for is no longer there; `Status` answers `available` with the reason
+    `Raw` or `Mark` was asked for is no longer there; `Status` answers `available` with the reason
     `tenant_wide` when the provider's grant reaches every mailbox, a warning. Anything else
-    is a failure to retry. The interface declares only what Communications calls today —
+    is a failure to retry. The interface declares only what Communications calls —
     `Key`, `DisplayName`, `Status`, `Check`, `Forget`, `MaxMessage`, `Send`, `Delta`,
-    `Raw` — and grows only with the notices the next delivery calls
+    `Raw`, `Watch`, `Unwatch`, `Notified`, `Mark`, `EnsureFolder`
     ([Communications](/en/reference/communications/#receiving)). The provider's ids are
     opaque and case-sensitive; Communications keeps them in its own receipts.
 
