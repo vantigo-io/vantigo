@@ -1,25 +1,60 @@
-import { Alert, Badge, Button, Card, Group, Stack, Table, Text } from "@mantine/core";
+import { Alert, Badge, Button, Card, Group, Modal, Stack, Table, Text } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ContentSkeleton, PageHeader, useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
-import { channelsQueryOptions, updateChannel, verifyChannel } from "../api/channels";
+import {
+  type Channel,
+  channelProvidersQueryOptions,
+  channelsQueryOptions,
+  switchChannelProvider,
+  updateChannel,
+  verifyChannel,
+} from "../api/channels";
 import { ChannelForm } from "../components/ChannelForm";
+import { channelErrorMessage } from "../components/channelErrors";
 import "../i18n";
 export function ChannelsPage() {
-  const { t } = useI18n("communications");
+  const { t, locale } = useI18n("communications");
   const query = useQuery(channelsQueryOptions());
+  const providersQuery = useQuery(channelProvidersQueryOptions());
+  const providers = providersQuery.data ?? [];
+  const entra = providers.find((provider) => provider.key === "entra");
   const client = useQueryClient();
   const [opened, setOpened] = useState(false);
+  const [switching, setSwitching] = useState<Channel | null>(null);
   const refresh = () => client.invalidateQueries({ queryKey: ["channels"] });
+  // The badge and the select name a provider as the provider names itself;
+  // a channel whose provider is not offered now still reads as a name.
+  const providerLabel = (key: string) =>
+    providers.find((provider) => provider.key === key)?.displayName ??
+    (key === "smtp" ? t("smtp") : key === "entra" ? t("microsoft365") : key);
   const update = useMutation({
     mutationFn: ({ id, isActive }: { id: string; isActive: boolean }) => updateChannel(id, { isActive }),
     onSuccess: () => void refresh(),
   });
   const verify = useMutation({
-    mutationFn: verifyChannel,
+    mutationFn: (channel: Channel) => verifyChannel(channel.id),
     onSuccess: () => notifications.show({ title: t("channelVerified"), message: t("channelConnectionValid") }),
+    onError: (error, channel) =>
+      notifications.show({
+        color: "red",
+        title: t("channelNotVerified"),
+        message: channelErrorMessage(error, t, channel.provider, locale, "errorVerificationFailed"),
+      }),
   });
+  const switchProvider = useMutation({
+    mutationFn: (channel: Channel) => switchChannelProvider(channel.id),
+    onSuccess: () => {
+      setSwitching(null);
+      void refresh();
+      notifications.show({ title: t("channelSwitched"), message: t("channelSwitchedMessage") });
+    },
+  });
+  const closeSwitch = () => {
+    setSwitching(null);
+    switchProvider.reset();
+  };
   return (
     <Stack gap="xl">
       <PageHeader
@@ -27,6 +62,11 @@ export function ChannelsPage() {
         description={t("channelsDescription")}
         actions={<Button onClick={() => setOpened(true)}>{t("addChannel")}</Button>}
       />
+      {providers.some((provider) => provider.warning === "tenant_wide") && (
+        <Alert color="orange" title={t("tenantWideTitle")}>
+          {t("tenantWide")}
+        </Alert>
+      )}
       {query.isError && (
         <Alert color="red">
           {t("couldNotLoadChannels")}: {query.error.message}
@@ -58,7 +98,7 @@ export function ChannelsPage() {
                       )}
                     </Table.Td>
                     <Table.Td>
-                      <Badge variant="light">{channel.provider}</Badge>
+                      <Badge variant="light">{providerLabel(channel.provider)}</Badge>
                       {channel.isDefault && <Badge ml="xs">{t("default")}</Badge>}
                     </Table.Td>
                     <Table.Td>
@@ -71,8 +111,8 @@ export function ChannelsPage() {
                         <Button
                           size="xs"
                           variant="subtle"
-                          loading={verify.isPending}
-                          onClick={() => verify.mutate(channel.id)}
+                          loading={verify.isPending && verify.variables?.id === channel.id}
+                          onClick={() => verify.mutate(channel)}
                         >
                           {t("verify")}
                         </Button>
@@ -83,6 +123,11 @@ export function ChannelsPage() {
                         >
                           {channel.isActive ? t("deactivate") : t("activate")}
                         </Button>
+                        {channel.provider === "smtp" && entra?.available && (
+                          <Button size="xs" variant="subtle" onClick={() => setSwitching(channel)}>
+                            {t("switchToMicrosoft365")}
+                          </Button>
+                        )}
                       </Group>
                     </Table.Td>
                   </Table.Tr>
@@ -95,11 +140,33 @@ export function ChannelsPage() {
       <ChannelForm
         opened={opened}
         onClose={() => setOpened(false)}
+        providers={providers}
+        providerLabel={providerLabel}
         onCreated={() => {
           void refresh();
           notifications.show({ title: t("channelCreated"), message: t("emailChannelReady") });
         }}
       />
+      <Modal opened={switching !== null} onClose={closeSwitch} title={t("switchToMicrosoft365")}>
+        <Stack>
+          <Text size="sm">{t("switchConfirm")}</Text>
+          {switchProvider.error && (
+            <Alert color="red">{channelErrorMessage(switchProvider.error, t, "entra", locale)}</Alert>
+          )}
+          <Group justify="end">
+            <Button variant="default" onClick={closeSwitch}>
+              {t("cancel")}
+            </Button>
+            <Button
+              color="red"
+              loading={switchProvider.isPending}
+              onClick={() => switching && switchProvider.mutate(switching)}
+            >
+              {t("switch")}
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
     </Stack>
   );
 }

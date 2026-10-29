@@ -83,6 +83,8 @@ export type ConversationDetail = ConversationListItem & {
   messages: ConversationMessage[];
   lastReadAt: string | null;
   replyRecipients: ReplyRecipients;
+  /** The channel's budget in bytes of MIME (a Microsoft 365 channel's); null for SMTP. */
+  maxMessageBytes?: number | null;
 };
 export type AiDraftResponse = {
   interactionId: string;
