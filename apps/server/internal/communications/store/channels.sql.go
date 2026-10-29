@@ -21,11 +21,11 @@ SELECT EXISTS (SELECT 1 FROM communications.channels) AS any_exists
 // getCommunicationsChannelsById, putCommunicationsChannelsById and
 // postCommunicationsChannelsByIdVerify (communications inventory §1.1,
 // §2's CreateChannel/UpdateChannel/VerifyChannel bullets, §15.6's
-// per-channel-credential shape). Every channel this port creates is SMTP
-// (task 4's report explains the Mailgun-branch decision), so
-// channel_credentials always has exactly one row per channel, and the two
-// list/get queries below can inner-join it without ever hiding a channel
-// that lacks one.
+// per-channel-credential shape), and delivery C's Microsoft 365 channels
+// (Outlook connection design M12): an SMTP channel has exactly one
+// channel_credentials row and settings '{}'; an entra channel has no
+// credential row and settings {"mailbox": "<object id>"}. The list/get
+// queries below LEFT JOIN the credential so neither kind is hidden.
 // AnyChannelExists backs CreateChannel's "the first channel ever created is
 // forced default" rule (inventory §2's CreateChannel bullet:
 // `request.IsDefault == true || !await db.Channels.AnyAsync(ct)`).
@@ -99,9 +99,20 @@ func (q *Queries) ClearOtherDefaultChannels(ctx context.Context, id uuid.UUID) e
 	return err
 }
 
+const deleteChannelCredential = `-- name: DeleteChannelCredential :exec
+DELETE FROM communications.channel_credentials WHERE channel_id = $1
+`
+
+// DeleteChannelCredential drops an SMTP channel's credential row as it is
+// switched to Microsoft 365, in SwitchChannelProvider's transaction.
+func (q *Queries) DeleteChannelCredential(ctx context.Context, channelID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, deleteChannelCredential, channelID)
+	return err
+}
+
 const getChannelByID = `-- name: GetChannelByID :one
 SELECT c.id, c.type, c.address, c.display_name, c.provider, c.is_default, c.is_active, c.created_at,
-       cc.settings_json AS credential_settings_json
+       c.settings, cc.settings_json AS credential_settings_json
 FROM communications.channels c
 LEFT JOIN communications.channel_credentials cc ON cc.channel_id = c.id
 WHERE c.id = $1
@@ -116,6 +127,7 @@ type GetChannelByIDRow struct {
 	IsDefault              bool
 	IsActive               bool
 	CreatedAt              time.Time
+	Settings               []byte
 	CredentialSettingsJson *string
 }
 
@@ -135,6 +147,7 @@ func (q *Queries) GetChannelByID(ctx context.Context, id uuid.UUID) (GetChannelB
 		&i.IsDefault,
 		&i.IsActive,
 		&i.CreatedAt,
+		&i.Settings,
 		&i.CredentialSettingsJson,
 	)
 	return i, err
@@ -162,9 +175,26 @@ func (q *Queries) GetChannelCredentialByChannelID(ctx context.Context, channelID
 	return i, err
 }
 
+const getChannelProviderForConversation = `-- name: GetChannelProviderForConversation :one
+SELECT ch.provider
+FROM communications.conversations c
+JOIN communications.channels ch ON ch.id = c.channel_id
+WHERE c.id = $1
+`
+
+// GetChannelProviderForConversation is the provider of a conversation's
+// channel, for its size budget (M13): the staging handler's and the
+// conversation detail's maxMessageBytes.
+func (q *Queries) GetChannelProviderForConversation(ctx context.Context, id uuid.UUID) (string, error) {
+	row := q.db.QueryRow(ctx, getChannelProviderForConversation, id)
+	var provider string
+	err := row.Scan(&provider)
+	return provider, err
+}
+
 const insertChannel = `-- name: InsertChannel :one
-INSERT INTO communications.channels (id, type, address, display_name, provider, is_default, is_active, created_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+INSERT INTO communications.channels (id, type, address, display_name, provider, is_default, is_active, created_at, settings)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 RETURNING id, type, address, display_name, provider, is_default, is_active, created_at, settings
 `
 
@@ -177,11 +207,13 @@ type InsertChannelParams struct {
 	IsDefault   bool
 	IsActive    bool
 	CreatedAt   time.Time
+	Settings    []byte
 }
 
-// InsertChannel is CreateChannel's channel-row insert. provider is always
-// 'smtp' in this port (task 4's Mailgun-branch decision: no non-SMTP
-// channel is ever creatable through this API).
+// InsertChannel is CreateChannel's channel-row insert: provider 'smtp' with
+// settings '{}' (its credential row follows), or 'entra' with the mailbox
+// Check resolved and no credential row. ux_channels_entra_mailbox refuses a
+// second channel on one mailbox.
 func (q *Queries) InsertChannel(ctx context.Context, arg InsertChannelParams) (CommunicationsChannel, error) {
 	row := q.db.QueryRow(ctx, insertChannel,
 		arg.ID,
@@ -192,6 +224,7 @@ func (q *Queries) InsertChannel(ctx context.Context, arg InsertChannelParams) (C
 		arg.IsDefault,
 		arg.IsActive,
 		arg.CreatedAt,
+		arg.Settings,
 	)
 	var i CommunicationsChannel
 	err := row.Scan(
@@ -238,7 +271,7 @@ func (q *Queries) InsertChannelCredential(ctx context.Context, arg InsertChannel
 
 const listChannels = `-- name: ListChannels :many
 SELECT c.id, c.type, c.address, c.display_name, c.provider, c.is_default, c.is_active, c.created_at,
-       cc.settings_json AS credential_settings_json
+       c.settings, cc.settings_json AS credential_settings_json
 FROM communications.channels c
 LEFT JOIN communications.channel_credentials cc ON cc.channel_id = c.id
 ORDER BY c.created_at ASC
@@ -253,14 +286,14 @@ type ListChannelsRow struct {
 	IsDefault              bool
 	IsActive               bool
 	CreatedAt              time.Time
+	Settings               []byte
 	CredentialSettingsJson *string
 }
 
 // ListChannels is GetChannelsEndpoint: a bare array (no pagination),
 // ordered by CreatedAt ascending (inventory §1.1's `:18`/`:25` note).
-// credential_settings_json is always non-NULL for a row this port wrote —
-// the LEFT JOIN, rather than an INNER JOIN, only matters for a
-// hand-inserted fixture row with no credential.
+// credential_settings_json is non-NULL for every SMTP channel this port
+// wrote and NULL for every Microsoft 365 one.
 func (q *Queries) ListChannels(ctx context.Context) ([]ListChannelsRow, error) {
 	rows, err := q.db.Query(ctx, listChannels)
 	if err != nil {
@@ -279,6 +312,7 @@ func (q *Queries) ListChannels(ctx context.Context) ([]ListChannelsRow, error) {
 			&i.IsDefault,
 			&i.IsActive,
 			&i.CreatedAt,
+			&i.Settings,
 			&i.CredentialSettingsJson,
 		); err != nil {
 			return nil, err
@@ -361,6 +395,55 @@ SELECT pg_advisory_xact_lock($1::int, 0)
 func (q *Queries) LockDefaultChannelSlot(ctx context.Context, lockClass int32) error {
 	_, err := q.db.Exec(ctx, lockDefaultChannelSlot, lockClass)
 	return err
+}
+
+const setChannelSmtp = `-- name: SetChannelSmtp :exec
+UPDATE communications.channels
+SET provider = 'smtp', settings = '{}'
+WHERE id = $1
+`
+
+// SetChannelSmtp turns a Microsoft 365 channel back into an SMTP one (a PUT
+// with provider smtp and a full smtp block): provider 'smtp', the mailbox
+// cleared. The credential row is written by UpsertChannelCredential in the
+// same transaction.
+func (q *Queries) SetChannelSmtp(ctx context.Context, id uuid.UUID) error {
+	_, err := q.db.Exec(ctx, setChannelSmtp, id)
+	return err
+}
+
+const switchChannelProvider = `-- name: SwitchChannelProvider :one
+UPDATE communications.channels
+SET provider = $1, settings = $2
+WHERE id = $3
+RETURNING id, type, address, display_name, provider, is_default, is_active, created_at, settings
+`
+
+type SwitchChannelProviderParams struct {
+	Provider string
+	Settings []byte
+	ID       uuid.UUID
+}
+
+// SwitchChannelProvider is the switch of an SMTP channel to Microsoft 365
+// (POST /channels/{id}/provider, M12): the provider and the mailbox, the id,
+// address, default flag and conversations untouched. DeleteChannelCredential
+// runs in the same transaction.
+func (q *Queries) SwitchChannelProvider(ctx context.Context, arg SwitchChannelProviderParams) (CommunicationsChannel, error) {
+	row := q.db.QueryRow(ctx, switchChannelProvider, arg.Provider, arg.Settings, arg.ID)
+	var i CommunicationsChannel
+	err := row.Scan(
+		&i.ID,
+		&i.Type,
+		&i.Address,
+		&i.DisplayName,
+		&i.Provider,
+		&i.IsDefault,
+		&i.IsActive,
+		&i.CreatedAt,
+		&i.Settings,
+	)
+	return i, err
 }
 
 const updateChannel = `-- name: UpdateChannel :one

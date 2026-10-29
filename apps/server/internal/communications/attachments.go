@@ -450,7 +450,10 @@ func (s *server) PostCommunicationsConversationsByIdAttachments(ctx context.Cont
 		return nil, fmt.Errorf("communications: get attachment upload: %w", err)
 	}
 
-	if _, err := q.GetConversationByID(ctx, req.Id); errors.Is(err, pgx.ErrNoRows) {
+	// The existence lookup also reads the channel's provider, for its size
+	// budget below (M13).
+	provider, err := q.GetChannelProviderForConversation(ctx, req.Id)
+	if errors.Is(err, pgx.ErrNoRows) {
 		return gen.PostCommunicationsConversationsByIdAttachments404Response{}, nil
 	} else if err != nil {
 		return nil, fmt.Errorf("communications: get conversation: %w", err)
@@ -469,6 +472,17 @@ func (s *server) PostCommunicationsConversationsByIdAttachments(ctx context.Cont
 	if size <= 0 || size > maxBytes {
 		return gen.PostCommunicationsConversationsByIdAttachments413JSONResponse(flatErrorBody(
 			"attachment_too_large", "The attachment exceeds the configured limit.")), nil
+	}
+	// A Microsoft 365 channel's budget (M13): the file as it would travel —
+	// base64 with the margin, plus the headers' headroom — over what the
+	// provider sends is refused now, not when the reply is sent.
+	budget, err := s.mailBudget(ctx, provider)
+	if err != nil {
+		return nil, err
+	}
+	if budget != nil && base64Grown(size)+mailHeadroom > *budget {
+		return gen.PostCommunicationsConversationsByIdAttachments413JSONResponse(flatErrorBody(
+			"attachment_too_large", "The attachment is larger than this channel can send (about "+budgetInMB(*budget)+" MB).")), nil
 	}
 
 	fileName := safeAttachmentFileName(form.fileName)

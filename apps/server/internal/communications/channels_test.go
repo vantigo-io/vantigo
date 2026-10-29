@@ -25,8 +25,8 @@ import (
 
 // channelJSON decodes ChannelResponse (EP/ChannelEndpoints.cs's
 // ToChannelResponse). Settings mirrors the contract's anonymous nested
-// object: host/port/useSsl/username for SMTP, domain/region always nil in
-// this port (see channels.go's Mailgun-branch note).
+// object: host/port/useSsl/username for SMTP, null for Microsoft 365; Mailbox
+// is the Microsoft 365 channel's mailbox, null for SMTP.
 type channelJSON struct {
 	Id             string    `json:"id"`
 	Type           string    `json:"type"`
@@ -38,13 +38,14 @@ type channelJSON struct {
 	HasCredentials bool      `json:"hasCredentials"`
 	CreatedAt      time.Time `json:"createdAt"`
 	Settings       *struct {
-		Domain   *string `json:"domain"`
 		Host     *string `json:"host"`
 		Port     *int32  `json:"port"`
-		Region   *string `json:"region"`
 		UseSsl   *bool   `json:"useSsl"`
 		Username *string `json:"username"`
 	} `json:"settings"`
+	Mailbox *struct {
+		Id string `json:"id"`
+	} `json:"mailbox"`
 }
 
 // commErrorJSON decodes CommunicationErrorResponse
@@ -281,11 +282,6 @@ func TestCreateChannel_ValidationMessages(t *testing.T) {
 			b["provider"] = "mailgun"
 			return b
 		}, "smtp", "SMTP credentials require the smtp provider."},
-		{"mailgun credential supplied alongside smtp", func() map[string]any {
-			b := newChannelBody(channelAddress(t))
-			b["mailgun"] = map[string]any{"domain": "example.test", "region": "us"}
-			return b
-		}, "credentials", "Only the selected provider credential may be supplied."},
 		{"displayName too long", func() map[string]any {
 			b := newChannelBody(channelAddress(t))
 			b["displayName"] = strings.Repeat("x", 201)
@@ -465,7 +461,6 @@ func TestUpdateChannel_CredentialValidationRunsAfterTheLookup(t *testing.T) {
 		{"invalid smtp port", map[string]any{"smtp": map[string]any{"host": "smtp.example.test", "port": 0}}},
 		{"blank smtp host", map[string]any{"smtp": map[string]any{"host": "", "port": 587}}},
 		{"provider mismatch", map[string]any{"provider": "mailgun"}},
-		{"mailgun credential supplied", map[string]any{"mailgun": map[string]any{"domain": "d", "region": "us"}}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -507,8 +502,6 @@ func TestUpdateChannel_CredentialValidationMessages(t *testing.T) {
 			"smtp", "SMTP credentials require a host and valid port."},
 		{"provider mismatch", map[string]any{"provider": "mailgun"},
 			"smtp", "SMTP credentials require the smtp provider."},
-		{"mailgun credential supplied", map[string]any{"mailgun": map[string]any{"domain": "d", "region": "us"}},
-			"credentials", "Only the selected provider credential may be supplied."},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

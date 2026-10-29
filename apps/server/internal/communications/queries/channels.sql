@@ -2,11 +2,11 @@
 -- getCommunicationsChannelsById, putCommunicationsChannelsById and
 -- postCommunicationsChannelsByIdVerify (communications inventory §1.1,
 -- §2's CreateChannel/UpdateChannel/VerifyChannel bullets, §15.6's
--- per-channel-credential shape). Every channel this port creates is SMTP
--- (task 4's report explains the Mailgun-branch decision), so
--- channel_credentials always has exactly one row per channel, and the two
--- list/get queries below can inner-join it without ever hiding a channel
--- that lacks one.
+-- per-channel-credential shape), and delivery C's Microsoft 365 channels
+-- (Outlook connection design M12): an SMTP channel has exactly one
+-- channel_credentials row and settings '{}'; an entra channel has no
+-- credential row and settings {"mailbox": "<object id>"}. The list/get
+-- queries below LEFT JOIN the credential so neither kind is hidden.
 
 -- name: AnyChannelExists :one
 -- AnyChannelExists backs CreateChannel's "the first channel ever created is
@@ -131,11 +131,12 @@ UPDATE communications.channels SET is_default = false WHERE is_default;
 UPDATE communications.channels SET is_default = false WHERE id != @id;
 
 -- name: InsertChannel :one
--- InsertChannel is CreateChannel's channel-row insert. provider is always
--- 'smtp' in this port (task 4's Mailgun-branch decision: no non-SMTP
--- channel is ever creatable through this API).
-INSERT INTO communications.channels (id, type, address, display_name, provider, is_default, is_active, created_at)
-VALUES (@id, @type, @address, @display_name, @provider, @is_default, @is_active, @created_at)
+-- InsertChannel is CreateChannel's channel-row insert: provider 'smtp' with
+-- settings '{}' (its credential row follows), or 'entra' with the mailbox
+-- Check resolved and no credential row. ux_channels_entra_mailbox refuses a
+-- second channel on one mailbox.
+INSERT INTO communications.channels (id, type, address, display_name, provider, is_default, is_active, created_at, settings)
+VALUES (@id, @type, @address, @display_name, @provider, @is_default, @is_active, @created_at, @settings)
 RETURNING id, type, address, display_name, provider, is_default, is_active, created_at, settings;
 
 -- name: InsertChannelCredential :exec
@@ -149,11 +150,10 @@ VALUES (@id, @channel_id, @settings_json, @secret_ciphertext, @created_at);
 -- name: ListChannels :many
 -- ListChannels is GetChannelsEndpoint: a bare array (no pagination),
 -- ordered by CreatedAt ascending (inventory §1.1's `:18`/`:25` note).
--- credential_settings_json is always non-NULL for a row this port wrote —
--- the LEFT JOIN, rather than an INNER JOIN, only matters for a
--- hand-inserted fixture row with no credential.
+-- credential_settings_json is non-NULL for every SMTP channel this port
+-- wrote and NULL for every Microsoft 365 one.
 SELECT c.id, c.type, c.address, c.display_name, c.provider, c.is_default, c.is_active, c.created_at,
-       cc.settings_json AS credential_settings_json
+       c.settings, cc.settings_json AS credential_settings_json
 FROM communications.channels c
 LEFT JOIN communications.channel_credentials cc ON cc.channel_id = c.id
 ORDER BY c.created_at ASC;
@@ -164,7 +164,7 @@ ORDER BY c.created_at ASC;
 -- own further validation); the joined settings_json lets GetChannel build
 -- its response without a second round trip.
 SELECT c.id, c.type, c.address, c.display_name, c.provider, c.is_default, c.is_active, c.created_at,
-       cc.settings_json AS credential_settings_json
+       c.settings, cc.settings_json AS credential_settings_json
 FROM communications.channels c
 LEFT JOIN communications.channel_credentials cc ON cc.channel_id = c.id
 WHERE c.id = @id;
@@ -201,3 +201,36 @@ INSERT INTO communications.channel_credentials (id, channel_id, settings_json, s
 VALUES (@id, @channel_id, @settings_json, @secret_ciphertext, @created_at)
 ON CONFLICT (channel_id) DO UPDATE
     SET settings_json = excluded.settings_json, secret_ciphertext = excluded.secret_ciphertext;
+
+-- name: SwitchChannelProvider :one
+-- SwitchChannelProvider is the switch of an SMTP channel to Microsoft 365
+-- (POST /channels/{id}/provider, M12): the provider and the mailbox, the id,
+-- address, default flag and conversations untouched. DeleteChannelCredential
+-- runs in the same transaction.
+UPDATE communications.channels
+SET provider = @provider, settings = @settings
+WHERE id = @id
+RETURNING id, type, address, display_name, provider, is_default, is_active, created_at, settings;
+
+-- name: SetChannelSmtp :exec
+-- SetChannelSmtp turns a Microsoft 365 channel back into an SMTP one (a PUT
+-- with provider smtp and a full smtp block): provider 'smtp', the mailbox
+-- cleared. The credential row is written by UpsertChannelCredential in the
+-- same transaction.
+UPDATE communications.channels
+SET provider = 'smtp', settings = '{}'
+WHERE id = @id;
+
+-- name: DeleteChannelCredential :exec
+-- DeleteChannelCredential drops an SMTP channel's credential row as it is
+-- switched to Microsoft 365, in SwitchChannelProvider's transaction.
+DELETE FROM communications.channel_credentials WHERE channel_id = @channel_id;
+
+-- name: GetChannelProviderForConversation :one
+-- GetChannelProviderForConversation is the provider of a conversation's
+-- channel, for its size budget (M13): the staging handler's and the
+-- conversation detail's maxMessageBytes.
+SELECT ch.provider
+FROM communications.conversations c
+JOIN communications.channels ch ON ch.id = c.channel_id
+WHERE c.id = @id;

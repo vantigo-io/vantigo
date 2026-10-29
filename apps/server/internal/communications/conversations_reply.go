@@ -241,7 +241,7 @@ func (s *server) PostCommunicationsConversationsByIdReply(ctx context.Context, r
 		messageSubject = conv.Subject
 	}
 	return s.queueReply(ctx, replyQueueParams{
-		conversationID: req.Id, channelType: conv.ChannelType, caller: caller, key: key,
+		conversationID: req.Id, channelType: conv.ChannelType, channelProvider: conv.ChannelProvider, caller: caller, key: key,
 		fingerprint: fingerprint, body: body, messageSubject: messageSubject,
 		primaryAddress: primaryAddress, now: s.deps.Clock(),
 	})
@@ -255,16 +255,17 @@ func (s *server) PostCommunicationsConversationsByIdReply(ctx context.Context, r
 // dedup-against-primary and suppression-of-a-cc-address paths directly, the
 // same seam primaryAddress itself exists for.
 type replyQueueParams struct {
-	conversationID uuid.UUID
-	channelType    string
-	caller         uuid.UUID
-	key            string
-	fingerprint    string
-	body           gen.ReplyRequest
-	messageSubject *string
-	primaryAddress string
-	ccAddresses    []string
-	now            time.Time
+	conversationID  uuid.UUID
+	channelType     string
+	channelProvider string
+	caller          uuid.UUID
+	key             string
+	fingerprint     string
+	body            gen.ReplyRequest
+	messageSubject  *string
+	primaryAddress  string
+	ccAddresses     []string
+	now             time.Time
 }
 
 // queueReply is QueueOutboundAsync's steps 8-10 (`:291-336`): the
@@ -296,6 +297,25 @@ func (s *server) queueReply(ctx context.Context, p replyQueueParams) (gen.PostCo
 	if len(stagedRows) != len(staged) {
 		return gen.PostCommunicationsConversationsByIdReply409JSONResponse(flatErrorBody(
 			"attachments_not_ready", "One or more attachments are still being scanned or are unavailable.")), nil
+	}
+
+	// Step 8b: a Microsoft 365 channel's budget (M13) -> 422 too_large,
+	// before anything is written: the estimate of the message as MIME over
+	// what the provider sends would only fail at the outbox, after the
+	// caller was told it was queued.
+	budget, err := s.mailBudget(ctx, p.channelProvider)
+	if err != nil {
+		return nil, err
+	}
+	if budget != nil {
+		sizes := make([]int64, 0, len(stagedRows))
+		for _, row := range stagedRows {
+			sizes = append(sizes, row.SizeBytes)
+		}
+		if mailEstimate(sizes, p.body.TextBody, p.body.HtmlBody) > *budget {
+			return gen.PostCommunicationsConversationsByIdReply422JSONResponse(flatErrorBody(
+				"too_large", "The message and its attachments are larger than this channel can send.")), nil
+		}
 	}
 
 	// Step 9: suppression check -> 422 recipient_suppressed +

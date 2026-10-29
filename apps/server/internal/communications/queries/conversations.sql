@@ -287,8 +287,10 @@ ON CONFLICT DO NOTHING;
 -- applied by UpdateConversationActivityForReply below), plus the channel's
 -- is_active (step 5's 422 channel_inactive, checked here rather than a
 -- second round trip) and type (step 9's `conversation.Channel.Type == "email"`
--- suppression gate).
-SELECT c.id, c.subject, c.channel_id, ch.is_active AS channel_is_active, ch.type AS channel_type
+-- suppression gate), and its provider (the size budget of a Microsoft 365
+-- channel, M13).
+SELECT c.id, c.subject, c.channel_id, ch.is_active AS channel_is_active, ch.type AS channel_type,
+       ch.provider AS channel_provider
 FROM communications.conversations c
 JOIN communications.channels ch ON ch.id = c.channel_id
 WHERE c.id = @id;
