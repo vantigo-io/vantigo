@@ -417,9 +417,10 @@ func (s *server) conversationMessagesOf(ctx context.Context, q *store.Queries, c
 		ScanStatus        string             `json:"scanStatus"`
 		SizeBytes         int64              `json:"sizeBytes"`
 	} `json:"attachments"`
-	AuthorUserId *openapi_types.UUID `json:"authorUserId"`
-	CreatedAt    time.Time           `json:"createdAt"`
-	Deliveries   []struct {
+	AuthorUserId  *openapi_types.UUID `json:"authorUserId"`
+	AutoSubmitted *bool               `json:"autoSubmitted"`
+	CreatedAt     time.Time           `json:"createdAt"`
+	Deliveries    []struct {
 		AcceptedAt    *time.Time         `json:"acceptedAt"`
 		Attempts      int32              `json:"attempts"`
 		Destination   string             `json:"destination"`
@@ -439,8 +440,10 @@ func (s *server) conversationMessagesOf(ctx context.Context, q *store.Queries, c
 		DisplayName *string            `json:"displayName"`
 		Id          openapi_types.UUID `json:"id"`
 	} `json:"participant"`
-	Subject  *string `json:"subject"`
-	TextBody *string `json:"textBody"`
+	RawDownloadPath *string `json:"rawDownloadPath"`
+	Subject         *string `json:"subject"`
+	TextBody        *string `json:"textBody"`
+	Unreadable      *bool   `json:"unreadable"`
 }, error,
 ) {
 	rows, err := q.GetConversationMessagesByConversationID(ctx, conversationID)
@@ -552,9 +555,10 @@ func (s *server) conversationMessagesOf(ctx context.Context, q *store.Queries, c
 			ScanStatus        string             `json:"scanStatus"`
 			SizeBytes         int64              `json:"sizeBytes"`
 		} `json:"attachments"`
-		AuthorUserId *openapi_types.UUID `json:"authorUserId"`
-		CreatedAt    time.Time           `json:"createdAt"`
-		Deliveries   []struct {
+		AuthorUserId  *openapi_types.UUID `json:"authorUserId"`
+		AutoSubmitted *bool               `json:"autoSubmitted"`
+		CreatedAt     time.Time           `json:"createdAt"`
+		Deliveries    []struct {
 			AcceptedAt    *time.Time         `json:"acceptedAt"`
 			Attempts      int32              `json:"attempts"`
 			Destination   string             `json:"destination"`
@@ -574,8 +578,10 @@ func (s *server) conversationMessagesOf(ctx context.Context, q *store.Queries, c
 			DisplayName *string            `json:"displayName"`
 			Id          openapi_types.UUID `json:"id"`
 		} `json:"participant"`
-		Subject  *string `json:"subject"`
-		TextBody *string `json:"textBody"`
+		RawDownloadPath *string `json:"rawDownloadPath"`
+		Subject         *string `json:"subject"`
+		TextBody        *string `json:"textBody"`
+		Unreadable      *bool   `json:"unreadable"`
 	}, 0, len(rows))
 	for _, r := range rows {
 		// task 5 fix round 1, item 4: nil, not the zero value — participant
@@ -614,9 +620,10 @@ func (s *server) conversationMessagesOf(ctx context.Context, q *store.Queries, c
 				ScanStatus        string             `json:"scanStatus"`
 				SizeBytes         int64              `json:"sizeBytes"`
 			} `json:"attachments"`
-			AuthorUserId *openapi_types.UUID `json:"authorUserId"`
-			CreatedAt    time.Time           `json:"createdAt"`
-			Deliveries   []struct {
+			AuthorUserId  *openapi_types.UUID `json:"authorUserId"`
+			AutoSubmitted *bool               `json:"autoSubmitted"`
+			CreatedAt     time.Time           `json:"createdAt"`
+			Deliveries    []struct {
 				AcceptedAt    *time.Time         `json:"acceptedAt"`
 				Attempts      int32              `json:"attempts"`
 				Destination   string             `json:"destination"`
@@ -636,12 +643,15 @@ func (s *server) conversationMessagesOf(ctx context.Context, q *store.Queries, c
 				DisplayName *string            `json:"displayName"`
 				Id          openapi_types.UUID `json:"id"`
 			} `json:"participant"`
-			Subject  *string `json:"subject"`
-			TextBody *string `json:"textBody"`
+			RawDownloadPath *string `json:"rawDownloadPath"`
+			Subject         *string `json:"subject"`
+			TextBody        *string `json:"textBody"`
+			Unreadable      *bool   `json:"unreadable"`
 		}{
 			Attachments: attachmentsByMessage[r.ID], AuthorUserId: r.AuthorUserID, CreatedAt: r.CreatedAt,
 			Deliveries: deliveriesByMessage[r.ID], Direction: r.Direction, HtmlBody: r.HtmlBody,
 			Id: r.ID, OccurredAt: r.OccurredAt, Participant: participant, Subject: r.Subject, TextBody: r.TextBody,
+			AutoSubmitted: apicommon.Ptr(false), Unreadable: apicommon.Ptr(false),
 		})
 	}
 	return out, nil
