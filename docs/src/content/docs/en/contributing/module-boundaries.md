@@ -675,7 +675,8 @@ Communications' outbox is the working example.
     `provider` is the slot's `Key`, its `settings` the mailbox id `Check` answered, and
     a channel whose provider is not the slot's `Key` is unavailable, **never sent through
     another provider**. **The provider writes only to a mailbox its `Check` resolved** and
-    recorded on its own side (`ErrMailboxUnknown` otherwise), and `Forget` drops one.
+    recorded on its own side (`ErrMailboxUnknown` otherwise) — Entra records only a shared
+    one — and `Forget` drops one.
     `Key`, `DisplayName`, `Status` and `MaxMessage` make no network call; `Check`,
     `Forget` and `Send` do, on the provider's own pool, and **nothing is called inside a
     transaction or holding a connection** — only through the accessors in
@@ -689,7 +690,8 @@ Communications' outbox is the working example.
     after the provider took the message may send it again on the outbox's retry, never on
     the provider's own. Its refusals are rule 14's sentinels — `ErrMailboxUnavailable`,
     `ErrMailboxUnknown`, `ErrMailboxDenied` (here: outside the provider's scope),
-    `ErrMailboxGone` — and `ErrMailTooLarge`; `Status` answers `available` with the reason
+    `ErrMailboxGone` — `ErrMailTooLarge`, and `ErrBccUnsupported` when the provider would
+    not keep every blind copy and sent nothing; `Status` answers `available` with the reason
     `tenant_wide` when the provider's grant reaches every mailbox, a warning. Anything else
     is a failure to retry. The interface declares only what Communications calls today —
     `Key`, `DisplayName`, `Status`, `Check`, `Forget`, `MaxMessage`, `Send` — and grows
@@ -1183,8 +1185,9 @@ slots, `IdentityProvisioner` (rule 13), `MailboxCalendar` (rule 14) and `Channel
 (rule 15): Staff's accounts worker, the calendar's mailbox sync worker and Communications
 — its channel handlers and its outbox — call it, in the API and in worker mode alike,
 never inside a transaction. With `entra` off, `Deps.ChannelMailbox` is nil:
-Communications offers SMTP alone, and a Microsoft 365 channel's mail waits as
-unavailable and is retried until its attempts end. Its one worker, `entra-outlook-sweep`, deletes the
+Communications offers SMTP alone, and a Microsoft 365 channel's mail is held as
+unavailable, spending no attempt, and failed as `provider_unavailable` 24 hours after it
+was queued. Its one worker, `entra-outlook-sweep`, deletes the
 closed Outlook connections nothing needs and reads the accounts of those waiting to
 reconnect ([Microsoft Entra ID](/en/reference/entra/#entra-outlook-sweep)). It reaches the
 network in one place, its Graph client, through `internal/netguard` with no proxy and

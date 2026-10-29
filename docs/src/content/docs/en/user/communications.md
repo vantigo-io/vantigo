@@ -95,10 +95,10 @@ the channel the conversation belongs to; you do not choose a sender.
    refused. A file that could not be staged leaves your draft unchanged. The size
    limit is set by the administrator (see
    [Attachments](/en/reference/communications/#attachments)). On a **Microsoft 365**
-   channel the composer also says *Attachments up to about 3 MB in total on this
-   channel*: Microsoft 365 takes a message only up to that size, attachments and text
+   channel the composer also says *Attachments up to about 2.1 MB in total on this
+   channel*: Microsoft 365 takes a message only up to a fixed size, attachments and text
    together. A larger file is refused at once with *The attachment is larger than this
-   channel can send (about 3 MB).*
+   channel can send (about 2.1 MB).*
 3. **Send reply**. The button is disabled until there is text, and reads **Waiting for
    attachment scan** while an attachment is not ready yet.
 
@@ -141,7 +141,10 @@ also in the shared mailbox's **Sent Items**, where your team sees it in Outlook.
 with growing waits, up to eight attempts in total; after that the message is given up
 and counted on a metric the administrator can alert on. On a Microsoft 365 channel, a
 message the mailbox can never send — the mailbox outside what Vantigo may reach, or gone,
-or the message too large — is given up after the first attempt. Immediately before each
+the message too large, or a blind copy (Bcc) that would be lost — is given up after the
+first attempt. While Microsoft 365 is unavailable to Vantigo (**Mail channels** turned
+off, or the Entra connection failing), a message waits without using up its attempts,
+and is given up only 24 hours after it was sent. Immediately before each
 attempt the worker checks the suppression list again and cancels delivery to any
 address on it. In rare cases a message can be delivered twice after a crash; the rules
 are under [Delivery semantics](/en/reference/communications/#delivery-semantics).
@@ -171,7 +174,10 @@ A channel sends one of two ways, its **Provider**:
   Vantigo access to the mailbox ([the administration
   guide](/en/admin/entra/#mail-channels)). When the application's access reaches every
   mailbox in the company, an orange notice above the table, *Mail access reaches every
-  mailbox*, says so; the channels still work.
+  mailbox*, says *Mail access is granted to every mailbox in the tenant. Limit it with
+  RBAC for Applications and remove the tenant-wide consent. While this shows, anyone who
+  manages channels in Communications can send as any shared mailbox in the tenant.* The
+  channels still work.
 
 ### Add an SMTP channel
 
@@ -200,8 +206,9 @@ the mailbox's own primary address, and can send at once. The check can refuse it
 | *This is a personal mailbox. Only a shared mailbox can be a channel.* | The address is a person's mailbox. | Use a shared mailbox; an Exchange administrator can convert one. |
 | *The mailbox is outside the application's scope. Give the application access to it in Exchange Online.* | Vantigo has not been given access to this mailbox, or the access has not taken effect yet — it can take up to 2 hours. | An Exchange administrator, by [How to give the application access](/en/admin/entra/#mail-channels). |
 | *Microsoft 365 has no mailbox with this address.* | No mailbox has this address — or it is an alias. | Use the mailbox's primary address. |
-| *Microsoft 365 mail channels are turned off in the Entra settings.* | **Mail channels** is off, or the Entra connection is not working. | Whoever manages the Microsoft Entra ID app. |
-| *This mailbox already has a channel.* | Another channel uses the same mailbox, perhaps by another of its addresses. | Use that channel. |
+| *Microsoft 365 mail channels are not available. An Entra administrator turns on Mail channels in the Entra settings.* | **Mail channels** is off, or the Entra connection is not working. | Whoever manages the Microsoft Entra ID app. |
+| *Another channel already uses this mailbox.* | Another channel uses the same mailbox, perhaps by another of its addresses. | Use that channel. |
+| *A channel with this address already exists.* | Another channel has this address. | Use that channel. |
 | *Microsoft 365 did not answer. Try again in a moment.* | Microsoft 365 was busy or unreachable. | Try again. |
 
 Adding, switching and verifying channels are limited to 30 a minute; past that,
@@ -216,6 +223,11 @@ warns *The SMTP settings are deleted. To go back you enter them again.* — choo
 **Switch**. Vantigo checks the mailbox as when adding one, with the same messages, and
 the row's provider reads **Microsoft 365**: "Channel switched — The channel now sends
 through Microsoft 365." The action is shown only while Microsoft 365 is available.
+
+The channel keeps the address it had. If that address is an alias of the shared mailbox
+rather than its primary address, check that the first message goes out as expected:
+how Microsoft 365 sends from an alias has not been verified yet. Adding the channel anew
+by the mailbox's primary address avoids the question.
 
 **There is no button to go back.** The channels page cannot switch a channel back to
 SMTP; an administrator can, through the API, by sending the channel's SMTP settings

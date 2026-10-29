@@ -95,10 +95,10 @@ hører til; du velger ikke avsender.
    fil som ikke kunne klargjøres, lar utkastet ditt stå uendret. Størrelsesgrensen
    settes av administratoren (se
    [Attachments](/en/reference/communications/#attachments)). På en **Microsoft
-   365**-kanal sier skrivefeltet også *Vedlegg på opptil omtrent 3 MB til sammen på denne
-   kanalen*: Microsoft 365 tar bare imot en melding opp til den størrelsen, vedlegg og
-   tekst sammen. En større fil avvises med en gang med *Vedlegget er større enn denne
-   kanalen kan sende (omtrent 3 MB).*
+   365**-kanal sier skrivefeltet også *Vedlegg på opptil omtrent 2,1 MB til sammen på
+   denne kanalen*: Microsoft 365 tar bare imot en melding opp til en fast størrelse,
+   vedlegg og tekst sammen. En større fil avvises med en gang med *Vedlegget er større enn
+   denne kanalen kan sende (omtrent 2,1 MB).*
 3. **Send svar**. Knappen er deaktivert til det finnes tekst, og viser **Venter på
    vedleggsskanning** mens et vedlegg ennå ikke er klart.
 
@@ -140,8 +140,11 @@ Microsoft 365 — så det kan ta et øyeblikk før det går ut. E-post sendt fra
 den i Outlook. Et mislykket forsøk prøves igjen
 med økende ventetid, inntil åtte forsøk i alt; etter det gis meldingen opp og telles på
 en måling administratoren kan varsle på. På en Microsoft 365-kanal gis en melding
-postboksen aldri kan sende — postboksen utenfor det Vantigo har tilgang til, borte, eller
-meldingen for stor — opp etter første forsøk. Rett før hvert forsøk sjekker jobben
+postboksen aldri kan sende — postboksen utenfor det Vantigo har tilgang til, borte,
+meldingen for stor, eller en blindkopi (Bcc) som ville gått tapt — opp etter første
+forsøk. Mens Microsoft 365 er utilgjengelig for Vantigo (**E-postkanaler** slått av,
+eller Entra-tilkoblingen feiler), venter meldingen uten å bruke opp forsøkene, og gis
+først opp 24 timer etter at den ble sendt. Rett før hvert forsøk sjekker jobben
 blokkeringslisten på nytt og avbryter levering til enhver adresse på den. I sjeldne
 tilfeller kan en melding leveres to ganger etter et krasj; reglene står under
 [Delivery semantics](/en/reference/communications/#delivery-semantics).
@@ -170,7 +173,11 @@ En kanal sender på en av to måter, sin **Leverandør**:
   appen Microsoft Entra ID og en Exchange-administrator har gitt Vantigo tilgang til
   postboksen ([administrasjonsveiledningen](/nb/admin/entra/#mail-channels)). Når
   applikasjonens tilgang når alle postboksene i selskapet, sier et oransje varsel over
-  tabellen fra, *E-posttilgangen gjelder alle postbokser*; kanalene virker likevel.
+  tabellen fra, *E-posttilgangen gjelder alle postbokser*: *Applikasjonen har tilgang
+  til alle postboksene i leietakeren. Begrens den med RBAC for Applications, og fjern
+  samtykket som gjelder hele leietakeren. Så lenge denne advarselen vises, kan alle som
+  administrerer kanaler i Kommunikasjon, sende som hvilken som helst delt postboks i
+  leietakeren.* Kanalene virker likevel.
 
 ### Legg til en SMTP-kanal
 
@@ -199,8 +206,9 @@ postboksens egen primære adresse, og kan sende med en gang. Sjekken kan avvise 
 | *Dette er en personlig postboks. Bare en delt postboks kan være en kanal.* | Adressen er en persons postboks. | Bruk en delt postboks; en Exchange-administrator kan gjøre om en. |
 | *Postboksen er utenfor det applikasjonen har tilgang til. Gi applikasjonen tilgang til den i Exchange Online.* | Vantigo har ikke fått tilgang til postboksen, eller tilgangen virker ikke ennå — det kan ta opptil 2 timer. | En Exchange-administrator, med [Slik gir du applikasjonen tilgang](/nb/admin/entra/#mail-channels). |
 | *Microsoft 365 har ingen postboks med denne adressen.* | Ingen postboks har adressen — eller den er et alias. | Bruk postboksens primære adresse. |
-| *E-postkanaler gjennom Microsoft 365 er slått av i Entra-innstillingene.* | **E-postkanaler** er av, eller Entra-tilkoblingen virker ikke. | Den som administrerer appen Microsoft Entra ID. |
-| *Denne postboksen har allerede en kanal.* | En annen kanal bruker den samme postboksen, kanskje med en annen av adressene. | Bruk den kanalen. |
+| *E-postkanaler gjennom Microsoft 365 er ikke tilgjengelige. En Entra-administrator slår på E-postkanaler i Entra-innstillingene.* | **E-postkanaler** er av, eller Entra-tilkoblingen virker ikke. | Den som administrerer appen Microsoft Entra ID. |
+| *En annen kanal bruker allerede denne postboksen.* | En annen kanal bruker den samme postboksen, kanskje med en annen av adressene. | Bruk den kanalen. |
+| *Det finnes allerede en kanal med denne adressen.* | En annen kanal har adressen. | Bruk den kanalen. |
 | *Microsoft 365 svarte ikke. Prøv igjen om litt.* | Microsoft 365 var opptatt eller utilgjengelig. | Prøv igjen. |
 
 Å legge til, bytte og bekrefte kanaler er begrenset til 30 i minuttet; over det,
@@ -215,6 +223,11 @@ slettes. For å gå tilbake må du legge dem inn på nytt.* — velg **Bytt**. V
 postboksen som når du legger til en, med de samme meldingene, og leverandøren på raden
 blir **Microsoft 365**: «Kanalen er byttet — Kanalen sender nå gjennom Microsoft 365.»
 Handlingen vises bare mens Microsoft 365 er tilgjengelig.
+
+Kanalen beholder adressen den hadde. Er adressen et alias for den delte postboksen og
+ikke den primære adressen, sjekk at den første meldingen går ut som forventet: hvordan
+Microsoft 365 sender fra et alias, er ikke verifisert ennå. Å legge til kanalen på nytt
+med postboksens primære adresse unngår spørsmålet.
 
 **Det finnes ingen knapp for å gå tilbake.** Siden Kanaler kan ikke bytte en kanal
 tilbake til SMTP; en administrator kan, gjennom API-et, ved å sende kanalens

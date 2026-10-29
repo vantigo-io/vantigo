@@ -908,7 +908,12 @@ count as unexpected.
     Online* role, never in a Graph token's `roles`: the test cannot see it. The
     `Application MailboxSettings.Read` role exists in RBAC for Applications, so there is
     **no `accountEnabled` fallback**; a 403 on `userPurpose` is `ErrMailboxDenied`.
-    The switch's label keeps *send and receive*, though C only sends.
+    The switch's label says *send through*, since C only sends. The tenant-wide roles
+    include `MailboxSettings.Read`/`ReadWrite`, `MailboxItem.Read.All`,
+    `MailboxItem.ImportExport.All` and `MailboxFolder.Read.All`/`ReadWrite.All` besides
+    the five `Mail.*`; one warning in both modules adds that anyone who manages channels
+    can then send as any shared mailbox. *Ready* claims only what the test measured and
+    names `Test-ServicePrincipalAuthorization`.
   - **M11, the contract**: only the seven methods C calls — `Key`, `DisplayName`,
     `Status`, `Check`, `Forget`, `MaxMessage`, `Send`; D and E add theirs. `Send` takes
     `bcc []string` beside the MIME: without blind copies the MIME goes to `sendMail`;
@@ -917,16 +922,24 @@ count as unexpected.
     (owner question 1). `mail.RenderMIME` with `WithBcc` writes the header go-mail leaves
     out. `Status` reuses `MailboxStatus`; `available` with the reason `tenant_wide` is
     M10's warning. `Check` resolves by user principal name, then `$filter=mail eq`, and
-    refuses an address that is not a bare addr-spec before any call. `sendMail`, the
-    draft's create and its send are `noRetry`. `MaxMessage` is 3 000 000 bytes of MIME.
+    refuses an address that is not a bare addr-spec before any call, and keeps the typed
+    address out of errors and logs. It **records only a shared mailbox**; a personal one
+    is answered, never recorded, so `Send` refuses it. `sendMail`, the draft's create and
+    its send are `noRetry`. `MaxMessage` is 3 000 000 bytes of MIME; a 400
+    `ErrorMessageSizeExceeded` (or `MessageSizeExceeded`, `ErrorMessageTooBig`) is
+    `ErrMailTooLarge` too. A draft that lost a blind copy is a new
+    `contracts.ErrBccUnsupported`, terminal. A process that dies between the draft's
+    create and its send leaves the draft in the mailbox's Drafts.
   - **M11, `Forget`**: there is no delete of a channel (conversations restrict it), so
-    `Forget` runs only on the way back to SMTP, after the commit, best-effort; a
-    deactivated channel keeps its mailbox.
+    `Forget` runs only on the way back to SMTP, after the commit, best-effort, and is
+    skipped when another channel has taken the mailbox meanwhile; a deactivated channel
+    keeps its mailbox.
   - **M12**: `ChannelResponse.settings` stays the SMTP shape (`domain` and `region`
     gone), null for Microsoft 365, beside a new `mailbox: {id}` — no `oneOf`. One channel
-    per mailbox: the unique index `ux_channels_entra_mailbox` (409 `channel_exists`). The
-    stored address is `Check`'s primary address on create; the switch keeps the
-    channel's own. Create, switch and verify answer 503 `provider_unreachable` when Graph
+    per mailbox: the unique index `ux_channels_entra_mailbox` (409 `mailbox_exists`, apart
+    from `channel_exists` for an address). The stored address is `Check`'s primary address
+    on create; the switch keeps the channel's own, which may be an alias — what Exchange
+    does with it is unverified. Create, switch and verify answer 503 `provider_unreachable` when Graph
     does not answer, and verify 422 `mailbox_changed` when the address now names another
     mailbox. The frontend reads `GET /channel-providers`, never Entra's API. The way back
     to SMTP is `PUT /channels/{id}` with `provider: smtp` and a full SMTP block, the
@@ -935,17 +948,26 @@ count as unexpected.
     and verify share a rate limit, `communications-channel-check` (30 a minute).
     Communications gains `contractscalls.go` and its in-transaction guard.
   - **M13**: the terminal codes are `mailbox_denied`, `mailbox_gone`, `mailbox_unknown`,
-    `too_large` and `channel_misconfigured`; the job fails after one attempt, `last_error`
-    stays the constant, and the code goes in the failure event's `data_json` and the log
-    (owner question 2). The size check is on **reply** (422 `too_large`) and at
-    **staging** (413 `attachment_too_large`), not create, which carries no attachments;
-    the 37 % margin applies to the HTML body too. `ConversationDetailResponse` answers
-    `maxMessageBytes` for the composer. Reply is unreachable until D, so its check has no
-    live caller yet.
+    `too_large`, `bcc_unsupported` and `channel_misconfigured`; the job fails after one
+    attempt, `last_error` stays the constant, and the code goes in the failure event's
+    `data_json` and the log (owner question 2). An **unavailable provider** (the switch
+    off, the connection failing, Entra off, no slot or another key) is not retried on the
+    attempts: the job is held, its attempt given back, tried again at most 5 minutes
+    apart; the hold's start writes one `retrying` event per sendable delivery with the code
+    `provider_unavailable`, held tries count on `communications.outbox.jobs_held`, and 24
+    hours after queueing the job fails as `provider_unavailable`. A `retry` job claimed
+    with its send marker set counts as a possible duplicate. The size check is on
+    **reply** (422 `too_large`) and at **staging** (413 `attachment_too_large`), not
+    create, which carries no attachments; the bodies count × 3 (quoted-printable at its
+    worst). `ConversationDetailResponse` answers `maxMessageBytes` and
+    `maxAttachmentBytes`, `(budget − 16 KiB) × 100 / 137` rounded down to 0.1 MB (2.1 MB),
+    which the composer and the staging's 413 show. Reply is unreachable until D, so its
+    check has no live caller yet.
   - **Not verified on a real tenant** when the pages were written: that Exchange keeps
     our `Message-ID` on a MIME `sendMail` (and on a MIME draft), and that a draft's `Bcc:`
     header reaches the blind copies. The pull request's real-tenant checklist settles
-    both; the reference states them as unverified until then.
+    both, and how Exchange sends from an alias address; the reference states them as
+    unverified until then.
 - **D** (`feat/communications-inbound`): M14–M16. Migration
   `00092_communications_inbound.sql` (with the backfill), and the dependency `bluemonday`. Docs:
   - the communications reference (the outbound-only section replaced by *Receiving*, the

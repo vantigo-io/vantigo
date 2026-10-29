@@ -174,8 +174,8 @@ Reglene hver konto følger, som alle med `entra:manage` kan endre:
   autentiseringsmetoder må slå på passet for brukerne, ellers avviser Microsoft det;
 - **Outlook-tilkobling**: **Outlook-tilkobling: la folk koble Outlook til Vantigo**
   ([nedenfor](#outlook-tilkobling));
-- **E-postkanaler**: **E-postkanaler: la Kommunikasjon sende og motta gjennom delte
-  postbokser i Exchange Online** ([nedenfor](#e-postkanaler)).
+- **E-postkanaler**: **E-postkanaler: la Kommunikasjon sende gjennom delte postbokser i
+  Exchange Online** ([nedenfor](#e-postkanaler)).
 
 Velg **Lagre kontoreglene**. En verdi utenfor regelen merkes på feltet med årsaken. Har
 noen andre lagret tilkoblingen siden du åpnet siden, sier siden fra og laster den inn på
@@ -274,11 +274,11 @@ synkroniseringen deres fortsetter når de har gjort det.
 Online — hver av dem en kanal der ([Kommunikasjon](/nb/user/communications/#sett-opp-en-kanal)).
 Vantigo når dem med applikasjonens egen tilgang, som en Exchange-administrator gir i
 Exchange Online, avgrenset til kanalenes postbokser. Det er av til noen med
-`entra:manage` slår det på. I denne versjonen **sender en kanal bare**: ordene *sende og
-motta* på bryteren ser fram mot mottak, som ikke er bygget ennå.
+`entra:manage` slår det på. I denne versjonen **sender en kanal bare**; mottak er ikke
+bygget ennå.
 
 1. I steg **4 Sett kontoreglene**, under **E-postkanaler**, slå på **E-postkanaler: la
-   Kommunikasjon sende og motta gjennom delte postbokser i Exchange Online**, og velg
+   Kommunikasjon sende gjennom delte postbokser i Exchange Online**, og velg
    **Lagre kontoreglene**.
 2. Under bryteren viser **Kommandoer for Exchange Online PowerShell** de seks kommandoene
    som skal kjøres, med applikasjonens applikasjons-ID og objekt-ID fylt inn og en
@@ -291,18 +291,23 @@ motta* på bryteren ser fram mot mottak, som ikke er bygget ennå.
 
 Mens bryteren er på, sier en linje under den hvor e-postkanalene står:
 
-- **Klar: applikasjonen har ingen e-posttillatelse for hele leietakeren.** — når du
-  legger til en kanal i Kommunikasjon, sjekkes det at Vantigo når postboksen;
+- **Klar: ved siste test hadde applikasjonen ingen e-posttillatelse i Microsoft Graph for
+  hele leietakeren. Tilgang gitt i Exchange vises ikke her – sjekk den med
+  Test-ServicePrincipalAuthorization.** — når du legger til en kanal i Kommunikasjon,
+  sjekkes det da at Vantigo når postboksen;
 - **Applikasjonen har tilgang til alle postboksene i leietakeren. Begrens den med RBAC
-  for Applications, og fjern samtykket som gjelder hele leietakeren.** — i oransje:
-  appregistreringen har en `Mail`-tillatelse, som når hver postboks uansett hva Exchange
+  for Applications, og fjern samtykket som gjelder hele leietakeren. Så lenge denne
+  advarselen vises, kan alle som administrerer kanaler i Kommunikasjon, sende som
+  hvilken som helst delt postboks i leietakeren.** — i oransje: appregistreringen har en
+  e-posttillatelse for hele leietakeren, som når hver postboks uansett hva Exchange
   begrenser. Kanalene virker fortsatt; fjern tillatelsen under **API permissions** og test
   tilkoblingen igjen;
 - **Venter på tilkoblingen** — tilkoblingen er ikke tilkoblet, med årsaken under.
 
 **Å slå den av** sletter ingenting: Kommunikasjon tilbyr ikke lenger Microsoft 365 for en
-kanal, og e-post som venter på en Microsoft 365-kanal, prøves igjen i noen minutter og
-gis så opp.
+kanal, og e-post som venter på en Microsoft 365-kanal, holdes igjen, prøves på nytt med
+noen minutters mellomrom og gis opp 24 timer etter at den ble lagt i kø. Slås den på
+igjen innen døgnet, sendes den.
 
 ## Bekreft en konto Vantigo ikke opprettet
 
