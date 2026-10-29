@@ -121,6 +121,19 @@ export const StatusCard = ({ connection, owner }: { connection: EntraConnection;
           {t("permissionsPresentList", { names: connection.permissionsPresent.join(", ") })}
         </Text>
       )}
+      {connection.permissionsUnexpected.length > 0 && (
+        // A warning, never a status (Outlook connection design M19): the connection stays connected.
+        <Alert color="orange" variant="light" title={t("permissionsUnexpected")}>
+          <Stack gap={4}>
+            <List size="sm" aria-label={t("permissionsUnexpected")}>
+              {connection.permissionsUnexpected.map((name) => (
+                <List.Item key={name}>{name}</List.Item>
+              ))}
+            </List>
+            <Text size="sm">{t("permissionsUnexpectedHint")}</Text>
+          </Stack>
+        </Alert>
+      )}
 
       <Subheading>{t("secrets")}</Subheading>
       <CredentialList credentials={connection.credentials} owner={owner} />
