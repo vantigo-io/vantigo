@@ -736,7 +736,9 @@ mailbox and OneDrive. A 403 is `ErrExternalPrivileged`. The row is marked `delet
 its pass cleared, its [Outlook connection](#closing) closed with the token forgotten
 (code `deleted`), and kept. A user the tenant answers 404 for is deleted already: its
 row — found by the external id Staff passed — is marked `deleted` once, with the code
-`gone`, and its Outlook connection closed the same way. A rehire after a delete is a new
+`gone`, and its Outlook connection closed the same way, when the module created it or
+its adoption is confirmed; an unconfirmed adoption, which the module never owned, is
+left as it is and nothing is written. A rehire after a delete is a new
 account ([Prepare](#prepare)). Recorded as the event `entra.user.deleted`.
 
 ### Account
@@ -1344,6 +1346,7 @@ reconnect, redirectUri, notifications}`, the status decided in this order:
 | --- | --- |
 | `off` | The switch is off. |
 | `unavailable` | On, but the connection is not `connected`; `reason` is the connection's `statusReason`, when it has one. |
+| `permission_missing` | On and `connected`, but the last test's token did not carry the application permission `Calendars.ReadWrite`, which the calendar's sync still writes with until delivery B. **Advisory**: expected when the permission was granted with Exchange RBAC for Applications, which never shows in the token, and otherwise a sign to add it; the calendar stays available either way ([the status](#the-status)). It comes before the people's own connects, so a switch turned on before a test sees the permission reads `permission_missing`, not `untested`. |
 | `consent_missing` | On and `connected`, and the last validated connect found its feature's delegated permission not granted (`outlook_last_error`); a connect that completes clears it. |
 | `ready` | On and `connected`, and someone has connected — a live connection made — since the switch was last turned on. |
 | `untested` | Otherwise: nobody has connected since it was turned on. |
@@ -1397,7 +1400,8 @@ computed under the purpose `entra/outlook-connect-session` from the session's id
    live connection of that account held by another person, else `409 account_taken`
    (refused early here; `complete` still decides). It seals a fresh state and nonce (256
    random bits each), a PKCE verifier and the rest into `vantigo.entra.connect` and
-   answers `200 {authorizeUrl}`: the tenant's
+   answers `200 {authorizeUrl}`, clearing any `vantigo.entra.connected` an earlier,
+   uncompleted connect left, so that connect can no longer complete: the tenant's
    `https://login.microsoftonline.com/{tenant}/oauth2/v2.0/authorize` with `client_id`,
    `response_type=code`, `response_mode=query`, the redirect URI, `scope` (`openid
    profile offline_access` and the feature's Graph scopes), `state`, `nonce`, the S256
@@ -1417,9 +1421,10 @@ computed under the purpose `entra/outlook-connect-session` from the session's id
       client](#the-graph-client), with the verifier, the client secret, the same scope
       and claims. A refusal is read by its `error` and `error_codes` alone:
       `invalid_grant` with 70008 or 54005 (the code expired or redeemed already) →
-      `expired`; `invalid_client` or `unauthorized_client` → `failed`, and the secret
-      marked failed as a token request's refusal marks it; anything else, no answer, or
-      an answer without a refresh token or an id_token → `failed`.
+      `expired`; anything else — `invalid_client` and `unauthorized_client`
+      included —, no answer, or an answer without a refresh token or an id_token →
+      `failed`. This anonymous callback never marks the client secret failed: the
+      application token's own requests judge it.
    5. The id_token verified with go-oidc against the tenant's published keys
       (`/{tenant}/discovery/v2.0/keys`, kept per tenant in the process): RS256, the
       signature, the audience (the client id) and the expiry; then `tid` the
@@ -1444,9 +1449,16 @@ computed under the purpose `entra/outlook-connect-session` from the session's id
    certain account read again, before any transaction (`409 no_account`); the cookie's
    `oid` and `tid` must be that account's and the connection's tenant, else `409
    account_mismatch`, whose detail names both: *You signed in as {UPN}; Vantigo knows you
-   as {UPN}.* Then one transaction, both rows locked: a live connection of that `oid`
-   held by another person → `409 account_taken` (a unique violation from a concurrent
-   complete answers the same); the caller's live connection of another account — their
+   as {UPN}.* Then one transaction: the connection's row locked `FOR UPDATE` — so
+   completes are serialized, and the switch's `PUT`, which closes every live row, runs
+   wholly before or after — and the switch read again under it (`409 switch_off`); the
+   account's row in `entra.accounts` locked `FOR SHARE` — so a leaver's Deactivate,
+   which writes it before it closes the connection, does too — and read again, still
+   trusted and `enabled` (`409 no_account`); then both connection rows locked: a live
+   connection of that `oid` held by another person → `409 account_taken` (a unique
+   violation from a concurrent complete answers the same, unless the row that won is the
+   caller's own active one — a connect submitted twice, answered as the caller's
+   connection); the caller's live connection of another account — their
    account re-pointed in Staff — closes, its token kept, event `entra.outlook.closed`
    code `repointed`; a row of that `oid` — the caller's in any state, or anyone's
    `closing` one — is taken over, else a row is inserted, `active` at revision 1. The
@@ -1496,10 +1508,13 @@ connection, its token kept for removals, event `entra.outlook.disconnected`, and
 
 The token source answers the access token for an account's connection: a connection
 missing, closing (unless asked for a removal) or without its token needs its person
-(`not_connected`, `closing`), and one in `reconnect` needs them for its `error_code`. An
-`active` connection's account is checked on use: no longer one the module keeps trusted
-and enabled, the connection closes — token kept for removals, code `deleted` or
-`disabled` — and the call needs its person. A cached access token — keyed by the object
+(`not_connected`, `closing`), and one in `reconnect` needs them for its `error_code`.
+**While the switch is off, only a removal gets a token**, whatever the row's state —
+the rows the switch closes may not be closed yet. An `active` connection's account is
+checked on use: no longer one the module keeps trusted and enabled, the connection
+closes at the revision read — its token forgotten, since the account can no longer use
+it and a leaver's removals are not this token's to make; code `deleted` or `disabled` —
+and the call needs its person. A cached access token — keyed by the object
 id, the row's revision, the client and a digest of the sealed token, so it outlives no
 write to the row — is used until shortly before it expires; `used_at` is written at most
 once an hour. Otherwise the refresh: `grant_type=refresh_token` with the opened token,
@@ -1522,7 +1537,10 @@ Microsoft's refusals are read by their AADSTS codes first, then the OAuth error:
 | a 5xx, a 429, `temporarily_unavailable`, a timeout or no answer | unchanged: transient |
 
 A move to `reconnect` is recorded as `entra.outlook.reconnect_needed` with the code,
-under `system:entra-outlook`, and logged at info with the object id and the code.
+under `system:entra-outlook`, and logged at info with the object id and the code. A
+refused refresh of a row `closing` at the revision read — a removal's — forgets that
+token instead, so no removal tries it again, and the call needs its person
+(`closing`).
 
 **CAE and `cp1`.** Every connect and refresh declares the client capability `cp1`, so
 Microsoft sends a continuous access evaluation **claims challenge** — a `401` whose
@@ -1540,12 +1558,14 @@ application's token.
 | The person disconnects | `DELETE /outlook/connection` | kept | — (`entra.outlook.disconnected`) |
 | A leaver | [Deactivate](#deactivate), in the transaction that disables the account | forgotten | `leaver` |
 | A deleted account | [Delete](#delete), and a user the tenant no longer holds | forgotten | `deleted` |
-| The account no longer enabled in Vantigo | on use (kept), or by the sweep for a row in `reconnect` (forgotten) | as said | `deleted` or `disabled` |
+| The account no longer enabled in Vantigo | on use, or by the sweep for a row in `reconnect` | forgotten | `deleted` or `disabled` |
 | The switch turned off | `PUT /connection/settings`, in its transaction, every live row | kept | `switch_off` |
 | The account re-pointed in Staff | a `complete` of the person's new account | kept | `repointed` |
 
 A closing row that must forget its token has it forgotten even when it was closing
-already. A kept token is for removals only — the copies a feature wrote in the mailbox —
+already. A close decided on an earlier read — on use, by the sweep, a disconnect, a
+re-pointed account — is guarded by the revision read: a row moved on since, a
+reconnect say, is left alone, token and all. A kept token is for removals only — the copies a feature wrote in the mailbox —
 and goes with the row.
 
 ### entra-outlook-sweep
@@ -1555,7 +1575,7 @@ lock, on one pooled connection, in the API and in worker mode alike; it has no s
 Each cycle:
 
 - **deletes the closing connections nothing needs**: seven days after they closed, or
-  once a day has passed since they were last used (or closed) with no change
+  once a day has passed both since they were last used and since they closed, with no change
   notification subscription of that mailbox left for a removal to delete — one
   `entra.outlook.deleted` event each, under `system:entra-outlook`;
 - **reads the account of each connection waiting in `reconnect`**, at most once a day

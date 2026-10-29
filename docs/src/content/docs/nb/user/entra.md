@@ -237,6 +237,12 @@ med en kopieringsknapp, og en linje sier hvor tilkoblingen står:
 - **Klar** — noen har koblet til siden bryteren ble slått på;
 - **Ingen har koblet til ennå: koble til din egen Outlook under Innstillinger ›
   Tilkoblinger for å sjekke at det virker.**;
+- **Kalendersynkroniseringen trenger applikasjonstillatelsen Calendars.ReadWrite, som
+  ikke er i tokenet. Det er som ventet hvis du ga den med Exchange RBAC for
+  Applications; ellers legg den til, gi administratorsamtykke og test på nytt.** — bare
+  til orientering: kalendersynkroniseringen er fortsatt tilgjengelig, og til en test ser
+  tillatelsen vises denne linjen i stedet for alle de andre unntatt **Venter på
+  tilkoblingen**;
 - **Den siste tilkoblingen manglet en delegert tillatelse: gi administratorsamtykke for
   den i appregistreringen og koble til på nytt.** — en persons tilkobling kom tilbake
   uten tillatelsen den ba om;

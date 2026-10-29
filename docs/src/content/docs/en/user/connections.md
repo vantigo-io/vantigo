@@ -93,7 +93,7 @@ why:
 | --- | --- |
 | *The sign-in to Microsoft was cancelled or refused. Nothing was connected.* | Connect again, and accept on Microsoft's page. |
 | *You signed in with an account from another organisation. Connect again and sign in with your work account.* | Sign out of the other account at Microsoft, or choose your work account. |
-| *The connect took too long, or was started in another session. Connect again.* | Connect again, and finish within ten minutes in the same browser. |
+| *The connect took too long, or was started in another session. Connect again.* | Connect again, and finish within ten minutes in the same browser and the same tab: starting a new connect cancels one not yet finished. |
 | *Microsoft's answer could not be used. Try again in a moment.* | Try again; if it keeps happening, tell your administrator. |
 | *Your organisation has not consented to the permissions the connection needs. Ask your administrator to grant admin consent.* | Your administrator grants admin consent ([the administration guide](/en/admin/entra/#outlook-connection)). |
 | *You signed in to Microsoft with another account than the one Vantigo knows you by. Connect again and sign in with that account.* | Sign in with your work account; ask HR if Vantigo knows you by the wrong one. |

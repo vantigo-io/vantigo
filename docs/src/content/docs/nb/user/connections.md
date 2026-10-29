@@ -93,7 +93,7 @@ hvorfor:
 | --- | --- |
 | *Påloggingen hos Microsoft ble avbrutt eller avvist. Ingenting ble koblet til.* | Koble til på nytt, og godta på Microsofts side. |
 | *Du logget på med en konto fra en annen organisasjon. Koble til på nytt og logg på med jobbkontoen din.* | Logg ut av den andre kontoen hos Microsoft, eller velg jobbkontoen din. |
-| *Tilkoblingen tok for lang tid, eller ble startet i en annen økt. Koble til på nytt.* | Koble til på nytt, og fullfør innen ti minutter i den samme nettleseren. |
+| *Tilkoblingen tok for lang tid, eller ble startet i en annen økt. Koble til på nytt.* | Koble til på nytt, og fullfør innen ti minutter i den samme nettleseren og den samme fanen: en ny tilkobling som startes, avbryter en som ikke er fullført. |
 | *Svaret fra Microsoft kunne ikke brukes. Prøv igjen om litt.* | Prøv igjen; skjer det stadig, si fra til administratoren. |
 | *Organisasjonen har ikke gitt samtykke til tillatelsene tilkoblingen trenger. Be administratoren din gi administratorsamtykke.* | Administratoren gir administratorsamtykke ([administrasjonsveiledningen](/nb/admin/entra/#outlook-tilkobling)). |
 | *Du logget på Microsoft med en annen konto enn den Vantigo kjenner deg ved. Koble til på nytt og logg på med den kontoen.* | Logg på med jobbkontoen din; spør HR hvis Vantigo kjenner deg ved feil konto. |

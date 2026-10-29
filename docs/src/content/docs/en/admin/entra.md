@@ -280,7 +280,10 @@ Connect yourself: open **Settings → Connections** and choose **Connect Outlook
 back on the page within seconds, reading **Connected as** and your account. On the module
 page the line under the switch has moved from **Nobody has connected yet: …** to
 **Ready**, *People connected:* counts you, and the **Status** card's recent events show
-*A person connected Outlook*.
+*A person connected Outlook*. While the last test's token lacks the application
+permission `Calendars.ReadWrite`, the line reads *Calendar sync needs the
+Calendars.ReadWrite application permission, …* instead, before and after —
+[calendar sync](#turn-it-on) says why that is advisory.
 
 ### Turn the Outlook connection off
 
@@ -302,14 +305,14 @@ Turned on again, each person connects again.
 - **They leave.** When Staff disables the account, the connection closes and its stored
   token is forgotten in the same step, before the leaver's other steps run.
 - **Their account is deleted or disabled** in Vantigo or in the tenant. The connection
-  closes when it is next used, or — for one waiting to reconnect — when the worker
+  closes, its stored token forgotten, when it is next used, or — for one waiting to reconnect — when the worker
   `entra-outlook-sweep` reads the account in the tenant, at most once a day.
 - **They disconnect.** Vantigo closes the connection; it never signs them out of
   Microsoft.
 
 A closed connection is deleted by `entra-outlook-sweep`, the module's worker, an hour at
-a time: seven days after it closed, or a day after it was last used when nothing is left
-for it to clean up. The worker has no setting and runs wherever the module's workers run
+a time: seven days after it closed, or once a day has passed both since it was last used
+and since it closed, when nothing is left for it to clean up. The worker has no setting and runs wherever the module's workers run
 ([Installation](/en/admin/installation/#background-workers-and-scaling)).
 
 ### When connecting fails
@@ -323,7 +326,7 @@ for it to clean up. The worker has no setting and runs wherever the module's wor
 | The person sees *You signed in to Microsoft with another account than the one Vantigo knows you by. …* | They signed in as another account than the one Staff links to their person (`account_mismatch`). | They connect again as that account. If Staff links the wrong one, HR corrects it on the person's Account tab. |
 | *Another person in Vantigo has already connected this Microsoft account.* | Another user holds a live connection of that account (`account_taken`). | Find who in the recent events (*A person connected Outlook*, with the account); that person disconnects, or HR corrects the account link. |
 | *Nothing to connect: …* on a person's page | The switch is off, or the person has no account Vantigo manages. | Turn the switch on, or give the person the Microsoft Entra ID kind and confirm their account. |
-| *The connect took too long, or was started in another session.* | More than ten minutes at Microsoft, or the browser lost the connect's cookie — another browser, a private window closed, or cookies blocked for Vantigo. | Connect again in the same browser. |
+| *The connect took too long, or was started in another session.* | More than ten minutes at Microsoft, or the browser lost the connect's cookie — another browser, a private window closed, or cookies blocked for Vantigo — or a newer connect was started before this one completed, in another tab say, which cancels it. | Connect again in the same browser. |
 
 ## Calendar sync
 
@@ -372,9 +375,11 @@ who opens **Calendar → My calendar** can turn on **Sync to my Outlook calendar
 a minute their card says **Last synced** and the appointments are in Outlook. Until a
 test sees the permission, the **Status** card lists it as missing — but that is
 advisory, and step 3 does not wait for it: people can turn their sync on all the same,
-and a mailbox the permission does not reach is refused for that person alone. The line
-under the switch speaks of the people's [Outlook connections](#verify-the-outlook-connection), not of this
-permission. The rest of the module works as before.
+and a mailbox the permission does not reach is refused for that person alone. Meanwhile
+the line under the switch reads *Calendar sync needs the Calendars.ReadWrite application
+permission, which is not in the token. …* in place of the [Outlook
+connection's](#verify-the-outlook-connection) own, the same advisory. The rest of the
+module works as before.
 
 **What a change in Outlook does.** A person's edit or move of their own appointment's
 copy changes the appointment in Vantigo at the next sync, through the same rules and
@@ -439,7 +444,8 @@ Exchange Online PowerShell, as an Exchange administrator:
 The changes take **30 minutes to 2 hours** to apply. A grant made with RBAC for
 Applications never shows in the token, so once the tenant-wide consent is removed, the
 next **Test connection** lists `Calendars.ReadWrite` as missing (step 3 stays *Done*)
-— that is expected, and the sync goes on. Verify with a person inside the scope: their card says **Last
+and the line under the switch reads *Calendar sync needs the Calendars.ReadWrite
+application permission, …* — that is expected, and the sync goes on. Verify with a person inside the scope: their card says **Last
 synced**. A person outside the scope sees **Your organisation has not
 allowed Vantigo to reach your mailbox.** on their Outlook card: Vantigo tries them again
 every six hours, and never reads it as the connection failing.
@@ -785,7 +791,7 @@ Calendar sync's troubles show on the **Status** card, on the line under the swit
 
 | Where | Means | Do |
 | --- | --- | --- |
-| `Calendars.ReadWrite` listed missing on the **Status** card | The switch is on and the last test's token lacked the application permission. Expected under RBAC for Applications; the sync runs either way. | Nothing under RBAC for Applications. Otherwise add the permission, grant consent and test again ([calendar sync](#turn-it-on)); until then every person's sync is refused as their own mailbox denied. |
+| `Calendars.ReadWrite` listed missing on the **Status** card, and *Calendar sync needs the Calendars.ReadWrite application permission, …* under the switch | The switch is on and the last test's token lacked the application permission. Expected under RBAC for Applications; the sync runs either way. | Nothing under RBAC for Applications. Otherwise add the permission, grant consent and test again ([calendar sync](#turn-it-on)); until then every person's sync is refused as their own mailbox denied. |
 | *Waiting for the connection* under the switch | The connection is not connected; its reason is under the line. | Fix the connection as the table above says. |
 | *Your organisation has not allowed Vantigo to reach your mailbox.* on a person's card | Graph answered 403 for their mailbox (`mailbox_denied`): outside an RBAC for Applications scope. Tried again every six hours. | Add the person to the scope's group, or accept it; they press **Sync now** to try at once. |
 | *Your mailbox could not be found.* on a person's card | The user has no Exchange Online mailbox, or no longer exists (`mailbox_gone`). Tried again every six hours. | Give the account a licence with Exchange Online. |
