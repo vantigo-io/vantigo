@@ -131,7 +131,7 @@ func TestMailboxNotifications_AValidOneMarks(t *testing.T) {
 	if got := notifiedAt(t, h, mailbox); !got.Equal(at) {
 		t.Errorf("notified at %s, want %s", got, at)
 	}
-	if got := getConnection(t, o).CalendarSync.Notifications.LastNotificationAt; got == nil || !got.Equal(at) {
+	if got := getConnection(t, o).OutlookConnect.Notifications.LastNotificationAt; got == nil || !got.Equal(at) {
 		t.Errorf("lastNotificationAt = %v, want %s", got, at)
 	}
 
@@ -424,7 +424,7 @@ func TestMailboxNotifications_BodiesRefused(t *testing.T) {
 	}
 }
 
-// GET /connection's calendarSync.notifications (design O11.7): not_configured
+// GET /connection's outlookConnect.notifications (design O11.7): not_configured
 // while PUBLIC_BASE_URL is unset, off while
 // CALENDAR_MAILBOX_NOTIFICATIONS_ENABLED is 0, active otherwise with the
 // live subscriptions counted, unreachable within the hour after a failed
@@ -445,7 +445,7 @@ func TestConnection_Notifications(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			h := newHarness(t, tc.opts...)
 			c, _ := manager(t, h)
-			got := getConnection(t, c).CalendarSync.Notifications
+			got := getConnection(t, c).OutlookConnect.Notifications
 			if got.Status != tc.want || got.Subscriptions != 0 || got.UnreachableAt != nil || got.LastNotificationAt != nil {
 				t.Errorf("notifications = %+v, want %s and none", got, tc.want)
 			}
@@ -456,12 +456,12 @@ func TestConnection_Notifications(t *testing.T) {
 		h, g, o := newNoticesHarness(t)
 		watched(t, h, g)
 		h.Exec(t, `UPDATE entra.connection SET notifications_unreachable_at = $1`, h.Now())
-		got := getConnection(t, o).CalendarSync.Notifications
+		got := getConnection(t, o).OutlookConnect.Notifications
 		if got.Status != gen.EntraCalendarSyncNotificationsStatusUnreachable || got.UnreachableAt == nil || got.Subscriptions != 1 {
 			t.Errorf("notifications = %+v, want unreachable with one subscription", got)
 		}
 		h.Advance(61 * time.Minute)
-		if got := getConnection(t, mustOwner(t, h)).CalendarSync.Notifications; got.Status != gen.EntraCalendarSyncNotificationsStatusActive || got.UnreachableAt != nil {
+		if got := getConnection(t, mustOwner(t, h)).OutlookConnect.Notifications; got.Status != gen.EntraCalendarSyncNotificationsStatusActive || got.UnreachableAt != nil {
 			t.Errorf("after the hour: %+v, want active", got)
 		}
 	})

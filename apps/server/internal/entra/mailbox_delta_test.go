@@ -378,7 +378,7 @@ func TestMailboxDelta_Refusals(t *testing.T) {
 	}
 
 	mailbox := mailboxUser(t, h, g)
-	setCalendarSync(t, o, false)
+	setOutlookConnect(t, o, false)
 	if st, _ := p.Status(ctx); st.State != contracts.MailboxCleanup {
 		t.Fatalf("Status = %+v, want cleanup", st)
 	}

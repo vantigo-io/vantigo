@@ -340,19 +340,22 @@ func TestEntraGroups_AppliesAndIsIdempotent(t *testing.T) {
 	}; !equalStrings(columns("groups"), want) {
 		t.Errorf("entra.groups columns =\n%s\nwant\n%s", strings.Join(columns("groups"), "\n"), strings.Join(want, "\n"))
 	}
-	// 00082's calendar_sync follows them, pinned by
-	// TestEntraCalendarSync_AppliesAndIsIdempotent; 00085's notification
-	// columns come after it, pinned by
-	// TestEntraMailboxSubscriptions_AppliesAndIsIdempotent, and are left out.
+	// 00082's calendar_sync follows them, renamed outlook_connect by 00088
+	// (a rename keeps the ordinal), pinned by
+	// TestEntraOutlookConnect_AppliesAndIsIdempotent; 00085's notification
+	// columns and 00088's three come after it, pinned by
+	// TestEntraMailboxSubscriptions_AppliesAndIsIdempotent and the same
+	// outlook test, and are left out.
 	connection := slices.DeleteFunc(columns("connection"), func(c string) bool {
-		return strings.HasPrefix(c, "notifications_") || strings.HasPrefix(c, "last_notification_at:")
+		return strings.HasPrefix(c, "notifications_") || strings.HasPrefix(c, "last_notification_at:") ||
+			strings.HasPrefix(c, "outlook_connect_at:") || strings.HasPrefix(c, "outlook_last_error")
 	})
 	if tail := connection[max(len(connection)-3, 0):]; !equalStrings(tail, []string{
 		"service_principal_id:uuid:YES:",
 		"skus:jsonb:NO:'[]'::jsonb",
-		"calendar_sync:boolean:NO:false",
+		"outlook_connect:boolean:NO:false",
 	}) {
-		t.Errorf("entra.connection's last columns = %v, want service_principal_id, skus and calendar_sync", tail)
+		t.Errorf("entra.connection's last columns = %v, want service_principal_id, skus and outlook_connect", tail)
 	}
 	accounts := columns("accounts")
 	if tail := accounts[max(len(accounts)-1, 0):]; !equalStrings(tail, []string{"licences_assigned:ARRAY:NO:'{}'::text[]"}) {

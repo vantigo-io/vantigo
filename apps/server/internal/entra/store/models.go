@@ -56,10 +56,13 @@ type EntraConnection struct {
 	UpdatedByUserID              *uuid.UUID
 	ServicePrincipalID           *uuid.UUID
 	Skus                         []byte
-	CalendarSync                 bool
+	OutlookConnect               bool
 	NotificationsValidatingUntil *time.Time
 	NotificationsUnreachableAt   *time.Time
 	LastNotificationAt           *time.Time
+	OutlookConnectAt             *time.Time
+	OutlookLastError             *string
+	OutlookLastErrorAt           *time.Time
 }
 
 type EntraCredential struct {
@@ -113,4 +116,22 @@ type EntraMailboxSubscription struct {
 	NotifiedAt      *time.Time
 	CreatedAt       time.Time
 	UpdatedAt       time.Time
+}
+
+type EntraOutlookConnection struct {
+	ObjectID         uuid.UUID
+	UserID           uuid.UUID
+	TenantID         uuid.UUID
+	Scopes           []string
+	RefreshSealed    []byte
+	State            string
+	ErrorCode        *string
+	ConnectedAt      time.Time
+	RefreshedAt      *time.Time
+	UsedAt           *time.Time
+	AccountCheckedAt *time.Time
+	ChangedAt        time.Time
+	Revision         int64
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
 }

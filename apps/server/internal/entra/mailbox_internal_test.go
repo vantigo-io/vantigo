@@ -27,7 +27,7 @@ func TestMailboxStatusOf(t *testing.T) {
 	revoked := []store.EntraCredential{{ID: 1, ExpiresAt: now.AddDate(1, 0, 0), CreatedAt: now, RevokedAt: &now}}
 	conn := func(on bool, status string, reason *string, perms ...string) store.EntraConnection {
 		return store.EntraConnection{TenantID: &tenant, ClientID: &client, Status: status, StatusReason: reason,
-			CalendarSync: on, PermissionsPresent: perms}
+			OutlookConnect: on, PermissionsPresent: perms}
 	}
 	const cal = permissionCalendarsReadWrite
 	for _, c := range []struct {
@@ -47,7 +47,7 @@ func TestMailboxStatusOf(t *testing.T) {
 		{"failing with no reason", conn(true, "failing", nil, cal), good, contracts.MailboxUnavailable, "failing"},
 		{"no secret", conn(true, "connected", nil, cal), revoked, contracts.MailboxUnavailable, "unconfigured"},
 		{"no secret, the switch off", conn(false, "connected", nil, cal), nil, contracts.MailboxUnavailable, reasonSwitchOff},
-		{"no tenant", store.EntraConnection{ClientID: &client, CalendarSync: true, Status: "connected", PermissionsPresent: []string{cal}}, good, contracts.MailboxUnavailable, "unconfigured"},
+		{"no tenant", store.EntraConnection{ClientID: &client, OutlookConnect: true, Status: "connected", PermissionsPresent: []string{cal}}, good, contracts.MailboxUnavailable, "unconfigured"},
 		{"every secret expired", conn(true, "connected", nil, cal), []store.EntraCredential{{ID: 1, ExpiresAt: now.Add(-time.Hour), CreatedAt: now}}, contracts.MailboxUnavailable, "secret_expired"},
 	} {
 		got := mailboxStatusOf(c.conn, c.creds, now)

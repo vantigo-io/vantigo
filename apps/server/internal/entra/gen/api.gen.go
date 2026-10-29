@@ -42,30 +42,6 @@ func (e EntraAccountState) Valid() bool {
 	}
 }
 
-// Defines values for EntraCalendarSyncStatus.
-const (
-	EntraCalendarSyncStatusOff               EntraCalendarSyncStatus = "off"
-	EntraCalendarSyncStatusPermissionMissing EntraCalendarSyncStatus = "permission_missing"
-	EntraCalendarSyncStatusReady             EntraCalendarSyncStatus = "ready"
-	EntraCalendarSyncStatusUnavailable       EntraCalendarSyncStatus = "unavailable"
-)
-
-// Valid indicates whether the value is a known member of the EntraCalendarSyncStatus enum.
-func (e EntraCalendarSyncStatus) Valid() bool {
-	switch e {
-	case EntraCalendarSyncStatusOff:
-		return true
-	case EntraCalendarSyncStatusPermissionMissing:
-		return true
-	case EntraCalendarSyncStatusReady:
-		return true
-	case EntraCalendarSyncStatusUnavailable:
-		return true
-	default:
-		return false
-	}
-}
-
 // Defines values for EntraCalendarSyncNotificationsStatus.
 const (
 	EntraCalendarSyncNotificationsStatusActive        EntraCalendarSyncNotificationsStatus = "active"
@@ -243,6 +219,90 @@ func (e EntraGroupType) Valid() bool {
 	}
 }
 
+// Defines values for EntraOutlookConnectStatus.
+const (
+	EntraOutlookConnectStatusConsentMissing EntraOutlookConnectStatus = "consent_missing"
+	EntraOutlookConnectStatusOff            EntraOutlookConnectStatus = "off"
+	EntraOutlookConnectStatusReady          EntraOutlookConnectStatus = "ready"
+	EntraOutlookConnectStatusUnavailable    EntraOutlookConnectStatus = "unavailable"
+	EntraOutlookConnectStatusUntested       EntraOutlookConnectStatus = "untested"
+)
+
+// Valid indicates whether the value is a known member of the EntraOutlookConnectStatus enum.
+func (e EntraOutlookConnectStatus) Valid() bool {
+	switch e {
+	case EntraOutlookConnectStatusConsentMissing:
+		return true
+	case EntraOutlookConnectStatusOff:
+		return true
+	case EntraOutlookConnectStatusReady:
+		return true
+	case EntraOutlookConnectStatusUnavailable:
+		return true
+	case EntraOutlookConnectStatusUntested:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for EntraOutlookConnectRequestFeature.
+const (
+	Calendar EntraOutlookConnectRequestFeature = "calendar"
+)
+
+// Valid indicates whether the value is a known member of the EntraOutlookConnectRequestFeature enum.
+func (e EntraOutlookConnectRequestFeature) Valid() bool {
+	switch e {
+	case Calendar:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for EntraOutlookConnectionReason.
+const (
+	NoAccount EntraOutlookConnectionReason = "no_account"
+	SwitchOff EntraOutlookConnectionReason = "switch_off"
+)
+
+// Valid indicates whether the value is a known member of the EntraOutlookConnectionReason enum.
+func (e EntraOutlookConnectionReason) Valid() bool {
+	switch e {
+	case NoAccount:
+		return true
+	case SwitchOff:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for EntraOutlookConnectionState.
+const (
+	EntraOutlookConnectionStateActive       EntraOutlookConnectionState = "active"
+	EntraOutlookConnectionStateClosing      EntraOutlookConnectionState = "closing"
+	EntraOutlookConnectionStateNotConnected EntraOutlookConnectionState = "not_connected"
+	EntraOutlookConnectionStateReconnect    EntraOutlookConnectionState = "reconnect"
+)
+
+// Valid indicates whether the value is a known member of the EntraOutlookConnectionState enum.
+func (e EntraOutlookConnectionState) Valid() bool {
+	switch e {
+	case EntraOutlookConnectionStateActive:
+		return true
+	case EntraOutlookConnectionStateClosing:
+		return true
+	case EntraOutlookConnectionStateNotConnected:
+		return true
+	case EntraOutlookConnectionStateReconnect:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for EntraSettingsLeaverRemoveGroups.
 const (
 	EntraSettingsLeaverRemoveGroupsAll     EntraSettingsLeaverRemoveGroups = "all"
@@ -407,21 +467,6 @@ type EntraAccountCounts struct {
 	Enabled  int32 `json:"enabled"`
 }
 
-// EntraCalendarSync The calendar sync switch (calendar Outlook sync design O2): whether people may sync their Vantigo calendar to Outlook, and whether it can run. status is off while the switch is; ready when on, connected, and the last test's token carried Calendars.ReadWrite; permission_missing when on and connected but the last test's token did not carry it — advisory: expected when the permission was granted with Exchange RBAC for Applications, which no token shows, and otherwise a sign to add it, consent, and test again; the sync runs either way, and a mailbox outside the grant is refused per person; unavailable when on but the connection is not connected, reason then being the connection's statusReason.
-type EntraCalendarSync struct {
-	Enabled bool `json:"enabled"`
-
-	// Notifications The change notifications from Outlook (calendar Outlook sync design O11.7): with them, a change in a synced mailbox makes its sync due at once rather than at the next poll, which runs either way. status is off while CALENDAR_MAILBOX_NOTIFICATIONS_ENABLED is 0; not_configured while PUBLIC_BASE_URL is unset, Microsoft needing a public HTTPS address; unreachable when Microsoft could not reach the webhook to validate a subscription within the last hour, no subscription being asked for until then; active otherwise.
-	Notifications EntraCalendarSyncNotifications `json:"notifications"`
-
-	// Reason A code, never the directory's words; absent when there is nothing to say.
-	Reason *string                 `json:"reason,omitempty"`
-	Status EntraCalendarSyncStatus `json:"status"`
-}
-
-// EntraCalendarSyncStatus defines model for EntraCalendarSync.Status.
-type EntraCalendarSyncStatus string
-
 // EntraCalendarSyncNotifications The change notifications from Outlook (calendar Outlook sync design O11.7): with them, a change in a synced mailbox makes its sync due at once rather than at the next poll, which runs either way. status is off while CALENDAR_MAILBOX_NOTIFICATIONS_ENABLED is 0; not_configured while PUBLIC_BASE_URL is unset, Microsoft needing a public HTTPS address; unreachable when Microsoft could not reach the webhook to validate a subscription within the last hour, no subscription being asked for until then; active otherwise.
 type EntraCalendarSyncNotifications struct {
 	// LastNotificationAt When a notification last came, to within a minute. Absent until one has.
@@ -443,9 +488,6 @@ type EntraConnection struct {
 	// Accounts How many accounts the module keeps in the tenant, by state; count is all of them, deleted included.
 	Accounts EntraAccountCounts `json:"accounts"`
 
-	// CalendarSync The calendar sync switch (calendar Outlook sync design O2): whether people may sync their Vantigo calendar to Outlook, and whether it can run. status is off while the switch is; ready when on, connected, and the last test's token carried Calendars.ReadWrite; permission_missing when on and connected but the last test's token did not carry it — advisory: expected when the permission was granted with Exchange RBAC for Applications, which no token shows, and otherwise a sign to add it, consent, and test again; the sync runs either way, and a mailbox outside the grant is refused per person; unavailable when on but the connection is not connected, reason then being the connection's statusReason.
-	CalendarSync EntraCalendarSync `json:"calendarSync"`
-
 	// ClientId The application (client) id of the app registration. Absent until step 1 is saved.
 	ClientId *openapi_types.UUID `json:"clientId,omitempty"`
 
@@ -461,11 +503,17 @@ type EntraConnection struct {
 	// OrganisationName The tenant's organisation name as the last test read it.
 	OrganisationName *string `json:"organisationName,omitempty"`
 
-	// PermissionsMissing The application permissions the module needs (User.ReadWrite.All, User-LifeCycleInfo.ReadWrite.All, User.RevokeSessions.All, UserAuthMethod-TAP.ReadWrite.All, LicenseAssignment.ReadWrite.All, Group.ReadWrite.All, Domain.Read.All, Organization.Read.All, and Calendars.ReadWrite while the calendar sync switch is on) that the last test's token did not carry; all of them before the first test.
+	// OutlookConnect The Outlook connection switch (Outlook connection design M2): whether people may connect their own Outlook to Vantigo, and whether a connect can work. status is off while the switch is; unavailable when on but the connection is not connected, reason then being the connection's statusReason; consent_missing when the last connect found a feature's delegated permission not consented in the tenant; ready when someone has connected since the switch was last turned on; untested otherwise. connected and reconnect count the people connected and those whose connection Microsoft refused, waiting for them to connect again. redirectUri is the redirect URI to add to the app registration's Web platform.
+	OutlookConnect EntraOutlookConnect `json:"outlookConnect"`
+
+	// PermissionsMissing The application permissions the module needs (User.ReadWrite.All, User-LifeCycleInfo.ReadWrite.All, User.RevokeSessions.All, UserAuthMethod-TAP.ReadWrite.All, LicenseAssignment.ReadWrite.All, Group.ReadWrite.All, Domain.Read.All, Organization.Read.All, and Calendars.ReadWrite while the Outlook connection switch is on) that the last test's token did not carry; all of them before the first test.
 	PermissionsMissing []string `json:"permissionsMissing"`
 
 	// PermissionsPresent The application permissions the last test's token carried in its roles claim.
 	PermissionsPresent []string `json:"permissionsPresent"`
+
+	// PermissionsUnexpected The application permissions the last test's token carried that the module does not use (Outlook connection design M19) — a warning, never a status: a permission granted to the application reaches every mailbox or account in the tenant, so one nobody needs is better removed in the portal.
+	PermissionsUnexpected []string `json:"permissionsUnexpected"`
 
 	// Settings The account rules (Entra design D13): how the UPN is made, the usage location a licence needs, what a leaver loses, and the Temporary Access Pass a joiner gets.
 	Settings EntraSettings `json:"settings"`
@@ -506,6 +554,9 @@ type EntraConnectionTest struct {
 	OrganisationName   *string  `json:"organisationName,omitempty"`
 	PermissionsMissing []string `json:"permissionsMissing"`
 	PermissionsPresent []string `json:"permissionsPresent"`
+
+	// PermissionsUnexpected The application permissions the token carried that the module does not use (Outlook connection design M19), a warning.
+	PermissionsUnexpected []string `json:"permissionsUnexpected"`
 
 	// Reason Why the test failed, a code — credential_invalid, tenant_unreachable or consent_missing. Absent when it connected.
 	Reason *string `json:"reason,omitempty"`
@@ -695,7 +746,78 @@ type EntraGroupCounts struct {
 	Count int32 `json:"count"`
 }
 
-// EntraProblem An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: connection_in_use (409: the tenant or the client changes while the module keeps accounts, and confirmChange is not true), adoption_confirmed (409: the account's adoption is confirmed already), credential_in_use (409: the secret is the only valid one while the module keeps accounts), version_mismatch (412: the connection has been written since the If-Match version), sso_not_configured (409: single sign-on is not configured, so there is nothing to connect under), invalid_request (400: a field is not valid), credential_invalid and tenant_unreachable (503: the tenant could not be asked), throttled (503: the tenant throttled the module twice in a row). errors carries the field errors of a 400, keyed by the request's camelCase field. A request the server could not decode answers a bare 400 with neither.
+// EntraOutlookAuthorize Where to send the browser to connect Outlook — Microsoft's authorization endpoint for the connection's tenant, with the state, nonce and PKCE challenge the answer's cookie holds sealed.
+type EntraOutlookAuthorize struct {
+	AuthorizeUrl string `json:"authorizeUrl"`
+}
+
+// EntraOutlookComplete A connect completed — the person's connection as it now stands, and the path in Vantigo to return to.
+type EntraOutlookComplete struct {
+	// Connection The caller's own Outlook connection (Outlook connection design M3, M8). offered says whether the caller may connect at all — false while the switch is off (reason switch_off) or Vantigo knows no Entra account of theirs that the module manages (reason no_account). state is not_connected with no connection, active while it works, reconnect when Microsoft refused it (errorCode says why) and closing once disconnected, which reads as not connected.
+	Connection EntraOutlookConnection `json:"connection"`
+
+	// ReturnTo A path on this installation, never another origin; /settings/connections when the connect named none.
+	ReturnTo string `json:"returnTo"`
+}
+
+// EntraOutlookConnect The Outlook connection switch (Outlook connection design M2): whether people may connect their own Outlook to Vantigo, and whether a connect can work. status is off while the switch is; unavailable when on but the connection is not connected, reason then being the connection's statusReason; consent_missing when the last connect found a feature's delegated permission not consented in the tenant; ready when someone has connected since the switch was last turned on; untested otherwise. connected and reconnect count the people connected and those whose connection Microsoft refused, waiting for them to connect again. redirectUri is the redirect URI to add to the app registration's Web platform.
+type EntraOutlookConnect struct {
+	Connected int32 `json:"connected"`
+	Enabled   bool  `json:"enabled"`
+
+	// Notifications The change notifications from Outlook (calendar Outlook sync design O11.7): with them, a change in a synced mailbox makes its sync due at once rather than at the next poll, which runs either way. status is off while CALENDAR_MAILBOX_NOTIFICATIONS_ENABLED is 0; not_configured while PUBLIC_BASE_URL is unset, Microsoft needing a public HTTPS address; unreachable when Microsoft could not reach the webhook to validate a subscription within the last hour, no subscription being asked for until then; active otherwise.
+	Notifications EntraCalendarSyncNotifications `json:"notifications"`
+
+	// Reason A code, never the directory's words; absent when there is nothing to say.
+	Reason    *string `json:"reason,omitempty"`
+	Reconnect int32   `json:"reconnect"`
+
+	// RedirectUri APP_URL with the base path and /api/v1/entra/outlook/callback.
+	RedirectUri string                    `json:"redirectUri"`
+	Status      EntraOutlookConnectStatus `json:"status"`
+}
+
+// EntraOutlookConnectStatus defines model for EntraOutlookConnect.Status.
+type EntraOutlookConnectStatus string
+
+// EntraOutlookConnectRequest What a connect is for, and where to return once it completes.
+type EntraOutlookConnectRequest struct {
+	// Feature The feature the connect asks Microsoft's consent for; calendar asks for Calendars.ReadWrite.
+	Feature EntraOutlookConnectRequestFeature `json:"feature"`
+
+	// ReturnTo A path on this installation to return to; anything that is not one becomes /settings/connections.
+	ReturnTo *string `json:"returnTo,omitempty"`
+}
+
+// EntraOutlookConnectRequestFeature The feature the connect asks Microsoft's consent for; calendar asks for Calendars.ReadWrite.
+type EntraOutlookConnectRequestFeature string
+
+// EntraOutlookConnection The caller's own Outlook connection (Outlook connection design M3, M8). offered says whether the caller may connect at all — false while the switch is off (reason switch_off) or Vantigo knows no Entra account of theirs that the module manages (reason no_account). state is not_connected with no connection, active while it works, reconnect when Microsoft refused it (errorCode says why) and closing once disconnected, which reads as not connected.
+type EntraOutlookConnection struct {
+	// Account The userPrincipalName of the Entra account Vantigo knows the caller by. Absent when there is none.
+	Account     *string    `json:"account,omitempty"`
+	ConnectedAt *time.Time `json:"connectedAt,omitempty"`
+
+	// ErrorCode Why Microsoft refused the connection, a code: expired, sign_in_again, mfa, blocked or consent_missing. Present while state is reconnect.
+	ErrorCode *string `json:"errorCode,omitempty"`
+
+	// Features The features the granted scopes allow, such as calendar.
+	Features []string                      `json:"features"`
+	Offered  bool                          `json:"offered"`
+	Reason   *EntraOutlookConnectionReason `json:"reason,omitempty"`
+
+	// Scopes The delegated scopes Microsoft granted, lower-cased and sorted.
+	Scopes []string                    `json:"scopes"`
+	State  EntraOutlookConnectionState `json:"state"`
+}
+
+// EntraOutlookConnectionReason defines model for EntraOutlookConnection.Reason.
+type EntraOutlookConnectionReason string
+
+// EntraOutlookConnectionState defines model for EntraOutlookConnection.State.
+type EntraOutlookConnectionState string
+
+// EntraProblem An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: connection_in_use (409: the tenant or the client changes while the module keeps accounts, and confirmChange is not true), adoption_confirmed (409: the account's adoption is confirmed already), credential_in_use (409: the secret is the only valid one while the module keeps accounts), version_mismatch (412: the connection has been written since the If-Match version), sso_not_configured (409: single sign-on is not configured, so there is nothing to connect under), invalid_request (400: a field is not valid), credential_invalid and tenant_unreachable (503: the tenant could not be asked), throttled (503: the tenant throttled the module twice in a row); for the Outlook connection, switch_off (409: the Outlook connection switch is off), no_account (409: Vantigo knows no Entra account of the caller's that the module manages), account_taken (409: another person's connection holds the account), account_mismatch (409: the caller signed in to Microsoft as another account than the one Vantigo knows them by), feature_unknown (422: the connect names no feature the module offers) and expired (410: the connect's sealed cookie is missing, expired or another session's). errors carries the field errors of a 400, keyed by the request's camelCase field. A request the server could not decode answers a bare 400 with neither.
 type EntraProblem struct {
 	Code     *string              `json:"code,omitempty"`
 	Detail   *string              `json:"detail,omitempty"`
@@ -749,18 +871,18 @@ type EntraSettingsPassDelivery string
 // EntraSettingsUpnPattern How the UPN's local part is made from the folded names when the work email cannot be the UPN.
 type EntraSettingsUpnPattern string
 
-// EntraSettingsRequest Step 4, the account rules and the calendar sync switch. Every field is optional, and one left out keeps its value; each refusal is a field error under its own name.
+// EntraSettingsRequest Step 4, the account rules and the Outlook connection switch. Every field is optional, and one left out keeps its value; each refusal is a field error under its own name.
 type EntraSettingsRequest struct {
-	// CalendarSync Lets people sync their Vantigo calendar to Outlook (calendar Outlook sync design O2). Turning it on asks for Calendars.ReadWrite; turning it off removes the copies already written.
-	CalendarSync *bool `json:"calendarSync,omitempty"`
-
 	// DefaultUsageLocation Two letters, ISO 3166-1 alpha-2.
 	DefaultUsageLocation *string                                 `json:"defaultUsageLocation,omitempty"`
 	LeaverRemoveGroups   *EntraSettingsRequestLeaverRemoveGroups `json:"leaverRemoveGroups,omitempty"`
 	LeaverRevokeSessions *bool                                   `json:"leaverRevokeSessions,omitempty"`
 	LeaverStripLicences  *bool                                   `json:"leaverStripLicences,omitempty"`
 	LeaverWriteLeaveDate *bool                                   `json:"leaverWriteLeaveDate,omitempty"`
-	PassDelivery         *EntraSettingsRequestPassDelivery       `json:"passDelivery,omitempty"`
+
+	// OutlookConnect Lets people connect their own Outlook to Vantigo (Outlook connection design M2). Turning it on records when; turning it off closes every person's connection, so each must connect again, and the calendar's copies already written are removed.
+	OutlookConnect *bool                             `json:"outlookConnect,omitempty"`
+	PassDelivery   *EntraSettingsRequestPassDelivery `json:"passDelivery,omitempty"`
 
 	// PassLifetimeMinutes 10 to 43200.
 	PassLifetimeMinutes *int32 `json:"passLifetimeMinutes,omitempty"`
@@ -830,6 +952,19 @@ type PostEntraMailboxNotificationsParams struct {
 	ValidationToken *string `form:"validationToken,omitempty" json:"validationToken,omitempty"`
 }
 
+// GetEntraOutlookCallbackParams defines parameters for GetEntraOutlookCallback.
+type GetEntraOutlookCallbackParams struct {
+	Code  *string `form:"code,omitempty" json:"code,omitempty"`
+	State *string `form:"state,omitempty" json:"state,omitempty"`
+	Error *string `form:"error,omitempty" json:"error,omitempty"`
+
+	// ErrorDescription Microsoft's words, never read.
+	ErrorDescription *string `form:"error_description,omitempty" json:"error_description,omitempty"`
+
+	// SessionState Ignored.
+	SessionState *string `form:"session_state,omitempty" json:"session_state,omitempty"`
+}
+
 // PutEntraConnectionJSONRequestBody defines body for PutEntraConnection for application/json ContentType.
 type PutEntraConnectionJSONRequestBody = EntraConnectionRequest
 
@@ -844,6 +979,9 @@ type PostEntraMailboxNotificationsJSONRequestBody PostEntraMailboxNotificationsJ
 
 // PostEntraMailboxNotificationsTextRequestBody defines body for PostEntraMailboxNotifications for text/plain ContentType.
 type PostEntraMailboxNotificationsTextRequestBody = PostEntraMailboxNotificationsTextBody
+
+// PostEntraOutlookConnectJSONRequestBody defines body for PostEntraOutlookConnect for application/json ContentType.
+type PostEntraOutlookConnectJSONRequestBody = EntraOutlookConnectRequest
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
@@ -892,6 +1030,21 @@ type ServerInterface interface {
 	// PostEntraMailboxNotifications Microsoft's change notifications
 	// (POST /api/v1/entra/mailbox-notifications)
 	PostEntraMailboxNotifications(w http.ResponseWriter, r *http.Request, params PostEntraMailboxNotificationsParams)
+	// GetEntraOutlookCallback Microsoft's answer to a connect
+	// (GET /api/v1/entra/outlook/callback)
+	GetEntraOutlookCallback(w http.ResponseWriter, r *http.Request, params GetEntraOutlookCallbackParams)
+	// PostEntraOutlookComplete Complete connecting Outlook
+	// (POST /api/v1/entra/outlook/complete)
+	PostEntraOutlookComplete(w http.ResponseWriter, r *http.Request)
+	// PostEntraOutlookConnect Start connecting Outlook
+	// (POST /api/v1/entra/outlook/connect)
+	PostEntraOutlookConnect(w http.ResponseWriter, r *http.Request)
+	// DeleteEntraOutlookConnection Disconnect Outlook
+	// (DELETE /api/v1/entra/outlook/connection)
+	DeleteEntraOutlookConnection(w http.ResponseWriter, r *http.Request)
+	// GetEntraOutlookConnection Get my Outlook connection
+	// (GET /api/v1/entra/outlook/connection)
+	GetEntraOutlookConnection(w http.ResponseWriter, r *http.Request)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -1268,6 +1421,147 @@ func (siw *ServerInterfaceWrapper) PostEntraMailboxNotifications(w http.Response
 	handler.ServeHTTP(w, r)
 }
 
+// GetEntraOutlookCallback operation middleware
+func (siw *ServerInterfaceWrapper) GetEntraOutlookCallback(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetEntraOutlookCallbackParams
+
+	// ------------- Optional query parameter "code" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "code", r.URL.Query(), &params.Code, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "code"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "code", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "state" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "state", r.URL.Query(), &params.State, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "state"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "state", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "error" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "error", r.URL.Query(), &params.Error, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "error"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "error", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "error_description" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "error_description", r.URL.Query(), &params.ErrorDescription, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "error_description"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "error_description", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "session_state" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "session_state", r.URL.Query(), &params.SessionState, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "session_state"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "session_state", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetEntraOutlookCallback(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostEntraOutlookComplete operation middleware
+func (siw *ServerInterfaceWrapper) PostEntraOutlookComplete(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostEntraOutlookComplete(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostEntraOutlookConnect operation middleware
+func (siw *ServerInterfaceWrapper) PostEntraOutlookConnect(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostEntraOutlookConnect(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteEntraOutlookConnection operation middleware
+func (siw *ServerInterfaceWrapper) DeleteEntraOutlookConnection(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteEntraOutlookConnection(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetEntraOutlookConnection operation middleware
+func (siw *ServerInterfaceWrapper) GetEntraOutlookConnection(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetEntraOutlookConnection(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 type UnescapedCookieParamError struct {
 	ParamName string
 	Err       error
@@ -1403,6 +1697,11 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/entra/groups", wrapper.GetEntraGroups)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/entra/groups/{objectId}/confirm", wrapper.PostEntraGroupsByObjectIdConfirm)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/entra/mailbox-notifications", wrapper.PostEntraMailboxNotifications)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/entra/outlook/callback", wrapper.GetEntraOutlookCallback)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/entra/outlook/complete", wrapper.PostEntraOutlookComplete)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/entra/outlook/connect", wrapper.PostEntraOutlookConnect)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/entra/outlook/connection", wrapper.DeleteEntraOutlookConnection)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/entra/outlook/connection", wrapper.GetEntraOutlookConnection)
 
 	return m
 }
@@ -2601,6 +2900,293 @@ func (response PostEntraMailboxNotifications503ApplicationProblemPlusJSONRespons
 	return err
 }
 
+type GetEntraOutlookCallbackRequestObject struct {
+	Params GetEntraOutlookCallbackParams
+}
+
+type GetEntraOutlookCallbackResponseObject interface {
+	VisitGetEntraOutlookCallbackResponse(w http.ResponseWriter) error
+}
+
+type GetEntraOutlookCallback302ResponseHeaders struct {
+	Location *string
+}
+
+type GetEntraOutlookCallback302Response struct {
+	Headers GetEntraOutlookCallback302ResponseHeaders
+}
+
+func (response GetEntraOutlookCallback302Response) VisitGetEntraOutlookCallbackResponse(w http.ResponseWriter) error {
+	if response.Headers.Location != nil {
+		w.Header().Set("Location", fmt.Sprint(*response.Headers.Location))
+	}
+	w.WriteHeader(302)
+	return nil
+}
+
+type GetEntraOutlookCallback429ResponseHeaders struct {
+	RetryAfter *string
+}
+
+type GetEntraOutlookCallback429JSONResponse struct {
+	Body    externalRef0.AuthErrorResponse
+	Headers GetEntraOutlookCallback429ResponseHeaders
+}
+
+func (response GetEntraOutlookCallback429JSONResponse) VisitGetEntraOutlookCallbackResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostEntraOutlookCompleteRequestObject struct {
+}
+
+type PostEntraOutlookCompleteResponseObject interface {
+	VisitPostEntraOutlookCompleteResponse(w http.ResponseWriter) error
+}
+
+type PostEntraOutlookComplete200JSONResponse EntraOutlookComplete
+
+func (response PostEntraOutlookComplete200JSONResponse) VisitPostEntraOutlookCompleteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostEntraOutlookComplete401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostEntraOutlookComplete401JSONResponse) VisitPostEntraOutlookCompleteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostEntraOutlookComplete409ApplicationProblemPlusJSONResponse EntraProblem
+
+func (response PostEntraOutlookComplete409ApplicationProblemPlusJSONResponse) VisitPostEntraOutlookCompleteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostEntraOutlookComplete410ApplicationProblemPlusJSONResponse EntraProblem
+
+func (response PostEntraOutlookComplete410ApplicationProblemPlusJSONResponse) VisitPostEntraOutlookCompleteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(410)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostEntraOutlookComplete429ResponseHeaders struct {
+	RetryAfter *string
+}
+
+type PostEntraOutlookComplete429JSONResponse struct {
+	Body    externalRef0.AuthErrorResponse
+	Headers PostEntraOutlookComplete429ResponseHeaders
+}
+
+func (response PostEntraOutlookComplete429JSONResponse) VisitPostEntraOutlookCompleteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostEntraOutlookConnectRequestObject struct {
+	Body *PostEntraOutlookConnectJSONRequestBody
+}
+
+type PostEntraOutlookConnectResponseObject interface {
+	VisitPostEntraOutlookConnectResponse(w http.ResponseWriter) error
+}
+
+type PostEntraOutlookConnect200JSONResponse EntraOutlookAuthorize
+
+func (response PostEntraOutlookConnect200JSONResponse) VisitPostEntraOutlookConnectResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostEntraOutlookConnect401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostEntraOutlookConnect401JSONResponse) VisitPostEntraOutlookConnectResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostEntraOutlookConnect409ApplicationProblemPlusJSONResponse EntraProblem
+
+func (response PostEntraOutlookConnect409ApplicationProblemPlusJSONResponse) VisitPostEntraOutlookConnectResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostEntraOutlookConnect422ApplicationProblemPlusJSONResponse EntraProblem
+
+func (response PostEntraOutlookConnect422ApplicationProblemPlusJSONResponse) VisitPostEntraOutlookConnectResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostEntraOutlookConnect429ResponseHeaders struct {
+	RetryAfter *string
+}
+
+type PostEntraOutlookConnect429JSONResponse struct {
+	Body    externalRef0.AuthErrorResponse
+	Headers PostEntraOutlookConnect429ResponseHeaders
+}
+
+func (response PostEntraOutlookConnect429JSONResponse) VisitPostEntraOutlookConnectResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteEntraOutlookConnectionRequestObject struct {
+}
+
+type DeleteEntraOutlookConnectionResponseObject interface {
+	VisitDeleteEntraOutlookConnectionResponse(w http.ResponseWriter) error
+}
+
+type DeleteEntraOutlookConnection204Response struct {
+}
+
+func (response DeleteEntraOutlookConnection204Response) VisitDeleteEntraOutlookConnectionResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteEntraOutlookConnection401JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteEntraOutlookConnection401JSONResponse) VisitDeleteEntraOutlookConnectionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetEntraOutlookConnectionRequestObject struct {
+}
+
+type GetEntraOutlookConnectionResponseObject interface {
+	VisitGetEntraOutlookConnectionResponse(w http.ResponseWriter) error
+}
+
+type GetEntraOutlookConnection200JSONResponse EntraOutlookConnection
+
+func (response GetEntraOutlookConnection200JSONResponse) VisitGetEntraOutlookConnectionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetEntraOutlookConnection401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetEntraOutlookConnection401JSONResponse) VisitGetEntraOutlookConnectionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
 	// GetEntraAccounts The module's accounts
@@ -2648,6 +3234,21 @@ type StrictServerInterface interface {
 	// PostEntraMailboxNotifications Microsoft's change notifications
 	// (POST /api/v1/entra/mailbox-notifications)
 	PostEntraMailboxNotifications(ctx context.Context, request PostEntraMailboxNotificationsRequestObject) (PostEntraMailboxNotificationsResponseObject, error)
+	// GetEntraOutlookCallback Microsoft's answer to a connect
+	// (GET /api/v1/entra/outlook/callback)
+	GetEntraOutlookCallback(ctx context.Context, request GetEntraOutlookCallbackRequestObject) (GetEntraOutlookCallbackResponseObject, error)
+	// PostEntraOutlookComplete Complete connecting Outlook
+	// (POST /api/v1/entra/outlook/complete)
+	PostEntraOutlookComplete(ctx context.Context, request PostEntraOutlookCompleteRequestObject) (PostEntraOutlookCompleteResponseObject, error)
+	// PostEntraOutlookConnect Start connecting Outlook
+	// (POST /api/v1/entra/outlook/connect)
+	PostEntraOutlookConnect(ctx context.Context, request PostEntraOutlookConnectRequestObject) (PostEntraOutlookConnectResponseObject, error)
+	// DeleteEntraOutlookConnection Disconnect Outlook
+	// (DELETE /api/v1/entra/outlook/connection)
+	DeleteEntraOutlookConnection(ctx context.Context, request DeleteEntraOutlookConnectionRequestObject) (DeleteEntraOutlookConnectionResponseObject, error)
+	// GetEntraOutlookConnection Get my Outlook connection
+	// (GET /api/v1/entra/outlook/connection)
+	GetEntraOutlookConnection(ctx context.Context, request GetEntraOutlookConnectionRequestObject) (GetEntraOutlookConnectionResponseObject, error)
 }
 
 type StrictHandlerFunc func(ctx context.Context, w http.ResponseWriter, r *http.Request, request any) (any, error)
@@ -3102,6 +3703,135 @@ func (sh *strictHandler) PostEntraMailboxNotifications(w http.ResponseWriter, r 
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PostEntraMailboxNotificationsResponseObject); ok {
 		if err := validResponse.VisitPostEntraMailboxNotificationsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetEntraOutlookCallback operation middleware
+func (sh *strictHandler) GetEntraOutlookCallback(w http.ResponseWriter, r *http.Request, params GetEntraOutlookCallbackParams) {
+	var request GetEntraOutlookCallbackRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetEntraOutlookCallback(ctx, request.(GetEntraOutlookCallbackRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetEntraOutlookCallback")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetEntraOutlookCallbackResponseObject); ok {
+		if err := validResponse.VisitGetEntraOutlookCallbackResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostEntraOutlookComplete operation middleware
+func (sh *strictHandler) PostEntraOutlookComplete(w http.ResponseWriter, r *http.Request) {
+	var request PostEntraOutlookCompleteRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostEntraOutlookComplete(ctx, request.(PostEntraOutlookCompleteRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostEntraOutlookComplete")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostEntraOutlookCompleteResponseObject); ok {
+		if err := validResponse.VisitPostEntraOutlookCompleteResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostEntraOutlookConnect operation middleware
+func (sh *strictHandler) PostEntraOutlookConnect(w http.ResponseWriter, r *http.Request) {
+	var request PostEntraOutlookConnectRequestObject
+
+	var body PostEntraOutlookConnectJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostEntraOutlookConnect(ctx, request.(PostEntraOutlookConnectRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostEntraOutlookConnect")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostEntraOutlookConnectResponseObject); ok {
+		if err := validResponse.VisitPostEntraOutlookConnectResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteEntraOutlookConnection operation middleware
+func (sh *strictHandler) DeleteEntraOutlookConnection(w http.ResponseWriter, r *http.Request) {
+	var request DeleteEntraOutlookConnectionRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteEntraOutlookConnection(ctx, request.(DeleteEntraOutlookConnectionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteEntraOutlookConnection")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteEntraOutlookConnectionResponseObject); ok {
+		if err := validResponse.VisitDeleteEntraOutlookConnectionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetEntraOutlookConnection operation middleware
+func (sh *strictHandler) GetEntraOutlookConnection(w http.ResponseWriter, r *http.Request) {
+	var request GetEntraOutlookConnectionRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetEntraOutlookConnection(ctx, request.(GetEntraOutlookConnectionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetEntraOutlookConnection")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetEntraOutlookConnectionResponseObject); ok {
+		if err := validResponse.VisitGetEntraOutlookConnectionResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

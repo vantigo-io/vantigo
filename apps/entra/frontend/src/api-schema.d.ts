@@ -286,6 +286,90 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/entra/outlook/callback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Microsoft's answer to a connect
+         * @description The Outlook connection's redirect URI (Outlook connection design M4), on APP_URL with the base path, never the public host. Anonymous: Microsoft's redirect carries the browser's Lax cookies but the session's Strict one is not sent. It checks the state against the sealed vantigo.entra.connect cookie — nothing is written without a valid one — redeems the code through the module's guarded client with the PKCE verifier, verifies the id_token's signature, issuer, audience, nonce and tenant, checks the granted scopes, and seals the result into vantigo.entra.connected for POST /outlook/complete. Every answer clears vantigo.entra.connect and redirects to /settings/connections with outlook=complete, or outlook=failed and code: expired, access_denied, tenant_mismatch, consent_missing or failed. error_description is never read, session_state is ignored. Rate limited to 60 per client address a minute (entra-outlook-callback).
+         */
+        get: operations["getEntraOutlookCallback"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/entra/outlook/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Complete connecting Outlook
+         * @description Completes a connect under the session (Outlook connection design M4): opens vantigo.entra.connected, which must be the caller's and this session's, checks the switch and that the account signed in is the one Vantigo knows the caller by, and stores the connection with its refresh token sealed — taking over a closing connection of the same account, and closing the caller's connection of another account. Audited entra.outlook.connected. The cookie is cleared on every answer. 410 expired for a cookie missing, expired or another session's; 409 switch_off, no_account, account_mismatch (the detail names both accounts) or account_taken. Rate limited to 30 per client address a minute, shared with POST /outlook/connect (entra-outlook).
+         */
+        post: operations["postEntraOutlookComplete"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/entra/outlook/connect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start connecting Outlook
+         * @description Starts connecting the caller's Outlook (Outlook connection design M4): checks the feature, the switch, the Entra account Vantigo knows the caller by (Staff's directory account, managed by this module, enabled and trusted) and that no other person's connection holds it; then seals a fresh state, nonce and PKCE verifier with the session into the vantigo.entra.connect cookie (HttpOnly, SameSite=Lax, ten minutes, on /api/v1/entra/outlook) and answers the authorization URL to send the browser to. 422 feature_unknown; 409 switch_off, no_account or account_taken. Rate limited to 30 per client address a minute, shared with POST /outlook/complete (entra-outlook).
+         */
+        post: operations["postEntraOutlookConnect"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/entra/outlook/connection": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get my Outlook connection
+         * @description The caller's own Outlook connection, whether they may connect, and the account Vantigo knows them by. Always 200, so the page can tell "not connected" from "nothing to connect". Reads the module's own rows and Staff's directory account; nothing reaches the tenant.
+         */
+        get: operations["getEntraOutlookConnection"];
+        put?: never;
+        post?: never;
+        /**
+         * Disconnect Outlook
+         * @description Disconnects the caller's Outlook (Outlook connection design M7): their live connection closes, its token kept only for the removals that may still need it, and is deleted once nothing does. Audited entra.outlook.disconnected. 204 whether or not there was one. The person's sign-in sessions are never revoked.
+         */
+        delete: operations["deleteEntraOutlookConnection"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -329,15 +413,6 @@ export interface components {
             /** Format: int32 */
             enabled: number;
         };
-        /** @description The calendar sync switch (calendar Outlook sync design O2): whether people may sync their Vantigo calendar to Outlook, and whether it can run. status is off while the switch is; ready when on, connected, and the last test's token carried Calendars.ReadWrite; permission_missing when on and connected but the last test's token did not carry it — advisory: expected when the permission was granted with Exchange RBAC for Applications, which no token shows, and otherwise a sign to add it, consent, and test again; the sync runs either way, and a mailbox outside the grant is refused per person; unavailable when on but the connection is not connected, reason then being the connection's statusReason. */
-        EntraCalendarSync: {
-            enabled: boolean;
-            /** @description A code, never the directory's words; absent when there is nothing to say. */
-            reason?: string;
-            /** @enum {string} */
-            status: "off" | "ready" | "permission_missing" | "unavailable";
-            notifications: components["schemas"]["EntraCalendarSyncNotifications"];
-        };
         /** @description The change notifications from Outlook (calendar Outlook sync design O11.7): with them, a change in a synced mailbox makes its sync due at once rather than at the next poll, which runs either way. status is off while CALENDAR_MAILBOX_NOTIFICATIONS_ENABLED is 0; not_configured while PUBLIC_BASE_URL is unset, Microsoft needing a public HTTPS address; unreachable when Microsoft could not reach the webhook to validate a subscription within the last hour, no subscription being asked for until then; active otherwise. */
         EntraCalendarSyncNotifications: {
             /**
@@ -361,7 +436,6 @@ export interface components {
         /** @description The installation's one connection to a Microsoft Entra ID tenant (Entra design D11): the tenant and the application registered in it, what the last connection test found, the account rules, the client secrets without their values, and how many accounts and groups the module keeps. Sent whether or not anything is set, so the wizard can show every step before the first is done. */
         EntraConnection: {
             accounts: components["schemas"]["EntraAccountCounts"];
-            calendarSync: components["schemas"]["EntraCalendarSync"];
             /**
              * Format: uuid
              * @description The application (client) id of the app registration. Absent until step 1 is saved.
@@ -377,10 +451,13 @@ export interface components {
             lastCheckedAt?: string;
             /** @description The tenant's organisation name as the last test read it. */
             organisationName?: string;
-            /** @description The application permissions the module needs (User.ReadWrite.All, User-LifeCycleInfo.ReadWrite.All, User.RevokeSessions.All, UserAuthMethod-TAP.ReadWrite.All, LicenseAssignment.ReadWrite.All, Group.ReadWrite.All, Domain.Read.All, Organization.Read.All, and Calendars.ReadWrite while the calendar sync switch is on) that the last test's token did not carry; all of them before the first test. */
+            outlookConnect: components["schemas"]["EntraOutlookConnect"];
+            /** @description The application permissions the module needs (User.ReadWrite.All, User-LifeCycleInfo.ReadWrite.All, User.RevokeSessions.All, UserAuthMethod-TAP.ReadWrite.All, LicenseAssignment.ReadWrite.All, Group.ReadWrite.All, Domain.Read.All, Organization.Read.All, and Calendars.ReadWrite while the Outlook connection switch is on) that the last test's token did not carry; all of them before the first test. */
             permissionsMissing: string[];
             /** @description The application permissions the last test's token carried in its roles claim. */
             permissionsPresent: string[];
+            /** @description The application permissions the last test's token carried that the module does not use (Outlook connection design M19) — a warning, never a status: a permission granted to the application reaches every mailbox or account in the tenant, so one nobody needs is better removed in the portal. */
+            permissionsUnexpected: string[];
             settings: components["schemas"]["EntraSettings"];
             /**
              * @description unconfigured while the tenant, the client or a valid secret is missing; otherwise what the last test, or a refusal since, found: connected or failing.
@@ -416,6 +493,8 @@ export interface components {
             organisationName?: string;
             permissionsMissing: string[];
             permissionsPresent: string[];
+            /** @description The application permissions the token carried that the module does not use (Outlook connection design M19), a warning. */
+            permissionsUnexpected: string[];
             /** @description Why the test failed, a code — credential_invalid, tenant_unreachable or consent_missing. Absent when it connected. */
             reason?: string;
             /** @description Always false. Whether the application holds the User Administrator role cannot be read without a further permission, so the wizard asks the Owner to check it in the portal. */
@@ -594,7 +673,60 @@ export interface components {
             /** Format: int32 */
             count: number;
         };
-        /** @description An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: connection_in_use (409: the tenant or the client changes while the module keeps accounts, and confirmChange is not true), adoption_confirmed (409: the account's adoption is confirmed already), credential_in_use (409: the secret is the only valid one while the module keeps accounts), version_mismatch (412: the connection has been written since the If-Match version), sso_not_configured (409: single sign-on is not configured, so there is nothing to connect under), invalid_request (400: a field is not valid), credential_invalid and tenant_unreachable (503: the tenant could not be asked), throttled (503: the tenant throttled the module twice in a row). errors carries the field errors of a 400, keyed by the request's camelCase field. A request the server could not decode answers a bare 400 with neither. */
+        /** @description Where to send the browser to connect Outlook — Microsoft's authorization endpoint for the connection's tenant, with the state, nonce and PKCE challenge the answer's cookie holds sealed. */
+        EntraOutlookAuthorize: {
+            authorizeUrl: string;
+        };
+        /** @description A connect completed — the person's connection as it now stands, and the path in Vantigo to return to. */
+        EntraOutlookComplete: {
+            connection: components["schemas"]["EntraOutlookConnection"];
+            /** @description A path on this installation, never another origin; /settings/connections when the connect named none. */
+            returnTo: string;
+        };
+        /** @description The Outlook connection switch (Outlook connection design M2): whether people may connect their own Outlook to Vantigo, and whether a connect can work. status is off while the switch is; unavailable when on but the connection is not connected, reason then being the connection's statusReason; consent_missing when the last connect found a feature's delegated permission not consented in the tenant; ready when someone has connected since the switch was last turned on; untested otherwise. connected and reconnect count the people connected and those whose connection Microsoft refused, waiting for them to connect again. redirectUri is the redirect URI to add to the app registration's Web platform. */
+        EntraOutlookConnect: {
+            /** Format: int32 */
+            connected: number;
+            enabled: boolean;
+            notifications: components["schemas"]["EntraCalendarSyncNotifications"];
+            /** @description A code, never the directory's words; absent when there is nothing to say. */
+            reason?: string;
+            /** Format: int32 */
+            reconnect: number;
+            /** @description APP_URL with the base path and /api/v1/entra/outlook/callback. */
+            redirectUri: string;
+            /** @enum {string} */
+            status: "off" | "ready" | "untested" | "consent_missing" | "unavailable";
+        };
+        /** @description What a connect is for, and where to return once it completes. */
+        EntraOutlookConnectRequest: {
+            /**
+             * @description The feature the connect asks Microsoft's consent for; calendar asks for Calendars.ReadWrite.
+             * @enum {string}
+             */
+            feature: "calendar";
+            /** @description A path on this installation to return to; anything that is not one becomes /settings/connections. */
+            returnTo?: string;
+        };
+        /** @description The caller's own Outlook connection (Outlook connection design M3, M8). offered says whether the caller may connect at all — false while the switch is off (reason switch_off) or Vantigo knows no Entra account of theirs that the module manages (reason no_account). state is not_connected with no connection, active while it works, reconnect when Microsoft refused it (errorCode says why) and closing once disconnected, which reads as not connected. */
+        EntraOutlookConnection: {
+            /** @description The userPrincipalName of the Entra account Vantigo knows the caller by. Absent when there is none. */
+            account?: string;
+            /** Format: date-time */
+            connectedAt?: string;
+            /** @description Why Microsoft refused the connection, a code: expired, sign_in_again, mfa, blocked or consent_missing. Present while state is reconnect. */
+            errorCode?: string;
+            /** @description The features the granted scopes allow, such as calendar. */
+            features: string[];
+            offered: boolean;
+            /** @enum {string} */
+            reason?: "switch_off" | "no_account";
+            /** @description The delegated scopes Microsoft granted, lower-cased and sorted. */
+            scopes: string[];
+            /** @enum {string} */
+            state: "not_connected" | "active" | "reconnect" | "closing";
+        };
+        /** @description An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: connection_in_use (409: the tenant or the client changes while the module keeps accounts, and confirmChange is not true), adoption_confirmed (409: the account's adoption is confirmed already), credential_in_use (409: the secret is the only valid one while the module keeps accounts), version_mismatch (412: the connection has been written since the If-Match version), sso_not_configured (409: single sign-on is not configured, so there is nothing to connect under), invalid_request (400: a field is not valid), credential_invalid and tenant_unreachable (503: the tenant could not be asked), throttled (503: the tenant throttled the module twice in a row); for the Outlook connection, switch_off (409: the Outlook connection switch is off), no_account (409: Vantigo knows no Entra account of the caller's that the module manages), account_taken (409: another person's connection holds the account), account_mismatch (409: the caller signed in to Microsoft as another account than the one Vantigo knows them by), feature_unknown (422: the connect names no feature the module offers) and expired (410: the connect's sealed cookie is missing, expired or another session's). errors carries the field errors of a 400, keyed by the request's camelCase field. A request the server could not decode answers a bare 400 with neither. */
         EntraProblem: {
             code?: string | null;
             detail?: string | null;
@@ -643,10 +775,8 @@ export interface components {
             /** @description A joiner's first day is written as employeeHireDate, 01:00 in the business time zone. */
             writeHireDate: boolean;
         };
-        /** @description Step 4, the account rules and the calendar sync switch. Every field is optional, and one left out keeps its value; each refusal is a field error under its own name. */
+        /** @description Step 4, the account rules and the Outlook connection switch. Every field is optional, and one left out keeps its value; each refusal is a field error under its own name. */
         EntraSettingsRequest: {
-            /** @description Lets people sync their Vantigo calendar to Outlook (calendar Outlook sync design O2). Turning it on asks for Calendars.ReadWrite; turning it off removes the copies already written. */
-            calendarSync?: boolean;
             /** @description Two letters, ISO 3166-1 alpha-2. */
             defaultUsageLocation?: string;
             /** @enum {string} */
@@ -654,6 +784,8 @@ export interface components {
             leaverRevokeSessions?: boolean;
             leaverStripLicences?: boolean;
             leaverWriteLeaveDate?: boolean;
+            /** @description Lets people connect their own Outlook to Vantigo (Outlook connection design M2). Turning it on records when; turning it off closes every person's connection, so each must connect again, and the calendar's copies already written are removed. */
+            outlookConnect?: boolean;
             /** @enum {string} */
             passDelivery?: "hr" | "manager" | "both";
             /**
@@ -1552,6 +1684,217 @@ export interface operations {
                 };
                 content: {
                     "application/problem+json": components["schemas"]["EntraProblem"];
+                };
+            };
+        };
+    };
+    getEntraOutlookCallback: {
+        parameters: {
+            query?: {
+                code?: string;
+                state?: string;
+                error?: string;
+                /** @description Microsoft's words, never read. */
+                error_description?: string;
+                /** @description Ignored. */
+                session_state?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Found — to /settings/connections?outlook=complete, or ?outlook=failed&code=… on any failure. */
+            302: {
+                headers: {
+                    Location?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Too Many Requests — entra-outlook-callback's limit for this client address. */
+            429: {
+                headers: {
+                    "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    postEntraOutlookComplete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK — connected. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EntraOutlookComplete"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Conflict — switch_off, no_account, account_mismatch or account_taken. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["EntraProblem"];
+                };
+            };
+            /** @description Gone — expired, the connect's cookie is missing, expired, or another session's. */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["EntraProblem"];
+                };
+            };
+            /** @description Too Many Requests — entra-outlook's limit for this client address, shared with POST /outlook/connect. */
+            429: {
+                headers: {
+                    "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    postEntraOutlookConnect: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EntraOutlookConnectRequest"];
+            };
+        };
+        responses: {
+            /** @description OK — the cookie is set; send the browser to authorizeUrl. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EntraOutlookAuthorize"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Conflict — switch_off, no_account or account_taken. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["EntraProblem"];
+                };
+            };
+            /** @description Unprocessable Content — feature_unknown. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["EntraProblem"];
+                };
+            };
+            /** @description Too Many Requests — entra-outlook's limit for this client address, shared with POST /outlook/complete. */
+            429: {
+                headers: {
+                    "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    getEntraOutlookConnection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EntraOutlookConnection"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    deleteEntraOutlookConnection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content — disconnected, or nothing was connected. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
                 };
             };
         };
