@@ -35,6 +35,15 @@ import (
 // whose Provider a caller matches against Key. The sentinels below are the
 // provider's answers; anything else is a failure to retry — a throttled
 // request is retried by the provider within the call, then a failure.
+//
+// Every per-mailbox call runs on the person's own connection to the
+// provider (Outlook connection design M9), and may answer
+// ErrConnectionNeeded — with its reason, ConnectionNeededError — when that
+// connection cannot serve it until they connect (again). The removals —
+// DeleteCalendar, Find, Unwatch, and Apply when every op is a delete, the
+// calls MailboxCleanup allows — are served by a closing connection while it
+// still holds its token, and answer ErrMailboxGone once nothing can remove
+// them: the person's copies are then beyond the provider's reach.
 type MailboxCalendar interface {
 	// Key is the provider's key — the DirectoryAccount.Provider value,
 	// "entra" — answered with no context and no network, so the calendar can
@@ -160,7 +169,65 @@ type MailboxCalendar interface {
 	// the DirectoryAccount.ExternalID the other calls take, as the provider
 	// holds it, so the caller compares it case-insensitively.
 	Notified(ctx context.Context, since time.Time) ([]MailboxNotice, error)
+	// Connections answers the people's connections that moved after since,
+	// oldest first, at most ConnectionChangesMax: the provider's own rows,
+	// no network, answered whatever the status. A change is a nudge as a
+	// notice is — the next call answers what the connection can serve — and
+	// its Mailbox is the DirectoryAccount.ExternalID as the provider holds
+	// it, compared case-insensitively.
+	Connections(ctx context.Context, since time.Time) ([]ConnectionChange, error)
 }
+
+// ConnectionChange is one connection Connections answers: its mailbox, the
+// state it moved to, and when.
+type ConnectionChange struct {
+	// Mailbox is the DirectoryAccount.ExternalID, as the provider holds it.
+	Mailbox string
+	// State is ConnectionActive, ConnectionReconnect or ConnectionClosing.
+	State string
+	At    time.Time
+}
+
+// ConnectionChangesMax is the most changes one Connections call answers; the
+// caller asks again from the latest At it took.
+const ConnectionChangesMax = 5000
+
+// The states of ConnectionChange.State.
+const (
+	// ConnectionActive: the person connected, and their calls are served.
+	ConnectionActive = "active"
+	// ConnectionReconnect: the provider refused the connection, and the
+	// person must connect again.
+	ConnectionReconnect = "reconnect"
+	// ConnectionClosing: the connection closed — a disconnect, a leaver,
+	// the switch off — and serves removals alone while it holds its token.
+	ConnectionClosing = "closing"
+)
+
+// The reasons of ConnectionNeededError besides the reconnect codes the
+// provider names ("expired", "sign_in_again", "mfa", …).
+const (
+	// ConnectionNotConnected: the person never connected, or their
+	// connection is gone.
+	ConnectionNotConnected = "not_connected"
+	// ConnectionClosingReason: the connection is closing, so it serves
+	// removals alone, or holds no token for one.
+	ConnectionClosingReason = "closing"
+)
+
+// ConnectionNeededError is ErrConnectionNeeded with its reason: one of the
+// two above or a reconnect code. A caller reads it with errors.As; it is
+// errors.Is ErrConnectionNeeded.
+type ConnectionNeededError struct {
+	Reason string
+}
+
+func (e *ConnectionNeededError) Error() string {
+	return ErrConnectionNeeded.Error() + ": " + e.Reason
+}
+
+// Is makes the error ErrConnectionNeeded to errors.Is.
+func (e *ConnectionNeededError) Is(target error) bool { return target == ErrConnectionNeeded }
 
 // MailboxNotice is one mailbox Notified answers: the mailbox, and when the
 // directory last notified a change in it.
@@ -391,8 +458,8 @@ var (
 	// ErrMailboxUnknown: the mailbox is not an account the provider manages
 	// (design O3's check), so it wrote nothing.
 	ErrMailboxUnknown = errors.New("contracts: the mailbox is not an account the provider manages")
-	// ErrMailboxDenied: the directory refused access to the mailbox (outside
-	// the provider's permission scope).
+	// ErrMailboxDenied: the directory refused access to the mailbox — one
+	// it will not serve, such as an account without Exchange Online.
 	ErrMailboxDenied = errors.New("contracts: access to the mailbox is denied")
 	// ErrMailboxGone: the directory has no such user, or the user has no
 	// mailbox.
@@ -405,4 +472,9 @@ var (
 	// the directory forgot the delta's state — so the caller starts it again
 	// with "" (design O9.4).
 	ErrMailboxDeltaExpired = errors.New("contracts: the mailbox delta link has expired")
+	// ErrConnectionNeeded: the person's own connection to the provider
+	// cannot serve the call until they connect (again) — never connected,
+	// closing, or refused by the provider. errors.As to
+	// *ConnectionNeededError for why.
+	ErrConnectionNeeded = errors.New("contracts: the person's connection is needed")
 )

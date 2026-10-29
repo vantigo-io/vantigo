@@ -15,6 +15,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/db"
 	"github.com/vantigo-io/vantigo/server/internal/entra/store"
 	"github.com/vantigo-io/vantigo/server/internal/module"
@@ -37,21 +38,17 @@ import (
 // mailbox calls; the calendar runs on the application permission until
 // then. Nothing here logs, audits or answers a token, a code or the secret.
 
-// connectionNeeded is a call the person's connection cannot serve until
-// they connect again: reason is not_connected, closing, or the reconnect's
-// error_code. Delivery B wraps it in contracts.ErrConnectionNeeded.
-type connectionNeeded struct {
-	reason string
-}
-
-func (e *connectionNeeded) Error() string {
-	return "entra: the Outlook connection needs its person: " + e.reason
+// needsPerson is a call the person's connection cannot serve until they
+// connect again, as the contract answers it: reason is not_connected,
+// closing, or the reconnect's error_code.
+func needsPerson(reason string) error {
+	return &contracts.ConnectionNeededError{Reason: reason}
 }
 
 // The reasons a connection needs its person besides a reconnect's code.
 const (
-	outlookNotConnected = "not_connected"
-	outlookNeedsClosing = "closing"
+	outlookNotConnected = contracts.ConnectionNotConnected
+	outlookNeedsClosing = contracts.ConnectionClosingReason
 )
 
 // The connection's error codes (design M5): what a reconnect says the
@@ -220,7 +217,7 @@ func (t *outlookTokens) token(ctx context.Context, oid uuid.UUID, removal bool) 
 func (t *outlookTokens) issue(ctx context.Context, oid uuid.UUID, removal bool) (issued, error) {
 	row, err := t.q.GetOutlookConnection(ctx, oid)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return issued{}, &connectionNeeded{reason: outlookNotConnected}
+		return issued{}, needsPerson(outlookNotConnected)
 	}
 	if err != nil {
 		return issued{}, fmt.Errorf("entra: read the Outlook connection: %w", err)
@@ -235,9 +232,9 @@ func (t *outlookTokens) issue(ctx context.Context, oid uuid.UUID, removal bool) 
 		if row.ErrorCode != nil {
 			reason = *row.ErrorCode
 		}
-		return issued{}, &connectionNeeded{reason: reason}
+		return issued{}, needsPerson(reason)
 	case row.RefreshSealed == nil, row.State == outlookClosing && !removal, !conn.OutlookConnect && !removal:
-		return issued{}, &connectionNeeded{reason: outlookNeedsClosing}
+		return issued{}, needsPerson(outlookNeedsClosing)
 	case row.State == outlookActive:
 		if err := t.checkAccount(ctx, row); err != nil {
 			return issued{}, err
@@ -285,7 +282,7 @@ func (t *outlookTokens) checkAccount(ctx context.Context, row store.EntraOutlook
 	}
 	t.c.logger.InfoContext(ctx, "entra: an Outlook connection closed on use; its account is no longer enabled",
 		"object_id", oid.String(), "code", code)
-	return &connectionNeeded{reason: outlookNeedsClosing}
+	return needsPerson(outlookNeedsClosing)
 }
 
 // refresh redeems row's refresh token for an access token and stores the
@@ -375,7 +372,7 @@ func (t *outlookTokens) refresh(ctx context.Context, row store.EntraOutlookConne
 
 // reconnect moves row to reconnect with code at the revision it was read
 // at, recording entra.outlook.reconnect_needed, and answers the call's
-// error: connectionNeeded when it moved the row; connectionNeeded closing
+// error: needsPerson when it moved the row; needsPerson closing
 // when the row is closing at that revision, its refused token forgotten so
 // no removal tries it again; a transient failure when a newer connect,
 // close or refusal had moved it first, which the call may retry against
@@ -407,17 +404,17 @@ func (t *outlookTokens) reconnect(ctx context.Context, row store.EntraOutlookCon
 	if forgotten {
 		t.c.logger.InfoContext(ctx, "entra: a closing Outlook connection's token was refused and is forgotten",
 			"object_id", row.ObjectID.String(), "code", code)
-		return &connectionNeeded{reason: outlookNeedsClosing}
+		return needsPerson(outlookNeedsClosing)
 	}
 	if !moved {
 		if current, err := t.q.GetOutlookConnection(ctx, row.ObjectID); err == nil && current.State == outlookReconnect && current.ErrorCode != nil {
-			return &connectionNeeded{reason: *current.ErrorCode}
+			return needsPerson(*current.ErrorCode)
 		}
 		return fmt.Errorf("%w: the Outlook connection changed while its token was refused", errTenantUnreachable)
 	}
 	t.c.logger.InfoContext(ctx, "entra: an Outlook connection needs its person to reconnect",
 		"object_id", row.ObjectID.String(), "code", code)
-	return &connectionNeeded{reason: code}
+	return needsPerson(code)
 }
 
 // source is the delegated token for oid as a Graph call's tokenSource.

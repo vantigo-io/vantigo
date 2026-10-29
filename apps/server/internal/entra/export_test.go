@@ -6,6 +6,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/module"
 )
 
@@ -35,9 +36,9 @@ func OutlookMe(ctx context.Context, d module.Deps, oid uuid.UUID) (string, error
 // ConnectionNeeded is the reason err asks for the person to connect again,
 // and whether it does.
 func ConnectionNeeded(err error) (string, bool) {
-	var n *connectionNeeded
-	if errors.As(err, &n) {
-		return n.reason, true
+	var n *contracts.ConnectionNeededError
+	if errors.As(err, &n) && errors.Is(err, contracts.ErrConnectionNeeded) {
+		return n.Reason, true
 	}
 	return "", false
 }
