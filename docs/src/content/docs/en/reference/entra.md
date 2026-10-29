@@ -2226,9 +2226,10 @@ segment that is a valid id.
   answered next or delta link that fails, or a page with neither, is a failure.
 - **The answer**, `contracts.MailDelta`: `Items` — each `{ID, ReceivedAt (UTC),
   MessageID, ConversationID}`, or `{ID, Removed}` for an `@removed` entry, in no promised
-  order; an item whose id is not a valid id or whose `receivedDateTime` does not read is
-  left out (a debug line counts them), rather than failing the page and holding the delta
-  at it for ever; a Message-Id over 998 characters is answered as none — and `Link`
+  order; an item whose id is not a valid id is left out, rather than failing the page and
+  holding the delta at it for ever; one whose `receivedDateTime` does not read is kept
+  with a zero `ReceivedAt`, which Communications reads as the moment it receives it — a
+  warning counts both (`skipped`, `untimed`); a Message-Id over 998 characters is answered as none — and `Link`
   with `Done`: the next page's link, or at the end the delta link to keep.
 - **Refusals**: a **410**, or a 4xx with `syncStateNotFound`, `syncStateInvalid`,
   `resyncRequired` or `ErrorInvalidSyncStateData` (the calendar delta's list, reused; the

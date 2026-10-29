@@ -120,8 +120,10 @@ given. Calendar's invitations are the one user
 
 **Reading received mail.** `mail.ParseInbound(raw, limits)` reads an RFC 5322 message
 into a `mail.Inbound`: `MessageID` and the first `In-Reply-To` bracketed, `References`
-bracketed, distinct and oldest first (at most 100, the first and the newest kept), the
-`From`, `To` and `Cc` addresses in lower case, the subject RFC 2047-decoded (at most 998
+bracketed, distinct and oldest first (at most 100, the first and the newest kept; each id
+header read for at most 400 ids, and an id with a control character counts as missing),
+the `From`, `To` and `Cc` addresses in lower case (one over 320 characters or with a
+control character dropped, at most 100 each in `To` and `Cc`), the subject RFC 2047-decoded (at most 998
 bytes), `AutoSubmitted` (`Auto-Submitted` other than `no`, `X-Auto-Response-Suppress`,
 `Precedence` `bulk`/`auto_reply`/`list`, `X-Autoreply`), the text and HTML bodies in UTF-8,
 **unsanitised**, and the attachments with their file names, types, `Content-ID`s and
@@ -133,7 +135,8 @@ reads those parameters itself — and every charset of `golang.org/x/text`'s `ht
 attachments and 1 MiB for each body (a longer text cut with `…`, a longer HTML dropped and
 `HTMLDropped` set); a damaged part is skipped and counted; no header block, or neither a
 `From` nor a body, is `mail.ErrUnparseable`, whose text holds nothing of the message.
-A forwarded `message/rfc822` and a `winmail.dat` are kept as attachments, not opened.
+A forwarded `message/rfc822` and a `winmail.dat` are kept as attachments, not opened; a
+part with no `Content-Type` is `text/plain`; no string of the result holds a NUL.
 `mail.NormalizeMessageID` is the bracketed, trimmed form both the parser and a caller
 compare ids in.
 
@@ -141,7 +144,9 @@ compare ids in.
 [bluemonday](https://github.com/microcosm-cc/bluemonday)'s UGC policy after a pre-pass over
 `golang.org/x/net/html`'s tree: `cid:` images rewritten through `inlineURL` (removed when
 it answers none), every other image but a base64 `data:` PNG, GIF, JPEG or WebP removed,
-`background` and `srcset` dropped, links only `http`, `https` and `mailto`, with
+`background` and `srcset` dropped, links and image map areas only `http`, `https` and
+`mailto` — no relative URL kept but the inline image's download path, carried through
+the policy as a `vantigo-inline:` placeholder —, links with
 `rel="nofollow noreferrer noopener"` and `target="_blank"`, and a short allow-list of
 typographic and box styles — never `url(…)`, `position` or `expression`. `<script>`,
 `<style>`, `<iframe>`, `<object>`, `<embed>`, `<form>`, `<input>`, `<meta>`, `<base>`,

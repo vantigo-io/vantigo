@@ -709,10 +709,14 @@ Tildelingene i Exchange blir stående til du fjerner dem
   - **Siste synkronisering feilet: Microsoft 365 svarte ikke…** (`sync_failed`):
     struping eller et avbrudd; Vantigo venter fra ett minutt opp til en time og tar igjen
     av seg selv. Målingen `communications.inbound.cycles_failed` teller slike feil.
-  - **Mottar**, men en melding mangler: den kom før kanalen ble lagt til (den hentes
-    aldri inn), den var større enn `COMMUNICATIONS_INBOUND_MAX_BYTES` (25 MiB som
-    standard; hoppet over), eller den ble ikke levert til **Innboks** — en regel i
-    postboksen flyttet den til en annen mappe først. Vantigo leser bare innboksen.
+  - **Mottar**, men en melding mangler: den kom før kanalen ble lagt til, eller for
+    lenger siden enn `COMMUNICATIONS_RETENTION_DAYS` (den hentes aldri inn); den var
+    større enn `COMMUNICATIONS_INBOUND_MAX_BYTES` (25 MiB som standard; hoppet over); den
+    ble sendt fra kanalens egen adresse (regnet som Vantigos egen); importen feilet tre
+    ganger, eller databasen avviste en verdi i den, og den ble gitt opp — en advarsel
+    *mailbox sync gave a message up* med koden `import_failed` i loggen, resten av
+    e-posten hentet inn; eller den ble ikke levert til **Innboks** — en regel i postboksen
+    flyttet den til en annen mappe først. Vantigo leser bare innboksen.
 - **Utkast blir liggende i mappen Utkast i en delt postboks.** En melding med blindkopi
   sendes gjennom et utkast; stopper Vantigos prosess mellom at utkastet lages og at det
   sendes, blir utkastet liggende, og det nye forsøket lager et nytt. Slett slike utkast i

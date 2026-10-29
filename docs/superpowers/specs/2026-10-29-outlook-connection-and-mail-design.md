@@ -1003,7 +1003,9 @@ count as unexpected.
     are additions. The rfc unique index covers `imported` receipts only, so a `duplicate`
     carries its original's Message-Id. The backfill writes `pending` for inactive `entra`
     channels too; the claim skips them. `channel_sync.notified` is created and ordered on,
-    set by nothing until E; nothing sets `stopped`.
+    set by nothing until E and cleared by a finished pass; nothing sets `stopped`. The
+    review added `restart_from` (an expired delta's restart point), `failing_item
+    varchar(400)` and `failing_tries` (the give-up count).
   - **M14, the worker**: **no cap per cycle below the page** — a cycle reads one page
     and handles each of its items, and a page with more to come stores the next link with
     `next_sync_at` now, so the drain claims the channel again at once. A page's link is
@@ -1015,7 +1017,22 @@ count as unexpected.
     with 1 min × 2^attempts, at most an hour. One counter,
     `communications.inbound.cycles_failed`, a plan addition. The Message-Id is the
     message's own header, **falling back to Graph's `internetMessageId`** when the header
-    block does not read or names none. `own_message` only for an id of this database.
+    block does not read or names none, stored as the message's and the receipt's.
+    `own_message` for an id of this database, or a `From` equal to the channel's own
+    address (Exchange may rewrite our id). **The review's fixes:** nothing received before
+    `max(import_from, now − COMMUNICATIONS_RETENTION_DAYS)` is read, so a message retention
+    or an erase deleted never comes back; an item with no `receivedDateTime` is kept and
+    timed when read. An expired delta restarts from `import_from` if the channel never
+    finished a pass, else an hour before the earlier of its last finished sync and its
+    newest receipt, never before `import_from`, kept in `restart_from` until a pass
+    finishes. A message whose import fails is given up — `failed`/`import_failed`, the page
+    goes on — at once for a value PostgreSQL refuses (class 22 or 23), else on its third
+    failed try counted across cycles; the provider's and the store's failures are retried
+    for ever. The parser drops NULs, control-character ids and addresses over 320
+    characters, keeps at most 100 `To` and 100 `Cc`, reads an id header for at most 400
+    ids, and reads a part with no `Content-Type` as `text/plain`; the sanitiser checks an
+    `area`'s `href` as a link's and keeps no relative URL but the inline image's (through a
+    `vantigo-inline:` placeholder). The reply's source is tie-broken by id.
     An unreadable message has no sender: it threads nowhere, links no customer and is not
     one a reply answers. Bodies are capped at 1 MiB each — a longer text cut with `…`, a
     longer HTML dropped (`htmlDropped`) —, and the sanitiser keeps a short style
@@ -1039,9 +1056,12 @@ count as unexpected.
     passive content type, `application/octet-stream` otherwise. Inline images the message
     carries are shown although unscanned, remote ones stripped (owner question 4,
     default).
-  - **M16**: the receipts' sweep runs in every retention batch — a receipt with no
-    message older than the window goes, except each channel's newest. Raw payloads and
-    inbound attachments already left through `deleteMessages`.
+  - **M16**: the receipts' sweep runs once per retention cycle after the message
+    batches, in chunks of `COMMUNICATIONS_RETENTION_BATCH_SIZE` — a receipt with no message
+    **received** before the window goes, except each channel's newest; the cutoff is the
+    worker's floor, so an erased message's receipt (its Message-Id kept) stops its
+    re-import until the message could no longer be read anyway. Raw payloads and inbound
+    attachments already left through `deleteMessages`.
   - **Not verified on a real tenant** when the pages were written: whether Exchange keeps
     our `Message-ID`; the delta links' exact form; an expired message delta's code; the
     page size honoured; a message moved into the Inbox as created or updated; `$value`'s
