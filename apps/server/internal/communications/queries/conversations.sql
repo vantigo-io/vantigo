@@ -99,10 +99,14 @@ WHERE c.id = @id;
 -- name: GetConversationMessagesByConversationID :many
 -- GetConversation's message list, ordered OccurredAt ascending
 -- (`item.Messages.OrderBy(message => message.OccurredAt)`), each left-joined
--- to its participant (null for every internal_note message and, in
--- principle, an inbound one this port never writes).
+-- to its participant (null for every internal_note and outbound message),
+-- with whether Vantigo keeps its original and the two flags an inbound
+-- message's metadata carries.
 SELECT m.id, m.direction, m.author_user_id, m.subject, m.text_body, m.html_body,
        m.occurred_at, m.created_at,
+       (m.raw_payload_storage_key IS NOT NULL)::boolean AS has_raw_payload,
+       COALESCE((m.channel_metadata_json->>'autoSubmitted')::boolean, false)::boolean AS auto_submitted,
+       COALESCE((m.channel_metadata_json->>'unreadable')::boolean, false)::boolean AS unreadable,
        p.id AS participant_id, p.channel_id AS participant_channel_id, p.address AS participant_address,
        p.display_name AS participant_display_name, p.contact_id AS participant_contact_id
 FROM communications.conversation_messages m
@@ -295,30 +299,6 @@ FROM communications.conversations c
 JOIN communications.channels ch ON ch.id = c.channel_id
 WHERE c.id = @id;
 
--- name: GetLatestInboundParticipantAddress :one
--- The non-constant half of ReplyRecipients (`:446-455`) that QueueOutboundAsync
--- inlines directly (`:277`, `:283`): the latest, by occurred_at, inbound
--- message's participant address. No production path in this port ever
--- writes a direction='inbound' row (design doc §1.1: the inbound worker was
--- the only writer and it is out of scope), so this returns zero rows for
--- every conversation the real API can produce — which is what step 7's 422
--- recipients_missing pins (task 7 dispatch's "outbound-only consequence").
--- A test fixture CAN insert a direction='inbound' row and drive this query
--- to its success branch: conversation_messages.direction's CHECK constraint
--- (migration 00006_communications_baseline.sql) matches .NET's full
--- Direction domain (inbound included) since task 7 fix round 2 — an
--- earlier, narrower CHECK made that impossible even from a fixture, which
--- made this query permanently unexercisable on its success branch and cost
--- a test seam that only relocated the blindness (design doc §1.1's
--- correction). conversations_reply_test.go's fixtures now exercise this
--- query directly, and the seam is gone.
-SELECT p.address
-FROM communications.conversation_messages m
-JOIN communications.participants p ON p.id = m.participant_id
-WHERE m.conversation_id = @conversation_id AND m.direction = 'inbound'
-ORDER BY m.occurred_at DESC
-LIMIT 1;
-
 -- name: ListSuppressedAddresses :many
 -- QueueOutboundAsync's suppression check (`:301-302`): every address in
 -- destinations that has a live suppression row, keyed by the already-
@@ -340,3 +320,28 @@ WHERE normalized_email_address = ANY(@addresses::text[]);
 UPDATE communications.conversations
 SET subject = COALESCE(subject, @message_subject), last_activity_at = @last_activity_at, preview_text = @preview_text
 WHERE id = @id;
+
+-- name: GetReplyRecipientsSource :one
+-- Who a reply answers (M15, inventory §4.3, §4.4; ReplyRecipients
+-- `:446-455`, which QueueOutboundAsync inlines at `:277`, `:283`): the latest
+-- inbound message by occurred_at with a participant — none for a conversation
+-- nothing was received in, step 7's 422 recipients_missing —, its sender's
+-- address, its metadata (the Cc reply-all answers, its References)
+-- and Message-Id, and the channel's own address and id.
+SELECT m.rfc_message_id, m.channel_metadata_json, p.address AS sender_address,
+       c.channel_id, ch.address AS channel_address
+FROM communications.conversation_messages m
+JOIN communications.participants p ON p.id = m.participant_id
+JOIN communications.conversations c ON c.id = m.conversation_id
+JOIN communications.channels ch ON ch.id = c.channel_id
+WHERE m.conversation_id = @conversation_id AND m.direction = 'inbound'
+ORDER BY m.occurred_at DESC
+LIMIT 1;
+
+-- name: ListParticipantsByChannelAndAddressesFold :many
+-- Reply-all's Cc as participant rows: each of addresses (lower case) in the
+-- channel, in any case, newest first so the caller keeps one per address.
+SELECT id, channel_id, address, display_name, contact_id, created_at
+FROM communications.participants
+WHERE channel_id = @channel_id AND lower(address) = ANY(@addresses::text[])
+ORDER BY created_at DESC, id DESC;

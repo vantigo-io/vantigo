@@ -776,11 +776,10 @@ func (w *OutboxWorker) anySuppressed(ctx context.Context, q *store.Queries,
 // outboxChannelMetadata is the threading metadata EmailEnvelopeFactory reads
 // off conversation_messages.channel_metadata_json (inventory §15.1, §4.4).
 //
-// Nothing in this port ever writes that column — its only .NET writer was the
-// inbound processor, which is out of scope (inventory §4.5) — so both fields
-// are permanently absent here. The parse is kept rather than dropped for the
-// same reason the column and the reply-all path are kept: an inbound provider
-// arriving later should not need this code written from scratch.
+// Reply writes them on the outbound message it queues, from the inbound
+// message it answers (conversations_reply.go's replyMetadata). An inbound
+// message's own metadata (inboundMetadata) is never read here: the outbox
+// sends only outbound messages.
 type outboxChannelMetadata struct {
 	InReplyTo  string   `json:"inReplyTo"`
 	References []string `json:"references"`

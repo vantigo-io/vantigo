@@ -194,11 +194,8 @@ type ListRetentionRawPayloadKeysRow struct {
 }
 
 // Step 3's raw-payload read (`:88-91`): the non-null
-// conversation_messages.raw_payload_storage_key values in the batch. Nothing
-// in this port writes that column — its only .NET writer was the inbound
-// processor (migration 00006's comment) — so this returns nothing in
-// production today and is kept because the column is, for the day an inbound
-// provider lands.
+// conversation_messages.raw_payload_storage_key values in the batch — the
+// originals the mailbox sync stores for each inbound message.
 func (q *Queries) ListRetentionRawPayloadKeys(ctx context.Context, messageIds []uuid.UUID) ([]ListRetentionRawPayloadKeysRow, error) {
 	rows, err := q.db.Query(ctx, listRetentionRawPayloadKeys, messageIds)
 	if err != nil {
@@ -294,9 +291,9 @@ type SelectRetentionMessageIDsParams struct {
 //
 // THE ORDER OF THE TWO DELETES BELOW IS LOAD-BEARING. See
 // DeleteMessageEventsByMessageIDs.
-// Candidate set 1 (`:53-61`), the only one that survives the scope cut: .NET's
-// sets 2 and 3 select inbound_email_jobs and orphan inbound_receipts, and both
-// tables are dropped with the inbound subsystem (inventory §9, §12.1).
+// Candidate set 1 (`:53-61`). .NET's set 2 selects inbound_email_jobs, which
+// this port never had; set 3, the orphan inbound_receipts, is
+// SweepInboundReceipts (queries/inbound.sql).
 //
 // "Terminal" for a message means it has no outbox job at all, or every job it
 // has is completed/cancelled/failed. .NET writes that as

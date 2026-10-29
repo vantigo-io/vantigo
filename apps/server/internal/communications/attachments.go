@@ -350,44 +350,10 @@ func stagedAttachmentStorageKey(conversationID, uploaderUserID, uploadID uuid.UU
 // caller, the database, and anyone reading that log line's other fields can
 // correlate the reservation to.
 func (s *server) reserveStorageKey(ctx context.Context, uploadID uuid.UUID, key string, now time.Time) error {
-	q := store.New(s.deps.Pool)
-	existing, err := q.FindLatestCleanupRecordByStorageKey(ctx, key)
-	switch {
-	case errors.Is(err, pgx.ErrNoRows):
-		// ReserveAsync's id is DeterministicGuid(Guid.Empty, "cleanup:{key}")
-		// (`SV/ObjectOwnershipLifecycle.cs:54`, objects.go's cleanupRecordID),
-		// so a crash-retry for the same object key lands on the same row
-		// instead of accumulating reservations. .NET then falls back to a
-		// random id when that id is already taken, which happens legitimately
-		// when a completed historical record for a reused key still holds it
-		// (`:61-64`). .NET's check is a SELECT before the INSERT, which is a
-		// race under concurrent staging of the same key; letting the unique
-		// index decide is the same rule without the window.
-		params := store.InsertCleanupRecordParams{
-			ID: cleanupRecordID(key), StorageKey: key, NextAttemptAt: now,
-			ReservationExpiresAt: apicommon.Ptr(now.Add(reservationLifetime)), CreatedAt: now,
-		}
-		insertErr := q.InsertCleanupRecord(ctx, params)
-		// Named, not a bare any-23505 check: the only collision this fallback
-		// is meant to absorb is the deterministic id already being taken by a
-		// completed historical record for a reused key. An unnamed check would
-		// also swallow a violation on some other constraint of this table and
-		// retry it with a fresh id, turning an unrelated defect into a silent
-		// second insert attempt.
-		if db.IsUniqueViolation(insertErr, "attachment_cleanup_records_pkey") {
-			params.ID = uuid.New()
-			insertErr = q.InsertCleanupRecord(ctx, params)
-		}
-		return insertErr
-	case err != nil:
-		return fmt.Errorf("communications: find cleanup record for upload %s: %w", uploadID, err)
-	case existing.Status == "owned" || existing.Status == "deleting":
-		return errStorageKeyAlreadyOwned
-	default:
-		return q.ResetCleanupRecordToStaged(ctx, store.ResetCleanupRecordToStagedParams{
-			ID: existing.ID, NextAttemptAt: now, ReservationExpiresAt: apicommon.Ptr(now.Add(reservationLifetime)),
-		})
+	if err := reserveObjectKey(ctx, s.deps.Pool, key, now); err != nil {
+		return fmt.Errorf("communications: reserve the object of upload %s: %w", uploadID, err)
 	}
+	return nil
 }
 
 // attachmentFingerprint is the SHA-256 hex of an uploaded file's bytes,
@@ -620,20 +586,23 @@ func (s *server) GetCommunicationsConversationsByConversationIdAttachmentsByAtta
 // GetCommunicationsAttachmentsByIdDownload Download a message attachment
 // (GET /api/v1/communications/attachments/{id}/download)
 //
-// DownloadAttachment (inventory §2, §5.4, §5.5, §19.2 items 22-23): scoped
-// only by scan_status = "clean" — message-bound attachments alone, never a
-// staged upload, and deliberately with no per-conversation authorisation
-// (any conversations-view holder may fetch any clean attachment by id, a
-// documented .NET quirk this port reproduces rather than "fixes"). A
-// missing row, or a storage read that reports the object itself does not
-// exist, both answer the same bare 404; any other storage failure answers
-// 503 attachment_storage_unavailable rather than mapping to 404 and hiding
-// a real outage. The response never carries the object's storage key —
-// there is no field on GetCommunicationsAttachmentsByIdDownload200AsteriskResponse
-// to put it in.
+// DownloadAttachment (inventory §2, §5.4, §5.5, §19.2 items 22-23): a
+// message-bound attachment only, never a staged upload, and deliberately
+// with no per-conversation authorisation (any conversations-view holder may
+// fetch any downloadable attachment by id, a documented .NET quirk this port
+// reproduces rather than "fixes"). A clean one — the composer's — answers its
+// declared media type, as .NET does. An unscanned one — received with an
+// inbound message, from a stranger — answers as a file to save
+// (Content-Disposition: attachment) and with its media type only when that is
+// passive (passiveAttachmentContentType), so a received text/html or
+// image/svg+xml is never served inline from Vantigo's own origin. A missing
+// row, or a storage read that reports the object itself does not exist, both
+// answer the same bare 404; any other storage failure answers 503
+// attachment_storage_unavailable rather than mapping to 404 and hiding a real
+// outage. The response never carries the object's storage key.
 func (s *server) GetCommunicationsAttachmentsByIdDownload(ctx context.Context, req gen.GetCommunicationsAttachmentsByIdDownloadRequestObject) (gen.GetCommunicationsAttachmentsByIdDownloadResponseObject, error) {
 	q := store.New(s.deps.Pool)
-	attachment, err := q.GetCleanMessageAttachmentByID(ctx, req.Id)
+	attachment, err := q.GetDownloadableMessageAttachmentByID(ctx, req.Id)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return gen.GetCommunicationsAttachmentsByIdDownload404Response{}, nil
 	} else if err != nil {
@@ -648,7 +617,55 @@ func (s *server) GetCommunicationsAttachmentsByIdDownload(ctx context.Context, r
 			"attachment_storage_unavailable", "Attachment storage is unavailable.")), nil
 	}
 
-	return gen.GetCommunicationsAttachmentsByIdDownload200AsteriskResponse{
+	resp := gen.GetCommunicationsAttachmentsByIdDownload200AsteriskResponse{
 		Body: content, ContentType: sanitizedAttachmentContentType(attachment.ContentType), ContentLength: attachment.SizeBytes,
-	}, nil
+	}
+	if attachment.ScanStatus != "clean" {
+		resp.ContentType = passiveAttachmentContentType(resp.ContentType)
+		resp.Headers.ContentDisposition = apicommon.Ptr(attachmentDisposition(attachment.FileName))
+	}
+	return resp, nil
+}
+
+// passiveContentTypes are the media types an unscanned attachment is served
+// as: ones a browser shows or hands to an application but never runs as a
+// page of Vantigo's origin — images other than SVG, PDF, plain text, the
+// Office formats and zip.
+var passiveContentTypes = map[string]bool{
+	"image/png": true, "image/jpeg": true, "image/gif": true, "image/webp": true, "image/bmp": true, "image/tiff": true,
+	"application/pdf":          true,
+	"text/plain":               true,
+	"application/msword":       true,
+	"application/vnd.ms-excel": true, "application/vnd.ms-powerpoint": true,
+	"application/vnd.openxmlformats-officedocument.wordprocessingml.document":   true,
+	"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":         true,
+	"application/vnd.openxmlformats-officedocument.presentationml.presentation": true,
+	"application/zip": true,
+}
+
+// passiveAttachmentContentType is contentType when it is passive, else
+// application/octet-stream.
+func passiveAttachmentContentType(contentType string) string {
+	if passiveContentTypes[strings.ToLower(contentType)] {
+		return strings.ToLower(contentType)
+	}
+	return "application/octet-stream"
+}
+
+// attachmentDisposition is Content-Disposition for a file to save named
+// fileName: `attachment; filename*=UTF-8”…`, the name percent-encoded as RFC
+// 8187's ext-value, so no character of it can end the header's value.
+func attachmentDisposition(fileName string) string {
+	const attrChar = "!#$&+-.^_`|~"
+	var b strings.Builder
+	b.WriteString("attachment; filename*=UTF-8''")
+	for _, c := range []byte(fileName) {
+		switch {
+		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9', strings.IndexByte(attrChar, c) >= 0:
+			b.WriteByte(c)
+		default:
+			fmt.Fprintf(&b, "%%%02X", c)
+		}
+	}
+	return b.String()
 }

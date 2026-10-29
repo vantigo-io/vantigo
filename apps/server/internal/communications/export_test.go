@@ -73,3 +73,15 @@ func OpenChannelPasswordForTest(box *secrets.Box, stored string) (string, error)
 // own connection and watch the worker skip its cycle. A test that hardcoded
 // the constant would still pass if the worker started using a different key.
 const RetentionLeaseKeyForTest = retentionLeaseKey
+
+// NewMailboxSyncWorkerWithMeterForTest is newMailboxSyncWorker (mailbox_sync.go)
+// with the meter provider chosen by the caller, as
+// NewOutboxWorkerWithMeterForTest.
+var NewMailboxSyncWorkerWithMeterForTest = newMailboxSyncWorker
+
+// ThreadReferencesForTest is threadReferences (conversations_reply.go): a
+// reply's References, the first id and the last 19.
+var ThreadReferencesForTest = threadReferences
+
+// AttachmentDispositionForTest is attachmentDisposition (attachments.go).
+var AttachmentDispositionForTest = attachmentDisposition

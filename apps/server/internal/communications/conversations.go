@@ -269,33 +269,38 @@ func (s *server) GetCommunicationsConversations(ctx context.Context, req gen.Get
 	}, nil
 }
 
-// replyRecipientsOf is ReplyRecipients (EP/ConversationEndpoints.cs:446-455).
-// It always answers the all-negative constant
-// (canReply:false, canReplyAll:false, replyTo:nil, replyAllCc:[]) — never
-// computed from a query — because its non-constant branch requires a
-// direction='inbound' message, and no production path in this port ever
-// writes one (design doc §1.1: the inbound worker was the only writer and
-// it is out of scope), so this port has no inbound path. Task 5 dispatch:
-// "canReply is false and replyAllCc empty for conversations created through
-// the API... pin it rather than working around it" — this is that pin,
-// encoded as the only value this function can ever produce in production
-// rather than as a workaround.
-//
-// Task 7 fix round 2 correction: an earlier version of this comment also
-// claimed no row satisfying ReplyRecipients' own precondition could exist
-// "not even through a raw test fixture", reasoning from
-// communications.conversation_messages' CHECK constraint
-// (00006_communications_baseline.sql), which then admitted only 'outbound'
-// and 'internal_note'. That CHECK narrowing was itself the mistake design
-// doc §1.1's correction describes — it made the real recipient-resolution
-// query used by Reply (GetLatestInboundParticipantAddress) permanently
-// unexercisable by any fixture, which cost a test seam that only relocated
-// the blindness. The CHECK now matches .NET's full Direction domain
-// (inbound included), so a fixture *can* insert a direction='inbound'
-// message with a participant; this function still never sees one in
-// production, but the "not even through a fixture" half of the old claim no
-// longer holds and is not repeated here.
-func replyRecipientsOf() struct {
+// replyRecipientsOf is ReplyRecipients (EP/ConversationEndpoints.cs:446-455):
+// who a reply answers, from the latest inbound message with a sender
+// (resolveReplyRecipients). canReply is whether there is one and replyTo its
+// address; replyAllCc the participants its Cc named, canReplyAll whether
+// there are any. A conversation nobody wrote to answers all negative.
+func (s *server) replyRecipientsOf(ctx context.Context, q *store.Queries, conversationID uuid.UUID) (struct {
+	CanReply    bool `json:"canReply"`
+	CanReplyAll bool `json:"canReplyAll"`
+	ReplyAllCc  []struct {
+		Address     string             `json:"address"`
+		ChannelId   openapi_types.UUID `json:"channelId"`
+		ContactId   *int32             `json:"contactId"`
+		DisplayName *string            `json:"displayName"`
+		Id          openapi_types.UUID `json:"id"`
+	} `json:"replyAllCc"`
+	ReplyTo *string `json:"replyTo"`
+}, error) {
+	rr := noReplyRecipients()
+	source, err := s.resolveReplyRecipients(ctx, q, conversationID)
+	if err != nil || source == nil {
+		return rr, err
+	}
+	rr.CanReply, rr.ReplyTo = true, apicommon.Ptr(source.senderAddress)
+	for _, p := range source.cc {
+		rr.ReplyAllCc = append(rr.ReplyAllCc, newParticipantJSON(p.ID, p.ChannelID, p.Address, p.DisplayName, p.ContactID))
+	}
+	rr.CanReplyAll = len(rr.ReplyAllCc) > 0
+	return rr, nil
+}
+
+// noReplyRecipients is the all-negative answer: nobody to reply to.
+func noReplyRecipients() struct {
 	CanReply    bool `json:"canReply"`
 	CanReplyAll bool `json:"canReplyAll"`
 	ReplyAllCc  []struct {
@@ -334,14 +339,11 @@ func replyRecipientsOf() struct {
 // (GET /api/v1/communications/conversations/{id})
 //
 // GetConversation (inventory §1.2, §2): lookup -> 404 bare, nothing else.
-// replyRecipients is always the all-negative constant (see
-// replyRecipientsOf). A message's participant is nullable in the contract
-// (openapi/communications.yaml's `participant` schema carries
-// `nullable: true`, task 5 fix round 1 item 4) and this port never sets
-// participant_id on any message it writes — neither AddNote's note message
-// nor CreateConversation's outbound message, matching .NET exactly (only
-// the removed inbound processor ever assigned ConversationMessage.ParticipantId)
-// — so participant renders `null` for every message, not only notes.
+// replyRecipients is read from the latest inbound message (replyRecipientsOf).
+// A message's participant is nullable in the contract: only an inbound
+// message — the mailbox sync's — has one; a note's and an outbound message's
+// render `null`, matching .NET (only its inbound processor ever assigned
+// ConversationMessage.ParticipantId).
 func (s *server) GetCommunicationsConversationsById(ctx context.Context, req gen.GetCommunicationsConversationsByIdRequestObject) (gen.GetCommunicationsConversationsByIdResponseObject, error) {
 	caller, err := callerUserID(ctx)
 	if err != nil {
@@ -388,6 +390,11 @@ func (s *server) GetCommunicationsConversationsById(ctx context.Context, req gen
 		allowance = apicommon.Ptr(attachmentAllowance(*budget))
 	}
 
+	replyRecipients, err := s.replyRecipientsOf(ctx, q, req.Id)
+	if err != nil {
+		return nil, err
+	}
+
 	resp := gen.ConversationDetailResponse{
 		Id: conv.ID, ChannelId: conv.ChannelID, Subject: conv.Subject, Status: conv.Status,
 		AssignedUserId: conv.AssignedUserID, CustomerId: conv.CustomerID,
@@ -395,7 +402,7 @@ func (s *server) GetCommunicationsConversationsById(ctx context.Context, req gen
 		SuggestedCustomerConfidence: conv.SuggestedCustomerConfidence, SuggestedCustomerReasoning: conv.SuggestedCustomerReasoning,
 		CandidateCustomerIds: batches.candidates[req.Id], LastActivityAt: conv.LastActivityAt, PreviewText: conv.PreviewText,
 		CreatedAt: conv.CreatedAt, Messages: messages, Participants: batches.participants[req.Id],
-		Tags: batches.tags[req.Id], LastReadAt: lastReadAt, ReplyRecipients: replyRecipientsOf(),
+		Tags: batches.tags[req.Id], LastReadAt: lastReadAt, ReplyRecipients: replyRecipients,
 		MaxMessageBytes: budget, MaxAttachmentBytes: allowance,
 	}
 	return gen.GetCommunicationsConversationsById200JSONResponse(resp), nil
@@ -498,7 +505,7 @@ func (s *server) conversationMessagesOf(ctx context.Context, q *store.Queries, c
 			SizeBytes         int64              `json:"sizeBytes"`
 		}{
 			ContentId: a.ContentID, ContentType: a.ContentType, CreatedAt: a.CreatedAt,
-			DownloadAvailable: a.ScanStatus == "clean", DownloadPath: fmt.Sprintf("/api/v1/communications/attachments/%s/download", a.ID),
+			DownloadAvailable: a.ScanStatus == "clean" || a.ScanStatus == "unscanned", DownloadPath: fmt.Sprintf("/api/v1/communications/attachments/%s/download", a.ID),
 			FileName: a.FileName, Id: a.ID, IsInline: a.IsInline, ScanStatus: a.ScanStatus, SizeBytes: a.SizeBytes,
 		})
 	}
@@ -584,18 +591,8 @@ func (s *server) conversationMessagesOf(ctx context.Context, q *store.Queries, c
 		Unreadable      *bool   `json:"unreadable"`
 	}, 0, len(rows))
 	for _, r := range rows {
-		// task 5 fix round 1, item 4: nil, not the zero value — participant
-		// is nullable in the contract (openapi/communications.yaml) exactly
-		// because it is unset for every message this port ever writes, not
-		// only notes. Neither AddNote nor CreateConversation's
-		// BuildOutboundMessage sets participant_id (see this file's and
-		// conversations_create.go's InsertConversationMessage calls, and
-		// .NET's own BuildOutboundMessage, which never assigns
-		// ConversationMessage.ParticipantId either — only the removed
-		// inbound processor ever did). So every row here has
-		// r.ParticipantID == nil, and participant stays nil for all of
-		// them; the pointer exists so a future inbound producer can set one
-		// without another contract change.
+		// nil, not the zero value — participant is nullable in the contract
+		// (task 5 fix round 1, item 4): only an inbound message has one.
 		var participant *struct {
 			Address     string             `json:"address"`
 			ChannelId   openapi_types.UUID `json:"channelId"`
@@ -651,7 +648,8 @@ func (s *server) conversationMessagesOf(ctx context.Context, q *store.Queries, c
 			Attachments: attachmentsByMessage[r.ID], AuthorUserId: r.AuthorUserID, CreatedAt: r.CreatedAt,
 			Deliveries: deliveriesByMessage[r.ID], Direction: r.Direction, HtmlBody: r.HtmlBody,
 			Id: r.ID, OccurredAt: r.OccurredAt, Participant: participant, Subject: r.Subject, TextBody: r.TextBody,
-			AutoSubmitted: apicommon.Ptr(false), Unreadable: apicommon.Ptr(false),
+			AutoSubmitted: apicommon.Ptr(r.AutoSubmitted), Unreadable: apicommon.Ptr(r.Unreadable),
+			RawDownloadPath: rawDownloadPath(r.ID, r.HasRawPayload),
 		})
 	}
 	return out, nil
@@ -681,4 +679,13 @@ func (s *server) PostCommunicationsConversationsByIdRead(ctx context.Context, re
 		return nil, fmt.Errorf("communications: mark conversation read: %w", err)
 	}
 	return gen.PostCommunicationsConversationsByIdRead200Response{}, nil
+}
+
+// rawDownloadPath is where a message's original is downloaded, nil when
+// Vantigo keeps none of it (every message but an inbound one).
+func rawDownloadPath(id uuid.UUID, has bool) *string {
+	if !has {
+		return nil
+	}
+	return apicommon.Ptr(fmt.Sprintf("/api/v1/communications/messages/%s/raw", id))
 }

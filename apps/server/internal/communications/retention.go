@@ -267,8 +267,9 @@ func deleteMessages(ctx context.Context, q *store.Queries, messageIDs []uuid.UUI
 }
 
 // CleanupBatch is RetentionCleanupService.CleanupTenantBatchAsync
-// (`:47-115`) minus tenancy and minus the two inbound candidate sets the scope
-// cut removed: one batch, ONE transaction, returning how many
+// (`:47-115`) minus tenancy and minus inbound_email_jobs, which this port
+// never had; .NET's orphan receipts set is SweepInboundReceipts: one batch,
+// ONE transaction, returning how many
 // conversation_messages it deleted (the drain loop's condition).
 //
 // Everything below happens in .NET's order, and the first two statements'
@@ -281,6 +282,14 @@ func (w *RetentionWorker) CleanupBatch(ctx context.Context) (int, error) {
 	var deleted int64
 	err := db.WithTx(ctx, w.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		q := store.New(tx)
+
+		// The receipts' sweep (M16), on every batch: a receipt loses its
+		// message to this worker or to an erase, and a skipped one never had
+		// one, so its orphans are not only this batch's. Each channel's
+		// newest receipt stays, the restart point of an expired delta.
+		if _, err := q.SweepInboundReceipts(ctx, cutoff); err != nil {
+			return fmt.Errorf("communications: sweep inbound receipts: %w", err)
+		}
 
 		messageIDs, err := q.SelectRetentionMessageIDs(ctx, store.SelectRetentionMessageIDsParams{
 			Cutoff: cutoff, BatchSize: batchSize,

@@ -12,7 +12,9 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/vantigo-io/vantigo/server/internal/apicommon"
 	"github.com/vantigo-io/vantigo/server/internal/communications/store"
+	"github.com/vantigo-io/vantigo/server/internal/db"
 )
 
 // This file is ObjectOwnershipLifecycle (`SV/ObjectOwnershipLifecycle.cs:14-189`,
@@ -161,5 +163,55 @@ func queueObjectForDeletion(ctx context.Context, q *store.Queries, storageKey st
 			return fmt.Errorf("communications: mark a cleanup record pending: %w", updateErr)
 		}
 		return nil
+	}
+}
+
+// reserveObjectKey is ObjectOwnershipLifecycle.ReserveAsync: a 'staged'
+// cleanup record for key, committed on its own before the object-store write
+// it guards, so a crash between the write and the metadata's commit leaves a
+// reservation the cleanup worker reclaims after reservationLifetime. Attachment
+// staging (reserveStorageKey) and the mailbox sync's import both reserve
+// through it. Its errors never name key.
+func reserveObjectKey(ctx context.Context, dbtx store.DBTX, key string, now time.Time) error {
+	if !isSafeRelativeKey(key) {
+		return errUnsafeObjectKey
+	}
+	q := store.New(dbtx)
+	existing, err := q.FindLatestCleanupRecordByStorageKey(ctx, key)
+	switch {
+	case errors.Is(err, pgx.ErrNoRows):
+		// ReserveAsync's id is DeterministicGuid(Guid.Empty, "cleanup:{key}")
+		// (`SV/ObjectOwnershipLifecycle.cs:54`, cleanupRecordID), so a
+		// crash-retry for the same object key lands on the same row instead
+		// of accumulating reservations. .NET then falls back to a random id
+		// when that id is already taken, which happens legitimately when a
+		// completed historical record for a reused key still holds it
+		// (`:61-64`). .NET's check is a SELECT before the INSERT, which is a
+		// race under concurrent staging of the same key; letting the unique
+		// index decide is the same rule without the window.
+		params := store.InsertCleanupRecordParams{
+			ID: cleanupRecordID(key), StorageKey: key, NextAttemptAt: now,
+			ReservationExpiresAt: apicommon.Ptr(now.Add(reservationLifetime)), CreatedAt: now,
+		}
+		insertErr := q.InsertCleanupRecord(ctx, params)
+		// Named, not a bare any-23505 check: the only collision this fallback
+		// is meant to absorb is the deterministic id already being taken by a
+		// completed historical record for a reused key. An unnamed check would
+		// also swallow a violation on some other constraint of this table and
+		// retry it with a fresh id, turning an unrelated defect into a silent
+		// second insert attempt.
+		if db.IsUniqueViolation(insertErr, "attachment_cleanup_records_pkey") {
+			params.ID = uuid.New()
+			insertErr = q.InsertCleanupRecord(ctx, params)
+		}
+		return insertErr
+	case err != nil:
+		return fmt.Errorf("communications: find the cleanup record: %w", err)
+	case existing.Status == "owned" || existing.Status == "deleting":
+		return errStorageKeyAlreadyOwned
+	default:
+		return q.ResetCleanupRecordToStaged(ctx, store.ResetCleanupRecordToStagedParams{
+			ID: existing.ID, NextAttemptAt: now, ReservationExpiresAt: apicommon.Ptr(now.Add(reservationLifetime)),
+		})
 	}
 }

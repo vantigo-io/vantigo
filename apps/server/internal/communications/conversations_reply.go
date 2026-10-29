@@ -6,7 +6,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	netmail "net/mail"
+	"slices"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -42,25 +45,20 @@ import (
 //     attachments_not_ready again (the race fence a preflight-only
 //     implementation would leave open between check and claim).
 //
-// Steps 8-10 are unreached in production: step 7 fires unconditionally
-// first, because no production path in this port ever writes a row with
-// conversation_messages.direction = 'inbound' (design doc §1.1: the inbound
-// worker was the only writer and it is out of scope). They are, however,
-// reachable from a test fixture: conversation_messages.direction's CHECK
-// matches .NET's full Direction domain (inbound included) as of fix round
-// 2, so conversations_reply_test.go inserts a genuine inbound participant
-// and message directly and drives every one of the ten steps — including
-// 8, 9 and 10 — through this handler for real, no override needed.
+// Step 7 finds the latest inbound message with a sender: the mailbox sync
+// (mailbox_sync.go) writes inbound messages for a Microsoft 365 channel, so a
+// conversation it imported is answered; one this module's own API created,
+// with no message received, is still refused there. A reply carries the
+// threading headers of the message it answers (In-Reply-To, References), and
+// reply-all its Cc (resolveReplyRecipients).
 //
-// History: fix round 1 first tried to fix this with an overridable
-// recipient-resolution seam on *server, because at the time no fixture
-// could construct a qualifying row at all — the CHECK narrowed
-// conversation_messages.direction to ('outbound', 'internal_note') on the
-// (wrong) principle that the schema should encode only what this port's own
-// writers produce. That narrowing is what fix round 2 reverted (design doc
-// §1.1's correction); once a fixture could drive the real query to its
-// success branch, the override seam was redundant and was deleted
-// (server.go's own comment on the removed field has the fuller history).
+// History: fix round 1 first tried to reach steps 8-10 with an overridable
+// recipient-resolution seam on *server, because at the time no fixture could
+// construct a qualifying row at all — the CHECK narrowed
+// conversation_messages.direction to ('outbound', 'internal_note'). Fix round
+// 2 reverted that narrowing (design doc §1.1's correction), and the seam was
+// deleted (server.go's own comment on the removed field has the fuller
+// history).
 
 // errAttachmentsNotReadyRace is queueReply's own signal that the step-10
 // claim (inside the transaction) affected fewer rows than the step-8
@@ -81,24 +79,133 @@ func rfcMessageIDFor(id uuid.UUID) string {
 	return fmt.Sprintf("<%s@vantigo.invalid>", hexN(id))
 }
 
+// replySource is what a reply answers (M15; inventory §4.3, §4.4): the
+// latest inbound message with a sender — its sender's address, its Message-Id
+// and References for the reply's threading headers — and reply-all's Cc, the
+// participants that message's Cc named.
+type replySource struct {
+	senderAddress string
+	rfcMessageID  *string
+	references    []string
+	cc            []store.CommunicationsParticipant
+}
+
 // resolveReplyRecipients is QueueOutboundAsync's inline recipient
-// derivation (`:277`, `:283`): the latest inbound message's participant
-// address, or ok=false when none exists. No production path in this port
-// ever writes a direction='inbound' row (design doc §1.1), so ok is false
-// for every conversation created through the real API, unconditionally —
-// per task 7's dispatch: "Pin that rather than working around it." A test
-// fixture can insert one (GetLatestInboundParticipantAddress's own comment
-// has the schema history), and conversations_reply_test.go's own fixtures
-// drive this to its ok=true branch directly.
-func (s *server) resolveReplyRecipients(ctx context.Context, q *store.Queries, conversationID uuid.UUID) (address string, ok bool, err error) {
-	address, err = q.GetLatestInboundParticipantAddress(ctx, conversationID)
+// derivation (`:277`, `:283`) and ReplyRecipients (`:446-455`): the latest
+// inbound message with a participant, or nil when the conversation has none.
+// Reply and the detail both read it.
+func (s *server) resolveReplyRecipients(ctx context.Context, q *store.Queries, conversationID uuid.UUID) (*replySource, error) {
+	row, err := q.GetReplyRecipientsSource(ctx, conversationID)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return "", false, nil
+		return nil, nil
 	}
 	if err != nil {
-		return "", false, fmt.Errorf("communications: get latest inbound participant: %w", err)
+		return nil, fmt.Errorf("communications: get latest inbound participant: %w", err)
 	}
-	return address, true, nil
+	var metadata inboundMetadata
+	if len(row.ChannelMetadataJson) > 0 {
+		if err := json.Unmarshal(row.ChannelMetadataJson, &metadata); err != nil {
+			return nil, fmt.Errorf("communications: decode the latest inbound message's metadata: %w", err)
+		}
+	}
+	source := &replySource{senderAddress: row.SenderAddress, rfcMessageID: row.RfcMessageID, references: metadata.References}
+
+	cc := replyAllCcOf(metadata.Cc, row.ChannelAddress, row.SenderAddress)
+	if len(cc) == 0 {
+		return source, nil
+	}
+	rows, err := q.ListParticipantsByChannelAndAddressesFold(ctx, store.ListParticipantsByChannelAndAddressesFoldParams{
+		ChannelID: row.ChannelID, Addresses: cc,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("communications: list reply-all's participants: %w", err)
+	}
+	byAddress := make(map[string]store.CommunicationsParticipant, len(rows))
+	for _, p := range rows {
+		key := strings.ToLower(p.Address)
+		if _, ok := byAddress[key]; !ok {
+			byAddress[key] = p
+		}
+	}
+	for _, address := range cc {
+		// One the import did not make a participant of is left out.
+		if p, ok := byAddress[address]; ok {
+			source.cc = append(source.cc, p)
+		}
+	}
+	return source, nil
+}
+
+// maxReplyAllCc is how many Cc addresses reply-all answers (inventory §4.3's
+// Take(100)).
+const maxReplyAllCc = 100
+
+// replyAllCcOf is reply-all's Cc, the inventory §4.3 rule ported unchanged:
+// the latest inbound message's Cc, each a valid bare address, compared
+// normalised (Trim().ToUpperInvariant()), without the channel's own address
+// and the sender, distinct in any case, the first 100 — answered in lower
+// case, as the import stores them.
+func replyAllCcOf(cc []string, channelAddress, sender string) []string {
+	skip := map[string]bool{normalizeEmail(channelAddress): true, normalizeEmail(sender): true}
+	out := make([]string, 0, len(cc))
+	for _, a := range cc {
+		parsed, err := netmail.ParseAddress(strings.TrimSpace(a))
+		if err != nil || parsed.Name != "" {
+			continue
+		}
+		key := normalizeEmail(parsed.Address)
+		if key == "" || skip[key] {
+			continue
+		}
+		skip[key] = true
+		out = append(out, strings.ToLower(parsed.Address))
+		if len(out) == maxReplyAllCc {
+			break
+		}
+	}
+	return out
+}
+
+// maxThreadReferences is how many ids a reply's References carries.
+const maxThreadReferences = 20
+
+// threadReferences is a reply's References: the answered message's own,
+// then its Message-Id, distinct in any case (.NET's Distinct(OrdinalIgnoreCase)),
+// and — a plan decision (owner question 1), not .NET's Take(20), which keeps
+// the oldest 20 and drops the very message answered once a thread is that
+// long — the first id and the last 19, RFC 5322 §3.6.4's advice.
+func threadReferences(references []string, rfcMessageID string) []string {
+	all := make([]string, 0, len(references)+1)
+	seen := map[string]bool{}
+	for _, id := range append(slices.Clone(references), rfcMessageID) {
+		key := strings.ToLower(strings.TrimSpace(id))
+		if key == "" || seen[key] {
+			continue
+		}
+		seen[key] = true
+		all = append(all, id)
+	}
+	if len(all) <= maxThreadReferences {
+		return all
+	}
+	return append([]string{all[0]}, all[len(all)-(maxThreadReferences-1):]...)
+}
+
+// replyMetadata is a reply's channel_metadata_json: the threading headers the
+// outbox writes (outboxChannelMetadata), nil when the answered message has no
+// Message-Id.
+func replyMetadata(source *replySource) ([]byte, error) {
+	if source == nil || source.rfcMessageID == nil {
+		return nil, nil
+	}
+	b, err := json.Marshal(outboxChannelMetadata{
+		InReplyTo:  *source.rfcMessageID,
+		References: threadReferences(source.references, *source.rfcMessageID),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("communications: encode the reply's threading headers: %w", err)
+	}
+	return b, nil
 }
 
 // replyFingerprint is EmailPayloadFingerprint.Create's role for Reply
@@ -211,31 +318,33 @@ func (s *server) PostCommunicationsConversationsByIdReply(ctx context.Context, r
 		return nil, fmt.Errorf("communications: get idempotency record: %w", err)
 	}
 
-	// Step 7: no inbound participant -> 422 recipients_missing. This is the
-	// outbound-only consequence design doc §1.1 and task 7's dispatch both
-	// name: no production path in this port ever writes an inbound message,
-	// so this branch is taken for every conversation created through the
-	// real API, unconditionally. Called directly (fix round 1's override
-	// seam was removed in fix round 2 — server.go's own comment has the
-	// history): a test fixture now inserts a genuine inbound row and this
-	// method finds it for real, exercising steps 8-10 below through this
-	// same handler with every wiring value (caller, channelType,
-	// messageSubject, fingerprint, now) genuinely computed by production
-	// code.
-	primaryAddress, ok, err := s.resolveReplyRecipients(ctx, q, req.Id)
+	// Step 7: no inbound participant -> 422 recipients_missing: a
+	// conversation with no message received — one this module's own API
+	// created — has nobody to answer.
+	source, err := s.resolveReplyRecipients(ctx, q, req.Id)
 	if err != nil {
 		return nil, err
 	}
-	if !ok {
+	if source == nil {
 		return gen.PostCommunicationsConversationsByIdReply422JSONResponse(flatErrorBody(
 			"recipients_missing", "The conversation has no inbound participant to reply to.")), nil
 	}
+	// Reply-all copies the answered message's Cc (resolveReplyRecipients
+	// already left out the sender, the To here, and the channel's own
+	// address); reply answers the sender alone.
+	var ccAddresses []string
+	if body.ReplyMode != nil && strings.ToLower(strings.TrimSpace(*body.ReplyMode)) == "reply_all" {
+		for _, p := range source.cc {
+			if !strings.EqualFold(p.Address, source.senderAddress) {
+				ccAddresses = append(ccAddresses, p.Address)
+			}
+		}
+	}
+	metadata, err := replyMetadata(source)
+	if err != nil {
+		return nil, err
+	}
 
-	// Unreached by any conversation this port's own API can produce (see
-	// above), but kept as the real continuation — not a workaround — so a
-	// future inbound producer needs no change here, and so queueReply's own
-	// steps 8-10 have a genuine, structurally-correct caller rather than
-	// existing only for tests to call directly.
 	messageSubject := body.Subject
 	if messageSubject == nil {
 		messageSubject = conv.Subject
@@ -243,17 +352,13 @@ func (s *server) PostCommunicationsConversationsByIdReply(ctx context.Context, r
 	return s.queueReply(ctx, replyQueueParams{
 		conversationID: req.Id, channelType: conv.ChannelType, channelProvider: conv.ChannelProvider, caller: caller, key: key,
 		fingerprint: fingerprint, body: body, messageSubject: messageSubject,
-		primaryAddress: primaryAddress, now: s.deps.Clock(),
+		primaryAddress: source.senderAddress, ccAddresses: ccAddresses, metadata: metadata, now: s.deps.Clock(),
 	})
 }
 
 // replyQueueParams is everything queueReply needs once a primary recipient
-// has already been resolved (step 7 has passed). ccAddresses is always nil
-// through the real handler above — replyAllCc is permanently empty in this
-// port (design doc §1.1: deriving it needs inbound thread metadata this
-// port never writes) — but stays a parameter so a test can exercise the
-// dedup-against-primary and suppression-of-a-cc-address paths directly, the
-// same seam primaryAddress itself exists for.
+// has already been resolved (step 7 has passed): ccAddresses is reply-all's
+// Cc, and metadata the threading headers the outbox writes.
 type replyQueueParams struct {
 	conversationID  uuid.UUID
 	channelType     string
@@ -265,6 +370,7 @@ type replyQueueParams struct {
 	messageSubject  *string
 	primaryAddress  string
 	ccAddresses     []string
+	metadata        []byte
 	now             time.Time
 }
 
@@ -368,7 +474,7 @@ func (s *server) queueReply(ctx context.Context, p replyQueueParams) (gen.PostCo
 		if _, err := txq.InsertConversationMessage(ctx, store.InsertConversationMessageParams{
 			ID: messageID, ConversationID: p.conversationID, Direction: "outbound", AuthorUserID: &p.caller,
 			Subject: p.messageSubject, TextBody: p.body.TextBody, HtmlBody: p.body.HtmlBody,
-			OccurredAt: p.now, CreatedAt: p.now, RfcMessageID: &rfcMessageID,
+			ChannelMetadataJson: p.metadata, OccurredAt: p.now, CreatedAt: p.now, RfcMessageID: &rfcMessageID,
 		}); err != nil {
 			return err
 		}

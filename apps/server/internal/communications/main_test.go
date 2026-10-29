@@ -24,7 +24,7 @@ var recorder = contracttest.NewForModule("communications")
 // communications.yaml is exercised by a successful, contract-conforming
 // exchange in this package. A new operation added to the contract must be
 // implemented and covered rather than parked here.
-var pendingOperations = []string{"getCommunicationsMessagesByIdRaw"}
+var pendingOperations = []string{}
 
 func TestMain(m *testing.M) {
 	// The lock rule, installed once before any test runs (newHarness checks
