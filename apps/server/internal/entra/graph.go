@@ -363,6 +363,10 @@ const addressInPath callOption = 7
 // a few KiB.
 const mailDeltaPage callOption = 8
 
+// immutableID is a call on a message by its immutable id
+// (channel_mailbox_marks.go): sent with Prefer: graphImmutablePrefer.
+const immutableID callOption = 9
+
 // addressedPath is what an addressInPath call's errors and log lines name
 // in place of its path.
 const addressedPath = "/v1.0/users/{address}"
@@ -527,6 +531,9 @@ func (c *graphClient) sendAs(ctx context.Context, src tokenSource, method, path 
 	}
 	if slices.Contains(opts, mailDeltaPage) {
 		shape.header.Set("Prefer", graphMailDeltaPrefer)
+	}
+	if slices.Contains(opts, immutableID) {
+		shape.header.Set("Prefer", graphImmutablePrefer)
 	}
 	if slices.Contains(opts, wholeEvents) {
 		shape.limit = graphMaxDeltaBody

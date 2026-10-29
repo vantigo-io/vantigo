@@ -63,10 +63,14 @@ func TestSubscriptions(t *testing.T) {
 	if status, _, body := c.do(http.MethodPost, "/subscriptions", create(denied.ID)); status != http.StatusForbidden || errorCode(body) != "ErrorAccessDenied" {
 		t.Errorf("another user's events: %d %v, want 403", status, body)
 	}
-	for _, path := range []string{"/subscriptions", "/subscriptions/" + id} {
-		if status, _, body := app.do(http.MethodGet, path, nil); status != http.StatusForbidden || errorCode(body) != "ErrorAccessDenied" {
-			t.Errorf("the application's token on %s: %d %v, want 403", path, status, body)
-		}
+	if status, _, body := app.do(http.MethodPost, "/subscriptions", create(u.ID)); status != http.StatusForbidden || errorCode(body) != "ErrorAccessDenied" {
+		t.Errorf("the application's token on a user's events create: %d %v, want 403", status, body)
+	}
+	if status, _, body := app.do(http.MethodGet, "/subscriptions/"+id, nil); status != http.StatusForbidden || errorCode(body) != "ErrorAccessDenied" {
+		t.Errorf("the application's token on the person's subscription: %d %v, want 403", status, body)
+	}
+	if status, _, page := app.do(http.MethodGet, "/subscriptions", nil); status != http.StatusOK || len(page["value"].([]any)) != 0 {
+		t.Errorf("the application's token listing subscriptions: %d %v, want empty list", status, page)
 	}
 	tooLong := create(u.ID)
 	tooLong["expirationDateTime"] = now.Add(10081 * time.Minute).UTC().Format(time.RFC3339)
@@ -122,5 +126,43 @@ func TestSubscriptions(t *testing.T) {
 	now = now.Add(2 * time.Hour)
 	if subs := g.Subscriptions(); len(subs) != 0 {
 		t.Errorf("an expired subscription is still held: %+v", subs)
+	}
+}
+
+func TestSubscriptions_MailWithApplicationToken(t *testing.T) {
+	now := time.Now()
+	g := tenantFake(&now)
+	post := g.AddUser(graphtest.User{UserPrincipalName: "post@nordlys.no", Shared: true})
+	app := newClient(t, g)
+	hook := "https://public.example.com/hook"
+	create := map[string]any{
+		"changeType":               "created",
+		"notificationUrl":          hook,
+		"lifecycleNotificationUrl": hook,
+		"resource":                 "/users/" + post.ID + "/mailFolders('inbox')/messages",
+		"clientState":              strings.Repeat("m", 43),
+		"expirationDateTime":       now.Add(10000 * time.Minute).UTC().Format(time.RFC3339),
+	}
+
+	status, _, sub := app.do(http.MethodPost, "/subscriptions", create)
+	id, _ := sub["id"].(string)
+	if status != http.StatusCreated || id == "" {
+		t.Fatalf("create mail subscription: %d %v", status, sub)
+	}
+	if subs := g.Subscriptions(); len(subs) != 1 || subs[0].CreatorID != "" {
+		t.Errorf("Subscriptions = %+v, want CreatorID empty", subs)
+	}
+	if status, _, _ := app.do(http.MethodPost, "/subscriptions", create); status != http.StatusConflict {
+		t.Errorf("duplicate create: %d, want 409", status)
+	}
+	later := now.Add(9000 * time.Minute).UTC().Format(time.RFC3339)
+	if status, _, body := app.do(http.MethodPatch, "/subscriptions/"+id, map[string]any{"expirationDateTime": later}); status != http.StatusOK || body["id"] != id {
+		t.Errorf("renew mail subscription: %d %v", status, body)
+	}
+	if status, _, page := app.do(http.MethodGet, "/subscriptions", nil); status != http.StatusOK || len(page["value"].([]any)) != 1 {
+		t.Errorf("list mail subscriptions: %d %v", status, page)
+	}
+	if status, _, _ := app.do(http.MethodDelete, "/subscriptions/"+id, nil); status != http.StatusNoContent {
+		t.Errorf("delete mail subscription: %d, want 204", status)
 	}
 }

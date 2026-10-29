@@ -1,14 +1,16 @@
 -- The change notifications' subscriptions (calendar Outlook sync design
--- O11.4): one row per synced mailbox, by the account's object id, holding
--- Graph's subscription id, the SHA-256 of the clientState the create sent,
--- the expiry Graph granted and when a valid notification last named it.
--- Watch and Unwatch write them around their Graph calls; the webhook only
--- marks a row notified (MarkMailboxNotified); Notified reads them.
+-- O11.4; Outlook connection & Microsoft 365 mail design M11, M17): one row per
+-- watched (object_id, resource) pair — 'events' for a person's calendar,
+-- 'messages' for a channel mailbox's Inbox — holding Graph's subscription id,
+-- the SHA-256 of the clientState the create sent, the expiry Graph granted and
+-- when a valid notification last named it. Watch and Unwatch write them around
+-- their Graph calls; the webhook only marks a row notified
+-- (MarkMailboxesNotified); Notified reads them by resource.
 
 -- name: GetMailboxSubscription :one
--- GetMailboxSubscription is the mailbox's subscription; no row is a mailbox
--- not watched.
-SELECT * FROM entra.mailbox_subscriptions WHERE object_id = @object_id;
+-- GetMailboxSubscription is the mailbox's subscription for resource; no row is
+-- a mailbox not watched for that resource.
+SELECT * FROM entra.mailbox_subscriptions WHERE object_id = @object_id AND resource = @resource::varchar;
 
 -- name: GetMailboxSubscriptionByID :one
 -- GetMailboxSubscriptionByID is the row of Graph's subscription id, as a
@@ -27,9 +29,9 @@ SELECT * FROM entra.mailbox_subscriptions WHERE subscription_id = ANY(@subscript
 -- after Graph's 201, the id and the expiry it answered, with the same hash
 -- and address. Either way the row is active and when it was last notified
 -- is kept.
-INSERT INTO entra.mailbox_subscriptions (object_id, subscription_id, client_state_hash, notification_url, expires_at, state, created_at, updated_at)
-VALUES (@object_id, sqlc.narg(subscription_id)::varchar, @client_state_hash, @notification_url::varchar, sqlc.narg(expires_at)::timestamptz, 'active', @now::timestamptz, @now::timestamptz)
-ON CONFLICT (object_id) DO UPDATE SET
+INSERT INTO entra.mailbox_subscriptions (object_id, resource, subscription_id, client_state_hash, notification_url, expires_at, state, created_at, updated_at)
+VALUES (@object_id, @resource::varchar, sqlc.narg(subscription_id)::varchar, @client_state_hash, @notification_url::varchar, sqlc.narg(expires_at)::timestamptz, 'active', @now::timestamptz, @now::timestamptz)
+ON CONFLICT (object_id, resource) DO UPDATE SET
     subscription_id = EXCLUDED.subscription_id,
     client_state_hash = EXCLUDED.client_state_hash,
     notification_url = EXCLUDED.notification_url,
@@ -57,12 +59,12 @@ WHERE object_id = @object_id
 -- refused the delete, so it is owed; 'conflict' when another installation's
 -- subscription holds the mailbox, so no create is tried for a day.
 UPDATE entra.mailbox_subscriptions SET state = @state, updated_at = @now::timestamptz
-WHERE object_id = @object_id;
+WHERE object_id = @object_id AND resource = @resource::varchar;
 
 -- name: DeleteMailboxSubscription :exec
--- DeleteMailboxSubscription forgets the mailbox's subscription: deleted in
--- Graph, gone there, or past its expiry.
-DELETE FROM entra.mailbox_subscriptions WHERE object_id = @object_id;
+-- DeleteMailboxSubscription forgets the mailbox's subscription for resource:
+-- deleted in Graph, gone there, or past its expiry.
+DELETE FROM entra.mailbox_subscriptions WHERE object_id = @object_id AND resource = @resource::varchar;
 
 -- name: MarkMailboxesNotified :execrows
 -- MarkMailboxesNotified is the plain notifications' one write for a whole
@@ -89,11 +91,13 @@ UPDATE entra.mailbox_subscriptions SET
 WHERE subscription_id = @subscription_id::varchar;
 
 -- name: ListMailboxNotified :many
--- ListMailboxNotified is what Notified answers: the mailboxes notified after
--- since, oldest first, at most row_limit. Through the index on notified_at.
+-- ListMailboxNotified is what Notified answers for resource ('events' or
+-- 'messages'): the mailboxes notified after since, oldest first, at most
+-- row_limit. Through the index on notified_at.
 SELECT object_id, notified_at::timestamptz AS notified_at
 FROM entra.mailbox_subscriptions
-WHERE notified_at > @since::timestamptz
+WHERE resource = @resource::varchar
+  AND notified_at > @since::timestamptz
 ORDER BY notified_at, object_id
 LIMIT @row_limit::integer;
 

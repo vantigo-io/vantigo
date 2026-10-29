@@ -382,23 +382,3 @@ func (m *channelMailbox) dropDraft(ctx context.Context, cred graphCredential, pa
 			"tenant", cred.tenantID.String(), "error", err.Error())
 	}
 }
-
-func (m *channelMailbox) Watch(context.Context, string, string) error {
-	return nil
-}
-
-func (m *channelMailbox) Unwatch(context.Context, string, string) error {
-	return nil
-}
-
-func (m *channelMailbox) Notified(context.Context, time.Time) ([]contracts.MailboxNotice, error) {
-	return nil, nil
-}
-
-func (m *channelMailbox) Mark(context.Context, string, string, contracts.MailMark) error {
-	return nil
-}
-
-func (m *channelMailbox) EnsureFolder(context.Context, string, string) (string, error) {
-	return "", nil
-}

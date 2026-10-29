@@ -56,13 +56,31 @@ type InboxMessage struct {
 	ConversationID    string
 }
 
-// inboxItem is a message held in an Inbox: its id, whether it was read, and
-// the serial of its last change.
+// inboxItem is a message held in an Inbox (or moved to another folder): its
+// id, whether it was read, its categories, the folder it currently sits in
+// ("" while in Inbox), and the serial of its last change.
 type inboxItem struct {
 	InboxMessage
-	id     string
-	isRead bool
-	seq    int
+	id         string
+	isRead     bool
+	categories []string
+	folderID   string
+	seq        int
+}
+
+// MailFolder is a top-level mail folder in a user's mailbox.
+type MailFolder struct {
+	ID          string
+	DisplayName string
+}
+
+// InboxMessageState is a message's state in a user's mailbox as PATCH or move
+// left it.
+type InboxMessageState struct {
+	IsRead     bool
+	Categories []string
+	FolderID   string
+	FolderName string
 }
 
 // mailDeltaState is what a message delta token stands for: the user, the
@@ -98,6 +116,7 @@ func (g *FakeGraph) AddInboxMessage(userID string, m InboxMessage) string {
 	}
 	mb := g.mailboxOf(userID)
 	mb.inbox = append(mb.inbox, item)
+	mb.messages = append(mb.messages, item)
 	return item.id
 }
 
@@ -112,9 +131,60 @@ func (g *FakeGraph) RemoveInboxMessage(userID, id string) bool {
 		return false
 	}
 	mb.inbox = slices.Delete(mb.inbox, i, i+1)
+	if j := slices.IndexFunc(mb.messages, func(m *inboxItem) bool { return m.id == id }); j >= 0 {
+		mb.messages = slices.Delete(mb.messages, j, j+1)
+	}
 	g.serial++
 	mb.inboxRemoved = append(mb.inboxRemoved, tombstone{id: id, seq: g.serial})
 	return true
+}
+
+// AddMailFolder creates a top-level folder in the user's mailbox and answers it.
+func (g *FakeGraph) AddMailFolder(userID, displayName string) MailFolder {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	mb := g.mailboxOf(userID)
+	f := &MailFolder{ID: g.itemID(), DisplayName: displayName}
+	mb.folders = append(mb.folders, f)
+	return *f
+}
+
+// MailFolders answers the top-level folders created in the user's mailbox.
+func (g *FakeGraph) MailFolders(userID string) []MailFolder {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	mb := g.mailboxOf(userID)
+	out := make([]MailFolder, len(mb.folders))
+	for i, f := range mb.folders {
+		out[i] = *f
+	}
+	return out
+}
+
+// MessageState answers the state of message id in the user's mailbox, even
+// after it has been moved out of the Inbox.
+func (g *FakeGraph) MessageState(userID, id string) (InboxMessageState, bool) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	mb := g.mailboxOf(userID)
+	i := slices.IndexFunc(mb.messages, func(m *inboxItem) bool { return m.id == id })
+	if i < 0 {
+		return InboxMessageState{}, false
+	}
+	m := mb.messages[i]
+	folderName := ""
+	for _, f := range mb.folders {
+		if f.ID == m.folderID {
+			folderName = f.DisplayName
+			break
+		}
+	}
+	return InboxMessageState{
+		IsRead:     m.isRead,
+		Categories: slices.Clone(m.categories),
+		FolderID:   m.folderID,
+		FolderName: folderName,
+	}, true
 }
 
 // MarkInboxMessageRead marks the user's message id read, a change the delta

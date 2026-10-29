@@ -192,3 +192,45 @@ func TestMailInbox_Value(t *testing.T) {
 		t.Errorf("no mailbox: %d %s", status, b)
 	}
 }
+
+func TestMailInbox_FoldersAndMessageMarks(t *testing.T) {
+	now := time.Now()
+	g := tenantFake(&now)
+	post := g.AddUser(graphtest.User{UserPrincipalName: "post@nordlys.no", Shared: true})
+	c := newClient(t, g)
+	id := g.AddInboxMessage(post.ID, graphtest.InboxMessage{ReceivedAt: now, MIME: inboxMIME("sak")})
+
+	// Create folder, 409 on duplicate, filter by displayName.
+	status, _, folder := c.do(http.MethodPost, "/users/"+post.ID+"/mailFolders", map[string]any{"displayName": "Handled in Vantigo"})
+	folderID, _ := folder["id"].(string)
+	if status != http.StatusCreated || folderID == "" {
+		t.Fatalf("create folder: %d %v", status, folder)
+	}
+	if status, _, body := c.do(http.MethodPost, "/users/"+post.ID+"/mailFolders", map[string]any{"displayName": "handled in vantigo"}); status != http.StatusConflict || errorCode(body) != "ErrorFolderExists" {
+		t.Errorf("duplicate folder: %d %v, want 409 ErrorFolderExists", status, body)
+	}
+	q := url.Values{"$filter": {"displayName eq 'Handled in Vantigo'"}}
+	status, _, list := c.do(http.MethodGet, "/users/"+post.ID+"/mailFolders?"+strings.ReplaceAll(q.Encode(), "+", "%20"), nil)
+	if status != http.StatusOK || len(list["value"].([]any)) != 1 {
+		t.Errorf("filter folder: %d %v", status, list)
+	}
+
+	// PATCH isRead + categories, then POST move.
+	if status, _, body := c.do(http.MethodPatch, "/users/"+post.ID+"/messages/"+id, map[string]any{"isRead": true, "categories": []string{"Handled"}}); status != http.StatusOK || body["isRead"] != true {
+		t.Errorf("patch message: %d %v", status, body)
+	}
+	if status, _, body := c.do(http.MethodPost, "/users/"+post.ID+"/messages/"+id+"/move", map[string]any{"destinationId": folderID}); status != http.StatusCreated || body["id"] != id {
+		t.Errorf("move message: %d %v", status, body)
+	}
+	st, ok := g.MessageState(post.ID, id)
+	if !ok || !st.IsRead || len(st.Categories) != 1 || st.Categories[0] != "Handled" || st.FolderID != folderID || st.FolderName != "Handled in Vantigo" {
+		t.Errorf("MessageState = %+v, %v", st, ok)
+	}
+	// After moving out of Inbox, $value from Inbox is 404, while a repeat move by immutable ID still succeeds.
+	if status, _, _ := c.inboxGet("/users/"+post.ID+"/messages/"+id+"/$value", ""); status != http.StatusNotFound {
+		t.Errorf("$value after move: %d, want 404", status)
+	}
+	if status, _, _ := c.do(http.MethodPost, "/users/"+post.ID+"/messages/"+id+"/move", map[string]any{"destinationId": folderID}); status != http.StatusCreated {
+		t.Errorf("repeat move: %d, want 201", status)
+	}
+}

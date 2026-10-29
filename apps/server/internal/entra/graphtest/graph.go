@@ -852,7 +852,7 @@ func (g *FakeGraph) usersRoute(method string, seg []string, query url.Values, co
 	case len(seg) > 1 && (seg[1] == "calendars" || seg[1] == "calendar" || seg[1] == "events"):
 		return g.mailboxRoute(u, method, seg[1:], query, body)
 	case len(seg) > 1 && (seg[1] == "sendMail" || seg[1] == "messages" || seg[1] == "mailFolders" || seg[1] == "mailboxSettings"):
-		return g.mailRoute(u, method, seg[1:], contentType, body)
+		return g.mailRoute(u, method, seg[1:], query, contentType, body)
 	}
 	return graphError(http.StatusBadRequest, "BadRequest", "Unsupported request: "+method+" users/{id}/"+rest+".")
 }
@@ -1735,11 +1735,10 @@ func (g *FakeGraph) batch(body []byte) answer {
 var mailboxPath = regexp.MustCompile(`(?i)^/users/([^/]+)/(calendar|calendars|events|calendarView)(/|$)`)
 
 // scopeRefusal is Graph's refusal of a token for path: a mailbox route is
-// reached only with a delegated token for that very user, and the
-// subscriptions with a delegated token — the application's, or another
-// user's, is 403 ErrorAccessDenied; a mail route (mail.go) with the
-// application's token or a delegated token for that very user — another
-// user's is 403. g.mu is held.
+// reached only with a delegated token for that very user; a mail route
+// (mail.go) with the application's token or a delegated token for that very
+// user — another user's is 403. Subscriptions check their own creator and
+// resource rules in subscriptions.go. g.mu is held.
 func (g *FakeGraph) scopeRefusal(path string) (answer, bool) {
 	denied := graphError(http.StatusForbidden, "ErrorAccessDenied", "Access is denied. Check credentials and try again.")
 	if m := mailboxPath.FindStringSubmatch(path); m != nil {
@@ -1747,9 +1746,6 @@ func (g *FakeGraph) scopeRefusal(path string) (answer, bool) {
 			return denied, true
 		}
 		return answer{}, false
-	}
-	if p := strings.Trim(path, "/"); (p == "subscriptions" || strings.HasPrefix(p, "subscriptions/")) && g.caller == nil {
-		return denied, true
 	}
 	if !g.mailCaller(path) {
 		return denied, true

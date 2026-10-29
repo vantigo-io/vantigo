@@ -159,7 +159,7 @@ WHERE c.state = 'closing'
   AND (c.changed_at + interval '7 days' < @now::timestamptz
        OR (GREATEST(COALESCE(c.used_at, c.changed_at), c.changed_at) + interval '24 hours' < @now::timestamptz
            AND NOT EXISTS (SELECT 1 FROM entra.mailbox_subscriptions s
-                           WHERE s.object_id = c.object_id)))
+                           WHERE s.object_id = c.object_id AND s.resource = 'events')))
 RETURNING object_id, user_id;
 
 -- name: ListOutlookAccountChecks :many
