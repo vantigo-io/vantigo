@@ -353,6 +353,48 @@ func (q *Queries) ListOutlookAccountChecks(ctx context.Context, arg ListOutlookA
 	return items, nil
 }
 
+const listOutlookConnectionChanges = `-- name: ListOutlookConnectionChanges :many
+SELECT object_id, state, changed_at FROM entra.outlook_connections
+WHERE changed_at > $1::timestamptz
+ORDER BY changed_at, object_id
+LIMIT $2::integer
+`
+
+type ListOutlookConnectionChangesParams struct {
+	Since    time.Time
+	RowLimit int32
+}
+
+type ListOutlookConnectionChangesRow struct {
+	ObjectID  uuid.UUID
+	State     string
+	ChangedAt time.Time
+}
+
+// ListOutlookConnectionChanges is what the mailbox calendar's Connections
+// answers (design M9): the connections whose state moved after since,
+// oldest first, at most row_limit. Through ix_entra_outlook_connections_changed.
+// A refresh, a forgotten token and the bookkeeping move no changed_at.
+func (q *Queries) ListOutlookConnectionChanges(ctx context.Context, arg ListOutlookConnectionChangesParams) ([]ListOutlookConnectionChangesRow, error) {
+	rows, err := q.db.Query(ctx, listOutlookConnectionChanges, arg.Since, arg.RowLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListOutlookConnectionChangesRow
+	for rows.Next() {
+		var i ListOutlookConnectionChangesRow
+		if err := rows.Scan(&i.ObjectID, &i.State, &i.ChangedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const lockLiveOutlookConnectionByUser = `-- name: LockLiveOutlookConnectionByUser :one
 SELECT object_id, user_id, tenant_id, scopes, refresh_sealed, state, error_code, connected_at, refreshed_at, used_at, account_checked_at, changed_at, revision, created_at, updated_at FROM entra.outlook_connections WHERE user_id = $1 AND state <> 'closing' FOR UPDATE
 `

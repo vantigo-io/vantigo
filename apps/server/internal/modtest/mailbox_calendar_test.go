@@ -555,3 +555,129 @@ func TestFakeMailboxCalendar_Notifications(t *testing.T) {
 		t.Error("Notified under FailWith answered no error")
 	}
 }
+
+// SetConnection makes every call on the mailbox answer its
+// ConnectionNeededError, except the removals while the connection is closing
+// and holds its token (SetConnectionToken); a removal on a closing
+// connection without one, or on none, answers ErrMailboxGone. An Apply with
+// a create is no removal. "" clears it.
+func TestFakeMailboxCalendar_Connection(t *testing.T) {
+	ctx := context.Background()
+	f := NewFakeMailboxCalendar()
+	id := f.PutEvent("oid-1", "", "appointment:1", *mailboxEvent("Standup"))
+	cal, _ := f.EnsureCalendar(ctx, "oid-1", "", "Vantigo")
+	deletes := []contracts.MailboxOp{{Kind: contracts.MailboxOpDelete, EventID: id}}
+	mixed := []contracts.MailboxOp{{Kind: contracts.MailboxOpCreate, Key: "appointment:2", Event: mailboxEvent("New")}, deletes[0]}
+
+	reason := func(err error) string {
+		var n *contracts.ConnectionNeededError
+		if !errors.As(err, &n) || !errors.Is(err, contracts.ErrConnectionNeeded) {
+			return ""
+		}
+		return n.Reason
+	}
+
+	f.SetConnection("oid-1", "mfa")
+	for name, err := range map[string]error{
+		"EnsureCalendar": func() error { _, err := f.EnsureCalendar(ctx, "oid-1", cal, "Vantigo"); return err }(),
+		"DeleteCalendar": f.DeleteCalendar(ctx, "oid-1", cal),
+		"Apply":          func() error { _, err := f.Apply(ctx, "oid-1", "", deletes); return err }(),
+		"Find":           func() error { _, err := f.Find(ctx, "oid-1", "", time.Time{}); return err }(),
+		"Delta":          func() error { _, err := f.Delta(ctx, "oid-1", Start, Start.Add(time.Hour), ""); return err }(),
+		"Versions":       func() error { _, err := f.Versions(ctx, "oid-1", "", Start, Start.Add(time.Hour)); return err }(),
+		"Watch":          f.Watch(ctx, "oid-1"),
+		"Unwatch":        f.Unwatch(ctx, "oid-1"),
+	} {
+		if got := reason(err); got != "mfa" {
+			t.Errorf("%s in reconnect = %v, want ConnectionNeededError mfa", name, err)
+		}
+	}
+	if _, err := f.Find(ctx, "oid-2", "", time.Time{}); err != nil {
+		t.Errorf("Find of another mailbox = %v", err)
+	}
+
+	// Closing, the token held: the removals work, the rest is refused.
+	f.SetConnection("oid-1", contracts.ConnectionClosingReason)
+	f.SetConnectionToken("oid-1", true)
+	if _, err := f.EnsureCalendar(ctx, "oid-1", cal, "Vantigo"); reason(err) != "closing" {
+		t.Errorf("EnsureCalendar while closing = %v, want closing", err)
+	}
+	if _, err := f.Apply(ctx, "oid-1", "", mixed); reason(err) != "closing" {
+		t.Errorf("Apply with a create while closing = %v, want closing", err)
+	}
+	if refs, err := f.Find(ctx, "oid-1", "", time.Time{}); err != nil || len(refs) != 1 {
+		t.Errorf("Find while closing = %v, %v; want the copy", refs, err)
+	}
+	if res, err := f.Apply(ctx, "oid-1", "", deletes); err != nil || res[0].Err != nil || res[0].Gone {
+		t.Errorf("Apply of deletes while closing = %+v, %v; want done", res, err)
+	}
+	if err := f.DeleteCalendar(ctx, "oid-1", cal); err != nil {
+		t.Errorf("DeleteCalendar while closing = %v", err)
+	}
+	if err := f.Unwatch(ctx, "oid-1"); err != nil {
+		t.Errorf("Unwatch while closing = %v", err)
+	}
+
+	// Closing without a token, or not connected: nothing can remove them.
+	for _, r := range []string{contracts.ConnectionClosingReason, contracts.ConnectionNotConnected} {
+		f.SetConnection("oid-1", r)
+		f.SetConnectionToken("oid-1", false)
+		if err := f.DeleteCalendar(ctx, "oid-1", cal); !errors.Is(err, contracts.ErrMailboxGone) {
+			t.Errorf("DeleteCalendar, %s with no token = %v, want ErrMailboxGone", r, err)
+		}
+		if _, err := f.Apply(ctx, "oid-1", "", deletes); !errors.Is(err, contracts.ErrMailboxGone) {
+			t.Errorf("Apply of deletes, %s with no token = %v, want ErrMailboxGone", r, err)
+		}
+		if _, err := f.Find(ctx, "oid-1", "", time.Time{}); !errors.Is(err, contracts.ErrMailboxGone) {
+			t.Errorf("Find, %s with no token = %v, want ErrMailboxGone", r, err)
+		}
+		if err := f.Unwatch(ctx, "oid-1"); !errors.Is(err, contracts.ErrMailboxGone) {
+			t.Errorf("Unwatch, %s with no token = %v, want ErrMailboxGone", r, err)
+		}
+		if err := f.Watch(ctx, "oid-1"); reason(err) != r {
+			t.Errorf("Watch, %s = %v, want %s", r, err, r)
+		}
+	}
+
+	f.SetConnection("oid-1", "")
+	if _, err := f.EnsureCalendar(ctx, "oid-1", "", "Vantigo"); err != nil {
+		t.Errorf("EnsureCalendar once cleared = %v", err)
+	}
+}
+
+// ChangeConnection records a change; Connections answers those after since,
+// oldest first, capped at contracts.ConnectionChangesMax, and is refused by
+// FailWith.
+func TestFakeMailboxCalendar_Connections(t *testing.T) {
+	ctx := context.Background()
+	f := NewFakeMailboxCalendar()
+	f.ChangeConnection("oid-1", contracts.ConnectionClosing, Start.Add(2*time.Minute))
+	f.ChangeConnection("oid-2", contracts.ConnectionActive, Start)
+	f.ChangeConnection("oid-1", contracts.ConnectionActive, Start.Add(time.Minute))
+	got, err := f.Connections(ctx, Start)
+	if err != nil {
+		t.Fatalf("Connections: %v", err)
+	}
+	want := []contracts.ConnectionChange{
+		{Mailbox: "oid-1", State: contracts.ConnectionActive, At: Start.Add(time.Minute)},
+		{Mailbox: "oid-1", State: contracts.ConnectionClosing, At: Start.Add(2 * time.Minute)},
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("Connections = %v, want %v", got, want)
+	}
+	if calls := f.Calls(); calls[len(calls)-1].Method != "Connections" || !calls[len(calls)-1].From.Equal(Start) {
+		t.Errorf("the last call = %+v, want Connections from Start", calls[len(calls)-1])
+	}
+
+	for i := range contracts.ConnectionChangesMax {
+		f.ChangeConnection("oid-x", contracts.ConnectionActive, Start.Add(time.Hour+time.Duration(i)*time.Millisecond))
+	}
+	if got, err := f.Connections(ctx, Start.Add(-time.Second)); err != nil || len(got) != contracts.ConnectionChangesMax || !got[0].At.Equal(Start) {
+		t.Errorf("Connections over the cap = %d, %v; want %d from the oldest", len(got), err, contracts.ConnectionChangesMax)
+	}
+
+	f.FailWith("Connections", errors.New("boom"))
+	if _, err := f.Connections(ctx, Start); err == nil {
+		t.Error("Connections under FailWith answered no error")
+	}
+}

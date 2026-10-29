@@ -788,3 +788,80 @@ func TestMailbox_TheEventsShape(t *testing.T) {
 		t.Errorf("the appointment: %+v", appointment)
 	}
 }
+
+// Connections answers the connections that moved after since, oldest first
+// (Outlook connection design M9): a connect, a disconnect and a reconnect
+// each answered once, read between the moves — a row holds its last move
+// alone; since exclusive; a refresh moving nothing; the switch off; at most
+// contracts.ConnectionChangesMax. The rows alone, whatever the switch.
+func TestMailbox_Connections(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	f := newTokenFixture(t)
+	p := mailboxProvider(f.h)
+	mailbox := f.oid.String()
+	answers := func(since time.Time, want ...contracts.ConnectionChange) {
+		t.Helper()
+		got, err := p.Connections(ctx, since)
+		if err != nil || !connectionChangesEqual(got, want) {
+			t.Errorf("Connections(%s) = %+v %v, want %+v", since, got, err, want)
+		}
+	}
+
+	connected := f.h.Now()
+	answers(connected.Add(-time.Second), contracts.ConnectionChange{Mailbox: mailbox, State: contracts.ConnectionActive, At: connected})
+	answers(connected)
+
+	f.h.Advance(time.Minute)
+	if _, err := f.token(false); err != nil {
+		t.Fatalf("token: %v", err)
+	}
+	answers(connected)
+
+	f.h.Advance(time.Minute)
+	if r := f.c.Do(http.MethodDelete, outlookConnectionPath, nil); r.Status != http.StatusNoContent {
+		t.Fatalf("disconnect: %d %s", r.Status, r.Body)
+	}
+	closed := f.h.Now()
+	answers(connected, contracts.ConnectionChange{Mailbox: mailbox, State: contracts.ConnectionClosing, At: closed})
+	answers(closed)
+
+	f.h.Advance(time.Minute)
+	if r := f.connectAs(t, f.c, f.oid, kari); r.Status != http.StatusOK {
+		t.Fatalf("reconnect: %d %s", r.Status, r.Body)
+	}
+	reconnected := f.h.Now()
+	answers(closed, contracts.ConnectionChange{Mailbox: mailbox, State: contracts.ConnectionActive, At: reconnected})
+
+	// The switch off closes every live row, and Connections answers it
+	// with the switch off.
+	f.h.Advance(time.Minute)
+	setOutlookConnect(t, f.o, false)
+	answers(reconnected, contracts.ConnectionChange{Mailbox: mailbox, State: contracts.ConnectionClosing, At: f.h.Now()})
+
+	// The cap: the oldest ConnectionChangesMax.
+	later := f.h.Now().Add(time.Hour)
+	f.h.Exec(t, `INSERT INTO entra.outlook_connections
+	    (object_id, user_id, tenant_id, scopes, state, connected_at, changed_at, created_at, updated_at)
+	    SELECT gen_random_uuid(), gen_random_uuid(), $1, '{}', 'closing', $2, $2::timestamptz + n * interval '1 millisecond', $2, $2
+	    FROM generate_series(1, $3::int) AS n`, tenantID, later, contracts.ConnectionChangesMax+1)
+	got, err := p.Connections(ctx, f.h.Now())
+	if err != nil || len(got) != contracts.ConnectionChangesMax {
+		t.Fatalf("over the cap = %d %v, want %d", len(got), err, contracts.ConnectionChangesMax)
+	}
+	for i := 1; i < len(got); i++ {
+		if !got[i-1].At.Before(got[i].At) {
+			t.Fatalf("change %d at %s after %s: not oldest first", i, got[i].At, got[i-1].At)
+		}
+	}
+	if !got[0].At.Equal(later.Add(time.Millisecond)) {
+		t.Errorf("the first change at %s, want the oldest", got[0].At)
+	}
+}
+
+// connectionChangesEqual compares changes with their times as instants.
+func connectionChangesEqual(a, b []contracts.ConnectionChange) bool {
+	return slices.EqualFunc(a, b, func(x, y contracts.ConnectionChange) bool {
+		return x.Mailbox == y.Mailbox && x.State == y.State && x.At.Equal(y.At)
+	})
+}

@@ -490,3 +490,23 @@ func (m *mailboxCalendar) Notified(ctx context.Context, since time.Time) ([]cont
 	}
 	return out, nil
 }
+
+// Connections answers the people's connections that moved after since,
+// oldest first, at most contracts.ConnectionChangesMax (Outlook connection
+// design M9): the rows and no network, whatever the switch. A connect, a
+// close and a reconnect's refusal move changed_at; a refresh, a forgotten
+// token and the bookkeeping do not. A mailbox is its object id in lower
+// case, as the other calls take it.
+func (m *mailboxCalendar) Connections(ctx context.Context, since time.Time) ([]contracts.ConnectionChange, error) {
+	rows, err := store.New(m.deps.Pool).ListOutlookConnectionChanges(ctx, store.ListOutlookConnectionChangesParams{
+		Since: since, RowLimit: contracts.ConnectionChangesMax,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("entra: read the changed Outlook connections: %w", err)
+	}
+	out := make([]contracts.ConnectionChange, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, contracts.ConnectionChange{Mailbox: r.ObjectID.String(), State: r.State, At: r.ChangedAt})
+	}
+	return out, nil
+}
