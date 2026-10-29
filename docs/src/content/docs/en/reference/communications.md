@@ -169,16 +169,17 @@ Exchange Online **shared mailbox**, sent from with the application's own token t
 `contracts.ChannelMailbox`, a single-provider slot the Microsoft Entra ID module fills
 under the key `entra` ([module boundaries](/en/contributing/module-boundaries/) rule
 15). Communications is the authority on which mailboxes are channels; the provider sends
-only from a mailbox its `Check` resolved. The Owner turns it on and scopes it in the
-Entra module ([Mail channels](/en/admin/entra/#mail-channels)).
+only from a mailbox its `Check` resolved and recorded — a shared one. Someone with
+`entra:manage` turns it on in the Entra module and an Exchange administrator scopes it ([Mail channels](/en/admin/entra/#mail-channels)).
 
 - **The row.** `provider = 'entra'`; `channels.settings` (migration
   `00091_communications_channel_settings.sql`, `jsonb`, `{}` by default) is
   `{"mailbox": "<object id>"}`, the mailbox's object id in lower case; and there is
   **no `channel_credentials` row** — no secret to seal. **One channel per mailbox**:
   `ux_channels_entra_mailbox` on `settings->>'mailbox'` `WHERE provider = 'entra'`, so two
-  aliases of one mailbox cannot make two channels; its violation is 409 `channel_exists`
-  (*A channel for this mailbox already exists.*).
+  aliases of one mailbox cannot make two channels; its violation is 409 `mailbox_exists`
+  (*Another channel already uses this mailbox.*), apart from `channel_exists`, an address
+  another channel holds.
 - **The answer.** `ChannelResponse.mailbox` is `{id}` for a Microsoft 365 channel and
   null otherwise; `settings`, the SMTP shape (`host`, `port`, `useSsl`, `username`), is
   null for it, and `hasCredentials` false.
@@ -196,15 +197,20 @@ provider's `Status`, then `Check(address)`:
 | --- | --- |
 | no provider in the slot, or its `Status` not available | 409 `mail_channels_off` |
 | a shared mailbox it reaches | 201, the channel **active**; its address is the mailbox's primary SMTP address as `Check` read it, in lower case, so an alias typed becomes the mailbox's own |
-| a mailbox it reaches, not shared | 422 `personal_mailbox` — shared mailboxes only |
+| a mailbox it reaches, not shared | 422 `personal_mailbox` — shared mailboxes only; `Check` does not record a personal mailbox, so the provider would refuse to send from it anyway |
 | `ErrMailboxDenied` | 422 `mailbox_denied` — outside the application's RBAC scope, or a role missing |
 | `ErrMailboxUnknown`, `ErrMailboxGone` | 422 `mailbox_unknown` — no such mailbox, or an address that is not a bare address (a display name, white space, one of `/ \ ? # %`, over 320 bytes) |
 | `ErrMailboxUnavailable` | 409 `mail_channels_off` |
 | anything else — throttled, Graph not answering, the status unreadable | 503 `provider_unreachable` (*Microsoft 365 did not answer. Try again.*), logged |
 
+`mail_channels_off` says *Microsoft 365 mail channels are not available. An Entra
+administrator turns on Mail channels in the Entra settings.* The address a person typed is
+never in an error or a log line: Entra names the lookup's path `/v1.0/users/{address}`.
+
 The insert then runs as an SMTP channel's does — the default slot's lock, the first
 channel made the default — with `settings` and no credential row. An address another
-channel holds is 409 `channel_exists` as for SMTP.
+channel holds is 409 `channel_exists` as for SMTP; a mailbox another channel uses, 409
+`mailbox_exists`.
 
 #### Switching provider
 
@@ -212,7 +218,11 @@ channel holds is 409 `channel_exists` as for SMTP.
 SMTP channel to Microsoft 365 and keeps its **id, address, conversations and default
 flag**. Any other provider in the body is a 400; an unknown channel a bare 404; a
 channel already on `entra` 422 `provider_unchanged`. `Status` and `Check` run on the
-channel's own address before the transaction, with the create's table. Then, under the
+channel's own address before the transaction, with the create's table; a mailbox another
+channel uses is 409 `mailbox_exists`. The channel **keeps its own address**, which may be
+an alias of the mailbox rather than its primary address: the mail then goes out `From:`
+the alias through the shared mailbox — whether Exchange sends it so, rewrites it or
+refuses it is **not verified on a real tenant**. Then, under the
 default slot's lock and a re-read, the provider and `settings` are written and the
 **credential row deleted, in one transaction**: a failure leaves the channel SMTP with its
 credential. Answers 200 with the channel. The mailbox `Check` recorded on Entra's side
@@ -224,7 +234,9 @@ an admin checked, and the next `Check` rewrites it.
 switch a channel to SMTP.*; without a block, *SMTP credentials require a host and valid
 port.*). It writes the credential row, sets the provider to `smtp` and `settings` to
 `{}`, and **after the commit** calls the provider's `Forget` for the old mailbox,
-best-effort: a failure is logged and the 200 stands. The channels page has no control for
+best-effort: a failure is logged and the 200 stands. The channels are read again first,
+and `Forget` is skipped when another channel has taken the mailbox in between, so that
+channel can still send. The channels page has no control for
 it; it is the API's. A `PUT` without `provider` keeps the channel's own, so `isActive`,
 `isDefault` or `displayName` alone on a Microsoft 365 channel need no credential; a `PUT`
 naming `entra` on an SMTP channel is a 400 under `provider` (the switch is the `POST`).
@@ -266,8 +278,10 @@ Three mechanisms keep this honest:
   duplicates.
 - Immediately before the external call, the job is stamped with
   `delivery_attempted_at` in its own committed write. A job re-claimed with that
-  stamp set may already have been delivered; the resend still happens, but it is
-  logged as a possible duplicate and counted on the
+  stamp set may already have been delivered — re-claimed after its lease expired, or
+  claimed back from `retry` after a send that had begun and then failed (a mailbox's
+  `Send` that timed out may have been taken by Exchange) — the resend still happens, but
+  it is logged as a possible duplicate and counted on the
   `communications.outbox.possible_duplicate_sends` metric (meter
   `Vantigo.Communications`) — alert on it rather than discovering duplicates from
   customer reports.
@@ -283,8 +297,8 @@ the deliveries, and the attachments — and branches on the channel's provider, 
 - **`smtp`**: as before, over the channel's credential row.
 - **anything else**: through the `ChannelMailbox` slot. A channel whose `settings` name
   no mailbox fails with `channel_misconfigured`; no provider in the slot, or one whose
-  `Key` is not the channel's provider, is `ErrMailboxUnavailable` and retried — a channel
-  is **never sent through another provider**. The same `Outbound` is rendered as MIME
+  `Key` is not the channel's provider, is `ErrMailboxUnavailable` and **held** (below) — a
+  channel is **never sent through another provider**. The same `Outbound` is rendered as MIME
   by [`mail.RenderMIME`](/en/contributing/platform-packages/#the-mail-package) from the
   channel's address — with a `Bcc:` header only when there are blind copies — and handed
   to `Send` with the blind copies beside it, under the SMTP send's own 30-second budget.
@@ -298,31 +312,50 @@ the deliveries, and the attachments — and branches on the channel's provider, 
 
 **Not yet verified on a real tenant**: whether Exchange keeps our `Message-Id` on a MIME
 `sendMail` (no Microsoft page says so; Outlook is reported to stamp its own), and whether
-a draft's `Bcc:` header reaches the blind copies as Graph documents for a MIME draft. The
+a draft's `Bcc:` header reaches the blind copies as Graph documents for a MIME draft, nor
+how Exchange treats a channel switched from SMTP whose address is an alias. The
 pull request's real-tenant checklist reads the sent item's `internetMessageId`, the
 recipient's raw headers and a blind copy's arrival. If Exchange rewrites the
 `Message-Id`, a customer's answer still names Exchange's own in `In-Reply-To`, and
 threading has to fall back on Graph's `conversationId` once inbound mail exists.
 
-**Terminal failures.** A send through the mailbox that fails with one of five codes
+**Terminal failures.** A send through the mailbox that fails with one of these codes
 **fails the job at once**, after one attempt, rather than at the eighth: no retry can
-mend it.
+mend it — `provider_unavailable` aside, which ends a day's hold (below).
 
 | Code | From |
 | --- | --- |
 | `mailbox_denied` | `ErrMailboxDenied`: the mailbox is outside the application's scope, or a role is missing |
 | `mailbox_gone` | `ErrMailboxGone`: the mailbox no longer exists |
 | `mailbox_unknown` | `ErrMailboxUnknown`: no `Check` recorded the mailbox on Entra's side (forgotten, say) |
-| `too_large` | `ErrMailTooLarge`: over `MaxMessage`, or Graph's 413 |
+| `too_large` | `ErrMailTooLarge`: over `MaxMessage`, Graph's 413, or Exchange's 400 `ErrorMessageSizeExceeded`, `MessageSizeExceeded` or `ErrorMessageTooBig` (the mailbox's own send limit below Graph's) |
+| `bcc_unsupported` | `contracts.ErrBccUnsupported`: the draft did not keep every blind copy, so nothing was sent — a retry would build the same draft |
 | `channel_misconfigured` | the channel's `settings` name no mailbox |
+| `provider_unavailable` | the provider stayed unavailable for 24 hours after the job was queued (below) |
 
 The job becomes `failed` and its deliveries `submission_failed`, `jobs_failed` counts
 it, and `last_error` stays the constant *Outbound delivery failed.* — the module's one
 redaction of an outbound error, so nothing Graph said is stored. The code goes beside it
 in the failure event's `data_json` (`{"error":"Outbound delivery failed.","code":"mailbox_denied"}`)
-and in the log line. Everything else — `ErrMailboxUnavailable` (the Mail channels switch
-off, the connection failing), throttling, a 5xx, a draft that lost a blind copy — is
-retried on the backoff below, like an SMTP failure.
+and in the log line.
+
+**An unavailable provider holds the job.** `ErrMailboxUnavailable` — the Mail channels
+switch off, the connection failing, Entra off, no provider in the slot or one under
+another key — spends **no attempt**: the job goes back to `retry` with the claim's attempt
+given back and its send marker cleared (nothing was handed over), and is tried again after
+the time it has waited so far — at least the backoff below, **at most 5 minutes**. When a
+hold begins, each sendable delivery gets one `retrying` event whose data is
+`{"error":"Outbound delivery failed.","code":"provider_unavailable"}`; the later held tries
+write no event. A try in between that reaches the provider and fails writes the usual
+`retrying` events without a code, and the next unavailable try begins a new hold, with its
+events again. Held tries are counted on `communications.outbox.jobs_held`, not
+`jobs_retried`. **24 hours after the job was queued**, a try that still finds the provider
+unavailable fails it: its deliveries `submission_failed` with the code
+`provider_unavailable`, counted on `jobs_failed`. An outage shorter than that loses
+nothing.
+
+Everything else — throttling, a 5xx, any error the contract does not name — is retried
+on the backoff below, like an SMTP failure.
 
 A failed send is rescheduled with an exponential backoff of
 `min(3600, 2^min(attempts, 10))` seconds, and `attempts` is incremented when the job
@@ -352,9 +385,10 @@ not multiply the pollers.
 
 ### Metrics
 
-Four counters on an OpenTelemetry meter named `Vantigo.Communications`, all of them
+Five counters on an OpenTelemetry meter named `Vantigo.Communications`, all of them
 the outbox's: `communications.outbox.possible_duplicate_sends`, `.jobs_completed`,
-`.jobs_retried` and `.jobs_failed`. **Alert on the last one: every increment is
+`.jobs_retried`, `.jobs_held` (a try of a Microsoft 365 channel's job put back while
+its provider is unavailable, spending no attempt) and `.jobs_failed`. **Alert on the last one: every increment is
 undelivered customer email.** There are deliberately no others — no retention,
 cleanup, storage, SMTP or AI metrics, and no histograms.
 
@@ -402,17 +436,20 @@ its mail to the provider's `MaxMessage` — **3 000 000 bytes of MIME** for Entr
 once base64-encoded for Graph — and refuses what is too large **when it is written, not
 when it is sent**:
 
+- **The attachments it takes**: `(budget − 16 384) × 100 / 137`, rounded down to
+  100 000 bytes — **2 100 000** of Entra's 3 000 000 — what a message with no body can
+  carry once base64 and the headers are counted. `ConversationDetailResponse` answers it as
+  `maxAttachmentBytes` beside the budget, `maxMessageBytes` (both null for SMTP), so the
+  composer shows *Attachments up to about 2.1 MB in total on this channel* without
+  `channels-manage`.
 - **Staging** on a conversation whose channel is Microsoft 365: a file whose size × 1.37
-  (base64 and a margin) plus 16 KiB (headers and boundaries) exceeds it is **413**
-  `attachment_too_large`, *The attachment is larger than this channel can send (about 3
+  (base64 and a margin) plus 16 KiB (headers and boundaries) exceeds the budget is **413**
+  `attachment_too_large`, *The attachment is larger than this channel can send (about 2.1
   MB).*
 - **Reply**: the estimate of the whole message — every staged attachment × 1.37, the text
-  body as it is, the HTML body × 1.37, plus 16 KiB — over it is **422** `too_large`, *The
-  message and its attachments are larger than this channel can send.*, before anything is
-  written.
-- `ConversationDetailResponse.maxMessageBytes` is the channel's budget — null for SMTP —
-  so the composer shows *Attachments up to about 3 MB in total on this channel* without
-  `channels-manage`.
+  and the HTML bodies each × 3 (quoted-printable at its worst, every byte `=XX`), plus
+  16 KiB — over the budget is **422** `too_large`, *The message and its attachments are
+  larger than this channel can send.*, before anything is written.
 
 The provider's `ErrMailTooLarge` at send time stays the last guard, and fails the job
 (`too_large`). A larger message would need a draft with upload sessions, which is not

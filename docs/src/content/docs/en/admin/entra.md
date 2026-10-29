@@ -148,7 +148,8 @@ permissions** and test again. An application `Calendars.ReadWrite` left from an 
 release, when calendar sync wrote with it, is among them ([calendar
 sync](#calendar-sync)). It is a warning only — the connection stays
 **Connected** — and the test records each as *a permission Vantigo does not use* in the
-recent events. The mail permissions (`Mail.*`) are listed among them while [mail
+recent events. The mail permissions (`Mail.*`, and `MailboxSettings.*`,
+`MailboxItem.*` and `MailboxFolder.*`) are listed among them while [mail
 channels](#mail-channels) are off; while they are on, the **Mail channels** line shows
 them instead, as access to every mailbox in the tenant.
 
@@ -544,8 +545,8 @@ with `Mail.*` permissions in the app registration, which would reach every mailb
 the tenant. It is off by default.
 
 In this release a channel **sends only**: the message is sent from the shared mailbox and
-kept in its **Sent Items**, but nothing in the mailbox is read into Vantigo yet. The
-switch's label already says *send and receive*; receiving comes later. How the module
+kept in its **Sent Items**, but nothing in the mailbox is read into Vantigo yet;
+receiving comes later. How the module
 sends is in [the reference](/en/reference/entra/#mail-channels).
 
 ### Preconditions for mail channels
@@ -565,13 +566,14 @@ sends is in [the reference](/en/reference/entra/#mail-channels).
 ### Turn on mail channels
 
 1. On the module page, in step **4 Set the account rules**, under **Mail channels**, turn
-   on **Mail channels: let Communications send and receive through Exchange Online shared
+   on **Mail channels: let Communications send through Exchange Online shared
    mailboxes** and choose **Save the account rules**. Anyone with `entra:manage` may.
 2. Under the switch, **Commands for Exchange Online PowerShell** shows six commands with
    your application's **client id** and its **object id** filled in. If it says *Test the
    connection first*, choose **Test connection** in step 3 (an Owner) and come back: the
    placeholders `<client id>` and `<object id>` are filled once a test has read them.
-   Copy the commands with the copy button.
+   Copy the commands with the copy button beside them (*Copy Commands for Exchange Online
+   PowerShell* to a screen reader).
 3. In Exchange Online PowerShell, run them in order, replacing `post@firma.no` with a
    shared mailbox's address:
 
@@ -595,8 +597,10 @@ sends is in [the reference](/en/reference/entra/#mail-channels).
      (to tell a shared mailbox from a person's).
 4. **Remove any tenant-wide mail permission.** In the registration's **API permissions**,
    remove every application permission `Mail.Read`, `Mail.ReadBasic`,
-   `Mail.ReadBasic.All`, `Mail.ReadWrite` or `Mail.Send` (and `full_access_as_app` under
-   *Office 365 Exchange Online*), then choose **Test connection** in step 3. Exchange adds
+   `Mail.ReadBasic.All`, `Mail.ReadWrite`, `Mail.Send`, `MailboxSettings.Read`,
+   `MailboxSettings.ReadWrite`, `MailboxItem.Read.All`, `MailboxItem.ImportExport.All`,
+   `MailboxFolder.Read.All` or `MailboxFolder.ReadWrite.All` (and `full_access_as_app`
+   under *Office 365 Exchange Online*), then choose **Test connection** in step 3. Exchange adds
    the scope's grants to Entra's: a consent in the registration reaches every mailbox
    whatever the scope says.
 
@@ -606,8 +610,10 @@ sends is in [the reference](/en/reference/entra/#mail-channels).
    **`InScope` is `True`** for both *Application Mail Full Access* and *Application
    MailboxSettings.Read* on the mailbox. It reads Exchange's own assignments, not the
    registration's consents, and is not delayed by the cache below.
-2. On the module page, the line under the switch reads **Ready: the application holds no
-   mail permission for the whole tenant.**
+2. On the module page, the line under the switch reads **Ready: at the last test the
+   application held no Microsoft Graph mail permission for the whole tenant. Access granted
+   in Exchange is not visible here — check it with Test-ServicePrincipalAuthorization.**
+   It speaks for the registration's permissions only; step 1 is the check of Exchange's.
 3. In Communications, add the mailbox as a channel: **Channels** › **Add channel**, the
    provider **Microsoft 365**, its address ([the user
    guide](/en/user/communications/#set-up-a-channel)). Vantigo checks it then — the
@@ -622,18 +628,23 @@ outside the scope although the test in step 1 says `InScope`; wait and try again
 
 Turn the switch off and save. Nothing is deleted: the channels stay, Microsoft 365 is no
 longer offered for new ones, and a Microsoft 365 channel's mail waiting to be sent is
-refused as unavailable and retried — eight attempts within a few minutes — then given up
-and counted as failed. Turn it on again before the mail is given up and it is sent. The
+**held**: it spends none of its eight attempts and is tried again at most 5 minutes apart,
+until **24 hours after it was queued**, when it is given up as `provider_unavailable` and
+counted as failed. Turn it on again within that day and the mail is sent. The same holds
+while the connection is failing or the Entra module is off. The
 Exchange assignments stay until you remove them (`Remove-ManagementRoleAssignment`,
 `Remove-ManagementScope`, and `Set-Mailbox … -CustomAttribute10 $null`).
 
 ### What can go wrong with mail channels
 
 - **The line under the switch reads *Mail access is granted to every mailbox in the
-  tenant…*** (`tenant_wide`, orange, also on Communications' **Channels** page). The last
-  test's token held a `Mail.*` permission granted in the registration. The channels still
-  work — it is a warning — but the scope limits nothing while the consent stands. Remove
-  it (step 4) and test again. The test cannot see `full_access_as_app` or an Exchange
+  tenant. Limit it with RBAC for Applications and remove the tenant-wide consent. While
+  this shows, anyone who manages channels in Communications can send as any shared mailbox
+  in the tenant.*** (`tenant_wide`, orange, also on Communications' **Channels** page).
+  The last test's token held a mail permission for the whole tenant, granted in the
+  registration (step 4's list). The channels still work — it is a warning — but the scope
+  limits nothing while the consent stands: a channel can be added for any shared mailbox.
+  Remove it (step 4) and test again. The test cannot see `full_access_as_app` or an Exchange
   assignment, so check those yourself.
 - **Adding a channel says the mailbox is outside the application's scope**
   (`mailbox_denied`). The mailbox is not marked, the scope's filter does not match its
@@ -647,21 +658,34 @@ Exchange assignments stay until you remove them (`Remove-ManagementRoleAssignmen
 - **Adding a channel says Microsoft 365 has no mailbox with this address**
   (`mailbox_unknown`). No user has it as user principal name or primary mail address —
   an alias may not resolve — or the mailbox is gone. Use the mailbox's primary address.
-- **Microsoft 365 is not offered in Communications**, or adding says the mail channels are
-  turned off (`mail_channels_off`). The switch is off, the connection is not
+- **Microsoft 365 is not offered in Communications**, or adding says *Microsoft 365 mail
+  channels are not available. An Entra administrator turns on Mail channels in the Entra
+  settings.* (`mail_channels_off`). The switch is off, the connection is not
   **Connected** (the line under the switch reads *Waiting for the connection* with the
   reason), or the Entra module is not enabled.
 - **A message on a Microsoft 365 channel was given up at once.** The outbox stops after
   one attempt when the mailbox is outside the scope, gone or no longer known to Vantigo,
-  or the message is over the size Graph takes; the code is in the message's failure event
-  and the log (`mailbox_denied`, `mailbox_gone`, `mailbox_unknown`, `too_large`). Fix the
-  scope or the mailbox, and send again.
+  the message is over the size Graph or the mailbox takes, or a blind copy (Bcc) would have
+  been lost; the code is in the message's failure event and the log (`mailbox_denied`,
+  `mailbox_gone`, `mailbox_unknown`, `too_large`, `bcc_unsupported`). Fix the scope or the
+  mailbox, and send again.
+- **A message was given up as `provider_unavailable`.** Mail channels stayed off, or the
+  connection failing, for 24 hours after the message was queued. Fix the switch or the
+  connection, and send again.
+- **Drafts left in a shared mailbox's Drafts folder.** A message with a blind copy is
+  sent through a draft; if Vantigo's process stops between creating the draft and sending
+  it, the draft stays, and the retry makes a new one. Delete such drafts in Outlook from
+  time to time; nothing else removes them.
+- **A channel switched from SMTP sends from an alias.** A switched channel keeps its own
+  address, which may be an alias of the shared mailbox rather than its primary address.
+  Whether Exchange sends `From:` the alias, rewrites it or refuses it is not verified yet;
+  check the first message, or add the channel anew by the primary address.
 - **Exclusive management scopes** in Exchange do not restrict an application's access,
   and a scope filtered on group membership (`MemberOfGroup`) counts direct members only;
   the attribute filter above avoids both.
 - **Not verified on a real tenant yet**: that Exchange keeps Vantigo's own `Message-ID` on
-  a message sent this way, and that a blind copy (Bcc) reaches its recipient. Both are on
-  the release's checklist; until then, check one message's headers and one blind copy
+  a message sent this way, that a blind copy (Bcc) reaches its recipient, and how an alias
+  address is sent from. They are on the release's checklist; until then, check one message's headers and one blind copy
   after setting up the first channel.
 
 ## Accounts Vantigo did not create

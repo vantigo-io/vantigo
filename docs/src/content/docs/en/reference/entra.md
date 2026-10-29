@@ -382,9 +382,11 @@ earlier setup, say, or wider than needed. **It is a warning, never a status**: t
 connection stays `connected` whatever it lists, and the module's page shows it on the
 **Status** card in an orange notice with the list. An application `Calendars.ReadWrite`
 left from an earlier setup, when the calendar's sync still wrote with it, is listed here
-like any other: nothing uses it any more. **The mail roles** — `Mail.Read`,
-`Mail.ReadBasic`, `Mail.ReadBasic.All`, `Mail.ReadWrite`, `Mail.Send` and
-`full_access_as_app` — are listed here **only while the [Mail channels
+like any other: nothing uses it any more. **The tenant-wide mail roles** — `Mail.Read`,
+`Mail.ReadBasic`, `Mail.ReadBasic.All`, `Mail.ReadWrite`, `Mail.Send`,
+`MailboxSettings.Read`, `MailboxSettings.ReadWrite`, `MailboxItem.Read.All`,
+`MailboxItem.ImportExport.All`, `MailboxFolder.Read.All`, `MailboxFolder.ReadWrite.All`
+and `full_access_as_app` — are listed here **only while the [Mail channels
 switch](#the-mail-channels-switch) is off**; while it is on they are `mailChannels`'
 `tenant_wide` instead, and not reported twice. The test audits each listed one as an
 `unexpected:<permission>` code after the `missing:` ones.
@@ -2061,14 +2063,14 @@ mailbox yet.
 ### The Mail channels switch
 
 `entra.connection.mail_channels` (migration `00090_entra_mail_channels.sql`, false by
-default) is the switch **Mail channels: let Communications send and receive through
-Exchange Online shared mailboxes** on [the account rules](#the-account-rules) —
-`mailChannels` in `PUT /connection/settings` (`entra:manage`, audited
-`entra.settings.changed` with `mailChannels`). Its label speaks of receiving, which is
-not built: in this release a channel only sends. It is not a [required
+default) is the switch **Mail channels: let Communications send through Exchange Online
+shared mailboxes** on [the account rules](#the-account-rules) — `mailChannels` in `PUT
+/connection/settings` (`entra:manage`, audited `entra.settings.changed` with
+`mailChannels`). In this release a channel only sends. It is not a [required
 permission](#the-required-permissions) of the connection. **Turning it off closes
-nothing**: there is no per-person state; the channels' sends are refused as unavailable
-and retried on the outbox's backoff until their attempts end
+nothing**: there is no per-person state; the channels' sends are refused as unavailable,
+and the outbox holds each message, spending no attempt, for up to 24 hours after it was
+queued before it fails it as `provider_unavailable`
 ([Communications](/en/reference/communications/#delivery-semantics)).
 
 `GET /connection` answers it as `mailChannels: {enabled, status, reason?,
@@ -2078,14 +2080,16 @@ servicePrincipalId?}`, the status decided in this order:
 | --- | --- |
 | `off` | The switch is off. |
 | `unavailable` | On, but the connection is not `connected`; `reason` is the connection's `statusReason`, when it has one. |
-| `tenant_wide` | On and `connected`, and the last test's token held any of `Mail.Read`, `Mail.ReadBasic`, `Mail.ReadBasic.All`, `Mail.ReadWrite`, `Mail.Send` or `full_access_as_app`. |
+| `tenant_wide` | On and `connected`, and the last test's token held any of `Mail.Read`, `Mail.ReadBasic`, `Mail.ReadBasic.All`, `Mail.ReadWrite`, `Mail.Send`, `MailboxSettings.Read`, `MailboxSettings.ReadWrite`, `MailboxItem.Read.All`, `MailboxItem.ImportExport.All`, `MailboxFolder.Read.All`, `MailboxFolder.ReadWrite.All` or `full_access_as_app` — a role reaching every mailbox's mail, settings, items or folders. |
 | `ready` | Otherwise. |
 
 **`tenant_wide` is a warning, never a block.** Exchange adds the RBAC scope's grants to
 Entra's — an unscoped `Mail.Send` consented in Entra and a scoped one in Exchange are a
 union, and the union reaches every mailbox — so a mail role granted in the app
 registration defeats the scope; the channels still work. The module's page and
-Communications' channels page say so in an orange line. While the switch is on the mail
+Communications' channels page say so in the same orange line, which adds that while it
+shows, anyone who manages channels in Communications can send as any shared mailbox in
+the tenant. While the switch is on the mail
 roles are not listed in [`permissionsUnexpected`](#the-permissions-the-module-does-not-use).
 **What the test cannot see**: it reads only a Graph token's `roles`, so
 `full_access_as_app`, a role of the *Office 365 Exchange Online* resource, never shows
@@ -2132,12 +2136,14 @@ The refusals: **403** on any read is `ErrMailboxDenied` — outside the RBAC sco
 of the two roles missing; a **404** with a mailbox-gone code (`MailboxNotEnabledForRESTAPI`,
 `ErrorInvalidUser`, `ErrorNonExistentMailbox`, `Request_ResourceNotFound`) on the second
 or third is `ErrMailboxGone`; throttling and any other failure pass as a failure to
-retry. On reach, the mailbox is recorded — `UpsertChannelMailbox(object_id, address,
-checked_at)` in [`entra.channel_mailboxes`](#the-schema) — and `Check` answers the object
-id and the primary SMTP address (`mail`, else the user principal name), both lower case,
-the display name and `Shared`. It answers a personal mailbox too; Communications accepts
-only shared ones. The log line names the tenant, the object id and `Shared`, never the
-address or Graph's words.
+retry. On reach of a **shared** mailbox, it is recorded — `UpsertChannelMailbox(object_id,
+address, checked_at)` in [`entra.channel_mailboxes`](#the-schema). `Check` answers the
+object id and the primary SMTP address (`mail`, else the user principal name), both lower
+case, the display name and `Shared`. It answers a personal mailbox too (`Shared` false)
+but **never records one**, so `Send` refuses it whatever a caller does; Communications
+refuses it as `personal_mailbox`. The log line names the tenant, the object id and
+`Shared`, never the address or Graph's words, and the lookup's errors and log lines name
+its path `/v1.0/users/{address}`, never the address typed (`addressInPath`).
 
 ### Send
 
@@ -2148,7 +2154,8 @@ Communications can never point it at a mailbox no `Check` resolved; MIME over
 and `Status` must be available. The MIME is posted **base64-encoded** as `text/plain`,
 through the client's `postRaw` with **`noRetry`**: a 5xx is not retried by the client, so
 a message Exchange may have taken is not sent twice by it — the outbox's retry is the
-only one, at least once as SMTP is.
+only one, at least once as SMTP is. The draft's create answers the message whole, so its
+answer is read through 8 MiB rather than 1 MiB.
 
 - **No blind copies**: `POST /users/{id}/sendMail`, answered 202. Exchange saves it in
   the mailbox's Sent Items. Graph's MIME `sendMail` is reported not to honour a `Bcc:`
@@ -2157,15 +2164,19 @@ only one, at least once as SMTP is.
   the shared mailbox — `POST /users/{id}/messages`, 201, which Graph documents to read
   the `To`, `CC`, `BCC` and `Subject` headers of a MIME draft. Its `bccRecipients` must
   hold every address in `bcc`, compared without regard to case; if one is missing the
-  draft is deleted and nothing is sent (a failure to retry). Then `POST
+  draft is deleted and nothing is sent: `contracts.ErrBccUnsupported`, terminal for the
+  message (a retry would build the same draft). Then `POST
   /users/{id}/messages/{draft id}/send`, 202. A failed send deletes the draft
   best-effort (`DELETE …/messages/{id}`, its own 30 seconds past the caller's end, a
-  failure logged by the tenant alone). A crash between the two calls can leave a draft
-  in the mailbox's Drafts.
+  failure logged by the tenant alone). **A process that dies between the create and the
+  send leaves the draft in the shared mailbox's Drafts**, and nothing removes it; the
+  outbox's retry makes a new one. An operator clears such drafts in Outlook.
 
 The refusals: **403** is `ErrMailboxDenied`; **404** with a mailbox-gone code
-`ErrMailboxGone`; **413** `ErrMailTooLarge`; anything else — a 400, throttling, a 5xx —
-a failure, which the outbox retries. `Application Mail Full Access` holds `Mail.Send` and
+`ErrMailboxGone`; **413**, or a **400** with `ErrorMessageSizeExceeded`,
+`MessageSizeExceeded` or `ErrorMessageTooBig` (the mailbox's own send limit, below
+Graph's), `ErrMailTooLarge`; anything else — another 400, throttling, a 5xx — a failure,
+which the outbox retries. `Application Mail Full Access` holds `Mail.Send` and
 `Mail.ReadWrite`, so both paths are in the scope.
 
 **The size.** 3 000 000 bytes of MIME is 4 000 000 bytes of base64 body, Graph's "about
@@ -2175,14 +2186,16 @@ A larger message would need a draft with upload sessions, not built.
 
 **Not verified on a real tenant**: that Exchange keeps the message's own `Message-ID` on
 a MIME `sendMail` or a MIME draft — no Microsoft page says so — and that a draft's
-`Bcc:` header reaches its blind copies. The pull request's real-tenant checklist settles
-both.
+`Bcc:` header reaches its blind copies; nor what Exchange does with a message `From:` an
+alias of the mailbox, which a channel switched from SMTP may send (it keeps its own
+address). The pull request's real-tenant checklist settles them.
 
 ### Forget
 
 `Forget(mailbox)` deletes the mailbox's `channel_mailboxes` row, so nothing is sent from
 it until another `Check`. Idempotent: a mailbox not recorded, or not an id, is done.
-Communications calls it after a channel goes back to SMTP — there is no delete of a
+Communications calls it after a channel goes back to SMTP, unless another channel has
+taken the mailbox meanwhile — there is no delete of a
 channel.
 
 ## The events

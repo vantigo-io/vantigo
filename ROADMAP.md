@@ -2491,8 +2491,10 @@ a MIME draft, `MaxMessage` 3 000 000 bytes; Microsoft 365 channels in Communicat
 (`channels.settings`, one channel per mailbox, `00091`), created by a shared mailbox's
 address or switched from SMTP keeping their id, conversations and default, verified
 again, listed by `GET /channel-providers`; the outbox sending through the slot after its
-stamp, with five terminal codes; the size refused at staging and at reply; Mailgun out
-of the contract. Exchange keeping our `Message-ID` and a Bcc through the draft are the
+stamp, with six terminal codes, and an unavailable provider held without spending
+attempts for up to 24 hours (`provider_unavailable`); the size refused at staging and at
+reply, the composer showing the attachments a channel takes; Mailgun out of the
+contract. Exchange keeping our `Message-ID` and a Bcc through the draft are the
 real-tenant checklist's to confirm.
 
 *Next:* D receives into Communications; E brings the notifications, Outlook state on

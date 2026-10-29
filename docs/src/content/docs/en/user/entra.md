@@ -169,8 +169,8 @@ The rules every account follows, which anyone with `entra:manage` may change:
   refuses it;
 - **Outlook connection**: **Outlook connection: let people connect their Outlook to
   Vantigo** ([below](#outlook-connection));
-- **Mail channels**: **Mail channels: let Communications send and receive through
-  Exchange Online shared mailboxes** ([below](#mail-channels)).
+- **Mail channels**: **Mail channels: let Communications send through Exchange Online
+  shared mailboxes** ([below](#mail-channels)).
 
 Choose **Save the account rules**. A value outside its rule is marked on its field with
 the reason. If someone else saved the connection since you opened the page, the page
@@ -269,11 +269,11 @@ picks up once they have.
 mailboxes** — each one a channel there ([Communications](/en/user/communications/#set-up-a-channel)).
 Vantigo reaches them with the application's own access, which an Exchange administrator
 grants in Exchange Online, limited to the channels' mailboxes. It is off until someone
-with `entra:manage` turns it on. In this release a channel **sends only**: the switch's
-words *send and receive* look ahead to receiving, which is not built yet.
+with `entra:manage` turns it on. In this release a channel **sends only**; receiving is
+not built yet.
 
 1. In step **4 Set the account rules**, under **Mail channels**, turn on **Mail channels:
-   let Communications send and receive through Exchange Online shared mailboxes**, and
+   let Communications send through Exchange Online shared mailboxes**, and
    choose **Save the account rules**.
 2. Under the switch, **Commands for Exchange Online PowerShell** shows the six commands
    to run, with the application's client id and object id filled in and a copy button.
@@ -285,19 +285,24 @@ words *send and receive* look ahead to receiving, which is not built yet.
 
 While the switch is on, a line under it says where the mail channels stand:
 
-- **Ready: the application holds no mail permission for the whole tenant.** — adding a
-  channel in Communications checks that Vantigo reaches its mailbox;
+- **Ready: at the last test the application held no Microsoft Graph mail permission for
+  the whole tenant. Access granted in Exchange is not visible here — check it with
+  Test-ServicePrincipalAuthorization.** — adding a channel in Communications then checks
+  that Vantigo reaches its mailbox;
 - **Mail access is granted to every mailbox in the tenant. Limit it with RBAC for
-  Applications and remove the tenant-wide consent.** — in orange: the app registration
-  holds a `Mail` permission, which reaches every mailbox whatever Exchange limits. The
+  Applications and remove the tenant-wide consent. While this shows, anyone who manages
+  channels in Communications can send as any shared mailbox in the tenant.** — in
+  orange: the app registration holds a mail permission for the whole tenant, which
+  reaches every mailbox whatever Exchange limits. The
   channels still work; remove the permission under **API permissions** and test the
   connection again;
 - **Waiting for the connection** — the connection is not connected, with the reason under
   it.
 
 **Turning it off** deletes nothing: Communications no longer offers Microsoft 365 for a
-channel, and mail waiting on a Microsoft 365 channel is retried for a few minutes and
-then given up.
+channel, and mail waiting on a Microsoft 365 channel is held, tried again every few
+minutes, and given up 24 hours after it was queued. Turn it back on within the day and it
+is sent.
 
 ## Confirm an account Vantigo did not create
 
