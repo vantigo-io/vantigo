@@ -1,6 +1,6 @@
 ---
 title: Platform packages
-description: The packages under the server's internal/ that every module may use — the secrets box that seals and MACs values under keys derived from APP_SECRET, the mail package's outbound message and its calendar part, the payments port with its Vipps MobilePay adapter, and the public-holiday calendar.
+description: The packages under the server's internal/ that every module may use — the secrets box that seals and MACs values under keys derived from APP_SECRET, the mail package's outbound message, its calendar part and its rendering as MIME, the payments port with its Vipps MobilePay adapter, and the public-holiday calendar.
 sidebar:
   order: 5
 sources:
@@ -93,6 +93,21 @@ private destinations. `mail.Message` is identity's three-field application mail;
 Reply-To, threading headers and attachments — which Communications sends through each
 channel's own SMTP configuration, and Invoices, Staff and Calendar through the
 installation's, by the seam `Deps.SMTPSend` (or `mail.SendOutbound` when it is unset).
+
+`mail.RenderMIME(from, out, opts...)` renders an `Outbound` as the RFC 5322 message
+`SendOutbound` would send from `from` — the same headers, the `Message-ID`, `In-Reply-To`
+and `References` the caller set, the same parts — and answers its bytes instead of
+dialling, for a provider that takes a message whole rather than speaking SMTP:
+Communications' [Microsoft 365 channels](/en/reference/communications/#delivery-semantics),
+whose bytes Entra posts to Graph. It refuses an `Outbound` with no recipient, as
+`SendOutbound` does. **The bytes carry no `Bcc:` header** unless the caller passes
+`mail.WithBcc()`. go-mail's writer (v0.8.1) never writes one: over SMTP the blind copies
+travel in the envelope's `RCPT TO`, never in the message. A provider that reads its
+recipients from the headers has no envelope, so it would drop them; `WithBcc` adds the
+header once, the addresses comma-joined as go-mail renders them, for a provider that
+reads it — Graph's MIME draft — while the caller also hands the blind copies over beside
+the bytes. Without blind copies the rendering has the headers and parts of the message SMTP
+sends.
 
 `Outbound.Calendar`, a `*mail.CalendarPart{Method, Body}`, carries an iCalendar object
 the iMIP way: as the **third alternative** after the text and the HTML,

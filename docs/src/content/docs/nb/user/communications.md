@@ -1,6 +1,6 @@
 ---
 title: Kommunikasjon
-description: Delte postkasser, samtaler med kunder, sending av e-post og blokkeringer.
+description: Delte postkasser, samtaler med kunder, sending av e-post og blokkeringer — kanaler på SMTP eller på en delt postboks i Microsoft 365, å bytte en kanal til Microsoft 365, og størrelsen en Microsoft 365-kanal sender.
 sidebar:
   order: 80
 sources:
@@ -94,7 +94,11 @@ hører til; du velger ikke avsender.
    den er klar, **Skanner** mens den sjekkes, **Utilgjengelig** når den ble avvist. En
    fil som ikke kunne klargjøres, lar utkastet ditt stå uendret. Størrelsesgrensen
    settes av administratoren (se
-   [Attachments](/en/reference/communications/#attachments)).
+   [Attachments](/en/reference/communications/#attachments)). På en **Microsoft
+   365**-kanal sier skrivefeltet også *Vedlegg på opptil omtrent 3 MB til sammen på denne
+   kanalen*: Microsoft 365 tar bare imot en melding opp til den størrelsen, vedlegg og
+   tekst sammen. En større fil avvises med en gang med *Vedlegget er større enn denne
+   kanalen kan sende (omtrent 3 MB).*
 3. **Send svar**. Knappen er deaktivert til det finnes tekst, og viser **Venter på
    vedleggsskanning** mens et vedlegg ennå ikke er klart.
 
@@ -107,7 +111,10 @@ når:
   ennå, gjelder det alle samtaler i dag, så et svar kan foreløpig ikke sendes;
   skrivefeltet er komplett og begynner å virke når innkommende e-post finnes;
 - et vedlegg ikke er klart;
-- en mottaker står på blokkeringslisten.
+- en mottaker står på blokkeringslisten;
+- på en Microsoft 365-kanal er meldingen og vedleggene til sammen større enn kanalen
+  sender: *Meldingen og vedleggene er større enn denne kanalen kan sende.* Fjern et
+  vedlegg, eller send det på en annen måte.
 
 ## Skriv et utkast med KI
 
@@ -126,10 +133,15 @@ knappen **Svar** bytter tilbake. Notater krever `communications:conversations-ma
 
 ## Etter at du har sendt
 
-Et sendt svar legges i en utboks og leveres av en bakgrunnsjobb gjennom kanalens
-SMTP-server, så det kan ta et øyeblikk før det går ut. Et mislykket forsøk prøves igjen
+Et sendt svar legges i en utboks og leveres av en bakgrunnsjobb — gjennom kanalens
+SMTP-server, eller, på en Microsoft 365-kanal, fra den delte postboksen gjennom
+Microsoft 365 — så det kan ta et øyeblikk før det går ut. E-post sendt fra en Microsoft
+365-kanal ligger også i **Sendte elementer** i den delte postboksen, der teamet ditt ser
+den i Outlook. Et mislykket forsøk prøves igjen
 med økende ventetid, inntil åtte forsøk i alt; etter det gis meldingen opp og telles på
-en måling administratoren kan varsle på. Rett før hvert forsøk sjekker jobben
+en måling administratoren kan varsle på. På en Microsoft 365-kanal gis en melding
+postboksen aldri kan sende — postboksen utenfor det Vantigo har tilgang til, borte, eller
+meldingen for stor — opp etter første forsøk. Rett før hvert forsøk sjekker jobben
 blokkeringslisten på nytt og avbryter levering til enhver adresse på den. I sjeldne
 tilfeller kan en melding leveres to ganger etter et krasj; reglene står under
 [Delivery semantics](/en/reference/communications/#delivery-semantics).
@@ -139,37 +151,84 @@ ble sendt fra Vantigo.
 
 ## Sett opp en kanal
 
-En kanal er en delt postkasse: adressen svarene dine sendes fra, med SMTP-kontoen som
-sender dem. Åpne **Kanaler** for tabellen over kanaler med **Adresse** (visningsnavnet,
-med adressen under), **Leverandør**, **Status** (**Aktiv** eller **Inaktiv**) og
-**Handlinger**. Kanalen merket **Standard** er den en samtale opprettes på når ingen
-er oppgitt; den første kanalen du oppretter, blir standard.
+En kanal er en delt postkasse: adressen svarene dine sendes fra. Åpne **Kanaler** for
+tabellen over kanaler med **Adresse** (visningsnavnet, med adressen under),
+**Leverandør**, **Status** (**Aktiv** eller **Inaktiv**) og **Handlinger**. Kanalen
+merket **Standard** er den en samtale opprettes på når ingen er oppgitt; den første
+kanalen du oppretter, blir standard.
 
-Før en kanal opprettes, må administratoren ha applikasjonshemmeligheten på plass og
-kjenne SMTP-vert, port og konto; passordet lagres kryptert og vises aldri igjen, og
-hemmeligheten det krypteres under, er forklart under
-[SMTP](/en/reference/communications/#smtp). Merk at e-postserverinnstillingene en
-administrator setter opp for Vantigos egne invitasjoner og passordtilbakestillinger er
-noe annet og ikke brukes her.
+En kanal sender på en av to måter, sin **Leverandør**:
 
-For å opprette en, klikk **Legg til kanal**. Dialogen **Legg til e-postkanal** spør
-etter:
+- **SMTP** — gjennom en e-postserver, med en SMTP-konto. Administratoren må ha
+  applikasjonshemmeligheten på plass og kjenne SMTP-vert, port og konto; passordet
+  lagres kryptert og vises aldri igjen, og hemmeligheten det krypteres under, er
+  forklart under [SMTP](/en/reference/communications/#smtp). E-postserverinnstillingene en
+  administrator setter opp for Vantigos egne invitasjoner og passordtilbakestillinger er
+  noe annet og brukes ikke her.
+- **Microsoft 365** — fra en **delt postboks** i Exchange Online, gjennom Microsoft 365,
+  uten passord å legge inn. Det tilbys først når noen har slått på **E-postkanaler** i
+  appen Microsoft Entra ID og en Exchange-administrator har gitt Vantigo tilgang til
+  postboksen ([administrasjonsveiledningen](/nb/admin/entra/#mail-channels)). Når
+  applikasjonens tilgang når alle postboksene i selskapet, sier et oransje varsel over
+  tabellen fra, *E-posttilgangen gjelder alle postbokser*; kanalene virker likevel.
+
+### Legg til en SMTP-kanal
+
+Klikk **Legg til kanal**. Dialogen **Legg til e-postkanal** spør etter:
 
 - **E-postadresse** — avsenderadressen, obligatorisk.
 - **Visningsnavn** — navnet mottakerne ser; vises i tabellen i stedet for adressen når
   det er satt.
-- **Leverandør** — la den stå på **SMTP**. **Mailgun** står i listen, men tjeneren
-  godtar bare SMTP-kanaler og avviser forespørselen; kanalen blir da ikke opprettet.
+- **Leverandør** — **SMTP**.
 - **SMTP-vert** og **SMTP-port** (587 er fylt inn), begge obligatoriske, og kontoens
   **Brukernavn** og **Passord**.
 
 **Opprett kanal** lukker dialogen og bekrefter med «Kanal opprettet — E-postkanalen er
 klar.» En adresse som allerede har en kanal, avvises.
 
-Per kanal kobler **Bekreft** til SMTP-serveren med de lagrede opplysningene og melder
-«Kanal bekreftet — Kanaltilkoblingen er gyldig.»; når tilkoblingen feiler, vises ingen
-bekreftelse. **Deaktiver** beholder kanalen, men stopper sending: et svar i en samtale
-på en inaktiv kanal avvises til **Aktiver** slår den på igjen.
+### Legg til en Microsoft 365-kanal
+
+Klikk **Legg til kanal**, og velg **Microsoft 365** som **Leverandør**. Dialogen spør da
+bare etter **E-postadresse** til den delte postboksen og et **Visningsnavn**, og sier
+*Postboksen må være en delt postboks som applikasjonen har tilgang til.* **Opprett
+kanal** sjekker postboksen med Microsoft 365 først; kanalen opprettes aktiv, med
+postboksens egen primære adresse, og kan sende med en gang. Sjekken kan avvise den:
+
+| Dialogen sier | Betyr | Hvem retter det |
+| --- | --- | --- |
+| *Dette er en personlig postboks. Bare en delt postboks kan være en kanal.* | Adressen er en persons postboks. | Bruk en delt postboks; en Exchange-administrator kan gjøre om en. |
+| *Postboksen er utenfor det applikasjonen har tilgang til. Gi applikasjonen tilgang til den i Exchange Online.* | Vantigo har ikke fått tilgang til postboksen, eller tilgangen virker ikke ennå — det kan ta opptil 2 timer. | En Exchange-administrator, med [Slik gir du applikasjonen tilgang](/nb/admin/entra/#mail-channels). |
+| *Microsoft 365 har ingen postboks med denne adressen.* | Ingen postboks har adressen — eller den er et alias. | Bruk postboksens primære adresse. |
+| *E-postkanaler gjennom Microsoft 365 er slått av i Entra-innstillingene.* | **E-postkanaler** er av, eller Entra-tilkoblingen virker ikke. | Den som administrerer appen Microsoft Entra ID. |
+| *Denne postboksen har allerede en kanal.* | En annen kanal bruker den samme postboksen, kanskje med en annen av adressene. | Bruk den kanalen. |
+| *Microsoft 365 svarte ikke. Prøv igjen om litt.* | Microsoft 365 var opptatt eller utilgjengelig. | Prøv igjen. |
+
+Å legge til, bytte og bekrefte kanaler er begrenset til 30 i minuttet; over det,
+*For mange forsøk. Vent et minutt og prøv igjen.*
+
+### Bytt en SMTP-kanal til Microsoft 365
+
+Når postboksen en SMTP-kanal sender fra er en delt postboks i Exchange Online, kan
+kanalen sende gjennom Microsoft 365 i stedet, og beholder samtalene, adressen og merket
+**Standard**. På raden, velg **Bytt til Microsoft 365**; dialogen advarer *SMTP-innstillingene
+slettes. For å gå tilbake må du legge dem inn på nytt.* — velg **Bytt**. Vantigo sjekker
+postboksen som når du legger til en, med de samme meldingene, og leverandøren på raden
+blir **Microsoft 365**: «Kanalen er byttet — Kanalen sender nå gjennom Microsoft 365.»
+Handlingen vises bare mens Microsoft 365 er tilgjengelig.
+
+**Det finnes ingen knapp for å gå tilbake.** Siden Kanaler kan ikke bytte en kanal
+tilbake til SMTP; en administrator kan, gjennom API-et, ved å sende kanalens
+SMTP-innstillinger på nytt med passordet ([Switching provider](/en/reference/communications/#switching-provider)).
+
+### Bekreft og deaktiver
+
+Per kanal sjekker **Bekreft** at kanalen kan sende: for SMTP kobler den til serveren med
+de lagrede opplysningene, for Microsoft 365 sjekker den postboksen igjen, og den melder
+«Kanal bekreftet — Kanaltilkoblingen er gyldig.» Når det feiler, sier *Kanalen ble ikke
+bekreftet* hvorfor — for Microsoft 365 med meldingene ovenfor, eller *Adressen hører nå
+til en annen postboks i Microsoft 365.* **Deaktiver** beholder kanalen, men stopper
+sending: et svar i en samtale på en inaktiv kanal avvises til **Aktiver** slår den på
+igjen.
 
 Det finnes ingen begrensning per bruker på en kanal. Alle som kan svare i Innboks,
 svarer fra kanalen samtalen hører til, så hvem som kan bruke en kanal, avgjøres av hvem

@@ -1,6 +1,6 @@
 ---
 title: Microsoft Entra ID
-description: Å koble selskapets Microsoft Entra ID-leietaker til på siden Microsoft Entra ID — kortet Status, veiviserens seks steg og hva Ferdig betyr på hvert, tillatelsene som skal kopieres, hemmeligheten som vises én gang, tilkoblingstesten, kontoreglene og bryteren Outlook-tilkobling med status, antall og omdirigerings-URI, varselet om tillatelser Vantigo ikke bruker, tabellen Grupper å bekrefte en gruppe Vantigo ikke opprettet, og å koble til eksisterende brukere med katalogvelgeren og gjennomgangen av nøyaktige treff — og hvem som ser hva.
+description: Å koble selskapets Microsoft Entra ID-leietaker til på siden Microsoft Entra ID — kortet Status, veiviserens seks steg og hva Ferdig betyr på hvert, tillatelsene som skal kopieres, hemmeligheten som vises én gang, tilkoblingstesten, kontoreglene og bryteren Outlook-tilkobling med status, antall og omdirigerings-URI, bryteren E-postkanaler med status og kommandoene for Exchange Online som skal kopieres, varselet om tillatelser Vantigo ikke bruker, tabellen Grupper å bekrefte en gruppe Vantigo ikke opprettet, og å koble til eksisterende brukere med katalogvelgeren og gjennomgangen av nøyaktige treff — og hvem som ser hva.
 sidebar:
   order: 47
 sources:
@@ -60,8 +60,10 @@ etter at steg 1 endres, vises det ikke:
   enn nødvendig — fjern dem under **API permissions** med mindre et annet produkt bruker
   registreringen. En applikasjonstillatelse `Calendars.ReadWrite` gitt for
   kalendersynkronisering i en tidligere versjon står også her: kalendersynkroniseringen
-  kjører nå på hver persons egen tilkobling. Det er bare et varsel: tilkoblingen forblir
-  **Tilkoblet**;
+  kjører nå på hver persons egen tilkobling. E-posttillatelsene (`Mail.Read`,
+  `Mail.Send` og lignende) står her mens **E-postkanaler** er av; mens den er på, vises de
+  under den bryteren i stedet ([nedenfor](#e-postkanaler)). Det er bare et varsel:
+  tilkoblingen forblir **Tilkoblet**;
 - **Klienthemmeligheter**: hver med **Beskrivelse**, **Lagt til**, **Utløper**, **Sist
   brukt** (når den sist hentet et token) og **Tilstand** — **I bruk** for den som
   prøves først, *Trukket tilbake* og datoen, og *Avvist av leietakeren* og datoen for
@@ -171,7 +173,9 @@ Reglene hver konto følger, som alle med `entra:manage` kan endre:
   **Hvem som overleverer passet**. Kortet sier, med stien, at leietakerens policy for
   autentiseringsmetoder må slå på passet for brukerne, ellers avviser Microsoft det;
 - **Outlook-tilkobling**: **Outlook-tilkobling: la folk koble Outlook til Vantigo**
-  ([nedenfor](#outlook-tilkobling)).
+  ([nedenfor](#outlook-tilkobling));
+- **E-postkanaler**: **E-postkanaler: la Kommunikasjon sende og motta gjennom delte
+  postbokser i Exchange Online** ([nedenfor](#e-postkanaler)).
 
 Velg **Lagre kontoreglene**. En verdi utenfor regelen merkes på feltet med årsaken. Har
 noen andre lagret tilkoblingen siden du åpnet siden, sier siden fra og laster den inn på
@@ -263,6 +267,42 @@ kalendersynkroniseringen for alle og fjerner kopiene Vantigo la inn i Outlook de
 med sin egen tilkobling som lukkes. Slår du den på igjen, fortsetter den ikke for noen av
 seg selv: hver person som hadde synkroniseringen på, kobler til Outlook på nytt, og
 synkroniseringen deres fortsetter når de har gjort det.
+
+## E-postkanaler
+
+**E-postkanaler** lar Kommunikasjon sende fra selskapets **delte postbokser** i Exchange
+Online — hver av dem en kanal der ([Kommunikasjon](/nb/user/communications/#sett-opp-en-kanal)).
+Vantigo når dem med applikasjonens egen tilgang, som en Exchange-administrator gir i
+Exchange Online, avgrenset til kanalenes postbokser. Det er av til noen med
+`entra:manage` slår det på. I denne versjonen **sender en kanal bare**: ordene *sende og
+motta* på bryteren ser fram mot mottak, som ikke er bygget ennå.
+
+1. I steg **4 Sett kontoreglene**, under **E-postkanaler**, slå på **E-postkanaler: la
+   Kommunikasjon sende og motta gjennom delte postbokser i Exchange Online**, og velg
+   **Lagre kontoreglene**.
+2. Under bryteren viser **Kommandoer for Exchange Online PowerShell** de seks kommandoene
+   som skal kjøres, med applikasjonens applikasjons-ID og objekt-ID fylt inn og en
+   kopieringsknapp. Før tilkoblingen er testet, sier *Test tilkoblingen først* fra, og
+   kommandoene viser `<applikasjons-ID>` og `<objekt-ID>` i stedet. En
+   Exchange-administrator kjører dem og bytter ut `post@firma.no` med adressen til hver
+   delte postboks — [administrasjonsveiledningen](/nb/admin/entra/#mail-channels) har
+   framgangsmåten.
+3. Legg til postboksen som kanal i Kommunikasjon, under **Kanaler**.
+
+Mens bryteren er på, sier en linje under den hvor e-postkanalene står:
+
+- **Klar: applikasjonen har ingen e-posttillatelse for hele leietakeren.** — når du
+  legger til en kanal i Kommunikasjon, sjekkes det at Vantigo når postboksen;
+- **Applikasjonen har tilgang til alle postboksene i leietakeren. Begrens den med RBAC
+  for Applications, og fjern samtykket som gjelder hele leietakeren.** — i oransje:
+  appregistreringen har en `Mail`-tillatelse, som når hver postboks uansett hva Exchange
+  begrenser. Kanalene virker fortsatt; fjern tillatelsen under **API permissions** og test
+  tilkoblingen igjen;
+- **Venter på tilkoblingen** — tilkoblingen er ikke tilkoblet, med årsaken under.
+
+**Å slå den av** sletter ingenting: Kommunikasjon tilbyr ikke lenger Microsoft 365 for en
+kanal, og e-post som venter på en Microsoft 365-kanal, prøves igjen i noen minutter og
+gis så opp.
 
 ## Bekreft en konto Vantigo ikke opprettet
 

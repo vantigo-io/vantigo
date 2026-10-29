@@ -527,9 +527,10 @@ Identity invitations and password recovery use the `MAIL_DRIVER` and `SMTP_*`
 settings. Per-mailbox delivery credentials for the Communications module are
 configured through the Communications API, where the host, port and a protected
 password are stored as mailbox credentials — there is no environment variable for
-them. Those channels are SMTP-only: the API refuses to create or update a channel
-naming any other provider, and rejects a Mailgun credential outright. See
-[Communications](/en/reference/communications/).
+them. A channel can instead send from a Microsoft 365 shared mailbox, with no credential
+of its own, once the Microsoft Entra ID module's **Mail channels** are set up
+([Mail channels](/en/admin/entra/#mail-channels)); there is no other provider. See
+[Communications](/en/reference/communications/#providers).
 
 The Projects and Time modules need no environment variable of their own; see
 [Projects](/en/reference/projects/) and [Time](/en/reference/time/). Expenses needs the

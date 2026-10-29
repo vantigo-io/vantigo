@@ -1,6 +1,6 @@
 ---
 title: Communications
-description: Shared mailboxes, conversations with customers, sending email and suppressions.
+description: Shared mailboxes, conversations with customers, sending email and suppressions — channels on SMTP or on a Microsoft 365 shared mailbox, switching a channel to Microsoft 365, and the size a Microsoft 365 channel sends.
 sidebar:
   order: 80
 sources:
@@ -94,7 +94,11 @@ the channel the conversation belongs to; you do not choose a sender.
    is ready, **Scanning** while it is being checked, **Unavailable** when it was
    refused. A file that could not be staged leaves your draft unchanged. The size
    limit is set by the administrator (see
-   [Attachments](/en/reference/communications/#attachments)).
+   [Attachments](/en/reference/communications/#attachments)). On a **Microsoft 365**
+   channel the composer also says *Attachments up to about 3 MB in total on this
+   channel*: Microsoft 365 takes a message only up to that size, attachments and text
+   together. A larger file is refused at once with *The attachment is larger than this
+   channel can send (about 3 MB).*
 3. **Send reply**. The button is disabled until there is text, and reads **Waiting for
    attachment scan** while an attachment is not ready yet.
 
@@ -107,7 +111,10 @@ sent on the spot — see [After you send](#after-you-send) — and it is refused
   currently be sent; the composer is complete and starts working once inbound mail
   exists;
 - an attachment is not ready;
-- a recipient is on the suppression list.
+- a recipient is on the suppression list;
+- on a Microsoft 365 channel, the message and its attachments together are larger than
+  the channel sends: *The message and its attachments are larger than this channel can
+  send.* Remove an attachment, or send it another way.
 
 ## Draft a reply with AI
 
@@ -127,10 +134,14 @@ conversation for your colleagues and is never sent to the customer. Write it and
 
 ## After you send
 
-A sent reply is placed in an outbox and delivered by a background worker through the
-channel's SMTP server, so it may take a moment to leave. A failed attempt is retried
+A sent reply is placed in an outbox and delivered by a background worker — through the
+channel's SMTP server, or, on a Microsoft 365 channel, from the shared mailbox through
+Microsoft 365 — so it may take a moment to leave. A Microsoft 365 channel's sent mail is
+also in the shared mailbox's **Sent Items**, where your team sees it in Outlook. A failed attempt is retried
 with growing waits, up to eight attempts in total; after that the message is given up
-and counted on a metric the administrator can alert on. Immediately before each
+and counted on a metric the administrator can alert on. On a Microsoft 365 channel, a
+message the mailbox can never send — the mailbox outside what Vantigo may reach, or gone,
+or the message too large — is given up after the first attempt. Immediately before each
 attempt the worker checks the suppression list again and cancels delivery to any
 address on it. In rare cases a message can be delivered twice after a crash; the rules
 are under [Delivery semantics](/en/reference/communications/#delivery-semantics).
@@ -140,37 +151,85 @@ message was sent from Vantigo.
 
 ## Set up a channel
 
-A channel is a shared mailbox: the address your replies are sent from, with the SMTP
-account that sends them. Open **Channels** for the table of channels with **Address**
-(the display name, with the address beneath it), **Provider**, **Status** (**Active**
-or **Inactive**) and **Actions**. The channel marked **Default** is the one a
-conversation is created on when none is named; the first channel you create becomes
-the default.
+A channel is a shared mailbox: the address your replies are sent from. Open **Channels**
+for the table of channels with **Address** (the display name, with the address beneath
+it), **Provider**, **Status** (**Active** or **Inactive**) and **Actions**. The channel
+marked **Default** is the one a conversation is created on when none is named; the first
+channel you create becomes the default.
 
-Before creating a channel, the administrator must have the application secret in place
-and know the SMTP host, port and account; the password is stored encrypted and never
-shown again, and the secret it is encrypted under is explained under
-[SMTP](/en/reference/communications/#smtp). Note that the mail server settings an
-administrator configures for Vantigo's own invitations and password resets are a
-different thing and are not used here.
+A channel sends one of two ways, its **Provider**:
 
-To create one, click **Add channel**. The **Add email channel** dialog asks for:
+- **SMTP** — through a mail server, with an SMTP account. The administrator must have the
+  application secret in place and know the SMTP host, port and account; the password is
+  stored encrypted and never shown again, and the secret it is encrypted under is
+  explained under [SMTP](/en/reference/communications/#smtp). The mail server settings an
+  administrator configures for Vantigo's own invitations and password resets are a
+  different thing and are not used here.
+- **Microsoft 365** — from an Exchange Online **shared mailbox**, through Microsoft 365,
+  with no password to enter. It is offered only once someone has turned on **Mail
+  channels** in the Microsoft Entra ID app and an Exchange administrator has given
+  Vantigo access to the mailbox ([the administration
+  guide](/en/admin/entra/#mail-channels)). When the application's access reaches every
+  mailbox in the company, an orange notice above the table, *Mail access reaches every
+  mailbox*, says so; the channels still work.
+
+### Add an SMTP channel
+
+Click **Add channel**. The **Add email channel** dialog asks for:
 
 - **Email address** — the sender address, required.
 - **Display name** — the name recipients see; shown in the table in place of the
   address when set.
-- **Provider** — leave it at **SMTP**. **Mailgun** is listed but the server only
-  accepts SMTP channels and refuses the request; the channel is then not created.
+- **Provider** — **SMTP**.
 - **SMTP host** and **SMTP port** (587 is filled in), both required, and the
   account's **Username** and **Password**.
 
 **Create channel** closes the dialog and confirms with "Channel created — Your email
 channel is ready." An address that already has a channel is refused.
 
-Per channel, **Verify** connects to the SMTP server with the stored credentials and
-reports "Channel verified — The channel connection is valid."; when the connection
-fails, no confirmation appears. **Deactivate** keeps the channel but stops sending: a reply in a
-conversation on an inactive channel is refused until **Activate** switches it back on.
+### Add a Microsoft 365 channel
+
+Click **Add channel**, and choose **Microsoft 365** as the **Provider**. The dialog then
+asks only for the **Email address** of the shared mailbox and a **Display name**, and
+says *The mailbox must be a shared mailbox in the application's scope.* **Create
+channel** checks the mailbox with Microsoft 365 first; the channel is created active, with
+the mailbox's own primary address, and can send at once. The check can refuse it:
+
+| The dialog says | Means | Who fixes it |
+| --- | --- | --- |
+| *This is a personal mailbox. Only a shared mailbox can be a channel.* | The address is a person's mailbox. | Use a shared mailbox; an Exchange administrator can convert one. |
+| *The mailbox is outside the application's scope. Give the application access to it in Exchange Online.* | Vantigo has not been given access to this mailbox, or the access has not taken effect yet — it can take up to 2 hours. | An Exchange administrator, by [How to give the application access](/en/admin/entra/#mail-channels). |
+| *Microsoft 365 has no mailbox with this address.* | No mailbox has this address — or it is an alias. | Use the mailbox's primary address. |
+| *Microsoft 365 mail channels are turned off in the Entra settings.* | **Mail channels** is off, or the Entra connection is not working. | Whoever manages the Microsoft Entra ID app. |
+| *This mailbox already has a channel.* | Another channel uses the same mailbox, perhaps by another of its addresses. | Use that channel. |
+| *Microsoft 365 did not answer. Try again in a moment.* | Microsoft 365 was busy or unreachable. | Try again. |
+
+Adding, switching and verifying channels are limited to 30 a minute; past that,
+*Too many attempts. Wait a minute and try again.*
+
+### Switch an SMTP channel to Microsoft 365
+
+When the mailbox an SMTP channel sends from is a shared mailbox in Exchange Online, the
+channel can send through Microsoft 365 instead, keeping its conversations, its address
+and its **Default** mark. On its row, choose **Switch to Microsoft 365**; the dialog
+warns *The SMTP settings are deleted. To go back you enter them again.* — choose
+**Switch**. Vantigo checks the mailbox as when adding one, with the same messages, and
+the row's provider reads **Microsoft 365**: "Channel switched — The channel now sends
+through Microsoft 365." The action is shown only while Microsoft 365 is available.
+
+**There is no button to go back.** The channels page cannot switch a channel back to
+SMTP; an administrator can, through the API, by sending the channel's SMTP settings
+again with the password ([Switching provider](/en/reference/communications/#switching-provider)).
+
+### Verify and deactivate
+
+Per channel, **Verify** checks that the channel can send: for SMTP it connects to the
+server with the stored credentials, for Microsoft 365 it checks the mailbox again, and
+it reports "Channel verified — The channel connection is valid." When it fails,
+*Channel not verified* says why — for Microsoft 365 with the messages above, or *The
+address now belongs to another mailbox in Microsoft 365.* **Deactivate** keeps the
+channel but stops sending: a reply in a conversation on an inactive channel is refused
+until **Activate** switches it back on.
 
 There is no per-user restriction on a channel. Anyone who can reply in the Inbox
 replies from the channel the conversation belongs to, so who can use a channel is

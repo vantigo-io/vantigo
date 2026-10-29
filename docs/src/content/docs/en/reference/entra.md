@@ -1,6 +1,6 @@
 ---
 title: "Microsoft Entra ID module"
-description: "Microsoft Entra ID as Staff's identity provider: the connection to one tenant, its client secrets in the plural and the connection test; the status and its reasons, read by Staff with no network call; the account rules; the guarded Graph client and its limits; the user lifecycle per step — prepared disabled, enabled on the day with the hire date, the licences and a Temporary Access Pass, kept in step, disabled with the leaver's steps, soft-deleted — with the Graph calls and the codes; the account's photo, converted to Graph's JPEG and written or cleared; the address rule; the pass; the sensitive actions and role_missing; Staff's groups in the tenant — the six traits and the cached licences, the create, or the adoption an entra:manage holder confirms, with the service principal as an owner, the team, the members by $ref, the delete or the retirement; connecting existing users — the directory search and the exact matches, read through contracts.SSOConnections; the Outlook connection — the switch and its status, the redirect URI, the certain account read from Staff, the flow with its two cookies, the states and the revision guard, the delegated token, its refresh and its reconnects, CAE and cp1, closing and entra-outlook-sweep; the permissions the module does not use, a leftover application Calendars.ReadWrite among them; the mailbox calendar the module fills for the calendar's Outlook sync, every call on the person's own delegated token — the status rule, the account check, the removals a closing connection serves, ErrConnectionNeeded and Connections, the Graph calls and $batch, the marker, the all-day zones, the reads of the default calendar's delta and the marker, the write-back's reads of the copies' versions and of events whole, and the refusals; the events, the permission, the refusals and the endpoints."
+description: "Microsoft Entra ID as Staff's identity provider: the connection to one tenant, its client secrets in the plural and the connection test; the status and its reasons, read by Staff with no network call; the account rules; the guarded Graph client and its limits; the user lifecycle per step — prepared disabled, enabled on the day with the hire date, the licences and a Temporary Access Pass, kept in step, disabled with the leaver's steps, soft-deleted — with the Graph calls and the codes; the account's photo, converted to Graph's JPEG and written or cleared; the address rule; the pass; the sensitive actions and role_missing; Staff's groups in the tenant — the six traits and the cached licences, the create, or the adoption an entra:manage holder confirms, with the service principal as an owner, the team, the members by $ref, the delete or the retirement; connecting existing users — the directory search and the exact matches, read through contracts.SSOConnections; the Outlook connection — the switch and its status, the redirect URI, the certain account read from Staff, the flow with its two cookies, the states and the revision guard, the delegated token, its refresh and its reconnects, CAE and cp1, closing and entra-outlook-sweep; the permissions the module does not use, a leftover application Calendars.ReadWrite among them; the mailbox calendar the module fills for the calendar's Outlook sync, every call on the person's own delegated token — the status rule, the account check, the removals a closing connection serves, ErrConnectionNeeded and Connections, the Graph calls and $batch, the marker, the all-day zones, the reads of the default calendar's delta and the marker, the write-back's reads of the copies' versions and of events whole, and the refusals; the mail channels Communications sends through — the switch and its status, tenant_wide, the channel mailboxes the module fills for Communications on the application's token, Check, Send through sendMail or a MIME draft, MaxMessage and Forget; the events, the permission, the refusals and the endpoints."
 sources:
   - apps/server/internal/entra
   - apps/entra/frontend
@@ -12,6 +12,7 @@ sources:
   - apps/server/internal/db/migrations/00085_entra_mailbox_subscriptions.sql
   - apps/server/internal/db/migrations/00088_entra_outlook_connect.sql
   - apps/server/internal/db/migrations/00089_entra_outlook_connections.sql
+  - apps/server/internal/db/migrations/00090_entra_mail_channels.sql
 ---
 The Microsoft Entra ID module connects one installation to one Microsoft Entra ID tenant
 and keeps the accounts of the people Staff registers in it: created disabled ahead of
@@ -62,6 +63,12 @@ record names an account the module manages connects their own Outlook once, on
 **Settings → Connections**, and the module holds their delegated refresh token, sealed,
 until they disconnect, leave or the switch is turned off. The calendar's Outlook sync
 runs on that connection, with the person's delegated token, and on nothing else.
+
+And it fills **the channel mailboxes** for Communications ([mail
+channels](#mail-channels)): behind the **Mail channels** switch and on the application's
+own token, scoped in Exchange Online to the channel mailboxes, it checks a shared mailbox
+for a Microsoft 365 channel and sends the channel's mail from it, in the single-provider
+slot `ChannelMailbox` ([module boundaries](/en/contributing/module-boundaries/) rule 15).
 
 ## The schema
 
@@ -167,6 +174,15 @@ the guard of every write) and the two stamps. `ux_entra_outlook_connections_user
 `user_id` `WHERE state <> 'closing'` holds **one live connection per person**, a closing
 one beside it allowed; `ix_entra_outlook_connections_changed` serves reads by
 `changed_at`. Its down drops the table: everyone connects again.
+
+`00090_entra_mail_channels.sql` adds **`connection.mail_channels`** (`boolean`, false by
+default), the [Mail channels switch](#the-mail-channels-switch), and
+**`channel_mailboxes`**, every mailbox [`Check`](#check) resolved for Communications:
+`object_id` (`uuid`, the primary key, the mailbox's object id), `address` (320, its
+primary SMTP address, lower case) and `checked_at` (the last `Check` that reached it).
+The rows are shared mailboxes, never `accounts`; the module sends only from one listed
+here, and [`Forget`](#forget) deletes it. Its down drops the table and the column; the
+channels then find no mailbox to send from.
 
 The down migration drops the schema with everything in it — the connection, the sealed
 secrets, any pass not yet revealed and the trail. Nothing in the tenant is touched: the
@@ -366,8 +382,11 @@ earlier setup, say, or wider than needed. **It is a warning, never a status**: t
 connection stays `connected` whatever it lists, and the module's page shows it on the
 **Status** card in an orange notice with the list. An application `Calendars.ReadWrite`
 left from an earlier setup, when the calendar's sync still wrote with it, is listed here
-like any other: nothing uses it any more. In this release the mail roles (`Mail.*`) and `full_access_as_app` count as
-unexpected too, since nothing in the module uses them yet. The test audits each as an
+like any other: nothing uses it any more. **The mail roles** — `Mail.Read`,
+`Mail.ReadBasic`, `Mail.ReadBasic.All`, `Mail.ReadWrite`, `Mail.Send` and
+`full_access_as_app` — are listed here **only while the [Mail channels
+switch](#the-mail-channels-switch) is off**; while it is on they are `mailChannels`'
+`tenant_wide` instead, and not reported twice. The test audits each listed one as an
 `unexpected:<permission>` code after the `missing:` ones.
 
 ## The status and its reasons
@@ -477,9 +496,12 @@ Staff's worker calls:
   each answered whole may outgrow 1 MiB, and a page of its [delta](#the-reads), read
   through 16 MiB, since fifty events are answered whole — subject, an HTML body,
   attendees — which the module must read past; a larger one is refused.
-- **Bodies are JSON** (`get`, `post`, `patch`, `put`, `del`) but for the photo's, which
-  `putRaw` sends as it is with its own media type (`image/jpeg`), under the same rules —
-  the throttle, the one retry of a 5xx, the 401's fresh token.
+- **Bodies are JSON** (`get`, `post`, `patch`, `put`, `del`) but for two: the photo's,
+  which `putRaw` sends as it is with its own media type (`image/jpeg`), and a [channel
+  mailbox's](#send) MIME, which `postRaw` posts base64-encoded as `text/plain` — under
+  the same rules, the throttle, the 401's fresh token, and the one retry of a 5xx but
+  where the call says `noRetry`: `sendMail`, a draft's create and its send are never
+  retried by the client, since Exchange may have taken the message.
 - **Graph's errors** (`{ error: { code, message, details } }`) are mapped to a
   sentinel or a reported code by the status, the code and the first detail's code (a
   taken UPN is `ObjectConflict` there); of the message the client reads one fact
@@ -2019,6 +2041,150 @@ bucket; Graph retries a 429), and the body is capped at 1 MiB.
 were turned off is Graph's until it lapses or is deleted — and `lastNotificationAt`, when
 there is one, is the last notification, to within a minute.
 
+## Mail channels
+
+The module fills the single-provider slot `ChannelMailbox` (`contracts.ChannelMailbox`,
+`channel_mailbox.go`) for Communications' [Microsoft 365
+channels](/en/reference/communications/#microsoft-365): an Exchange Online **shared
+mailbox** a channel sends from, reached through the [Graph client](#the-graph-client)
+with the **application's own token** — never a person's — and scoped to the channel
+mailboxes by **Exchange RBAC for Applications** (`Application Mail Full Access`,
+`Application MailboxSettings.Read`), not by an Entra consent over every mailbox (Outlook
+connection and Microsoft 365 mail design M10, M11). Communications is the authority on
+which mailboxes are channels; the module answers only for a mailbox its `Check` resolved
+and recorded ([module boundaries](/en/contributing/module-boundaries/) rule 15).
+`Key()` is `entra`, a channel's provider value; `DisplayName()` is *Microsoft 365*.
+Nothing here is recorded in [`entra.events`](#the-events): the channels' writes are
+Communications'. In this release the slot **sends only**: nothing reads a channel
+mailbox yet.
+
+### The Mail channels switch
+
+`entra.connection.mail_channels` (migration `00090_entra_mail_channels.sql`, false by
+default) is the switch **Mail channels: let Communications send and receive through
+Exchange Online shared mailboxes** on [the account rules](#the-account-rules) —
+`mailChannels` in `PUT /connection/settings` (`entra:manage`, audited
+`entra.settings.changed` with `mailChannels`). Its label speaks of receiving, which is
+not built: in this release a channel only sends. It is not a [required
+permission](#the-required-permissions) of the connection. **Turning it off closes
+nothing**: there is no per-person state; the channels' sends are refused as unavailable
+and retried on the outbox's backoff until their attempts end
+([Communications](/en/reference/communications/#delivery-semantics)).
+
+`GET /connection` answers it as `mailChannels: {enabled, status, reason?,
+servicePrincipalId?}`, the status decided in this order:
+
+| `status` | When |
+| --- | --- |
+| `off` | The switch is off. |
+| `unavailable` | On, but the connection is not `connected`; `reason` is the connection's `statusReason`, when it has one. |
+| `tenant_wide` | On and `connected`, and the last test's token held any of `Mail.Read`, `Mail.ReadBasic`, `Mail.ReadBasic.All`, `Mail.ReadWrite`, `Mail.Send` or `full_access_as_app`. |
+| `ready` | Otherwise. |
+
+**`tenant_wide` is a warning, never a block.** Exchange adds the RBAC scope's grants to
+Entra's — an unscoped `Mail.Send` consented in Entra and a scoped one in Exchange are a
+union, and the union reaches every mailbox — so a mail role granted in the app
+registration defeats the scope; the channels still work. The module's page and
+Communications' channels page say so in an orange line. While the switch is on the mail
+roles are not listed in [`permissionsUnexpected`](#the-permissions-the-module-does-not-use).
+**What the test cannot see**: it reads only a Graph token's `roles`, so
+`full_access_as_app`, a role of the *Office 365 Exchange Online* resource, never shows
+there (it is listed for completeness), and neither does an RBAC for Applications
+assignment. `ready` therefore means "not tenant-wide in the token", not "reaches the
+mailboxes": [`Check`](#check) proves the reach, mailbox by mailbox.
+
+`servicePrincipalId` is the application's service principal's object id
+(`connection.service_principal_id`, read by the test from the token's `oid`), answered
+once a test has read it, so the page fills `New-ServicePrincipal -ObjectId` in [the
+administration guide's commands](/en/admin/entra/#mail-channels).
+
+### Status
+
+`Status` reads the connection's row and the secrets, never the network:
+`unavailable` with the reason `switch_off` while the switch is off; `available` while the
+connection is `connected` — with the reason `tenant_wide` (`contracts.MailboxTenantWide`)
+when the [status above](#the-mail-channels-switch) would say so; else `unavailable` with
+the connection's reason, or its status when it names none. There is no `cleanup` state
+for mail. `Check` and `Send` ask it first, and answer `ErrMailboxUnavailable` when it is
+not available, or when no tenant, client or usable secret is set up to fetch a token.
+
+### Check
+
+`Check(address)` resolves an address to a mailbox the application reaches, on the
+application's token. An address that is not a bare address — empty, over 320 bytes, with
+one of `/ \ ? # %`, white space or a control character, a display name, or anything
+`net/mail` would rewrite — is `ErrMailboxUnknown` **before any call**. Then three reads:
+
+1. `GET /users/{address}?$select=id,mail,userPrincipalName,displayName,accountEnabled` —
+   Graph's path takes an object id or a **user principal name**, not a mail address; an
+   address beginning with `$` goes by the key form, `/users('{address}')`, its quotes
+   doubled. On a 404, `GET /users?$filter=mail eq '{address}'` (quotes doubled) with the
+   same `$select`, which must answer **exactly one** user, else `ErrMailboxUnknown`.
+   `User.Read.All` is enough, and the required `User.ReadWrite.All` covers it.
+2. `GET /users/{id}/mailboxSettings/userPurpose`: `Shared` is `userPurpose = shared`.
+   Needs `MailboxSettings.Read`, which `Application MailboxSettings.Read` grants in the
+   scope. A disabled account alone does not make a mailbox shared — a leaver's personal
+   mailbox is disabled too — so nothing falls back to `accountEnabled`.
+3. `GET /users/{id}/mailFolders/inbox?$select=id`: proves the scope's `Application Mail
+   Full Access` reaches the mailbox. `sendMail` itself cannot be probed without sending.
+
+The refusals: **403** on any read is `ErrMailboxDenied` — outside the RBAC scope, or one
+of the two roles missing; a **404** with a mailbox-gone code (`MailboxNotEnabledForRESTAPI`,
+`ErrorInvalidUser`, `ErrorNonExistentMailbox`, `Request_ResourceNotFound`) on the second
+or third is `ErrMailboxGone`; throttling and any other failure pass as a failure to
+retry. On reach, the mailbox is recorded — `UpsertChannelMailbox(object_id, address,
+checked_at)` in [`entra.channel_mailboxes`](#the-schema) — and `Check` answers the object
+id and the primary SMTP address (`mail`, else the user principal name), both lower case,
+the display name and `Shared`. It answers a personal mailbox too; Communications accepts
+only shared ones. The log line names the tenant, the object id and `Shared`, never the
+address or Graph's words.
+
+### Send
+
+`Send(mailbox, mime, bcc)` sends a whole RFC 5322 message from a mailbox. Before any
+call: a mailbox that is not a row of `channel_mailboxes` is `ErrMailboxUnknown`, so
+Communications can never point it at a mailbox no `Check` resolved; MIME over
+**`MaxMessage()`, 3 000 000 bytes** (`graphMaxMIMEBytes`), is `contracts.ErrMailTooLarge`;
+and `Status` must be available. The MIME is posted **base64-encoded** as `text/plain`,
+through the client's `postRaw` with **`noRetry`**: a 5xx is not retried by the client, so
+a message Exchange may have taken is not sent twice by it — the outbox's retry is the
+only one, at least once as SMTP is.
+
+- **No blind copies**: `POST /users/{id}/sendMail`, answered 202. Exchange saves it in
+  the mailbox's Sent Items. Graph's MIME `sendMail` is reported not to honour a `Bcc:`
+  header, so it is never used for one.
+- **Blind copies**: the MIME, rendered with a `Bcc:` header, is created as a **draft** in
+  the shared mailbox — `POST /users/{id}/messages`, 201, which Graph documents to read
+  the `To`, `CC`, `BCC` and `Subject` headers of a MIME draft. Its `bccRecipients` must
+  hold every address in `bcc`, compared without regard to case; if one is missing the
+  draft is deleted and nothing is sent (a failure to retry). Then `POST
+  /users/{id}/messages/{draft id}/send`, 202. A failed send deletes the draft
+  best-effort (`DELETE …/messages/{id}`, its own 30 seconds past the caller's end, a
+  failure logged by the tenant alone). A crash between the two calls can leave a draft
+  in the mailbox's Drafts.
+
+The refusals: **403** is `ErrMailboxDenied`; **404** with a mailbox-gone code
+`ErrMailboxGone`; **413** `ErrMailTooLarge`; anything else — a 400, throttling, a 5xx —
+a failure, which the outbox retries. `Application Mail Full Access` holds `Mail.Send` and
+`Mail.ReadWrite`, so both paths are in the scope.
+
+**The size.** 3 000 000 bytes of MIME is 4 000 000 bytes of base64 body, Graph's "about
+4 MB" for a message posted whole — a figure Microsoft states normatively only for S/MIME
+drafts; whether the limit counts the base64 body or the decoded MIME is **not verified**.
+A larger message would need a draft with upload sessions, not built.
+
+**Not verified on a real tenant**: that Exchange keeps the message's own `Message-ID` on
+a MIME `sendMail` or a MIME draft — no Microsoft page says so — and that a draft's
+`Bcc:` header reaches its blind copies. The pull request's real-tenant checklist settles
+both.
+
+### Forget
+
+`Forget(mailbox)` deletes the mailbox's `channel_mailboxes` row, so nothing is sent from
+it until another `Check`. Idempotent: a mailbox not recorded, or not an id, is done.
+Communications calls it after a channel goes back to SMTP — there is no delete of a
+channel.
+
 ## The events
 
 Every write the module makes, in the tenant or to its own connection, is a row in
@@ -2132,8 +2298,18 @@ AADSTS code, answers `GET /me` for a delegated token, and makes a user's next Gr
 answer a claims challenge. As Graph does, it lets a delegated token reach only its own
 user's mailbox — another user's, `$batch` sub-requests included, is 403
 `ErrorAccessDenied` — and records a subscription's creator; and it refuses the
-**application's** token on every mailbox route and on `/subscriptions` (403), so a
-mailbox test that reached Graph on the application's token fails. It is wired through
+**application's** token on every calendar and event route and on `/subscriptions` (403), so a
+calendar test that reached Graph on the application's token fails. **The mail routes**
+are the channel mailboxes', reached with the application's token or a delegated one for
+that very user: a user is found by its id or its user principal name (one beginning
+with `$` only by the key form `/users('…')`), `GET /users` takes `$filter=mail eq '…'`,
+`mailboxSettings/userPurpose` answers `shared` for a user marked `Shared`, the Inbox
+answers its id, `sendMail` takes base64 MIME as `text/plain` (400
+`ErrorMimeContentInvalidBase64String` when it does not decode, 413 over 4 000 000 bytes
+of body) and records it with no Bcc, and a MIME draft answers the `bccRecipients` its
+`Bcc:` header names — none when told to drop them — and is sent or deleted, a send told
+to fail answering 5xx. A user marked `MailboxDenied` is 403 `ErrorAccessDenied` on every
+mail route (outside the RBAC scope), `NoMailbox` 404 `MailboxNotEnabledForRESTAPI`. It is wired through
 `modtest.WithTransport`, so the module's real client runs against it. It lives under the
 module's own package and only the module's tests import it.
 

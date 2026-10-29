@@ -1,6 +1,6 @@
 ---
 title: Microsoft Entra ID
-description: Å koble Vantigo til en Microsoft Entra ID-leietaker slik at kontoene Ansatte gir, lages der — appregistreringen, klienthemmeligheten, de åtte applikasjonstillatelsene og rollen User Administrator, administratorsamtykket, policyen for midlertidig tilgangspass, kontoreglene, innlogging og klargjøring; Outlook-tilkoblingen — omdirigerings-URI-en på APP_URL, de delegerte tillatelsene og administratorsamtykket, bryteren, å verifisere ved å koble til selv, å slå den av, hva som skjer med en persons tilkobling og entra-outlook-sweep, og hva som kan gå galt; varselet om tillatelser Vantigo ikke bruker; kalendersynkronisering på hver persons egen Outlook-tilkobling — forutsetningene, å verifisere med en tilkoblet person, hvilke postbokser, å fjerne en tidligere versjons applikasjonstillatelse Calendars.ReadWrite og tildelingen i RBAC for Applications, bryteren av, en frakobling og kopiene til en som slutter som blir liggende i postboksen, og endringsvarsler; hva stegene for en som slutter gjør, og hva sletting mister; Ansattes grupper i leietakeren, applikasjonen som eier, å bekrefte en gruppe Vantigo ikke opprettet og hva en arkivert gruppe blir til; rotasjon av hemmeligheter; den merkede testen mot en ekte leietaker; og hva hver årsakskode betyr.
+description: Å koble Vantigo til en Microsoft Entra ID-leietaker slik at kontoene Ansatte gir, lages der — appregistreringen, klienthemmeligheten, de åtte applikasjonstillatelsene og rollen User Administrator, administratorsamtykket, policyen for midlertidig tilgangspass, kontoreglene, innlogging og klargjøring; Outlook-tilkoblingen — omdirigerings-URI-en på APP_URL, de delegerte tillatelsene og administratorsamtykket, bryteren, å verifisere ved å koble til selv, å slå den av, hva som skjer med en persons tilkobling og entra-outlook-sweep, og hva som kan gå galt; varselet om tillatelser Vantigo ikke bruker; kalendersynkronisering på hver persons egen Outlook-tilkobling — forutsetningene, å verifisere med en tilkoblet person, hvilke postbokser, å fjerne en tidligere versjons applikasjonstillatelse Calendars.ReadWrite og tildelingen i RBAC for Applications, bryteren av, en frakobling og kopiene til en som slutter som blir liggende i postboksen, og endringsvarsler; e-postkanaler — bryteren, kommandoene for RBAC for Applications som siden fyller inn, å fjerne en Mail-tillatelse for hele leietakeren, å verifisere med Test-ServicePrincipalAuthorization og en kanal, hurtigbufferen, å slå dem av og hva som kan gå galt; hva stegene for en som slutter gjør, og hva sletting mister; Ansattes grupper i leietakeren, applikasjonen som eier, å bekrefte en gruppe Vantigo ikke opprettet og hva en arkivert gruppe blir til; rotasjon av hemmeligheter; den merkede testen mot en ekte leietaker; og hva hver årsakskode betyr.
 sidebar:
   order: 46
 sources:
@@ -18,6 +18,7 @@ sources:
   - apps/server/internal/entra/mailbox_notifications_endpoint.go
   - apps/server/internal/entra/outlook.go
   - apps/server/internal/entra/outlook_sweep.go
+  - apps/server/internal/entra/channel_mailbox.go
 ---
 
 Microsoft Entra ID-modulen lager kontoene til personene Ansatte registrerer, i
@@ -116,7 +117,9 @@ kan bruke to om du vil.
    - `Organization.Read.All`
 
    Disse åtte er alle: [kalendersynkronisering](#kalendersynkronisering) trenger ingen
-   applikasjonstillatelse, siden den kjører på hver persons egen Outlook-tilkobling.
+   applikasjonstillatelse, siden den kjører på hver persons egen Outlook-tilkobling, og
+   [e-postkanaler](#mail-channels) får sine i Exchange Online, avgrenset til
+   postboksene sine, ikke her.
 2. Velg **Grant admin consent for** organisasjonen deres, og bekreft. Statusen til hver
    tillatelse blir *Granted*. `User.ReadWrite.All` dekker også personens bilde, som
    Vantigo skriver til kontoen: ingen ytterligere tillatelse eller samtykke.
@@ -145,8 +148,10 @@ igjen. En applikasjonstillatelse `Calendars.ReadWrite` igjen fra en tidligere ve
 da kalendersynkroniseringen skrev med den, er blant dem
 ([kalendersynkronisering](#kalendersynkronisering)). Det er bare et varsel —
 tilkoblingen forblir **Tilkoblet** — og testen
-registrerer hver som *en tillatelse Vantigo ikke bruker* i de siste hendelsene. I denne
-versjonen er e-posttillatelsene (`Mail.*`) og `full_access_as_app` blant dem.
+registrerer hver som *en tillatelse Vantigo ikke bruker* i de siste hendelsene.
+E-posttillatelsene (`Mail.*`) er blant dem mens [e-postkanaler](#mail-channels) er av;
+mens de er på, viser linjen for **E-postkanaler** dem i stedet, som tilgang til alle
+postbokser i leietakeren.
 
 ### 4. Sett kontoreglene
 
@@ -534,6 +539,140 @@ personens kopier ryddes bort (et som Microsoft nekter å slette, får gå ut på
   som mangler. Bak en proxy, sett `TRUSTED_PROXY_HOPS` og `TRUSTED_PROXY_CIDRS` slik at
   Microsofts adresser skilles fra proxyens ([Videresendte headere og
   HTTPS](/nb/admin/authentication/#videresendte-headere-og-https)).
+
+<a id="mail-channels"></a>
+
+## E-postkanaler
+
+**E-postkanaler** lar Kommunikasjon sende et teams e-post fra en **delt postboks** i
+Exchange Online — `post@`, `support@`, `faktura@` — som en kanal ([brukerveiledningen](/nb/user/communications/#sett-opp-en-kanal)).
+Vantigo når disse postboksene med **applikasjonens egen tilgang**, ikke en persons, og
+den tilgangen gis i **Exchange Online med RBAC for Applications**, avgrenset til
+postboksene du merker — ikke med `Mail.*`-tillatelser i appregistreringen, som ville nådd
+hver postboks i leietakeren. Det er av som standard.
+
+I denne versjonen **sender en kanal bare**: meldingen sendes fra den delte postboksen og
+ligger i **Sendte elementer** der, men ingenting i postboksen leses inn i Vantigo ennå.
+Etiketten på bryteren sier allerede *sende og motta*; mottak kommer senere. Hvordan
+modulen sender, står i [referansen](/en/reference/entra/#mail-channels).
+
+### Forutsetninger for e-postkanaler
+
+- Tilkoblingen er satt opp og **Tilkoblet** ([ovenfor](#koble-til-leietakeren)): testen
+  dens leser applikasjonens **objekt-ID** under **Enterprise applications**, som
+  kommandoene trenger. Kommunikasjon-modulen er slått på.
+- Postboksene er **delte postbokser** i Exchange Online. En persons postboks avvises som
+  kanal.
+- Du kan kjøre **Exchange Online PowerShell** (`Connect-ExchangeOnline`, fra modulen
+  `ExchangeOnlineManagement`) som **Exchange-administrator** i Entra, eller som medlem av
+  **Organization Management** i Exchange.
+- `CustomAttribute10` er ledig på disse postboksene — kommandoene merker
+  kanalpostboksene med den. Bruker noe annet den, velg et annet av de femten, og endre
+  både `Set-Mailbox` og filteret i omfanget.
+
+### Slå på e-postkanaler
+
+1. På modulsiden, i steg **4 Sett kontoreglene**, under **E-postkanaler**, slå på
+   **E-postkanaler: la Kommunikasjon sende og motta gjennom delte postbokser i Exchange
+   Online**, og velg **Lagre kontoreglene**. Alle med `entra:manage` kan gjøre det.
+2. Under bryteren viser **Kommandoer for Exchange Online PowerShell** seks kommandoer med
+   applikasjonens **applikasjons-ID** og **objekt-ID** fylt inn. Står det *Test
+   tilkoblingen først*, velg **Test tilkoblingen** i steg 3 (en eier) og kom tilbake:
+   plassholderne `<applikasjons-ID>` og `<objekt-ID>` fylles inn når en test har lest
+   dem. Kopier kommandoene med kopieringsknappen.
+3. Kjør dem i rekkefølge i Exchange Online PowerShell, og bytt ut `post@firma.no` med
+   adressen til en delt postboks:
+
+   ```powershell
+   New-ServicePrincipal -AppId <applikasjons-ID> -ObjectId <objekt-ID> -DisplayName "Vantigo"
+   Set-Mailbox post@firma.no -CustomAttribute10 "Vantigo"
+   New-ManagementScope -Name "Vantigo mail channels" -RecipientRestrictionFilter "CustomAttribute10 -eq 'Vantigo'"
+   New-ManagementRoleAssignment -App <applikasjons-ID> -Role "Application Mail Full Access" -CustomResourceScope "Vantigo mail channels"
+   New-ManagementRoleAssignment -App <applikasjons-ID> -Role "Application MailboxSettings.Read" -CustomResourceScope "Vantigo mail channels"
+   Test-ServicePrincipalAuthorization -Identity <applikasjons-ID> -Resource post@firma.no
+   ```
+
+   - `New-ServicePrincipal` gjør applikasjonen kjent for Exchange. `-ObjectId` er
+     objekt-ID-en under **Enterprise applications**, ikke den under **App
+     registrations** — siden fyller inn den riktige.
+   - `Set-Mailbox … -CustomAttribute10 "Vantigo"` merker én postboks. **Kjør den én gang
+     for hver delte postboks** en kanal skal bruke, nå eller senere; omfanget følger
+     merket.
+   - `New-ManagementScope` er settet av merkede postbokser.
+   - De to `New-ManagementRoleAssignment` gir, bare innenfor det omfanget, **Application
+     Mail Full Access** (lese, skrive og sende) og **Application MailboxSettings.Read**
+     (for å skille en delt postboks fra en persons).
+4. **Fjern alle e-posttillatelser for hele leietakeren.** I registreringens **API
+   permissions**, fjern hver applikasjonstillatelse `Mail.Read`, `Mail.ReadBasic`,
+   `Mail.ReadBasic.All`, `Mail.ReadWrite` eller `Mail.Send` (og `full_access_as_app` under
+   *Office 365 Exchange Online*), og velg så **Test tilkoblingen** i steg 3. Exchange
+   legger omfangets tildelinger sammen med Entras: et samtykke i registreringen når hver
+   postboks uansett hva omfanget sier.
+
+### Verifiser e-postkanaler
+
+1. `Test-ServicePrincipalAuthorization` (den siste kommandoen) svarer én linje per rolle:
+   **`InScope` er `True`** for både *Application Mail Full Access* og *Application
+   MailboxSettings.Read* på postboksen. Den leser Exchanges egne tildelinger, ikke
+   samtykkene i registreringen, og forsinkes ikke av hurtigbufferen nedenfor.
+2. På modulsiden sier linjen under bryteren **Klar: applikasjonen har ingen
+   e-posttillatelse for hele leietakeren.**
+3. I Kommunikasjon, legg til postboksen som kanal: **Kanaler** › **Legg til kanal**,
+   leverandøren **Microsoft 365**, adressen ([brukerveiledningen](/nb/user/communications/#sett-opp-en-kanal)).
+   Vantigo sjekker den da — adressen slått opp, postboksen delt, innboksen nåbar — og
+   kanalen opprettes aktiv. **Bekreft** på raden sjekker igjen når som helst.
+
+**Exchange bruker fra 30 minutter til 2 timer** på å ta i bruk en ny tildeling eller en
+nymerket postboks i applikasjonens tilgang. Til da avvises kanalen som utenfor omfanget,
+selv om testen i punkt 1 sier `InScope`; vent og prøv igjen.
+
+### Slå av e-postkanaler
+
+Slå av bryteren og lagre. Ingenting slettes: kanalene blir stående, Microsoft 365 tilbys
+ikke lenger for nye, og e-post som venter på å sendes fra en Microsoft 365-kanal, avvises
+som utilgjengelig og prøves igjen — åtte forsøk i løpet av noen minutter — før den gis
+opp og telles som feilet. Slås bryteren på igjen før e-posten gis opp, sendes den.
+Tildelingene i Exchange blir stående til du fjerner dem
+(`Remove-ManagementRoleAssignment`, `Remove-ManagementScope` og `Set-Mailbox …
+-CustomAttribute10 $null`).
+
+### Hva som kan gå galt med e-postkanaler
+
+- **Linjen under bryteren sier *Applikasjonen har tilgang til alle postboksene i
+  leietakeren…*** (`tenant_wide`, oransje, også på siden **Kanaler** i Kommunikasjon).
+  Tokenet fra siste test hadde en `Mail.*`-tillatelse gitt i registreringen. Kanalene
+  virker — det er et varsel — men omfanget begrenser ingenting så lenge samtykket står.
+  Fjern det (punkt 4) og test igjen. Testen kan ikke se `full_access_as_app` eller en
+  tildeling i Exchange, så sjekk dem selv.
+- **Å legge til en kanal sier at postboksen er utenfor det applikasjonen har tilgang
+  til** (`mailbox_denied`). Postboksen er ikke merket, filteret i omfanget passer ikke
+  merket, en av de to rollene mangler, eller endringen er ikke tatt i bruk ennå. Kjør
+  `Test-ServicePrincipalAuthorization -Identity <applikasjons-ID> -Resource <adresse>`:
+  er begge rollene `InScope`, vent på hurtigbufferen; ellers merk postboksen eller legg
+  til tildelingen som mangler.
+- **Å legge til en kanal sier at det er en personlig postboks** (`personal_mailbox`).
+  Bare delte postbokser kan være kanaler. Gjør postboksen om til delt i Exchange, eller
+  bruk en delt.
+- **Å legge til en kanal sier at Microsoft 365 ikke har noen postboks med adressen**
+  (`mailbox_unknown`). Ingen bruker har den som brukerhovednavn eller primær
+  e-postadresse — et alias blir kanskje ikke funnet — eller postboksen er borte. Bruk
+  postboksens primære adresse.
+- **Microsoft 365 tilbys ikke i Kommunikasjon**, eller å legge til sier at
+  e-postkanalene er slått av (`mail_channels_off`). Bryteren er av, tilkoblingen er ikke
+  **Tilkoblet** (linjen under bryteren sier *Venter på tilkoblingen* med årsaken), eller
+  Entra-modulen er ikke slått på.
+- **En melding på en Microsoft 365-kanal ble gitt opp med en gang.** Utboksen stopper
+  etter ett forsøk når postboksen er utenfor omfanget, borte eller ikke lenger kjent for
+  Vantigo, eller meldingen er større enn Graph tar imot; koden står i meldingens
+  feilhendelse og i loggen (`mailbox_denied`, `mailbox_gone`, `mailbox_unknown`,
+  `too_large`). Rett omfanget eller postboksen, og send på nytt.
+- **Eksklusive administrasjonsomfang** i Exchange begrenser ikke en applikasjons tilgang,
+  og et omfang filtrert på gruppemedlemskap (`MemberOfGroup`) teller bare direkte
+  medlemmer; attributtfilteret ovenfor unngår begge deler.
+- **Ikke verifisert mot en ekte leietaker ennå**: at Exchange beholder Vantigos egen
+  `Message-ID` på en melding sendt på denne måten, og at en blindkopi (Bcc) når
+  mottakeren. Begge står på versjonens sjekkliste; til da, sjekk overskriftene i én
+  melding og én blindkopi etter at den første kanalen er satt opp.
 
 ## Kontoer Vantigo ikke opprettet
 
