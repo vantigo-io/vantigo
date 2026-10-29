@@ -179,3 +179,13 @@ LIMIT @row_limit;
 -- and found enabled. Bookkeeping like used_at: it leaves revision alone.
 UPDATE entra.outlook_connections SET account_checked_at = @now::timestamptz
 WHERE object_id = @object_id;
+
+-- name: ListOutlookConnectionChanges :many
+-- ListOutlookConnectionChanges is what the mailbox calendar's Connections
+-- answers (design M9): the connections whose state moved after since,
+-- oldest first, at most row_limit. Through ix_entra_outlook_connections_changed.
+-- A refresh, a forgotten token and the bookkeeping move no changed_at.
+SELECT object_id, state, changed_at FROM entra.outlook_connections
+WHERE changed_at > @since::timestamptz
+ORDER BY changed_at, object_id
+LIMIT @row_limit::integer;

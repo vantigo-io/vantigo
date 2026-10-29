@@ -377,7 +377,7 @@ func (c *graphClient) del(ctx context.Context, cred graphCredential, path string
 // behaviour exactly: challenged answers nil, so a 401 drops the token and
 // retries once with a fresh one. The person's delegated token
 // (outlook_token.go) answers a continuous access evaluation claims
-// challenge with connectionNeeded instead.
+// challenge with contracts.ErrConnectionNeeded instead.
 type tokenSource interface {
 	token(ctx context.Context) (string, error)
 	dropped()

@@ -75,6 +75,16 @@ import (
 // would have sent, which Notified answers once its At is after since, oldest
 // first, at most contracts.MailboxNoticesMax.
 //
+// Its connections are the person's own (Outlook connection design M9):
+// SetConnection makes every call naming a mailbox answer
+// contracts.ConnectionNeededError with a reason, except the removals —
+// DeleteCalendar, Find, Unwatch, and Apply when every op is a delete — while
+// the reason is closing and SetConnectionToken says the token is held; a
+// removal on a closing connection with no token, or on none
+// (not_connected), answers ErrMailboxGone. ChangeConnection records a
+// change of a connection, which Connections answers once its At is after
+// since, oldest first, at most contracts.ConnectionChangesMax.
+//
 // Its refusals are the contract's: while the status is
 // contracts.MailboxUnavailable every call but Status answers
 // ErrMailboxUnavailable; under contracts.MailboxCleanup EnsureCalendar
@@ -112,6 +122,9 @@ type FakeMailboxCalendar struct {
 	watches   []string                  // every mailbox Watch was asked for, in order
 	unwatches []string                  // every mailbox Unwatch was asked for, in order
 	notices   []contracts.MailboxNotice // Notify's
+	conns     map[string]string         // by mailbox: SetConnection's reason
+	tokens    map[string]bool           // by mailbox: SetConnectionToken's
+	changes   []contracts.ConnectionChange
 }
 
 // fakeDeltaLink is what a link Delta answered stands for: the window the
@@ -208,6 +221,8 @@ func NewFakeMailboxCalendar() *FakeMailboxCalendar {
 		links:     map[string]*fakeDeltaLink{},
 		expired:   map[string]bool{},
 		watched:   map[string]bool{},
+		conns:     map[string]string{},
+		tokens:    map[string]bool{},
 	}
 }
 
@@ -252,9 +267,41 @@ func (f *FakeMailboxCalendar) SetMailboxError(mailbox string, err error) {
 	}
 }
 
+// SetConnection makes every call naming mailbox answer
+// contracts.ConnectionNeededError with reason — contracts.ConnectionNotConnected,
+// contracts.ConnectionClosingReason or a reconnect code — the removals
+// excepted as the type says, or (reason "") clears it.
+func (f *FakeMailboxCalendar) SetConnection(mailbox, reason string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if reason == "" {
+		delete(f.conns, mailbox)
+	} else {
+		f.conns[mailbox] = reason
+	}
+}
+
+// SetConnectionToken says whether mailbox's closing connection still holds
+// its token, so its removals are served (held) or answer ErrMailboxGone.
+func (f *FakeMailboxCalendar) SetConnectionToken(mailbox string, held bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.tokens[mailbox] = held
+}
+
+// ChangeConnection records that mailbox's connection moved to state
+// (contracts.ConnectionActive, ConnectionReconnect or ConnectionClosing) at
+// at, for Connections to answer. It changes no call's answer: SetConnection
+// does.
+func (f *FakeMailboxCalendar) ChangeConnection(mailbox, state string, at time.Time) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.changes = append(f.changes, contracts.ConnectionChange{Mailbox: mailbox, State: state, At: at})
+}
+
 // FailWith makes every later call of method ("Status", "EnsureCalendar",
 // "DeleteCalendar", "Apply", "Find", "Delta", "Marked", "Versions",
-// "Events", "Watch", "Unwatch", "Notified") answer err, or (err nil) clears
+// "Events", "Watch", "Unwatch", "Notified", "Connections") answer err, or (err nil) clears
 // it. A Watch or an Unwatch refused so changes nothing.
 func (f *FakeMailboxCalendar) FailWith(method string, err error) {
 	f.mu.Lock()
@@ -699,7 +746,7 @@ func (f *FakeMailboxCalendar) Find(_ context.Context, mailbox, calendarID string
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.calls = append(f.calls, MailboxCall{Method: "Find", Mailbox: mailbox, CalendarID: calendarID, From: from})
-	if err := f.refusal("Find", mailbox, true); err != nil {
+	if err := f.refusal("Find", mailbox, true, nil); err != nil {
 		return nil, err
 	}
 	m := f.mailbox(mailbox)
@@ -734,7 +781,7 @@ func (f *FakeMailboxCalendar) Delta(_ context.Context, mailbox string, from, to 
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.calls = append(f.calls, MailboxCall{Method: "Delta", Mailbox: mailbox, From: from, To: to, Link: link})
-	if err := f.refusal("Delta", mailbox, false); err != nil {
+	if err := f.refusal("Delta", mailbox, false, nil); err != nil {
 		return contracts.MailboxDelta{}, err
 	}
 	m := f.mailbox(mailbox)
@@ -770,7 +817,7 @@ func (f *FakeMailboxCalendar) Marked(_ context.Context, mailbox string, eventIDs
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.calls = append(f.calls, MailboxCall{Method: "Marked", Mailbox: mailbox, EventIDs: slices.Clone(eventIDs)})
-	if err := f.refusal("Marked", mailbox, false); err != nil {
+	if err := f.refusal("Marked", mailbox, false, nil); err != nil {
 		return nil, err
 	}
 	if len(eventIDs) > contracts.MailboxMarkedMax {
@@ -795,7 +842,7 @@ func (f *FakeMailboxCalendar) Versions(_ context.Context, mailbox, calendarID st
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.calls = append(f.calls, MailboxCall{Method: "Versions", Mailbox: mailbox, CalendarID: calendarID, From: from, To: to})
-	if err := f.refusal("Versions", mailbox, false); err != nil {
+	if err := f.refusal("Versions", mailbox, false, nil); err != nil {
 		return contracts.MailboxVersions{}, err
 	}
 	m := f.mailbox(mailbox)
@@ -834,7 +881,7 @@ func (f *FakeMailboxCalendar) Events(_ context.Context, mailbox, calendarID stri
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.calls = append(f.calls, MailboxCall{Method: "Events", Mailbox: mailbox, CalendarID: calendarID, EventIDs: slices.Clone(eventIDs)})
-	if err := f.refusal("Events", mailbox, false); err != nil {
+	if err := f.refusal("Events", mailbox, false, nil); err != nil {
 		return contracts.MailboxEventsRead{}, err
 	}
 	if len(eventIDs) > contracts.MailboxMarkedMax {
@@ -907,6 +954,29 @@ func (f *FakeMailboxCalendar) Notified(_ context.Context, since time.Time) ([]co
 	slices.SortStableFunc(out, func(a, b contracts.MailboxNotice) int { return a.At.Compare(b.At) })
 	if len(out) > contracts.MailboxNoticesMax {
 		out = out[:contracts.MailboxNoticesMax]
+	}
+	return out, nil
+}
+
+// Connections answers the changes ChangeConnection recorded whose At is
+// after since, oldest first, at most contracts.ConnectionChangesMax; its
+// From is since in Calls.
+func (f *FakeMailboxCalendar) Connections(_ context.Context, since time.Time) ([]contracts.ConnectionChange, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.calls = append(f.calls, MailboxCall{Method: "Connections", From: since})
+	if err := f.fail["Connections"]; err != nil {
+		return nil, err
+	}
+	out := []contracts.ConnectionChange{}
+	for _, c := range f.changes {
+		if c.At.After(since) {
+			out = append(out, c)
+		}
+	}
+	slices.SortStableFunc(out, func(a, b contracts.ConnectionChange) int { return a.At.Compare(b.At) })
+	if len(out) > contracts.ConnectionChangesMax {
+		out = out[:contracts.ConnectionChangesMax]
 	}
 	return out, nil
 }
@@ -1027,12 +1097,14 @@ func busyEvent(event FakeBusyEvent) contracts.MailboxEvent {
 // unknown or refused, a FailWith. f.mu is held.
 func (f *FakeMailboxCalendar) begin(method, mailbox, calendarID string, ops []contracts.MailboxOp, cleanupOK bool) error {
 	f.calls = append(f.calls, MailboxCall{Method: method, Mailbox: mailbox, CalendarID: calendarID, Ops: slices.Clone(ops)})
-	return f.refusal(method, mailbox, cleanupOK)
+	return f.refusal(method, mailbox, cleanupOK, ops)
 }
 
-// refusal is the refusal a call of method naming mailbox meets, if any.
-// f.mu is held.
-func (f *FakeMailboxCalendar) refusal(method, mailbox string, cleanupOK bool) error {
+// refusal is the refusal a call of method naming mailbox meets, if any:
+// the status, the mailbox unknown, its connection (a removal is a call
+// cleanup allows, Apply's only when every op of ops is a delete), its
+// refusal, a FailWith. f.mu is held.
+func (f *FakeMailboxCalendar) refusal(method, mailbox string, cleanupOK bool, ops []contracts.MailboxOp) error {
 	switch f.status.State {
 	case contracts.MailboxAvailable:
 	case contracts.MailboxCleanup:
@@ -1044,6 +1116,18 @@ func (f *FakeMailboxCalendar) refusal(method, mailbox string, cleanupOK bool) er
 	}
 	if f.unknown[mailbox] {
 		return contracts.ErrMailboxUnknown
+	}
+	if reason := f.conns[mailbox]; reason != "" {
+		removal := cleanupOK && (method != "Apply" || !slices.ContainsFunc(ops, func(op contracts.MailboxOp) bool {
+			return op.Kind != contracts.MailboxOpDelete
+		}))
+		switch {
+		case removal && reason == contracts.ConnectionClosingReason && f.tokens[mailbox]:
+		case removal && (reason == contracts.ConnectionClosingReason || reason == contracts.ConnectionNotConnected):
+			return contracts.ErrMailboxGone
+		default:
+			return &contracts.ConnectionNeededError{Reason: reason}
+		}
 	}
 	if err := f.refusals[mailbox]; err != nil {
 		return err
