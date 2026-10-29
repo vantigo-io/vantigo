@@ -94,9 +94,11 @@ type ChannelResponse struct {
 	IsActive       bool               `json:"isActive"`
 	IsDefault      bool               `json:"isDefault"`
 
-	// Mailbox The Microsoft 365 mailbox of an entra channel, by its object id; null for SMTP. Always answered; optional in the schema only because the recorded exchanges predate it.
+	// Mailbox The Microsoft 365 mailbox of an entra channel, by its object id, and what closing a conversation does in Outlook (onClose — none, read or move — and folder when move); null for SMTP. Always answered; optional in the schema only because the recorded exchanges predate it.
 	Mailbox *struct {
-		Id string `json:"id"`
+		Folder  *string `json:"folder"`
+		Id      string  `json:"id"`
+		OnClose string  `json:"onClose"`
 	} `json:"mailbox"`
 	Provider string `json:"provider"`
 
@@ -309,7 +311,16 @@ type ConversationPatchResponse struct {
 type CreateChannelRequest struct {
 	Address     *string `json:"address"`
 	DisplayName *string `json:"displayName,omitempty"`
-	IsDefault   *bool   `json:"isDefault,omitempty"`
+
+	// Folder The folder in the Microsoft 365 mailbox a closed conversation's inbound messages are moved to when onClose is move (default "Handled in Vantigo").
+	Folder *string `json:"folder,omitempty"`
+
+	// ImportWindow How far back a Microsoft 365 channel imports when it is created: from_now (default), last_30_days or last_90_days. Ignored for SMTP.
+	ImportWindow *string `json:"importWindow,omitempty"`
+	IsDefault    *bool   `json:"isDefault,omitempty"`
+
+	// OnClose What closing a conversation on a Microsoft 365 channel does to its inbound messages in Outlook: none (default), read or move.
+	OnClose *string `json:"onClose,omitempty"`
 
 	// Provider smtp, with the smtp block, or entra: a Microsoft 365 shared mailbox found by its address through the mail channels provider, with no credentials.
 	Provider *string                       `json:"provider,omitempty"`
@@ -386,6 +397,15 @@ type SuppressionResponse struct {
 
 // SwitchChannelProviderRequest defines model for SwitchChannelProviderRequest.
 type SwitchChannelProviderRequest struct {
+	// Folder The folder in the Microsoft 365 mailbox a closed conversation's inbound messages are moved to when onClose is move (default "Handled in Vantigo").
+	Folder *string `json:"folder,omitempty"`
+
+	// ImportWindow How far back the switched channel imports: from_now (default), last_30_days or last_90_days.
+	ImportWindow *string `json:"importWindow,omitempty"`
+
+	// OnClose What closing a conversation on the switched channel does to its inbound messages in Outlook: none (default), read or move.
+	OnClose *string `json:"onClose,omitempty"`
+
 	// Provider entra, the only provider a channel is switched to.
 	Provider string `json:"provider"`
 }
@@ -400,8 +420,14 @@ type TagResponse struct {
 // UpdateChannelRequest defines model for UpdateChannelRequest.
 type UpdateChannelRequest struct {
 	DisplayName *string `json:"displayName,omitempty"`
-	IsActive    *bool   `json:"isActive,omitempty"`
-	IsDefault   *bool   `json:"isDefault,omitempty"`
+
+	// Folder The folder in the Microsoft 365 mailbox a closed conversation's inbound messages are moved to when onClose is move (default "Handled in Vantigo").
+	Folder    *string `json:"folder,omitempty"`
+	IsActive  *bool   `json:"isActive,omitempty"`
+	IsDefault *bool   `json:"isDefault,omitempty"`
+
+	// OnClose What closing a conversation on a Microsoft 365 channel does to its inbound messages in Outlook: none, read or move.
+	OnClose *string `json:"onClose,omitempty"`
 
 	// Provider The channel's own provider when omitted. smtp with a full smtp block, the password included, switches a Microsoft 365 channel back to SMTP; entra is refused here (POST /channels/{id}/provider switches to it).
 	Provider *string                       `json:"provider,omitempty"`

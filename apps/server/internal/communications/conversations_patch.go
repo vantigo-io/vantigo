@@ -160,25 +160,55 @@ func (s *server) PatchCommunicationsConversationsById(ctx context.Context, req g
 		suggestedCustomerReasoning = nil
 	}
 
-	if touchedCustomer {
-		if err := q.DeleteConversationCustomerCandidates(ctx, req.Id); err != nil {
-			return nil, fmt.Errorf("communications: clear conversation candidates: %w", err)
+	var updated store.UpdateConversationFieldsRow
+	var candidateIDs []int32
+	if err := s.withTx(ctx, func(ctx context.Context, txq *store.Queries) error {
+		if touchedCustomer {
+			if err := txq.DeleteConversationCustomerCandidates(ctx, req.Id); err != nil {
+				return fmt.Errorf("communications: clear conversation candidates: %w", err)
+			}
 		}
-	}
 
-	updated, err := q.UpdateConversationFields(ctx, store.UpdateConversationFieldsParams{
-		Status: finalStatus, AssignedUserID: assignedUserID, CustomerID: customerID,
-		CustomerAssociationSource: customerAssociationSource, SuggestedCustomerID: suggestedCustomerID,
-		SuggestedCustomerConfidence: suggestedCustomerConfidence, SuggestedCustomerReasoning: suggestedCustomerReasoning,
-		ID: req.Id,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("communications: update conversation: %w", err)
-	}
+		var uerr error
+		updated, uerr = txq.UpdateConversationFields(ctx, store.UpdateConversationFieldsParams{
+			Status: finalStatus, AssignedUserID: assignedUserID, CustomerID: customerID,
+			CustomerAssociationSource: customerAssociationSource, SuggestedCustomerID: suggestedCustomerID,
+			SuggestedCustomerConfidence: suggestedCustomerConfidence, SuggestedCustomerReasoning: suggestedCustomerReasoning,
+			ID: req.Id,
+		})
+		if uerr != nil {
+			return fmt.Errorf("communications: update conversation: %w", uerr)
+		}
 
-	candidateIDs, err := q.ListConversationCandidateIDs(ctx, req.Id)
-	if err != nil {
-		return nil, fmt.Errorf("communications: list conversation candidates: %w", err)
+		if conv.Status != "closed" && finalStatus == "closed" {
+			ch, cerr := txq.GetChannelSettingsByID(ctx, conv.ChannelID)
+			if cerr != nil && !errors.Is(cerr, pgx.ErrNoRows) {
+				return fmt.Errorf("communications: get conversation channel: %w", cerr)
+			}
+			if cerr == nil && ch.Provider == providerEntra {
+				ms, serr := channelSettingsOf(ch.Settings)
+				if serr != nil {
+					return serr
+				}
+				if ms.OnClose == onCloseRead || ms.OnClose == onCloseMove {
+					now := s.deps.Clock()
+					if err := txq.UpsertMailboxMark(ctx, store.UpsertMailboxMarkParams{
+						ConversationID: req.Id, Operation: ms.OnClose, Folder: ms.Folder, Now: now,
+					}); err != nil {
+						return fmt.Errorf("communications: enqueue mailbox mark: %w", err)
+					}
+				}
+			}
+		}
+
+		var lerr error
+		candidateIDs, lerr = txq.ListConversationCandidateIDs(ctx, req.Id)
+		if lerr != nil {
+			return fmt.Errorf("communications: list conversation candidates: %w", lerr)
+		}
+		return nil
+	}); err != nil {
+		return nil, err
 	}
 	if candidateIDs == nil {
 		candidateIDs = []int32{}

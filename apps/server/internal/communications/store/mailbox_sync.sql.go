@@ -46,6 +46,63 @@ func (q *Queries) ClaimChannelSync(ctx context.Context, arg ClaimChannelSyncPara
 	return result.RowsAffected(), nil
 }
 
+const claimMailboxMark = `-- name: ClaimMailboxMark :execrows
+UPDATE communications.mailbox_marks
+SET status = 'processing',
+    lease_id = $1,
+    lease_until = $2,
+    attempts = attempts + 1
+WHERE conversation_id = $3
+  AND (((status = 'pending' OR status = 'retry') AND next_attempt_at <= $4)
+       OR (status = 'processing' AND lease_until < $4))
+`
+
+type ClaimMailboxMarkParams struct {
+	LeaseID        *string
+	LeaseUntil     *time.Time
+	ConversationID uuid.UUID
+	Now            time.Time
+}
+
+// Claims one due mailbox_marks job by conditional UPDATE, incrementing attempts.
+func (q *Queries) ClaimMailboxMark(ctx context.Context, arg ClaimMailboxMarkParams) (int64, error) {
+	result, err := q.db.Exec(ctx, claimMailboxMark,
+		arg.LeaseID,
+		arg.LeaseUntil,
+		arg.ConversationID,
+		arg.Now,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const completeMailboxMark = `-- name: CompleteMailboxMark :execrows
+UPDATE communications.mailbox_marks
+SET status = 'completed',
+    completed_at = $1,
+    last_error = NULL,
+    lease_id = NULL,
+    lease_until = NULL
+WHERE conversation_id = $2 AND lease_id = $3
+`
+
+type CompleteMailboxMarkParams struct {
+	Now            *time.Time
+	ConversationID uuid.UUID
+	LeaseID        *string
+}
+
+// Marks a claimed mailbox_marks job completed under its lease.
+func (q *Queries) CompleteMailboxMark(ctx context.Context, arg CompleteMailboxMarkParams) (int64, error) {
+	result, err := q.db.Exec(ctx, completeMailboxMark, arg.Now, arg.ConversationID, arg.LeaseID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const countChannelSyncItemFailure = `-- name: CountChannelSyncItemFailure :one
 UPDATE communications.channel_sync
 SET failing_tries = CASE WHEN failing_item = $1 THEN failing_tries + 1 ELSE 1 END,
@@ -115,6 +172,39 @@ func (q *Queries) FailChannelSync(ctx context.Context, arg FailChannelSyncParams
 		arg.NextSyncAt,
 		arg.Now,
 		arg.ChannelID,
+		arg.LeaseID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const failMailboxMark = `-- name: FailMailboxMark :execrows
+UPDATE communications.mailbox_marks
+SET status = $1,
+    last_error = $2,
+    next_attempt_at = $3,
+    lease_id = NULL,
+    lease_until = NULL
+WHERE conversation_id = $4 AND lease_id = $5
+`
+
+type FailMailboxMarkParams struct {
+	Status         string
+	LastError      *string
+	NextAttemptAt  time.Time
+	ConversationID uuid.UUID
+	LeaseID        *string
+}
+
+// Marks a claimed mailbox_marks job for retry or terminal failure under its lease.
+func (q *Queries) FailMailboxMark(ctx context.Context, arg FailMailboxMarkParams) (int64, error) {
+	result, err := q.db.Exec(ctx, failMailboxMark,
+		arg.Status,
+		arg.LastError,
+		arg.NextAttemptAt,
+		arg.ConversationID,
 		arg.LeaseID,
 	)
 	if err != nil {
@@ -207,6 +297,47 @@ func (q *Queries) GetChannelSyncForCycle(ctx context.Context, channelID uuid.UUI
 	return i, err
 }
 
+const getMailboxMarkForCycle = `-- name: GetMailboxMarkForCycle :one
+SELECT m.conversation_id, m.operation, m.folder, m.status, m.attempts, m.lease_id,
+       cv.channel_id, c.provider AS channel_provider, c.is_active AS channel_is_active, c.settings AS channel_settings
+FROM communications.mailbox_marks m
+JOIN communications.conversations cv ON cv.id = m.conversation_id
+JOIN communications.channels c ON c.id = cv.channel_id
+WHERE m.conversation_id = $1
+`
+
+type GetMailboxMarkForCycleRow struct {
+	ConversationID  uuid.UUID
+	Operation       string
+	Folder          *string
+	Status          string
+	Attempts        int32
+	LeaseID         *string
+	ChannelID       uuid.UUID
+	ChannelProvider string
+	ChannelIsActive bool
+	ChannelSettings []byte
+}
+
+// Reads the claimed mailbox_marks row with its conversation's channel.
+func (q *Queries) GetMailboxMarkForCycle(ctx context.Context, conversationID uuid.UUID) (GetMailboxMarkForCycleRow, error) {
+	row := q.db.QueryRow(ctx, getMailboxMarkForCycle, conversationID)
+	var i GetMailboxMarkForCycleRow
+	err := row.Scan(
+		&i.ConversationID,
+		&i.Operation,
+		&i.Folder,
+		&i.Status,
+		&i.Attempts,
+		&i.LeaseID,
+		&i.ChannelID,
+		&i.ChannelProvider,
+		&i.ChannelIsActive,
+		&i.ChannelSettings,
+	)
+	return i, err
+}
+
 const holdChannelSync = `-- name: HoldChannelSync :execrows
 UPDATE communications.channel_sync
 SET error = 'provider_unavailable', next_sync_at = $1,
@@ -236,9 +367,36 @@ func (q *Queries) HoldChannelSync(ctx context.Context, arg HoldChannelSyncParams
 	return result.RowsAffected(), nil
 }
 
+const holdMailboxMark = `-- name: HoldMailboxMark :execrows
+UPDATE communications.mailbox_marks
+SET status = 'retry',
+    last_error = 'provider_unavailable',
+    next_attempt_at = $1,
+    attempts = GREATEST(attempts - 1, 0),
+    lease_id = NULL,
+    lease_until = NULL
+WHERE conversation_id = $2 AND lease_id = $3
+`
+
+type HoldMailboxMarkParams struct {
+	NextAttemptAt  time.Time
+	ConversationID uuid.UUID
+	LeaseID        *string
+}
+
+// Holds a claimed mailbox_marks job when the mail channels provider is
+// unavailable, without spending the attempt.
+func (q *Queries) HoldMailboxMark(ctx context.Context, arg HoldMailboxMarkParams) (int64, error) {
+	result, err := q.db.Exec(ctx, holdMailboxMark, arg.NextAttemptAt, arg.ConversationID, arg.LeaseID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const insertChannelSync = `-- name: InsertChannelSync :one
 INSERT INTO communications.channel_sync (channel_id, folder, import_from, state, next_sync_at, updated_at)
-VALUES ($1, 'inbox', $2, 'pending', $2, $2)
+VALUES ($1, 'inbox', $2, 'pending', $3, $3)
 ON CONFLICT (channel_id) DO UPDATE
 SET folder = 'inbox', delta_link = NULL, import_from = excluded.import_from, state = 'pending',
     error = NULL, next_sync_at = excluded.next_sync_at, last_synced_at = NULL, attempts = 0,
@@ -249,15 +407,17 @@ RETURNING channel_id, folder, delta_link, import_from, state, error, next_sync_a
 `
 
 type InsertChannelSyncParams struct {
-	ChannelID uuid.UUID
-	Now       time.Time
+	ChannelID  uuid.UUID
+	ImportFrom time.Time
+	Now        time.Time
 }
 
 // A Microsoft 365 channel's row, written in the transaction that creates or
-// switches it: it receives from now, never its past. A row left from an
-// earlier switch is started afresh.
+// switches it: it receives from import_from (from_now, last_30_days or
+// last_90_days, M14/M17). A row left from an earlier switch is started
+// afresh.
 func (q *Queries) InsertChannelSync(ctx context.Context, arg InsertChannelSyncParams) (CommunicationsChannelSync, error) {
-	row := q.db.QueryRow(ctx, insertChannelSync, arg.ChannelID, arg.Now)
+	row := q.db.QueryRow(ctx, insertChannelSync, arg.ChannelID, arg.ImportFrom, arg.Now)
 	var i CommunicationsChannelSync
 	err := row.Scan(
 		&i.ChannelID,
@@ -278,6 +438,82 @@ func (q *Queries) InsertChannelSync(ctx context.Context, arg InsertChannelSyncPa
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const listConversationInboundProviderIDs = `-- name: ListConversationInboundProviderIDs :many
+SELECT r.provider_message_id
+FROM communications.inbound_receipts r
+JOIN communications.conversation_messages m ON m.id = r.message_id
+WHERE r.channel_id = $1
+  AND m.conversation_id = $2
+  AND m.direction = 'inbound'
+ORDER BY r.received_at ASC, r.id ASC
+`
+
+type ListConversationInboundProviderIDsParams struct {
+	ChannelID      uuid.UUID
+	ConversationID uuid.UUID
+}
+
+// Every imported inbound message's provider_message_id in the conversation,
+// oldest first.
+func (q *Queries) ListConversationInboundProviderIDs(ctx context.Context, arg ListConversationInboundProviderIDsParams) ([]string, error) {
+	rows, err := q.db.Query(ctx, listConversationInboundProviderIDs, arg.ChannelID, arg.ConversationID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var provider_message_id string
+		if err := rows.Scan(&provider_message_id); err != nil {
+			return nil, err
+		}
+		items = append(items, provider_message_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const markChannelSyncNotified = `-- name: MarkChannelSyncNotified :execrows
+UPDATE communications.channel_sync s
+SET notified = true,
+    next_sync_at = LEAST(s.next_sync_at, $1::timestamptz),
+    updated_at = $1::timestamptz
+FROM communications.channels c,
+(
+    SELECT lower(n.mailbox) AS mailbox, max(n.at) AS at
+    FROM (SELECT unnest($2::text[]) AS mailbox, unnest($3::timestamptz[]) AS at) AS n
+    GROUP BY lower(n.mailbox)
+) AS notice
+WHERE c.id = s.channel_id
+  AND c.provider = 'entra'
+  AND c.is_active
+  AND lower(c.settings->>'mailbox') = notice.mailbox
+  AND s.state IN ('active', 'pending')
+  AND s.attempts = 0
+  AND (s.last_synced_at IS NULL OR s.last_synced_at < notice.at)
+  AND (NOT s.notified OR s.next_sync_at > $1::timestamptz)
+`
+
+type MarkChannelSyncNotifiedParams struct {
+	Now       time.Time
+	Mailboxes []string
+	Ats       []time.Time
+}
+
+// MarkChannelSyncNotified sets notified = true and makes due at now the
+// active Microsoft 365 channels whose mailbox a cycle's change notices named
+// (M17): active or pending, not backing off (attempts = 0), and last synced
+// before the notice.
+func (q *Queries) MarkChannelSyncNotified(ctx context.Context, arg MarkChannelSyncNotifiedParams) (int64, error) {
+	result, err := q.db.Exec(ctx, markChannelSyncNotified, arg.Now, arg.Mailboxes, arg.Ats)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const renewChannelSyncLease = `-- name: RenewChannelSyncLease :execrows
@@ -364,6 +600,23 @@ func (q *Queries) SelectDueChannelSync(ctx context.Context, now time.Time) (uuid
 	return channel_id, err
 }
 
+const selectDueMailboxMark = `-- name: SelectDueMailboxMark :one
+SELECT conversation_id
+FROM communications.mailbox_marks
+WHERE ((status = 'pending' OR status = 'retry') AND next_attempt_at <= $1)
+   OR (status = 'processing' AND lease_until < $1)
+ORDER BY next_attempt_at ASC, conversation_id ASC
+LIMIT 1
+`
+
+// The first due mailbox_marks job.
+func (q *Queries) SelectDueMailboxMark(ctx context.Context, now time.Time) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, selectDueMailboxMark, now)
+	var conversation_id uuid.UUID
+	err := row.Scan(&conversation_id)
+	return conversation_id, err
+}
+
 const storeChannelSyncPage = `-- name: StoreChannelSyncPage :execrows
 UPDATE communications.channel_sync
 SET delta_link = $1,
@@ -407,4 +660,39 @@ func (q *Queries) StoreChannelSyncPage(ctx context.Context, arg StoreChannelSync
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const upsertMailboxMark = `-- name: UpsertMailboxMark :exec
+INSERT INTO communications.mailbox_marks
+    (conversation_id, operation, folder, status, attempts, next_attempt_at, queued_at)
+VALUES ($1, $2, $3, 'pending', 0, $4, $4)
+ON CONFLICT (conversation_id) DO UPDATE
+SET operation = excluded.operation,
+    folder = excluded.folder,
+    status = 'pending',
+    attempts = 0,
+    next_attempt_at = excluded.next_attempt_at,
+    queued_at = excluded.queued_at,
+    lease_id = NULL,
+    lease_until = NULL,
+    completed_at = NULL,
+    last_error = NULL
+`
+
+type UpsertMailboxMarkParams struct {
+	ConversationID uuid.UUID
+	Operation      string
+	Folder         *string
+	Now            time.Time
+}
+
+// Enqueues or resets a conversation's on-close Outlook mark job (M17).
+func (q *Queries) UpsertMailboxMark(ctx context.Context, arg UpsertMailboxMarkParams) error {
+	_, err := q.db.Exec(ctx, upsertMailboxMark,
+		arg.ConversationID,
+		arg.Operation,
+		arg.Folder,
+		arg.Now,
+	)
+	return err
 }

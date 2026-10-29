@@ -107,10 +107,11 @@ RETURNING failing_tries;
 
 -- name: InsertChannelSync :one
 -- A Microsoft 365 channel's row, written in the transaction that creates or
--- switches it: it receives from now, never its past. A row left from an
--- earlier switch is started afresh.
+-- switches it: it receives from import_from (from_now, last_30_days or
+-- last_90_days, M14/M17). A row left from an earlier switch is started
+-- afresh.
 INSERT INTO communications.channel_sync (channel_id, folder, import_from, state, next_sync_at, updated_at)
-VALUES (@channel_id, 'inbox', @now, 'pending', @now, @now)
+VALUES (@channel_id, 'inbox', @import_from, 'pending', @now, @now)
 ON CONFLICT (channel_id) DO UPDATE
 SET folder = 'inbox', delta_link = NULL, import_from = excluded.import_from, state = 'pending',
     error = NULL, next_sync_at = excluded.next_sync_at, last_synced_at = NULL, attempts = 0,
@@ -129,3 +130,116 @@ DELETE FROM communications.channel_sync WHERE channel_id = @channel_id;
 SELECT channel_id, state, error, last_synced_at
 FROM communications.channel_sync
 WHERE channel_id = ANY(@channel_ids::uuid[]);
+
+-- name: MarkChannelSyncNotified :execrows
+-- MarkChannelSyncNotified sets notified = true and makes due at now the
+-- active Microsoft 365 channels whose mailbox a cycle's change notices named
+-- (M17): active or pending, not backing off (attempts = 0), and last synced
+-- before the notice.
+UPDATE communications.channel_sync s
+SET notified = true,
+    next_sync_at = LEAST(s.next_sync_at, @now::timestamptz),
+    updated_at = @now::timestamptz
+FROM communications.channels c,
+(
+    SELECT lower(n.mailbox) AS mailbox, max(n.at) AS at
+    FROM (SELECT unnest(@mailboxes::text[]) AS mailbox, unnest(@ats::timestamptz[]) AS at) AS n
+    GROUP BY lower(n.mailbox)
+) AS notice
+WHERE c.id = s.channel_id
+  AND c.provider = 'entra'
+  AND c.is_active
+  AND lower(c.settings->>'mailbox') = notice.mailbox
+  AND s.state IN ('active', 'pending')
+  AND s.attempts = 0
+  AND (s.last_synced_at IS NULL OR s.last_synced_at < notice.at)
+  AND (NOT s.notified OR s.next_sync_at > @now::timestamptz);
+
+-- name: UpsertMailboxMark :exec
+-- Enqueues or resets a conversation's on-close Outlook mark job (M17).
+INSERT INTO communications.mailbox_marks
+    (conversation_id, operation, folder, status, attempts, next_attempt_at, queued_at)
+VALUES (@conversation_id, @operation, @folder, 'pending', 0, @now, @now)
+ON CONFLICT (conversation_id) DO UPDATE
+SET operation = excluded.operation,
+    folder = excluded.folder,
+    status = 'pending',
+    attempts = 0,
+    next_attempt_at = excluded.next_attempt_at,
+    queued_at = excluded.queued_at,
+    lease_id = NULL,
+    lease_until = NULL,
+    completed_at = NULL,
+    last_error = NULL;
+
+-- name: SelectDueMailboxMark :one
+-- The first due mailbox_marks job.
+SELECT conversation_id
+FROM communications.mailbox_marks
+WHERE ((status = 'pending' OR status = 'retry') AND next_attempt_at <= @now)
+   OR (status = 'processing' AND lease_until < @now)
+ORDER BY next_attempt_at ASC, conversation_id ASC
+LIMIT 1;
+
+-- name: ClaimMailboxMark :execrows
+-- Claims one due mailbox_marks job by conditional UPDATE, incrementing attempts.
+UPDATE communications.mailbox_marks
+SET status = 'processing',
+    lease_id = @lease_id,
+    lease_until = @lease_until,
+    attempts = attempts + 1
+WHERE conversation_id = @conversation_id
+  AND (((status = 'pending' OR status = 'retry') AND next_attempt_at <= @now)
+       OR (status = 'processing' AND lease_until < @now));
+
+-- name: GetMailboxMarkForCycle :one
+-- Reads the claimed mailbox_marks row with its conversation's channel.
+SELECT m.conversation_id, m.operation, m.folder, m.status, m.attempts, m.lease_id,
+       cv.channel_id, c.provider AS channel_provider, c.is_active AS channel_is_active, c.settings AS channel_settings
+FROM communications.mailbox_marks m
+JOIN communications.conversations cv ON cv.id = m.conversation_id
+JOIN communications.channels c ON c.id = cv.channel_id
+WHERE m.conversation_id = @conversation_id;
+
+-- name: ListConversationInboundProviderIDs :many
+-- Every imported inbound message's provider_message_id in the conversation,
+-- oldest first.
+SELECT r.provider_message_id
+FROM communications.inbound_receipts r
+JOIN communications.conversation_messages m ON m.id = r.message_id
+WHERE r.channel_id = @channel_id
+  AND m.conversation_id = @conversation_id
+  AND m.direction = 'inbound'
+ORDER BY r.received_at ASC, r.id ASC;
+
+-- name: CompleteMailboxMark :execrows
+-- Marks a claimed mailbox_marks job completed under its lease.
+UPDATE communications.mailbox_marks
+SET status = 'completed',
+    completed_at = @now,
+    last_error = NULL,
+    lease_id = NULL,
+    lease_until = NULL
+WHERE conversation_id = @conversation_id AND lease_id = @lease_id;
+
+-- name: FailMailboxMark :execrows
+-- Marks a claimed mailbox_marks job for retry or terminal failure under its lease.
+UPDATE communications.mailbox_marks
+SET status = @status,
+    last_error = @last_error,
+    next_attempt_at = @next_attempt_at,
+    lease_id = NULL,
+    lease_until = NULL
+WHERE conversation_id = @conversation_id AND lease_id = @lease_id;
+
+-- name: HoldMailboxMark :execrows
+-- Holds a claimed mailbox_marks job when the mail channels provider is
+-- unavailable, without spending the attempt.
+UPDATE communications.mailbox_marks
+SET status = 'retry',
+    last_error = 'provider_unavailable',
+    next_attempt_at = @next_attempt_at,
+    attempts = GREATEST(attempts - 1, 0),
+    lease_id = NULL,
+    lease_until = NULL
+WHERE conversation_id = @conversation_id AND lease_id = @lease_id;
