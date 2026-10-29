@@ -7,13 +7,16 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 )
 
-// This file is where the directory picker and the exact matches (directory.go)
-// reach identity: contracts.SSOConnections (deps.SSOConnections), the users
-// not yet connected and who already holds a directory account's keys. Every
-// call to it is made through one of the thin accessors below and through
-// nowhere else, so "what does the directory ask of identity, and when" has
-// one place to read the answer and one place to check it from — Staff's,
-// Calendar's and Planning's pattern.
+// This file is where the module reaches another: the directory picker and
+// the exact matches (directory.go) reach identity through
+// contracts.SSOConnections (deps.SSOConnections), the users not yet
+// connected and who already holds a directory account's keys; the Outlook
+// connection (outlook.go) reads Staff's contracts.Workforce
+// (deps.Workforce) for the caller's own directory account (module-boundaries
+// rule 12). Every call is made through one of the thin accessors below and
+// through nowhere else, so "what does the module ask of another, and when"
+// has one place to read the answer and one place to check it from —
+// Staff's, Calendar's and Planning's pattern.
 //
 // What is checked is the lock rule (module-boundaries rule 10): no call out
 // of the module is made inside one of its transactions. Identity reads
@@ -88,4 +91,18 @@ func (s *server) keyHolders(ctx context.Context, keys []contracts.DirectoryKey) 
 		return nil, nil
 	}
 	return s.deps.SSOConnections.KeyHolders(ctx, keys)
+}
+
+// workforceDirectoryAccount is the principal's own account in an external
+// directory (Outlook connection design M6; calendar Outlook sync design O3)
+// — the request's caller — nil when Staff is off or links them to none. It
+// answers only the principal's own account.
+func (s *server) workforceDirectoryAccount(ctx context.Context) (*contracts.DirectoryAccount, error) {
+	if err := noteContractCall(ctx, "Workforce.DirectoryAccount"); err != nil {
+		return nil, err
+	}
+	if s.deps.Workforce == nil {
+		return nil, nil
+	}
+	return s.deps.Workforce.DirectoryAccount(ctx)
 }
