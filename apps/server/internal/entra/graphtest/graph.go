@@ -34,8 +34,10 @@
 // pages Prefer sizes, its times in UTC when Prefer asks (mailbox_delta.go);
 // a subscription's create validates the webhook through Handshake, 400 when
 // it fails, 409 for a second one on the same resource, and the
-// subscriptions are renewed, deleted and listed in pages (subscriptions.go).
-// Every error
+// subscriptions are renewed, deleted and listed in pages (subscriptions.go);
+// a delegated authorization code and refresh grant, with its signed
+// id_token, its key set, GET /me and a CAE claims challenge
+// (authorize.go). Every error
 // body is Graph's
 // { "error": { "code", "message" } }, the token endpoint's OAuth's
 // { "error", "error_description" }.
@@ -167,6 +169,9 @@ type FakeGraph struct {
 	// SubscriptionPageSize is how many subscriptions a page of GET
 	// /subscriptions holds; 100 when zero.
 	SubscriptionPageSize int
+	// RefreshTokenBytes, when set, is the random bytes of a delegated
+	// grant's refresh token (authorize.go) in place of about 1.5 KB's.
+	RefreshTokenBytes int
 
 	mu            sync.Mutex
 	users         []*User
@@ -184,6 +189,8 @@ type FakeGraph struct {
 	// prefer is the Prefer header of the request being answered — a
 	// request's own inside a $batch.
 	prefer string
+	// auth is the authorization server's memory (authorize.go).
+	auth authState
 }
 
 // Domain is one of the tenant's domains.
@@ -498,7 +505,7 @@ func (g *FakeGraph) RoundTrip(req *http.Request) (*http.Response, error) {
 
 	var a answer
 	if req.URL.Host == TokenHost {
-		a = g.token(req, body)
+		a = g.loginHost(req, body)
 	} else {
 		a = g.api(req, body)
 	}
@@ -553,7 +560,8 @@ func (g *FakeGraph) now() time.Time {
 
 var tokenPath = regexp.MustCompile(`^/([^/]+)/oauth2/v2\.0/token$`)
 
-// token is the client credentials grant (research §3.5).
+// token is the client credentials grant (research §3.5), and the delegated
+// grants authorize.go answers.
 func (g *FakeGraph) token(req *http.Request, body []byte) answer {
 	oauth := func(status int, code, description string) answer {
 		return answer{status: status, body: map[string]any{"error": code, "error_description": description}}
@@ -569,6 +577,10 @@ func (g *FakeGraph) token(req *http.Request, body []byte) answer {
 	switch {
 	case g.TenantID != "" && !strings.EqualFold(m[1], g.TenantID):
 		return oauth(http.StatusBadRequest, "invalid_request", "AADSTS90002: Tenant not found.")
+	case form.Get("grant_type") == "authorization_code":
+		return g.authorizationCode(m[1], form)
+	case form.Get("grant_type") == "refresh_token":
+		return g.refreshToken(form)
 	case form.Get("grant_type") != "client_credentials":
 		return oauth(http.StatusBadRequest, "unsupported_grant_type", "AADSTS70003: The app requested an unsupported grant type.")
 	case form.Get("scope") != "https://graph.microsoft.com/.default":
@@ -639,6 +651,13 @@ func (g *FakeGraph) api(req *http.Request, body []byte) answer {
 	case !g.now().Before(expires):
 		return graphError(http.StatusUnauthorized, "InvalidAuthenticationToken", "Lifetime validation failed, the token is expired.")
 	}
+	path, ok := strings.CutPrefix(req.URL.Path, "/v1.0")
+	if !ok {
+		return graphError(http.StatusBadRequest, "BadRequest", "Invalid version.")
+	}
+	if a, ok := g.delegatedCall(token, req.Method, path); ok {
+		return a
+	}
 	if g.throttle > 0 {
 		g.throttle--
 		a := graphError(http.StatusTooManyRequests, "TooManyRequests", "Too many requests.")
@@ -649,10 +668,6 @@ func (g *FakeGraph) api(req *http.Request, body []byte) answer {
 		status := g.failNext[0]
 		g.failNext = g.failNext[1:]
 		return graphError(status, failureCode(status), "The fake was told to fail this call.")
-	}
-	path, ok := strings.CutPrefix(req.URL.Path, "/v1.0")
-	if !ok {
-		return graphError(http.StatusBadRequest, "BadRequest", "Invalid version.")
 	}
 	if req.Method == http.MethodPost && path == "/$batch" {
 		return g.batch(body)
