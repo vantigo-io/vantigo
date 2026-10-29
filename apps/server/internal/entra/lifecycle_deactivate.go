@@ -83,8 +83,8 @@ func (p *provisioner) Deactivate(ctx context.Context, actor contracts.Actor, ext
 			return contracts.ExternalAccount{}, err
 		}
 	}
-	// Disabled, the pass is of no use to anyone: cleared before any other
-	// step can fail.
+	// Disabled, the pass and the Outlook connection's token are of no use
+	// to anyone: cleared before any other step can fail.
 	now := p.client.now()
 	err = db.WithTx(ctx, p.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		q := s.q.WithTx(tx)
@@ -98,7 +98,10 @@ func (p *provisioner) Deactivate(ctx context.Context, actor contracts.Actor, ext
 		if err := q.ClearAccountPass(ctx, store.ClearAccountPassParams{Now: now, ObjectID: id}); err != nil {
 			return fmt.Errorf("entra: clear the pass: %w", err)
 		}
-		return nil
+		// The leaver's Outlook connection closes with its token forgotten
+		// (Outlook connection design M7): the steps below end the token
+		// before any clean-up could use it, and none of them may keep it.
+		return closeOutlook(ctx, q, now, actor, id, true, outlookClosedLeaver)
 	})
 	if err != nil {
 		return contracts.ExternalAccount{}, err
@@ -291,7 +294,8 @@ func (p *provisioner) removeGroups(ctx context.Context, s session, id uuid.UUID,
 
 // Delete soft-deletes a disabled user (contracts.IdentityProvisioner.Delete):
 // ErrExternalEnabled while Graph says it is enabled; the row marked deleted
-// and kept for the events. A user the tenant no longer holds is deleted
+// and kept for the events, its Outlook connection closed with its token
+// forgotten. A user the tenant no longer holds is deleted
 // already. An unconfirmed adoption is ErrExternalUnconfirmed, nothing
 // written.
 func (p *provisioner) Delete(ctx context.Context, actor contracts.Actor, externalID string) error {
@@ -301,6 +305,9 @@ func (p *provisioner) Delete(ctx context.Context, actor contracts.Actor, externa
 	s, u, id, row, err := p.openUser(ctx, externalID, contracts.ExternalSpec{}, true)
 	switch {
 	case errors.Is(err, errNoSuchUser):
+		// openUser answers no id with its error; the row is the external
+		// id's.
+		id, _ = objectID(externalID)
 		return p.markDeleted(ctx, actor, id)
 	case err != nil:
 		return err
@@ -326,12 +333,16 @@ func (p *provisioner) Delete(ctx context.Context, actor contracts.Actor, externa
 	if err := s.q.ClearAccountPass(ctx, store.ClearAccountPassParams{Now: p.client.now(), ObjectID: id}); err != nil {
 		return fmt.Errorf("entra: clear the pass: %w", err)
 	}
+	if err := closeOutlookIn(ctx, p.deps.Pool, s.q, p.client.now(), actor, id, true, outlookClosedDeleted); err != nil {
+		return err
+	}
 	_, err = p.settle(ctx, s, actor, actionUserDeleted, id, u.UserPrincipalName, stateDeleted, row.Reported, nil)
 	return err
 }
 
 // markDeleted records as deleted the row of a user the tenant answers 404
-// for, once: a row deleted already, or none, is left as it is.
+// for, once, closing its Outlook connection with its token forgotten: a row
+// deleted already, or none, is left as it is.
 func (p *provisioner) markDeleted(ctx context.Context, actor contracts.Actor, id uuid.UUID) error {
 	if id == uuid.Nil {
 		return nil
@@ -345,6 +356,9 @@ func (p *provisioner) markDeleted(ctx context.Context, actor contracts.Actor, id
 		return fmt.Errorf("entra: read the account: %w", err)
 	case row.State == stateDeleted:
 		return nil
+	}
+	if err := closeOutlookIn(ctx, p.deps.Pool, q, p.client.now(), actor, id, true, outlookClosedDeleted); err != nil {
+		return err
 	}
 	_, err = p.settle(ctx, session{q: q}, actor, actionUserDeleted, id, row.UserPrincipalName, stateDeleted, row.Reported, []string{"gone"})
 	return err

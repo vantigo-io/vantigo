@@ -36,16 +36,37 @@ const (
 	actionAdoptionConfirmed = "entra.account.adoption_confirmed"
 )
 
-// The Outlook connection's event actions (Outlook connection design M3, M7):
-// a person connected, disconnected, and a connection closed for another
-// reason, its code saying which (repointed: the person's account changed in
-// Staff). Never a token, a code from Microsoft's words, or an address beyond
-// the account's UPN.
+// The Outlook connection's event actions (Outlook connection design M3, M5,
+// M7): a person connected, disconnected; a connection Microsoft refused,
+// waiting for its person, its code the reason (expired, sign_in_again, mfa,
+// blocked, consent_missing); a connection closed for another reason, its
+// code saying which (leaver, deleted, disabled, switch_off, repointed: the
+// person's account changed in Staff); and a closing connection deleted by
+// entra-outlook-sweep. Never a token, a code from Microsoft's words, or an
+// address beyond the account's UPN.
 const (
 	actionOutlookConnected    = "entra.outlook.connected"
 	actionOutlookDisconnected = "entra.outlook.disconnected"
+	actionOutlookReconnect    = "entra.outlook.reconnect_needed"
 	actionOutlookClosed       = "entra.outlook.closed"
+	actionOutlookDeleted      = "entra.outlook.deleted"
 )
+
+// outlookSystemActor is the module's own system actor: what the Outlook
+// connection does with no person behind the request — a refresh Microsoft
+// refused, a connection closed on use or by the sweep, a spent one
+// deleted. Identity's audit never sees it, so it stays Entra's, beside
+// Staff's two that contracts.Actor knows.
+const outlookSystemActor = "system:entra-outlook"
+
+// outlookActor is outlookSystemActor as an actor.
+var outlookActor = contracts.Actor{System: outlookSystemActor}
+
+// validActor reports whether a names exactly one actor: one
+// contracts.Actor.Valid accepts, or the module's own outlookSystemActor.
+func validActor(a contracts.Actor) bool {
+	return a.Valid() || (a.UserID == nil && a.System == outlookSystemActor)
+}
 
 // The events list's bounds.
 const (
@@ -54,11 +75,11 @@ const (
 )
 
 // recordEvent appends one event at now by actor, which must name exactly one
-// user or system (contracts.ErrInvalidActor otherwise). objectID and upn are
+// user or system — validActor's (contracts.ErrInvalidActor otherwise). objectID and upn are
 // the user the write concerned, nil and "" on a connection's event; codes
 // are what it reported, codes only.
 func recordEvent(ctx context.Context, q *store.Queries, now time.Time, actor contracts.Actor, action string, objectID *uuid.UUID, upn string, codes []string) error {
-	if !actor.Valid() {
+	if !validActor(actor) {
 		return fmt.Errorf("entra: record %s: %w", action, contracts.ErrInvalidActor)
 	}
 	p := store.InsertEventParams{At: now, ActorUserID: actor.UserID, Action: action, ObjectID: objectID, Codes: codes}

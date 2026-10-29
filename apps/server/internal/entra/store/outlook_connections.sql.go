@@ -275,6 +275,43 @@ func (q *Queries) InsertOutlookConnection(ctx context.Context, arg InsertOutlook
 	return i, err
 }
 
+const listOutlookAccountChecks = `-- name: ListOutlookAccountChecks :many
+SELECT object_id FROM entra.outlook_connections
+WHERE state = 'reconnect'
+  AND (account_checked_at IS NULL OR account_checked_at + interval '1 day' < $1::timestamptz)
+ORDER BY account_checked_at NULLS FIRST, object_id
+LIMIT $2
+`
+
+type ListOutlookAccountChecksParams struct {
+	Now      time.Time
+	RowLimit int32
+}
+
+// ListOutlookAccountChecks is the connections waiting in reconnect whose
+// account entra-outlook-sweep has not read in the tenant for a day (design
+// M6): a person who never reconnects is still found once their account is
+// disabled or deleted. Oldest check first, at most row_limit.
+func (q *Queries) ListOutlookAccountChecks(ctx context.Context, arg ListOutlookAccountChecksParams) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, listOutlookAccountChecks, arg.Now, arg.RowLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var object_id uuid.UUID
+		if err := rows.Scan(&object_id); err != nil {
+			return nil, err
+		}
+		items = append(items, object_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const lockLiveOutlookConnectionByUser = `-- name: LockLiveOutlookConnectionByUser :one
 SELECT object_id, user_id, tenant_id, scopes, refresh_sealed, state, error_code, connected_at, refreshed_at, used_at, account_checked_at, changed_at, revision, created_at, updated_at FROM entra.outlook_connections WHERE user_id = $1 AND state <> 'closing' FOR UPDATE
 `
@@ -331,6 +368,23 @@ func (q *Queries) LockOutlookConnection(ctx context.Context, objectID uuid.UUID)
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const markOutlookAccountChecked = `-- name: MarkOutlookAccountChecked :exec
+UPDATE entra.outlook_connections SET account_checked_at = $1::timestamptz
+WHERE object_id = $2
+`
+
+type MarkOutlookAccountCheckedParams struct {
+	Now      time.Time
+	ObjectID uuid.UUID
+}
+
+// MarkOutlookAccountChecked records that the account was read in the tenant
+// and found enabled. Bookkeeping like used_at: it leaves revision alone.
+func (q *Queries) MarkOutlookAccountChecked(ctx context.Context, arg MarkOutlookAccountCheckedParams) error {
+	_, err := q.db.Exec(ctx, markOutlookAccountChecked, arg.Now, arg.ObjectID)
+	return err
 }
 
 const markOutlookReconnect = `-- name: MarkOutlookReconnect :execrows

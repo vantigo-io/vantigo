@@ -1406,3 +1406,70 @@ func TestLifecycle_NoPasswordPassOrSecretOutsideTheSealedColumns(t *testing.T) {
 		}
 	}
 }
+
+// The Outlook connection of a leaver (Outlook connection design M7): the
+// deactivate step closes it and forgets its token in the transaction that
+// records the account disabled, before any leaver's step can fail; a
+// connection closing already loses its token too.
+func TestDeactivate_ClosesTheOutlookConnectionAndForgetsItsToken(t *testing.T) {
+	t.Parallel()
+	l := newLifecycle(t)
+	spec := joiner("E-1")
+	id := l.prepare(t, spec).ExternalID
+	l.activate(t, id, spec)
+	oid := uuid.MustParse(id)
+	insertOutlookRow(t, l.h, oid, "active")
+
+	l.w.failOn("POST /revokeSignInSessions", http.StatusForbidden)
+	acc := l.deactivate(t, id, leaver(spec))
+	if !hasCode(acc.Reported, "leaver_step_failed:revoke_sessions") {
+		t.Fatalf("Deactivate answered %+v, want the step failed", acc)
+	}
+	if n := l.h.Count(t, `SELECT count(*) FROM entra.outlook_connections WHERE object_id = $1 AND state = 'closing' AND refresh_sealed IS NULL`, oid); n != 1 {
+		t.Error("the leaver's connection is not closed with its token forgotten")
+	}
+	if n := l.h.Count(t, `SELECT count(*) FROM entra.events WHERE action = 'entra.outlook.closed' AND object_id = $1 AND codes = '{leaver}' AND actor_system = 'system:staff-accounts'`, oid); n != 1 {
+		t.Errorf("%d closed events, want 1", n)
+	}
+
+	// Closing already, after a disconnect: the token goes all the same.
+	l.w.clear()
+	l.h.Exec(t, `UPDATE entra.outlook_connections SET refresh_sealed = '\x01' WHERE object_id = $1`, oid)
+	l.deactivate(t, id, leaver(spec))
+	if n := l.h.Count(t, `SELECT count(*) FROM entra.outlook_connections WHERE object_id = $1 AND refresh_sealed IS NULL`, oid); n != 1 {
+		t.Error("a closing connection kept its token through a leaver")
+	}
+	if n := l.h.Count(t, `SELECT count(*) FROM entra.events WHERE action = 'entra.outlook.closed'`); n != 1 {
+		t.Errorf("%d closed events, want the first close's alone", n)
+	}
+}
+
+// A deleted account's connection closes, its token forgotten: Delete's, and
+// a user the tenant no longer holds (markDeleted).
+func TestDelete_ClosesTheOutlookConnection(t *testing.T) {
+	t.Parallel()
+	l := newLifecycle(t)
+	ctx := context.Background()
+	spec := joiner("E-1")
+	id := l.prepare(t, spec).ExternalID
+	oid := uuid.MustParse(id)
+	insertOutlookRow(t, l.h, oid, "reconnect")
+	if err := l.p.Delete(ctx, staffActor, id); err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+	if n := l.h.Count(t, `SELECT count(*) FROM entra.outlook_connections WHERE object_id = $1 AND state = 'closing' AND refresh_sealed IS NULL`, oid); n != 1 {
+		t.Error("the deleted account's connection is not closed with its token forgotten")
+	}
+
+	gone := addAccount(t, l.h, "E-2", "ola@nordlys.no")
+	insertOutlookRow(t, l.h, gone, "active")
+	if err := l.p.Delete(ctx, staffActor, gone.String()); err != nil {
+		t.Fatalf("Delete of a user the tenant does not hold: %v", err)
+	}
+	if n := l.h.Count(t, `SELECT count(*) FROM entra.outlook_connections WHERE object_id = $1 AND state = 'closing' AND refresh_sealed IS NULL`, gone); n != 1 {
+		t.Error("a gone account's connection is not closed with its token forgotten")
+	}
+	if n := l.h.Count(t, `SELECT count(*) FROM entra.events WHERE action = 'entra.outlook.closed' AND codes = '{deleted}' AND actor_system = 'system:staff-accounts' AND object_id IN ($1, $2)`, oid, gone); n != 2 {
+		t.Errorf("%d closed events, want 2", n)
+	}
+}

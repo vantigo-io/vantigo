@@ -368,6 +368,42 @@ func (c *graphClient) del(ctx context.Context, cred graphCredential, path string
 	return c.do(ctx, cred, http.MethodDelete, path, nil, nil, opts...)
 }
 
+// tokenSource is where a call's bearer token comes from, and what a 401
+// does to it (Outlook connection design M5): token answers the token to
+// send; dropped forgets it after Graph refused it, before the one retry;
+// challenged reads a 401's headers first and answers an error to end the
+// call there, without the retry; tenant names the tenant in the client's
+// log lines. The application credential (credentialSource) is today's
+// behaviour exactly: challenged answers nil, so a 401 drops the token and
+// retries once with a fresh one. The person's delegated token
+// (outlook_token.go) answers a continuous access evaluation claims
+// challenge with connectionNeeded instead.
+type tokenSource interface {
+	token(ctx context.Context) (string, error)
+	dropped()
+	challenged(ctx context.Context, header http.Header) error
+	tenant() uuid.UUID
+}
+
+// credentialSource is the application credential cred as a tokenSource.
+type credentialSource struct {
+	c    *graphClient
+	cred graphCredential
+}
+
+func (s credentialSource) token(ctx context.Context) (string, error) { return s.c.token(ctx, s.cred) }
+func (s credentialSource) dropped()                                  { s.c.tokens.drop(s.cred) }
+func (s credentialSource) challenged(context.Context, http.Header) error {
+	return nil
+}
+func (s credentialSource) tenant() uuid.UUID { return s.cred.tenantID }
+
+// getAs reads path into into with src's token: getAs is get for a source
+// other than the application credential — the person's delegated token.
+func (c *graphClient) getAs(ctx context.Context, src tokenSource, path string, into any, opts ...callOption) error {
+	return c.doAs(ctx, src, http.MethodGet, path, nil, into, opts...)
+}
+
 // payload is a request's body: the bytes and their media type.
 type payload struct {
 	data        []byte
@@ -377,6 +413,11 @@ type payload struct {
 // do is one call to Graph with cred: body sent as JSON when not nil, a 2xx
 // answer decoded into into when not nil, under send's rules.
 func (c *graphClient) do(ctx context.Context, cred graphCredential, method, path string, body, into any, opts ...callOption) error {
+	return c.doAs(ctx, credentialSource{c: c, cred: cred}, method, path, body, into, opts...)
+}
+
+// doAs is do with src's token.
+func (c *graphClient) doAs(ctx context.Context, src tokenSource, method, path string, body, into any, opts ...callOption) error {
 	var p *payload
 	if body != nil {
 		data, err := json.Marshal(body)
@@ -385,7 +426,7 @@ func (c *graphClient) do(ctx context.Context, cred graphCredential, method, path
 		}
 		p = &payload{data: data, contentType: "application/json"}
 	}
-	return c.send(ctx, cred, method, path, p, into, opts...)
+	return c.sendAs(ctx, src, method, path, p, into, opts...)
 }
 
 // send is one call to Graph with cred: body sent when not nil, a 2xx
@@ -395,6 +436,13 @@ func (c *graphClient) do(ctx context.Context, cred graphCredential, method, path
 // cached token and is retried once with a fresh one. Any other answer is a
 // *graphError.
 func (c *graphClient) send(ctx context.Context, cred graphCredential, method, path string, body *payload, into any, opts ...callOption) error {
+	return c.sendAs(ctx, credentialSource{c: c, cred: cred}, method, path, body, into, opts...)
+}
+
+// sendAs is send with src's token: a 401 is first handed to
+// src.challenged, whose error ends the call; otherwise the token is dropped
+// and the call retried once, as send does.
+func (c *graphClient) sendAs(ctx context.Context, src tokenSource, method, path string, body *payload, into any, opts ...callOption) error {
 	once := slices.Contains(opts, noRetry)
 	words := !once && !slices.Contains(opts, noWords)
 	extra := http.Header{}
@@ -418,7 +466,7 @@ func (c *graphClient) send(ctx context.Context, cred graphCredential, method, pa
 	}
 	throttled, retried, reauthorised := false, false, false
 	for attempt := 1; ; attempt++ {
-		token, err := c.token(ctx, cred)
+		token, err := src.token(ctx)
 		if err != nil {
 			return err
 		}
@@ -439,7 +487,7 @@ func (c *graphClient) send(ctx context.Context, cred graphCredential, method, pa
 			wait, ok := retryAfter(header, c.now())
 			if throttled || !ok {
 				c.logger.DebugContext(ctx, "entra: Graph throttled a call",
-					"tenant", cred.tenantID.String(), "method", method, "path", target.Path, "retryAfter", header.Get("Retry-After"))
+					"tenant", src.tenant().String(), "method", method, "path", target.Path, "retryAfter", header.Get("Retry-After"))
 				return errThrottled
 			}
 			throttled = true
@@ -452,10 +500,13 @@ func (c *graphClient) send(ctx context.Context, cred graphCredential, method, pa
 				return err
 			}
 		case status == http.StatusUnauthorized && !reauthorised:
+			if err := src.challenged(ctx, header); err != nil {
+				return err
+			}
 			reauthorised = true
-			c.tokens.drop(cred)
+			src.dropped()
 		default:
-			return c.refusal(ctx, cred, method, target, status, data, words)
+			return c.refusal(ctx, src.tenant(), method, target, status, data, words)
 		}
 	}
 }
@@ -590,7 +641,7 @@ type graphErrorBody struct {
 // the query, which may carry an employee number — when words is true, and
 // go nowhere else; a noRetry call's refusal is logged by its status and
 // codes alone, as its words may echo the password or the pass it carried.
-func (c *graphClient) refusal(ctx context.Context, cred graphCredential, method string, target *url.URL, status int, data []byte, words bool) error {
+func (c *graphClient) refusal(ctx context.Context, tenant uuid.UUID, method string, target *url.URL, status int, data []byte, words bool) error {
 	var body graphErrorBody
 	_ = json.Unmarshal(data, &body)
 	message := strings.ToLower(body.Error.Message)
@@ -600,7 +651,7 @@ func (c *graphClient) refusal(ctx context.Context, cred graphCredential, method 
 	if len(body.Error.Details) > 0 {
 		e.Detail = body.Error.Details[0].Code
 	}
-	attrs := []any{"tenant", cred.tenantID.String(), "method", method, "path", target.Path,
+	attrs := []any{"tenant", tenant.String(), "method", method, "path", target.Path,
 		"status", status, "code", e.Code, "detail", e.Detail}
 	if words {
 		attrs = append(attrs, "message", body.Error.Message)
