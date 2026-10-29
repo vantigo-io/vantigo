@@ -58,7 +58,10 @@ etter at steg 1 endres, vises det ikke:
   ikke bruker, sier et oransje varsel *Applikasjonen har tillatelser Vantigo ikke
   bruker:* med listen, og at de kan være igjen fra et tidligere oppsett eller bredere
   enn nødvendig — fjern dem under **API permissions** med mindre et annet produkt bruker
-  registreringen. Det er bare et varsel: tilkoblingen forblir **Tilkoblet**;
+  registreringen. En applikasjonstillatelse `Calendars.ReadWrite` gitt for
+  kalendersynkronisering i en tidligere versjon står også her: kalendersynkroniseringen
+  kjører nå på hver persons egen tilkobling. Det er bare et varsel: tilkoblingen forblir
+  **Tilkoblet**;
 - **Klienthemmeligheter**: hver med **Beskrivelse**, **Lagt til**, **Utløper**, **Sist
   brukt** (når den sist hentet et token) og **Tilstand** — **I bruk** for den som
   prøves først, *Trukket tilbake* og datoen, og *Avvist av leietakeren* og datoen for
@@ -131,8 +134,7 @@ Vantigo fra å bruke den: slett den i portalen selv.
 ### 3 Gi tillatelsene og rollen
 
 Kortet lister de åtte **applikasjonstillatelsene** for Microsoft Graph som skal legges
-til under **API permissions** — ni mens [Outlook-tilkoblingen](#outlook-tilkobling)
-er på, den niende, `Calendars.ReadWrite`, merket *(for kalendersynkronisering)* — hver klar til å kopieres, og så **Grant admin consent**.
+til under **API permissions** — hver klar til å kopieres, og så **Grant admin consent**.
 Det sier også steget ingen andre produkter ber om: tildel rollen **User Administrator**
 til applikasjonen under **Roles & admins** — uten den nekter Microsoft å aktivere,
 deaktivere eller slette en konto og å utstede et midlertidig tilgangspass, selv med
@@ -211,8 +213,8 @@ kontotypen sin til HR endrer den på fanen Konto.
 **Innstillinger → Tilkoblinger** ved å logge på Microsoft én gang
 ([Tilkoblinger](/nb/user/connections/)). Den er av til noen med `entra:manage` slår den
 på. Den samme bryteren lar folk [synkronisere kalenderen sin til
-Outlook](/nb/user/calendar/#synkroniser-med-outlook), som i denne versjonen fortsatt
-bruker applikasjonstillatelsen og ikke hver persons tilkobling.
+Outlook](/nb/user/calendar/#synkroniser-med-outlook), hver på sin egen tilkobling:
+applikasjonen får ikke noe mer for det, og bare de som kobler til, blir synkronisert.
 
 1. En eier gjør appregistreringen klar først — **Omdirigerings-URI** som vises under
    bryteren, lagt til **Web**-plattformen, og de delegerte tillatelsene `openid`,
@@ -224,25 +226,12 @@ bruker applikasjonstillatelsen og ikke hver persons tilkobling.
 3. Koble til din egen Outlook under **Innstillinger → Tilkoblinger** for å sjekke at det
    virker.
 
-Kalendersynkroniseringen trenger fortsatt også **applikasjonstillatelsen**
-`Calendars.ReadWrite`: steg **3 Gi tillatelsene og rollen** lister ni tillatelser mens
-bryteren er på, den siste merket *(for kalendersynkronisering)*, og kortet **Status**
-viser den som manglende til en test ser den — steg 3 venter ikke på den, siden
-tillatelsen bare er til orientering. Er den gitt med Exchange RBAC for Applications i
-stedet, viser tokenet den aldri: da blir den stående i listen, og det er som ventet.
-
 Under bryteren viser kortet **Omdirigerings-URI** som skal legges til registreringen,
 med en kopieringsknapp, og en linje sier hvor tilkoblingen står:
 
 - **Klar** — noen har koblet til siden bryteren ble slått på;
 - **Ingen har koblet til ennå: koble til din egen Outlook under Innstillinger ›
   Tilkoblinger for å sjekke at det virker.**;
-- **Kalendersynkroniseringen trenger applikasjonstillatelsen Calendars.ReadWrite, som
-  ikke er i tokenet. Det er som ventet hvis du ga den med Exchange RBAC for
-  Applications; ellers legg den til, gi administratorsamtykke og test på nytt.** — bare
-  til orientering: kalendersynkroniseringen er fortsatt tilgjengelig, og til en test ser
-  tillatelsen vises denne linjen i stedet for alle de andre unntatt **Venter på
-  tilkoblingen**;
 - **Den siste tilkoblingen manglet en delegert tillatelse: gi administratorsamtykke for
   den i appregistreringen og koble til på nytt.** — en persons tilkobling kom tilbake
   uten tillatelsen den ba om;
@@ -270,9 +259,10 @@ Her er det ingenting å velge: linjene melder bare.
 **Slår du den av**, lukkes hver persons tilkobling når du lagrer — er noen tilkoblet
 eller venter på ny tilkobling, spør siden først *Slå av Outlook-tilkoblingen?*: *Alle må
 koble til Outlook på nytt.*, og **Slå av og lagre** lagrer. Det stopper også
-kalendersynkroniseringen for alle og fjerner kopiene Vantigo la inn i Outlook deres —
-kalendertillatelsen etterspørres ikke mens den er av. Slår du den på igjen, fortsetter
-synkroniseringen for alle som hadde den på; hver person kobler til Outlook på nytt.
+kalendersynkroniseringen for alle og fjerner kopiene Vantigo la inn i Outlook deres, hver
+med sin egen tilkobling som lukkes. Slår du den på igjen, fortsetter den ikke for noen av
+seg selv: hver person som hadde synkroniseringen på, kobler til Outlook på nytt, og
+synkroniseringen deres fortsetter når de har gjort det.
 
 ## Bekreft en konto Vantigo ikke opprettet
 

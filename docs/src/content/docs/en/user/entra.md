@@ -57,7 +57,9 @@ that, and again after step 1 changes, it is not shown:
   Vantigo does not use, an orange notice says *The application holds permissions
   Vantigo does not use:* with the list, and that they may be left from an earlier setup
   or wider than needed — remove them under **API permissions** unless another product
-  uses the registration. It is a warning only: the connection stays **Connected**;
+  uses the registration. An application `Calendars.ReadWrite` granted for calendar sync
+  in an earlier release is listed here too: calendar sync now runs on each person's own
+  connection. It is a warning only: the connection stays **Connected**;
 - **Client secrets**: each by its **Description**, with **Added**, **Expires**, **Last
   used** (when it last fetched a token) and its **State** — **In use** for the one
   tried first, *Revoked* and the date, and *Refused by the tenant* and the date for one
@@ -126,8 +128,7 @@ Revoking only stops Vantigo using it: delete it in the portal yourself.
 ### 3 Grant the permissions and the role
 
 The card lists the eight Microsoft Graph **application** permissions to add under **API
-permissions** — nine while the [Outlook connection](#outlook-connection) is on, the
-ninth, `Calendars.ReadWrite`, marked *(for calendar sync)* — each ready to copy, then **Grant admin consent**. It also says the step
+permissions** — each ready to copy, then **Grant admin consent**. It also says the step
 no other product asks for: assign the **User Administrator** role to the application
 under **Roles & admins** — without it, Microsoft refuses to enable, disable or delete
 an account and to issue a Temporary Access Pass, even with every permission.
@@ -206,8 +207,9 @@ HR changes it on their Account tab.
 The **Outlook connection** lets each person connect their own Outlook to Vantigo under
 **Settings → Connections**, signing in to Microsoft once ([Connections](/en/user/connections/)).
 It is off until someone with `entra:manage` turns it on. The same switch lets people
-[sync their calendar to Outlook](/en/user/calendar/#sync-with-outlook), which in this
-release still uses the application permission rather than each person's connection.
+[sync their calendar to Outlook](/en/user/calendar/#sync-with-outlook), each on their own
+connection: nothing more is granted to the application for it, and only the people who
+connect are synced.
 
 1. An Owner prepares the app registration first — the **Redirect URI** shown under the
    switch added to its **Web** platform, and the delegated permissions `openid`,
@@ -218,24 +220,12 @@ release still uses the application permission rather than each person's connecti
    account rules**.
 3. Connect your own Outlook under **Settings → Connections** to check that it works.
 
-Calendar sync still needs the `Calendars.ReadWrite` **application** permission too:
-step **3 Grant the permissions and the role** lists nine permissions while the switch is
-on, the last marked *(for calendar sync)*, and the **Status** card lists it as missing
-until a test sees it — step 3 does not wait for it, since the permission is advisory. If
-it was granted with Exchange RBAC for Applications instead, the token never shows it:
-then it stays listed, and that is expected.
-
 Under the switch, the card shows the **Redirect URI** to add to the registration, with a
 copy button, and a line says where the connection stands:
 
 - **Ready** — someone has connected since the switch was turned on;
 - **Nobody has connected yet: connect your own Outlook under Settings › Connections to
   check that it works.**;
-- **Calendar sync needs the Calendars.ReadWrite application permission, which is not in
-  the token. That is expected if you granted it with Exchange RBAC for Applications;
-  otherwise add it, grant admin consent and test again.** — advisory: calendar sync
-  stays available, and until a test sees the permission this line shows in place of
-  every other but **Waiting for the connection**;
 - **The last connect lacked a delegated permission: grant admin consent for it in the
   app registration and connect again.** — a person's connect came back without the
   permission it asked for;
@@ -265,8 +255,9 @@ Nothing here needs choosing: the lines only report.
 connected or waiting to reconnect, the page first asks *Turn the Outlook connection
 off?*: *Everyone will have to connect Outlook again.*, and **Turn off and save** saves
 it. It also stops every person's calendar sync and removes the copies Vantigo put in
-their Outlook — the calendar permission is not asked for while it is off. Turning it on
-again resumes everyone who had their sync on; each person connects their Outlook again.
+their Outlook, each with their own closing connection. Turning it on again resumes no one
+by itself: each person who had their sync on connects their Outlook again, and their sync
+picks up once they have.
 
 ## Confirm an account Vantigo did not create
 

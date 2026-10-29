@@ -2456,8 +2456,25 @@ account and on the switch turned off; `entra-outlook-sweep`, the module's first 
 use; **Settings → Connections** in the host, composed from `@vantigo/entra-ui`, and the
 calendar card's `connectionButton` slot filled with the same package's button.
 
-*Next:* B moves the calendar's sync onto the person's connection and drops the
-application permission `Calendars.ReadWrite`; C–E bring Microsoft 365 mail channels.
+**B — The calendar on the person's connection, built** on
+`claude/outlook-calendar-delegated`
+([the plan](docs/superpowers/plans/2026-10-29-calendar-outlook-delegated.md);
+[the reference](docs/src/content/docs/en/reference/calendar.md#parking-and-waking);
+[the operator's page](docs/src/content/docs/en/admin/entra.md#calendar-sync)): every
+mailbox call of the calendar's Outlook sync — the copies, the busy read, the write-back's
+reads and the change notifications' subscriptions — on the person's own delegated token,
+found by the mailbox's object id; the removals (`DeleteCalendar`, `Find`, `Unwatch`,
+`Apply` of deletes) served by a closing connection while it holds its token, and
+`ErrMailboxGone` once none can; `contracts.ErrConnectionNeeded` with its reason and
+`Connections`, read from `changed_at` with no network; a person not connected or refused
+parked a day as `not_connected` or `reconnect`, attempts unchanged, and woken within a
+cycle when they connect; the clean-up when the connection is gone, a leaver's copies left
+in the disabled mailbox (Q2); the card's **Connect Outlook** and **Reconnect Outlook**
+named above the toggle, which works before the person connects; the application
+permission `Calendars.ReadWrite` and its Exchange RBAC procedure removed, a leftover
+grant shown as a permission Vantigo does not use. No migration.
+
+*Next:* C–E bring Microsoft 365 mail channels.
 
 ### Later
 

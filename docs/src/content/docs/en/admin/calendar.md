@@ -335,9 +335,10 @@ doing; the person can ask whoever publishes the calendar for a smaller one.
 
 A person can have Vantigo keep a copy of their calendar in their Microsoft 365 mailbox,
 on their **My calendar** screen ([Sync with Outlook](/en/user/calendar/#sync-with-outlook)),
-once an Owner has turned on the **Outlook connection** switch in the Microsoft Entra ID module and granted
-its permission ([Microsoft Entra ID](/en/admin/entra/#calendar-sync)). The
-`calendar-mailbox-sync` worker writes the copies through the Entra module's connection
+once an Owner has turned on the **Outlook connection** switch in the Microsoft Entra ID
+module and the person has connected their own Outlook ([Microsoft Entra
+ID](/en/admin/entra/#calendar-sync)). The `calendar-mailbox-sync` worker writes the
+copies through the Entra module, on each person's own connection
 ([the worker](/en/reference/calendar/#the-mailbox-sync-worker)). It runs unless
 `CALENDAR_MAILBOX_SYNC_ENABLED=0`, in worker mode, and in api mode with
 `WORKERS_IN_PROCESS=1`. It **wakes every minute** — not a setting — and syncs each
@@ -353,6 +354,22 @@ when they change their setting, or when they press **Sync now** — so an appoin
 reaches Outlook within a minute. A failed sync is tried again after 1, 5, 15 and 60
 minutes, then hourly, and shows as failed from the fifth in a row; a mailbox the tenant
 refuses is tried again in six hours; a connection that is not working, in an hour.
+
+**People waiting for their connection.** A person who has the sync on but has not
+connected Outlook, whose connection closed, or whose connection Microsoft refused, is
+**parked**: their card asks them to connect (*Connect Outlook above to start the sync.*)
+or reconnect (*Microsoft wants you to sign in again: …*), and the worker asks again **once
+a day**, never backing off and never counting it as a failure. A person who connects or
+reconnects is **woken within a cycle** — the worker reads the connections that moved each
+minute, before anyone is claimed — so their sync runs within a minute or so, at once with
+**Sync now**. A connection that is gone — a disconnect, the switch turned off — has the
+copies removed first, with the person's closing connection; a leaver's, whose sign-in is
+forgotten when their account is disabled, are forgotten and **stay in the disabled
+mailbox**. A person waiting to reconnect keeps their copies as they were. The log says
+so at info — *a person's sync waits for their Outlook connection*, with the person's id
+and the code `not_connected` or `reconnect` — once at each daily re-check: nothing for
+you to do, unless many people show `reconnect` at once, which points at a Conditional
+Access or multi-factor change ([Microsoft Entra ID](/en/admin/entra/#what-happens-to-a-persons-connection)).
 
 Before each push the worker also **takes back what people changed in Outlook**: an
 edit, a move or a delete of a copy of their own appointment changes the appointment
@@ -388,14 +405,17 @@ turns it all off.
 The worker removes a person's copies when they turn the sync off, when they may no
 longer use Calendar — disabled, locked out, deactivated by the directory, or without
 `calendar:access` — when Staff no longer links them to a Microsoft Entra ID account,
-and for everyone when the **Outlook connection** switch is turned off. **Turned off, the worker writes
+when they disconnect their Outlook, and for everyone when the **Outlook connection**
+switch is turned off, each with the person's own closing connection. Turned back on,
+nobody is synced until they connect again. **Turned off, the worker writes
 and removes nothing**: people's copies stay in their mailboxes as they last were, the
 copies of a leaver included, until it is on again.
 
 It reaches the network only through the Entra module's Graph client — the two fixed
 Microsoft hosts, with the module's own limits — and logs a person by their user id
 alone: never their mailbox, an appointment's or an event's title or Graph's words. A failed sync is
-logged at warning with the step that failed; a refused mailbox at info with its code.
+logged at warning with the step that failed; a refused mailbox, and a person waiting for
+their connection, at info with its code.
 
 | Variable | Purpose | Default |
 | --- | --- | --- |

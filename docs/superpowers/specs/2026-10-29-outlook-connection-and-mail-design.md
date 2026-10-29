@@ -842,6 +842,49 @@ count as unexpected.
     `Calendars.ReadWrite` application and its RBAC procedure removed, a leaver's copies
     per Q2), and the calendar administration page;
   - the calendar Outlook-sync spec's as-built note, pointing here.
+
+  *As built (delivery B, 2026-10-29, branch `claude/outlook-calendar-delegated`;
+  [the plan](../plans/2026-10-29-calendar-outlook-delegated.md)):* where B departs from
+  this design —
+  - **M2**: what B removes is `outlookConnect.status`'s `permission_missing` (where A put
+    it), with `Calendars.ReadWrite` out of `permissionsMissing` and step 3's *(for
+    calendar sync)* label; the order is `off`, `unavailable`, `consent_missing`, `ready`,
+    `untested`. A leftover application `Calendars.ReadWrite` is now one of
+    `permissionsUnexpected` (M19).
+  - **M9, the contract**: `ConnectionChange` carries `At` beside `{Mailbox, State}`, and
+    `Connections` answers at most `ConnectionChangesMax` (5000) oldest first, so the
+    worker moves a cursor as it does for `Notified`. `ErrConnectionNeeded` is answered as
+    a `*ConnectionNeededError` with the reason `not_connected`, `closing` or the
+    reconnect code. The removals are `DeleteCalendar`, `Find`, `Unwatch`, and `Apply`
+    when every op is a delete (always under `cleanup`); a removal with no token **or no
+    connection row at all** answers `ErrMailboxGone`, since nothing can ever remove those
+    copies. `ErrMailboxDenied` now means a mailbox Exchange refuses, not a permission
+    scope. The markers keep the client id, now read from the connection's row — the same
+    value — so copies written before B still match.
+  - **M9, subscriptions**: `Watch` asks for the person's token before it writes anything;
+    `Unwatch` with no token left **forgets the subscription row** (Graph drops a
+    subscription whose creator's grant ended), so the sweep deletes a leaver's closing
+    row a day after the close rather than seven. A person waiting to reconnect is parked
+    before `Watch`, so their subscription lapses with no new code.
+  - **M9, the availability**: `not_connected` and `reconnect` are the worker's last
+    finding — the caller's row on, `unavailable`, its error one of the two — and come
+    **after** `no_account`, a fresh read of Staff, rather than before it. The calendar
+    does not store the reason: the card's `connection.button` slot (Entra's) shows it.
+    `PUT /mailbox-sync` and **Sync now** are taken while the availability is
+    `not_connected` or `reconnect`, and the card refetches every 15 seconds while it is
+    one of the two.
+  - **M9, parking and waking**: a parked person keeps `attempts` and is re-checked every
+    24 hours by the next sync, which runs the cycle's steps (status, access, account)
+    before its first provider call. A change from `Connections` **overrides the backoff
+    and the parking** (unlike a notice), marking only rows written before the change. A
+    connection gone runs the clean-up before parking, only for a person who has had
+    copies and was not parked `not_connected` already.
+  - **M6**: the daily `accountEnabled` read stays where A built it, in
+    `entra-outlook-sweep`; the calendar's re-check only notices the close, which
+    `Connections` wakes it for.
+  - **M7, Q2**: as designed — a disconnect and the switch off remove the copies on the
+    closing token; a leaver's, an account closed on use or by the sweep, are forgotten
+    and stay in the disabled mailbox.
 - **C** (`feat/communications-m365-channels`): M10–M13. Migration
   `00090_entra_mail_channels.sql` (the switch and `entra.channel_mailboxes`) and
   `00091_communications_channel_settings.sql`. Docs:

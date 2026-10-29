@@ -78,6 +78,14 @@ provider is available whenever the switch is on and the connection connected; a 
 outside the grant answers 403 per person (`mailbox_denied`). The calendar's
 availability `permission_missing` stays in the enum, reserved, and is never answered.
 
+*As built (2026-10-29, the Outlook connection's delivery B):* superseded. The sync no longer
+uses the application permission `Calendars.ReadWrite` nor any Exchange RBAC for
+Applications scope: every mailbox call runs on the person's own delegated Outlook
+connection, `permission_missing` is gone from both the calendar's availability and
+Entra's `outlookConnect.status`, and a person not connected or refused is parked
+`not_connected` or `reconnect` — see the Outlook connection design's M9 and M2
+([`2026-10-29-outlook-connection-and-mail-design.md`](2026-10-29-outlook-connection-and-mail-design.md)).
+
 ### O3 — The certain mailbox (Staff)
 
 `contracts.Workforce` gains `DirectoryAccount(ctx) (*DirectoryAccount, error)`: the
@@ -326,6 +334,14 @@ whatever its date (`Find` with no bound), and every mapped one besides. Only
 `ErrMailboxGone` and `ErrMailboxUnknown` forget the copies unremoved; a mailbox denied, a
 provider unusable or a failure keeps the clean-up owed on the backoff, with the
 refusal's code as the row's error.
+
+*As built (2026-10-29, the Outlook connection's delivery B):* the clean-up runs on the
+person's own closing connection, and also when that connection is gone (a disconnect,
+the switch off). A leaver's connection is closed with its token forgotten, so their
+removals answer `ErrMailboxGone` and **their copies are forgotten and stay in the
+disabled mailbox** — the owner's decision Q2; turning the switch back on resumes nobody
+until each person connects again — see the Outlook connection design's M7, M9 and Q2
+([`2026-10-29-outlook-connection-and-mail-design.md`](2026-10-29-outlook-connection-and-mail-design.md)).
 
 ### O9 — B: Outlook's busy time in Vantigo
 

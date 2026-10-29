@@ -1,6 +1,6 @@
 ---
 title: "Microsoft Entra ID module"
-description: "Microsoft Entra ID as Staff's identity provider: the connection to one tenant, its client secrets in the plural and the connection test; the status and its reasons, read by Staff with no network call; the account rules; the guarded Graph client and its limits; the user lifecycle per step — prepared disabled, enabled on the day with the hire date, the licences and a Temporary Access Pass, kept in step, disabled with the leaver's steps, soft-deleted — with the Graph calls and the codes; the account's photo, converted to Graph's JPEG and written or cleared; the address rule; the pass; the sensitive actions and role_missing; Staff's groups in the tenant — the six traits and the cached licences, the create, or the adoption an entra:manage holder confirms, with the service principal as an owner, the team, the members by $ref, the delete or the retirement; connecting existing users — the directory search and the exact matches, read through contracts.SSOConnections; the Outlook connection — the switch and its status, the redirect URI, the certain account read from Staff, the flow with its two cookies, the states and the revision guard, the delegated token, its refresh and its reconnects, CAE and cp1, closing and entra-outlook-sweep; the permissions the module does not use; Calendars.ReadWrite asked for only while the switch is on, and the mailbox calendar the module fills for the calendar's Outlook sync — the status rule, the account check, the Graph calls and $batch, the marker, the all-day zones, the reads of the default calendar's delta and the marker, the write-back's reads of the copies' versions and of events whole, and the refusals; the events, the permission, the refusals and the endpoints."
+description: "Microsoft Entra ID as Staff's identity provider: the connection to one tenant, its client secrets in the plural and the connection test; the status and its reasons, read by Staff with no network call; the account rules; the guarded Graph client and its limits; the user lifecycle per step — prepared disabled, enabled on the day with the hire date, the licences and a Temporary Access Pass, kept in step, disabled with the leaver's steps, soft-deleted — with the Graph calls and the codes; the account's photo, converted to Graph's JPEG and written or cleared; the address rule; the pass; the sensitive actions and role_missing; Staff's groups in the tenant — the six traits and the cached licences, the create, or the adoption an entra:manage holder confirms, with the service principal as an owner, the team, the members by $ref, the delete or the retirement; connecting existing users — the directory search and the exact matches, read through contracts.SSOConnections; the Outlook connection — the switch and its status, the redirect URI, the certain account read from Staff, the flow with its two cookies, the states and the revision guard, the delegated token, its refresh and its reconnects, CAE and cp1, closing and entra-outlook-sweep; the permissions the module does not use, a leftover application Calendars.ReadWrite among them; the mailbox calendar the module fills for the calendar's Outlook sync, every call on the person's own delegated token — the status rule, the account check, the removals a closing connection serves, ErrConnectionNeeded and Connections, the Graph calls and $batch, the marker, the all-day zones, the reads of the default calendar's delta and the marker, the write-back's reads of the copies' versions and of events whole, and the refusals; the events, the permission, the refusals and the endpoints."
 sources:
   - apps/server/internal/entra
   - apps/entra/frontend
@@ -51,8 +51,8 @@ principal and the group's owners as owners, and keeps its name, its members and 
 team in line.
 
 And it fills **the mailbox calendar** for the calendar's Outlook sync ([the mailbox
-calendar](#the-mailbox-calendar)): behind the Owner's **Outlook connection** switch and the
-permission `Calendars.ReadWrite`, it writes the calendar's copies of a person's
+calendar](#the-mailbox-calendar)): behind the Owner's **Outlook connection** switch and on
+each person's own Outlook connection, it writes the calendar's copies of a person's
 appointments to the mailbox of an account it manages, in the single-provider slot
 `MailboxCalendar` ([module boundaries](/en/contributing/module-boundaries/) rule 14).
 
@@ -60,8 +60,8 @@ And it keeps **each person's Outlook connection** ([the Outlook
 connection](#the-outlook-connection)): behind the same switch, a person whose Staff
 record names an account the module manages connects their own Outlook once, on
 **Settings → Connections**, and the module holds their delegated refresh token, sealed,
-until they disconnect, leave or the switch is turned off. In this release nothing uses
-the connection yet: the calendar's sync still runs on the application permission.
+until they disconnect, leave or the switch is turned off. The calendar's Outlook sync
+runs on that connection, with the person's delegated token, and on nothing else.
 
 ## The schema
 
@@ -224,8 +224,7 @@ the groups present in the tenant) — whether or not anything is
 set, so the wizard can show every step before the first is done. It reads the module's
 own rows only; nothing reaches the tenant. `permissionsMissing` is the
 [required permissions](#the-required-permissions) less those the last test's token
-carried — with `Calendars.ReadWrite` last while the Outlook connection switch is on and the
-token lacks it; all of them before the first test. `permissionsUnexpected` is the
+carried; all of them before the first test. `permissionsUnexpected` is the
 [permissions the module does not use](#the-permissions-the-module-does-not-use) among
 those the last test's token carried. `outlookConnect` is the
 [Outlook connection switch and its status](#the-switch-and-its-status).
@@ -345,16 +344,10 @@ module needs, which the test compares with the token's `roles`:
 | `Domain.Read.All` | The verified domains |
 | `Organization.Read.All` | The organisation, read by the test |
 
-**`Calendars.ReadWrite`** is the ninth, and conditional: asked for only while the
-[Outlook connection switch](#the-switch-and-its-status) is on — it is then in
-`permissionsMissing`, after the eight, and in the test's `missing:` codes, until a test's
-token carries it — and never judging the connection itself: the status the test writes
-is decided by the eight alone, and a token without it is still `connected`. It is the
-[mailbox calendar's](#the-mailbox-calendar) permission, and an administrator may narrow
-it to a group of mailboxes with Exchange's RBAC for Applications ([the administration
-guide](/en/admin/entra/#calendar-sync)). A grant made that way never shows in the
-token, so the permission listed missing is **advisory**: the sync runs either way, and a
-mailbox outside the grant is refused for that person alone.
+These eight are all, whatever the [Outlook connection switch](#the-switch-and-its-status):
+the [mailbox calendar](#the-mailbox-calendar) runs on each person's own delegated token,
+whose `Calendars.ReadWrite` is a *delegated* permission of [the
+flow](#the-flow), never an application one (Outlook connection design M2, M9).
 
 Beside them, **the User Administrator directory role** must be assigned to the
 application's service principal: Graph treats enabling and disabling an account,
@@ -366,14 +359,14 @@ well as the permission. The test cannot see the role; see
 ### The permissions the module does not use
 
 `permissionsUnexpected`, on `GET /connection` and in the test's answer, lists the roles
-in the last test's token that are neither one of the eight nor `Calendars.ReadWrite`,
-sorted (Outlook connection design M19). An application permission reaches every
+in the last test's token that are not one of the eight, sorted (Outlook connection
+design M19). An application permission reaches every
 mailbox or account in the tenant, so one nobody needs is better removed — left from an
 earlier setup, say, or wider than needed. **It is a warning, never a status**: the
 connection stays `connected` whatever it lists, and the module's page shows it on the
-**Status** card in an orange notice with the list. `Calendars.ReadWrite` is not listed,
-whether or not the switch is on, while the calendar's sync uses it on the application
-permission. In this release the mail roles (`Mail.*`) and `full_access_as_app` count as
+**Status** card in an orange notice with the list. An application `Calendars.ReadWrite`
+left from an earlier setup, when the calendar's sync still wrote with it, is listed here
+like any other: nothing uses it any more. In this release the mail roles (`Mail.*`) and `full_access_as_app` count as
 unexpected too, since nothing in the module uses them yet. The test audits each as an
 `unexpected:<permission>` code after the `missing:` ones.
 
@@ -432,7 +425,7 @@ the version on, answers the whole connection and is recorded as the event
 | `passLifetimeMinutes` | 10 to 43 200; the tenant's own policy may cap it lower | 480 |
 | `passUsableOnce` | The pass works for one sign-in | on |
 | `passDelivery` | `hr`, `manager` or `both` | `hr` |
-| `outlookConnect` | Lets people connect their own Outlook to Vantigo ([the switch](#the-switch-and-its-status)); on, it records when and asks for `Calendars.ReadWrite`; off, it closes every person's connection in the same transaction, and the calendar's worker removes the copies already written | off |
+| `outlookConnect` | Lets people connect their own Outlook to Vantigo ([the switch](#the-switch-and-its-status)); on, it records when; off, it closes every person's connection in the same transaction, and the calendar's worker removes the copies already written | off |
 
 **`passDelivery` is stored and offered, and nothing acts on it yet**: the pass is
 revealed only on the person's Account tab in Staff, to HR, and no notice is sent to the
@@ -1319,10 +1312,9 @@ client capability `cp1`, behind the Owner's switch, its rows in
 `entra.outlook_connections` (Outlook connection design M2–M8,
 [`docs/superpowers/specs/2026-10-29-outlook-connection-and-mail-design.md`](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-10-29-outlook-connection-and-mail-design.md)).
 The module holds each person's **delegated refresh token**, sealed, refreshes it, and
-answers *reconnect* to that person alone when Microsoft refuses it. **In this release
-nothing uses the connection**: the token source is built and tested, and the calendar's
-[mailbox calendar](#the-mailbox-calendar) still runs on the application permission
-`Calendars.ReadWrite`. The person's page is the host's **Settings → Connections**
+answers *reconnect* to that person alone when Microsoft refuses it. Every call of the
+[mailbox calendar](#the-mailbox-calendar) — the calendar's Outlook sync — runs on that
+token ([the delegated token](#the-delegated-token)). The person's page is the host's **Settings → Connections**
 ([the user guide](/en/user/connections/)).
 
 ### The switch and its status
@@ -1336,7 +1328,9 @@ with it off. **Turning it on** records `outlook_connect_at`. **Turning it off** 
 every live connection in the same transaction, their tokens kept for removals, one
 `entra.outlook.closed` event each with the code `switch_off` under the caller
 ([closing](#closing)): everyone must connect again once it is on. It also stops the
-calendar's sync, as before ([the status](#the-status)). The module's page asks before it
+calendar's sync, whose worker removes everyone's copies on their own closing tokens
+([the status](#the-status)), and back on, every person's sync waits until they connect
+again. The module's page asks before it
 saves a switch turned off while anyone is connected or waiting to reconnect.
 
 `GET /connection` answers it as `outlookConnect: {enabled, status, reason?, connected,
@@ -1346,7 +1340,6 @@ reconnect, redirectUri, notifications}`, the status decided in this order:
 | --- | --- |
 | `off` | The switch is off. |
 | `unavailable` | On, but the connection is not `connected`; `reason` is the connection's `statusReason`, when it has one. |
-| `permission_missing` | On and `connected`, but the last test's token did not carry the application permission `Calendars.ReadWrite`, which the calendar's sync still writes with until delivery B. **Advisory**: expected when the permission was granted with Exchange RBAC for Applications, which never shows in the token, and otherwise a sign to add it; the calendar stays available either way ([the status](#the-status)). It comes before the people's own connects, so a switch turned on before a test sees the permission reads `permission_missing`, not `untested`. |
 | `consent_missing` | On and `connected`, and the last validated connect found its feature's delegated permission not granted (`outlook_last_error`); a connect that completes clears it. |
 | `ready` | On and `connected`, and someone has connected — a live connection made — since the switch was last turned on. |
 | `untested` | Otherwise: nobody has connected since it was turned on. |
@@ -1551,6 +1544,22 @@ call, such a challenge drops the cached token and moves the row to `reconnect` w
 `sign_in_again`, without a retry; any other 401 is retried once, as for the
 application's token.
 
+**Who uses it.** Every call of the [mailbox calendar](#the-mailbox-calendar) asks the token
+source for the token of the mailbox's own connection, found by the mailbox's object id —
+never the application's token, which no mailbox call uses (Outlook connection design M9).
+A connection that cannot serve the call answers the contract's
+`contracts.ErrConnectionNeeded`, a `*contracts.ConnectionNeededError` whose `Reason` is
+`not_connected` (no row), `closing`, or the `reconnect` row's code (`expired`,
+`sign_in_again`, `mfa`, `blocked`, `consent_missing`). **The removals** — `DeleteCalendar`,
+`Find`, `Unwatch`, and `Apply` when every op it sends is a delete (any `Apply` under
+`cleanup`) — ask for the token as a removal, so a `closing` connection serves them while
+it holds its token; when it holds none, or there is no row, nothing can ever remove those
+copies and the removal answers `ErrMailboxGone` instead (not `ErrConnectionNeeded`). The
+refresh's own `not_configured` and no-secret errors are `ErrMailboxUnavailable`; a secret
+refused or a transient failure passes as the failure it is. The refresh still fetches the
+application's token for its client secret, so that cache stays warm; the application's
+token serves the account checks, the sweep and provisioning alone.
+
 ### Closing
 
 | Why | When | The token | `entra.outlook.closed` code |
@@ -1586,6 +1595,12 @@ Each cycle:
   (`entra.outlook.closed`). A person who never reconnects is still let go. A tenant that
   does not answer leaves the rest for the next cycle.
 
+A leaver's subscription row does not hold their closing row for the full seven days:
+the calendar's clean-up calls [`Unwatch`](#change-notifications), which **forgets the row**
+when no connection holds a token to delete the subscription — Graph drops a
+subscription whose creator's grant ended — so the sweep deletes the connection a day
+after it closed.
+
 ## The mailbox calendar
 
 The module fills the single-provider slot `MailboxCalendar` (`contracts.MailboxCalendar`,
@@ -1593,8 +1608,10 @@ The module fills the single-provider slot `MailboxCalendar` (`contracts.MailboxC
 writes the calendar's copies of a person's appointments and items to their Exchange
 Online mailbox, [reads the busy time](#the-reads) of their default calendar back, and
 [reads the copies](#the-write-backs-reads) and the *Vantigo* calendar's events for the
-calendar's write-back, through the [Graph client](#the-graph-client) and its token, with the application
-permission `Calendars.ReadWrite`, which covers the reads. Where Microsoft can reach the installation it also
+calendar's write-back, through the [Graph client](#the-graph-client) — **every call on the person's
+own [delegated token](#the-delegated-token)**, found by the mailbox's object id, whose
+delegated `Calendars.ReadWrite` covers the reads; no application permission is used for a
+mailbox (Outlook connection design M9). Where Microsoft can reach the installation it also
 keeps each synced mailbox's changes [notified](#change-notifications), so a change made in Outlook makes the
 person's sync due at once. The calendar decides what the copies are;
 the module writes them and answers what it did, per operation ([module
@@ -1608,12 +1625,47 @@ record.
 
 The mailbox calendar runs behind the [Outlook connection
 switch](#the-switch-and-its-status) — `outlookConnect`, the column the calendar's sync
-started under as `calendar_sync` — and the application permission `Calendars.ReadWrite`,
-which the connection asks for only while the switch is on and which is **advisory**: a
-grant made with Exchange RBAC for Applications never shows in the token, so the sync runs
-whether or not the last test's token carried it, and a mailbox outside the grant is
-refused for that person alone. The person's own [Outlook
-connection](#the-outlook-connection) is not used by the mailbox calendar in this release.
+started under as `calendar_sync` — and on each person's own [Outlook
+connection](#the-outlook-connection). Nothing is granted to the application for it: the
+switch on and the connection `connected` make the provider available, and **each
+person's call** answers `contracts.ErrConnectionNeeded` when their own connection cannot
+serve it — the person never connected, disconnected, left, or Microsoft refused their
+token. Only the people who connect are synced; there is no mailbox scope to configure.
+
+**The token source and the removals** (`mailboxSource` over [the delegated
+token](#the-delegated-token)). A call opens its session — the status, the account check
+— with no network, then asks for the person's token at its first Graph call:
+
+| Call | Under `cleanup` | Asked for as a removal |
+| --- | --- | --- |
+| `EnsureCalendar` | no | no |
+| `DeleteCalendar` | yes | yes |
+| `Apply` | yes (deletes only) | yes when every op is a delete, and always under `cleanup` |
+| `Find` | yes | yes |
+| `Delta`, `Marked` | no | no |
+| `Versions`, `Events` | no | no |
+| `Watch` | no | no |
+| `Unwatch` | yes | yes |
+
+A removal is served by a `closing` connection while it holds its token; with none, or no
+row, it answers `ErrMailboxGone`. A connection in `reconnect` serves nothing, removals
+included, until the person reconnects. `Find` is safe as a removal because a sync's first
+provider call never is one — `EnsureCalendar`, or the write-back's `Versions` — so a sync
+whose connection is not `active` stops before it reaches `Find`, and the removal's leeway
+reaches only the calendar's clean-up.
+
+**`Connections(since)`** answers the people's connections that moved after `since`,
+oldest first, at most 5000 (`contracts.ConnectionChangesMax`): each a
+`contracts.ConnectionChange` of the mailbox (the object id in lower case), the state it
+moved to (`active`, `reconnect` or `closing`) and when — read from
+`entra.outlook_connections.changed_at` through `ix_entra_outlook_connections_changed`
+(`ListOutlookConnectionChanges`), no network and no token, whatever the switch. A
+connect, a re-point, a close (each kind in [closing](#closing), the switch's among them)
+and a move to `reconnect` move `changed_at`; a refresh, a token forgotten on a row
+already closing, `used_at` and the sweep's account check do not. A row the sweep deletes
+is not answered: it was closing a day at least first. The calendar's worker reads it to
+wake a person whose connection moved ([the mailbox sync
+worker](/en/reference/calendar/#the-mailbox-sync-worker)).
 
 ### The status
 
@@ -1622,13 +1674,14 @@ connection](#the-outlook-connection) is not used by the mailbox calendar in this
 
 | State | Reason | When |
 | --- | --- | --- |
-| `available` | — | The switch is on and the connection `connected` (with or without a reason such as `secret_expiring`), whether or not the last test's token carried `Calendars.ReadWrite`: a grant made with RBAC for Applications never shows there, and a mailbox outside the grant answers its own 403, `ErrMailboxDenied`. |
-| `cleanup` | `switch_off` | The switch is off, and a credential still works: the tenant and the client saved, a secret unrevoked and unexpired, and the connection not `failing` with `credential_invalid`. |
+| `available` | — | The switch is on and the connection `connected` (with or without a reason such as `secret_expiring`). Each person's call then answers `ErrConnectionNeeded` when their own connection cannot serve it, and a mailbox Exchange refuses its own 403, `ErrMailboxDenied`. |
+| `cleanup` | `switch_off` | The switch is off, and a credential still works: the tenant and the client saved, a secret unrevoked and unexpired, and the connection not `failing` with `credential_invalid` — the refresh of each person's token needs the client secret. The removals run on each person's own connection, which the switch's turning off closed keeping its token. |
 | `unavailable` | `switch_off` | The switch is off, and no credential works. |
 | `unavailable` | the connection's reason, else its status | The switch is on and the connection is not `connected`. |
 
 In `cleanup` a person's copies can still be removed: `Apply` takes deletes only, and
-`DeleteCalendar` and `Find` work; `Delta`, `Marked`, `Versions` and `Events` do not,
+`DeleteCalendar`, `Find` and `Unwatch` work, each on the person's closing connection;
+`Delta`, `Marked`, `Versions` and `Events` do not,
 since a read is never needed to remove copies. Every reason is a code, never the directory's words.
 
 ### The account check
@@ -1639,8 +1692,10 @@ otherwise `ErrMailboxUnavailable` — and then the mailbox. **The module writes 
 account it manages**: the `mailbox` must be an object id that is a row of
 `entra.accounts` the module created, or whose [adoption](#adopted-accounts) is confirmed,
 and not `deleted` — otherwise `ErrMailboxUnknown`, and nothing is sent. So the calendar
-can never point it at a mailbox the module does not own. A connection with no tenant,
-client or usable secret is `ErrMailboxUnavailable`. A calendar or event id the caller
+can never point it at a mailbox the module does not own. Then the person's token, as
+[above](#the-switch): `ErrConnectionNeeded`, or `ErrMailboxGone` for a removal no
+connection can make. A connection with no tenant, client or usable secret is
+`ErrMailboxUnavailable`. A calendar or event id the caller
 hands back must be at most 512 printable characters with no space, and never a path
 segment of its own — `.` or `..`, bare or percent-encoded, judged through every decoding
 — which would move a `$batch` request's URL off the item it names; a calendar's name is
@@ -1650,7 +1705,9 @@ segment of its own — `.` or `..`, bare or percent-encoded, judged through ever
 single-value extended property `String {7b1c5e3a-6f0d-4d5e-9a40-3c7a5e2b9d11} Name
 VantigoKey`, its value `vantigo:<client id>:<key>`; every calendar it makes carries
 `String {7b1c5e3a-6f0d-4d5e-9a40-3c7a5e2b9d11} Name VantigoCalendar`, its value
-`vantigo:<client id>` — the client id the Entra application's, a lower-case GUID, which
+`vantigo:<client id>` — the client id the Entra application's, as the connection's row
+holds it (the value the application credential carried before, so a marker written
+before the sync moved to the person's token still matches), a lower-case GUID, which
 tells two installations sharing a tenant apart. A calendar or an event without this
 installation's marker is never the module's: never adopted, deleted or answered by
 `Find` or `Marked`.
@@ -1687,7 +1744,7 @@ alone.
 | --- | --- |
 | 2xx | Done: a create's id and every write's `changeKey` read from the answer (a create answered with no id is a failure). |
 | A mailbox gone — `MailboxNotEnabledForRESTAPI`, `ErrorInvalidUser`, `ErrorNonExistentMailbox` or `Request_ResourceNotFound`, as the code or the first detail's code | `ErrMailboxGone` |
-| 403 | `ErrMailboxDenied` — the mailbox is outside the application's scope (an RBAC for Applications scope) |
+| 403 | `ErrMailboxDenied` — Exchange refuses the mailbox (one without Exchange Online, say) |
 | 404 on an update or a delete | `Gone` (a delete is then done) |
 | 429 | Sent again once, with the others of its batch answered 429, after the longest `Retry-After` among them — only when it is at most 30 seconds, so one mailbox never holds the calendar's worker; a second 429, or a longer wait, is a throttled failure |
 | Anything else | Graph's refusal, a failure to retry |
@@ -1849,12 +1906,16 @@ ever (`Delta`, `Versions`, `Events`). Nothing a notification says is trusted bey
 subscribed.
 
 **The calls.** `contracts.MailboxCalendar` has three more ([module
-boundaries](/en/contributing/module-boundaries/) rule 14):
+boundaries](/en/contributing/module-boundaries/) rule 14). Every call they make to Graph —
+the create, the renewal, the list and deletes of a conflict, the delete — is on **the
+person's own [delegated token](#the-delegated-token)**: the subscription's `creatorId` is
+the person, and `GET /subscriptions` lists only this application's subscriptions for
+them. No permission beyond their delegated `Calendars.ReadWrite` is needed.
 
 | Call | What it does |
 | --- | --- |
-| `Watch(mailbox)` | The [account check](#the-account-check) first (`available` only), then, with a live subscription that has more than three days left, nothing. With less — or in the state `reauthorize` — a renewal (only while the row still holds that subscription and is not `removed`: a renewal never revives a removed row), `PATCH /subscriptions/{id}` with an expiry of now plus 10 000 minutes; a 404 forgets the row and goes on to a create. With none, a create: `POST /subscriptions` with `changeType` `created,updated,deleted`, `resource` `/users/{oid}/events`, `notificationUrl` and `lifecycleNotificationUrl` both `PUBLIC_BASE_URL/api/v1/entra/mailbox-notifications`, an `expirationDateTime` of now plus 10 000 minutes (the limit is 10 080), and a `clientState` of 32 random bytes in base64url, 43 characters. No resource data is asked for, and no certificate. A held subscription **made for another address** than the present `PUBLIC_BASE_URL` target (the row stores the `notification_url` the create gave Graph) is deleted first — `DELETE /subscriptions/{id}`, a 404 done, any other refusal answered and the row kept for the next `Watch` — and created again, so the old address is never notified again. Answers nil, without calling Graph, when notifications are off, `PUBLIC_BASE_URL` is unset, the address was found [unreachable](#the-webhook-and-unreachable) within the hour, or the mailbox's row is in the state `conflict` and was marked less than 24 hours ago. |
-| `Unwatch(mailbox)` | Deletes the mailbox's subscription. A mailbox with no row answers nil; a row with no subscription id (a `conflict` row among them), or one whose expiry has passed, is forgotten without a call. Otherwise `DELETE /subscriptions/{id}`: a 204 or a 404 forgets the row; any other answer leaves it, in the state `deleting`, and is returned as the refusal or failure it is, so the delete stays owed. **No account check**: only the status (`available` or `cleanup`), so a clean-up can still remove a subscription after the account is gone. |
+| `Watch(mailbox)` | The [account check](#the-account-check) first (`available` only), then, with a live subscription that has more than three days left, nothing. With less — or in the state `reauthorize` — a renewal (only while the row still holds that subscription and is not `removed`: a renewal never revives a removed row), `PATCH /subscriptions/{id}` with an expiry of now plus 10 000 minutes; a 404 forgets the row and goes on to a create. With none, a create: `POST /subscriptions` with `changeType` `created,updated,deleted`, `resource` `/users/{oid}/events`, `notificationUrl` and `lifecycleNotificationUrl` both `PUBLIC_BASE_URL/api/v1/entra/mailbox-notifications`, an `expirationDateTime` of now plus 10 000 minutes (the limit is 10 080), and a `clientState` of 32 random bytes in base64url, 43 characters. No resource data is asked for, and no certificate. A held subscription **made for another address** than the present `PUBLIC_BASE_URL` target (the row stores the `notification_url` the create gave Graph) is deleted first — `DELETE /subscriptions/{id}`, a 404 done, any other refusal answered and the row kept for the next `Watch` — and created again, so the old address is never notified again. Answers nil, without calling Graph, when notifications are off, `PUBLIC_BASE_URL` is unset, the address was found [unreachable](#the-webhook-and-unreachable) within the hour, or the mailbox's row is in the state `conflict` and was marked less than 24 hours ago. Otherwise it asks for the person's token **before it writes anything**: a connection that cannot serve it answers `ErrConnectionNeeded` and leaves the row as it is. |
+| `Unwatch(mailbox)` | Deletes the mailbox's subscription. A mailbox with no row answers nil; a row with no subscription id (a `conflict` row among them), or one whose expiry has passed, is forgotten without a call. Otherwise `DELETE /subscriptions/{id}` on the person's token, asked for as a removal: a 204 or a 404 forgets the row, and so does **no connection holding a token for it** (closing with none, a leaver's, or gone) — Graph drops a subscription whose creator's grant ended, and its notifications would name no row; any other answer leaves it, in the state `deleting`, and is returned as the refusal or failure it is, so the delete stays owed. **No account check**: only the status (`available` or `cleanup`), so a clean-up can still remove a subscription after the account is gone. |
 | `Notified(since)` | The mailboxes notified after `since`, oldest first, at most 5000 (`contracts.MailboxNoticesMax`): the module's own rows, no network and no credential. Each notice is the account's object id and the time of the notification. |
 
 **The client state is a secret that is never kept.** It is drawn at each create and sent
@@ -1872,6 +1933,12 @@ that mailbox's `Watch` answers nil for **24 hours** — the poll alone runs for 
 
 **The expiry** stored is the one Graph granted, or the one asked for when its answer is
 unusable. A subscription id Graph gives that is not a GUID is `tenant_unreachable`.
+
+**A person waiting to reconnect.** A `reauthorizationRequired` is recorded as ever, the
+row `reauthorize`. The calendar calls `Watch` only after a sync that worked, and a person
+whose connection is in `reconnect` is parked before that, so **their subscription is left
+to lapse**. Once they reconnect, their sync runs and `Watch` renews the row held in
+`reauthorize` (the `PATCH` reauthorizes it) or, lapsed, creates a new one.
 
 #### The webhook and unreachable
 
@@ -2062,7 +2129,11 @@ at the token endpoint for the secret, the redirect URI, the PKCE verifier, singl
 (54005) and a minute's life (70008) — answers an RS256 id_token a test may tamper with,
 redeems refresh tokens (each use a new one, the old still valid), queues a refusal by
 AADSTS code, answers `GET /me` for a delegated token, and makes a user's next Graph call
-answer a claims challenge. It is wired through
+answer a claims challenge. As Graph does, it lets a delegated token reach only its own
+user's mailbox — another user's, `$batch` sub-requests included, is 403
+`ErrorAccessDenied` — and records a subscription's creator; and it refuses the
+**application's** token on every mailbox route and on `/subscriptions` (403), so a
+mailbox test that reached Graph on the application's token fails. It is wired through
 `modtest.WithTransport`, so the module's real client runs against it. It lives under the
 module's own package and only the module's tests import it.
 
