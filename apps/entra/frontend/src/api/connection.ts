@@ -35,16 +35,6 @@ export const requiredPermissions = [
   "Organization.Read.All",
 ] as const;
 
-/**
- * The permission calendar sync adds (calendar Outlook sync design O2): asked
- * for only while the switch is on, and never one the connection needs.
- */
-export const CALENDAR_PERMISSION = "Calendars.ReadWrite";
-
-/** The permissions the wizard lists for the Owner to add: the eight, and the calendar's while the Outlook connection switch is on. */
-export const permissionsToAdd = (connection: EntraConnection): readonly string[] =>
-  connection.outlookConnect.enabled ? [...requiredPermissions, CALENDAR_PERMISSION] : requiredPermissions;
-
 const base = "/api/v1/entra";
 const ifMatch = (version: number) => ({ "If-Match": String(version) });
 

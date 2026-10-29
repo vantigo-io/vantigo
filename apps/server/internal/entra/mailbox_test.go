@@ -198,7 +198,7 @@ func TestMailbox_StatusAndTheConnectionsOutlookConnect(t *testing.T) {
 	status(contracts.MailboxUnavailable, "switch_off")
 	outlookConnect(gen.EntraOutlookConnectStatusOff, "", false)
 
-	// Connected without the calendar's permission: the test still connects.
+	// Connected, no application Calendars.ReadWrite: the test connects.
 	register(t, o)
 	addSecret(t, o, secretValue, "Vantigo", h.Now().AddDate(1, 0, 0))
 	if result := testConnection(t, o); result.Status != gen.EntraConnectionTestStatusConnected || len(result.PermissionsMissing) != 0 {
@@ -207,38 +207,31 @@ func TestMailbox_StatusAndTheConnectionsOutlookConnect(t *testing.T) {
 	status(contracts.MailboxCleanup, "switch_off")
 	outlookConnect(gen.EntraOutlookConnectStatusOff, "", false)
 
-	// On, the permission missing: the test still connects and names it.
+	// On: available and untested, the application permission never asked
+	// for — every person's call runs on their own connection.
 	on := setOutlookConnect(t, o, true)
-	if !on.OutlookConnect.Enabled || on.OutlookConnect.Status != gen.EntraOutlookConnectStatusPermissionMissing {
+	if !on.OutlookConnect.Enabled || on.OutlookConnect.Status != gen.EntraOutlookConnectStatusUntested {
 		t.Errorf("the PUT's answer: %+v", on.OutlookConnect)
 	}
 	result := testConnection(t, o)
-	if result.Status != gen.EntraConnectionTestStatusConnected || !slices.Equal(result.PermissionsMissing, []string{"Calendars.ReadWrite"}) {
-		t.Errorf("the test with the switch on: %+v, want connected missing Calendars.ReadWrite", result)
+	if result.Status != gen.EntraConnectionTestStatusConnected || len(result.PermissionsMissing) != 0 {
+		t.Errorf("the test with the switch on: %+v, want connected with nothing missing", result)
 	}
-	// The role not in the token is advisory only — an Exchange RBAC grant
-	// never shows there — so the provider is available all the same.
-	status(contracts.MailboxAvailable, "")
-	outlookConnect(gen.EntraOutlookConnectStatusPermissionMissing, "", true)
-
-	// Consented: available, and still untested.
-	g.Configure(func(g *graphtest.FakeGraph) { g.Roles = append(g.Roles, "Calendars.ReadWrite") })
-	testConnection(t, o)
 	status(contracts.MailboxAvailable, "")
 	outlookConnect(gen.EntraOutlookConnectStatusUntested, "", false)
 
 	// The tenant refusing the secret: failing, unavailable with the reason.
 	g.Configure(func(g *graphtest.FakeGraph) { g.Secrets[clientID] = []string{"another"} })
 	testConnection(t, o)
-	// The failed test saw no permission: Calendars.ReadWrite is missing with
-	// the rest while the switch is on.
+	// The failed test saw no permission; Calendars.ReadWrite is never one
+	// of the missing.
 	status(contracts.MailboxUnavailable, "credential_invalid")
-	outlookConnect(gen.EntraOutlookConnectStatusUnavailable, "credential_invalid", true)
+	outlookConnect(gen.EntraOutlookConnectStatusUnavailable, "credential_invalid", false)
 
 	// Every secret revoked: unconfigured.
 	h.Exec(t, `UPDATE entra.credentials SET revoked_at = $1`, h.Now())
 	status(contracts.MailboxUnavailable, "unconfigured")
-	outlookConnect(gen.EntraOutlookConnectStatusUnavailable, "", true)
+	outlookConnect(gen.EntraOutlookConnectStatusUnavailable, "", false)
 
 	// The switch's changes are audited as settings changes.
 	setOutlookConnect(t, o, false)

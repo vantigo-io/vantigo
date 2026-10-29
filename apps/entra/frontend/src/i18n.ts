@@ -151,9 +151,6 @@ export const entraCatalog = {
     step3Path:
       "App registrations › the application › API permissions › Add a permission › Microsoft Graph › Application permissions",
     step3Body: "Add these eight application permissions, one by one.",
-    step3BodyWithCalendar:
-      "Add these nine application permissions, one by one. The last, Calendars.ReadWrite, is for calendar sync: the rest of the module works without it.",
-    permissionForCalendarSync: "(for calendar sync)",
     permissionsToAdd: "The permissions to add",
     permissionGranted: "granted",
     permissionMissing: "missing",
@@ -220,12 +217,10 @@ export const entraCatalog = {
     outlookConnect: "Outlook connection",
     outlookConnectSwitch: "Outlook connection: let people connect their Outlook to Vantigo",
     outlookConnectDescription:
-      "Each person connects their own Outlook under Settings › Connections, signing in to Microsoft once. Add the redirect URI below to the app registration's Web platform, and the delegated permissions openid, profile, offline_access and Calendars.ReadWrite with admin consent. Calendar sync still needs the Calendars.ReadWrite application permission.",
+      "Each person connects their own Outlook under Settings › Connections, signing in to Microsoft once. Add the redirect URI below to the app registration's Web platform, and the delegated permissions openid, profile, offline_access and Calendars.ReadWrite with admin consent.",
     outlookConnectStatus_ready: "Ready",
     outlookConnectStatus_untested:
       "Nobody has connected yet: connect your own Outlook under Settings › Connections to check that it works.",
-    outlookConnectStatus_permission_missing:
-      "Calendar sync needs the Calendars.ReadWrite application permission, which is not in the token. That is expected if you granted it with Exchange RBAC for Applications; otherwise add it, grant admin consent and test again.",
     outlookConnectStatus_consent_missing:
       "The last connect lacked a delegated permission: grant admin consent for it in the app registration and connect again.",
     outlookConnectStatus_unavailable: "Waiting for the connection",
@@ -598,9 +593,6 @@ export const entraCatalog = {
     step3Path:
       "App registrations › applikasjonen › API permissions › Add a permission › Microsoft Graph › Application permissions",
     step3Body: "Legg til disse åtte applikasjonstillatelsene, én etter én.",
-    step3BodyWithCalendar:
-      "Legg til disse ni applikasjonstillatelsene, én etter én. Den siste, Calendars.ReadWrite, er for kalendersynkronisering: resten av modulen virker uten den.",
-    permissionForCalendarSync: "(for kalendersynkronisering)",
     permissionsToAdd: "Tillatelsene som skal legges til",
     permissionGranted: "gitt",
     permissionMissing: "mangler",
@@ -667,12 +659,10 @@ export const entraCatalog = {
     outlookConnect: "Outlook-tilkobling",
     outlookConnectSwitch: "Outlook-tilkobling: la folk koble Outlook til Vantigo",
     outlookConnectDescription:
-      "Hver person kobler til sin egen Outlook under Innstillinger › Tilkoblinger og logger på Microsoft én gang. Legg omdirigerings-URI-en nedenfor til appregistreringens Web-plattform, og de delegerte tillatelsene openid, profile, offline_access og Calendars.ReadWrite med administratorsamtykke. Kalendersynkroniseringen trenger fortsatt applikasjonstillatelsen Calendars.ReadWrite.",
+      "Hver person kobler til sin egen Outlook under Innstillinger › Tilkoblinger og logger på Microsoft én gang. Legg omdirigerings-URI-en nedenfor til appregistreringens Web-plattform, og de delegerte tillatelsene openid, profile, offline_access og Calendars.ReadWrite med administratorsamtykke.",
     outlookConnectStatus_ready: "Klar",
     outlookConnectStatus_untested:
       "Ingen har koblet til ennå: koble til din egen Outlook under Innstillinger › Tilkoblinger for å sjekke at det virker.",
-    outlookConnectStatus_permission_missing:
-      "Kalendersynkroniseringen trenger applikasjonstillatelsen Calendars.ReadWrite, som ikke er i tokenet. Det er som ventet hvis du ga den med Exchange RBAC for Applications; ellers legg den til, gi administratorsamtykke og test på nytt.",
     outlookConnectStatus_consent_missing:
       "Den siste tilkoblingen manglet en delegert tillatelse: gi administratorsamtykke for den i appregistreringen og koble til på nytt.",
     outlookConnectStatus_unavailable: "Venter på tilkoblingen",

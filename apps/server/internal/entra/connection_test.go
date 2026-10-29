@@ -484,10 +484,10 @@ func insertOutlookRow(t *testing.T, h *harness, oid uuid.UUID, state string) {
 	           VALUES ($1, $2, $3, '{calendars.readwrite}', '\x01', $4, $5, $5, $5, $5)`, oid, uuid.New(), tenantID, state, h.Now())
 }
 
-// outlookConnect's six statuses (Outlook connection design M2; the
-// advisory permission_missing until delivery B), in their order — off,
-// unavailable, permission_missing, consent_missing, ready, untested — and
-// its counts of the people connected and waiting to reconnect.
+// outlookConnect's five statuses (Outlook connection design M2), in their
+// order — off, unavailable, consent_missing, ready, untested — with no
+// application Calendars.ReadWrite judged at all, and its counts of the
+// people connected and waiting to reconnect.
 func TestConnection_OutlookConnectsStatusAndCounts(t *testing.T) {
 	t.Parallel()
 	h, g := newTenantHarness(t)
@@ -502,14 +502,14 @@ func TestConnection_OutlookConnectsStatusAndCounts(t *testing.T) {
 	}
 	status(gen.EntraOutlookConnectStatusOff)
 
-	// The last test's token lacks the calendar's application permission,
-	// which the calendar still writes with until delivery B.
+	// The token lacks an application Calendars.ReadWrite, which no longer
+	// matters: the calendar writes on each person's own connection.
 	on := setOutlookConnect(t, o, true)
-	if on.OutlookConnect.Status != gen.EntraOutlookConnectStatusPermissionMissing {
-		t.Errorf("turned on without Calendars.ReadWrite: %s, want permission_missing", on.OutlookConnect.Status)
+	if on.OutlookConnect.Status != gen.EntraOutlookConnectStatusUntested {
+		t.Errorf("turned on without Calendars.ReadWrite: %s, want untested", on.OutlookConnect.Status)
 	}
 	h.Exec(t, `UPDATE entra.connection SET outlook_last_error = 'consent_missing', outlook_last_error_at = $1`, h.Now())
-	status(gen.EntraOutlookConnectStatusPermissionMissing)
+	status(gen.EntraOutlookConnectStatusConsentMissing)
 	h.Exec(t, `UPDATE entra.connection SET outlook_last_error = NULL, outlook_last_error_at = NULL`)
 
 	g.Configure(func(g *graphtest.FakeGraph) { g.Roles = append(g.Roles, "Calendars.ReadWrite") })
@@ -589,9 +589,10 @@ func TestSettings_TheOutlookSwitchOnAndOff(t *testing.T) {
 	}
 }
 
-// permissionsUnexpected (design M19): the token's roles beyond the eight
-// and Calendars.ReadWrite, a warning in GET /connection and the test's
-// answer and an unexpected: code in the test's event — never a status.
+// permissionsUnexpected (design M19): the token's roles beyond the eight —
+// an application Calendars.ReadWrite left from an earlier setup among
+// them — a warning in GET /connection and the test's answer and an
+// unexpected: code in the test's event — never a status, never missing.
 func TestConnection_PermissionsUnexpected(t *testing.T) {
 	t.Parallel()
 	h, g := newTenantHarness(t)
@@ -600,10 +601,21 @@ func TestConnection_PermissionsUnexpected(t *testing.T) {
 		t.Errorf("the eight alone: %v, want none", got)
 	}
 
-	g.Configure(func(g *graphtest.FakeGraph) { g.Roles = append(g.Roles, "Calendars.ReadWrite") })
-	if got := testConnection(t, o).PermissionsUnexpected; len(got) != 0 {
-		t.Errorf("with Calendars.ReadWrite: %v, want none", got)
+	setOutlookConnect(t, o, true)
+	if got := getConnection(t, o).PermissionsMissing; len(got) != 0 {
+		t.Errorf("the switch on, the eight present: missing %v, want none", got)
 	}
+	g.Configure(func(g *graphtest.FakeGraph) { g.Roles = append(g.Roles, "Calendars.ReadWrite") })
+	if got := testConnection(t, o).PermissionsUnexpected; !slices.Equal(got, []string{"Calendars.ReadWrite"}) {
+		t.Errorf("with a leftover Calendars.ReadWrite: %v, want it unexpected", got)
+	}
+	codes := modtest.One[[]string](t, h.Harness, `SELECT codes FROM entra.events WHERE action = 'entra.connection.tested' ORDER BY id DESC LIMIT 1`)
+	if !slices.Equal(codes, []string{"connected", "unexpected:Calendars.ReadWrite"}) {
+		t.Errorf("the test's codes with a leftover Calendars.ReadWrite = %v", codes)
+	}
+	g.Configure(func(g *graphtest.FakeGraph) {
+		g.Roles = slices.DeleteFunc(g.Roles, func(r string) bool { return r == "Calendars.ReadWrite" })
+	})
 
 	g.Configure(func(g *graphtest.FakeGraph) { g.Roles = append(g.Roles, "Mail.Send", "Directory.ReadWrite.All") })
 	result := testConnection(t, o)
@@ -615,7 +627,7 @@ func TestConnection_PermissionsUnexpected(t *testing.T) {
 	if conn.Status != gen.EntraConnectionStatusConnected || !slices.Equal(conn.PermissionsUnexpected, want) {
 		t.Errorf("GET /connection: %s %v", conn.Status, conn.PermissionsUnexpected)
 	}
-	codes := modtest.One[[]string](t, h.Harness, `SELECT codes FROM entra.events WHERE action = 'entra.connection.tested' ORDER BY id DESC LIMIT 1`)
+	codes = modtest.One[[]string](t, h.Harness, `SELECT codes FROM entra.events WHERE action = 'entra.connection.tested' ORDER BY id DESC LIMIT 1`)
 	if !slices.Equal(codes, []string{"connected", "unexpected:Directory.ReadWrite.All", "unexpected:Mail.Send"}) {
 		t.Errorf("the test's codes = %v", codes)
 	}

@@ -243,11 +243,11 @@ const MailboxNoticesMax = 5000
 // The states of MailboxStatus.State.
 const (
 	// MailboxAvailable: the provider may write (the admin switch on, the
-	// permission granted, the connection working).
+	// connection working); each person's call runs on their own connection.
 	MailboxAvailable = "available"
-	// MailboxCleanup: the switch off or the permission missing, a credential
-	// still working — Apply takes deletes only and DeleteCalendar works, so a
-	// person's copies can still be removed.
+	// MailboxCleanup: the switch off, a credential still working — Apply
+	// takes deletes only and DeleteCalendar works, so a person's copies can
+	// still be removed.
 	MailboxCleanup = "cleanup"
 	// MailboxUnavailable: the provider can write nothing — not configured,
 	// or its credential refused.
@@ -259,7 +259,7 @@ type MailboxStatus struct {
 	// State is MailboxAvailable, MailboxCleanup or MailboxUnavailable.
 	State string
 	// Reason is a code — never the directory's words — for a state other
-	// than available ("switch_off", "permission_missing"); "" when none.
+	// than available ("switch_off", the connection's reason); "" when none.
 	Reason string
 }
 

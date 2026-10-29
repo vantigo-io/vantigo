@@ -422,15 +422,16 @@ describe("EntraPage — the Outlook connection", () => {
     });
     expect(toggle).not.toBeChecked();
     expect(
-      within(form).getByText(/Calendar sync still needs the Calendars.ReadWrite application permission/),
+      within(form).getByText(/^Each person connects their own Outlook under Settings › Connections/),
     ).toBeInTheDocument();
+    expect(within(form).queryByText(/application permission/)).not.toBeInTheDocument();
     expect(within(form).queryByRole("status")).not.toBeInTheDocument();
     const step = region("Grant the permissions and the role");
     expect(within(step).queryByText("Calendars.ReadWrite")).not.toBeInTheDocument();
     expect(within(step).getByText("Add these eight application permissions, one by one.")).toBeInTheDocument();
   });
 
-  it("is sent as outlookConnect with the account rules, then asks for Calendars.ReadWrite until the token carries it", async () => {
+  it("is sent as outlookConnect with the account rules, and never asks for an application Calendars.ReadWrite", async () => {
     const { fetchMock } = await openPage({ connection: connected() });
     const form = within(region("Set the account rules")).getByRole("form", { name: "Account rules" });
     await userEvent.click(within(form).getByRole("switch", { name: /^Outlook connection: let people connect/ }));
@@ -445,20 +446,18 @@ describe("EntraPage — the Outlook connection", () => {
     expect(await within(form).findByText(/^Nobody has connected yet: connect your own Outlook/)).toBeInTheDocument();
     expect(within(form).getByRole("switch", { name: /^Outlook connection: let people/ })).toBeChecked();
 
+    // The calendar writes on each person's own connection: the eight alone.
     const step = region("Grant the permissions and the role");
-    expect(within(step).getByText(/^Add these nine application permissions/)).toBeInTheDocument();
+    expect(within(step).getByText("Add these eight application permissions, one by one.")).toBeInTheDocument();
     const list = within(step).getByRole("list", { name: "The permissions to add" });
-    expect(within(list).getByText("Calendars.ReadWrite")).toBeInTheDocument();
-    expect(within(step).getByRole("button", { name: "Copy Calendars.ReadWrite" })).toBeInTheDocument();
-
-    const status = within(region("Status")).getByRole("list", { name: "Missing permissions" });
-    expect(within(status).getByText("Calendars.ReadWrite")).toBeInTheDocument();
-    expect(within(status).getByText("(for calendar sync)")).toBeInTheDocument();
-    // Advisory only: a grant made with RBAC for Applications never reaches the token.
+    expect(within(list).queryByText("Calendars.ReadWrite")).not.toBeInTheDocument();
+    expect(within(list).getAllByRole("listitem")).toHaveLength(requiredPermissions.length);
+    expect(within(region("Status")).queryByRole("list", { name: "Missing permissions" })).not.toBeInTheDocument();
+    expect(screen.queryByText("(for calendar sync)")).not.toBeInTheDocument();
     expect(within(step).getByText("Done")).toBeInTheDocument();
   });
 
-  it("reads Ready once the token carries the permission", async () => {
+  it("reads Ready once someone has connected", async () => {
     await openPage({ connection: connected({ outlookConnect: outlookConnect() }) });
     const form = within(region("Set the account rules")).getByRole("form", { name: "Account rules" });
     expect(within(form).getByRole("status")).toHaveTextContent("Ready");
@@ -581,10 +580,6 @@ describe("EntraPage — the Outlook connection", () => {
   const statuses = [
     ["ready", "Ready"],
     ["untested", /^Nobody has connected yet: connect your own Outlook under Settings › Connections/],
-    [
-      "permission_missing",
-      /^Calendar sync needs the Calendars.ReadWrite application permission, which is not in the token/,
-    ],
     ["consent_missing", /^The last connect lacked a delegated permission: grant admin consent/],
     ["unavailable", "Waiting for the connection"],
   ] as const;
