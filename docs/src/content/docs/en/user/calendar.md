@@ -458,6 +458,14 @@ Outlook](#change-your-appointments-in-outlook): the change comes back to Vantigo
    - **Titles** — **Full titles**, or **Busy only**: every title becomes *Busy*, with
      nothing but the link.
 
+While your organisation runs Microsoft Entra ID, the card also shows your **Outlook
+connection** under its description: **Not connected** with **Connect Outlook**,
+**Connected as** and your account, or **Reconnect needed** with the reason and
+**Reconnect Outlook**. The button takes you to Microsoft's sign-in and back to this page
+([Connections](/en/user/connections/)). In this release the sync does not use the
+connection yet: it runs on your organisation's permission whether or not you have
+connected.
+
 Each change is saved as you make it. The card then says **Waiting for the first
 sync…**, and soon **Last synced** and when. Vantigo syncs every quarter of an hour, and
 within a minute when one of your appointments changes; **Sync now** asks for a sync at
@@ -499,8 +507,9 @@ calendar and the meeting stay — and a calendar you made yourself is never touc
 
 When the switch cannot be turned on, the card says why:
 
-- **Your administrator has not turned on calendar sync.** — an Owner turns on **Calendar
-  sync** on the Microsoft Entra ID page ([Microsoft Entra ID](/en/user/entra/#calendar-sync)).
+- **Your administrator has not turned on calendar sync.** — an Owner turns on the
+  **Outlook connection** on the Microsoft Entra ID page ([Microsoft Entra
+  ID](/en/user/entra/#outlook-connection)).
 - **Calendar sync needs the Microsoft Entra ID module.** — the installation does not run
   it.
 - **The connection to Microsoft 365 is not working right now.**

@@ -335,7 +335,7 @@ doing; the person can ask whoever publishes the calendar for a smaller one.
 
 A person can have Vantigo keep a copy of their calendar in their Microsoft 365 mailbox,
 on their **My calendar** screen ([Sync with Outlook](/en/user/calendar/#sync-with-outlook)),
-once an Owner has turned on **Calendar sync** in the Microsoft Entra ID module and granted
+once an Owner has turned on the **Outlook connection** switch in the Microsoft Entra ID module and granted
 its permission ([Microsoft Entra ID](/en/admin/entra/#calendar-sync)). The
 `calendar-mailbox-sync` worker writes the copies through the Entra module's connection
 ([the worker](/en/reference/calendar/#the-mailbox-sync-worker)). It runs unless
@@ -378,7 +378,7 @@ minute. A notification is a nudge and nothing more: the worker still reads the m
 and the poll runs whether or not any arrive. If asking fails, the worker logs a warning
 with the error's code and the sync stands. The subscription is removed with the copies —
 the person turning the sync off, losing access, being unlinked or moved to another
-mailbox, or Calendar sync being turned off — but kept when only the person's target
+mailbox, or the Outlook connection switch being turned off — but kept when only the person's target
 calendar changes. A removal that fails, or that cannot be tried because the connection is not
 working, stays owed and is tried again on the clean-up's backoff, like a copy that could
 not be deleted; one Microsoft refuses outright (permission denied) is logged and left to
@@ -388,7 +388,7 @@ turns it all off.
 The worker removes a person's copies when they turn the sync off, when they may no
 longer use Calendar — disabled, locked out, deactivated by the directory, or without
 `calendar:access` — when Staff no longer links them to a Microsoft Entra ID account,
-and for everyone when **Calendar sync** is turned off. **Turned off, the worker writes
+and for everyone when the **Outlook connection** switch is turned off. **Turned off, the worker writes
 and removes nothing**: people's copies stay in their mailboxes as they last were, the
 copies of a leaver included, until it is on again.
 

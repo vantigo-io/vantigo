@@ -782,6 +782,47 @@ count as unexpected.
     user guide's new page `user/connections.md` (connecting, reconnecting, disconnecting), listed in the user overview;
   - `admin/installation.md` (the redirect URI is on `APP_URL`);
   - the roadmap.
+
+  *As built (delivery A, 2026-10-29;
+  [the plan](../plans/2026-10-29-entra-outlook-connection.md)):* where A departs from
+  this design —
+  - **M2**: the `permission_missing` advisory goes in A, with the `calendarSync` object
+    that held it; what stays until B is `Calendars.ReadWrite` in `permissionsMissing`
+    while the switch is on and step 3's *(for calendar sync)* label. `outlookConnect`
+    also answers `redirectUri`, which the Entra page shows to copy. The page asks before
+    it saves the switch turned off while anyone is connected or waiting to reconnect.
+  - **M3**: `refresh_sealed` is `bytea`, as every sealed column of the module;
+    `account_checked_at` and `ix_entra_outlook_connections_changed` are added.
+  - **M4**: connect refuses `account_taken` early as well (complete still decides). The
+    callback has a code this design's list lacks, `consent_missing`: with one feature, a
+    connection without it is none, so nothing is stored and the switch's status reads
+    `consent_missing`. A sealed connected cookie over 3,800 bytes answers `failed`
+    rather than be dropped by the browser. A complete with another session's or another
+    person's cookie answers `410 expired`, as if there were none. Connect and complete
+    share a rate limit, `entra-outlook` (30 a minute); the callback has
+    `entra-outlook-callback` (60).
+  - **M5**: a CAE claims challenge moves the row to `reconnect` with `sign_in_again`;
+    `connectionNeeded` is Entra's own error until B adds `contracts.ErrConnectionNeeded`.
+  - **M6**: the daily account read runs in A, in `entra-outlook-sweep`, for the rows in
+    `reconnect` (at most 100 a cycle); an `active` row's account is checked on use
+    against the module's own row, closing it (`deleted` or `disabled`) with its token
+    kept for removals.
+  - **M7**: a leaver's row closes inside Deactivate's transaction, with the pass, its
+    token nulled; `Delete` of a user the tenant no longer holds now marks that user's row
+    `deleted` (it had marked nothing, for want of the object id) and closes its
+    connection. `entra.outlook.closed` carries `leaver`, `deleted`, `disabled`,
+    `switch_off` or `repointed`; the module's own system actor is
+    `system:entra-outlook`.
+  - **M8**: the host does import `@vantigo/entra-ui`, as it composes `EntraPage` today;
+    what must not import Entra is the calendar package, which opens the
+    `connectionButton` prop. `GET /outlook/connection` is always 200 with `offered` and
+    `reason` (`switch_off`, `no_account`), not a 404, so the page and the button can tell
+    "not connected" from "nothing to connect". `/settings/connections` answers not found
+    while Entra is off; Disconnect is on that page only; a completed connect returns by
+    replacing the callback's address in the history. The calendar guide changes in A,
+    since A changes the calendar's frontend.
+  - **M19**: in A the `Mail.*` roles and `full_access_as_app` count as unexpected; C
+    moves them under `tenant_wide`.
 - **B** (`feat/calendar-outlook-delegated`): M9, and M2's removals. No migration beyond
   A's. A and B ship in the same release (M2). Docs:
   - the calendar and Entra reference (the token source, `ErrConnectionNeeded`,

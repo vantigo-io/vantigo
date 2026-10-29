@@ -167,8 +167,9 @@ prosedyrene og gjenopprettingen.
   [Rotating APP_SECRET](/en/contributing/platform-packages/#rotating-app_secret).
 - **`APP_URL`** (`vantigo.env`) — bare det offentlige opphavet: skjema og vert, med
   port om nødvendig, ingen sti og ingen avsluttende skråstrek. E-postlenker, de
-  godtatte `Host`-verdiene, cookie-attributtet `Secure` og den statiske
-  OIDC-tilbakekallingen utledes alle fra den. Forespørsler med en annen `Host` enn
+  godtatte `Host`-verdiene, cookie-attributtet `Secure`, den statiske
+  OIDC-tilbakekallingen og omdirigerings-URI-en til Microsoft Entra ID-modulens
+  Outlook-tilkobling utledes alle fra den. Forespørsler med en annen `Host` enn
   denne eller loopback (`localhost`, `127.0.0.1`, `[::1]`) avvises med 400. Porten må
   stemme med `VANTIGO_PORT` i `.env`; ingenting avstemmer de to, og et avvik gir ingen
   feil — stacken serverer, men hver invitasjons- og passordtilbakestillingslenke den
@@ -285,8 +286,9 @@ fakturamodulens betalingsjobb `invoices-payments` når `INVOICES_VIPPS_ENABLED` 
 kalendermodulens avlysningsjobb `calendar-cancellations` med mindre
 `CALENDAR_CANCELLATIONS_ENABLED=0`, kalendermodulens abonnementsjobb
 `calendar-subscriptions` med mindre `CALENDAR_SUBSCRIPTIONS_ENABLED=0`, og kalendermodulens
-postbokssynkronisering `calendar-mailbox-sync` med mindre `CALENDAR_MAILBOX_SYNC_ENABLED=0`)
-inne i API-prosessen: `WORKERS_IN_PROCESS=1`, standardverdien. Utrullinger som
+postbokssynkronisering `calendar-mailbox-sync` med mindre `CALENDAR_MAILBOX_SYNC_ENABLED=0`,
+og Microsoft Entra ID-modulens `entra-outlook-sweep`, alltid, som rydder i folks
+Outlook-tilkoblinger hver time) inne i API-prosessen: `WORKERS_IN_PROCESS=1`, standardverdien. Utrullinger som
 skalerer API-et horisontalt bør flytte dem til én dedikert worker-container, slik at
 hver ekstra HTTP-replika ikke mangedobler pollerne:
 
@@ -311,8 +313,8 @@ hver ekstra HTTP-replika ikke mangedobler pollerne:
 
 Replikaer som verken skal migrere eller kjøre bakgrunnsjobber kan kjøre kommandoen
 `server` i stedet for `api`; den serverer bare, uansett hva `WORKERS_IN_PROCESS` sier.
-Uansett topologi tar oppbevaringsoppryddingen, registerjobbene, EHF-hendelsesjobben og
-kalenderens avlysningsjobb en rådgivende lås (advisory lock) i PostgreSQL, så hver av dem kjører på nøyaktig én
+Uansett topologi tar oppbevaringsoppryddingen, registerjobbene, EHF-hendelsesjobben,
+kalenderens avlysningsjobb og `entra-outlook-sweep` en rådgivende lås (advisory lock) i PostgreSQL, så hver av dem kjører på nøyaktig én
 instans per syklus; utboksen, `invoices-ehf`-jobben, `invoices-reminders`-jobben,
 `invoices-billing`-jobben, `invoices-payments`-jobben og kalenderens abonnements- og
 postboksjobb tar i stedet én rad om gangen under en tidsbegrenset lås, så
@@ -490,6 +492,11 @@ Migreringer kjører uten pool-taket, siden skjemaendringer legitimt kan ta lengr
 Hele applikasjonen kan serveres under ett konfigurerbart stiprefiks. Sett
 `APP_BASE_PATH` i `vantigo.env` og sett `APP_URL` til det offentlige skjemaet og
 verten — ingen sti, siden stiprefikset er `APP_BASE_PATH`, ikke en del av `APP_URL`.
+Omdirigerings-URI-er registrert andre steder følger begge: Microsoft Entra ID-modulens
+Outlook-tilkobling svarer Microsoft på `APP_URL` + `APP_BASE_PATH` +
+`/api/v1/entra/outlook/callback` — aldri på `PUBLIC_BASE_URL` — så endrer du en av dem,
+må den nye URI-en legges til appregistreringen
+([Microsoft Entra ID](/nb/admin/entra/#outlook-tilkobling)).
 API-prefiksene forblir `/api/v1/identity`, `/api/v1/customers`, `/api/v1/products`,
 `/api/v1/energy`, `/api/v1/communications`, `/api/v1/projects`, `/api/v1/time`,
 `/api/v1/expenses`, `/api/v1/invoices`, `/api/v1/staff`, `/api/v1/planning`,
