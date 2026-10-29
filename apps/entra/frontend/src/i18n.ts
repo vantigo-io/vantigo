@@ -240,6 +240,22 @@ export const entraCatalog = {
       "Needs PUBLIC_BASE_URL, an address Microsoft can reach. Until then changes in Outlook arrive at the next sync, every 15 minutes.",
     changeNotifications_unreachable:
       "Microsoft could not reach the address since {{since}}. Vantigo tries again within the hour; changes arrive at the next sync meanwhile.",
+    mailChannels: "Mail channels",
+    mailChannelsSwitch: "Mail channels: let Communications send and receive through Exchange Online shared mailboxes",
+    mailChannelsDescription:
+      "Each shared mailbox becomes a channel in Communications, reached with the application's own access. Grant that access in Exchange Online with the commands below, limited to the channels' mailboxes, not with Mail permissions in the app registration.",
+    mailChannelsStatus_ready:
+      "Ready: the application holds no mail permission for the whole tenant. Adding a channel in Communications checks that Vantigo reaches its mailbox.",
+    mailChannelsStatus_tenant_wide:
+      "Mail access is granted to every mailbox in the tenant. Limit it with RBAC for Applications and remove the tenant-wide consent.",
+    mailChannelsStatus_unavailable: "Waiting for the connection",
+    mailChannelsCommands: "Commands for Exchange Online PowerShell",
+    mailChannelsCommandsDescription:
+      "Run them as an Exchange Administrator. Replace post@firma.no with a shared mailbox's address, and run Set-Mailbox once for each mailbox a channel uses. The access can take from 30 minutes to 2 hours to apply; Test-ServicePrincipalAuthorization answers at once.",
+    mailChannelsClientIdPlaceholder: "<client id>",
+    mailChannelsObjectIdPlaceholder: "<object id>",
+    mailChannelsTestFirst:
+      "Test the connection first: the test reads the application's object id under Enterprise applications and fills it in here.",
     saveSettings: "Save the account rules",
     settingsSaved: "Account rules saved",
     couldNotSaveSettings: "The account rules could not be saved",
@@ -682,6 +698,22 @@ export const entraCatalog = {
       "Krever PUBLIC_BASE_URL, en adresse Microsoft kan nå. Til da kommer endringer i Outlook ved neste synkronisering, hvert 15. minutt.",
     changeNotifications_unreachable:
       "Microsoft har ikke nådd adressen siden {{since}}. Vantigo prøver igjen innen en time; endringene kommer ved neste synkronisering i mellomtiden.",
+    mailChannels: "E-postkanaler",
+    mailChannelsSwitch: "E-postkanaler: la Kommunikasjon sende og motta gjennom delte postbokser i Exchange Online",
+    mailChannelsDescription:
+      "Hver delte postboks blir en kanal i Kommunikasjon, og Vantigo når den med applikasjonens egen tilgang. Gi den tilgangen i Exchange Online med kommandoene nedenfor, avgrenset til kanalenes postbokser, og ikke med Mail-tillatelser i appregistreringen.",
+    mailChannelsStatus_ready:
+      "Klar: applikasjonen har ingen e-posttillatelse for hele leietakeren. Når du legger til en kanal i Kommunikasjon, sjekkes det at Vantigo når postboksen.",
+    mailChannelsStatus_tenant_wide:
+      "Applikasjonen har tilgang til alle postboksene i leietakeren. Begrens den med RBAC for Applications, og fjern samtykket som gjelder hele leietakeren.",
+    mailChannelsStatus_unavailable: "Venter på tilkoblingen",
+    mailChannelsCommands: "Kommandoer for Exchange Online PowerShell",
+    mailChannelsCommandsDescription:
+      "Kjør dem som Exchange-administrator. Bytt ut post@firma.no med adressen til en delt postboks, og kjør Set-Mailbox én gang for hver postboks en kanal bruker. Det kan ta fra 30 minutter til 2 timer før tilgangen virker; Test-ServicePrincipalAuthorization svarer med en gang.",
+    mailChannelsClientIdPlaceholder: "<applikasjons-ID>",
+    mailChannelsObjectIdPlaceholder: "<objekt-ID>",
+    mailChannelsTestFirst:
+      "Test tilkoblingen først: testen leser objekt-ID-en applikasjonen har under Enterprise applications, og fyller den inn her.",
     saveSettings: "Lagre kontoreglene",
     settingsSaved: "Kontoreglene er lagret",
     couldNotSaveSettings: "Kontoreglene kunne ikke lagres",
