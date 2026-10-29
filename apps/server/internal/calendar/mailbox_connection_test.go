@@ -122,11 +122,23 @@ func TestMailboxConnection_AParkedPersonIsReCheckedADayLaterAndWokenByAChange(t 
 	}
 	r.Advance(time.Minute)
 	from := len(r.box.Calls())
-	if n := cycle(); n != 1 {
-		t.Fatalf("the long re-check synced %d, want the person", n)
+	ctx, log := recordContractCalls(context.Background())
+	if n, err := w.RunCycle(ctx); err != nil || n != 1 {
+		t.Fatalf("the long re-check synced %d, %v; want the person", n, err)
 	}
 	if asked := calls(r, from, "Versions"); len(asked) != 1 {
 		t.Errorf("the re-check asked Versions %d times, want once", len(asked))
+	}
+	// The cycle's steps, in order, before the provider's call that parks.
+	steps := []string{"MailboxCalendar.Status", "Access.UserHolds", "Workforce.DirectoryAccount", "MailboxCalendar.Versions"}
+	rest := log.list()
+	for _, step := range steps {
+		i := slices.Index(rest, step)
+		if i < 0 {
+			t.Errorf("the re-check's calls %v: want %v in order", log.list(), steps)
+			break
+		}
+		rest = rest[i+1:]
 	}
 	wantParked(t, r, readSyncRow(t, r, me), "unavailable", "not_connected", 0)
 
@@ -154,6 +166,34 @@ func TestMailboxConnection_AParkedPersonIsReCheckedADayLaterAndWokenByAChange(t 
 	asked := calls(r, from, "Connections")
 	if len(asked) != 1 || !asked[0].From.Equal(at.Add(-30*time.Second)) {
 		t.Errorf("Connections asked %+v, want from the latest change taken, less the overlap", asked)
+	}
+}
+
+// A change committed while the person's own sync was running — before the
+// sync wrote their row, parked — still wakes them: the guard allows the
+// overlap, so neither that nor a skew between the clocks loses it.
+func TestMailboxConnection_AChangeDuringThePersonsSyncStillWakesThem(t *testing.T) {
+	t.Parallel()
+	r := newMailboxRig(t)
+	w := mailboxWorker(t, r)
+	c, me, mb := r.person(t)
+	create(t, c, timed(t, "Plan", oslo, "2026-09-14T09:00", "2026-09-14T10:00"))
+	turnOn(t, c, "default", "full", "calendar.appointment")
+	r.box.SetConnection(mb, contracts.ConnectionNotConnected)
+	if n, err := w.RunCycle(context.Background()); err != nil || n != 1 {
+		t.Fatalf("cycle: synced %d, %v; want the person", n, err)
+	}
+	wantParked(t, r, readSyncRow(t, r, me), "unavailable", "not_connected", 0)
+
+	// The connect committed five seconds before the parked row was written.
+	r.box.SetConnection(mb, "")
+	r.box.ChangeConnection(mb, contracts.ConnectionActive, r.Now().Add(-5*time.Second))
+	r.Advance(time.Minute)
+	if n, err := w.RunCycle(context.Background()); err != nil || n != 1 {
+		t.Fatalf("cycle: synced %d, %v; want the person, woken", n, err)
+	}
+	if row := readSyncRow(t, r, me); row.state != "active" || len(r.box.EventsIn(mb, "")) != 1 {
+		t.Errorf("the row = %+v, events %d: want active and synced", row, len(r.box.EventsIn(mb, "")))
 	}
 }
 
@@ -360,6 +400,10 @@ func TestMailboxConnection_TurnedOffWhileWaitingToReconnectCleansUpOnTheChange(t
 	wantParked(t, r, readSyncRow(t, r, me), "stopping", "reconnect", 0)
 	if len(r.box.EventsIn(mb, "")) != 1 {
 		t.Fatal("the copies went without the connection")
+	}
+	// Off, with the clean-up owed: the card still asks for the reconnect.
+	if got := getSync(t, c.Client); got.Enabled || got.Availability != gen.MailboxSyncAvailabilityReconnect {
+		t.Errorf("enabled %v, availability %s; want off and reconnect, so the clean-up can run", got.Enabled, got.Availability)
 	}
 
 	r.box.SetConnection(mb, "")

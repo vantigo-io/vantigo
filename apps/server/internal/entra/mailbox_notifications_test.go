@@ -257,11 +257,11 @@ func TestMailboxWatch_Conflict(t *testing.T) {
 	other := mailboxUser(t, h, g)
 	expires := h.Now().Add(24 * time.Hour)
 	otherKept := g.AddSubscription(graphtest.Subscription{Resource: "/users/" + other + "/events", ChangeType: "created,updated,deleted",
-		NotificationURL: webhookURL, Expiration: expires})
+		NotificationURL: webhookURL, Expiration: expires, CreatorID: other})
 	lost := g.AddSubscription(graphtest.Subscription{Resource: "Users/" + strings.ToUpper(mailbox) + "/events", ChangeType: "created,updated,deleted",
-		NotificationURL: webhookURL, Expiration: expires})
+		NotificationURL: webhookURL, Expiration: expires, CreatorID: mailbox})
 	g.AddSubscription(graphtest.Subscription{Resource: "/users/" + other + "/events", ChangeType: "created",
-		NotificationURL: "https://another.example.com/hook", Expiration: expires})
+		NotificationURL: "https://another.example.com/hook", Expiration: expires, CreatorID: other})
 	g.Configure(func(g *graphtest.FakeGraph) { g.SubscriptionPageSize = 1 })
 
 	if err := p.Watch(ctx, mailbox); err != nil {
@@ -295,7 +295,7 @@ func TestMailboxWatch_Conflict(t *testing.T) {
 	// anything, and after it the create is tried again.
 	third := mailboxUser(t, h, g)
 	foreign := g.AddSubscription(graphtest.Subscription{Resource: "/users/" + third + "/events", ChangeType: "created,updated,deleted",
-		NotificationURL: "https://another.example.com/api/v1/entra/mailbox-notifications", Expiration: expires.Add(48 * time.Hour)})
+		NotificationURL: "https://another.example.com/api/v1/entra/mailbox-notifications", Expiration: expires.Add(48 * time.Hour), CreatorID: third})
 	if err := p.Watch(ctx, third); err != nil {
 		t.Errorf("Watch beside another installation's: %v, want nil", err)
 	}
@@ -526,8 +526,9 @@ func TestMailboxWatch_Refusals(t *testing.T) {
 // Unwatch (design O11.3): a mailbox not watched answers nil with nothing
 // called; a live subscription is deleted (204) and its row forgotten, as is
 // one Graph no longer holds (404); one past its expiry is forgotten with
-// nothing called; a 403 keeps the row deleting and answers ErrMailboxDenied,
-// and the next Unwatch deletes it. Allowed under cleanup, on the person's
+// nothing called; a 400 keeps the row deleting and answers the refusal,
+// and the next Unwatch deletes it (a 403 forgets it: the application's,
+// TestMailboxConnection_TheApplicationsSubscriptionIsForgotten). Allowed under cleanup, on the person's
 // closed connection; while unavailable an expired row is still forgotten
 // and a live one refused.
 func TestMailboxUnwatch(t *testing.T) {
@@ -579,9 +580,9 @@ func TestMailboxUnwatch(t *testing.T) {
 	o := mustOwner(t, h) // signed in now: a session of the start would be past its life
 
 	s := watch()
-	g.EditUser(mailbox, func(u *graphtest.User) { u.MailboxDenied = true })
-	if err := p.Unwatch(ctx, mailbox); !errors.Is(err, contracts.ErrMailboxDenied) {
-		t.Errorf("Unwatch refused: %v, want ErrMailboxDenied", err)
+	g.FailNext(http.StatusBadRequest)
+	if err := p.Unwatch(ctx, mailbox); err == nil {
+		t.Error("Unwatch refused: nil, want the refusal")
 	}
 	if n := h.Count(t, `SELECT count(*) FROM entra.mailbox_subscriptions WHERE object_id = $1 AND state = 'deleting' AND subscription_id = $2`, mailbox, s.ID); n != 1 {
 		t.Error("the refused delete is not kept owed")
@@ -589,7 +590,6 @@ func TestMailboxUnwatch(t *testing.T) {
 	if got := getConnection(t, o).OutlookConnect.Notifications.Subscriptions; got != 0 {
 		t.Errorf("%d live subscriptions counted, want none while one is deleting", got)
 	}
-	g.EditUser(mailbox, func(u *graphtest.User) { u.MailboxDenied = false })
 	unwatch("DELETE No Content")
 
 	// Under cleanup the delete is made.

@@ -423,3 +423,67 @@ func TestMailboxConnection_NoCredentialForTheRefresh(t *testing.T) {
 		t.Errorf("EnsureCalendar with no credential: %v, want ErrMailboxUnavailable", err)
 	}
 }
+
+// A subscription the application made before delivery B — its creator no
+// person — cannot be renewed or deleted with the person's token: Graph
+// answers 403. It is not this connection's to manage, so the row is
+// forgotten — a renewal creates the person's own, an Unwatch is done — and
+// no row is left deleting nor any refusal answered at every sync.
+func TestMailboxConnection_TheApplicationsSubscriptionIsForgotten(t *testing.T) {
+	ctx := context.Background()
+	h, g, _ := newNoticesHarness(t)
+	p := mailboxProvider(h)
+	id, _ := mailboxPerson(t, h, g)
+	mailbox := id.String()
+	// The row holds the application's subscription, as B found it.
+	applications := func() graphtest.Subscription {
+		t.Helper()
+		if err := p.Watch(ctx, mailbox); err != nil {
+			t.Fatal(err)
+		}
+		own := subscriptionOf(t, g, mailbox)
+		g.RemoveSubscription(own.ID)
+		app := g.AddSubscription(graphtest.Subscription{Resource: own.Resource, ChangeType: own.ChangeType,
+			NotificationURL: own.NotificationURL, LifecycleNotificationURL: own.LifecycleNotificationURL,
+			ClientState: own.ClientState, Expiration: own.Expiration})
+		h.Exec(t, `UPDATE entra.mailbox_subscriptions SET subscription_id = $2 WHERE object_id = $1`, id, app.ID)
+		return app
+	}
+
+	app := applications()
+	h.Advance(5 * 24 * time.Hour)
+	before := len(g.Calls())
+	if err := p.Watch(ctx, mailbox); err != nil {
+		t.Fatalf("Watch of the application's subscription: %v", err)
+	}
+	if got := strings.Join(methods(subscriptionCalls(g.Calls()[before:])), ","); got != "PATCH Forbidden,POST Created" {
+		t.Errorf("the renewal: %s, want the PATCH's 403 then a create", got)
+	}
+	var made graphtest.Subscription
+	for _, s := range g.Subscriptions() {
+		if s.ID != app.ID {
+			made = s
+		}
+	}
+	if made.CreatorID != mailbox {
+		t.Errorf("the subscription made: %+v, want the person's", made)
+	}
+	if n := h.Count(t, `SELECT count(*) FROM entra.mailbox_subscriptions WHERE object_id = $1 AND subscription_id = $2 AND state = 'active'`, id, made.ID); n != 1 {
+		t.Error("the row does not hold the person's subscription")
+	}
+
+	g.RemoveSubscription(made.ID)
+	g.RemoveSubscription(app.ID)
+	h.Exec(t, `DELETE FROM entra.mailbox_subscriptions WHERE object_id = $1`, id)
+	applications()
+	before = len(g.Calls())
+	if err := p.Unwatch(ctx, mailbox); err != nil {
+		t.Fatalf("Unwatch of the application's subscription: %v", err)
+	}
+	if got := strings.Join(methods(subscriptionCalls(g.Calls()[before:])), ","); got != "DELETE Forbidden" {
+		t.Errorf("the delete: %s, want DELETE Forbidden", got)
+	}
+	if n := h.Count(t, `SELECT count(*) FROM entra.mailbox_subscriptions WHERE object_id = $1`, id); n != 0 {
+		t.Error("the row is kept")
+	}
+}

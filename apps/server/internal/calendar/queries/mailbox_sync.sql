@@ -218,7 +218,10 @@ WHERE lower(s.mailbox) = notice.mailbox
 -- latest at kept: the rows of that mailbox that are on or owe a clean-up,
 -- last written before at, and not due already. Unlike a notice, a change
 -- overrides the backoff and the parking: it changes what the next sync can
--- do. A change taken twice marks nothing once the row was written since.
+-- do. The caller passes each change's instant plus the notices' overlap, so
+-- a row written while the change committed — during that person's own
+-- sync, or on a clock behind — is still marked; a change taken twice marks
+-- nothing once the row was written past that.
 UPDATE calendar.mailbox_sync s SET next_sync_at = @now::timestamptz
 FROM (
     SELECT lower(c.mailbox) AS mailbox, max(c.at) AS at

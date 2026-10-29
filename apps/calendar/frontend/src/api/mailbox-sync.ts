@@ -26,8 +26,16 @@ export const waitsForConnection = (availability: MailboxSyncAvailability | undef
 export const mailboxSyncCanRun = (availability: MailboxSyncAvailability | undefined) =>
   availability === "available" || waitsForConnection(availability);
 
-/** How often the card is read again while it waits for the connection, so a connect shows within the worker's cycle. */
+/**
+ * How often the card is read again while it waits — for the connection, so a
+ * connect shows within the worker's cycle, or for the first cycle after it
+ * was turned on (pending), so a parking's Connect hint shows.
+ */
 const WAITING_REFETCH_MS = 15_000;
+
+/** Whether the card is read again: while it waits for the connection, or on and pending its first cycle. */
+const waits = (sync: MailboxSync | undefined) =>
+  waitsForConnection(sync?.availability) || (sync?.enabled === true && sync.state === "pending");
 
 const path = "/api/v1/calendar/mailbox-sync";
 
@@ -38,7 +46,7 @@ export const mailboxSyncQueryOptions = () =>
   queryOptions({
     queryKey: mailboxSyncQueryKey,
     queryFn: ({ signal }) => request<MailboxSync>(path, { signal }),
-    refetchInterval: (query) => (waitsForConnection(query.state.data?.availability) ? WAITING_REFETCH_MS : false),
+    refetchInterval: (query) => (waits(query.state.data) ? WAITING_REFETCH_MS : false),
   });
 
 /** A whole replace at the revision it was read at — 0 for a caller who never turned it on. */

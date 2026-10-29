@@ -427,8 +427,10 @@ func (w *MailboxSyncWorker) takeNotified(ctx context.Context, now time.Time) {
 // after a full page), a poll ago at the first cycle, and the rows marked due
 // at now in one statement, holding no connection across the call. Unlike a
 // notice, a change overrides the backoff and the parking: it changes what
-// the next sync can do. A row written since the change is not marked, so a
-// change taken twice marks nothing. connectionsSince moves on only when the
+// the next sync can do. A row written more than mailboxNoticesOverlap after
+// the change is not marked, so a change taken twice marks nothing once the
+// row has synced past it; one written within the overlap — the change
+// committed during that person's own sync, or on a clock behind — is. connectionsSince moves on only when the
 // statement worked; a failing Connections is logged by its code and the
 // cycle goes on. w.noticesMu is held.
 func (w *MailboxSyncWorker) takeConnections(ctx context.Context, now time.Time) {
@@ -452,7 +454,10 @@ func (w *MailboxSyncWorker) takeConnections(ctx context.Context, now time.Time) 
 	mailboxes, ats := make([]string, len(changes)), make([]time.Time, len(changes))
 	latest := w.connectionsSince
 	for i, c := range changes {
-		mailboxes[i], ats[i] = c.Mailbox, c.At
+		// A row written up to the overlap after the change is still marked:
+		// the change may have committed while that person's own sync ran,
+		// or on a clock behind this one.
+		mailboxes[i], ats[i] = c.Mailbox, c.At.Add(mailboxNoticesOverlap)
 		if c.At.After(latest) {
 			latest = c.At
 		}
