@@ -94,19 +94,43 @@ func missingPermissions(present []string) []string {
 	return out
 }
 
+// tenantWideMailPermissions are the application roles that reach every
+// mailbox in the tenant (Outlook connection design M10): while the Mail
+// channels switch is on, any of them makes mailChannels tenant_wide, since
+// Exchange's grants are a union with Entra's and the RBAC scope then limits
+// nothing. full_access_as_app is the Office 365 Exchange Online resource's
+// role, never in a Graph token's roles, so the test cannot see it; it is
+// listed for completeness.
+var tenantWideMailPermissions = []string{
+	"Mail.Read",
+	"Mail.ReadBasic",
+	"Mail.ReadBasic.All",
+	"Mail.ReadWrite",
+	"Mail.Send",
+	"full_access_as_app",
+}
+
 // unexpectedPermissions are the roles in present, sorted, that the module
 // does not use (Outlook connection design M19): any not one of
 // requiredPermissions — an application Calendars.ReadWrite left from an
-// earlier setup among them. The mail roles count until delivery C reports
-// them under tenant_wide. A warning, never a status.
-func unexpectedPermissions(present []string) []string {
+// earlier setup among them. While the Mail channels switch is on, the mail
+// roles are mailChannels' tenant_wide and not reported twice; while it is
+// off they are unexpected like any other. A warning, never a status.
+func unexpectedPermissions(present []string, mailChannels bool) []string {
 	out := []string{}
 	for _, p := range present {
-		if !slices.Contains(requiredPermissions, p) {
-			out = append(out, p)
+		if slices.Contains(requiredPermissions, p) || (mailChannels && slices.Contains(tenantWideMailPermissions, p)) {
+			continue
 		}
+		out = append(out, p)
 	}
 	return out
+}
+
+// tenantWideMail is whether present holds a role that reaches every mailbox
+// in the tenant.
+func tenantWideMail(present []string) bool {
+	return slices.ContainsFunc(present, func(p string) bool { return slices.Contains(tenantWideMailPermissions, p) })
 }
 
 // orEmpty is s, or an empty slice for nil, so an array is never null.
@@ -169,6 +193,34 @@ func outlookConnectBody(conn store.EntraConnection, status, reason string, count
 	return body
 }
 
+// mailChannelsBody is the Mail channels switch as GET /connection answers it
+// (Outlook connection design M10), from the switch and the connection's
+// status and reason. In order: off while the switch is; unavailable while
+// the connection is not connected, with its reason; tenant_wide while the
+// last test's token held a mail role reaching every mailbox; ready
+// otherwise. The service principal's object id, for the RBAC for
+// Applications commands, is answered once a test has read it.
+func mailChannelsBody(conn store.EntraConnection, status, reason string) gen.EntraMailChannels {
+	body := gen.EntraMailChannels{
+		Enabled:            conn.MailChannels,
+		Status:             gen.EntraMailChannelsStatusOff,
+		ServicePrincipalId: uuidPtr(conn.ServicePrincipalID),
+	}
+	switch {
+	case !conn.MailChannels:
+	case status != contracts.ProviderConnected:
+		body.Status = gen.EntraMailChannelsStatusUnavailable
+		if reason != "" {
+			body.Reason = &reason
+		}
+	case tenantWideMail(conn.PermissionsPresent):
+		body.Status = gen.EntraMailChannelsStatusTenantWide
+	default:
+		body.Status = gen.EntraMailChannelsStatusReady
+	}
+	return body
+}
+
 // connectionBody is the connection as GET /connection answers it at now,
 // with the counts of its accounts and of its groups present in the tenant,
 // the people's Outlook connections, the change notifications' state and
@@ -183,7 +235,7 @@ func connectionBody(conn store.EntraConnection, creds []store.EntraCredential, c
 		VerifiedDomains:       orEmpty(conn.VerifiedDomains),
 		PermissionsPresent:    orEmpty(conn.PermissionsPresent),
 		PermissionsMissing:    missingPermissions(conn.PermissionsPresent),
-		PermissionsUnexpected: unexpectedPermissions(conn.PermissionsPresent),
+		PermissionsUnexpected: unexpectedPermissions(conn.PermissionsPresent, conn.MailChannels),
 		LastCheckedAt:         conn.LastCheckedAt,
 		Settings: gen.EntraSettings{
 			UpnDomain:            conn.UpnDomain,
@@ -202,6 +254,7 @@ func connectionBody(conn store.EntraConnection, creds []store.EntraCredential, c
 		Accounts:       gen.EntraAccountCounts{Count: counts.Total, Enabled: counts.Enabled, Disabled: counts.Disabled, Deleted: counts.Deleted},
 		Groups:         gen.EntraGroupCounts{Count: groups},
 		OutlookConnect: outlookConnectBody(conn, status, reason, outlook, notifications, redirectURI),
+		MailChannels:   mailChannelsBody(conn, status, reason),
 		Version:        conn.Version,
 	}
 	if reason != "" {
@@ -382,6 +435,7 @@ func mergeSettings(in gen.EntraSettingsRequest, conn store.EntraConnection) (sto
 		PassUsableOnce:       conn.PassUsableOnce,
 		PassDelivery:         conn.PassDelivery,
 		OutlookConnect:       conn.OutlookConnect,
+		MailChannels:         conn.MailChannels,
 	}
 	var f fieldErrors
 	var changed []string
@@ -451,6 +505,7 @@ func mergeSettings(in gen.EntraSettingsRequest, conn store.EntraConnection) (sto
 		{"writeHireDate", in.WriteHireDate, &p.WriteHireDate},
 		{"passUsableOnce", in.PassUsableOnce, &p.PassUsableOnce},
 		{"outlookConnect", in.OutlookConnect, &p.OutlookConnect},
+		{"mailChannels", in.MailChannels, &p.MailChannels},
 	} {
 		if b.in != nil {
 			mark(b.field, *b.to != *b.in)
@@ -465,7 +520,9 @@ func mergeSettings(in gen.EntraSettingsRequest, conn store.EntraConnection) (sto
 // field error. Audited entra.settings.changed with the names of the fields
 // that changed. Turning the Outlook connection switch on records when;
 // turning it off closes every person's connection in the same transaction,
-// each audited entra.outlook.closed switch_off. (PUT /api/v1/entra/connection/settings)
+// each audited entra.outlook.closed switch_off. Turning the Mail channels
+// switch off closes nothing: the channels' sends are then refused as
+// unavailable and retried. (PUT /api/v1/entra/connection/settings)
 func (s *server) PutEntraConnectionSettings(ctx context.Context, req gen.PutEntraConnectionSettingsRequestObject) (gen.PutEntraConnectionSettingsResponseObject, error) {
 	version, ok := parseVersion(req.Params.IfMatch)
 	if !ok {
@@ -636,7 +693,7 @@ func (s *server) PostEntraConnectionTest(ctx context.Context, _ gen.PostEntraCon
 		}
 	}
 	missing := missingPermissions(updated.PermissionsPresent)
-	unexpected := unexpectedPermissions(updated.PermissionsPresent)
+	unexpected := unexpectedPermissions(updated.PermissionsPresent, updated.MailChannels)
 	codes := []string{status}
 	if reason != "" {
 		codes = append(codes, reason)

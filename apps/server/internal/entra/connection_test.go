@@ -286,7 +286,7 @@ func TestSettings_ByTable(t *testing.T) {
 		{"a pass too long", false, map[string]any{"passLifetimeMinutes": 43201}, "passLifetimeMinutes", nil},
 		{"delivery: both", false, map[string]any{"passDelivery": "both"}, "", func(s gen.EntraSettings) bool { return s.PassDelivery == "both" }},
 		{"delivery: post", false, map[string]any{"passDelivery": "post"}, "passDelivery", nil},
-		{"the switches", false, map[string]any{"leaverStripLicences": false, "leaverRevokeSessions": false, "leaverWriteLeaveDate": false, "writeHireDate": false, "passUsableOnce": false},
+		{"the switches", false, map[string]any{"leaverStripLicences": false, "leaverRevokeSessions": false, "leaverWriteLeaveDate": false, "writeHireDate": false, "passUsableOnce": false, "mailChannels": true},
 			"", func(s gen.EntraSettings) bool {
 				return !s.LeaverStripLicences && !s.LeaverRevokeSessions && !s.LeaverWriteLeaveDate && !s.WriteHireDate && !s.PassUsableOnce
 			}},
@@ -630,5 +630,156 @@ func TestConnection_PermissionsUnexpected(t *testing.T) {
 	codes = modtest.One[[]string](t, h.Harness, `SELECT codes FROM entra.events WHERE action = 'entra.connection.tested' ORDER BY id DESC LIMIT 1`)
 	if !slices.Equal(codes, []string{"connected", "unexpected:Directory.ReadWrite.All", "unexpected:Mail.Send"}) {
 		t.Errorf("the test's codes = %v", codes)
+	}
+}
+
+// setMailChannels is PUT /connection/settings with the Mail channels switch
+// alone, which must answer 200.
+func setMailChannels(t *testing.T, c *modtest.Client, on bool) gen.EntraConnection {
+	t.Helper()
+	current := getConnection(t, c)
+	r := c.Do(http.MethodPut, settingsPath, map[string]any{"mailChannels": on}, ifMatch(current.Version))
+	if r.Status != http.StatusOK {
+		t.Fatalf("PUT /connection/settings mailChannels=%v: status %d body %s", on, r.Status, r.Body)
+	}
+	var conn gen.EntraConnection
+	r.JSON(&conn)
+	return conn
+}
+
+// The Mail channels switch (Outlook connection design M10) is one more
+// account rule: saved under If-Match, the version moved on, audited
+// entra.settings.changed with mailChannels; turning it off closes nothing.
+func TestSettings_TheMailChannelsSwitch(t *testing.T) {
+	t.Parallel()
+	h, _ := newTenantHarness(t)
+	o := connected(t, h)
+	m, managerID := manager(t, h)
+	before := getConnection(t, m)
+	if before.MailChannels.Enabled {
+		t.Fatal("the switch is on in a fresh installation")
+	}
+	r := m.Do(http.MethodPut, settingsPath, map[string]any{"mailChannels": true}, ifMatch(before.Version))
+	if r.Status != http.StatusOK {
+		t.Fatalf("PUT mailChannels: %d %s", r.Status, r.Body)
+	}
+	var after gen.EntraConnection
+	r.JSON(&after)
+	if !after.MailChannels.Enabled || after.Version != before.Version+1 || after.Settings != before.Settings {
+		t.Errorf("after the switch: enabled %v version %d settings %+v", after.MailChannels.Enabled, after.Version, after.Settings)
+	}
+	if got := modtest.One[bool](t, h.Harness, `SELECT mail_channels FROM entra.connection`); !got {
+		t.Error("mail_channels not written")
+	}
+	codes := modtest.One[[]string](t, h.Harness, `SELECT codes FROM entra.events WHERE action = 'entra.settings.changed' AND actor_user_id = $1`, managerID)
+	if !slices.Equal(codes, []string{"mailChannels"}) {
+		t.Errorf("the event's codes = %v, want [mailChannels]", codes)
+	}
+	if r := m.Do(http.MethodPut, settingsPath, map[string]any{"mailChannels": false}, ifMatch(before.Version)); r.Status != http.StatusPreconditionFailed || codeOf(t, r) != "version_mismatch" {
+		t.Errorf("a stale version: %d %s, want 412 version_mismatch", r.Status, r.Body)
+	}
+	if !getConnection(t, m).MailChannels.Enabled {
+		t.Error("a refused PUT turned the switch off")
+	}
+	// Another rule left the switch as it was.
+	r = m.Do(http.MethodPut, settingsPath, map[string]any{"passDelivery": "manager"}, ifMatch(after.Version))
+	r.JSON(&after)
+	if r.Status != http.StatusOK || !after.MailChannels.Enabled {
+		t.Errorf("another rule's PUT: %d, the switch %v", r.Status, after.MailChannels.Enabled)
+	}
+	setOutlookConnect(t, o, true)
+	if off := setMailChannels(t, o, false); off.MailChannels.Enabled || off.MailChannels.Status != gen.EntraMailChannelsStatusOff || !off.OutlookConnect.Enabled {
+		t.Errorf("turned off: %+v, the Outlook switch %v", off.MailChannels, off.OutlookConnect.Enabled)
+	}
+	if n := h.Count(t, `SELECT count(*) FROM entra.events WHERE action = 'entra.outlook.closed'`); n != 0 {
+		t.Errorf("turning the mail channels off closed %d Outlook connections", n)
+	}
+}
+
+// mailChannels' statuses (design M10): off while the switch is; unavailable
+// while the connection is not connected, with its reason; tenant_wide while
+// the token holds any of the Mail.* application roles; ready otherwise. The
+// service principal's object id is answered once a test has read it.
+func TestConnection_MailChannelsStatus(t *testing.T) {
+	t.Parallel()
+	h, g := newTenantHarness(t)
+	o, _ := owner(t, h)
+	register(t, o)
+	addSecret(t, o, secretValue, "Vantigo", h.Now().AddDate(1, 0, 0))
+	status := func(want gen.EntraMailChannelsStatus) gen.EntraMailChannels {
+		t.Helper()
+		got := getConnection(t, o).MailChannels
+		if got.Status != want {
+			t.Errorf("status = %s, want %s (%+v)", got.Status, want, got)
+		}
+		return got
+	}
+	if got := status(gen.EntraMailChannelsStatusOff); got.Enabled || got.Reason != nil || got.ServicePrincipalId != nil {
+		t.Errorf("before a test: %+v, want off with no reason and no service principal", got)
+	}
+	if got := setMailChannels(t, o, true).MailChannels; got.Status != gen.EntraMailChannelsStatusUnavailable || got.Reason != nil {
+		t.Errorf("on before a test: %+v, want unavailable with no reason", got)
+	}
+
+	testConnection(t, o)
+	got := status(gen.EntraMailChannelsStatusReady)
+	if got.ServicePrincipalId == nil || !strings.EqualFold(got.ServicePrincipalId.String(), g.ServicePrincipalID) {
+		t.Errorf("servicePrincipalId = %v, want %s", got.ServicePrincipalId, g.ServicePrincipalID)
+	}
+
+	for _, role := range []string{"Mail.Read", "Mail.ReadBasic", "Mail.ReadBasic.All", "Mail.ReadWrite", "Mail.Send"} {
+		g.Configure(func(g *graphtest.FakeGraph) { g.Roles = append(slices.Clone(everyPermission), role) })
+		testConnection(t, o)
+		if got := status(gen.EntraMailChannelsStatusTenantWide); got.Reason != nil {
+			t.Errorf("%s: reason %v, want none", role, *got.Reason)
+		}
+	}
+	setMailChannels(t, o, false)
+	status(gen.EntraMailChannelsStatusOff)
+	setMailChannels(t, o, true)
+
+	h.Exec(t, `UPDATE entra.connection SET status = 'failing', status_reason = 'tenant_unreachable'`)
+	if got := status(gen.EntraMailChannelsStatusUnavailable); got.Reason == nil || *got.Reason != "tenant_unreachable" {
+		t.Errorf("reason = %v, want the connection's", got.Reason)
+	}
+}
+
+// The Mail.* roles (design M19) are tenant_wide's while the switch is on —
+// not reported twice — and unexpected while it is off, in GET /connection,
+// the test's answer and the test's event alike.
+func TestConnection_MailRolesUnexpectedOnlyWhileTheSwitchIsOff(t *testing.T) {
+	t.Parallel()
+	h, g := newTenantHarness(t)
+	o := connected(t, h)
+	g.Configure(func(g *graphtest.FakeGraph) { g.Roles = append(g.Roles, "Mail.Send", "Directory.ReadWrite.All") })
+	lastCodes := func() []string {
+		t.Helper()
+		return modtest.One[[]string](t, h.Harness, `SELECT codes FROM entra.events WHERE action = 'entra.connection.tested' ORDER BY id DESC LIMIT 1`)
+	}
+
+	off := []string{"Directory.ReadWrite.All", "Mail.Send"}
+	if got := testConnection(t, o).PermissionsUnexpected; !slices.Equal(got, off) {
+		t.Errorf("off, the test: %v, want %v", got, off)
+	}
+	if got := getConnection(t, o).PermissionsUnexpected; !slices.Equal(got, off) {
+		t.Errorf("off, GET /connection: %v, want %v", got, off)
+	}
+	if codes := lastCodes(); !slices.Contains(codes, "unexpected:Mail.Send") {
+		t.Errorf("off, the codes %v lack unexpected:Mail.Send", codes)
+	}
+
+	setMailChannels(t, o, true)
+	on := []string{"Directory.ReadWrite.All"}
+	if got := getConnection(t, o).PermissionsUnexpected; !slices.Equal(got, on) {
+		t.Errorf("on, GET /connection: %v, want %v", got, on)
+	}
+	if got := testConnection(t, o).PermissionsUnexpected; !slices.Equal(got, on) {
+		t.Errorf("on, the test: %v, want %v", got, on)
+	}
+	if codes := lastCodes(); slices.Contains(codes, "unexpected:Mail.Send") || !slices.Contains(codes, "unexpected:Directory.ReadWrite.All") {
+		t.Errorf("on, the codes = %v, want Mail.Send left out", codes)
+	}
+	if got := getConnection(t, o).MailChannels.Status; got != gen.EntraMailChannelsStatusTenantWide {
+		t.Errorf("on with Mail.Send: %s, want tenant_wide", got)
 	}
 }
