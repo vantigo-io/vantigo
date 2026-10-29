@@ -148,3 +148,28 @@ func (s *server) mailBudget(ctx context.Context, provider string) (*int64, error
 	n := m.MaxMessage()
 	return &n, nil
 }
+
+// outboxMailbox is the mail channels provider the outbox sends a channel on
+// provider through: the slot when it is filled under that very key, else nil
+// — a channel is never sent through a provider under another key, nor
+// through SMTP (M11). Key makes no network call.
+func (w *OutboxWorker) outboxMailbox(ctx context.Context, provider string) (contracts.ChannelMailbox, error) {
+	if err := noteContractCall(ctx, "ChannelMailbox.Key"); err != nil {
+		return nil, err
+	}
+	m := w.deps.ChannelMailbox
+	if m == nil || m.Key() != provider {
+		return nil, nil
+	}
+	return m, nil
+}
+
+// mailboxSend hands the provider one message whole, from mailbox, with its
+// blind copies beside it (M13). Never retried here: the outbox retries on its
+// backoff.
+func mailboxSend(ctx context.Context, m contracts.ChannelMailbox, mailbox string, mime []byte, bcc []string) error {
+	if err := noteContractCall(ctx, "ChannelMailbox.Send"); err != nil {
+		return err
+	}
+	return m.Send(ctx, mailbox, mime, bcc)
+}

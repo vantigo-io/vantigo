@@ -1,7 +1,18 @@
 package mail_test
 
 import (
+	"bytes"
 	"context"
+	"encoding/base64"
+	"errors"
+	"fmt"
+	"io"
+	"mime"
+	"mime/multipart"
+	"mime/quotedprintable"
+	netmail "net/mail"
+	"net/textproto"
+	"slices"
 	"strings"
 	"testing"
 
@@ -231,5 +242,195 @@ func TestSendOutbound_GuardRejectsLoopbackByDefault(t *testing.T) {
 	}, mail.Outbound{To: []string{"to@example.test"}, Subject: "hi", TextBody: "hi"})
 	if err == nil {
 		t.Fatal("SendOutbound() = nil error, want the guard to reject a loopback destination")
+	}
+}
+
+// ---- RenderMIME: the same Outbound as bytes, for a provider that takes MIME ----
+
+// renderMIMEFixture is an Outbound carrying every part RenderMIME has to
+// render: both bodies, the threading headers, every recipient class and an
+// inline image beside a plain attachment.
+func renderMIMEFixture() mail.Outbound {
+	return mail.Outbound{
+		DisplayName: "Post",
+		To:          []string{"to@example.test"},
+		Cc:          []string{"cc@example.test"},
+		Bcc:         []string{"bcc-one@example.test", "bcc-two@example.test"},
+		Subject:     "Hello",
+		TextBody:    "Text body",
+		HTMLBody:    `<p>HTML body <img src="cid:logo@vantigo"></p>`,
+		MessageID:   "0123456789abcdef0123456789abcdef@vantigo.invalid",
+		InReplyTo:   "<parent@example.test>",
+		References:  []string{"<a@example.test>", "<b@example.test>"},
+		Attachments: []mail.Attachment{
+			{FileName: "logo.png", ContentType: "image/png", Content: []byte("png-bytes"), ContentID: "logo@vantigo", Inline: true},
+			{FileName: "notes.txt", ContentType: "text/plain", Content: []byte("attached notes")},
+		},
+	}
+}
+
+func parseRendered(t *testing.T, raw []byte) *netmail.Message {
+	t.Helper()
+	msg, err := netmail.ReadMessage(bytes.NewReader(raw))
+	if err != nil {
+		t.Fatalf("the rendered MIME does not parse: %v\n%s", err, raw)
+	}
+	return msg
+}
+
+// mimeParts flattens a message's leaves into one line each — the content
+// type, the disposition, the Content-ID and the decoded body — so two
+// renderings can be compared without their random boundaries.
+func mimeParts(t *testing.T, header textproto.MIMEHeader, body io.Reader) []string {
+	t.Helper()
+	mediaType, params, err := mime.ParseMediaType(header.Get("Content-Type"))
+	if err != nil {
+		t.Fatalf("content type %q: %v", header.Get("Content-Type"), err)
+	}
+	if strings.HasPrefix(mediaType, "multipart/") {
+		reader := multipart.NewReader(body, params["boundary"])
+		out := []string{mediaType}
+		for {
+			part, err := reader.NextRawPart()
+			if errors.Is(err, io.EOF) {
+				return out
+			}
+			if err != nil {
+				t.Fatalf("multipart: %v", err)
+			}
+			out = append(out, mimeParts(t, part.Header, part)...)
+		}
+	}
+	decoded := body
+	switch strings.ToLower(header.Get("Content-Transfer-Encoding")) {
+	case "base64":
+		decoded = base64.NewDecoder(base64.StdEncoding, body)
+	case "quoted-printable":
+		decoded = quotedprintable.NewReader(body)
+	}
+	content, err := io.ReadAll(decoded)
+	if err != nil {
+		t.Fatalf("part body: %v", err)
+	}
+	disposition, _, _ := mime.ParseMediaType(header.Get("Content-Disposition"))
+	return []string{fmt.Sprintf("%s|%s|%s|%s", mediaType, disposition, header.Get("Content-Id"),
+		strings.TrimRight(string(content), "\r\n"))}
+}
+
+func renderedParts(t *testing.T, raw []byte) []string {
+	t.Helper()
+	msg := parseRendered(t, raw)
+	return mimeParts(t, textproto.MIMEHeader(msg.Header), msg.Body)
+}
+
+// TestRenderMIME_RendersTheHeadersAProviderSendsBy: the bytes parse, and
+// carry our Message-Id bracketed, In-Reply-To as given, References
+// space-joined, To and Cc — and no Bcc header, which go-mail's writer leaves
+// out and RenderMIME adds only when asked.
+func TestRenderMIME_RendersTheHeadersAProviderSendsBy(t *testing.T) {
+	t.Parallel()
+	raw, err := mail.RenderMIME("post@example.test", renderMIMEFixture())
+	if err != nil {
+		t.Fatalf("RenderMIME: %v", err)
+	}
+	msg := parseRendered(t, raw)
+	for header, want := range map[string]string{
+		"Message-Id":  "<0123456789abcdef0123456789abcdef@vantigo.invalid>",
+		"In-Reply-To": "<parent@example.test>",
+		"References":  "<a@example.test> <b@example.test>",
+		"Subject":     "Hello",
+		"To":          "<to@example.test>",
+		"Cc":          "<cc@example.test>",
+		"From":        `"Post" <post@example.test>`,
+	} {
+		if got := msg.Header.Get(header); got != want {
+			t.Errorf("%s = %q, want %q", header, got, want)
+		}
+	}
+	if got := msg.Header["Bcc"]; len(got) != 0 {
+		t.Errorf("Bcc = %q, want no Bcc header unless WithBcc", got)
+	}
+	if bytes.Contains(raw, []byte("bcc-one@example.test")) {
+		t.Error("a Bcc address is in the MIME rendered without WithBcc")
+	}
+}
+
+// TestRenderMIME_WithBccRendersExactlyOneBccHeader: WithBcc adds the Bcc
+// header go-mail omits, once, the addresses comma-joined.
+func TestRenderMIME_WithBccRendersExactlyOneBccHeader(t *testing.T) {
+	t.Parallel()
+	raw, err := mail.RenderMIME("post@example.test", renderMIMEFixture(), mail.WithBcc())
+	if err != nil {
+		t.Fatalf("RenderMIME: %v", err)
+	}
+	msg := parseRendered(t, raw)
+	got := msg.Header["Bcc"]
+	if len(got) != 1 {
+		t.Fatalf("Bcc headers = %q, want exactly one", got)
+	}
+	if want := "<bcc-one@example.test>, <bcc-two@example.test>"; got[0] != want {
+		t.Errorf("Bcc = %q, want %q", got[0], want)
+	}
+	list, err := msg.Header.AddressList("Bcc")
+	if err != nil || len(list) != 2 {
+		t.Errorf("Bcc address list = %v (%v), want both addresses", list, err)
+	}
+}
+
+// TestRenderMIME_WithBccAndNoBccRendersNoHeader: an Outbound with no blind
+// copies renders no empty Bcc header even with WithBcc.
+func TestRenderMIME_WithBccAndNoBccRendersNoHeader(t *testing.T) {
+	t.Parallel()
+	out := renderMIMEFixture()
+	out.Bcc = nil
+	raw, err := mail.RenderMIME("post@example.test", out, mail.WithBcc())
+	if err != nil {
+		t.Fatalf("RenderMIME: %v", err)
+	}
+	if got := parseRendered(t, raw).Header["Bcc"]; len(got) != 0 {
+		t.Errorf("Bcc = %q, want none", got)
+	}
+}
+
+// TestRenderMIME_HasTheSamePartsAsTheSMTPMessage: the parts RenderMIME writes
+// are the SMTP path's for the same Outbound — the alternative bodies, the
+// inline image with its bracketed Content-ID and the attachment.
+func TestRenderMIME_HasTheSamePartsAsTheSMTPMessage(t *testing.T) {
+	t.Parallel()
+	out := renderMIMEFixture()
+	raw, err := mail.RenderMIME("post@example.test", out)
+	if err != nil {
+		t.Fatalf("RenderMIME: %v", err)
+	}
+	smtp, err := mail.RenderOutboundForTests("post@example.test", out)
+	if err != nil {
+		t.Fatalf("RenderOutboundForTests: %v", err)
+	}
+	var smtpRaw bytes.Buffer
+	if _, err := smtp.WriteTo(&smtpRaw); err != nil {
+		t.Fatalf("WriteTo: %v", err)
+	}
+
+	got, want := renderedParts(t, raw), renderedParts(t, smtpRaw.Bytes())
+	if !slices.Equal(got, want) {
+		t.Errorf("parts = %q\nwant the SMTP message's %q", got, want)
+	}
+	inline := false
+	for _, p := range got {
+		if strings.HasPrefix(p, "image/png|inline|<logo@vantigo>|png-bytes") {
+			inline = true
+		}
+	}
+	if !inline {
+		t.Errorf("parts = %q, want the inline image with its bracketed Content-ID", got)
+	}
+}
+
+// TestRenderMIME_RequiresARecipient: as SendOutbound, a message to no one is
+// refused before anything is rendered.
+func TestRenderMIME_RequiresARecipient(t *testing.T) {
+	t.Parallel()
+	if _, err := mail.RenderMIME("post@example.test", mail.Outbound{Subject: "x", TextBody: "y"}); err == nil {
+		t.Fatal("RenderMIME with no recipient = nil error, want a refusal")
 	}
 }
