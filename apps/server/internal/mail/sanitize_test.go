@@ -54,6 +54,7 @@ func TestSanitizeHTML_XSS(t *testing.T) {
 		{"protocol-relative img", `<img src="//tracker.example/p.gif">x`, []string{"<img", "tracker"}, "x"},
 		{"relative img", `<img src="/api/v1/identity/me">x`, []string{"<img", "identity"}, "x"},
 		{"cid rewritten", `<img src="cid:logo@example.com" alt="logo">`, []string{"cid:"}, `<img src="` + inlineDownload + `" alt="logo"/>`},
+		{"the inline placeholder written by the message", `<img src="vantigo-inline:0f9e8d7c-6b5a-4321-9876-543210fedcba">x`, []string{"<img", "vantigo-inline", "/api/"}, "x"},
 		{"unknown cid", `<img src="cid:other@example.com">x`, []string{"<img", "cid:"}, "x"},
 		{"data png kept", `<img src="` + pngData + `">`, nil, `<img src="` + pngData + `"/>`},
 		{"data svg", `<img src="data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=">x`, []string{"<img", "svg"}, "x"},
@@ -64,6 +65,10 @@ func TestSanitizeHTML_XSS(t *testing.T) {
 		{"head contents", `<html><head><title>secret title</title><meta charset="utf-8"></head><body>x</body></html>`, []string{"title", "<meta", "<head"}, "x"},
 		{"vbscript", `<a href="vbscript:msgbox(1)">x</a>`, []string{"vbscript", "href"}, "x"},
 		{"relative link", `<a href="/api/v1/admin">x</a>`, []string{"href"}, "x"},
+		{"protocol-relative link", `<a href="//evil.example/x">x</a>`, []string{"href", "evil"}, "x"},
+		{"area relative href", `<map name="m"><area shape="rect" coords="0,0,1,1" href="/api/v1/admin"></map>ok`, []string{"href", "/api/"}, "ok"},
+		{"area protocol-relative href", `<map name="m"><area href="//evil.example/x"></map>ok`, []string{"href", "evil"}, "ok"},
+		{"area javascript href", `<map name="m"><area href="javascript:alert(1)"></map>ok`, []string{"href", "javascript"}, "ok"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

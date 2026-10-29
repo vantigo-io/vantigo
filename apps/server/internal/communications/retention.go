@@ -129,6 +129,8 @@ func (w *RetentionWorker) Run(ctx context.Context) error {
 // `:34`). false means another replica holds the lease and this one skipped,
 // which is a normal, logged outcome and not an error (`:37-38`).
 //
+// The receipts' sweep runs once after the batches (SweepInboundReceipts).
+//
 // The expiry sweep runs first because it only ever ADDS cleanup-ledger rows
 // and never touches a message: ordering it ahead of the drain means a cycle
 // that fails partway still expired what it could.
@@ -143,10 +145,34 @@ func (w *RetentionWorker) RunCycle(ctx context.Context) (bool, error) {
 				return err
 			}
 			if deleted == 0 {
-				return nil
+				break
 			}
 		}
+		_, err := w.SweepInboundReceipts(ctx)
+		return err
 	})
+}
+
+// SweepInboundReceipts is the receipts' retention (M16), once per cycle after
+// the batches: the receipts without a message received before the window —
+// the cutoff the mailbox sync reads nothing before, so a message whose
+// receipt goes is never read again — but each channel's newest, deleted the
+// batch size at a time, each batch its own statement. It answers how many it
+// deleted.
+func (w *RetentionWorker) SweepInboundReceipts(ctx context.Context) (int64, error) {
+	cutoff := w.now().AddDate(0, 0, -w.retentionDays())
+	q := store.New(w.deps.Pool)
+	var total int64
+	for {
+		n, err := q.SweepInboundReceipts(ctx, store.SweepInboundReceiptsParams{Cutoff: cutoff, BatchSize: w.batchSize()})
+		if err != nil {
+			return total, fmt.Errorf("communications: sweep inbound receipts: %w", err)
+		}
+		total += n
+		if n < int64(w.batchSize()) {
+			return total, nil
+		}
+	}
 }
 
 // underLease is CommunicationsAdvisoryLease.TryRunAsync
@@ -268,9 +294,10 @@ func deleteMessages(ctx context.Context, q *store.Queries, messageIDs []uuid.UUI
 
 // CleanupBatch is RetentionCleanupService.CleanupTenantBatchAsync
 // (`:47-115`) minus tenancy and minus inbound_email_jobs, which this port
-// never had; .NET's orphan receipts set is SweepInboundReceipts: one batch,
-// ONE transaction, returning how many
-// conversation_messages it deleted (the drain loop's condition).
+// never had; .NET's orphan receipts set is SweepInboundReceipts, run once
+// per cycle after the batches (RunCycle): one batch, ONE transaction,
+// returning how many conversation_messages it deleted (the drain loop's
+// condition).
 //
 // Everything below happens in .NET's order, and the first two statements'
 // order is the load-bearing one this file's header opens with.
@@ -282,14 +309,6 @@ func (w *RetentionWorker) CleanupBatch(ctx context.Context) (int, error) {
 	var deleted int64
 	err := db.WithTx(ctx, w.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		q := store.New(tx)
-
-		// The receipts' sweep (M16), on every batch: a receipt loses its
-		// message to this worker or to an erase, and a skipped one never had
-		// one, so its orphans are not only this batch's. Each channel's
-		// newest receipt stays, the restart point of an expired delta.
-		if _, err := q.SweepInboundReceipts(ctx, cutoff); err != nil {
-			return fmt.Errorf("communications: sweep inbound receipts: %w", err)
-		}
 
 		messageIDs, err := q.SelectRetentionMessageIDs(ctx, store.SelectRetentionMessageIDsParams{
 			Cutoff: cutoff, BatchSize: batchSize,
@@ -423,9 +442,13 @@ func (w *RetentionWorker) ExpireStagedUploads(ctx context.Context) (int, error) 
 // (inventory §12.1). config.go rejects a value outside [1, 36500] rather than
 // clamping it silently, the same treatment COMMUNICATIONS_ATTACHMENT_MAX_BYTES
 // already gets, so the max() here only covers a Deps built without a Config.
-func (w *RetentionWorker) retentionDays() int {
-	if w.deps.Config != nil && w.deps.Config.CommunicationsRetentionDays > 0 {
-		return w.deps.Config.CommunicationsRetentionDays
+func (w *RetentionWorker) retentionDays() int { return retentionDaysOf(w.deps) }
+
+// retentionDaysOf is COMMUNICATIONS_RETENTION_DAYS of d, for retention and
+// for the mailbox sync, which reads nothing received before the window.
+func retentionDaysOf(d module.Deps) int {
+	if d.Config != nil && d.Config.CommunicationsRetentionDays > 0 {
+		return d.Config.CommunicationsRetentionDays
 	}
 	return defaultRetentionDays
 }

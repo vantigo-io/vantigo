@@ -88,8 +88,9 @@ func TestCommunicationsInbound_AppliesAndIsIdempotent(t *testing.T) {
 		t.Fatalf("a channel_sync row: %v", err)
 	}
 	if got := staffCollect(t, ctx, pool, "channel_sync's defaults", `
-		SELECT folder || ':' || attempts || ':' || notified || ':' || (delta_link IS NULL) || ':' || (lease_id IS NULL)
-		FROM communications.channel_sync WHERE channel_id = $1`, channel); !equalStrings(got, []string{"inbox:0:false:true:true"}) {
+		SELECT folder || ':' || attempts || ':' || notified || ':' || (delta_link IS NULL) || ':' || (lease_id IS NULL) ||
+		       ':' || (restart_from IS NULL) || ':' || (failing_item IS NULL) || ':' || failing_tries
+		FROM communications.channel_sync WHERE channel_id = $1`, channel); !equalStrings(got, []string{"inbox:0:false:true:true:true:true:0"}) {
 		t.Errorf("channel_sync's defaults = %v", got)
 	}
 

@@ -1,0 +1,25 @@
+{
+  "messageId": "<nomime-1@example.no>",
+  "inReplyTo": "",
+  "references": null,
+  "from": {
+    "Name": "Kari Nordmann",
+    "Address": "kari@example.no"
+  },
+  "to": [
+    {
+      "Name": "",
+      "Address": "post@example.com"
+    }
+  ],
+  "cc": null,
+  "subject": "No MIME headers",
+  "date": "2026-10-29T08:50:00Z",
+  "autoSubmitted": false,
+  "text": "A plain RFC 5322 message\nwithout MIME headers.",
+  "html": "",
+  "htmlDropped": false,
+  "attachments": null,
+  "droppedAttachments": 0,
+  "skippedParts": 0
+}

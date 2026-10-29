@@ -27,8 +27,8 @@ FROM communications.inbound_receipts
 WHERE channel_id = @channel_id AND rfc_message_id = @rfc_message_id AND outcome = 'imported';
 
 -- name: NewestInboundReceipt :one
--- The restart point of an expired delta: the latest receivedDateTime the
--- channel has a receipt for.
+-- A bound on the restart point of an expired delta: the latest
+-- receivedDateTime the channel has a receipt for.
 SELECT received_at
 FROM communications.inbound_receipts
 WHERE channel_id = @channel_id
@@ -125,17 +125,23 @@ ON CONFLICT DO NOTHING;
 UPDATE communications.participants SET contact_id = @contact_id WHERE id = @id AND contact_id IS NULL;
 
 -- name: SweepInboundReceipts :execrows
--- The receipts' retention (M16): one whose message is gone, or that never had
--- one, once older than the window — except each channel's newest, the
--- restart point of an expired delta.
-DELETE FROM communications.inbound_receipts r
-WHERE r.message_id IS NULL AND r.created_at < @cutoff
-  AND r.id <> (
-      SELECT n.id FROM communications.inbound_receipts n
-      WHERE n.channel_id = r.channel_id
-      ORDER BY n.received_at DESC, n.id DESC
-      LIMIT 1
-  );
+-- The receipts' retention (M16), batch_size at a time: one whose message is
+-- gone, or that never had one, received before the window — the cutoff the
+-- worker reads nothing before, so a message whose receipt this deletes is
+-- never read again — except each channel's newest, a bound on the restart
+-- point of an expired delta.
+DELETE FROM communications.inbound_receipts
+WHERE id IN (
+    SELECT r.id FROM communications.inbound_receipts r
+    WHERE r.message_id IS NULL AND r.received_at < @cutoff
+      AND r.id <> (
+          SELECT n.id FROM communications.inbound_receipts n
+          WHERE n.channel_id = r.channel_id
+          ORDER BY n.received_at DESC, n.id DESC
+          LIMIT 1
+      )
+    LIMIT @batch_size
+);
 
 -- name: GetMessageRawPayloadKey :one
 -- The raw download's lookup: the key of the message's original, NULL for a

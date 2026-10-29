@@ -324,10 +324,10 @@ WHERE id = @id;
 -- name: GetReplyRecipientsSource :one
 -- Who a reply answers (M15, inventory §4.3, §4.4; ReplyRecipients
 -- `:446-455`, which QueueOutboundAsync inlines at `:277`, `:283`): the latest
--- inbound message by occurred_at with a participant — none for a conversation
--- nothing was received in, step 7's 422 recipients_missing —, its sender's
--- address, its metadata (the Cc reply-all answers, its References)
--- and Message-Id, and the channel's own address and id.
+-- inbound message by occurred_at, ties by id, with a participant — none for
+-- a conversation nothing was received in, step 7's 422 recipients_missing —,
+-- its sender's address, its metadata (the Cc reply-all answers, its
+-- References) and Message-Id, and the channel's own address and id.
 SELECT m.rfc_message_id, m.channel_metadata_json, p.address AS sender_address,
        c.channel_id, ch.address AS channel_address
 FROM communications.conversation_messages m
@@ -335,7 +335,7 @@ JOIN communications.participants p ON p.id = m.participant_id
 JOIN communications.conversations c ON c.id = m.conversation_id
 JOIN communications.channels ch ON ch.id = c.channel_id
 WHERE m.conversation_id = @conversation_id AND m.direction = 'inbound'
-ORDER BY m.occurred_at DESC
+ORDER BY m.occurred_at DESC, m.id DESC
 LIMIT 1;
 
 -- name: ListParticipantsByChannelAndAddressesFold :many

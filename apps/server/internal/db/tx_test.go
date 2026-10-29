@@ -275,3 +275,14 @@ func TestIsRestrictViolation(t *testing.T) {
 		t.Error("IsRestrictViolation matched a non-pgconn error")
 	}
 }
+
+func TestIsIntegrityViolation(t *testing.T) {
+	for code, want := range map[string]bool{"23505": true, "23503": true, "23514": true, "23502": true, "22001": false, "40001": false} {
+		if got := db.IsIntegrityViolation(fmt.Errorf("wrapped: %w", &pgconn.PgError{Code: code})); got != want {
+			t.Errorf("IsIntegrityViolation(%s) = %v, want %v", code, got, want)
+		}
+	}
+	if db.IsIntegrityViolation(errors.New("boom")) {
+		t.Error("IsIntegrityViolation matched a non-pgconn error")
+	}
+}

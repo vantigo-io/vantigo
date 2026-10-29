@@ -91,7 +91,7 @@ type MailDelta struct {
 // MailItem is one message a Delta page names; no content of it.
 type MailItem struct {
 	ID             string    // the provider's immutable id; opaque
-	ReceivedAt     time.Time // UTC
+	ReceivedAt     time.Time // UTC; zero when the provider answered none that reads
 	MessageID      string    // the Internet Message-Id as the provider answers it, "" if none
 	ConversationID string    // the provider's thread id; opaque, "" if none
 	Removed        bool      // gone from the folder: ID alone is set

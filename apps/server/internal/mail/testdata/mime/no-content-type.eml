@@ -1,0 +1,8 @@
+From: Kari Nordmann <kari@example.no>
+To: post@example.com
+Subject: No MIME headers
+Date: Thu, 29 Oct 2026 09:50:00 +0100
+Message-ID: <nomime-1@example.no>
+
+A plain RFC 5322 message
+without MIME headers.

@@ -36,6 +36,7 @@ WHERE s.channel_id = @channel_id
 -- mailbox's own, left out of the participants) and the settings naming the
 -- mailbox.
 SELECT s.channel_id, s.folder, s.delta_link, s.import_from, s.state, s.attempts, s.lease_id,
+       s.last_synced_at, s.restart_from,
        c.address AS channel_address, c.settings AS channel_settings
 FROM communications.channel_sync s
 JOIN communications.channels c ON c.id = s.channel_id
@@ -48,8 +49,9 @@ SET lease_until = @lease_until, updated_at = @now
 WHERE channel_id = @channel_id AND lease_id = @lease_id;
 
 -- name: StoreChannelSyncPage :execrows
--- After a page whose every message has a receipt: its link kept and the lease
--- given back. With done, the delta link — the channel is active, its failure
+-- After a page whose every message has a receipt: its link kept, the failed
+-- tries of its messages forgotten and the lease given back. With done, the
+-- delta link — the channel is active, its failure, restart point and notice
 -- forgotten, synced now and due again at next_sync_at; without, the next
 -- page's link and next_sync_at now, so the drain claims it again at once.
 UPDATE communications.channel_sync
@@ -58,6 +60,9 @@ SET delta_link = @delta_link,
     error = CASE WHEN sqlc.arg(done)::boolean THEN NULL ELSE error END,
     attempts = CASE WHEN sqlc.arg(done)::boolean THEN 0 ELSE attempts END,
     last_synced_at = CASE WHEN sqlc.arg(done)::boolean THEN sqlc.arg(now)::timestamptz ELSE last_synced_at END,
+    restart_from = CASE WHEN sqlc.arg(done)::boolean THEN NULL ELSE restart_from END,
+    notified = CASE WHEN sqlc.arg(done)::boolean THEN false ELSE notified END,
+    failing_item = NULL, failing_tries = 0,
     next_sync_at = @next_sync_at,
     lease_id = NULL, lease_until = NULL,
     updated_at = sqlc.arg(now)::timestamptz
@@ -84,11 +89,21 @@ SET state = COALESCE(sqlc.narg(state), state),
 WHERE channel_id = @channel_id AND lease_id = @lease_id;
 
 -- name: ResetChannelSyncDelta :execrows
--- The provider no longer takes the stored link: forgotten, so a cycle that
--- ends before its fresh read stores one starts afresh too.
+-- The provider no longer takes the stored link: forgotten, and the instant
+-- the fresh read starts from kept, so a cycle that ends before its fresh read
+-- stores a link starts afresh from the same instant.
 UPDATE communications.channel_sync
-SET delta_link = NULL, updated_at = @now
+SET delta_link = NULL, restart_from = @restart_from, updated_at = @now
 WHERE channel_id = @channel_id AND lease_id = @lease_id;
+
+-- name: CountChannelSyncItemFailure :one
+-- An import of item that failed: its count of failed tries, from 1 when the
+-- page was held at another message.
+UPDATE communications.channel_sync
+SET failing_tries = CASE WHEN failing_item = @item THEN failing_tries + 1 ELSE 1 END,
+    failing_item = @item, updated_at = @now
+WHERE channel_id = @channel_id AND lease_id = @lease_id
+RETURNING failing_tries;
 
 -- name: InsertChannelSync :one
 -- A Microsoft 365 channel's row, written in the transaction that creates or
@@ -99,9 +114,10 @@ VALUES (@channel_id, 'inbox', @now, 'pending', @now, @now)
 ON CONFLICT (channel_id) DO UPDATE
 SET folder = 'inbox', delta_link = NULL, import_from = excluded.import_from, state = 'pending',
     error = NULL, next_sync_at = excluded.next_sync_at, last_synced_at = NULL, attempts = 0,
-    lease_id = NULL, lease_until = NULL, notified = false, updated_at = excluded.updated_at
+    lease_id = NULL, lease_until = NULL, notified = false, restart_from = NULL,
+    failing_item = NULL, failing_tries = 0, updated_at = excluded.updated_at
 RETURNING channel_id, folder, delta_link, import_from, state, error, next_sync_at, last_synced_at,
-          attempts, lease_id, lease_until, notified, updated_at;
+          attempts, lease_id, lease_until, notified, restart_from, failing_item, failing_tries, updated_at;
 
 -- name: DeleteChannelSync :exec
 -- The way back to SMTP: the channel no longer receives, and a later switch

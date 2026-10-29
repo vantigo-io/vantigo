@@ -56,6 +56,9 @@ const (
 	reasonGone        = "gone"
 	reasonOwnMessage  = "own_message"
 	reasonUnparseable = "unparseable"
+	// reasonImportFailed is a message given up on: its import failed each
+	// time (mailbox_sync.go's giveUp).
+	reasonImportFailed = "import_failed"
 )
 
 // ownMessageID is the Message-Id the outbox gives each message we send
@@ -86,7 +89,8 @@ type inboundObject struct {
 
 // importItem carries one delta item to a receipt: skipped, a duplicate, or
 // imported — readable or not. An error ends the cycle without a receipt, so
-// the message is tried again.
+// the message is tried again, unless the cycle gives it up (giveUp); one at
+// the provider or the store is marked errImportTransient.
 func (w *MailboxSyncWorker) importItem(ctx context.Context, c *syncCycle, item contracts.MailItem) error {
 	q := store.New(w.deps.Pool)
 	raw, err := mailboxRaw(ctx, c.provider, c.mailbox, item.ID, w.inboundMaxBytes())
@@ -96,7 +100,7 @@ func (w *MailboxSyncWorker) importItem(ctx context.Context, c *syncCycle, item c
 	case errors.Is(err, contracts.ErrMailItemGone):
 		return w.writeReceipt(ctx, q, c, item, rfcOf(platformmail.NormalizeMessageID(item.MessageID)), nil, receiptSkipped, reasonGone)
 	case err != nil:
-		return err
+		return fmt.Errorf("%w: %w", errImportTransient, err)
 	}
 
 	// The Message-Id as the message itself says, read before the full parse.
@@ -133,7 +137,12 @@ func (w *MailboxSyncWorker) importItem(ctx context.Context, c *syncCycle, item c
 	}
 
 	in, perr := platformmail.ParseInbound(raw, platformmail.DefaultInboundLimits)
-	return w.importMessage(ctx, c, item, raw, in, perr != nil)
+	// A message from the channel's own address is one we sent, whatever its
+	// Message-Id says: Exchange may rewrite ours.
+	if in.From != nil && strings.EqualFold(in.From.Address, c.channelAddress) {
+		return w.writeReceipt(ctx, q, c, item, rfc, nil, receiptSkipped, reasonOwnMessage)
+	}
+	return w.importMessage(ctx, c, item, raw, in, rfc, perr != nil)
 }
 
 // writeReceipt records a message the cycle will not import. A receipt
@@ -155,10 +164,13 @@ func (w *MailboxSyncWorker) writeReceipt(ctx context.Context, q *store.Queries, 
 }
 
 // importMessage stores one message: the objects first, then one transaction.
-// unreadable is a message ParseInbound could not read: its text says so, it
-// keeps no HTML and no attachments, and it starts a conversation of its own.
+// rfc is the Message-Id importItem's duplicate check read — the header's, or
+// Graph's when the header has none — stored as the message's and the
+// receipt's. unreadable is a message ParseInbound could not read: its text
+// says so, it keeps no HTML and no attachments, and it starts a conversation
+// of its own.
 func (w *MailboxSyncWorker) importMessage(ctx context.Context, c *syncCycle, item contracts.MailItem,
-	raw []byte, in platformmail.Inbound, unreadable bool) error {
+	raw []byte, in platformmail.Inbound, rfc *string, unreadable bool) error {
 	now := w.now()
 	messageID := uuid.New()
 	prefix := fmt.Sprintf("inbound/%s/%s", hexN(c.channelID), hexN(messageID))
@@ -224,7 +236,7 @@ func (w *MailboxSyncWorker) importMessage(ctx context.Context, c *syncCycle, ite
 	// Objects before rows (reading 4): each reserved and stored before the
 	// transaction that names it; any failure queues what was reserved.
 	if err := w.storeObjects(ctx, objects, now); err != nil {
-		return err
+		return fmt.Errorf("%w: %w", errImportTransient, err)
 	}
 
 	// The linker and the thread, read before the transaction: the directory
@@ -243,7 +255,6 @@ func (w *MailboxSyncWorker) importMessage(ctx context.Context, c *syncCycle, ite
 	}
 
 	occurredAt := receivedAt(item, now)
-	rfc := rfcOf(in.MessageID)
 	subject := nonEmpty(in.Subject)
 	locked := context.WithValue(ctx, lockedTxKey{}, true)
 	txErr := db.WithTx(locked, w.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {

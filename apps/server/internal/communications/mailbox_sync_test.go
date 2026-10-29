@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -506,27 +507,29 @@ func TestMailboxSync_FiftyOneMessages(t *testing.T) {
 	}
 }
 
-// TestMailboxSync_AnExpiredDeltaRestartsFromTheNewestReceipt: the stored link
-// refused as expired is forgotten and the Inbox read afresh from the newest
-// receipt's receivedDateTime; the overlap is skipped by its receipt, the new
-// message imported once.
-func TestMailboxSync_AnExpiredDeltaRestartsFromTheNewestReceipt(t *testing.T) {
+// TestMailboxSync_AnExpiredDeltaRestartsAnHourBeforeTheLastSync: the stored
+// link refused as expired is forgotten and the Inbox read afresh from an hour
+// before the earlier of the last finished sync and the newest receipt; the
+// overlap is skipped by its receipts, the new message imported once.
+func TestMailboxSync_AnExpiredDeltaRestartsAnHourBeforeTheLastSync(t *testing.T) {
 	t.Parallel()
 	in := newInbox(t, nil, nil)
-	first := in.h.Now().Add(time.Minute).Truncate(time.Microsecond)
-	second := first.Add(time.Minute)
-	in.deliver(in.plainMail("one"), first, "")
-	in.deliver(in.plainMail("two"), second, "")
+	in.deliver(in.plainMail("one"), in.h.Now().Add(time.Minute), "")
+	in.sync(t)
+	in.h.Advance(3 * time.Hour)
+	lastSync := in.h.Now()
+	in.deliver(in.plainMail("two"), lastSync.Add(time.Minute), "")
 	in.sync(t)
 
 	in.fake.ExpireDelta(in.mailbox.Mailbox)
-	third := in.deliver(in.plainMail("three"), second.Add(time.Minute), "")
+	third := in.deliver(in.plainMail("three"), lastSync.Add(2*time.Minute), "")
 	in.h.Advance(5 * time.Minute)
 	in.sync(t)
 
 	calls := deltaCalls(in.fake)
-	if len(calls) != 3 || calls[1].Link == "" || calls[2].Link != "" || !calls[2].Since.Equal(second) {
-		t.Fatalf("Delta calls = %+v, want the stored link, then a fresh read since %v", calls, second)
+	restart := lastSync.Add(-time.Hour)
+	if len(calls) != 4 || calls[2].Link == "" || calls[3].Link != "" || !calls[3].Since.Equal(restart) {
+		t.Fatalf("Delta calls = %+v, want the stored link, then a fresh read since %v", calls, restart)
 	}
 	if n := countInbound(t, in.h, in.channelID); n != 3 {
 		t.Errorf("%d messages, want 3: nothing imported twice", n)
@@ -536,6 +539,104 @@ func TestMailboxSync_AnExpiredDeltaRestartsFromTheNewestReceipt(t *testing.T) {
 	}
 	if s := readSync(t, in.h, in.channelID); s.state != "active" || s.deltaLink == nil {
 		t.Errorf("channel_sync = %+v, want active with a new link", s)
+	}
+	if n := in.h.Count(t, `SELECT count(*) FROM communications.channel_sync WHERE channel_id = $1 AND restart_from IS NULL`, in.channelID); n != 1 {
+		t.Error("the finished pass kept its restart point")
+	}
+}
+
+// TestMailboxSync_AnExpiredDeltaBeforeAFinishedPassRestartsFromImportFrom: a
+// channel that never finished a pass restarts from import_from — the pages
+// come in no order, so the newest receipt says nothing of what was read.
+func TestMailboxSync_AnExpiredDeltaBeforeAFinishedPassRestartsFromImportFrom(t *testing.T) {
+	t.Parallel()
+	in := newInbox(t, nil, nil)
+	importFrom := readSync(t, in.h, in.channelID).importFrom
+	in.fake.SetDeltaPage(2)
+	base := in.h.Now().Add(time.Minute)
+	// Added newest first: the first page holds the two newest.
+	oldest := ""
+	for i := 2; i >= 0; i-- {
+		oldest = in.deliver(in.plainMail(fmt.Sprintf("message %d", i)), base.Add(time.Duration(i)*time.Minute), "")
+	}
+	if processed, err := in.worker().ProcessOne(context.Background()); err != nil || !processed {
+		t.Fatalf("ProcessOne = %v, %v", processed, err)
+	}
+	if n := countInbound(t, in.h, in.channelID); n != 2 {
+		t.Fatalf("%d messages after the first page, want 2", n)
+	}
+	in.fake.ExpireDelta(in.mailbox.Mailbox)
+	in.sync(t)
+
+	calls := deltaCalls(in.fake)
+	if len(calls) < 3 || calls[2].Link != "" || !calls[2].Since.Equal(importFrom) {
+		t.Fatalf("Delta calls = %+v, want a fresh read since import_from %v", calls, importFrom)
+	}
+	if readReceipts(t, in.h, in.channelID)[oldest].outcome != "imported" {
+		t.Error("the oldest message, on the page the expired link held, was never imported")
+	}
+	if n := countInbound(t, in.h, in.channelID); n != 3 {
+		t.Errorf("%d messages, want 3", n)
+	}
+}
+
+// freshFailMailbox is the fake with its next fresh reads failing; it
+// records the instant each fresh read asked from.
+type freshFailMailbox struct {
+	*modtest.FakeChannelMailbox
+	mu     sync.Mutex
+	fail   int
+	sinces []time.Time
+}
+
+func (m *freshFailMailbox) Delta(ctx context.Context, mailbox, folder, link string, since time.Time) (contracts.MailDelta, error) {
+	if link == "" {
+		m.mu.Lock()
+		m.sinces = append(m.sinces, since)
+		failing := m.fail > 0
+		if failing {
+			m.fail--
+		}
+		m.mu.Unlock()
+		if failing {
+			return contracts.MailDelta{}, errors.New("graph did not answer")
+		}
+	}
+	return m.FakeChannelMailbox.Delta(ctx, mailbox, folder, link, since)
+}
+
+// TestMailboxSync_AFailedFreshReadResumesFromTheRestartPoint: the restart
+// point is kept with the forgotten link, so a cycle whose fresh read fails
+// reads from the same instant next time, not from import_from.
+func TestMailboxSync_AFailedFreshReadResumesFromTheRestartPoint(t *testing.T) {
+	t.Parallel()
+	fake := modtest.NewFakeChannelMailbox()
+	slot := &freshFailMailbox{FakeChannelMailbox: fake}
+	in := newInbox(t, slot, fake)
+	importFrom := readSync(t, in.h, in.channelID).importFrom
+	in.deliver(in.plainMail("one"), in.h.Now().Add(time.Minute), "")
+	in.sync(t)
+	in.h.Advance(3 * time.Hour)
+	lastSync := in.h.Now()
+	in.deliver(in.plainMail("two"), lastSync.Add(time.Minute), "")
+	in.sync(t)
+
+	in.fake.ExpireDelta(in.mailbox.Mailbox)
+	slot.fail = 1
+	in.h.Advance(5 * time.Minute)
+	in.sync(t)
+	if s := readSync(t, in.h, in.channelID); s.errorCode == nil || *s.errorCode != "sync_failed" || s.deltaLink != nil {
+		t.Fatalf("channel_sync = %+v, want the failed fresh read recorded, no link", s)
+	}
+	in.h.Advance(time.Minute)
+	in.sync(t)
+
+	restart := lastSync.Add(-time.Hour)
+	if len(slot.sinces) != 3 || !slot.sinces[0].Equal(importFrom) || !slot.sinces[1].Equal(restart) || !slot.sinces[2].Equal(restart) {
+		t.Fatalf("fresh reads since %v, want import_from %v, then %v twice", slot.sinces, importFrom, restart)
+	}
+	if s := readSync(t, in.h, in.channelID); s.state != "active" || s.deltaLink == nil || s.errorCode != nil {
+		t.Errorf("channel_sync = %+v, want active again", s)
 	}
 }
 

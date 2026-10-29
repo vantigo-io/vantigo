@@ -9,7 +9,11 @@
 --
 -- lease_id is the outbox's hex form (32 characters), not a uuid. notified is
 -- read by the claim's ordering and set by nothing until mail change
--- notifications arrive (delivery E).
+-- notifications arrive (delivery E); a finished pass clears it. restart_from
+-- is the instant a fresh read starts from once an expired delta link is
+-- forgotten, kept until a pass finishes so a failed fresh read resumes there.
+-- failing_item and failing_tries count the failed imports of the message a
+-- page is held at: the third is given up on with a failed receipt.
 CREATE TABLE communications.channel_sync (
     channel_id      uuid        PRIMARY KEY REFERENCES communications.channels (id) ON DELETE CASCADE,
     folder          varchar(40) NOT NULL DEFAULT 'inbox',
@@ -23,6 +27,9 @@ CREATE TABLE communications.channel_sync (
     lease_id        varchar(32),
     lease_until     timestamptz,
     notified        boolean     NOT NULL DEFAULT false,
+    restart_from    timestamptz,
+    failing_item    varchar(400),
+    failing_tries   integer     NOT NULL DEFAULT 0,
     updated_at      timestamptz NOT NULL,
     CONSTRAINT ck_channel_sync_state CHECK (state IN ('pending', 'active', 'failed', 'stopped'))
 );
@@ -46,7 +53,8 @@ CREATE UNIQUE INDEX ux_inbound_receipts_provider
 CREATE UNIQUE INDEX ux_inbound_receipts_rfc
     ON communications.inbound_receipts (channel_id, rfc_message_id)
     WHERE rfc_message_id IS NOT NULL AND outcome = 'imported';
--- The restart point of an expired delta, and the receipts' sweep.
+-- The newest receipt, a bound on an expired delta's restart point; the
+-- receipts' sweep, by received_at.
 CREATE INDEX ix_inbound_receipts_channel_received
     ON communications.inbound_receipts (channel_id, received_at DESC);
 -- ON DELETE SET NULL from conversation_messages: retention deletes in batches.
