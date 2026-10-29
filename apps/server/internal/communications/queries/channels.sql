@@ -136,7 +136,7 @@ UPDATE communications.channels SET is_default = false WHERE id != @id;
 -- channel is ever creatable through this API).
 INSERT INTO communications.channels (id, type, address, display_name, provider, is_default, is_active, created_at)
 VALUES (@id, @type, @address, @display_name, @provider, @is_default, @is_active, @created_at)
-RETURNING id, type, address, display_name, provider, is_default, is_active, created_at;
+RETURNING id, type, address, display_name, provider, is_default, is_active, created_at, settings;
 
 -- name: InsertChannelCredential :exec
 -- InsertChannelCredential is CreateChannel's credential-row insert
@@ -185,7 +185,7 @@ WHERE channel_id = @channel_id;
 UPDATE communications.channels
 SET display_name = @display_name, is_active = @is_active, is_default = @is_default
 WHERE id = @id
-RETURNING id, type, address, display_name, provider, is_default, is_active, created_at;
+RETURNING id, type, address, display_name, provider, is_default, is_active, created_at, settings;
 
 -- name: UpsertChannelCredential :exec
 -- UpsertChannelCredential rewrites the credential row when PutChannelById

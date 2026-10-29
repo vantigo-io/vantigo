@@ -12,6 +12,7 @@ sql:
       - ../db/migrations/00085_entra_mailbox_subscriptions.sql
       - ../db/migrations/00088_entra_outlook_connect.sql
       - ../db/migrations/00089_entra_outlook_connections.sql
+      - ../db/migrations/00090_entra_mail_channels.sql
     queries: queries
     gen:
       go:

@@ -29,6 +29,12 @@ type EntraAccount struct {
 	LicencesAssigned          []string
 }
 
+type EntraChannelMailbox struct {
+	ObjectID  uuid.UUID
+	Address   string
+	CheckedAt time.Time
+}
+
 type EntraConnection struct {
 	ID                           int16
 	TenantID                     *uuid.UUID
@@ -63,6 +69,7 @@ type EntraConnection struct {
 	OutlookConnectAt             *time.Time
 	OutlookLastError             *string
 	OutlookLastErrorAt           *time.Time
+	MailChannels                 bool
 }
 
 type EntraCredential struct {

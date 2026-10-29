@@ -143,6 +143,7 @@ type setup struct {
 	provisioners    []contracts.IdentityProvisioner
 	workforce       contracts.Workforce
 	mailboxCalendar contracts.MailboxCalendar
+	channelMailbox  contracts.ChannelMailbox
 	calendarBusy    contracts.CalendarBusy
 	hours           contracts.BillableHours
 	billExpenses    contracts.BillableExpenses
@@ -372,6 +373,17 @@ func WithWorkforce(w contracts.Workforce) Option {
 // replaces it.
 func WithMailboxCalendar(m contracts.MailboxCalendar) Option {
 	return func(s *setup) { s.mailboxCalendar = m }
+}
+
+// WithChannelMailbox sets Deps.ChannelMailbox, for Communications to be
+// tested against a fake mailbox provider (FakeChannelMailbox) — its
+// mailboxes, its status and its refusals set by the test — without composing
+// Entra beside it: depguard keeps it out of communications' tests.
+// module.Compose and module.Workers keep a value set here when no enabled
+// module provides the slot (Outlook connection design M11); a composed
+// Entra's own replaces it.
+func WithChannelMailbox(m contracts.ChannelMailbox) Option {
+	return func(s *setup) { s.channelMailbox = m }
 }
 
 // WithCalendarBusy sets Deps.CalendarBusy, for a module that reads the
@@ -655,6 +667,7 @@ func New(t *testing.T, opts ...Option) *Harness {
 		IdentityProvisioners:     s.provisioners,
 		Workforce:                s.workforce,
 		MailboxCalendar:          s.mailboxCalendar,
+		ChannelMailbox:           s.channelMailbox,
 		CalendarBusy:             s.calendarBusy,
 		BillableHours:            s.hours,
 		BillableExpenses:         s.billExpenses,
