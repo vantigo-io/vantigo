@@ -40,8 +40,9 @@ import (
 // Deps.HTTPTransport, never as a base URL.
 //
 // The lifecycle (provisioner) and the connection's endpoints call Graph
-// through get, post, patch, put, putRaw (a photo's bytes) and del with a
-// credential credentialFor answered; the token is graph_token.go's.
+// through get, post, patch, put, putRaw (a photo's bytes), postRaw (a
+// channel mailbox's MIME) and del with a credential credentialFor answered;
+// the token is graph_token.go's.
 
 // The hosts, fixed.
 const (
@@ -361,6 +362,14 @@ func (c *graphClient) put(ctx context.Context, cred graphCredential, path string
 // image/jpeg — under the same rules as every call; Graph answers 200.
 func (c *graphClient) putRaw(ctx context.Context, cred graphCredential, path, contentType string, data []byte) error {
 	return c.send(ctx, cred, http.MethodPut, path, &payload{data: data, contentType: contentType}, nil)
+}
+
+// postRaw sends data to path as it is, with contentType — a MIME message
+// base64-encoded as text/plain, a channel mailbox's sendMail or draft — and
+// reads the answer into into (nil discards it), under the same rules as
+// every call; Graph answers 202 or 201.
+func (c *graphClient) postRaw(ctx context.Context, cred graphCredential, path, contentType string, data []byte, into any, opts ...callOption) error {
+	return c.send(ctx, cred, http.MethodPost, path, &payload{data: data, contentType: contentType}, into, opts...)
 }
 
 // del deletes path; Graph answers 204.
