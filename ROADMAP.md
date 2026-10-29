@@ -2474,7 +2474,29 @@ named above the toggle, which works before the person connects; the application
 permission `Calendars.ReadWrite` and its Exchange RBAC procedure removed, a leftover
 grant shown as a permission Vantigo does not use. No migration.
 
-*Next:* C–E bring Microsoft 365 mail channels.
+**C — Microsoft 365 channels that send, built** on
+`claude/communications-m365-channels-c`
+([the plan](docs/superpowers/plans/2026-10-29-communications-m365-channels.md);
+[the reference](docs/src/content/docs/en/reference/communications.md#microsoft-365);
+[Entra's](docs/src/content/docs/en/reference/entra.md#mail-channels);
+[the operator's page](docs/src/content/docs/en/admin/entra.md#mail-channels);
+[the user guide](docs/src/content/docs/en/user/communications.md#set-up-a-channel)): the
+**Mail channels** switch (`entra.connection.mail_channels`, migration
+`00090_entra_mail_channels.sql`), its status `off`, `unavailable`, `tenant_wide` or
+`ready`, and the RBAC for Applications commands the page fills in to copy; the
+single-provider slot `contracts.ChannelMailbox` and rule 15, which Entra fills on the
+application's own token — `Check` of a shared mailbox by its address, recorded in
+`entra.channel_mailboxes`, `Send` of our MIME through `sendMail` or, with blind copies,
+a MIME draft, `MaxMessage` 3 000 000 bytes; Microsoft 365 channels in Communications
+(`channels.settings`, one channel per mailbox, `00091`), created by a shared mailbox's
+address or switched from SMTP keeping their id, conversations and default, verified
+again, listed by `GET /channel-providers`; the outbox sending through the slot after its
+stamp, with five terminal codes; the size refused at staging and at reply; Mailgun out
+of the contract. Exchange keeping our `Message-ID` and a Bcc through the draft are the
+real-tenant checklist's to confirm.
+
+*Next:* D receives into Communications; E brings the notifications, Outlook state on
+close and the import window.
 
 ### Later
 

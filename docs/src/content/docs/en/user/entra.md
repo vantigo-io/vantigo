@@ -1,6 +1,6 @@
 ---
 title: Microsoft Entra ID
-description: Connecting the company's Microsoft Entra ID tenant on the Microsoft Entra ID page — the Status card, the wizard's six steps and what Done means on each, the permissions to copy, the secret shown once, the connection test, the account rules and the Outlook connection switch with its status, counts and redirect URI, the warning for permissions Vantigo does not use, the Groups table confirming a group Vantigo did not create, connecting existing users by the directory picker and the review of exact matches — and who sees what.
+description: Connecting the company's Microsoft Entra ID tenant on the Microsoft Entra ID page — the Status card, the wizard's six steps and what Done means on each, the permissions to copy, the secret shown once, the connection test, the account rules and the Outlook connection switch with its status, counts and redirect URI, the Mail channels switch with its status and the Exchange Online commands to copy, the warning for permissions Vantigo does not use, the Groups table confirming a group Vantigo did not create, connecting existing users by the directory picker and the review of exact matches — and who sees what.
 sidebar:
   order: 47
 sources:
@@ -59,7 +59,9 @@ that, and again after step 1 changes, it is not shown:
   or wider than needed — remove them under **API permissions** unless another product
   uses the registration. An application `Calendars.ReadWrite` granted for calendar sync
   in an earlier release is listed here too: calendar sync now runs on each person's own
-  connection. It is a warning only: the connection stays **Connected**;
+  connection. The mail permissions (`Mail.Read`, `Mail.Send` and the like) are listed
+  here while **Mail channels** is off; while it is on, they show under that switch
+  instead ([below](#mail-channels)). It is a warning only: the connection stays **Connected**;
 - **Client secrets**: each by its **Description**, with **Added**, **Expires**, **Last
   used** (when it last fetched a token) and its **State** — **In use** for the one
   tried first, *Revoked* and the date, and *Refused by the tenant* and the date for one
@@ -166,7 +168,9 @@ The rules every account follows, which anyone with `entra:manage` may change:
   authentication methods policy must enable the pass for the users, or Microsoft
   refuses it;
 - **Outlook connection**: **Outlook connection: let people connect their Outlook to
-  Vantigo** ([below](#outlook-connection)).
+  Vantigo** ([below](#outlook-connection));
+- **Mail channels**: **Mail channels: let Communications send and receive through
+  Exchange Online shared mailboxes** ([below](#mail-channels)).
 
 Choose **Save the account rules**. A value outside its rule is marked on its field with
 the reason. If someone else saved the connection since you opened the page, the page
@@ -258,6 +262,42 @@ it. It also stops every person's calendar sync and removes the copies Vantigo pu
 their Outlook, each with their own closing connection. Turning it on again resumes no one
 by itself: each person who had their sync on connects their Outlook again, and their sync
 picks up once they have.
+
+## Mail channels
+
+**Mail channels** let Communications send from the company's Exchange Online **shared
+mailboxes** — each one a channel there ([Communications](/en/user/communications/#set-up-a-channel)).
+Vantigo reaches them with the application's own access, which an Exchange administrator
+grants in Exchange Online, limited to the channels' mailboxes. It is off until someone
+with `entra:manage` turns it on. In this release a channel **sends only**: the switch's
+words *send and receive* look ahead to receiving, which is not built yet.
+
+1. In step **4 Set the account rules**, under **Mail channels**, turn on **Mail channels:
+   let Communications send and receive through Exchange Online shared mailboxes**, and
+   choose **Save the account rules**.
+2. Under the switch, **Commands for Exchange Online PowerShell** shows the six commands
+   to run, with the application's client id and object id filled in and a copy button.
+   Until the connection has been tested, *Test the connection first* says so, and the
+   commands show `<client id>` and `<object id>` instead. An Exchange administrator runs
+   them, replacing `post@firma.no` with each shared mailbox's address — the
+   [administration guide](/en/admin/entra/#mail-channels) has the procedure.
+3. Add the mailbox as a channel in Communications, under **Channels**.
+
+While the switch is on, a line under it says where the mail channels stand:
+
+- **Ready: the application holds no mail permission for the whole tenant.** — adding a
+  channel in Communications checks that Vantigo reaches its mailbox;
+- **Mail access is granted to every mailbox in the tenant. Limit it with RBAC for
+  Applications and remove the tenant-wide consent.** — in orange: the app registration
+  holds a `Mail` permission, which reaches every mailbox whatever Exchange limits. The
+  channels still work; remove the permission under **API permissions** and test the
+  connection again;
+- **Waiting for the connection** — the connection is not connected, with the reason under
+  it.
+
+**Turning it off** deletes nothing: Communications no longer offers Microsoft 365 for a
+channel, and mail waiting on a Microsoft 365 channel is retried for a few minutes and
+then given up.
 
 ## Confirm an account Vantigo did not create
 

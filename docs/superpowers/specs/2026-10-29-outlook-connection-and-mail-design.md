@@ -897,6 +897,55 @@ count as unexpected.
     `tenant_wide`), and the communications user guide (adding a Microsoft 365 channel,
     switching from SMTP);
   - the API reference regenerates.
+
+  *As built (delivery C, 2026-10-29, branch `claude/communications-m365-channels-c`;
+  [the plan](../plans/2026-10-29-communications-m365-channels.md)):* where C departs from
+  this design —
+  - **M10**: `mailChannels` also answers `servicePrincipalId` (the connection's service
+    principal, read by the test), which the page fills into `New-ServicePrincipal
+    -ObjectId`; `tenant_wide` comes after `unavailable`, so it needs the connection
+    `connected`. `full_access_as_app` stays in the list but is an *Office 365 Exchange
+    Online* role, never in a Graph token's `roles`: the test cannot see it. The
+    `Application MailboxSettings.Read` role exists in RBAC for Applications, so there is
+    **no `accountEnabled` fallback**; a 403 on `userPurpose` is `ErrMailboxDenied`.
+    The switch's label keeps *send and receive*, though C only sends.
+  - **M11, the contract**: only the seven methods C calls — `Key`, `DisplayName`,
+    `Status`, `Check`, `Forget`, `MaxMessage`, `Send`; D and E add theirs. `Send` takes
+    `bcc []string` beside the MIME: without blind copies the MIME goes to `sendMail`;
+    with them it is created as a **MIME draft** (whose `Bcc:` header Graph documents), its
+    `bccRecipients` checked, then sent, the draft deleted best-effort on a failure
+    (owner question 1). `mail.RenderMIME` with `WithBcc` writes the header go-mail leaves
+    out. `Status` reuses `MailboxStatus`; `available` with the reason `tenant_wide` is
+    M10's warning. `Check` resolves by user principal name, then `$filter=mail eq`, and
+    refuses an address that is not a bare addr-spec before any call. `sendMail`, the
+    draft's create and its send are `noRetry`. `MaxMessage` is 3 000 000 bytes of MIME.
+  - **M11, `Forget`**: there is no delete of a channel (conversations restrict it), so
+    `Forget` runs only on the way back to SMTP, after the commit, best-effort; a
+    deactivated channel keeps its mailbox.
+  - **M12**: `ChannelResponse.settings` stays the SMTP shape (`domain` and `region`
+    gone), null for Microsoft 365, beside a new `mailbox: {id}` — no `oneOf`. One channel
+    per mailbox: the unique index `ux_channels_entra_mailbox` (409 `channel_exists`). The
+    stored address is `Check`'s primary address on create; the switch keeps the
+    channel's own. Create, switch and verify answer 503 `provider_unreachable` when Graph
+    does not answer, and verify 422 `mailbox_changed` when the address now names another
+    mailbox. The frontend reads `GET /channel-providers`, never Entra's API. The way back
+    to SMTP is `PUT /channels/{id}` with `provider: smtp` and a full SMTP block, the
+    password included (owner question 3) — the API's alone: the channels page has no
+    control for it. A `PUT` without `provider` keeps the channel's own. Create, switch
+    and verify share a rate limit, `communications-channel-check` (30 a minute).
+    Communications gains `contractscalls.go` and its in-transaction guard.
+  - **M13**: the terminal codes are `mailbox_denied`, `mailbox_gone`, `mailbox_unknown`,
+    `too_large` and `channel_misconfigured`; the job fails after one attempt, `last_error`
+    stays the constant, and the code goes in the failure event's `data_json` and the log
+    (owner question 2). The size check is on **reply** (422 `too_large`) and at
+    **staging** (413 `attachment_too_large`), not create, which carries no attachments;
+    the 37 % margin applies to the HTML body too. `ConversationDetailResponse` answers
+    `maxMessageBytes` for the composer. Reply is unreachable until D, so its check has no
+    live caller yet.
+  - **Not verified on a real tenant** when the pages were written: that Exchange keeps
+    our `Message-ID` on a MIME `sendMail` (and on a MIME draft), and that a draft's `Bcc:`
+    header reaches the blind copies. The pull request's real-tenant checklist settles
+    both; the reference states them as unverified until then.
 - **D** (`feat/communications-inbound`): M14–M16. Migration
   `00092_communications_inbound.sql` (with the backfill), and the dependency `bluemonday`. Docs:
   - the communications reference (the outbound-only section replaced by *Receiving*, the

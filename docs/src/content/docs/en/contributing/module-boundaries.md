@@ -85,7 +85,7 @@ Communications' outbox is the working example.
 5. **One module, one mount.** A module exposes one `Module()` returning a
    `module.Module`: its name, its `Mount`, the permissions it contributes, the
    background workers it contributes, and the cross-module contracts it *provides*.
-   There are eighteen single-provider slots, each filled by at most one enabled module:
+   There are nineteen single-provider slots, each filled by at most one enabled module:
    `Directory` (`contracts.CustomerDirectory`, customers), `Users`
    (`contracts.UserDirectory`, identity), `Calendar` (`contracts.BusinessCalendar`,
    identity — the workspace's business time zone and the day an instant falls on in
@@ -113,7 +113,9 @@ Communications' outbox is the working example.
    booking fits what each person wants; rule 12), `MailboxCalendar`
    (`contracts.MailboxCalendar`, entra — a provider's mailbox calendars, which the
    calendar's Outlook sync writes people's copies to and reads their busy time from;
-   rule 14), and `CalendarBusy` (`contracts.CalendarBusy`, calendar — people's busy
+   rule 14), `ChannelMailbox` (`contracts.ChannelMailbox`, entra — a provider's
+   mailboxes as Communications' channels send from; rule 15; optional for its consumer,
+   nil when Entra is off), and `CalendarBusy` (`contracts.CalendarBusy`, calendar — people's busy
    time, which Planning's board shows; provider-gated, rule 12; optional for its
    consumer, nil when the calendar is off). `module.Compose`
    mounts each module at `/api/v1/<name>/` and builds every provider before any
@@ -134,8 +136,11 @@ Communications' outbox is the working example.
    after the identity provisioners — its provider reads nothing while it is built — and
    reaches every module's `Deps`, keeping a preset value (`modtest.WithMailboxCalendar`)
    when no enabled module provides one: the calendar's `calendar-mailbox-sync` worker
-   writes through it in worker mode as the API does. `CalendarBusy` is resolved by
-   Compose last of all, after `MailboxCalendar`, since its provider — the calendar's
+   writes through it in worker mode as the API does. `ChannelMailbox` follows it, by the
+   same kind of helper (`withChannelMailbox`) in Compose and in Workers, keeping a preset
+   value (`modtest.WithChannelMailbox`) the same way: Communications' outbox sends through
+   it in worker mode. `CalendarBusy` is resolved by
+   Compose last of all, after `ChannelMailbox`, since its provider — the calendar's
    server — reads the rest of `Deps` while it is built; `module.Workers` leaves it nil,
    as no worker reads it. Two providers are a compose error naming both, and a panic in
    Workers.
@@ -245,7 +250,8 @@ Communications' outbox is the working example.
    energy, communications and invoices ([Merging duplicates](/en/reference/customers/#merging-duplicates)).
    Another write direction needs a design of its own, not a second holder-shaped
    interface — rule 9 is that design for the second, rule 10 for the third,
-   rule 11 for the fourth, rule 13 for the fifth and rule 14 for the sixth.
+   rule 11 for the fourth, rule 13 for the fifth, rule 14 for the sixth and rule 15 for
+   the seventh.
 9. **A person's data, handed over and taken out.** The second sanctioned
    cross-module direction, made for the GDPR of private-person customers:
    `contracts.CustomerPersonalData`. A module that holds anything about a
@@ -656,6 +662,39 @@ Communications' outbox is the working example.
     their connection within a cycle, still in the same direction
     ([Calendar](/en/reference/calendar/#parking-and-waking)).
 
+15. **Communications writes through a provider's mailbox.** The seventh sanctioned
+    cross-module direction, Communications → a provider module, made for a team's shared
+    mailbox as a channel (Outlook connection and Microsoft 365 mail design M11):
+    `contracts.ChannelMailbox`, in the single-provider slot `ChannelMailbox` (rule 5),
+    which a module offering mailboxes to send from fills. The first filler is
+    `internal/entra`, under the key `entra`, sending from Exchange Online shared mailboxes
+    through Graph on the application's own token ([Microsoft Entra
+    ID](/en/reference/entra/#mail-channels)); the interface names no vendor — a mailbox is
+    an opaque id, a message whole MIME — so an IMAP or Gmail provider could fill it later.
+    **Communications is the authority on which mailboxes are channels**: a channel's
+    `provider` is the slot's `Key`, its `settings` the mailbox id `Check` answered, and
+    a channel whose provider is not the slot's `Key` is unavailable, **never sent through
+    another provider**. **The provider writes only to a mailbox its `Check` resolved** and
+    recorded on its own side (`ErrMailboxUnknown` otherwise), and `Forget` drops one.
+    `Key`, `DisplayName`, `Status` and `MaxMessage` make no network call; `Check`,
+    `Forget` and `Send` do, on the provider's own pool, and **nothing is called inside a
+    transaction or holding a connection** — only through the accessors in
+    `internal/communications/contractscalls.go`, which refuse a call made inside one of the
+    module's transactions (marked by its `withTx`) as the calendar's and Entra's do: a
+    channel's create and switch call `Status` and `Check` before their transaction, the
+    way back to SMTP calls `Forget` after its commit, and the outbox calls `Send` between
+    its stamp and its completion, outside both. **Every write is idempotent or reports its
+    outcome**: `Check` rewrites its record, `Forget` is done for a mailbox not recorded,
+    and `Send` is at least once, as SMTP is — acceptance is not delivery, and a failure
+    after the provider took the message may send it again on the outbox's retry, never on
+    the provider's own. Its refusals are rule 14's sentinels — `ErrMailboxUnavailable`,
+    `ErrMailboxUnknown`, `ErrMailboxDenied` (here: outside the provider's scope),
+    `ErrMailboxGone` — and `ErrMailTooLarge`; `Status` answers `available` with the reason
+    `tenant_wide` when the provider's grant reaches every mailbox, a warning. Anything else
+    is a failure to retry. The interface declares only what Communications calls today —
+    `Key`, `DisplayName`, `Status`, `Check`, `Forget`, `MaxMessage`, `Send` — and grows
+    with the reads receiving needs ([Communications](/en/reference/communications/#microsoft-365)).
+
 ## How they are enforced
 
 - **Rules 1–3**: [depguard](https://github.com/OpenPeeDeeB/depguard) in
@@ -752,6 +791,13 @@ Communications' outbox is the working example.
   it; the calendar's own tests run fake sources per kind, prove a failing one fails
   `GET /items`, and `internal/module`'s tests pin that the slot is collected from
   enabled modules only.
+- **Rule 15**: by test. Communications' tests run against `modtest.FakeChannelMailbox`
+  (its mailboxes, status and refusals set by the test, every call recorded), set by
+  `modtest.WithChannelMailbox`; the contract-call hook in `contractscalls.go` records
+  whether each slot call was made inside one of the module's transactions, and the tests
+  assert none was. Entra's `channel_mailbox_test.go` proves `Send` refuses a mailbox no
+  `Check` recorded without a call, and `TestCompose_ResolvesTheChannelMailboxSlot` that
+  two providers are refused.
 - **The harness**, `apps/server/internal/modtest`, is what these tests mount their
   modules through: an in-process installation on a real, migrated PostgreSQL database,
   the real server stack over `module.Compose` with identity beside the module under
@@ -1132,10 +1178,13 @@ matches and the holders the search marks, and of Staff only `Deps.Workforce`'s
 principal, for the person's Outlook connection — both through the accessors in
 `internal/entra/contractscalls.go` and never inside a transaction; the Owner's and
 `entra:manage`'s checks are the router's — and writes nothing outside the `entra`
-schema. It fills two
-slots, `IdentityProvisioner` (rule 13) and `MailboxCalendar` (rule 14): Staff's accounts
-worker and the calendar's mailbox sync worker call it, in the API and in worker mode
-alike, never inside a transaction. Its one worker, `entra-outlook-sweep`, deletes the
+schema. It fills three
+slots, `IdentityProvisioner` (rule 13), `MailboxCalendar` (rule 14) and `ChannelMailbox`
+(rule 15): Staff's accounts worker, the calendar's mailbox sync worker and Communications
+— its channel handlers and its outbox — call it, in the API and in worker mode alike,
+never inside a transaction. With `entra` off, `Deps.ChannelMailbox` is nil:
+Communications offers SMTP alone, and a Microsoft 365 channel's mail waits as
+unavailable and is retried until its attempts end. Its one worker, `entra-outlook-sweep`, deletes the
 closed Outlook connections nothing needs and reads the accounts of those waiting to
 reconnect ([Microsoft Entra ID](/en/reference/entra/#entra-outlook-sweep)). It reaches the
 network in one place, its Graph client, through `internal/netguard` with no proxy and

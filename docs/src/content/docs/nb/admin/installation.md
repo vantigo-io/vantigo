@@ -545,10 +545,11 @@ innholdssikkerhetspolicy i stedet for applikasjonens; se
 Identitetsinvitasjoner og passordgjenoppretting bruker innstillingene `MAIL_DRIVER` og
 `SMTP_*`. Leveringslegitimasjon per postkasse for Kommunikasjon-modulen konfigureres
 gjennom Kommunikasjon-API-et, der vert, port og et beskyttet passord lagres som
-postkasselegitimasjon — det finnes ingen miljøvariabel for dem. De kanalene er bare
-SMTP: API-et nekter å opprette eller oppdatere en kanal som navngir en annen
-leverandør, og avviser en Mailgun-legitimasjon blankt. Se
-[Kommunikasjon](/en/reference/communications/).
+postkasselegitimasjon — det finnes ingen miljøvariabel for dem. En kanal kan i stedet
+sende fra en delt postboks i Microsoft 365, uten egen legitimasjon, når **E-postkanaler**
+i Microsoft Entra ID-modulen er satt opp ([E-postkanaler](/nb/admin/entra/#mail-channels));
+det finnes ingen annen leverandør. Se
+[Kommunikasjon](/en/reference/communications/#providers).
 
 Modulene Prosjekter og Tid trenger ingen egen miljøvariabel; se
 [Prosjekter](/en/reference/projects/) og [Tid](/en/reference/time/). Utgifter trenger
