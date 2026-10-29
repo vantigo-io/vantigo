@@ -158,6 +158,20 @@ const en = {
   "syncError.sync_failed": "Microsoft 365 did not answer. Vantigo tries again.",
   lastSynced: "Last synced {{time}}",
   sendsOnly: "Sends only",
+  importWindow: "Import history",
+  importFromNow: "From now on",
+  importLast30Days: "Last 30 days",
+  importLast90Days: "Last 90 days",
+  onClose: "When a conversation is closed",
+  onCloseNone: "Leave as-is in Outlook",
+  onCloseRead: "Mark as read in Outlook",
+  onCloseMove: "Move to folder in Outlook",
+  onCloseFolder: "Outlook folder",
+  onCloseSummaryRead: "On close: mark as read",
+  onCloseSummaryMove: "On close: move to {{folder}}",
+  editOnClose: "Outlook on close",
+  save: "Save",
+  channelUpdated: "Channel updated",
 } as const;
 
 const nb: { [Key in keyof typeof en]: string } = {
@@ -318,6 +332,20 @@ const nb: { [Key in keyof typeof en]: string } = {
   "syncError.sync_failed": "Microsoft 365 svarte ikke. Vantigo prøver igjen.",
   lastSynced: "Sist synkronisert {{time}}",
   sendsOnly: "Sender bare",
+  importWindow: "Importer historikk",
+  importFromNow: "Fra nå av",
+  importLast30Days: "Siste 30 dager",
+  importLast90Days: "Siste 90 dager",
+  onClose: "Når en samtale lukkes",
+  onCloseNone: "La stå uendret i Outlook",
+  onCloseRead: "Marker som lest i Outlook",
+  onCloseMove: "Flytt til mappe i Outlook",
+  onCloseFolder: "Outlook-mappe",
+  onCloseSummaryRead: "Ved lukking: marker som lest",
+  onCloseSummaryMove: "Ved lukking: flytt til {{folder}}",
+  editOnClose: "Outlook ved lukking",
+  save: "Lagre",
+  channelUpdated: "Kanal oppdatert",
 };
 
 export const communicationsCatalog = { en, nb } as const satisfies CatalogResources;

@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   fetchChannels: vi.fn(),
   fetchProviders: vi.fn(),
   createChannel: vi.fn(),
+  updateChannel: vi.fn(),
   switchChannelProvider: vi.fn(),
   verifyChannel: vi.fn(),
 }));
@@ -64,7 +65,7 @@ vi.mock("../api/channels", () => ({
   channelsQueryOptions: () => ({ queryKey: ["channels"], queryFn: () => mocks.fetchChannels() }),
   channelProvidersQueryOptions: () => ({ queryKey: ["channel-providers"], queryFn: () => mocks.fetchProviders() }),
   createChannel: mocks.createChannel,
-  updateChannel: vi.fn().mockResolvedValue({}),
+  updateChannel: mocks.updateChannel,
   switchChannelProvider: mocks.switchChannelProvider,
   verifyChannel: mocks.verifyChannel,
 }));
@@ -104,6 +105,7 @@ beforeEach(() => {
   mocks.fetchChannels.mockReset();
   mocks.fetchProviders.mockReset().mockResolvedValue([smtpProvider]);
   mocks.createChannel.mockReset().mockResolvedValue({ id: "channel-3" });
+  mocks.updateChannel.mockReset().mockResolvedValue({});
   mocks.switchChannelProvider.mockReset().mockResolvedValue({ ...channel, provider: "entra" });
   mocks.verifyChannel.mockReset().mockResolvedValue({ ok: true });
   vi.mocked(notifications.show).mockClear();
@@ -209,6 +211,56 @@ describe("admin channels", () => {
     );
   });
 
+  it("creates a Microsoft 365 channel with an import window and move-to-folder on close", async () => {
+    mocks.fetchProviders.mockResolvedValue([smtpProvider, entraProvider]);
+    mocks.fetchChannels.mockResolvedValue([]);
+    renderPage();
+    await openMicrosoft365Form();
+    fireEvent.click(screen.getByRole("combobox", { name: "Import history" }));
+    fireEvent.click(await screen.findByRole("option", { name: "Last 30 days" }));
+    fireEvent.click(screen.getByRole("combobox", { name: "When a conversation is closed" }));
+    fireEvent.click(await screen.findByRole("option", { name: "Move to folder in Outlook" }));
+    const folderInput = await screen.findByRole("textbox", { name: "Outlook folder" });
+    expect((folderInput as HTMLInputElement).value).toBe("Handled in Vantigo");
+    fireEvent.change(folderInput, { target: { value: " Archive / Done " } });
+    fireEvent.click(screen.getByRole("button", { name: "Create channel" }));
+    await waitFor(() =>
+      expect(mocks.createChannel).toHaveBeenCalledWith({
+        type: "email",
+        address: "post@example.com",
+        displayName: "Post",
+        provider: "entra",
+        importWindow: "last_30_days",
+        onClose: "move",
+        folder: "Archive / Done",
+      }),
+    );
+  });
+
+  it("edits Outlook on-close settings on an existing Microsoft 365 channel", async () => {
+    mocks.fetchProviders.mockResolvedValue([smtpProvider, entraProvider]);
+    mocks.fetchChannels.mockResolvedValue([
+      {
+        ...entraChannel,
+        mailbox: { id: "4f0c1e2a-0000-0000-0000-000000000001", onClose: "read" as const, folder: null },
+      },
+    ]);
+    renderPage();
+    expect(await screen.findByText("On close: mark as read")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Outlook on close" }));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("combobox", { name: "When a conversation is closed" }));
+    fireEvent.click(await screen.findByRole("option", { name: "Move to folder in Outlook" }));
+    expect(await within(dialog).findByRole("textbox", { name: "Outlook folder" })).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+    await waitFor(() =>
+      expect(mocks.updateChannel).toHaveBeenCalledWith("channel-2", {
+        onClose: "move",
+        folder: "Handled in Vantigo",
+      }),
+    );
+  });
+
   it.each([
     [
       "personal_mailbox",
@@ -303,6 +355,25 @@ describe("admin channels", () => {
     await waitFor(() => expect(mocks.switchChannelProvider).toHaveBeenCalledWith("channel-1"));
     await waitFor(() =>
       expect(notifications.show).toHaveBeenCalledWith(expect.objectContaining({ title: "Channel switched" })),
+    );
+  });
+
+  it("passes import window and on-close options when switching to Microsoft 365", async () => {
+    mocks.fetchProviders.mockResolvedValue([smtpProvider, entraProvider]);
+    mocks.fetchChannels.mockResolvedValue([channel]);
+    renderPage();
+    fireEvent.click(await screen.findByRole("button", { name: "Switch to Microsoft 365" }));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("combobox", { name: "Import history" }));
+    fireEvent.click(await screen.findByRole("option", { name: "Last 90 days" }));
+    fireEvent.click(within(dialog).getByRole("combobox", { name: "When a conversation is closed" }));
+    fireEvent.click(await screen.findByRole("option", { name: "Mark as read in Outlook" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Switch" }));
+    await waitFor(() =>
+      expect(mocks.switchChannelProvider).toHaveBeenCalledWith("channel-1", {
+        importWindow: "last_90_days",
+        onClose: "read",
+      }),
     );
   });
 

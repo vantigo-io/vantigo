@@ -1,6 +1,8 @@
 import { queryOptions } from "@tanstack/react-query";
 import { request } from "./request";
 export type ChannelProviderKey = "smtp" | "entra";
+export type ChannelImportWindow = "from_now" | "last_30_days" | "last_90_days";
+export type ChannelOnClose = "none" | "read" | "move";
 export type Channel = {
   id: string;
   type: "email";
@@ -11,7 +13,7 @@ export type Channel = {
   provider: ChannelProviderKey;
   isDefault: boolean;
   hasCredentials: boolean;
-  mailbox?: { id: string } | null;
+  mailbox?: { id: string; onClose?: ChannelOnClose; folder?: string | null } | null;
   settings: {
     host: string | null;
     port: number | null;
@@ -42,6 +44,9 @@ export type CreateChannelRequest = {
   provider: ChannelProviderKey;
   isDefault?: boolean;
   smtp?: { host: string; port: number; useSsl?: boolean; username?: string; password?: string };
+  importWindow?: ChannelImportWindow;
+  onClose?: ChannelOnClose;
+  folder?: string;
 };
 export type UpdateChannelRequest = {
   displayName?: string | null;
@@ -49,6 +54,13 @@ export type UpdateChannelRequest = {
   isDefault?: boolean;
   provider?: "smtp";
   smtp?: CreateChannelRequest["smtp"];
+  onClose?: ChannelOnClose;
+  folder?: string;
+};
+export type SwitchChannelProviderOptions = {
+  importWindow?: ChannelImportWindow;
+  onClose?: ChannelOnClose;
+  folder?: string;
 };
 export const channelsQueryOptions = () =>
   queryOptions({
@@ -79,9 +91,9 @@ export const updateChannel = (id: string, body: UpdateChannelRequest) =>
   });
 export const verifyChannel = (id: string) =>
   request<{ ok: true }>(`/api/v1/communications/channels/${id}/verify`, { method: "POST" });
-export const switchChannelProvider = (id: string) =>
+export const switchChannelProvider = (id: string, options?: SwitchChannelProviderOptions) =>
   request<Channel>(`/api/v1/communications/channels/${id}/provider`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ provider: "entra" }),
+    body: JSON.stringify({ provider: "entra", ...options }),
   });

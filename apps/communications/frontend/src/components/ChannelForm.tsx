@@ -3,6 +3,8 @@ import { useForm } from "@mantine/form";
 import { useMutation } from "@tanstack/react-query";
 import { useI18n } from "@vantigo/frontend-shell";
 import {
+  type ChannelImportWindow,
+  type ChannelOnClose,
   type ChannelProvider,
   type ChannelProviderKey,
   type CreateChannelRequest,
@@ -18,6 +20,9 @@ type ChannelFormValues = {
   smtpPort: string;
   smtpUsername: string;
   smtpPassword: string;
+  importWindow: ChannelImportWindow;
+  onClose: ChannelOnClose;
+  folder: string;
 };
 
 export type ChannelFormProps = {
@@ -37,6 +42,9 @@ const initialValues: ChannelFormValues = {
   smtpPort: "587",
   smtpUsername: "",
   smtpPassword: "",
+  importWindow: "from_now",
+  onClose: "none",
+  folder: "Handled in Vantigo",
 };
 
 export function ChannelForm({ opened, onClose, onCreated, providers, providerLabel }: ChannelFormProps) {
@@ -61,7 +69,11 @@ export function ChannelForm({ opened, onClose, onCreated, providers, providerLab
                 password: values.smtpPassword || undefined,
               },
             }
-          : {}),
+          : {
+              ...(values.importWindow !== "from_now" ? { importWindow: values.importWindow } : {}),
+              ...(values.onClose !== "none" ? { onClose: values.onClose } : {}),
+              ...(values.onClose === "move" && values.folder.trim() ? { folder: values.folder.trim() } : {}),
+            }),
       };
       return createChannel(body);
     },
@@ -105,9 +117,40 @@ export function ChannelForm({ opened, onClose, onCreated, providers, providerLab
               <PasswordInput label={t("password")} {...form.getInputProps("smtpPassword")} />
             </>
           ) : (
-            <Text size="sm" c="dimmed">
-              {t("sharedMailboxOnly")}
-            </Text>
+            <>
+              <Text size="sm" c="dimmed">
+                {t("sharedMailboxOnly")}
+              </Text>
+              <Select
+                label={t("importWindow")}
+                allowDeselect={false}
+                value={form.values.importWindow}
+                onChange={(value) => {
+                  if (value) form.setFieldValue("importWindow", value as ChannelImportWindow);
+                }}
+                data={[
+                  { value: "from_now", label: t("importFromNow") },
+                  { value: "last_30_days", label: t("importLast30Days") },
+                  { value: "last_90_days", label: t("importLast90Days") },
+                ]}
+              />
+              <Select
+                label={t("onClose")}
+                allowDeselect={false}
+                value={form.values.onClose}
+                onChange={(value) => {
+                  if (value) form.setFieldValue("onClose", value as ChannelOnClose);
+                }}
+                data={[
+                  { value: "none", label: t("onCloseNone") },
+                  { value: "read", label: t("onCloseRead") },
+                  { value: "move", label: t("onCloseMove") },
+                ]}
+              />
+              {form.values.onClose === "move" && (
+                <TextInput required label={t("onCloseFolder")} {...form.getInputProps("folder")} />
+              )}
+            </>
           )}
           {create.error && <Alert color="red">{channelErrorMessage(create.error, t, locale)}</Alert>}
           <Button type="submit" loading={create.isPending}>

@@ -1,13 +1,16 @@
-import { Alert, Badge, Button, Card, Group, Modal, Stack, Table, Text } from "@mantine/core";
+import { Alert, Badge, Button, Card, Group, Modal, Select, Stack, Table, Text, TextInput } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ContentSkeleton, PageHeader, useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import {
   type Channel,
+  type ChannelImportWindow,
+  type ChannelOnClose,
   type ChannelSync,
   channelProvidersQueryOptions,
   channelsQueryOptions,
+  type SwitchChannelProviderOptions,
   switchChannelProvider,
   updateChannel,
   verifyChannel,
@@ -65,6 +68,12 @@ export function ChannelsPage() {
   const client = useQueryClient();
   const [opened, setOpened] = useState(false);
   const [switching, setSwitching] = useState<Channel | null>(null);
+  const [switchImportWindow, setSwitchImportWindow] = useState<ChannelImportWindow>("from_now");
+  const [switchOnClose, setSwitchOnClose] = useState<ChannelOnClose>("none");
+  const [switchFolder, setSwitchFolder] = useState("Handled in Vantigo");
+  const [editingOnClose, setEditingOnClose] = useState<Channel | null>(null);
+  const [editOnCloseValue, setEditOnCloseValue] = useState<ChannelOnClose>("none");
+  const [editFolderValue, setEditFolderValue] = useState("Handled in Vantigo");
   const refresh = () => client.invalidateQueries({ queryKey: ["channels"] });
   // The badge and the select name a provider as the provider names itself;
   // a channel whose provider is not offered now still reads as a name.
@@ -74,6 +83,18 @@ export function ChannelsPage() {
   const update = useMutation({
     mutationFn: ({ id, isActive }: { id: string; isActive: boolean }) => updateChannel(id, { isActive }),
     onSuccess: () => void refresh(),
+  });
+  const saveOnClose = useMutation({
+    mutationFn: ({ id, onClose, folder }: { id: string; onClose: ChannelOnClose; folder: string }) =>
+      updateChannel(id, {
+        onClose,
+        ...(onClose === "move" ? { folder: folder.trim() || "Handled in Vantigo" } : {}),
+      }),
+    onSuccess: () => {
+      setEditingOnClose(null);
+      void refresh();
+      notifications.show({ title: t("channelUpdated"), message: t("emailChannelReady") });
+    },
   });
   const verify = useMutation({
     mutationFn: (channel: Channel) => verifyChannel(channel.id),
@@ -86,16 +107,39 @@ export function ChannelsPage() {
       }),
   });
   const switchProvider = useMutation({
-    mutationFn: (channel: Channel) => switchChannelProvider(channel.id),
+    mutationFn: (channel: Channel) => {
+      const opts: SwitchChannelProviderOptions = {
+        ...(switchImportWindow !== "from_now" ? { importWindow: switchImportWindow } : {}),
+        ...(switchOnClose !== "none" ? { onClose: switchOnClose } : {}),
+        ...(switchOnClose === "move" && switchFolder.trim() ? { folder: switchFolder.trim() } : {}),
+      };
+      return Object.keys(opts).length > 0 ? switchChannelProvider(channel.id, opts) : switchChannelProvider(channel.id);
+    },
     onSuccess: () => {
       setSwitching(null);
+      setSwitchImportWindow("from_now");
+      setSwitchOnClose("none");
+      setSwitchFolder("Handled in Vantigo");
       void refresh();
       notifications.show({ title: t("channelSwitched"), message: t("channelSwitchedMessage") });
     },
   });
   const closeSwitch = () => {
     setSwitching(null);
+    setSwitchImportWindow("from_now");
+    setSwitchOnClose("none");
+    setSwitchFolder("Handled in Vantigo");
     switchProvider.reset();
+  };
+  const openEditOnClose = (channel: Channel) => {
+    setEditingOnClose(channel);
+    setEditOnCloseValue(channel.mailbox?.onClose ?? "none");
+    setEditFolderValue(channel.mailbox?.folder || "Handled in Vantigo");
+    saveOnClose.reset();
+  };
+  const closeEditOnClose = () => {
+    setEditingOnClose(null);
+    saveOnClose.reset();
   };
   return (
     <Stack gap="xl">
@@ -151,6 +195,16 @@ export function ChannelsPage() {
                     </Table.Td>
                     <Table.Td>
                       <ReceiveStatus sync={channel.sync} />
+                      {channel.provider === "entra" && channel.mailbox?.onClose === "read" && (
+                        <Text size="xs" c="dimmed">
+                          {t("onCloseSummaryRead")}
+                        </Text>
+                      )}
+                      {channel.provider === "entra" && channel.mailbox?.onClose === "move" && (
+                        <Text size="xs" c="dimmed">
+                          {t("onCloseSummaryMove", { folder: channel.mailbox.folder || "Handled in Vantigo" })}
+                        </Text>
+                      )}
                     </Table.Td>
                     <Table.Td>
                       <Group gap="xs">
@@ -169,6 +223,11 @@ export function ChannelsPage() {
                         >
                           {channel.isActive ? t("deactivate") : t("activate")}
                         </Button>
+                        {channel.provider === "entra" && (
+                          <Button size="xs" variant="subtle" onClick={() => openEditOnClose(channel)}>
+                            {t("editOnClose")}
+                          </Button>
+                        )}
                         {channel.provider === "smtp" && entra?.available && (
                           <Button size="xs" variant="subtle" onClick={() => setSwitching(channel)}>
                             {t("switchToMicrosoft365")}
@@ -196,6 +255,40 @@ export function ChannelsPage() {
       <Modal opened={switching !== null} onClose={closeSwitch} title={t("switchToMicrosoft365")}>
         <Stack>
           <Text size="sm">{t("switchConfirm")}</Text>
+          <Select
+            label={t("importWindow")}
+            allowDeselect={false}
+            value={switchImportWindow}
+            onChange={(value) => {
+              if (value) setSwitchImportWindow(value as ChannelImportWindow);
+            }}
+            data={[
+              { value: "from_now", label: t("importFromNow") },
+              { value: "last_30_days", label: t("importLast30Days") },
+              { value: "last_90_days", label: t("importLast90Days") },
+            ]}
+          />
+          <Select
+            label={t("onClose")}
+            allowDeselect={false}
+            value={switchOnClose}
+            onChange={(value) => {
+              if (value) setSwitchOnClose(value as ChannelOnClose);
+            }}
+            data={[
+              { value: "none", label: t("onCloseNone") },
+              { value: "read", label: t("onCloseRead") },
+              { value: "move", label: t("onCloseMove") },
+            ]}
+          />
+          {switchOnClose === "move" && (
+            <TextInput
+              required
+              label={t("onCloseFolder")}
+              value={switchFolder}
+              onChange={(event) => setSwitchFolder(event.currentTarget.value)}
+            />
+          )}
           {switchProvider.error && <Alert color="red">{channelErrorMessage(switchProvider.error, t, locale)}</Alert>}
           <Group justify="end">
             <Button variant="default" onClick={closeSwitch}>
@@ -207,6 +300,50 @@ export function ChannelsPage() {
               onClick={() => switching && switchProvider.mutate(switching)}
             >
               {t("switch")}
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
+      <Modal opened={editingOnClose !== null} onClose={closeEditOnClose} title={t("editOnClose")}>
+        <Stack>
+          <Select
+            label={t("onClose")}
+            allowDeselect={false}
+            value={editOnCloseValue}
+            onChange={(value) => {
+              if (value) setEditOnCloseValue(value as ChannelOnClose);
+            }}
+            data={[
+              { value: "none", label: t("onCloseNone") },
+              { value: "read", label: t("onCloseRead") },
+              { value: "move", label: t("onCloseMove") },
+            ]}
+          />
+          {editOnCloseValue === "move" && (
+            <TextInput
+              required
+              label={t("onCloseFolder")}
+              value={editFolderValue}
+              onChange={(event) => setEditFolderValue(event.currentTarget.value)}
+            />
+          )}
+          {saveOnClose.error && <Alert color="red">{channelErrorMessage(saveOnClose.error, t, locale)}</Alert>}
+          <Group justify="end">
+            <Button variant="default" onClick={closeEditOnClose}>
+              {t("cancel")}
+            </Button>
+            <Button
+              loading={saveOnClose.isPending}
+              onClick={() =>
+                editingOnClose &&
+                saveOnClose.mutate({
+                  id: editingOnClose.id,
+                  onClose: editOnCloseValue,
+                  folder: editFolderValue,
+                })
+              }
+            >
+              {t("save")}
             </Button>
           </Group>
         </Stack>
