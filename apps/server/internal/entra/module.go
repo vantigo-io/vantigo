@@ -14,11 +14,11 @@
 // delivery B); the Owner's and entra:manage's checks are the router's. It
 // also fills contracts.MailboxCalendar for the calendar's Outlook sync
 // (docs/superpowers/specs/2026-10-27-calendar-outlook-sync-design.md, O2–O4):
-// behind the Owner's Calendar sync switch and Calendars.ReadWrite, it writes
-// the calendar's copies to the mailboxes of the accounts it manages, reads
-// them back and, on an installation Microsoft can reach, keeps their changes
-// notified through Graph's subscriptions and an anonymous webhook (O11). It
-// writes nothing outside its own schema; nothing here imports another module —
+// behind the Owner's Outlook connection switch and Calendars.ReadWrite, it
+// writes the calendar's copies to the mailboxes of the accounts it manages,
+// reads them back and, on an installation Microsoft can reach, keeps their
+// changes notified through Graph's subscriptions and an anonymous webhook
+// (O11). It writes nothing outside its own schema; nothing here imports another module —
 // depguard enforces it, tests included — and no SQL of this module crosses a
 // schema.
 //
@@ -90,6 +90,19 @@ var matchesLimit = ratelimit.Policy{Name: "entra-matches", Limit: 6, Window: tim
 // at most a few indexed statements.
 var notificationsLimit = ratelimit.Policy{Name: "entra-mailbox-notifications", Limit: 600, Window: time.Minute}
 
+// outlookLimit is the person's connect and complete (Outlook connection
+// design M4): 30 per client address a minute, one bucket between them. Each
+// mints or spends a sealed cookie; nobody connects their Outlook thirty
+// times a minute, while a script minting cookies would.
+var outlookLimit = ratelimit.Policy{Name: "entra-outlook", Limit: 30, Window: time.Minute}
+
+// outlookCallbackLimit is the connect's redirect URI's, anonymous (M4): 60
+// per client address a minute, a bucket of its own. Microsoft sends a
+// browser back once per connect; a stranger replaying the callback is held
+// to the same figure, and each request opens a cookie before it reads a
+// row.
+var outlookCallbackLimit = ratelimit.Policy{Name: "entra-outlook-callback", Limit: 60, Window: time.Minute}
+
 // limits maps each rate-limited operationId to its policy; the router hits it
 // per client address before access is checked, and a bucket is the policy's
 // Name and the address, so the four Owner operations share one.
@@ -102,6 +115,9 @@ var limits = map[string]ratelimit.Policy{
 	"getEntraDirectoryUsers":               directoryLimit,
 	"getEntraDirectoryMatches":             matchesLimit,
 	"postEntraMailboxNotifications":        notificationsLimit,
+	"postEntraOutlookConnect":              outlookLimit,
+	"postEntraOutlookComplete":             outlookLimit,
+	"getEntraOutlookCallback":              outlookCallbackLimit,
 }
 
 // Module is entra as a platform module: its contract mounted under

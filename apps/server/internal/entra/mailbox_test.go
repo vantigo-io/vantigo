@@ -37,14 +37,14 @@ func mailboxProvider(h *harness) contracts.MailboxCalendar {
 	return entra.Module().MailboxCalendar(h.Deps())
 }
 
-// setCalendarSync turns the switch on or off by c, which must hold
-// entra:manage.
-func setCalendarSync(t *testing.T, c *modtest.Client, on bool) gen.EntraConnection {
+// setOutlookConnect turns the Outlook connection switch on or off by c,
+// which must hold entra:manage.
+func setOutlookConnect(t *testing.T, c *modtest.Client, on bool) gen.EntraConnection {
 	t.Helper()
 	current := getConnection(t, c)
-	r := c.Do(http.MethodPut, settingsPath, map[string]any{"calendarSync": on}, ifMatch(current.Version))
+	r := c.Do(http.MethodPut, settingsPath, map[string]any{"outlookConnect": on}, ifMatch(current.Version))
 	if r.Status != http.StatusOK {
-		t.Fatalf("PUT /connection/settings calendarSync=%v: status %d body %s", on, r.Status, r.Body)
+		t.Fatalf("PUT /connection/settings outlookConnect=%v: status %d body %s", on, r.Status, r.Body)
 	}
 	var conn gen.EntraConnection
 	r.JSON(&conn)
@@ -59,7 +59,7 @@ func newMailboxHarness(t *testing.T, opts ...modtest.Option) (*harness, *graphte
 	h, g := newTenantHarness(t, opts...)
 	g.Configure(func(g *graphtest.FakeGraph) { g.Roles = append(g.Roles, "Calendars.ReadWrite") })
 	o := connected(t, h)
-	setCalendarSync(t, o, true)
+	setOutlookConnect(t, o, true)
 	return h, g, o
 }
 
@@ -115,9 +115,11 @@ func mailboxCalls(calls []graphtest.Call) []graphtest.Call {
 }
 
 // The status by the switch, the connection and the permission (design O2,
-// O4), and GET /connection's calendarSync beside it, with the permission
-// among permissionsMissing only while the switch is on.
-func TestMailbox_StatusAndTheConnectionsCalendarSync(t *testing.T) {
+// O4), and GET /connection's outlookConnect beside it, with the permission
+// among permissionsMissing only while the switch is on. Until a person
+// connects, the switch on and the connection connected is untested,
+// whatever the token carries: the role never judged the switch's status.
+func TestMailbox_StatusAndTheConnectionsOutlookConnect(t *testing.T) {
 	ctx := context.Background()
 	h, g := newTenantHarness(t)
 	p := mailboxProvider(h)
@@ -132,15 +134,15 @@ func TestMailbox_StatusAndTheConnectionsCalendarSync(t *testing.T) {
 			t.Errorf("Status = %+v %v, want %s/%s", got, err, want, reason)
 		}
 	}
-	calendarSync := func(want gen.EntraCalendarSyncStatus, reason string, missing bool) {
+	outlookConnect := func(want gen.EntraOutlookConnectStatus, reason string, missing bool) {
 		t.Helper()
 		conn := getConnection(t, o)
 		gotReason := ""
-		if conn.CalendarSync.Reason != nil {
-			gotReason = *conn.CalendarSync.Reason
+		if conn.OutlookConnect.Reason != nil {
+			gotReason = *conn.OutlookConnect.Reason
 		}
-		if conn.CalendarSync.Status != want || gotReason != reason {
-			t.Errorf("calendarSync = %+v (%q), want %s %q", conn.CalendarSync, gotReason, want, reason)
+		if conn.OutlookConnect.Status != want || gotReason != reason {
+			t.Errorf("outlookConnect = %+v (%q), want %s %q", conn.OutlookConnect, gotReason, want, reason)
 		}
 		if has := slices.Contains(conn.PermissionsMissing, "Calendars.ReadWrite"); has != missing {
 			t.Errorf("permissionsMissing %v: Calendars.ReadWrite listed %v, want %v", conn.PermissionsMissing, has, missing)
@@ -149,7 +151,7 @@ func TestMailbox_StatusAndTheConnectionsCalendarSync(t *testing.T) {
 
 	// A fresh installation: off, nothing to clean up with.
 	status(contracts.MailboxUnavailable, "switch_off")
-	calendarSync(gen.EntraCalendarSyncStatusOff, "", false)
+	outlookConnect(gen.EntraOutlookConnectStatusOff, "", false)
 
 	// Connected without the calendar's permission: the test still connects.
 	register(t, o)
@@ -158,12 +160,12 @@ func TestMailbox_StatusAndTheConnectionsCalendarSync(t *testing.T) {
 		t.Fatalf("the test without Calendars.ReadWrite, switch off: %+v, want connected with nothing missing", result)
 	}
 	status(contracts.MailboxCleanup, "switch_off")
-	calendarSync(gen.EntraCalendarSyncStatusOff, "", false)
+	outlookConnect(gen.EntraOutlookConnectStatusOff, "", false)
 
 	// On, the permission missing: the test still connects and names it.
-	on := setCalendarSync(t, o, true)
-	if !on.CalendarSync.Enabled || on.CalendarSync.Status != gen.EntraCalendarSyncStatusPermissionMissing {
-		t.Errorf("the PUT's answer: %+v", on.CalendarSync)
+	on := setOutlookConnect(t, o, true)
+	if !on.OutlookConnect.Enabled || on.OutlookConnect.Status != gen.EntraOutlookConnectStatusUntested {
+		t.Errorf("the PUT's answer: %+v", on.OutlookConnect)
 	}
 	result := testConnection(t, o)
 	if result.Status != gen.EntraConnectionTestStatusConnected || !slices.Equal(result.PermissionsMissing, []string{"Calendars.ReadWrite"}) {
@@ -172,13 +174,13 @@ func TestMailbox_StatusAndTheConnectionsCalendarSync(t *testing.T) {
 	// The role not in the token is advisory only — an Exchange RBAC grant
 	// never shows there — so the provider is available all the same.
 	status(contracts.MailboxAvailable, "")
-	calendarSync(gen.EntraCalendarSyncStatusPermissionMissing, "", true)
+	outlookConnect(gen.EntraOutlookConnectStatusUntested, "", true)
 
-	// Consented: ready, available.
+	// Consented: available, and still untested.
 	g.Configure(func(g *graphtest.FakeGraph) { g.Roles = append(g.Roles, "Calendars.ReadWrite") })
 	testConnection(t, o)
 	status(contracts.MailboxAvailable, "")
-	calendarSync(gen.EntraCalendarSyncStatusReady, "", false)
+	outlookConnect(gen.EntraOutlookConnectStatusUntested, "", false)
 
 	// The tenant refusing the secret: failing, unavailable with the reason.
 	g.Configure(func(g *graphtest.FakeGraph) { g.Secrets[clientID] = []string{"another"} })
@@ -186,19 +188,19 @@ func TestMailbox_StatusAndTheConnectionsCalendarSync(t *testing.T) {
 	// The failed test saw no permission: Calendars.ReadWrite is missing with
 	// the rest while the switch is on.
 	status(contracts.MailboxUnavailable, "credential_invalid")
-	calendarSync(gen.EntraCalendarSyncStatusUnavailable, "credential_invalid", true)
+	outlookConnect(gen.EntraOutlookConnectStatusUnavailable, "credential_invalid", true)
 
 	// Every secret revoked: unconfigured.
 	h.Exec(t, `UPDATE entra.credentials SET revoked_at = $1`, h.Now())
 	status(contracts.MailboxUnavailable, "unconfigured")
-	calendarSync(gen.EntraCalendarSyncStatusUnavailable, "", true)
+	outlookConnect(gen.EntraOutlookConnectStatusUnavailable, "", true)
 
 	// The switch's changes are audited as settings changes.
-	setCalendarSync(t, o, false)
+	setOutlookConnect(t, o, false)
 	status(contracts.MailboxUnavailable, "switch_off")
-	calendarSync(gen.EntraCalendarSyncStatusOff, "", false)
-	if n := h.Count(t, `SELECT count(*) FROM entra.events WHERE action = 'entra.settings.changed' AND 'calendarSync' = ANY(codes)`); n != 2 {
-		t.Errorf("%d settings events naming calendarSync, want 2 (on, off)", n)
+	outlookConnect(gen.EntraOutlookConnectStatusOff, "", false)
+	if n := h.Count(t, `SELECT count(*) FROM entra.events WHERE action = 'entra.settings.changed' AND 'outlookConnect' = ANY(codes)`); n != 2 {
+		t.Errorf("%d settings events naming outlookConnect, want 2 (on, off)", n)
 	}
 }
 
@@ -475,7 +477,7 @@ func TestMailbox_CleanupTakesDeletesOnly(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	setCalendarSync(t, o, false)
+	setOutlookConnect(t, o, false)
 	if st, _ := p.Status(ctx); st.State != contracts.MailboxCleanup {
 		t.Fatalf("Status = %+v, want cleanup", st)
 	}

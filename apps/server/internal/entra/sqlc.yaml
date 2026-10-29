@@ -10,6 +10,8 @@ sql:
       - ../db/migrations/00063_entra_groups.sql
       - ../db/migrations/00082_entra_calendar_sync.sql
       - ../db/migrations/00085_entra_mailbox_subscriptions.sql
+      - ../db/migrations/00088_entra_outlook_connect.sql
+      - ../db/migrations/00089_entra_outlook_connections.sql
     queries: queries
     gen:
       go:

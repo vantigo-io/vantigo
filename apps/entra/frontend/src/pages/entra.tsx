@@ -277,7 +277,7 @@ const PermissionsStep = ({ connection, owner }: { connection: EntraConnection; o
 
   return (
     <>
-      <Text size="sm">{t(connection.calendarSync.enabled ? "step3BodyWithCalendar" : "step3Body")}</Text>
+      <Text size="sm">{t(connection.outlookConnect.enabled ? "step3BodyWithCalendar" : "step3Body")}</Text>
       <Group gap="xs">
         <Text size="sm" fw={500}>
           {t("permissionsToAdd")}

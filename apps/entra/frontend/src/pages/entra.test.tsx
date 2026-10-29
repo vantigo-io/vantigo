@@ -2,7 +2,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { setLanguagePreference } from "@vantigo/frontend-shell";
 import { describe, expect, it, vi } from "vitest";
-import { requiredPermissions } from "../api/connection";
+import { type EntraOutlookConnect, requiredPermissions } from "../api/connection";
 import { sent, sentAll } from "../test/api";
 import { renderWithProviders } from "../test/render";
 import {
@@ -29,6 +29,17 @@ const steps = [
 /** The page as the host mounts it, with stand-ins for identity's two forms. */
 // The change notifications' state every calendar sync fixture answers (calendar Outlook sync design O11.7).
 const notifications = { status: "not_configured", subscriptions: 0 } as const;
+
+/** The Outlook connection switch on, as GET /connection answers it, ready unless overridden. */
+const outlookConnect = (overrides: Partial<EntraOutlookConnect> = {}): EntraOutlookConnect => ({
+  enabled: true,
+  status: "ready",
+  connected: 0,
+  reconnect: 0,
+  redirectUri: "https://vantigo.example/api/v1/entra/outlook/callback",
+  notifications,
+  ...overrides,
+});
 
 const openPage = async (server: EntraServer = {}) => {
   const fetchMock = stubEntraApi(server);
@@ -288,6 +299,7 @@ describe("EntraPage — the connection test", () => {
         verifiedDomains: ["contoso.no", "contoso.onmicrosoft.com"],
         permissionsPresent: requiredPermissions.filter((name) => !name.startsWith("Group")),
         permissionsMissing: ["Group.ReadWrite.All"],
+        permissionsUnexpected: [],
         roleKnown: false,
       },
     });
@@ -314,6 +326,7 @@ describe("EntraPage — the connection test", () => {
         verifiedDomains: [],
         permissionsPresent: [],
         permissionsMissing: [...requiredPermissions],
+        permissionsUnexpected: [],
         roleKnown: false,
       },
     });
@@ -413,7 +426,7 @@ describe("EntraPage — calendar sync", () => {
     expect(within(step).getByText("Add these eight application permissions, one by one.")).toBeInTheDocument();
   });
 
-  it("is sent as calendarSync with the account rules, then asks for Calendars.ReadWrite until the token carries it", async () => {
+  it("is sent as outlookConnect with the account rules, then asks for Calendars.ReadWrite until the token carries it", async () => {
     const { fetchMock } = await openPage({ connection: connected() });
     const form = within(region("Set the account rules")).getByRole("form", { name: "Account rules" });
     await userEvent.click(within(form).getByRole("switch", { name: /^Let people sync their Vantigo calendar/ }));
@@ -423,13 +436,9 @@ describe("EntraPage — calendar sync", () => {
     expect(sent(fetchMock, "PUT")).toMatchObject({
       url: "/api/v1/entra/connection/settings",
       headers: { "if-match": "4" },
-      body: { calendarSync: true, upnDomain: "contoso.no" },
+      body: { outlookConnect: true, upnDomain: "contoso.no" },
     });
-    expect(
-      await within(form).findByText(
-        "Calendars.ReadWrite is not in the token. That is expected if you granted it with Exchange RBAC for Applications; otherwise add it, grant admin consent and test again.",
-      ),
-    ).toBeInTheDocument();
+    expect(await within(form).findByText("Nobody has connected yet")).toBeInTheDocument();
     expect(within(form).getByRole("switch", { name: /^Let people sync/ })).toBeChecked();
 
     const step = region("Grant the permissions and the role");
@@ -446,7 +455,7 @@ describe("EntraPage — calendar sync", () => {
   });
 
   it("reads Ready once the token carries the permission", async () => {
-    await openPage({ connection: connected({ calendarSync: { enabled: true, status: "ready", notifications } }) });
+    await openPage({ connection: connected({ outlookConnect: outlookConnect() }) });
     const form = within(region("Set the account rules")).getByRole("form", { name: "Account rules" });
     expect(within(form).getByRole("status")).toHaveTextContent("Ready");
   });
@@ -456,7 +465,7 @@ describe("EntraPage — calendar sync", () => {
       connection: connected({
         status: "failing",
         statusReason: "credential_invalid",
-        calendarSync: { enabled: true, status: "unavailable", reason: "credential_invalid", notifications },
+        outlookConnect: outlookConnect({ status: "unavailable", reason: "credential_invalid" }),
       }),
     });
     const form = within(region("Set the account rules")).getByRole("form", { name: "Account rules" });
@@ -509,7 +518,7 @@ describe("EntraPage — calendar sync", () => {
         if (lang === "nb") setLanguagePreference("nb");
         try {
           stubEntraApi({
-            connection: connected({ calendarSync: { enabled: true, status: "ready", notifications: c.notifications } }),
+            connection: connected({ outlookConnect: outlookConnect({ notifications: c.notifications }) }),
           });
           renderWithProviders(<EntraPage signIn={() => null} provisioning={() => null} />);
           const title = lang === "en" ? "Change notifications" : "Endringsvarsler";
@@ -526,7 +535,7 @@ describe("EntraPage — calendar sync", () => {
   it("speaks Norwegian", async () => {
     setLanguagePreference("nb");
     try {
-      stubEntraApi({ connection: connected({ calendarSync: { enabled: true, status: "ready", notifications } }) });
+      stubEntraApi({ connection: connected({ outlookConnect: outlookConnect() }) });
       renderWithProviders(<EntraPage signIn={() => null} provisioning={() => null} />);
       expect(
         await screen.findByRole("switch", { name: /^La folk synkronisere Vantigo-kalenderen sin til Outlook/ }),
@@ -538,17 +547,13 @@ describe("EntraPage — calendar sync", () => {
     }
   });
 
-  it("says in Norwegian that the role may be granted outside the token", async () => {
+  it("says in Norwegian that the last connect lacked a delegated permission", async () => {
     setLanguagePreference("nb");
     try {
-      stubEntraApi({
-        connection: connected({ calendarSync: { enabled: true, status: "permission_missing", notifications } }),
-      });
+      stubEntraApi({ connection: connected({ outlookConnect: outlookConnect({ status: "consent_missing" }) }) });
       renderWithProviders(<EntraPage signIn={() => null} provisioning={() => null} />);
       expect(
-        await screen.findByText(
-          /^Calendars\.ReadWrite er ikke i tokenet\. Det er som ventet hvis du ga den med Exchange RBAC for Applications/,
-        ),
+        await screen.findByText(/^Den siste tilkoblingen manglet en delegert tillatelse: gi administratorsamtykke/),
       ).toBeInTheDocument();
     } finally {
       setLanguagePreference("auto");

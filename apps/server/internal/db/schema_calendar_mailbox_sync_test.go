@@ -143,10 +143,13 @@ func TestCalendarMailboxSync_DownDropsBothTables(t *testing.T) {
 
 // TestEntraCalendarSync_AppliesAndIsIdempotent proves the switch's migration
 // applies, rolls back and re-applies cleanly: entra.connection gains
-// calendar_sync, off, and the down drops it again.
+// calendar_sync, off, and the down drops it again. 00088 renames the column
+// outlook_connect (TestEntraOutlookConnect_AppliesAndIsIdempotent), so it is
+// read at this migration's version, not at head.
 func TestEntraCalendarSync_AppliesAndIsIdempotent(t *testing.T) {
 	url := testdb.URL(t)
 	applyUpDownUp(t, url, entraCalendarSyncVersion)
+	migrateTo(t, url, entraCalendarSyncVersion)
 
 	ctx := context.Background()
 	column := func() []string {

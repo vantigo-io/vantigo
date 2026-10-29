@@ -43,9 +43,9 @@ var requiredPermissions = []string{
 	"Organization.Read.All",
 }
 
-// permissionCalendarsReadWrite is the application permission the calendar
-// sync switch needs (calendar Outlook sync design O2): asked for only while
-// the switch is on, never one of requiredPermissions.
+// permissionCalendarsReadWrite is the application permission the calendar's
+// Outlook sync needs (calendar Outlook sync design O2): asked for only while
+// the Outlook connection switch is on, never one of requiredPermissions.
 const permissionCalendarsReadWrite = "Calendars.ReadWrite"
 
 // The account rules' bounds.
@@ -87,17 +87,17 @@ func badIfMatch() gen.EntraProblem {
 }
 
 // missingPermissions are requiredPermissions less present, in their order,
-// then Calendars.ReadWrite when calendarSync is on and present lacks it
+// then Calendars.ReadWrite when outlookConnect is on and present lacks it
 // (calendar Outlook sync design O2): the calendar's permission is asked for
 // only while the switch is on, and never judges the connection itself.
-func missingPermissions(present []string, calendarSync bool) []string {
+func missingPermissions(present []string, outlookConnect bool) []string {
 	out := []string{}
 	for _, p := range requiredPermissions {
 		if !slices.Contains(present, p) {
 			out = append(out, p)
 		}
 	}
-	if calendarSync && !slices.Contains(present, permissionCalendarsReadWrite) {
+	if outlookConnect && !slices.Contains(present, permissionCalendarsReadWrite) {
 		out = append(out, permissionCalendarsReadWrite)
 	}
 	return out
@@ -120,41 +120,48 @@ func uuidPtr(u *uuid.UUID) *openapi_types.UUID {
 	return &v
 }
 
-// calendarSyncBody is the calendar sync switch as GET /connection answers
-// it (calendar Outlook sync design O2), from the switch, the connection's
-// status and reason, and the permissions the last test saw, with the change
-// notifications' state (O11.7).
-func calendarSyncBody(conn store.EntraConnection, status, reason string, notifications gen.EntraCalendarSyncNotifications) gen.EntraCalendarSync {
-	body := gen.EntraCalendarSync{Enabled: conn.CalendarSync, Status: gen.EntraCalendarSyncStatusOff, Notifications: notifications}
+// outlookConnectBody is the Outlook connection switch as GET /connection
+// answers it (Outlook connection design M2), from the switch and the
+// connection's status and reason, with the redirect URI to register and
+// the change notifications' state (calendar Outlook sync design O11.7): off
+// while the switch is, unavailable while the connection is not connected,
+// untested otherwise.
+func outlookConnectBody(conn store.EntraConnection, status, reason string, notifications gen.EntraCalendarSyncNotifications, redirectURI string) gen.EntraOutlookConnect {
+	body := gen.EntraOutlookConnect{
+		Enabled:       conn.OutlookConnect,
+		Status:        gen.EntraOutlookConnectStatusOff,
+		RedirectUri:   redirectURI,
+		Notifications: notifications,
+	}
 	switch {
-	case !conn.CalendarSync:
+	case !conn.OutlookConnect:
 	case status != contracts.ProviderConnected:
-		body.Status = gen.EntraCalendarSyncStatusUnavailable
+		body.Status = gen.EntraOutlookConnectStatusUnavailable
 		if reason != "" {
 			body.Reason = &reason
 		}
-	case slices.Contains(conn.PermissionsPresent, permissionCalendarsReadWrite):
-		body.Status = gen.EntraCalendarSyncStatusReady
 	default:
-		body.Status = gen.EntraCalendarSyncStatusPermissionMissing
+		body.Status = gen.EntraOutlookConnectStatusUntested
 	}
 	return body
 }
 
 // connectionBody is the connection as GET /connection answers it at now,
 // with the counts of its accounts and of its groups present in the tenant,
-// and the change notifications' state.
-func connectionBody(conn store.EntraConnection, creds []store.EntraCredential, counts store.CountAccountsRow, groups int32, notifications gen.EntraCalendarSyncNotifications, now time.Time) gen.EntraConnection {
+// the change notifications' state and the Outlook connection's redirect
+// URI.
+func connectionBody(conn store.EntraConnection, creds []store.EntraCredential, counts store.CountAccountsRow, groups int32, notifications gen.EntraCalendarSyncNotifications, redirectURI string, now time.Time) gen.EntraConnection {
 	status, reason := statusOf(conn, creds, now)
 	body := gen.EntraConnection{
-		Status:             gen.EntraConnectionStatus(status),
-		TenantId:           uuidPtr(conn.TenantID),
-		ClientId:           uuidPtr(conn.ClientID),
-		OrganisationName:   conn.OrganisationName,
-		VerifiedDomains:    orEmpty(conn.VerifiedDomains),
-		PermissionsPresent: orEmpty(conn.PermissionsPresent),
-		PermissionsMissing: missingPermissions(conn.PermissionsPresent, conn.CalendarSync),
-		LastCheckedAt:      conn.LastCheckedAt,
+		Status:                gen.EntraConnectionStatus(status),
+		TenantId:              uuidPtr(conn.TenantID),
+		ClientId:              uuidPtr(conn.ClientID),
+		OrganisationName:      conn.OrganisationName,
+		VerifiedDomains:       orEmpty(conn.VerifiedDomains),
+		PermissionsPresent:    orEmpty(conn.PermissionsPresent),
+		PermissionsMissing:    missingPermissions(conn.PermissionsPresent, conn.OutlookConnect),
+		PermissionsUnexpected: []string{},
+		LastCheckedAt:         conn.LastCheckedAt,
 		Settings: gen.EntraSettings{
 			UpnDomain:            conn.UpnDomain,
 			UpnPattern:           gen.EntraSettingsUpnPattern(conn.UpnPattern),
@@ -168,11 +175,11 @@ func connectionBody(conn store.EntraConnection, creds []store.EntraCredential, c
 			PassUsableOnce:       conn.PassUsableOnce,
 			PassDelivery:         gen.EntraSettingsPassDelivery(conn.PassDelivery),
 		},
-		Credentials:  credentialsBody(creds, now),
-		Accounts:     gen.EntraAccountCounts{Count: counts.Total, Enabled: counts.Enabled, Disabled: counts.Disabled, Deleted: counts.Deleted},
-		Groups:       gen.EntraGroupCounts{Count: groups},
-		CalendarSync: calendarSyncBody(conn, status, reason, notifications),
-		Version:      conn.Version,
+		Credentials:    credentialsBody(creds, now),
+		Accounts:       gen.EntraAccountCounts{Count: counts.Total, Enabled: counts.Enabled, Disabled: counts.Disabled, Deleted: counts.Deleted},
+		Groups:         gen.EntraGroupCounts{Count: groups},
+		OutlookConnect: outlookConnectBody(conn, status, reason, notifications, redirectURI),
+		Version:        conn.Version,
 	}
 	if reason != "" {
 		body.StatusReason = &reason
@@ -199,7 +206,7 @@ func readConnection(ctx context.Context, q *store.Queries, cfg *config.Config, c
 	if err != nil {
 		return gen.EntraConnection{}, err
 	}
-	return connectionBody(conn, creds, counts, groups, notifications, now), nil
+	return connectionBody(conn, creds, counts, groups, notifications, outlookRedirectURI(cfg), now), nil
 }
 
 // GetEntraConnection answers the connection from the module's rows; nothing
@@ -341,7 +348,7 @@ func mergeSettings(in gen.EntraSettingsRequest, conn store.EntraConnection) (sto
 		PassLifetimeMinutes:  conn.PassLifetimeMinutes,
 		PassUsableOnce:       conn.PassUsableOnce,
 		PassDelivery:         conn.PassDelivery,
-		CalendarSync:         conn.CalendarSync,
+		OutlookConnect:       conn.OutlookConnect,
 	}
 	var f fieldErrors
 	var changed []string
@@ -410,7 +417,7 @@ func mergeSettings(in gen.EntraSettingsRequest, conn store.EntraConnection) (sto
 		{"leaverWriteLeaveDate", in.LeaverWriteLeaveDate, &p.LeaverWriteLeaveDate},
 		{"writeHireDate", in.WriteHireDate, &p.WriteHireDate},
 		{"passUsableOnce", in.PassUsableOnce, &p.PassUsableOnce},
-		{"calendarSync", in.CalendarSync, &p.CalendarSync},
+		{"outlookConnect", in.OutlookConnect, &p.OutlookConnect},
 	} {
 		if b.in != nil {
 			mark(b.field, *b.to != *b.in)
@@ -513,10 +520,11 @@ func (s *server) PostEntraConnectionTest(ctx context.Context, _ gen.PostEntraCon
 	}
 	if conn.TenantID == nil || conn.ClientID == nil {
 		return gen.PostEntraConnectionTest200JSONResponse(gen.EntraConnectionTest{
-			Status:             gen.EntraConnectionTestStatus(contracts.ProviderUnconfigured),
-			VerifiedDomains:    orEmpty(conn.VerifiedDomains),
-			PermissionsPresent: []string{},
-			PermissionsMissing: missingPermissions(nil, conn.CalendarSync),
+			Status:                gen.EntraConnectionTestStatus(contracts.ProviderUnconfigured),
+			VerifiedDomains:       orEmpty(conn.VerifiedDomains),
+			PermissionsPresent:    []string{},
+			PermissionsMissing:    missingPermissions(nil, conn.OutlookConnect),
+			PermissionsUnexpected: []string{},
 		}), nil
 	}
 
@@ -582,7 +590,7 @@ func (s *server) PostEntraConnectionTest(ctx context.Context, _ gen.PostEntraCon
 			}
 		}
 	}
-	missing := missingPermissions(updated.PermissionsPresent, updated.CalendarSync)
+	missing := missingPermissions(updated.PermissionsPresent, updated.OutlookConnect)
 	codes := []string{status}
 	if reason != "" {
 		codes = append(codes, reason)
@@ -594,12 +602,13 @@ func (s *server) PostEntraConnectionTest(ctx context.Context, _ gen.PostEntraCon
 		return nil, err
 	}
 	answer := gen.EntraConnectionTest{
-		Status:             gen.EntraConnectionTestStatus(status),
-		OrganisationName:   updated.OrganisationName,
-		VerifiedDomains:    orEmpty(updated.VerifiedDomains),
-		PermissionsPresent: orEmpty(updated.PermissionsPresent),
-		PermissionsMissing: missing,
-		RoleKnown:          false,
+		Status:                gen.EntraConnectionTestStatus(status),
+		OrganisationName:      updated.OrganisationName,
+		VerifiedDomains:       orEmpty(updated.VerifiedDomains),
+		PermissionsPresent:    orEmpty(updated.PermissionsPresent),
+		PermissionsMissing:    missing,
+		PermissionsUnexpected: []string{},
+		RoleKnown:             false,
 	}
 	if reason != "" {
 		answer.Reason = &reason
