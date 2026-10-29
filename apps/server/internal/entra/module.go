@@ -25,13 +25,24 @@
 // depguard enforces it, tests included — and no SQL of this module crosses a
 // schema.
 //
+// The person's Outlook connection keeps a delegated refresh token per
+// account, sealed: outlook_token.go refreshes it, revision-guarded, and
+// maps Microsoft's refusals and a continuous access evaluation challenge to
+// a reconnect the person answers; nothing uses it until delivery B moves
+// the mailbox calls onto it. A leaver's, a deleted account's and every
+// connection when the Owner turns the switch off are closed
+// (outlook_close.go), and entra-outlook-sweep, the module's one worker,
+// deletes what nothing needs and reads the accounts waiting in reconnect
+// once a day (outlook_sweep.go). The connection's read warns of the
+// application permissions the module does not use (permissionsUnexpected).
+//
 // module.go is the module and its permission, server.go the operations'
 // receiver, errors.go the refusals, provisioner.go the
 // contracts.IdentityProvisioner, mailbox.go the contracts.MailboxCalendar —
 // its reads in mailbox_delta.go and mailbox_writeback.go, its change
 // notifications' subscriptions in mailbox_notifications.go and their webhook
-// in mailbox_notifications_endpoint.go — and graphtest the fake Graph its
-// tests run against.
+// in mailbox_notifications_endpoint.go —, outlook.go and its neighbours the
+// Outlook connection, and graphtest the fake Graph its tests run against.
 package entra
 
 import (
@@ -127,8 +138,8 @@ var limits = map[string]ratelimit.Policy{
 // /api/v1/entra/, its one permission in the composed catalog, its
 // contracts.IdentityProvisioner, which Compose and Workers collect into
 // Deps.IdentityProvisioners for Staff, and its contracts.MailboxCalendar,
-// which they resolve into Deps.MailboxCalendar for the calendar. It has no
-// worker of its own.
+// which they resolve into Deps.MailboxCalendar for the calendar. Its one
+// worker is entra-outlook-sweep (outlook_sweep.go).
 func Module() module.Module {
 	return module.Module{
 		Name:                "entra",
@@ -136,6 +147,7 @@ func Module() module.Module {
 		Mount:               mount,
 		IdentityProvisioner: newProvisioner,
 		MailboxCalendar:     newMailboxCalendar,
+		Workers:             workers,
 	}
 }
 

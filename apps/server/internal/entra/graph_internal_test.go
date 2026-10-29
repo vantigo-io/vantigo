@@ -603,7 +603,7 @@ func TestGraphClient_ValidationIsReadFromTheMessageAlone(t *testing.T) {
 		{"another 400", "BadRequest", "Resource not found for the segment 'events'.", false},
 	} {
 		body, _ := json.Marshal(map[string]any{"error": map[string]any{"code": tc.code, "message": tc.message}})
-		g, ok := asGraphError(f.c.refusal(context.Background(), cred, http.MethodPost, target, http.StatusBadRequest, body, false))
+		g, ok := asGraphError(f.c.refusal(context.Background(), cred.tenantID, http.MethodPost, target, http.StatusBadRequest, body, false))
 		if !ok || g.Validation != tc.want {
 			t.Errorf("%s: %#v, want Validation %v", tc.name, g, tc.want)
 		}

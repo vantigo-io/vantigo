@@ -147,3 +147,20 @@ WHERE c.state = 'closing'
            AND NOT EXISTS (SELECT 1 FROM entra.mailbox_subscriptions s
                            WHERE s.object_id = c.object_id)))
 RETURNING object_id, user_id;
+
+-- name: ListOutlookAccountChecks :many
+-- ListOutlookAccountChecks is the connections waiting in reconnect whose
+-- account entra-outlook-sweep has not read in the tenant for a day (design
+-- M6): a person who never reconnects is still found once their account is
+-- disabled or deleted. Oldest check first, at most row_limit.
+SELECT object_id FROM entra.outlook_connections
+WHERE state = 'reconnect'
+  AND (account_checked_at IS NULL OR account_checked_at + interval '1 day' < @now::timestamptz)
+ORDER BY account_checked_at NULLS FIRST, object_id
+LIMIT @row_limit;
+
+-- name: MarkOutlookAccountChecked :exec
+-- MarkOutlookAccountChecked records that the account was read in the tenant
+-- and found enabled. Bookkeeping like used_at: it leaves revision alone.
+UPDATE entra.outlook_connections SET account_checked_at = @now::timestamptz
+WHERE object_id = @object_id;
