@@ -568,3 +568,60 @@ func TestUpdateChannel_ConcurrentCredentialWritesDoNotRevertARotatedPassword(t *
 		t.Errorf("stored password = %q, want %q: a reuse merge built before the transaction reverted the rotation", got, rotated)
 	}
 }
+
+// TestSwitchChannelProvider_RacingAPutOfTheDefault is the switch of provider
+// against the default's other writer: the default SMTP channel switched to
+// Microsoft 365 while a PUT makes another channel the default. Both take
+// lockDefaultChannelSlot and re-read under it, so both succeed as they would
+// in sequence: one default, the switched channel on entra with no
+// credential row, its default flag never written back from a stale read.
+func TestSwitchChannelProvider_RacingAPutOfTheDefault(t *testing.T) {
+	h, fake := mailboxHarness(t)
+	admin := h.SignIn(t, "communications:channels-manage")
+	first := createChannel(t, admin, newChannelBody(channelAddress(t)))
+	second := createChannel(t, admin, newChannelBody(channelAddress(t)))
+	sharedMailbox(fake, first.Address, "")
+
+	ctx := context.Background()
+	gate, err := h.Pool().Begin(ctx)
+	if err != nil {
+		t.Fatalf("gate: begin: %v", err)
+	}
+	t.Cleanup(func() { _ = gate.Rollback(ctx) })
+	if _, err := gate.Exec(ctx, `LOCK TABLE communications.channels IN EXCLUSIVE MODE`); err != nil {
+		t.Fatalf("gate: lock channels: %v", err)
+	}
+
+	switcher := h.SignIn(t, "communications:channels-manage")
+	putter := h.SignIn(t, "communications:channels-manage")
+	fns := []func() *modtest.Response{
+		func() *modtest.Response { return switchProvider(switcher, first.Id) },
+		func() *modtest.Response {
+			return putter.Do(http.MethodPut, "/api/v1/communications/channels/"+second.Id, map[string]any{"isDefault": true})
+		},
+	}
+	done := make(chan []*modtest.Response, 1)
+	finished := make(chan struct{})
+	go func() {
+		done <- race(fns...)
+		close(finished)
+	}()
+	awaitLockWaiters(t, h, len(fns), finished)
+	if err := gate.Commit(ctx); err != nil {
+		t.Fatalf("gate: release: %v", err)
+	}
+	for i, r := range <-done {
+		if r.Status != http.StatusOK {
+			t.Errorf("request %d: status %d body %s, want 200", i, r.Status, r.Body)
+		}
+	}
+	if got := modtest.One[string](t, h, `SELECT id::text FROM communications.channels WHERE is_default`); got != second.Id {
+		t.Errorf("default = %s, want %s (the PUT's)", got, second.Id)
+	}
+	if p := modtest.One[string](t, h, `SELECT provider FROM communications.channels WHERE id = $1`, first.Id); p != "entra" {
+		t.Errorf("switched channel provider = %q, want entra", p)
+	}
+	if n := h.Count(t, `SELECT count(*) FROM communications.channel_credentials WHERE channel_id = $1`, first.Id); n != 0 {
+		t.Errorf("switched channel's credential rows = %d, want 0", n)
+	}
+}

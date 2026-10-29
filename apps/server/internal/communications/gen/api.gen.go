@@ -57,6 +57,25 @@ type AttachmentUploadResponse struct {
 	SizeBytes   int64              `json:"sizeBytes"`
 }
 
+// ChannelProviderResponse defines model for ChannelProviderResponse.
+type ChannelProviderResponse struct {
+	// Available Whether channels may be created on or switched to the provider now.
+	Available   bool   `json:"available"`
+	DisplayName string `json:"displayName"`
+
+	// Key A channel's provider value, smtp or entra.
+	Key string `json:"key"`
+
+	// MaxMessageBytes The largest message the provider sends, in bytes of MIME; null when the provider sets no limit of its own.
+	MaxMessageBytes *int64 `json:"maxMessageBytes"`
+
+	// Reason Why the provider is not available (switch_off, or the connection's reason); null while available.
+	Reason *string `json:"reason"`
+
+	// Warning tenant_wide while the provider's grant reaches every mailbox in the tenant; null otherwise.
+	Warning *string `json:"warning"`
+}
+
 // ChannelRecipientRequest defines model for ChannelRecipientRequest.
 type ChannelRecipientRequest struct {
 	Address       *string             `json:"address,omitempty"`
@@ -74,12 +93,17 @@ type ChannelResponse struct {
 	Id             openapi_types.UUID `json:"id"`
 	IsActive       bool               `json:"isActive"`
 	IsDefault      bool               `json:"isDefault"`
-	Provider       string             `json:"provider"`
-	Settings       *struct {
-		Domain   *string `json:"domain"`
+
+	// Mailbox The Microsoft 365 mailbox of an entra channel, by its object id; null for SMTP. Always answered; optional in the schema only because the recorded exchanges predate it.
+	Mailbox *struct {
+		Id string `json:"id"`
+	} `json:"mailbox"`
+	Provider string `json:"provider"`
+
+	// Settings The SMTP settings of an smtp channel with credentials; null otherwise.
+	Settings *struct {
 		Host     *string `json:"host"`
 		Port     *int32  `json:"port"`
-		Region   *string `json:"region"`
 		UseSsl   *bool   `json:"useSsl"`
 		Username *string `json:"username"`
 	} `json:"settings"`
@@ -140,7 +164,10 @@ type ConversationDetailResponse struct {
 	Id                        openapi_types.UUID  `json:"id"`
 	LastActivityAt            time.Time           `json:"lastActivityAt"`
 	LastReadAt                *time.Time          `json:"lastReadAt"`
-	Messages                  []struct {
+
+	// MaxMessageBytes The largest message the conversation's channel sends, in bytes of MIME (a Microsoft 365 channel's); null for SMTP. Always answered; optional in the schema only because the recorded exchanges predate it.
+	MaxMessageBytes *int64 `json:"maxMessageBytes"`
+	Messages        []struct {
 		Attachments []struct {
 			ContentId         *string            `json:"contentId"`
 			ContentType       string             `json:"contentType"`
@@ -259,13 +286,14 @@ type ConversationPatchResponse struct {
 
 // CreateChannelRequest defines model for CreateChannelRequest.
 type CreateChannelRequest struct {
-	Address     *string                          `json:"address"`
-	DisplayName *string                          `json:"displayName,omitempty"`
-	IsDefault   *bool                            `json:"isDefault,omitempty"`
-	Mailgun     *MailgunChannelCredentialRequest `json:"mailgun,omitempty"`
-	Provider    *string                          `json:"provider,omitempty"`
-	Smtp        *SmtpChannelCredentialRequest    `json:"smtp,omitempty"`
-	Type        *string                          `json:"type"`
+	Address     *string `json:"address"`
+	DisplayName *string `json:"displayName,omitempty"`
+	IsDefault   *bool   `json:"isDefault,omitempty"`
+
+	// Provider smtp, with the smtp block, or entra: a Microsoft 365 shared mailbox found by its address through the mail channels provider, with no credentials.
+	Provider *string                       `json:"provider,omitempty"`
+	Smtp     *SmtpChannelCredentialRequest `json:"smtp,omitempty"`
+	Type     *string                       `json:"type"`
 }
 
 // CreateConversationRequest defines model for CreateConversationRequest.
@@ -296,14 +324,6 @@ type CreateTagRequest struct {
 // EmailRecipientRequest defines model for EmailRecipientRequest.
 type EmailRecipientRequest struct {
 	Email *string `json:"email"`
-}
-
-// MailgunChannelCredentialRequest defines model for MailgunChannelCredentialRequest.
-type MailgunChannelCredentialRequest struct {
-	ApiKey            *string `json:"apiKey,omitempty"`
-	Domain            *string `json:"domain"`
-	InboundSigningKey *string `json:"inboundSigningKey,omitempty"`
-	Region            *string `json:"region"`
 }
 
 // NoteRequest defines model for NoteRequest.
@@ -343,6 +363,12 @@ type SuppressionResponse struct {
 	Reason       *string            `json:"reason"`
 }
 
+// SwitchChannelProviderRequest defines model for SwitchChannelProviderRequest.
+type SwitchChannelProviderRequest struct {
+	// Provider entra, the only provider a channel is switched to.
+	Provider string `json:"provider"`
+}
+
 // TagResponse defines model for TagResponse.
 type TagResponse struct {
 	Color *string            `json:"color"`
@@ -352,12 +378,13 @@ type TagResponse struct {
 
 // UpdateChannelRequest defines model for UpdateChannelRequest.
 type UpdateChannelRequest struct {
-	DisplayName *string                          `json:"displayName,omitempty"`
-	IsActive    *bool                            `json:"isActive,omitempty"`
-	IsDefault   *bool                            `json:"isDefault,omitempty"`
-	Mailgun     *MailgunChannelCredentialRequest `json:"mailgun,omitempty"`
-	Provider    *string                          `json:"provider,omitempty"`
-	Smtp        *SmtpChannelCredentialRequest    `json:"smtp,omitempty"`
+	DisplayName *string `json:"displayName,omitempty"`
+	IsActive    *bool   `json:"isActive,omitempty"`
+	IsDefault   *bool   `json:"isDefault,omitempty"`
+
+	// Provider The channel's own provider when omitted. smtp with a full smtp block, the password included, switches a Microsoft 365 channel back to SMTP; entra is refused here (POST /channels/{id}/provider switches to it).
+	Provider *string                       `json:"provider,omitempty"`
+	Smtp     *SmtpChannelCredentialRequest `json:"smtp,omitempty"`
 }
 
 // UpdateConversationRequest defines model for UpdateConversationRequest.
@@ -449,6 +476,9 @@ type PostCommunicationsChannelsJSONRequestBody = PostCommunicationsChannelsJSONB
 // PutCommunicationsChannelsByIdJSONRequestBody defines body for PutCommunicationsChannelsById for application/json ContentType.
 type PutCommunicationsChannelsByIdJSONRequestBody = PutCommunicationsChannelsByIdJSONBody
 
+// PostCommunicationsChannelsByIdProviderJSONRequestBody defines body for PostCommunicationsChannelsByIdProvider for application/json ContentType.
+type PostCommunicationsChannelsByIdProviderJSONRequestBody = SwitchChannelProviderRequest
+
 // PostCommunicationsConversationsJSONRequestBody defines body for PostCommunicationsConversations for application/json ContentType.
 type PostCommunicationsConversationsJSONRequestBody = PostCommunicationsConversationsJSONBody
 
@@ -479,6 +509,9 @@ type ServerInterface interface {
 	// (GET /api/v1/communications/attachments/{id}/download)
 	GetCommunicationsAttachmentsByIdDownload(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
 
+	// (GET /api/v1/communications/channel-providers)
+	GetCommunicationsChannelProviders(w http.ResponseWriter, r *http.Request)
+
 	// (GET /api/v1/communications/channels)
 	GetCommunicationsChannels(w http.ResponseWriter, r *http.Request)
 
@@ -490,6 +523,9 @@ type ServerInterface interface {
 
 	// (PUT /api/v1/communications/channels/{id})
 	PutCommunicationsChannelsById(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+
+	// (POST /api/v1/communications/channels/{id}/provider)
+	PostCommunicationsChannelsByIdProvider(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
 
 	// (POST /api/v1/communications/channels/{id}/verify)
 	PostCommunicationsChannelsByIdVerify(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
@@ -596,6 +632,20 @@ func (siw *ServerInterfaceWrapper) GetCommunicationsAttachmentsByIdDownload(w ht
 	handler.ServeHTTP(w, r)
 }
 
+// GetCommunicationsChannelProviders operation middleware
+func (siw *ServerInterfaceWrapper) GetCommunicationsChannelProviders(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetCommunicationsChannelProviders(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetCommunicationsChannels operation middleware
 func (siw *ServerInterfaceWrapper) GetCommunicationsChannels(w http.ResponseWriter, r *http.Request) {
 
@@ -667,6 +717,32 @@ func (siw *ServerInterfaceWrapper) PutCommunicationsChannelsById(w http.Response
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PutCommunicationsChannelsById(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostCommunicationsChannelsByIdProvider operation middleware
+func (siw *ServerInterfaceWrapper) PostCommunicationsChannelsByIdProvider(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostCommunicationsChannelsByIdProvider(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1575,10 +1651,12 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	}
 
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/communications/attachments/{id}/download", wrapper.GetCommunicationsAttachmentsByIdDownload)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/communications/channel-providers", wrapper.GetCommunicationsChannelProviders)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/communications/channels", wrapper.GetCommunicationsChannels)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/communications/channels", wrapper.PostCommunicationsChannels)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/communications/channels/{id}", wrapper.GetCommunicationsChannelsById)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/communications/channels/{id}", wrapper.PutCommunicationsChannelsById)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/communications/channels/{id}/provider", wrapper.PostCommunicationsChannelsByIdProvider)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/communications/channels/{id}/verify", wrapper.PostCommunicationsChannelsByIdVerify)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/communications/conversations", wrapper.GetCommunicationsConversations)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/communications/conversations", wrapper.PostCommunicationsConversations)
@@ -1681,6 +1759,55 @@ func (response GetCommunicationsAttachmentsByIdDownload503JSONResponse) VisitGet
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCommunicationsChannelProvidersRequestObject struct {
+}
+
+type GetCommunicationsChannelProvidersResponseObject interface {
+	VisitGetCommunicationsChannelProvidersResponse(w http.ResponseWriter) error
+}
+
+type GetCommunicationsChannelProviders200JSONResponse []ChannelProviderResponse
+
+func (response GetCommunicationsChannelProviders200JSONResponse) VisitGetCommunicationsChannelProvidersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCommunicationsChannelProviders401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetCommunicationsChannelProviders401JSONResponse) VisitGetCommunicationsChannelProvidersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCommunicationsChannelProviders403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetCommunicationsChannelProviders403JSONResponse) VisitGetCommunicationsChannelProvidersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -1808,6 +1935,58 @@ func (response PostCommunicationsChannels409JSONResponse) VisitPostCommunication
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostCommunicationsChannels422JSONResponse CommunicationErrorResponse
+
+func (response PostCommunicationsChannels422JSONResponse) VisitPostCommunicationsChannelsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostCommunicationsChannels429ResponseHeaders struct {
+	RetryAfter *string
+}
+
+type PostCommunicationsChannels429JSONResponse struct {
+	Body    externalRef0.AuthErrorResponse
+	Headers PostCommunicationsChannels429ResponseHeaders
+}
+
+func (response PostCommunicationsChannels429JSONResponse) VisitPostCommunicationsChannelsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostCommunicationsChannels503JSONResponse CommunicationErrorResponse
+
+func (response PostCommunicationsChannels503JSONResponse) VisitPostCommunicationsChannelsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -1943,6 +2122,145 @@ func (response PutCommunicationsChannelsById404Response) VisitPutCommunicationsC
 	return nil
 }
 
+type PostCommunicationsChannelsByIdProviderRequestObject struct {
+	Id   openapi_types.UUID `json:"id"`
+	Body *PostCommunicationsChannelsByIdProviderJSONRequestBody
+}
+
+type PostCommunicationsChannelsByIdProviderResponseObject interface {
+	VisitPostCommunicationsChannelsByIdProviderResponse(w http.ResponseWriter) error
+}
+
+type PostCommunicationsChannelsByIdProvider200JSONResponse ChannelResponse
+
+func (response PostCommunicationsChannelsByIdProvider200JSONResponse) VisitPostCommunicationsChannelsByIdProviderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostCommunicationsChannelsByIdProvider400JSONResponse CommunicationErrorResponse
+
+func (response PostCommunicationsChannelsByIdProvider400JSONResponse) VisitPostCommunicationsChannelsByIdProviderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostCommunicationsChannelsByIdProvider401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostCommunicationsChannelsByIdProvider401JSONResponse) VisitPostCommunicationsChannelsByIdProviderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostCommunicationsChannelsByIdProvider403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostCommunicationsChannelsByIdProvider403JSONResponse) VisitPostCommunicationsChannelsByIdProviderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostCommunicationsChannelsByIdProvider404Response struct {
+}
+
+func (response PostCommunicationsChannelsByIdProvider404Response) VisitPostCommunicationsChannelsByIdProviderResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostCommunicationsChannelsByIdProvider409JSONResponse CommunicationErrorResponse
+
+func (response PostCommunicationsChannelsByIdProvider409JSONResponse) VisitPostCommunicationsChannelsByIdProviderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostCommunicationsChannelsByIdProvider422JSONResponse CommunicationErrorResponse
+
+func (response PostCommunicationsChannelsByIdProvider422JSONResponse) VisitPostCommunicationsChannelsByIdProviderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostCommunicationsChannelsByIdProvider429ResponseHeaders struct {
+	RetryAfter *string
+}
+
+type PostCommunicationsChannelsByIdProvider429JSONResponse struct {
+	Body    externalRef0.AuthErrorResponse
+	Headers PostCommunicationsChannelsByIdProvider429ResponseHeaders
+}
+
+func (response PostCommunicationsChannelsByIdProvider429JSONResponse) VisitPostCommunicationsChannelsByIdProviderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostCommunicationsChannelsByIdProvider503JSONResponse CommunicationErrorResponse
+
+func (response PostCommunicationsChannelsByIdProvider503JSONResponse) VisitPostCommunicationsChannelsByIdProviderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type PostCommunicationsChannelsByIdVerifyRequestObject struct {
 	Id openapi_types.UUID `json:"id"`
 }
@@ -2011,6 +2329,30 @@ func (response PostCommunicationsChannelsByIdVerify422JSONResponse) VisitPostCom
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostCommunicationsChannelsByIdVerify429ResponseHeaders struct {
+	RetryAfter *string
+}
+
+type PostCommunicationsChannelsByIdVerify429JSONResponse struct {
+	Body    externalRef0.AuthErrorResponse
+	Headers PostCommunicationsChannelsByIdVerify429ResponseHeaders
+}
+
+func (response PostCommunicationsChannelsByIdVerify429JSONResponse) VisitPostCommunicationsChannelsByIdVerifyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	w.WriteHeader(429)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -3629,6 +3971,9 @@ type StrictServerInterface interface {
 	// (GET /api/v1/communications/attachments/{id}/download)
 	GetCommunicationsAttachmentsByIdDownload(ctx context.Context, request GetCommunicationsAttachmentsByIdDownloadRequestObject) (GetCommunicationsAttachmentsByIdDownloadResponseObject, error)
 
+	// (GET /api/v1/communications/channel-providers)
+	GetCommunicationsChannelProviders(ctx context.Context, request GetCommunicationsChannelProvidersRequestObject) (GetCommunicationsChannelProvidersResponseObject, error)
+
 	// (GET /api/v1/communications/channels)
 	GetCommunicationsChannels(ctx context.Context, request GetCommunicationsChannelsRequestObject) (GetCommunicationsChannelsResponseObject, error)
 
@@ -3640,6 +3985,9 @@ type StrictServerInterface interface {
 
 	// (PUT /api/v1/communications/channels/{id})
 	PutCommunicationsChannelsById(ctx context.Context, request PutCommunicationsChannelsByIdRequestObject) (PutCommunicationsChannelsByIdResponseObject, error)
+
+	// (POST /api/v1/communications/channels/{id}/provider)
+	PostCommunicationsChannelsByIdProvider(ctx context.Context, request PostCommunicationsChannelsByIdProviderRequestObject) (PostCommunicationsChannelsByIdProviderResponseObject, error)
 
 	// (POST /api/v1/communications/channels/{id}/verify)
 	PostCommunicationsChannelsByIdVerify(ctx context.Context, request PostCommunicationsChannelsByIdVerifyRequestObject) (PostCommunicationsChannelsByIdVerifyResponseObject, error)
@@ -3776,6 +4124,30 @@ func (sh *strictHandler) GetCommunicationsAttachmentsByIdDownload(w http.Respons
 	}
 }
 
+// GetCommunicationsChannelProviders operation middleware
+func (sh *strictHandler) GetCommunicationsChannelProviders(w http.ResponseWriter, r *http.Request) {
+	var request GetCommunicationsChannelProvidersRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetCommunicationsChannelProviders(ctx, request.(GetCommunicationsChannelProvidersRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetCommunicationsChannelProviders")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetCommunicationsChannelProvidersResponseObject); ok {
+		if err := validResponse.VisitGetCommunicationsChannelProvidersResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetCommunicationsChannels operation middleware
 func (sh *strictHandler) GetCommunicationsChannels(w http.ResponseWriter, r *http.Request) {
 	var request GetCommunicationsChannelsRequestObject
@@ -3889,6 +4261,39 @@ func (sh *strictHandler) PutCommunicationsChannelsById(w http.ResponseWriter, r 
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PutCommunicationsChannelsByIdResponseObject); ok {
 		if err := validResponse.VisitPutCommunicationsChannelsByIdResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostCommunicationsChannelsByIdProvider operation middleware
+func (sh *strictHandler) PostCommunicationsChannelsByIdProvider(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	var request PostCommunicationsChannelsByIdProviderRequestObject
+
+	request.Id = id
+
+	var body PostCommunicationsChannelsByIdProviderJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostCommunicationsChannelsByIdProvider(ctx, request.(PostCommunicationsChannelsByIdProviderRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostCommunicationsChannelsByIdProvider")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostCommunicationsChannelsByIdProviderResponseObject); ok {
+		if err := validResponse.VisitPostCommunicationsChannelsByIdProviderResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

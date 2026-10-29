@@ -4,6 +4,7 @@ import (
 	"os"
 	"testing"
 
+	"github.com/vantigo-io/vantigo/server/internal/communications"
 	"github.com/vantigo-io/vantigo/server/internal/openapi/contracttest"
 )
 
@@ -26,5 +27,9 @@ var recorder = contracttest.NewForModule("communications")
 var pendingOperations = []string{}
 
 func TestMain(m *testing.M) {
+	// The lock rule, installed once before any test runs (newHarness checks
+	// what it records): installing it per harness would race with the
+	// parallel tests already making requests.
+	communications.SetContractCallHook(lockedContractCalls.note)
 	os.Exit(contracttest.RequireCoverage(m, recorder, pendingOperations...))
 }

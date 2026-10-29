@@ -92,6 +92,37 @@ components:
                 - ready
             type: object
             x-vantigo-source: Vantigo.Communications
+        ChannelProviderResponse:
+            properties:
+                available:
+                    description: Whether channels may be created on or switched to the provider now.
+                    type: boolean
+                displayName:
+                    type: string
+                key:
+                    description: A channel's provider value, smtp or entra.
+                    type: string
+                maxMessageBytes:
+                    description: The largest message the provider sends, in bytes of MIME; null when the provider sets no limit of its own.
+                    format: int64
+                    nullable: true
+                    type: integer
+                reason:
+                    description: Why the provider is not available (switch_off, or the connection's reason); null while available.
+                    nullable: true
+                    type: string
+                warning:
+                    description: tenant_wide while the provider's grant reaches every mailbox in the tenant; null otherwise.
+                    nullable: true
+                    type: string
+            required:
+                - key
+                - displayName
+                - available
+                - reason
+                - warning
+                - maxMessageBytes
+            type: object
         ChannelRecipientRequest:
             properties:
                 address:
@@ -129,14 +160,22 @@ components:
                     type: boolean
                 isDefault:
                     type: boolean
+                mailbox:
+                    description: The Microsoft 365 mailbox of an entra channel, by its object id; null for SMTP. Always answered; optional in the schema only because the recorded exchanges predate it.
+                    nullable: true
+                    properties:
+                        id:
+                            type: string
+                    required:
+                        - id
+                    type: object
+                    x-omitempty: false
                 provider:
                     type: string
                 settings:
+                    description: The SMTP settings of an smtp channel with credentials; null otherwise.
                     nullable: true
                     properties:
-                        domain:
-                            nullable: true
-                            type: string
                         host:
                             nullable: true
                             type: string
@@ -144,9 +183,6 @@ components:
                             format: int32
                             nullable: true
                             type: integer
-                        region:
-                            nullable: true
-                            type: string
                         useSsl:
                             nullable: true
                             type: boolean
@@ -158,8 +194,6 @@ components:
                         - port
                         - useSsl
                         - username
-                        - domain
-                        - region
                     type: object
                 type:
                     type: string
@@ -316,6 +350,12 @@ components:
                     format: date-time
                     nullable: true
                     type: string
+                maxMessageBytes:
+                    description: The largest message the conversation's channel sends, in bytes of MIME (a Microsoft 365 channel's); null for SMTP. Always answered; optional in the schema only because the recorded exchanges predate it.
+                    format: int64
+                    nullable: true
+                    type: integer
+                    x-omitempty: false
                 messages:
                     items:
                         properties:
@@ -748,12 +788,9 @@ components:
                 isDefault:
                     nullable: true
                     type: boolean
-                mailgun:
-                    allOf:
-                        - $ref: '#/components/schemas/MailgunChannelCredentialRequest'
-                    nullable: true
                 provider:
                     default: smtp
+                    description: 'smtp, with the smtp block, or entra: a Microsoft 365 shared mailbox found by its address through the mail channels provider, with no credentials.'
                     nullable: true
                     type: string
                 smtp:
@@ -841,24 +878,6 @@ components:
             required:
                 - email
             type: object
-        MailgunChannelCredentialRequest:
-            properties:
-                apiKey:
-                    nullable: true
-                    type: string
-                domain:
-                    nullable: true
-                    type: string
-                inboundSigningKey:
-                    nullable: true
-                    type: string
-                region:
-                    nullable: true
-                    type: string
-            required:
-                - domain
-                - region
-            type: object
         NoteRequest:
             properties:
                 textBody:
@@ -943,6 +962,14 @@ components:
                 - createdAt
             type: object
             x-vantigo-source: Vantigo.Communications
+        SwitchChannelProviderRequest:
+            properties:
+                provider:
+                    description: entra, the only provider a channel is switched to.
+                    type: string
+            required:
+                - provider
+            type: object
         TagResponse:
             properties:
                 color:
@@ -970,11 +997,8 @@ components:
                 isDefault:
                     nullable: true
                     type: boolean
-                mailgun:
-                    allOf:
-                        - $ref: '#/components/schemas/MailgunChannelCredentialRequest'
-                    nullable: true
                 provider:
+                    description: The channel's own provider when omitted. smtp with a full smtp block, the password included, switches a Microsoft 365 channel back to SMTP; entra is refused here (POST /channels/{id}/provider switches to it).
                     nullable: true
                     type: string
                 smtp:
@@ -1042,6 +1066,34 @@ paths:
             tags:
                 - ConversationEndpoints
             x-vantigo-access: permission:communications:conversations-view
+    /api/v1/communications/channel-providers:
+        get:
+            description: The providers a channel can use — SMTP always, Microsoft 365 while a mail channels provider is enabled — with whether each is available now.
+            operationId: getCommunicationsChannelProviders
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/ChannelProviderResponse'
+                                type: array
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+            tags:
+                - ChannelEndpoints
+            x-vantigo-access: permission:communications:channels-manage
     /api/v1/communications/channels:
         get:
             operationId: getCommunicationsChannels
@@ -1108,7 +1160,29 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/CommunicationErrorResponse'
-                    description: Conflict
+                    description: Conflict — channel_exists (the address, or for entra the mailbox, already has a channel), mail_channels_off (the Microsoft 365 provider is not available), default_channel_conflict.
+                "422":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CommunicationErrorResponse'
+                    description: Unprocessable Entity — for entra, personal_mailbox (not a shared mailbox), mailbox_denied (outside the application's scope), mailbox_unknown.
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Too Many Requests — communications-channel-check's limit for this client address, shared by creating, switching and verifying a channel.
+                    headers:
+                        Retry-After:
+                            schema:
+                                type: string
+                "503":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CommunicationErrorResponse'
+                    description: Service Unavailable — provider_unreachable, Microsoft 365 did not answer.
             tags:
                 - ChannelEndpoints
             x-vantigo-access: permission:communications:channels-manage
@@ -1192,6 +1266,81 @@ paths:
             tags:
                 - ChannelEndpoints
             x-vantigo-access: permission:communications:channels-manage
+    /api/v1/communications/channels/{id}/provider:
+        post:
+            description: Switches an SMTP channel to Microsoft 365 by its own address, keeping its id, conversations and default flag; the SMTP credentials are deleted in the same transaction.
+            operationId: postCommunicationsChannelsByIdProvider
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/SwitchChannelProviderRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ChannelResponse'
+                    description: OK
+                "400":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CommunicationErrorResponse'
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+                "409":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CommunicationErrorResponse'
+                    description: Conflict — channel_exists (the mailbox already has a channel), mail_channels_off.
+                "422":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CommunicationErrorResponse'
+                    description: Unprocessable Entity — provider_unchanged, personal_mailbox, mailbox_denied, mailbox_unknown.
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Too Many Requests — communications-channel-check's limit for this client address, shared by creating, switching and verifying a channel.
+                    headers:
+                        Retry-After:
+                            schema:
+                                type: string
+                "503":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CommunicationErrorResponse'
+                    description: Service Unavailable — provider_unreachable, Microsoft 365 did not answer.
+            tags:
+                - ChannelEndpoints
+            x-vantigo-access: permission:communications:channels-manage
     /api/v1/communications/channels/{id}/verify:
         post:
             operationId: postCommunicationsChannelsByIdVerify
@@ -1228,7 +1377,17 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/CommunicationErrorResponse'
-                    description: Unprocessable Entity
+                    description: Unprocessable Entity — destination_rejected, verification_failed; for entra, mail_channels_off, personal_mailbox, mailbox_denied, mailbox_unknown, mailbox_changed (the address now names another mailbox), provider_unreachable.
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Too Many Requests — communications-channel-check's limit for this client address, shared by creating, switching and verifying a channel.
+                    headers:
+                        Retry-After:
+                            schema:
+                                type: string
             tags:
                 - ChannelEndpoints
             x-vantigo-access: permission:communications:channels-manage
@@ -1681,7 +1840,7 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/CommunicationErrorResponse'
-                    description: Payload Too Large
+                    description: Payload Too Large — attachment_too_large, larger than the configured limit or than the conversation's channel can send.
                 "503":
                     content:
                         application/json:

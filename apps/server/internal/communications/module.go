@@ -1,5 +1,5 @@
-// Package communications is the communications module: channels (SMTP
-// only), conversations and their messages, the composer, staged
+// Package communications is the communications module: channels (SMTP or a
+// Microsoft 365 shared mailbox), conversations and their messages, the composer, staged
 // attachments, delivery and its event log, tags, suppressions, retention
 // and the outbox, and the AI draft and customer-suggestion features. Serves
 // openapi/communications.yaml under /api/v1/communications/.
@@ -10,6 +10,7 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"time"
 
 	"github.com/vantigo-io/vantigo/server/internal/apicommon"
 	"github.com/vantigo-io/vantigo/server/internal/communications/gen"
@@ -39,10 +40,22 @@ var permissions = []contracts.Permission{
 	{Key: "communications:suppressions-manage", Display: "Manage communications suppressions", Description: "View, create, and remove suppressed email addresses.", Category: "Communications", Sensitive: false, Delegable: true},
 }
 
-// limits maps each rate-limited operationId to its policy. It is empty and
-// stays empty: no Communications endpoint calls RequireRateLimiting
-// (communications inventory §1), the same as products and energy.
-var limits = map[string]ratelimit.Policy{}
+// channelCheckLimit is the policy of the channel operations that reach the
+// mail channels provider (Outlook connection design M12): creating,
+// switching and verifying a channel, each reaching Microsoft Graph up to
+// three times for a Microsoft 365 one. 30 per client address a minute, one
+// bucket between them — Entra's figures for its own Graph-reaching
+// operations; nobody sets up channels thirty times a minute.
+var channelCheckLimit = ratelimit.Policy{Name: "communications-channel-check", Limit: 30, Window: time.Minute}
+
+// limits maps each rate-limited operationId to its policy. The .NET
+// original rate-limited no Communications endpoint (communications inventory
+// §1); delivery C limits the three that can reach Graph.
+var limits = map[string]ratelimit.Policy{
+	"postCommunicationsChannels":             channelCheckLimit,
+	"postCommunicationsChannelsByIdProvider": channelCheckLimit,
+	"postCommunicationsChannelsByIdVerify":   channelCheckLimit,
+}
 
 // attachmentBodySlack is added to Config.CommunicationsAttachmentMaxBytes to
 // get the staging operation's request-body cap: room for the multipart

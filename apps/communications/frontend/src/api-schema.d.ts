@@ -18,6 +18,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/communications/channel-providers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The providers a channel can use — SMTP always, Microsoft 365 while a mail channels provider is enabled — with whether each is available now. */
+        get: operations["getCommunicationsChannelProviders"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/communications/channels": {
         parameters: {
             query?: never;
@@ -44,6 +61,23 @@ export interface paths {
         get: operations["getCommunicationsChannelsById"];
         put: operations["putCommunicationsChannelsById"];
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/communications/channels/{id}/provider": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Switches an SMTP channel to Microsoft 365 by its own address, keeping its id, conversations and default flag; the SMTP credentials are deleted in the same transaction. */
+        post: operations["postCommunicationsChannelsByIdProvider"];
         delete?: never;
         options?: never;
         head?: never;
@@ -364,6 +398,22 @@ export interface components {
             /** Format: int64 */
             sizeBytes: number;
         };
+        ChannelProviderResponse: {
+            /** @description Whether channels may be created on or switched to the provider now. */
+            available: boolean;
+            displayName: string;
+            /** @description A channel's provider value, smtp or entra. */
+            key: string;
+            /**
+             * Format: int64
+             * @description The largest message the provider sends, in bytes of MIME; null when the provider sets no limit of its own.
+             */
+            maxMessageBytes: number | null;
+            /** @description Why the provider is not available (switch_off, or the connection's reason); null while available. */
+            reason: string | null;
+            /** @description tenant_wide while the provider's grant reaches every mailbox in the tenant; null otherwise. */
+            warning: string | null;
+        };
         ChannelRecipientRequest: {
             address?: string | null;
             /** Format: int32 */
@@ -383,13 +433,16 @@ export interface components {
             id: string;
             isActive: boolean;
             isDefault: boolean;
+            /** @description The Microsoft 365 mailbox of an entra channel, by its object id; null for SMTP. Always answered; optional in the schema only because the recorded exchanges predate it. */
+            mailbox?: {
+                id: string;
+            } | null;
             provider: string;
+            /** @description The SMTP settings of an smtp channel with credentials; null otherwise. */
             settings: {
-                domain: string | null;
                 host: string | null;
                 /** Format: int32 */
                 port: number | null;
-                region: string | null;
                 useSsl: boolean | null;
                 username: string | null;
             } | null;
@@ -460,6 +513,11 @@ export interface components {
             lastActivityAt: string;
             /** Format: date-time */
             lastReadAt: string | null;
+            /**
+             * Format: int64
+             * @description The largest message the conversation's channel sends, in bytes of MIME (a Microsoft 365 channel's); null for SMTP. Always answered; optional in the schema only because the recorded exchanges predate it.
+             */
+            maxMessageBytes?: number | null;
             messages: {
                 attachments: {
                     contentId: string | null;
@@ -612,8 +670,10 @@ export interface components {
             address: string | null;
             displayName?: string | null;
             isDefault?: boolean | null;
-            mailgun?: components["schemas"]["MailgunChannelCredentialRequest"] | null;
-            /** @default smtp */
+            /**
+             * @description smtp, with the smtp block, or entra: a Microsoft 365 shared mailbox found by its address through the mail channels provider, with no credentials.
+             * @default smtp
+             */
             provider: string | null;
             smtp?: components["schemas"]["SmtpChannelCredentialRequest"] | null;
             type: string | null;
@@ -641,12 +701,6 @@ export interface components {
         };
         EmailRecipientRequest: {
             email: string | null;
-        };
-        MailgunChannelCredentialRequest: {
-            apiKey?: string | null;
-            domain: string | null;
-            inboundSigningKey?: string | null;
-            region: string | null;
         };
         NoteRequest: {
             textBody: string | null;
@@ -679,6 +733,10 @@ export interface components {
             id: string;
             reason: string | null;
         };
+        SwitchChannelProviderRequest: {
+            /** @description entra, the only provider a channel is switched to. */
+            provider: string;
+        };
         TagResponse: {
             color: string | null;
             /** Format: uuid */
@@ -689,7 +747,7 @@ export interface components {
             displayName?: string | null;
             isActive?: boolean | null;
             isDefault?: boolean | null;
-            mailgun?: components["schemas"]["MailgunChannelCredentialRequest"] | null;
+            /** @description The channel's own provider when omitted. smtp with a full smtp block, the password included, switches a Microsoft 365 channel back to SMTP; entra is refused here (POST /channels/{id}/provider switches to it). */
             provider?: string | null;
             smtp?: components["schemas"]["SmtpChannelCredentialRequest"] | null;
         };
@@ -793,6 +851,44 @@ export interface operations {
             };
         };
     };
+    getCommunicationsChannelProviders: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChannelProviderResponse"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
     getCommunicationsChannels: {
         parameters: {
             query?: never;
@@ -880,8 +976,36 @@ export interface operations {
                     "application/json": components["schemas"]["AuthErrorResponse"];
                 };
             };
-            /** @description Conflict */
+            /** @description Conflict — channel_exists (the address, or for entra the mailbox, already has a channel), mail_channels_off (the Microsoft 365 provider is not available), default_channel_conflict. */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommunicationErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity — for entra, personal_mailbox (not a shared mailbox), mailbox_denied (outside the application's scope), mailbox_unknown. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommunicationErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests — communications-channel-check's limit for this client address, shared by creating, switching and verifying a channel. */
+            429: {
+                headers: {
+                    "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable — provider_unreachable, Microsoft 365 did not answer. */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -998,6 +1122,103 @@ export interface operations {
             };
         };
     };
+    postCommunicationsChannelsByIdProvider: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SwitchChannelProviderRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChannelResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommunicationErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — channel_exists (the mailbox already has a channel), mail_channels_off. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommunicationErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity — provider_unchanged, personal_mailbox, mailbox_denied, mailbox_unknown. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommunicationErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests — communications-channel-check's limit for this client address, shared by creating, switching and verifying a channel. */
+            429: {
+                headers: {
+                    "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable — provider_unreachable, Microsoft 365 did not answer. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommunicationErrorResponse"];
+                };
+            };
+        };
+    };
     postCommunicationsChannelsByIdVerify: {
         parameters: {
             query?: never;
@@ -1043,13 +1264,23 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Entity — destination_rejected, verification_failed; for entra, mail_channels_off, personal_mailbox, mailbox_denied, mailbox_unknown, mailbox_changed (the address now names another mailbox), provider_unreachable. */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["CommunicationErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests — communications-channel-check's limit for this client address, shared by creating, switching and verifying a channel. */
+            429: {
+                headers: {
+                    "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
                 };
             };
         };
@@ -1599,7 +1830,7 @@ export interface operations {
                     "application/json": components["schemas"]["CommunicationErrorResponse"];
                 };
             };
-            /** @description Payload Too Large */
+            /** @description Payload Too Large — attachment_too_large, larger than the configured limit or than the conversation's channel can send. */
             413: {
                 headers: {
                     [name: string]: unknown;

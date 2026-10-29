@@ -373,6 +373,17 @@ func (s *server) GetCommunicationsConversationsById(ctx context.Context, req gen
 		return nil, err
 	}
 
+	// The channel's size budget (M13), so the composer can show the limit
+	// beside the attachments: null for SMTP.
+	provider, err := q.GetChannelProviderForConversation(ctx, req.Id)
+	if err != nil {
+		return nil, fmt.Errorf("communications: get conversation channel provider: %w", err)
+	}
+	budget, err := s.mailBudget(ctx, provider)
+	if err != nil {
+		return nil, err
+	}
+
 	resp := gen.ConversationDetailResponse{
 		Id: conv.ID, ChannelId: conv.ChannelID, Subject: conv.Subject, Status: conv.Status,
 		AssignedUserId: conv.AssignedUserID, CustomerId: conv.CustomerID,
@@ -381,6 +392,7 @@ func (s *server) GetCommunicationsConversationsById(ctx context.Context, req gen
 		CandidateCustomerIds: batches.candidates[req.Id], LastActivityAt: conv.LastActivityAt, PreviewText: conv.PreviewText,
 		CreatedAt: conv.CreatedAt, Messages: messages, Participants: batches.participants[req.Id],
 		Tags: batches.tags[req.Id], LastReadAt: lastReadAt, ReplyRecipients: replyRecipientsOf(),
+		MaxMessageBytes: budget,
 	}
 	return gen.GetCommunicationsConversationsById200JSONResponse(resp), nil
 }

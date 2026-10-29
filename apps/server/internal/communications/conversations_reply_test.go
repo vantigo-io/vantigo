@@ -996,3 +996,39 @@ func TestReply_RequiresReplyAndView(t *testing.T) {
 		t.Errorf("reply+view: status %d, want anything but 403 (both permissions must suffice)", r.Status)
 	}
 }
+
+// TestReply_OverTheChannelBudget: on a Microsoft 365 channel a reply whose
+// estimate — the attachments and the HTML × 1.37, the text, 16 KiB — exceeds
+// the provider's budget is 422 too_large, and nothing is written: no
+// message, no job, the attachment still staged.
+func TestReply_OverTheChannelBudget(t *testing.T) {
+	t.Parallel()
+	h, fake := mailboxHarness(t)
+	c := h.SignIn(t, "communications:conversations-reply", "communications:conversations-view")
+	chID, convID := entraConversation(t, h, fake, c, 40_000)
+	insertInboundParticipant(t, h, chID, convID, strings.ToUpper("inbound-"+uuid.NewString()+"@example.test"))
+	upload := mustStageAttachment(t, c, convID, []byte(strings.Repeat("x", 10_000)))
+	jobsBefore := h.Count(t, `SELECT count(*) FROM communications.outbox_jobs`)
+
+	body := map[string]any{"textBody": strings.Repeat("y", 15_000), "attachmentIds": []string{upload.Id}}
+	r := doReply(c, convID, uuid.NewString(), body)
+	if r.Status != http.StatusUnprocessableEntity {
+		t.Fatalf("status %d body %s, want 422", r.Status, r.Body)
+	}
+	var e commErrorJSON
+	r.JSON(&e)
+	if e.Error.Code != "too_large" || e.Error.Message != "The message and its attachments are larger than this channel can send." {
+		t.Errorf("error = %+v", e.Error)
+	}
+	if n := h.Count(t, `SELECT count(*) FROM communications.outbox_jobs`); n != jobsBefore {
+		t.Errorf("outbox jobs = %d, want %d", n, jobsBefore)
+	}
+	if n := h.Count(t, `SELECT count(*) FROM communications.attachment_uploads WHERE id = $1`, uuid.MustParse(upload.Id)); n != 1 {
+		t.Errorf("upload rows = %d, want it still staged", n)
+	}
+
+	body["textBody"] = strings.Repeat("y", 5_000)
+	if r := doReply(c, convID, uuid.NewString(), body); r.Status != http.StatusCreated {
+		t.Errorf("under the budget: status %d body %s, want 201", r.Status, r.Body)
+	}
+}

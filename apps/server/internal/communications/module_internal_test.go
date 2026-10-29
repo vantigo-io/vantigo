@@ -12,6 +12,7 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/module"
 	"github.com/vantigo-io/vantigo/server/internal/openapi"
+	"github.com/vantigo-io/vantigo/server/internal/ratelimit"
 )
 
 // This file is task 5 fix round 1 item 1's teeth check: a white-box test,
@@ -85,7 +86,10 @@ func TestMount_ForbiddenPatchNeverReadsTheBody(t *testing.T) {
 		catalog[p.Key] = p
 	}
 
-	handler, err := mount(module.Deps{Doc: doc, Access: denyingAccess{}, Catalog: catalog})
+	// A limiter on no pool: the module limits its channel operations, so
+	// the router wants one, and a PATCH is never limited — nothing reaches
+	// the database.
+	handler, err := mount(module.Deps{Doc: doc, Access: denyingAccess{}, Catalog: catalog, Limiter: ratelimit.New(nil)})
 	if err != nil {
 		t.Fatalf("mount: %v", err)
 	}
