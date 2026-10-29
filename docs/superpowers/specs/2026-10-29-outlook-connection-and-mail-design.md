@@ -1075,6 +1075,42 @@ count as unexpected.
     for mail);
   - the roadmap.
 
+  *As built (delivery E, 2026-10-30, branch `claude/communications-inbound-notifications-e`;
+  [the plan](../plans/2026-10-29-communications-inbound-notifications.md)):* where E departs from
+  this design —
+  - **M11, the contract**: `contracts.ChannelMailbox` gains `Watch(ctx, mailbox, folder)`,
+    `Unwatch(ctx, mailbox)`, `Notified(ctx, since)`, `Mark(ctx, mailbox, messageID, op)`
+    and `EnsureFolder(ctx, mailbox, name)`, with `MailMark` (`MailMarkRead`,
+    `MailMarkCategory`, `MailMarkMove`). All five are behind `Send`'s gate (`Notified`
+    reads Entra's own rows with no network call). `Watch` creates or renews a Graph
+    subscription on `/users/{oid}/mailFolders('inbox')/messages` (`changeType: "created"`)
+    using the **application's token** and shares the calendar's webhook, client-state
+    hash, 30 s validation window, 1-hour unreachable hold and 24-hour conflict hold;
+    `Unwatch` and `Forget` clean up the `'messages'` subscription row. `Mark` sends
+    `Prefer: IdType="ImmutableId"` on `PATCH /users/{oid}/messages/{id}` or
+    `POST /users/{oid}/messages/{id}/move` (`noRetry`) and maps 404 `ErrorItemNotFound` to
+    `contracts.ErrMailItemGone`. `EnsureFolder` looks up `displayName eq` and creates the
+    folder if absent, re-querying on a 409 `ErrorFolderExists` race.
+  - **M12 & M17, channel settings and import window**: `CreateChannelRequest` and
+    `SwitchChannelProviderRequest` accept `importWindow` (`from_now`, `last_30_days`,
+    `last_90_days`, setting `channel_sync.import_from`), `onClose` (`none`, `read`, `move`)
+    and `folder` (1–120 chars, no `/` or `\`, default `"Handled in Vantigo"`);
+    `UpdateChannelRequest` accepts `onClose` and `folder` on a Microsoft 365 channel;
+    `ChannelResponse.mailbox` answers `{id, onClose, folder}`. When `onClose` is `move`,
+    `EnsureFolder` runs before the transaction. On the way back to SMTP and when
+    deactivating a Microsoft 365 channel, `Unwatch` runs best-effort after the commit.
+  - **M14 & M17, notifications and on-close marks**: migration
+    `00094_communications_mailbox_marks.sql` adds `communications.mailbox_marks`
+    (`conversation_id` primary key `ON DELETE CASCADE` to `conversations(id)`). Closing a
+    conversation on an `entra` channel whose `onClose` is `read` or `move` queues or
+    resets its `mailbox_marks` row in the close's transaction. `communications-mailbox-sync`
+    drains `Notified(since)` before claiming, calls `Watch(mailbox, "inbox")` after a
+    finished pass when notifications are active (`PUBLIC_BASE_URL` set and
+    `CALENDAR_MAILBOX_NOTIFICATIONS_ENABLED` on) and sets `next_sync_at` to **1 hour** as
+    a safety net (5 minutes otherwise), and drains due `mailbox_marks` jobs when no
+    channel sync is due — treating `ErrMailItemGone` as idempotent success, holding on
+    `ErrMailboxUnavailable` up to 24 hours, and retrying up to 8 attempts.
+
 Migration numbers are those free on 2026-10-29, after #194's `00087`. Each delivery renumbers in its own
 history before it rebases.
 

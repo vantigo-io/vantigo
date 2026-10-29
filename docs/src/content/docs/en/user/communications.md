@@ -52,11 +52,14 @@ message, and on each conversation in the list, is in your own time zone
 ([Choose your time zone](/en/user/getting-started/#choose-your-time-zone)).
 
 **Mail from customers.** An email sent to a Microsoft 365 channel's shared mailbox appears
-in the Inbox within about five minutes. A reply to an earlier message joins that
+in the Inbox within about a minute when change notifications are on, or within about five
+minutes otherwise. A reply to an earlier message joins that
 message's conversation; anything else starts a new conversation. A closed conversation
 the customer writes to again is opened again; an archived one is left as it is, and the
-email starts a new conversation. The message also stays in the shared
-mailbox in Outlook, as it was.
+email starts a new conversation. While a conversation is open, the message stays in the
+shared mailbox in Outlook as it was; when you close the conversation, Vantigo leaves it
+as-is, marks it as read, or moves it to a folder in Outlook according to the channel's
+**When a conversation is closed** setting.
 
 - A message written as HTML is shown formatted, in a sandbox that blocks scripts, forms
   and network access. Pictures from the internet are removed; pictures the message itself
@@ -237,8 +240,17 @@ channel is ready." An address that already has a channel is refused.
 ### Add a Microsoft 365 channel
 
 Click **Add channel**, and choose **Microsoft 365** as the **Provider**. The dialog then
-asks only for the **Email address** of the shared mailbox and a **Display name**, and
-says *The mailbox must be a shared mailbox in the application's scope.* **Create
+asks for the **Email address** of the shared mailbox, a **Display name**, and two settings
+for the mailbox, and says *The mailbox must be a shared mailbox in the application's
+scope.*:
+
+- **Import history** — **From now on** (the default), **Last 30 days** or **Last 90 days**.
+- **When a conversation is closed** — **Leave as-is in Outlook** (the default), **Mark as
+  read in Outlook**, or **Move to folder in Outlook** (which asks for the **Outlook
+  folder**, filled in as `Handled in Vantigo`, created in the shared mailbox if it does not
+  exist yet).
+
+**Create
 channel** checks the mailbox with Microsoft 365 first; the channel is created active, with
 the mailbox's own primary address, and can send at once. The check can refuse it:
 
@@ -260,12 +272,18 @@ Adding, switching and verifying channels are limited to 30 a minute; past that,
 When the mailbox an SMTP channel sends from is a shared mailbox in Exchange Online, the
 channel can send through Microsoft 365 instead, keeping its conversations, its address
 and its **Default** mark. On its row, choose **Switch to Microsoft 365**; the dialog
-warns *The SMTP settings are deleted. To go back you enter them again.* — choose
+warns *The SMTP settings are deleted. To go back you enter them again.*, and offers the
+same **Import history** and **When a conversation is closed** choices as when adding a
+Microsoft 365 channel — choose
 **Switch**. Vantigo checks the mailbox as when adding one, with the same messages, and
 the row's provider reads **Microsoft 365**: "Channel switched — The channel now sends and
-receives through Microsoft 365." From then on the mailbox's new mail comes into the Inbox;
-mail that was already there does not. The action is shown only while Microsoft 365 is
+receives through Microsoft 365." From then on the mailbox's mail from the chosen import
+window comes into the Inbox. The action is shown only while Microsoft 365 is
 available.
+
+On any Microsoft 365 channel's row, **Outlook on close** opens a dialog to change **When a
+conversation is closed** (*Leave as-is in Outlook*, *Mark as read in Outlook*, or *Move to
+folder in Outlook* with its **Outlook folder**).
 
 The channel keeps the address it had. If that address is an alias of the shared mailbox
 rather than its primary address, check that the first message goes out as expected:

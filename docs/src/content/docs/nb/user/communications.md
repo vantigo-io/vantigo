@@ -53,11 +53,14 @@ Klokkeslettet på hver melding, og på hver samtale i listen, er i din egen tids
 ([Velg tidssonen din](/nb/user/getting-started/#velg-tidssonen-din)).
 
 **E-post fra kunder.** En e-post sendt til den delte postboksen til en Microsoft
-365-kanal vises i Innboks innen omtrent fem minutter. Et svar på en tidligere melding
+365-kanal vises i Innboks innen omtrent ett minutt når endringsvarsler er på, eller innen
+omtrent fem minutter ellers. Et svar på en tidligere melding
 havner i samtalen til den meldingen; alt annet starter en ny samtale. En lukket samtale
 kunden skriver til igjen, åpnes igjen; en arkivert samtale blir stående som den er, og
-e-posten starter en ny samtale. Meldingen blir også liggende i den delte postboksen i
-Outlook, som den var.
+e-posten starter en ny samtale. Så lenge samtalen er åpen, blir meldingen liggende i den
+delte postboksen i Outlook som den var; når du lukker samtalen, lar Vantigo den stå
+uendret, markerer den som lest eller flytter den til en mappe i Outlook etter kanalens
+innstilling **Når en samtale lukkes**.
 
 - En melding skrevet som HTML vises formatert, i en sandkasse som blokkerer skript,
   skjemaer og nettverkstilgang. Bilder fra internett fjernes; bilder meldingen selv har
@@ -237,8 +240,17 @@ klar.» En adresse som allerede har en kanal, avvises.
 ### Legg til en Microsoft 365-kanal
 
 Klikk **Legg til kanal**, og velg **Microsoft 365** som **Leverandør**. Dialogen spør da
-bare etter **E-postadresse** til den delte postboksen og et **Visningsnavn**, og sier
-*Postboksen må være en delt postboks som applikasjonen har tilgang til.* **Opprett
+etter **E-postadresse** til den delte postboksen, et **Visningsnavn** og to innstillinger
+for postboksen, og sier *Postboksen må være en delt postboks som applikasjonen har tilgang
+til.*:
+
+- **Importer historikk** — **Fra nå av** (standard), **Siste 30 dager** eller **Siste 90
+  dager**.
+- **Når en samtale lukkes** — **La stå uendret i Outlook** (standard), **Marker som lest i
+  Outlook** eller **Flytt til mappe i Outlook** (som spør etter **Outlook-mappe**, fylt inn
+  med `Handled in Vantigo`, opprettet i den delte postboksen hvis den ikke finnes fra før).
+
+**Opprett
 kanal** sjekker postboksen med Microsoft 365 først; kanalen opprettes aktiv, med
 postboksens egen primære adresse, og kan sende med en gang. Sjekken kan avvise den:
 
@@ -260,11 +272,17 @@ postboksens egen primære adresse, og kan sende med en gang. Sjekken kan avvise 
 Når postboksen en SMTP-kanal sender fra er en delt postboks i Exchange Online, kan
 kanalen sende gjennom Microsoft 365 i stedet, og beholder samtalene, adressen og merket
 **Standard**. På raden, velg **Bytt til Microsoft 365**; dialogen advarer *SMTP-innstillingene
-slettes. For å gå tilbake må du legge dem inn på nytt.* — velg **Bytt**. Vantigo sjekker
+slettes. For å gå tilbake må du legge dem inn på nytt.*, og tilbyr de samme valgene for
+**Importer historikk** og **Når en samtale lukkes** som når du legger til en Microsoft
+365-kanal — velg **Bytt**. Vantigo sjekker
 postboksen som når du legger til en, med de samme meldingene, og leverandøren på raden
 blir **Microsoft 365**: «Kanalen er byttet — Kanalen sender og mottar nå gjennom
-Microsoft 365.» Fra da av kommer ny e-post i postboksen inn i Innboks; e-post som lå der
-fra før, gjør det ikke. Handlingen vises bare mens Microsoft 365 er tilgjengelig.
+Microsoft 365.» Fra da av kommer e-posten i postboksen fra det valgte importvinduet inn i
+Innboks. Handlingen vises bare mens Microsoft 365 er tilgjengelig.
+
+På raden til en Microsoft 365-kanal åpner **Outlook ved lukking** en dialog der du kan
+endre **Når en samtale lukkes** (*La stå uendret i Outlook*, *Marker som lest i Outlook*
+eller *Flytt til mappe i Outlook* med **Outlook-mappe**).
 
 Kanalen beholder adressen den hadde. Er adressen et alias for den delte postboksen og
 ikke den primære adressen, sjekk at den første meldingen går ut som forventet: hvordan

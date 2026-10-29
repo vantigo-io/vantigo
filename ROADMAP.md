@@ -2422,7 +2422,7 @@ principal name and a user who is not an Owner. Identity's announcement now also 
 
 *Unblocks:* connecting a whole workspace in one review, not user by user.
 
-### Phase 3 — The Outlook connection and Microsoft 365 mail
+### Phase 3 — The Outlook connection and Microsoft 365 mail (done)
 
 Researched in
 [`docs/superpowers/research/2026-10-29-outlook-connection-and-mail.md`](docs/superpowers/research/2026-10-29-outlook-connection-and-mail.md)
@@ -2520,7 +2520,26 @@ draft reading it; unscanned attachments downloaded as files, the original downlo
 retention. Exchange keeping our `Message-ID`, the delta links' form and a message moved
 into the Inbox are the real-tenant checklist's to confirm.
 
-*Next:* E brings the notifications, Outlook state on close and the import window.
+**E — Notifications, Outlook state on close and the import window, built** on
+`claude/communications-inbound-notifications-e`
+([the plan](docs/superpowers/plans/2026-10-29-communications-inbound-notifications.md);
+[the reference](docs/src/content/docs/en/reference/communications.md#outlook-state-on-close);
+[Entra's](docs/src/content/docs/en/reference/entra.md#watch-unwatch-notified-mark-and-ensurefolder);
+[the operator's page](docs/src/content/docs/en/admin/entra.md#mail-channels);
+[the user guide](docs/src/content/docs/en/user/communications.md#set-up-a-channel)):
+`entra.mailbox_subscriptions` keyed by `(object_id, resource)` (`'events'` or `'messages'`,
+migration `00093_entra_mailbox_subscriptions_resource.sql`), sharing the webhook, client
+state and reachability guards between the calendar's delegated subscriptions and the mail
+channels' application-token subscriptions on `/users/{oid}/mailFolders('inbox')/messages`;
+`ChannelMailbox.Watch`, `Unwatch`, `Notified`, `Mark` and `EnsureFolder`; the mailbox sync
+taking notified channels first and setting `next_sync_at` to one hour as a safety net when
+notifications are active (five minutes otherwise); the channel's import window (`from_now`,
+`last_30_days`, `last_90_days`) on create and switch, and its *When a conversation is
+closed* setting (`none`, `read`, `move` to a folder defaulted to `"Handled in Vantigo"`,
+ensured on save) queued in `communications.mailbox_marks` (`00094`) when a conversation
+closes and drained idempotently by the worker.
+
+Phase 3 is complete.
 
 ### Later
 
