@@ -16,13 +16,17 @@ import {
   stageConversationAttachment,
 } from "../api/conversations";
 
+const errorCode = (error: Error) => ("code" in error && typeof error.code === "string" ? error.code : undefined);
+
 export type ConversationComposerProps = {
   conversation: ConversationDetail;
   onSent: () => Promise<unknown>;
 };
 
 export function ConversationComposer({ conversation, onSent }: ConversationComposerProps) {
-  const { t } = useI18n("communications");
+  const { t, formatters } = useI18n("communications");
+  const budget = conversation.maxMessageBytes ?? null;
+  const budgetMb = budget === null ? "" : formatters.formatNumber(budget / 1_000_000, { maximumFractionDigits: 1 });
   const [noteMode, setNoteMode] = useState(false);
   const [body, setBody] = useState("");
   const [replyMode, setReplyMode] = useState<"reply" | "reply_all">("reply");
@@ -176,6 +180,11 @@ export function ConversationComposer({ conversation, onSent }: ConversationCompo
             }}
           />
         </Button>
+        {budget !== null && (
+          <Text size="xs" c="dimmed">
+            {t("attachmentsLimit", { size: budgetMb })}
+          </Text>
+        )}
         {uploads.length > 0 && (
           <Group gap="xs">
             {currentUploads.map((file) => (
@@ -189,7 +198,20 @@ export function ConversationComposer({ conversation, onSent }: ConversationCompo
       </Group>
       {upload.error && (
         <Text size="xs" c="red">
-          {t("attachmentCouldNotBeStaged")}
+          {errorCode(upload.error) === "attachment_too_large"
+            ? budget !== null
+              ? t("attachmentTooLargeForChannel", { size: budgetMb })
+              : t("attachmentTooLarge")
+            : t("attachmentCouldNotBeStaged")}
+        </Text>
+      )}
+      {send.error && (
+        <Text size="xs" c="red" mt="xs">
+          {errorCode(send.error) === "too_large"
+            ? t("messageTooLargeForChannel")
+            : noteMode
+              ? t("noteNotAdded")
+              : t("replyNotSent")}
         </Text>
       )}
       <Group justify="end" mt="sm">

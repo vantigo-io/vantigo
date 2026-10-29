@@ -1,5 +1,6 @@
 import { queryOptions } from "@tanstack/react-query";
 import { request } from "./request";
+export type ChannelProviderKey = "smtp" | "entra";
 export type Channel = {
   id: string;
   type: "email";
@@ -7,39 +8,49 @@ export type Channel = {
   displayName: string | null;
   createdAt: string;
   isActive: boolean;
-  provider: "smtp" | "mailgun";
+  provider: ChannelProviderKey;
   isDefault: boolean;
   hasCredentials: boolean;
+  mailbox?: { id: string } | null;
   settings: {
     host: string | null;
     port: number | null;
     useSsl: boolean | null;
     username: string | null;
-    domain: string | null;
-    region: string | null;
   } | null;
+};
+export type ChannelProvider = {
+  key: string;
+  displayName: string;
+  available: boolean;
+  reason: string | null;
+  warning: "tenant_wide" | null;
+  maxMessageBytes: number | null;
 };
 export type CreateChannelRequest = {
   type: "email";
   address: string;
   displayName?: string;
-  provider: "smtp" | "mailgun";
+  provider: ChannelProviderKey;
   isDefault?: boolean;
   smtp?: { host: string; port: number; useSsl?: boolean; username?: string; password?: string };
-  mailgun?: { domain: string; region: "us" | "eu"; apiKey: string; inboundSigningKey: string };
 };
 export type UpdateChannelRequest = {
   displayName?: string | null;
   isActive?: boolean;
   isDefault?: boolean;
-  provider?: "smtp" | "mailgun";
+  provider?: "smtp";
   smtp?: CreateChannelRequest["smtp"];
-  mailgun?: CreateChannelRequest["mailgun"];
 };
 export const channelsQueryOptions = () =>
   queryOptions({
     queryKey: ["channels"],
     queryFn: ({ signal }) => request<Channel[]>("/api/v1/communications/channels", { signal }),
+  });
+export const channelProvidersQueryOptions = () =>
+  queryOptions({
+    queryKey: ["channel-providers"],
+    queryFn: ({ signal }) => request<ChannelProvider[]>("/api/v1/communications/channel-providers", { signal }),
   });
 export const channelQueryOptions = (id: string) =>
   queryOptions({
@@ -60,3 +71,9 @@ export const updateChannel = (id: string, body: UpdateChannelRequest) =>
   });
 export const verifyChannel = (id: string) =>
   request<{ ok: true }>(`/api/v1/communications/channels/${id}/verify`, { method: "POST" });
+export const switchChannelProvider = (id: string) =>
+  request<Channel>(`/api/v1/communications/channels/${id}/provider`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ provider: "entra" }),
+  });

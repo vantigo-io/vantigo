@@ -1,6 +1,7 @@
 import { MantineProvider } from "@mantine/core";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { setLanguagePreference } from "@vantigo/frontend-shell";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { InboxPage } from "./inbox";
@@ -8,7 +9,8 @@ import { InboxPage } from "./inbox";
 const mocks = vi.hoisted(() => ({
   fetchConversations: vi.fn(),
   fetchConversation: vi.fn(),
-  replyToConversation: vi.fn().mockResolvedValue({ conversationId: "c-1", messageId: "m-2", status: "sent" }),
+  replyToConversation: vi.fn(),
+  stageConversationAttachment: vi.fn(),
   navigate: vi.fn(),
   search: {} as Record<string, unknown>,
   editorText: "",
@@ -103,7 +105,7 @@ vi.mock("../api/conversations", () => ({
     queryFn: () => Promise.resolve(undefined),
     enabled: false,
   }),
-  stageConversationAttachment: vi.fn(),
+  stageConversationAttachment: mocks.stageConversationAttachment,
   safeHtmlSrcDoc: (html: string) => html,
 }));
 
@@ -146,12 +148,16 @@ const renderPage = () =>
     </MantineProvider>,
   );
 
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  setLanguagePreference("auto");
+});
 
 beforeEach(() => {
   mocks.fetchConversations.mockReset();
   mocks.fetchConversation.mockReset();
-  mocks.replyToConversation.mockClear();
+  mocks.replyToConversation.mockReset().mockResolvedValue({ conversationId: "c-1", messageId: "m-2", status: "sent" });
+  mocks.stageConversationAttachment.mockReset();
   mocks.navigate.mockReset();
   mocks.search = {};
   mocks.editorText = "";
@@ -287,5 +293,80 @@ describe("inbox", () => {
         "reply-idempotency-key",
       ),
     );
+  });
+
+  describe("the composer on a channel with a size limit", () => {
+    const apiError = (status: number, code: string) => Object.assign(new Error("server words"), { status, code });
+
+    const openConversation = async (maxMessageBytes: number | null) => {
+      const item = conversation("c-1", "Question");
+      mocks.fetchConversations.mockResolvedValue(page([item]));
+      mocks.fetchConversation.mockResolvedValue({ ...detail(item.id, item.subject), maxMessageBytes });
+      renderPage();
+      await screen.findByText("Could you help me with this?");
+    };
+
+    const attach = () => {
+      const input = document.querySelector<HTMLInputElement>('input[type="file"]');
+      if (!input) throw new Error("the file input is required");
+      fireEvent.change(input, { target: { files: [new File(["x"], "big.pdf", { type: "application/pdf" })] } });
+    };
+
+    it("shows the channel's limit beside the attachments", async () => {
+      await openConversation(3_000_000);
+      expect(screen.getByText("Attachments up to about 3 MB in total on this channel")).toBeTruthy();
+    });
+
+    it("shows no limit on an SMTP channel", async () => {
+      await openConversation(null);
+      expect(screen.queryByText(/in total on this channel/)).toBeNull();
+    });
+
+    it("says an attachment is larger than the channel can send", async () => {
+      mocks.stageConversationAttachment.mockRejectedValue(apiError(413, "attachment_too_large"));
+      await openConversation(3_000_000);
+      attach();
+      expect(await screen.findByText("The attachment is larger than this channel can send (about 3 MB).")).toBeTruthy();
+      expect(screen.queryByText(/server words|attachment_too_large/)).toBeNull();
+    });
+
+    it("says an attachment is larger than the configured limit on an SMTP channel", async () => {
+      mocks.stageConversationAttachment.mockRejectedValue(apiError(413, "attachment_too_large"));
+      await openConversation(null);
+      attach();
+      expect(await screen.findByText("The attachment is larger than the allowed size.")).toBeTruthy();
+    });
+
+    it("says the reply is larger than the channel can send", async () => {
+      mocks.replyToConversation.mockRejectedValue(apiError(422, "too_large"));
+      mocks.editorText = "Here is the answer.";
+      await openConversation(3_000_000);
+      fireEvent.click(screen.getByRole("button", { name: "Send reply" }));
+      expect(
+        await screen.findByText("The message and its attachments are larger than this channel can send."),
+      ).toBeTruthy();
+      expect(screen.queryByText(/server words|too_large/)).toBeNull();
+    });
+
+    it("says a reply was not sent for any other refusal", async () => {
+      mocks.replyToConversation.mockRejectedValue(apiError(500, "internal"));
+      mocks.editorText = "Here is the answer.";
+      await openConversation(null);
+      fireEvent.click(screen.getByRole("button", { name: "Send reply" }));
+      expect(await screen.findByText("The reply was not sent. Try again.")).toBeTruthy();
+    });
+
+    it("shows the limit and the refusals in Norwegian", async () => {
+      setLanguagePreference("nb");
+      mocks.stageConversationAttachment.mockRejectedValue(apiError(413, "attachment_too_large"));
+      mocks.replyToConversation.mockRejectedValue(apiError(422, "too_large"));
+      mocks.editorText = "Her er svaret.";
+      await openConversation(3_000_000);
+      expect(screen.getByText("Vedlegg på opptil omtrent 3 MB til sammen på denne kanalen")).toBeTruthy();
+      attach();
+      expect(await screen.findByText("Vedlegget er større enn denne kanalen kan sende (omtrent 3 MB).")).toBeTruthy();
+      fireEvent.click(screen.getByRole("button", { name: "Send svar" }));
+      expect(await screen.findByText("Meldingen og vedleggene er større enn denne kanalen kan sende.")).toBeTruthy();
+    });
   });
 });
