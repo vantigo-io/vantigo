@@ -163,3 +163,10 @@ VALUES (@id, @message_id, @file_name, @content_type, @size_bytes, @content_hash,
 -- transaction just set) are deleted.
 DELETE FROM communications.attachment_uploads
 WHERE id = ANY(@ids::uuid[]) AND scan_status = 'claimed';
+
+-- name: GetDownloadableMessageAttachmentByID :one
+-- The download's lookup: a clean attachment (the composer's) or an unscanned
+-- one (received), which the handler answers as a file to save.
+SELECT id, message_id, file_name, content_type, size_bytes, storage_key, scan_status
+FROM communications.message_attachments
+WHERE id = @id AND scan_status IN ('clean', 'unscanned');

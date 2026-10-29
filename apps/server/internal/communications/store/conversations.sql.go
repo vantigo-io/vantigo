@@ -175,6 +175,9 @@ func (q *Queries) GetConversationForReply(ctx context.Context, id uuid.UUID) (Ge
 const getConversationMessagesByConversationID = `-- name: GetConversationMessagesByConversationID :many
 SELECT m.id, m.direction, m.author_user_id, m.subject, m.text_body, m.html_body,
        m.occurred_at, m.created_at,
+       (m.raw_payload_storage_key IS NOT NULL)::boolean AS has_raw_payload,
+       COALESCE((m.channel_metadata_json->>'autoSubmitted')::boolean, false)::boolean AS auto_submitted,
+       COALESCE((m.channel_metadata_json->>'unreadable')::boolean, false)::boolean AS unreadable,
        p.id AS participant_id, p.channel_id AS participant_channel_id, p.address AS participant_address,
        p.display_name AS participant_display_name, p.contact_id AS participant_contact_id
 FROM communications.conversation_messages m
@@ -192,6 +195,9 @@ type GetConversationMessagesByConversationIDRow struct {
 	HtmlBody               *string
 	OccurredAt             time.Time
 	CreatedAt              time.Time
+	HasRawPayload          bool
+	AutoSubmitted          bool
+	Unreadable             bool
 	ParticipantID          *uuid.UUID
 	ParticipantChannelID   *uuid.UUID
 	ParticipantAddress     *string
@@ -201,8 +207,9 @@ type GetConversationMessagesByConversationIDRow struct {
 
 // GetConversation's message list, ordered OccurredAt ascending
 // (`item.Messages.OrderBy(message => message.OccurredAt)`), each left-joined
-// to its participant (null for every internal_note message and, in
-// principle, an inbound one this port never writes).
+// to its participant (null for every internal_note and outbound message),
+// with whether Vantigo keeps its original and the two flags an inbound
+// message's metadata carries.
 func (q *Queries) GetConversationMessagesByConversationID(ctx context.Context, conversationID uuid.UUID) ([]GetConversationMessagesByConversationIDRow, error) {
 	rows, err := q.db.Query(ctx, getConversationMessagesByConversationID, conversationID)
 	if err != nil {
@@ -221,6 +228,9 @@ func (q *Queries) GetConversationMessagesByConversationID(ctx context.Context, c
 			&i.HtmlBody,
 			&i.OccurredAt,
 			&i.CreatedAt,
+			&i.HasRawPayload,
+			&i.AutoSubmitted,
+			&i.Unreadable,
 			&i.ParticipantID,
 			&i.ParticipantChannelID,
 			&i.ParticipantAddress,
@@ -302,36 +312,43 @@ func (q *Queries) GetIdempotencyRecordByKey(ctx context.Context, key string) (Co
 	return i, err
 }
 
-const getLatestInboundParticipantAddress = `-- name: GetLatestInboundParticipantAddress :one
-SELECT p.address
+const getReplyRecipientsSource = `-- name: GetReplyRecipientsSource :one
+SELECT m.rfc_message_id, m.channel_metadata_json, p.address AS sender_address,
+       c.channel_id, ch.address AS channel_address
 FROM communications.conversation_messages m
 JOIN communications.participants p ON p.id = m.participant_id
+JOIN communications.conversations c ON c.id = m.conversation_id
+JOIN communications.channels ch ON ch.id = c.channel_id
 WHERE m.conversation_id = $1 AND m.direction = 'inbound'
 ORDER BY m.occurred_at DESC
 LIMIT 1
 `
 
-// The non-constant half of ReplyRecipients (`:446-455`) that QueueOutboundAsync
-// inlines directly (`:277`, `:283`): the latest, by occurred_at, inbound
-// message's participant address. No production path in this port ever
-// writes a direction='inbound' row (design doc §1.1: the inbound worker was
-// the only writer and it is out of scope), so this returns zero rows for
-// every conversation the real API can produce — which is what step 7's 422
-// recipients_missing pins (task 7 dispatch's "outbound-only consequence").
-// A test fixture CAN insert a direction='inbound' row and drive this query
-// to its success branch: conversation_messages.direction's CHECK constraint
-// (migration 00006_communications_baseline.sql) matches .NET's full
-// Direction domain (inbound included) since task 7 fix round 2 — an
-// earlier, narrower CHECK made that impossible even from a fixture, which
-// made this query permanently unexercisable on its success branch and cost
-// a test seam that only relocated the blindness (design doc §1.1's
-// correction). conversations_reply_test.go's fixtures now exercise this
-// query directly, and the seam is gone.
-func (q *Queries) GetLatestInboundParticipantAddress(ctx context.Context, conversationID uuid.UUID) (string, error) {
-	row := q.db.QueryRow(ctx, getLatestInboundParticipantAddress, conversationID)
-	var address string
-	err := row.Scan(&address)
-	return address, err
+type GetReplyRecipientsSourceRow struct {
+	RfcMessageID        *string
+	ChannelMetadataJson []byte
+	SenderAddress       string
+	ChannelID           uuid.UUID
+	ChannelAddress      string
+}
+
+// Who a reply answers (M15, inventory §4.3, §4.4; ReplyRecipients
+// `:446-455`, which QueueOutboundAsync inlines at `:277`, `:283`): the latest
+// inbound message by occurred_at with a participant — none for a conversation
+// nothing was received in, step 7's 422 recipients_missing —, its sender's
+// address, its metadata (the Cc reply-all answers, its References)
+// and Message-Id, and the channel's own address and id.
+func (q *Queries) GetReplyRecipientsSource(ctx context.Context, conversationID uuid.UUID) (GetReplyRecipientsSourceRow, error) {
+	row := q.db.QueryRow(ctx, getReplyRecipientsSource, conversationID)
+	var i GetReplyRecipientsSourceRow
+	err := row.Scan(
+		&i.RfcMessageID,
+		&i.ChannelMetadataJson,
+		&i.SenderAddress,
+		&i.ChannelID,
+		&i.ChannelAddress,
+	)
+	return i, err
 }
 
 const insertConversation = `-- name: InsertConversation :one
@@ -1005,6 +1022,47 @@ func (q *Queries) ListMessageDeliveriesByMessageIDs(ctx context.Context, message
 			&i.Status,
 			&i.Attempts,
 			&i.AcceptedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listParticipantsByChannelAndAddressesFold = `-- name: ListParticipantsByChannelAndAddressesFold :many
+SELECT id, channel_id, address, display_name, contact_id, created_at
+FROM communications.participants
+WHERE channel_id = $1 AND lower(address) = ANY($2::text[])
+ORDER BY created_at DESC, id DESC
+`
+
+type ListParticipantsByChannelAndAddressesFoldParams struct {
+	ChannelID uuid.UUID
+	Addresses []string
+}
+
+// Reply-all's Cc as participant rows: each of addresses (lower case) in the
+// channel, in any case, newest first so the caller keeps one per address.
+func (q *Queries) ListParticipantsByChannelAndAddressesFold(ctx context.Context, arg ListParticipantsByChannelAndAddressesFoldParams) ([]CommunicationsParticipant, error) {
+	rows, err := q.db.Query(ctx, listParticipantsByChannelAndAddressesFold, arg.ChannelID, arg.Addresses)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []CommunicationsParticipant
+	for rows.Next() {
+		var i CommunicationsParticipant
+		if err := rows.Scan(
+			&i.ID,
+			&i.ChannelID,
+			&i.Address,
+			&i.DisplayName,
+			&i.ContactID,
+			&i.CreatedAt,
 		); err != nil {
 			return nil, err
 		}

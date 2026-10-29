@@ -3,6 +3,7 @@ package communications
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 
@@ -18,17 +19,19 @@ import (
 // and when" has one place to read the answer and one place to check it from.
 //
 // What is checked is the lock rule: no call out of the module is made inside
-// one of its transactions. Check, Forget and Send reach Microsoft Graph, and a
-// transaction holding the default-channel slot's lock while it waits on the
-// network would hold every channel writer with it. Every accessor reports its
+// one of its transactions. Check, Forget, Send, Delta and Raw reach Microsoft
+// Graph, and a transaction holding the default-channel slot's lock while it
+// waits on the network would hold every channel writer with it. Every accessor reports its
 // call to contractCallHook, which the tests install to record it with whether
 // it was made inside one, and refuses a call made inside one with
 // errCallInsideTransaction — the calendar's and Staff's rule: the mistake is a
 // programming error, and failing the request loudly is better than holding a
 // lock across a network call.
 //
-// The other neighbours this module reads (deps.Directory) predate the guard
-// and are called inline, outside any transaction.
+// The other neighbour this module reads, deps.Directory, predates the guard
+// and is called inline by the HTTP operations, outside any transaction; the
+// mailbox sync's linker reads it through directoryContactsByEmail below, so
+// the worker's one directory call is refused inside its import's transaction.
 
 // providerSMTP and providerEntra are the channels.provider values: an SMTP
 // channel with its credential row, and a Microsoft 365 one on the slot whose
@@ -172,4 +175,54 @@ func mailboxSend(ctx context.Context, m contracts.ChannelMailbox, mailbox string
 		return err
 	}
 	return m.Send(ctx, mailbox, mime, bcc)
+}
+
+// syncMailbox is the mail channels provider the mailbox sync reads a channel
+// through: the slot when it is filled under "entra", else nil — a channel is
+// never read through a provider under another key (M11). Key makes no
+// network call.
+func (w *MailboxSyncWorker) syncMailbox(ctx context.Context) (contracts.ChannelMailbox, error) {
+	if err := noteContractCall(ctx, "ChannelMailbox.Key"); err != nil {
+		return nil, err
+	}
+	m := w.deps.ChannelMailbox
+	if m == nil || m.Key() != providerEntra {
+		return nil, nil
+	}
+	return m, nil
+}
+
+// syncMailboxStatus is whether channels may use the provider now, for the
+// mailbox sync. It reads the provider's own state, never the network.
+func syncMailboxStatus(ctx context.Context, m contracts.ChannelMailbox) (contracts.MailboxStatus, error) {
+	if err := noteContractCall(ctx, "ChannelMailbox.Status"); err != nil {
+		return contracts.MailboxStatus{}, err
+	}
+	return m.Status(ctx)
+}
+
+// mailboxDelta reads one page of the changes to a channel's Inbox (M14).
+func mailboxDelta(ctx context.Context, m contracts.ChannelMailbox, mailbox, folder, link string, since time.Time) (contracts.MailDelta, error) {
+	if err := noteContractCall(ctx, "ChannelMailbox.Delta"); err != nil {
+		return contracts.MailDelta{}, err
+	}
+	return m.Delta(ctx, mailbox, folder, link, since)
+}
+
+// mailboxRaw reads one received message whole, at most max bytes of it.
+func mailboxRaw(ctx context.Context, m contracts.ChannelMailbox, mailbox, messageID string, max int64) ([]byte, error) {
+	if err := noteContractCall(ctx, "ChannelMailbox.Raw"); err != nil {
+		return nil, err
+	}
+	return m.Raw(ctx, mailbox, messageID, max)
+}
+
+// directoryContactsByEmail is the linker's one read of the customer
+// directory (M15): every contact with the sender's address and the customers
+// each is linked to.
+func directoryContactsByEmail(ctx context.Context, d contracts.CustomerDirectory, email string) ([]contracts.ContactMatch, error) {
+	if err := noteContractCall(ctx, "Directory.ContactsByEmail"); err != nil {
+		return nil, err
+	}
+	return d.ContactsByEmail(ctx, email)
 }

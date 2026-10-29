@@ -197,11 +197,10 @@ func TestReply_ReplyModeExplicitNullIs400(t *testing.T) {
 }
 
 // TestReply_ReplyAllIsAcceptedButInert pins fix round 1's item 3: replyMode
-// "reply_all" is a recognised mode and passes validation, but this port
-// never derives a non-empty replyAllCc (design doc §1.1: doing so needs
-// inbound thread metadata this port never writes), so it behaves
-// identically to plain "reply" today — both reach the same
-// recipients_missing 422, never a distinct code path or message.
+// "reply_all" is a recognised mode and passes validation; on a conversation
+// with nothing received it reaches the same recipients_missing 422 as plain
+// "reply", never a distinct code path or message. Reply-all from a real
+// import is inbound_reply_test.go's.
 func TestReply_ReplyAllIsAcceptedButInert(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
@@ -391,13 +390,12 @@ func TestReply_ChannelInactiveIs422(t *testing.T) {
 	}
 }
 
-// ---- Step 7: the outbound-only consequence ----
+// ---- Step 7: nobody to answer ----
 
-// TestReply_NoInboundParticipantIsRecipientsMissing pins design doc §1.1
-// and task 7 dispatch's "outbound-only consequence": a conversation created
-// through this API has no inbound message, so recipients_missing fires
-// unconditionally, for every conversation, forever. Pinned rather than
-// worked around.
+// TestReply_NoInboundParticipantIsRecipientsMissing: a conversation created
+// through this API, with nothing received in it, has no inbound message, so
+// recipients_missing fires. One the mailbox sync imported is answered
+// (inbound_reply_test.go).
 func TestReply_NoInboundParticipantIsRecipientsMissing(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)

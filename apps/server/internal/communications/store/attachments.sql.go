@@ -244,6 +244,39 @@ func (q *Queries) GetCleanMessageAttachmentByID(ctx context.Context, id uuid.UUI
 	return i, err
 }
 
+const getDownloadableMessageAttachmentByID = `-- name: GetDownloadableMessageAttachmentByID :one
+SELECT id, message_id, file_name, content_type, size_bytes, storage_key, scan_status
+FROM communications.message_attachments
+WHERE id = $1 AND scan_status IN ('clean', 'unscanned')
+`
+
+type GetDownloadableMessageAttachmentByIDRow struct {
+	ID          uuid.UUID
+	MessageID   uuid.UUID
+	FileName    string
+	ContentType string
+	SizeBytes   int64
+	StorageKey  string
+	ScanStatus  string
+}
+
+// The download's lookup: a clean attachment (the composer's) or an unscanned
+// one (received), which the handler answers as a file to save.
+func (q *Queries) GetDownloadableMessageAttachmentByID(ctx context.Context, id uuid.UUID) (GetDownloadableMessageAttachmentByIDRow, error) {
+	row := q.db.QueryRow(ctx, getDownloadableMessageAttachmentByID, id)
+	var i GetDownloadableMessageAttachmentByIDRow
+	err := row.Scan(
+		&i.ID,
+		&i.MessageID,
+		&i.FileName,
+		&i.ContentType,
+		&i.SizeBytes,
+		&i.StorageKey,
+		&i.ScanStatus,
+	)
+	return i, err
+}
+
 const insertAttachmentUpload = `-- name: InsertAttachmentUpload :one
 INSERT INTO communications.attachment_uploads
     (id, conversation_id, uploaded_by_user_id, file_name, content_type, size_bytes,

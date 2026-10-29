@@ -832,12 +832,10 @@ func TestGetConversation_NotFound(t *testing.T) {
 	}
 }
 
-// TestGetConversation_ReplyRecipientsAreAlwaysAllNegative pins task 5
-// dispatch's explicit hazard: this port has no inbound path (design §1.1;
-// no production writer ever produces a direction='inbound' message), so
-// canReply is false and replyAllCc is empty for every conversation created
-// through the API — the only value replyRecipientsOf can ever produce in
-// production (see its own comment). Pinned rather than worked around.
+// TestGetConversation_ReplyRecipientsAreAlwaysAllNegative: a conversation
+// created through the API, with nothing received in it, answers canReply
+// false and an empty replyAllCc. One the mailbox sync imported answers its
+// sender and Cc (inbound_reply_test.go).
 func TestGetConversation_ReplyRecipientsAreAlwaysAllNegative(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)

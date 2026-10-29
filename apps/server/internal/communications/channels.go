@@ -189,6 +189,51 @@ func channelResponseOf(row channelRow, settingsJSON *string) (gen.ChannelRespons
 	return resp, nil
 }
 
+// channelSyncs is each channel's mailbox sync row, for ChannelResponse.sync.
+func channelSyncs(ctx context.Context, q *store.Queries, ids []uuid.UUID) (map[uuid.UUID]store.GetChannelSyncByChannelIDsRow, error) {
+	rows, err := q.GetChannelSyncByChannelIDs(ctx, ids)
+	if err != nil {
+		return nil, fmt.Errorf("communications: list channel syncs: %w", err)
+	}
+	out := make(map[uuid.UUID]store.GetChannelSyncByChannelIDsRow, len(rows))
+	for _, r := range rows {
+		out[r.ChannelID] = r
+	}
+	return out, nil
+}
+
+// withSync is resp with its Microsoft 365 channel's receive state (delivery
+// D, a plan addition): null for an SMTP channel, and for one with no sync
+// row.
+func withSync(resp gen.ChannelResponse, row *store.GetChannelSyncByChannelIDsRow) gen.ChannelResponse {
+	if row == nil || resp.Provider != providerEntra {
+		return resp
+	}
+	resp.Sync = &struct {
+		Error        *string    `json:"error"`
+		LastSyncedAt *time.Time `json:"lastSyncedAt"`
+		State        string     `json:"state"`
+	}{Error: row.Error, LastSyncedAt: row.LastSyncedAt, State: row.State}
+	return resp
+}
+
+// syncOfRow is a channel_sync row as ChannelResponse.sync reads it.
+func syncOfRow(r store.CommunicationsChannelSync) *store.GetChannelSyncByChannelIDsRow {
+	return &store.GetChannelSyncByChannelIDsRow{ChannelID: r.ChannelID, State: r.State, Error: r.Error, LastSyncedAt: r.LastSyncedAt}
+}
+
+// oneChannelSync is channelSyncs for one channel, nil when it has no row.
+func oneChannelSync(ctx context.Context, q *store.Queries, id uuid.UUID) (*store.GetChannelSyncByChannelIDsRow, error) {
+	syncs, err := channelSyncs(ctx, q, []uuid.UUID{id})
+	if err != nil {
+		return nil, err
+	}
+	if r, ok := syncs[id]; ok {
+		return &r, nil
+	}
+	return nil, nil
+}
+
 // resolveSmtpCredential validates c's host and port — "SMTP credentials
 // require a host and valid port." (inventory §3.1), port 1-65535 — and, when
 // valid, returns the settings to persist and the request's password
@@ -305,13 +350,25 @@ func (s *server) GetCommunicationsChannels(ctx context.Context, _ gen.GetCommuni
 	if err != nil {
 		return nil, fmt.Errorf("communications: list channels: %w", err)
 	}
+	ids := make([]uuid.UUID, 0, len(rows))
+	for _, row := range rows {
+		ids = append(ids, row.ID)
+	}
+	syncs, err := channelSyncs(ctx, q, ids)
+	if err != nil {
+		return nil, err
+	}
 	data := make([]gen.ChannelResponse, 0, len(rows))
 	for _, row := range rows {
 		resp, err := channelResponseOf(channelRowFromList(row), row.CredentialSettingsJson)
 		if err != nil {
 			return nil, err
 		}
-		data = append(data, resp)
+		var sync *store.GetChannelSyncByChannelIDsRow
+		if r, ok := syncs[row.ID]; ok {
+			sync = &r
+		}
+		data = append(data, withSync(resp, sync))
 	}
 	return gen.GetCommunicationsChannels200JSONResponse(data), nil
 }
@@ -391,8 +448,16 @@ func (s *server) PostCommunicationsChannels(ctx context.Context, req gen.PostCom
 			return err
 		}
 		if in.provider == providerEntra {
-			resp, err = channelResponseOf(channelRowFromChannel(channel), nil)
-			return err
+			// It receives from now on, never its past (M14).
+			sync, err := q.InsertChannelSync(ctx, store.InsertChannelSyncParams{ChannelID: channel.ID, Now: now})
+			if err != nil {
+				return err
+			}
+			if resp, err = channelResponseOf(channelRowFromChannel(channel), nil); err != nil {
+				return err
+			}
+			resp = withSync(resp, syncOfRow(sync))
+			return nil
 		}
 		if err := q.InsertChannelCredential(ctx, store.InsertChannelCredentialParams{
 			ID: uuid.New(), ChannelID: channel.ID, SettingsJson: string(settingsJSON),
@@ -469,7 +534,11 @@ func (s *server) GetCommunicationsChannelsById(ctx context.Context, req gen.GetC
 	if err != nil {
 		return nil, err
 	}
-	return gen.GetCommunicationsChannelsById200JSONResponse(resp), nil
+	sync, err := oneChannelSync(ctx, q, row.ID)
+	if err != nil {
+		return nil, err
+	}
+	return gen.GetCommunicationsChannelsById200JSONResponse(withSync(resp, sync)), nil
 }
 
 // PutCommunicationsChannelsById Update a channel
@@ -687,6 +756,10 @@ func (s *server) PutCommunicationsChannelsById(ctx context.Context, req gen.PutC
 			if err := txq.SetChannelSmtp(ctx, req.Id); err != nil {
 				return err
 			}
+			// It no longer receives; a later switch starts from its own day.
+			if err := txq.DeleteChannelSync(ctx, req.Id); err != nil {
+				return err
+			}
 			updated.Provider, updated.Settings = providerSMTP, []byte("{}")
 		}
 		settingsJSON := current.CredentialSettingsJson
@@ -739,8 +812,15 @@ func (s *server) PutCommunicationsChannelsById(ctx context.Context, req gen.PutC
 			}
 			settingsJSON = &newSettingsJSON
 		}
-		resp, err = channelResponseOf(channelRowFromChannel(updated), settingsJSON)
-		return err
+		if resp, err = channelResponseOf(channelRowFromChannel(updated), settingsJSON); err != nil {
+			return err
+		}
+		sync, err := oneChannelSync(ctx, txq, req.Id)
+		if err != nil {
+			return err
+		}
+		resp = withSync(resp, sync)
+		return nil
 	})
 	if txErr != nil {
 		if errors.Is(txErr, errChannelVanished) {
@@ -1040,8 +1120,16 @@ func (s *server) PostCommunicationsChannelsByIdProvider(ctx context.Context, req
 		if err := txq.DeleteChannelCredential(ctx, req.Id); err != nil {
 			return err
 		}
-		resp, err = channelResponseOf(channelRowFromChannel(updated), nil)
-		return err
+		// It receives from the switch on, never its past (M14).
+		sync, err := txq.InsertChannelSync(ctx, store.InsertChannelSyncParams{ChannelID: req.Id, Now: s.deps.Clock()})
+		if err != nil {
+			return err
+		}
+		if resp, err = channelResponseOf(channelRowFromChannel(updated), nil); err != nil {
+			return err
+		}
+		resp = withSync(resp, syncOfRow(sync))
+		return nil
 	})
 	switch {
 	case txErr == nil:

@@ -122,3 +122,21 @@ func counter(meter metric.Meter, logger *slog.Logger, name, description string) 
 	}
 	return c
 }
+
+// inboundMetrics are the mailbox sync's instruments (delivery D, a plan
+// addition beside the outbox's): one counter today.
+type inboundMetrics struct {
+	// cyclesFailed is communications.inbound.cycles_failed: +1 per cycle
+	// whose failure was recorded on its channel — a refusal (denied, gone,
+	// unknown) or any other failure to read or import — and not a cycle held
+	// for an unavailable provider, nor one that lost its lease.
+	cyclesFailed metric.Int64Counter
+}
+
+func newInboundMetrics(mp metric.MeterProvider, logger *slog.Logger) *inboundMetrics {
+	meter := mp.Meter(meterName)
+	return &inboundMetrics{
+		cyclesFailed: counter(meter, logger, "communications.inbound.cycles_failed",
+			"Mailbox sync cycles that failed to read or import a Microsoft 365 channel's mail."),
+	}
+}
