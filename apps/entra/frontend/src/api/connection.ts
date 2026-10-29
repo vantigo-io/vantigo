@@ -18,6 +18,7 @@ export type EntraAccount = Schemas["EntraAccount"];
 export type EntraProblem = Schemas["EntraProblem"];
 export type EntraGroup = Schemas["EntraGroup"];
 export type EntraOutlookConnect = Schemas["EntraOutlookConnect"];
+export type EntraMailChannels = Schemas["EntraMailChannels"];
 
 /**
  * The eight application permissions the module needs (research §3.6), in the

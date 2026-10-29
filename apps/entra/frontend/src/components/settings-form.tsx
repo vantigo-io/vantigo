@@ -20,6 +20,7 @@ import { useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import {
   type EntraConnection,
+  type EntraMailChannels,
   type EntraOutlookConnect,
   type EntraSettings,
   type EntraSettingsRequest,
@@ -43,6 +44,7 @@ interface SettingsValues {
   passUsableOnce: boolean;
   passDelivery: EntraSettings["passDelivery"];
   outlookConnect: boolean;
+  mailChannels: boolean;
 }
 
 const fieldNames = [
@@ -58,9 +60,14 @@ const fieldNames = [
   "passUsableOnce",
   "passDelivery",
   "outlookConnect",
+  "mailChannels",
 ] as const;
 
-const valuesOf = (settings: EntraSettings, outlookConnect: EntraOutlookConnect): SettingsValues => ({
+const valuesOf = (
+  settings: EntraSettings,
+  outlookConnect: EntraOutlookConnect,
+  mailChannels: EntraMailChannels,
+): SettingsValues => ({
   upnDomain: settings.upnDomain ?? "",
   upnPattern: settings.upnPattern,
   defaultUsageLocation: settings.defaultUsageLocation,
@@ -73,6 +80,7 @@ const valuesOf = (settings: EntraSettings, outlookConnect: EntraOutlookConnect):
   passUsableOnce: settings.passUsableOnce,
   passDelivery: settings.passDelivery,
   outlookConnect: outlookConnect.enabled,
+  mailChannels: mailChannels.enabled,
 });
 
 const requestOf = (values: SettingsValues): EntraSettingsRequest => ({
@@ -88,6 +96,7 @@ const requestOf = (values: SettingsValues): EntraSettingsRequest => ({
   passUsableOnce: values.passUsableOnce,
   passDelivery: values.passDelivery,
   outlookConnect: values.outlookConnect,
+  mailChannels: values.mailChannels,
 });
 
 const domainPattern = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/;
@@ -97,8 +106,8 @@ const passMinutes = { min: 10, max: 43200 };
  * Step 4, the account rules (`entra:manage`'s, not only the Owner's): the
  * UPN domain among the tenant's verified domains (free text before a test
  * has read them), the pattern, the usage location, the leaver steps, the
- * hire date, the Temporary Access Pass and the Outlook connection switch (Outlook
- * connection design M2), saved under If-Match on the
+ * hire date, the Temporary Access Pass, the Outlook connection switch (Outlook
+ * connection design M2) and the Mail channels switch (M10), saved under If-Match on the
  * connection's version; a stale version reloads, as Staff's forms do.
  */
 export const SettingsForm = ({ connection }: { connection: EntraConnection }) => {
@@ -107,7 +116,7 @@ export const SettingsForm = ({ connection }: { connection: EntraConnection }) =>
     formatters.formatDate(new Date(value), { dateStyle: "medium", timeStyle: "short" });
   const queryClient = useQueryClient();
   const form = useForm<SettingsValues>({
-    initialValues: valuesOf(connection.settings, connection.outlookConnect),
+    initialValues: valuesOf(connection.settings, connection.outlookConnect, connection.mailChannels),
     validate: {
       upnDomain: (value) => {
         const domain = value.trim().toLowerCase();
@@ -125,13 +134,17 @@ export const SettingsForm = ({ connection }: { connection: EntraConnection }) =>
   });
 
   // A pristine form follows the server, as Staff's settings forms do.
-  const loaded = JSON.stringify([connection.settings, connection.outlookConnect.enabled]);
+  const loaded = JSON.stringify([
+    connection.settings,
+    connection.outlookConnect.enabled,
+    connection.mailChannels.enabled,
+  ]);
   const [seeded, setSeeded] = useState(loaded);
   if (seeded !== loaded) {
     setSeeded(loaded);
     if (!form.isDirty()) {
-      form.setInitialValues(valuesOf(connection.settings, connection.outlookConnect));
-      form.setValues(valuesOf(connection.settings, connection.outlookConnect));
+      form.setInitialValues(valuesOf(connection.settings, connection.outlookConnect, connection.mailChannels));
+      form.setValues(valuesOf(connection.settings, connection.outlookConnect, connection.mailChannels));
     }
   }
 
@@ -299,6 +312,23 @@ export const SettingsForm = ({ connection }: { connection: EntraConnection }) =>
           </Stack>
           <OutlookConnectStatus outlookConnect={connection.outlookConnect} t={t} />
           <ChangeNotifications outlookConnect={connection.outlookConnect} t={t} formatTime={formatTime} />
+
+          <Title order={4} fz="h6" mt="xs">
+            {t("mailChannels")}
+          </Title>
+          <Switch
+            label={t("mailChannelsSwitch")}
+            description={t("mailChannelsDescription")}
+            {...form.getInputProps("mailChannels", { type: "checkbox" })}
+          />
+          <MailChannelsStatus mailChannels={connection.mailChannels} t={t} />
+          {form.values.mailChannels && (
+            <MailChannelsCommands
+              clientId={connection.clientId}
+              servicePrincipalId={connection.mailChannels.servicePrincipalId}
+              t={t}
+            />
+          )}
           <Group justify="flex-end">
             <Button type="submit" loading={save.isPending}>
               {t("saveSettings")}
@@ -402,6 +432,77 @@ const ChangeNotifications = ({
       <Text size="sm" c={colour}>
         {text}
       </Text>
+    </Stack>
+  );
+};
+
+/**
+ * Where the Mail channels stand, as the connection answers it (design M10):
+ * nothing while the switch is off, else ready (no mail permission reaching
+ * the whole tenant), tenant_wide (a warning, never a block), or waiting for
+ * the connection with its reason.
+ */
+const MailChannelsStatus = ({ mailChannels, t }: { mailChannels: EntraMailChannels; t: Translate }) => {
+  if (mailChannels.status === "off") return null;
+  const colour = { ready: "teal", tenant_wide: "orange", unavailable: "dimmed" }[mailChannels.status];
+  return (
+    <Stack gap={0} role="status" aria-label={t("mailChannels")}>
+      <Text size="sm" c={colour}>
+        {t(`mailChannelsStatus_${mailChannels.status}`)}
+      </Text>
+      {mailChannels.status === "unavailable" && mailChannels.reason && (
+        <Text size="sm" c="dimmed">
+          {reasonText(mailChannels.reason, t)}
+        </Text>
+      )}
+    </Stack>
+  );
+};
+
+/**
+ * The RBAC for Applications commands the administration guide's Mail channels
+ * procedure runs, with the client id and the service principal's object id
+ * filled in (a placeholder until a test has read it), ready to copy.
+ */
+const MailChannelsCommands = ({
+  clientId,
+  servicePrincipalId,
+  t,
+}: {
+  clientId?: string;
+  servicePrincipalId?: string;
+  t: Translate;
+}) => {
+  const app = clientId ?? t("mailChannelsClientIdPlaceholder");
+  const objectId = servicePrincipalId ?? t("mailChannelsObjectIdPlaceholder");
+  const scope = "Vantigo mail channels";
+  const commands = [
+    `New-ServicePrincipal -AppId ${app} -ObjectId ${objectId} -DisplayName "Vantigo"`,
+    `Set-Mailbox post@firma.no -CustomAttribute10 "Vantigo"`,
+    `New-ManagementScope -Name "${scope}" -RecipientRestrictionFilter "CustomAttribute10 -eq 'Vantigo'"`,
+    `New-ManagementRoleAssignment -App ${app} -Role "Application Mail Full Access" -CustomResourceScope "${scope}"`,
+    `New-ManagementRoleAssignment -App ${app} -Role "Application MailboxSettings.Read" -CustomResourceScope "${scope}"`,
+    `Test-ServicePrincipalAuthorization -Identity ${app} -Resource post@firma.no`,
+  ].join("\n");
+  return (
+    <Stack gap={4} role="group" aria-label={t("mailChannelsCommands")}>
+      <Text size="sm" fw={500}>
+        {t("mailChannelsCommands")}
+      </Text>
+      <Text size="sm" c="dimmed">
+        {t("mailChannelsCommandsDescription")}
+      </Text>
+      {!servicePrincipalId && (
+        <Text size="sm" c="orange">
+          {t("mailChannelsTestFirst")}
+        </Text>
+      )}
+      <Group gap={4} wrap="nowrap" align="flex-start">
+        <Code block style={{ flex: 1, minWidth: 0 }}>
+          {commands}
+        </Code>
+        <CopyValue value={commands} />
+      </Group>
     </Stack>
   );
 };

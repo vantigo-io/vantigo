@@ -625,6 +625,184 @@ describe("EntraPage — the Outlook connection", () => {
   });
 });
 
+describe("EntraPage — the Mail channels", () => {
+  const SERVICE_PRINCIPAL_ID = "55555555-5555-4555-8555-555555555555";
+
+  /** The six commands as the page shows them, with the client id and the object id it was given. */
+  const commandsWith = (clientId: string, objectId: string) =>
+    [
+      `New-ServicePrincipal -AppId ${clientId} -ObjectId ${objectId} -DisplayName "Vantigo"`,
+      `Set-Mailbox post@firma.no -CustomAttribute10 "Vantigo"`,
+      `New-ManagementScope -Name "Vantigo mail channels" -RecipientRestrictionFilter "CustomAttribute10 -eq 'Vantigo'"`,
+      `New-ManagementRoleAssignment -App ${clientId} -Role "Application Mail Full Access" -CustomResourceScope "Vantigo mail channels"`,
+      `New-ManagementRoleAssignment -App ${clientId} -Role "Application MailboxSettings.Read" -CustomResourceScope "Vantigo mail channels"`,
+      `Test-ServicePrincipalAuthorization -Identity ${clientId} -Resource post@firma.no`,
+    ].join("\n");
+
+  const form = () => within(region("Set the account rules")).getByRole("form", { name: "Account rules" });
+
+  it("is off by default, with no status and no commands", async () => {
+    await openPage({ connection: connected() });
+    const toggle = within(form()).getByRole("switch", {
+      name: /^Mail channels: let Communications send and receive through Exchange Online shared mailboxes/,
+    });
+    expect(toggle).not.toBeChecked();
+    expect(within(form()).getByText("Mail channels")).toBeInTheDocument();
+    expect(within(form()).queryByRole("status", { name: "Mail channels" })).not.toBeInTheDocument();
+    expect(within(form()).queryByText(/New-ServicePrincipal/)).not.toBeInTheDocument();
+  });
+
+  it("is sent as mailChannels with the account rules, then reads Ready with the commands", async () => {
+    const { fetchMock } = await openPage({
+      connection: connected({
+        mailChannels: { enabled: false, status: "off", servicePrincipalId: SERVICE_PRINCIPAL_ID },
+      }),
+    });
+    await userEvent.click(within(form()).getByRole("switch", { name: /^Mail channels: let Communications/ }));
+    // The commands follow the switch at once, before it is saved.
+    expect(within(form()).getByText(/^New-ServicePrincipal/)).toBeInTheDocument();
+    await userEvent.click(within(form()).getByRole("button", { name: "Save the account rules" }));
+
+    await waitFor(() => expect(sentAll(fetchMock, "PUT")).toHaveLength(1));
+    expect(sent(fetchMock, "PUT")).toMatchObject({
+      url: "/api/v1/entra/connection/settings",
+      headers: { "if-match": "4" },
+      body: { mailChannels: true, outlookConnect: false },
+    });
+    const status = await within(form()).findByRole("status", { name: "Mail channels" });
+    expect(within(status).getByText(/^Ready: the application holds no mail permission/)).toBeInTheDocument();
+    expect(within(form()).getByRole("switch", { name: /^Mail channels: let/ })).toBeChecked();
+  });
+
+  it("warns once saved when the token carries a tenant-wide Mail role", async () => {
+    await openPage({ connection: connected({ permissionsPresent: [...requiredPermissions, "Mail.Send"] }) });
+    await userEvent.click(within(form()).getByRole("switch", { name: /^Mail channels: let Communications/ }));
+    await userEvent.click(within(form()).getByRole("button", { name: "Save the account rules" }));
+    const status = await within(form()).findByRole("status", { name: "Mail channels" });
+    expect(within(status).getByText(/^Mail access is granted to every mailbox in the tenant\./)).toBeInTheDocument();
+  });
+
+  it("turns off without asking", async () => {
+    const { fetchMock } = await openPage({
+      connection: connected({ mailChannels: { enabled: true, status: "ready" } }),
+    });
+    await userEvent.click(within(form()).getByRole("switch", { name: /^Mail channels: let/ }));
+    expect(within(form()).queryByText(/New-ServicePrincipal/)).not.toBeInTheDocument();
+    await userEvent.click(within(form()).getByRole("button", { name: "Save the account rules" }));
+    await waitFor(() => expect(sentAll(fetchMock, "PUT")).toHaveLength(1));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(sent(fetchMock, "PUT").body).toMatchObject({ mailChannels: false });
+    await waitFor(() =>
+      expect(within(form()).queryByRole("status", { name: "Mail channels" })).not.toBeInTheDocument(),
+    );
+  });
+
+  const statuses = [
+    {
+      status: "ready",
+      colour: "teal",
+      text: /^Ready: the application holds no mail permission for the whole tenant\./,
+    },
+    {
+      status: "tenant_wide",
+      colour: "orange",
+      text: "Mail access is granted to every mailbox in the tenant. Limit it with RBAC for Applications and remove the tenant-wide consent.",
+    },
+    { status: "unavailable", colour: "dimmed", text: "Waiting for the connection" },
+  ] as const;
+  for (const c of statuses)
+    it(`reads the status ${c.status} in its colour`, async () => {
+      await openPage({ connection: connected({ mailChannels: { enabled: true, status: c.status } }) });
+      const status = within(form()).getByRole("status", { name: "Mail channels" });
+      const line = within(status).getByText(c.text);
+      expect(line.getAttribute("style")).toContain(`--mantine-color-${c.colour}`);
+    });
+
+  it("waits for the connection while it is failing, saying why", async () => {
+    await openPage({
+      connection: connected({
+        status: "failing",
+        statusReason: "credential_invalid",
+        mailChannels: { enabled: true, status: "unavailable", reason: "credential_invalid" },
+      }),
+    });
+    const status = within(form()).getByRole("status", { name: "Mail channels" });
+    expect(within(status).getByText("Waiting for the connection")).toBeInTheDocument();
+    expect(within(status).getByText(/The tenant refused the client secret/)).toBeInTheDocument();
+  });
+
+  it("fills the commands with the client id and the service principal's object id, and copies them", async () => {
+    const user = userEvent.setup();
+    await openPage({
+      connection: connected({
+        mailChannels: { enabled: true, status: "ready", servicePrincipalId: SERVICE_PRINCIPAL_ID },
+      }),
+    });
+    const commands = within(form()).getByRole("group", { name: "Commands for Exchange Online PowerShell" });
+    const expected = commandsWith(CLIENT_ID, SERVICE_PRINCIPAL_ID);
+    expect(within(commands).getByText(/^New-ServicePrincipal/).textContent).toBe(expected);
+    expect(within(commands).queryByText(/^Test the connection first/)).not.toBeInTheDocument();
+    expect(within(commands).getByText(/^Run them as an Exchange Administrator\./)).toBeInTheDocument();
+    await user.click(within(commands).getByRole("button", { name: /^Copy New-ServicePrincipal/ }));
+    expect(await navigator.clipboard.readText()).toBe(expected);
+  });
+
+  it("leaves a placeholder for the object id until a test has read it, and says to test first", async () => {
+    await openPage({ connection: connected({ mailChannels: { enabled: true, status: "ready" } }) });
+    const commands = within(form()).getByRole("group", { name: "Commands for Exchange Online PowerShell" });
+    expect(within(commands).getByText(/^New-ServicePrincipal/).textContent).toBe(
+      commandsWith(CLIENT_ID, "<object id>"),
+    );
+    expect(
+      within(commands).getByText(
+        "Test the connection first: the test reads the application's object id under Enterprise applications and fills it in here.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("speaks Norwegian: the switch, the status, the commands' placeholder and the hint", async () => {
+    setLanguagePreference("nb");
+    try {
+      stubEntraApi({ connection: connected({ mailChannels: { enabled: true, status: "ready" } }) });
+      renderWithProviders(<EntraPage signIn={() => null} provisioning={() => null} />);
+      expect(
+        await screen.findByRole("switch", {
+          name: /^E-postkanaler: la Kommunikasjon sende og motta gjennom delte postbokser i Exchange Online/,
+        }),
+      ).toBeChecked();
+      expect(screen.getByText("E-postkanaler")).toBeInTheDocument();
+      const status = screen.getByRole("status", { name: "E-postkanaler" });
+      expect(
+        within(status).getByText(/^Klar: applikasjonen har ingen e-posttillatelse for hele leietakeren\./),
+      ).toBeInTheDocument();
+      const commands = screen.getByRole("group", { name: "Kommandoer for Exchange Online PowerShell" });
+      expect(within(commands).getByText(/^New-ServicePrincipal/).textContent).toBe(
+        commandsWith(CLIENT_ID, "<objekt-ID>"),
+      );
+      expect(within(commands).getByText(/^Test tilkoblingen først:/)).toBeInTheDocument();
+      expect(within(commands).getByText(/^Kjør dem som Exchange-administrator\./)).toBeInTheDocument();
+    } finally {
+      setLanguagePreference("auto");
+    }
+  });
+
+  it("warns in Norwegian that every mailbox is reachable", async () => {
+    setLanguagePreference("nb");
+    try {
+      stubEntraApi({ connection: connected({ mailChannels: { enabled: true, status: "tenant_wide" } }) });
+      renderWithProviders(<EntraPage signIn={() => null} provisioning={() => null} />);
+      const status = await screen.findByRole("status", { name: "E-postkanaler" });
+      expect(
+        within(status).getByText(
+          "Applikasjonen har tilgang til alle postboksene i leietakeren. Begrens den med RBAC for Applications, og fjern samtykket som gjelder hele leietakeren.",
+        ),
+      ).toBeInTheDocument();
+    } finally {
+      setLanguagePreference("auto");
+    }
+  });
+});
+
 describe("EntraPage — permissions Vantigo does not use", () => {
   it("warns on the Status card, naming each, while the connection stays connected", async () => {
     await openPage({

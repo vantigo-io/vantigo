@@ -153,6 +153,9 @@ export type EntraStub = StubbedFetch & { state: EntraState };
 const entraProblem = (status: number, code: string, extra: Record<string, unknown> = {}) =>
   problemResponse(status, `refused: ${code}`, { code, ...extra });
 
+/** The application roles that reach every mailbox in the tenant, reported as mailChannels' tenant_wide while the switch is on (design M10). */
+const tenantWideMail = ["Mail.Read", "Mail.ReadBasic", "Mail.ReadBasic.All", "Mail.ReadWrite", "Mail.Send"];
+
 const guid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 /**
@@ -322,12 +325,17 @@ export const stubEntraApi = (server: EntraServer = {}): EntraStub => {
     if (method === "PUT" && path === "/api/v1/entra/connection/settings") {
       const refused = stale(init);
       if (refused) return refused;
-      const { outlookConnect, ...request } = body as Partial<EntraSettings> & { outlookConnect?: boolean };
+      const { outlookConnect, mailChannels, ...request } = body as Partial<EntraSettings> & {
+        outlookConnect?: boolean;
+        mailChannels?: boolean;
+      };
       if (request.upnDomain && c.verifiedDomains.length > 0 && !c.verifiedDomains.includes(request.upnDomain))
         return problemResponse(400, "Validation failed", {
           errors: { upnDomain: ["The domain must be one of the tenant's verified domains."] },
         });
       const sync = outlookConnect ?? c.outlookConnect.enabled;
+      const mail = mailChannels ?? c.mailChannels.enabled;
+      const servicePrincipalId = c.mailChannels.servicePrincipalId;
       state.connection = {
         ...c,
         settings: { ...c.settings, ...request },
@@ -341,6 +349,16 @@ export const stubEntraApi = (server: EntraServer = {}): EntraStub => {
           reconnect: c.outlookConnect.reconnect,
           redirectUri: c.outlookConnect.redirectUri,
           notifications: c.outlookConnect.notifications,
+        },
+        mailChannels: {
+          ...(!mail
+            ? { enabled: false, status: "off" as const }
+            : c.status !== "connected"
+              ? { enabled: true, status: "unavailable" as const, ...(c.statusReason ? { reason: c.statusReason } : {}) }
+              : c.permissionsPresent.some((role) => tenantWideMail.includes(role))
+                ? { enabled: true, status: "tenant_wide" as const }
+                : { enabled: true, status: "ready" as const }),
+          ...(servicePrincipalId ? { servicePrincipalId } : {}),
         },
         version: c.version + 1,
       };
