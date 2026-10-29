@@ -2,7 +2,7 @@ import type { Appointment } from "../api/appointments";
 import type { CalendarContact } from "../api/contacts";
 import type { FeedAddress, FeedAddresses, FeedVariant } from "../api/feed";
 import type { CalendarItem, CalendarItems } from "../api/items";
-import type { MailboxSync, MailboxSyncWrite } from "../api/mailbox-sync";
+import { type MailboxSync, type MailboxSyncWrite, mailboxSyncCanRun } from "../api/mailbox-sync";
 import type { CalendarMeta } from "../api/meta";
 import type { CalendarSubscription } from "../api/subscriptions";
 import type { CalendarUser } from "../api/users";
@@ -181,7 +181,7 @@ export const stubCalendarServer = (server: CalendarServer = {}): StubbedFetch =>
         if (ifMatch !== mailboxSync.revision)
           return Promise.resolve(problemResponse(409, "Conflict", { code: "revision_mismatch" }));
         const write = JSON.parse(String(init?.body)) as MailboxSyncWrite;
-        if (write.enabled && mailboxSync.availability !== "available")
+        if (write.enabled && !mailboxSyncCanRun(mailboxSync.availability))
           return Promise.resolve(
             problemResponse(409, "Conflict", { code: "mailbox_sync_unavailable", detail: mailboxSync.availability }),
           );
@@ -190,7 +190,7 @@ export const stubCalendarServer = (server: CalendarServer = {}): StubbedFetch =>
         return Promise.resolve(jsonResponse(200, mailboxSync));
       }
       if (path === "/mailbox-sync/run" && method === "POST") {
-        if (!mailboxSync.enabled || mailboxSync.availability !== "available")
+        if (!mailboxSync.enabled || !mailboxSyncCanRun(mailboxSync.availability))
           return Promise.resolve(
             problemResponse(409, "Conflict", { code: "mailbox_sync_unavailable", detail: mailboxSync.availability }),
           );

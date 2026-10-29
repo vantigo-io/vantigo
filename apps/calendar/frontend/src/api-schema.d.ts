@@ -813,15 +813,15 @@ export interface components {
          * @enum {string}
          */
         FeedVariant: "full" | "busy";
-        /** @description The caller's Outlook sync (calendar Outlook sync design O5): their setting, the worker's state, and whether it can run. availability is available, or why not — switch_off (an Owner has not turned on Calendar sync in the Entra module), no_provider (no enabled module writes mailboxes), unavailable (the provider's connection is not working), permission_missing (reserved and no longer answered: the calendar permission may be granted with Exchange RBAC for Applications, which no token shows, so a mailbox outside the grant is the sync's mailbox_denied error instead) or no_account (the caller has no account in the directory that Staff links to them). availableKinds are the kinds the caller may choose: the appointment kind and the kinds the calendar sources declare today. state is pending (on, not yet synced), active, stopping (the copies are being removed), off, unavailable or failed; error is the last refusal's code, absent after a sync that worked. A caller who never turned it on is answered the defaults at revision 0. */
+        /** @description The caller's Outlook sync (calendar Outlook sync design O5, on the person's own Outlook connection, Outlook connection design M9): their setting, the worker's state, and whether it can run. availability is available, or why not — switch_off (an Owner has not turned on the Outlook connection in the Entra module), no_provider (no enabled module writes mailboxes), unavailable (the provider's connection is not working), no_account (the caller has no account in the directory that Staff links to them), not_connected (the caller has not connected Outlook, or their connection closed: the worker's last finding) or reconnect (Microsoft refused the caller's connection; they reconnect: the worker's last finding). A PUT and Sync now are taken while it is available, not_connected or reconnect. availableKinds are the kinds the caller may choose: the appointment kind and the kinds the calendar sources declare today. state is pending (on, not yet synced), active, stopping (the copies are being removed), off, unavailable or failed; error is the last refusal's code, absent after a sync that worked. A caller who never turned it on is answered the defaults at revision 0. */
         MailboxSync: {
             /** @enum {string} */
-            availability: "available" | "switch_off" | "no_provider" | "unavailable" | "permission_missing" | "no_account";
+            availability: "available" | "switch_off" | "no_provider" | "unavailable" | "no_account" | "not_connected" | "reconnect";
             availableKinds: components["schemas"]["MailboxSyncKind"][];
             detail: components["schemas"]["MailboxSyncDetail"];
             enabled: boolean;
             /** @enum {string} */
-            error?: "no_account" | "mailbox_denied" | "mailbox_gone" | "unavailable" | "failed";
+            error?: "no_account" | "mailbox_denied" | "mailbox_gone" | "unavailable" | "failed" | "not_connected" | "reconnect";
             kinds: string[];
             /**
              * Format: date-time
