@@ -476,7 +476,9 @@ minute or two, or at once with **Sync now**; the card notices by itself, with no
 your organisation's sign-in rules asked for it, or a long time passed. The card then says
 **Microsoft wants you to sign in again: choose Reconnect Outlook above.** The sync pauses,
 and what is in Outlook stays as it was, until you choose **Reconnect Outlook** and sign
-in; then it picks up where it left off.
+in; then it picks up where it left off. If you turn the sync off while it waits for you
+to reconnect, the card still shows **Reconnect Outlook**: Vantigo needs you to reconnect
+once to remove what it put in your Outlook.
 
 Each change is saved as you make it. The card then says **Waiting for the first
 sync…**, and soon **Last synced** and when. Vantigo syncs every quarter of an hour, and

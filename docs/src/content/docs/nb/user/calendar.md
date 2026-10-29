@@ -482,7 +482,10 @@ gjort det, synkroniserer Vantigo innen et par minutter, eller med en gang med
 endret, organisasjonens påloggingsregler krevde det, eller det har gått lang tid. Kortet
 sier da **Microsoft vil at du logger på igjen: velg Koble til Outlook på nytt ovenfor.**
 Synkroniseringen tar en pause, og det som ligger i Outlook, blir som det var, til du
-velger **Koble til Outlook på nytt** og logger på; så fortsetter den der den slapp.
+velger **Koble til Outlook på nytt** og logger på; så fortsetter den der den slapp. Slår
+du av synkroniseringen mens den venter på at du kobler til på nytt, viser kortet fortsatt
+**Koble til Outlook på nytt**: Vantigo trenger at du kobler til én gang til for å fjerne
+det den har lagt i Outlook.
 
 Hver endring lagres med en gang. Kortet sier så **Venter på den første
 synkroniseringen …**, og snart **Sist synkronisert** og når. Vantigo synkroniserer hvert
