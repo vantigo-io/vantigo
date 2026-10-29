@@ -1,0 +1,24 @@
+From: forwarder@example.com
+To: post@example.com
+Subject: Fwd: Original
+Date: Thu, 29 Oct 2026 09:20:00 +0100
+Message-ID: <fwd-1@example.com>
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="MIX"
+
+--MIX
+Content-Type: text/plain; charset=utf-8
+
+Forwarding this one.
+--MIX
+Content-Type: message/rfc822
+Content-Disposition: inline
+
+From: original@example.com
+To: forwarder@example.com
+Subject: Original
+Message-ID: <orig-1@example.com>
+Content-Type: text/plain
+
+The original body, which is not read as this message's body.
+--MIX--

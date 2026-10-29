@@ -1,0 +1,25 @@
+{
+  "messageId": "<auto-reply-suppress.eml@example.com>",
+  "inReplyTo": "<outbound-1@vantigo.invalid>",
+  "references": null,
+  "from": {
+    "Name": "",
+    "Address": "noreply@example.com"
+  },
+  "to": [
+    {
+      "Name": "",
+      "Address": "post@example.com"
+    }
+  ],
+  "cc": null,
+  "subject": "Automatic reply: Your message",
+  "date": "2026-10-29T08:30:00Z",
+  "autoSubmitted": true,
+  "text": "I am out of the office.",
+  "html": "",
+  "htmlDropped": false,
+  "attachments": null,
+  "droppedAttachments": 0,
+  "skippedParts": 0
+}

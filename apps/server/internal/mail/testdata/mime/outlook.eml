@@ -1,0 +1,44 @@
+Received: from AM0PR01MB1234.eurprd01.prod.exchangelabs.com (2603:10a6:208::1)
+ by AM0PR01MB5678.eurprd01.prod.exchangelabs.com with HTTPS; Thu, 29 Oct 2026
+ 09:00:01 +0000
+Received: from mail.example.no (192.0.2.10) by
+ AM0PR01MB1234.mail.protection.outlook.com (10.0.0.1) with Microsoft SMTP
+ Server id 15.20.1234.5 via Frontend Transport; Thu, 29 Oct 2026 09:00:00 +0000
+From: Kunde AS <faktura@kunde.example.no>
+To: Post <post@example.com>
+CC: "Regnskap" <REGNSKAP@kunde.example.no>
+Subject: RE: Tilbud
+Thread-Topic: Tilbud
+Thread-Index: AQHZ1234567890abcdef==
+Date: Thu, 29 Oct 2026 09:00:00 +0000
+Message-ID: <AM0PR01MB1234ABCD@AM0PR01MB1234.eurprd01.prod.exchangelabs.com>
+References: <0123456789abcdef0123456789abcdef@vantigo.invalid>
+In-Reply-To: <0123456789abcdef0123456789abcdef@vantigo.invalid>
+Accept-Language: nb-NO, en-US
+Content-Language: nb-NO
+X-MS-Exchange-Organization-AuthAs: Anonymous
+X-MS-Has-Attach:
+X-MS-TNEF-Correlator:
+X-MS-Exchange-Organization-SCL: 1
+X-MS-Exchange-CrossTenant-Id: 00000000-0000-0000-0000-000000000000
+Content-Type: multipart/alternative;
+	boundary="_000_AM0PR01MB1234ABCD_"
+MIME-Version: 1.0
+
+--_000_AM0PR01MB1234ABCD_
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: base64
+
+VGFrayBmb3IgdGlsYnVkZXQuIFZpIGfDpXIgdmlkZXJlLg0KDQpNZWQgdmVubmxpZyBoaWxzZW4N
+Ckt1bmRlIEFTDQo=
+
+--_000_AM0PR01MB1234ABCD_
+Content-Type: text/html; charset="utf-8"
+Content-Transfer-Encoding: quoted-printable
+
+<html><head><meta http-equiv=3D"Content-Type" content=3D"text/html; charset=
+=3Dutf-8"><style>.MsoNormal{margin:0}</style></head><body><div class=3D"Mso=
+Normal" style=3D"font-family:Calibri,sans-serif;font-size:11pt;position:abs=
+olute">Takk for tilbudet. Vi g=C3=A5r videre.</div></body></html>
+
+--_000_AM0PR01MB1234ABCD_--

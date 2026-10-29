@@ -1,0 +1,34 @@
+{
+  "messageId": "<alt-1@example.com>",
+  "inReplyTo": "",
+  "references": null,
+  "from": {
+    "Name": "Ola Hansen",
+    "Address": "ola@example.com"
+  },
+  "to": [
+    {
+      "Name": "Post",
+      "Address": "post@example.com"
+    },
+    {
+      "Name": "Second, Person",
+      "Address": "second@example.com"
+    }
+  ],
+  "cc": [
+    {
+      "Name": "",
+      "Address": "copy@example.com"
+    }
+  ],
+  "subject": "Alternative bodies",
+  "date": "2026-10-28T14:00:00Z",
+  "autoSubmitted": false,
+  "text": "Hello in plain text, with a soft line break and æ.",
+  "html": "<p>Hello in <b>HTML</b>, æ.</p>",
+  "htmlDropped": false,
+  "attachments": null,
+  "droppedAttachments": 0,
+  "skippedParts": 0
+}

@@ -1,0 +1,25 @@
+{
+  "messageId": "<plain-1@mail.example.no>",
+  "inReplyTo": "",
+  "references": null,
+  "from": {
+    "Name": "Kari Nordmann",
+    "Address": "kari.nordmann@example.no"
+  },
+  "to": [
+    {
+      "Name": "",
+      "Address": "post@example.com"
+    }
+  ],
+  "cc": null,
+  "subject": "Spørsmål om faktura",
+  "date": "2026-10-27T08:15:00Z",
+  "autoSubmitted": false,
+  "text": "Hei,\n\nkan dere sende fakturaen på nytt?\n\nHilsen Kari",
+  "html": "",
+  "htmlDropped": false,
+  "attachments": null,
+  "droppedAttachments": 0,
+  "skippedParts": 0
+}

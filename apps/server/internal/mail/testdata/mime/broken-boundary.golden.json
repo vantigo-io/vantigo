@@ -1,0 +1,23 @@
+{
+  "error": "mail: the message could not be read: neither a From nor a body",
+  "messageId": "",
+  "inReplyTo": "",
+  "references": null,
+  "from": null,
+  "to": [
+    {
+      "Name": "",
+      "Address": "post@example.com"
+    }
+  ],
+  "cc": null,
+  "subject": "A boundary that never appears",
+  "date": "",
+  "autoSubmitted": false,
+  "text": "",
+  "html": "",
+  "htmlDropped": false,
+  "attachments": null,
+  "droppedAttachments": 0,
+  "skippedParts": 0
+}

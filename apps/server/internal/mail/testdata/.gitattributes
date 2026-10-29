@@ -1,0 +1,4 @@
+# The MIME corpus is parsed byte for byte: outlook.eml keeps the CRLF line
+# endings Exchange answers $value with, and latin1.eml and windows-1252.eml
+# their 8-bit bytes.
+mime/*.eml -text

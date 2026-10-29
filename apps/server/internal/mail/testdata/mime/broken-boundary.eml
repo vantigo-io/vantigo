@@ -1,0 +1,9 @@
+To: post@example.com
+Subject: A boundary that never appears
+Content-Type: multipart/mixed; boundary="NEVER"
+
+--WRONG
+Content-Type: text/plain
+
+Lost.
+--WRONG--

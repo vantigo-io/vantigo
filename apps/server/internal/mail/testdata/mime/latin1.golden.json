@@ -1,0 +1,25 @@
+{
+  "messageId": "<latin1-1@example.no>",
+  "inReplyTo": "",
+  "references": null,
+  "from": {
+    "Name": "Bjørn",
+    "Address": "bjorn@example.no"
+  },
+  "to": [
+    {
+      "Name": "",
+      "Address": "post@example.com"
+    }
+  ],
+  "cc": null,
+  "subject": "Latin-1",
+  "date": "2026-10-29T08:00:00Z",
+  "autoSubmitted": false,
+  "text": "Hei, dette er en prøve på æøå og ÆØÅ.",
+  "html": "",
+  "htmlDropped": false,
+  "attachments": null,
+  "droppedAttachments": 0,
+  "skippedParts": 0
+}

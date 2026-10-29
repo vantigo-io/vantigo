@@ -1,0 +1,34 @@
+{
+  "messageId": "<related-1@example.com>",
+  "inReplyTo": "",
+  "references": null,
+  "from": {
+    "Name": "",
+    "Address": "designer@example.com"
+  },
+  "to": [
+    {
+      "Name": "",
+      "Address": "post@example.com"
+    }
+  ],
+  "cc": null,
+  "subject": "Logo",
+  "date": "2026-10-28T14:05:00Z",
+  "autoSubmitted": false,
+  "text": "See the logo.",
+  "html": "<p>See the logo: <img src=\"cid:logo@example.com\" alt=\"logo\"></p>",
+  "htmlDropped": false,
+  "attachments": [
+    {
+      "fileName": "logo.png",
+      "contentType": "image/png",
+      "contentId": "logo@example.com",
+      "inline": true,
+      "size": 70,
+      "sha256": "6b7fa434f92a8b80aab02d9bf1a12e49ffcae424e4013a1c4f68b67e3d2bbcd0"
+    }
+  ],
+  "droppedAttachments": 0,
+  "skippedParts": 0
+}

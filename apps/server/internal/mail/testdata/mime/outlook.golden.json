@@ -1,0 +1,30 @@
+{
+  "messageId": "<AM0PR01MB1234ABCD@AM0PR01MB1234.eurprd01.prod.exchangelabs.com>",
+  "inReplyTo": "<0123456789abcdef0123456789abcdef@vantigo.invalid>",
+  "references": ["<0123456789abcdef0123456789abcdef@vantigo.invalid>"],
+  "from": {
+    "Name": "Kunde AS",
+    "Address": "faktura@kunde.example.no"
+  },
+  "to": [
+    {
+      "Name": "Post",
+      "Address": "post@example.com"
+    }
+  ],
+  "cc": [
+    {
+      "Name": "Regnskap",
+      "Address": "regnskap@kunde.example.no"
+    }
+  ],
+  "subject": "RE: Tilbud",
+  "date": "2026-10-29T09:00:00Z",
+  "autoSubmitted": false,
+  "text": "Takk for tilbudet. Vi går videre.\n\nMed vennlig hilsen\nKunde AS",
+  "html": "<html><head><meta http-equiv=\"Content-Type\" content=\"text/html; charset=utf-8\"><style>.MsoNormal{margin:0}</style></head><body><div class=\"MsoNormal\" style=\"font-family:Calibri,sans-serif;font-size:11pt;position:absolute\">Takk for tilbudet. Vi går videre.</div></body></html>\r\n",
+  "htmlDropped": false,
+  "attachments": null,
+  "droppedAttachments": 0,
+  "skippedParts": 0
+}

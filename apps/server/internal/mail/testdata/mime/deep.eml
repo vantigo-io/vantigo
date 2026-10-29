@@ -1,0 +1,61 @@
+From: nested@example.com
+To: post@example.com
+Subject: Twelve levels
+Date: Thu, 29 Oct 2026 10:00:00 +0100
+Message-ID: <deep-1@example.com>
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="TOP"
+
+--TOP
+Content-Type: text/plain
+
+Shallow text.
+--TOP
+Content-Type: multipart/mixed; boundary="D01"
+
+--D01
+Content-Type: multipart/mixed; boundary="D02"
+
+--D02
+Content-Type: multipart/mixed; boundary="D03"
+
+--D03
+Content-Type: multipart/mixed; boundary="D04"
+
+--D04
+Content-Type: multipart/mixed; boundary="D05"
+
+--D05
+Content-Type: multipart/mixed; boundary="D06"
+
+--D06
+Content-Type: multipart/mixed; boundary="D07"
+
+--D07
+Content-Type: multipart/mixed; boundary="D08"
+
+--D08
+Content-Type: multipart/mixed; boundary="D09"
+
+--D09
+Content-Type: multipart/mixed; boundary="D10"
+
+--D10
+Content-Type: multipart/mixed; boundary="D11"
+
+--D11
+Content-Type: text/plain
+
+Too deep to be read.
+--D11--
+--D10--
+--D09--
+--D08--
+--D07--
+--D06--
+--D05--
+--D04--
+--D03--
+--D02--
+--D01--
+--TOP--

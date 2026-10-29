@@ -1,0 +1,22 @@
+From: "Ola Hansen" <ola@example.com>
+To: Post <post@example.com>, "Second, Person" <second@example.com>
+Cc: copy@example.com
+Subject: Alternative bodies
+Date: Wed, 28 Oct 2026 14:00:00 +0000
+Message-ID: <alt-1@example.com>
+MIME-Version: 1.0
+Content-Type: multipart/alternative; boundary="ALT"
+
+--ALT
+Content-Type: text/plain; charset=utf-8
+Content-Transfer-Encoding: quoted-printable
+
+Hello in plain text, with a soft =
+line break and =C3=A6.
+--ALT
+Content-Type: text/html; charset=utf-8
+Content-Transfer-Encoding: base64
+
+PHA+SGVsbG8gaW4gPGI+SFRNTDwvYj4sIMOmLjwvcD4=
+
+--ALT--
