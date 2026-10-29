@@ -36,11 +36,19 @@ export const unconfigured = (): EntraConnection => ({
   verifiedDomains: [],
   permissionsPresent: [],
   permissionsMissing: [...requiredPermissions],
+  permissionsUnexpected: [],
   settings: defaultSettings(),
   credentials: [],
   accounts: { count: 0, enabled: 0, disabled: 0, deleted: 0 },
   groups: { count: 0 },
-  calendarSync: { enabled: false, status: "off", notifications: { status: "not_configured", subscriptions: 0 } },
+  outlookConnect: {
+    enabled: false,
+    status: "off",
+    connected: 0,
+    reconnect: 0,
+    redirectUri: "https://vantigo.example/api/v1/entra/outlook/callback",
+    notifications: { status: "not_configured", subscriptions: 0 },
+  },
   version: 1,
 });
 
@@ -64,12 +72,20 @@ export const connected = (overrides: Partial<EntraConnection> = {}): EntraConnec
   verifiedDomains: ["contoso.no", "contoso.onmicrosoft.com"],
   permissionsPresent: [...requiredPermissions],
   permissionsMissing: [],
+  permissionsUnexpected: [],
   lastCheckedAt: "2026-10-19T10:00:00Z",
   settings: { ...defaultSettings(), upnDomain: "contoso.no" },
   credentials: [credential()],
   accounts: { count: 3, enabled: 2, disabled: 1, deleted: 0 },
   groups: { count: 0 },
-  calendarSync: { enabled: false, status: "off", notifications: { status: "not_configured", subscriptions: 0 } },
+  outlookConnect: {
+    enabled: false,
+    status: "off",
+    connected: 0,
+    reconnect: 0,
+    redirectUri: "https://vantigo.example/api/v1/entra/outlook/callback",
+    notifications: { status: "not_configured", subscriptions: 0 },
+  },
   version: 4,
   ...overrides,
 });
@@ -236,6 +252,7 @@ export const stubEntraApi = (server: EntraServer = {}): EntraStub => {
         verifiedDomains: ["contoso.no"],
         permissionsPresent: [...requiredPermissions],
         permissionsMissing: [],
+        permissionsUnexpected: [],
         roleKnown: false,
       };
       state.connection = {
@@ -253,25 +270,28 @@ export const stubEntraApi = (server: EntraServer = {}): EntraStub => {
     if (method === "PUT" && path === "/api/v1/entra/connection/settings") {
       const refused = stale(init);
       if (refused) return refused;
-      const { calendarSync, ...request } = body as Partial<EntraSettings> & { calendarSync?: boolean };
+      const { outlookConnect, ...request } = body as Partial<EntraSettings> & { outlookConnect?: boolean };
       if (request.upnDomain && c.verifiedDomains.length > 0 && !c.verifiedDomains.includes(request.upnDomain))
         return problemResponse(400, "Validation failed", {
           errors: { upnDomain: ["The domain must be one of the tenant's verified domains."] },
         });
-      const sync = calendarSync ?? c.calendarSync.enabled;
+      const sync = outlookConnect ?? c.outlookConnect.enabled;
       // The calendar's permission is asked for only while the switch is on (calendar Outlook sync design O2).
       const lacksCalendar = !c.permissionsPresent.includes(CALENDAR_PERMISSION);
       const missing = c.permissionsMissing.filter((name) => name !== CALENDAR_PERMISSION);
       state.connection = {
         ...c,
         settings: { ...c.settings, ...request },
-        calendarSync: {
+        outlookConnect: {
           ...(!sync
             ? { enabled: false, status: "off" as const }
             : c.status !== "connected"
               ? { enabled: true, status: "unavailable" as const, ...(c.statusReason ? { reason: c.statusReason } : {}) }
-              : { enabled: true, status: lacksCalendar ? ("permission_missing" as const) : ("ready" as const) }),
-          notifications: c.calendarSync.notifications,
+              : { enabled: true, status: "untested" as const }),
+          connected: c.outlookConnect.connected,
+          reconnect: c.outlookConnect.reconnect,
+          redirectUri: c.outlookConnect.redirectUri,
+          notifications: c.outlookConnect.notifications,
         },
         permissionsMissing: sync && lacksCalendar ? [...missing, CALENDAR_PERMISSION] : missing,
         version: c.version + 1,

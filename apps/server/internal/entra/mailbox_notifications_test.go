@@ -153,7 +153,7 @@ func TestMailboxWatch_Creates(t *testing.T) {
 	if calls := g.Calls()[before:]; len(calls) != 0 {
 		t.Errorf("a live subscription with days left called %+v", calls)
 	}
-	if got := getConnection(t, mustOwner(t, h)).CalendarSync.Notifications; got.Status != gen.EntraCalendarSyncNotificationsStatusActive || got.Subscriptions != 1 {
+	if got := getConnection(t, mustOwner(t, h)).OutlookConnect.Notifications; got.Status != gen.EntraCalendarSyncNotificationsStatusActive || got.Subscriptions != 1 {
 		t.Errorf("notifications = %+v, want active with one", got)
 	}
 }
@@ -444,7 +444,7 @@ func TestMailboxWatch_Unreachable(t *testing.T) {
 		t.Error("a subscription or its row is left")
 	}
 	failedAt := h.Now()
-	notifications := getConnection(t, o).CalendarSync.Notifications
+	notifications := getConnection(t, o).OutlookConnect.Notifications
 	if notifications.Status != gen.EntraCalendarSyncNotificationsStatusUnreachable || notifications.UnreachableAt == nil || !notifications.UnreachableAt.Equal(failedAt) {
 		t.Errorf("notifications = %+v, want unreachable since %s", notifications, failedAt)
 	}
@@ -464,7 +464,7 @@ func TestMailboxWatch_Unreachable(t *testing.T) {
 		t.Fatalf("Watch after the hour: %v", err)
 	}
 	subscriptionOf(t, g, second)
-	notifications = getConnection(t, o).CalendarSync.Notifications
+	notifications = getConnection(t, o).OutlookConnect.Notifications
 	if notifications.Status != gen.EntraCalendarSyncNotificationsStatusActive || notifications.UnreachableAt != nil || notifications.Subscriptions != 1 {
 		t.Errorf("notifications = %+v, want active with one", notifications)
 	}
@@ -499,7 +499,7 @@ func TestMailboxWatch_Refusals(t *testing.T) {
 	}
 
 	mailbox := mailboxUser(t, h, g)
-	setCalendarSync(t, o, false)
+	setOutlookConnect(t, o, false)
 	if err := p.Watch(ctx, mailbox); !errors.Is(err, contracts.ErrMailboxUnavailable) {
 		t.Errorf("Watch in cleanup: %v, want ErrMailboxUnavailable", err)
 	}
@@ -582,7 +582,7 @@ func TestMailboxUnwatch(t *testing.T) {
 	if n := h.Count(t, `SELECT count(*) FROM entra.mailbox_subscriptions WHERE object_id = $1 AND state = 'deleting' AND subscription_id = $2`, mailbox, s.ID); n != 1 {
 		t.Error("the refused delete is not kept owed")
 	}
-	if got := getConnection(t, o).CalendarSync.Notifications.Subscriptions; got != 0 {
+	if got := getConnection(t, o).OutlookConnect.Notifications.Subscriptions; got != 0 {
 		t.Errorf("%d live subscriptions counted, want none while one is deleting", got)
 	}
 	g.EditUser(mailbox, func(u *graphtest.User) { u.MailboxDenied = false })
@@ -590,11 +590,11 @@ func TestMailboxUnwatch(t *testing.T) {
 
 	// Under cleanup the delete is made.
 	watch()
-	setCalendarSync(t, o, false)
+	setOutlookConnect(t, o, false)
 	unwatch("DELETE No Content")
 
 	// Unavailable: an expired row forgotten unasked, a live one refused.
-	setCalendarSync(t, o, true)
+	setOutlookConnect(t, o, true)
 	watch()
 	h.Exec(t, `UPDATE entra.credentials SET revoked_at = $1`, h.Now())
 	before := len(g.Calls())

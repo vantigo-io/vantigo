@@ -219,8 +219,9 @@ export const entraCatalog = {
     calendarSyncDescription:
       "Needs the Calendars.ReadWrite application permission. You can limit it to some mailboxes with Exchange RBAC for Applications.",
     calendarSyncStatus_ready: "Ready",
-    calendarSyncStatus_permission_missing:
-      "Calendars.ReadWrite is not in the token. That is expected if you granted it with Exchange RBAC for Applications; otherwise add it, grant admin consent and test again.",
+    calendarSyncStatus_untested: "Nobody has connected yet",
+    calendarSyncStatus_consent_missing:
+      "The last connect lacked a delegated permission: grant admin consent for it in the app registration and connect again.",
     calendarSyncStatus_unavailable: "Waiting for the connection",
     changeNotifications: "Change notifications",
     changeNotificationsNoneYet: "none yet",
@@ -596,8 +597,9 @@ export const entraCatalog = {
     calendarSyncDescription:
       "Krever applikasjonstillatelsen Calendars.ReadWrite. Du kan begrense den til enkelte postbokser med Exchange RBAC for Applications.",
     calendarSyncStatus_ready: "Klar",
-    calendarSyncStatus_permission_missing:
-      "Calendars.ReadWrite er ikke i tokenet. Det er som ventet hvis du ga den med Exchange RBAC for Applications; ellers legg den til, gi administratorsamtykke og test på nytt.",
+    calendarSyncStatus_untested: "Ingen har koblet til ennå",
+    calendarSyncStatus_consent_missing:
+      "Den siste tilkoblingen manglet en delegert tillatelse: gi administratorsamtykke for den i appregistreringen og koble til på nytt.",
     calendarSyncStatus_unavailable: "Venter på tilkoblingen",
     changeNotifications: "Endringsvarsler",
     changeNotificationsNoneYet: "ingen ennå",

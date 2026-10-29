@@ -17,8 +17,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import {
-  type EntraCalendarSync,
   type EntraConnection,
+  type EntraOutlookConnect,
   type EntraSettings,
   type EntraSettingsRequest,
   skusQueryOptions,
@@ -40,7 +40,7 @@ interface SettingsValues {
   passLifetimeMinutes: number | string;
   passUsableOnce: boolean;
   passDelivery: EntraSettings["passDelivery"];
-  calendarSync: boolean;
+  outlookConnect: boolean;
 }
 
 const fieldNames = [
@@ -55,10 +55,10 @@ const fieldNames = [
   "passLifetimeMinutes",
   "passUsableOnce",
   "passDelivery",
-  "calendarSync",
+  "outlookConnect",
 ] as const;
 
-const valuesOf = (settings: EntraSettings, calendarSync: EntraCalendarSync): SettingsValues => ({
+const valuesOf = (settings: EntraSettings, outlookConnect: EntraOutlookConnect): SettingsValues => ({
   upnDomain: settings.upnDomain ?? "",
   upnPattern: settings.upnPattern,
   defaultUsageLocation: settings.defaultUsageLocation,
@@ -70,7 +70,7 @@ const valuesOf = (settings: EntraSettings, calendarSync: EntraCalendarSync): Set
   passLifetimeMinutes: settings.passLifetimeMinutes,
   passUsableOnce: settings.passUsableOnce,
   passDelivery: settings.passDelivery,
-  calendarSync: calendarSync.enabled,
+  outlookConnect: outlookConnect.enabled,
 });
 
 const requestOf = (values: SettingsValues): EntraSettingsRequest => ({
@@ -85,7 +85,7 @@ const requestOf = (values: SettingsValues): EntraSettingsRequest => ({
   passLifetimeMinutes: Number(values.passLifetimeMinutes),
   passUsableOnce: values.passUsableOnce,
   passDelivery: values.passDelivery,
-  calendarSync: values.calendarSync,
+  outlookConnect: values.outlookConnect,
 });
 
 const domainPattern = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/;
@@ -95,8 +95,8 @@ const passMinutes = { min: 10, max: 43200 };
  * Step 4, the account rules (`entra:manage`'s, not only the Owner's): the
  * UPN domain among the tenant's verified domains (free text before a test
  * has read them), the pattern, the usage location, the leaver steps, the
- * hire date, the Temporary Access Pass and the calendar sync switch (calendar
- * Outlook sync design O2), saved under If-Match on the
+ * hire date, the Temporary Access Pass and the Outlook connection switch (Outlook
+ * connection design M2), saved under If-Match on the
  * connection's version; a stale version reloads, as Staff's forms do.
  */
 export const SettingsForm = ({ connection }: { connection: EntraConnection }) => {
@@ -105,7 +105,7 @@ export const SettingsForm = ({ connection }: { connection: EntraConnection }) =>
     formatters.formatDate(new Date(value), { dateStyle: "medium", timeStyle: "short" });
   const queryClient = useQueryClient();
   const form = useForm<SettingsValues>({
-    initialValues: valuesOf(connection.settings, connection.calendarSync),
+    initialValues: valuesOf(connection.settings, connection.outlookConnect),
     validate: {
       upnDomain: (value) => {
         const domain = value.trim().toLowerCase();
@@ -123,13 +123,13 @@ export const SettingsForm = ({ connection }: { connection: EntraConnection }) =>
   });
 
   // A pristine form follows the server, as Staff's settings forms do.
-  const loaded = JSON.stringify([connection.settings, connection.calendarSync.enabled]);
+  const loaded = JSON.stringify([connection.settings, connection.outlookConnect.enabled]);
   const [seeded, setSeeded] = useState(loaded);
   if (seeded !== loaded) {
     setSeeded(loaded);
     if (!form.isDirty()) {
-      form.setInitialValues(valuesOf(connection.settings, connection.calendarSync));
-      form.setValues(valuesOf(connection.settings, connection.calendarSync));
+      form.setInitialValues(valuesOf(connection.settings, connection.outlookConnect));
+      form.setValues(valuesOf(connection.settings, connection.outlookConnect));
     }
   }
 
@@ -268,10 +268,10 @@ export const SettingsForm = ({ connection }: { connection: EntraConnection }) =>
           <Switch
             label={t("calendarSyncSwitch")}
             description={t("calendarSyncDescription")}
-            {...form.getInputProps("calendarSync", { type: "checkbox" })}
+            {...form.getInputProps("outlookConnect", { type: "checkbox" })}
           />
-          <CalendarSyncStatus calendarSync={connection.calendarSync} t={t} />
-          <ChangeNotifications calendarSync={connection.calendarSync} t={t} formatTime={formatTime} />
+          <OutlookConnectStatus outlookConnect={connection.outlookConnect} t={t} />
+          <ChangeNotifications outlookConnect={connection.outlookConnect} t={t} formatTime={formatTime} />
           <Group justify="flex-end">
             <Button type="submit" loading={save.isPending}>
               {t("saveSettings")}
@@ -310,21 +310,23 @@ export const SettingsForm = ({ connection }: { connection: EntraConnection }) =>
 };
 
 /**
- * Where calendar sync stands, as the connection answers it: nothing while the
- * switch is off, else ready, waiting for the permission, or waiting for the
- * connection (with the connection's reason when it has one).
+ * Where the Outlook connection stands, as the connection answers it: nothing
+ * while the switch is off, else ready, untested, consent missing, or waiting
+ * for the connection (with the connection's reason when it has one).
  */
-const CalendarSyncStatus = ({ calendarSync, t }: { calendarSync: EntraCalendarSync; t: Translate }) => {
-  if (calendarSync.status === "off") return null;
-  const colour = { ready: "teal", permission_missing: "orange", unavailable: "dimmed" }[calendarSync.status];
+const OutlookConnectStatus = ({ outlookConnect, t }: { outlookConnect: EntraOutlookConnect; t: Translate }) => {
+  if (outlookConnect.status === "off") return null;
+  const colour = { ready: "teal", untested: "blue", consent_missing: "orange", unavailable: "dimmed" }[
+    outlookConnect.status
+  ];
   return (
     <Stack gap={0} role="status">
       <Text size="sm" c={colour}>
-        {t(`calendarSyncStatus_${calendarSync.status}`)}
+        {t(`calendarSyncStatus_${outlookConnect.status}`)}
       </Text>
-      {calendarSync.status === "unavailable" && calendarSync.reason && (
+      {outlookConnect.status === "unavailable" && outlookConnect.reason && (
         <Text size="sm" c="dimmed">
-          {reasonText(calendarSync.reason, t)}
+          {reasonText(outlookConnect.reason, t)}
         </Text>
       )}
     </Stack>
@@ -338,16 +340,16 @@ const CalendarSyncStatus = ({ calendarSync, t }: { calendarSync: EntraCalendarSy
  * arrive with the next sync instead.
  */
 const ChangeNotifications = ({
-  calendarSync,
+  outlookConnect,
   t,
   formatTime,
 }: {
-  calendarSync: EntraCalendarSync;
+  outlookConnect: EntraOutlookConnect;
   t: Translate;
   formatTime: (value: string) => string;
 }) => {
-  if (calendarSync.status === "off") return null;
-  const { status, subscriptions, lastNotificationAt, unreachableAt } = calendarSync.notifications;
+  if (outlookConnect.status === "off") return null;
+  const { status, subscriptions, lastNotificationAt, unreachableAt } = outlookConnect.notifications;
   const colour = { active: "teal", off: "dimmed", not_configured: "orange", unreachable: "orange" }[status];
   const text =
     status === "active"

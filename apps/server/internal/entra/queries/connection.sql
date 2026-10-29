@@ -46,8 +46,9 @@ RETURNING *;
 
 -- name: UpdateConnectionSettings :one
 -- UpdateConnectionSettings writes every account rule (step 4) and the
--- calendar sync switch (calendar Outlook sync design O2); the handler has
--- merged the request over the row, so a field the request left out is
+-- Outlook connection switch (Outlook connection design M2), with when it was
+-- turned on: moved only when this write turns it from off to on; the handler
+-- has merged the request over the row, so a field the request left out is
 -- written back as it was.
 UPDATE entra.connection SET
     upn_domain = @upn_domain,
@@ -61,7 +62,9 @@ UPDATE entra.connection SET
     pass_lifetime_minutes = @pass_lifetime_minutes,
     pass_usable_once = @pass_usable_once,
     pass_delivery = @pass_delivery,
-    calendar_sync = @calendar_sync,
+    outlook_connect = @outlook_connect,
+    outlook_connect_at = CASE WHEN @outlook_connect::boolean AND NOT outlook_connect
+        THEN @now::timestamptz ELSE outlook_connect_at END,
     version = version + 1,
     updated_at = @now::timestamptz,
     updated_by_user_id = @updated_by_user_id
@@ -138,3 +141,19 @@ WHERE id = 1
 -- POST needs (O11.5). It leaves version alone.
 UPDATE entra.connection SET notifications_validating_until = NULL
 WHERE id = 1 AND notifications_validating_until = @validating_until::timestamptz;
+
+-- name: SetOutlookLastError :exec
+-- SetOutlookLastError records a validated connect's failure the Owner must
+-- act on (consent_missing: the tenant has not consented to a feature's
+-- delegated permission), which outlookConnect's status shows until a
+-- connect works. It leaves version alone.
+UPDATE entra.connection SET
+    outlook_last_error = @code,
+    outlook_last_error_at = @now::timestamptz
+WHERE id = 1;
+
+-- name: ClearOutlookLastError :exec
+-- ClearOutlookLastError forgets the last connect's failure once a connect
+-- works. It leaves version alone.
+UPDATE entra.connection SET outlook_last_error = NULL, outlook_last_error_at = NULL
+WHERE id = 1 AND outlook_last_error IS NOT NULL;

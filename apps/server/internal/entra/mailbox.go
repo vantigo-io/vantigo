@@ -143,7 +143,7 @@ func (m *mailboxCalendar) Status(ctx context.Context) (contracts.MailboxStatus, 
 //     (statusOf), whether or not the last test's token carried
 //     Calendars.ReadWrite: a grant made with Exchange RBAC for Applications
 //     never shows in the token, so the role is advisory (GET /connection's
-//     permission_missing) and a mailbox outside the grant answers its own
+//     permissionsMissing) and a mailbox outside the grant answers its own
 //     403, ErrMailboxDenied (calendar Outlook sync design O2);
 //   - cleanup while the switch is off (switch_off) and a credential still
 //     works — the tenant and the client set, a secret unrevoked and
@@ -157,11 +157,11 @@ func mailboxStatusOf(conn store.EntraConnection, creds []store.EntraCredential, 
 	working := conn.TenantID != nil && conn.ClientID != nil && len(usableCredentials(creds, now)) > 0 &&
 		(status != contracts.ProviderFailing || reason != reasonCredentialInvalid)
 	switch {
-	case conn.CalendarSync && connected:
+	case conn.OutlookConnect && connected:
 		return contracts.MailboxStatus{State: contracts.MailboxAvailable}
-	case !conn.CalendarSync && working:
+	case !conn.OutlookConnect && working:
 		return contracts.MailboxStatus{State: contracts.MailboxCleanup, Reason: reasonSwitchOff}
-	case !conn.CalendarSync:
+	case !conn.OutlookConnect:
 		return contracts.MailboxStatus{State: contracts.MailboxUnavailable, Reason: reasonSwitchOff}
 	}
 	if reason == "" {
