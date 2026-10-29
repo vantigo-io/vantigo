@@ -2101,7 +2101,9 @@ id and the code. It never backs off, and it is not the six-hour retry of
   `available`; the first cycle parks them `not_connected`, with no clean-up (they never
   synced), and the card names the **Connect Outlook** button above it. A person who
   turns it off while waiting to reconnect is parked `stopping`: the clean-up runs once
-  they reconnect, or once Entra closes their connection.
+  they reconnect, or once Entra closes their connection. Such a row — `stopping`, error
+  `reconnect` — still answers the availability `reconnect`, so the card keeps showing
+  **Reconnect Outlook** with the toggle off, and the person can let the clean-up run.
 
 **Waking.** In the same step as the [notices](#change-notifications), each cycle and
 before anyone is claimed, the worker asks `Connections` for the connections that moved,
@@ -2109,11 +2111,13 @@ with its own cursor held in memory — initially now minus the poll interval, ad
 the latest `At` it marked, asked from 30 seconds before it, and from it exactly after a
 full page of 5000 — and marks them in one statement (`MarkMailboxSyncConnected`): per
 mailbox, compared case-insensitively, the latest change makes due at now the rows that
-are on or owe a clean-up, **last written before the change**, and not due already.
+are on or owe a clean-up, **last written before the change plus the 30-second overlap**,
+and not due already. The overlap makes a change committed while that person's own sync was
+running — or stamped by a replica whose clock is a little behind — still wake them; a
+change taken twice costs at most one extra parked sync.
 **Unlike a notice, a change overrides the backoff and the parking** — no `attempts`
 condition, no state filter: it changes what the next sync can do, and changes are per
-person and rare. A row written since the change is not marked, so a change taken twice
-marks nothing. If the statement fails, the cursor stays and the changes are asked for
+person and rare. A row written more than 30 seconds after the change is not marked. If the statement fails, the cursor stays and the changes are asked for
 again; a `Connections` that fails is logged at warning by its code and the cycle goes on.
 So a person who connects is synced within a cycle, and a disconnect, a leaver or a
 reconnect's refusal reaches their sync as soon.
