@@ -195,6 +195,25 @@ components:
                         - useSsl
                         - username
                     type: object
+                sync:
+                    description: 'Whether a Microsoft 365 channel receives: its mailbox sync''s state — pending (waiting for its first sync), active, failed or stopped —, the code of its last failure (mailbox_denied, mailbox_gone, mailbox_unknown, sync_failed, provider_unavailable) and when it last finished a sync; null for SMTP. Always answered; optional in the schema only because the recorded exchanges predate it.'
+                    nullable: true
+                    properties:
+                        error:
+                            nullable: true
+                            type: string
+                        lastSyncedAt:
+                            format: date-time
+                            nullable: true
+                            type: string
+                        state:
+                            type: string
+                    required:
+                        - state
+                        - error
+                        - lastSyncedAt
+                    type: object
+                    x-omitempty: false
                 type:
                     type: string
             required:
@@ -409,6 +428,10 @@ components:
                                 format: uuid
                                 nullable: true
                                 type: string
+                            autoSubmitted:
+                                description: An inbound message an automatic system sent — an out-of-office answer, a bounce, a list — by its Auto-Submitted, X-Auto-Response-Suppress, Precedence or X-Autoreply header. Always answered; optional in the schema only because the recorded exchanges predate it.
+                                type: boolean
+                                x-omitempty: false
                             createdAt:
                                 format: date-time
                                 type: string
@@ -480,12 +503,21 @@ components:
                                     - displayName
                                     - contactId
                                 type: object
+                            rawDownloadPath:
+                                description: Where the message as it was received — the original, RFC 5322, its HTML unsanitised — is downloaded, GET /api/v1/communications/messages/{id}/raw; null when Vantigo keeps no original (every message but an inbound one). Always answered; optional in the schema only because the recorded exchanges predate it.
+                                nullable: true
+                                type: string
+                                x-omitempty: false
                             subject:
                                 nullable: true
                                 type: string
                             textBody:
                                 nullable: true
                                 type: string
+                            unreadable:
+                                description: An inbound message Vantigo could not read; its text says so and its original is downloadable. Always answered; optional in the schema only because the recorded exchanges predate it.
+                                type: boolean
+                                x-omitempty: false
                         required:
                             - id
                             - direction
@@ -530,6 +562,7 @@ components:
                     nullable: true
                     type: string
                 replyRecipients:
+                    description: 'Who a reply answers, from the latest inbound message with a sender: replyTo is its sender and canReply whether there is one; replyAllCc the participants its Cc named — without the channel''s own address and the sender, distinct by address in any case, at most 100 — and canReplyAll whether there are any.'
                     properties:
                         canReply:
                             type: boolean
@@ -1033,6 +1066,7 @@ openapi: 3.0.3
 paths:
     /api/v1/communications/attachments/{id}/download:
         get:
+            description: A message's attachment. A clean one (the composer's) is answered as its declared media type; an unscanned one (received with an inbound message) as an attachment to save — Content-Disposition attachment with its file name — and as its media type only when that is passive (an image other than SVG, PDF, plain text, an Office document, zip), application/octet-stream otherwise.
             operationId: getCommunicationsAttachmentsByIdDownload
             parameters:
                 - in: path
@@ -1049,6 +1083,11 @@ paths:
                                 format: binary
                                 type: string
                     description: OK
+                    headers:
+                        Content-Disposition:
+                            description: attachment; filename*=UTF-8''… for an unscanned attachment; absent for a clean one.
+                            schema:
+                                type: string
                 "401":
                     content:
                         application/json:
@@ -2078,6 +2117,53 @@ paths:
             tags:
                 - TagEndpoints
             x-vantigo-access: permission:communications:conversations-manage
+    /api/v1/communications/messages/{id}/raw:
+        get:
+            description: The message as it was received, whole — RFC 5322, its HTML unsanitised, its attachments inside — as a file to save, message-{id}.eml. Vantigo never renders it. 404 when the message has no original (only an inbound message has one) or the object is gone.
+            operationId: getCommunicationsMessagesByIdRaw
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+            responses:
+                "200":
+                    content:
+                        message/rfc822:
+                            schema:
+                                format: binary
+                                type: string
+                    description: OK
+                    headers:
+                        Content-Disposition:
+                            description: attachment; filename="message-{id without dashes}.eml".
+                            schema:
+                                type: string
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+                "503":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CommunicationErrorResponse'
+                    description: Service Unavailable — attachment_storage_unavailable, the object store did not answer.
+            tags:
+                - ConversationEndpoints
+            x-vantigo-access: permission:communications:conversations-view
     /api/v1/communications/stats/attention:
         get:
             operationId: getCommunicationsStatsAttention

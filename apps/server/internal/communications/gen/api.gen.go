@@ -107,6 +107,13 @@ type ChannelResponse struct {
 		UseSsl   *bool   `json:"useSsl"`
 		Username *string `json:"username"`
 	} `json:"settings"`
+
+	// Sync Whether a Microsoft 365 channel receives: its mailbox sync's state — pending (waiting for its first sync), active, failed or stopped —, the code of its last failure (mailbox_denied, mailbox_gone, mailbox_unknown, sync_failed, provider_unavailable) and when it last finished a sync; null for SMTP. Always answered; optional in the schema only because the recorded exchanges predate it.
+	Sync *struct {
+		Error        *string    `json:"error"`
+		LastSyncedAt *time.Time `json:"lastSyncedAt"`
+		State        string     `json:"state"`
+	} `json:"sync"`
 	Type string `json:"type"`
 }
 
@@ -184,8 +191,11 @@ type ConversationDetailResponse struct {
 			SizeBytes         int64              `json:"sizeBytes"`
 		} `json:"attachments"`
 		AuthorUserId *openapi_types.UUID `json:"authorUserId"`
-		CreatedAt    time.Time           `json:"createdAt"`
-		Deliveries   []struct {
+
+		// AutoSubmitted An inbound message an automatic system sent — an out-of-office answer, a bounce, a list — by its Auto-Submitted, X-Auto-Response-Suppress, Precedence or X-Autoreply header. Always answered; optional in the schema only because the recorded exchanges predate it.
+		AutoSubmitted *bool     `json:"autoSubmitted"`
+		CreatedAt     time.Time `json:"createdAt"`
+		Deliveries    []struct {
 			AcceptedAt    *time.Time         `json:"acceptedAt"`
 			Attempts      int32              `json:"attempts"`
 			Destination   string             `json:"destination"`
@@ -205,8 +215,14 @@ type ConversationDetailResponse struct {
 			DisplayName *string            `json:"displayName"`
 			Id          openapi_types.UUID `json:"id"`
 		} `json:"participant"`
-		Subject  *string `json:"subject"`
-		TextBody *string `json:"textBody"`
+
+		// RawDownloadPath Where the message as it was received — the original, RFC 5322, its HTML unsanitised — is downloaded, GET /api/v1/communications/messages/{id}/raw; null when Vantigo keeps no original (every message but an inbound one). Always answered; optional in the schema only because the recorded exchanges predate it.
+		RawDownloadPath *string `json:"rawDownloadPath"`
+		Subject         *string `json:"subject"`
+		TextBody        *string `json:"textBody"`
+
+		// Unreadable An inbound message Vantigo could not read; its text says so and its original is downloadable. Always answered; optional in the schema only because the recorded exchanges predate it.
+		Unreadable *bool `json:"unreadable"`
 	} `json:"messages"`
 	Participants []struct {
 		Address     string             `json:"address"`
@@ -215,7 +231,9 @@ type ConversationDetailResponse struct {
 		DisplayName *string            `json:"displayName"`
 		Id          openapi_types.UUID `json:"id"`
 	} `json:"participants"`
-	PreviewText     *string `json:"previewText"`
+	PreviewText *string `json:"previewText"`
+
+	// ReplyRecipients Who a reply answers, from the latest inbound message with a sender: replyTo is its sender and canReply whether there is one; replyAllCc the participants its Cc named — without the channel's own address and the sender, distinct by address in any case, at most 100 — and canReplyAll whether there are any.
 	ReplyRecipients struct {
 		CanReply    bool `json:"canReply"`
 		CanReplyAll bool `json:"canReplyAll"`
@@ -571,6 +589,9 @@ type ServerInterface interface {
 
 	// (PUT /api/v1/communications/conversations/{id}/tags/{tagId})
 	PutCommunicationsConversationsByIdTagsByTagId(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, tagId openapi_types.UUID)
+
+	// (GET /api/v1/communications/messages/{id}/raw)
+	GetCommunicationsMessagesByIdRaw(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
 	// GetCommunicationsStatsAttention Get communications dashboard attention items
 	// (GET /api/v1/communications/stats/attention)
 	GetCommunicationsStatsAttention(w http.ResponseWriter, r *http.Request)
@@ -1306,6 +1327,32 @@ func (siw *ServerInterfaceWrapper) PutCommunicationsConversationsByIdTagsByTagId
 	handler.ServeHTTP(w, r)
 }
 
+// GetCommunicationsMessagesByIdRaw operation middleware
+func (siw *ServerInterfaceWrapper) GetCommunicationsMessagesByIdRaw(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetCommunicationsMessagesByIdRaw(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetCommunicationsStatsAttention operation middleware
 func (siw *ServerInterfaceWrapper) GetCommunicationsStatsAttention(w http.ResponseWriter, r *http.Request) {
 
@@ -1674,6 +1721,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/communications/conversations/{id}/reply", wrapper.PostCommunicationsConversationsByIdReply)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/communications/conversations/{id}/tags/{tagId}", wrapper.DeleteCommunicationsConversationsByIdTagsByTagId)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/communications/conversations/{id}/tags/{tagId}", wrapper.PutCommunicationsConversationsByIdTagsByTagId)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/communications/messages/{id}/raw", wrapper.GetCommunicationsMessagesByIdRaw)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/communications/stats/attention", wrapper.GetCommunicationsStatsAttention)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/communications/stats/summary", wrapper.GetCommunicationsStatsSummary)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/communications/stats/timeseries", wrapper.GetCommunicationsStatsTimeseries)
@@ -1695,8 +1743,13 @@ type GetCommunicationsAttachmentsByIdDownloadResponseObject interface {
 	VisitGetCommunicationsAttachmentsByIdDownloadResponse(w http.ResponseWriter) error
 }
 
+type GetCommunicationsAttachmentsByIdDownload200ResponseHeaders struct {
+	ContentDisposition *string
+}
+
 type GetCommunicationsAttachmentsByIdDownload200AsteriskResponse struct {
 	Body          io.Reader
+	Headers       GetCommunicationsAttachmentsByIdDownload200ResponseHeaders
 	ContentType   string
 	ContentLength int64
 }
@@ -1706,6 +1759,9 @@ func (response GetCommunicationsAttachmentsByIdDownload200AsteriskResponse) Visi
 	w.Header().Set("Content-Type", response.ContentType)
 	if response.ContentLength != 0 {
 		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	if response.Headers.ContentDisposition != nil {
+		w.Header().Set("Content-Disposition", fmt.Sprint(*response.Headers.ContentDisposition))
 	}
 	w.WriteHeader(200)
 
@@ -3427,6 +3483,92 @@ func (response PutCommunicationsConversationsByIdTagsByTagId404Response) VisitPu
 	return nil
 }
 
+type GetCommunicationsMessagesByIdRawRequestObject struct {
+	Id openapi_types.UUID `json:"id"`
+}
+
+type GetCommunicationsMessagesByIdRawResponseObject interface {
+	VisitGetCommunicationsMessagesByIdRawResponse(w http.ResponseWriter) error
+}
+
+type GetCommunicationsMessagesByIdRaw200ResponseHeaders struct {
+	ContentDisposition *string
+}
+
+type GetCommunicationsMessagesByIdRaw200Messagerfc822Response struct {
+	Body          io.Reader
+	Headers       GetCommunicationsMessagesByIdRaw200ResponseHeaders
+	ContentLength int64
+}
+
+func (response GetCommunicationsMessagesByIdRaw200Messagerfc822Response) VisitGetCommunicationsMessagesByIdRawResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", "message/rfc822")
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	if response.Headers.ContentDisposition != nil {
+		w.Header().Set("Content-Disposition", fmt.Sprint(*response.Headers.ContentDisposition))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type GetCommunicationsMessagesByIdRaw401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetCommunicationsMessagesByIdRaw401JSONResponse) VisitGetCommunicationsMessagesByIdRawResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCommunicationsMessagesByIdRaw403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetCommunicationsMessagesByIdRaw403JSONResponse) VisitGetCommunicationsMessagesByIdRawResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCommunicationsMessagesByIdRaw404Response struct {
+}
+
+func (response GetCommunicationsMessagesByIdRaw404Response) VisitGetCommunicationsMessagesByIdRawResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type GetCommunicationsMessagesByIdRaw503JSONResponse CommunicationErrorResponse
+
+func (response GetCommunicationsMessagesByIdRaw503JSONResponse) VisitGetCommunicationsMessagesByIdRawResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetCommunicationsStatsAttentionRequestObject struct {
 }
 
@@ -4033,6 +4175,9 @@ type StrictServerInterface interface {
 
 	// (PUT /api/v1/communications/conversations/{id}/tags/{tagId})
 	PutCommunicationsConversationsByIdTagsByTagId(ctx context.Context, request PutCommunicationsConversationsByIdTagsByTagIdRequestObject) (PutCommunicationsConversationsByIdTagsByTagIdResponseObject, error)
+
+	// (GET /api/v1/communications/messages/{id}/raw)
+	GetCommunicationsMessagesByIdRaw(ctx context.Context, request GetCommunicationsMessagesByIdRawRequestObject) (GetCommunicationsMessagesByIdRawResponseObject, error)
 	// GetCommunicationsStatsAttention Get communications dashboard attention items
 	// (GET /api/v1/communications/stats/attention)
 	GetCommunicationsStatsAttention(ctx context.Context, request GetCommunicationsStatsAttentionRequestObject) (GetCommunicationsStatsAttentionResponseObject, error)
@@ -4723,6 +4868,32 @@ func (sh *strictHandler) PutCommunicationsConversationsByIdTagsByTagId(w http.Re
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PutCommunicationsConversationsByIdTagsByTagIdResponseObject); ok {
 		if err := validResponse.VisitPutCommunicationsConversationsByIdTagsByTagIdResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetCommunicationsMessagesByIdRaw operation middleware
+func (sh *strictHandler) GetCommunicationsMessagesByIdRaw(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	var request GetCommunicationsMessagesByIdRawRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetCommunicationsMessagesByIdRaw(ctx, request.(GetCommunicationsMessagesByIdRawRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetCommunicationsMessagesByIdRaw")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetCommunicationsMessagesByIdRawResponseObject); ok {
+		if err := validResponse.VisitGetCommunicationsMessagesByIdRawResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
