@@ -1,6 +1,7 @@
 import {
   Alert,
   Button,
+  Code,
   Group,
   NumberInput,
   Select,
@@ -12,6 +13,7 @@ import {
   Title,
 } from "@mantine/core";
 import { useForm } from "@mantine/form";
+import { modals } from "@mantine/modals";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useI18n } from "@vantigo/frontend-shell";
@@ -26,7 +28,7 @@ import {
 } from "../api/connection";
 import { ENTRA_QUERY_KEY } from "../api/request";
 import { fieldRefusals, isStale, reasonText, refusalText, type Translate } from "../lib/words";
-import { PortalPath } from "./step-card";
+import { CopyValue, PortalPath } from "./step-card";
 
 interface SettingsValues {
   upnDomain: string;
@@ -155,6 +157,22 @@ export const SettingsForm = ({ connection }: { connection: EntraConnection }) =>
     },
   });
 
+  // Turning the switch off closes everyone's connection (design M7), so the page says so before it saves.
+  const submit = (values: SettingsValues) => {
+    const { enabled, connected, reconnect } = connection.outlookConnect;
+    if (!enabled || values.outlookConnect || connected + reconnect === 0) {
+      save.mutate(values);
+      return;
+    }
+    modals.openConfirmModal({
+      title: t("outlookConnectOffTitle"),
+      children: <Text size="sm">{t("outlookConnectOffBody")}</Text>,
+      labels: { confirm: t("outlookConnectOffConfirm"), cancel: t("cancel") },
+      confirmProps: { color: "red" },
+      onConfirm: () => save.mutate(values),
+    });
+  };
+
   const domains = connection.verifiedDomains;
   const choices = (keys: readonly string[], prefix: string) =>
     keys.map((key) => ({ value: key, label: t(`${prefix}_${key.replaceAll(".", "_")}`) }));
@@ -163,7 +181,7 @@ export const SettingsForm = ({ connection }: { connection: EntraConnection }) =>
 
   return (
     <Stack gap="sm">
-      <form onSubmit={form.onSubmit((values) => save.mutate(values))} aria-label={t("accountRules")}>
+      <form onSubmit={form.onSubmit(submit)} aria-label={t("accountRules")}>
         <Stack gap="sm">
           <SimpleGrid cols={{ base: 1, sm: 2 }}>
             {domains.length > 0 ? (
@@ -263,13 +281,22 @@ export const SettingsForm = ({ connection }: { connection: EntraConnection }) =>
           </Alert>
 
           <Title order={4} fz="h6" mt="xs">
-            {t("calendarSync")}
+            {t("outlookConnect")}
           </Title>
           <Switch
-            label={t("calendarSyncSwitch")}
-            description={t("calendarSyncDescription")}
+            label={t("outlookConnectSwitch")}
+            description={t("outlookConnectDescription")}
             {...form.getInputProps("outlookConnect", { type: "checkbox" })}
           />
+          <Stack gap={0}>
+            <Text size="sm" fw={500}>
+              {t("outlookRedirectUri")}
+            </Text>
+            <Group gap={4} wrap="nowrap">
+              <Code style={{ overflowWrap: "anywhere" }}>{connection.outlookConnect.redirectUri}</Code>
+              <CopyValue value={connection.outlookConnect.redirectUri} />
+            </Group>
+          </Stack>
           <OutlookConnectStatus outlookConnect={connection.outlookConnect} t={t} />
           <ChangeNotifications outlookConnect={connection.outlookConnect} t={t} formatTime={formatTime} />
           <Group justify="flex-end">
@@ -312,7 +339,8 @@ export const SettingsForm = ({ connection }: { connection: EntraConnection }) =>
 /**
  * Where the Outlook connection stands, as the connection answers it: nothing
  * while the switch is off, else ready, untested, consent missing, or waiting
- * for the connection (with the connection's reason when it has one).
+ * for the connection (with the connection's reason when it has one), and how
+ * many people are connected and waiting to reconnect.
  */
 const OutlookConnectStatus = ({ outlookConnect, t }: { outlookConnect: EntraOutlookConnect; t: Translate }) => {
   if (outlookConnect.status === "off") return null;
@@ -322,13 +350,16 @@ const OutlookConnectStatus = ({ outlookConnect, t }: { outlookConnect: EntraOutl
   return (
     <Stack gap={0} role="status">
       <Text size="sm" c={colour}>
-        {t(`calendarSyncStatus_${outlookConnect.status}`)}
+        {t(`outlookConnectStatus_${outlookConnect.status}`)}
       </Text>
       {outlookConnect.status === "unavailable" && outlookConnect.reason && (
         <Text size="sm" c="dimmed">
           {reasonText(outlookConnect.reason, t)}
         </Text>
       )}
+      <Text size="sm" c="dimmed">
+        {t("outlookConnectCounts", { connected: outlookConnect.connected, reconnect: outlookConnect.reconnect })}
+      </Text>
     </Stack>
   );
 };

@@ -38,6 +38,9 @@ export const entraCatalog = {
     permissionsMissingList: "Missing permissions ({{count}}):",
     permissionsMissing: "Missing permissions",
     permissionsPresentList: "Granted: {{names}}",
+    permissionsUnexpected: "The application holds permissions Vantigo does not use:",
+    permissionsUnexpectedHint:
+      "They may be left from an earlier setup, or wider than needed. Remove them under API permissions unless another product uses this registration.",
     accountsList: "The module's accounts",
     accountUpn: "User principal name",
     accountState: "State",
@@ -214,15 +217,22 @@ export const entraCatalog = {
     tapPolicy:
       "A Temporary Access Pass works only for users the tenant's authentication methods policy enables it for: turn it on for all users, or for a group every new account is in.",
     tapPolicyPath: "Protection › Authentication methods › Policies › Temporary Access Pass",
-    calendarSync: "Calendar sync",
-    calendarSyncSwitch: "Let people sync their Vantigo calendar to Outlook",
-    calendarSyncDescription:
-      "Needs the Calendars.ReadWrite application permission. You can limit it to some mailboxes with Exchange RBAC for Applications.",
-    calendarSyncStatus_ready: "Ready",
-    calendarSyncStatus_untested: "Nobody has connected yet",
-    calendarSyncStatus_consent_missing:
+    outlookConnect: "Outlook connection",
+    outlookConnectSwitch: "Outlook connection: let people connect their Outlook to Vantigo",
+    outlookConnectDescription:
+      "Each person connects their own Outlook under Settings › Connections, signing in to Microsoft once. Add the redirect URI below to the app registration's Web platform, and the delegated permissions openid, profile, offline_access and Calendars.ReadWrite with admin consent. Calendar sync still needs the Calendars.ReadWrite application permission.",
+    outlookConnectStatus_ready: "Ready",
+    outlookConnectStatus_untested:
+      "Nobody has connected yet: connect your own Outlook under Settings › Connections to check that it works.",
+    outlookConnectStatus_consent_missing:
       "The last connect lacked a delegated permission: grant admin consent for it in the app registration and connect again.",
-    calendarSyncStatus_unavailable: "Waiting for the connection",
+    outlookConnectStatus_unavailable: "Waiting for the connection",
+    outlookConnectCounts: "People connected: {{connected}}. Waiting to reconnect: {{reconnect}}.",
+    outlookRedirectUri: "Redirect URI",
+    outlookConnectOffTitle: "Turn the Outlook connection off?",
+    outlookConnectOffBody:
+      "Everyone will have to connect Outlook again. Every person's connection closes when you save, and the calendar removes the copies it wrote in their Outlook.",
+    outlookConnectOffConfirm: "Turn off and save",
     changeNotifications: "Change notifications",
     changeNotificationsNoneYet: "none yet",
     changeNotifications_active_one: "On, watching {{count}} mailbox. Last notification: {{last}}.",
@@ -240,6 +250,47 @@ export const entraCatalog = {
     licencesDescription: "What a Staff group's licences can name, with the seats assigned and bought.",
     noLicences: "The tenant subscribes to no licence.",
     licenceSeats: "{{part}}: {{consumed}} of {{enabled}} seats assigned",
+
+    "outlook.title": "Outlook",
+    "outlook.loadFailed": "Your Outlook connection could not be loaded.",
+    "outlook.notConnected": "Not connected",
+    "outlook.connect": "Connect Outlook",
+    "outlook.connectedAs": "Connected as {{account}}",
+    "outlook.connectedSince": "Since {{date}}",
+    "outlook.usedBy": "Used by: {{features}}",
+    "outlook.feature_calendar": "Calendar",
+    "outlook.disconnect": "Disconnect",
+    "outlook.disconnectConfirmTitle": "Disconnect Outlook?",
+    "outlook.disconnectConfirmBody": "Vantigo stops using your Outlook until you connect it again.",
+    "outlook.disconnected": "Outlook disconnected",
+    "outlook.couldNotDisconnect": "Outlook could not be disconnected",
+    "outlook.connected": "Outlook connected",
+    "outlook.couldNotConnect": "Outlook could not be connected",
+    "outlook.completing": "Finishing connecting Outlook…",
+    "outlook.reconnectNeeded": "Reconnect needed",
+    "outlook.reconnect": "Reconnect Outlook",
+    "outlook.reason_expired": "Your sign-in to Microsoft has expired.",
+    "outlook.reason_sign_in_again": "Microsoft asks you to sign in again.",
+    "outlook.reason_mfa": "Microsoft asks you to complete multi-factor authentication.",
+    "outlook.reason_blocked":
+      "Your organisation's Conditional Access blocked the connection. Ask your administrator if it happens again.",
+    "outlook.reason_consent_missing":
+      "Your organisation has not consented to a permission the connection needs. Ask your administrator.",
+    "outlook.failed_access_denied": "The sign-in to Microsoft was cancelled or refused. Nothing was connected.",
+    "outlook.failed_tenant_mismatch":
+      "You signed in with an account from another organisation. Connect again and sign in with your work account.",
+    "outlook.failed_expired": "The connect took too long, or was started in another session. Connect again.",
+    "outlook.failed_failed": "Microsoft's answer could not be used. Try again in a moment.",
+    "outlook.failed_consent_missing":
+      "Your organisation has not consented to the permissions the connection needs. Ask your administrator to grant admin consent.",
+    "outlook.failed_account_mismatch":
+      "You signed in to Microsoft with another account than the one Vantigo knows you by. Connect again and sign in with that account.",
+    "outlook.failed_account_taken": "Another person in Vantigo has already connected this Microsoft account.",
+    "outlook.failed_no_account":
+      "Vantigo knows no Microsoft account of yours that it manages, so there is nothing to connect.",
+    "outlook.failed_switch_off": "The Outlook connection is turned off for this workspace.",
+    "outlook.nothingToConnect":
+      "Nothing to connect: the Outlook connection is turned off, or Vantigo knows no Microsoft account of yours.",
 
     step5Title: "Sign-in",
     step5Path: "App registrations › the application › Authentication › Add a platform › Web",
@@ -340,7 +391,23 @@ export const entraCatalog = {
     "action.entra.group.deleted": "A group was deleted",
     "action.entra.group.retired": "A group was emptied and kept",
     "action.entra.group.adoption_confirmed": "A group's adoption was confirmed",
+    "action.entra.outlook.connected": "A person connected Outlook",
+    "action.entra.outlook.disconnected": "A person disconnected Outlook",
+    "action.entra.outlook.reconnect_needed": "Microsoft refused a person's Outlook connection",
+    "action.entra.outlook.closed": "An Outlook connection was closed",
+    "action.entra.outlook.deleted": "A closed Outlook connection was deleted",
 
+    "code.unexpected": "a permission Vantigo does not use: {{detail}}",
+    "code.expired": "the sign-in to Microsoft expired",
+    "code.sign_in_again": "Microsoft asks the person to sign in again",
+    "code.mfa": "Microsoft asks for multi-factor authentication",
+    "code.blocked": "Conditional Access blocked it",
+    "code.consent_missing": "a delegated permission lacks admin consent",
+    "code.leaver": "the person left",
+    "code.deleted": "the account was deleted",
+    "code.disabled": "the account is disabled",
+    "code.switch_off": "the Outlook connection was turned off",
+    "code.repointed": "the person's account changed in Staff",
     "code.hire_date_not_written": "the hire date could not be written",
     "code.photo_written": "the photo was written",
     "code.photo_cleared": "the photo was removed",
@@ -416,6 +483,9 @@ export const entraCatalog = {
     permissionsMissingList: "Manglende tillatelser ({{count}}):",
     permissionsMissing: "Manglende tillatelser",
     permissionsPresentList: "Gitt: {{names}}",
+    permissionsUnexpected: "Applikasjonen har tillatelser Vantigo ikke bruker:",
+    permissionsUnexpectedHint:
+      "De kan være igjen fra et tidligere oppsett, eller bredere enn nødvendig. Fjern dem under API permissions med mindre et annet produkt bruker denne registreringen.",
     accountsList: "Modulens kontoer",
     accountUpn: "Brukerhovednavn",
     accountState: "Tilstand",
@@ -592,15 +662,22 @@ export const entraCatalog = {
     tapPolicy:
       "Et midlertidig tilgangspass virker bare for brukere leietakerens policy for autentiseringsmetoder slår det på for: slå det på for alle brukere, eller for en gruppe hver nye konto er med i.",
     tapPolicyPath: "Protection › Authentication methods › Policies › Temporary Access Pass",
-    calendarSync: "Kalendersynkronisering",
-    calendarSyncSwitch: "La folk synkronisere Vantigo-kalenderen sin til Outlook",
-    calendarSyncDescription:
-      "Krever applikasjonstillatelsen Calendars.ReadWrite. Du kan begrense den til enkelte postbokser med Exchange RBAC for Applications.",
-    calendarSyncStatus_ready: "Klar",
-    calendarSyncStatus_untested: "Ingen har koblet til ennå",
-    calendarSyncStatus_consent_missing:
+    outlookConnect: "Outlook-tilkobling",
+    outlookConnectSwitch: "Outlook-tilkobling: la folk koble Outlook til Vantigo",
+    outlookConnectDescription:
+      "Hver person kobler til sin egen Outlook under Innstillinger › Tilkoblinger og logger på Microsoft én gang. Legg omdirigerings-URI-en nedenfor til appregistreringens Web-plattform, og de delegerte tillatelsene openid, profile, offline_access og Calendars.ReadWrite med administratorsamtykke. Kalendersynkroniseringen trenger fortsatt applikasjonstillatelsen Calendars.ReadWrite.",
+    outlookConnectStatus_ready: "Klar",
+    outlookConnectStatus_untested:
+      "Ingen har koblet til ennå: koble til din egen Outlook under Innstillinger › Tilkoblinger for å sjekke at det virker.",
+    outlookConnectStatus_consent_missing:
       "Den siste tilkoblingen manglet en delegert tillatelse: gi administratorsamtykke for den i appregistreringen og koble til på nytt.",
-    calendarSyncStatus_unavailable: "Venter på tilkoblingen",
+    outlookConnectStatus_unavailable: "Venter på tilkoblingen",
+    outlookConnectCounts: "Personer tilkoblet: {{connected}}. Venter på ny tilkobling: {{reconnect}}.",
+    outlookRedirectUri: "Omdirigerings-URI",
+    outlookConnectOffTitle: "Slå av Outlook-tilkoblingen?",
+    outlookConnectOffBody:
+      "Alle må koble til Outlook på nytt. Hver persons tilkobling lukkes når du lagrer, og kalenderen fjerner kopiene den har skrevet i Outlook-en deres.",
+    outlookConnectOffConfirm: "Slå av og lagre",
     changeNotifications: "Endringsvarsler",
     changeNotificationsNoneYet: "ingen ennå",
     changeNotifications_active_one: "På, overvåker {{count}} postboks. Siste varsel: {{last}}.",
@@ -618,6 +695,47 @@ export const entraCatalog = {
     licencesDescription: "Det en Ansatte-gruppes lisenser kan peke på, med setene som er tildelt og kjøpt.",
     noLicences: "Leietakeren abonnerer ikke på noen lisens.",
     licenceSeats: "{{part}}: {{consumed}} av {{enabled}} seter tildelt",
+
+    "outlook.title": "Outlook",
+    "outlook.loadFailed": "Outlook-tilkoblingen din kunne ikke lastes.",
+    "outlook.notConnected": "Ikke tilkoblet",
+    "outlook.connect": "Koble til Outlook",
+    "outlook.connectedAs": "Tilkoblet som {{account}}",
+    "outlook.connectedSince": "Siden {{date}}",
+    "outlook.usedBy": "Brukes av: {{features}}",
+    "outlook.feature_calendar": "Kalender",
+    "outlook.disconnect": "Koble fra",
+    "outlook.disconnectConfirmTitle": "Koble fra Outlook?",
+    "outlook.disconnectConfirmBody": "Vantigo slutter å bruke Outlook-en din til du kobler den til igjen.",
+    "outlook.disconnected": "Outlook er koblet fra",
+    "outlook.couldNotDisconnect": "Outlook kunne ikke kobles fra",
+    "outlook.connected": "Outlook er koblet til",
+    "outlook.couldNotConnect": "Outlook kunne ikke kobles til",
+    "outlook.completing": "Fullfører tilkoblingen til Outlook …",
+    "outlook.reconnectNeeded": "Må kobles til på nytt",
+    "outlook.reconnect": "Koble til Outlook på nytt",
+    "outlook.reason_expired": "Påloggingen din hos Microsoft har utløpt.",
+    "outlook.reason_sign_in_again": "Microsoft ber deg logge på igjen.",
+    "outlook.reason_mfa": "Microsoft ber deg fullføre flerfaktorautentisering.",
+    "outlook.reason_blocked":
+      "Organisasjonens betingede tilgang (Conditional Access) stoppet tilkoblingen. Spør administratoren din om det skjer igjen.",
+    "outlook.reason_consent_missing":
+      "Organisasjonen har ikke gitt samtykke til en tillatelse tilkoblingen trenger. Spør administratoren din.",
+    "outlook.failed_access_denied": "Påloggingen hos Microsoft ble avbrutt eller avvist. Ingenting ble koblet til.",
+    "outlook.failed_tenant_mismatch":
+      "Du logget på med en konto fra en annen organisasjon. Koble til på nytt og logg på med jobbkontoen din.",
+    "outlook.failed_expired": "Tilkoblingen tok for lang tid, eller ble startet i en annen økt. Koble til på nytt.",
+    "outlook.failed_failed": "Svaret fra Microsoft kunne ikke brukes. Prøv igjen om litt.",
+    "outlook.failed_consent_missing":
+      "Organisasjonen har ikke gitt samtykke til tillatelsene tilkoblingen trenger. Be administratoren din gi administratorsamtykke.",
+    "outlook.failed_account_mismatch":
+      "Du logget på Microsoft med en annen konto enn den Vantigo kjenner deg ved. Koble til på nytt og logg på med den kontoen.",
+    "outlook.failed_account_taken": "En annen person i Vantigo har allerede koblet til denne Microsoft-kontoen.",
+    "outlook.failed_no_account":
+      "Vantigo kjenner ingen Microsoft-konto av deg som den forvalter, så det er ingenting å koble til.",
+    "outlook.failed_switch_off": "Outlook-tilkoblingen er slått av for dette arbeidsområdet.",
+    "outlook.nothingToConnect":
+      "Ingenting å koble til: Outlook-tilkoblingen er slått av, eller Vantigo kjenner ingen Microsoft-konto av deg.",
 
     step5Title: "Innlogging",
     step5Path: "App registrations › applikasjonen › Authentication › Add a platform › Web",
@@ -718,6 +836,23 @@ export const entraCatalog = {
     "action.entra.group.deleted": "En gruppe ble slettet",
     "action.entra.group.retired": "En gruppe ble tømt og beholdt",
     "action.entra.group.adoption_confirmed": "Overtakelsen av en gruppe ble bekreftet",
+    "action.entra.outlook.connected": "En person koblet til Outlook",
+    "action.entra.outlook.disconnected": "En person koblet fra Outlook",
+    "action.entra.outlook.reconnect_needed": "Microsoft avviste en persons Outlook-tilkobling",
+    "action.entra.outlook.closed": "En Outlook-tilkobling ble lukket",
+    "action.entra.outlook.deleted": "En lukket Outlook-tilkobling ble slettet",
+
+    "code.unexpected": "en tillatelse Vantigo ikke bruker: {{detail}}",
+    "code.expired": "påloggingen hos Microsoft utløp",
+    "code.sign_in_again": "Microsoft ber personen logge på igjen",
+    "code.mfa": "Microsoft ber om flerfaktorautentisering",
+    "code.blocked": "betinget tilgang stoppet den",
+    "code.consent_missing": "en delegert tillatelse mangler administratorsamtykke",
+    "code.leaver": "personen sluttet",
+    "code.deleted": "kontoen ble slettet",
+    "code.disabled": "kontoen er deaktivert",
+    "code.switch_off": "Outlook-tilkoblingen ble slått av",
+    "code.repointed": "personens konto ble endret i Ansatte",
 
     "code.hire_date_not_written": "ansettelsesdatoen kunne ikke skrives",
     "code.photo_written": "bildet ble skrevet",

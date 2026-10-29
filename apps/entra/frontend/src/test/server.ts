@@ -11,6 +11,7 @@ import type {
 import { CALENDAR_PERMISSION, requiredPermissions } from "../api/connection";
 import type { EntraDirectoryMatches, EntraDirectoryUser } from "../api/directory";
 import { DIRECTORY_SEARCH_LIMIT } from "../api/directory";
+import type { EntraOutlookComplete, EntraOutlookConnection } from "../api/outlook";
 import { jsonResponse, problemResponse } from "./api";
 import { type StubbedFetch, stubFetch, TEST_SESSION } from "./fetch";
 
@@ -51,6 +52,29 @@ export const unconfigured = (): EntraConnection => ({
   },
   version: 1,
 });
+
+/** Microsoft's authorization endpoint, as `POST /outlook/connect` answers it. */
+export const AUTHORIZE_URL = `https://login.microsoftonline.com/${TENANT_ID}/oauth2/v2.0/authorize?client_id=${CLIENT_ID}`;
+
+/** The caller's Outlook connection: offered, Vantigo knowing them as kari@contoso.no, not connected. */
+export const outlookConnection = (overrides: Partial<EntraOutlookConnection> = {}): EntraOutlookConnection => ({
+  offered: true,
+  state: "not_connected",
+  account: "kari@contoso.no",
+  scopes: [],
+  features: [],
+  ...overrides,
+});
+
+/** The caller's Outlook connected for the calendar since 2026-10-29. */
+export const activeOutlook = (overrides: Partial<EntraOutlookConnection> = {}): EntraOutlookConnection =>
+  outlookConnection({
+    state: "active",
+    connectedAt: "2026-10-29T09:00:00Z",
+    scopes: ["calendars.readwrite", "offline_access", "openid", "profile"],
+    features: ["calendar"],
+    ...overrides,
+  });
 
 export const credential = (overrides: Partial<EntraCredential> = {}): EntraCredential => ({
   id: 1,
@@ -105,12 +129,19 @@ export interface EntraServer {
   directory?: EntraDirectoryUser[] | Response;
   /** What `GET /directory/matches` answers; no proposal by default. */
   matches?: EntraDirectoryMatches | Response;
+  /** The caller's own Outlook connection, as `GET /outlook/connection` answers it; offered and not connected by default. */
+  outlook?: EntraOutlookConnection;
+  /** What `POST /outlook/connect` answers; Microsoft's authorization URL by default. */
+  connect?: Response;
+  /** What `POST /outlook/complete` answers; the connection made active, returning to the Connections page, by default. */
+  complete?: EntraOutlookComplete | Response;
   /** Answers a request instead of the fake's own; undefined falls through to it. */
   handle?: (method: string, path: string, body: unknown) => Response | undefined;
 }
 
 export interface EntraState {
   connection: EntraConnection;
+  outlook: EntraOutlookConnection;
   accounts: EntraAccount[];
   groups: EntraGroup[];
 }
@@ -133,6 +164,7 @@ const guid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 export const stubEntraApi = (server: EntraServer = {}): EntraStub => {
   const state: EntraState = {
     connection: server.connection ?? unconfigured(),
+    outlook: server.outlook ?? outlookConnection(),
     accounts: server.accounts ?? [],
     groups: server.groups ?? [],
   };
@@ -150,6 +182,24 @@ export const stubEntraApi = (server: EntraServer = {}): EntraStub => {
   const route = (method: string, path: string, init: RequestInit | undefined, body: unknown): Response => {
     const c = state.connection;
     if (method === "GET" && path === "/api/v1/entra/connection") return jsonResponse(200, c);
+    if (method === "GET" && path === "/api/v1/entra/outlook/connection") return jsonResponse(200, state.outlook);
+    if (method === "POST" && path === "/api/v1/entra/outlook/connect") {
+      if (server.connect) return server.connect.clone();
+      return jsonResponse(200, { authorizeUrl: AUTHORIZE_URL });
+    }
+    if (method === "POST" && path === "/api/v1/entra/outlook/complete") {
+      if (server.complete instanceof Response) return server.complete.clone();
+      const answer = server.complete ?? {
+        connection: activeOutlook(),
+        returnTo: "/settings/connections",
+      };
+      state.outlook = answer.connection;
+      return jsonResponse(200, answer);
+    }
+    if (method === "DELETE" && path === "/api/v1/entra/outlook/connection") {
+      state.outlook = { ...state.outlook, state: "not_connected", scopes: [], features: [], connectedAt: undefined };
+      return new Response(null, { status: 204 });
+    }
     if (method === "GET" && path.startsWith("/api/v1/entra/events")) return jsonResponse(200, server.events ?? []);
     if (method === "GET" && path === "/api/v1/entra/accounts") return jsonResponse(200, state.accounts);
     if (method === "GET" && path === "/api/v1/entra/groups") return jsonResponse(200, state.groups);

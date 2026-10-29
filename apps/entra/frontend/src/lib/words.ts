@@ -71,3 +71,15 @@ export const codeText = (code: string, t: Translate): string => {
   if (rest.length === 0 && known(`code.${name}.alone`)) return t(`code.${name}.alone`);
   return known(`code.${name}`) ? t(`code.${name}`, { detail: rest.join(":") }) : code;
 };
+
+/** Why a connect failed, from the callback's `code` or a refusal's: its own sentence, else the generic failure. */
+export const outlookFailedText = (code: string | undefined, t: Translate): string =>
+  t(code && known(`outlook.failed_${code}`) ? `outlook.failed_${code}` : "outlook.failed_failed");
+
+/** Why Microsoft refused a connection (`errorCode`), in words; an unknown one as Microsoft asking to sign in again. */
+export const outlookReasonText = (code: string | undefined, t: Translate): string =>
+  t(code && known(`outlook.reason_${code}`) ? `outlook.reason_${code}` : "outlook.reason_sign_in_again");
+
+/** A feature the granted scopes allow (`calendar`), in words; an unknown one as it came. */
+export const outlookFeatureText = (feature: string, t: Translate): string =>
+  known(`outlook.feature_${feature}`) ? t(`outlook.feature_${feature}`) : feature;
