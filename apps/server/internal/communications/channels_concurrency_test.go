@@ -625,3 +625,71 @@ func TestSwitchChannelProvider_RacingAPutOfTheDefault(t *testing.T) {
 		t.Errorf("switched channel's credential rows = %d, want 0", n)
 	}
 }
+
+// TestSwitchChannelProvider_RacingAPutOfItsCredential is the switch against
+// the credential's other writer on the SAME channel: an SMTP channel
+// switched to Microsoft 365 while a PUT rewrites its SMTP block. Both take
+// lockDefaultChannelSlot and re-read under it. Whichever wins, the channel
+// ends on entra with no credential row — never a credential written onto a
+// Microsoft 365 channel. When the switch wins, the PUT, whose decisions were
+// made on an SMTP channel, is refused 400 on provider; when the PUT wins,
+// the switch then deletes the credential it wrote.
+func TestSwitchChannelProvider_RacingAPutOfItsCredential(t *testing.T) {
+	h, fake := mailboxHarness(t)
+	admin := h.SignIn(t, "communications:channels-manage")
+	ch := createChannel(t, admin, newChannelBody(channelAddress(t)))
+	sharedMailbox(fake, ch.Address, "")
+
+	ctx := context.Background()
+	gate, err := h.Pool().Begin(ctx)
+	if err != nil {
+		t.Fatalf("gate: begin: %v", err)
+	}
+	t.Cleanup(func() { _ = gate.Rollback(ctx) })
+	if _, err := gate.Exec(ctx, `LOCK TABLE communications.channels IN EXCLUSIVE MODE`); err != nil {
+		t.Fatalf("gate: lock channels: %v", err)
+	}
+
+	switcher := h.SignIn(t, "communications:channels-manage")
+	putter := h.SignIn(t, "communications:channels-manage")
+	fns := []func() *modtest.Response{
+		func() *modtest.Response { return switchProvider(switcher, ch.Id) },
+		func() *modtest.Response {
+			return putter.Do(http.MethodPut, "/api/v1/communications/channels/"+ch.Id, map[string]any{
+				"smtp": map[string]any{"host": "smtp.rotated.example.test", "port": 587, "password": "rotated"},
+			})
+		},
+	}
+	done := make(chan []*modtest.Response, 1)
+	finished := make(chan struct{})
+	go func() {
+		done <- race(fns...)
+		close(finished)
+	}()
+	awaitLockWaiters(t, h, len(fns), finished)
+	if err := gate.Commit(ctx); err != nil {
+		t.Fatalf("gate: release: %v", err)
+	}
+	responses := <-done
+	if r := responses[0]; r.Status != http.StatusOK {
+		t.Fatalf("switch: status %d body %s, want 200", r.Status, r.Body)
+	}
+	if p := modtest.One[string](t, h, `SELECT provider FROM communications.channels WHERE id = $1`, ch.Id); p != "entra" {
+		t.Errorf("provider = %q, want entra", p)
+	}
+	if n := h.Count(t, `SELECT count(*) FROM communications.channel_credentials WHERE channel_id = $1`, ch.Id); n != 0 {
+		t.Errorf("credential rows = %d on a Microsoft 365 channel, want 0", n)
+	}
+	switch put := responses[1]; put.Status {
+	case http.StatusOK:
+		// The PUT won: the switch, after it, deleted the credential.
+	case http.StatusBadRequest:
+		var e commErrorJSON
+		put.JSON(&e)
+		if got := e.field("provider"); len(got) != 1 || got[0] != "The channel's provider changed while this request was made. Read the channel again and retry." {
+			t.Errorf("the PUT after the switch: fields[provider] = %v, want the provider changed", got)
+		}
+	default:
+		t.Errorf("PUT: status %d body %s, want 200 or 400 on provider", put.Status, put.Body)
+	}
+}

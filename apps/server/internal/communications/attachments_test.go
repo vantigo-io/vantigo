@@ -1120,27 +1120,29 @@ func entraConversation(t *testing.T, h *modtest.Harness, fake *modtest.FakeChann
 
 // TestStageAttachment_OverTheChannelBudget: on a Microsoft 365 channel a file
 // whose size × 1.37 + 16 KiB exceeds the provider's budget is 413
-// attachment_too_large, saying the channel's limit; under it the file is
-// staged. An SMTP channel has no such budget.
+// attachment_too_large, saying the attachments the channel takes — (budget −
+// 16 KiB) × 100 / 137 rounded down to 0.1 MB, 0.2 MB of 300 000 bytes —
+// rather than the budget of MIME; under it the file is staged. An SMTP
+// channel has no such budget.
 func TestStageAttachment_OverTheChannelBudget(t *testing.T) {
 	t.Parallel()
 	h, fake := mailboxHarness(t)
 	c := h.SignIn(t, "communications:conversations-reply", "communications:conversations-view")
-	_, convID := entraConversation(t, h, fake, c, 40_000)
+	_, convID := entraConversation(t, h, fake, c, 300_000)
 
-	r := stageAttachment(t, c, convID, uuid.NewString(), "big.bin", "application/octet-stream", bytes.Repeat([]byte("x"), 20_000))
+	r := stageAttachment(t, c, convID, uuid.NewString(), "big.bin", "application/octet-stream", bytes.Repeat([]byte("x"), 220_000))
 	if r.Status != http.StatusRequestEntityTooLarge {
 		t.Fatalf("status %d body %s, want 413", r.Status, r.Body)
 	}
 	var e commErrorJSON
 	r.JSON(&e)
-	if e.Error.Code != "attachment_too_large" || !strings.Contains(e.Error.Message, "larger than this channel can send (about 0.04 MB)") {
+	if e.Error.Code != "attachment_too_large" || e.Error.Message != "The attachment is larger than this channel can send (about 0.2 MB)." {
 		t.Errorf("error = %+v", e.Error)
 	}
 	if n := h.Count(t, `SELECT count(*) FROM communications.attachment_uploads`); n != 0 {
 		t.Errorf("uploads = %d, want 0", n)
 	}
-	mustStageAttachment(t, c, convID, bytes.Repeat([]byte("x"), 10_000))
+	mustStageAttachment(t, c, convID, bytes.Repeat([]byte("x"), 150_000))
 
 	smtpH := newHarness(t)
 	smtpC := smtpH.SignIn(t, "communications:conversations-reply", "communications:conversations-view")
@@ -1148,21 +1150,23 @@ func TestStageAttachment_OverTheChannelBudget(t *testing.T) {
 }
 
 // TestGetConversation_MaxMessageBytes: the detail carries the channel's
-// budget, null on SMTP.
+// budget and the attachments it takes — (budget − 16 KiB) × 100 / 137,
+// rounded down to 0.1 MB: 2 100 000 of Entra's 3 000 000 — both null on
+// SMTP.
 func TestGetConversation_MaxMessageBytes(t *testing.T) {
 	t.Parallel()
 	h, fake := mailboxHarness(t)
 	c := h.SignIn(t, "communications:conversations-reply", "communications:conversations-view")
-	_, convID := entraConversation(t, h, fake, c, 40_000)
+	_, convID := entraConversation(t, h, fake, c, 3_000_000)
 	r := c.Do(http.MethodGet, "/api/v1/communications/conversations/"+convID, nil)
-	if !strings.Contains(string(r.Body), `"maxMessageBytes":40000`) {
-		t.Errorf("entra detail = %s, want maxMessageBytes 40000", r.Body)
+	if !strings.Contains(string(r.Body), `"maxMessageBytes":3000000`) || !strings.Contains(string(r.Body), `"maxAttachmentBytes":2100000`) {
+		t.Errorf("entra detail = %s, want maxMessageBytes 3000000 and maxAttachmentBytes 2100000", r.Body)
 	}
 
 	smtpH := newHarness(t)
 	smtpC := smtpH.SignIn(t, "communications:conversations-reply", "communications:conversations-view")
 	r = smtpC.Do(http.MethodGet, "/api/v1/communications/conversations/"+stagingConversation(t, smtpH, smtpC), nil)
-	if !strings.Contains(string(r.Body), `"maxMessageBytes":null`) {
-		t.Errorf("smtp detail = %s, want maxMessageBytes null", r.Body)
+	if !strings.Contains(string(r.Body), `"maxMessageBytes":null`) || !strings.Contains(string(r.Body), `"maxAttachmentBytes":null`) {
+		t.Errorf("smtp detail = %s, want maxMessageBytes and maxAttachmentBytes null", r.Body)
 	}
 }

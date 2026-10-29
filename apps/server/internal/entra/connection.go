@@ -95,18 +95,25 @@ func missingPermissions(present []string) []string {
 }
 
 // tenantWideMailPermissions are the application roles that reach every
-// mailbox in the tenant (Outlook connection design M10): while the Mail
-// channels switch is on, any of them makes mailChannels tenant_wide, since
-// Exchange's grants are a union with Entra's and the RBAC scope then limits
-// nothing. full_access_as_app is the Office 365 Exchange Online resource's
-// role, never in a Graph token's roles, so the test cannot see it; it is
-// listed for completeness.
+// mailbox in the tenant (Outlook connection design M10) — its mail, its
+// settings, its items and its folders: while the Mail channels switch is
+// on, any of them makes mailChannels tenant_wide, since Exchange's grants
+// are a union with Entra's and the RBAC scope then limits nothing.
+// full_access_as_app is the Office 365 Exchange Online resource's role,
+// never in a Graph token's roles, so the test cannot see it; it is listed
+// for completeness.
 var tenantWideMailPermissions = []string{
 	"Mail.Read",
 	"Mail.ReadBasic",
 	"Mail.ReadBasic.All",
 	"Mail.ReadWrite",
 	"Mail.Send",
+	"MailboxSettings.Read",
+	"MailboxSettings.ReadWrite",
+	"MailboxItem.Read.All",
+	"MailboxItem.ImportExport.All",
+	"MailboxFolder.Read.All",
+	"MailboxFolder.ReadWrite.All",
 	"full_access_as_app",
 }
 
@@ -522,7 +529,9 @@ func mergeSettings(in gen.EntraSettingsRequest, conn store.EntraConnection) (sto
 // turning it off closes every person's connection in the same transaction,
 // each audited entra.outlook.closed switch_off. Turning the Mail channels
 // switch off closes nothing: the channels' sends are then refused as
-// unavailable and retried. (PUT /api/v1/entra/connection/settings)
+// unavailable, and the outbox holds each message, spending no attempt, for
+// up to 24 hours after it was queued before it fails it as
+// provider_unavailable. (PUT /api/v1/entra/connection/settings)
 func (s *server) PutEntraConnectionSettings(ctx context.Context, req gen.PutEntraConnectionSettingsRequestObject) (gen.PutEntraConnectionSettingsResponseObject, error) {
 	version, ok := parseVersion(req.Params.IfMatch)
 	if !ok {

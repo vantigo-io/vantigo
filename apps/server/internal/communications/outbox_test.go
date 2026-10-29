@@ -444,6 +444,48 @@ func TestOutboxWorker_ReclaimsAnExpiredLeaseAndResendsTheSameMessageID(t *testin
 	}
 }
 
+// TestOutboxWorker_ARetryWithTheMarkerIsAPossibleDuplicate: a job back in
+// retry whose marker survived the failure — the send had begun, and the
+// relay or Exchange may have taken the message before it failed — is
+// counted as a possible duplicate when it is claimed again, as a job
+// re-claimed from an expired lease is; one in retry without the marker is
+// not.
+func TestOutboxWorker_ARetryWithTheMarkerIsAPossibleDuplicate(t *testing.T) {
+	t.Parallel()
+	for _, marked := range []bool{true, false} {
+		t.Run(fmt.Sprintf("marked=%v", marked), func(t *testing.T) {
+			t.Parallel()
+			f := &fakeSMTP{}
+			h := newOutboxHarness(t, f)
+			fx := seedOutboxJob(t, h)
+			var marker *time.Time
+			if marked {
+				at := h.Now().Add(-time.Minute)
+				marker = &at
+			}
+			h.Exec(t, `UPDATE communications.outbox_jobs
+			           SET status = 'retry', attempts = 1, next_attempt_at = $2, delivery_attempted_at = $3
+			           WHERE message_id = $1`,
+				fx.messageID, h.Now().Add(-time.Second), marker)
+
+			m := newMeterHarness(t)
+			if _, err := m.worker(t, h).ProcessOne(context.Background()); err != nil {
+				t.Fatalf("ProcessOne: %v", err)
+			}
+			want := int64(0)
+			if marked {
+				want = 1
+			}
+			if got := m.count(t, possibleDuplicateSendsMetric); got != want {
+				t.Errorf("possible-duplicate counter = %d, want %d", got, want)
+			}
+			if len(f.sends()) != 1 {
+				t.Errorf("sends = %d, want 1", len(f.sends()))
+			}
+		})
+	}
+}
+
 // TestOutboxWorker_LiveLeaseIsNotClaimable is the other half of the lease
 // rule: a processing job whose lease has NOT expired is invisible to the claim
 // predicate, so a second worker finds nothing to do.
@@ -470,7 +512,7 @@ func TestOutboxWorker_LiveLeaseIsNotClaimable(t *testing.T) {
 		t.Errorf("sends = %d, want 0", len(f.sends()))
 	}
 	if got := m.count(t, possibleDuplicateSendsMetric); got != 0 {
-		t.Errorf("possible-duplicate counter = %d, want 0: the counter is for the lease-expired branch only", got)
+		t.Errorf("possible-duplicate counter = %d, want 0: a live lease is not claimed", got)
 	}
 }
 

@@ -148,6 +148,9 @@ func TestMail_ADraftWithBcc(t *testing.T) {
 	if !slices.Equal(bcc, []string{"skjult@example.com", "to@example.com"}) {
 		t.Errorf("bccRecipients = %v", bcc)
 	}
+	if b, _ := draft["body"].(map[string]any); b == nil || b["content"] != string(mime("Skjult <skjult@example.com>, to@example.com")) {
+		t.Errorf("the draft's body = %v, want the message whole as Graph answers it", draft["body"])
+	}
 	if drafts := g.Drafts(); len(drafts) != 1 || drafts[0].ID != id || drafts[0].UserID != post.ID {
 		t.Errorf("drafts = %+v", drafts)
 	}
@@ -223,5 +226,26 @@ func TestMail_Refusals(t *testing.T) {
 	}
 	if len(g.Sent()) != 0 || len(g.Drafts()) != 0 {
 		t.Errorf("a refusal wrote: sent %d drafts %d", len(g.Sent()), len(g.Drafts()))
+	}
+}
+
+// SetMailSizeLimit: a MIME message over the limit is 400
+// ErrorMessageSizeExceeded on sendMail and on a draft's create; at the limit
+// it is taken.
+func TestMail_TheMailboxSizeLimit(t *testing.T) {
+	now := time.Now()
+	g := tenantFake(&now)
+	post := g.AddUser(graphtest.User{UserPrincipalName: "post@nordlys.no", Shared: true})
+	c := newClient(t, g)
+	m := mime("")
+	g.SetMailSizeLimit(len(m) - 1)
+	for _, path := range []string{"/users/" + post.ID + "/sendMail", "/users/" + post.ID + "/messages"} {
+		if status, body := c.mailRequest(http.MethodPost, path, "text/plain", encoded(m)); status != http.StatusBadRequest || errorCode(body) != "ErrorMessageSizeExceeded" {
+			t.Errorf("POST %s over the limit: %d %v", path, status, body)
+		}
+	}
+	g.SetMailSizeLimit(len(m))
+	if status, body := c.mailRequest(http.MethodPost, "/users/"+post.ID+"/sendMail", "text/plain", encoded(m)); status != http.StatusAccepted {
+		t.Errorf("sendMail at the limit: %d %v", status, body)
 	}
 }

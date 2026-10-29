@@ -727,7 +727,11 @@ func TestConnection_MailChannelsStatus(t *testing.T) {
 		t.Errorf("servicePrincipalId = %v, want %s", got.ServicePrincipalId, g.ServicePrincipalID)
 	}
 
-	for _, role := range []string{"Mail.Read", "Mail.ReadBasic", "Mail.ReadBasic.All", "Mail.ReadWrite", "Mail.Send"} {
+	for _, role := range []string{
+		"Mail.Read", "Mail.ReadBasic", "Mail.ReadBasic.All", "Mail.ReadWrite", "Mail.Send",
+		"MailboxSettings.Read", "MailboxSettings.ReadWrite", "MailboxItem.Read.All",
+		"MailboxItem.ImportExport.All", "MailboxFolder.Read.All", "MailboxFolder.ReadWrite.All",
+	} {
 		g.Configure(func(g *graphtest.FakeGraph) { g.Roles = append(slices.Clone(everyPermission), role) })
 		testConnection(t, o)
 		if got := status(gen.EntraMailChannelsStatusTenantWide); got.Reason != nil {

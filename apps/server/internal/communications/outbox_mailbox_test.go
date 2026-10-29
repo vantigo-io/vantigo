@@ -262,7 +262,8 @@ func assertFailedAtOnce(t *testing.T, h *modtest.Harness, m *meterHarness, w *co
 }
 
 // TestOutboxWorker_MailboxRefusalsFailTheJobAtOnce: the mailbox's denial, its
-// absence and a message too large are answers, not outages — the job fails
+// absence, a message too large and blind copies the provider would lose are
+// answers, not outages — the job fails
 // on its first attempt with the code in the event, never retried.
 func TestOutboxWorker_MailboxRefusalsFailTheJobAtOnce(t *testing.T) {
 	t.Parallel()
@@ -274,6 +275,7 @@ func TestOutboxWorker_MailboxRefusalsFailTheJobAtOnce(t *testing.T) {
 		{contracts.ErrMailboxGone, "mailbox_gone"},
 		{contracts.ErrMailboxUnknown, "mailbox_unknown"},
 		{contracts.ErrMailTooLarge, "too_large"},
+		{contracts.ErrBccUnsupported, "bcc_unsupported"},
 	} {
 		t.Run(tc.code, func(t *testing.T) {
 			t.Parallel()
@@ -351,8 +353,41 @@ func assertRetried(t *testing.T, h *modtest.Harness, m *meterHarness, messageID 
 	}
 }
 
-// TestOutboxWorker_MailboxOutagesAreRetried: an unavailable provider and an
-// error the contract does not name are failures to retry on the backoff.
+// assertHeld checks the job is held for its unavailable provider: back to
+// retry with its attempt given back and the marker cleared, at the first
+// wait, the event's data the constant with no code, and jobsRetried counted
+// once.
+func assertHeld(t *testing.T, h *modtest.Harness, m *meterHarness, messageID uuid.UUID) {
+	t.Helper()
+	job := readOutboxJob(t, h, messageID)
+	if job.status != "retry" || job.attempts != 0 {
+		t.Errorf("job = %s after %d attempts, want retry with the attempt given back", job.status, job.attempts)
+	}
+	if job.deliveryAttemptedAt != nil {
+		t.Error("delivery_attempted_at kept, want it cleared: nothing was handed to the provider")
+	}
+	if got := job.nextAttemptAt.Sub(h.Now()); got != 2*time.Second {
+		t.Errorf("wait = %v, want 2s, the first attempt's backoff", got)
+	}
+	for _, d := range readDeliveries(t, h, messageID) {
+		if d.status != "retrying" {
+			t.Errorf("delivery %s = %s, want retrying", d.address, d.status)
+		}
+	}
+	if _, data := countEvents(t, h, messageID, "retrying"); data == nil || *data != `{"error":"Outbound delivery failed."}` {
+		t.Errorf("retrying event data = %v, want the constant with no code", data)
+	}
+	if got := m.count(t, jobsRetriedMetric); got != 1 {
+		t.Errorf("%s = %d, want 1", jobsRetriedMetric, got)
+	}
+	if got := m.count(t, jobsFailedMetric); got != 0 {
+		t.Errorf("%s = %d, want 0", jobsFailedMetric, got)
+	}
+}
+
+// TestOutboxWorker_MailboxOutagesAreRetried: an error the contract does not
+// name is a failure to retry on the backoff, spending an attempt; an
+// unavailable provider holds the job, spending none.
 func TestOutboxWorker_MailboxOutagesAreRetried(t *testing.T) {
 	t.Parallel()
 	for name, cause := range map[string]error{
@@ -370,15 +405,103 @@ func TestOutboxWorker_MailboxOutagesAreRetried(t *testing.T) {
 			if _, err := m.worker(t, h).ProcessOne(context.Background()); err != nil {
 				t.Fatalf("ProcessOne: %v", err)
 			}
+			if name == "unavailable" {
+				assertHeld(t, h, m, fx.messageID)
+				return
+			}
 			assertRetried(t, h, m, fx.messageID)
 		})
 	}
 }
 
+// TestOutboxWorker_AnUnavailableProviderHoldsTheJobFor24Hours: while the
+// provider is unavailable the job is tried again and again — its wait
+// growing to five minutes — with no attempt spent and no possible duplicate
+// counted, far past the eight attempts' four minutes; 24 hours after it was
+// queued it fails at once as provider_unavailable. Sent once the provider
+// is back, before then, it goes out.
+func TestOutboxWorker_AnUnavailableProviderHoldsTheJobFor24Hours(t *testing.T) {
+	t.Parallel()
+	fake := modtest.NewFakeChannelMailbox()
+	h := newHarness(t, modtest.WithChannelMailbox(fake))
+	queued := h.Now()
+	fx := seedMailboxJob(t, h, fake)
+	fake.FailWith("Send", contracts.ErrMailboxUnavailable)
+	m := newMeterHarness(t)
+	w := m.worker(t, h)
+	ctx := context.Background()
+
+	tries := 0
+	for {
+		job := readOutboxJob(t, h, fx.messageID)
+		if job.status != "pending" && job.status != "retry" {
+			t.Fatalf("after %d tries the job is %s (%d attempts), want held", tries, job.status, job.attempts)
+		}
+		if job.attempts != 0 {
+			t.Fatalf("after %d tries %d attempts, want none spent", tries, job.attempts)
+		}
+		if wait := job.nextAttemptAt.Sub(h.Now()); tries > 0 && (wait <= 0 || wait > 5*time.Minute) {
+			t.Fatalf("after %d tries the wait is %v, want within five minutes", tries, wait)
+		}
+		if job.nextAttemptAt.After(queued.Add(24 * time.Hour)) {
+			break
+		}
+		if wait := job.nextAttemptAt.Sub(h.Now()); wait > 0 {
+			h.Advance(wait)
+		}
+		if _, err := w.ProcessOne(ctx); err != nil {
+			t.Fatalf("ProcessOne: %v", err)
+		}
+		tries++
+	}
+	if tries < 200 {
+		t.Errorf("%d tries in 24 hours, want the wait capped at five minutes", tries)
+	}
+	if got := m.count(t, possibleDuplicateSendsMetric); got != 0 {
+		t.Errorf("%s = %d, want none: nothing was handed to the provider", possibleDuplicateSendsMetric, got)
+	}
+	if got := m.count(t, jobsFailedMetric); got != 0 {
+		t.Errorf("%s = %d before the 24 hours, want 0", jobsFailedMetric, got)
+	}
+
+	h.Advance(readOutboxJob(t, h, fx.messageID).nextAttemptAt.Sub(h.Now()))
+	if _, err := w.ProcessOne(ctx); err != nil {
+		t.Fatalf("ProcessOne: %v", err)
+	}
+	job := readOutboxJob(t, h, fx.messageID)
+	if job.status != "failed" || job.attempts != 1 {
+		t.Errorf("after 24 hours the job is %s after %d attempts, want failed after 1", job.status, job.attempts)
+	}
+	n, data := countEvents(t, h, fx.messageID, "submission_failed")
+	if want := `{"error":"Outbound delivery failed.","code":"provider_unavailable"}`; n != 2 || data == nil || *data != want {
+		t.Errorf("submission_failed events = %d, data %v; want 2 with %s", n, data, want)
+	}
+	if got := m.count(t, jobsFailedMetric); got != 1 {
+		t.Errorf("%s = %d, want 1", jobsFailedMetric, got)
+	}
+	if len(fake.Sent()) != 0 {
+		t.Errorf("sent %d, want none", len(fake.Sent()))
+	}
+
+	// Another job, the provider back within the hold: sent.
+	fx2 := seedMailboxJob(t, h, fake)
+	if _, err := w.ProcessOne(ctx); err != nil {
+		t.Fatalf("ProcessOne: %v", err)
+	}
+	h.Advance(time.Hour)
+	fake.FailWith("Send", nil)
+	if _, err := w.ProcessOne(ctx); err != nil {
+		t.Fatalf("ProcessOne: %v", err)
+	}
+	if job := readOutboxJob(t, h, fx2.messageID); job.status != "completed" || job.attempts != 1 || len(fake.Sent()) != 1 {
+		t.Errorf("the provider back: job %s after %d attempts, sent %d; want completed after 1, sent 1", job.status, job.attempts, len(fake.Sent()))
+	}
+}
+
 // TestOutboxWorker_MailboxChannelWithoutItsProviderIsRetried: a channel is
 // never sent through a provider under another key, nor through SMTP — with
-// no slot, or a slot under another key, the job waits for its retry and
-// nothing is sent.
+// no slot, or a slot under another key, the job is held for its provider
+// and nothing is sent.
 func TestOutboxWorker_MailboxChannelWithoutItsProviderIsRetried(t *testing.T) {
 	t.Parallel()
 	t.Run("another key", func(t *testing.T) {
@@ -399,7 +522,7 @@ func TestOutboxWorker_MailboxChannelWithoutItsProviderIsRetried(t *testing.T) {
 		if got := len(smtp.sends()); got != 0 {
 			t.Errorf("SMTP sends = %d, want none", got)
 		}
-		assertRetried(t, h, m, fx.messageID)
+		assertHeld(t, h, m, fx.messageID)
 	})
 	t.Run("no slot", func(t *testing.T) {
 		t.Parallel()
@@ -420,6 +543,6 @@ func TestOutboxWorker_MailboxChannelWithoutItsProviderIsRetried(t *testing.T) {
 		if got := len(smtp.sends()); got != 0 {
 			t.Errorf("SMTP sends = %d, want none", got)
 		}
-		assertRetried(t, h, m, fx.messageID)
+		assertHeld(t, h, m, fx.messageID)
 	})
 }

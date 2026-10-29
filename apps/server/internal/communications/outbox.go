@@ -35,7 +35,9 @@ import (
 //  1. delivery_attempted_at is cleared on every claim, stamped by a bare
 //     auto-committing UPDATE *before* the send, never checked for
 //     rows-affected, and never cleared on completion (inventory §11 D5,
-//     §13.3). It is a crash marker, not a retry marker.
+//     §13.3). It is a crash marker — and, on a job back in retry, the mark
+//     of a send that had begun before it failed (claim's possible-duplicate
+//     count); a hold for an unavailable provider clears it.
 //  2. The completion is a silent no-op when the lease changed underneath it
 //     (step 10, `:1315`): the mail has gone out, nothing is committed, and the
 //     next holder sends it again. This is the module's principal
@@ -87,6 +89,17 @@ const (
 	// failed at once by a terminal cause adds its code beside it
 	// (outboxFailureEvent).
 	outboxFailureEventData = `{"error":"Outbound delivery failed."}`
+
+	// outboxProviderHold is how long after it was queued a job on a Microsoft
+	// 365 channel waits for its unavailable provider (M13; the review's
+	// finding): the switch off, the connection failing, the slot empty or
+	// under another key. Until then each try is put back without spending an
+	// attempt; after it the job fails as provider_unavailable.
+	outboxProviderHold = 24 * time.Hour
+	// outboxProviderWaitCap is the longest wait between two tries while the
+	// provider is unavailable: the wait is the time the job has waited so far,
+	// at least the attempts' backoff and at most this.
+	outboxProviderWaitCap = 5 * time.Minute
 )
 
 // errChannelGone and errAttachmentsUnavailable are the two
@@ -104,10 +117,11 @@ var errChannelMisconfigured = errors.New("communications: the channel's settings
 
 // outboxTerminalCode is the code of a failure no retry can mend (Outlook
 // connection design M13) — the mailbox provider's answer that the mailbox is
-// not ours to write to, is gone or unknown, that the message is too large,
-// or a channel with no mailbox — and "" for every other failure, which is
-// retried on the backoff: ErrMailboxUnavailable, a missing provider, and any
-// error the contract does not name.
+// not ours to write to, is gone or unknown, that the message is too large or
+// its blind copies would be lost, or a channel with no mailbox — and "" for
+// every other failure: ErrMailboxUnavailable and a missing provider are held
+// (outboxProviderHeld), any error the contract does not name is retried on
+// the backoff.
 func outboxTerminalCode(err error) string {
 	switch {
 	case errors.Is(err, contracts.ErrMailboxDenied):
@@ -118,10 +132,26 @@ func outboxTerminalCode(err error) string {
 		return "mailbox_unknown"
 	case errors.Is(err, contracts.ErrMailTooLarge):
 		return "too_large"
+	case errors.Is(err, contracts.ErrBccUnsupported):
+		return "bcc_unsupported"
 	case errors.Is(err, errChannelMisconfigured):
 		return "channel_misconfigured"
 	}
 	return ""
+}
+
+// outboxProviderHeld reports whether err is the mail channels provider being
+// unavailable — ErrMailboxUnavailable from Send, or no provider filled under
+// the channel's key — which holds the job rather than spending an attempt.
+func outboxProviderHeld(err error) bool {
+	return errors.Is(err, contracts.ErrMailboxUnavailable)
+}
+
+// outboxProviderWait is the wait before the next try of a job held for its
+// provider, queued at created: the time it has waited so far, at least
+// retryBackoff(attempts) and at most outboxProviderWaitCap.
+func outboxProviderWait(created, now time.Time, attempts int32) time.Duration {
+	return min(max(now.Sub(created), retryBackoff(attempts)), outboxProviderWaitCap)
 }
 
 // outboxFailureEvent is the data_json of a failure event: the constant
@@ -252,9 +282,10 @@ func (w *OutboxWorker) ProcessOne(ctx context.Context) (bool, error) {
 			return true, err
 		}
 		code := outboxTerminalCode(err)
+		held := code == "" && outboxProviderHeld(err)
 		w.logger().Warn("outbound delivery failed",
-			"worker", outboxWorkerName, "job", job.ID, "message", job.MessageID, "code", code, "error", err)
-		if markErr := w.markFailed(ctx, *job, leaseID, code); markErr != nil {
+			"worker", outboxWorkerName, "job", job.ID, "message", job.MessageID, "code", code, "held", held, "error", err)
+		if markErr := w.markFailed(ctx, *job, leaseID, code, held); markErr != nil {
 			return true, markErr
 		}
 	}
@@ -289,9 +320,13 @@ func (w *OutboxWorker) claim(ctx context.Context) (*store.CommunicationsOutboxJo
 			}
 
 			// The possible-duplicate signal (`:88-96`), checked on the
-			// CANDIDATE — so a lost claim race still counts, and it can only
-			// ever fire on the lease-expired 'processing' branch.
-			if candidate.Status == "processing" && candidate.DeliveryAttemptedAt != nil {
+			// CANDIDATE — so a lost claim race still counts. .NET fires it on
+			// the lease-expired 'processing' branch only; it fires on a
+			// 'retry' too (the review's finding), as the marker survives a
+			// failure after the send began — a mailbox's Send that timed out
+			// may have been taken by Exchange — and a hold for an unavailable
+			// provider clears it (DeferOutboxJob), as nothing was handed over.
+			if (candidate.Status == "processing" || candidate.Status == "retry") && candidate.DeliveryAttemptedAt != nil {
 				w.metrics.possibleDuplicateSends.Add(ctx, 1)
 				w.logger().Warn("possible duplicate outbound send",
 					"worker", outboxWorkerName, "job", candidate.ID, "message", candidate.MessageID,
@@ -582,11 +617,12 @@ func (w *OutboxWorker) cancelSuppressed(ctx context.Context, job store.Communica
 // code is outboxTerminalCode's for the cause: "" leaves terminality to the
 // attempts, as .NET does; any other fails the job at once (M13), with
 // last_error still the constant and the code in the events' data.
-func (w *OutboxWorker) markFailed(ctx context.Context, job store.CommunicationsOutboxJob, leaseID string, code string) error {
-	data, err := outboxFailureEvent(code)
-	if err != nil {
-		return err
-	}
+//
+// held is a cause outboxProviderHeld names: until outboxProviderHold after
+// the job was queued it is put back to retry with its attempt given back
+// (DeferOutboxJob) at outboxProviderWait; after that it fails at once as
+// provider_unavailable.
+func (w *OutboxWorker) markFailed(ctx context.Context, job store.CommunicationsOutboxJob, leaseID string, code string, held bool) error {
 	now := w.now()
 	// recorded stays false on both no-op paths (the row is gone, or the lease
 	// was taken over), so neither counter moves for a failure this worker was
@@ -594,7 +630,7 @@ func (w *OutboxWorker) markFailed(ctx context.Context, job store.CommunicationsO
 	// .NET chooses the same way at `:258` / `:260`, one or the other, never
 	// both (inventory §13.4).
 	recorded, terminal := false, false
-	err = db.WithTx(ctx, w.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
+	err := db.WithTx(ctx, w.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		q := store.New(tx)
 		current, err := q.GetOutboxJob(ctx, job.ID)
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -610,14 +646,31 @@ func (w *OutboxWorker) markFailed(ctx context.Context, job store.CommunicationsO
 		// Terminality on the POST-increment attempts value: max_attempts = 8
 		// means 8 total attempts, and the backoff for attempts = 7 (128 s) is
 		// therefore the largest one a default deployment ever waits.
-		terminal = current.Attempts >= outboxMaxAttempts || code != ""
+		eventCode := code
+		hold := held && now.Before(current.CreatedAt.Add(outboxProviderHold))
+		if held && !hold {
+			eventCode = "provider_unavailable"
+		}
+		terminal = !hold && (current.Attempts >= outboxMaxAttempts || eventCode != "")
 		jobStatus, deliveryStatus := "retry", "retrying"
 		if terminal {
 			jobStatus, deliveryStatus = "failed", "submission_failed"
 		}
 		failure := outboxFailureMessage
+		data, err := outboxFailureEvent(eventCode)
+		if err != nil {
+			return err
+		}
 
-		if err := q.FailOutboxJob(ctx, store.FailOutboxJobParams{
+		if hold {
+			if err := q.DeferOutboxJob(ctx, store.DeferOutboxJobParams{
+				LastError:     &failure,
+				NextAttemptAt: now.Add(outboxProviderWait(current.CreatedAt, now, current.Attempts)),
+				ID:            current.ID,
+			}); err != nil {
+				return fmt.Errorf("communications: hold outbox job: %w", err)
+			}
+		} else if err := q.FailOutboxJob(ctx, store.FailOutboxJobParams{
 			Status:        jobStatus,
 			LastError:     &failure,
 			NextAttemptAt: now.Add(retryBackoff(current.Attempts)),

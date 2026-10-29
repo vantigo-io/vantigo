@@ -17,7 +17,8 @@ import (
 // refusing two. A channel names its provider by Key and its mailbox by the
 // object id Check answered. The errors are MailboxCalendar's —
 // ErrMailboxUnavailable, ErrMailboxUnknown, ErrMailboxDenied, ErrMailboxGone —
-// and ErrMailTooLarge; anything else is a failure to retry, never an answer.
+// ErrMailTooLarge and ErrBccUnsupported; anything else is a failure to retry,
+// never an answer.
 //
 // It declares only what Communications calls today; the inbound reads and
 // the notices arrive with the deliveries that call them.
@@ -37,12 +38,13 @@ type ChannelMailbox interface {
 	// state and never the network.
 	Status(ctx context.Context) (MailboxStatus, error)
 
-	// Check resolves address to a mailbox the provider reaches and records
-	// it, so Send may write to it: ErrMailboxUnknown when no such mailbox
-	// exists, ErrMailboxGone when its user has no mailbox, ErrMailboxDenied
-	// when the provider's scope does not reach it, ErrMailboxUnavailable
-	// when Status is not available. It answers a personal mailbox too
-	// (Shared false); the caller decides what it accepts.
+	// Check resolves address to a mailbox the provider reaches and, when it
+	// is a shared mailbox, records it, so Send may write to it:
+	// ErrMailboxUnknown when no such mailbox exists, ErrMailboxGone when its
+	// user has no mailbox, ErrMailboxDenied when the provider's scope does
+	// not reach it, ErrMailboxUnavailable when Status is not available. It
+	// answers a personal mailbox too (Shared false) but never records one,
+	// so Send refuses it; the caller decides what it accepts.
 	Check(ctx context.Context, address string) (ChannelMailboxInfo, error)
 
 	// Forget drops a mailbox Check recorded, so nothing is sent through it
@@ -56,7 +58,9 @@ type ChannelMailbox interface {
 	// mailbox, a mailbox Check recorded (ErrMailboxUnknown otherwise), to
 	// the recipients its headers name and to bcc, the blind copies the MIME
 	// may not carry. ErrMailTooLarge when mime is larger than MaxMessage or
-	// the provider refuses it as too large. Acceptance is not delivery, and
+	// the provider refuses it as too large; ErrBccUnsupported when the
+	// provider would not keep every blind copy, nothing sent. Acceptance is
+	// not delivery, and
 	// a failure after the provider took the message may send it again on a
 	// retry: at least once, as SMTP.
 	Send(ctx context.Context, mailbox string, mime []byte, bcc []string) error
@@ -73,6 +77,11 @@ type ChannelMailboxInfo struct {
 // ErrMailTooLarge: the message is larger than MaxMessage, or the provider refused it
 // as too large (413). Terminal for the message.
 var ErrMailTooLarge = errors.New("contracts: the message is larger than the mailbox provider takes")
+
+// ErrBccUnsupported: the provider would not carry every blind copy of the
+// message, so it sent nothing rather than send it without them. Terminal for
+// the message.
+var ErrBccUnsupported = errors.New("contracts: the mailbox provider would not keep every blind copy")
 
 // MailboxTenantWide is MailboxStatus.Reason while available but the provider's grant
 // reaches every mailbox in the tenant (M10): a warning, never a refusal.

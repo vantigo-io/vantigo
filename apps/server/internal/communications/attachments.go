@@ -475,14 +475,16 @@ func (s *server) PostCommunicationsConversationsByIdAttachments(ctx context.Cont
 	}
 	// A Microsoft 365 channel's budget (M13): the file as it would travel —
 	// base64 with the margin, plus the headers' headroom — over what the
-	// provider sends is refused now, not when the reply is sent.
+	// provider sends is refused now, not when the reply is sent, saying the
+	// attachments the channel takes (attachmentAllowance), not the budget of
+	// MIME.
 	budget, err := s.mailBudget(ctx, provider)
 	if err != nil {
 		return nil, err
 	}
 	if budget != nil && base64Grown(size)+mailHeadroom > *budget {
 		return gen.PostCommunicationsConversationsByIdAttachments413JSONResponse(flatErrorBody(
-			"attachment_too_large", "The attachment is larger than this channel can send (about "+budgetInMB(*budget)+" MB).")), nil
+			"attachment_too_large", "The attachment is larger than this channel can send (about "+bytesInMB(attachmentAllowance(*budget))+" MB).")), nil
 	}
 
 	fileName := safeAttachmentFileName(form.fileName)

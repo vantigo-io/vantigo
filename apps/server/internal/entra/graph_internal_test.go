@@ -603,9 +603,53 @@ func TestGraphClient_ValidationIsReadFromTheMessageAlone(t *testing.T) {
 		{"another 400", "BadRequest", "Resource not found for the segment 'events'.", false},
 	} {
 		body, _ := json.Marshal(map[string]any{"error": map[string]any{"code": tc.code, "message": tc.message}})
-		g, ok := asGraphError(f.c.refusal(context.Background(), cred.tenantID, http.MethodPost, target, http.StatusBadRequest, body, false))
+		g, ok := asGraphError(f.c.refusal(context.Background(), cred.tenantID, http.MethodPost, target.Path, http.StatusBadRequest, body, false))
 		if !ok || g.Validation != tc.want {
 			t.Errorf("%s: %#v, want Validation %v", tc.name, g, tc.want)
 		}
+	}
+}
+
+// failingTransport sends the token request to the fake and fails every
+// Graph call as a dropped connection.
+type failingTransport struct{ token http.RoundTripper }
+
+func (f failingTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	if req.URL.Host == graphtest.TokenHost {
+		return f.token.RoundTrip(req)
+	}
+	return nil, errors.New("connection reset by peer")
+}
+
+// An addressInPath call — Check's GET /users/{address} — never names the
+// address it was given: not in a transport failure's error, nor in a
+// refusal's error or debug line, which name /users/{address} instead.
+func TestGraphClient_AnAddressInThePathIsNeverShown(t *testing.T) {
+	const address = "kari.hemmelig@nordlys.no"
+	ctx := context.Background()
+	f := newClientFixture(t, nil)
+	fake := fakeTenant(f)
+	cred := f.credential(t, testSecret)
+
+	f.c.http = graphHTTPClient(failingTransport{token: fake})
+	err := f.c.get(ctx, cred, userByAddress(address), &channelUser{}, noWords, addressInPath)
+	if !errors.Is(err, errTenantUnreachable) {
+		t.Fatalf("a dropped connection: %v, want errTenantUnreachable", err)
+	}
+	if strings.Contains(err.Error(), "hemmelig") || !strings.Contains(err.Error(), addressedPath) {
+		t.Errorf("the transport failure = %q, want %s and no address", err, addressedPath)
+	}
+
+	f.c.http = graphHTTPClient(fake)
+	err = f.c.get(ctx, cred, userByAddress(address), &channelUser{}, noWords, addressInPath)
+	if !isStatus(err, http.StatusNotFound) {
+		t.Fatalf("an unknown address: %v, want a 404", err)
+	}
+	if strings.Contains(err.Error(), "hemmelig") {
+		t.Errorf("the refusal = %q names the address", err)
+	}
+	log := f.log.String()
+	if strings.Contains(log, "hemmelig") || !strings.Contains(log, addressedPath) {
+		t.Errorf("the log names the address, or not %s: %s", addressedPath, log)
 	}
 }

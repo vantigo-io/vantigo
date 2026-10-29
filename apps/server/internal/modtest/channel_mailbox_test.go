@@ -108,3 +108,18 @@ func TestFakeChannelMailbox(t *testing.T) {
 		t.Errorf("Check's call = %+v, want the address as given", c)
 	}
 }
+
+// A personal mailbox is answered by Check but never one Send takes, as
+// Entra records only a shared one.
+func TestFakeChannelMailbox_APersonalMailboxIsNotSentThrough(t *testing.T) {
+	ctx := context.Background()
+	f := NewFakeChannelMailbox()
+	kari := contracts.ChannelMailboxInfo{Mailbox: "5d1e8a2c-7b3f-4e6a-9c0d-1f2e3a4b5c6d", Address: "kari@example.com", DisplayName: "Kari"}
+	f.SetMailbox("kari@example.com", kari)
+	if got, err := f.Check(ctx, "kari@example.com"); err != nil || got.Shared {
+		t.Errorf("Check of a personal mailbox = %+v, %v; want it answered, Shared false", got, err)
+	}
+	if err := f.Send(ctx, kari.Mailbox, []byte("x"), nil); !errors.Is(err, contracts.ErrMailboxUnknown) {
+		t.Errorf("Send from a personal mailbox = %v, want ErrMailboxUnknown", err)
+	}
+}

@@ -169,7 +169,8 @@ func TestChannelMailbox_CheckByMailAndADollarAddress(t *testing.T) {
 	}
 }
 
-// A personal mailbox answers Shared false; Communications refuses it.
+// A personal mailbox answers Shared false; Communications refuses it. It is
+// not recorded, so Send refuses it as never checked, with no call.
 func TestChannelMailbox_CheckAPersonalMailbox(t *testing.T) {
 	t.Parallel()
 	h, g, _ := newChannelHarness(t)
@@ -177,8 +178,20 @@ func TestChannelMailbox_CheckAPersonalMailbox(t *testing.T) {
 		u.Shared = false
 		u.UserPrincipalName, u.Mail = "kari@nordlys.no", "kari@nordlys.no"
 	})
-	if info := checked(t, channelProvider(h), "kari@nordlys.no"); info.Shared {
+	p := channelProvider(h)
+	info := checked(t, p, "kari@nordlys.no")
+	if info.Shared {
 		t.Errorf("a personal mailbox: %+v, want Shared false", info)
+	}
+	if n := h.Count(t, `SELECT count(*) FROM entra.channel_mailboxes`); n != 0 {
+		t.Errorf("%d rows for a personal mailbox, want none", n)
+	}
+	from := len(g.Calls())
+	if err := p.Send(context.Background(), info.Mailbox, channelMIME(""), nil); !errors.Is(err, contracts.ErrMailboxUnknown) {
+		t.Errorf("Send from a personal mailbox: %v, want ErrMailboxUnknown", err)
+	}
+	if calls := graphCalls(g, from); len(calls) != 0 || len(g.Sent()) != 0 {
+		t.Errorf("Send from a personal mailbox reached Graph: %+v", calls)
 	}
 }
 
@@ -279,7 +292,8 @@ func TestChannelMailbox_SendRefusedBeforeAnyCall(t *testing.T) {
 	}
 }
 
-// Send's refusals by Graph: 413 ErrMailTooLarge, 403 ErrMailboxDenied, a
+// Send's refusals by Graph: 413, or 400 ErrorMessageSizeExceeded,
+// ErrMailTooLarge; 403 ErrMailboxDenied; a
 // mailbox gone ErrMailboxGone, a 5xx a failure made once — never retried
 // by the client —, a throttle a failure.
 func TestChannelMailbox_SendRefusedByGraph(t *testing.T) {
@@ -299,6 +313,12 @@ func TestChannelMailbox_SendRefusedByGraph(t *testing.T) {
 	if _, err := send(); !errors.Is(err, contracts.ErrMailTooLarge) {
 		t.Errorf("413: %v", err)
 	}
+	// Exchange's own send limit, below Graph's: a 400 with its size code.
+	g.SetMailSizeLimit(len(channelMIME("")) - 1)
+	if _, err := send(); !errors.Is(err, contracts.ErrMailTooLarge) {
+		t.Errorf("400 ErrorMessageSizeExceeded: %v, want ErrMailTooLarge", err)
+	}
+	g.SetMailSizeLimit(0)
 	// One 5xx queued: a retry would have sent the message.
 	g.FailNext(http.StatusInternalServerError)
 	calls, err := send()
@@ -352,8 +372,8 @@ func TestChannelMailbox_SendWithBccThroughADraft(t *testing.T) {
 	}
 
 	g.DropDraftBcc(true)
-	if err := p.Send(ctx, info.Mailbox, mime, bcc); err == nil || errors.Is(err, contracts.ErrMailboxDenied) {
-		t.Errorf("a draft without its Bcc: %v, want a failure", err)
+	if err := p.Send(ctx, info.Mailbox, mime, bcc); !errors.Is(err, contracts.ErrBccUnsupported) {
+		t.Errorf("a draft without its Bcc: %v, want ErrBccUnsupported", err)
 	}
 	g.DropDraftBcc(false)
 	if len(g.Sent()) != 1 || len(g.Drafts()) != 0 {
@@ -390,5 +410,26 @@ func TestChannelMailbox_Forget(t *testing.T) {
 	}
 	if err := p.Send(ctx, info.Mailbox, channelMIME(""), nil); !errors.Is(err, contracts.ErrMailboxUnknown) {
 		t.Errorf("Send after Forget: %v", err)
+	}
+}
+
+// A draft's create answers the message whole, its body with it: a message
+// near MaxMessage answers more than the client's 1 MiB and is still read,
+// the draft sent with its Bcc.
+func TestChannelMailbox_SendALargeMessageWithBcc(t *testing.T) {
+	t.Parallel()
+	h, g, _ := newChannelHarness(t)
+	sharedMailbox(g)
+	p := channelProvider(h)
+	info := checked(t, p, "post@nordlys.no")
+	mime := append(channelMIME("skjult@example.com"), bytes.Repeat([]byte("Lorem ipsum dolor sit amet.\r\n"), 2_500_000/29)...)
+	if len(mime) < 2<<20 || int64(len(mime)) > p.MaxMessage() {
+		t.Fatalf("the MIME is %d bytes, want over 2 MiB and within MaxMessage", len(mime))
+	}
+	if err := p.Send(context.Background(), info.Mailbox, mime, []string{"skjult@example.com"}); err != nil {
+		t.Fatalf("Send of a large message with Bcc: %v", err)
+	}
+	if sent := g.Sent(); len(sent) != 1 || !bytes.Equal(sent[0].MIME, mime) || len(g.Drafts()) != 0 {
+		t.Errorf("sent %d, drafts %d", len(sent), len(g.Drafts()))
 	}
 }

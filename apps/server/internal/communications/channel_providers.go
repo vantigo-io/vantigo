@@ -66,7 +66,7 @@ type mailboxRefusal struct {
 
 var (
 	refusalMailChannelsOff = &mailboxRefusal{http.StatusConflict, "mail_channels_off",
-		"Microsoft 365 mail channels are not available. The Owner turns them on in the Entra module."}
+		"Microsoft 365 mail channels are not available. An Entra administrator turns on Mail channels in the Entra settings."}
 	refusalPersonalMailbox = &mailboxRefusal{http.StatusUnprocessableEntity, "personal_mailbox",
 		"The address is a personal mailbox. Only a shared mailbox can be a channel."}
 	refusalMailboxDenied = &mailboxRefusal{http.StatusUnprocessableEntity, "mailbox_denied",
@@ -129,30 +129,44 @@ func (s *server) resolveSharedMailbox(ctx context.Context, address string) (cont
 // boundaries (M13).
 const mailHeadroom = 16 * 1024
 
-// base64Grown is n bytes once base64- (or quoted-printable-) encoded, with
-// the spec's 37 % margin: × 1.37, rounded up.
+// base64Grown is n bytes once base64-encoded, with the spec's 37 % margin:
+// × 1.37, rounded up.
 func base64Grown(n int64) int64 { return (n*137 + 99) / 100 }
 
+// qpGrown is n bytes once quoted-printable-encoded at its worst, every byte
+// written =XX: × 3.
+func qpGrown(n int64) int64 { return 3 * n }
+
 // mailEstimate is a message's size as MIME before it is built (M13): every
-// attachment and the HTML body grown by the encoding, the text as it is, and
-// the headroom. The HTML part may go base64 or quoted-printable, so it takes
-// the margin too (plan reading 15's decision).
+// attachment grown by base64, the text and the HTML bodies at
+// quoted-printable's worst — a body of non-ASCII letters, each =XX twice —,
+// and the headroom (the review's finding: plan reading 15's 1.37 for the
+// HTML and none for the text could pass a message the provider refuses).
 func mailEstimate(attachmentSizes []int64, text, html *string) int64 {
 	n := int64(mailHeadroom)
 	for _, size := range attachmentSizes {
 		n += base64Grown(size)
 	}
 	if text != nil {
-		n += int64(len(*text))
+		n += qpGrown(int64(len(*text)))
 	}
 	if html != nil {
-		n += base64Grown(int64(len(*html)))
+		n += qpGrown(int64(len(*html)))
 	}
 	return n
 }
 
-// budgetInMB is budget as "about {n} MB" says it: megabytes, as few digits as
-// say it exactly.
-func budgetInMB(budget int64) string {
-	return strconv.FormatFloat(float64(budget)/1e6, 'f', -1, 64)
+// attachmentAllowance is the attachments a budget of MIME takes with no
+// body, as a reader is shown it: (budget − headroom) × 100 / 137, rounded
+// down to 0.1 MB — 2 100 000 bytes of Entra's 3 000 000. One figure for the
+// staging's refusal and the composer (maxAttachmentBytes).
+func attachmentAllowance(budget int64) int64 {
+	raw := max(budget-mailHeadroom, 0) * 100 / 137
+	return raw / 100_000 * 100_000
+}
+
+// bytesInMB is n bytes as "about {n} MB" says it: megabytes, as few digits
+// as say it exactly.
+func bytesInMB(n int64) string {
+	return strconv.FormatFloat(float64(n)/1e6, 'f', -1, 64)
 }
