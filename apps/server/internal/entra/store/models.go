@@ -123,6 +123,7 @@ type EntraMailboxSubscription struct {
 	NotifiedAt      *time.Time
 	CreatedAt       time.Time
 	UpdatedAt       time.Time
+	Resource        string
 }
 
 type EntraOutlookConnection struct {

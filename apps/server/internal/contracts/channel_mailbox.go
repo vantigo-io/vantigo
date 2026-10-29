@@ -79,6 +79,55 @@ type ChannelMailbox interface {
 	// ErrMailTooLarge above, ErrMailItemGone when the message is no longer
 	// there; the errors of Send otherwise.
 	Raw(ctx context.Context, mailbox, messageID string, max int64) ([]byte, error)
+
+	// Watch makes sure the mailbox's folder ("inbox") is watched for new
+	// messages (Outlook connection design M11, M14, M17): nothing when a live
+	// subscription has more than three days left, a renewal when less (or
+	// when the directory asked to reauthorize it), a create otherwise. nil
+	// also when the provider offers no notifications on this installation, or
+	// holds creates off because the directory could not reach it: the poll
+	// runs either way. The errors of Send otherwise.
+	Watch(ctx context.Context, mailbox, folder string) error
+
+	// Unwatch deletes the mailbox's folder subscription. Idempotent: a
+	// mailbox not watched, or a subscription already gone, answers nil.
+	Unwatch(ctx context.Context, mailbox, folder string) error
+
+	// Notified answers the channel mailboxes notified for mail after since,
+	// oldest first, at most MailboxNoticesMax: the provider's own rows, no
+	// network. A notice is a nudge and nothing more — Delta stays the truth.
+	Notified(ctx context.Context, since time.Time) ([]MailboxNotice, error)
+
+	// Mark changes a message's state in the mailbox (Outlook connection
+	// design M11, M12): marks it read, sets its categories, or moves it to a
+	// folder EnsureFolder answered. ErrMailItemGone when the message is no
+	// longer in the mailbox; the errors of Send otherwise.
+	Mark(ctx context.Context, mailbox, messageID string, op MailMark) error
+
+	// EnsureFolder answers the id of the top-level folder named name in
+	// mailbox, creating it when it does not yet exist. Idempotent: a race
+	// that finds the folder already created re-reads and answers its id. The
+	// errors of Send otherwise.
+	EnsureFolder(ctx context.Context, mailbox, name string) (string, error)
+}
+
+// MailMarkKind is the operation Mark performs on a message in the mailbox.
+type MailMarkKind string
+
+const (
+	// MailMarkRead marks the message as read (isRead = true).
+	MailMarkRead MailMarkKind = "read"
+	// MailMarkCategory sets the message's categories.
+	MailMarkCategory MailMarkKind = "category"
+	// MailMarkMove moves the message to the folder MailMark.FolderID names.
+	MailMarkMove MailMarkKind = "move"
+)
+
+// MailMark is one state change Mark applies to a message in the mailbox.
+type MailMark struct {
+	Kind       MailMarkKind
+	Categories []string // for MailMarkCategory
+	FolderID   string   // for MailMarkMove
 }
 
 // MailDelta is one page Delta answered.

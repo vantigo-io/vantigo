@@ -175,6 +175,20 @@ type CommunicationsInboundReceipt struct {
 	CreatedAt         time.Time
 }
 
+type CommunicationsMailboxMark struct {
+	ConversationID uuid.UUID
+	Operation      string
+	Folder         *string
+	Status         string
+	Attempts       int32
+	NextAttemptAt  time.Time
+	QueuedAt       time.Time
+	CompletedAt    *time.Time
+	LastError      *string
+	LeaseID        *string
+	LeaseUntil     *time.Time
+}
+
 type CommunicationsMessageAttachment struct {
 	ID          uuid.UUID
 	MessageID   uuid.UUID
