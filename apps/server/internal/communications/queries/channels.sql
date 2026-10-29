@@ -183,9 +183,16 @@ WHERE channel_id = @channel_id;
 -- isDefault rule (inventory §19.2 items 10-11) — this query only ever
 -- receives final values, never partial ones.
 UPDATE communications.channels
-SET display_name = @display_name, is_active = @is_active, is_default = @is_default
+SET display_name = @display_name, is_active = @is_active, is_default = @is_default, settings = @settings
 WHERE id = @id
 RETURNING id, type, address, display_name, provider, is_default, is_active, created_at, settings;
+
+-- name: GetChannelSettingsByID :one
+-- GetChannelSettingsByID reads a channel's provider and settings, for
+-- conversations_patch.go's on-close mark enqueue (M17).
+SELECT provider, settings
+FROM communications.channels
+WHERE id = @id;
 
 -- name: UpsertChannelCredential :exec
 -- UpsertChannelCredential rewrites the credential row when PutChannelById

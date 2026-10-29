@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -63,8 +64,16 @@ const (
 	// tries past, as the outbox's.
 	mailboxSyncClaimAttempts = 10
 	// mailboxSyncEvery is how long after a finished sync a channel is due
-	// again, and how long a held one waits for its provider.
+	// again without notifications, and how long a held one waits for its
+	// provider.
 	mailboxSyncEvery = 5 * time.Minute
+	// mailboxSyncSafetyEvery is how long after a finished sync a channel is
+	// due again when change notifications are active and Watch succeeded
+	// (M14 step 3, M17).
+	mailboxSyncSafetyEvery = time.Hour
+	// mailboxNoticesOverlap is how far before the latest notice taken the
+	// next Notified asks from (M17).
+	mailboxNoticesOverlap = 30 * time.Second
 	// mailboxSyncRefusedWait is how long a channel the provider refused
 	// (denied, gone, unknown) waits: an admin may fix the mailbox's RBAC.
 	mailboxSyncRefusedWait = time.Hour
@@ -102,6 +111,10 @@ type MailboxSyncWorker struct {
 	store    storage.ObjectStore
 	storeErr error
 	metrics  *inboundMetrics
+
+	noticesMu    sync.Mutex
+	noticesSince time.Time
+	noticesFull  bool
 }
 
 var _ worker.Worker = (*MailboxSyncWorker)(nil)
@@ -154,13 +167,18 @@ func (w *MailboxSyncWorker) drain(ctx context.Context) {
 	}
 }
 
-// ProcessOne claims at most one channel due and runs one cycle on it,
-// answering whether a channel was claimed — true for any outcome of the
-// cycle, so a caller can drain.
+// ProcessOne takes any pending change notices, claims at most one channel due
+// and runs one cycle on it (or, when no channel is due, claims and runs one
+// due mailbox_marks job), answering whether work was claimed — true for any
+// outcome of the cycle, so a caller can drain.
 func (w *MailboxSyncWorker) ProcessOne(ctx context.Context) (bool, error) {
+	w.takeNotices(ctx)
 	channelID, leaseID, ok, err := w.claim(ctx)
-	if err != nil || !ok {
+	if err != nil {
 		return false, err
+	}
+	if !ok {
+		return w.ProcessOneMark(ctx)
 	}
 	c := &syncCycle{channelID: channelID, leaseID: leaseID}
 	err = w.cycle(ctx, c)
@@ -175,6 +193,61 @@ func (w *MailboxSyncWorker) ProcessOne(ctx context.Context) (bool, error) {
 		return true, nil
 	}
 	return true, w.recordFailure(ctx, c, err)
+}
+
+// notificationsActive reports whether Graph change notifications are enabled
+// and have a public base URL for the webhook (M14 step 3, M17).
+func (w *MailboxSyncWorker) notificationsActive() bool {
+	return w.deps.Config != nil &&
+		w.deps.Config.CalendarMailboxNotificationsEnabled &&
+		strings.TrimSpace(w.deps.Config.PublicBaseURL) != ""
+}
+
+// takeNotices asks the provider for mailboxes notified since the worker's
+// cursor (with a 30s overlap) and marks their active Microsoft 365 channels
+// notified and due at now (M17).
+func (w *MailboxSyncWorker) takeNotices(ctx context.Context) {
+	provider, err := w.syncMailbox(ctx)
+	if err != nil || provider == nil {
+		return
+	}
+	w.noticesMu.Lock()
+	defer w.noticesMu.Unlock()
+	now := w.now()
+	if w.noticesSince.IsZero() {
+		w.noticesSince = now.Add(-mailboxSyncSafetyEvery)
+	}
+	since := w.noticesSince.Add(-mailboxNoticesOverlap)
+	if w.noticesFull {
+		since = w.noticesSince
+	}
+	notices, err := mailboxNotified(ctx, provider, since)
+	if err != nil {
+		code, _ := syncFailureCode(err)
+		w.logger().Warn("mailbox sync: the mailboxes notified could not be read; the poll goes on",
+			"worker", mailboxSyncWorkerName, "code", code)
+		return
+	}
+	if len(notices) == 0 {
+		w.noticesFull = false
+		return
+	}
+	mailboxes, ats := make([]string, len(notices)), make([]time.Time, len(notices))
+	latest := w.noticesSince
+	for i, n := range notices {
+		mailboxes[i], ats[i] = n.Mailbox, n.At
+		if n.At.After(latest) {
+			latest = n.At
+		}
+	}
+	if _, err := store.New(w.deps.Pool).MarkChannelSyncNotified(ctx, store.MarkChannelSyncNotifiedParams{
+		Now: now, Mailboxes: mailboxes, Ats: ats,
+	}); err != nil {
+		w.logger().Warn("mailbox sync: the notified channels could not be made due; they are asked for again",
+			"worker", mailboxSyncWorkerName, "error", err)
+		return
+	}
+	w.noticesSince, w.noticesFull = latest, len(notices) >= contracts.MailboxNoticesMax
 }
 
 // claim takes the first channel due by a conditional update. now and the
@@ -312,6 +385,15 @@ func (w *MailboxSyncWorker) cycle(ctx context.Context, c *syncCycle) error {
 	next := now
 	if page.Done {
 		next = now.Add(mailboxSyncEvery)
+		if w.notificationsActive() {
+			if werr := mailboxWatch(ctx, provider, c.mailbox, mailboxSyncFolder); werr != nil {
+				code, _ := syncFailureCode(werr)
+				w.logger().Warn("mailbox sync could not watch the channel's mailbox; the 5-minute poll continues",
+					"worker", mailboxSyncWorkerName, "channel", c.channelID, "code", code)
+			} else {
+				next = now.Add(mailboxSyncSafetyEvery)
+			}
+		}
 	}
 	return w.guarded(q.StoreChannelSyncPage(ctx, store.StoreChannelSyncPageParams{
 		DeltaLink: nonEmpty(page.Link), Done: page.Done, Now: now, NextSyncAt: next,

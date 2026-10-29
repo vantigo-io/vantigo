@@ -624,3 +624,150 @@ func TestChannels_CheckLimit(t *testing.T) {
 		t.Errorf("the list is not limited: %d", r.Status)
 	}
 }
+
+// TestCreateChannel_EntraImportWindowAndOnClose: importWindow sets
+// channel_sync.import_from (from_now, last_30_days, last_90_days) and onClose
+// + folder are persisted in channels.settings and answered on
+// ChannelResponse.mailbox (M17).
+func TestCreateChannel_EntraImportWindowAndOnClose(t *testing.T) {
+	t.Parallel()
+	h, fake := mailboxHarness(t)
+	c := h.SignIn(t, "communications:channels-manage")
+
+	// 1. Default: from_now, onClose=none, folder=nil.
+	addr1 := channelAddress(t)
+	sharedMailbox(fake, addr1, "")
+	ch1 := createChannel(t, c, entraChannelBody(addr1))
+	if ch1.Mailbox == nil || ch1.Mailbox.OnClose != "none" || ch1.Mailbox.Folder != nil {
+		t.Errorf("default mailbox = %+v, want onClose=none folder=nil", ch1.Mailbox)
+	}
+	if s := readSync(t, h, uuid.MustParse(ch1.Id)); !s.importFrom.Equal(h.Now()) {
+		t.Errorf("default importFrom = %v, want %v", s.importFrom, h.Now())
+	}
+
+	// 2. last_30_days + onClose=move with default folder ("Handled in Vantigo").
+	addr2 := channelAddress(t)
+	sharedMailbox(fake, addr2, "")
+	body2 := entraChannelBody(addr2)
+	body2["importWindow"] = "last_30_days"
+	body2["onClose"] = "move"
+	ch2 := createChannel(t, c, body2)
+	if ch2.Mailbox == nil || ch2.Mailbox.OnClose != "move" || strOf(ch2.Mailbox.Folder) != "Handled in Vantigo" {
+		t.Errorf("move default folder mailbox = %+v", ch2.Mailbox)
+	}
+	if s := readSync(t, h, uuid.MustParse(ch2.Id)); !s.importFrom.Equal(h.Now().AddDate(0, 0, -30)) {
+		t.Errorf("last_30_days importFrom = %v, want %v", s.importFrom, h.Now().AddDate(0, 0, -30))
+	}
+
+	// 3. last_90_days + onClose=move with custom folder ("Arkiv").
+	addr3 := channelAddress(t)
+	sharedMailbox(fake, addr3, "")
+	body3 := entraChannelBody(addr3)
+	body3["importWindow"] = "last_90_days"
+	body3["onClose"] = "move"
+	body3["folder"] = "Arkiv"
+	ch3 := createChannel(t, c, body3)
+	if ch3.Mailbox == nil || ch3.Mailbox.OnClose != "move" || strOf(ch3.Mailbox.Folder) != "Arkiv" {
+		t.Errorf("move custom folder mailbox = %+v", ch3.Mailbox)
+	}
+	if s := readSync(t, h, uuid.MustParse(ch3.Id)); !s.importFrom.Equal(h.Now().AddDate(0, 0, -90)) {
+		t.Errorf("last_90_days importFrom = %v, want %v", s.importFrom, h.Now().AddDate(0, 0, -90))
+	}
+
+	// 4. Validation refusals.
+	bad := entraChannelBody(channelAddress(t))
+	bad["importWindow"] = "last_year"
+	bad["onClose"] = "delete"
+	bad["folder"] = "  untrimmed  "
+	r := c.Do(http.MethodPost, "/api/v1/communications/channels", bad)
+	wantCode(t, r, http.StatusBadRequest, "invalid_request")
+	var e commErrorJSON
+	r.JSON(&e)
+	if len(e.field("importWindow")) != 1 || len(e.field("onClose")) != 1 || len(e.field("folder")) != 1 {
+		t.Errorf("validation fields = %v, want importWindow, onClose, folder", e.Error.Fields)
+	}
+}
+
+// TestSwitchChannelProvider_ImportWindowAndOnClose: switching an SMTP channel
+// to Microsoft 365 honours importWindow, onClose and folder.
+func TestSwitchChannelProvider_ImportWindowAndOnClose(t *testing.T) {
+	t.Parallel()
+	h, fake := mailboxHarness(t)
+	c := h.SignIn(t, "communications:channels-manage")
+	ch := createChannel(t, c, newChannelBody(channelAddress(t)))
+	sharedMailbox(fake, ch.Address, "")
+
+	r := c.Do(http.MethodPost, "/api/v1/communications/channels/"+ch.Id+"/provider", map[string]any{
+		"provider":     "entra",
+		"importWindow": "last_30_days",
+		"onClose":      "read",
+	})
+	if r.Status != http.StatusOK {
+		t.Fatalf("switch status %d body %s, want 200", r.Status, r.Body)
+	}
+	var got channelJSON
+	r.JSON(&got)
+	if got.Mailbox == nil || got.Mailbox.OnClose != "read" || got.Mailbox.Folder != nil {
+		t.Errorf("switched mailbox = %+v, want onClose=read folder=nil", got.Mailbox)
+	}
+	if s := readSync(t, h, uuid.MustParse(ch.Id)); !s.importFrom.Equal(h.Now().AddDate(0, 0, -30)) {
+		t.Errorf("importFrom = %v, want %v", s.importFrom, h.Now().AddDate(0, 0, -30))
+	}
+}
+
+// TestUpdateChannel_EntraOnCloseAndUnwatch: PUT /channels/{id} updates onClose
+// and folder on an entra channel, calls Unwatch when the channel is
+// deactivated, and calls Unwatch + Forget when switched back to SMTP.
+func TestUpdateChannel_EntraOnCloseAndUnwatch(t *testing.T) {
+	t.Parallel()
+	h, fake := mailboxHarness(t)
+	c := h.SignIn(t, "communications:channels-manage")
+	address := channelAddress(t)
+	info := sharedMailbox(fake, address, "")
+	ch := createChannel(t, c, entraChannelBody(address))
+
+	// Watch the mailbox first so we can observe Unwatch.
+	if err := fake.Watch(context.Background(), info.Mailbox, "inbox"); err != nil {
+		t.Fatalf("fake.Watch: %v", err)
+	}
+
+	// Update onClose to move with custom folder, and deactivate.
+	r := c.Do(http.MethodPut, "/api/v1/communications/channels/"+ch.Id, map[string]any{
+		"onClose":  "move",
+		"folder":   "Done",
+		"isActive": false,
+	})
+	if r.Status != http.StatusOK {
+		t.Fatalf("PUT status %d body %s, want 200", r.Status, r.Body)
+	}
+	var got channelJSON
+	r.JSON(&got)
+	if got.IsActive || got.Mailbox == nil || got.Mailbox.OnClose != "move" || strOf(got.Mailbox.Folder) != "Done" {
+		t.Errorf("updated = %+v, want inactive with onClose=move folder=Done", got)
+	}
+	if fake.Watched(info.Mailbox) {
+		t.Errorf("Watched(%s) after deactivate = true, want false", info.Mailbox)
+	}
+
+	// Re-watch, reactivate, then switch back to SMTP -> both Unwatch and Forget run.
+	_ = fake.Watch(context.Background(), info.Mailbox, "inbox")
+	if r := c.Do(http.MethodPut, "/api/v1/communications/channels/"+ch.Id, map[string]any{
+		"isActive": true,
+		"onClose":  "read",
+	}); r.Status != http.StatusOK {
+		t.Fatalf("reactivate: %d %s", r.Status, r.Body)
+	}
+	r = c.Do(http.MethodPut, "/api/v1/communications/channels/"+ch.Id, map[string]any{
+		"provider": "smtp",
+		"smtp":     map[string]any{"host": "smtp.example.test", "port": 587, "password": "pw"},
+	})
+	if r.Status != http.StatusOK {
+		t.Fatalf("switch back to smtp: %d %s", r.Status, r.Body)
+	}
+	if fake.Watched(info.Mailbox) {
+		t.Errorf("Watched(%s) after switch to smtp = true, want false", info.Mailbox)
+	}
+	if forgotten := fake.Forgotten(); len(forgotten) != 1 || forgotten[0] != info.Mailbox {
+		t.Errorf("forgotten = %v, want [%s]", forgotten, info.Mailbox)
+	}
+}

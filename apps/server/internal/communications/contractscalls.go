@@ -217,6 +217,47 @@ func mailboxRaw(ctx context.Context, m contracts.ChannelMailbox, mailbox, messag
 	return m.Raw(ctx, mailbox, messageID, max)
 }
 
+// mailboxWatch keeps a channel's folder subscribed for change notifications (M17).
+func mailboxWatch(ctx context.Context, m contracts.ChannelMailbox, mailbox, folder string) error {
+	if err := noteContractCall(ctx, "ChannelMailbox.Watch"); err != nil {
+		return err
+	}
+	return m.Watch(ctx, mailbox, folder)
+}
+
+// mailboxUnwatch drops a channel's folder subscription when the channel stops
+// receiving (M17).
+func (s *server) mailboxUnwatch(ctx context.Context, m contracts.ChannelMailbox, mailbox, folder string) error {
+	if err := noteContractCall(ctx, "ChannelMailbox.Unwatch"); err != nil {
+		return err
+	}
+	return m.Unwatch(ctx, mailbox, folder)
+}
+
+// mailboxNotified reads the channel mailboxes notified since since (M17).
+func mailboxNotified(ctx context.Context, m contracts.ChannelMailbox, since time.Time) ([]contracts.MailboxNotice, error) {
+	if err := noteContractCall(ctx, "ChannelMailbox.Notified"); err != nil {
+		return nil, err
+	}
+	return m.Notified(ctx, since)
+}
+
+// mailboxMark applies a close-state mark to one message in a channel's mailbox (M17).
+func mailboxMark(ctx context.Context, m contracts.ChannelMailbox, mailbox, messageID string, op contracts.MailMark) error {
+	if err := noteContractCall(ctx, "ChannelMailbox.Mark"); err != nil {
+		return err
+	}
+	return m.Mark(ctx, mailbox, messageID, op)
+}
+
+// mailboxEnsureFolder finds or creates a top-level folder in a channel's mailbox (M17).
+func mailboxEnsureFolder(ctx context.Context, m contracts.ChannelMailbox, mailbox, name string) (string, error) {
+	if err := noteContractCall(ctx, "ChannelMailbox.EnsureFolder"); err != nil {
+		return "", err
+	}
+	return m.EnsureFolder(ctx, mailbox, name)
+}
+
 // directoryContactsByEmail is the linker's one read of the customer
 // directory (M15): every contact with the sender's address and the customers
 // each is linked to.

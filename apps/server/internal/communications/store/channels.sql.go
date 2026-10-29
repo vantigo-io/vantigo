@@ -192,6 +192,26 @@ func (q *Queries) GetChannelProviderForConversation(ctx context.Context, id uuid
 	return provider, err
 }
 
+const getChannelSettingsByID = `-- name: GetChannelSettingsByID :one
+SELECT provider, settings
+FROM communications.channels
+WHERE id = $1
+`
+
+type GetChannelSettingsByIDRow struct {
+	Provider string
+	Settings []byte
+}
+
+// GetChannelSettingsByID reads a channel's provider and settings, for
+// conversations_patch.go's on-close mark enqueue (M17).
+func (q *Queries) GetChannelSettingsByID(ctx context.Context, id uuid.UUID) (GetChannelSettingsByIDRow, error) {
+	row := q.db.QueryRow(ctx, getChannelSettingsByID, id)
+	var i GetChannelSettingsByIDRow
+	err := row.Scan(&i.Provider, &i.Settings)
+	return i, err
+}
+
 const insertChannel = `-- name: InsertChannel :one
 INSERT INTO communications.channels (id, type, address, display_name, provider, is_default, is_active, created_at, settings)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
@@ -465,8 +485,8 @@ func (q *Queries) SwitchChannelProvider(ctx context.Context, arg SwitchChannelPr
 
 const updateChannel = `-- name: UpdateChannel :one
 UPDATE communications.channels
-SET display_name = $1, is_active = $2, is_default = $3
-WHERE id = $4
+SET display_name = $1, is_active = $2, is_default = $3, settings = $4
+WHERE id = $5
 RETURNING id, type, address, display_name, provider, is_default, is_active, created_at, settings
 `
 
@@ -474,6 +494,7 @@ type UpdateChannelParams struct {
 	DisplayName *string
 	IsActive    bool
 	IsDefault   bool
+	Settings    []byte
 	ID          uuid.UUID
 }
 
@@ -486,6 +507,7 @@ func (q *Queries) UpdateChannel(ctx context.Context, arg UpdateChannelParams) (C
 		arg.DisplayName,
 		arg.IsActive,
 		arg.IsDefault,
+		arg.Settings,
 		arg.ID,
 	)
 	var i CommunicationsChannel

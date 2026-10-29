@@ -85,3 +85,29 @@ func validDisplayName(v string) bool {
 func validSMTPPort(port int32) bool {
 	return port >= 1 && port <= 65535
 }
+
+// validFolderName validates a Microsoft 365 channel's on-close move folder
+// name (M17): at most 120 UTF-16 code units, already trimmed, no control
+// characters.
+func validFolderName(v string) bool {
+	if utf16Length(v) > 120 {
+		return false
+	}
+	if v != strings.TrimSpace(v) {
+		return false
+	}
+	for _, r := range v {
+		if unicode.IsControl(r) {
+			return false
+		}
+	}
+	return true
+}
+
+func validOnClose(v string) bool {
+	return v == onCloseNone || v == onCloseRead || v == onCloseMove
+}
+
+func validImportWindow(v string) bool {
+	return v == importWindowFromNow || v == importWindowLast30Days || v == importWindowLast90Days
+}

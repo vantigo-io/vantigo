@@ -44,7 +44,9 @@ type channelJSON struct {
 		Username *string `json:"username"`
 	} `json:"settings"`
 	Mailbox *struct {
-		Id string `json:"id"`
+		Id      string  `json:"id"`
+		OnClose string  `json:"onClose"`
+		Folder  *string `json:"folder"`
 	} `json:"mailbox"`
 }
 

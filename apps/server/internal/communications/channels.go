@@ -127,23 +127,109 @@ func channelRowFromList(c store.ListChannelsRow) channelRow {
 	}
 }
 
-// mailboxSettings is channels.settings for a Microsoft 365 channel (M12):
-// the object id of the mailbox ChannelMailbox.Check resolved.
+// mailboxSettings is channels.settings for a Microsoft 365 channel (M12, M17):
+// the object id of the mailbox ChannelMailbox.Check resolved, and what
+// closing a conversation does in Outlook (onClose and folder).
+const (
+	onCloseNone          = "none"
+	onCloseRead          = "read"
+	onCloseMove          = "move"
+	defaultOnCloseFolder = "Handled in Vantigo"
+
+	importWindowFromNow    = "from_now"
+	importWindowLast30Days = "last_30_days"
+	importWindowLast90Days = "last_90_days"
+)
+
 type mailboxSettings struct {
-	Mailbox string `json:"mailbox"`
+	Mailbox string  `json:"mailbox"`
+	OnClose string  `json:"onClose,omitempty"`
+	Folder  *string `json:"folder,omitempty"`
+}
+
+// channelSettingsOf decodes channels.settings for a Microsoft 365 channel and
+// fills its defaults: onClose 'none', and folder 'Handled in Vantigo' when
+// onClose is 'move' (nil otherwise).
+func channelSettingsOf(settings []byte) (mailboxSettings, error) {
+	if len(settings) == 0 {
+		return mailboxSettings{OnClose: onCloseNone}, nil
+	}
+	var m mailboxSettings
+	if err := json.Unmarshal(settings, &m); err != nil {
+		return mailboxSettings{}, fmt.Errorf("communications: decode channel settings: %w", err)
+	}
+	if !validOnClose(m.OnClose) {
+		m.OnClose = onCloseNone
+	}
+	if m.OnClose == onCloseMove {
+		if m.Folder == nil || strings.TrimSpace(*m.Folder) == "" {
+			def := defaultOnCloseFolder
+			m.Folder = &def
+		}
+	} else {
+		m.Folder = nil
+	}
+	return m, nil
 }
 
 // channelMailboxOf is the mailbox a channel's settings name, "" when none
 // (an SMTP channel's settings are '{}').
 func channelMailboxOf(settings []byte) (string, error) {
-	if len(settings) == 0 {
-		return "", nil
-	}
-	var m mailboxSettings
-	if err := json.Unmarshal(settings, &m); err != nil {
-		return "", fmt.Errorf("communications: decode channel settings: %w", err)
+	m, err := channelSettingsOf(settings)
+	if err != nil {
+		return "", err
 	}
 	return m.Mailbox, nil
+}
+
+// importFromWindow computes channel_sync.import_from from importWindow (M17).
+func importFromWindow(now time.Time, window string) time.Time {
+	switch window {
+	case importWindowLast30Days:
+		return now.AddDate(0, 0, -30)
+	case importWindowLast90Days:
+		return now.AddDate(0, 0, -90)
+	default:
+		return now
+	}
+}
+
+// validateEntraChannelOptions validates optional importWindow, onClose and
+// folder fields on CreateChannelRequest and SwitchChannelProviderRequest.
+func validateEntraChannelOptions(rawWindow, rawOnClose, rawFolder *string, errs map[string][]string) (window, onClose string, folder *string) {
+	window = importWindowFromNow
+	if rawWindow != nil && strings.TrimSpace(*rawWindow) != "" {
+		w := strings.ToLower(strings.TrimSpace(*rawWindow))
+		if !validImportWindow(w) {
+			errs["importWindow"] = []string{"ImportWindow must be from_now, last_30_days, or last_90_days."}
+		} else {
+			window = w
+		}
+	}
+	onClose = onCloseNone
+	if rawOnClose != nil && strings.TrimSpace(*rawOnClose) != "" {
+		oc := strings.ToLower(strings.TrimSpace(*rawOnClose))
+		if !validOnClose(oc) {
+			errs["onClose"] = []string{"OnClose must be none, read, or move."}
+		} else {
+			onClose = oc
+		}
+	}
+	if rawFolder != nil && *rawFolder != "" {
+		if !validFolderName(*rawFolder) {
+			errs["folder"] = []string{"Folder is invalid."}
+		} else {
+			folder = rawFolder
+		}
+	}
+	if onClose == onCloseMove && (folder == nil || *folder == "") {
+		def := defaultOnCloseFolder
+		folder = &def
+	}
+	if onClose != onCloseMove {
+		folder = nil
+	}
+	return window, onClose, folder
 }
 
 // channelResponseOf is ToChannelResponse (EP/ChannelEndpoints.cs:51,
@@ -157,14 +243,16 @@ func channelResponseOf(row channelRow, settingsJSON *string) (gen.ChannelRespons
 		Provider: row.Provider, IsDefault: row.IsDefault, IsActive: row.IsActive, CreatedAt: row.CreatedAt,
 	}
 	if row.Provider == providerEntra {
-		mailbox, err := channelMailboxOf(row.Settings)
+		ms, err := channelSettingsOf(row.Settings)
 		if err != nil {
 			return gen.ChannelResponse{}, err
 		}
-		if mailbox != "" {
+		if ms.Mailbox != "" {
 			resp.Mailbox = &struct {
-				Id string `json:"id"`
-			}{Id: mailbox}
+				Folder  *string `json:"folder"`
+				Id      string  `json:"id"`
+				OnClose string  `json:"onClose"`
+			}{Id: ms.Mailbox, OnClose: ms.OnClose, Folder: ms.Folder}
 		}
 	}
 	if settingsJSON == nil {
@@ -259,13 +347,16 @@ func resolveSmtpCredential(c *gen.SmtpChannelCredentialRequest) (settings smtpPr
 // createChannelInput is what validateCreateChannel resolved once every
 // field passed: everything InsertChannel/InsertChannelCredential need.
 type createChannelInput struct {
-	channelType string
-	address     string
-	displayName *string
-	isDefault   bool
-	provider    string // providerSMTP or providerEntra
-	settings    smtpProviderSettings
-	password    string
+	channelType  string
+	address      string
+	displayName  *string
+	isDefault    bool
+	provider     string // providerSMTP or providerEntra
+	settings     smtpProviderSettings
+	password     string
+	importWindow string
+	onClose      string
+	folder       *string
 }
 
 // validateCreateChannel is ValidateChannel (EP/Dtos/CommunicationValidation.cs,
@@ -315,6 +406,7 @@ func validateCreateChannel(body gen.CreateChannelRequest) (createChannelInput, m
 	in.provider = provider
 	switch {
 	case provider == providerEntra && body.Smtp == nil:
+		in.importWindow, in.onClose, in.folder = validateEntraChannelOptions(body.ImportWindow, body.OnClose, body.Folder, errs)
 	case provider != providerSMTP:
 		errs["smtp"] = []string{"SMTP credentials require the smtp provider."}
 	default:
@@ -407,7 +499,7 @@ func (s *server) PostCommunicationsChannels(ctx context.Context, req gen.PostCom
 			return createChannelRefusal(refusal), nil
 		}
 		in.address = info.Address
-		if channelSettings, err = json.Marshal(mailboxSettings{Mailbox: info.Mailbox}); err != nil {
+		if channelSettings, err = json.Marshal(mailboxSettings{Mailbox: info.Mailbox, OnClose: in.onClose, Folder: in.folder}); err != nil {
 			return nil, fmt.Errorf("communications: encode channel settings: %w", err)
 		}
 	} else {
@@ -448,8 +540,10 @@ func (s *server) PostCommunicationsChannels(ctx context.Context, req gen.PostCom
 			return err
 		}
 		if in.provider == providerEntra {
-			// It receives from now on, never its past (M14).
-			sync, err := q.InsertChannelSync(ctx, store.InsertChannelSyncParams{ChannelID: channel.ID, Now: now})
+			// It receives from import_from (from_now, last_30_days or last_90_days, M14/M17).
+			sync, err := q.InsertChannelSync(ctx, store.InsertChannelSyncParams{
+				ChannelID: channel.ID, ImportFrom: importFromWindow(now, in.importWindow), Now: now,
+			})
 			if err != nil {
 				return err
 			}
@@ -574,6 +668,23 @@ func (s *server) PutCommunicationsChannelsById(ctx context.Context, req gen.PutC
 			newDisplayName = body.DisplayName
 		}
 	}
+	var newOnClose *string
+	if body.OnClose != nil && strings.TrimSpace(*body.OnClose) != "" {
+		oc := strings.ToLower(strings.TrimSpace(*body.OnClose))
+		if !validOnClose(oc) {
+			fieldErrs["onClose"] = []string{"OnClose must be none, read, or move."}
+		} else {
+			newOnClose = &oc
+		}
+	}
+	var newFolder *string
+	if body.Folder != nil && *body.Folder != "" {
+		if !validFolderName(*body.Folder) {
+			fieldErrs["folder"] = []string{"Folder is invalid."}
+		} else {
+			newFolder = body.Folder
+		}
+	}
 	if len(fieldErrs) > 0 {
 		return gen.PutCommunicationsChannelsById400JSONResponse(validationErrorBody(fieldErrs)), nil
 	}
@@ -675,8 +786,9 @@ func (s *server) PutCommunicationsChannelsById(ctx context.Context, req gen.PutC
 
 	var resp gen.ChannelResponse
 	// forget is the mailbox a channel switched back to SMTP left behind,
-	// for Forget once the transaction has committed.
-	var forget string
+	// for Unwatch and Forget once the transaction has committed; unwatch is
+	// the mailbox of an active Microsoft 365 channel that was deactivated.
+	var forget, unwatch string
 	txErr := s.withTx(ctx, func(ctx context.Context, txq *store.Queries) error {
 		if err := lockDefaultChannelSlot(ctx, txq); err != nil {
 			return err
@@ -743,8 +855,38 @@ func (s *server) PutCommunicationsChannelsById(ctx context.Context, req gen.PutC
 		case newDisplayName != nil:
 			finalDisplayName = newDisplayName
 		}
+		finalSettings := current.Settings
+		if current.Provider == providerEntra && !backToSMTP {
+			ms, serr := channelSettingsOf(current.Settings)
+			if serr != nil {
+				return serr
+			}
+			if newOnClose != nil {
+				ms.OnClose = *newOnClose
+			}
+			if newFolder != nil {
+				ms.Folder = newFolder
+			} else if body.Folder != nil && *body.Folder == "" {
+				ms.Folder = nil
+			}
+			if ms.OnClose == onCloseMove {
+				if ms.Folder == nil || strings.TrimSpace(*ms.Folder) == "" {
+					def := defaultOnCloseFolder
+					ms.Folder = &def
+				}
+			} else {
+				ms.Folder = nil
+			}
+			if finalSettings, serr = json.Marshal(ms); serr != nil {
+				return fmt.Errorf("communications: encode channel settings: %w", serr)
+			}
+			if current.IsActive && !isActive && ms.Mailbox != "" {
+				unwatch = ms.Mailbox
+			}
+		}
 		updated, err := txq.UpdateChannel(ctx, store.UpdateChannelParams{
 			ID: req.Id, DisplayName: finalDisplayName, IsActive: isActive, IsDefault: isDefault,
+			Settings: finalSettings,
 		})
 		if err != nil {
 			return err
@@ -835,6 +977,8 @@ func (s *server) PutCommunicationsChannelsById(ctx context.Context, req gen.PutC
 	}
 	if forget != "" {
 		s.forgetMailbox(ctx, req.Id, forget)
+	} else if unwatch != "" {
+		s.unwatchMailbox(ctx, req.Id, unwatch)
 	}
 	return gen.PutCommunicationsChannelsById200JSONResponse(resp), nil
 }
@@ -845,12 +989,13 @@ func (s *server) PutCommunicationsChannelsById(ctx context.Context, req gen.PutC
 var errChannelProviderChanged = errors.New("communications: the channel's provider changed under the request")
 
 // forgetMailbox drops the mailbox a channel switched back to SMTP no longer
-// uses, after the switch committed (M11): best-effort — the channel is SMTP
-// whatever the provider answers, and a mailbox left recorded only lets the
-// provider send through one an admin checked — and logged when it fails.
+// uses, after the switch committed (M11, M17): best-effort — the channel is
+// SMTP whatever the provider answers, and a mailbox left recorded only lets
+// the provider send through one an admin checked — and logged when it fails.
 // The channels are read again first: a channel created on, or switched to,
-// the same mailbox since the commit has had it Checked anew, and a Forget
-// now would leave that channel unable to send, so it is skipped.
+// the same mailbox since the commit has had it Checked anew, and an Unwatch
+// or Forget now would leave that channel unable to receive or send, so it is
+// skipped.
 func (s *server) forgetMailbox(ctx context.Context, channelID uuid.UUID, mailbox string) {
 	m, err := s.channelMailbox(ctx)
 	if err == nil && m == nil {
@@ -864,10 +1009,30 @@ func (s *server) forgetMailbox(ctx context.Context, channelID uuid.UUID, mailbox
 		return
 	}
 	if err == nil {
+		if uerr := s.mailboxUnwatch(ctx, m, mailbox, mailboxSyncFolder); uerr != nil {
+			s.deps.Logger.WarnContext(ctx, "communications: unwatch the channel's mailbox after its switch back to SMTP",
+				"channel_id", channelID, "mailbox", mailbox, "err", uerr)
+		}
 		err = s.mailboxForget(ctx, m, mailbox)
 	}
 	if err != nil {
 		s.deps.Logger.WarnContext(ctx, "communications: forget the channel's mailbox after its switch back to SMTP",
+			"channel_id", channelID, "mailbox", mailbox, "err", err)
+	}
+}
+
+// unwatchMailbox drops the Inbox subscription of a Microsoft 365 channel that
+// was deactivated (M17): best-effort after commit.
+func (s *server) unwatchMailbox(ctx context.Context, channelID uuid.UUID, mailbox string) {
+	m, err := s.channelMailbox(ctx)
+	if err == nil && m == nil {
+		return
+	}
+	if err == nil {
+		err = s.mailboxUnwatch(ctx, m, mailbox, mailboxSyncFolder)
+	}
+	if err != nil {
+		s.deps.Logger.WarnContext(ctx, "communications: unwatch the deactivated channel's mailbox",
 			"channel_id", channelID, "mailbox", mailbox, "err", err)
 	}
 }
@@ -1061,10 +1226,17 @@ var errProviderUnchanged = errors.New("communications: the channel already uses 
 // transaction then fails: it only lets the provider send through a mailbox an
 // admin checked, and the next Check rewrites it.
 func (s *server) PostCommunicationsChannelsByIdProvider(ctx context.Context, req gen.PostCommunicationsChannelsByIdProviderRequestObject) (gen.PostCommunicationsChannelsByIdProviderResponseObject, error) {
+	errs := map[string][]string{}
 	if req.Body == nil || strings.ToLower(strings.TrimSpace(req.Body.Provider)) != providerEntra {
-		return gen.PostCommunicationsChannelsByIdProvider400JSONResponse(validationErrorBody(map[string][]string{
-			"provider": {"A channel is switched to the entra provider only."},
-		})), nil
+		errs["provider"] = []string{"A channel is switched to the entra provider only."}
+	}
+	var importWindow, onClose string
+	var folder *string
+	if req.Body != nil {
+		importWindow, onClose, folder = validateEntraChannelOptions(req.Body.ImportWindow, req.Body.OnClose, req.Body.Folder, errs)
+	}
+	if len(errs) > 0 {
+		return gen.PostCommunicationsChannelsByIdProvider400JSONResponse(validationErrorBody(errs)), nil
 	}
 
 	existing, err := store.New(s.deps.Pool).GetChannelByID(ctx, req.Id)
@@ -1092,7 +1264,7 @@ func (s *server) PostCommunicationsChannelsByIdProvider(ctx context.Context, req
 			return gen.PostCommunicationsChannelsByIdProvider422JSONResponse(body), nil
 		}
 	}
-	settings, err := json.Marshal(mailboxSettings{Mailbox: info.Mailbox})
+	settings, err := json.Marshal(mailboxSettings{Mailbox: info.Mailbox, OnClose: onClose, Folder: folder})
 	if err != nil {
 		return nil, fmt.Errorf("communications: encode channel settings: %w", err)
 	}
@@ -1120,8 +1292,11 @@ func (s *server) PostCommunicationsChannelsByIdProvider(ctx context.Context, req
 		if err := txq.DeleteChannelCredential(ctx, req.Id); err != nil {
 			return err
 		}
-		// It receives from the switch on, never its past (M14).
-		sync, err := txq.InsertChannelSync(ctx, store.InsertChannelSyncParams{ChannelID: req.Id, Now: s.deps.Clock()})
+		now := s.deps.Clock()
+		// It receives from import_from (from_now, last_30_days or last_90_days, M14/M17).
+		sync, err := txq.InsertChannelSync(ctx, store.InsertChannelSyncParams{
+			ChannelID: req.Id, ImportFrom: importFromWindow(now, importWindow), Now: now,
+		})
 		if err != nil {
 			return err
 		}
