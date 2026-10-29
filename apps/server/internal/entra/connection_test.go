@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/vantigo-io/vantigo/server/internal/entra/gen"
 	"github.com/vantigo-io/vantigo/server/internal/entra/graphtest"
 	"github.com/vantigo-io/vantigo/server/internal/modtest"
@@ -191,8 +193,14 @@ func TestConnection_TheTestReportsTheMissingPermissionsAndWritesTheDomains(t *te
 		t.Errorf("the connection after the test: %+v", conn)
 	}
 	codes := modtest.One[[]string](t, h.Harness, `SELECT codes FROM entra.events WHERE action = 'entra.connection.tested' AND actor_user_id = $1`, ownerID)
-	if len(codes) != 1+len(wantMissing) || codes[0] != "connected" || codes[1] != "missing:User-LifeCycleInfo.ReadWrite.All" {
+	// Directory.Read.All is none of the module's: a warning after the
+	// missing ones (design M19), the status connected all the same.
+	if len(codes) != 2+len(wantMissing) || codes[0] != "connected" || codes[1] != "missing:User-LifeCycleInfo.ReadWrite.All" ||
+		codes[len(codes)-1] != "unexpected:Directory.Read.All" {
 		t.Errorf("the event's codes = %v", codes)
+	}
+	if !slices.Equal(result.PermissionsUnexpected, []string{"Directory.Read.All"}) {
+		t.Errorf("unexpected = %v", result.PermissionsUnexpected)
 	}
 
 	// Consent granted since: the next test takes a fresh token and reads it.
@@ -465,5 +473,141 @@ func TestAccounts_TheRowsWithoutThePass(t *testing.T) {
 		if strings.Contains(string(r.Body), leak) {
 			t.Errorf("the answer carries %q: %s", leak, r.Body)
 		}
+	}
+}
+
+// insertOutlookRow puts a person's connection in state for oid, as a
+// complete would have.
+func insertOutlookRow(t *testing.T, h *harness, oid uuid.UUID, state string) {
+	t.Helper()
+	h.Exec(t, `INSERT INTO entra.outlook_connections (object_id, user_id, tenant_id, scopes, refresh_sealed, state, connected_at, changed_at, created_at, updated_at)
+	           VALUES ($1, $2, $3, '{calendars.readwrite}', '\x01', $4, $5, $5, $5, $5)`, oid, uuid.New(), tenantID, state, h.Now())
+}
+
+// outlookConnect's five statuses (Outlook connection design M2), in their
+// order — off, unavailable, consent_missing, ready, untested — and its
+// counts of the people connected and waiting to reconnect.
+func TestConnection_OutlookConnectsStatusAndCounts(t *testing.T) {
+	t.Parallel()
+	h, _ := newTenantHarness(t)
+	o := connected(t, h)
+	status := func(want gen.EntraOutlookConnectStatus) gen.EntraOutlookConnect {
+		t.Helper()
+		got := getConnection(t, o).OutlookConnect
+		if got.Status != want {
+			t.Errorf("status = %s, want %s (%+v)", got.Status, want, got)
+		}
+		return got
+	}
+	status(gen.EntraOutlookConnectStatusOff)
+
+	on := setOutlookConnect(t, o, true)
+	if on.OutlookConnect.Status != gen.EntraOutlookConnectStatusUntested {
+		t.Errorf("turned on: %s, want untested", on.OutlookConnect.Status)
+	}
+	if got := status(gen.EntraOutlookConnectStatusUntested); got.Connected != 0 || got.Reconnect != 0 {
+		t.Errorf("counts = %d/%d, want none", got.Connected, got.Reconnect)
+	}
+
+	// A connection made before the switch was last turned on is no proof.
+	h.Exec(t, `UPDATE entra.connection SET outlook_connect_at = $1`, h.Now().Add(time.Hour))
+	insertOutlookRow(t, h, uuid.New(), "active")
+	status(gen.EntraOutlookConnectStatusUntested)
+	h.Exec(t, `UPDATE entra.connection SET outlook_connect_at = $1`, h.Now())
+	insertOutlookRow(t, h, uuid.New(), "active")
+	insertOutlookRow(t, h, uuid.New(), "reconnect")
+	insertOutlookRow(t, h, uuid.New(), "closing")
+	if got := status(gen.EntraOutlookConnectStatusReady); got.Connected != 2 || got.Reconnect != 1 {
+		t.Errorf("counts = %d/%d, want 2 connected and 1 to reconnect", got.Connected, got.Reconnect)
+	}
+
+	h.Exec(t, `UPDATE entra.connection SET outlook_last_error = 'consent_missing', outlook_last_error_at = $1`, h.Now())
+	status(gen.EntraOutlookConnectStatusConsentMissing)
+
+	h.Exec(t, `UPDATE entra.connection SET status = 'failing', status_reason = 'tenant_unreachable'`)
+	if got := status(gen.EntraOutlookConnectStatusUnavailable); got.Reason == nil || *got.Reason != "tenant_unreachable" {
+		t.Errorf("reason = %v, want the connection's", got.Reason)
+	}
+}
+
+// Turning the switch on records when; turning it on again does not move
+// it; turning it off closes every live connection, its token kept for the
+// removals, one entra.outlook.closed event each under the caller.
+func TestSettings_TheOutlookSwitchOnAndOff(t *testing.T) {
+	t.Parallel()
+	h, _ := newTenantHarness(t)
+	o, ownerID := owner(t, h)
+	register(t, o)
+	addSecret(t, o, secretValue, "Vantigo", h.Now().AddDate(1, 0, 0))
+	testConnection(t, o)
+
+	setOutlookConnect(t, o, true)
+	turnedOn := h.Now()
+	if got := modtest.One[time.Time](t, h.Harness, `SELECT outlook_connect_at FROM entra.connection`); !got.Equal(turnedOn) {
+		t.Errorf("outlook_connect_at = %v, want %v", got, turnedOn)
+	}
+	h.Advance(time.Hour)
+	setOutlookConnect(t, o, true)
+	if got := modtest.One[time.Time](t, h.Harness, `SELECT outlook_connect_at FROM entra.connection`); !got.Equal(turnedOn) {
+		t.Errorf("on again moved outlook_connect_at to %v", got)
+	}
+
+	live := []uuid.UUID{addAccount(t, h, "E-1", "kari@nordlys.no"), addAccount(t, h, "E-2", "ola@nordlys.no")}
+	insertOutlookRow(t, h, live[0], "active")
+	insertOutlookRow(t, h, live[1], "reconnect")
+	closing := uuid.New()
+	insertOutlookRow(t, h, closing, "closing")
+
+	setOutlookConnect(t, o, false)
+	if n := h.Count(t, `SELECT count(*) FROM entra.outlook_connections WHERE state = 'closing' AND refresh_sealed IS NOT NULL AND revision = 2 AND changed_at = $1`, h.Now()); n != 2 {
+		t.Errorf("%d connections closed with their tokens, want 2", n)
+	}
+	if n := h.Count(t, `SELECT count(*) FROM entra.outlook_connections WHERE object_id = $1 AND revision = 1`, closing); n != 1 {
+		t.Error("a connection closing already was written again")
+	}
+	if n := h.Count(t, `SELECT count(*) FROM entra.events WHERE action = 'entra.outlook.closed' AND codes = '{switch_off}' AND actor_user_id = $1
+	    AND ((object_id = $2 AND upn = 'kari@nordlys.no') OR (object_id = $3 AND upn = 'ola@nordlys.no'))`, ownerID, live[0], live[1]); n != 2 {
+		t.Errorf("%d closed events, want one per connection", n)
+	}
+
+	h.Advance(time.Hour)
+	setOutlookConnect(t, o, true)
+	if got := modtest.One[time.Time](t, h.Harness, `SELECT outlook_connect_at FROM entra.connection`); !got.Equal(h.Now()) {
+		t.Errorf("on after off: outlook_connect_at = %v, want %v", got, h.Now())
+	}
+	if n := h.Count(t, `SELECT count(*) FROM entra.events WHERE action = 'entra.outlook.closed'`); n != 2 {
+		t.Errorf("turning it on closed something: %d events", n)
+	}
+}
+
+// permissionsUnexpected (design M19): the token's roles beyond the eight
+// and Calendars.ReadWrite, a warning in GET /connection and the test's
+// answer and an unexpected: code in the test's event — never a status.
+func TestConnection_PermissionsUnexpected(t *testing.T) {
+	t.Parallel()
+	h, g := newTenantHarness(t)
+	o := connected(t, h)
+	if got := getConnection(t, o).PermissionsUnexpected; len(got) != 0 {
+		t.Errorf("the eight alone: %v, want none", got)
+	}
+
+	g.Configure(func(g *graphtest.FakeGraph) { g.Roles = append(g.Roles, "Calendars.ReadWrite") })
+	if got := testConnection(t, o).PermissionsUnexpected; len(got) != 0 {
+		t.Errorf("with Calendars.ReadWrite: %v, want none", got)
+	}
+
+	g.Configure(func(g *graphtest.FakeGraph) { g.Roles = append(g.Roles, "Mail.Send", "Directory.ReadWrite.All") })
+	result := testConnection(t, o)
+	want := []string{"Directory.ReadWrite.All", "Mail.Send"}
+	if result.Status != gen.EntraConnectionTestStatusConnected || !slices.Equal(result.PermissionsUnexpected, want) {
+		t.Errorf("the test: %s %v, want connected warning of %v", result.Status, result.PermissionsUnexpected, want)
+	}
+	conn := getConnection(t, o)
+	if conn.Status != gen.EntraConnectionStatusConnected || !slices.Equal(conn.PermissionsUnexpected, want) {
+		t.Errorf("GET /connection: %s %v", conn.Status, conn.PermissionsUnexpected)
+	}
+	codes := modtest.One[[]string](t, h.Harness, `SELECT codes FROM entra.events WHERE action = 'entra.connection.tested' ORDER BY id DESC LIMIT 1`)
+	if !slices.Equal(codes, []string{"connected", "unexpected:Directory.ReadWrite.All", "unexpected:Mail.Send"}) {
+		t.Errorf("the test's codes = %v", codes)
 	}
 }

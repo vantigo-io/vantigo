@@ -103,6 +103,22 @@ func missingPermissions(present []string, outlookConnect bool) []string {
 	return out
 }
 
+// unexpectedPermissions are the roles in present, sorted, that the module
+// does not use (Outlook connection design M19): neither one of
+// requiredPermissions nor Calendars.ReadWrite, which the calendar's sync
+// still uses on the application permission until delivery B. The mail
+// roles count until delivery C reports them under tenant_wide. A warning,
+// never a status.
+func unexpectedPermissions(present []string) []string {
+	out := []string{}
+	for _, p := range present {
+		if !slices.Contains(requiredPermissions, p) && p != permissionCalendarsReadWrite {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
 // orEmpty is s, or an empty slice for nil, so an array is never null.
 func orEmpty(s []string) []string {
 	if s == nil {
@@ -120,16 +136,29 @@ func uuidPtr(u *uuid.UUID) *openapi_types.UUID {
 	return &v
 }
 
+// outlookCounts is what outlookConnect reads of the people's connections:
+// how many are working and waiting to reconnect, and whether one was made
+// since the switch was last turned on.
+type outlookCounts struct {
+	store.CountOutlookConnectionsRow
+	since bool
+}
+
 // outlookConnectBody is the Outlook connection switch as GET /connection
 // answers it (Outlook connection design M2), from the switch and the
-// connection's status and reason, with the redirect URI to register and
-// the change notifications' state (calendar Outlook sync design O11.7): off
-// while the switch is, unavailable while the connection is not connected,
-// untested otherwise.
-func outlookConnectBody(conn store.EntraConnection, status, reason string, notifications gen.EntraCalendarSyncNotifications, redirectURI string) gen.EntraOutlookConnect {
+// connection's status and reason, the people's connections, the redirect
+// URI to register and the change notifications' state (calendar Outlook
+// sync design O11.7). In order: off while the switch is; unavailable while
+// the connection is not connected, with its reason; consent_missing while
+// the last validated connect found a feature not consented; ready once
+// someone has connected since the switch was last turned on; untested
+// otherwise.
+func outlookConnectBody(conn store.EntraConnection, status, reason string, counts outlookCounts, notifications gen.EntraCalendarSyncNotifications, redirectURI string) gen.EntraOutlookConnect {
 	body := gen.EntraOutlookConnect{
 		Enabled:       conn.OutlookConnect,
 		Status:        gen.EntraOutlookConnectStatusOff,
+		Connected:     int32(counts.Connected),
+		Reconnect:     int32(counts.Reconnect),
 		RedirectUri:   redirectURI,
 		Notifications: notifications,
 	}
@@ -140,6 +169,10 @@ func outlookConnectBody(conn store.EntraConnection, status, reason string, notif
 		if reason != "" {
 			body.Reason = &reason
 		}
+	case conn.OutlookLastError != nil && *conn.OutlookLastError == outlookConsentMissing:
+		body.Status = gen.EntraOutlookConnectStatusConsentMissing
+	case counts.since:
+		body.Status = gen.EntraOutlookConnectStatusReady
 	default:
 		body.Status = gen.EntraOutlookConnectStatusUntested
 	}
@@ -148,9 +181,9 @@ func outlookConnectBody(conn store.EntraConnection, status, reason string, notif
 
 // connectionBody is the connection as GET /connection answers it at now,
 // with the counts of its accounts and of its groups present in the tenant,
-// the change notifications' state and the Outlook connection's redirect
-// URI.
-func connectionBody(conn store.EntraConnection, creds []store.EntraCredential, counts store.CountAccountsRow, groups int32, notifications gen.EntraCalendarSyncNotifications, redirectURI string, now time.Time) gen.EntraConnection {
+// the people's Outlook connections, the change notifications' state and
+// the Outlook connection's redirect URI.
+func connectionBody(conn store.EntraConnection, creds []store.EntraCredential, counts store.CountAccountsRow, groups int32, outlook outlookCounts, notifications gen.EntraCalendarSyncNotifications, redirectURI string, now time.Time) gen.EntraConnection {
 	status, reason := statusOf(conn, creds, now)
 	body := gen.EntraConnection{
 		Status:                gen.EntraConnectionStatus(status),
@@ -160,7 +193,7 @@ func connectionBody(conn store.EntraConnection, creds []store.EntraCredential, c
 		VerifiedDomains:       orEmpty(conn.VerifiedDomains),
 		PermissionsPresent:    orEmpty(conn.PermissionsPresent),
 		PermissionsMissing:    missingPermissions(conn.PermissionsPresent, conn.OutlookConnect),
-		PermissionsUnexpected: []string{},
+		PermissionsUnexpected: unexpectedPermissions(conn.PermissionsPresent),
 		LastCheckedAt:         conn.LastCheckedAt,
 		Settings: gen.EntraSettings{
 			UpnDomain:            conn.UpnDomain,
@@ -178,7 +211,7 @@ func connectionBody(conn store.EntraConnection, creds []store.EntraCredential, c
 		Credentials:    credentialsBody(creds, now),
 		Accounts:       gen.EntraAccountCounts{Count: counts.Total, Enabled: counts.Enabled, Disabled: counts.Disabled, Deleted: counts.Deleted},
 		Groups:         gen.EntraGroupCounts{Count: groups},
-		OutlookConnect: outlookConnectBody(conn, status, reason, notifications, redirectURI),
+		OutlookConnect: outlookConnectBody(conn, status, reason, outlook, notifications, redirectURI),
 		Version:        conn.Version,
 	}
 	if reason != "" {
@@ -187,8 +220,9 @@ func connectionBody(conn store.EntraConnection, creds []store.EntraCredential, c
 	return body
 }
 
-// readConnection is the connection's body read through q at now, the
-// change notifications' state from cfg.
+// readConnection is the connection's body read through q at now: the
+// people's Outlook connections counted, and the change notifications'
+// state from cfg.
 func readConnection(ctx context.Context, q *store.Queries, cfg *config.Config, conn store.EntraConnection, now time.Time) (gen.EntraConnection, error) {
 	creds, err := q.ListCredentials(ctx)
 	if err != nil {
@@ -202,11 +236,20 @@ func readConnection(ctx context.Context, q *store.Queries, cfg *config.Config, c
 	if err != nil {
 		return gen.EntraConnection{}, fmt.Errorf("entra: count the groups: %w", err)
 	}
+	var outlook outlookCounts
+	if outlook.CountOutlookConnectionsRow, err = q.CountOutlookConnections(ctx); err != nil {
+		return gen.EntraConnection{}, fmt.Errorf("entra: count the Outlook connections: %w", err)
+	}
+	if conn.OutlookConnect && conn.OutlookConnectAt != nil {
+		if outlook.since, err = q.OutlookConnectedSince(ctx, *conn.OutlookConnectAt); err != nil {
+			return gen.EntraConnection{}, fmt.Errorf("entra: read the Outlook connections since the switch: %w", err)
+		}
+	}
 	notifications, err := notificationsBody(ctx, q, cfg, conn, now)
 	if err != nil {
 		return gen.EntraConnection{}, err
 	}
-	return connectionBody(conn, creds, counts, groups, notifications, outlookRedirectURI(cfg), now), nil
+	return connectionBody(conn, creds, counts, groups, outlook, notifications, outlookRedirectURI(cfg), now), nil
 }
 
 // GetEntraConnection answers the connection from the module's rows; nothing
@@ -430,7 +473,9 @@ func mergeSettings(in gen.EntraSettingsRequest, conn store.EntraConnection) (sto
 // PutEntraConnectionSettings sets the account rules (step 4) under
 // If-Match: every field optional and kept when left out, each refusal a
 // field error. Audited entra.settings.changed with the names of the fields
-// that changed. (PUT /api/v1/entra/connection/settings)
+// that changed. Turning the Outlook connection switch on records when;
+// turning it off closes every person's connection in the same transaction,
+// each audited entra.outlook.closed switch_off. (PUT /api/v1/entra/connection/settings)
 func (s *server) PutEntraConnectionSettings(ctx context.Context, req gen.PutEntraConnectionSettingsRequestObject) (gen.PutEntraConnectionSettingsResponseObject, error) {
 	version, ok := parseVersion(req.Params.IfMatch)
 	if !ok {
@@ -463,6 +508,13 @@ func (s *server) PutEntraConnectionSettings(ctx context.Context, req gen.PutEntr
 		updated, err := q.UpdateConnectionSettings(ctx, p)
 		if err != nil {
 			return fmt.Errorf("entra: set the account rules: %w", err)
+		}
+		if conn.OutlookConnect && !p.OutlookConnect {
+			// The switch turned off closes everyone's connection (Outlook
+			// connection design M7); each must connect again once it is on.
+			if err := closeAllOutlook(ctx, q, now, actor); err != nil {
+				return err
+			}
 		}
 		if err := recordEvent(ctx, q, now, actor, actionSettingsChanged, nil, "", changed); err != nil {
 			return err
@@ -502,8 +554,11 @@ type organisation struct {
 // tenant did not answer) or consent_missing (no roles at all, or the
 // organisation refused for want of a permission). What it found is written
 // to the connection and audited entra.connection.tested; the answer is 200
-// whatever it found. Whether the application holds the User Administrator
-// role cannot be read without a further permission: roleKnown is false.
+// whatever it found. The roles the module does not use are answered as
+// permissionsUnexpected and audited unexpected:<permission> after the
+// missing ones: a warning, never the status. Whether the application holds
+// the User Administrator role cannot be read without a further permission:
+// roleKnown is false.
 // A token that came also names the application's service principal (its
 // oid claim), written to the connection for the groups' owner; and a test
 // that connected reads the tenant's licences, cached on the connection for
@@ -591,12 +646,16 @@ func (s *server) PostEntraConnectionTest(ctx context.Context, _ gen.PostEntraCon
 		}
 	}
 	missing := missingPermissions(updated.PermissionsPresent, updated.OutlookConnect)
+	unexpected := unexpectedPermissions(updated.PermissionsPresent)
 	codes := []string{status}
 	if reason != "" {
 		codes = append(codes, reason)
 	}
 	for _, m := range missing {
 		codes = append(codes, "missing:"+m)
+	}
+	for _, u := range unexpected {
+		codes = append(codes, "unexpected:"+u)
 	}
 	if err := recordEvent(ctx, s.q, now, actor, actionConnectionTested, nil, "", codes); err != nil {
 		return nil, err
@@ -607,7 +666,7 @@ func (s *server) PostEntraConnectionTest(ctx context.Context, _ gen.PostEntraCon
 		VerifiedDomains:       orEmpty(updated.VerifiedDomains),
 		PermissionsPresent:    orEmpty(updated.PermissionsPresent),
 		PermissionsMissing:    missing,
-		PermissionsUnexpected: []string{},
+		PermissionsUnexpected: unexpected,
 		RoleKnown:             false,
 	}
 	if reason != "" {

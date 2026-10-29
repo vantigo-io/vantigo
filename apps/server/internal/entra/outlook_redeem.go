@@ -43,6 +43,7 @@ type outlookRedeemed struct {
 // success or refusal.
 type outlookTokenAnswer struct {
 	AccessToken  string `json:"access_token"`
+	ExpiresIn    int64  `json:"expires_in"`
 	RefreshToken string `json:"refresh_token"`
 	IDToken      string `json:"id_token"`
 	Scope        string `json:"scope"`
