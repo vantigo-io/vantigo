@@ -17,6 +17,7 @@ import (
 
 	"github.com/vantigo-io/vantigo/server/internal/communications/store"
 	"github.com/vantigo-io/vantigo/server/internal/config"
+	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/db"
 	"github.com/vantigo-io/vantigo/server/internal/mail"
 	"github.com/vantigo-io/vantigo/server/internal/module"
@@ -82,7 +83,9 @@ const (
 	// outbound error redaction, so it is not "improved" into the real message.
 	outboxFailureMessage = "Outbound delivery failed."
 	// outboxFailureEventData is the data_json of the retrying /
-	// submission_failed events (`:275`), carrying the same constant.
+	// submission_failed events (`:275`), carrying the same constant. A job
+	// failed at once by a terminal cause adds its code beside it
+	// (outboxFailureEvent).
 	outboxFailureEventData = `{"error":"Outbound delivery failed."}`
 )
 
@@ -94,6 +97,49 @@ var (
 	errChannelGone            = errors.New("communications: the message channel no longer exists")
 	errAttachmentsUnavailable = errors.New("communications: outbound attachments are not available")
 )
+
+// errChannelMisconfigured is a Microsoft 365 channel whose settings name no
+// mailbox: nothing to send from, and no retry will find one.
+var errChannelMisconfigured = errors.New("communications: the channel's settings name no mailbox")
+
+// outboxTerminalCode is the code of a failure no retry can mend (Outlook
+// connection design M13) — the mailbox provider's answer that the mailbox is
+// not ours to write to, is gone or unknown, that the message is too large,
+// or a channel with no mailbox — and "" for every other failure, which is
+// retried on the backoff: ErrMailboxUnavailable, a missing provider, and any
+// error the contract does not name.
+func outboxTerminalCode(err error) string {
+	switch {
+	case errors.Is(err, contracts.ErrMailboxDenied):
+		return "mailbox_denied"
+	case errors.Is(err, contracts.ErrMailboxGone):
+		return "mailbox_gone"
+	case errors.Is(err, contracts.ErrMailboxUnknown):
+		return "mailbox_unknown"
+	case errors.Is(err, contracts.ErrMailTooLarge):
+		return "too_large"
+	case errors.Is(err, errChannelMisconfigured):
+		return "channel_misconfigured"
+	}
+	return ""
+}
+
+// outboxFailureEvent is the data_json of a failure event: the constant
+// alone, or with the terminal code beside it — the code, never the error's
+// text, is what the event may carry.
+func outboxFailureEvent(code string) (string, error) {
+	if code == "" {
+		return outboxFailureEventData, nil
+	}
+	b, err := json.Marshal(struct {
+		Error string `json:"error"`
+		Code  string `json:"code"`
+	}{outboxFailureMessage, code})
+	if err != nil {
+		return "", fmt.Errorf("communications: encode failure event: %w", err)
+	}
+	return string(b), nil
+}
 
 // OutboxWorker drains communications.outbox_jobs: claim a job by conditional
 // update, send its message over the channel's own SMTP settings, and record the
@@ -205,9 +251,10 @@ func (w *OutboxWorker) ProcessOne(ctx context.Context) (bool, error) {
 		if ctx.Err() != nil {
 			return true, err
 		}
+		code := outboxTerminalCode(err)
 		w.logger().Warn("outbound delivery failed",
-			"worker", outboxWorkerName, "job", job.ID, "message", job.MessageID, "error", err)
-		if markErr := w.markFailed(ctx, *job, leaseID, err); markErr != nil {
+			"worker", outboxWorkerName, "job", job.ID, "message", job.MessageID, "code", code, "error", err)
+		if markErr := w.markFailed(ctx, *job, leaseID, code); markErr != nil {
 			return true, markErr
 		}
 	}
@@ -382,6 +429,12 @@ func (w *OutboxWorker) deliver(ctx context.Context, job store.CommunicationsOutb
 	if err != nil {
 		return err
 	}
+	if message.ChannelProvider != providerSMTP {
+		if err := w.sendThroughMailbox(ctx, message, envelope); err != nil {
+			return err
+		}
+		return w.complete(ctx, job, leaseID, sendable)
+	}
 	smtp, err := w.smtpConfig(message)
 	if err != nil {
 		return err
@@ -394,6 +447,43 @@ func (w *OutboxWorker) deliver(ctx context.Context, job store.CommunicationsOutb
 
 	// Steps 9-13.
 	return w.complete(ctx, job, leaseID, sendable)
+}
+
+// sendThroughMailbox is step 8 for a channel on a mail channels provider
+// (M13): the same envelope rendered as MIME — our Message-Id and threading
+// headers, the Bcc header too when there are blind copies — and handed to
+// the provider's Send with the blind copies beside it, under the SMTP send's
+// own timeout. The provider's acceptance is the relay's 250.
+func (w *OutboxWorker) sendThroughMailbox(ctx context.Context, message store.GetOutboundMessageForSendRow, envelope mail.Outbound) error {
+	mailbox, err := channelMailboxOf(message.ChannelSettings)
+	if err != nil {
+		return err
+	}
+	if mailbox == "" {
+		return errChannelMisconfigured
+	}
+	provider, err := w.outboxMailbox(ctx, message.ChannelProvider)
+	if err != nil {
+		return err
+	}
+	if provider == nil {
+		return fmt.Errorf("communications: no mail channels provider under %q: %w",
+			message.ChannelProvider, contracts.ErrMailboxUnavailable)
+	}
+	var opts []mail.RenderOption
+	if len(envelope.Bcc) > 0 {
+		opts = append(opts, mail.WithBcc())
+	}
+	mime, err := mail.RenderMIME(message.ChannelAddress, envelope, opts...)
+	if err != nil {
+		return err
+	}
+	sendCtx, cancel := context.WithTimeout(ctx, outboxSendTimeout)
+	defer cancel()
+	if err := mailboxSend(sendCtx, provider, mailbox, mime, envelope.Bcc); err != nil {
+		return fmt.Errorf("communications: send outbound message through the mailbox: %w", err)
+	}
+	return nil
 }
 
 // complete is steps 9-13. Step 10's lease check is the whole reason this is a
@@ -488,7 +578,15 @@ func (w *OutboxWorker) cancelSuppressed(ctx context.Context, job store.Communica
 // markFailed is MarkFailedAsync (`:249-281`). It re-reads the job and does
 // nothing at all if the row is gone or the lease was taken over — a worker that
 // lost its lease does not get to record a failure either.
-func (w *OutboxWorker) markFailed(ctx context.Context, job store.CommunicationsOutboxJob, leaseID string, cause error) error {
+//
+// code is outboxTerminalCode's for the cause: "" leaves terminality to the
+// attempts, as .NET does; any other fails the job at once (M13), with
+// last_error still the constant and the code in the events' data.
+func (w *OutboxWorker) markFailed(ctx context.Context, job store.CommunicationsOutboxJob, leaseID string, code string) error {
+	data, err := outboxFailureEvent(code)
+	if err != nil {
+		return err
+	}
 	now := w.now()
 	// recorded stays false on both no-op paths (the row is gone, or the lease
 	// was taken over), so neither counter moves for a failure this worker was
@@ -496,7 +594,7 @@ func (w *OutboxWorker) markFailed(ctx context.Context, job store.CommunicationsO
 	// .NET chooses the same way at `:258` / `:260`, one or the other, never
 	// both (inventory §13.4).
 	recorded, terminal := false, false
-	err := db.WithTx(ctx, w.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
+	err = db.WithTx(ctx, w.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		q := store.New(tx)
 		current, err := q.GetOutboxJob(ctx, job.ID)
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -512,13 +610,12 @@ func (w *OutboxWorker) markFailed(ctx context.Context, job store.CommunicationsO
 		// Terminality on the POST-increment attempts value: max_attempts = 8
 		// means 8 total attempts, and the backoff for attempts = 7 (128 s) is
 		// therefore the largest one a default deployment ever waits.
-		terminal = current.Attempts >= outboxMaxAttempts
+		terminal = current.Attempts >= outboxMaxAttempts || code != ""
 		jobStatus, deliveryStatus := "retry", "retrying"
 		if terminal {
 			jobStatus, deliveryStatus = "failed", "submission_failed"
 		}
 		failure := outboxFailureMessage
-		data := outboxFailureEventData
 
 		if err := q.FailOutboxJob(ctx, store.FailOutboxJobParams{
 			Status:        jobStatus,

@@ -71,12 +71,16 @@ WHERE id = @id;
 -- selected even though the row exists: the envelope's Message-Id is recomputed
 -- from the message id (EmailMessageId.For, inventory §15.4), and selecting the
 -- stored column here would invite a future reader to "fix" the envelope to the
--- wrong source. conversation_id, channel_id and channel_provider are likewise
--- omitted rather than carried unread.
+-- wrong source. conversation_id and channel_id are likewise omitted rather than
+-- carried unread. channel_provider and channel_settings choose the path the
+-- send takes (Outlook connection design M13): an 'smtp' channel sends over its
+-- credential row, an 'entra' one through ChannelMailbox.Send to the mailbox its
+-- settings name, and has no credential row.
 SELECT m.id, m.subject, m.text_body, m.html_body, m.channel_metadata_json,
        c.subject AS conversation_subject,
        ch.type AS channel_type, ch.address AS channel_address,
        ch.display_name AS channel_display_name,
+       ch.provider AS channel_provider, ch.settings AS channel_settings,
        cred.settings_json AS credential_settings_json,
        cred.secret_ciphertext AS credential_secret_ciphertext
 FROM communications.conversation_messages m

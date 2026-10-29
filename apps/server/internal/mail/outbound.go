@@ -115,6 +115,52 @@ func SendOutbound(ctx context.Context, cfg config.MailConfig, out Outbound) erro
 	return nil
 }
 
+// RenderOption adjusts how RenderMIME writes a message.
+type RenderOption func(*renderOptions)
+
+type renderOptions struct {
+	bcc bool
+}
+
+// WithBcc makes RenderMIME write the Bcc header — once, the addresses
+// comma-joined — which go-mail's writer always leaves out (v0.8.1,
+// msgwriter.go writes only From, To, Cc and Reply-To). Over SMTP the blind
+// copies travel in the envelope's RCPT TO; a provider that takes the MIME
+// whole and reads its recipients from the headers would otherwise drop them.
+func WithBcc() RenderOption {
+	return func(o *renderOptions) { o.bcc = true }
+}
+
+// RenderMIME renders out as the RFC 5322 message SendOutbound would send from
+// the address from — the same headers, our Message-ID and threading headers,
+// the same parts — and answers its bytes, for a provider that sends MIME
+// rather than speaking SMTP (communications' Microsoft 365 channels, Outlook
+// connection design M13). Without WithBcc the bytes carry no Bcc header, as
+// on the wire over SMTP.
+func RenderMIME(from string, out Outbound, opts ...RenderOption) ([]byte, error) {
+	if len(out.To)+len(out.Cc)+len(out.Bcc) == 0 {
+		return nil, fmt.Errorf("mail: an outbound message needs at least one recipient")
+	}
+	var o renderOptions
+	for _, opt := range opts {
+		opt(&o)
+	}
+	msg, err := out.message(from)
+	if err != nil {
+		return nil, err
+	}
+	if bcc := msg.GetBccString(); o.bcc && len(bcc) > 0 {
+		// A generic header, so the writer folds it as it folds To and Cc;
+		// the values are go-mail's own rendering of the parsed addresses.
+		msg.SetGenHeader(gomail.Header(gomail.HeaderBcc), bcc...)
+	}
+	var buf bytes.Buffer
+	if _, err := msg.WriteTo(&buf); err != nil {
+		return nil, fmt.Errorf("mail: rendering: %w", err)
+	}
+	return buf.Bytes(), nil
+}
+
 // bracketedContentID returns id in the angle-bracketed form a Content-ID
 // header takes, adding the brackets only when the caller did not.
 //
