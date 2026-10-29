@@ -29,7 +29,8 @@ import (
 //     and its body, the MIME's text —; POST …/messages/{id}/send sends it, 202,
 //     recorded by Sent with those recipients, and leaves no draft;
 //     DELETE …/messages/{id} deletes it, 204; a draft not there is 404
-//     ErrorItemNotFound. Drafts lists the drafts not sent.
+//     ErrorItemNotFound. Drafts lists the drafts not sent;
+//   - the Inbox's message delta and a message's $value (mail_inbox.go).
 //
 // A MIME message larger than SetMailSizeLimit's bytes is refused as
 // Exchange refuses one over a mailbox's send limit: 400
@@ -140,7 +141,7 @@ func (g *FakeGraph) mailRoute(u *User, method string, seg []string, contentType 
 		}
 		return answer{status: http.StatusOK, body: map[string]any{"value": purpose}}
 	case method == http.MethodGet && strings.EqualFold(rest, "mailFolders/inbox"):
-		return answer{status: http.StatusOK, body: map[string]any{"id": "AQMkADinbox" + strings.ReplaceAll(u.ID, "-", "")}}
+		return answer{status: http.StatusOK, body: map[string]any{"id": inboxID(u)}}
 	case method == http.MethodPost && rest == "sendMail":
 		mime, a, ok := g.decodeMIME(contentType, body)
 		if !ok {
@@ -180,6 +181,8 @@ func (g *FakeGraph) mailRoute(u *User, method string, seg []string, contentType 
 		g.drafts = slices.Delete(g.drafts, i, i+1)
 		g.sent = append(g.sent, SentMail{UserID: u.ID, MIME: d.MIME, Bcc: d.Bcc})
 		return answer{status: http.StatusAccepted}
+	case len(seg) == 3 && seg[0] == "messages" && seg[2] == "$value" && method == http.MethodGet:
+		return g.inboxValue(u, seg[1])
 	case len(seg) == 2 && seg[0] == "messages" && method == http.MethodDelete:
 		i := g.draftIndex(u, seg[1])
 		if i < 0 {

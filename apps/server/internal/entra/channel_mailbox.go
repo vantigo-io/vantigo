@@ -13,7 +13,6 @@ import (
 	"unicode"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/entra/store"
@@ -44,7 +43,8 @@ import (
 // sent — a draft that lost one is ErrBccUnsupported, nothing sent. Neither
 // is retried by the client on a 5xx (noRetry): Exchange may
 // have taken the message, and the outbox's own retry is the one. Forget
-// deletes the row.
+// deletes the row. Delta and Raw, the inbound reads, are
+// channel_mailbox_inbound.go's, behind the same gate as Send.
 //
 // Graph's words are never logged — they may echo an address or the
 // message — nor is an address: Check logs the tenant and the object id.
@@ -309,14 +309,9 @@ func (m *channelMailbox) Forget(ctx context.Context, mailbox string) error {
 // before any call. Without bcc, POST /users/{id}/sendMail; with them, a
 // draft (sendThroughDraft). Neither is retried on a 5xx.
 func (m *channelMailbox) Send(ctx context.Context, mailbox string, mime []byte, bcc []string) error {
-	oid, err := uuid.Parse(mailbox)
+	oid, err := m.recorded(ctx, mailbox)
 	if err != nil {
-		return fmt.Errorf("%w: not a mailbox id", contracts.ErrMailboxUnknown)
-	}
-	if _, err := store.New(m.deps.Pool).GetChannelMailbox(ctx, oid); errors.Is(err, pgx.ErrNoRows) {
-		return fmt.Errorf("%w: no Check resolved the mailbox", contracts.ErrMailboxUnknown)
-	} else if err != nil {
-		return fmt.Errorf("entra: read the channel mailbox: %w", err)
+		return err
 	}
 	if int64(len(mime)) > m.MaxMessage() {
 		return fmt.Errorf("%w: %d bytes of MIME", contracts.ErrMailTooLarge, len(mime))
@@ -386,16 +381,4 @@ func (m *channelMailbox) dropDraft(ctx context.Context, cred graphCredential, pa
 		m.client.logger.WarnContext(ctx, "entra: a channel mailbox's draft was not deleted",
 			"tenant", cred.tenantID.String(), "error", err.Error())
 	}
-}
-
-// Delta is not built yet: task 3 of delivery D replaces it in the same pull
-// request (docs/superpowers/plans/2026-10-29-communications-m365-inbound.md).
-func (m *channelMailbox) Delta(context.Context, string, string, string, time.Time) (contracts.MailDelta, error) {
-	return contracts.MailDelta{}, errors.New("entra: not built yet")
-}
-
-// Raw is not built yet: task 3 of delivery D replaces it in the same pull
-// request.
-func (m *channelMailbox) Raw(context.Context, string, string, int64) ([]byte, error) {
-	return nil, errors.New("entra: not built yet")
 }

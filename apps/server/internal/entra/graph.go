@@ -31,7 +31,9 @@ import (
 // noRetry, the create of a user, a group or a pass, which the tenant may
 // have carried out before it failed —, a 401 fetches a fresh token once;
 // every answer read through a 1 MiB cap (8 MiB for a mailbox $batch, 16 MiB
-// for a page of the mailbox's delta or a $batch of events read whole); and Graph's refusal parsed into a
+// for a page of the mailbox's delta or a $batch of events read whole, the
+// caller's own for a message's raw MIME, read under a 90-second budget of
+// its own); and Graph's refusal parsed into a
 // graphError carrying the status and the codes, its words logged at debug
 // level with the tenant's id — except a noRetry call's, which may echo the
 // password or the pass it carried, and a noWords call's, which may echo a
@@ -41,7 +43,8 @@ import (
 //
 // The lifecycle (provisioner) and the connection's endpoints call Graph
 // through get, post, patch, put, putRaw (a photo's bytes), postRaw (a
-// channel mailbox's MIME) and del with a credential credentialFor answered;
+// channel mailbox's MIME), getRaw (a message's MIME) and del with a
+// credential credentialFor answered;
 // the token is graph_token.go's.
 
 // The hosts, fixed.
@@ -99,6 +102,18 @@ const (
 	// event's times in UTC and fifty events a page (calendar Outlook sync
 	// design O9.1).
 	graphDeltaPrefer = `outlook.timezone="UTC", odata.maxpagesize=50`
+	// graphImmutablePrefer is the Prefer header of a raw read (getRaw):
+	// the message named by its immutable id, which "only applies to the
+	// request it is included with".
+	graphImmutablePrefer = `IdType="ImmutableId"`
+	// graphMailDeltaPrefer is the Prefer header of a mailDeltaPage call:
+	// immutable ids and fifty messages a page (Outlook connection design
+	// M14; delivery D's plan reading 10).
+	graphMailDeltaPrefer = graphImmutablePrefer + `, odata.maxpagesize=50`
+	// graphRawBudget bounds one raw read (getRaw) as graphCallBudget bounds
+	// any other call: a message of 25 MiB in 30 seconds would need about
+	// 7 Mbit/s.
+	graphRawBudget = 90 * time.Second
 )
 
 // The client's failures. A refusal Graph answered is a *graphError; these
@@ -342,6 +357,12 @@ const wholeEvents callOption = 6
 // lines name the path addressedPath, never the path itself.
 const addressInPath callOption = 7
 
+// mailDeltaPage is a read of a page of a channel mailbox's Inbox delta
+// (channel_mailbox_inbound.go): sent with Prefer: graphMailDeltaPrefer,
+// its answer read through graphMaxBody — fifty messages of four fields are
+// a few KiB.
+const mailDeltaPage callOption = 8
+
 // addressedPath is what an addressInPath call's errors and log lines name
 // in place of its path.
 const addressedPath = "/v1.0/users/{address}"
@@ -379,6 +400,28 @@ func (c *graphClient) putRaw(ctx context.Context, cred graphCredential, path, co
 // every call; Graph answers 202 or 201.
 func (c *graphClient) postRaw(ctx context.Context, cred graphCredential, path, contentType string, data []byte, into any, opts ...callOption) error {
 	return c.send(ctx, cred, http.MethodPost, path, &payload{data: data, contentType: contentType}, into, opts...)
+}
+
+// getRaw reads path's answer as it is, not decoded — a message's MIME,
+// …/messages/{id}/$value — through limit bytes (more is
+// errResponseTooLarge), sent with Prefer: graphImmutablePrefer and
+// Accept: */*, under graphRawBudget rather than graphCallBudget, and
+// otherwise under the rules of every call. Its refusal is logged by its
+// status and codes alone, as noWords.
+func (c *graphClient) getRaw(ctx context.Context, cred graphCredential, path string, limit int64) ([]byte, error) {
+	shape := callShape{
+		header: http.Header{"Prefer": {graphImmutablePrefer}, "Accept": {"*/*"}},
+		limit:  limit,
+		http:   c.rawHTTP(),
+	}
+	data, _, err := c.attempts(ctx, credentialSource{c: c, cred: cred}, http.MethodGet, path, nil, shape, []callOption{noWords})
+	return data, err
+}
+
+// rawHTTP is the http.Client of a raw read: the client's own, its
+// transport and its redirect rule, under graphRawBudget.
+func (c *graphClient) rawHTTP() *http.Client {
+	return &http.Client{Transport: c.http.Transport, Timeout: graphRawBudget, CheckRedirect: c.http.CheckRedirect}
 }
 
 // del deletes path; Graph answers 204.
@@ -471,29 +514,54 @@ func (c *graphClient) send(ctx context.Context, cred graphCredential, method, pa
 // handed to src.challenged, whose error ends the call; otherwise the token
 // is dropped and the call retried once, as send does.
 func (c *graphClient) sendAs(ctx context.Context, src tokenSource, method, path string, body *payload, into any, opts ...callOption) error {
-	once := slices.Contains(opts, noRetry)
-	words := !once && !slices.Contains(opts, noWords)
-	extra := http.Header{}
+	shape := callShape{header: http.Header{}, limit: graphMaxBody, http: c.http}
 	if slices.Contains(opts, eventual) {
-		extra.Set("ConsistencyLevel", "eventual")
+		shape.header.Set("ConsistencyLevel", "eventual")
 	}
-	limit := int64(graphMaxBody)
 	if slices.Contains(opts, largeAnswer) {
-		limit = graphMaxBatchBody
+		shape.limit = graphMaxBatchBody
 	}
 	if slices.Contains(opts, deltaPage) {
-		extra.Set("Prefer", graphDeltaPrefer)
-		limit = graphMaxDeltaBody
+		shape.header.Set("Prefer", graphDeltaPrefer)
+		shape.limit = graphMaxDeltaBody
+	}
+	if slices.Contains(opts, mailDeltaPage) {
+		shape.header.Set("Prefer", graphMailDeltaPrefer)
 	}
 	if slices.Contains(opts, wholeEvents) {
-		limit = graphMaxDeltaBody
+		shape.limit = graphMaxDeltaBody
 	}
+	data, shown, err := c.attempts(ctx, src, method, path, body, shape, opts)
+	if err != nil || into == nil || len(bytes.TrimSpace(data)) == 0 {
+		return err
+	}
+	if err := json.Unmarshal(data, into); err != nil {
+		return fmt.Errorf("%w: %s %s: the answer is not the JSON expected: %w", errTenantUnreachable, method, shown, err)
+	}
+	return nil
+}
+
+// callShape is how one call's requests are made: the headers besides the
+// token's and the body's, the most of an answer read, and the
+// http.Client — its budget — they go through.
+type callShape struct {
+	header http.Header
+	limit  int64
+	http   *http.Client
+}
+
+// attempts makes the call path names until Graph answers it, under
+// sendAs's rules, and answers a 2xx's body as it came and the path its
+// errors name (addressedPath for a call made addressInPath).
+func (c *graphClient) attempts(ctx context.Context, src tokenSource, method, path string, body *payload, shape callShape, opts []callOption) ([]byte, string, error) {
+	once := slices.Contains(opts, noRetry)
+	words := !once && !slices.Contains(opts, noWords)
 	target, err := graphURL(path)
 	if err != nil {
 		if slices.Contains(opts, addressInPath) {
-			return errors.New("entra: a Graph path that does not parse or leaves Graph: " + addressedPath)
+			return nil, addressedPath, errors.New("entra: a Graph path that does not parse or leaves Graph: " + addressedPath)
 		}
-		return err
+		return nil, path, err
 	}
 	shown := target.Path
 	if slices.Contains(opts, addressInPath) {
@@ -503,48 +571,42 @@ func (c *graphClient) sendAs(ctx context.Context, src tokenSource, method, path 
 	for attempt := 1; ; attempt++ {
 		token, err := src.token(ctx)
 		if err != nil {
-			return err
+			return nil, shown, err
 		}
-		status, header, data, err := c.exchange(ctx, method, target, shown, token, body, extra, limit)
+		status, header, data, err := c.exchange(ctx, shape.http, method, target, shown, token, body, shape.header, shape.limit)
 		if err != nil {
-			return err
+			return nil, shown, err
 		}
 		switch {
 		case status >= http.StatusOK && status < http.StatusMultipleChoices:
-			if into == nil || len(bytes.TrimSpace(data)) == 0 {
-				return nil
-			}
-			if err := json.Unmarshal(data, into); err != nil {
-				return fmt.Errorf("%w: %s %s: the answer is not the JSON expected: %w", errTenantUnreachable, method, shown, err)
-			}
-			return nil
+			return data, shown, nil
 		case status == http.StatusTooManyRequests:
 			wait, ok := retryAfter(header, c.now())
 			if throttled || !ok {
 				c.logger.DebugContext(ctx, "entra: Graph throttled a call",
 					"tenant", src.tenant().String(), "method", method, "path", shown, "retryAfter", header.Get("Retry-After"))
-				return errThrottled
+				return nil, shown, errThrottled
 			}
 			throttled = true
 			if err := c.pause(ctx, attempt, wait); err != nil {
-				return err
+				return nil, shown, err
 			}
 		case status >= http.StatusInternalServerError && !retried && !once:
 			retried = true
 			if err := c.pause(ctx, attempt, graphServerErrorDelay); err != nil {
-				return err
+				return nil, shown, err
 			}
 		case status == http.StatusUnauthorized:
 			if err := src.challenged(ctx, header); err != nil {
-				return err
+				return nil, shown, err
 			}
 			if reauthorised {
-				return c.refusal(ctx, src.tenant(), method, shown, status, data, words)
+				return nil, shown, c.refusal(ctx, src.tenant(), method, shown, status, data, words)
 			}
 			reauthorised = true
 			src.dropped()
 		default:
-			return c.refusal(ctx, src.tenant(), method, shown, status, data, words)
+			return nil, shown, c.refusal(ctx, src.tenant(), method, shown, status, data, words)
 		}
 	}
 }
@@ -566,12 +628,13 @@ func graphURL(path string) (*url.URL, error) {
 	return u, nil
 }
 
-// exchange sends one request, body with its media type when not nil and
-// the extra headers, and answers the status, the headers and the body read
-// through limit; its errors name the path as shown. A
+// exchange sends one request through hc, body with its media type when
+// not nil and the extra headers — which may replace the Accept —, and
+// answers the status, the headers and the body read through limit; its
+// errors name the path as shown. A
 // request that could not be made, or was not answered in time, is
 // errTenantUnreachable; the caller's own context ending is its error.
-func (c *graphClient) exchange(ctx context.Context, method string, target *url.URL, shown, token string, body *payload, extra http.Header, limit int64) (int, http.Header, []byte, error) {
+func (c *graphClient) exchange(ctx context.Context, hc *http.Client, method string, target *url.URL, shown, token string, body *payload, extra http.Header, limit int64) (int, http.Header, []byte, error) {
 	var reader io.Reader
 	if body != nil {
 		reader = bytes.NewReader(body.data)
@@ -588,7 +651,7 @@ func (c *graphClient) exchange(ctx context.Context, method string, target *url.U
 	for k, v := range extra {
 		req.Header[k] = v
 	}
-	resp, err := c.http.Do(req)
+	resp, err := hc.Do(req)
 	if err != nil {
 		if ctx.Err() != nil {
 			return 0, nil, nil, ctx.Err()

@@ -176,6 +176,11 @@ func TestGraphTransport_GuardedNoProxyKeepAlivesOn(t *testing.T) {
 	if c.http.CheckRedirect == nil || !errors.Is(c.http.CheckRedirect(nil, nil), http.ErrUseLastResponse) {
 		t.Error("the client would follow a redirect")
 	}
+	// A raw read (getRaw): the same transport and redirect rule, 90 s.
+	if raw := c.rawHTTP(); raw.Transport != c.http.Transport || raw.Timeout != 90*time.Second ||
+		raw.CheckRedirect == nil || !errors.Is(raw.CheckRedirect(nil, nil), http.ErrUseLastResponse) {
+		t.Errorf("the raw read's client: budget %s, its own transport or redirects", raw.Timeout)
+	}
 	fake := graphtest.New()
 	if newGraphClient(module.Deps{HTTPTransport: fake}).http.Transport != http.RoundTripper(fake) {
 		t.Error("Deps.HTTPTransport is not the seam")
