@@ -662,7 +662,7 @@ Communications' outbox is the working example.
     their connection within a cycle, still in the same direction
     ([Calendar](/en/reference/calendar/#parking-and-waking)).
 
-15. **Communications writes through a provider's mailbox.** The seventh sanctioned
+15. **Communications writes through, and reads from, a provider's mailbox.** The seventh sanctioned
     cross-module direction, Communications → a provider module, made for a team's shared
     mailbox as a channel (Outlook connection and Microsoft 365 mail design M11):
     `contracts.ChannelMailbox`, in the single-provider slot `ChannelMailbox` (rule 5),
@@ -674,28 +674,41 @@ Communications' outbox is the working example.
     **Communications is the authority on which mailboxes are channels**: a channel's
     `provider` is the slot's `Key`, its `settings` the mailbox id `Check` answered, and
     a channel whose provider is not the slot's `Key` is unavailable, **never sent through
-    another provider**. **The provider writes only to a mailbox its `Check` resolved** and
-    recorded on its own side (`ErrMailboxUnknown` otherwise) — Entra records only a shared
-    one — and `Forget` drops one.
+    another provider**. **The provider writes to, and reads from, only a mailbox its `Check`
+    resolved** and recorded on its own side (`ErrMailboxUnknown` otherwise, with no call) —
+    Entra records only a shared one — and `Forget` drops one. **The reads are under the
+    same gate as `Send`**: `Delta` reads one page of a folder's changes (`inbox`, a link
+    the provider issued, or afresh from an instant) and `Raw` one message whole, under a
+    cap **the caller** sets; neither reads a message's content into the provider's logs or
+    answers, and the provider follows only links that are this very mailbox's
+    ([Microsoft Entra ID](/en/reference/entra/#delta-and-raw)).
     `Key`, `DisplayName`, `Status` and `MaxMessage` make no network call; `Check`,
-    `Forget` and `Send` do, on the provider's own pool, and **nothing is called inside a
+    `Forget`, `Send`, `Delta` and `Raw` do, on the provider's own pool, and **nothing is called inside a
     transaction or holding a connection** — only through the accessors in
     `internal/communications/contractscalls.go`, which refuse a call made inside one of the
     module's transactions (marked by its `withTx`) as the calendar's and Entra's do: a
     channel's create and switch call `Status` and `Check` before their transaction, the
-    way back to SMTP calls `Forget` after its commit, and the outbox calls `Send` between
-    its stamp and its completion, outside both. **Every write is idempotent or reports its
+    way back to SMTP calls `Forget` after its commit, the outbox calls `Send` between
+    its stamp and its completion, outside both, and the mailbox sync calls `Status`,
+    `Delta` and `Raw` before an import's transaction opens. The import's one other call
+    out of the module, the customer directory's `ContactsByEmail` for the sender (the
+    sanctioned directory read), goes through an accessor there too, so it is refused inside the
+    transaction as well. **Every write is idempotent or reports its
     outcome**: `Check` rewrites its record, `Forget` is done for a mailbox not recorded,
     and `Send` is at least once, as SMTP is — acceptance is not delivery, and a failure
     after the provider took the message may send it again on the outbox's retry, never on
     the provider's own. Its refusals are rule 14's sentinels — `ErrMailboxUnavailable`,
     `ErrMailboxUnknown`, `ErrMailboxDenied` (here: outside the provider's scope),
-    `ErrMailboxGone` — `ErrMailTooLarge`, and `ErrBccUnsupported` when the provider would
-    not keep every blind copy and sent nothing; `Status` answers `available` with the reason
+    `ErrMailboxGone` — `ErrMailTooLarge`, `ErrBccUnsupported` when the provider would
+    not keep every blind copy and sent nothing, `ErrMailboxDeltaExpired` (rule 14's) when
+    the provider no longer takes a `Delta` link, and `ErrMailItemGone` when the message
+    `Raw` was asked for is no longer there; `Status` answers `available` with the reason
     `tenant_wide` when the provider's grant reaches every mailbox, a warning. Anything else
     is a failure to retry. The interface declares only what Communications calls today —
-    `Key`, `DisplayName`, `Status`, `Check`, `Forget`, `MaxMessage`, `Send` — and grows
-    with the reads receiving needs ([Communications](/en/reference/communications/#microsoft-365)).
+    `Key`, `DisplayName`, `Status`, `Check`, `Forget`, `MaxMessage`, `Send`, `Delta`,
+    `Raw` — and grows only with the notices the next delivery calls
+    ([Communications](/en/reference/communications/#receiving)). The provider's ids are
+    opaque and case-sensitive; Communications keeps them in its own receipts.
 
 ## How they are enforced
 

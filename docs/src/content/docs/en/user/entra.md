@@ -169,8 +169,8 @@ The rules every account follows, which anyone with `entra:manage` may change:
   refuses it;
 - **Outlook connection**: **Outlook connection: let people connect their Outlook to
   Vantigo** ([below](#outlook-connection));
-- **Mail channels**: **Mail channels: let Communications send through Exchange Online
-  shared mailboxes** ([below](#mail-channels)).
+- **Mail channels**: **Mail channels: let Communications send and receive through
+  Exchange Online shared mailboxes** ([below](#mail-channels)).
 
 Choose **Save the account rules**. A value outside its rule is marked on its field with
 the reason. If someone else saved the connection since you opened the page, the page
@@ -265,15 +265,17 @@ picks up once they have.
 
 ## Mail channels
 
-**Mail channels** let Communications send from the company's Exchange Online **shared
-mailboxes** — each one a channel there ([Communications](/en/user/communications/#set-up-a-channel)).
+**Mail channels** let Communications send from, and receive into, the company's Exchange
+Online **shared mailboxes** — each one a channel there ([Communications](/en/user/communications/#set-up-a-channel)).
 Vantigo reaches them with the application's own access, which an Exchange administrator
 grants in Exchange Online, limited to the channels' mailboxes. It is off until someone
-with `entra:manage` turns it on. In this release a channel **sends only**; receiving is
-not built yet.
+with `entra:manage` turns it on. A channel sends its replies from the mailbox, and the
+mail arriving in the mailbox's Inbox from the day the channel is added comes into the
+Communications Inbox; the access the commands below grant covers both. Vantigo only reads
+the Inbox — the mail stays there in Outlook, as it was.
 
 1. In step **4 Set the account rules**, under **Mail channels**, turn on **Mail channels:
-   let Communications send through Exchange Online shared mailboxes**, and
+   let Communications send and receive through Exchange Online shared mailboxes**, and
    choose **Save the account rules**.
 2. Under the switch, **Commands for Exchange Online PowerShell** shows the six commands
    to run, with the application's client id and object id filled in and a copy button.

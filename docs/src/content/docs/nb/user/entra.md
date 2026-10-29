@@ -174,8 +174,8 @@ Reglene hver konto følger, som alle med `entra:manage` kan endre:
   autentiseringsmetoder må slå på passet for brukerne, ellers avviser Microsoft det;
 - **Outlook-tilkobling**: **Outlook-tilkobling: la folk koble Outlook til Vantigo**
   ([nedenfor](#outlook-tilkobling));
-- **E-postkanaler**: **E-postkanaler: la Kommunikasjon sende gjennom delte postbokser i
-  Exchange Online** ([nedenfor](#e-postkanaler)).
+- **E-postkanaler**: **E-postkanaler: la Kommunikasjon sende og motta gjennom delte
+  postbokser i Exchange Online** ([nedenfor](#e-postkanaler)).
 
 Velg **Lagre kontoreglene**. En verdi utenfor regelen merkes på feltet med årsaken. Har
 noen andre lagret tilkoblingen siden du åpnet siden, sier siden fra og laster den inn på
@@ -270,15 +270,17 @@ synkroniseringen deres fortsetter når de har gjort det.
 
 ## E-postkanaler
 
-**E-postkanaler** lar Kommunikasjon sende fra selskapets **delte postbokser** i Exchange
-Online — hver av dem en kanal der ([Kommunikasjon](/nb/user/communications/#sett-opp-en-kanal)).
+**E-postkanaler** lar Kommunikasjon sende fra, og motta i, selskapets **delte postbokser**
+i Exchange Online — hver av dem en kanal der ([Kommunikasjon](/nb/user/communications/#sett-opp-en-kanal)).
 Vantigo når dem med applikasjonens egen tilgang, som en Exchange-administrator gir i
 Exchange Online, avgrenset til kanalenes postbokser. Det er av til noen med
-`entra:manage` slår det på. I denne versjonen **sender en kanal bare**; mottak er ikke
-bygget ennå.
+`entra:manage` slår det på. En kanal sender svarene sine fra postboksen, og e-posten som
+kommer til innboksen i postboksen fra den dagen kanalen legges til, kommer inn i Innboks i
+Kommunikasjon; tilgangen kommandoene nedenfor gir, dekker begge deler. Vantigo leser bare
+innboksen — e-posten blir liggende der i Outlook, som den var.
 
 1. I steg **4 Sett kontoreglene**, under **E-postkanaler**, slå på **E-postkanaler: la
-   Kommunikasjon sende gjennom delte postbokser i Exchange Online**, og velg
+   Kommunikasjon sende og motta gjennom delte postbokser i Exchange Online**, og velg
    **Lagre kontoreglene**.
 2. Under bryteren viser **Kommandoer for Exchange Online PowerShell** de seks kommandoene
    som skal kjøres, med applikasjonens applikasjons-ID og objekt-ID fylt inn og en

@@ -1045,8 +1045,10 @@ plain recursive resolver, not one that synthesizes or filters answers.
 The two are one switch: set both or neither. See
 [the management listener](/en/admin/management-listener/).
 
-Communications' own settings (`COMMUNICATIONS_*`) are documented in
-[Communications](/en/reference/communications/). OpenTelemetry is configured with the standard
+Communications' own settings (`COMMUNICATIONS_*`) — among them
+`COMMUNICATIONS_INBOUND_MAX_BYTES`, the largest received message the mailbox sync reads
+(25 MiB by default, 1–150 MiB) — are documented in
+[Communications](/en/reference/communications/#retention-cleanup-and-staged-objects). OpenTelemetry is configured with the standard
 `OTEL_EXPORTER_OTLP_*` variables, read by the OTel SDK rather than by `config.go`.
 
 ## Workforce OIDC

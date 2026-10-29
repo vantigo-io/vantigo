@@ -1,6 +1,6 @@
 ---
 title: Platform packages
-description: The packages under the server's internal/ that every module may use — the secrets box that seals and MACs values under keys derived from APP_SECRET, the mail package's outbound message, its calendar part and its rendering as MIME, the payments port with its Vipps MobilePay adapter, and the public-holiday calendar.
+description: The packages under the server's internal/ that every module may use — the secrets box that seals and MACs values under keys derived from APP_SECRET, the mail package's outbound message, its calendar part and its rendering as MIME, its reading of a received message and the sanitising of its HTML, the payments port with its Vipps MobilePay adapter, and the public-holiday calendar.
 sidebar:
   order: 5
 sources:
@@ -117,6 +117,39 @@ attached again as `application/ics` — `invite.ics` for a `REQUEST`, `cancel.ic
 declares; the body is the whole `VCALENDAR`, CRLF line endings and all, carried as
 given. Calendar's invitations are the one user
 ([invitations](/en/reference/calendar/#the-message)).
+
+**Reading received mail.** `mail.ParseInbound(raw, limits)` reads an RFC 5322 message
+into a `mail.Inbound`: `MessageID` and the first `In-Reply-To` bracketed, `References`
+bracketed, distinct and oldest first (at most 100, the first and the newest kept), the
+`From`, `To` and `Cc` addresses in lower case, the subject RFC 2047-decoded (at most 998
+bytes), `AutoSubmitted` (`Auto-Submitted` other than `no`, `X-Auto-Response-Suppress`,
+`Precedence` `bulk`/`auto_reply`/`list`, `X-Autoreply`), the text and HTML bodies in UTF-8,
+**unsanitised**, and the attachments with their file names, types, `Content-ID`s and
+whether they are inline. It is built on `net/mail` and `mime/multipart`, with
+`quoted-printable`, tolerant `base64`, RFC 2231 file names in any charset — which
+`mime.ParseMediaType` drops for a charset other than UTF-8 or US-ASCII, so the package
+reads those parameters itself — and every charset of `golang.org/x/text`'s `htmlindex`.
+`mail.InboundLimits` bounds it — `DefaultInboundLimits` is 200 parts, 10 levels, 100
+attachments and 1 MiB for each body (a longer text cut with `…`, a longer HTML dropped and
+`HTMLDropped` set); a damaged part is skipped and counted; no header block, or neither a
+`From` nor a body, is `mail.ErrUnparseable`, whose text holds nothing of the message.
+A forwarded `message/rfc822` and a `winmail.dat` are kept as attachments, not opened.
+`mail.NormalizeMessageID` is the bracketed, trimmed form both the parser and a caller
+compare ids in.
+
+`mail.SanitizeHTML(html, inlineURL)` answers a received message's HTML safe to show, on
+[bluemonday](https://github.com/microcosm-cc/bluemonday)'s UGC policy after a pre-pass over
+`golang.org/x/net/html`'s tree: `cid:` images rewritten through `inlineURL` (removed when
+it answers none), every other image but a base64 `data:` PNG, GIF, JPEG or WebP removed,
+`background` and `srcset` dropped, links only `http`, `https` and `mailto`, with
+`rel="nofollow noreferrer noopener"` and `target="_blank"`, and a short allow-list of
+typographic and box styles — never `url(…)`, `position` or `expression`. `<script>`,
+`<style>`, `<iframe>`, `<object>`, `<embed>`, `<form>`, `<input>`, `<meta>`, `<base>`,
+`<link>`, `<svg>`, `<math>` and every `on*` attribute go. `mail.TextFromHTML(sanitized)`
+is a plain text of it — blocks and `<br>` as line breaks, list items as `- `, white space
+collapsed — for a message that has only HTML. Communications'
+[receiving](/en/reference/communications/#receiving) is the one user. The package's corpus
+of hand-built messages is `testdata/mime/`, each with its expected reading beside it.
 
 ## The payments port
 

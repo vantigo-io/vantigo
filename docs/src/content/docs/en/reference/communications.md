@@ -1,12 +1,13 @@
 ---
 title: "Communications module"
-description: "Outbound business email from shared mailboxes: the channels' providers — SMTP, and Microsoft 365 shared mailboxes through the Microsoft Entra ID module, created by address or switched from SMTP — the outbox and its delivery through either, the size a Microsoft 365 channel takes, retention and the operator's configuration."
+description: "Business email from shared mailboxes: the channels' providers — SMTP, and Microsoft 365 shared mailboxes through the Microsoft Entra ID module, created by address or switched from SMTP — the outbox and its delivery through either, the size a Microsoft 365 channel takes; receiving into a Microsoft 365 channel — the mailbox sync, receipts, parsing, sanitising, threading, the customer linker, reply and reply-all —; retention and the operator's configuration."
 sources:
   - apps/server/internal/communications
   - apps/communications/frontend
   - openapi/communications.yaml
   - apps/server/internal/openapi/specs/communications.yaml
   - apps/server/internal/db/migrations/00091_communications_channel_settings.sql
+  - apps/server/internal/db/migrations/00092_communications_inbound.sql
 ---
 Communications is a module inside the single Vantigo binary, not a separately
 deployed service. It runs in the same process as Identity, Customers, Products and
@@ -79,9 +80,17 @@ direction, date and body — the text body and the HTML body, each when the mess
 it, so an HTML-only message is not left empty — and each attachment's name
 (`modules.communications`). It leaves out the addressing metadata — each participant's
 address and display name, each delivery's recipient address, a message's channel
-headers — although the erase below deletes all of it with the conversations. The
-suppressions, the opt-out addresses, are neither exported nor erased: honouring an
+headers — although the erase below deletes all of it with the conversations. A received
+message's original (its raw payload) is not exported either; the erase deletes it with the
+message. The suppressions, the opt-out addresses, are neither exported nor erased: honouring an
 opt-out needs the address, so it is kept on purpose.
+
+Mail received into a Microsoft 365 channel ([Receiving](#receiving)) reaches the export and
+the erase **only through a conversation's customer**: the [linker](#the-customer-linker)
+sets it when the sender's address belongs to exactly one customer, so a matched sender's
+mail is covered; a sender who matches no customer, or several, writes into a conversation
+with no customer (or only candidates), which neither the export nor the erase of a person
+finds until someone links it.
 Their anonymisation deletes those conversations inside the customers module's
 transaction, through the retention worker's own deletes: every message and the rows
 under it in the order `message_events`' RESTRICT allows, each attachment, raw payload
@@ -102,7 +111,10 @@ a conversation being linked to the archived "Anonymised person" afterwards;
 `communications.suppressions` can still hold the person's address; a conversation not
 linked to the customer (no customer, or another one) keeps the person's participant
 address, and the export does not list the addresses the person wrote from or was
-written to; and a customer's
+written to; the [receipts](#receipts) of the person's received mail keep its Message-Ids
+and Graph's ids — no address, no content — until the receipt is older than the retention
+window (the [sweep](#retention-cleanup-and-staged-objects); a channel's newest receipt
+stays longer); and a customer's
 `customer.peppol_lookup` entries keep their `smpHost`, derived from the participant id.
 
 ## Providers
@@ -114,10 +126,11 @@ ID module](/en/reference/entra/#mail-channels). There is no other. Mailgun, whic
 port never created, has left the contract; a create or update naming any other provider
 is a 400 under `smtp` (*SMTP credentials require the smtp provider.*).
 
-**Communications is outbound-only.** There is no inbound mail path of any kind: no
-webhook, no IMAP, no inbound synchronisation, and therefore nothing that writes an
-inbound message — a Microsoft 365 channel included, for now. See "The outbound-only
-consequence" below for what that means for replies, reply-all and the AI draft.
+**Only a Microsoft 365 channel receives.** Its shared mailbox's Inbox is read by the
+`communications-mailbox-sync` worker ([Receiving](#receiving)), which writes each message
+as an inbound message of a conversation. An SMTP channel only sends: there is no webhook,
+no IMAP and no other inbound path, so a conversation of an SMTP channel holds no inbound
+message and cannot be replied to ([Reply and reply-all](#reply-and-reply-all)).
 
 `GET /api/v1/communications/channel-providers` (`channels-manage`) is what a channel can
 use, so the channels page reads Communications' own API and never Entra's:
@@ -186,6 +199,19 @@ only from a mailbox its `Check` resolved and recorded — a shared one. Someone 
 - **Every call of the slot is made outside a transaction** — before it opens or after it
   commits — through the accessors in `contractscalls.go`, which refuse one made inside
   (a programming error, answered as a 500).
+- **It receives from the day it is made.** Creating a Microsoft 365 channel, and switching
+  an SMTP one, writes its `communications.channel_sync` row in the same transaction
+  (migration `00092_communications_inbound.sql`): `state = 'pending'`, `import_from` and
+  `next_sync_at` the moment of the write. The [mailbox sync](#the-mailbox-sync) reads only
+  mail received at or after `import_from` — never the mailbox's past. A channel that
+  already existed when `00092` ran got its row from the migration, with `import_from` the
+  moment of the upgrade, inactive channels included. The way back to SMTP deletes the row,
+  so a later switch starts again from its own day; deactivating a channel keeps it, and the
+  worker skips an inactive channel until it is activated again.
+- **Its receive state** is `ChannelResponse.sync`, `{state, error, lastSyncedAt}`, null for
+  an SMTP channel: `state` is the row's — `pending` until its first sync finishes, then
+  `active`, or `failed` after a refusal (below); `error` the last failure's code, cleared
+  by a finished sync.
 
 #### Creating one
 
@@ -316,8 +342,9 @@ a draft's `Bcc:` header reaches the blind copies as Graph documents for a MIME d
 how Exchange treats a channel switched from SMTP whose address is an alias. The
 pull request's real-tenant checklist reads the sent item's `internetMessageId`, the
 recipient's raw headers and a blind copy's arrival. If Exchange rewrites the
-`Message-Id`, a customer's answer still names Exchange's own in `In-Reply-To`, and
-threading has to fall back on Graph's `conversationId` once inbound mail exists.
+`Message-Id`, a customer's answer names Exchange's own in `In-Reply-To`, which no message
+of Vantigo's has, and [threading](#threading) falls back on Graph's `conversationId` — with
+the limit stated there.
 
 **Terminal failures.** A send through the mailbox that fails with one of these codes
 **fails the job at once**, after one attempt, rather than at the eighth: no retry can
@@ -368,16 +395,17 @@ stating because the arithmetic is easy to read wrongly:
   128 s.** The sequence is 2, 4, 8, 16, 32, 64, 128 s, and the eighth attempt is
   terminal — so 256, 512 and 1024 s are never scheduled either.
 
-The advisory lease guards the **retention worker only**. Outbox delivery and
-attachment cleanup take no advisory lock: each claims work with a conditional update
-whose `WHERE` re-asserts the predicate its candidate query used, so a claim another
-worker already won matches nothing. Every replica runs those two workers every cycle,
-by design. Adding an advisory lock to either would be a defect, not a hardening.
+The advisory lease guards the **retention worker only**. Outbox delivery, attachment
+cleanup and the mailbox sync take no advisory lock: each claims work with a conditional
+update whose `WHERE` re-asserts the predicate its candidate query used, so a claim another
+worker already won matches nothing. Every replica runs those three workers every cycle,
+by design. Adding an advisory lock to any of them would be a defect, not a hardening.
 
 ### Background workers
 
-The module contributes the only three background workers in the application: outbox
-delivery, retention, and attachment cleanup. `worker` mode always runs them, `server`
+The module contributes four background workers: outbox delivery, retention, attachment
+cleanup and `communications-mailbox-sync`, which reads each Microsoft 365 channel's Inbox
+([Receiving](#receiving)). `worker` mode always runs them, `server`
 mode never does, and `api` mode runs them when `WORKERS_IN_PROCESS=1` (the default).
 A deployment that scales the API horizontally should set `WORKERS_IN_PROCESS=0` on
 the API replicas and run one dedicated `worker` container, so extra HTTP replicas do
@@ -385,12 +413,17 @@ not multiply the pollers.
 
 ### Metrics
 
-Five counters on an OpenTelemetry meter named `Vantigo.Communications`, all of them
-the outbox's: `communications.outbox.possible_duplicate_sends`, `.jobs_completed`,
-`.jobs_retried`, `.jobs_held` (a try of a Microsoft 365 channel's job put back while
-its provider is unavailable, spending no attempt) and `.jobs_failed`. **Alert on the last one: every increment is
-undelivered customer email.** There are deliberately no others — no retention,
-cleanup, storage, SMTP or AI metrics, and no histograms.
+Six counters on an OpenTelemetry meter named `Vantigo.Communications`, none with
+attributes. Five are the outbox's: `communications.outbox.possible_duplicate_sends`,
+`.jobs_completed`, `.jobs_retried`, `.jobs_held` (a try of a Microsoft 365 channel's job
+put back while its provider is unavailable, spending no attempt) and `.jobs_failed`.
+**Alert on the last one: every increment is undelivered customer email.** The sixth is
+the mailbox sync's, `communications.inbound.cycles_failed`: one per cycle whose failure was
+written on its channel — a refusal (`mailbox_denied`, `mailbox_gone`, `mailbox_unknown`)
+or any other failure to read or import (`sync_failed`) — and not a cycle held for an
+unavailable provider, nor one that lost its lease. A rise means a channel's mail is not
+arriving. There are deliberately no others — no retention, cleanup, storage, SMTP or AI
+metrics, and no histograms.
 
 ## Retention, cleanup and staged objects
 
@@ -409,6 +442,14 @@ the object write cannot strand the object.
 | `COMMUNICATIONS_RETENTION_POLL` | How often the retention worker runs a cycle | `1h` |
 | `COMMUNICATIONS_ATTACHMENT_MAX_BYTES` | Per-file staging limit (1 B – 50 MiB) | `10485760` (10 MiB) |
 | `COMMUNICATIONS_UPLOAD_EXPIRY` | How long a staged attachment stays valid | `24h` |
+| `COMMUNICATIONS_INBOUND_MAX_BYTES` | The largest received message, in bytes of MIME, the mailbox sync reads; a larger one is recorded `skipped`/`too_large` and never stored (1 MiB – 150 MiB, Graph's attachment ceiling) | `26214400` (25 MiB) |
+
+A received message is a message as any other here: its original (`raw_payload_storage_key`)
+and its attachments are queued on the ledger with it, by retention and by an erase alike.
+The **receipts' sweep** runs in every retention batch: a [receipt](#receipts) whose message
+is gone — or that never had one, a skipped message — is deleted once its `created_at` is
+older than the retention window, **except each channel's newest receipt**, the restart
+point of an expired delta. A receipt whose message still exists stays with it.
 
 A value outside the accepted range fails startup rather than being silently clamped,
 so a typo is a boot error instead of a retention window nobody asked for. Use a
@@ -456,7 +497,16 @@ The provider's `ErrMailTooLarge` at send time stays the last guard, and fails th
 built. An SMTP channel has no budget beyond the staging limit and its server's own.
 
 `GET /api/v1/communications/attachments/{id}/download` requires ConversationsView and
-streams only clean attachments through the application. It never redirects to a
+streams a message's attachment — never a staged upload — through the application. A
+`clean` one, the composer's, is answered with its declared media type, as before. An
+`unscanned` one, received with an inbound message from a stranger, is answered as a
+**file to save**: `Content-Disposition: attachment; filename*=UTF-8''…` (the name
+percent-encoded, so nothing in it can end the header), and its media type only when that
+is passive — PNG, JPEG, GIF, WebP, BMP, TIFF, PDF, plain text, the Word, Excel and
+PowerPoint formats, zip — `application/octet-stream` otherwise, so a received `text/html`
+or `image/svg+xml` is never served inline from Vantigo's own origin. The detail's
+`downloadAvailable` is true for both. As before, any ConversationsView holder may fetch any
+downloadable attachment by its id. It never redirects to a
 provider URL and never exposes a storage key; the `downloadPath` field in
 conversation DTOs is this same-origin endpoint. Attachments are stored under the
 `communications` storage scope — see [object storage](/en/admin/object-storage/), which is
@@ -466,37 +516,314 @@ conversation DTOs is this same-origin endpoint. Attachments are stored under the
 **There is no attachment scanner.** Nothing transitions an upload from `pending` to
 `clean`, so new uploads are created `clean` on the reasoning that there is nothing to
 scan. The `scanStatus` and `ready` fields, and every gate that reads them, are kept
-exactly as they are: the frontend is unchanged and a scanner can be added later
-without a contract change. Do not read a `clean` status as evidence that a file was
-inspected.
+exactly as they are, and a scanner can be added later without a contract change. Do not
+read a `clean` status as evidence that a file was inspected. A received attachment is
+stored `unscanned` (`message_attachments.scan_status` has no CHECK, so the value needed no
+migration) and stays so: the name says what is true of it, and the inbox shows it with a
+warning.
 
-## The outbound-only consequence
+**The original of a received message** is
+`GET /api/v1/communications/messages/{id}/raw` (ConversationsView, as the attachment
+download): 200 `message/rfc822` with `Content-Disposition: attachment;
+filename="message-{id without dashes}.eml"` — the message whole as the mailbox held it, its
+HTML unsanitised and its attachments inside, answered only as a file to save, never
+rendered by Vantigo. A message with no original (every one but an inbound message), an
+unknown id and an object gone from the store are the same bare 404; any other storage
+failure is 503 `attachment_storage_unavailable`. The detail answers each message's
+`rawDownloadPath`, this path or null.
 
-Reply-all resolves its recipients from the latest **inbound** message's CC, and the
-reply path resolves its recipients from that message's participants. With no inbound
-path, no such message exists, so these are permanently in their negative state rather
-than occasionally empty:
+## Receiving
 
-- A conversation created through `POST /conversations` cannot be replied to: reply
-  answers 422 `recipients_missing`.
-- `canReplyAll` is always false and `replyAllCc` is always empty.
-- The AI draft builds its context from inbound messages, so it drafts against an
-  empty context and records `product_data=false`.
+A Microsoft 365 channel receives (Outlook connection and Microsoft 365 mail design M14,
+M15, M16): mail arriving in its shared mailbox's **Inbox** becomes an inbound message of a
+conversation, threaded onto the one it answers or starting one, its sender linked to a
+customer when the address belongs to exactly one. Vantigo reads the mailbox with the
+application's token through the `ChannelMailbox` slot's two reads, `Delta` and `Raw`
+([Entra's inbound reads](/en/reference/entra/#delta-and-raw)), and never changes it: the
+message stays in the Inbox, read or unread as it was. An SMTP channel does not receive.
 
-Two further consequences are worth knowing when reading the code: attachments can be
-staged but never sent, and suppression is enforced only by the outbox worker's own
-re-check, because reply's suppression check sits behind the recipient resolution that
-always fails first.
+### The mailbox sync
 
-The endpoints are complete and conform to the contract, so the frontend keeps working
-and an inbound provider is purely additive.
+`communications-mailbox-sync` is a worker of this module. Every **30 seconds** it drains:
+it claims a channel due, runs one cycle on it, and claims the next, until none is due.
 
-A Microsoft 365 channel is outbound-only too, for now: Vantigo sends from the shared
-mailbox and reads nothing from it. What it sent is in the mailbox's **Sent Items**, where
-the team can see it in Outlook; a customer's answer arrives in the mailbox's Inbox and
-stays there, unseen by Vantigo, until receiving is built. The size check at reply is
-therefore wired and tested but reached by no conversation yet; the staging check is
-live.
+- **The claim.** A `channel_sync` row is due when its channel is an **active** `entra`
+  channel, its `state` is not `stopped` (nothing in this release sets `stopped`), its
+  `next_sync_at` has come and it holds no lease — or its lease has expired. A row marked
+  `notified` comes first (nothing sets it yet), then the longest due. The claim is a
+  conditional update that re-asserts that predicate and writes a new `lease_id` (32 hex
+  digits) and `lease_until` **two minutes** ahead; 0 rows is a lost race, and the worker
+  tries the next candidate, ten times at most. There is no advisory lock.
+- **Every later write of the cycle** names `channel_id` and `lease_id` together; one that
+  changes 0 rows means another worker took the row, and the cycle **stops, writing nothing
+  more** (logged at info). The lease is renewed to two minutes from now **before each
+  message**.
+- **The provider first.** No provider in the slot, one under a key other than `entra`, a
+  `Status` that is not available or does not answer — or a read refused as
+  `ErrMailboxUnavailable` — **holds** the channel: `next_sync_at` five minutes ahead,
+  `error = 'provider_unavailable'`, `attempts` and `state` unchanged, the lease given back.
+- **One page a cycle.** The cycle reads one page of the Inbox's delta: with the stored
+  `delta_link` when there is one, else afresh from `import_from`. A page holds at most 50
+  messages and is **handled whole** — there is no cap per cycle below the page. Items
+  removed from the Inbox are ignored (Vantigo keeps what it imported); items received
+  before `import_from` are ignored (the delta also answers changes to older messages);
+  the rest are taken **oldest first**, ties by Graph's id. An item the channel already has
+  a [receipt](#receipts) for is skipped silently; every other is
+  [imported](#one-messages-import).
+- **The link is kept last.** Once every item of the page has a receipt, the page's link is
+  stored and the lease given back. A page that ends the delta stores the **delta link**,
+  and the channel becomes `active`, its `error` cleared, `attempts` 0, `last_synced_at` now
+  and `next_sync_at` **five minutes** ahead. A page with more to come stores the **next
+  page's link** with `next_sync_at` now, so the same drain claims the channel again at
+  once. A cycle that stops half-way stores nothing, reads the same page next time, and the
+  receipts skip what it already imported.
+- **An expired delta.** When Graph no longer takes the stored link
+  (`ErrMailboxDeltaExpired`), the link is cleared and the cycle reads afresh in the same
+  cycle, from the `received_at` of the channel's newest receipt — or `import_from` when it
+  has none. The receipts skip the overlap.
+- **Failures.** A refusal no retry mends soon — `ErrMailboxDenied`, `ErrMailboxGone`,
+  `ErrMailboxUnknown` (the channel's `settings` naming no mailbox counts as this too) —
+  sets `state = 'failed'`, `error` to `mailbox_denied`, `mailbox_gone` or `mailbox_unknown`,
+  `next_sync_at` **an hour** ahead (an Exchange administrator may fix the mailbox's RBAC
+  meanwhile), and spends an attempt. Anything else — throttling, Graph not answering, the
+  object store, the database — sets `error = 'sync_failed'`, keeps `state`, spends an
+  attempt, and backs off **one minute × 2^attempts** (the attempts spent before this one),
+  **at most an hour**. Each is a warning in the log with the channel's id and the code —
+  never an address, a subject or Graph's words — and one on
+  `communications.inbound.cycles_failed` ([Metrics](#metrics)). A message whose read or
+  import failed has no receipt, so it is tried again.
+- **New mail appears** within about five minutes of arriving: the interval after a finished
+  sync, plus the 30-second poll.
+
+### One message's import
+
+For each item without a receipt, in this order:
+
+1. **The read.** `Raw` reads the message whole, at most
+   `COMMUNICATIONS_INBOUND_MAX_BYTES` (25 MiB by default). Larger is a receipt
+   `skipped`/`too_large`, and nothing is stored; a message deleted or moved since the delta
+   named it (`ErrMailItemGone`) is `skipped`/`gone`. Any other error ends the cycle as a
+   failure, without a receipt.
+2. **The Message-Id** is the message's own header, bracketed — or, when its header block
+   does not read or names none, the `internetMessageId` Graph answered.
+3. **Our own.** A Message-Id of the outbox's form, `<32 hex digits@vantigo.invalid>`, whose
+   digits are the id of a message **of this database**, is a message Vantigo sent delivered
+   back to the mailbox (the shared mailbox in Cc, say): `skipped`/`own_message`, nothing
+   stored. Another installation's id of the same form is imported as any other.
+4. **A copy.** A Message-Id the channel already has an `imported` receipt for is a copy —
+   the same mail delivered twice, or moved out and back under another id: a receipt
+   `duplicate` whose `message_id` is the original's message, nothing stored.
+5. **The parse** ([the parser](#parsing)) and, when the message has HTML,
+   [the sanitiser](#sanitising). A message the parser cannot read is still stored, as an
+   **unreadable** message (below).
+6. **Objects before rows.** The original (`message/rfc822`, at
+   `inbound/{channel}/{message}/raw.eml`) and every attachment
+   (`inbound/{channel}/{message}/attachments/{attachment}`) are reserved on the cleanup
+   ledger and written to the object store **before** the transaction that names them; the
+   transaction marks them owned. An import that does not commit queues its objects for
+   deletion at once; a crash in between leaves reservations the cleanup worker reclaims
+   when they expire.
+7. **The linker and the thread** are read before the transaction: the
+   [linker](#the-customer-linker) calls the customer directory, a call out of the module,
+   which is refused inside a transaction; the [thread](#threading) is re-checked inside it.
+8. **One transaction**, in which no provider or directory call can happen: the matched
+   conversation locked and re-read — gone or `archived` starts a new one, `closed` is
+   reopened to `open` unless the message is an [auto-reply](#auto-replies), `open` stays as
+   is —; or a new conversation, `open`, with the message's subject and the linker's one
+   customer, if any; the participants — the sender, and each Cc address but the channel's
+   own and the sender's — found in the channel **in any case**, or created with the
+   address in lower case, and each linked to the conversation; the message,
+   `direction = 'inbound'`, its `participant_id` the sender, `occurred_at` Graph's
+   `receivedDateTime`, `rfc_message_id` the bracketed Message-Id; its attachments,
+   `unscanned`; the conversation's activity — its subject filled if it had none, its
+   preview and `last_activity_at` advanced only by a message newer than the last; the
+   linker's writes; and **the receipt, last**.
+9. **A race.** The receipt's unique indexes decide two workers importing at once: a
+   violation of `(channel_id, provider_message_id)` means the other imported this very
+   message, and this import is dropped; of `(channel_id, rfc_message_id)` among `imported`
+   receipts, that it imported a copy under another id, and this one becomes a `duplicate`
+   receipt. Either way its objects go to the ledger.
+
+The message's `channel_metadata_json` is `{from, to[], cc[], inReplyTo, references[],
+autoSubmitted, graphConversationId}`, plus `unreadable` and `htmlDropped` when set: the
+addresses bare and in lower case, the ids bracketed, references oldest first. Reply and
+reply-all read `cc` and `references` back; the detail reads `autoSubmitted` and
+`unreadable`.
+
+**The bodies.** `text_body` is the message's text, or, when it has only HTML, text derived
+from the sanitised HTML — every received message has a text, which the AI draft reads.
+`html_body` is the sanitised HTML. Each is at most 1 MiB: a longer text is cut with `…`; a
+longer HTML is **dropped**, the text kept and `htmlDropped` set — the detail answers every
+message's bodies at once.
+
+**An unreadable message** — no header block, or neither a sender nor a body — is stored with
+the text *Vantigo could not read this message.*, no HTML, no attachment, its original kept,
+`unreadable` in its metadata, and a receipt `failed`/`unparseable` pointing at it. It has no
+sender, so it starts a conversation of its own, links no customer and is not one a reply
+answers. The detail answers `unreadable: true` and its `rawDownloadPath`.
+
+### Receipts
+
+`communications.inbound_receipts` holds one row for every message the worker saw in a
+channel, imported or not — which is what makes an import happen once:
+
+| `outcome` | `reason` | `message_id` | When |
+| --- | --- | --- | --- |
+| `imported` | — | the message | stored and threaded |
+| `duplicate` | — | the original's message | a copy of a Message-Id already imported in the channel |
+| `skipped` | `too_large` | — | over `COMMUNICATIONS_INBOUND_MAX_BYTES` |
+| `skipped` | `gone` | — | deleted or moved before it was read |
+| `skipped` | `own_message` | — | a message this database sent |
+| `failed` | `unparseable` | the message | stored as unreadable |
+
+A receipt holds Graph's immutable id (`provider_message_id`, compared exactly — Graph's ids
+are case-sensitive), the Message-Id, `received_at` and `created_at`; no address and nothing
+of the content. Two unique indexes: `(channel_id, provider_message_id)`, and
+`(channel_id, rfc_message_id)` over `imported` receipts only, so a duplicate can carry its
+original's Message-Id. `message_id` is set to null when retention or an erase deletes the
+message; the [sweep](#retention-cleanup-and-staged-objects) deletes such receipts later.
+
+### Parsing
+
+`mail.ParseInbound` ([the mail package](/en/contributing/platform-packages/#the-mail-package))
+reads the message over Go's `net/mail` and `mime/multipart`: `quoted-printable`, `base64`
+(tolerant of line breaks and missing padding), `7bit`, `8bit` and `binary`; headers in RFC
+2047; file names in RFC 2231 in any charset, with continuations; and every charset
+`golang.org/x/text` knows (`iso-8859-1`, `windows-1252`, `koi8-r`…), an unknown one read as
+UTF-8 with its invalid bytes replaced. It walks at most **200 parts**, **10 levels** deep,
+and keeps at most **100 attachments**; a damaged part is skipped, not fatal.
+
+- **The bodies** are the parts of type `text/plain` and the first `text/html` that are not
+  attachments; several plain parts are joined.
+- **An attachment** is every other leaf — one with a file name, a `Content-Disposition:
+  attachment`, or any other type. A part with a `Content-ID` and no attachment disposition
+  is **inline**, what the HTML's `cid:` images name. A forwarded message
+  (`message/rfc822`) is kept whole as an attachment, `message.eml` when it names none, not
+  opened; Outlook's `application/ms-tnef` is kept as `winmail.dat`, not decoded.
+- **Threading's headers**: `Message-Id` and the first id of `In-Reply-To`, bracketed;
+  `References` bracketed, distinct, oldest first, at most 100 — the first and the newest
+  when a thread holds more. Subject decoded, trimmed, at most 998 bytes. Addresses in lower
+  case.
+
+### Sanitising
+
+Received HTML is a stranger's. `mail.SanitizeHTML` parses it with `golang.org/x/net/html`
+and, before any policy, rewrites each `img` whose `src` is `cid:` to the download path of
+the message's own inline attachment — removing it when the message has no such part —,
+removes every other `img` but a base64 `data:` PNG, GIF, JPEG or WebP (so **remote images
+and tracking pixels go**), drops `background` and `srcset`, and drops a link whose scheme is
+not `http`, `https` or `mailto`. Then bluemonday's UGC policy removes everything
+executable — `script`, `style`, `iframe`, `object`, `embed`, `form`, `input`, `meta`,
+`base`, `link`, `svg`, `math`, every `on*` attribute — and keeps a short list of
+typographic and box style properties (colours, fonts, alignment, line height, margins,
+paddings, borders, width, height, vertical alignment, white space), never `url(…)`,
+`position` or `expression`, so mail keeps its look. Links get
+`rel="nofollow noreferrer noopener"` and `target="_blank"`.
+
+The inbox is the second wall: it shows the HTML in an `<iframe sandbox="">` whose document
+carries its own CSP, `default-src 'none'; img-src data:; style-src 'unsafe-inline'`. A
+sandboxed frame has an opaque origin and would send no session cookie, so the inbox
+fetches the message's own inline images itself — only the attachments the HTML names, of
+an image type and size it allows — and puts them into the HTML as `data:` URIs; nothing
+in the frame reaches Vantigo's API or another host.
+
+### Auto-replies
+
+A message with `Auto-Submitted` other than `no`, `X-Auto-Response-Suppress`, `Precedence`
+`bulk`, `auto_reply` or `list`, or `X-Autoreply` is automatic — an out-of-office answer, a
+bounce, a list. It is imported and threaded as any other, answered `autoSubmitted: true`
+in the detail, and **does not reopen** a closed conversation.
+
+### Threading
+
+A message is threaded within its channel, never across channels, in this order:
+
+1. The conversation of the message its **`In-Reply-To`** names — a message of **any
+   direction**, so a customer's answer to a reply Vantigo sent threads onto its
+   conversation: the outbox's Message-Ids are stored bracketed, as received ones are.
+2. Else the conversation of a message its **`References`** name, the newest reference
+   first.
+3. Else the conversation of the newest **inbound** message of the same Graph
+   **`conversationId`** received in the last **90 days**.
+4. Else a new conversation.
+
+Several messages with one Message-Id answer the newest's conversation. The match is
+re-checked in the import's transaction (`archived` starts a new one, `closed` is reopened
+unless the message is automatic).
+
+**If Exchange rewrites our Message-Id** on sending (not verified, [Delivery
+semantics](#delivery-semantics)), a customer's answer to Vantigo's reply names Exchange's id,
+which no message of Vantigo's has, and step 3 threads it when the conversation already
+holds an inbound message of the same Outlook conversation — the usual case, a reply to a
+customer who wrote first. A customer's first answer to a conversation **Vantigo began**
+(`POST /conversations`) has no such inbound message, and starts a new conversation.
+
+### The customer linker
+
+Before the transaction, the sender's address is looked up in the customer directory
+(`ContactsByEmail`, through an accessor that refuses a call inside a transaction). The
+customers are every matching contact's candidate customers, deduplicated:
+
+- **Exactly one** customer, and the conversation is new or has none: the conversation's
+  `customer_id` is set, `customer_association_source = 'automatic'`.
+- **Several**, on the same condition: each becomes a candidate
+  (`conversation_customer_candidates`), and no customer is set.
+- **None**: nothing; the AI suggestion stays available.
+- A conversation that **has a customer** — set by hand or by an earlier message — is never
+  linked again, so a second sender in one thread does not move it.
+- The sender's participant gets the contact when **exactly one contact** matched and it has
+  none; several contacts at one customer link the customer, not a contact.
+- Customers off (no directory) links nothing; a directory that fails is logged, and the
+  message is imported unlinked.
+
+**The `From` is not authenticated.** The linker, the participant and reply's To all take
+the message's `From` header as it stands: a mail with a forged `From` naming a customer's
+contact links a new conversation to that customer, and a reply — or a reply-all, which
+copies the message's Cc list as it stands — goes to the addresses the message names.
+Exchange Online's anti-spoofing (SPF, DKIM, DMARC) and Junk filtering are the mitigation:
+the worker reads only the **Inbox**, so a message Exchange put in Junk Email is never
+imported. Vantigo does not read `Authentication-Results` itself.
+
+### Reply and reply-all
+
+A reply answers the conversation's **latest inbound message with a sender** — the rules of
+the .NET module, ported:
+
+- **To** is that message's sender alone. A conversation with no such message — one created
+  through `POST /conversations` and never answered, or of an SMTP channel — answers 422
+  `recipients_missing`.
+- **Reply-all's Cc** is that one message's Cc only — not its other To recipients — each a
+  valid bare address, without the channel's own address and the sender, distinct in any
+  case, the first 100, resolved to the participants the import created (one missing is
+  left out). `reply_all` sends to them as Cc, `reply` to the sender alone; the reply's
+  deduplication and suppression checks run over both.
+- **The threading headers**: the reply's channel metadata carries `inReplyTo`, that
+  message's Message-Id, and `references`, its own References then its Message-Id, distinct
+  in any case — **the first id and the last 19** when there are more than 20 (RFC 5322's
+  advice; .NET kept the oldest 20, which drops the very message answered in a long
+  thread). The outbox writes them as `In-Reply-To` and `References`. A message with no
+  Message-Id gets no threading headers.
+- **The detail's `replyRecipients`** answers the same: `canReply` and `replyTo` the sender,
+  `replyAllCc` the Cc participants and `canReplyAll` whether there are any.
+
+Each message of the detail also answers `autoSubmitted`, `unreadable` and
+`rawDownloadPath` (always present; optional in the schema only because the recorded
+exchanges predate them).
+
+**The AI draft** builds its context from the conversation's 20 newest inbound text bodies,
+so it drafts from the customer's own words once a channel receives; the HTML body is never
+read.
+
+### Not verified on a real tenant
+
+What the pull request's real-tenant checklist settles, and this page will record: whether
+Exchange keeps our `Message-Id` (and so which [threading](#threading) step answers a
+customer's reply); the exact form of the delta's next and delta links (`mailFolders` or
+`mailfolders`, the Inbox's name or its id — Entra accepts either); the code of an expired
+message delta; whether Graph honours 50 messages a page; whether a message moved into the
+Inbox from another folder arrives as created or updated (the worker imports either);
+`$value`'s ceiling, whether it ever redirects (the client follows none), and how fast
+25 MiB arrives inside the read's 90 seconds.
 
 ## AI draft and customer suggestion
 

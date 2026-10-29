@@ -976,6 +976,77 @@ count as unexpected.
   - in both languages: the communications user guide (the inbox receives, reply-all,
     auto-replies, a message Vantigo could not read);
   - the design's §1.1 marked superseded.
+
+  *As built (delivery D, 2026-10-29, branch `claude/communications-m365-inbound-d`;
+  [the plan](../plans/2026-10-29-communications-m365-inbound.md)):* where D departs from
+  this design —
+  - **M11, the contract**: `Delta(ctx, mailbox, folder, link, since)` answers **one
+    page**, `MailDelta{Items, Link, Done}`, at most `MailDeltaPageMax` (50) items in no
+    promised order; `Raw(ctx, mailbox, messageID, max)` takes **the caller's cap** —
+    Communications' `COMMUNICATIONS_INBOUND_MAX_BYTES` (25 MiB, bounds 1–150 MiB), not the
+    provider's — and answers **`[]byte`**, not an `io.ReadCloser`: the guarded client
+    buffers through its cap anyway, and the caller stores and parses the whole. A new
+    `contracts.ErrMailItemGone` (a 404 `ErrorItemNotFound` between the delta and
+    `$value`) is terminal for the message; `ErrMailboxDeltaExpired` is the calendar's,
+    reused with its codes. Both reads are behind `Send`'s gate (a recorded mailbox, no
+    call otherwise). Each page asks `Prefer: IdType="ImmutableId", odata.maxpagesize=50`;
+    a fresh one `$filter=receivedDateTime ge` and a `$select` of four fields; `changeType`
+    is not asked and no `$orderby` — the worker sorts each page. A page is read through
+    16 MiB, not 1 MiB. Every link, stored or answered, must be this mailbox's message
+    delta on Graph's host, compared case-insensitively (`mailfolders/{id}` passes), and the
+    request is rebuilt from our own path plus the link's query. `Raw` runs on a second
+    `http.Client` with `graphRawBudget`, 90 s.
+  - **M14, the schema** (`00092`): `lease_id` is `varchar(32)`, the outbox's hex form, not
+    `uuid`; the CHECKs on `channel_sync.state` and `inbound_receipts.outcome`,
+    `ix_channel_sync_due`, the receipts' `(channel_id, received_at DESC)` and `message_id`
+    indexes, and the expression index on `channel_metadata_json->>'graphConversationId'`
+    are additions. The rfc unique index covers `imported` receipts only, so a `duplicate`
+    carries its original's Message-Id. The backfill writes `pending` for inactive `entra`
+    channels too; the claim skips them. `channel_sync.notified` is created and ordered on,
+    set by nothing until E; nothing sets `stopped`.
+  - **M14, the worker**: **no cap per cycle below the page** — a cycle reads one page
+    and handles each of its items, and a page with more to come stores the next link with
+    `next_sync_at` now, so the drain claims the channel again at once. A page's link is
+    stored only once every item has a receipt; within an import **the receipt is written
+    last** in the transaction, so its unique index decides a race and nothing of a lost
+    one commits. Timings: a 30 s poll, a 2-minute lease renewed before each message, 5
+    minutes after a finished page and for a held provider (no attempt spent), `failed`
+    for an hour on `mailbox_denied`/`mailbox_gone`/`mailbox_unknown`, else `sync_failed`
+    with 1 min × 2^attempts, at most an hour. One counter,
+    `communications.inbound.cycles_failed`, a plan addition. The Message-Id is the
+    message's own header, **falling back to Graph's `internetMessageId`** when the header
+    block does not read or names none. `own_message` only for an id of this database.
+    An unreadable message has no sender: it threads nowhere, links no customer and is not
+    one a reply answers. Bodies are capped at 1 MiB each — a longer text cut with `…`, a
+    longer HTML dropped (`htmlDropped`) —, and the sanitiser keeps a short style
+    allow-list (plan decision, owner question 7), which UGC alone would strip.
+  - **M15**: references on a reply are the answered message's own then its Message-Id,
+    distinct, **the first and the last 19** when there are more than 20 (owner question
+    1, default), not .NET's oldest 20. A conversation with **any** customer, automatic
+    included, is never re-linked (owner question 6, default); a new conversation takes the
+    one customer at its insert. Threading's third step finds only an inbound message's
+    `conversationId`: if Exchange rewrites our Message-Id, a customer's first answer to a
+    conversation Vantigo began starts a new conversation. Reply-all is the Cc of the latest
+    inbound message only (owner question 2, default); a reply goes to `From`, not
+    `Reply-To` (question 5, default).
+  - **M15, the contract** (`openapi/communications.yaml`): each message's
+    `autoSubmitted`, `unreadable` and `rawDownloadPath`, and `ChannelResponse.sync
+    {state, error, lastSyncedAt}` (a plan addition), are always answered but **optional in
+    the schema**, since the recorded exchanges predate them. `GET
+    /messages/{id}/raw` (`conversations-view`) answers the original as `message/rfc822`
+    to save, for every inbound message (owner question 3, default). An unscanned
+    attachment downloads with `Content-Disposition: attachment; filename*=UTF-8''…` and a
+    passive content type, `application/octet-stream` otherwise. Inline images the message
+    carries are shown although unscanned, remote ones stripped (owner question 4,
+    default).
+  - **M16**: the receipts' sweep runs in every retention batch — a receipt with no
+    message older than the window goes, except each channel's newest. Raw payloads and
+    inbound attachments already left through `deleteMessages`.
+  - **Not verified on a real tenant** when the pages were written: whether Exchange keeps
+    our `Message-ID`; the delta links' exact form; an expired message delta's code; the
+    page size honoured; a message moved into the Inbox as created or updated; `$value`'s
+    ceiling, redirects and speed. The pull request's real-tenant checklist settles them,
+    and this note and the reference record the findings.
 - **E** (`feat/communications-inbound-notifications`): M17. Migration
   `00093_entra_mailbox_subscriptions_resource.sql`. Docs:
   - the Entra and communications reference;
