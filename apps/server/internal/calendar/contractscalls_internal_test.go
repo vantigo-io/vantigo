@@ -88,6 +88,9 @@ func TestNotificationAccessors_WithNoProviderAreUnavailable(t *testing.T) {
 	if _, err := s.mailboxNotified(context.Background(), time.Time{}); !errors.Is(err, contracts.ErrMailboxUnavailable) {
 		t.Errorf("Notified with no provider: %v", err)
 	}
+	if _, err := s.mailboxConnections(context.Background(), time.Time{}); !errors.Is(err, contracts.ErrMailboxUnavailable) {
+		t.Errorf("Connections with no provider: %v", err)
+	}
 }
 
 // The change notifications' accessors refuse a call made inside one of the
@@ -108,6 +111,9 @@ func TestNotificationAccessors_RefuseACallInsideATransaction(t *testing.T) {
 	if _, err := s.mailboxNotified(locked, time.Time{}); !errors.Is(err, errCallInsideTransaction) {
 		t.Errorf("Notified inside a transaction: %v", err)
 	}
+	if _, err := s.mailboxConnections(locked, time.Time{}); !errors.Is(err, errCallInsideTransaction) {
+		t.Errorf("Connections inside a transaction: %v", err)
+	}
 	if got := box.Calls(); len(got) != 0 {
 		t.Errorf("the provider was asked from inside a transaction: %+v", got)
 	}
@@ -121,5 +127,8 @@ func TestNotificationAccessors_RefuseACallInsideATransaction(t *testing.T) {
 	}
 	if _, err := s.mailboxNotified(ctx, time.Time{}); err != nil {
 		t.Errorf("Notified: %v", err)
+	}
+	if _, err := s.mailboxConnections(ctx, time.Time{}); err != nil {
+		t.Errorf("Connections: %v", err)
 	}
 }

@@ -214,12 +214,13 @@ func (e FeedVariant) Valid() bool {
 
 // Defines values for MailboxSyncAvailability.
 const (
-	MailboxSyncAvailabilityAvailable         MailboxSyncAvailability = "available"
-	MailboxSyncAvailabilityNoAccount         MailboxSyncAvailability = "no_account"
-	MailboxSyncAvailabilityNoProvider        MailboxSyncAvailability = "no_provider"
-	MailboxSyncAvailabilityPermissionMissing MailboxSyncAvailability = "permission_missing"
-	MailboxSyncAvailabilitySwitchOff         MailboxSyncAvailability = "switch_off"
-	MailboxSyncAvailabilityUnavailable       MailboxSyncAvailability = "unavailable"
+	MailboxSyncAvailabilityAvailable    MailboxSyncAvailability = "available"
+	MailboxSyncAvailabilityNoAccount    MailboxSyncAvailability = "no_account"
+	MailboxSyncAvailabilityNoProvider   MailboxSyncAvailability = "no_provider"
+	MailboxSyncAvailabilityNotConnected MailboxSyncAvailability = "not_connected"
+	MailboxSyncAvailabilityReconnect    MailboxSyncAvailability = "reconnect"
+	MailboxSyncAvailabilitySwitchOff    MailboxSyncAvailability = "switch_off"
+	MailboxSyncAvailabilityUnavailable  MailboxSyncAvailability = "unavailable"
 )
 
 // Valid indicates whether the value is a known member of the MailboxSyncAvailability enum.
@@ -231,7 +232,9 @@ func (e MailboxSyncAvailability) Valid() bool {
 		return true
 	case MailboxSyncAvailabilityNoProvider:
 		return true
-	case MailboxSyncAvailabilityPermissionMissing:
+	case MailboxSyncAvailabilityNotConnected:
+		return true
+	case MailboxSyncAvailabilityReconnect:
 		return true
 	case MailboxSyncAvailabilitySwitchOff:
 		return true
@@ -248,6 +251,8 @@ const (
 	MailboxSyncErrorMailboxDenied MailboxSyncError = "mailbox_denied"
 	MailboxSyncErrorMailboxGone   MailboxSyncError = "mailbox_gone"
 	MailboxSyncErrorNoAccount     MailboxSyncError = "no_account"
+	MailboxSyncErrorNotConnected  MailboxSyncError = "not_connected"
+	MailboxSyncErrorReconnect     MailboxSyncError = "reconnect"
 	MailboxSyncErrorUnavailable   MailboxSyncError = "unavailable"
 )
 
@@ -261,6 +266,10 @@ func (e MailboxSyncError) Valid() bool {
 	case MailboxSyncErrorMailboxGone:
 		return true
 	case MailboxSyncErrorNoAccount:
+		return true
+	case MailboxSyncErrorNotConnected:
+		return true
+	case MailboxSyncErrorReconnect:
 		return true
 	case MailboxSyncErrorUnavailable:
 		return true
@@ -822,7 +831,7 @@ type FeedAddresses struct {
 // FeedVariant A calendar address's variant (calendar feed design D3): full is the person's calendar as they see it — never a colleague's appointment, a cancelled or a declined one, a subscription's item or a public holiday; busy is its busy spans and nothing else, each titled Busy.
 type FeedVariant string
 
-// MailboxSync The caller's Outlook sync (calendar Outlook sync design O5): their setting, the worker's state, and whether it can run. availability is available, or why not — switch_off (an Owner has not turned on Calendar sync in the Entra module), no_provider (no enabled module writes mailboxes), unavailable (the provider's connection is not working), permission_missing (reserved and no longer answered: the calendar permission may be granted with Exchange RBAC for Applications, which no token shows, so a mailbox outside the grant is the sync's mailbox_denied error instead) or no_account (the caller has no account in the directory that Staff links to them). availableKinds are the kinds the caller may choose: the appointment kind and the kinds the calendar sources declare today. state is pending (on, not yet synced), active, stopping (the copies are being removed), off, unavailable or failed; error is the last refusal's code, absent after a sync that worked. A caller who never turned it on is answered the defaults at revision 0.
+// MailboxSync The caller's Outlook sync (calendar Outlook sync design O5, on the person's own Outlook connection, Outlook connection design M9): their setting, the worker's state, and whether it can run. availability is available, or why not — switch_off (an Owner has not turned on the Outlook connection in the Entra module), no_provider (no enabled module writes mailboxes), unavailable (the provider's connection is not working), no_account (the caller has no account in the directory that Staff links to them), not_connected (the caller has not connected Outlook, or their connection closed: the worker's last finding) or reconnect (Microsoft refused the caller's connection; they reconnect: the worker's last finding). A PUT and Sync now are taken while it is available, not_connected or reconnect. availableKinds are the kinds the caller may choose: the appointment kind and the kinds the calendar sources declare today. state is pending (on, not yet synced), active, stopping (the copies are being removed), off, unavailable or failed; error is the last refusal's code, absent after a sync that worked. A caller who never turned it on is answered the defaults at revision 0.
 type MailboxSync struct {
 	Availability   MailboxSyncAvailability `json:"availability"`
 	AvailableKinds []MailboxSyncKind       `json:"availableKinds"`

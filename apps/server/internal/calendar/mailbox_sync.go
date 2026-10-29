@@ -29,10 +29,14 @@ import (
 // off is what the person needs to hear), unavailable otherwise;
 // and no_account when Staff links the caller to no enabled account of the
 // provider's (Workforce.DirectoryAccount, design O3) — a disabled account,
-// a leaver's, is none. Nothing of a person's mailbox is ever guessed. The
-// availability permission_missing is the contract's still but never
-// answered: the provider's token may not show a permission granted with
-// Exchange RBAC for Applications, so it never refuses for it (design O2).
+// a leaver's, is none. Nothing of a person's mailbox is ever guessed.
+// Then the person's own connection to the provider (Outlook connection
+// design M9), which no request can ask: not_connected or reconnect is the
+// worker's last finding — the caller's row on, unavailable, its error one
+// of the two — and available otherwise. The sync can run (a PUT turning it
+// on, Sync now) while it is available, not_connected or reconnect: a parked
+// person may change their setting, and Sync now right after connecting asks
+// at once.
 
 // The values of calendar.mailbox_sync's columns (design O5), held by the
 // module's validation rather than a CHECK.
@@ -154,7 +158,7 @@ func (s *server) PutCalendarMailboxSync(ctx context.Context, req gen.PutCalendar
 	if f.failed() {
 		return gen.PutCalendarMailboxSync400ApplicationProblemPlusJSONResponse(invalid(invalidMailboxSyncTitle, f)), nil
 	}
-	if body.Enabled && availability != gen.MailboxSyncAvailabilityAvailable {
+	if body.Enabled && !canRun(availability) {
 		return gen.PutCalendarMailboxSync409ApplicationProblemPlusJSONResponse(mailboxSyncUnavailable(string(availability))), nil
 	}
 	var row store.CalendarMailboxSync
@@ -229,7 +233,7 @@ func (s *server) PostCalendarMailboxSyncRun(ctx context.Context, _ gen.PostCalen
 		return nil, err
 	}
 	switch {
-	case availability != gen.MailboxSyncAvailabilityAvailable:
+	case !canRun(availability):
 		return gen.PostCalendarMailboxSyncRun409ApplicationProblemPlusJSONResponse(mailboxSyncUnavailable(string(availability))), nil
 	case row == nil || !row.Enabled:
 		return gen.PostCalendarMailboxSyncRun409ApplicationProblemPlusJSONResponse(
@@ -282,7 +286,27 @@ func (s *server) mailboxAvailability(ctx context.Context) (gen.MailboxSyncAvaila
 	if !usableAccount(acct, provider.Key()) {
 		return gen.MailboxSyncAvailabilityNoAccount, kinds, nil
 	}
+	row, err := s.mailboxSyncRow(ctx, s.queries(), callerID(ctx), false)
+	if err != nil {
+		return "", nil, err
+	}
+	if row != nil && row.Enabled && row.State == mailboxStateUnavailable && row.Error != nil {
+		switch *row.Error {
+		case mailboxErrNotConnected:
+			return gen.MailboxSyncAvailabilityNotConnected, kinds, nil
+		case mailboxErrReconnect:
+			return gen.MailboxSyncAvailabilityReconnect, kinds, nil
+		}
+	}
 	return gen.MailboxSyncAvailabilityAvailable, kinds, nil
+}
+
+// canRun reports whether a sync of availability a may be turned on or run
+// now: available, or waiting for the person's connection, which the worker
+// asks again (Outlook connection design M9).
+func canRun(a gen.MailboxSyncAvailability) bool {
+	return a == gen.MailboxSyncAvailabilityAvailable || a == gen.MailboxSyncAvailabilityNotConnected ||
+		a == gen.MailboxSyncAvailabilityReconnect
 }
 
 // availabilityOf is the provider's status as the person's availability:

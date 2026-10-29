@@ -41,8 +41,8 @@ import (
 //  1. The provider's Status: unavailable writes nothing and calls nothing —
 //     the row is retried in an hour, a clean-up owed kept owed.
 //  2. Access.UserHolds(calendar:access): a person who may no longer use
-//     Calendar, a provider in cleanup (the admin switch off, the permission
-//     missing) or a clean-up owed (turned off, the target changed) cleans up
+//     Calendar, a provider in cleanup (the admin switch off) or a clean-up
+//     owed (turned off, the target changed) cleans up
 //     (O8). Then: off when turned off; unavailable (error unavailable) when
 //     the person or the provider cannot go on; otherwise — a target change —
 //     the sync goes on at once, from a reconcile.
@@ -81,7 +81,8 @@ import (
 //  8. The result, written only if the PUT has not moved the revision on: a
 //     sync that worked is active, the next due a poll later
 //     (CALENDAR_MAILBOX_SYNC_POLL); a refusal (mailbox_denied, mailbox_gone)
-//     is unavailable with its code, retried in six hours; a failure backs
+//     is unavailable with its code, retried in six hours; the person's
+//     connection needed parks them a day (see below); a failure backs
 //     off 1, 5, 15, 60 minutes, then hourly, and is failed from the fifth.
 //  9. The busy read (O9.1–O9.3, mailbox_busy.go), before step 8's result,
 //     once the push worked: Delta on the default calendar — afresh over
@@ -113,6 +114,22 @@ import (
 // notice asked for twice marks nothing once the row has synced since. A
 // notice is a nudge: the reads stay the truth. A Notified that fails is
 // logged and the cycle goes on; the poll runs either way.
+//
+// The person's connection (Outlook connection design M9): every mailbox call
+// runs on the person's own connection to the provider, and one that cannot
+// serve it answers contracts.ErrConnectionNeeded — a person-level stop, not
+// a failure. The person is parked: unavailable, error not_connected (never
+// connected, or the connection closing) or reconnect (the provider refused
+// it), the next sync a day later with the attempts unchanged. That next sync
+// is the long re-check: it runs the cycle's steps in order — the status,
+// calendar:access, the directory account, each with its clean-up — before
+// its first provider call parks again or syncs. A connection gone runs the
+// clean-up first (parked), by the removals a closing connection still
+// serves, or — its token forgotten, a leaver's — forgetting the copies left
+// in the mailbox. In the same step as the notices, Connections is asked for
+// the connections that moved, with its own cursor and the same overlap, and
+// their rows made due at once — a change overrides the backoff and the
+// parking — unless written since the change.
 //
 // The clean-up (O8): target own deletes the Vantigo calendar — only one the
 // provider made, and only when it holds no meeting (none Find answers as
@@ -178,6 +195,12 @@ const (
 	mailboxRetryUnavailable = time.Hour
 	mailboxRetryRefused     = 6 * time.Hour
 
+	// mailboxRetryConnection is the long re-check of a person parked on
+	// their connection to the provider (Outlook connection design M9): asked
+	// again once a day, never backed off — a connect wakes them sooner
+	// (takeConnections).
+	mailboxRetryConnection = 24 * time.Hour
+
 	// mailboxFailedAfter is the failures in a row that make the state failed.
 	mailboxFailedAfter = 5
 
@@ -197,6 +220,11 @@ const (
 	mailboxErrGone        = "mailbox_gone"
 	mailboxErrUnavailable = "unavailable"
 	mailboxErrFailed      = "failed"
+	// mailboxErrNotConnected and mailboxErrReconnect are a person parked on
+	// their connection (Outlook connection design M9): never connected or
+	// closed, and refused by the provider until they reconnect.
+	mailboxErrNotConnected = "not_connected"
+	mailboxErrReconnect    = "reconnect"
 )
 
 // MailboxSyncWorker keeps people's Outlook copies. It implements
@@ -213,6 +241,11 @@ type MailboxSyncWorker struct {
 	// contracts.MailboxNoticesMax: the next asks from noticesSince exactly,
 	// the next page, not with the overlap that would answer the same page.
 	noticesFull bool
+	// connectionsSince and connectionsFull are Connections' cursor, as
+	// noticesSince and noticesFull are Notified's (Outlook connection design
+	// M9), under noticesMu.
+	connectionsSince time.Time
+	connectionsFull  bool
 }
 
 var _ worker.Worker = (*MailboxSyncWorker)(nil)
@@ -334,6 +367,8 @@ func (w *MailboxSyncWorker) releaseClaim(ctx context.Context, userID uuid.UUID, 
 // fails is logged, and the same notices are asked for again next cycle.
 // Without a provider nothing is asked; a failing Notified is logged by its
 // code and the cycle goes on.
+//
+// The same step then takes the connections that moved (takeConnections).
 func (w *MailboxSyncWorker) takeNotices(ctx context.Context) {
 	if w.srv.mailboxCalendar() == nil {
 		return
@@ -341,6 +376,12 @@ func (w *MailboxSyncWorker) takeNotices(ctx context.Context) {
 	w.noticesMu.Lock()
 	defer w.noticesMu.Unlock()
 	now := w.deps.Clock()
+	w.takeNotified(ctx, now)
+	w.takeConnections(ctx, now)
+}
+
+// takeNotified is takeNotices' Notified part. w.noticesMu is held.
+func (w *MailboxSyncWorker) takeNotified(ctx context.Context, now time.Time) {
 	if w.noticesSince.IsZero() {
 		w.noticesSince = now.Add(-w.poll())
 	}
@@ -377,6 +418,56 @@ func (w *MailboxSyncWorker) takeNotices(ctx context.Context) {
 	w.noticesSince, w.noticesFull = latest, len(notices) >= contracts.MailboxNoticesMax
 	w.deps.Logger.DebugContext(ctx, "calendar: mailbox change notices taken",
 		"worker", mailboxWorkerName, "notices", len(notices), "due", marked)
+}
+
+// takeConnections wakes the people whose connection to the provider moved
+// (Outlook connection design M9) — a connect, a reconnect, a close — in the
+// same step as the notices and by the same rules: Connections asked from
+// mailboxNoticesOverlap before the latest change taken (from it exactly
+// after a full page), a poll ago at the first cycle, and the rows marked due
+// at now in one statement, holding no connection across the call. Unlike a
+// notice, a change overrides the backoff and the parking: it changes what
+// the next sync can do. A row written since the change is not marked, so a
+// change taken twice marks nothing. connectionsSince moves on only when the
+// statement worked; a failing Connections is logged by its code and the
+// cycle goes on. w.noticesMu is held.
+func (w *MailboxSyncWorker) takeConnections(ctx context.Context, now time.Time) {
+	if w.connectionsSince.IsZero() {
+		w.connectionsSince = now.Add(-w.poll())
+	}
+	since := w.connectionsSince.Add(-mailboxNoticesOverlap)
+	if w.connectionsFull {
+		since = w.connectionsSince
+	}
+	changes, err := w.srv.mailboxConnections(ctx, since)
+	if err != nil {
+		w.deps.Logger.WarnContext(ctx, "calendar: the connections that moved could not be read; the re-checks go on",
+			"worker", mailboxWorkerName, "error", mailboxErrorCode(err))
+		return
+	}
+	if len(changes) == 0 {
+		w.connectionsFull = false
+		return
+	}
+	mailboxes, ats := make([]string, len(changes)), make([]time.Time, len(changes))
+	latest := w.connectionsSince
+	for i, c := range changes {
+		mailboxes[i], ats[i] = c.Mailbox, c.At
+		if c.At.After(latest) {
+			latest = c.At
+		}
+	}
+	marked, err := w.srv.queries().MarkMailboxSyncConnected(ctx, store.MarkMailboxSyncConnectedParams{
+		Now: now, Mailboxes: mailboxes, Ats: ats,
+	})
+	if err != nil {
+		w.deps.Logger.WarnContext(ctx, "calendar: the syncs of the connections that moved could not be made due; they are asked for again",
+			"worker", mailboxWorkerName, "error", mailboxErrorCode(err))
+		return
+	}
+	w.connectionsSince, w.connectionsFull = latest, len(changes) >= contracts.ConnectionChangesMax
+	w.deps.Logger.DebugContext(ctx, "calendar: connection changes taken",
+		"worker", mailboxWorkerName, "changes", len(changes), "due", marked)
 }
 
 // mailboxResult is what one person's sync writes to their row.
@@ -476,7 +567,7 @@ func (w *MailboxSyncWorker) syncPerson(ctx context.Context, r store.CalendarMail
 		}
 		id, err := w.srv.mailboxEnsure(call, mailbox, known, mailboxCalendarName)
 		if err != nil {
-			return w.refusedOrFailed(ctx, r, now, "ensure the Vantigo calendar", err)
+			return w.refusedOrFailed(ctx, call, r, now, "ensure the Vantigo calendar", err)
 		}
 		if id != known {
 			if err := w.forgetAll(ctx, r.UserID); err != nil {
@@ -518,7 +609,7 @@ func (w *MailboxSyncWorker) syncPerson(ctx context.Context, r store.CalendarMail
 		return err
 	}
 	if writeBackErr != nil && mailboxRefusal(writeBackErr) {
-		return w.refusedOrFailed(ctx, r, now, "read the copies' versions", writeBackErr)
+		return w.refusedOrFailed(ctx, call, r, now, "read the copies' versions", writeBackErr)
 	}
 	if wb.wrote > 0 {
 		if desired, err = w.srv.mailboxDesired(call, p); err != nil {
@@ -535,7 +626,7 @@ func (w *MailboxSyncWorker) syncPerson(ctx context.Context, r store.CalendarMail
 	if reconcile {
 		refs, err := w.srv.mailboxFind(call, mailbox, calendarID, p.w.fromAt)
 		if err != nil {
-			return w.refusedOrFailed(ctx, r, now, "list the mailbox's copies", err)
+			return w.refusedOrFailed(ctx, call, r, now, "list the mailbox's copies", err)
 		}
 		d.reconcile(refs, len(refs) < mailboxFindBound && writeBackErr == nil && wb.complete, p.w.from, wb.present)
 	}
@@ -550,7 +641,7 @@ func (w *MailboxSyncWorker) syncPerson(ctx context.Context, r store.CalendarMail
 	}
 	switch {
 	case stop != nil:
-		return w.refusedOrFailed(ctx, r, now, "write the copies", stop)
+		return w.refusedOrFailed(ctx, call, r, now, "write the copies", stop)
 	case opErr != nil:
 		r.Reconcile = r.Reconcile || createUnknown
 		return w.failed(ctx, r, now, "write a copy", opErr)
@@ -560,7 +651,7 @@ func (w *MailboxSyncWorker) syncPerson(ctx context.Context, r store.CalendarMail
 		return err
 	}
 	if callErr != nil && mailboxRefused(callErr) {
-		return w.refusedOrFailed(ctx, r, now, "read the busy time", callErr)
+		return w.refusedOrFailed(ctx, call, r, now, "read the busy time", callErr)
 	}
 	// The push stood: the person is active whatever else failed beside it.
 	switch {
@@ -1031,16 +1122,20 @@ func (w *MailboxSyncWorker) cleanupEvents(ctx, call context.Context, userID uuid
 // unusable.
 func mailboxRefusal(err error) bool {
 	return errors.Is(err, contracts.ErrMailboxGone) || errors.Is(err, contracts.ErrMailboxUnknown) ||
-		errors.Is(err, contracts.ErrMailboxDenied) || errors.Is(err, contracts.ErrMailboxUnavailable)
+		errors.Is(err, contracts.ErrMailboxDenied) || errors.Is(err, contracts.ErrMailboxUnavailable) ||
+		errors.Is(err, contracts.ErrConnectionNeeded)
 }
 
-// refusedOrFailed records a provider's answer: a refusal sets the state
-// unavailable with its code — mailbox_denied and mailbox_gone retried in six
-// hours, an unknown account (no_account) and an unusable provider
-// (unavailable) in one — and anything else is a failure.
-func (w *MailboxSyncWorker) refusedOrFailed(ctx context.Context, r store.CalendarMailboxSync, now time.Time, what string, err error) error {
+// refusedOrFailed records a provider's answer: the person's connection
+// needed parks them (parked), a refusal sets the state unavailable with its
+// code — mailbox_denied and mailbox_gone retried in six hours, an unknown
+// account (no_account) and an unusable provider (unavailable) in one — and
+// anything else is a failure.
+func (w *MailboxSyncWorker) refusedOrFailed(ctx, call context.Context, r store.CalendarMailboxSync, now time.Time, what string, err error) error {
 	code, retry := "", mailboxRetryUnavailable
 	switch {
+	case errors.Is(err, contracts.ErrConnectionNeeded):
+		return w.parked(ctx, call, r, now, err)
 	case errors.Is(err, contracts.ErrMailboxDenied):
 		code, retry = mailboxErrDenied, mailboxRetryRefused
 	case errors.Is(err, contracts.ErrMailboxGone):
@@ -1063,7 +1158,70 @@ func (w *MailboxSyncWorker) refusedOrFailed(ctx context.Context, r store.Calenda
 // mailbox, which refusedOrFailed records as unavailable.
 func mailboxRefused(err error) bool {
 	return errors.Is(err, contracts.ErrMailboxDenied) || errors.Is(err, contracts.ErrMailboxGone) ||
-		errors.Is(err, contracts.ErrMailboxUnknown) || errors.Is(err, contracts.ErrMailboxUnavailable)
+		errors.Is(err, contracts.ErrMailboxUnknown) || errors.Is(err, contracts.ErrMailboxUnavailable) ||
+		errors.Is(err, contracts.ErrConnectionNeeded)
+}
+
+// parked records a person whose own connection to the provider cannot
+// serve the sync (Outlook connection design M9, M7): err is
+// contracts.ErrConnectionNeeded. A connection gone — never made, or closing
+// (not_connected) — first runs the clean-up on call, by the removals a
+// closing connection still serves or, once none can, forgetting the copies
+// (ErrMailboxGone): only for a person who has had copies (a sync that
+// worked, a calendar made, a map row) and was not parked not_connected
+// already, whose clean-up then ran. A clean-up that fails is failed, and
+// the next sync parks again and retries it; one met by the connection
+// needed is parked with the clean-up owed. A reconnect keeps the map and
+// the copies. Then park.
+func (w *MailboxSyncWorker) parked(ctx, call context.Context, r store.CalendarMailboxSync, now time.Time, err error) error {
+	if connectionCode(err) == mailboxErrNotConnected && (r.Error == nil || *r.Error != mailboxErrNotConnected) {
+		had := r.LastSyncedAt != nil || r.CalendarID != nil
+		if !had {
+			rows, err := w.srv.queries().ListMailboxEvents(ctx, r.UserID)
+			if err != nil {
+				return fmt.Errorf("calendar: read the mailbox map: %w", err)
+			}
+			had = len(rows) > 0
+		}
+		if had {
+			if cerr := w.cleanup(ctx, call, &r, now, true); cerr != nil {
+				if !errors.Is(cerr, contracts.ErrConnectionNeeded) {
+					return w.failed(ctx, r, now, "clean up", cerr)
+				}
+				err = cerr
+			}
+		}
+	}
+	return w.park(ctx, r, now, err)
+}
+
+// park writes the person parked on their connection: unavailable (stopping
+// kept, a clean-up owed staying owed), not_connected or reconnect, the long
+// re-check a day later, the attempts left as they were — parking is no
+// failure, and never backs off — and the next sync a reconcile.
+func (w *MailboxSyncWorker) park(ctx context.Context, r store.CalendarMailboxSync, now time.Time, err error) error {
+	code := connectionCode(err)
+	w.deps.Logger.InfoContext(ctx, "calendar: a person's sync waits for their Outlook connection",
+		"worker", mailboxWorkerName, "user_id", r.UserID.String(), "code", code)
+	state := mailboxStateUnavailable
+	if r.State == mailboxStateStopping {
+		state = mailboxStateStopping
+	}
+	return w.write(ctx, r, now, mailboxResult{
+		state: state, code: code, next: timePtr(now.Add(mailboxRetryConnection)),
+		attempts: r.Attempts, reconcile: true,
+	})
+}
+
+// connectionCode is the code of a person's connection needed (err is
+// contracts.ErrConnectionNeeded): not_connected for a connection never made
+// or closing, reconnect for every reason the provider names besides.
+func connectionCode(err error) string {
+	var need *contracts.ConnectionNeededError
+	if errors.As(err, &need) && need.Reason != contracts.ConnectionNotConnected && need.Reason != contracts.ConnectionClosingReason {
+		return mailboxErrReconnect
+	}
+	return mailboxErrNotConnected
 }
 
 // pushedButFailed records a step that failed beside a push that worked — the
@@ -1088,7 +1246,13 @@ func (w *MailboxSyncWorker) pushedButFailed(ctx context.Context, r store.Calenda
 // stays due. The error code is the refusal's when a clean-up met one
 // (mailbox_denied, unavailable), failed otherwise; the log names the step and
 // the code, never the error's words.
+//
+// The person's connection needed — met by a clean-up — is parked (park)
+// with the clean-up owed, not counted as a failure.
 func (w *MailboxSyncWorker) failed(ctx context.Context, r store.CalendarMailboxSync, now time.Time, what string, err error) error {
+	if errors.Is(err, contracts.ErrConnectionNeeded) {
+		return w.park(ctx, r, now, err)
+	}
 	w.deps.Logger.WarnContext(ctx, "calendar: a person's mailbox sync failed; it is retried",
 		"worker", mailboxWorkerName, "user_id", r.UserID.String(), "step", what, "error", mailboxErrorCode(err))
 	code := mailboxErrFailed
@@ -1129,6 +1293,8 @@ func mailboxErrorCode(err error) string {
 		return mailboxErrUnavailable
 	case errors.Is(err, contracts.ErrCalendarNotOurs):
 		return "calendar_not_ours"
+	case errors.Is(err, contracts.ErrConnectionNeeded):
+		return connectionCode(err)
 	case errors.Is(err, context.DeadlineExceeded):
 		return "deadline"
 	case errors.Is(err, context.Canceled):
