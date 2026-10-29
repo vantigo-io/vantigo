@@ -44,7 +44,7 @@ import (
 // metric names below, and those are scoped by this meter.
 const meterName = "Vantigo.Communications"
 
-// outboxMetrics is the module's four counters. They are held per worker
+// outboxMetrics is the module's five counters: .NET's four and jobs_held. They are held per worker
 // rather than in a package-level var so a test can hand a worker its own
 // MeterProvider and read exact values back, instead of asserting against a
 // process-global instrument every other parallel test in the package is also
@@ -68,9 +68,15 @@ type outboxMetrics struct {
 	// terminal failure. .NET's own doc comment is worth carrying over —
 	// "Every increment is undelivered customer email; alert on this."
 	jobsFailed metric.Int64Counter
+	// jobsHeld is communications.outbox.jobs_held, the one counter .NET did
+	// not have (the review's follow-up): +1 per try of a Microsoft 365
+	// channel's job put back because its mail channels provider is
+	// unavailable — no attempt spent, so not jobs_retried, which would
+	// otherwise count one every five minutes for a day.
+	jobsHeld metric.Int64Counter
 }
 
-// newOutboxMetrics builds the four counters from mp. A nil mp means the
+// newOutboxMetrics builds the five counters from mp. A nil mp means the
 // global provider, which is what production passes: internal/telemetry
 // installs a real MeterProvider globally when an OTLP metrics endpoint is
 // configured and leaves the no-op one in place when it is not.
@@ -90,6 +96,8 @@ func newOutboxMetrics(mp metric.MeterProvider, logger *slog.Logger) *outboxMetri
 			"Outbox jobs whose send attempt failed and was scheduled for retry."),
 		jobsFailed: counter(meter, logger, "communications.outbox.jobs_failed",
 			"Outbox jobs that terminally failed after exhausting their attempts."),
+		jobsHeld: counter(meter, logger, "communications.outbox.jobs_held",
+			"Outbox job tries put back without spending an attempt because the mail channels provider is unavailable."),
 	}
 }
 

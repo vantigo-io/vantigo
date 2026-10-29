@@ -620,8 +620,11 @@ func (w *OutboxWorker) cancelSuppressed(ctx context.Context, job store.Communica
 //
 // held is a cause outboxProviderHeld names: until outboxProviderHold after
 // the job was queued it is put back to retry with its attempt given back
-// (DeferOutboxJob) at outboxProviderWait; after that it fails at once as
-// provider_unavailable.
+// (DeferOutboxJob) at outboxProviderWait, counted in jobs_held; after that it
+// fails at once as provider_unavailable. The deliveries' retrying events,
+// carrying provider_unavailable, are written when the hold begins — the
+// first held try after queueing or after a send attempt — and not again
+// while it lasts.
 func (w *OutboxWorker) markFailed(ctx context.Context, job store.CommunicationsOutboxJob, leaseID string, code string, held bool) error {
 	now := w.now()
 	// recorded stays false on both no-op paths (the row is gone, or the lease
@@ -629,7 +632,7 @@ func (w *OutboxWorker) markFailed(ctx context.Context, job store.CommunicationsO
 	// not allowed to record. terminal picks which of the two counters moves:
 	// .NET chooses the same way at `:258` / `:260`, one or the other, never
 	// both (inventory §13.4).
-	recorded, terminal := false, false
+	recorded, terminal, holding := false, false, false
 	err := db.WithTx(ctx, w.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		q := store.New(tx)
 		current, err := q.GetOutboxJob(ctx, job.ID)
@@ -648,7 +651,8 @@ func (w *OutboxWorker) markFailed(ctx context.Context, job store.CommunicationsO
 		// therefore the largest one a default deployment ever waits.
 		eventCode := code
 		hold := held && now.Before(current.CreatedAt.Add(outboxProviderHold))
-		if held && !hold {
+		if held {
+			// A hold's events and its end alike carry the cause.
 			eventCode = "provider_unavailable"
 		}
 		terminal = !hold && (current.Attempts >= outboxMaxAttempts || eventCode != "")
@@ -662,7 +666,17 @@ func (w *OutboxWorker) markFailed(ctx context.Context, job store.CommunicationsO
 			return err
 		}
 
+		// writeEvents is false for a held try after the one that began the
+		// hold: the deliveries' retrying events are written once per hold,
+		// not every five minutes for a day.
+		writeEvents := true
 		if hold {
+			latest, err := q.LatestMessageEvent(ctx, current.MessageID)
+			if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+				return fmt.Errorf("communications: read the message's latest event: %w", err)
+			}
+			writeEvents = err != nil || latest.EventType != "retrying" ||
+				latest.DataJson == nil || *latest.DataJson != data
 			if err := q.DeferOutboxJob(ctx, store.DeferOutboxJobParams{
 				LastError:     &failure,
 				NextAttemptAt: now.Add(outboxProviderWait(current.CreatedAt, now, current.Attempts)),
@@ -693,6 +707,9 @@ func (w *OutboxWorker) markFailed(ctx context.Context, job store.CommunicationsO
 			}); err != nil {
 				return fmt.Errorf("communications: fail delivery: %w", err)
 			}
+			if !writeEvents {
+				continue
+			}
 			if err := q.InsertMessageEventWithData(ctx, store.InsertMessageEventWithDataParams{
 				ID: uuid.New(), MessageID: current.MessageID, DeliveryID: &deliveryID,
 				EventType: deliveryStatus, OccurredAt: now, DataJson: &data,
@@ -700,7 +717,7 @@ func (w *OutboxWorker) markFailed(ctx context.Context, job store.CommunicationsO
 				return fmt.Errorf("communications: write failure event: %w", err)
 			}
 		}
-		recorded = true
+		recorded, holding = true, hold
 		return nil
 	})
 	if err != nil {
@@ -710,6 +727,8 @@ func (w *OutboxWorker) markFailed(ctx context.Context, job store.CommunicationsO
 	case !recorded:
 	case terminal:
 		w.metrics.jobsFailed.Add(ctx, 1)
+	case holding:
+		w.metrics.jobsHeld.Add(ctx, 1)
 	default:
 		w.metrics.jobsRetried.Add(ctx, 1)
 	}

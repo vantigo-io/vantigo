@@ -355,8 +355,8 @@ func assertRetried(t *testing.T, h *modtest.Harness, m *meterHarness, messageID 
 
 // assertHeld checks the job is held for its unavailable provider: back to
 // retry with its attempt given back and the marker cleared, at the first
-// wait, the event's data the constant with no code, and jobsRetried counted
-// once.
+// wait, one retrying event per delivery carrying provider_unavailable, and
+// jobs_held counted once — never jobs_retried.
 func assertHeld(t *testing.T, h *modtest.Harness, m *meterHarness, messageID uuid.UUID) {
 	t.Helper()
 	job := readOutboxJob(t, h, messageID)
@@ -374,14 +374,17 @@ func assertHeld(t *testing.T, h *modtest.Harness, m *meterHarness, messageID uui
 			t.Errorf("delivery %s = %s, want retrying", d.address, d.status)
 		}
 	}
-	if _, data := countEvents(t, h, messageID, "retrying"); data == nil || *data != `{"error":"Outbound delivery failed."}` {
-		t.Errorf("retrying event data = %v, want the constant with no code", data)
+	n, data := countEvents(t, h, messageID, "retrying")
+	if want := `{"error":"Outbound delivery failed.","code":"provider_unavailable"}`; n != len(readDeliveries(t, h, messageID)) || data == nil || *data != want {
+		t.Errorf("retrying events = %d, data %v; want one per delivery with %s", n, data, want)
 	}
-	if got := m.count(t, jobsRetriedMetric); got != 1 {
-		t.Errorf("%s = %d, want 1", jobsRetriedMetric, got)
+	if got := m.count(t, jobsHeldMetric); got != 1 {
+		t.Errorf("%s = %d, want 1", jobsHeldMetric, got)
 	}
-	if got := m.count(t, jobsFailedMetric); got != 0 {
-		t.Errorf("%s = %d, want 0", jobsFailedMetric, got)
+	for _, name := range []string{jobsRetriedMetric, jobsFailedMetric} {
+		if got := m.count(t, name); got != 0 {
+			t.Errorf("%s = %d, want 0", name, got)
+		}
 	}
 }
 
@@ -462,6 +465,17 @@ func TestOutboxWorker_AnUnavailableProviderHoldsTheJobFor24Hours(t *testing.T) {
 	}
 	if got := m.count(t, jobsFailedMetric); got != 0 {
 		t.Errorf("%s = %d before the 24 hours, want 0", jobsFailedMetric, got)
+	}
+	// One retrying event per delivery, written when the hold began — not
+	// one per try — and every try counted as held, none as retried.
+	if n, _ := countEvents(t, h, fx.messageID, "retrying"); n != 2 {
+		t.Errorf("retrying events after %d held tries = %d, want 2, one per delivery", tries, n)
+	}
+	if got := m.count(t, jobsHeldMetric); got != int64(tries) {
+		t.Errorf("%s = %d, want %d, one per held try", jobsHeldMetric, got, tries)
+	}
+	if got := m.count(t, jobsRetriedMetric); got != 0 {
+		t.Errorf("%s = %d, want 0: a held try spends no attempt", jobsRetriedMetric, got)
 	}
 
 	h.Advance(readOutboxJob(t, h, fx.messageID).nextAttemptAt.Sub(h.Now()))
@@ -545,4 +559,45 @@ func TestOutboxWorker_MailboxChannelWithoutItsProviderIsRetried(t *testing.T) {
 		}
 		assertHeld(t, h, m, fx.messageID)
 	})
+}
+
+// TestOutboxWorker_AHoldBeginsAgainAfterASendAttempt: a hold writes its
+// retrying events when it begins, held tries after it none, and a try that
+// reached the provider and failed ends it — the next held try begins a new
+// hold and writes them again.
+func TestOutboxWorker_AHoldBeginsAgainAfterASendAttempt(t *testing.T) {
+	t.Parallel()
+	fake := modtest.NewFakeChannelMailbox()
+	h := newHarness(t, modtest.WithChannelMailbox(fake))
+	fx := seedMailboxJob(t, h, fake)
+	w := newMeterHarness(t).worker(t, h)
+	try := func(cause error) {
+		t.Helper()
+		fake.FailWith("Send", cause)
+		if wait := readOutboxJob(t, h, fx.messageID).nextAttemptAt.Sub(h.Now()); wait > 0 {
+			h.Advance(wait)
+		}
+		if _, err := w.ProcessOne(context.Background()); err != nil {
+			t.Fatalf("ProcessOne: %v", err)
+		}
+	}
+	retrying := func() int {
+		n, _ := countEvents(t, h, fx.messageID, "retrying")
+		return n
+	}
+	try(contracts.ErrMailboxUnavailable)
+	try(contracts.ErrMailboxUnavailable)
+	try(contracts.ErrMailboxUnavailable)
+	if n := retrying(); n != 2 {
+		t.Errorf("after three held tries %d retrying events, want 2, the hold's", n)
+	}
+	try(errors.New("graph answered 503"))
+	if n := retrying(); n != 4 {
+		t.Errorf("after the failed send %d retrying events, want 4", n)
+	}
+	try(contracts.ErrMailboxUnavailable)
+	try(contracts.ErrMailboxUnavailable)
+	if n := retrying(); n != 6 {
+		t.Errorf("after a new hold %d retrying events, want 6", n)
+	}
 }

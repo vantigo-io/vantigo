@@ -273,6 +273,30 @@ func (q *Queries) InsertMessageEventWithData(ctx context.Context, arg InsertMess
 	return err
 }
 
+const latestMessageEvent = `-- name: LatestMessageEvent :one
+SELECT event_type, data_json
+FROM communications.message_events
+WHERE message_id = $1
+ORDER BY occurred_at DESC
+LIMIT 1
+`
+
+type LatestMessageEventRow struct {
+	EventType string
+	DataJson  *string
+}
+
+// The message's latest event, which tells a held try from the one that
+// began the hold: a hold writes its 'retrying' events once, carrying the
+// code provider_unavailable, and a later held try finds them latest and
+// writes none (the review's follow-up).
+func (q *Queries) LatestMessageEvent(ctx context.Context, messageID uuid.UUID) (LatestMessageEventRow, error) {
+	row := q.db.QueryRow(ctx, latestMessageEvent, messageID)
+	var i LatestMessageEventRow
+	err := row.Scan(&i.EventType, &i.DataJson)
+	return i, err
+}
+
 const listMessageAttachmentsForSend = `-- name: ListMessageAttachmentsForSend :many
 SELECT id, file_name, content_type, content_id, is_inline, storage_key, scan_status
 FROM communications.message_attachments
