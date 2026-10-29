@@ -1,8 +1,20 @@
-import { Badge, Button, Group, Menu, ScrollArea, Select, Text, Title } from "@mantine/core";
-import { IconArchive, IconCheck, IconChevronDown, IconPaperclip, IconSparkles, IconTag } from "@tabler/icons-react";
+import { ActionIcon, Badge, Button, Group, Menu, ScrollArea, Select, Text, Title } from "@mantine/core";
+import {
+  IconAlertTriangle,
+  IconArchive,
+  IconCheck,
+  IconChevronDown,
+  IconDots,
+  IconDownload,
+  IconPaperclip,
+  IconSparkles,
+  IconTag,
+} from "@tabler/icons-react";
+import { useQuery } from "@tanstack/react-query";
 import { useI18n } from "@vantigo/frontend-shell";
-import type { ConversationDetail, ConversationStatus, Tag } from "../api/conversations";
-import { attachmentDownloadUrl, safeHtmlSrcDoc } from "../api/conversations";
+import { useState } from "react";
+import type { ConversationDetail, ConversationMessage, ConversationStatus, Tag } from "../api/conversations";
+import { attachmentDownloadUrl, inlineImages, rawMessageDownloadUrl, safeHtmlSrcDoc } from "../api/conversations";
 import { ConversationComposer } from "./ConversationComposer";
 import { participantName, relative } from "./conversationHelpers";
 
@@ -141,62 +153,154 @@ export function ConversationThread({
       </div>
       <ScrollArea className="thread-messages">
         {conversation.messages.map((message) => (
-          <article key={message.id} className={`message-card ${message.direction}`}>
-            <Group justify="space-between">
-              <Text fw={700}>
-                {message.direction === "internal_note"
-                  ? "Internal note"
-                  : message.direction === "outbound"
-                    ? "You"
-                    : message.participant
-                      ? participantName(message.participant)
-                      : "Customer"}
-              </Text>
-              <Text size="xs" c="dimmed">
-                {relative(message.occurredAt)}
-              </Text>
-            </Group>
-            {message.textBody && (
-              <Text mt="xs" style={{ whiteSpace: "pre-wrap" }}>
-                {message.textBody}
-              </Text>
-            )}
-            {!message.textBody && message.htmlBody && (
-              <iframe
-                title={t("messageHtml")}
-                sandbox=""
-                srcDoc={safeHtmlSrcDoc(message.htmlBody)}
-                className="message-html"
-              />
-            )}
-            {message.attachments.length > 0 && (
-              <Group mt="sm" gap="xs">
-                {message.attachments.map((file) =>
-                  file.downloadAvailable && file.scanStatus === "clean" ? (
-                    <Button
-                      key={file.id}
-                      component="a"
-                      href={attachmentDownloadUrl(file.downloadPath)}
-                      target="_blank"
-                      rel="noreferrer"
-                      size="compact-xs"
-                      variant="subtle"
-                      leftSection={<IconPaperclip size={12} />}
-                    >
-                      {file.fileName}
-                    </Button>
-                  ) : (
-                    <Badge key={file.id} leftSection={<IconPaperclip size={12} />} variant="outline">
-                      {file.scanStatus === "pending" ? t("scanning") : t("attachmentUnavailable")}
-                    </Badge>
-                  ),
-                )}
-              </Group>
-            )}
-          </article>
+          <MessageCard key={message.id} message={message} />
         ))}
       </ScrollArea>
       <ConversationComposer conversation={conversation} onSent={onSent} />
     </div>
+  );
+}
+
+/**
+ * One message: HTML whenever the message has it, in the sandboxed iframe with its own inline images
+ * turned into data: URIs by the page, and Show as text beside it; the text otherwise. An unreadable
+ * message says so and offers its original; an inbound one offers its original in a menu.
+ */
+function MessageCard({ message }: { message: ConversationMessage }) {
+  const { t } = useI18n("communications");
+  const [asText, setAsText] = useState(false);
+  const html = message.unreadable ? null : message.htmlBody;
+  const withImages = useQuery({
+    queryKey: ["conversation-message-html", message.id],
+    queryFn: () => inlineImages(html ?? "", message.attachments),
+    enabled: Boolean(html) && !asText,
+    staleTime: Number.POSITIVE_INFINITY,
+  });
+  const rawPath = message.rawDownloadPath ?? null;
+  const unscanned = message.attachments.some((file) => file.downloadAvailable && file.scanStatus === "unscanned");
+
+  return (
+    <article className={`message-card ${message.direction}`}>
+      <Group justify="space-between" wrap="nowrap">
+        <Group gap="xs">
+          <Text fw={700}>
+            {message.direction === "internal_note"
+              ? "Internal note"
+              : message.direction === "outbound"
+                ? "You"
+                : message.participant
+                  ? participantName(message.participant)
+                  : "Customer"}
+          </Text>
+          {message.autoSubmitted && (
+            <Badge size="sm" variant="light" color="gray">
+              {t("autoReply")}
+            </Badge>
+          )}
+        </Group>
+        <Group gap="xs" wrap="nowrap">
+          <Text size="xs" c="dimmed">
+            {relative(message.occurredAt)}
+          </Text>
+          {html && (
+            <Button size="compact-xs" variant="subtle" onClick={() => setAsText((value) => !value)}>
+              {asText ? t("showFormatted") : t("showAsText")}
+            </Button>
+          )}
+          {rawPath && (
+            <Menu position="bottom-end">
+              <Menu.Target>
+                <ActionIcon size="sm" variant="subtle" color="gray" aria-label={t("messageActions")}>
+                  <IconDots size={14} />
+                </ActionIcon>
+              </Menu.Target>
+              <Menu.Dropdown>
+                <Menu.Item
+                  component="a"
+                  href={rawMessageDownloadUrl(rawPath)}
+                  download
+                  leftSection={<IconDownload size={14} />}
+                >
+                  {t("downloadOriginal")}
+                </Menu.Item>
+              </Menu.Dropdown>
+            </Menu>
+          )}
+        </Group>
+      </Group>
+      {message.unreadable ? (
+        <Group mt="xs" gap="sm">
+          <Text c="dimmed">{t("unreadableMessage")}</Text>
+          {rawPath && (
+            <Button
+              component="a"
+              href={rawMessageDownloadUrl(rawPath)}
+              download
+              size="compact-xs"
+              variant="light"
+              leftSection={<IconDownload size={12} />}
+            >
+              {t("downloadOriginal")}
+            </Button>
+          )}
+        </Group>
+      ) : html && !asText ? (
+        <iframe
+          title={t("messageHtml")}
+          sandbox=""
+          srcDoc={safeHtmlSrcDoc(withImages.data ?? html)}
+          className="message-html"
+        />
+      ) : (
+        message.textBody && (
+          <Text mt="xs" style={{ whiteSpace: "pre-wrap" }}>
+            {message.textBody}
+          </Text>
+        )
+      )}
+      {message.attachments.length > 0 && (
+        <Group mt="sm" gap="xs">
+          {message.attachments.map((file) =>
+            file.downloadAvailable && file.scanStatus === "clean" ? (
+              <Button
+                key={file.id}
+                component="a"
+                href={attachmentDownloadUrl(file.downloadPath)}
+                target="_blank"
+                rel="noreferrer"
+                size="compact-xs"
+                variant="subtle"
+                leftSection={<IconPaperclip size={12} />}
+              >
+                {file.fileName}
+              </Button>
+            ) : file.downloadAvailable && file.scanStatus === "unscanned" ? (
+              <Button
+                key={file.id}
+                component="a"
+                href={attachmentDownloadUrl(file.downloadPath)}
+                download={file.fileName}
+                size="compact-xs"
+                variant="subtle"
+                color="orange"
+                title={t("attachmentNotScanned")}
+                leftSection={<IconAlertTriangle size={12} />}
+              >
+                {file.fileName}
+              </Button>
+            ) : (
+              <Badge key={file.id} leftSection={<IconPaperclip size={12} />} variant="outline">
+                {file.scanStatus === "pending" ? t("scanning") : t("attachmentUnavailable")}
+              </Badge>
+            ),
+          )}
+        </Group>
+      )}
+      {unscanned && (
+        <Text size="xs" c="orange" mt={4}>
+          {t("attachmentNotScanned")}
+        </Text>
+      )}
+    </article>
   );
 }

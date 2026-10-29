@@ -390,4 +390,60 @@ describe("admin channels", () => {
       ),
     );
   });
+
+  describe("the receive status", () => {
+    const withSync = (id: string, address: string, sync: unknown) => ({
+      ...entraChannel,
+      id,
+      address,
+      displayName: null,
+      sync,
+    });
+
+    it("says whether each Microsoft 365 channel receives, and that SMTP sends only", async () => {
+      mocks.fetchChannels.mockResolvedValue([
+        { ...channel, sync: null },
+        withSync("c-2", "post@example.com", { state: "active", error: null, lastSyncedAt: "2026-10-29T08:00:00Z" }),
+        withSync("c-3", "new@example.com", { state: "pending", error: null, lastSyncedAt: null }),
+        withSync("c-4", "denied@example.com", { state: "failed", error: "mailbox_denied", lastSyncedAt: null }),
+        withSync("c-5", "flaky@example.com", { state: "active", error: "sync_failed", lastSyncedAt: null }),
+      ]);
+      renderPage();
+      expect(await screen.findByRole("columnheader", { name: "Receive status" })).toBeTruthy();
+      const row = (address: string) => {
+        const cell = screen.getByText(address).closest("tr");
+        if (!cell) throw new Error(`no row for ${address}`);
+        return within(cell);
+      };
+      expect(row("Support").getByText("Sends only")).toBeTruthy();
+      expect(row("post@example.com").getByText("Receiving")).toBeTruthy();
+      expect(row("post@example.com").getByText(/^Last synced /)).toBeTruthy();
+      expect(row("new@example.com").getByText("Waiting for first sync")).toBeTruthy();
+      expect(
+        row("denied@example.com").getByText(
+          "Failed: The application can no longer read the mailbox. Give it access in Exchange Online.",
+        ),
+      ).toBeTruthy();
+      expect(
+        row("flaky@example.com").getByText("Last sync failed: Microsoft 365 did not answer. Vantigo tries again."),
+      ).toBeTruthy();
+    });
+
+    it("shows the receive status in Norwegian", async () => {
+      setLanguagePreference("nb");
+      mocks.fetchChannels.mockResolvedValue([
+        { ...channel, sync: null },
+        withSync("c-2", "post@example.com", { state: "active", error: null, lastSyncedAt: "2026-10-29T08:00:00Z" }),
+        withSync("c-3", "new@example.com", { state: "pending", error: null, lastSyncedAt: null }),
+        withSync("c-4", "gone@example.com", { state: "failed", error: "mailbox_gone", lastSyncedAt: null }),
+      ]);
+      renderPage();
+      expect(await screen.findByRole("columnheader", { name: "Mottaksstatus" })).toBeTruthy();
+      expect(screen.getByText("Sender bare")).toBeTruthy();
+      expect(screen.getByText("Mottar")).toBeTruthy();
+      expect(screen.getByText(/^Sist synkronisert /)).toBeTruthy();
+      expect(screen.getByText("Venter på første synkronisering")).toBeTruthy();
+      expect(screen.getByText("Feilet: Postboksen finnes ikke lenger i Microsoft 365.")).toBeTruthy();
+    });
+  });
 });

@@ -9,6 +9,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** @description A message's attachment. A clean one (the composer's) is answered as its declared media type; an unscanned one (received with an inbound message) as an attachment to save — Content-Disposition attachment with its file name — and as its media type only when that is passive (an image other than SVG, PDF, plain text, an Office document, zip), application/octet-stream otherwise. */
         get: operations["getCommunicationsAttachmentsByIdDownload"];
         put?: never;
         post?: never;
@@ -260,6 +261,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/communications/messages/{id}/raw": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The message as it was received, whole — RFC 5322, its HTML unsanitised, its attachments inside — as a file to save, message-{id}.eml. Vantigo never renders it. 404 when the message has no original (only an inbound message has one) or the object is gone. */
+        get: operations["getCommunicationsMessagesByIdRaw"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/communications/stats/attention": {
         parameters: {
             query?: never;
@@ -446,6 +464,13 @@ export interface components {
                 useSsl: boolean | null;
                 username: string | null;
             } | null;
+            /** @description Whether a Microsoft 365 channel receives: its mailbox sync's state — pending (waiting for its first sync), active, failed or stopped —, the code of its last failure (mailbox_denied, mailbox_gone, mailbox_unknown, sync_failed, provider_unavailable) and when it last finished a sync; null for SMTP. Always answered; optional in the schema only because the recorded exchanges predate it. */
+            sync?: {
+                error: string | null;
+                /** Format: date-time */
+                lastSyncedAt: string | null;
+                state: string;
+            } | null;
             type: string;
         };
         ChannelVerifyResponse: {
@@ -541,6 +566,8 @@ export interface components {
                 }[];
                 /** Format: uuid */
                 authorUserId: string | null;
+                /** @description An inbound message an automatic system sent — an out-of-office answer, a bounce, a list — by its Auto-Submitted, X-Auto-Response-Suppress, Precedence or X-Autoreply header. Always answered; optional in the schema only because the recorded exchanges predate it. */
+                autoSubmitted?: boolean;
                 /** Format: date-time */
                 createdAt: string;
                 deliveries: {
@@ -571,8 +598,12 @@ export interface components {
                     /** Format: uuid */
                     id: string;
                 } | null;
+                /** @description Where the message as it was received — the original, RFC 5322, its HTML unsanitised — is downloaded, GET /api/v1/communications/messages/{id}/raw; null when Vantigo keeps no original (every message but an inbound one). Always answered; optional in the schema only because the recorded exchanges predate it. */
+                rawDownloadPath?: string | null;
                 subject: string | null;
                 textBody: string | null;
+                /** @description An inbound message Vantigo could not read; its text says so and its original is downloadable. Always answered; optional in the schema only because the recorded exchanges predate it. */
+                unreadable?: boolean;
             }[];
             participants: {
                 address: string;
@@ -585,6 +616,7 @@ export interface components {
                 id: string;
             }[];
             previewText: string | null;
+            /** @description Who a reply answers, from the latest inbound message with a sender: replyTo is its sender and canReply whether there is one; replyAllCc the participants its Cc named — without the channel's own address and the sender, distinct by address in any case, at most 100 — and canReplyAll whether there are any. */
             replyRecipients: {
                 canReply: boolean;
                 canReplyAll: boolean;
@@ -814,6 +846,8 @@ export interface operations {
             /** @description OK */
             200: {
                 headers: {
+                    /** @description attachment; filename*=UTF-8''… for an unscanned attachment; absent for a clean one. */
+                    "Content-Disposition"?: string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -2139,6 +2173,64 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    getCommunicationsMessagesByIdRaw: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    /** @description attachment; filename="message-{id without dashes}.eml". */
+                    "Content-Disposition"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "message/rfc822": string;
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Service Unavailable — attachment_storage_unavailable, the object store did not answer. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommunicationErrorResponse"];
+                };
             };
         };
     };

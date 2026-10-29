@@ -644,7 +644,7 @@ describe("EntraPage — the Mail channels", () => {
   it("is off by default, with no status and no commands", async () => {
     await openPage({ connection: connected() });
     const toggle = within(form()).getByRole("switch", {
-      name: /^Mail channels: let Communications send through Exchange Online shared mailboxes/,
+      name: /^Mail channels: let Communications send and receive through Exchange Online shared mailboxes/,
     });
     expect(toggle).not.toBeChecked();
     expect(within(form()).getByText("Mail channels")).toBeInTheDocument();
@@ -769,7 +769,7 @@ describe("EntraPage — the Mail channels", () => {
       renderWithProviders(<EntraPage signIn={() => null} provisioning={() => null} />);
       expect(
         await screen.findByRole("switch", {
-          name: /^E-postkanaler: la Kommunikasjon sende gjennom delte postbokser i Exchange Online/,
+          name: /^E-postkanaler: la Kommunikasjon sende og motta gjennom delte postbokser i Exchange Online/,
         }),
       ).toBeChecked();
       expect(screen.getByText("E-postkanaler")).toBeInTheDocument();

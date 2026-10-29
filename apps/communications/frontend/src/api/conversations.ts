@@ -1,4 +1,5 @@
 import { keepPreviousData, queryOptions } from "@tanstack/react-query";
+import { appUrl } from "@vantigo/frontend-shell";
 import { request } from "./request";
 
 export type ConversationStatus = "open" | "closed" | "archived";
@@ -59,6 +60,12 @@ export type ConversationMessage = {
   createdAt: string;
   attachments: Attachment[];
   deliveries: Delivery[];
+  /** An inbound message an automatic system sent — an out-of-office answer, a bounce, a list. */
+  autoSubmitted?: boolean;
+  /** An inbound message Vantigo could not read; its original is downloadable. */
+  unreadable?: boolean;
+  /** Where the original as it was received is downloaded; null for every message but an inbound one. */
+  rawDownloadPath?: string | null;
 };
 export type ConversationListItem = {
   id: string;
@@ -174,6 +181,8 @@ export const stageConversationAttachment = (conversationId: string, file: File, 
   );
 };
 export const attachmentDownloadUrl = (path: string) => path;
+/** The original message as it was received, a .eml file to save; Vantigo never renders it. */
+export const rawMessageDownloadUrl = (path: string) => path;
 export const attachmentUploadStatusQueryOptions = (conversationId: string, attachmentId: string) =>
   queryOptions({
     queryKey: ["conversation-attachment-upload", conversationId, attachmentId],
@@ -243,3 +252,54 @@ export const suggestConversationCustomerWithAi = (id: string) =>
 /** Only use when the API has supplied sanitized HTML. The sandbox prevents scripts, forms, popups and network access. */
 export const safeHtmlSrcDoc = (html: string) =>
   `<!doctype html><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'"><style>body{font:14px system-ui;color:#253248;margin:0;line-height:1.55}img{max-width:100%}</style>${html}`;
+
+/** The image types an inline image is shown as, and the largest one, in bytes. */
+export const inlineImageTypes = ["image/png", "image/gif", "image/jpeg", "image/webp"];
+export const inlineImageMaxBytes = 2 * 1024 * 1024;
+
+const isInlineImageType = (contentType: string) =>
+  inlineImageTypes.includes(contentType.split(";")[0]?.trim().toLowerCase() ?? "");
+
+/**
+ * Fetches one of a message's inline images as a data: URI, by the page — same origin, the session's
+ * cookie — since the sandboxed iframe can load none: null when it is not an allowed image or too large.
+ */
+export const fetchInlineImage = async (path: string, signal?: AbortSignal): Promise<string | null> => {
+  const response = await fetch(appUrl(path), { credentials: "include", signal });
+  if (!response.ok) return null;
+  const contentType = response.headers.get("Content-Type") ?? "";
+  if (!isInlineImageType(contentType)) return null;
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  if (bytes.byteLength > inlineImageMaxBytes) return null;
+  let binary = "";
+  for (let offset = 0; offset < bytes.length; offset += 0x8000)
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
+  return `data:${contentType.split(";")[0]?.trim().toLowerCase()};base64,${btoa(binary)}`;
+};
+
+/**
+ * The sanitized HTML with the message's own inline images — its cid: parts, which the server points at
+ * their download path — turned into data: URIs, so the iframe's sandbox and CSP stay as they are. Only
+ * the message's own attachments the HTML names, of an allowed image type and size are fetched; any other image stays
+ * as the server wrote it, and the CSP refuses it.
+ */
+export const inlineImages = async (
+  html: string,
+  attachments: Attachment[],
+  fetchImage: (path: string) => Promise<string | null> = fetchInlineImage,
+): Promise<string> => {
+  const images = attachments.filter(
+    (file) =>
+      file.downloadAvailable &&
+      file.sizeBytes <= inlineImageMaxBytes &&
+      isInlineImageType(file.contentType) &&
+      html.includes(`src="${file.downloadPath}"`),
+  );
+  const fetched = await Promise.all(
+    images.map(async (file) => [file.downloadPath, await fetchImage(file.downloadPath).catch(() => null)] as const),
+  );
+  return fetched.reduce(
+    (result, [path, uri]) => (uri ? result.replaceAll(`src="${path}"`, `src="${uri}"`) : result),
+    html,
+  );
+};
