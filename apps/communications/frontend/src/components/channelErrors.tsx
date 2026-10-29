@@ -15,6 +15,8 @@ const messages: Record<string, string> = {
   personal_mailbox: "errorPersonalMailbox",
   mailbox_unknown: "errorMailboxUnknown",
   mail_channels_off: "errorMailChannelsOff",
+  mailbox_exists: "errorMailboxExists",
+  channel_exists: "errorAddressExists",
   provider_unreachable: "errorProviderUnreachable",
   provider_unchanged: "errorProviderUnchanged",
   mailbox_changed: "errorMailboxChanged",
@@ -26,12 +28,12 @@ const messages: Record<string, string> = {
 /**
  * A channel request's refusal in the reader's language, by the server's code:
  * never the code itself, nor the server's English message. `channel_exists`
- * names the mailbox for a Microsoft 365 channel and the address for SMTP.
+ * is an address another channel has, `mailbox_exists` a mailbox another
+ * Microsoft 365 channel uses.
  */
 export function channelErrorMessage(
   error: unknown,
   t: Translate,
-  provider: string,
   locale: string,
   fallback = "errorChannelNotSaved",
 ): ReactNode {
@@ -46,7 +48,6 @@ export function channelErrorMessage(
         </Anchor>
       </>
     );
-  if (code === "channel_exists") return provider === "entra" ? t("errorMailboxExists") : t("errorAddressExists");
   const key = code ? messages[code] : undefined;
   return t(key ?? fallback);
 }

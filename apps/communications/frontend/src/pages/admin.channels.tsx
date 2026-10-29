@@ -36,11 +36,11 @@ export function ChannelsPage() {
   const verify = useMutation({
     mutationFn: (channel: Channel) => verifyChannel(channel.id),
     onSuccess: () => notifications.show({ title: t("channelVerified"), message: t("channelConnectionValid") }),
-    onError: (error, channel) =>
+    onError: (error) =>
       notifications.show({
         color: "red",
         title: t("channelNotVerified"),
-        message: channelErrorMessage(error, t, channel.provider, locale, "errorVerificationFailed"),
+        message: channelErrorMessage(error, t, locale, "errorVerificationFailed"),
       }),
   });
   const switchProvider = useMutation({
@@ -150,9 +150,7 @@ export function ChannelsPage() {
       <Modal opened={switching !== null} onClose={closeSwitch} title={t("switchToMicrosoft365")}>
         <Stack>
           <Text size="sm">{t("switchConfirm")}</Text>
-          {switchProvider.error && (
-            <Alert color="red">{channelErrorMessage(switchProvider.error, t, "entra", locale)}</Alert>
-          )}
+          {switchProvider.error && <Alert color="red">{channelErrorMessage(switchProvider.error, t, locale)}</Alert>}
           <Group justify="end">
             <Button variant="default" onClick={closeSwitch}>
               {t("cancel")}

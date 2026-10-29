@@ -85,6 +85,8 @@ export type ConversationDetail = ConversationListItem & {
   replyRecipients: ReplyRecipients;
   /** The channel's budget in bytes of MIME (a Microsoft 365 channel's); null for SMTP. */
   maxMessageBytes?: number | null;
+  /** The attachments the channel takes, in bytes as the files are, rounded down to 0.1 MB; null for SMTP. */
+  maxAttachmentBytes?: number | null;
 };
 export type AiDraftResponse = {
   interactionId: string;

@@ -501,7 +501,7 @@ const MailChannelsCommands = ({
         <Code block style={{ flex: 1, minWidth: 0 }}>
           {commands}
         </Code>
-        <CopyValue value={commands} />
+        <CopyValue value={commands} label={t("mailChannelsCommands")} />
       </Group>
     </Stack>
   );

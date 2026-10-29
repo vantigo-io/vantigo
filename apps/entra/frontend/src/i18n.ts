@@ -241,13 +241,13 @@ export const entraCatalog = {
     changeNotifications_unreachable:
       "Microsoft could not reach the address since {{since}}. Vantigo tries again within the hour; changes arrive at the next sync meanwhile.",
     mailChannels: "Mail channels",
-    mailChannelsSwitch: "Mail channels: let Communications send and receive through Exchange Online shared mailboxes",
+    mailChannelsSwitch: "Mail channels: let Communications send through Exchange Online shared mailboxes",
     mailChannelsDescription:
       "Each shared mailbox becomes a channel in Communications, reached with the application's own access. Grant that access in Exchange Online with the commands below, limited to the channels' mailboxes, not with Mail permissions in the app registration.",
     mailChannelsStatus_ready:
-      "Ready: the application holds no mail permission for the whole tenant. Adding a channel in Communications checks that Vantigo reaches its mailbox.",
+      "Ready: at the last test the application held no Microsoft Graph mail permission for the whole tenant. Access granted in Exchange is not visible here — check it with Test-ServicePrincipalAuthorization.",
     mailChannelsStatus_tenant_wide:
-      "Mail access is granted to every mailbox in the tenant. Limit it with RBAC for Applications and remove the tenant-wide consent.",
+      "Mail access is granted to every mailbox in the tenant. Limit it with RBAC for Applications and remove the tenant-wide consent. While this shows, anyone who manages channels in Communications can send as any shared mailbox in the tenant.",
     mailChannelsStatus_unavailable: "Waiting for the connection",
     mailChannelsCommands: "Commands for Exchange Online PowerShell",
     mailChannelsCommandsDescription:
@@ -699,13 +699,13 @@ export const entraCatalog = {
     changeNotifications_unreachable:
       "Microsoft har ikke nådd adressen siden {{since}}. Vantigo prøver igjen innen en time; endringene kommer ved neste synkronisering i mellomtiden.",
     mailChannels: "E-postkanaler",
-    mailChannelsSwitch: "E-postkanaler: la Kommunikasjon sende og motta gjennom delte postbokser i Exchange Online",
+    mailChannelsSwitch: "E-postkanaler: la Kommunikasjon sende gjennom delte postbokser i Exchange Online",
     mailChannelsDescription:
       "Hver delte postboks blir en kanal i Kommunikasjon, og Vantigo når den med applikasjonens egen tilgang. Gi den tilgangen i Exchange Online med kommandoene nedenfor, avgrenset til kanalenes postbokser, og ikke med Mail-tillatelser i appregistreringen.",
     mailChannelsStatus_ready:
-      "Klar: applikasjonen har ingen e-posttillatelse for hele leietakeren. Når du legger til en kanal i Kommunikasjon, sjekkes det at Vantigo når postboksen.",
+      "Klar: ved siste test hadde applikasjonen ingen e-posttillatelse i Microsoft Graph for hele leietakeren. Tilgang gitt i Exchange vises ikke her – sjekk den med Test-ServicePrincipalAuthorization.",
     mailChannelsStatus_tenant_wide:
-      "Applikasjonen har tilgang til alle postboksene i leietakeren. Begrens den med RBAC for Applications, og fjern samtykket som gjelder hele leietakeren.",
+      "Applikasjonen har tilgang til alle postboksene i leietakeren. Begrens den med RBAC for Applications, og fjern samtykket som gjelder hele leietakeren. Så lenge denne advarselen vises, kan alle som administrerer kanaler i Kommunikasjon, sende som hvilken som helst delt postboks i leietakeren.",
     mailChannelsStatus_unavailable: "Venter på tilkoblingen",
     mailChannelsCommands: "Kommandoer for Exchange Online PowerShell",
     mailChannelsCommandsDescription:

@@ -644,7 +644,7 @@ describe("EntraPage — the Mail channels", () => {
   it("is off by default, with no status and no commands", async () => {
     await openPage({ connection: connected() });
     const toggle = within(form()).getByRole("switch", {
-      name: /^Mail channels: let Communications send and receive through Exchange Online shared mailboxes/,
+      name: /^Mail channels: let Communications send through Exchange Online shared mailboxes/,
     });
     expect(toggle).not.toBeChecked();
     expect(within(form()).getByText("Mail channels")).toBeInTheDocument();
@@ -670,7 +670,9 @@ describe("EntraPage — the Mail channels", () => {
       body: { mailChannels: true, outlookConnect: false },
     });
     const status = await within(form()).findByRole("status", { name: "Mail channels" });
-    expect(within(status).getByText(/^Ready: the application holds no mail permission/)).toBeInTheDocument();
+    expect(
+      within(status).getByText(/^Ready: at the last test the application held no Microsoft Graph mail permission/),
+    ).toBeInTheDocument();
     expect(within(form()).getByRole("switch", { name: /^Mail channels: let/ })).toBeChecked();
   });
 
@@ -701,12 +703,12 @@ describe("EntraPage — the Mail channels", () => {
     {
       status: "ready",
       colour: "teal",
-      text: /^Ready: the application holds no mail permission for the whole tenant\./,
+      text: "Ready: at the last test the application held no Microsoft Graph mail permission for the whole tenant. Access granted in Exchange is not visible here — check it with Test-ServicePrincipalAuthorization.",
     },
     {
       status: "tenant_wide",
       colour: "orange",
-      text: "Mail access is granted to every mailbox in the tenant. Limit it with RBAC for Applications and remove the tenant-wide consent.",
+      text: "Mail access is granted to every mailbox in the tenant. Limit it with RBAC for Applications and remove the tenant-wide consent. While this shows, anyone who manages channels in Communications can send as any shared mailbox in the tenant.",
     },
     { status: "unavailable", colour: "dimmed", text: "Waiting for the connection" },
   ] as const;
@@ -743,7 +745,7 @@ describe("EntraPage — the Mail channels", () => {
     expect(within(commands).getByText(/^New-ServicePrincipal/).textContent).toBe(expected);
     expect(within(commands).queryByText(/^Test the connection first/)).not.toBeInTheDocument();
     expect(within(commands).getByText(/^Run them as an Exchange Administrator\./)).toBeInTheDocument();
-    await user.click(within(commands).getByRole("button", { name: /^Copy New-ServicePrincipal/ }));
+    await user.click(within(commands).getByRole("button", { name: "Copy Commands for Exchange Online PowerShell" }));
     expect(await navigator.clipboard.readText()).toBe(expected);
   });
 
@@ -767,13 +769,15 @@ describe("EntraPage — the Mail channels", () => {
       renderWithProviders(<EntraPage signIn={() => null} provisioning={() => null} />);
       expect(
         await screen.findByRole("switch", {
-          name: /^E-postkanaler: la Kommunikasjon sende og motta gjennom delte postbokser i Exchange Online/,
+          name: /^E-postkanaler: la Kommunikasjon sende gjennom delte postbokser i Exchange Online/,
         }),
       ).toBeChecked();
       expect(screen.getByText("E-postkanaler")).toBeInTheDocument();
       const status = screen.getByRole("status", { name: "E-postkanaler" });
       expect(
-        within(status).getByText(/^Klar: applikasjonen har ingen e-posttillatelse for hele leietakeren\./),
+        within(status).getByText(
+          /^Klar: ved siste test hadde applikasjonen ingen e-posttillatelse i Microsoft Graph for hele leietakeren\./,
+        ),
       ).toBeInTheDocument();
       const commands = screen.getByRole("group", { name: "Kommandoer for Exchange Online PowerShell" });
       expect(within(commands).getByText(/^New-ServicePrincipal/).textContent).toBe(
@@ -794,7 +798,7 @@ describe("EntraPage — the Mail channels", () => {
       const status = await screen.findByRole("status", { name: "E-postkanaler" });
       expect(
         within(status).getByText(
-          "Applikasjonen har tilgang til alle postboksene i leietakeren. Begrens den med RBAC for Applications, og fjern samtykket som gjelder hele leietakeren.",
+          "Applikasjonen har tilgang til alle postboksene i leietakeren. Begrens den med RBAC for Applications, og fjern samtykket som gjelder hele leietakeren. Så lenge denne advarselen vises, kan alle som administrerer kanaler i Kommunikasjon, sende som hvilken som helst delt postboks i leietakeren.",
         ),
       ).toBeInTheDocument();
     } finally {

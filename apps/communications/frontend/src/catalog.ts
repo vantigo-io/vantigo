@@ -21,14 +21,15 @@ const en = {
   channelNotVerified: "Channel not verified",
   tenantWideTitle: "Mail access reaches every mailbox",
   tenantWide:
-    "Mail access is granted to every mailbox in the tenant. Limit it with RBAC for Applications and remove the tenant-wide consent.",
+    "Mail access is granted to every mailbox in the tenant. Limit it with RBAC for Applications and remove the tenant-wide consent. While this shows, anyone who manages channels in Communications can send as any shared mailbox in the tenant.",
   errorPersonalMailbox: "This is a personal mailbox. Only a shared mailbox can be a channel.",
   errorMailboxDenied:
     "The mailbox is outside the application's scope. Give the application access to it in Exchange Online.",
   errorMailboxDeniedLink: "How to give the application access",
   errorMailboxUnknown: "Microsoft 365 has no mailbox with this address.",
-  errorMailChannelsOff: "Microsoft 365 mail channels are turned off in the Entra settings.",
-  errorMailboxExists: "This mailbox already has a channel.",
+  errorMailChannelsOff:
+    "Microsoft 365 mail channels are not available. An Entra administrator turns on Mail channels in the Entra settings.",
+  errorMailboxExists: "Another channel already uses this mailbox.",
   errorAddressExists: "A channel with this address already exists.",
   errorProviderUnreachable: "Microsoft 365 did not answer. Try again in a moment.",
   errorProviderUnchanged: "The channel already uses Microsoft 365.",
@@ -158,14 +159,15 @@ const nb: { [Key in keyof typeof en]: string } = {
   channelNotVerified: "Kanalen ble ikke bekreftet",
   tenantWideTitle: "E-posttilgangen gjelder alle postbokser",
   tenantWide:
-    "E-posttilgangen gjelder alle postbokser i tenanten. Begrens den med RBAC for Applications og fjern samtykket for hele tenanten.",
+    "Applikasjonen har tilgang til alle postboksene i leietakeren. Begrens den med RBAC for Applications, og fjern samtykket som gjelder hele leietakeren. Så lenge denne advarselen vises, kan alle som administrerer kanaler i Kommunikasjon, sende som hvilken som helst delt postboks i leietakeren.",
   errorPersonalMailbox: "Dette er en personlig postboks. Bare en delt postboks kan være en kanal.",
   errorMailboxDenied:
     "Postboksen er utenfor det applikasjonen har tilgang til. Gi applikasjonen tilgang til den i Exchange Online.",
   errorMailboxDeniedLink: "Slik gir du applikasjonen tilgang",
   errorMailboxUnknown: "Microsoft 365 har ingen postboks med denne adressen.",
-  errorMailChannelsOff: "E-postkanaler gjennom Microsoft 365 er slått av i Entra-innstillingene.",
-  errorMailboxExists: "Denne postboksen har allerede en kanal.",
+  errorMailChannelsOff:
+    "E-postkanaler gjennom Microsoft 365 er ikke tilgjengelige. En Entra-administrator slår på E-postkanaler i Entra-innstillingene.",
+  errorMailboxExists: "En annen kanal bruker allerede denne postboksen.",
   errorAddressExists: "Det finnes allerede en kanal med denne adressen.",
   errorProviderUnreachable: "Microsoft 365 svarte ikke. Prøv igjen om litt.",
   errorProviderUnchanged: "Kanalen bruker allerede Microsoft 365.",
