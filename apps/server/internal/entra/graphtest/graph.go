@@ -41,9 +41,11 @@
 // delegated token of their creator alone (subscriptions.go); a shared
 // mailbox's userPurpose, its Inbox, a MIME sendMail and a MIME draft whose
 // Bcc header Graph reads, sent and deleted — with the application's token
-// or the user's own, 413 over 4 MB of body (mail.go); a user found by its
-// id or its userPrincipalName, by $filter=mail eq '…', and by the key form
-// /users('…') a userPrincipalName beginning with $ needs;
+// or the user's own, 413 over 4 MB of body (mail.go); the Inbox's message
+// delta from a change log, with @removed entries and a filter on a fresh
+// query only, and a message's MIME through $value (mail_inbox.go); a user
+// found by its id or its userPrincipalName, by $filter=mail eq '…', and by
+// the key form /users('…') a userPrincipalName beginning with $ needs;
 // a delegated authorization code and refresh grant, with its signed
 // id_token, its key set, GET /me and a CAE claims challenge
 // (authorize.go). Every error
@@ -144,8 +146,9 @@ type FakeGraph struct {
 	// group's age; time.Now when nil.
 	Now func() time.Time
 	// DeltaPageSize, when set, is the most events a page of a calendar
-	// delta holds, whatever Prefer: odata.maxpagesize asks — Graph's pages
-	// vary (mailbox_delta.go).
+	// delta holds, and the most messages a page of an Inbox's, whatever
+	// Prefer: odata.maxpagesize asks — Graph's pages vary (mailbox_delta.go,
+	// mail_inbox.go).
 	DeltaPageSize int
 	// DeltaLinksOddCase, when set, writes a calendar delta's next and delta
 	// links as Graph may: calendarview lower-case and the user's id
@@ -194,6 +197,7 @@ type FakeGraph struct {
 	mailboxes     map[string]*mailbox
 	serial        int
 	deltas        map[string]*deltaState
+	mailDeltas    map[string]*mailDeltaState
 	subscriptions []*Subscription
 	// sent, drafts, dropDraftBcc, failDraftSend and mailSizeLimit are the
 	// mail's (mail.go).
@@ -349,7 +353,8 @@ type Call struct {
 	Query  string
 	Status int
 	Batch  bool
-	// Prefer is the Prefer header a request inside a $batch carried.
+	// Prefer is the Prefer header the request carried — a request's own
+	// inside a $batch.
 	Prefer string
 }
 
@@ -531,7 +536,8 @@ func (g *FakeGraph) RoundTrip(req *http.Request) (*http.Response, error) {
 	} else {
 		a = g.api(req, body)
 	}
-	g.calls = append(g.calls, Call{Method: req.Method, Host: req.URL.Host, Path: req.URL.Path, Query: req.URL.RawQuery, Status: a.status})
+	g.calls = append(g.calls, Call{Method: req.Method, Host: req.URL.Host, Path: req.URL.Path, Query: req.URL.RawQuery, Status: a.status,
+		Prefer: req.Header.Get("Prefer")})
 	return a.response(req), nil
 }
 
@@ -710,6 +716,9 @@ func (g *FakeGraph) api(req *http.Request, body []byte) answer {
 	}
 	if m := deltaRoute.FindStringSubmatch(path); m != nil && req.Method == http.MethodGet {
 		return g.delta(m[1], req.URL.Query(), req.Header.Get("Prefer"))
+	}
+	if m := inboxDeltaRoute.FindStringSubmatch(path); m != nil && req.Method == http.MethodGet {
+		return g.inboxDelta(m[1], m[2], req.URL.Query(), req.Header.Get("Prefer"))
 	}
 	if q := req.URL.Query(); (q.Has("$search") || q.Has("$count")) && !strings.EqualFold(req.Header.Get("ConsistencyLevel"), "eventual") {
 		return graphError(http.StatusBadRequest, "Request_UnsupportedQuery",

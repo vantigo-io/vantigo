@@ -95,12 +95,17 @@ type Event struct {
 
 // mailbox is one user's calendars and events, and the delta's state: the
 // events deleted, by the serial of their deletion, and the refusal a delta
-// link is answered while ExpireDelta holds.
+// link is answered while ExpireDelta holds; and its Inbox, the messages
+// removed from it and the refusal ExpireMailDelta holds (mail_inbox.go).
 type mailbox struct {
 	calendars    []*Calendar
 	events       []*Event
 	removed      []tombstone
 	deltaExpired int
+
+	inbox            []*inboxItem
+	inboxRemoved     []tombstone
+	mailDeltaExpired int
 }
 
 // ThrottleBatch makes the next n requests inside a $batch answer 429
