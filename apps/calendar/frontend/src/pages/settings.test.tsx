@@ -355,6 +355,40 @@ describe("SettingsPage: Outlook", () => {
     }
   });
 
+  it("refreshes the card while it is on and pending its first cycle", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const fetchMock = stubCalendarServer({ mailboxSync: mailboxSyncFixture({ enabled: true, state: "pending" }) });
+      renderWithProviders(<SettingsPage />);
+      await toggle();
+      const gets = () => sentAll(fetchMock, "GET").filter((one) => one.url === "/api/v1/calendar/mailbox-sync").length;
+      const before = gets();
+      await vi.advanceTimersByTimeAsync(15_000);
+      await waitFor(() => expect(gets()).toBeGreaterThan(before));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("asks for the reconnect while turned off with the clean-up owed, the connection's button in the card", async () => {
+    stubCalendarServer({
+      mailboxSync: mailboxSyncFixture({
+        availability: "reconnect",
+        enabled: false,
+        state: "stopping",
+        error: "reconnect",
+      }),
+    });
+    renderWithProviders(<SettingsPage connectionButton={() => <button type="button">Reconnect Outlook</button>} />);
+
+    const region = await outlook();
+    expect(await within(region).findByRole("alert")).toHaveTextContent(
+      "Microsoft wants you to sign in again: choose Reconnect Outlook above.",
+    );
+    expect(within(region).getByRole("button", { name: "Reconnect Outlook" })).toBeInTheDocument();
+    expect(within(region).getByRole("switch", { name: "Sync to my Outlook calendar" })).not.toBeChecked();
+  });
+
   it("still lets a person who has it on turn it off while it cannot run", async () => {
     const user = userEvent.setup();
     const fetchMock = stubCalendarServer({

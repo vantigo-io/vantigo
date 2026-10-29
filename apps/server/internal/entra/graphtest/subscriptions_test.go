@@ -78,10 +78,10 @@ func TestSubscriptions(t *testing.T) {
 	if status, _, body := c.do(http.MethodPatch, "/subscriptions/"+id, map[string]any{"expirationDateTime": later}); status != http.StatusOK || body["id"] != id {
 		t.Errorf("a renewal: %d %v", status, body)
 	}
-	g.AddSubscription(graphtest.Subscription{Resource: "/users/" + u.ID + "/events", ChangeType: "created", NotificationURL: hook, Expiration: now.Add(time.Hour)})
-	foreign := g.AddSubscription(graphtest.Subscription{Resource: "/users/" + denied.ID + "/events", ChangeType: "created", NotificationURL: hook, Expiration: now.Add(time.Hour)})
+	g.AddSubscription(graphtest.Subscription{Resource: "/users/" + u.ID + "/events", ChangeType: "created", NotificationURL: hook, Expiration: now.Add(time.Hour), CreatorID: u.ID})
+	foreign := g.AddSubscription(graphtest.Subscription{Resource: "/users/" + denied.ID + "/events", ChangeType: "created", NotificationURL: hook, Expiration: now.Add(time.Hour), CreatorID: denied.ID})
 	if foreign.CreatorID != strings.ToLower(denied.ID) {
-		t.Errorf("a seeded subscription's creator = %q, want its resource's user", foreign.CreatorID)
+		t.Errorf("a seeded subscription's creator = %q, want %s in lower case", foreign.CreatorID, denied.ID)
 	}
 	if status, _, body := c.do(http.MethodDelete, "/subscriptions/"+foreign.ID, nil); status != http.StatusForbidden || errorCode(body) != "ErrorAccessDenied" {
 		t.Errorf("a delete of another user's subscription: %d %v, want 403", status, body)
@@ -94,6 +94,23 @@ func TestSubscriptions(t *testing.T) {
 	}
 	if status, _, page := c.do(http.MethodGet, strings.TrimPrefix(next, "https://graph.microsoft.com/v1.0"), nil); status != http.StatusOK || page["@odata.nextLink"] != nil {
 		t.Errorf("the last page: %d %v", status, page)
+	}
+
+	// The application's, made before delivery B: no person's token may
+	// renew or delete it, and it does not stand in the way of the person's
+	// own on the same resource.
+	before := g.AddSubscription(graphtest.Subscription{Resource: "/users/" + u.ID + "/events", ChangeType: "updated", NotificationURL: hook, Expiration: now.Add(time.Hour)})
+	for _, method := range []string{http.MethodPatch, http.MethodDelete} {
+		if status, _, body := c.do(method, "/subscriptions/"+before.ID, map[string]any{"expirationDateTime": later}); status != http.StatusForbidden || errorCode(body) != "ErrorAccessDenied" {
+			t.Errorf("a %s of the application's subscription with the person's token: %d %v, want 403", method, status, body)
+		}
+	}
+	beside := create(u.ID)
+	beside["changeType"] = "updated"
+	if status, _, body := c.do(http.MethodPost, "/subscriptions", beside); status != http.StatusCreated {
+		t.Errorf("the person's create beside the application's: %d %v, want 201", status, body)
+	} else if status, _, _ := c.do(http.MethodDelete, "/subscriptions/"+body["id"].(string), nil); status != http.StatusNoContent {
+		t.Errorf("a delete of the person's own: %d, want 204", status)
 	}
 
 	if status, _, _ := c.do(http.MethodDelete, "/subscriptions/"+id, nil); status != http.StatusNoContent {

@@ -290,11 +290,14 @@ func (s *server) mailboxAvailability(ctx context.Context) (gen.MailboxSyncAvaila
 	if err != nil {
 		return "", nil, err
 	}
-	if row != nil && row.Enabled && row.State == mailboxStateUnavailable && row.Error != nil {
-		switch *row.Error {
-		case mailboxErrNotConnected:
+	if row != nil && row.Error != nil {
+		switch {
+		case row.Enabled && row.State == mailboxStateUnavailable && *row.Error == mailboxErrNotConnected:
 			return gen.MailboxSyncAvailabilityNotConnected, kinds, nil
-		case mailboxErrReconnect:
+		// Turned off while waiting to reconnect: the clean-up owed needs the
+		// connection too, so the card still asks for it.
+		case ((row.Enabled && row.State == mailboxStateUnavailable) || row.State == mailboxStateStopping) &&
+			*row.Error == mailboxErrReconnect:
 			return gen.MailboxSyncAvailabilityReconnect, kinds, nil
 		}
 	}

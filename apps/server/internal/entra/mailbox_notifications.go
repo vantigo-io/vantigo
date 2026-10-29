@@ -232,7 +232,9 @@ func (m *mailboxCalendar) Watch(ctx context.Context, mailbox string) error {
 // the expiry Graph answered — unless the row no longer holds id, or a
 // lifecycle notification marked it removed meanwhile: left as it is, for
 // the next Watch. false with no error when Graph no longer holds
-// it (404): the row is forgotten, for the caller to create.
+// it (404), or refuses the person's token on it (403) — a subscription the
+// application made before the person's connection, not this connection's
+// to manage: the row is forgotten, for the caller to create.
 func (m *mailboxCalendar) renew(ctx context.Context, s mailboxSession, id string, now time.Time) (bool, error) {
 	sid, ok := subscriptionID(id)
 	if !ok {
@@ -243,7 +245,7 @@ func (m *mailboxCalendar) renew(ctx context.Context, s mailboxSession, id string
 	err := m.client.doAs(ctx, s.src, http.MethodPatch, subscriptionPath(sid),
 		map[string]string{"expirationDateTime": asked.Format(time.RFC3339)}, &answer, noWords)
 	switch {
-	case isStatus(err, http.StatusNotFound):
+	case isStatus(err, http.StatusNotFound), isStatus(err, http.StatusForbidden):
 		if err := s.q.DeleteMailboxSubscription(ctx, s.oid); err != nil {
 			return false, fmt.Errorf("entra: forget the mailbox's subscription: %w", err)
 		}
@@ -434,9 +436,11 @@ func (m *mailboxCalendar) clearConflict(ctx context.Context, s mailboxSession, t
 // row is the module's own, made by a Watch that checked it, and a deleted
 // account's subscription is still the module's to remove. DELETE
 // /subscriptions/{id} on the person's token, asked for as a removal: 204 or
-// 404 forget the row, and so does a connection that holds no token for it
-// (closing with none, or gone) — Graph drops a subscription whose creator's
-// grant ended, and nothing could delete it; anything else marks it deleting
+// 404 forget the row, and so does a 403 — the application's subscription,
+// made before the person's connection, which their token may not delete —
+// and a connection that holds no token for it (closing with none, or gone)
+// — Graph drops a subscription whose creator's grant ended, and nothing
+// could delete it; anything else marks it deleting
 // and answers the error, through mailboxRefusal — the delete stays owed.
 func (m *mailboxCalendar) Unwatch(ctx context.Context, mailbox string) error {
 	oid, ok := objectID(mailbox)
@@ -474,6 +478,12 @@ func (m *mailboxCalendar) Unwatch(ctx context.Context, mailbox string) error {
 	err = m.client.delAs(ctx, s.src, subscriptionPath(sid), noWords)
 	switch {
 	case err == nil, isStatus(err, http.StatusNotFound):
+		return forget()
+	case isStatus(err, http.StatusForbidden):
+		// The person's token refused on it: the application made it, before
+		// the person's connection — not this connection's to manage, and
+		// kept owed it would refuse at every sync. Graph drops it at its
+		// expiry; its notifications name no row meanwhile.
 		return forget()
 	case errors.Is(err, errNoRemovalToken):
 		// No connection can delete it: Graph drops a subscription whose

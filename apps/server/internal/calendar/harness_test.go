@@ -86,12 +86,42 @@ type lockedCalls struct {
 }
 
 func (l *lockedCalls) note(ctx context.Context, method string) {
+	if log, ok := ctx.Value(contractCallsKey{}).(*contractCallLog); ok {
+		log.mu.Lock()
+		log.methods = append(log.methods, method)
+		log.mu.Unlock()
+	}
 	if !calendar.InOpenTx(ctx) {
 		return
 	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.calls = append(l.calls, method+"\n"+string(debug.Stack()))
+}
+
+// contractCallsKey carries a test's own log of the calls out of the module
+// made on a context it handed in (recordContractCalls): the hook is the
+// package's, so a test reads only what its context saw.
+type contractCallsKey struct{}
+
+// contractCallLog is the names of the calls out of the module, in order.
+type contractCallLog struct {
+	mu      sync.Mutex
+	methods []string
+}
+
+// recordContractCalls is ctx with a log of every call out of the module
+// made on it or a context derived from it.
+func recordContractCalls(ctx context.Context) (context.Context, *contractCallLog) {
+	log := &contractCallLog{}
+	return context.WithValue(ctx, contractCallsKey{}, log), log
+}
+
+// list is the calls logged so far.
+func (l *contractCallLog) list() []string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return slices.Clone(l.methods)
 }
 
 func (l *lockedCalls) count() int {

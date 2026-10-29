@@ -21,7 +21,8 @@ import (
 // (graph.go's scopeRefusal): a create for another user's events is 403
 // ErrorAccessDenied, the subscription's creator the token's user
 // (CreatorID); a read, a renewal or a delete of a subscription another user
-// created is 403 too.
+// created — or the application, before delivery B moved the subscriptions
+// to the person's token (CreatorID "") — is 403 too.
 //
 // What it keeps faithful: a create names a resource of a user's events
 // (/users/{id}/events, its leading slash optional), the change types, an
@@ -31,8 +32,8 @@ import (
 // URL, notificationUrl and lifecycleNotificationUrl, through Handshake,
 // which must answer 200 with the very token — and a failed handshake is
 // Graph's 400 "Subscription validation request failed…"; a second
-// subscription of the application on the same resource and change types is
-// 409; a mailbox outside the application's scope is 403 ErrorAccessDenied
+// subscription by the same creator on the same resource and change types is
+// 409 — one the application made beside one the person makes is not; a mailbox outside the application's scope is 403 ErrorAccessDenied
 // (MailboxDenied), a user with none 404 MailboxNotEnabledForRESTAPI, an
 // unknown user 404 Request_ResourceNotFound; an unknown or expired
 // subscription is 404 ResourceNotFound, and one past its expiry is gone
@@ -66,8 +67,9 @@ type Subscription struct {
 	ClientState string
 	Expiration  time.Time
 	// CreatorID is the object id of the user whose delegated token made it,
-	// in lower case; AddSubscription takes the user its resource names when
-	// it is "".
+	// in lower case; "" is the application, with its own token — every
+	// subscription before delivery B — which no person's token may read,
+	// renew or delete.
 	CreatorID string
 }
 
@@ -83,18 +85,16 @@ func (g *FakeGraph) Subscriptions() []Subscription {
 	return out
 }
 
-// AddSubscription seeds a subscription as if the application had made it —
-// one whose row the module lost — and answers it, with a fresh id when s
-// has none.
+// AddSubscription seeds a subscription as if it had been made before —
+// one whose row the module lost, by s.CreatorID, or the application's when
+// that is "" — and answers it, with a fresh id when s has none.
 func (g *FakeGraph) AddSubscription(s Subscription) Subscription {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	if s.ID == "" {
 		s.ID = uuid.NewString()
 	}
-	if m := subscriptionResource.FindStringSubmatch(s.Resource); s.CreatorID == "" && m != nil {
-		s.CreatorID = strings.ToLower(m[1])
-	}
+	s.CreatorID = strings.ToLower(s.CreatorID)
 	g.subscriptions = append(g.subscriptions, &s)
 	return s
 }
@@ -242,7 +242,7 @@ func (g *FakeGraph) subscriptionsRoute(method string, seg []string, query url.Va
 // createdByCaller reports whether the request's delegated token is s's
 // creator's. g.mu is held.
 func (g *FakeGraph) createdByCaller(s *Subscription) bool {
-	return g.caller != nil && strings.EqualFold(s.CreatorID, g.caller.oid)
+	return g.caller != nil && s.CreatorID != "" && strings.EqualFold(s.CreatorID, g.caller.oid)
 }
 
 // userOfSubscription is the user s's resource names, nil when none.
@@ -294,7 +294,7 @@ func (g *FakeGraph) createSubscription(body []byte) answer {
 	}
 	resource := strings.ToLower(strings.TrimPrefix(req.Resource, "/"))
 	for _, s := range g.liveSubscriptions() {
-		if strings.ToLower(strings.TrimPrefix(s.Resource, "/")) == resource && s.ChangeType == req.ChangeType {
+		if strings.ToLower(strings.TrimPrefix(s.Resource, "/")) == resource && s.ChangeType == req.ChangeType && g.createdByCaller(s) {
 			return graphError(http.StatusConflict, "ExtensionError",
 				"Subscription Id "+s.ID+" already exists for the requested combination")
 		}

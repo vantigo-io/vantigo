@@ -266,7 +266,10 @@ type MarkMailboxSyncConnectedParams struct {
 // latest at kept: the rows of that mailbox that are on or owe a clean-up,
 // last written before at, and not due already. Unlike a notice, a change
 // overrides the backoff and the parking: it changes what the next sync can
-// do. A change taken twice marks nothing once the row was written since.
+// do. The caller passes each change's instant plus the notices' overlap, so
+// a row written while the change committed — during that person's own
+// sync, or on a clock behind — is still marked; a change taken twice marks
+// nothing once the row was written past that.
 func (q *Queries) MarkMailboxSyncConnected(ctx context.Context, arg MarkMailboxSyncConnectedParams) (int64, error) {
 	result, err := q.db.Exec(ctx, markMailboxSyncConnected, arg.Now, arg.Mailboxes, arg.Ats)
 	if err != nil {
