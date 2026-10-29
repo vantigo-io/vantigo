@@ -278,7 +278,11 @@ Koble til selv: åpne **Innstillinger → Tilkoblinger** og velg **Koble til Out
 er tilbake på siden i løpet av sekunder, og den sier **Tilkoblet som** og kontoen din. På
 modulsiden har linjen under bryteren gått fra **Ingen har koblet til ennå: …** til
 **Klar**, *Personer tilkoblet:* teller deg, og de siste hendelsene på kortet **Status**
-viser *En person koblet til Outlook*.
+viser *En person koblet til Outlook*. Så lenge den siste testens token mangler
+applikasjonstillatelsen `Calendars.ReadWrite`, sier linjen i stedet
+*Kalendersynkroniseringen trenger applikasjonstillatelsen Calendars.ReadWrite, …*, før
+og etter — [kalendersynkronisering](#slå-den-på) sier hvorfor det bare er til
+orientering.
 
 ### Slå av Outlook-tilkoblingen
 
@@ -301,14 +305,14 @@ hver person til på nytt.
 - **De slutter.** Når Ansatte deaktiverer kontoen, lukkes tilkoblingen og det lagrede
   tokenet glemmes i det samme steget, før de andre stegene for en som slutter kjører.
 - **Kontoen deres slettes eller deaktiveres** i Vantigo eller i leietakeren.
-  Tilkoblingen lukkes neste gang den brukes, eller — for en som venter på ny tilkobling
+  Tilkoblingen lukkes, og det lagrede tokenet glemmes, neste gang den brukes, eller — for en som venter på ny tilkobling
   — når arbeideren `entra-outlook-sweep` leser kontoen i leietakeren, høyst én gang i
   døgnet.
 - **De kobler fra.** Vantigo lukker tilkoblingen; den logger dem aldri ut av Microsoft.
 
 En lukket tilkobling slettes av `entra-outlook-sweep`, modulens arbeider, én gang i
-timen: sju dager etter at den ble lukket, eller et døgn etter at den sist ble brukt når
-det ikke er noe igjen for den å rydde. Arbeideren har ingen innstilling og kjører der
+timen: sju dager etter at den ble lukket, eller når det har gått et døgn både siden den
+sist ble brukt og siden den ble lukket, og det ikke er noe igjen for den å rydde. Arbeideren har ingen innstilling og kjører der
 modulens arbeidere kjører
 ([Installasjon](/nb/admin/installation/#bakgrunnsjobber-og-skalering)).
 
@@ -323,7 +327,7 @@ modulens arbeidere kjører
 | Personen ser *Du logget på Microsoft med en annen konto enn den Vantigo kjenner deg ved. …* | De logget på som en annen konto enn den Ansatte knytter til personen deres (`account_mismatch`). | De kobler til på nytt som den kontoen. Knytter Ansatte feil konto, retter HR det på personens fane Konto. |
 | *En annen person i Vantigo har allerede koblet til denne Microsoft-kontoen.* | En annen bruker har en levende tilkobling til den kontoen (`account_taken`). | Finn hvem i de siste hendelsene (*En person koblet til Outlook*, med kontoen); den personen kobler fra, eller HR retter kontokoblingen. |
 | *Ingenting å koble til: …* på en persons side | Bryteren er av, eller personen har ingen konto Vantigo forvalter. | Slå på bryteren, eller gi personen kontotypen Microsoft Entra ID og bekreft kontoen. |
-| *Tilkoblingen tok for lang tid, eller ble startet i en annen økt.* | Mer enn ti minutter hos Microsoft, eller nettleseren mistet informasjonskapselen for tilkoblingen — en annen nettleser, et privat vindu som ble lukket, eller informasjonskapsler blokkert for Vantigo. | Koble til på nytt i den samme nettleseren. |
+| *Tilkoblingen tok for lang tid, eller ble startet i en annen økt.* | Mer enn ti minutter hos Microsoft, eller nettleseren mistet informasjonskapselen for tilkoblingen — en annen nettleser, et privat vindu som ble lukket, eller informasjonskapsler blokkert for Vantigo — eller en nyere tilkobling ble startet før denne var fullført, for eksempel i en annen fane, og den avbryter denne. | Koble til på nytt i den samme nettleseren. |
 
 ## Kalendersynkronisering
 
@@ -373,9 +377,10 @@ Outlook-kalenderen min**; innen et minutt sier kortet deres **Sist synkronisert*
 avtalene står i Outlook. Til en test ser tillatelsen, viser kortet **Status** den som
 manglende — men det er bare til orientering, og steg 3 venter ikke på den: folk kan slå
 på synkroniseringen sin likevel, og en postboks tillatelsen ikke når, avvises bare for
-den personen. Linjen under bryteren handler om folks
-[Outlook-tilkoblinger](#verifiser-outlook-tilkoblingen), ikke om denne tillatelsen.
-Resten av modulen virker som før.
+den personen. I mellomtiden sier linjen under bryteren *Kalendersynkroniseringen
+trenger applikasjonstillatelsen Calendars.ReadWrite, som ikke er i tokenet. …* i stedet
+for [Outlook-tilkoblingens](#verifiser-outlook-tilkoblingen) egen, like mye bare til
+orientering. Resten av modulen virker som før.
 
 **Hva en endring i Outlook gjør.** En persons endring eller flytting av kopien av sin
 egen avtale endrer avtalen i Vantigo ved neste synkronisering, med de samme reglene og
@@ -441,7 +446,8 @@ PowerShell, som Exchange-administrator:
 Endringene tar **30 minutter til 2 timer** å slå gjennom. En tildeling gjort med RBAC for
 Applications vises aldri i tokenet, så når samtykket for hele leietakeren er fjernet,
 viser neste **Test tilkoblingen** `Calendars.ReadWrite` som manglende (steg 3 står fortsatt som
-*Ferdig*) — det er som ventet, og synkroniseringen fortsetter. Verifiser med en person innenfor omfanget: kortet deres
+*Ferdig*), og linjen under bryteren sier *Kalendersynkroniseringen trenger
+applikasjonstillatelsen Calendars.ReadWrite, …* — det er som ventet, og synkroniseringen fortsetter. Verifiser med en person innenfor omfanget: kortet deres
 sier **Sist synkronisert**. En person utenfor omfanget ser **Organisasjonen din har ikke
 gitt Vantigo tilgang til postboksen din.** på Outlook-kortet sitt: Vantigo prøver dem
 igjen hver sjette time, og leser det aldri som at tilkoblingen feiler.
@@ -796,7 +802,7 @@ persons **Outlook**-kort i Kalender (Outlook-tilkoblingens egne står [over](#n�
 
 | Hvor | Betyr | Gjør |
 | --- | --- | --- |
-| `Calendars.ReadWrite` vist som manglende på kortet **Status** | Bryteren er på, og den siste testens token manglet applikasjonstillatelsen. Som ventet med RBAC for Applications; synkroniseringen kjører uansett. | Ingenting med RBAC for Applications. Ellers legg til tillatelsen, gi samtykke og test igjen ([kalendersynkronisering](#slå-den-på)); til da avvises hver persons synkronisering som at postboksen deres er nektet. |
+| `Calendars.ReadWrite` vist som manglende på kortet **Status**, og *Kalendersynkroniseringen trenger applikasjonstillatelsen Calendars.ReadWrite, …* under bryteren | Bryteren er på, og den siste testens token manglet applikasjonstillatelsen. Som ventet med RBAC for Applications; synkroniseringen kjører uansett. | Ingenting med RBAC for Applications. Ellers legg til tillatelsen, gi samtykke og test igjen ([kalendersynkronisering](#slå-den-på)); til da avvises hver persons synkronisering som at postboksen deres er nektet. |
 | *Venter på tilkoblingen* under bryteren | Tilkoblingen er ikke tilkoblet; årsaken står under linjen. | Rett tilkoblingen slik tabellen over sier. |
 | *Organisasjonen din har ikke gitt Vantigo tilgang til postboksen din.* på en persons kort | Graph svarte 403 for postboksen (`mailbox_denied`): utenfor et omfang i RBAC for Applications. Prøves igjen hver sjette time. | Legg personen til i omfangets gruppe, eller godta det; personen trykker **Synkroniser nå** for å prøve med en gang. |
 | *Postboksen din ble ikke funnet.* på en persons kort | Brukeren har ingen Exchange Online-postboks, eller finnes ikke lenger (`mailbox_gone`). Prøves igjen hver sjette time. | Gi kontoen en lisens med Exchange Online. |

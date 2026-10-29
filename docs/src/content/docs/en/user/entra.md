@@ -231,6 +231,11 @@ copy button, and a line says where the connection stands:
 - **Ready** — someone has connected since the switch was turned on;
 - **Nobody has connected yet: connect your own Outlook under Settings › Connections to
   check that it works.**;
+- **Calendar sync needs the Calendars.ReadWrite application permission, which is not in
+  the token. That is expected if you granted it with Exchange RBAC for Applications;
+  otherwise add it, grant admin consent and test again.** — advisory: calendar sync
+  stays available, and until a test sees the permission this line shows in place of
+  every other but **Waiting for the connection**;
 - **The last connect lacked a delegated permission: grant admin consent for it in the
   app registration and connect again.** — a person's connect came back without the
   permission it asked for;
