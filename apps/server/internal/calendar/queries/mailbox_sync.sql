@@ -209,3 +209,23 @@ WHERE lower(s.mailbox) = notice.mailbox
   AND s.attempts = 0
   AND (s.last_synced_at IS NULL OR s.last_synced_at < notice.at)
   AND (s.next_sync_at IS NULL OR s.next_sync_at > @now::timestamptz);
+
+-- name: MarkMailboxSyncConnected :execrows
+-- MarkMailboxSyncConnected makes due at now the syncs of the mailboxes
+-- whose connection to the provider moved (Outlook connection design M9),
+-- each at its at, in one statement for the cycle's changes — the two arrays
+-- unnested side by side and, per mailbox compared case-insensitively, the
+-- latest at kept: the rows of that mailbox that are on or owe a clean-up,
+-- last written before at, and not due already. Unlike a notice, a change
+-- overrides the backoff and the parking: it changes what the next sync can
+-- do. A change taken twice marks nothing once the row was written since.
+UPDATE calendar.mailbox_sync s SET next_sync_at = @now::timestamptz
+FROM (
+    SELECT lower(c.mailbox) AS mailbox, max(c.at) AS at
+    FROM (SELECT unnest(@mailboxes::text[]) AS mailbox, unnest(@ats::timestamptz[]) AS at) AS c
+    GROUP BY lower(c.mailbox)
+) AS change
+WHERE lower(s.mailbox) = change.mailbox
+  AND (s.enabled OR s.state = 'stopping')
+  AND s.updated_at < change.at
+  AND (s.next_sync_at IS NULL OR s.next_sync_at > @now::timestamptz);

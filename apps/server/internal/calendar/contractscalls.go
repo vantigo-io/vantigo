@@ -423,6 +423,19 @@ func (s *server) mailboxNotified(ctx context.Context, since time.Time) ([]contra
 	return s.deps.MailboxCalendar.Notified(ctx, since)
 }
 
+// mailboxConnections is the people's connections to the provider that moved
+// after since, oldest first, at most contracts.ConnectionChangesMax (Outlook
+// connection design M9): the provider's own rows, no network.
+func (s *server) mailboxConnections(ctx context.Context, since time.Time) ([]contracts.ConnectionChange, error) {
+	if err := noteContractCall(ctx, "MailboxCalendar.Connections"); err != nil {
+		return nil, err
+	}
+	if s.deps.MailboxCalendar == nil {
+		return nil, contracts.ErrMailboxUnavailable
+	}
+	return s.deps.MailboxCalendar.Connections(ctx, since)
+}
+
 // accessHas is whether the caller of the request in ctx holds key, as
 // identity's Check answers it (contracts.HasPermission): false with no
 // request, and on any failure — the gate of the CalendarBusy contract

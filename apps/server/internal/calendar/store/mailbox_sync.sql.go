@@ -240,6 +240,41 @@ func (q *Queries) LockMailboxSync(ctx context.Context, userID uuid.UUID) (Calend
 	return i, err
 }
 
+const markMailboxSyncConnected = `-- name: MarkMailboxSyncConnected :execrows
+UPDATE calendar.mailbox_sync s SET next_sync_at = $1::timestamptz
+FROM (
+    SELECT lower(c.mailbox) AS mailbox, max(c.at) AS at
+    FROM (SELECT unnest($2::text[]) AS mailbox, unnest($3::timestamptz[]) AS at) AS c
+    GROUP BY lower(c.mailbox)
+) AS change
+WHERE lower(s.mailbox) = change.mailbox
+  AND (s.enabled OR s.state = 'stopping')
+  AND s.updated_at < change.at
+  AND (s.next_sync_at IS NULL OR s.next_sync_at > $1::timestamptz)
+`
+
+type MarkMailboxSyncConnectedParams struct {
+	Now       time.Time
+	Mailboxes []string
+	Ats       []time.Time
+}
+
+// MarkMailboxSyncConnected makes due at now the syncs of the mailboxes
+// whose connection to the provider moved (Outlook connection design M9),
+// each at its at, in one statement for the cycle's changes — the two arrays
+// unnested side by side and, per mailbox compared case-insensitively, the
+// latest at kept: the rows of that mailbox that are on or owe a clean-up,
+// last written before at, and not due already. Unlike a notice, a change
+// overrides the backoff and the parking: it changes what the next sync can
+// do. A change taken twice marks nothing once the row was written since.
+func (q *Queries) MarkMailboxSyncConnected(ctx context.Context, arg MarkMailboxSyncConnectedParams) (int64, error) {
+	result, err := q.db.Exec(ctx, markMailboxSyncConnected, arg.Now, arg.Mailboxes, arg.Ats)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const markMailboxSyncNotified = `-- name: MarkMailboxSyncNotified :execrows
 UPDATE calendar.mailbox_sync s SET next_sync_at = $1::timestamptz
 FROM (

@@ -114,9 +114,8 @@ func TestMailboxSync_GetAnswersTheDefaultsAndWhyItCannotRun(t *testing.T) {
 		// The switch off with no credential working is unavailable to the
 		// provider, and switch_off to the person all the same.
 		{name: "the switch off, nothing working", state: contracts.MailboxUnavailable, reason: "switch_off", want: gen.MailboxSyncAvailabilitySwitchOff},
-		// permission_missing is never answered any more: a cleanup of
-		// another reason is unavailable.
-		{name: "a cleanup of another reason", state: contracts.MailboxCleanup, reason: "permission_missing", want: gen.MailboxSyncAvailabilityUnavailable},
+		// A cleanup of another reason is unavailable.
+		{name: "a cleanup of another reason", state: contracts.MailboxCleanup, reason: "consent_missing", want: gen.MailboxSyncAvailabilityUnavailable},
 		{name: "the connection not working", state: contracts.MailboxUnavailable, reason: "not_connected", want: gen.MailboxSyncAvailabilityUnavailable},
 		{name: "no account", state: contracts.MailboxAvailable, account: &contracts.DirectoryAccount{}, want: gen.MailboxSyncAvailabilityNoAccount},
 		{name: "a disabled account", state: contracts.MailboxAvailable,
@@ -137,6 +136,44 @@ func TestMailboxSync_GetAnswersTheDefaultsAndWhyItCannotRun(t *testing.T) {
 			r.box.SetStatus(tc.state, tc.reason)
 			if got := getSync(t, c); got.Availability != tc.want {
 				t.Errorf("availability = %s, want %s", got.Availability, tc.want)
+			}
+		})
+	}
+}
+
+// The person's connection is the worker's last finding (Outlook connection
+// design M9): not_connected or reconnect on a row on and parked, after
+// everything a request can read — no_account first, as the truer answer.
+func TestMailboxSync_TheConnectionIsTheWorkersLastFindingAfterNoAccount(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		reason string
+		want   gen.MailboxSyncAvailability
+	}{
+		{contracts.ConnectionNotConnected, gen.MailboxSyncAvailabilityNotConnected},
+		{contracts.ConnectionClosingReason, gen.MailboxSyncAvailabilityNotConnected},
+		{"mfa", gen.MailboxSyncAvailabilityReconnect},
+	} {
+		t.Run(tc.reason, func(t *testing.T) {
+			t.Parallel()
+			r := newMailboxRig(t)
+			c, id, mb := r.person(t)
+			turnOn(t, c, "default", "full", "calendar.appointment")
+			r.box.SetConnection(mb, tc.reason)
+			mailboxCycle(t, r)
+			if got := getSync(t, c); got.Availability != tc.want {
+				t.Errorf("availability = %s, want %s", got.Availability, tc.want)
+			}
+			// The provider's status comes before the row's finding.
+			r.box.SetStatus(contracts.MailboxUnavailable, "consent_missing")
+			if got := getSync(t, c); got.Availability != gen.MailboxSyncAvailabilityUnavailable {
+				t.Errorf("with the provider unavailable: %s", got.Availability)
+			}
+			r.box.SetStatus(contracts.MailboxAvailable, "")
+			// So does no_account.
+			r.staff.set(id, nil)
+			if got := getSync(t, c); got.Availability != gen.MailboxSyncAvailabilityNoAccount {
+				t.Errorf("with no account: %s", got.Availability)
 			}
 		})
 	}

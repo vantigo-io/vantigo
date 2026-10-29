@@ -396,10 +396,12 @@ func TestMailboxSyncWorker_TurnedOffItDeletesEveryCopy(t *testing.T) {
 	if row := readSyncRow(t, r, me); row.state != "off" || row.enabled || row.next != nil {
 		t.Errorf("the row = %+v", row)
 	}
-	// An off row is never due again: the cycle asks Notified alone.
+	// An off row is never due again: the cycle asks Notified and
+	// Connections alone.
 	before := len(r.box.Calls())
 	r.Advance(time.Hour)
-	if n := mailboxCycle(t, r); n != 0 || len(r.box.Calls()) != before+len(calls(r, before, "Notified")) {
+	if n := mailboxCycle(t, r); n != 0 ||
+		len(r.box.Calls()) != before+len(calls(r, before, "Notified"))+len(calls(r, before, "Connections")) {
 		t.Errorf("an off row synced %d, calls %+v", n, r.box.Calls()[before:])
 	}
 }
@@ -463,9 +465,10 @@ func TestMailboxSyncWorker_AnUnavailableProviderIsAskedNothing(t *testing.T) {
 	turnOn(t, c, "default", "full", "calendar.appointment")
 	r.box.SetStatus(contracts.MailboxUnavailable, "not_connected")
 	mailboxCycle(t, r)
-	// Notified is the provider's own rows, no network: asked every cycle.
+	// Notified and Connections are the provider's own rows, no network:
+	// asked every cycle.
 	for _, call := range r.box.Calls() {
-		if call.Method != "Status" && call.Method != "Notified" {
+		if call.Method != "Status" && call.Method != "Notified" && call.Method != "Connections" {
 			t.Errorf("an unavailable provider was called: %+v", call)
 		}
 	}
