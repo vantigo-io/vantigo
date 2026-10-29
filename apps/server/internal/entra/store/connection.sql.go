@@ -470,12 +470,13 @@ UPDATE entra.connection SET
     pass_lifetime_minutes = $9,
     pass_usable_once = $10,
     pass_delivery = $11,
-    outlook_connect = $12,
-    outlook_connect_at = CASE WHEN $12::boolean AND NOT outlook_connect
-        THEN $13::timestamptz ELSE outlook_connect_at END,
+    mail_channels = $12,
+    outlook_connect = $13,
+    outlook_connect_at = CASE WHEN $13::boolean AND NOT outlook_connect
+        THEN $14::timestamptz ELSE outlook_connect_at END,
     version = version + 1,
-    updated_at = $13::timestamptz,
-    updated_by_user_id = $14
+    updated_at = $14::timestamptz,
+    updated_by_user_id = $15
 WHERE id = 1
 RETURNING id, tenant_id, client_id, upn_domain, upn_pattern, default_usage_location, leaver_strip_licences, leaver_remove_groups, leaver_revoke_sessions, leaver_write_leave_date, write_hire_date, pass_lifetime_minutes, pass_usable_once, pass_delivery, status, status_reason, permissions_present, verified_domains, organisation_name, last_checked_at, sensitive_denied_streak, version, updated_at, updated_by_user_id, service_principal_id, skus, outlook_connect, notifications_validating_until, notifications_unreachable_at, last_notification_at, outlook_connect_at, outlook_last_error, outlook_last_error_at, mail_channels
 `
@@ -492,14 +493,16 @@ type UpdateConnectionSettingsParams struct {
 	PassLifetimeMinutes  int32
 	PassUsableOnce       bool
 	PassDelivery         string
+	MailChannels         bool
 	OutlookConnect       bool
 	Now                  time.Time
 	UpdatedByUserID      *uuid.UUID
 }
 
-// UpdateConnectionSettings writes every account rule (step 4) and the
-// Outlook connection switch (Outlook connection design M2), with when it was
-// turned on: moved only when this write turns it from off to on; the handler
+// UpdateConnectionSettings writes every account rule (step 4), the Mail
+// channels switch (M10) and the Outlook connection switch (Outlook
+// connection design M2), with when it was turned on: moved only when this
+// write turns it from off to on; the handler
 // has merged the request over the row, so a field the request left out is
 // written back as it was.
 func (q *Queries) UpdateConnectionSettings(ctx context.Context, arg UpdateConnectionSettingsParams) (EntraConnection, error) {
@@ -515,6 +518,7 @@ func (q *Queries) UpdateConnectionSettings(ctx context.Context, arg UpdateConnec
 		arg.PassLifetimeMinutes,
 		arg.PassUsableOnce,
 		arg.PassDelivery,
+		arg.MailChannels,
 		arg.OutlookConnect,
 		arg.Now,
 		arg.UpdatedByUserID,

@@ -50,6 +50,7 @@ export const unconfigured = (): EntraConnection => ({
     redirectUri: "https://vantigo.example/api/v1/entra/outlook/callback",
     notifications: { status: "not_configured", subscriptions: 0 },
   },
+  mailChannels: { enabled: false, status: "off" },
   version: 1,
 });
 
@@ -110,6 +111,7 @@ export const connected = (overrides: Partial<EntraConnection> = {}): EntraConnec
     redirectUri: "https://vantigo.example/api/v1/entra/outlook/callback",
     notifications: { status: "not_configured", subscriptions: 0 },
   },
+  mailChannels: { enabled: false, status: "off" },
   version: 4,
   ...overrides,
 });

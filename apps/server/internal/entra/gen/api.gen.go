@@ -219,6 +219,30 @@ func (e EntraGroupType) Valid() bool {
 	}
 }
 
+// Defines values for EntraMailChannelsStatus.
+const (
+	EntraMailChannelsStatusOff         EntraMailChannelsStatus = "off"
+	EntraMailChannelsStatusReady       EntraMailChannelsStatus = "ready"
+	EntraMailChannelsStatusTenantWide  EntraMailChannelsStatus = "tenant_wide"
+	EntraMailChannelsStatusUnavailable EntraMailChannelsStatus = "unavailable"
+)
+
+// Valid indicates whether the value is a known member of the EntraMailChannelsStatus enum.
+func (e EntraMailChannelsStatus) Valid() bool {
+	switch e {
+	case EntraMailChannelsStatusOff:
+		return true
+	case EntraMailChannelsStatusReady:
+		return true
+	case EntraMailChannelsStatusTenantWide:
+		return true
+	case EntraMailChannelsStatusUnavailable:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for EntraOutlookConnectStatus.
 const (
 	EntraOutlookConnectStatusConsentMissing EntraOutlookConnectStatus = "consent_missing"
@@ -500,6 +524,9 @@ type EntraConnection struct {
 	// LastCheckedAt When the connection was last tested. Absent until it has been, and again after the tenant or the client changes.
 	LastCheckedAt *time.Time `json:"lastCheckedAt,omitempty"`
 
+	// MailChannels The Mail channels switch (Outlook connection design M10): whether Communications may send and receive through Exchange Online shared mailboxes with the application's own token, its reach scoped to the channel mailboxes by Exchange RBAC for Applications. status is off while the switch is; unavailable when on but the connection is not connected, reason then being the connection's statusReason; tenant_wide when the last test's token carried an application Mail.* role (Mail.Read, Mail.ReadBasic, Mail.ReadBasic.All, Mail.ReadWrite or Mail.Send), which reaches every mailbox in the tenant — a warning, the channels work all the same; ready otherwise. The test reads only the Graph token's roles: an Exchange full_access_as_app grant and the RBAC for Applications assignments are not visible to it.
+	MailChannels EntraMailChannels `json:"mailChannels"`
+
 	// OrganisationName The tenant's organisation name as the last test read it.
 	OrganisationName *string `json:"organisationName,omitempty"`
 
@@ -512,7 +539,7 @@ type EntraConnection struct {
 	// PermissionsPresent The application permissions the last test's token carried in its roles claim.
 	PermissionsPresent []string `json:"permissionsPresent"`
 
-	// PermissionsUnexpected The application permissions the last test's token carried that the module does not use — any beyond the eight in permissionsMissing's list, an application Calendars.ReadWrite left from an earlier setup among them (Outlook connection design M19) — a warning, never a status: a permission granted to the application reaches every mailbox or account in the tenant, so one nobody needs is better removed in the portal.
+	// PermissionsUnexpected The application permissions the last test's token carried that the module does not use — any beyond the eight in permissionsMissing's list, an application Calendars.ReadWrite left from an earlier setup among them (Outlook connection design M19); the Mail.* roles are reported here only while the Mail channels switch is off, and as mailChannels' tenant_wide while it is on — a warning, never a status: a permission granted to the application reaches every mailbox or account in the tenant, so one nobody needs is better removed in the portal.
 	PermissionsUnexpected []string `json:"permissionsUnexpected"`
 
 	// Settings The account rules (Entra design D13): how the UPN is made, the usage location a licence needs, what a leaver loses, and the Temporary Access Pass a joiner gets.
@@ -555,7 +582,7 @@ type EntraConnectionTest struct {
 	PermissionsMissing []string `json:"permissionsMissing"`
 	PermissionsPresent []string `json:"permissionsPresent"`
 
-	// PermissionsUnexpected The application permissions the token carried that the module does not use (Outlook connection design M19), a warning.
+	// PermissionsUnexpected The application permissions the token carried that the module does not use (Outlook connection design M19), a warning. The Mail.* roles are left out while the Mail channels switch is on, reported as mailChannels' tenant_wide instead.
 	PermissionsUnexpected []string `json:"permissionsUnexpected"`
 
 	// Reason Why the test failed, a code — credential_invalid, tenant_unreachable or consent_missing. Absent when it connected.
@@ -746,6 +773,21 @@ type EntraGroupCounts struct {
 	Count int32 `json:"count"`
 }
 
+// EntraMailChannels The Mail channels switch (Outlook connection design M10): whether Communications may send and receive through Exchange Online shared mailboxes with the application's own token, its reach scoped to the channel mailboxes by Exchange RBAC for Applications. status is off while the switch is; unavailable when on but the connection is not connected, reason then being the connection's statusReason; tenant_wide when the last test's token carried an application Mail.* role (Mail.Read, Mail.ReadBasic, Mail.ReadBasic.All, Mail.ReadWrite or Mail.Send), which reaches every mailbox in the tenant — a warning, the channels work all the same; ready otherwise. The test reads only the Graph token's roles: an Exchange full_access_as_app grant and the RBAC for Applications assignments are not visible to it.
+type EntraMailChannels struct {
+	Enabled bool `json:"enabled"`
+
+	// Reason A code, never the directory's words; absent when there is nothing to say.
+	Reason *string `json:"reason,omitempty"`
+
+	// ServicePrincipalId The object id of the application's service principal in the tenant (the Enterprise applications page's, not the App registrations'), as the last test read it from its token, for New-ServicePrincipal -ObjectId. Absent until a test has read it.
+	ServicePrincipalId *openapi_types.UUID     `json:"servicePrincipalId,omitempty"`
+	Status             EntraMailChannelsStatus `json:"status"`
+}
+
+// EntraMailChannelsStatus defines model for EntraMailChannels.Status.
+type EntraMailChannelsStatus string
+
 // EntraOutlookAuthorize Where to send the browser to connect Outlook — Microsoft's authorization endpoint for the connection's tenant, with the state, nonce and PKCE challenge the answer's cookie holds sealed.
 type EntraOutlookAuthorize struct {
 	AuthorizeUrl string `json:"authorizeUrl"`
@@ -871,7 +913,7 @@ type EntraSettingsPassDelivery string
 // EntraSettingsUpnPattern How the UPN's local part is made from the folded names when the work email cannot be the UPN.
 type EntraSettingsUpnPattern string
 
-// EntraSettingsRequest Step 4, the account rules and the Outlook connection switch. Every field is optional, and one left out keeps its value; each refusal is a field error under its own name.
+// EntraSettingsRequest Step 4, the account rules, the Outlook connection switch and the Mail channels switch. Every field is optional, and one left out keeps its value; each refusal is a field error under its own name.
 type EntraSettingsRequest struct {
 	// DefaultUsageLocation Two letters, ISO 3166-1 alpha-2.
 	DefaultUsageLocation *string                                 `json:"defaultUsageLocation,omitempty"`
@@ -879,6 +921,9 @@ type EntraSettingsRequest struct {
 	LeaverRevokeSessions *bool                                   `json:"leaverRevokeSessions,omitempty"`
 	LeaverStripLicences  *bool                                   `json:"leaverStripLicences,omitempty"`
 	LeaverWriteLeaveDate *bool                                   `json:"leaverWriteLeaveDate,omitempty"`
+
+	// MailChannels Lets Communications send and receive through Exchange Online shared mailboxes (Outlook connection design M10). Turning it off closes nothing; the channels' sends are refused as unavailable and retried until it is on again or their attempts run out.
+	MailChannels *bool `json:"mailChannels,omitempty"`
 
 	// OutlookConnect Lets people connect their own Outlook to Vantigo (Outlook connection design M2). Turning it on records when; turning it off closes every person's connection, so each must connect again, and the calendar's copies already written are removed.
 	OutlookConnect *bool                             `json:"outlookConnect,omitempty"`

@@ -74,8 +74,16 @@ func TestMissingPermissions(t *testing.T) {
 	if got := missingPermissions(with); len(got) != 0 {
 		t.Errorf("the eight and Calendars.ReadWrite: missing %v, want none", got)
 	}
-	if got := unexpectedPermissions(with); !slices.Equal(got, []string{"Calendars.ReadWrite"}) {
+	if got := unexpectedPermissions(with, false); !slices.Equal(got, []string{"Calendars.ReadWrite"}) {
 		t.Errorf("the eight and Calendars.ReadWrite: unexpected %v, want Calendars.ReadWrite", got)
+	}
+	// The mail roles are tenant_wide's while the Mail channels switch is on.
+	mail := append(slices.Clone(with), "Mail.Send", "Mail.ReadWrite")
+	if got := unexpectedPermissions(mail, false); !slices.Equal(got, []string{"Calendars.ReadWrite", "Mail.Send", "Mail.ReadWrite"}) {
+		t.Errorf("the switch off: unexpected %v", got)
+	}
+	if got := unexpectedPermissions(mail, true); !slices.Equal(got, []string{"Calendars.ReadWrite"}) {
+		t.Errorf("the switch on: unexpected %v, want the mail roles left out", got)
 	}
 }
 

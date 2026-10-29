@@ -45,9 +45,10 @@ WHERE id = 1
 RETURNING *;
 
 -- name: UpdateConnectionSettings :one
--- UpdateConnectionSettings writes every account rule (step 4) and the
--- Outlook connection switch (Outlook connection design M2), with when it was
--- turned on: moved only when this write turns it from off to on; the handler
+-- UpdateConnectionSettings writes every account rule (step 4), the Mail
+-- channels switch (M10) and the Outlook connection switch (Outlook
+-- connection design M2), with when it was turned on: moved only when this
+-- write turns it from off to on; the handler
 -- has merged the request over the row, so a field the request left out is
 -- written back as it was.
 UPDATE entra.connection SET
@@ -62,6 +63,7 @@ UPDATE entra.connection SET
     pass_lifetime_minutes = @pass_lifetime_minutes,
     pass_usable_once = @pass_usable_once,
     pass_delivery = @pass_delivery,
+    mail_channels = @mail_channels,
     outlook_connect = @outlook_connect,
     outlook_connect_at = CASE WHEN @outlook_connect::boolean AND NOT outlook_connect
         THEN @now::timestamptz ELSE outlook_connect_at END,
