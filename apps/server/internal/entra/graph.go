@@ -439,9 +439,9 @@ func (c *graphClient) send(ctx context.Context, cred graphCredential, method, pa
 	return c.sendAs(ctx, credentialSource{c: c, cred: cred}, method, path, body, into, opts...)
 }
 
-// sendAs is send with src's token: a 401 is first handed to
-// src.challenged, whose error ends the call; otherwise the token is dropped
-// and the call retried once, as send does.
+// sendAs is send with src's token: every 401, a retry's included, is first
+// handed to src.challenged, whose error ends the call; otherwise the token
+// is dropped and the call retried once, as send does.
 func (c *graphClient) sendAs(ctx context.Context, src tokenSource, method, path string, body *payload, into any, opts ...callOption) error {
 	once := slices.Contains(opts, noRetry)
 	words := !once && !slices.Contains(opts, noWords)
@@ -499,9 +499,12 @@ func (c *graphClient) sendAs(ctx context.Context, src tokenSource, method, path 
 			if err := c.pause(ctx, attempt, graphServerErrorDelay); err != nil {
 				return err
 			}
-		case status == http.StatusUnauthorized && !reauthorised:
+		case status == http.StatusUnauthorized:
 			if err := src.challenged(ctx, header); err != nil {
 				return err
+			}
+			if reauthorised {
+				return c.refusal(ctx, src.tenant(), method, target, status, data, words)
 			}
 			reauthorised = true
 			src.dropped()

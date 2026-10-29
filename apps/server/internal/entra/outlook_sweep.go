@@ -164,7 +164,8 @@ func (w *OutlookSweepWorker) checkAccounts(ctx context.Context, on db.TxBeginner
 		return nil
 	}
 	var cred *graphCredential
-	for _, oid := range due {
+	for _, d := range due {
+		oid := d.ObjectID
 		code := ""
 		account, err := q.GetAccount(ctx, oid)
 		switch {
@@ -209,7 +210,10 @@ func (w *OutlookSweepWorker) checkAccounts(ctx context.Context, on db.TxBeginner
 			}
 			continue
 		}
-		if err := closeOutlookIn(ctx, on, q, now, outlookActor, oid, true, code); err != nil {
+		// Guarded by the revision listed: a person who reconnected while the
+		// account was read keeps the new connection and its token.
+		revision := d.Revision
+		if err := closeOutlookIn(ctx, on, q, now, outlookActor, oid, &revision, true, code); err != nil {
 			return err
 		}
 	}

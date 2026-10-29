@@ -6,6 +6,14 @@
 -- name: GetAccount :one
 SELECT * FROM entra.accounts WHERE object_id = @object_id;
 
+-- name: LockAccountShare :one
+-- LockAccountShare is GetAccount under the row's share lock, for an Outlook
+-- connect's complete: a leaver's Deactivate, which writes the row before it
+-- closes the connection, is judged either before the connect — which then
+-- sees the account disabled — or after it, when it closes what the connect
+-- stored.
+SELECT * FROM entra.accounts WHERE object_id = @object_id FOR SHARE;
+
 -- name: GetAccountByNumber :one
 SELECT * FROM entra.accounts WHERE upper(employee_number) = upper(@employee_number::text);
 

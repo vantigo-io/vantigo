@@ -117,11 +117,9 @@ func (s *server) redeemOutlookCode(ctx context.Context, conn store.EntraConnecti
 		return outlookRedeemed{}, outlookFailed, "the token endpoint did not answer", nil
 	}
 	if status != http.StatusOK || answer.Error != "" {
-		if slices.Contains(credentialRefusals, answer.Error) {
-			if err := s.q.MarkCredentialFailed(ctx, store.MarkCredentialFailedParams{Now: c.now(), ID: cred.id}); err != nil {
-				return outlookRedeemed{}, "", "", fmt.Errorf("entra: mark the secret failed: %w", err)
-			}
-		}
+		// The client's own refusal (invalid_client, unauthorized_client) is
+		// answered like any other: this anonymous callback never marks the
+		// credential, which the application token's path judges.
 		return outlookRedeemed{}, redeemRefusalCode(answer.Error, answer.ErrorCodes),
 			fmt.Sprintf("the token endpoint refused the code: %d %s %v", status, answer.Error, answer.ErrorCodes), nil
 	}

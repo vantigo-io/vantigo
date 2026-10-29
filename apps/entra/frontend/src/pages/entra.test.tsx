@@ -581,6 +581,10 @@ describe("EntraPage — the Outlook connection", () => {
   const statuses = [
     ["ready", "Ready"],
     ["untested", /^Nobody has connected yet: connect your own Outlook under Settings › Connections/],
+    [
+      "permission_missing",
+      /^Calendar sync needs the Calendars.ReadWrite application permission, which is not in the token/,
+    ],
     ["consent_missing", /^The last connect lacked a delegated permission: grant admin consent/],
     ["unavailable", "Waiting for the connection"],
   ] as const;

@@ -56,8 +56,11 @@ RETURNING *;
 -- name: CloseOutlookConnection :one
 -- CloseOutlookConnection closes a live connection: a disconnect keeps the
 -- token for the removals that may still need it (M7); a leaver and a
--- deleted account forget it. No row is a connection already closing, whose
--- token ForgetOutlookRefresh forgets when it must.
+-- deleted account forget it. With a revision, only the row still at the
+-- revision its caller read closes, so a close decided on an old read never
+-- closes a newer connect or forgets its token. No row is a connection
+-- already closing, or moved on since, whose token ForgetOutlookRefresh
+-- forgets when it must.
 UPDATE entra.outlook_connections SET
     state = 'closing',
     refresh_sealed = CASE WHEN @forget::boolean THEN NULL ELSE refresh_sealed END,
@@ -65,6 +68,7 @@ UPDATE entra.outlook_connections SET
     revision = revision + 1,
     updated_at = @now::timestamptz
 WHERE object_id = @object_id AND state <> 'closing'
+  AND (sqlc.narg(revision)::bigint IS NULL OR revision = sqlc.narg(revision))
 RETURNING user_id, revision;
 
 -- name: ForgetOutlookRefresh :exec
@@ -75,6 +79,16 @@ UPDATE entra.outlook_connections SET
     revision = revision + 1,
     updated_at = @now::timestamptz
 WHERE object_id = @object_id AND refresh_sealed IS NOT NULL;
+
+-- name: ForgetClosingOutlookRefresh :execrows
+-- ForgetClosingOutlookRefresh forgets a closing connection's token Microsoft
+-- refused, at the revision the refresh read: no removal can use it again.
+-- No row means a newer connect or a forget won.
+UPDATE entra.outlook_connections SET
+    refresh_sealed = NULL,
+    revision = revision + 1,
+    updated_at = @now::timestamptz
+WHERE object_id = @object_id AND revision = @revision AND state = 'closing' AND refresh_sealed IS NOT NULL;
 
 -- name: CloseAllOutlookConnections :many
 -- CloseAllOutlookConnections closes every live connection, keeping the
@@ -138,12 +152,12 @@ SELECT EXISTS (
 -- name: DeleteSpentOutlookConnections :many
 -- DeleteSpentOutlookConnections is entra-outlook-sweep's one statement (M7):
 -- a closing connection goes seven days after it closed, or once a day has
--- passed since it was last used (or closed) and no subscription of the
--- mailbox is left for its removals to delete.
+-- passed since it was last used and since it closed, and no subscription
+-- of the mailbox is left for its removals to delete.
 DELETE FROM entra.outlook_connections c
 WHERE c.state = 'closing'
   AND (c.changed_at + interval '7 days' < @now::timestamptz
-       OR (COALESCE(c.used_at, c.changed_at) + interval '24 hours' < @now::timestamptz
+       OR (GREATEST(COALESCE(c.used_at, c.changed_at), c.changed_at) + interval '24 hours' < @now::timestamptz
            AND NOT EXISTS (SELECT 1 FROM entra.mailbox_subscriptions s
                            WHERE s.object_id = c.object_id)))
 RETURNING object_id, user_id;
@@ -152,8 +166,9 @@ RETURNING object_id, user_id;
 -- ListOutlookAccountChecks is the connections waiting in reconnect whose
 -- account entra-outlook-sweep has not read in the tenant for a day (design
 -- M6): a person who never reconnects is still found once their account is
--- disabled or deleted. Oldest check first, at most row_limit.
-SELECT object_id FROM entra.outlook_connections
+-- disabled or deleted. Oldest check first, at most row_limit, each with the
+-- revision a close it decides is guarded by.
+SELECT object_id, revision FROM entra.outlook_connections
 WHERE state = 'reconnect'
   AND (account_checked_at IS NULL OR account_checked_at + interval '1 day' < @now::timestamptz)
 ORDER BY account_checked_at NULLS FIRST, object_id
