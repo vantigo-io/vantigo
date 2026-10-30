@@ -172,6 +172,16 @@ const en = {
   editOnClose: "Outlook on close",
   save: "Save",
   channelUpdated: "Channel updated",
+  sendFromPersonal: "Send from my address ({{address}})",
+  fromPersonal: "From: {{from}} · Reply-To: {{replyTo}}",
+  retrySend: "Retry send",
+  retryFailed: "Could not retry sending",
+  sendFailedConnectionNeeded: "Sending failed because your Outlook connection needs reconnecting.",
+  newConversation: "New conversation",
+  to: "To",
+  subject: "Subject",
+  message: "Message",
+  send: "Send",
 } as const;
 
 const nb: { [Key in keyof typeof en]: string } = {
@@ -346,6 +356,16 @@ const nb: { [Key in keyof typeof en]: string } = {
   editOnClose: "Outlook ved lukking",
   save: "Lagre",
   channelUpdated: "Kanal oppdatert",
+  sendFromPersonal: "Send fra min adresse ({{address}})",
+  fromPersonal: "Fra: {{from}} · Svar til: {{replyTo}}",
+  retrySend: "Prøv å sende på nytt",
+  retryFailed: "Kunne ikke prøve sending på nytt",
+  sendFailedConnectionNeeded: "Sendingen mislyktes fordi Outlook-tilkoblingen din må kobles til på nytt.",
+  newConversation: "Ny samtale",
+  to: "Til",
+  subject: "Emne",
+  message: "Melding",
+  send: "Send",
 };
 
 export const communicationsCatalog = { en, nb } as const satisfies CatalogResources;

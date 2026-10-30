@@ -217,7 +217,7 @@ export const entraCatalog = {
     outlookConnect: "Outlook connection",
     outlookConnectSwitch: "Outlook connection: let people connect their Outlook to Vantigo",
     outlookConnectDescription:
-      "Each person connects their own Outlook under Settings › Connections, signing in to Microsoft once. Add the redirect URI below to the app registration's Web platform, and the delegated permissions openid, profile, offline_access and Calendars.ReadWrite with admin consent.",
+      "Each person connects their own Outlook under Settings › Connections, signing in to Microsoft once. Add the redirect URI below to the app registration's Web platform, and the delegated permissions openid, profile, offline_access, Calendars.ReadWrite and Mail.Send with admin consent.",
     outlookConnectStatus_ready: "Ready",
     outlookConnectStatus_untested:
       "Nobody has connected yet: connect your own Outlook under Settings › Connections to check that it works.",
@@ -272,6 +272,7 @@ export const entraCatalog = {
     "outlook.connectedSince": "Since {{date}}",
     "outlook.usedBy": "Used by: {{features}}",
     "outlook.feature_calendar": "Calendar",
+    "outlook.feature_mail": "Mail",
     "outlook.disconnect": "Disconnect",
     "outlook.disconnectConfirmTitle": "Disconnect Outlook?",
     "outlook.disconnectConfirmBody": "Vantigo stops using your Outlook until you connect it again.",
@@ -675,7 +676,7 @@ export const entraCatalog = {
     outlookConnect: "Outlook-tilkobling",
     outlookConnectSwitch: "Outlook-tilkobling: la folk koble Outlook til Vantigo",
     outlookConnectDescription:
-      "Hver person kobler til sin egen Outlook under Innstillinger › Tilkoblinger og logger på Microsoft én gang. Legg omdirigerings-URI-en nedenfor til appregistreringens Web-plattform, og de delegerte tillatelsene openid, profile, offline_access og Calendars.ReadWrite med administratorsamtykke.",
+      "Hver person kobler til sin egen Outlook under Innstillinger › Tilkoblinger og logger på Microsoft én gang. Legg omdirigerings-URI-en nedenfor til appregistreringens Web-plattform, og de delegerte tillatelsene openid, profile, offline_access, Calendars.ReadWrite og Mail.Send med administratorsamtykke.",
     outlookConnectStatus_ready: "Klar",
     outlookConnectStatus_untested:
       "Ingen har koblet til ennå: koble til din egen Outlook under Innstillinger › Tilkoblinger for å sjekke at det virker.",
@@ -730,6 +731,7 @@ export const entraCatalog = {
     "outlook.connectedSince": "Siden {{date}}",
     "outlook.usedBy": "Brukes av: {{features}}",
     "outlook.feature_calendar": "Kalender",
+    "outlook.feature_mail": "E-post",
     "outlook.disconnect": "Koble fra",
     "outlook.disconnectConfirmTitle": "Koble fra Outlook?",
     "outlook.disconnectConfirmBody": "Vantigo slutter å bruke Outlook-en din til du kobler den til igjen.",

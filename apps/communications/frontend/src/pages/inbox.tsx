@@ -1,29 +1,45 @@
-import { Alert, Card, Group, Stack, Text, TextInput, Title } from "@mantine/core";
-import { IconInbox } from "@tabler/icons-react";
+import { Alert, Button, Card, Checkbox, Group, Modal, Stack, Text, Textarea, TextInput, Title } from "@mantine/core";
+import { IconInbox, IconPlus } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { ContentSkeleton, PageHeader, useI18n } from "@vantigo/frontend-shell";
+import type { ReactNode } from "react";
+import { useState } from "react";
 import {
   addTag,
   type ConversationStatus,
   conversationQueryOptions,
   conversationsQueryOptions,
+  createConversation,
   markConversationRead,
+  personalSenderQueryOptions,
   removeTag,
   suggestConversationCustomerWithAi,
   tagsQueryOptions,
   updateConversation,
 } from "../api/conversations";
+import type { ConnectionButtonProps } from "../components/ConversationComposer";
 import { ConversationList } from "../components/ConversationList";
 import { ConversationThread } from "../components/ConversationThread";
 import { InboxFilters, type InboxSearch } from "../components/InboxFilters";
 import "../i18n";
 import "../styles.css";
 
-export function InboxPage() {
+export type InboxPageProps = {
+  connectionButton?: (props: ConnectionButtonProps) => ReactNode;
+};
+
+export function InboxPage({ connectionButton }: InboxPageProps = {}) {
   const { t } = useI18n("communications");
   const search = useSearch({ strict: false }) as InboxSearch;
   const navigate = useNavigate() as (options: unknown) => void;
+  const [newModalOpen, setNewModalOpen] = useState(false);
+  const [newTo, setNewTo] = useState("");
+  const [newSubject, setNewSubject] = useState("");
+  const [newBody, setNewBody] = useState("");
+  const [sendFromPersonal, setSendFromPersonal] = useState(false);
+  const personalSenderQuery = useQuery(personalSenderQueryOptions());
+  const personalSender = personalSenderQuery.data;
   const filters = {
     page: 1,
     pageSize: 30,
@@ -59,6 +75,29 @@ export function InboxPage() {
     mutationFn: () => suggestConversationCustomerWithAi(selectedId),
     onSuccess: invalidate,
   });
+  const create = useMutation({
+    mutationFn: () =>
+      createConversation(
+        {
+          to: [{ email: newTo.trim() }],
+          subject: newSubject.trim(),
+          textBody: newBody.trim(),
+          sendFromPersonal: personalSender?.available ? sendFromPersonal : undefined,
+        },
+        crypto.randomUUID(),
+      ),
+    onSuccess: async (answer) => {
+      setNewModalOpen(false);
+      setNewTo("");
+      setNewSubject("");
+      setNewBody("");
+      setSendFromPersonal(false);
+      await client.invalidateQueries({ queryKey: ["conversations"] });
+      if (answer.conversationId) {
+        select(answer.conversationId);
+      }
+    },
+  });
 
   return (
     <Stack gap="lg" className="inbox-shell">
@@ -74,7 +113,12 @@ export function InboxPage() {
             tags={tags.data || []}
             onSearchChange={(nextSearch) => void navigate({ search: nextSearch })}
           />
-          <TextInput placeholder={t("searchConversations")} size="sm" className="inbox-search" disabled />
+          <Group gap="xs">
+            <TextInput placeholder={t("searchConversations")} size="sm" className="inbox-search" disabled />
+            <Button size="sm" leftSection={<IconPlus size={15} />} onClick={() => setNewModalOpen(true)}>
+              {t("newConversation")}
+            </Button>
+          </Group>
         </Group>
         <div className="inbox-grid">
           <ConversationList
@@ -112,12 +156,61 @@ export function InboxPage() {
                   onSuggest={() => suggest.mutate()}
                   suggestionPending={suggest.isPending}
                   suggestionError={suggest.error}
+                  connectionButton={connectionButton}
                 />
               )
             )}
           </main>
         </div>
       </Card>
+      <Modal opened={newModalOpen} onClose={() => setNewModalOpen(false)} title={t("newConversation")} size="lg">
+        <Stack gap="sm">
+          <TextInput label={t("to")} required value={newTo} onChange={(e) => setNewTo(e.currentTarget.value)} />
+          <TextInput
+            label={t("subject")}
+            required
+            value={newSubject}
+            onChange={(e) => setNewSubject(e.currentTarget.value)}
+          />
+          <Textarea
+            label={t("message")}
+            required
+            minRows={4}
+            value={newBody}
+            onChange={(e) => setNewBody(e.currentTarget.value)}
+          />
+          {personalSender?.available && (
+            <Checkbox
+              size="xs"
+              label={t("sendFromPersonal", { address: personalSender.address ?? "" })}
+              checked={sendFromPersonal}
+              onChange={(e) => setSendFromPersonal(e.currentTarget.checked)}
+            />
+          )}
+          {!personalSender?.available &&
+            (personalSender?.reason === "not_connected" || personalSender?.reason === "reconnect") &&
+            connectionButton && (
+              <Group gap="xs">{connectionButton({ feature: "mail", returnTo: "/communications/inbox" })}</Group>
+            )}
+          {create.error && (
+            <Text size="xs" c="red">
+              {create.error.message}
+            </Text>
+          )}
+          <Group justify="flex-end" mt="md">
+            <Button variant="default" onClick={() => setNewModalOpen(false)}>
+              {t("cancel")}
+            </Button>
+            <Button
+              loading={create.isPending}
+              disabled={!newTo.trim() || !newSubject.trim() || !newBody.trim()}
+              onClick={() => create.mutate()}
+            >
+              {t("send")}
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
     </Stack>
   );
 }

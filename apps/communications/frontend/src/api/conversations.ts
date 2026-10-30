@@ -66,6 +66,17 @@ export type ConversationMessage = {
   unreadable?: boolean;
   /** Where the original as it was received is downloaded; null for every message but an inbound one. */
   rawDownloadPath?: string | null;
+  sendAs?: "channel" | "personal" | null;
+  fromAddress?: string | null;
+  fromDisplayName?: string | null;
+  replyToAddress?: string | null;
+};
+export type PersonalSender = {
+  available: boolean;
+  reason: string | null;
+  errorCode: string | null;
+  address: string | null;
+  displayName: string | null;
 };
 export type ConversationListItem = {
   id: string;
@@ -94,6 +105,9 @@ export type ConversationDetail = ConversationListItem & {
   maxMessageBytes?: number | null;
   /** The attachments the channel takes, in bytes as the files are, rounded down to 0.1 MB; null for SMTP. */
   maxAttachmentBytes?: number | null;
+  channelAddress?: string;
+  channelDisplayName?: string | null;
+  personalSender?: PersonalSender;
 };
 export type AiDraftResponse = {
   interactionId: string;
@@ -151,6 +165,12 @@ export const conversationQueryOptions = (id: string) =>
       request<ConversationDetail>(`/api/v1/communications/conversations/${encodeURIComponent(id)}`, { signal }),
     enabled: Boolean(id),
   });
+export const personalSenderQueryOptions = () =>
+  queryOptions({
+    queryKey: ["communications-personal-sender"],
+    queryFn: ({ signal }) => request<PersonalSender>("/api/v1/communications/personal-sender", { signal }),
+  });
+
 export const markConversationRead = (id: string) =>
   request<void>(`/api/v1/communications/conversations/${encodeURIComponent(id)}/read`, { method: "POST" });
 export const replyToConversation = (
@@ -161,6 +181,7 @@ export const replyToConversation = (
     subject?: string;
     replyMode: "reply" | "reply_all";
     attachmentIds?: string[];
+    sendFromPersonal?: boolean;
   },
   idempotencyKey: string,
 ) =>
@@ -171,6 +192,32 @@ export const replyToConversation = (
       headers: { "Content-Type": "application/json", "Idempotency-Key": idempotencyKey },
       body: JSON.stringify(body),
     },
+  );
+export const createConversation = (
+  body: {
+    channelId?: string;
+    customerId?: number;
+    subject: string;
+    textBody?: string;
+    htmlBody?: string;
+    to?: { email: string }[];
+    cc?: { email: string }[];
+    sendFromPersonal?: boolean;
+  },
+  idempotencyKey: string,
+) =>
+  request<{ conversationId: string; messageId: string | null; status: string }>(
+    "/api/v1/communications/conversations",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Idempotency-Key": idempotencyKey },
+      body: JSON.stringify(body),
+    },
+  );
+export const retryMessage = (conversationId: string, messageId: string) =>
+  request<void>(
+    `/api/v1/communications/conversations/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(messageId)}/retry`,
+    { method: "POST" },
   );
 export const stageConversationAttachment = (conversationId: string, file: File, idempotencyKey: string) => {
   const body = new FormData();

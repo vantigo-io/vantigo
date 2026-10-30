@@ -1,10 +1,11 @@
-import { Badge, Button, Card, Group, Select, Text, TextInput } from "@mantine/core";
+import { Badge, Button, Card, Checkbox, Group, Select, Text, TextInput } from "@mantine/core";
 import { RichTextEditor } from "@mantine/tiptap";
 import { IconNote, IconPaperclip, IconSend, IconSparkles } from "@tabler/icons-react";
 import { useMutation, useQueries } from "@tanstack/react-query";
 import { useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { useI18n } from "@vantigo/frontend-shell";
+import type { ReactNode } from "react";
 import { useState } from "react";
 import {
   type AttachmentUpload,
@@ -16,14 +17,20 @@ import {
   stageConversationAttachment,
 } from "../api/conversations";
 
+export type ConnectionButtonProps = {
+  feature: "calendar" | "mail";
+  returnTo: string;
+};
+
 const errorCode = (error: Error) => ("code" in error && typeof error.code === "string" ? error.code : undefined);
 
 export type ConversationComposerProps = {
   conversation: ConversationDetail;
   onSent: () => Promise<unknown>;
+  connectionButton?: (props: ConnectionButtonProps) => ReactNode;
 };
 
-export function ConversationComposer({ conversation, onSent }: ConversationComposerProps) {
+export function ConversationComposer({ conversation, onSent, connectionButton }: ConversationComposerProps) {
   const { t, formatters } = useI18n("communications");
   // The attachments the channel takes, as the server words them in its refusal: never the budget of MIME.
   const allowance = conversation.maxAttachmentBytes ?? null;
@@ -34,6 +41,7 @@ export function ConversationComposer({ conversation, onSent }: ConversationCompo
   const canReply = conversation.replyRecipients.canReply;
   const [body, setBody] = useState("");
   const [replyMode, setReplyMode] = useState<"reply" | "reply_all">("reply");
+  const [sendFromPersonal, setSendFromPersonal] = useState(false);
   const [uploads, setUploads] = useState<AttachmentUpload[]>([]);
   const [aiTone, setAiTone] = useState<"concise" | "friendly" | "formal">("friendly");
   const [aiInstruction, setAiInstruction] = useState("");
@@ -54,6 +62,7 @@ export function ConversationComposer({ conversation, onSent }: ConversationCompo
               htmlBody: editor?.getHTML() || undefined,
               replyMode,
               attachmentIds: currentUploads.map((item) => item.id),
+              sendFromPersonal: conversation.personalSender?.available ? sendFromPersonal : undefined,
             },
             crypto.randomUUID(),
           ),
@@ -158,6 +167,24 @@ export function ConversationComposer({ conversation, onSent }: ConversationCompo
             : ""}
         </Text>
       )}
+      {!noteMode && conversation.personalSender?.available && (
+        <Checkbox
+          size="xs"
+          mb="xs"
+          label={t("sendFromPersonal", { address: conversation.personalSender.address ?? "" })}
+          checked={sendFromPersonal}
+          onChange={(event) => setSendFromPersonal(event.currentTarget.checked)}
+        />
+      )}
+      {!noteMode &&
+        !conversation.personalSender?.available &&
+        (conversation.personalSender?.reason === "not_connected" ||
+          conversation.personalSender?.reason === "reconnect") &&
+        connectionButton && (
+          <Group mb="xs" gap="xs">
+            {connectionButton({ feature: "mail", returnTo: "/communications/inbox" })}
+          </Group>
+        )}
       {!noteMode && !canReply && (
         <Text size="xs" c="dimmed" mb="xs">
           {t("noMessageToReplyTo")}

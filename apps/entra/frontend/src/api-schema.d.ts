@@ -715,10 +715,10 @@ export interface components {
         /** @description What a connect is for, and where to return once it completes. */
         EntraOutlookConnectRequest: {
             /**
-             * @description The feature the connect asks Microsoft's consent for; calendar asks for Calendars.ReadWrite.
+             * @description The feature the connect asks Microsoft's consent for; calendar asks for Calendars.ReadWrite, mail asks for Mail.Send.
              * @enum {string}
              */
-            feature: "calendar";
+            feature: "calendar" | "mail";
             /** @description A path on this installation to return to; anything that is not one becomes /settings/connections. */
             returnTo?: string;
         };
@@ -730,7 +730,7 @@ export interface components {
             connectedAt?: string;
             /** @description Why Microsoft refused the connection, a code: expired, sign_in_again, mfa, blocked or consent_missing. Present while state is reconnect. */
             errorCode?: string;
-            /** @description The features the granted scopes allow, such as calendar. */
+            /** @description The features the granted scopes allow, such as calendar or mail. */
             features: string[];
             offered: boolean;
             /** @enum {string} */

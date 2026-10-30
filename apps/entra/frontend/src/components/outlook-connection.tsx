@@ -214,10 +214,15 @@ export const OutlookConnectButton = ({ feature, returnTo }: OutlookConnectButton
   const data = connection.data;
   if (!data?.offered) return null;
 
-  if (isConnected(data)) return <ConnectedAs connection={data} t={t} />;
+  if (isConnected(data) && data.features.includes(feature)) {
+    return <ConnectedAs connection={data} t={t} />;
+  }
+
   return (
     <Group justify="space-between" align="center" wrap="wrap" gap="sm">
-      {data.state === "reconnect" ? (
+      {isConnected(data) ? (
+        <ConnectedAs connection={data} t={t} />
+      ) : data.state === "reconnect" ? (
         <ReconnectNeeded connection={data} t={t} />
       ) : (
         <Text size="sm">{t("outlook.notConnected")}</Text>

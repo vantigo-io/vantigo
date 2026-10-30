@@ -1,5 +1,16 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { InboxPage } from "@vantigo/communications-ui/pages/inbox";
+import { OutlookConnectButton } from "@vantigo/entra-ui";
+import { enabledModuleKeys } from "../../lib/enabled-modules";
+
+const CommunicationsInboxRoute = () => (
+  <InboxPage
+    connectionButton={
+      enabledModuleKeys().includes("entra") ? (props) => <OutlookConnectButton {...props} /> : undefined
+    }
+  />
+);
+
 export const Route = createFileRoute("/communications/inbox")({
   validateSearch: (s: Record<string, unknown>) => ({
     conversationId: typeof s.conversationId === "string" ? s.conversationId : undefined,
@@ -8,5 +19,5 @@ export const Route = createFileRoute("/communications/inbox")({
     tagId: typeof s.tagId === "string" ? s.tagId : undefined,
     unreadOnly: s.unreadOnly === true || s.unreadOnly === "true" || undefined,
   }),
-  component: InboxPage,
+  component: CommunicationsInboxRoute,
 });
