@@ -451,9 +451,11 @@ export interface components {
             id: string;
             isActive: boolean;
             isDefault: boolean;
-            /** @description The Microsoft 365 mailbox of an entra channel, by its object id; null for SMTP. Always answered; optional in the schema only because the recorded exchanges predate it. */
+            /** @description The Microsoft 365 mailbox of an entra channel, by its object id, and what closing a conversation does in Outlook (onClose — none, read or move — and folder when move); null for SMTP. Always answered; optional in the schema only because the recorded exchanges predate it. */
             mailbox?: {
+                folder: string | null;
                 id: string;
+                onClose: string;
             } | null;
             provider: string;
             /** @description The SMTP settings of an smtp channel with credentials; null otherwise. */
@@ -706,7 +708,13 @@ export interface components {
         CreateChannelRequest: {
             address: string | null;
             displayName?: string | null;
+            /** @description The folder in the Microsoft 365 mailbox a closed conversation's inbound messages are moved to when onClose is move (default "Handled in Vantigo"). */
+            folder?: string | null;
+            /** @description How far back a Microsoft 365 channel imports when it is created: from_now (default), last_30_days or last_90_days. Ignored for SMTP. */
+            importWindow?: string | null;
             isDefault?: boolean | null;
+            /** @description What closing a conversation on a Microsoft 365 channel does to its inbound messages in Outlook: none (default), read or move. */
+            onClose?: string | null;
             /**
              * @description smtp, with the smtp block, or entra: a Microsoft 365 shared mailbox found by its address through the mail channels provider, with no credentials.
              * @default smtp
@@ -771,6 +779,12 @@ export interface components {
             reason: string | null;
         };
         SwitchChannelProviderRequest: {
+            /** @description The folder in the Microsoft 365 mailbox a closed conversation's inbound messages are moved to when onClose is move (default "Handled in Vantigo"). */
+            folder?: string | null;
+            /** @description How far back the switched channel imports: from_now (default), last_30_days or last_90_days. */
+            importWindow?: string | null;
+            /** @description What closing a conversation on the switched channel does to its inbound messages in Outlook: none (default), read or move. */
+            onClose?: string | null;
             /** @description entra, the only provider a channel is switched to. */
             provider: string;
         };
@@ -782,8 +796,12 @@ export interface components {
         };
         UpdateChannelRequest: {
             displayName?: string | null;
+            /** @description The folder in the Microsoft 365 mailbox a closed conversation's inbound messages are moved to when onClose is move (default "Handled in Vantigo"). */
+            folder?: string | null;
             isActive?: boolean | null;
             isDefault?: boolean | null;
+            /** @description What closing a conversation on a Microsoft 365 channel does to its inbound messages in Outlook: none, read or move. */
+            onClose?: string | null;
             /** @description The channel's own provider when omitted. smtp with a full smtp block, the password included, switches a Microsoft 365 channel back to SMTP; entra is refused here (POST /channels/{id}/provider switches to it). */
             provider?: string | null;
             smtp?: components["schemas"]["SmtpChannelCredentialRequest"] | null;
