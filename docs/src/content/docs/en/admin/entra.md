@@ -269,15 +269,15 @@ their own sign-in, and nobody else. How it works is in [the reference](/en/refer
    single-page application: Vantigo redeems the code on the server with its client
    secret.
 3. Open **API permissions** › **Add a permission** › **Microsoft Graph** › **Delegated
-   permissions**, and add `openid`, `profile`, `offline_access` and
-   `Calendars.ReadWrite`. These are the delegated permissions, beside the application
+   permissions**, and add `openid`, `profile`, `offline_access`, `Calendars.ReadWrite` and
+   `Mail.Send`. These are the delegated permissions, beside the application
    permissions of step 3.
 4. Choose **Grant admin consent for** your organisation, and confirm, so nobody is asked
    to consent — or refused for want of approval — when they connect.
 5. Back on the module page, turn on **Outlook connection: let people connect their
    Outlook to Vantigo** and choose **Save the account rules** (`entra:manage`). Calendar
-   sync is then available to everyone who connects ([below](#calendar-sync)); step 3
-   asks for nothing more.
+   sync and personal sending in Communications are then available to everyone who connects
+   ([below](#calendar-sync)); step 3 asks for nothing more.
 
 ### Verify the Outlook connection
 

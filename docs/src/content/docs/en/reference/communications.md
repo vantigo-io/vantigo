@@ -9,6 +9,7 @@ sources:
   - apps/server/internal/db/migrations/00091_communications_channel_settings.sql
   - apps/server/internal/db/migrations/00092_communications_inbound.sql
   - apps/server/internal/db/migrations/00094_communications_mailbox_marks.sql
+  - apps/server/internal/db/migrations/00095_communications_personal_sending.sql
 ---
 Communications is a module inside the single Vantigo binary, not a separately
 deployed service. It runs in the same process as Identity, Customers, Products and
@@ -922,6 +923,32 @@ message delta; whether Graph honours 50 messages a page; whether a message moved
 Inbox from another folder arrives as created or updated (the worker imports either);
 `$value`'s ceiling, whether it ever redirects (the client follows none), and how fast
 25 MiB arrives inside the read's 90 seconds.
+
+## Sending from one's own address
+
+People whose own Microsoft 365 Outlook connection is active with the `mail` feature (`Mail.Send` delegated)
+can choose **Send from my address** on both new conversations and replies (`sendFromPersonal: true`).
+
+- **Channel continuity**: The conversation always belongs to its channel (`channels.address`), regardless
+  of whether an individual message was sent from the channel's shared mailbox or from an author's personal mailbox.
+- **`From` and `Reply-To`**: For a message with `send_as = 'personal'` (migration
+  `00095_communications_personal_sending.sql`), the `From` header carries the author's personal directory
+  email address and display name (`from_address`, `from_display_name`). The `Reply-To` header is set to the
+  channel's address and display name (`reply_to_address`). Customer replies therefore arrive directly in the
+  shared channel mailbox and thread into the conversation without reading anyone's personal Inbox.
+- **Availability check**: Before beginning a transaction, `contractscalls.go` checks
+  `PersonalMailbox.Status(ctx)`. If personal sending is not available (`!Available`), the API returns 409
+  `connection_needed`. It also enforces the 3 MB MIME size budget (`contracts.MaxChannelMessageBytes`),
+  returning 422 `too_large` if exceeded.
+- **Outbox dispatch & immediate failure**: The outbox dispatches personal messages via
+  `PersonalMailbox.Send(contracts.AsUser(ctx, authorUserID), mime, bcc)`. If Microsoft refuses due to an
+  expired session, revoked token, or missing consent (`contracts.ErrConnectionNeeded`), the outbox job fails
+  immediately as a terminal failure after 1 attempt (`connection_needed`, never silently falling back to the
+  channel's address).
+- **Retry**: Once the author reconnects their Outlook connection, they can call
+  `POST /api/v1/communications/conversations/{id}/messages/{messageId}/retry`. This endpoint is restricted
+  to the message's author, verifies `PersonalMailbox.Status(ctx).Available`, and re-queues the deliveries
+  and outbox job.
 
 ## AI draft and customer suggestion
 

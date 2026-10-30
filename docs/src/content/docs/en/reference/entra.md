@@ -1419,17 +1419,21 @@ answer of the step that reads it clears it, a 500 included. The session's MAC is
 computed under the purpose `entra/outlook-connect-session` from the session's id.
 
 1. **`POST /outlook/connect`** (`session`) with `{feature, returnTo?}`. `feature` must be
-   one the module offers — `calendar`, which asks for `Calendars.ReadWrite` — else `422
-   feature_unknown`; the switch on and the tenant and client saved, else `409
+   one the module offers — `calendar` (`Calendars.ReadWrite`) or `mail` (`Mail.Send`) —
+   else `422 feature_unknown`; the switch on and the tenant and client saved, else `409
    switch_off`; a [certain account](#the-certain-account), else `409 no_account`; and no
    live connection of that account held by another person, else `409 account_taken`
-   (refused early here; `complete` still decides). It seals a fresh state and nonce (256
-   random bits each), a PKCE verifier and the rest into `vantigo.entra.connect` and
-   answers `200 {authorizeUrl}`, clearing any `vantigo.entra.connected` an earlier,
-   uncompleted connect left, so that connect can no longer complete: the tenant's
-   `https://login.microsoftonline.com/{tenant}/oauth2/v2.0/authorize` with `client_id`,
-   `response_type=code`, `response_mode=query`, the redirect URI, `scope` (`openid
-   profile offline_access` and the feature's Graph scopes), `state`, `nonce`, the S256
+   (refused early here; `complete` still decides). When the caller already holds an active
+   connection, the requested scopes include the union of the base scopes, their existing
+   row's granted feature scopes, and the requested feature's scopes, and `complete` merges
+   them into `features` (`calendar`, `mail`) on `TakeOutlookConnection`, so connecting
+   `mail` after `calendar` or `calendar` after `mail` preserves previously granted features.
+   It seals a fresh state and nonce (256 random bits each), a PKCE verifier and the rest
+   into `vantigo.entra.connect` and answers `200 {authorizeUrl}`, clearing any
+   `vantigo.entra.connected` an earlier, uncompleted connect left, so that connect can no
+   longer complete: the tenant's `https://login.microsoftonline.com/{tenant}/oauth2/v2.0/authorize`
+   with `client_id`, `response_type=code`, `response_mode=query`, the redirect URI, `scope`
+   (`openid profile offline_access` and the feature's Graph scopes), `state`, `nonce`, the S256
    `code_challenge`, `login_hint` (the account's UPN), `domain_hint` (the UPN's domain,
    when it is one of the verified domains) and `claims` declaring `cp1`; never `prompt`.
    Single sign-on usually answers without a page.
@@ -1524,7 +1528,7 @@ calendar's button can tell "not connected, may connect" from "nothing to connect
 certain account (`reason: no_account`); `state` is `not_connected` without a row, or the
 row's state — the caller's live row, else a closing one of their certain account's still
 theirs, which the page reads as not connected; `account` the certain account's UPN;
-`features` what the granted scopes allow (`calendar`); `errorCode` only while in
+`features` what the granted scopes allow (`calendar`, `mail`); `errorCode` only while in
 `reconnect`. **`DELETE /outlook/connection`** (`session`) closes the caller's live
 connection, its token kept for removals, event `entra.outlook.disconnected`, and answers
 `204` whether or not there was one. It never revokes the person's sign-in sessions.
@@ -2304,6 +2308,27 @@ it until another `Check`. Idempotent: a mailbox not recorded, or not an id, is d
 Communications calls it after a channel goes back to SMTP, unless another channel has
 taken the mailbox meanwhile — there is no delete of a
 channel.
+
+## Personal mailbox
+
+The module fills the single-provider slot `PersonalMailbox` (`contracts.PersonalMailbox`,
+`personal_mailbox.go`) for Communications' [personal sending](/en/reference/communications/#sending-from-ones-own-address)
+([module boundaries](/en/contributing/module-boundaries/) rule 16):
+
+- **`Status(ctx)`**: reads the caller's (`contracts.UserID(ctx)`) Outlook connection from
+  the database with no network call. Answers `Available: true` when the switch is on, the
+  caller has an enabled Entra account, and their live `entra.outlook_connections` row is
+  `active` with the `mail` feature granted (`Mail.Send` in `scopes`). If unavailable,
+  answers `Reason` (`unavailable`, `no_account`, `not_connected`, `reconnect`) and
+  `ErrorCode` (when `reconnect`).
+- **`Send(ctx, mime, bcc)`**: sends an RFC 5322 MIME message for the user in `contracts.UserID(ctx)`
+  (set by Communications' outbox via `contracts.AsUser(ctx, authorUserID)`). Obtains a
+  delegated access token for their mailbox and posts to Graph (`POST /users/{oid}/sendMail`
+  when `bcc` is empty, or the MIME draft + `send` dance on `/users/{oid}/messages` when `bcc`
+  is non-empty), ensuring the sent email lands in the person's own **Sent Items**.
+- **Refusals**: on an expired refresh token or CAE claims challenge, marks the connection
+  `reconnect` and returns `*contracts.ConnectionNeededError` (matching
+  `contracts.ErrConnectionNeeded`), prompting immediate outbox failure and user notification.
 
 ## The events
 
