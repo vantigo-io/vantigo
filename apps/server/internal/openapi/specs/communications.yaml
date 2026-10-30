@@ -353,6 +353,15 @@ components:
                         format: int32
                         type: integer
                     type: array
+                channelAddress:
+                    description: The email address of the conversation's channel. Always answered; optional in the schema only because the recorded exchanges predate it.
+                    type: string
+                    x-omitempty: false
+                channelDisplayName:
+                    description: The display name of the conversation's channel, or null when unset. Always answered; optional in the schema only because the recorded exchanges predate it.
+                    nullable: true
+                    type: string
+                    x-omitempty: false
                 channelId:
                     format: uuid
                     type: string
@@ -476,6 +485,16 @@ components:
                                 type: array
                             direction:
                                 type: string
+                            fromAddress:
+                                description: The sender's personal directory email address when sendAs is personal; null otherwise. Always answered; optional in the schema only because the recorded exchanges predate it.
+                                nullable: true
+                                type: string
+                                x-omitempty: false
+                            fromDisplayName:
+                                description: The sender's display name when sendAs is personal; null otherwise. Always answered; optional in the schema only because the recorded exchanges predate it.
+                                nullable: true
+                                type: string
+                                x-omitempty: false
                             htmlBody:
                                 nullable: true
                                 type: string
@@ -512,6 +531,16 @@ components:
                                 type: object
                             rawDownloadPath:
                                 description: Where the message as it was received — the original, RFC 5322, its HTML unsanitised — is downloaded, GET /api/v1/communications/messages/{id}/raw; null when Vantigo keeps no original (every message but an inbound one). Always answered; optional in the schema only because the recorded exchanges predate it.
+                                nullable: true
+                                type: string
+                                x-omitempty: false
+                            replyToAddress:
+                                description: The conversation channel's Reply-To address when sendAs is personal; null otherwise. Always answered; optional in the schema only because the recorded exchanges predate it.
+                                nullable: true
+                                type: string
+                                x-omitempty: false
+                            sendAs:
+                                description: Whether an outbound message was sent from the channel mailbox (channel) or the author's own connected address (personal). Always answered; optional in the schema only because the recorded exchanges predate it.
                                 nullable: true
                                 type: string
                                 x-omitempty: false
@@ -568,6 +597,11 @@ components:
                 previewText:
                     nullable: true
                     type: string
+                personalSender:
+                    allOf:
+                        - $ref: '#/components/schemas/PersonalSenderResponse'
+                    description: Whether the caller can send from their own connected Microsoft 365 address in this conversation's composer. Always answered; optional in the schema only because the recorded exchanges predate it.
+                    x-omitempty: false
                 replyRecipients:
                     description: 'Who a reply answers, from the latest inbound message with a sender: replyTo is its sender and canReply whether there is one; replyAllCc the participants its Cc named — without the channel''s own address and the sender, distinct by address in any case, at most 100 — and canReplyAll whether there are any.'
                     properties:
@@ -892,6 +926,10 @@ components:
                         $ref: '#/components/schemas/ChannelRecipientRequest'
                     nullable: true
                     type: array
+                sendFromPersonal:
+                    description: When true, sends the initial outbound message from the caller's own connected Microsoft 365 address with Reply-To set to the channel's address.
+                    nullable: true
+                    type: boolean
                 subject:
                     nullable: true
                     type: string
@@ -956,6 +994,35 @@ components:
                 - data
                 - pagination
             type: object
+        PersonalSenderResponse:
+            description: 'Whether the caller can send outbound mail from their own connected Microsoft 365 address (Outlook connection design M20), and the address and display name they would send from.'
+            properties:
+                address:
+                    description: The caller's directory email address; null when the caller has no enabled directory account or personal sending is unavailable.
+                    nullable: true
+                    type: string
+                available:
+                    description: True when the caller's Outlook connection is active with the mail scope granted.
+                    type: boolean
+                displayName:
+                    description: The caller's display name in Vantigo; null when address is null.
+                    nullable: true
+                    type: string
+                errorCode:
+                    description: Why the provider refused the caller's connection (expired, sign_in_again, mfa, blocked, consent_missing) when reason is reconnect; null otherwise.
+                    nullable: true
+                    type: string
+                reason:
+                    description: Why available is false (unavailable, no_account, not_connected, reconnect); null while available is true.
+                    nullable: true
+                    type: string
+            required:
+                - available
+                - reason
+                - errorCode
+                - address
+                - displayName
+            type: object
         ReplyRequest:
             properties:
                 attachmentIds:
@@ -971,6 +1038,10 @@ components:
                     default: reply
                     nullable: true
                     type: string
+                sendFromPersonal:
+                    description: When true, sends the reply from the caller's own connected Microsoft 365 address with Reply-To set to the channel's address.
+                    nullable: true
+                    type: boolean
                 subject:
                     nullable: true
                     type: string
@@ -1934,6 +2005,59 @@ paths:
             tags:
                 - ConversationEndpoints
             x-vantigo-access: permission:communications:conversations-reply+communications:conversations-view
+    /api/v1/communications/conversations/{id}/messages/{messageId}/retry:
+        post:
+            description: Re-queues a failed outbound message in the conversation so the outbox attempts delivery again. When the message has sendAs=personal, only its author may retry it and their personal sender connection must be available now (422 personal_sender_unavailable otherwise).
+            operationId: postCommunicationsConversationsByIdMessagesByMessageIdRetry
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+                - in: path
+                  name: messageId
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ConversationMutationResponse'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+                "409":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CommunicationErrorResponse'
+                    description: Conflict — message_not_failed, the message is not an outbound message with a failed outbox job.
+                "422":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CommunicationErrorResponse'
+                    description: Unprocessable Entity — channel_inactive, personal_sender_unavailable.
+            tags:
+                - ConversationEndpoints
+            x-vantigo-access: permission:communications:conversations-reply+communications:conversations-view
     /api/v1/communications/conversations/{id}/notes:
         post:
             operationId: postCommunicationsConversationsByIdNotes
@@ -2200,6 +2324,32 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/CommunicationErrorResponse'
                     description: Service Unavailable — attachment_storage_unavailable, the object store did not answer.
+            tags:
+                - ConversationEndpoints
+            x-vantigo-access: permission:communications:conversations-view
+    /api/v1/communications/personal-sender:
+        get:
+            description: Whether the signed-in caller can send outbound mail from their own connected Microsoft 365 address (Outlook connection design M20), and the address and display name they would send from.
+            operationId: getCommunicationsPersonalSender
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/PersonalSenderResponse'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
             tags:
                 - ConversationEndpoints
             x-vantigo-access: permission:communications:conversations-view

@@ -76,7 +76,8 @@ WHERE id = @id;
 -- send takes (Outlook connection design M13): an 'smtp' channel sends over its
 -- credential row, an 'entra' one through ChannelMailbox.Send to the mailbox its
 -- settings name, and has no credential row.
-SELECT m.id, m.subject, m.text_body, m.html_body, m.channel_metadata_json,
+SELECT m.id, m.author_user_id, m.send_as, m.from_address, m.from_display_name,
+       m.subject, m.text_body, m.html_body, m.channel_metadata_json,
        c.subject AS conversation_subject,
        ch.type AS channel_type, ch.address AS channel_address,
        ch.display_name AS channel_display_name,

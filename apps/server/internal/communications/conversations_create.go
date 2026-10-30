@@ -13,8 +13,10 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/vantigo-io/vantigo/server/internal/apicommon"
 	"github.com/vantigo-io/vantigo/server/internal/communications/gen"
 	"github.com/vantigo-io/vantigo/server/internal/communications/store"
+	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/db"
 )
 
@@ -284,6 +286,32 @@ func (s *server) PostCommunicationsConversations(ctx context.Context, req gen.Po
 	messageID := uuid.New()
 	rfcMessageID := fmt.Sprintf("<%s@vantigo.invalid>", strings.ReplaceAll(messageID.String(), "-", ""))
 
+	sendFromPersonal := body.SendFromPersonal != nil && *body.SendFromPersonal
+	sendAs := "channel"
+	var fromAddress *string
+	var fromDisplayName *string
+	if sendFromPersonal {
+		status, err := personalMailStatus(ctx, s.deps.PersonalMailbox)
+		if err != nil {
+			return nil, err
+		}
+		if !status.Available {
+			return gen.PostCommunicationsConversations409JSONResponse(flatErrorBody(
+				"connection_needed", "Your personal Outlook connection is not available. Please connect or reconnect Outlook before sending from your address.")), nil
+		}
+		if mailEstimate(nil, body.TextBody, body.HtmlBody) > contracts.MaxPersonalMessageBytes {
+			return gen.PostCommunicationsConversations422JSONResponse(flatErrorBody(
+				"too_large", "The message exceeds the message size limit for personal sending.")), nil
+		}
+		sendAs = "personal"
+		fromAddress = apicommon.Ptr(status.Address)
+		if s.deps.Users != nil {
+			if u, err := s.deps.Users.User(ctx, caller); err == nil && u != nil && u.DisplayName != "" {
+				fromDisplayName = apicommon.Ptr(u.DisplayName)
+			}
+		}
+	}
+
 	txErr := db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		txq := store.New(tx)
 
@@ -297,7 +325,7 @@ func (s *server) PostCommunicationsConversations(ctx context.Context, req gen.Po
 		if _, err := txq.InsertConversationMessage(ctx, store.InsertConversationMessageParams{
 			ID: messageID, ConversationID: conversationID, Direction: "outbound", AuthorUserID: &caller,
 			Subject: body.Subject, TextBody: body.TextBody, HtmlBody: body.HtmlBody, OccurredAt: now, CreatedAt: now,
-			RfcMessageID: &rfcMessageID,
+			RfcMessageID: &rfcMessageID, SendAs: sendAs, FromAddress: fromAddress, FromDisplayName: fromDisplayName,
 		}); err != nil {
 			return err
 		}

@@ -207,14 +207,15 @@ type issued struct {
 // removal asks for a removal, which a closing connection still allows while
 // it holds its token.
 func (t *outlookTokens) token(ctx context.Context, oid uuid.UUID, removal bool) (string, error) {
-	tok, err := t.issue(ctx, oid, removal)
+	tok, err := t.issue(ctx, oid, "calendar", removal)
 	return tok.value, err
 }
 
 // issue is token with what a 401 needs to act on it. The switch off allows
 // removals alone, whatever the row's state: the rows it closes may not be
-// closed yet.
-func (t *outlookTokens) issue(ctx context.Context, oid uuid.UUID, removal bool) (issued, error) {
+// closed yet. feature, when non-empty, checks that the row's granted scopes
+// satisfy outlookFeatures[feature] (design M20).
+func (t *outlookTokens) issue(ctx context.Context, oid uuid.UUID, feature string, removal bool) (issued, error) {
 	row, err := t.q.GetOutlookConnection(ctx, oid)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return issued{}, needsPerson(outlookNotConnected)
@@ -238,6 +239,9 @@ func (t *outlookTokens) issue(ctx context.Context, oid uuid.UUID, removal bool) 
 	case row.State == outlookActive:
 		if err := t.checkAccount(ctx, row); err != nil {
 			return issued{}, err
+		}
+		if feature != "" && !hasScopes(row.Scopes, outlookFeatures[feature]) {
+			return issued{}, needsPerson(outlookCodeConsentMissing)
 		}
 	}
 	if conn.ClientID == nil {
@@ -417,9 +421,16 @@ func (t *outlookTokens) reconnect(ctx context.Context, row store.EntraOutlookCon
 	return needsPerson(code)
 }
 
-// source is the delegated token for oid as a Graph call's tokenSource.
+// source is the delegated token for oid as a Graph call's tokenSource,
+// scoped to the calendar feature.
 func (t *outlookTokens) source(oid uuid.UUID, removal bool) *delegatedSource {
-	return &delegatedSource{t: t, oid: oid, removal: removal}
+	return t.sourceWithFeature(oid, "calendar", removal)
+}
+
+// sourceWithFeature is the delegated token for oid, checked against feature's
+// required scopes.
+func (t *outlookTokens) sourceWithFeature(oid uuid.UUID, feature string, removal bool) *delegatedSource {
+	return &delegatedSource{t: t, oid: oid, feature: feature, removal: removal}
 }
 
 // delegatedSource is one call's delegated token (graph.go's tokenSource):
@@ -428,12 +439,13 @@ func (t *outlookTokens) source(oid uuid.UUID, removal bool) *delegatedSource {
 type delegatedSource struct {
 	t       *outlookTokens
 	oid     uuid.UUID
+	feature string
 	removal bool
 	last    issued
 }
 
 func (s *delegatedSource) token(ctx context.Context) (string, error) {
-	tok, err := s.t.issue(ctx, s.oid, s.removal)
+	tok, err := s.t.issue(ctx, s.oid, s.feature, s.removal)
 	if err != nil {
 		return "", err
 	}

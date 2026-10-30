@@ -226,6 +226,17 @@ type Deps struct {
 	// inside a transaction. nil when no enabled module provides one (entra
 	// disabled).
 	ChannelMailbox contracts.ChannelMailbox
+	// PersonalMailbox is a provider's personal mailboxes as Communications
+	// uses them when a person chooses to send from their own address (see
+	// contracts.PersonalMailbox, Outlook connection design M20). Compose
+	// sets it, on every module's Deps copy, from whichever enabled module
+	// declares Module.PersonalMailbox, after the channel mailbox; Workers
+	// sets it too, the same way, because Communications' outbox runs in
+	// worker mode. Both keep a preset value when no enabled module provides
+	// one (the seam modtest.WithPersonalMailbox fills). Only Communications
+	// calls it, never inside a transaction. nil when no enabled module
+	// provides one (entra disabled).
+	PersonalMailbox contracts.PersonalMailbox
 	// CalendarBusy is the calendar's busy time of people, provider-gated
 	// (see contracts.CalendarBusy, calendar Outlook sync design O9.8).
 	// Compose sets it, on every module's Deps copy, from whichever enabled
@@ -459,6 +470,13 @@ type Module struct {
 	// and Workers call it after the mailbox calendar — it reads nothing
 	// while it is built — and put the result on every module's Deps.
 	ChannelMailbox func(Deps) contracts.ChannelMailbox
+	// PersonalMailbox builds this module's contracts.PersonalMailbox, if it
+	// sends Communications' personal mail through a person's connected
+	// mailbox (Outlook connection design M20). At most one enabled module
+	// may set it; Compose and Workers call it after the channel mailbox — it
+	// reads nothing while it is built — and put the result on every module's
+	// Deps.
+	PersonalMailbox func(Deps) contracts.PersonalMailbox
 	// CalendarBusy builds this module's contracts.CalendarBusy, if it answers
 	// people's busy time to other modules (calendar Outlook sync design
 	// O9.8). At most one enabled module may set it; Compose calls it last of

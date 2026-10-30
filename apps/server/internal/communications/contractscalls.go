@@ -267,3 +267,28 @@ func directoryContactsByEmail(ctx context.Context, d contracts.CustomerDirectory
 	}
 	return d.ContactsByEmail(ctx, email)
 }
+
+// personalMailStatus reads the caller's personal mail capability from the
+// wired PersonalMailbox provider (M20). When no provider is wired, it reports
+// Available: false with Reason: "unavailable".
+func personalMailStatus(ctx context.Context, m contracts.PersonalMailbox) (contracts.PersonalMailStatus, error) {
+	if err := noteContractCall(ctx, "PersonalMailbox.Status"); err != nil {
+		return contracts.PersonalMailStatus{}, err
+	}
+	if m == nil {
+		return contracts.PersonalMailStatus{Available: false, Reason: "unavailable"}, nil
+	}
+	return m.Status(ctx)
+}
+
+// personalMailboxSend sends mime through the author's delegated mailbox (M20).
+// The context must carry the author's user ID via contracts.AsUser(ctx, authorUserID).
+func personalMailboxSend(ctx context.Context, m contracts.PersonalMailbox, mime []byte, bcc []string) error {
+	if err := noteContractCall(ctx, "PersonalMailbox.Send"); err != nil {
+		return err
+	}
+	if m == nil {
+		return contracts.ErrConnectionNeeded
+	}
+	return m.Send(ctx, mime, bcc)
+}

@@ -205,6 +205,19 @@ func TestSendOutbound_SetsReplyToWhenGiven(t *testing.T) {
 	}
 }
 
+// TestSendOutbound_SetsReplyToNameWhenGiven proves ReplyToName formats the
+// Reply-To header with display name and angle-bracketed address.
+func TestSendOutbound_SetsReplyToNameWhenGiven(t *testing.T) {
+	data, _ := sendOutboundThroughTestServer(t, mail.Outbound{
+		To: []string{"to@example.test"}, Subject: "hi", TextBody: "hi",
+		ReplyTo:     "replies@example.test",
+		ReplyToName: "Support Team",
+	})
+	if !strings.Contains(data, `Reply-To: "Support Team" <replies@example.test>`) {
+		t.Errorf("Reply-To header missing or wrong; DATA:\n%s", data)
+	}
+}
+
 // TestSendOutbound_OmitsReplyToWhenUnset proves an empty ReplyTo sets no
 // header at all, rather than an empty one.
 func TestSendOutbound_OmitsReplyToWhenUnset(t *testing.T) {

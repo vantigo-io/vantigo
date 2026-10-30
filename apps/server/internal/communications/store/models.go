@@ -135,6 +135,9 @@ type CommunicationsConversationMessage struct {
 	OccurredAt           time.Time
 	CreatedAt            time.Time
 	RfcMessageID         *string
+	SendAs               string
+	FromAddress          *string
+	FromDisplayName      *string
 }
 
 type CommunicationsConversationParticipant struct {

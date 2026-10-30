@@ -293,7 +293,7 @@ func TestOutlookConnect_Refusals(t *testing.T) {
 	f := newOutlookFixture(t)
 
 	c, userID, oid := f.person(t, "kari@nordlys.no")
-	r := c.Do(http.MethodPost, outlookConnectPath, map[string]any{"feature": "mail"}, modtest.SkipContract("an unknown feature, which the contract's enum refuses"))
+	r := c.Do(http.MethodPost, outlookConnectPath, map[string]any{"feature": "contacts"}, modtest.SkipContract("an unknown feature, which the contract's enum refuses"))
 	if r.Status != http.StatusUnprocessableEntity || codeOf(t, r) != "feature_unknown" {
 		t.Errorf("an unknown feature: %d %s, want 422 feature_unknown", r.Status, r.Body)
 	}

@@ -32,6 +32,18 @@ func PrincipalFrom(ctx context.Context) (Principal, bool) {
 	return p, ok
 }
 
+// UserID answers the user the context acts for: the Principal's UserID that
+// WithPrincipal (a request's session) or AsUser (a worker acting on a
+// person's behalf) attached, and false when there is none or it names no
+// user (a SCIM caller, uuid.Nil).
+func UserID(ctx context.Context) (uuid.UUID, bool) {
+	p, ok := PrincipalFrom(ctx)
+	if !ok || p.UserID == uuid.Nil {
+		return uuid.Nil, false
+	}
+	return p.UserID, true
+}
+
 // requestContextKey and responseWriterContextKey are unexported so only
 // this package can set or read the context values.
 type (

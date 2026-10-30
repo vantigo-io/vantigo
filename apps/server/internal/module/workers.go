@@ -99,6 +99,14 @@ func Workers(deps Deps, mods ...Module) []worker.Worker {
 	if err != nil {
 		panic(err.Error())
 	}
+	// The personal mailboxes, resolved as Compose resolves them (Outlook
+	// connection design M20): Communications' outbox sends through them, and
+	// worker mode never composes. Two providers panic, as two channel
+	// mailboxes do.
+	deps, err = withPersonalMailbox(deps, enabled)
+	if err != nil {
+		panic(err.Error())
+	}
 	var out []worker.Worker
 	for _, mod := range enabled {
 		if mod.Workers == nil {
@@ -181,6 +189,21 @@ func withChannelMailbox(deps Deps, enabled []Module) (Deps, error) {
 	}
 	if provider != nil {
 		deps.ChannelMailbox = provider.ChannelMailbox(deps)
+	}
+	return deps, nil
+}
+
+// withPersonalMailbox resolves contracts.PersonalMailbox from the enabled
+// modules — at most one may declare it — keeping a preset value when none
+// does (the seam modtest.WithPersonalMailbox fills). Compose and Workers
+// both call it, after the channel mailbox.
+func withPersonalMailbox(deps Deps, enabled []Module) (Deps, error) {
+	provider, err := soleProvider(enabled, "a personal mailbox", func(m Module) bool { return m.PersonalMailbox != nil })
+	if err != nil {
+		return deps, err
+	}
+	if provider != nil {
+		deps.PersonalMailbox = provider.PersonalMailbox(deps)
 	}
 	return deps, nil
 }

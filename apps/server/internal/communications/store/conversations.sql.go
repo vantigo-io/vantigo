@@ -128,6 +128,27 @@ func (q *Queries) GetConversationByID(ctx context.Context, id uuid.UUID) (Commun
 	return i, err
 }
 
+const getConversationChannelDetail = `-- name: GetConversationChannelDetail :one
+SELECT ch.provider, ch.address, ch.display_name
+FROM communications.conversations c
+JOIN communications.channels ch ON ch.id = c.channel_id
+WHERE c.id = $1
+`
+
+type GetConversationChannelDetailRow struct {
+	Provider    string
+	Address     string
+	DisplayName *string
+}
+
+// GetConversation's channel provider, address and display name (M13, M20).
+func (q *Queries) GetConversationChannelDetail(ctx context.Context, id uuid.UUID) (GetConversationChannelDetailRow, error) {
+	row := q.db.QueryRow(ctx, getConversationChannelDetail, id)
+	var i GetConversationChannelDetailRow
+	err := row.Scan(&i.Provider, &i.Address, &i.DisplayName)
+	return i, err
+}
+
 const getConversationForReply = `-- name: GetConversationForReply :one
 
 SELECT c.id, c.subject, c.channel_id, ch.is_active AS channel_is_active, ch.type AS channel_type,
@@ -172,9 +193,56 @@ func (q *Queries) GetConversationForReply(ctx context.Context, id uuid.UUID) (Ge
 	return i, err
 }
 
+const getConversationMessageForRetry = `-- name: GetConversationMessageForRetry :one
+SELECT m.id, m.conversation_id, m.direction, m.author_user_id, m.send_as,
+       ch.is_active AS channel_is_active,
+       j.id AS job_id, j.status AS job_status
+FROM communications.conversation_messages m
+JOIN communications.conversations c ON c.id = m.conversation_id
+JOIN communications.channels ch ON ch.id = c.channel_id
+LEFT JOIN communications.outbox_jobs j ON j.message_id = m.id
+WHERE m.id = $1 AND m.conversation_id = $2
+`
+
+type GetConversationMessageForRetryParams struct {
+	MessageID      uuid.UUID
+	ConversationID uuid.UUID
+}
+
+type GetConversationMessageForRetryRow struct {
+	ID              uuid.UUID
+	ConversationID  uuid.UUID
+	Direction       string
+	AuthorUserID    *uuid.UUID
+	SendAs          string
+	ChannelIsActive bool
+	JobID           *uuid.UUID
+	JobStatus       *string
+}
+
+// Lookup for POST /conversations/{id}/messages/{messageId}/retry (M20):
+// the message in the conversation, its channel's active flag, and its outbox
+// job's id and status.
+func (q *Queries) GetConversationMessageForRetry(ctx context.Context, arg GetConversationMessageForRetryParams) (GetConversationMessageForRetryRow, error) {
+	row := q.db.QueryRow(ctx, getConversationMessageForRetry, arg.MessageID, arg.ConversationID)
+	var i GetConversationMessageForRetryRow
+	err := row.Scan(
+		&i.ID,
+		&i.ConversationID,
+		&i.Direction,
+		&i.AuthorUserID,
+		&i.SendAs,
+		&i.ChannelIsActive,
+		&i.JobID,
+		&i.JobStatus,
+	)
+	return i, err
+}
+
 const getConversationMessagesByConversationID = `-- name: GetConversationMessagesByConversationID :many
 SELECT m.id, m.direction, m.author_user_id, m.subject, m.text_body, m.html_body,
        m.occurred_at, m.created_at,
+       m.send_as, m.from_address, m.from_display_name,
        (m.raw_payload_storage_key IS NOT NULL)::boolean AS has_raw_payload,
        COALESCE((m.channel_metadata_json->>'autoSubmitted')::boolean, false)::boolean AS auto_submitted,
        COALESCE((m.channel_metadata_json->>'unreadable')::boolean, false)::boolean AS unreadable,
@@ -195,6 +263,9 @@ type GetConversationMessagesByConversationIDRow struct {
 	HtmlBody               *string
 	OccurredAt             time.Time
 	CreatedAt              time.Time
+	SendAs                 string
+	FromAddress            *string
+	FromDisplayName        *string
 	HasRawPayload          bool
 	AutoSubmitted          bool
 	Unreadable             bool
@@ -208,8 +279,8 @@ type GetConversationMessagesByConversationIDRow struct {
 // GetConversation's message list, ordered OccurredAt ascending
 // (`item.Messages.OrderBy(message => message.OccurredAt)`), each left-joined
 // to its participant (null for every internal_note and outbound message),
-// with whether Vantigo keeps its original and the two flags an inbound
-// message's metadata carries.
+// with whether Vantigo keeps its original, the two flags an inbound
+// message's metadata carries, and the personal-sending fields (M20).
 func (q *Queries) GetConversationMessagesByConversationID(ctx context.Context, conversationID uuid.UUID) ([]GetConversationMessagesByConversationIDRow, error) {
 	rows, err := q.db.Query(ctx, getConversationMessagesByConversationID, conversationID)
 	if err != nil {
@@ -228,6 +299,9 @@ func (q *Queries) GetConversationMessagesByConversationID(ctx context.Context, c
 			&i.HtmlBody,
 			&i.OccurredAt,
 			&i.CreatedAt,
+			&i.SendAs,
+			&i.FromAddress,
+			&i.FromDisplayName,
 			&i.HasRawPayload,
 			&i.AutoSubmitted,
 			&i.Unreadable,
@@ -412,9 +486,10 @@ func (q *Queries) InsertConversation(ctx context.Context, arg InsertConversation
 const insertConversationMessage = `-- name: InsertConversationMessage :one
 INSERT INTO communications.conversation_messages
  (id, conversation_id, direction, participant_id, author_user_id, subject, text_body, html_body,
-  channel_metadata_json, occurred_at, created_at, rfc_message_id)
+  channel_metadata_json, occurred_at, created_at, rfc_message_id, send_as, from_address, from_display_name)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8,
-  $9, $10, $11, $12)
+  $9, $10, $11, $12,
+  COALESCE(NULLIF($13::text, ''), 'channel'), $14, $15)
 RETURNING id
 `
 
@@ -431,10 +506,13 @@ type InsertConversationMessageParams struct {
 	OccurredAt          time.Time
 	CreatedAt           time.Time
 	RfcMessageID        *string
+	SendAs              string
+	FromAddress         *string
+	FromDisplayName     *string
 }
 
-// Shared by AddNote (direction=internal_note) and CreateConversation
-// (direction=outbound): ConversationMessage's full column set for either.
+// Shared by AddNote (direction=internal_note), CreateConversation and Reply
+// (direction=outbound): ConversationMessage's full column set for each.
 func (q *Queries) InsertConversationMessage(ctx context.Context, arg InsertConversationMessageParams) (uuid.UUID, error) {
 	row := q.db.QueryRow(ctx, insertConversationMessage,
 		arg.ID,
@@ -449,6 +527,9 @@ func (q *Queries) InsertConversationMessage(ctx context.Context, arg InsertConve
 		arg.OccurredAt,
 		arg.CreatedAt,
 		arg.RfcMessageID,
+		arg.SendAs,
+		arg.FromAddress,
+		arg.FromDisplayName,
 	)
 	var id uuid.UUID
 	err := row.Scan(&id)
@@ -988,9 +1069,20 @@ func (q *Queries) ListMessageAttachmentsByMessageIDs(ctx context.Context, messag
 }
 
 const listMessageDeliveriesByMessageIDs = `-- name: ListMessageDeliveriesByMessageIDs :many
-SELECT id, message_id, recipient_address, recipient_type, status, attempts, accepted_at
-FROM communications.message_deliveries
-WHERE message_id = ANY($1::uuid[])
+SELECT d.id, d.message_id, d.recipient_address, d.recipient_type, d.status, d.attempts, d.accepted_at,
+       COALESCE(CASE
+           WHEN d.status IN ('retrying', 'submission_failed') THEN COALESCE(
+               (SELECT CASE WHEN pg_input_is_valid(e.data_json, 'jsonb')
+                            THEN e.data_json::jsonb->>'code' END
+                FROM communications.message_events e
+                WHERE e.delivery_id = d.id AND e.event_type = d.status
+                ORDER BY e.occurred_at DESC, e.id DESC
+                LIMIT 1),
+               d.last_error
+           )
+       END, '')::text AS error
+FROM communications.message_deliveries d
+WHERE d.message_id = ANY($1::uuid[])
 `
 
 type ListMessageDeliveriesByMessageIDsRow struct {
@@ -1001,10 +1093,13 @@ type ListMessageDeliveriesByMessageIDsRow struct {
 	Status           string
 	Attempts         int32
 	AcceptedAt       *time.Time
+	Error            string
 }
 
 // Batch delivery load for GetConversation's messages
-// (`item.Deliveries.Select(...)`).
+// (`item.Deliveries.Select(...)`), with the terminal or hold code from the
+// latest failure event (or last_error when none) while the delivery is
+// retrying or submission_failed; ” otherwise (the handler answers null).
 func (q *Queries) ListMessageDeliveriesByMessageIDs(ctx context.Context, messageIds []uuid.UUID) ([]ListMessageDeliveriesByMessageIDsRow, error) {
 	rows, err := q.db.Query(ctx, listMessageDeliveriesByMessageIDs, messageIds)
 	if err != nil {
@@ -1022,6 +1117,7 @@ func (q *Queries) ListMessageDeliveriesByMessageIDs(ctx context.Context, message
 			&i.Status,
 			&i.Attempts,
 			&i.AcceptedAt,
+			&i.Error,
 		); err != nil {
 			return nil, err
 		}
@@ -1101,6 +1197,64 @@ func (q *Queries) ListSuppressedAddresses(ctx context.Context, addresses []strin
 		return nil, err
 	}
 	return items, nil
+}
+
+const resetFailedMessageDeliveries = `-- name: ResetFailedMessageDeliveries :many
+UPDATE communications.message_deliveries
+SET status = 'queued',
+    attempts = 0,
+    last_error = NULL
+WHERE message_id = $1 AND status = 'submission_failed'
+RETURNING id
+`
+
+// Resets submission_failed deliveries of a retried outbound message back to
+// queued (M20).
+func (q *Queries) ResetFailedMessageDeliveries(ctx context.Context, messageID uuid.UUID) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, resetFailedMessageDeliveries, messageID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const retryFailedOutboxJob = `-- name: RetryFailedOutboxJob :execrows
+UPDATE communications.outbox_jobs
+SET status = 'pending',
+    attempts = 0,
+    next_attempt_at = $1,
+    completed_at = NULL,
+    last_error = NULL,
+    lease_id = NULL,
+    lease_until = NULL,
+    delivery_attempted_at = NULL
+WHERE id = $2 AND status = 'failed'
+`
+
+type RetryFailedOutboxJobParams struct {
+	Now time.Time
+	ID  uuid.UUID
+}
+
+// Re-queues a terminally failed outbox job for immediate retry (M20).
+func (q *Queries) RetryFailedOutboxJob(ctx context.Context, arg RetryFailedOutboxJobParams) (int64, error) {
+	result, err := q.db.Exec(ctx, retryFailedOutboxJob, arg.Now, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const updateConversationActivity = `-- name: UpdateConversationActivity :one

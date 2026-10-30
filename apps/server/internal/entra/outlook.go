@@ -134,16 +134,23 @@ const (
 
 // outlookFeatures maps each feature a connect may name to the delegated
 // Graph scopes it asks: a consumer names a feature, never the vendor's
-// permission (design M4).
+// permission (design M4, M20).
 var outlookFeatures = map[string][]string{
 	"calendar": {"Calendars.ReadWrite"},
+	"mail":     {"Mail.Send"},
 }
 
 // outlookScope is the scope a connect for feature asks, and its code's
 // redemption names again.
 func outlookScope(feature string) string {
+	return outlookScopeWith(outlookFeatures[feature])
+}
+
+// outlookScopeWith is the scope string for Graph scopes, prefixed with
+// outlookBaseScope.
+func outlookScopeWith(scopes []string) string {
 	parts := []string{outlookBaseScope}
-	for _, s := range outlookFeatures[feature] {
+	for _, s := range scopes {
 		parts = append(parts, graphResource+s)
 	}
 	return strings.Join(parts, " ")

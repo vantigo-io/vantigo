@@ -442,9 +442,9 @@ func matchCandidates(candidates []contracts.ConnectCandidate, accounts []directo
 			}
 		}
 		address := addressKey(cand.Email)
-		mark(byMail, address, gen.Mail)
-		mark(byUPN, address, gen.UserPrincipalName)
-		mark(byNumber, numberKey(cand.EmployeeNumber), gen.EmployeeId)
+		mark(byMail, address, gen.EntraDirectoryMatchMatchedByMail)
+		mark(byUPN, address, gen.EntraDirectoryMatchMatchedByUserPrincipalName)
+		mark(byNumber, numberKey(cand.EmployeeNumber), gen.EntraDirectoryMatchMatchedByEmployeeId)
 		for a := range hits[c] {
 			claimed[a]++
 		}

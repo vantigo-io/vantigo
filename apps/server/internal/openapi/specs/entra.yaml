@@ -590,9 +590,10 @@ components:
             description: What a connect is for, and where to return once it completes.
             properties:
                 feature:
-                    description: The feature the connect asks Microsoft's consent for; calendar asks for Calendars.ReadWrite.
+                    description: The feature the connect asks Microsoft's consent for; calendar asks for Calendars.ReadWrite, mail asks for Mail.Send.
                     enum:
                         - calendar
+                        - mail
                     type: string
                 returnTo:
                     description: A path on this installation to return to; anything that is not one becomes /settings/connections.
@@ -613,7 +614,7 @@ components:
                     description: 'Why Microsoft refused the connection, a code: expired, sign_in_again, mfa, blocked or consent_missing. Present while state is reconnect.'
                     type: string
                 features:
-                    description: The features the granted scopes allow, such as calendar.
+                    description: The features the granted scopes allow, such as calendar or mail.
                     items:
                         type: string
                     type: array

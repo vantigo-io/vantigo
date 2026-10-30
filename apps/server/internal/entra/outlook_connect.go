@@ -73,6 +73,16 @@ func (s *server) PostEntraOutlookConnect(ctx context.Context, req gen.PostEntraO
 	if err != nil {
 		return nil, err
 	}
+	requestedScopes := slices.Clone(scopes)
+	if err == nil && existing.State != outlookClosing && existing.UserID == p.UserID {
+		for _, fScopes := range outlookFeatures {
+			for _, fs := range fScopes {
+				if slices.Contains(existing.Scopes, strings.ToLower(fs)) && !slices.Contains(requestedScopes, fs) {
+					requestedScopes = append(requestedScopes, fs)
+				}
+			}
+		}
+	}
 	state := outlookStateBody{
 		State:      randomOutlookValue(),
 		Nonce:      randomOutlookValue(),
@@ -80,7 +90,7 @@ func (s *server) PostEntraOutlookConnect(ctx context.Context, req gen.PostEntraO
 		UserID:     p.UserID,
 		SessionMAC: mac,
 		Feature:    feature,
-		Scopes:     slices.Clone(scopes),
+		Scopes:     requestedScopes,
 		ReturnTo:   safeReturnTo(deref(returnTo)),
 		ExpiresAt:  s.client.now().Add(outlookStateLifetime),
 	}
@@ -94,7 +104,7 @@ func (s *server) PostEntraOutlookConnect(ctx context.Context, req gen.PostEntraO
 		"response_type":         {"code"},
 		"response_mode":         {"query"},
 		"redirect_uri":          {outlookRedirectURI(s.deps.Config)},
-		"scope":                 {outlookScope(feature)},
+		"scope":                 {outlookScopeWith(requestedScopes)},
 		"state":                 {state.State},
 		"nonce":                 {state.Nonce},
 		"code_challenge":        {oauth2.S256ChallengeFromVerifier(state.Verifier)},
