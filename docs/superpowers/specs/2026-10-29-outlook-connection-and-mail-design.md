@@ -743,18 +743,90 @@ count as unexpected.
 
 - Delta of folders other than the Inbox, and Sent Items written outside Vantigo.
 - Drafts and upload sessions for messages above the MIME limit.
-- A person's mailbox as a channel, and delegated shared-mailbox access.
+- A person's mailbox as a channel, and delegated shared-mailbox access (`Mail.Send.Shared`,
+  `Mail.ReadWrite.Shared`).
+- Reading a person's personal Inbox (`Mail.Read`, `Mail.ReadBasic`) or subscribing to a
+  person's personal `messages` resource.
 - Attachment scanning (the reference's standing gap).
 - Supplier invoices from `faktura@`, receipts to Expenses, out-of-office into Planning,
   and mail on the customer's 360. Each is a follow-up that reads conversations, and none
   changes this design.
-- **F** (personal sending): `Mail.Send` added to the delegated scopes by M4's incremental
-  ask; a composer choice *Send from my address*; the outbox calling a
-  sibling slot, `PersonalMailbox.Send`, with the person's token. A reply
-  then arrives in the person's own Inbox and is not captured, unless F also takes
-  `Mail.ReadBasic` and a subscription filtered by conversation. F decides that.
 
-## The owner's answers (2026-10-29)
+### M20 — F: sending from one's own address (`Mail.Send` delegated)
+
+- **Incremental delegated consent (M4)**: `outlookFeatures` gains `"mail": {"Mail.Send"}`.
+  `POST /api/v1/entra/outlook/connect` accepts `feature: "calendar" | "mail"`. When the
+  caller already has a live `entra.outlook_connections` row (`state <> 'closing'`) for
+  their own account, `connect` requests the union of the base scopes, the existing row's
+  granted feature scopes and the requested feature's scopes, and `complete` merges the
+  existing row's scopes with the new token's granted scopes on `TakeOutlookConnection`,
+  so connecting `mail` after `calendar` (or `calendar` after `mail`, or reconnecting from
+  the *Connections* page) never drops a previously granted feature. `features` on
+  `EntraOutlookConnection` lists every feature (`"calendar"`, `"mail"`, in alphabetical
+  order) whose required scopes are present in `scopes`.
+- **Feature-scoped token checks**: `mailboxCalendar` requires `"calendar"`
+  (`Calendars.ReadWrite`) in `scopes` — an `active` connection that holds only `mail.send`
+  answers `Reason: "not_connected"` on `MailboxCalendar.Status` and
+  `*contracts.ConnectionNeededError{Reason: "consent_missing"}` on worker calls without
+  marking the connection `reconnect`. Likewise, `PersonalMailbox` requires `"mail"`
+  (`Mail.Send`) in `scopes`, and `OutlookConnectButton` in `@vantigo/entra-ui` shows the
+  connect button whenever `feature` is not yet in `connection.features` even if
+  `connection.state` is `"active"` for the other feature.
+- **The contract (`contracts.PersonalMailbox`)**: a provider-neutral optional slot on
+  `module.Module` (`PersonalMailbox`) and `module.Deps` (`PersonalMailbox`), wired in both
+  `Compose` and `Workers`, and implemented by Entra:
+  - `Status(ctx) (PersonalMailStatus, error)` — for the caller in `contracts.UserID(ctx)`,
+    answers `Available` (`true` when `outlook_connect` is on, the caller has an enabled
+    Entra account, and their live `outlook_connections` row is `active` with `mail.send`
+    in `scopes`), `Reason` (`"unavailable"`, `"no_account"`, `"not_connected"`,
+    `"reconnect"`), `ErrorCode` (when `Reason == "reconnect"`), `Mailbox` (the account's
+    `object_id`) and `Address` (the account's `user_principal_name`, when the switch is on
+    and the caller has an enabled account).
+  - `Send(ctx, mime, bcc) error` — for the user in `contracts.UserID(ctx)` (set by the
+    outbox worker via `contracts.AsUser(ctx, authorUserID)`), checks the switch, the
+    user's enabled Entra account, and their live `active` connection with `mail.send`
+    granted, issues a delegated token for their mailbox, and sends the RFC 5322 MIME
+    message through Graph (`POST /users/{oid}/sendMail` when `bcc` is empty, or the MIME
+    draft + `send` dance on `/users/{oid}/messages` when `bcc` is non-empty) so Exchange
+    Online places the sent message in the person's own **Sent Items**. Returns
+    `*contracts.ConnectionNeededError` (matching `contracts.ErrConnectionNeeded`) when the
+    switch is off, the user has no enabled account, the connection is missing, `closing`,
+    in `reconnect`, lacks `mail.send`, or is refused by Microsoft on refresh or CAE claims
+    challenge; `contracts.ErrMessageTooLarge`, `contracts.ErrDestinationRejected` or
+    `contracts.ErrMailboxUnavailable` as `ChannelMailbox.Send` does.
+- **Where personal sending is available (Owner decision 2)**: both **new conversations**
+  (`POST /api/v1/communications/conversations`) and **replies**
+  (`POST /api/v1/communications/conversations/{id}/reply`) accept
+  `sendFromPersonal: true`. Every conversation still belongs to a channel (`channel_id`);
+  when `sendFromPersonal` is `true`:
+  - Before opening a database transaction (`contractscalls.go`), Communications checks
+    `PersonalMailbox.Status(ctx)` (refusing `409 connection_needed` if `!Available`) and
+    reads the caller's display name from `UserDirectory.User(ctx, callerID)`, and enforces
+    the 3 MB MIME size budget (`contracts.MaxChannelMessageBytes`, `422 too_large`).
+  - Migration `00095_communications_personal_sending.sql` adds `send_as varchar(20) NOT NULL DEFAULT 'channel'`
+    (`CHECK (send_as IN ('channel', 'personal'))`), `from_address varchar(320)` and
+    `from_display_name varchar(200)` to `communications.conversation_messages`.
+- **`From` and `Reply-To` (Owner decision 1)**: when the outbox builds the MIME envelope
+  for a message with `send_as = 'personal'`, `From` is the author's `from_address` and
+  `from_display_name` (their directory address and Vantigo display name), and `Reply-To`
+  is set to the conversation's channel address (`channels.address`) and display name
+  (`channels.display_name`). Customer replies therefore arrive in the shared channel
+  mailbox and thread into the conversation through M14/M15 without reading anyone's
+  personal Inbox.
+- **Outbox failure & retry (Owner decision 3)**: when `PersonalMailbox.Send` answers
+  `contracts.ErrConnectionNeeded` at outbox send time, the outbox fails the job
+  immediately as a terminal failure after 1 attempt (`outbox_jobs.status = 'failed'`,
+  `last_error = 'connection_needed'`, deliveries `submission_failed` with
+  `last_error = 'connection_needed'`, never falling back to the channel's address). On
+  `contracts.ErrMailboxUnavailable` (transient Graph 5xx/429 or application credential
+  outage), the outbox holds the job via `holdJob` without spending the person's
+  connection. Once the author reconnects their Outlook,
+  `POST /api/v1/communications/conversations/{id}/messages/{messageId}/retry` (restricted
+  to the message's `author_user_id` when `send_as = 'personal'`, after verifying
+  `PersonalMailbox.Status(ctx).Available`) resets the failed deliveries and outbox job to
+  `queued`/`pending` so the message is sent from their address.
+
+## The owner's answers (2026-10-29 & 2026-10-30)
 
 - **Q1 — People without a certain account: refused.** M6 stands. Only a person whose
   Staff record names an Entra account the module manages may connect.
@@ -766,6 +838,21 @@ count as unexpected.
   because it points to a setup that is wrong or too wide (M19).
 - **Q4 — Shared mailboxes only.** M12 refuses every mailbox that is not shared
   (`personal_mailbox`), with no confirmation to override it.
+- **Q5 (2026-10-30) — Replies to personal sends use `Reply-To` the channel.** Send-only
+  (`Mail.Send` delegated permission) with `Reply-To` set to the conversation's channel
+  address (`channels.address`, with `channels.display_name`), so customer replies still
+  arrive in the shared channel mailbox and thread into the conversation without reading
+  personal inboxes (M20).
+- **Q6 (2026-10-30) — "Send from my address" on both new conversations and replies.** A
+  conversation always belongs to a channel, and any outbound message (initial or reply)
+  can choose to send from the author's connected Microsoft 365 address (`From` = the
+  person's directory address and display name, sent through their delegated Outlook
+  connection so it lands in their own Sent Items) instead of the channel's mailbox (M20).
+- **Q7 (2026-10-30) — Immediate `connection_needed` failure on personal send, never silent
+  fallback.** When the sender's personal Outlook connection needs reconnecting at outbox
+  send time, fail the outbox job immediately (`connection_needed` terminal code after 1
+  attempt, never silently falling back to the channel's address) so the sender sees the
+  failure in the conversation, can reconnect Outlook, and can retry/resend (M20).
 
 ## Deliveries
 
@@ -1110,6 +1197,14 @@ count as unexpected.
     a safety net (5 minutes otherwise), and drains due `mailbox_marks` jobs when no
     channel sync is due — treating `ErrMailItemGone` as idempotent success, holding on
     `ErrMailboxUnavailable` up to 24 hours, and retrying up to 8 attempts.
+- **F** (`feat/communications-personal-sending`): M20. Migration
+  `00095_communications_personal_sending.sql`. Docs:
+  - the Entra, communications and module-boundaries reference;
+  - in both languages: the Entra administration page (`Mail.Send` in the delegated
+    permissions list), the connections user guide (Mail beside Calendar on the
+    connection), and the communications user guide (*Send from my address*, `Reply-To` the
+    channel, and reconnecting and retrying a failed personal send);
+  - the roadmap.
 
 Migration numbers are those free on 2026-10-29, after #194's `00087`. Each delivery renumbers in its own
 history before it rebases.
@@ -1149,3 +1244,13 @@ history before it rebases.
   and erase reaching raw payloads.
 - **E**: a `messages` notice making the channel due and an `events` notice not; `onClose`
   `read` and `move` idempotent on a resend; and the import window's filter.
+- **F**: incremental consent (`feature="mail"` after `"calendar"` and vice versa, keeping
+  both scopes and features); feature-scoped `MailboxCalendar` and `PersonalMailbox` status
+  and token checks; `PersonalMailbox.Send` with a delegated token (MIME `sendMail` and Bcc
+  draft dance, CAE claims challenge and refresh refusals to `ErrConnectionNeeded`);
+  new conversation and reply with `sendFromPersonal: true` (`From` set to the person's
+  address and display name, `Reply-To` set to the channel's address and display name,
+  3 MB MIME budget); outbox terminal `connection_needed` after 1 attempt without falling
+  back to the channel, `ErrMailboxUnavailable` hold, and retry (`POST .../messages/{messageId}/retry`)
+  after reconnecting; and the `entra-ui` and `communications-ui` components in both
+  languages.
