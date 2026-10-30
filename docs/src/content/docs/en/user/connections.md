@@ -14,7 +14,7 @@ keeps the connection until you disconnect it, leave, or your administrator turns
 off. The calendar's [Outlook sync](/en/user/calendar/#sync-with-outlook) uses it: Vantigo
 writes your calendar's copies to your mailbox, and reads your busy time back, with your
 own connection and nothing else. Communications also uses it to let you send messages from
-your own address ([Send from your own address](/en/user/communications/#send-from-your-own-address)),
+your own address ([Send from your own address](/en/user/communications/#personal-sending-and-retrying)),
 with customer replies directed to the shared channel.
 
 ## Who sees it
