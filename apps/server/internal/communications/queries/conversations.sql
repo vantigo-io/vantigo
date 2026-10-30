@@ -96,14 +96,22 @@ SELECT c.id, c.channel_id, c.subject, c.status, c.assigned_user_id, c.customer_i
 FROM communications.conversations c
 WHERE c.id = @id;
 
+-- name: GetConversationChannelDetail :one
+-- GetConversation's channel provider, address and display name (M13, M20).
+SELECT ch.provider, ch.address, ch.display_name
+FROM communications.conversations c
+JOIN communications.channels ch ON ch.id = c.channel_id
+WHERE c.id = @id;
+
 -- name: GetConversationMessagesByConversationID :many
 -- GetConversation's message list, ordered OccurredAt ascending
 -- (`item.Messages.OrderBy(message => message.OccurredAt)`), each left-joined
 -- to its participant (null for every internal_note and outbound message),
--- with whether Vantigo keeps its original and the two flags an inbound
--- message's metadata carries.
+-- with whether Vantigo keeps its original, the two flags an inbound
+-- message's metadata carries, and the personal-sending fields (M20).
 SELECT m.id, m.direction, m.author_user_id, m.subject, m.text_body, m.html_body,
        m.occurred_at, m.created_at,
+       m.send_as, m.from_address, m.from_display_name,
        (m.raw_payload_storage_key IS NOT NULL)::boolean AS has_raw_payload,
        COALESCE((m.channel_metadata_json->>'autoSubmitted')::boolean, false)::boolean AS auto_submitted,
        COALESCE((m.channel_metadata_json->>'unreadable')::boolean, false)::boolean AS unreadable,
@@ -125,10 +133,23 @@ WHERE message_id = ANY(@message_ids::uuid[]);
 
 -- name: ListMessageDeliveriesByMessageIDs :many
 -- Batch delivery load for GetConversation's messages
--- (`item.Deliveries.Select(...)`).
-SELECT id, message_id, recipient_address, recipient_type, status, attempts, accepted_at
-FROM communications.message_deliveries
-WHERE message_id = ANY(@message_ids::uuid[]);
+-- (`item.Deliveries.Select(...)`), with the terminal or hold code from the
+-- latest failure event (or last_error when none) while the delivery is
+-- retrying or submission_failed; '' otherwise (the handler answers null).
+SELECT d.id, d.message_id, d.recipient_address, d.recipient_type, d.status, d.attempts, d.accepted_at,
+       COALESCE(CASE
+           WHEN d.status IN ('retrying', 'submission_failed') THEN COALESCE(
+               (SELECT CASE WHEN pg_input_is_valid(e.data_json, 'jsonb')
+                            THEN e.data_json::jsonb->>'code' END
+                FROM communications.message_events e
+                WHERE e.delivery_id = d.id AND e.event_type = d.status
+                ORDER BY e.occurred_at DESC, e.id DESC
+                LIMIT 1),
+               d.last_error
+           )
+       END, '')::text AS error
+FROM communications.message_deliveries d
+WHERE d.message_id = ANY(@message_ids::uuid[]);
 
 -- name: UpdateConversationActivity :one
 -- AddNote's `conversation.LastActivityAt = now; conversation.PreviewText = ...`,
@@ -140,13 +161,14 @@ WHERE id = @id
 RETURNING id;
 
 -- name: InsertConversationMessage :one
--- Shared by AddNote (direction=internal_note) and CreateConversation
--- (direction=outbound): ConversationMessage's full column set for either.
+-- Shared by AddNote (direction=internal_note), CreateConversation and Reply
+-- (direction=outbound): ConversationMessage's full column set for each.
 INSERT INTO communications.conversation_messages
  (id, conversation_id, direction, participant_id, author_user_id, subject, text_body, html_body,
-  channel_metadata_json, occurred_at, created_at, rfc_message_id)
+  channel_metadata_json, occurred_at, created_at, rfc_message_id, send_as, from_address, from_display_name)
 VALUES (@id, @conversation_id, @direction, @participant_id, @author_user_id, @subject, @text_body, @html_body,
-  @channel_metadata_json, @occurred_at, @created_at, @rfc_message_id)
+  @channel_metadata_json, @occurred_at, @created_at, @rfc_message_id,
+  COALESCE(NULLIF(@send_as::text, ''), 'channel'), @from_address, @from_display_name)
 RETURNING id;
 
 -- name: UpdateConversationFields :one
@@ -345,3 +367,39 @@ SELECT id, channel_id, address, display_name, contact_id, created_at
 FROM communications.participants
 WHERE channel_id = @channel_id AND lower(address) = ANY(@addresses::text[])
 ORDER BY created_at DESC, id DESC;
+
+-- name: GetConversationMessageForRetry :one
+-- Lookup for POST /conversations/{id}/messages/{messageId}/retry (M20):
+-- the message in the conversation, its channel's active flag, and its outbox
+-- job's id and status.
+SELECT m.id, m.conversation_id, m.direction, m.author_user_id, m.send_as,
+       ch.is_active AS channel_is_active,
+       j.id AS job_id, j.status AS job_status
+FROM communications.conversation_messages m
+JOIN communications.conversations c ON c.id = m.conversation_id
+JOIN communications.channels ch ON ch.id = c.channel_id
+LEFT JOIN communications.outbox_jobs j ON j.message_id = m.id
+WHERE m.id = @message_id AND m.conversation_id = @conversation_id;
+
+-- name: RetryFailedOutboxJob :execrows
+-- Re-queues a terminally failed outbox job for immediate retry (M20).
+UPDATE communications.outbox_jobs
+SET status = 'pending',
+    attempts = 0,
+    next_attempt_at = @now,
+    completed_at = NULL,
+    last_error = NULL,
+    lease_id = NULL,
+    lease_until = NULL,
+    delivery_attempted_at = NULL
+WHERE id = @id AND status = 'failed';
+
+-- name: ResetFailedMessageDeliveries :many
+-- Resets submission_failed deliveries of a retried outbound message back to
+-- queued (M20).
+UPDATE communications.message_deliveries
+SET status = 'queued',
+    attempts = 0,
+    last_error = NULL
+WHERE message_id = @message_id AND status = 'submission_failed'
+RETURNING id;

@@ -161,19 +161,19 @@ func (e EntraDirectoryHolderKind) Valid() bool {
 
 // Defines values for EntraDirectoryMatchMatchedBy.
 const (
-	EmployeeId        EntraDirectoryMatchMatchedBy = "employeeId"
-	Mail              EntraDirectoryMatchMatchedBy = "mail"
-	UserPrincipalName EntraDirectoryMatchMatchedBy = "userPrincipalName"
+	EntraDirectoryMatchMatchedByEmployeeId        EntraDirectoryMatchMatchedBy = "employeeId"
+	EntraDirectoryMatchMatchedByMail              EntraDirectoryMatchMatchedBy = "mail"
+	EntraDirectoryMatchMatchedByUserPrincipalName EntraDirectoryMatchMatchedBy = "userPrincipalName"
 )
 
 // Valid indicates whether the value is a known member of the EntraDirectoryMatchMatchedBy enum.
 func (e EntraDirectoryMatchMatchedBy) Valid() bool {
 	switch e {
-	case EmployeeId:
+	case EntraDirectoryMatchMatchedByEmployeeId:
 		return true
-	case Mail:
+	case EntraDirectoryMatchMatchedByMail:
 		return true
-	case UserPrincipalName:
+	case EntraDirectoryMatchMatchedByUserPrincipalName:
 		return true
 	default:
 		return false
@@ -272,13 +272,16 @@ func (e EntraOutlookConnectStatus) Valid() bool {
 
 // Defines values for EntraOutlookConnectRequestFeature.
 const (
-	Calendar EntraOutlookConnectRequestFeature = "calendar"
+	EntraOutlookConnectRequestFeatureCalendar EntraOutlookConnectRequestFeature = "calendar"
+	EntraOutlookConnectRequestFeatureMail     EntraOutlookConnectRequestFeature = "mail"
 )
 
 // Valid indicates whether the value is a known member of the EntraOutlookConnectRequestFeature enum.
 func (e EntraOutlookConnectRequestFeature) Valid() bool {
 	switch e {
-	case Calendar:
+	case EntraOutlookConnectRequestFeatureCalendar:
+		return true
+	case EntraOutlookConnectRequestFeatureMail:
 		return true
 	default:
 		return false
@@ -824,14 +827,14 @@ type EntraOutlookConnectStatus string
 
 // EntraOutlookConnectRequest What a connect is for, and where to return once it completes.
 type EntraOutlookConnectRequest struct {
-	// Feature The feature the connect asks Microsoft's consent for; calendar asks for Calendars.ReadWrite.
+	// Feature The feature the connect asks Microsoft's consent for; calendar asks for Calendars.ReadWrite, mail asks for Mail.Send.
 	Feature EntraOutlookConnectRequestFeature `json:"feature"`
 
 	// ReturnTo A path on this installation to return to; anything that is not one becomes /settings/connections.
 	ReturnTo *string `json:"returnTo,omitempty"`
 }
 
-// EntraOutlookConnectRequestFeature The feature the connect asks Microsoft's consent for; calendar asks for Calendars.ReadWrite.
+// EntraOutlookConnectRequestFeature The feature the connect asks Microsoft's consent for; calendar asks for Calendars.ReadWrite, mail asks for Mail.Send.
 type EntraOutlookConnectRequestFeature string
 
 // EntraOutlookConnection The caller's own Outlook connection (Outlook connection design M3, M8). offered says whether the caller may connect at all — false while the switch is off (reason switch_off) or Vantigo knows no Entra account of theirs that the module manages (reason no_account). state is not_connected with no connection, active while it works, reconnect when Microsoft refused it (errorCode says why) and closing once disconnected, which reads as not connected.
@@ -843,7 +846,7 @@ type EntraOutlookConnection struct {
 	// ErrorCode Why Microsoft refused the connection, a code: expired, sign_in_again, mfa, blocked or consent_missing. Present while state is reconnect.
 	ErrorCode *string `json:"errorCode,omitempty"`
 
-	// Features The features the granted scopes allow, such as calendar.
+	// Features The features the granted scopes allow, such as calendar or mail.
 	Features []string                      `json:"features"`
 	Offered  bool                          `json:"offered"`
 	Reason   *EntraOutlookConnectionReason `json:"reason,omitempty"`

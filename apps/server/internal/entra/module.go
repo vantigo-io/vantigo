@@ -150,6 +150,7 @@ func Module() module.Module {
 		IdentityProvisioner: newProvisioner,
 		MailboxCalendar:     newMailboxCalendar,
 		ChannelMailbox:      newChannelMailbox,
+		PersonalMailbox:     newPersonalMailbox,
 		Workers:             workers,
 	}
 }

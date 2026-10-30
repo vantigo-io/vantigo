@@ -164,15 +164,21 @@ type CommunicationsStatsSummaryResponse struct {
 
 // ConversationDetailResponse defines model for ConversationDetailResponse.
 type ConversationDetailResponse struct {
-	AssignedUserId            *openapi_types.UUID `json:"assignedUserId"`
-	CandidateCustomerIds      []int32             `json:"candidateCustomerIds"`
-	ChannelId                 openapi_types.UUID  `json:"channelId"`
-	CreatedAt                 time.Time           `json:"createdAt"`
-	CustomerAssociationSource *string             `json:"customerAssociationSource"`
-	CustomerId                *int32              `json:"customerId"`
-	Id                        openapi_types.UUID  `json:"id"`
-	LastActivityAt            time.Time           `json:"lastActivityAt"`
-	LastReadAt                *time.Time          `json:"lastReadAt"`
+	AssignedUserId       *openapi_types.UUID `json:"assignedUserId"`
+	CandidateCustomerIds []int32             `json:"candidateCustomerIds"`
+
+	// ChannelAddress The email address of the conversation's channel. Always answered; optional in the schema only because the recorded exchanges predate it.
+	ChannelAddress *string `json:"channelAddress"`
+
+	// ChannelDisplayName The display name of the conversation's channel, or null when unset. Always answered; optional in the schema only because the recorded exchanges predate it.
+	ChannelDisplayName        *string            `json:"channelDisplayName"`
+	ChannelId                 openapi_types.UUID `json:"channelId"`
+	CreatedAt                 time.Time          `json:"createdAt"`
+	CustomerAssociationSource *string            `json:"customerAssociationSource"`
+	CustomerId                *int32             `json:"customerId"`
+	Id                        openapi_types.UUID `json:"id"`
+	LastActivityAt            time.Time          `json:"lastActivityAt"`
+	LastReadAt                *time.Time         `json:"lastReadAt"`
 
 	// MaxAttachmentBytes The attachments the conversation's channel takes, in bytes as the files are (a Microsoft 365 channel's): (maxMessageBytes − 16 KiB of headroom) × 100 / 137, rounded down to 0.1 MB — what the composer shows and a staging refused as too large names. null for SMTP. Always answered; optional in the schema only because the recorded exchanges predate it.
 	MaxAttachmentBytes *int64 `json:"maxAttachmentBytes"`
@@ -206,11 +212,17 @@ type ConversationDetailResponse struct {
 			RecipientType string             `json:"recipientType"`
 			Status        string             `json:"status"`
 		} `json:"deliveries"`
-		Direction   string             `json:"direction"`
-		HtmlBody    *string            `json:"htmlBody"`
-		Id          openapi_types.UUID `json:"id"`
-		OccurredAt  time.Time          `json:"occurredAt"`
-		Participant *struct {
+		Direction string `json:"direction"`
+
+		// FromAddress The sender's personal directory email address when sendAs is personal; null otherwise. Always answered; optional in the schema only because the recorded exchanges predate it.
+		FromAddress *string `json:"fromAddress"`
+
+		// FromDisplayName The sender's display name when sendAs is personal; null otherwise. Always answered; optional in the schema only because the recorded exchanges predate it.
+		FromDisplayName *string            `json:"fromDisplayName"`
+		HtmlBody        *string            `json:"htmlBody"`
+		Id              openapi_types.UUID `json:"id"`
+		OccurredAt      time.Time          `json:"occurredAt"`
+		Participant     *struct {
 			Address     string             `json:"address"`
 			ChannelId   openapi_types.UUID `json:"channelId"`
 			ContactId   *int32             `json:"contactId"`
@@ -220,8 +232,14 @@ type ConversationDetailResponse struct {
 
 		// RawDownloadPath Where the message as it was received — the original, RFC 5322, its HTML unsanitised — is downloaded, GET /api/v1/communications/messages/{id}/raw; null when Vantigo keeps no original (every message but an inbound one). Always answered; optional in the schema only because the recorded exchanges predate it.
 		RawDownloadPath *string `json:"rawDownloadPath"`
-		Subject         *string `json:"subject"`
-		TextBody        *string `json:"textBody"`
+
+		// ReplyToAddress The conversation channel's Reply-To address when sendAs is personal; null otherwise. Always answered; optional in the schema only because the recorded exchanges predate it.
+		ReplyToAddress *string `json:"replyToAddress"`
+
+		// SendAs Whether an outbound message was sent from the channel mailbox (channel) or the author's own connected address (personal). Always answered; optional in the schema only because the recorded exchanges predate it.
+		SendAs   *string `json:"sendAs"`
+		Subject  *string `json:"subject"`
+		TextBody *string `json:"textBody"`
 
 		// Unreadable An inbound message Vantigo could not read; its text says so and its original is downloadable. Always answered; optional in the schema only because the recorded exchanges predate it.
 		Unreadable *bool `json:"unreadable"`
@@ -233,7 +251,10 @@ type ConversationDetailResponse struct {
 		DisplayName *string            `json:"displayName"`
 		Id          openapi_types.UUID `json:"id"`
 	} `json:"participants"`
-	PreviewText *string `json:"previewText"`
+
+	// PersonalSender Whether the caller can send from their own connected Microsoft 365 address in this conversation's composer. Always answered; optional in the schema only because the recorded exchanges predate it.
+	PersonalSender *PersonalSenderResponse `json:"personalSender"`
+	PreviewText    *string                 `json:"previewText"`
 
 	// ReplyRecipients Who a reply answers, from the latest inbound message with a sender: replyTo is its sender and canReply whether there is one; replyAllCc the participants its Cc named — without the channel's own address and the sender, distinct by address in any case, at most 100 — and canReplyAll whether there are any.
 	ReplyRecipients struct {
@@ -336,9 +357,12 @@ type CreateConversationRequest struct {
 	HtmlBody       *string                    `json:"htmlBody,omitempty"`
 	ParticipantIds *[]*openapi_types.UUID     `json:"participantIds,omitempty"`
 	Recipients     *[]ChannelRecipientRequest `json:"recipients,omitempty"`
-	Subject        *string                    `json:"subject"`
-	TextBody       *string                    `json:"textBody,omitempty"`
-	To             *[]EmailRecipientRequest   `json:"to,omitempty"`
+
+	// SendFromPersonal When true, sends the initial outbound message from the caller's own connected Microsoft 365 address with Reply-To set to the channel's address.
+	SendFromPersonal *bool                    `json:"sendFromPersonal,omitempty"`
+	Subject          *string                  `json:"subject"`
+	TextBody         *string                  `json:"textBody,omitempty"`
+	To               *[]EmailRecipientRequest `json:"to,omitempty"`
 }
 
 // CreateSuppressionRequest defines model for CreateSuppressionRequest.
@@ -369,13 +393,34 @@ type PaginatedResponseOfConversationListItem struct {
 	Pagination externalRef0.PaginationMetadata `json:"pagination"`
 }
 
+// PersonalSenderResponse Whether the caller can send outbound mail from their own connected Microsoft 365 address (Outlook connection design M20), and the address and display name they would send from.
+type PersonalSenderResponse struct {
+	// Address The caller's directory email address; null when the caller has no enabled directory account or personal sending is unavailable.
+	Address *string `json:"address"`
+
+	// Available True when the caller's Outlook connection is active with the mail scope granted.
+	Available bool `json:"available"`
+
+	// DisplayName The caller's display name in Vantigo; null when address is null.
+	DisplayName *string `json:"displayName"`
+
+	// ErrorCode Why the provider refused the caller's connection (expired, sign_in_again, mfa, blocked, consent_missing) when reason is reconnect; null otherwise.
+	ErrorCode *string `json:"errorCode"`
+
+	// Reason Why available is false (unavailable, no_account, not_connected, reconnect); null while available is true.
+	Reason *string `json:"reason"`
+}
+
 // ReplyRequest defines model for ReplyRequest.
 type ReplyRequest struct {
 	AttachmentIds *[]openapi_types.UUID `json:"attachmentIds,omitempty"`
 	HtmlBody      *string               `json:"htmlBody,omitempty"`
 	ReplyMode     *string               `json:"replyMode,omitempty"`
-	Subject       *string               `json:"subject,omitempty"`
-	TextBody      *string               `json:"textBody,omitempty"`
+
+	// SendFromPersonal When true, sends the reply from the caller's own connected Microsoft 365 address with Reply-To set to the channel's address.
+	SendFromPersonal *bool   `json:"sendFromPersonal,omitempty"`
+	Subject          *string `json:"subject,omitempty"`
+	TextBody         *string `json:"textBody,omitempty"`
 }
 
 // SmtpChannelCredentialRequest defines model for SmtpChannelCredentialRequest.
@@ -601,6 +646,9 @@ type ServerInterface interface {
 	// (POST /api/v1/communications/conversations/{id}/attachments)
 	PostCommunicationsConversationsByIdAttachments(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, params PostCommunicationsConversationsByIdAttachmentsParams)
 
+	// (POST /api/v1/communications/conversations/{id}/messages/{messageId}/retry)
+	PostCommunicationsConversationsByIdMessagesByMessageIdRetry(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, messageId openapi_types.UUID)
+
 	// (POST /api/v1/communications/conversations/{id}/notes)
 	PostCommunicationsConversationsByIdNotes(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
 
@@ -618,6 +666,9 @@ type ServerInterface interface {
 
 	// (GET /api/v1/communications/messages/{id}/raw)
 	GetCommunicationsMessagesByIdRaw(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+
+	// (GET /api/v1/communications/personal-sender)
+	GetCommunicationsPersonalSender(w http.ResponseWriter, r *http.Request)
 	// GetCommunicationsStatsAttention Get communications dashboard attention items
 	// (GET /api/v1/communications/stats/attention)
 	GetCommunicationsStatsAttention(w http.ResponseWriter, r *http.Request)
@@ -1177,6 +1228,41 @@ func (siw *ServerInterfaceWrapper) PostCommunicationsConversationsByIdAttachment
 	handler.ServeHTTP(w, r)
 }
 
+// PostCommunicationsConversationsByIdMessagesByMessageIdRetry operation middleware
+func (siw *ServerInterfaceWrapper) PostCommunicationsConversationsByIdMessagesByMessageIdRetry(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "messageId" -------------
+	var messageId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "messageId", r.PathValue("messageId"), &messageId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "messageId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostCommunicationsConversationsByIdMessagesByMessageIdRetry(w, r, id, messageId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // PostCommunicationsConversationsByIdNotes operation middleware
 func (siw *ServerInterfaceWrapper) PostCommunicationsConversationsByIdNotes(w http.ResponseWriter, r *http.Request) {
 
@@ -1370,6 +1456,20 @@ func (siw *ServerInterfaceWrapper) GetCommunicationsMessagesByIdRaw(w http.Respo
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetCommunicationsMessagesByIdRaw(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetCommunicationsPersonalSender operation middleware
+func (siw *ServerInterfaceWrapper) GetCommunicationsPersonalSender(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetCommunicationsPersonalSender(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1742,12 +1842,14 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/communications/conversations/{id}/ai/customer-suggestion", wrapper.PostCommunicationsConversationsByIdAiCustomerSuggestion)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/communications/conversations/{id}/ai/draft", wrapper.PostCommunicationsConversationsByIdAiDraft)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/communications/conversations/{id}/attachments", wrapper.PostCommunicationsConversationsByIdAttachments)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/communications/conversations/{id}/messages/{messageId}/retry", wrapper.PostCommunicationsConversationsByIdMessagesByMessageIdRetry)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/communications/conversations/{id}/notes", wrapper.PostCommunicationsConversationsByIdNotes)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/communications/conversations/{id}/read", wrapper.PostCommunicationsConversationsByIdRead)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/communications/conversations/{id}/reply", wrapper.PostCommunicationsConversationsByIdReply)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/communications/conversations/{id}/tags/{tagId}", wrapper.DeleteCommunicationsConversationsByIdTagsByTagId)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/communications/conversations/{id}/tags/{tagId}", wrapper.PutCommunicationsConversationsByIdTagsByTagId)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/communications/messages/{id}/raw", wrapper.GetCommunicationsMessagesByIdRaw)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/communications/personal-sender", wrapper.GetCommunicationsPersonalSender)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/communications/stats/attention", wrapper.GetCommunicationsStatsAttention)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/communications/stats/summary", wrapper.GetCommunicationsStatsSummary)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/communications/stats/timeseries", wrapper.GetCommunicationsStatsTimeseries)
@@ -3162,6 +3264,93 @@ func (response PostCommunicationsConversationsByIdAttachments503JSONResponse) Vi
 	return err
 }
 
+type PostCommunicationsConversationsByIdMessagesByMessageIdRetryRequestObject struct {
+	Id        openapi_types.UUID `json:"id"`
+	MessageId openapi_types.UUID `json:"messageId"`
+}
+
+type PostCommunicationsConversationsByIdMessagesByMessageIdRetryResponseObject interface {
+	VisitPostCommunicationsConversationsByIdMessagesByMessageIdRetryResponse(w http.ResponseWriter) error
+}
+
+type PostCommunicationsConversationsByIdMessagesByMessageIdRetry200JSONResponse ConversationMutationResponse
+
+func (response PostCommunicationsConversationsByIdMessagesByMessageIdRetry200JSONResponse) VisitPostCommunicationsConversationsByIdMessagesByMessageIdRetryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostCommunicationsConversationsByIdMessagesByMessageIdRetry401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostCommunicationsConversationsByIdMessagesByMessageIdRetry401JSONResponse) VisitPostCommunicationsConversationsByIdMessagesByMessageIdRetryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostCommunicationsConversationsByIdMessagesByMessageIdRetry403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostCommunicationsConversationsByIdMessagesByMessageIdRetry403JSONResponse) VisitPostCommunicationsConversationsByIdMessagesByMessageIdRetryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostCommunicationsConversationsByIdMessagesByMessageIdRetry404Response struct {
+}
+
+func (response PostCommunicationsConversationsByIdMessagesByMessageIdRetry404Response) VisitPostCommunicationsConversationsByIdMessagesByMessageIdRetryResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostCommunicationsConversationsByIdMessagesByMessageIdRetry409JSONResponse CommunicationErrorResponse
+
+func (response PostCommunicationsConversationsByIdMessagesByMessageIdRetry409JSONResponse) VisitPostCommunicationsConversationsByIdMessagesByMessageIdRetryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostCommunicationsConversationsByIdMessagesByMessageIdRetry422JSONResponse CommunicationErrorResponse
+
+func (response PostCommunicationsConversationsByIdMessagesByMessageIdRetry422JSONResponse) VisitPostCommunicationsConversationsByIdMessagesByMessageIdRetryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type PostCommunicationsConversationsByIdNotesRequestObject struct {
 	Id   openapi_types.UUID `json:"id"`
 	Body *PostCommunicationsConversationsByIdNotesJSONRequestBody
@@ -3591,6 +3780,55 @@ func (response GetCommunicationsMessagesByIdRaw503JSONResponse) VisitGetCommunic
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCommunicationsPersonalSenderRequestObject struct {
+}
+
+type GetCommunicationsPersonalSenderResponseObject interface {
+	VisitGetCommunicationsPersonalSenderResponse(w http.ResponseWriter) error
+}
+
+type GetCommunicationsPersonalSender200JSONResponse PersonalSenderResponse
+
+func (response GetCommunicationsPersonalSender200JSONResponse) VisitGetCommunicationsPersonalSenderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCommunicationsPersonalSender401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetCommunicationsPersonalSender401JSONResponse) VisitGetCommunicationsPersonalSenderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCommunicationsPersonalSender403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetCommunicationsPersonalSender403JSONResponse) VisitGetCommunicationsPersonalSenderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -4187,6 +4425,9 @@ type StrictServerInterface interface {
 	// (POST /api/v1/communications/conversations/{id}/attachments)
 	PostCommunicationsConversationsByIdAttachments(ctx context.Context, request PostCommunicationsConversationsByIdAttachmentsRequestObject) (PostCommunicationsConversationsByIdAttachmentsResponseObject, error)
 
+	// (POST /api/v1/communications/conversations/{id}/messages/{messageId}/retry)
+	PostCommunicationsConversationsByIdMessagesByMessageIdRetry(ctx context.Context, request PostCommunicationsConversationsByIdMessagesByMessageIdRetryRequestObject) (PostCommunicationsConversationsByIdMessagesByMessageIdRetryResponseObject, error)
+
 	// (POST /api/v1/communications/conversations/{id}/notes)
 	PostCommunicationsConversationsByIdNotes(ctx context.Context, request PostCommunicationsConversationsByIdNotesRequestObject) (PostCommunicationsConversationsByIdNotesResponseObject, error)
 
@@ -4204,6 +4445,9 @@ type StrictServerInterface interface {
 
 	// (GET /api/v1/communications/messages/{id}/raw)
 	GetCommunicationsMessagesByIdRaw(ctx context.Context, request GetCommunicationsMessagesByIdRawRequestObject) (GetCommunicationsMessagesByIdRawResponseObject, error)
+
+	// (GET /api/v1/communications/personal-sender)
+	GetCommunicationsPersonalSender(ctx context.Context, request GetCommunicationsPersonalSenderRequestObject) (GetCommunicationsPersonalSenderResponseObject, error)
 	// GetCommunicationsStatsAttention Get communications dashboard attention items
 	// (GET /api/v1/communications/stats/attention)
 	GetCommunicationsStatsAttention(ctx context.Context, request GetCommunicationsStatsAttentionRequestObject) (GetCommunicationsStatsAttentionResponseObject, error)
@@ -4748,6 +4992,33 @@ func (sh *strictHandler) PostCommunicationsConversationsByIdAttachments(w http.R
 	}
 }
 
+// PostCommunicationsConversationsByIdMessagesByMessageIdRetry operation middleware
+func (sh *strictHandler) PostCommunicationsConversationsByIdMessagesByMessageIdRetry(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, messageId openapi_types.UUID) {
+	var request PostCommunicationsConversationsByIdMessagesByMessageIdRetryRequestObject
+
+	request.Id = id
+	request.MessageId = messageId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostCommunicationsConversationsByIdMessagesByMessageIdRetry(ctx, request.(PostCommunicationsConversationsByIdMessagesByMessageIdRetryRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostCommunicationsConversationsByIdMessagesByMessageIdRetry")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostCommunicationsConversationsByIdMessagesByMessageIdRetryResponseObject); ok {
+		if err := validResponse.VisitPostCommunicationsConversationsByIdMessagesByMessageIdRetryResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // PostCommunicationsConversationsByIdNotes operation middleware
 func (sh *strictHandler) PostCommunicationsConversationsByIdNotes(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
 	var request PostCommunicationsConversationsByIdNotesRequestObject
@@ -4920,6 +5191,30 @@ func (sh *strictHandler) GetCommunicationsMessagesByIdRaw(w http.ResponseWriter,
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetCommunicationsMessagesByIdRawResponseObject); ok {
 		if err := validResponse.VisitGetCommunicationsMessagesByIdRawResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetCommunicationsPersonalSender operation middleware
+func (sh *strictHandler) GetCommunicationsPersonalSender(w http.ResponseWriter, r *http.Request) {
+	var request GetCommunicationsPersonalSenderRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetCommunicationsPersonalSender(ctx, request.(GetCommunicationsPersonalSenderRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetCommunicationsPersonalSender")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetCommunicationsPersonalSenderResponseObject); ok {
+		if err := validResponse.VisitGetCommunicationsPersonalSenderResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

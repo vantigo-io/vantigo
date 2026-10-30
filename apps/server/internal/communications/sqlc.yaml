@@ -8,6 +8,7 @@ sql:
       - ../db/migrations/00091_communications_channel_settings.sql
       - ../db/migrations/00092_communications_inbound.sql
       - ../db/migrations/00094_communications_mailbox_marks.sql
+      - ../db/migrations/00095_communications_personal_sending.sql
     queries: queries
     gen:
       go:

@@ -370,18 +370,19 @@ func (s *server) GetCommunicationsConversationsById(ctx context.Context, req gen
 		return nil, fmt.Errorf("communications: get conversation read state: %w", err)
 	}
 
-	messages, err := s.conversationMessagesOf(ctx, q, req.Id)
+	channelDetail, err := q.GetConversationChannelDetail(ctx, req.Id)
+	if err != nil {
+		return nil, fmt.Errorf("communications: get conversation channel detail: %w", err)
+	}
+
+	messages, err := s.conversationMessagesOf(ctx, q, req.Id, channelDetail.Address)
 	if err != nil {
 		return nil, err
 	}
 
 	// The channel's size budget (M13), and the attachments it takes, which
 	// the composer shows beside them: both null for SMTP.
-	provider, err := q.GetChannelProviderForConversation(ctx, req.Id)
-	if err != nil {
-		return nil, fmt.Errorf("communications: get conversation channel provider: %w", err)
-	}
-	budget, err := s.mailBudget(ctx, provider)
+	budget, err := s.mailBudget(ctx, channelDetail.Provider)
 	if err != nil {
 		return nil, err
 	}
@@ -395,6 +396,11 @@ func (s *server) GetCommunicationsConversationsById(ctx context.Context, req gen
 		return nil, err
 	}
 
+	personalSender, err := s.personalSenderOf(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	resp := gen.ConversationDetailResponse{
 		Id: conv.ID, ChannelId: conv.ChannelID, Subject: conv.Subject, Status: conv.Status,
 		AssignedUserId: conv.AssignedUserID, CustomerId: conv.CustomerID,
@@ -404,6 +410,8 @@ func (s *server) GetCommunicationsConversationsById(ctx context.Context, req gen
 		CreatedAt: conv.CreatedAt, Messages: messages, Participants: batches.participants[req.Id],
 		Tags: batches.tags[req.Id], LastReadAt: lastReadAt, ReplyRecipients: replyRecipients,
 		MaxMessageBytes: budget, MaxAttachmentBytes: allowance,
+		ChannelAddress: apicommon.Ptr(channelDetail.Address), ChannelDisplayName: channelDetail.DisplayName,
+		PersonalSender: personalSender,
 	}
 	return gen.GetCommunicationsConversationsById200JSONResponse(resp), nil
 }
@@ -411,7 +419,7 @@ func (s *server) GetCommunicationsConversationsById(ctx context.Context, req gen
 // conversationMessagesOf builds GetConversation's Messages array: ordered
 // OccurredAt ascending (from the query itself), each with its attachments
 // and deliveries batch-loaded by message id (inventory §1.2's `ToMessage`).
-func (s *server) conversationMessagesOf(ctx context.Context, q *store.Queries, conversationID uuid.UUID) ([]struct {
+func (s *server) conversationMessagesOf(ctx context.Context, q *store.Queries, conversationID uuid.UUID, channelAddress string) ([]struct {
 	Attachments []struct {
 		ContentId         *string            `json:"contentId"`
 		ContentType       string             `json:"contentType"`
@@ -436,11 +444,13 @@ func (s *server) conversationMessagesOf(ctx context.Context, q *store.Queries, c
 		RecipientType string             `json:"recipientType"`
 		Status        string             `json:"status"`
 	} `json:"deliveries"`
-	Direction   string             `json:"direction"`
-	HtmlBody    *string            `json:"htmlBody"`
-	Id          openapi_types.UUID `json:"id"`
-	OccurredAt  time.Time          `json:"occurredAt"`
-	Participant *struct {
+	Direction       string             `json:"direction"`
+	FromAddress     *string            `json:"fromAddress"`
+	FromDisplayName *string            `json:"fromDisplayName"`
+	HtmlBody        *string            `json:"htmlBody"`
+	Id              openapi_types.UUID `json:"id"`
+	OccurredAt      time.Time          `json:"occurredAt"`
+	Participant     *struct {
 		Address     string             `json:"address"`
 		ChannelId   openapi_types.UUID `json:"channelId"`
 		ContactId   *int32             `json:"contactId"`
@@ -448,6 +458,8 @@ func (s *server) conversationMessagesOf(ctx context.Context, q *store.Queries, c
 		Id          openapi_types.UUID `json:"id"`
 	} `json:"participant"`
 	RawDownloadPath *string `json:"rawDownloadPath"`
+	ReplyToAddress  *string `json:"replyToAddress"`
+	SendAs          *string `json:"sendAs"`
 	Subject         *string `json:"subject"`
 	TextBody        *string `json:"textBody"`
 	Unreadable      *bool   `json:"unreadable"`
@@ -535,6 +547,10 @@ func (s *server) conversationMessagesOf(ctx context.Context, q *store.Queries, c
 		}{}
 	}
 	for _, d := range deliveryRows {
+		var deliveryErr *string
+		if d.Error != "" {
+			deliveryErr = apicommon.Ptr(d.Error)
+		}
 		deliveriesByMessage[d.MessageID] = append(deliveriesByMessage[d.MessageID], struct {
 			AcceptedAt    *time.Time         `json:"acceptedAt"`
 			Attempts      int32              `json:"attempts"`
@@ -545,7 +561,7 @@ func (s *server) conversationMessagesOf(ctx context.Context, q *store.Queries, c
 			Status        string             `json:"status"`
 		}{
 			AcceptedAt: d.AcceptedAt, Attempts: d.Attempts, Destination: d.RecipientAddress,
-			Error: nil, Id: d.ID, RecipientType: d.RecipientType, Status: d.Status,
+			Error: deliveryErr, Id: d.ID, RecipientType: d.RecipientType, Status: d.Status,
 		})
 	}
 
@@ -574,11 +590,13 @@ func (s *server) conversationMessagesOf(ctx context.Context, q *store.Queries, c
 			RecipientType string             `json:"recipientType"`
 			Status        string             `json:"status"`
 		} `json:"deliveries"`
-		Direction   string             `json:"direction"`
-		HtmlBody    *string            `json:"htmlBody"`
-		Id          openapi_types.UUID `json:"id"`
-		OccurredAt  time.Time          `json:"occurredAt"`
-		Participant *struct {
+		Direction       string             `json:"direction"`
+		FromAddress     *string            `json:"fromAddress"`
+		FromDisplayName *string            `json:"fromDisplayName"`
+		HtmlBody        *string            `json:"htmlBody"`
+		Id              openapi_types.UUID `json:"id"`
+		OccurredAt      time.Time          `json:"occurredAt"`
+		Participant     *struct {
 			Address     string             `json:"address"`
 			ChannelId   openapi_types.UUID `json:"channelId"`
 			ContactId   *int32             `json:"contactId"`
@@ -586,6 +604,8 @@ func (s *server) conversationMessagesOf(ctx context.Context, q *store.Queries, c
 			Id          openapi_types.UUID `json:"id"`
 		} `json:"participant"`
 		RawDownloadPath *string `json:"rawDownloadPath"`
+		ReplyToAddress  *string `json:"replyToAddress"`
+		SendAs          *string `json:"sendAs"`
 		Subject         *string `json:"subject"`
 		TextBody        *string `json:"textBody"`
 		Unreadable      *bool   `json:"unreadable"`
@@ -603,6 +623,18 @@ func (s *server) conversationMessagesOf(ctx context.Context, q *store.Queries, c
 		if r.ParticipantID != nil {
 			p := newParticipantJSON(*r.ParticipantID, *r.ParticipantChannelID, *r.ParticipantAddress, r.ParticipantDisplayName, r.ParticipantContactID)
 			participant = &p
+		}
+		var sendAs *string
+		var fromAddress *string
+		var fromDisplayName *string
+		var replyToAddress *string
+		if r.Direction == "outbound" {
+			sendAs = apicommon.Ptr(r.SendAs)
+			if r.SendAs == "personal" {
+				fromAddress = r.FromAddress
+				fromDisplayName = r.FromDisplayName
+				replyToAddress = apicommon.Ptr(channelAddress)
+			}
 		}
 		out = append(out, struct {
 			Attachments []struct {
@@ -629,11 +661,13 @@ func (s *server) conversationMessagesOf(ctx context.Context, q *store.Queries, c
 				RecipientType string             `json:"recipientType"`
 				Status        string             `json:"status"`
 			} `json:"deliveries"`
-			Direction   string             `json:"direction"`
-			HtmlBody    *string            `json:"htmlBody"`
-			Id          openapi_types.UUID `json:"id"`
-			OccurredAt  time.Time          `json:"occurredAt"`
-			Participant *struct {
+			Direction       string             `json:"direction"`
+			FromAddress     *string            `json:"fromAddress"`
+			FromDisplayName *string            `json:"fromDisplayName"`
+			HtmlBody        *string            `json:"htmlBody"`
+			Id              openapi_types.UUID `json:"id"`
+			OccurredAt      time.Time          `json:"occurredAt"`
+			Participant     *struct {
 				Address     string             `json:"address"`
 				ChannelId   openapi_types.UUID `json:"channelId"`
 				ContactId   *int32             `json:"contactId"`
@@ -641,6 +675,8 @@ func (s *server) conversationMessagesOf(ctx context.Context, q *store.Queries, c
 				Id          openapi_types.UUID `json:"id"`
 			} `json:"participant"`
 			RawDownloadPath *string `json:"rawDownloadPath"`
+			ReplyToAddress  *string `json:"replyToAddress"`
+			SendAs          *string `json:"sendAs"`
 			Subject         *string `json:"subject"`
 			TextBody        *string `json:"textBody"`
 			Unreadable      *bool   `json:"unreadable"`
@@ -650,9 +686,62 @@ func (s *server) conversationMessagesOf(ctx context.Context, q *store.Queries, c
 			Id: r.ID, OccurredAt: r.OccurredAt, Participant: participant, Subject: r.Subject, TextBody: r.TextBody,
 			AutoSubmitted: apicommon.Ptr(r.AutoSubmitted), Unreadable: apicommon.Ptr(r.Unreadable),
 			RawDownloadPath: rawDownloadPath(r.ID, r.HasRawPayload),
+			FromAddress:     fromAddress, FromDisplayName: fromDisplayName, ReplyToAddress: replyToAddress, SendAs: sendAs,
 		})
 	}
 	return out, nil
+}
+
+// personalSenderOf reads the caller's personal mail capability and directory
+// information outside any transaction (M20).
+func (s *server) personalSenderOf(ctx context.Context) (*gen.PersonalSenderResponse, error) {
+	status, err := personalMailStatus(ctx, s.deps.PersonalMailbox)
+	if err != nil {
+		return nil, err
+	}
+	callerID, err := callerUserID(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var displayName *string
+	if status.Address != "" && s.deps.Users != nil {
+		user, err := s.deps.Users.User(ctx, callerID)
+		if err != nil {
+			return nil, fmt.Errorf("communications: get user directory entry: %w", err)
+		}
+		if user != nil && user.DisplayName != "" {
+			displayName = apicommon.Ptr(user.DisplayName)
+		}
+	}
+	var address *string
+	if status.Address != "" {
+		address = apicommon.Ptr(status.Address)
+	}
+	var reason *string
+	if status.Reason != "" {
+		reason = apicommon.Ptr(status.Reason)
+	}
+	var errorCode *string
+	if status.ErrorCode != "" {
+		errorCode = apicommon.Ptr(status.ErrorCode)
+	}
+	return &gen.PersonalSenderResponse{
+		Address:     address,
+		Available:   status.Available,
+		DisplayName: displayName,
+		ErrorCode:   errorCode,
+		Reason:      reason,
+	}, nil
+}
+
+// GetCommunicationsPersonalSender Whether the signed-in caller can send outbound mail from their own connected Microsoft 365 address
+// (GET /api/v1/communications/personal-sender)
+func (s *server) GetCommunicationsPersonalSender(ctx context.Context, _ gen.GetCommunicationsPersonalSenderRequestObject) (gen.GetCommunicationsPersonalSenderResponseObject, error) {
+	resp, err := s.personalSenderOf(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return gen.GetCommunicationsPersonalSender200JSONResponse(*resp), nil
 }
 
 // PostCommunicationsConversationsByIdRead Mark a conversation read

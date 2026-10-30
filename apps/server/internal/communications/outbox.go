@@ -136,6 +136,8 @@ func outboxTerminalCode(err error) string {
 		return "bcc_unsupported"
 	case errors.Is(err, errChannelMisconfigured):
 		return "channel_misconfigured"
+	case errors.Is(err, contracts.ErrConnectionNeeded):
+		return "connection_needed"
 	}
 	return ""
 }
@@ -464,6 +466,12 @@ func (w *OutboxWorker) deliver(ctx context.Context, job store.CommunicationsOutb
 	if err != nil {
 		return err
 	}
+	if message.SendAs == "personal" {
+		if err := w.sendThroughPersonalMailbox(ctx, message, envelope); err != nil {
+			return err
+		}
+		return w.complete(ctx, job, leaseID, sendable)
+	}
 	if message.ChannelProvider != providerSMTP {
 		if err := w.sendThroughMailbox(ctx, message, envelope); err != nil {
 			return err
@@ -517,6 +525,39 @@ func (w *OutboxWorker) sendThroughMailbox(ctx context.Context, message store.Get
 	defer cancel()
 	if err := mailboxSend(sendCtx, provider, mailbox, mime, envelope.Bcc); err != nil {
 		return fmt.Errorf("communications: send outbound message through the mailbox: %w", err)
+	}
+	return nil
+}
+
+// sendThroughPersonalMailbox is step 8 for a message sent from the author's own
+// connected Microsoft 365 address (M20): the envelope rendered as MIME from
+// the author's directory address, with Reply-To set to the channel's address
+// and display name, dispatched via PersonalMailbox.Send under the author's user ID.
+func (w *OutboxWorker) sendThroughPersonalMailbox(ctx context.Context, message store.GetOutboundMessageForSendRow, envelope mail.Outbound) error {
+	if message.AuthorUserID == nil {
+		return fmt.Errorf("communications: personal send lacks author_user_id: %w", contracts.ErrConnectionNeeded)
+	}
+	if message.FromAddress == nil || *message.FromAddress == "" {
+		return fmt.Errorf("communications: personal send lacks from_address: %w", contracts.ErrConnectionNeeded)
+	}
+	provider := w.deps.PersonalMailbox
+	if provider == nil {
+		return fmt.Errorf("communications: no personal mailbox provider wired: %w", contracts.ErrConnectionNeeded)
+	}
+	fromAddress := *message.FromAddress
+	var opts []mail.RenderOption
+	if len(envelope.Bcc) > 0 {
+		opts = append(opts, mail.WithBcc())
+	}
+	mime, err := mail.RenderMIME(fromAddress, envelope, opts...)
+	if err != nil {
+		return err
+	}
+	sendCtx, cancel := context.WithTimeout(ctx, outboxSendTimeout)
+	defer cancel()
+	authorCtx := contracts.AsUser(sendCtx, *message.AuthorUserID)
+	if err := personalMailboxSend(authorCtx, provider, mime, envelope.Bcc); err != nil {
+		return fmt.Errorf("communications: send outbound message through personal mailbox: %w", err)
 	}
 	return nil
 }
@@ -797,7 +838,15 @@ func (w *OutboxWorker) envelope(ctx context.Context, message store.GetOutboundMe
 		// internal/mail adds the angle brackets.
 		MessageID: hexN(message.ID) + "@vantigo.invalid",
 	}
-	if message.ChannelDisplayName != nil {
+	if message.SendAs == "personal" {
+		if message.FromDisplayName != nil {
+			out.DisplayName = *message.FromDisplayName
+		}
+		out.ReplyTo = message.ChannelAddress
+		if message.ChannelDisplayName != nil {
+			out.ReplyToName = *message.ChannelDisplayName
+		}
+	} else if message.ChannelDisplayName != nil {
 		out.DisplayName = *message.ChannelDisplayName
 	}
 	switch {

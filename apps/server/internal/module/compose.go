@@ -375,6 +375,14 @@ func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.
 		return nil, err
 	}
 
+	// The personal mailboxes (contracts.PersonalMailbox, Outlook connection
+	// design M20) resolve after the channel mailbox, by the helper Workers
+	// uses too: Communications' outbox sends through them in worker mode as
+	// the API does.
+	if deps, err = withPersonalMailbox(deps, mods); err != nil {
+		return nil, err
+	}
+
 	// The calendar's busy time (contracts.CalendarBusy, calendar Outlook sync
 	// design O9.8) resolves last, after the mailbox calendar: its provider,
 	// the calendar's server, reads the rest of Deps while it is built.

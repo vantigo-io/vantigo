@@ -214,11 +214,11 @@ func TestDirectory_Matches(t *testing.T) {
 		enabled bool
 	}
 	wants := []want{
-		{anne, anneAccount, []gen.EntraDirectoryMatchMatchedBy{gen.Mail, gen.UserPrincipalName}, true},
-		{bjorn, bjornAccount, []gen.EntraDirectoryMatchMatchedBy{gen.UserPrincipalName}, true},
-		{carl, carlAccount, []gen.EntraDirectoryMatchMatchedBy{gen.EmployeeId}, true},
-		{ivar, ivarAccount, []gen.EntraDirectoryMatchMatchedBy{gen.Mail}, false},
-		{kjell, kjellAccount, []gen.EntraDirectoryMatchMatchedBy{gen.Mail}, true},
+		{anne, anneAccount, []gen.EntraDirectoryMatchMatchedBy{gen.EntraDirectoryMatchMatchedByMail, gen.EntraDirectoryMatchMatchedByUserPrincipalName}, true},
+		{bjorn, bjornAccount, []gen.EntraDirectoryMatchMatchedBy{gen.EntraDirectoryMatchMatchedByUserPrincipalName}, true},
+		{carl, carlAccount, []gen.EntraDirectoryMatchMatchedBy{gen.EntraDirectoryMatchMatchedByEmployeeId}, true},
+		{ivar, ivarAccount, []gen.EntraDirectoryMatchMatchedBy{gen.EntraDirectoryMatchMatchedByMail}, false},
+		{kjell, kjellAccount, []gen.EntraDirectoryMatchMatchedBy{gen.EntraDirectoryMatchMatchedByMail}, true},
 	}
 	if len(got.Matches) != len(wants) {
 		t.Fatalf("matches: %+v, want %d", got.Matches, len(wants))
@@ -281,7 +281,7 @@ func TestDirectory_MatchesLeaveOutGuestsAndOwnMappings(t *testing.T) {
 		t.Fatalf("matches: %+v, want Mona's and Nils's of 3 candidates, none ambiguous", got)
 	}
 	if m := got.Matches[0]; m.UserId != mona || m.Account.ObjectId.String() != monaAccount || m.Account.Guest != nil ||
-		!slices.Equal(m.MatchedBy, []gen.EntraDirectoryMatchMatchedBy{gen.UserPrincipalName}) {
+		!slices.Equal(m.MatchedBy, []gen.EntraDirectoryMatchMatchedBy{gen.EntraDirectoryMatchMatchedByUserPrincipalName}) {
 		t.Errorf("the first match: %+v, want Mona's member account by principal name", m)
 	}
 	if m := got.Matches[1]; m.UserId != nils || m.Account.ObjectId.String() != nilsAccount {

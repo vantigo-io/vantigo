@@ -474,6 +474,11 @@ func (c *graphClient) postAs(ctx context.Context, src tokenSource, path string, 
 	return c.doAs(ctx, src, http.MethodPost, path, body, into, opts...)
 }
 
+// postRawAs is postRaw with src's token.
+func (c *graphClient) postRawAs(ctx context.Context, src tokenSource, path, contentType string, data []byte, into any, opts ...callOption) error {
+	return c.sendAs(ctx, src, http.MethodPost, path, &payload{data: data, contentType: contentType}, into, opts...)
+}
+
 // delAs is del with src's token.
 func (c *graphClient) delAs(ctx context.Context, src tokenSource, path string, opts ...callOption) error {
 	return c.doAs(ctx, src, http.MethodDelete, path, nil, nil, opts...)

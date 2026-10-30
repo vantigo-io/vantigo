@@ -148,7 +148,8 @@ func (q *Queries) FinishOutboxJob(ctx context.Context, arg FinishOutboxJobParams
 }
 
 const getOutboundMessageForSend = `-- name: GetOutboundMessageForSend :one
-SELECT m.id, m.subject, m.text_body, m.html_body, m.channel_metadata_json,
+SELECT m.id, m.author_user_id, m.send_as, m.from_address, m.from_display_name,
+       m.subject, m.text_body, m.html_body, m.channel_metadata_json,
        c.subject AS conversation_subject,
        ch.type AS channel_type, ch.address AS channel_address,
        ch.display_name AS channel_display_name,
@@ -164,6 +165,10 @@ WHERE m.id = $1
 
 type GetOutboundMessageForSendRow struct {
 	ID                         uuid.UUID
+	AuthorUserID               *uuid.UUID
+	SendAs                     string
+	FromAddress                *string
+	FromDisplayName            *string
 	Subject                    *string
 	TextBody                   *string
 	HtmlBody                   *string
@@ -197,6 +202,10 @@ func (q *Queries) GetOutboundMessageForSend(ctx context.Context, id uuid.UUID) (
 	var i GetOutboundMessageForSendRow
 	err := row.Scan(
 		&i.ID,
+		&i.AuthorUserID,
+		&i.SendAs,
+		&i.FromAddress,
+		&i.FromDisplayName,
 		&i.Subject,
 		&i.TextBody,
 		&i.HtmlBody,

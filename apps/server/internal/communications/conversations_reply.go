@@ -15,8 +15,10 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/vantigo-io/vantigo/server/internal/apicommon"
 	"github.com/vantigo-io/vantigo/server/internal/communications/gen"
 	"github.com/vantigo-io/vantigo/server/internal/communications/store"
+	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/db"
 )
 
@@ -424,6 +426,36 @@ func (s *server) queueReply(ctx context.Context, p replyQueueParams) (gen.PostCo
 		}
 	}
 
+	sendFromPersonal := p.body.SendFromPersonal != nil && *p.body.SendFromPersonal
+	sendAs := "channel"
+	var fromAddress *string
+	var fromDisplayName *string
+	if sendFromPersonal {
+		status, err := personalMailStatus(ctx, s.deps.PersonalMailbox)
+		if err != nil {
+			return nil, err
+		}
+		if !status.Available {
+			return gen.PostCommunicationsConversationsByIdReply409JSONResponse(flatErrorBody(
+				"connection_needed", "Your personal Outlook connection is not available. Please connect or reconnect Outlook before sending from your address.")), nil
+		}
+		sizes := make([]int64, 0, len(stagedRows))
+		for _, row := range stagedRows {
+			sizes = append(sizes, row.SizeBytes)
+		}
+		if mailEstimate(sizes, p.body.TextBody, p.body.HtmlBody) > contracts.MaxPersonalMessageBytes {
+			return gen.PostCommunicationsConversationsByIdReply422JSONResponse(flatErrorBody(
+				"too_large", "The message and its attachments are larger than your personal mailbox can send.")), nil
+		}
+		sendAs = "personal"
+		fromAddress = apicommon.Ptr(status.Address)
+		if s.deps.Users != nil {
+			if u, err := s.deps.Users.User(ctx, p.caller); err == nil && u != nil && u.DisplayName != "" {
+				fromDisplayName = apicommon.Ptr(u.DisplayName)
+			}
+		}
+	}
+
 	// Step 9: suppression check -> 422 recipient_suppressed +
 	// fields.recipients. destinations is recipients+ccAddresses,
 	// normalised (uppercased, D7) and deduplicated exactly like
@@ -475,6 +507,7 @@ func (s *server) queueReply(ctx context.Context, p replyQueueParams) (gen.PostCo
 			ID: messageID, ConversationID: p.conversationID, Direction: "outbound", AuthorUserID: &p.caller,
 			Subject: p.messageSubject, TextBody: p.body.TextBody, HtmlBody: p.body.HtmlBody,
 			ChannelMetadataJson: p.metadata, OccurredAt: p.now, CreatedAt: p.now, RfcMessageID: &rfcMessageID,
+			SendAs: sendAs, FromAddress: fromAddress, FromDisplayName: fromDisplayName,
 		}); err != nil {
 			return err
 		}
