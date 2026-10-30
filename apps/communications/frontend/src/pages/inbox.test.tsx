@@ -9,6 +9,9 @@ import { InboxPage } from "./inbox";
 const mocks = vi.hoisted(() => ({
   fetchConversations: vi.fn(),
   fetchConversation: vi.fn(),
+  fetchPersonalSender: vi.fn(),
+  createConversation: vi.fn(),
+  retryMessage: vi.fn(),
   replyToConversation: vi.fn(),
   stageConversationAttachment: vi.fn(),
   fetchInlineImage: vi.fn(),
@@ -54,11 +57,20 @@ const conversation = (id: string, subject: string) => ({
   tags: [],
 });
 
-const detail = (id: string, subject: string) => ({
+const detail = (id: string, subject: string, overrides: Record<string, unknown> = {}) => ({
   ...conversation(id, subject),
   suggestedCustomerConfidence: null,
   suggestedCustomerReasoning: null,
   createdAt: "2026-01-01T00:00:00Z",
+  channelAddress: "post@firma.no",
+  channelDisplayName: "Support",
+  personalSender: {
+    available: true,
+    reason: null,
+    errorCode: null,
+    address: "kari@nordlys.no",
+    displayName: "Kari Nordmann",
+  },
   messages: [
     {
       id: "m-1",
@@ -76,6 +88,7 @@ const detail = (id: string, subject: string) => ({
   ],
   lastReadAt: null,
   replyRecipients: { canReply: true, canReplyAll: false, replyTo: participant.address, replyAllCc: [] },
+  ...overrides,
 });
 
 vi.mock("../api/conversations", async (importOriginal) => {
@@ -90,6 +103,12 @@ vi.mock("../api/conversations", async (importOriginal) => {
       queryFn: () => mocks.fetchConversation(id),
       enabled: Boolean(id),
     }),
+    personalSenderQueryOptions: () => ({
+      queryKey: ["communications-personal-sender"],
+      queryFn: () => mocks.fetchPersonalSender(),
+    }),
+    createConversation: mocks.createConversation,
+    retryMessage: mocks.retryMessage,
     tagsQueryOptions: () => ({
       queryKey: ["communication-tags"],
       queryFn: () => Promise.resolve([{ id: "tag-1", name: "Billing", color: null }]),
@@ -147,11 +166,11 @@ vi.mock("@tanstack/react-router", () => ({
   useNavigate: () => mocks.navigate,
 }));
 
-const renderPage = () =>
+const renderPage = (props?: Parameters<typeof InboxPage>[0]) =>
   render(
     <MantineProvider env="test">
       <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-        <InboxPage />
+        <InboxPage {...props} />
       </QueryClientProvider>
     </MantineProvider>,
   );
@@ -164,6 +183,17 @@ afterEach(() => {
 beforeEach(() => {
   mocks.fetchConversations.mockReset();
   mocks.fetchConversation.mockReset();
+  mocks.fetchPersonalSender.mockReset().mockResolvedValue({
+    available: true,
+    reason: null,
+    errorCode: null,
+    address: "kari@nordlys.no",
+    displayName: "Kari Nordmann",
+  });
+  mocks.createConversation
+    .mockReset()
+    .mockResolvedValue({ conversationId: "c-new", messageId: "m-new", status: "sent" });
+  mocks.retryMessage.mockReset().mockResolvedValue(undefined);
   mocks.replyToConversation.mockReset().mockResolvedValue({ conversationId: "c-1", messageId: "m-2", status: "sent" });
   mocks.stageConversationAttachment.mockReset();
   mocks.fetchInlineImage.mockReset().mockResolvedValue(null);
@@ -541,6 +571,156 @@ describe("inbox", () => {
       await open([], { canReply: false, canReplyAll: false, replyTo: null, replyAllCc: [] });
       expect(screen.getByText("Det finnes ingen melding fra kunden å svare på ennå.")).toBeTruthy();
       expect(screen.getByRole("button", { name: "Send svar" })).toBeDisabled();
+    });
+
+    it("offers to send from personal address and sends flag when checked", async () => {
+      mocks.editorText = "Reply from my personal mailbox.";
+      await open([inbound()]);
+      const checkbox = screen.getByLabelText("Send from my address (kari@nordlys.no)");
+      expect(checkbox).toBeTruthy();
+      fireEvent.click(checkbox);
+      fireEvent.click(screen.getByRole("button", { name: "Send reply" }));
+      await waitFor(() =>
+        expect(mocks.replyToConversation).toHaveBeenCalledWith(
+          "c-1",
+          expect.objectContaining({ sendFromPersonal: true }),
+          "reply-idempotency-key",
+        ),
+      );
+    });
+
+    it("displays personal sender attribution on message", async () => {
+      await open([
+        {
+          id: "m-out",
+          direction: "outbound" as const,
+          participant: null,
+          authorUserId: "u-1",
+          subject: "Personal send",
+          textBody: "Sent from my own account",
+          htmlBody: null,
+          occurredAt: "2026-01-01T00:00:00Z",
+          createdAt: "2026-01-01T00:00:00Z",
+          attachments: [],
+          deliveries: [],
+          sendAs: "personal",
+          fromAddress: "kari@nordlys.no",
+          fromDisplayName: "Kari Nordmann",
+          replyToAddress: "post@firma.no",
+        },
+      ]);
+      expect(screen.getByText("From: Kari Nordmann <kari@nordlys.no> · Reply-To: post@firma.no")).toBeTruthy();
+    });
+
+    it("displays connection_needed alert and allows retrying", async () => {
+      const connectionButton = vi.fn(() => <button type="button">Reconnect Outlook</button>);
+      mocks.fetchConversations.mockResolvedValue(page([conversation("c-1", "Test thread")]));
+      mocks.fetchConversation.mockResolvedValue(
+        detail("c-1", "Test thread", {
+          messages: [
+            {
+              id: "m-out",
+              direction: "outbound" as const,
+              participant: null,
+              authorUserId: "u-1",
+              subject: "Failed send",
+              textBody: "This failed",
+              htmlBody: null,
+              occurredAt: "2026-01-01T00:00:00Z",
+              createdAt: "2026-01-01T00:00:00Z",
+              attachments: [],
+              deliveries: [
+                {
+                  id: "d-1",
+                  destination: "customer@example.com",
+                  recipientType: "to",
+                  status: "submission_failed",
+                  attempts: 1,
+                  error: "connection_needed",
+                  acceptedAt: null,
+                },
+              ],
+              sendAs: "personal",
+              fromAddress: "kari@nordlys.no",
+            },
+          ],
+        }),
+      );
+      renderPage({ connectionButton });
+      expect(
+        await screen.findByText("Sending failed because your Outlook connection needs reconnecting."),
+      ).toBeTruthy();
+      expect(screen.getByRole("button", { name: "Reconnect Outlook" })).toBeTruthy();
+      fireEvent.click(screen.getByRole("button", { name: "Retry send" }));
+      await waitFor(() => expect(mocks.retryMessage).toHaveBeenCalledWith("c-1", "m-out"));
+    });
+
+    it("creates a new conversation with personal sender toggle", async () => {
+      mocks.fetchConversations.mockResolvedValue(page([]));
+      renderPage();
+      fireEvent.click(await screen.findByRole("button", { name: "New conversation" }));
+      expect(await screen.findByRole("dialog", { name: "New conversation" })).toBeTruthy();
+      fireEvent.change(screen.getByLabelText(/^To/), { target: { value: "client@example.com" } });
+      fireEvent.change(screen.getByLabelText(/^Subject/), { target: { value: "Project kickoff" } });
+      fireEvent.change(screen.getByLabelText(/^Message/), { target: { value: "Welcome to the project." } });
+      const personalCheckbox = screen.getByLabelText("Send from my address (kari@nordlys.no)");
+      fireEvent.click(personalCheckbox);
+      fireEvent.click(screen.getByRole("button", { name: "Send" }));
+      await waitFor(() =>
+        expect(mocks.createConversation).toHaveBeenCalledWith(
+          expect.objectContaining({
+            to: [{ email: "client@example.com" }],
+            subject: "Project kickoff",
+            textBody: "Welcome to the project.",
+            sendFromPersonal: true,
+          }),
+          expect.any(String),
+        ),
+      );
+    });
+
+    it("speaks Norwegian for personal sending and retry", async () => {
+      setLanguagePreference("nb");
+      mocks.fetchConversations.mockResolvedValue(page([conversation("c-1", "Norsk test")]));
+      mocks.fetchConversation.mockResolvedValue(
+        detail("c-1", "Norsk test", {
+          messages: [
+            {
+              id: "m-out",
+              direction: "outbound" as const,
+              participant: null,
+              authorUserId: "u-1",
+              subject: "Norsk test",
+              textBody: "Norsk",
+              htmlBody: null,
+              occurredAt: "2026-01-01T00:00:00Z",
+              createdAt: "2026-01-01T00:00:00Z",
+              attachments: [],
+              deliveries: [
+                {
+                  id: "d-1",
+                  destination: "kunde@example.com",
+                  recipientType: "to",
+                  status: "submission_failed",
+                  attempts: 1,
+                  error: "connection_needed",
+                  acceptedAt: null,
+                },
+              ],
+              sendAs: "personal",
+              fromAddress: "kari@nordlys.no",
+              replyToAddress: "post@firma.no",
+            },
+          ],
+        }),
+      );
+      renderPage();
+      expect(
+        await screen.findByText("Sendingen mislyktes fordi Outlook-tilkoblingen din må kobles til på nytt."),
+      ).toBeTruthy();
+      expect(screen.getByRole("button", { name: "Prøv å sende på nytt" })).toBeTruthy();
+      expect(screen.getByText("Fra: kari@nordlys.no · Svar til: post@firma.no")).toBeTruthy();
+      expect(screen.getByLabelText("Send fra min adresse (kari@nordlys.no)")).toBeTruthy();
     });
   });
 });

@@ -197,6 +197,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/communications/conversations/{id}/messages/{messageId}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Re-queues a failed outbound message in the conversation so the outbox attempts delivery again. When the message has sendAs=personal, only its author may retry it and their personal sender connection must be available now (422 personal_sender_unavailable otherwise). */
+        post: operations["postCommunicationsConversationsByIdMessagesByMessageIdRetry"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/communications/conversations/{id}/notes": {
         parameters: {
             query?: never;
@@ -270,6 +287,23 @@ export interface paths {
         };
         /** @description The message as it was received, whole — RFC 5322, its HTML unsanitised, its attachments inside — as a file to save, message-{id}.eml. Vantigo never renders it. 404 when the message has no original (only an inbound message has one) or the object is gone. */
         get: operations["getCommunicationsMessagesByIdRaw"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/communications/personal-sender": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Whether the signed-in caller can send outbound mail from their own connected Microsoft 365 address (Outlook connection design M20), and the address and display name they would send from. */
+        get: operations["getCommunicationsPersonalSender"];
         put?: never;
         post?: never;
         delete?: never;
@@ -527,6 +561,10 @@ export interface components {
             /** Format: uuid */
             assignedUserId: string | null;
             candidateCustomerIds: number[];
+            /** @description The email address of the conversation's channel. Always answered; optional in the schema only because the recorded exchanges predate it. */
+            channelAddress?: string;
+            /** @description The display name of the conversation's channel, or null when unset. Always answered; optional in the schema only because the recorded exchanges predate it. */
+            channelDisplayName?: string | null;
             /** Format: uuid */
             channelId: string;
             /** Format: date-time */
@@ -585,6 +623,10 @@ export interface components {
                     status: string;
                 }[];
                 direction: string;
+                /** @description The sender's personal directory email address when sendAs is personal; null otherwise. Always answered; optional in the schema only because the recorded exchanges predate it. */
+                fromAddress?: string | null;
+                /** @description The sender's display name when sendAs is personal; null otherwise. Always answered; optional in the schema only because the recorded exchanges predate it. */
+                fromDisplayName?: string | null;
                 htmlBody: string | null;
                 /** Format: uuid */
                 id: string;
@@ -602,6 +644,10 @@ export interface components {
                 } | null;
                 /** @description Where the message as it was received — the original, RFC 5322, its HTML unsanitised — is downloaded, GET /api/v1/communications/messages/{id}/raw; null when Vantigo keeps no original (every message but an inbound one). Always answered; optional in the schema only because the recorded exchanges predate it. */
                 rawDownloadPath?: string | null;
+                /** @description The conversation channel's Reply-To address when sendAs is personal; null otherwise. Always answered; optional in the schema only because the recorded exchanges predate it. */
+                replyToAddress?: string | null;
+                /** @description Whether an outbound message was sent from the channel mailbox (channel) or the author's own connected address (personal). Always answered; optional in the schema only because the recorded exchanges predate it. */
+                sendAs?: string | null;
                 subject: string | null;
                 textBody: string | null;
                 /** @description An inbound message Vantigo could not read; its text says so and its original is downloadable. Always answered; optional in the schema only because the recorded exchanges predate it. */
@@ -618,6 +664,8 @@ export interface components {
                 id: string;
             }[];
             previewText: string | null;
+            /** @description Whether the caller can send from their own connected Microsoft 365 address in this conversation's composer. Always answered; optional in the schema only because the recorded exchanges predate it. */
+            personalSender?: components["schemas"]["PersonalSenderResponse"];
             /** @description Who a reply answers, from the latest inbound message with a sender: replyTo is its sender and canReply whether there is one; replyAllCc the participants its Cc named — without the channel's own address and the sender, distinct by address in any case, at most 100 — and canReplyAll whether there are any. */
             replyRecipients: {
                 canReply: boolean;
@@ -732,6 +780,8 @@ export interface components {
             htmlBody?: string | null;
             participantIds?: (string | null)[] | null;
             recipients?: components["schemas"]["ChannelRecipientRequest"][] | null;
+            /** @description When true, sends the initial outbound message from the caller's own connected Microsoft 365 address with Reply-To set to the channel's address. */
+            sendFromPersonal?: boolean | null;
             subject: string | null;
             textBody?: string | null;
             to?: components["schemas"]["EmailRecipientRequest"][] | null;
@@ -754,11 +804,26 @@ export interface components {
             data: components["schemas"]["ConversationListItem"][];
             pagination: components["schemas"]["PaginationMetadata"];
         };
+        /** @description Whether the caller can send outbound mail from their own connected Microsoft 365 address (Outlook connection design M20), and the address and display name they would send from. */
+        PersonalSenderResponse: {
+            /** @description The caller's directory email address; null when the caller has no enabled directory account or personal sending is unavailable. */
+            address: string | null;
+            /** @description True when the caller's Outlook connection is active with the mail scope granted. */
+            available: boolean;
+            /** @description The caller's display name in Vantigo; null when address is null. */
+            displayName: string | null;
+            /** @description Why the provider refused the caller's connection (expired, sign_in_again, mfa, blocked, consent_missing) when reason is reconnect; null otherwise. */
+            errorCode: string | null;
+            /** @description Why available is false (unavailable, no_account, not_connected, reconnect); null while available is true. */
+            reason: string | null;
+        };
         ReplyRequest: {
             attachmentIds?: string[] | null;
             htmlBody?: string | null;
             /** @default reply */
             replyMode: string | null;
+            /** @description When true, sends the reply from the caller's own connected Microsoft 365 address with Reply-To set to the channel's address. */
+            sendFromPersonal?: boolean | null;
             subject?: string | null;
             textBody?: string | null;
         };
@@ -1907,6 +1972,72 @@ export interface operations {
             };
         };
     };
+    postCommunicationsConversationsByIdMessagesByMessageIdRetry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                messageId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConversationMutationResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — message_not_failed, the message is not an outbound message with a failed outbox job. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommunicationErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity — channel_inactive, personal_sender_unavailable. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommunicationErrorResponse"];
+                };
+            };
+        };
+    };
     postCommunicationsConversationsByIdNotes: {
         parameters: {
             query?: never;
@@ -2248,6 +2379,44 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CommunicationErrorResponse"];
+                };
+            };
+        };
+    };
+    getCommunicationsPersonalSender: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PersonalSenderResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
                 };
             };
         };

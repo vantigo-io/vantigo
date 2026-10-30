@@ -1,4 +1,5 @@
-import { ActionIcon, Badge, Button, Group, Menu, ScrollArea, Select, Text, Title } from "@mantine/core";
+import { ActionIcon, Alert, Badge, Button, Group, Menu, ScrollArea, Select, Text, Title } from "@mantine/core";
+import { notifications } from "@mantine/notifications";
 import {
   IconAlertTriangle,
   IconArchive,
@@ -10,12 +11,19 @@ import {
   IconSparkles,
   IconTag,
 } from "@tabler/icons-react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { useI18n } from "@vantigo/frontend-shell";
+import type { ReactNode } from "react";
 import { useState } from "react";
 import type { ConversationDetail, ConversationMessage, ConversationStatus, Tag } from "../api/conversations";
-import { attachmentDownloadUrl, inlineImages, rawMessageDownloadUrl, safeHtmlSrcDoc } from "../api/conversations";
-import { ConversationComposer } from "./ConversationComposer";
+import {
+  attachmentDownloadUrl,
+  inlineImages,
+  rawMessageDownloadUrl,
+  retryMessage,
+  safeHtmlSrcDoc,
+} from "../api/conversations";
+import { type ConnectionButtonProps, ConversationComposer } from "./ConversationComposer";
 import { participantName, relative } from "./conversationHelpers";
 
 export type ConversationThreadProps = {
@@ -28,6 +36,7 @@ export type ConversationThreadProps = {
   onSuggest: () => void;
   suggestionPending: boolean;
   suggestionError: Error | null;
+  connectionButton?: (props: ConnectionButtonProps) => ReactNode;
 };
 
 export function ConversationThread({
@@ -40,6 +49,7 @@ export function ConversationThread({
   onSuggest,
   suggestionPending,
   suggestionError,
+  connectionButton,
 }: ConversationThreadProps) {
   const { t } = useI18n("communications");
 
@@ -153,10 +163,16 @@ export function ConversationThread({
       </div>
       <ScrollArea className="thread-messages">
         {conversation.messages.map((message) => (
-          <MessageCard key={message.id} message={message} />
+          <MessageCard
+            key={message.id}
+            message={message}
+            conversation={conversation}
+            onSent={onSent}
+            connectionButton={connectionButton}
+          />
         ))}
       </ScrollArea>
-      <ConversationComposer conversation={conversation} onSent={onSent} />
+      <ConversationComposer conversation={conversation} onSent={onSent} connectionButton={connectionButton} />
     </div>
   );
 }
@@ -166,7 +182,17 @@ export function ConversationThread({
  * turned into data: URIs by the page, and Show as text beside it; the text otherwise. An unreadable
  * message says so and offers its original; an inbound one offers its original in a menu.
  */
-function MessageCard({ message }: { message: ConversationMessage }) {
+function MessageCard({
+  message,
+  conversation,
+  onSent,
+  connectionButton,
+}: {
+  message: ConversationMessage;
+  conversation: ConversationDetail;
+  onSent: () => Promise<unknown>;
+  connectionButton?: (props: ConnectionButtonProps) => ReactNode;
+}) {
   const { t } = useI18n("communications");
   const [asText, setAsText] = useState(false);
   const html = message.unreadable ? null : message.htmlBody;
@@ -178,6 +204,23 @@ function MessageCard({ message }: { message: ConversationMessage }) {
   });
   const rawPath = message.rawDownloadPath ?? null;
   const unscanned = message.attachments.some((file) => file.downloadAvailable && file.scanStatus === "unscanned");
+  const hasConnectionNeeded =
+    message.direction === "outbound" &&
+    message.deliveries.some(
+      (d) => d.error === "connection_needed" || (d.status === "submission_failed" && d.error === "connection_needed"),
+    );
+
+  const retry = useMutation({
+    mutationFn: () => retryMessage(conversation.id, message.id),
+    onSuccess: onSent,
+    onError: (err: Error) => {
+      notifications.show({
+        color: "red",
+        title: t("retryFailed"),
+        message: err.message,
+      });
+    },
+  });
 
   return (
     <article className={`message-card ${message.direction}`}>
@@ -195,6 +238,16 @@ function MessageCard({ message }: { message: ConversationMessage }) {
           {message.autoSubmitted && (
             <Badge size="sm" variant="light" color="gray">
               {t("autoReply")}
+            </Badge>
+          )}
+          {message.sendAs === "personal" && message.fromAddress && (
+            <Badge size="sm" variant="light" color="blue">
+              {t("fromPersonal", {
+                from: message.fromDisplayName
+                  ? `${message.fromDisplayName} <${message.fromAddress}>`
+                  : message.fromAddress,
+                replyTo: message.replyToAddress || conversation.channelAddress || "",
+              })}
             </Badge>
           )}
         </Group>
@@ -300,6 +353,16 @@ function MessageCard({ message }: { message: ConversationMessage }) {
         <Text size="xs" c="orange" mt={4}>
           {t("attachmentNotScanned")}
         </Text>
+      )}
+      {hasConnectionNeeded && (
+        <Alert color="red" variant="light" mt="xs" title={t("sendFailedConnectionNeeded")}>
+          <Group justify="space-between" align="center" mt="xs">
+            {connectionButton?.({ feature: "mail", returnTo: "/communications/inbox" })}
+            <Button size="xs" color="red" loading={retry.isPending} onClick={() => retry.mutate()}>
+              {t("retrySend")}
+            </Button>
+          </Group>
+        </Alert>
       )}
     </article>
   );

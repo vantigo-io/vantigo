@@ -230,6 +230,17 @@ describe("OutlookConnectButton", () => {
     expect(screen.queryByRole("button")).not.toBeInTheDocument();
   });
 
+  it("offers Connect Outlook when connected for another feature but lacking the requested one", async () => {
+    const fetchMock = stubEntraApi({ outlook: activeOutlook({ features: ["calendar"] }) });
+    const open = vi.spyOn(outlookNavigation, "open").mockImplementation(() => undefined);
+    renderWithProviders(<OutlookConnectButton feature="mail" returnTo="/communications/inbox" />);
+    expect(await screen.findByText("Connected as kari@contoso.no")).toBeInTheDocument();
+    const button = screen.getByRole("button", { name: "Connect Outlook" });
+    await userEvent.click(button);
+    await waitFor(() => expect(open).toHaveBeenCalledWith(AUTHORIZE_URL));
+    expect(sent(fetchMock, "POST").body).toEqual({ feature: "mail", returnTo: "/communications/inbox" });
+  });
+
   it("asks to reconnect, saying why", async () => {
     await openButton({ outlook: activeOutlook({ state: "reconnect", errorCode: "expired" }) });
     expect(await screen.findByText("Reconnect needed")).toBeInTheDocument();
