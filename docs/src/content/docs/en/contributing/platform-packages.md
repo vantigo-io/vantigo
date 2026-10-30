@@ -89,8 +89,8 @@ data.
 sends the installation's own mail through the SMTP configuration of
 [Email delivery](/en/admin/authentication/#email-delivery), behind its guard against
 private destinations. `mail.Message` is identity's three-field application mail;
-`mail.Outbound` is a full message — recipients, both bodies, a display name, a
-Reply-To, threading headers and attachments — which Communications sends through each
+`mail.Outbound` is a full message — recipients, both bodies, a display name,
+Reply-To (`ReplyTo` and `ReplyToName`), threading headers and attachments — which Communications sends through each
 channel's own SMTP configuration, and Invoices, Staff and Calendar through the
 installation's, by the seam `Deps.SMTPSend` (or `mail.SendOutbound` when it is unset).
 

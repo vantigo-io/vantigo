@@ -5,6 +5,7 @@ sidebar:
   order: 80
 sources:
   - apps/communications/frontend
+  - apps/host/frontend/src/routes/communications
 ---
 
 The Communications app is a shared inbox: every email conversation your organisation
@@ -111,15 +112,43 @@ assistant is not configured you see "AI customer suggestions are currently
 unavailable." — the administrator's side of that is under
 [AI draft and customer suggestion](/en/reference/communications/#ai-draft-and-customer-suggestion).
 
+## Start a conversation
+
+Choose **New conversation** in the toolbar to begin a new customer conversation: enter the
+recipient's email address in **To**, the **Subject**, and write your message.
+
+If you have connected your own Outlook under **Settings → Connections** (with the Mail
+permission granted), you can check **Send from my address (`you@yourcompany.com`)**. The
+email is sent through your personal Microsoft 365 mailbox, so it appears in your own Sent
+Items. Customer replies are still directed to the channel mailbox (`Reply-To`), keeping
+the conversation threaded in the shared inbox for your team.
+
 ## Reply to a customer
 
 The composer at the bottom of the conversation is headed **Reply**. It tells you who
 the reply goes to ("Replying to …"): the sender of the customer's latest email. When that
 email was also sent to others in copy (Cc), a **Reply mode** selector offers **Reply**,
 to the sender alone, or **Reply all · N**, which copies them too — the shared mailbox
-itself left out. The reply is sent from the channel the conversation belongs to; you do
-not choose a sender. It is sent as an answer to the customer's email, so it lands in the
-same thread in their mail program.
+itself left out. By default, the reply is sent from the channel the conversation belongs to.
+If you have connected your own Outlook with the Mail permission, you can also check
+**Send from my address (`you@yourcompany.com`)** to send through your personal mailbox
+instead, with customer replies arriving back in the shared channel. It is sent as an answer
+to the customer's email, so it lands in the same thread in their mail program.
+
+### Personal sending and retrying
+
+When **Send from my address** is checked:
+- The `From` address is your directory email and display name, and the email lands in your
+  personal Sent Items in Microsoft 365.
+- The `Reply-To` address is the channel's address and display name, so replies from the
+  customer arrive in the shared channel and thread into the conversation.
+- If your Outlook connection needs reconnecting, the composer offers an inline
+  **Connect Outlook** or **Reconnect Outlook** button.
+- If sending fails because your Outlook connection expired or needs multi-factor authentication,
+  the message card displays:
+  *Sending failed because your Outlook connection needs reconnecting.* with a **Reconnect Outlook**
+  button and a **Retry send** button. Once you have reconnected Outlook, choose **Retry send**
+  to queue the message again.
 
 1. Write the message in the editor; bold, italic and bullet lists are available.
 2. **Attach file** stages a file. It appears as a badge with its name: green when it

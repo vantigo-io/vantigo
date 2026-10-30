@@ -13,7 +13,9 @@ Today that is your **Outlook**: you connect it once, signing in to Microsoft, an
 keeps the connection until you disconnect it, leave, or your administrator turns it
 off. The calendar's [Outlook sync](/en/user/calendar/#sync-with-outlook) uses it: Vantigo
 writes your calendar's copies to your mailbox, and reads your busy time back, with your
-own connection and nothing else, so the sync works only while you are connected.
+own connection and nothing else. Communications also uses it to let you send messages from
+your own address ([Send from your own address](/en/user/communications/#send-from-your-own-address)),
+with customer replies directed to the shared channel.
 
 ## Who sees it
 
@@ -43,9 +45,9 @@ Vantigo knows no Microsoft account of yours.*
 3. Back in Vantigo, the card says *Finishing connecting Outlook…*, then **Outlook
    connected**, and returns you to where you started.
 
-You can also connect from the **Outlook** card under **Calendar → My calendar**, which
-shows the same button and brings you back there ([Sync with
-Outlook](/en/user/calendar/#sync-with-outlook)).
+You can also connect from the **Outlook** card under **Calendar → My calendar**, or
+directly from the composer in **Communications → Inbox**, which show the same button
+and bring you back there.
 
 Sign in with **the account Vantigo knows you by**: the one HR connected to your person.
 Signing in as anyone else — a second account, a personal Microsoft account, an account
@@ -54,7 +56,7 @@ from another organisation — is refused, and nothing is connected.
 ## Connected
 
 The card says **Connected as** and your account, **Since** the day you connected, and
-**Used by:** the features the connection serves, such as *Calendar*.
+**Used by:** the features the connection serves, such as *Calendar* and *Mail*.
 
 ## Disconnect
 

@@ -5,6 +5,7 @@ sidebar:
   order: 80
 sources:
   - apps/communications/frontend
+  - apps/host/frontend/src/routes/communications
 ---
 
 Kommunikasjon-appen er en delt innboks: alle e-postsamtaler organisasjonen din har
@@ -111,14 +112,42 @@ ikke er satt opp, ser du «KI-kundeforslag er ikke tilgjengelige nå.» —
 administratorens side av det står under
 [AI draft and customer suggestion](/en/reference/communications/#ai-draft-and-customer-suggestion).
 
+## Start en samtale
+
+Velg **Ny samtale** i verktøylinjen for å starte en ny kundesamtale: skriv inn mottakerens
+e-postadresse i **Til**, **Emne**, og skriv meldingen din.
+
+Dersom du har koblet til din egen Outlook under **Innstillinger → Tilkoblinger** (med
+tillatelsen E-post innvilget), kan du huke av for **Send fra min adresse (`du@dittfirma.no`)**.
+E-posten sendes gjennom din personlige Microsoft 365-postboks, slik at den vises i dine egne
+sendte elementer. Kundens svar sendes likevel til kanalens delte postkasse (`Reply-To`), slik
+at samtalen holdes samlet i den delte innboksen for teamet ditt.
+
 ## Svar en kunde
 
 Skrivefeltet nederst i samtalen har overskriften **Svar**. Det forteller hvem svaret
 går til («Svarer til …»): avsenderen av kundens siste e-post. Når den e-posten også ble
 sendt til andre i kopi (Cc), tilbyr velgeren **Svarmodus** valgene **Svar**, bare til
 avsenderen, og **Svar alle · N**, som tar dem med i kopi også — uten den delte postboksen
-selv. Svaret sendes fra kanalen samtalen hører til; du velger ikke avsender. Det sendes
+selv. Som standard sendes svaret fra kanalen samtalen hører til. Dersom du har koblet til
+din egen Outlook med e-posttillatelse, kan du også huke av for **Send fra min adresse (`du@dittfirma.no`)**
+for å sende fra din egen postboks i stedet, mens kundens svar havner i den delte kanalen. Det sendes
 som et svar på kundens e-post, så det havner i samme tråd i kundens e-postprogram.
+
+### Personlig sending og ny prøving
+
+Når **Send fra min adresse** er valgt:
+- `From`-adressen er din e-postadresse og visningsnavn fra katalogen, og e-posten havner i
+  dine egne sendte elementer i Microsoft 365.
+- `Reply-To`-adressen er kanalens adresse og visningsnavn, slik at svar fra kunden kommer
+  tilbake til den delte kanalen og trådes inn i samtalen.
+- Dersom Outlook-tilkoblingen din må kobles til på nytt, tilbyr skrivefeltet en integrert knapp
+  for **Koble til Outlook** eller **Koble til Outlook på nytt**.
+- Dersom en personlig sending mislykkes ved utsending fordi Microsoft avviste påloggingen din
+  eller krevde ny flerfaktorautentisering, viser meldingskortet:
+  *Sendingen mislyktes fordi Outlook-tilkoblingen din må kobles til på nytt.* med en knapp for
+  **Koble til Outlook på nytt** og en knapp for **Prøv å sende på nytt**. Når du har koblet
+  til Outlook på nytt, trykker du på **Prøv å sende på nytt** for å legge meldingen i kø igjen.
 
 1. Skriv meldingen i editoren; fet, kursiv og punktlister er tilgjengelige.
 2. **Legg ved fil** klargjør en fil. Den vises som et merke med navnet sitt: grønt når

@@ -269,15 +269,15 @@ synkronisert med sin egen pålogging, og ingen andre. Hvordan det virker, står 
    **Web**-plattform, ikke en enkeltsideapplikasjon: Vantigo løser inn koden på serveren
    med klienthemmeligheten sin.
 3. Åpne **API permissions** › **Add a permission** › **Microsoft Graph** › **Delegated
-   permissions**, og legg til `openid`, `profile`, `offline_access` og
-   `Calendars.ReadWrite`. Dette er de delegerte tillatelsene, ved siden av
+   permissions**, og legg til `openid`, `profile`, `offline_access`, `Calendars.ReadWrite` og
+   `Mail.Send`. Dette er de delegerte tillatelsene, ved siden av
    applikasjonstillatelsene fra steg 3.
 4. Velg **Grant admin consent for** organisasjonen deres, og bekreft, så ingen blir bedt
    om samtykke — eller avvist fordi godkjenning mangler — når de kobler til.
 5. Tilbake på modulsiden slår du på **Outlook-tilkobling: la folk koble Outlook til
    Vantigo** og velger **Lagre kontoreglene** (`entra:manage`). Kalendersynkronisering
-   er da tilgjengelig for alle som kobler til ([under](#kalendersynkronisering)); steg 3
-   ber ikke om noe mer.
+   og personlig sending i Kommunikasjon er da tilgjengelig for alle som kobler til
+   ([under](#kalendersynkronisering)); steg 3 ber ikke om noe mer.
 
 ### Verifiser Outlook-tilkoblingen
 

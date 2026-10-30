@@ -2539,6 +2539,27 @@ closed* setting (`none`, `read`, `move` to a folder defaulted to `"Handled in Va
 ensured on save) queued in `communications.mailbox_marks` (`00094`) when a conversation
 closes and drained idempotently by the worker.
 
+**F — Sending from one's own address (`Mail.Send` delegated), built** on
+`claude/communications-personal-sending-f`
+([the plan](docs/superpowers/plans/2026-10-30-communications-personal-sending.md);
+[the reference](docs/src/content/docs/en/reference/communications.md#send-from-your-own-address);
+[Entra's](docs/src/content/docs/en/reference/entra.md#personal-mailbox);
+[the operator's page](docs/src/content/docs/en/admin/entra.md#outlook-connection);
+[the user guide](docs/src/content/docs/en/user/communications.md#send-from-your-own-address)):
+incremental delegated consent in Entra with `"mail": {"Mail.Send"}` in `outlookFeatures`,
+merging granted scopes across connections so `calendar` and `mail` never drop each other, and
+feature-scoped token guards; `contracts.PersonalMailbox` (`Status` and `Send`), sending MIME
+via delegated Graph `sendMail` or MIME draft with Sent Items placement; Communications
+conversations and replies accepting `sendFromPersonal` (migration `00095_communications_personal_sending.sql`
+adding `send_as`, `from_address` and `from_display_name` to `conversation_messages`), checking
+personal sender status outside DB transactions; `From` set to the author's own address and
+`Reply-To` directed to the shared channel address so replies land in the channel; outbox
+dispatch failing immediately with terminal `connection_needed` on `ErrConnectionNeeded`
+(deliveries `submission_failed`, never falling back to channel address); retry endpoint
+`POST /communications/conversations/{id}/messages/{messageId}/retry`; `@vantigo/entra-ui`
+connect button supporting incremental consent for mail, and `@vantigo/communications-ui`
+offering personal sending in composer and retry controls on delivery failures.
+
 Phase 3 is complete.
 
 ### Later

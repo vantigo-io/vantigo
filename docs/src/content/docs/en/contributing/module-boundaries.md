@@ -115,7 +115,9 @@ Communications' outbox is the working example.
    calendar's Outlook sync writes people's copies to and reads their busy time from;
    rule 14), `ChannelMailbox` (`contracts.ChannelMailbox`, entra — a provider's
    mailboxes as Communications' channels send from; rule 15; optional for its consumer,
-   nil when Entra is off), and `CalendarBusy` (`contracts.CalendarBusy`, calendar — people's busy
+   nil when Entra is off), `PersonalMailbox` (`contracts.PersonalMailbox`, entra — a person's
+   delegated mailbox to send from in Communications; rule 16; optional, nil when Entra is off),
+   and `CalendarBusy` (`contracts.CalendarBusy`, calendar — people's busy
    time, which Planning's board shows; provider-gated, rule 12; optional for its
    consumer, nil when the calendar is off). `module.Compose`
    mounts each module at `/api/v1/<name>/` and builds every provider before any
@@ -715,6 +717,20 @@ Communications' outbox is the working example.
     `Raw`, `Watch`, `Unwatch`, `Notified`, `Mark`, `EnsureFolder`
     ([Communications](/en/reference/communications/#receiving)). The provider's ids are
     opaque and case-sensitive; Communications keeps them in its own receipts.
+
+16. **Communications sends through a person's delegated mailbox.** The eighth sanctioned
+    cross-module direction, Communications → a provider module, made for personal sending
+    (Outlook connection and Microsoft 365 mail design M20): `contracts.PersonalMailbox`, in
+    the single-provider slot `PersonalMailbox` (rule 5), which a module offering a person's
+    delegated mailbox to send from fills. The first filler is `internal/entra`, sending through
+    Graph on the caller's or author's delegated token ([Microsoft Entra ID](/en/reference/entra/#personal-mailbox)).
+    **Status and Send are guarded by contractscalls.go**: `PersonalMailbox.Status` is checked
+    outside transactions before opening one for new conversations or replies; the outbox calls
+    `PersonalMailbox.Send` outside any transaction under `contracts.AsUser(ctx, authorUserID)`
+    so the message is sent from their account and appears in their Sent Items. On
+    `contracts.ErrConnectionNeeded`, the outbox fails immediately with terminal code
+    `connection_needed` after 1 attempt, never falling back to the shared channel mailbox.
+    `modtest.FakePersonalMailbox` backs tests.
 
 ## How they are enforced
 

@@ -1206,6 +1206,26 @@ count as unexpected.
     channel, and reconnecting and retrying a failed personal send);
   - the roadmap.
 
+  *As built (delivery F, 2026-10-30, branch `claude/communications-personal-sending-f`;
+  [the plan](../plans/2026-10-30-communications-personal-sending.md)):* where F departs from or refines
+  this design —
+  - **M20, incremental consent and scopes**: `outlookFeatures` in `apps/server/internal/entra` gains `"mail": {"Mail.Send"}`.
+    When connecting or reconnecting, Entra unions requested feature scopes with already granted scopes, ensuring
+    `calendar` and `mail` do not overwrite each other. `MailboxCalendar` checks for `"calendar"` feature in scopes,
+    and `PersonalMailbox` checks for `"mail"` (`Mail.Send`) in scopes.
+  - **M20, contracts.PersonalMailbox**: provider-neutral slot implemented by Entra, providing `Status`
+    and `Send(ctx, mime, bcc)`. Message sending is delegated through Graph (`POST /users/{oid}/sendMail` or MIME draft
+    when Bcc is present). `contracts.AsUser(ctx, authorUserID)` sets the author context for outbox sending.
+  - **M20, communications schema and outbox**: migration `00095_communications_personal_sending.sql` adds
+    `send_as`, `from_address`, and `from_display_name` to `communications.conversation_messages`. The outbox worker
+    uses the author's personal mailbox when `send_as = 'personal'`, sets `From` to the author and `Reply-To` to
+    the channel, and records terminal failure `connection_needed` immediately without retrying or falling back to channel address.
+  - **M20, retry endpoint**: `POST /api/v1/communications/conversations/{id}/messages/{messageId}/retry` resets
+    failed outbox jobs and deliveries to queued after verifying personal mailbox status.
+  - **M20, frontend**: `@vantigo/entra-ui` adds incremental consent support to `OutlookConnectButton` and mail
+    feature translations; `@vantigo/communications-ui` adds "Send from my address" toggle, personal sender query,
+    delivery failure alerts with retry buttons, and "New conversation" modal with personal sending.
+
 Migration numbers are those free on 2026-10-29, after #194's `00087`. Each delivery renumbers in its own
 history before it rebases.
 

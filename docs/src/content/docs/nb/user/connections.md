@@ -13,9 +13,10 @@ I dag er det **Outlook**-en din: du kobler den til én gang ved å logge på Mic
 Vantigo beholder tilkoblingen til du kobler den fra, slutter, eller administratoren din
 slår den av. Kalenderens
 [Outlook-synkronisering](/nb/user/calendar/#synkroniser-med-outlook) bruker den: Vantigo
-skriver kopiene av kalenderen din til postboksen din, og leser opptatt-tiden din tilbake,
-med din egen tilkobling og ikke noe annet, så synkroniseringen virker bare mens du er
-tilkoblet.
+skriver kopiene av kalenderen din til postboksen din, og leser opptatt-tiden din tilbake.
+Kommunikasjon bruker den også for å la deg sende meldinger fra din egen adresse
+([Send fra din egen adresse](/nb/user/communications/#personlig-sending-og-ny-prøving)),
+mens kundens svar havner i den delte kanalen.
 
 ## Hvem som ser den
 
@@ -45,9 +46,9 @@ Vantigo kjenner ingen Microsoft-konto av deg.*
 3. Tilbake i Vantigo sier kortet *Fullfører tilkoblingen til Outlook …*, så **Outlook er
    koblet til**, og sender deg tilbake dit du startet.
 
-Du kan også koble til fra kortet **Outlook** under **Kalender → Min kalender**, som viser
-den samme knappen og sender deg tilbake dit ([Synkroniser med
-Outlook](/nb/user/calendar/#synkroniser-med-outlook)).
+Du kan også koble til fra kortet **Outlook** under **Kalender → Min kalender**, eller
+direkte fra skrivefeltet i **Kommunikasjon → Innboks**, som viser den samme knappen
+og sender deg tilbake dit.
 
 Logg på med **kontoen Vantigo kjenner deg ved**: den HR har koblet til personen din.
 Logger du på som noen annen — en annen konto, en personlig Microsoft-konto, en konto fra
@@ -56,7 +57,7 @@ en annen organisasjon — avvises det, og ingenting kobles til.
 ## Tilkoblet
 
 Kortet sier **Tilkoblet som** og kontoen din, **Siden** dagen du koblet til, og
-**Brukes av:** funksjonene tilkoblingen tjener, for eksempel *Kalender*.
+**Brukes av:** funksjonene tilkoblingen tjener, for eksempel *Kalender* og *E-post*.
 
 ## Koble fra
 
