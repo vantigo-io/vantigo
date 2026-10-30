@@ -2542,10 +2542,10 @@ closes and drained idempotently by the worker.
 **F — Sending from one's own address (`Mail.Send` delegated), built** on
 `claude/communications-personal-sending-f`
 ([the plan](docs/superpowers/plans/2026-10-30-communications-personal-sending.md);
-[the reference](docs/src/content/docs/en/reference/communications.md#send-from-your-own-address);
+[the reference](docs/src/content/docs/en/reference/communications.md#sending-from-ones-own-address);
 [Entra's](docs/src/content/docs/en/reference/entra.md#personal-mailbox);
 [the operator's page](docs/src/content/docs/en/admin/entra.md#outlook-connection);
-[the user guide](docs/src/content/docs/en/user/communications.md#send-from-your-own-address)):
+[the user guide](docs/src/content/docs/en/user/communications.md#personal-sending-and-retrying)):
 incremental delegated consent in Entra with `"mail": {"Mail.Send"}` in `outlookFeatures`,
 merging granted scopes across connections so `calendar` and `mail` never drop each other, and
 feature-scoped token guards; `contracts.PersonalMailbox` (`Status` and `Send`), sending MIME
