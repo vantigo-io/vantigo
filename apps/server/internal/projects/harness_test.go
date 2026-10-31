@@ -1546,3 +1546,85 @@ func getDeliveryMilestone(t *testing.T, c *modtest.Client, milestoneID int32) de
 	res.JSON(&out)
 	return out
 }
+
+func getTask(t *testing.T, c *modtest.Client, taskID int32) taskJSON {
+	t.Helper()
+	res := c.Do(http.MethodGet, taskPath(taskID), nil)
+	if res.Status != http.StatusOK {
+		t.Fatalf("get task: status = %d, want 200; body = %s", res.Status, string(res.Body))
+	}
+	var out taskJSON
+	res.JSON(&out)
+	return out
+}
+
+type taskDependencyJSON struct {
+	Id                int32     `json:"id"`
+	ProjectId         int32     `json:"projectId"`
+	PredecessorTaskId int32     `json:"predecessorTaskId"`
+	SuccessorTaskId   int32     `json:"successorTaskId"`
+	CreatedAt         time.Time `json:"createdAt"`
+}
+
+func projectDependenciesPath(projectID int32) string {
+	return fmt.Sprintf("/api/v1/projects/%d/dependencies", projectID)
+}
+
+func projectDependencyPath(dependencyID int32) string {
+	return fmt.Sprintf("/api/v1/projects/dependencies/%d", dependencyID)
+}
+
+func taskRescheduleDownstreamPath(taskID int32) string {
+	return fmt.Sprintf("/api/v1/projects/tasks/%d/reschedule-downstream", taskID)
+}
+
+func createTaskDependency(t *testing.T, c *modtest.Client, projectID int32, predecessorID, successorID int32) taskDependencyJSON {
+	t.Helper()
+	res := c.Do(http.MethodPost, projectDependenciesPath(projectID), map[string]any{
+		"predecessorTaskId": predecessorID,
+		"successorTaskId":   successorID,
+	})
+	if res.Status != http.StatusCreated {
+		t.Fatalf("create task dependency: status = %d, want 201; body = %s", res.Status, string(res.Body))
+	}
+	var out taskDependencyJSON
+	res.JSON(&out)
+	return out
+}
+
+func getTaskDependencies(t *testing.T, c *modtest.Client, projectID int32) []taskDependencyJSON {
+	t.Helper()
+	res := c.Do(http.MethodGet, projectDependenciesPath(projectID), nil)
+	if res.Status != http.StatusOK {
+		t.Fatalf("get task dependencies: status = %d, want 200; body = %s", res.Status, string(res.Body))
+	}
+	var out struct {
+		Dependencies []taskDependencyJSON `json:"dependencies"`
+	}
+	res.JSON(&out)
+	return out.Dependencies
+}
+
+func deleteTaskDependency(t *testing.T, c *modtest.Client, dependencyID int32) {
+	t.Helper()
+	res := c.Do(http.MethodDelete, projectDependencyPath(dependencyID), nil)
+	if res.Status != http.StatusNoContent {
+		t.Fatalf("delete task dependency: status = %d, want 204; body = %s", res.Status, string(res.Body))
+	}
+}
+
+func rescheduleDownstreamTasks(t *testing.T, c *modtest.Client, taskID int32, daysDelta int32) (int32, []int32) {
+	t.Helper()
+	res := c.Do(http.MethodPost, taskRescheduleDownstreamPath(taskID), map[string]any{
+		"daysDelta": daysDelta,
+	})
+	if res.Status != http.StatusOK {
+		t.Fatalf("reschedule downstream: status = %d, want 200; body = %s", res.Status, string(res.Body))
+	}
+	var out struct {
+		ShiftedTasksCount int32   `json:"shiftedTasksCount"`
+		UpdatedTaskIds    []int32 `json:"updatedTaskIds"`
+	}
+	res.JSON(&out)
+	return out.ShiftedTasksCount, out.UpdatedTaskIds
+}

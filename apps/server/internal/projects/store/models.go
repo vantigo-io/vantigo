@@ -141,6 +141,15 @@ type ProjectsTaskComment struct {
 	EditedAt     *time.Time
 }
 
+type ProjectsTaskDependency struct {
+	ID                int32
+	ProjectID         int32
+	PredecessorTaskID int32
+	SuccessorTaskID   int32
+	CreatedByUserID   uuid.UUID
+	CreatedAt         time.Time
+}
+
 type ProjectsTimelineEntry struct {
 	ID           int64
 	ProjectID    int32

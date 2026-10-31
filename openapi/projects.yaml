@@ -2007,6 +2007,54 @@ components:
                 - total
                 - done
             type: object
+        TaskDependencyCreateRequest:
+            description: Create a finish-to-start dependency link between two tasks in the same project.
+            properties:
+                predecessorTaskId:
+                    format: int32
+                    type: integer
+                successorTaskId:
+                    format: int32
+                    type: integer
+            required:
+                - predecessorTaskId
+                - successorTaskId
+            type: object
+        TaskDependencyListResponse:
+            description: A project's task dependency links.
+            properties:
+                dependencies:
+                    items:
+                        $ref: '#/components/schemas/TaskDependencyResponse'
+                    type: array
+            required:
+                - dependencies
+            type: object
+        TaskDependencyResponse:
+            description: A finish-to-start dependency link between two tasks in the same project.
+            properties:
+                createdAt:
+                    format: date-time
+                    type: string
+                id:
+                    format: int32
+                    type: integer
+                predecessorTaskId:
+                    format: int32
+                    type: integer
+                projectId:
+                    format: int32
+                    type: integer
+                successorTaskId:
+                    format: int32
+                    type: integer
+            required:
+                - createdAt
+                - id
+                - predecessorTaskId
+                - projectId
+                - successorTaskId
+            type: object
         TaskPositionRequest:
             description: Where a task should sit — among which siblings, and how far down. The siblings are renumbered 1..n in one transaction, so the order never has a gap.
             properties:
@@ -2065,6 +2113,31 @@ components:
                     type: string
             required:
                 - title
+            type: object
+        TaskRescheduleDownstreamRequest:
+            description: Shift the dates of downstream tasks reachable via dependencies by a delta in days.
+            properties:
+                daysDelta:
+                    description: Positive or negative number of days to shift downstream tasks.
+                    format: int32
+                    type: integer
+            required:
+                - daysDelta
+            type: object
+        TaskRescheduleDownstreamResponse:
+            description: Result of rescheduling downstream tasks.
+            properties:
+                shiftedTasksCount:
+                    format: int32
+                    type: integer
+                updatedTaskIds:
+                    items:
+                        format: int32
+                        type: integer
+                    type: array
+            required:
+                - shiftedTasksCount
+                - updatedTaskIds
             type: object
         TaskResponse:
             description: One task of a project. checklist and commentCount are aggregates over the task's own children, so a tree renders progress without reading either.
@@ -2649,6 +2722,37 @@ paths:
                                 $ref: common.yaml#/components/schemas/ProblemDetails
                     description: Conflict — the supplied revision is not the milestone's current one.
             summary: Change delivery milestone status
+            tags:
+                - Projects
+            x-vantigo-access: permission:projects:access
+    /api/v1/projects/dependencies/{dependencyId}:
+        delete:
+            operationId: deleteProjectsDependenciesByDependencyId
+            parameters:
+                - in: path
+                  name: dependencyId
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+            responses:
+                "204":
+                    description: No Content — the dependency link has been removed.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden — the caller cannot contribute to the project.
+                "404":
+                    description: Not Found — the dependency link does not exist, or belongs to a project the caller cannot see.
+            summary: Delete a task dependency link
             tags:
                 - Projects
             x-vantigo-access: permission:projects:access
@@ -3349,6 +3453,93 @@ paths:
                 "404":
                     description: Not Found — no such project, or one the caller cannot see.
             summary: Create a delivery milestone on a project
+            tags:
+                - Projects
+            x-vantigo-access: permission:projects:access
+    /api/v1/projects/{id}/dependencies:
+        get:
+            operationId: getProjectsByIdDependencies
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/TaskDependencyListResponse'
+                    description: OK — the project's task dependency links.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such project, or one the caller cannot see.
+            summary: List a project's task dependencies
+            tags:
+                - Projects
+            x-vantigo-access: permission:projects:access
+        post:
+            operationId: postProjectsByIdDependencies
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/TaskDependencyCreateRequest'
+                required: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/TaskDependencyResponse'
+                    description: Created — the task dependency link.
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request — self-dependency, cyclic dependency, or tasks outside project.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden — the caller cannot contribute to this project.
+                "404":
+                    description: Not Found — no such project or tasks, or one the caller cannot see.
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Conflict — dependency link already exists.
+            summary: Create a task dependency link on a project
             tags:
                 - Projects
             x-vantigo-access: permission:projects:access
@@ -4615,6 +4806,53 @@ paths:
                 "404":
                     description: Not Found — the task does not exist, or it belongs to a project the caller cannot see.
             summary: Move a task among its siblings
+            tags:
+                - Projects
+            x-vantigo-access: permission:projects:access
+    /api/v1/projects/tasks/{taskId}/reschedule-downstream:
+        post:
+            operationId: postProjectsTasksByTaskIdRescheduleDownstream
+            parameters:
+                - in: path
+                  name: taskId
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/TaskRescheduleDownstreamRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/TaskRescheduleDownstreamResponse'
+                    description: OK — downstream tasks were shifted.
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden — the caller cannot contribute to this project.
+                "404":
+                    description: Not Found — the task does not exist, or belongs to a project the caller cannot see.
+            summary: Reschedule downstream tasks reachable via dependencies
             tags:
                 - Projects
             x-vantigo-access: permission:projects:access

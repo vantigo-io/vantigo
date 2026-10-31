@@ -1147,6 +1147,26 @@ type TaskChecklistProgress struct {
 	Total int32 `json:"total"`
 }
 
+// TaskDependencyCreateRequest Create a finish-to-start dependency link between two tasks in the same project.
+type TaskDependencyCreateRequest struct {
+	PredecessorTaskId int32 `json:"predecessorTaskId"`
+	SuccessorTaskId   int32 `json:"successorTaskId"`
+}
+
+// TaskDependencyListResponse A project's task dependency links.
+type TaskDependencyListResponse struct {
+	Dependencies []TaskDependencyResponse `json:"dependencies"`
+}
+
+// TaskDependencyResponse A finish-to-start dependency link between two tasks in the same project.
+type TaskDependencyResponse struct {
+	CreatedAt         time.Time `json:"createdAt"`
+	Id                int32     `json:"id"`
+	PredecessorTaskId int32     `json:"predecessorTaskId"`
+	ProjectId         int32     `json:"projectId"`
+	SuccessorTaskId   int32     `json:"successorTaskId"`
+}
+
 // TaskPositionRequest Where a task should sit — among which siblings, and how far down. The siblings are renumbered 1..n in one transaction, so the order never has a gap.
 type TaskPositionRequest struct {
 	// ParentTaskId The top-level task to move under, absent to move among the project's top-level tasks. A task that has subtasks of its own cannot become a subtask (D6).
@@ -1180,6 +1200,18 @@ type TaskRequest struct {
 
 	// Title Trimmed before validation and storage; at most 200 characters.
 	Title string `json:"title"`
+}
+
+// TaskRescheduleDownstreamRequest Shift the dates of downstream tasks reachable via dependencies by a delta in days.
+type TaskRescheduleDownstreamRequest struct {
+	// DaysDelta Positive or negative number of days to shift downstream tasks.
+	DaysDelta int32 `json:"daysDelta"`
+}
+
+// TaskRescheduleDownstreamResponse Result of rescheduling downstream tasks.
+type TaskRescheduleDownstreamResponse struct {
+	ShiftedTasksCount int32   `json:"shiftedTasksCount"`
+	UpdatedTaskIds    []int32 `json:"updatedTaskIds"`
 }
 
 // TaskResponse One task of a project. checklist and commentCount are aggregates over the task's own children, so a tree renders progress without reading either.
@@ -1422,6 +1454,9 @@ type PutProjectsTasksByTaskIdCommentsByCommentIdJSONRequestBody = CommentRequest
 // PutProjectsTasksByTaskIdPositionJSONRequestBody defines body for PutProjectsTasksByTaskIdPosition for application/json ContentType.
 type PutProjectsTasksByTaskIdPositionJSONRequestBody = TaskPositionRequest
 
+// PostProjectsTasksByTaskIdRescheduleDownstreamJSONRequestBody defines body for PostProjectsTasksByTaskIdRescheduleDownstream for application/json ContentType.
+type PostProjectsTasksByTaskIdRescheduleDownstreamJSONRequestBody = TaskRescheduleDownstreamRequest
+
 // PutProjectsByIdJSONRequestBody defines body for PutProjectsById for application/json ContentType.
 type PutProjectsByIdJSONRequestBody = ProjectUpdateRequest
 
@@ -1433,6 +1468,9 @@ type PutProjectsByIdBillingLinesByLineIdJSONRequestBody = BillingLineRequest
 
 // PostProjectsByIdDeliveryMilestonesJSONRequestBody defines body for PostProjectsByIdDeliveryMilestones for application/json ContentType.
 type PostProjectsByIdDeliveryMilestonesJSONRequestBody = DeliveryMilestoneCreateRequest
+
+// PostProjectsByIdDependenciesJSONRequestBody defines body for PostProjectsByIdDependencies for application/json ContentType.
+type PostProjectsByIdDependenciesJSONRequestBody = TaskDependencyCreateRequest
 
 // PostProjectsByIdMilestonesJSONRequestBody defines body for PostProjectsByIdMilestones for application/json ContentType.
 type PostProjectsByIdMilestonesJSONRequestBody = BillingMilestoneRequest
@@ -1478,6 +1516,9 @@ type ServerInterface interface {
 	// PostProjectsDeliveryMilestonesByMilestoneIdStatus Change delivery milestone status
 	// (POST /api/v1/projects/delivery-milestones/{milestoneId}/status)
 	PostProjectsDeliveryMilestonesByMilestoneIdStatus(w http.ResponseWriter, r *http.Request, milestoneId int32)
+	// DeleteProjectsDependenciesByDependencyId Delete a task dependency link
+	// (DELETE /api/v1/projects/dependencies/{dependencyId})
+	DeleteProjectsDependenciesByDependencyId(w http.ResponseWriter, r *http.Request, dependencyId int32)
 	// GetProjectsEconomy List the economy of the projects whose money the caller may see
 	// (GET /api/v1/projects/economy)
 	GetProjectsEconomy(w http.ResponseWriter, r *http.Request, params GetProjectsEconomyParams)
@@ -1547,6 +1588,9 @@ type ServerInterface interface {
 	// PutProjectsTasksByTaskIdPosition Move a task among its siblings
 	// (PUT /api/v1/projects/tasks/{taskId}/position)
 	PutProjectsTasksByTaskIdPosition(w http.ResponseWriter, r *http.Request, taskId int32)
+	// PostProjectsTasksByTaskIdRescheduleDownstream Reschedule downstream tasks reachable via dependencies
+	// (POST /api/v1/projects/tasks/{taskId}/reschedule-downstream)
+	PostProjectsTasksByTaskIdRescheduleDownstream(w http.ResponseWriter, r *http.Request, taskId int32)
 	// GetProjectsById Get a project by id
 	// (GET /api/v1/projects/{id})
 	GetProjectsById(w http.ResponseWriter, r *http.Request, id int32)
@@ -1571,6 +1615,12 @@ type ServerInterface interface {
 	// PostProjectsByIdDeliveryMilestones Create a delivery milestone on a project
 	// (POST /api/v1/projects/{id}/delivery-milestones)
 	PostProjectsByIdDeliveryMilestones(w http.ResponseWriter, r *http.Request, id int32)
+	// GetProjectsByIdDependencies List a project's task dependencies
+	// (GET /api/v1/projects/{id}/dependencies)
+	GetProjectsByIdDependencies(w http.ResponseWriter, r *http.Request, id int32)
+	// PostProjectsByIdDependencies Create a task dependency link on a project
+	// (POST /api/v1/projects/{id}/dependencies)
+	PostProjectsByIdDependencies(w http.ResponseWriter, r *http.Request, id int32)
 	// GetProjectsByIdEconomy Get a project's budget against what has been logged on it
 	// (GET /api/v1/projects/{id}/economy)
 	GetProjectsByIdEconomy(w http.ResponseWriter, r *http.Request, id int32)
@@ -1913,6 +1963,32 @@ func (siw *ServerInterfaceWrapper) PostProjectsDeliveryMilestonesByMilestoneIdSt
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PostProjectsDeliveryMilestonesByMilestoneIdStatus(w, r, milestoneId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteProjectsDependenciesByDependencyId operation middleware
+func (siw *ServerInterfaceWrapper) DeleteProjectsDependenciesByDependencyId(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "dependencyId" -------------
+	var dependencyId int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "dependencyId", r.PathValue("dependencyId"), &dependencyId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "dependencyId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteProjectsDependenciesByDependencyId(w, r, dependencyId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2700,6 +2776,32 @@ func (siw *ServerInterfaceWrapper) PutProjectsTasksByTaskIdPosition(w http.Respo
 	handler.ServeHTTP(w, r)
 }
 
+// PostProjectsTasksByTaskIdRescheduleDownstream operation middleware
+func (siw *ServerInterfaceWrapper) PostProjectsTasksByTaskIdRescheduleDownstream(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "taskId" -------------
+	var taskId int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "taskId", r.PathValue("taskId"), &taskId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "taskId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostProjectsTasksByTaskIdRescheduleDownstream(w, r, taskId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetProjectsById operation middleware
 func (siw *ServerInterfaceWrapper) GetProjectsById(w http.ResponseWriter, r *http.Request) {
 
@@ -2924,6 +3026,58 @@ func (siw *ServerInterfaceWrapper) PostProjectsByIdDeliveryMilestones(w http.Res
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PostProjectsByIdDeliveryMilestones(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetProjectsByIdDependencies operation middleware
+func (siw *ServerInterfaceWrapper) GetProjectsByIdDependencies(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetProjectsByIdDependencies(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostProjectsByIdDependencies operation middleware
+func (siw *ServerInterfaceWrapper) PostProjectsByIdDependencies(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostProjectsByIdDependencies(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3484,6 +3638,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/projects/delivery-milestones/{milestoneId}", wrapper.PutProjectsDeliveryMilestonesByMilestoneId)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/projects/delivery-milestones/{milestoneId}/position", wrapper.PutProjectsDeliveryMilestonesByMilestoneIdPosition)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/projects/delivery-milestones/{milestoneId}/status", wrapper.PostProjectsDeliveryMilestonesByMilestoneIdStatus)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/projects/dependencies/{dependencyId}", wrapper.DeleteProjectsDependenciesByDependencyId)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/projects/economy", wrapper.GetProjectsEconomy)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/projects/milestones/{milestoneId}", wrapper.DeleteProjectsMilestonesByMilestoneId)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/projects/milestones/{milestoneId}", wrapper.GetProjectsMilestonesByMilestoneId)
@@ -3499,6 +3654,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/projects/{id}/billing-lines/{lineId}", wrapper.PutProjectsByIdBillingLinesByLineId)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/projects/{id}/delivery-milestones", wrapper.GetProjectsByIdDeliveryMilestones)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/projects/{id}/delivery-milestones", wrapper.PostProjectsByIdDeliveryMilestones)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/projects/{id}/dependencies", wrapper.GetProjectsByIdDependencies)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/projects/{id}/dependencies", wrapper.PostProjectsByIdDependencies)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/projects/{id}/economy", wrapper.GetProjectsByIdEconomy)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/projects/{id}/milestones", wrapper.GetProjectsByIdMilestones)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/projects/{id}/milestones", wrapper.PostProjectsByIdMilestones)
@@ -3528,6 +3685,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/projects/tasks/{taskId}/comments/{commentId}", wrapper.DeleteProjectsTasksByTaskIdCommentsByCommentId)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/projects/tasks/{taskId}/comments/{commentId}", wrapper.PutProjectsTasksByTaskIdCommentsByCommentId)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/projects/tasks/{taskId}/position", wrapper.PutProjectsTasksByTaskIdPosition)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/projects/tasks/{taskId}/reschedule-downstream", wrapper.PostProjectsTasksByTaskIdRescheduleDownstream)
 
 	return m
 }
@@ -4079,6 +4237,58 @@ func (response PostProjectsDeliveryMilestonesByMilestoneIdStatus409ApplicationPr
 	w.WriteHeader(409)
 	_, err := buf.WriteTo(w)
 	return err
+}
+
+type DeleteProjectsDependenciesByDependencyIdRequestObject struct {
+	DependencyId int32 `json:"dependencyId"`
+}
+
+type DeleteProjectsDependenciesByDependencyIdResponseObject interface {
+	VisitDeleteProjectsDependenciesByDependencyIdResponse(w http.ResponseWriter) error
+}
+
+type DeleteProjectsDependenciesByDependencyId204Response struct {
+}
+
+func (response DeleteProjectsDependenciesByDependencyId204Response) VisitDeleteProjectsDependenciesByDependencyIdResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteProjectsDependenciesByDependencyId401JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteProjectsDependenciesByDependencyId401JSONResponse) VisitDeleteProjectsDependenciesByDependencyIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteProjectsDependenciesByDependencyId403JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteProjectsDependenciesByDependencyId403JSONResponse) VisitDeleteProjectsDependenciesByDependencyIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteProjectsDependenciesByDependencyId404Response struct {
+}
+
+func (response DeleteProjectsDependenciesByDependencyId404Response) VisitDeleteProjectsDependenciesByDependencyIdResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
 }
 
 type GetProjectsEconomyRequestObject struct {
@@ -5606,6 +5816,79 @@ func (response PutProjectsTasksByTaskIdPosition404Response) VisitPutProjectsTask
 	return nil
 }
 
+type PostProjectsTasksByTaskIdRescheduleDownstreamRequestObject struct {
+	TaskId int32 `json:"taskId"`
+	Body   *PostProjectsTasksByTaskIdRescheduleDownstreamJSONRequestBody
+}
+
+type PostProjectsTasksByTaskIdRescheduleDownstreamResponseObject interface {
+	VisitPostProjectsTasksByTaskIdRescheduleDownstreamResponse(w http.ResponseWriter) error
+}
+
+type PostProjectsTasksByTaskIdRescheduleDownstream200JSONResponse TaskRescheduleDownstreamResponse
+
+func (response PostProjectsTasksByTaskIdRescheduleDownstream200JSONResponse) VisitPostProjectsTasksByTaskIdRescheduleDownstreamResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostProjectsTasksByTaskIdRescheduleDownstream400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response PostProjectsTasksByTaskIdRescheduleDownstream400ApplicationProblemPlusJSONResponse) VisitPostProjectsTasksByTaskIdRescheduleDownstreamResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostProjectsTasksByTaskIdRescheduleDownstream401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostProjectsTasksByTaskIdRescheduleDownstream401JSONResponse) VisitPostProjectsTasksByTaskIdRescheduleDownstreamResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostProjectsTasksByTaskIdRescheduleDownstream403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostProjectsTasksByTaskIdRescheduleDownstream403JSONResponse) VisitPostProjectsTasksByTaskIdRescheduleDownstreamResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostProjectsTasksByTaskIdRescheduleDownstream404Response struct {
+}
+
+func (response PostProjectsTasksByTaskIdRescheduleDownstream404Response) VisitPostProjectsTasksByTaskIdRescheduleDownstreamResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
 type GetProjectsByIdRequestObject struct {
 	Id int32 `json:"id"`
 }
@@ -6186,6 +6469,151 @@ type PostProjectsByIdDeliveryMilestones404Response struct {
 func (response PostProjectsByIdDeliveryMilestones404Response) VisitPostProjectsByIdDeliveryMilestonesResponse(w http.ResponseWriter) error {
 	w.WriteHeader(404)
 	return nil
+}
+
+type GetProjectsByIdDependenciesRequestObject struct {
+	Id int32 `json:"id"`
+}
+
+type GetProjectsByIdDependenciesResponseObject interface {
+	VisitGetProjectsByIdDependenciesResponse(w http.ResponseWriter) error
+}
+
+type GetProjectsByIdDependencies200JSONResponse TaskDependencyListResponse
+
+func (response GetProjectsByIdDependencies200JSONResponse) VisitGetProjectsByIdDependenciesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProjectsByIdDependencies401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetProjectsByIdDependencies401JSONResponse) VisitGetProjectsByIdDependenciesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProjectsByIdDependencies403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetProjectsByIdDependencies403JSONResponse) VisitGetProjectsByIdDependenciesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProjectsByIdDependencies404Response struct {
+}
+
+func (response GetProjectsByIdDependencies404Response) VisitGetProjectsByIdDependenciesResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostProjectsByIdDependenciesRequestObject struct {
+	Id   int32 `json:"id"`
+	Body *PostProjectsByIdDependenciesJSONRequestBody
+}
+
+type PostProjectsByIdDependenciesResponseObject interface {
+	VisitPostProjectsByIdDependenciesResponse(w http.ResponseWriter) error
+}
+
+type PostProjectsByIdDependencies201JSONResponse TaskDependencyResponse
+
+func (response PostProjectsByIdDependencies201JSONResponse) VisitPostProjectsByIdDependenciesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostProjectsByIdDependencies400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response PostProjectsByIdDependencies400ApplicationProblemPlusJSONResponse) VisitPostProjectsByIdDependenciesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostProjectsByIdDependencies401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostProjectsByIdDependencies401JSONResponse) VisitPostProjectsByIdDependenciesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostProjectsByIdDependencies403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostProjectsByIdDependencies403JSONResponse) VisitPostProjectsByIdDependenciesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostProjectsByIdDependencies404Response struct {
+}
+
+func (response PostProjectsByIdDependencies404Response) VisitPostProjectsByIdDependenciesResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostProjectsByIdDependencies409ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response PostProjectsByIdDependencies409ApplicationProblemPlusJSONResponse) VisitPostProjectsByIdDependenciesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
 }
 
 type GetProjectsByIdEconomyRequestObject struct {
@@ -7127,6 +7555,9 @@ type StrictServerInterface interface {
 	// PostProjectsDeliveryMilestonesByMilestoneIdStatus Change delivery milestone status
 	// (POST /api/v1/projects/delivery-milestones/{milestoneId}/status)
 	PostProjectsDeliveryMilestonesByMilestoneIdStatus(ctx context.Context, request PostProjectsDeliveryMilestonesByMilestoneIdStatusRequestObject) (PostProjectsDeliveryMilestonesByMilestoneIdStatusResponseObject, error)
+	// DeleteProjectsDependenciesByDependencyId Delete a task dependency link
+	// (DELETE /api/v1/projects/dependencies/{dependencyId})
+	DeleteProjectsDependenciesByDependencyId(ctx context.Context, request DeleteProjectsDependenciesByDependencyIdRequestObject) (DeleteProjectsDependenciesByDependencyIdResponseObject, error)
 	// GetProjectsEconomy List the economy of the projects whose money the caller may see
 	// (GET /api/v1/projects/economy)
 	GetProjectsEconomy(ctx context.Context, request GetProjectsEconomyRequestObject) (GetProjectsEconomyResponseObject, error)
@@ -7196,6 +7627,9 @@ type StrictServerInterface interface {
 	// PutProjectsTasksByTaskIdPosition Move a task among its siblings
 	// (PUT /api/v1/projects/tasks/{taskId}/position)
 	PutProjectsTasksByTaskIdPosition(ctx context.Context, request PutProjectsTasksByTaskIdPositionRequestObject) (PutProjectsTasksByTaskIdPositionResponseObject, error)
+	// PostProjectsTasksByTaskIdRescheduleDownstream Reschedule downstream tasks reachable via dependencies
+	// (POST /api/v1/projects/tasks/{taskId}/reschedule-downstream)
+	PostProjectsTasksByTaskIdRescheduleDownstream(ctx context.Context, request PostProjectsTasksByTaskIdRescheduleDownstreamRequestObject) (PostProjectsTasksByTaskIdRescheduleDownstreamResponseObject, error)
 	// GetProjectsById Get a project by id
 	// (GET /api/v1/projects/{id})
 	GetProjectsById(ctx context.Context, request GetProjectsByIdRequestObject) (GetProjectsByIdResponseObject, error)
@@ -7220,6 +7654,12 @@ type StrictServerInterface interface {
 	// PostProjectsByIdDeliveryMilestones Create a delivery milestone on a project
 	// (POST /api/v1/projects/{id}/delivery-milestones)
 	PostProjectsByIdDeliveryMilestones(ctx context.Context, request PostProjectsByIdDeliveryMilestonesRequestObject) (PostProjectsByIdDeliveryMilestonesResponseObject, error)
+	// GetProjectsByIdDependencies List a project's task dependencies
+	// (GET /api/v1/projects/{id}/dependencies)
+	GetProjectsByIdDependencies(ctx context.Context, request GetProjectsByIdDependenciesRequestObject) (GetProjectsByIdDependenciesResponseObject, error)
+	// PostProjectsByIdDependencies Create a task dependency link on a project
+	// (POST /api/v1/projects/{id}/dependencies)
+	PostProjectsByIdDependencies(ctx context.Context, request PostProjectsByIdDependenciesRequestObject) (PostProjectsByIdDependenciesResponseObject, error)
 	// GetProjectsByIdEconomy Get a project's budget against what has been logged on it
 	// (GET /api/v1/projects/{id}/economy)
 	GetProjectsByIdEconomy(ctx context.Context, request GetProjectsByIdEconomyRequestObject) (GetProjectsByIdEconomyResponseObject, error)
@@ -7527,6 +7967,32 @@ func (sh *strictHandler) PostProjectsDeliveryMilestonesByMilestoneIdStatus(w htt
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PostProjectsDeliveryMilestonesByMilestoneIdStatusResponseObject); ok {
 		if err := validResponse.VisitPostProjectsDeliveryMilestonesByMilestoneIdStatusResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteProjectsDependenciesByDependencyId operation middleware
+func (sh *strictHandler) DeleteProjectsDependenciesByDependencyId(w http.ResponseWriter, r *http.Request, dependencyId int32) {
+	var request DeleteProjectsDependenciesByDependencyIdRequestObject
+
+	request.DependencyId = dependencyId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteProjectsDependenciesByDependencyId(ctx, request.(DeleteProjectsDependenciesByDependencyIdRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteProjectsDependenciesByDependencyId")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteProjectsDependenciesByDependencyIdResponseObject); ok {
+		if err := validResponse.VisitDeleteProjectsDependenciesByDependencyIdResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -8194,6 +8660,39 @@ func (sh *strictHandler) PutProjectsTasksByTaskIdPosition(w http.ResponseWriter,
 	}
 }
 
+// PostProjectsTasksByTaskIdRescheduleDownstream operation middleware
+func (sh *strictHandler) PostProjectsTasksByTaskIdRescheduleDownstream(w http.ResponseWriter, r *http.Request, taskId int32) {
+	var request PostProjectsTasksByTaskIdRescheduleDownstreamRequestObject
+
+	request.TaskId = taskId
+
+	var body PostProjectsTasksByTaskIdRescheduleDownstreamJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostProjectsTasksByTaskIdRescheduleDownstream(ctx, request.(PostProjectsTasksByTaskIdRescheduleDownstreamRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostProjectsTasksByTaskIdRescheduleDownstream")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostProjectsTasksByTaskIdRescheduleDownstreamResponseObject); ok {
+		if err := validResponse.VisitPostProjectsTasksByTaskIdRescheduleDownstreamResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetProjectsById operation middleware
 func (sh *strictHandler) GetProjectsById(w http.ResponseWriter, r *http.Request, id int32) {
 	var request GetProjectsByIdRequestObject
@@ -8425,6 +8924,65 @@ func (sh *strictHandler) PostProjectsByIdDeliveryMilestones(w http.ResponseWrite
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PostProjectsByIdDeliveryMilestonesResponseObject); ok {
 		if err := validResponse.VisitPostProjectsByIdDeliveryMilestonesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetProjectsByIdDependencies operation middleware
+func (sh *strictHandler) GetProjectsByIdDependencies(w http.ResponseWriter, r *http.Request, id int32) {
+	var request GetProjectsByIdDependenciesRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetProjectsByIdDependencies(ctx, request.(GetProjectsByIdDependenciesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetProjectsByIdDependencies")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetProjectsByIdDependenciesResponseObject); ok {
+		if err := validResponse.VisitGetProjectsByIdDependenciesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostProjectsByIdDependencies operation middleware
+func (sh *strictHandler) PostProjectsByIdDependencies(w http.ResponseWriter, r *http.Request, id int32) {
+	var request PostProjectsByIdDependenciesRequestObject
+
+	request.Id = id
+
+	var body PostProjectsByIdDependenciesJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostProjectsByIdDependencies(ctx, request.(PostProjectsByIdDependenciesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostProjectsByIdDependencies")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostProjectsByIdDependenciesResponseObject); ok {
+		if err := validResponse.VisitPostProjectsByIdDependenciesResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
