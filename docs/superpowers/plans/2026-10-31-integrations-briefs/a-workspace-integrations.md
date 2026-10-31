@@ -109,7 +109,7 @@ i18n keys that other packages import · add a dependency.
   the `> For agentic workers` line, **Goal**, **Architecture**, **Spec**, a *Plan
   readings* section with what you verified in the code and the line numbers, then
   *Tasks* as checkboxes, each small enough to be one commit). Commit the plan alone,
-  with the trailer `Docs-Impact: none — plan only`.
+  with no `Docs-Impact` trailer: plan files are under no page's `sources`, so the coverage check accepts the commit, and a `none` trailer anywhere in the range would waive the check for the whole pull request.
 - Implement task by task, ticking the plan as you go. One commit per task,
   Conventional Commits as the history shows (`feat(host,entra-ui): …`,
   `docs(entra,admin): …`). Commits are SSH-signed through 1Password; if signing fails,

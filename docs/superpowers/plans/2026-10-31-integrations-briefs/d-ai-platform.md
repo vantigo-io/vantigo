@@ -121,7 +121,7 @@ the wire · declare tasks for features that do not exist yet · touch Entra's ta
 - **Plan first**: `docs/superpowers/plans/2026-10-31-ai-platform.md` in the house shape
   (`> For agentic workers`, **Goal**, **Architecture**, **Spec**, *Plan readings* with
   verified line numbers, *Tasks* as checkboxes, one commit each). Commit it alone with
-  `Docs-Impact: none — plan only`.
+  no `Docs-Impact` trailer (a `none` trailer anywhere in the range waives the coverage check for the whole pull request; plan files need none).
 - One migration, `000NN_identity_ai_task_models.sql`, the next free number when its
   task lands; keep the branch rebaseable on `main`.
 - One commit per task, Conventional Commits, SSH-signed through 1Password; if signing

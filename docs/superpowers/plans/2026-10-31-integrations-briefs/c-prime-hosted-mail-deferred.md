@@ -116,7 +116,7 @@ key anywhere · bypass `netguard` beyond S7's exception.
 - **Plan first**: `docs/superpowers/plans/2026-10-31-hosted-mail.md` in the house shape
   (`> For agentic workers`, **Goal**, **Architecture**, **Spec**, *Plan readings*,
   *Tasks* as checkboxes, plus *Companion changes* for `vantigo-mail` and
-  `vantigo-infra`). Commit it alone with `Docs-Impact: none — plan only`.
+  `vantigo-infra`). Commit it alone, with no `Docs-Impact` trailer (a `none` trailer anywhere in the range waives the coverage check for the whole pull request; plan files need none).
 - No migration is expected; if you find you need one, take the next free number and
   say why in the report.
 - One commit per task, Conventional Commits, SSH-signed through 1Password; if signing

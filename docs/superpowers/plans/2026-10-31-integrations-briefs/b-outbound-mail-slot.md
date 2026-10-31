@@ -124,7 +124,7 @@ touch the frontend nav (delivery A).
   house shape (see `docs/superpowers/plans/2026-10-29-communications-m365-channels.md`:
   `> For agentic workers`, **Goal**, **Architecture**, **Spec**, *Plan readings* with
   verified line numbers, *Tasks* as checkboxes, one commit each). Commit the plan
-  alone with `Docs-Impact: none — plan only`.
+  alone, with no `Docs-Impact` trailer (a `none` trailer anywhere in the range waives the coverage check for the whole pull request; plan files need none).
 - Migrations take the next free numbers when their task lands; name them
   `000NN_invoices_send_channel.sql` and `000NN_calendar_settings.sql`. Keep the branch
   rebaseable on `main` (Anders lands PRs by rebase; renumber in-history if `main`
