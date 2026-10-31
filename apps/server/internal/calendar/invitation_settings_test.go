@@ -96,6 +96,10 @@ func TestInvitationSettings_NeedAccessAndManage(t *testing.T) {
 	if got.Revision != 1 {
 		t.Errorf("revision = %d, want 1", got.Revision)
 	}
+	// GET /meta says who the card is for, so the page asks nothing it would be refused.
+	if metaOf(t, both).CanManage != true || metaOf(t, accessOnly).CanManage != false {
+		t.Errorf("meta canManage: a manager %v, a member %v; want true, false", metaOf(t, both).CanManage, metaOf(t, accessOnly).CanManage)
+	}
 }
 
 // The settings answer the stored channel, what it is now and the choices; a

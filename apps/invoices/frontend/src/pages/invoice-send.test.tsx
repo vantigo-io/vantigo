@@ -152,7 +152,7 @@ describe("the Send dialog", () => {
   it.each([
     [409, "no_invoice_email", "The customer has no invoice e-mail. Enter an address to send to."],
     [409, "customer_anonymised", "The customer has been anonymised and is not contacted again."],
-    [503, "mail_unavailable", "This installation cannot send e-mail: SMTP is not configured."],
+    [503, "mail_unavailable", "Sending is disabled in Invoice settings, or the chosen channel cannot send."],
     [
       502,
       "mail_failed",

@@ -188,12 +188,14 @@ describe("the admin permission catalog", () => {
 
   // Hand-kept in step with `apps/server/internal/calendar/module.go` (`var
   // permissions`), for the same reason as the lists above.
-  it("names the two calendar permissions in English and Norwegian, the English the server's own", () => {
-    for (const key of ["calendar:access", "calendar:view-colleagues"] as const) {
+  it("names the three calendar permissions in English and Norwegian, the English the server's own", () => {
+    for (const key of ["calendar:access", "calendar:view-colleagues", "calendar:manage"] as const) {
       const translation = hostPermissionTranslationKeys[key];
       expect(translation, `no catalog entry for ${key}`).toBeDefined();
       expect(translation.moduleKey).toBe("admin.permission.module.calendar");
-      expect(translation.categoryKey).toBe("admin.permission.category.calendar");
+      expect(translation.categoryKey).toBe(
+        key === "calendar:manage" ? "admin.permission.category.administration" : "admin.permission.category.calendar",
+      );
       for (const lng of ["en", "nb"] as const) {
         const catalog = adminCatalog[lng] as Record<string, string>;
         expect(catalog[translation.displayNameKey], `${key} display name (${lng})`).toBeTruthy();
@@ -211,6 +213,10 @@ describe("the admin permission catalog", () => {
     expect(en["admin.permission.calendarViewColleagues"]).toBe("See colleagues' calendars");
     expect(en["admin.permission.calendarViewColleaguesDescription"]).toBe(
       "See a colleague's appointments as busy or free, with the title when it is shared.",
+    );
+    expect(en["admin.permission.calendarManage"]).toBe("Manage Calendar settings");
+    expect(en["admin.permission.calendarManageDescription"]).toBe(
+      "Choose the channel invitations to people outside the company are sent from, or turn them off.",
     );
   });
 

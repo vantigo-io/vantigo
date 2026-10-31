@@ -374,9 +374,17 @@ export const invoicesCatalog = {
     exportTooManyRows: "The export would hold more than 5000 rows; narrow the period.",
     "fieldInvalid.export.from": "Choose a first day on or before the last day.",
     "fieldInvalid.export.to": "Choose a last day on or after the first day.",
-    mailConfigured: "Mail is configured (SMTP)",
+    mailConfigured: "Sending is set up: documents go out from the channel chosen under Sending",
     mailNotConfigured:
-      "Mail is not configured (SMTP), so documents cannot be sent by e-mail. Issuing does not need it.",
+      "Sending is disabled, or the chosen channel cannot send, so documents cannot be sent by e-mail. Issuing does not need it.",
+    sending: "Sending",
+    sendingLabel: "Documents and reminders are sent from",
+    sendingDescription:
+      "Choose the mail channel documents and reminder letters go out from. Channels are set up in Communications. Nothing is sent from the system's own mailbox.",
+    sendingDisabled: "Disabled",
+    sendingGone: "Disabled — the channel no longer exists",
+    sendingCannotSend: "Cannot send",
+    sendingNoChannels: "There are no mail channels yet. Add one under Channels in Communications.",
     newInvoiceForCustomer: "The draft is made for this customer, delivered today until you change it.",
 
     "refusal.seller_incomplete": "The seller record is not complete. Fill it in under the settings.",
@@ -429,7 +437,8 @@ export const invoicesCatalog = {
     "refusal.payment_removed": "This payment is already removed.",
     "refusal.customer_anonymised": "The customer has been anonymised and is not contacted again.",
     "refusal.no_invoice_email": "The customer has no invoice e-mail. Enter an address to send to.",
-    "refusal.mail_unavailable": "This installation cannot send e-mail: SMTP is not configured.",
+    "refusal.mail_unavailable": "Sending is disabled in Invoice settings, or the chosen channel cannot send.",
+    "fieldInvalid.sendChannel": "Choose one of the channels listed, or Disabled.",
     "refusal.mail_failed":
       "The mail server did not confirm the e-mail. Nothing was recorded; it may still have arrived. Check with the customer before sending again.",
     "refusal.no_peppol_id":
@@ -1660,7 +1669,8 @@ export const invoicesCatalog = {
     "run.col.letter": "Letter",
     "run.chooseLetter": "Send the letter for invoice {{number}}",
     "run.warning.reminder_email_missing": "The customer wants e-mail and has no reminder address, so it goes on paper.",
-    "run.warning.mail_unavailable": "This installation cannot send e-mail, so it goes on paper.",
+    "run.warning.mail_unavailable":
+      "Sending is disabled in Invoice settings, or the chosen channel cannot send, so it goes on paper.",
     "run.heldHeading": "Not today",
     "run.acknowledgeStale": "The bank data is old: make the run with its charges anyway",
     "run.tooMany": "At most {{max}} letters go in one run; {{count}} are chosen.",
@@ -2421,9 +2431,17 @@ export const invoicesCatalog = {
     exportTooManyRows: "Eksporten ville hatt mer enn 5000 rader; snevre inn perioden.",
     "fieldInvalid.export.from": "Velg en første dag på eller før den siste dagen.",
     "fieldInvalid.export.to": "Velg en siste dag på eller etter den første dagen.",
-    mailConfigured: "E-post er satt opp (SMTP)",
+    mailConfigured: "Utsending er satt opp: dokumenter sendes fra kanalen som er valgt under Utsending",
     mailNotConfigured:
-      "E-post er ikke satt opp (SMTP), så dokumenter kan ikke sendes på e-post. Utstedelse trenger det ikke.",
+      "Utsending er avslått, eller den valgte kanalen kan ikke sende, så dokumenter kan ikke sendes på e-post. Utstedelse trenger det ikke.",
+    sending: "Utsending",
+    sendingLabel: "Dokumenter og purringer sendes fra",
+    sendingDescription:
+      "Velg e-postkanalen dokumenter og purrebrev sendes fra. Kanaler settes opp i Kommunikasjon. Ingenting sendes fra systemets egen postboks.",
+    sendingDisabled: "Avslått",
+    sendingGone: "Avslått – kanalen finnes ikke lenger",
+    sendingCannotSend: "Kan ikke sende",
+    sendingNoChannels: "Det finnes ingen e-postkanaler ennå. Legg til en under Kanaler i Kommunikasjon.",
     newInvoiceForCustomer: "Utkastet lages for denne kunden, levert i dag til du endrer det.",
 
     "refusal.seller_incomplete": "Selgeropplysningene er ikke fullstendige. Fyll dem ut i innstillingene.",
@@ -2474,7 +2492,9 @@ export const invoicesCatalog = {
     "refusal.payment_removed": "Denne betalingen er allerede fjernet.",
     "refusal.customer_anonymised": "Kunden er anonymisert, og det sendes ikke mer til den.",
     "refusal.no_invoice_email": "Kunden har ingen faktura-e-post. Skriv inn en adresse å sende til.",
-    "refusal.mail_unavailable": "Denne installasjonen kan ikke sende e-post: SMTP er ikke satt opp.",
+    "refusal.mail_unavailable":
+      "Utsending er avslått i fakturainnstillingene, eller den valgte kanalen kan ikke sende.",
+    "fieldInvalid.sendChannel": "Velg en av kanalene i listen, eller Avslått.",
     "refusal.mail_failed":
       "E-postserveren bekreftet ikke sendingen. Ingenting ble registrert; den kan likevel ha kommet fram. Sjekk med kunden før du sender på nytt.",
     "refusal.no_peppol_id":
@@ -3719,7 +3739,8 @@ export const invoicesCatalog = {
     "run.col.letter": "Brev",
     "run.chooseLetter": "Send brevet for faktura {{number}}",
     "run.warning.reminder_email_missing": "Kunden vil ha e-post og har ingen purreadresse, så det går på papir.",
-    "run.warning.mail_unavailable": "Denne installasjonen kan ikke sende e-post, så det går på papir.",
+    "run.warning.mail_unavailable":
+      "Utsending er avslått i fakturainnstillingene, eller den valgte kanalen kan ikke sende, så det går på papir.",
     "run.heldHeading": "Ikke i dag",
     "run.acknowledgeStale": "Bankdataene er gamle: gjør kjøringen med gebyr og renter likevel",
     "run.tooMany": "Høyst {{max}} brev går i én kjøring; {{count}} er valgt.",

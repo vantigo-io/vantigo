@@ -145,6 +145,34 @@ describe("admin channels", () => {
     expect(screen.queryByText("entra")).toBeNull();
   });
 
+  it("marks a channel that cannot send Unavailable, and says why", async () => {
+    mocks.fetchProviders.mockResolvedValue([smtpProvider]);
+    mocks.fetchChannels.mockResolvedValue([
+      { ...channel, available: true },
+      { ...channel, id: "channel-4", address: "faktura@example.com", displayName: "Faktura", available: false },
+      { ...entraChannel, available: false },
+    ]);
+    renderPage();
+    const [, readyRow, noCredentialsRow, providerOffRow] = await screen.findAllByRole("row");
+    expect(within(readyRow).queryByText("Unavailable")).toBeNull();
+    expect(within(noCredentialsRow).getByText("Unavailable")).toBeTruthy();
+    expect(
+      within(noCredentialsRow).getByText("This channel has no stored credentials, so it sends nothing."),
+    ).toBeTruthy();
+    expect(within(providerOffRow).getByText("Unavailable")).toBeTruthy();
+    expect(
+      within(providerOffRow).getByText("Microsoft 365 mail channels are not available, so this channel sends nothing."),
+    ).toBeTruthy();
+  });
+
+  it("says Utilgjengelig in Norwegian", async () => {
+    setLanguagePreference("nb");
+    mocks.fetchChannels.mockResolvedValue([{ ...channel, available: false }]);
+    renderPage();
+    expect(await screen.findByText("Utilgjengelig")).toBeTruthy();
+    expect(screen.getByText("Kanalen har ingen lagret legitimasjon og sender derfor ingenting.")).toBeTruthy();
+  });
+
   it("names a Microsoft 365 channel so while its provider is not offered", async () => {
     mocks.fetchChannels.mockResolvedValue([entraChannel]);
     renderPage();

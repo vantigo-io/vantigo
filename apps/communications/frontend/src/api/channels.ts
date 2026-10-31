@@ -13,6 +13,8 @@ export type Channel = {
   provider: ChannelProviderKey;
   isDefault: boolean;
   hasCredentials: boolean;
+  /** Whether the channel can send now: its provider is offered and, for SMTP, its credentials are stored. */
+  available?: boolean;
   mailbox?: { id: string; onClose?: ChannelOnClose; folder?: string | null } | null;
   settings: {
     host: string | null;

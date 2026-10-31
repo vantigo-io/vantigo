@@ -52,6 +52,7 @@ func (s *server) GetCalendarMeta(ctx context.Context, _ gen.GetCalendarMetaReque
 		TimeZone:             c.zone().String(),
 		Today:                apiDate(today),
 		CanViewColleagues:    c.CanViewColleagues,
+		CanManage:            s.has(ctx, "calendar:manage"),
 		InvitationsAvailable: s.mailAvailable(ctx),
 		Sources:              kinds,
 	}, nil

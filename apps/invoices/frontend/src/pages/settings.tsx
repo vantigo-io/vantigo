@@ -62,6 +62,7 @@ import { rateOn } from "../lib/vat";
 import { CollectionRatesCard } from "./-collection-rates";
 import { PaymentSettingsCard } from "./-payment-settings";
 import { ReminderSettingsCard } from "./-reminder-settings";
+import { SendingCard } from "./-sending-card";
 import { VippsSettingsCard } from "./-vipps-settings";
 
 /** The seller fields issuing needs, in the form's order (D2). */
@@ -183,6 +184,7 @@ const sellerInputs = new Set([
   "timesheetPersonLabel",
   "energyVatCodes.energy",
   "energyVatCodes.energyExempt",
+  "sendChannel",
 ]);
 
 interface SellerFormProps {
@@ -266,6 +268,9 @@ const SellerForm = ({ settings, latestRevision, dirty, onDirtyChange: setDirty }
         // The Consumption to invoice card's (energy consumption billing
         // design D8): the code each hint is invoiced at.
         energyVatCodes: values.energyVatCodes,
+        // The Sending card's (integrations design T6): the channel documents
+        // and reminders are sent from, null for Disabled.
+        sendChannel: values.sendChannel ?? null,
         revision: settings.revision,
       }),
     onSuccess: async (saved) => {
@@ -343,7 +348,7 @@ const SellerForm = ({ settings, latestRevision, dirty, onDirtyChange: setDirty }
                 </List.Item>
               );
             })}
-            {/* Informative only: sending needs SMTP, issuing never does (payments and delivery design D10). */}
+            {/* Informative only: sending needs a channel, issuing never does (payments and delivery design D10). */}
             {meta.data && (
               <List.Item
                 data-informative="true"
@@ -449,6 +454,7 @@ const SellerForm = ({ settings, latestRevision, dirty, onDirtyChange: setDirty }
           {meta.data && <AccessPointSection meta={meta.data} />}
         </Stack>
       </Card>
+      <SendingCard settings={settings} values={values} errors={errors} set={set} />
       <KidCard settings={settings} values={values} errors={errors} set={set} />
       <WorkCard stored={settings.workVatCodes} values={values} errors={errors} set={set} />
       <EnergyCard stored={settings.energyVatCodes} values={values} errors={errors} set={set} />
