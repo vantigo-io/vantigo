@@ -369,6 +369,9 @@ describe("EntraPage — the account rules", () => {
       passLifetimeMinutes: 60,
       passUsableOnce: true,
     });
+    // The switches that used to end this form are the Outlook and mail card's: left out, so kept.
+    expect(put.body).not.toHaveProperty("outlookConnect");
+    expect(put.body).not.toHaveProperty("mailChannels");
     expect(await screen.findByText("Account rules saved")).toBeInTheDocument();
   });
 
@@ -416,7 +419,7 @@ describe("EntraPage — the account rules", () => {
 describe("EntraPage — the Outlook connection", () => {
   it("is off by default, says nothing of its state, and does not ask for the calendar permission", async () => {
     await openPage({ connection: connected() });
-    const form = within(region("Set the account rules")).getByRole("form", { name: "Account rules" });
+    const form = within(region("Outlook and mail")).getByRole("form", { name: "Outlook and mail settings" });
     const toggle = within(form).getByRole("switch", {
       name: /^Outlook connection: let people connect their Outlook to Vantigo/,
     });
@@ -431,18 +434,20 @@ describe("EntraPage — the Outlook connection", () => {
     expect(within(step).getByText("Add these eight application permissions, one by one.")).toBeInTheDocument();
   });
 
-  it("is sent as outlookConnect with the account rules, and never asks for an application Calendars.ReadWrite", async () => {
+  it("is sent as outlookConnect alone, and never asks for an application Calendars.ReadWrite", async () => {
     const { fetchMock } = await openPage({ connection: connected() });
-    const form = within(region("Set the account rules")).getByRole("form", { name: "Account rules" });
+    const form = within(region("Outlook and mail")).getByRole("form", { name: "Outlook and mail settings" });
     await userEvent.click(within(form).getByRole("switch", { name: /^Outlook connection: let people connect/ }));
-    await userEvent.click(within(form).getByRole("button", { name: "Save the account rules" }));
+    await userEvent.click(within(form).getByRole("button", { name: "Save the Outlook and mail settings" }));
 
     await waitFor(() => expect(sentAll(fetchMock, "PUT")).toHaveLength(1));
     expect(sent(fetchMock, "PUT")).toMatchObject({
       url: "/api/v1/entra/connection/settings",
       headers: { "if-match": "4" },
-      body: { outlookConnect: true, upnDomain: "contoso.no" },
+      body: { outlookConnect: true },
     });
+    // Only the switches: the account rules are left as they are.
+    expect(Object.keys(sent(fetchMock, "PUT").body as object).sort()).toEqual(["mailChannels", "outlookConnect"]);
     expect(await within(form).findByText(/^Nobody has connected yet: connect your own Outlook/)).toBeInTheDocument();
     expect(within(form).getByRole("switch", { name: /^Outlook connection: let people/ })).toBeChecked();
 
@@ -459,7 +464,7 @@ describe("EntraPage — the Outlook connection", () => {
 
   it("reads Ready once someone has connected", async () => {
     await openPage({ connection: connected({ outlookConnect: outlookConnect() }) });
-    const form = within(region("Set the account rules")).getByRole("form", { name: "Account rules" });
+    const form = within(region("Outlook and mail")).getByRole("form", { name: "Outlook and mail settings" });
     expect(within(form).getByRole("status")).toHaveTextContent("Ready");
   });
 
@@ -471,7 +476,7 @@ describe("EntraPage — the Outlook connection", () => {
         outlookConnect: outlookConnect({ status: "unavailable", reason: "credential_invalid" }),
       }),
     });
-    const form = within(region("Set the account rules")).getByRole("form", { name: "Account rules" });
+    const form = within(region("Outlook and mail")).getByRole("form", { name: "Outlook and mail settings" });
     const status = within(form).getByRole("status");
     expect(within(status).getByText("Waiting for the connection")).toBeInTheDocument();
     expect(within(status).getByText(/The tenant refused the client secret/)).toBeInTheDocument();
@@ -569,7 +574,7 @@ describe("EntraPage — the Outlook connection", () => {
     // setup() gives the test a clipboard to read back.
     const user = userEvent.setup();
     await openPage({ connection: connected() });
-    const form = within(region("Set the account rules")).getByRole("form", { name: "Account rules" });
+    const form = within(region("Outlook and mail")).getByRole("form", { name: "Outlook and mail settings" });
     const uri = "https://vantigo.example/api/v1/entra/outlook/callback";
     expect(within(form).getByText("Redirect URI")).toBeInTheDocument();
     expect(within(form).getByText(uri)).toBeInTheDocument();
@@ -588,7 +593,7 @@ describe("EntraPage — the Outlook connection", () => {
       await openPage({
         connection: connected({ outlookConnect: outlookConnect({ status, connected: 4, reconnect: 1 }) }),
       });
-      const form = within(region("Set the account rules")).getByRole("form", { name: "Account rules" });
+      const form = within(region("Outlook and mail")).getByRole("form", { name: "Outlook and mail settings" });
       const line = within(form).getByRole("status");
       expect(within(line).getByText(text)).toBeInTheDocument();
       expect(within(line).getByText("People connected: 4. Waiting to reconnect: 1.")).toBeInTheDocument();
@@ -598,9 +603,9 @@ describe("EntraPage — the Outlook connection", () => {
     const { fetchMock } = await openPage({
       connection: connected({ outlookConnect: outlookConnect({ connected: 2, reconnect: 1 }) }),
     });
-    const form = within(region("Set the account rules")).getByRole("form", { name: "Account rules" });
+    const form = within(region("Outlook and mail")).getByRole("form", { name: "Outlook and mail settings" });
     await userEvent.click(within(form).getByRole("switch", { name: /^Outlook connection: let people connect/ }));
-    await userEvent.click(within(form).getByRole("button", { name: "Save the account rules" }));
+    await userEvent.click(within(form).getByRole("button", { name: "Save the Outlook and mail settings" }));
 
     let dialog = await screen.findByRole("dialog", { name: "Turn the Outlook connection off?" });
     expect(within(dialog).getByText(/^Everyone will have to connect Outlook again\./)).toBeInTheDocument();
@@ -608,7 +613,7 @@ describe("EntraPage — the Outlook connection", () => {
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
     expect(sentAll(fetchMock, "PUT")).toHaveLength(0);
 
-    await userEvent.click(within(form).getByRole("button", { name: "Save the account rules" }));
+    await userEvent.click(within(form).getByRole("button", { name: "Save the Outlook and mail settings" }));
     dialog = await screen.findByRole("dialog", { name: "Turn the Outlook connection off?" });
     await userEvent.click(within(dialog).getByRole("button", { name: "Turn off and save" }));
     await waitFor(() => expect(sentAll(fetchMock, "PUT")).toHaveLength(1));
@@ -617,9 +622,9 @@ describe("EntraPage — the Outlook connection", () => {
 
   it("turns the switch off without asking when nobody is connected", async () => {
     const { fetchMock } = await openPage({ connection: connected({ outlookConnect: outlookConnect() }) });
-    const form = within(region("Set the account rules")).getByRole("form", { name: "Account rules" });
+    const form = within(region("Outlook and mail")).getByRole("form", { name: "Outlook and mail settings" });
     await userEvent.click(within(form).getByRole("switch", { name: /^Outlook connection: let people connect/ }));
-    await userEvent.click(within(form).getByRole("button", { name: "Save the account rules" }));
+    await userEvent.click(within(form).getByRole("button", { name: "Save the Outlook and mail settings" }));
     await waitFor(() => expect(sentAll(fetchMock, "PUT")).toHaveLength(1));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
@@ -639,7 +644,7 @@ describe("EntraPage — the Mail channels", () => {
       `Test-ServicePrincipalAuthorization -Identity ${clientId} -Resource post@firma.no`,
     ].join("\n");
 
-  const form = () => within(region("Set the account rules")).getByRole("form", { name: "Account rules" });
+  const form = () => within(region("Outlook and mail")).getByRole("form", { name: "Outlook and mail settings" });
 
   it("is off by default, with no status and no commands", async () => {
     await openPage({ connection: connected() });
@@ -652,7 +657,7 @@ describe("EntraPage — the Mail channels", () => {
     expect(within(form()).queryByText(/New-ServicePrincipal/)).not.toBeInTheDocument();
   });
 
-  it("is sent as mailChannels with the account rules, then reads Ready with the commands", async () => {
+  it("is sent as mailChannels alone, then reads Ready with the commands", async () => {
     const { fetchMock } = await openPage({
       connection: connected({
         mailChannels: { enabled: false, status: "off", servicePrincipalId: SERVICE_PRINCIPAL_ID },
@@ -661,7 +666,7 @@ describe("EntraPage — the Mail channels", () => {
     await userEvent.click(within(form()).getByRole("switch", { name: /^Mail channels: let Communications/ }));
     // The commands follow the switch at once, before it is saved.
     expect(within(form()).getByText(/^New-ServicePrincipal/)).toBeInTheDocument();
-    await userEvent.click(within(form()).getByRole("button", { name: "Save the account rules" }));
+    await userEvent.click(within(form()).getByRole("button", { name: "Save the Outlook and mail settings" }));
 
     await waitFor(() => expect(sentAll(fetchMock, "PUT")).toHaveLength(1));
     expect(sent(fetchMock, "PUT")).toMatchObject({
@@ -679,7 +684,7 @@ describe("EntraPage — the Mail channels", () => {
   it("warns once saved when the token carries a tenant-wide Mail role", async () => {
     await openPage({ connection: connected({ permissionsPresent: [...requiredPermissions, "Mail.Send"] }) });
     await userEvent.click(within(form()).getByRole("switch", { name: /^Mail channels: let Communications/ }));
-    await userEvent.click(within(form()).getByRole("button", { name: "Save the account rules" }));
+    await userEvent.click(within(form()).getByRole("button", { name: "Save the Outlook and mail settings" }));
     const status = await within(form()).findByRole("status", { name: "Mail channels" });
     expect(within(status).getByText(/^Mail access is granted to every mailbox in the tenant\./)).toBeInTheDocument();
   });
@@ -690,7 +695,7 @@ describe("EntraPage — the Mail channels", () => {
     });
     await userEvent.click(within(form()).getByRole("switch", { name: /^Mail channels: let/ }));
     expect(within(form()).queryByText(/New-ServicePrincipal/)).not.toBeInTheDocument();
-    await userEvent.click(within(form()).getByRole("button", { name: "Save the account rules" }));
+    await userEvent.click(within(form()).getByRole("button", { name: "Save the Outlook and mail settings" }));
     await waitFor(() => expect(sentAll(fetchMock, "PUT")).toHaveLength(1));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(sent(fetchMock, "PUT").body).toMatchObject({ mailChannels: false });

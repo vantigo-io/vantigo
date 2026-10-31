@@ -132,7 +132,7 @@ become permanent redirects. Branch `feat/workspace-integrations`, cut from `main
 
 ## Tasks
 
-- [ ] **1. `refactor(entra-ui)`: split the settings form.** `SettingsForm` becomes the
+- [x] **1. `refactor(entra-ui)`: split the settings form.** `SettingsForm` becomes the
   account rules alone (step 4, the leaver and joiner rules, the licences list) sending
   only those ten fields; `OutlookSettingsForm` takes the two switches, the redirect URI,
   `OutlookConnectStatus`, `ChangeNotifications`, `MailChannelsStatus` and

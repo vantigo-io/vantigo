@@ -18,9 +18,10 @@ import { ApiConflictError, ENTRA_QUERY_KEY } from "../api/request";
 import { callerIsOwnerQueryOptions } from "../api/session";
 import { AddSecretForm, CredentialList } from "../components/credentials";
 import { GroupsCard } from "../components/groups-card";
+import { OutlookSettingsForm } from "../components/outlook-settings-form";
 import { SettingsForm } from "../components/settings-form";
 import { StatusCard } from "../components/status-card";
-import { CopyValue, MissingPermission, OwnerOnly, PortalPath, StepCard } from "../components/step-card";
+import { CopyValue, MissingPermission, OwnerOnly, PortalPath, SectionCard, StepCard } from "../components/step-card";
 import "../i18n";
 import { entraAuthority, stepsDone } from "../lib/steps";
 import { codeOf, fieldRefusals, isStale, reasonText, type Translate } from "../lib/words";
@@ -103,6 +104,10 @@ const Wizard = ({
         <Text size="sm">{t("step4Body")}</Text>
         <SettingsForm connection={connection} />
       </StepCard>
+
+      <SectionCard title={t("outlookAndMail")}>
+        <OutlookSettingsForm connection={connection} />
+      </SectionCard>
 
       <StepCard step={5} title={t("step5Title")} path={t("step5Path")} done={undefined}>
         <Text size="sm">{t("step5Body")}</Text>
