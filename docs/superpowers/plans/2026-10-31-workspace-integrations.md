@@ -169,16 +169,16 @@ become permanent redirects. Branch `feat/workspace-integrations`, cut from `main
   and green.
 - [x] **4. `feat(host)`: the dashboard opens the Status tab.** `attentionHref` for
   `accountUnconfirmedInEntra` → `/workspace/entra`; its test.
-- [ ] **5. `docs(admin)`: the Configuration page, en and nb.** New `admin/configuration.md`
+- [x] **5. `docs(admin)`: the Configuration page, en and nb.** New `admin/configuration.md`
   (`sources: apps/server/internal/config`): the two tiers table (T1), the rule, today's
   instance settings grouped (process, mail, storage, workers, shared services) with one
   line each, and for every workspace setting the page that edits it; linked from
   `admin/index.md` under *Where to start* in both languages.
-- [ ] **6. `docs(entra)`: the four tabs, en and nb.** `user/entra.md` (the new place, the
+- [x] **6. `docs(entra)`: the four tabs, en and nb.** `user/entra.md` (the new place, the
   tabs and what each holds, every "the page" → the tab, the redirect), `admin/entra.md`
   (the same rewording, the redirect), `reference/entra.md` (the routes, the redirect,
   the exports, the split settings request as the UI sends it); `sources` updated.
-- [ ] **7. `docs`: Integrations in Workspace administration, the host's slot, the
+- [x] **7. `docs`: Integrations in Workspace administration, the host's slot, the
   roadmap.** `user/workspace-administration.md` (en, nb): *Integrations* — what it is, who
   sees it, an Entra manager who is not an Owner sees only that section; `contributing/
   module-boundaries.md` (en): the host's *Integrations* section as a slot beside the

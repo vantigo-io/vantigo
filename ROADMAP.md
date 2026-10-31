@@ -79,6 +79,27 @@ likely Orders (`OrderPlaced` → Communications sends confirmation, Warehouse
 reserves stock). If a module is ever extracted, the outbox dispatcher targets a
 transport instead of in-process handlers; event contracts stay unchanged.
 
+### Integrations (in progress)
+
+Decided in
+[`docs/superpowers/specs/2026-10-31-integrations-and-configuration-tiers-design.md`](docs/superpowers/specs/2026-10-31-integrations-and-configuration-tiers-design.md):
+every setting belongs to one of two tiers by who owns it — the **instance** (the
+environment, Vantigo's or the operator's) and the **workspace** (the database, the
+tenant's Owner) — and a setting lives in exactly one; an **Integrations** section of
+Workspace admin is the one place the tenant's connections to systems elsewhere are
+managed; customer mail goes through a channel the Owner chose and never the system
+mailbox; AI is a platform provider with a model per task.
+
+**Delivery A (done, `feat/workspace-integrations`)** — the **Integrations** section of
+Workspace admin and Microsoft Entra ID in it: `/workspace/entra` in four tabs (Status,
+Connection, Accounts, Outlook and mail), the tile gone from the app switcher, `/entra`
+redirecting, the area guard admitting a holder of `entra:manage`, the new administration
+page *Configuration* with the two tiers. Frontend and documentation only.
+
+**Deliveries B to D (planned)** — outbound mail through Communications' channels with
+`contracts.OutboundMail` and the end of the system-mailbox fallback; Vantigo hosted mail
+as a fourth channel provider; AI models, a model per task, on one page.
+
 ## Customers
 
 Customers is the hub Energy, Projects, Time, Expenses and Invoices all hang off — a

@@ -10,12 +10,14 @@ sources:
 
 Workspace administration is where an **Owner** manages who can use Vantigo and what
 they may do. Open the avatar menu at the top right and choose **Workspace admin**;
-its sidebar has **Overview**, **Users**, **Invitations** and **Roles & access**.
+its sidebar has **Overview**, **Users**, **Invitations** and **Roles & access**, and,
+under **Integrations**, **Microsoft Entra ID**.
 
 Everything here needs the Owner role, with one exception: a person to whom an Owner
 has delegated role administration sees **Roles & access** alone, both in the avatar
-menu and in the sidebar. The last active Owner can never be demoted, disabled or
-deleted, so the workspace always has one.
+menu and in the sidebar; and someone who holds `entra:manage` without being an Owner
+sees **Integrations** alone ([below](#integrations)). The last active Owner can never be
+demoted, disabled or deleted, so the workspace always has one.
 
 ## Read the overview
 
@@ -400,6 +402,29 @@ Groups — sets of users with roles mapped to them — exist in Vantigo for SCIM
 provisioning and the API, not as a screen here. When the identity provider manages
 groups, their members receive the mapped roles automatically; see
 [SSO and SCIM operations](/en/admin/sso-scim/).
+
+## Integrations
+
+**Integrations** is the second section of the **Workspace admin** sidebar: the one place
+the company's connections to systems elsewhere are managed. Today it has one item,
+**Microsoft Entra ID**, which connects Vantigo to the company's Microsoft Entra ID tenant;
+its page has four tabs — **Status**, **Connection**, **Accounts** and **Outlook and
+mail** — described in [Microsoft Entra ID](/en/user/entra/#where-it-is-and-the-four-tabs).
+The section is there only while the Microsoft Entra ID module is on in this installation,
+and only for someone who holds `entra:manage`; an Owner holds every permission.
+
+- An Owner sees all of Workspace admin, with **Integrations** after the rest.
+- Someone who holds `entra:manage` but is not an Owner sees **Integrations** alone in
+  the sidebar — the way a person with delegated role administration sees **Roles &
+  access** alone — and finds **Microsoft Entra ID** in the avatar menu. The steps that
+  are an Owner's they read without their forms.
+- Without `entra:manage`, or while the module is off, there is no **Integrations**
+  section.
+
+Your own accounts elsewhere, such as your Outlook, are connected under **Settings** ›
+**Connections** ([Connections](/en/user/connections/)); the mailboxes Communications
+sends from are its **Channels**, not here. [Configuration](/en/admin/configuration/) says
+which settings are the workspace's and which the installation's.
 
 ## Set up a new installation
 
