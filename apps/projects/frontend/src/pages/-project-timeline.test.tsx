@@ -41,6 +41,21 @@ const stubTimeline = (entries: TimelineEntry[], status = 200, totalPages = 1) =>
   });
 
 describe("ProjectTimeline", () => {
+  it("names delivery milestone events in the reader's own words", async () => {
+    stubTimeline([
+      entry({ id: 1, eventType: "delivery-milestone-added", payload: { name: "Phase 1 MVP" } }),
+      entry({ id: 2, eventType: "delivery-milestone-completed", payload: { name: "Phase 1 MVP" } }),
+      entry({ id: 3, eventType: "delivery-milestone-reopened", payload: { name: "Phase 1 MVP" } }),
+      entry({ id: 4, eventType: "delivery-milestone-removed", payload: { name: "Phase 1 MVP" } }),
+    ]);
+    renderWithProviders(<ProjectTimeline projectId={7} />);
+
+    expect(await screen.findByText("Delivery milestone Phase 1 MVP was added.")).toBeInTheDocument();
+    expect(screen.getByText("Delivery milestone Phase 1 MVP was marked completed.")).toBeInTheDocument();
+    expect(screen.getByText("Delivery milestone Phase 1 MVP was reopened.")).toBeInTheDocument();
+    expect(screen.getByText("Delivery milestone Phase 1 MVP was deleted.")).toBeInTheDocument();
+  });
+
   it("names a work type and the fields a change of it moved, never its percentages", async () => {
     stubTimeline([
       // Literally what the server writes: an added type names all three fields.

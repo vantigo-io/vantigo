@@ -4,6 +4,7 @@ import { useForm } from "@mantine/form";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useI18n } from "@vantigo/frontend-shell";
+import { deliveryMilestonesQueryOptions } from "../api/delivery-milestones";
 import { ApiValidationError } from "../api/projects";
 import { createTask, projectTasksQueryOptions, type TaskInput } from "../api/tasks";
 import { AssigneePicker } from "../components/assignee-picker";
@@ -29,6 +30,7 @@ interface TaskFormValues {
   dueDate: string | null;
   estimateHours: number | string;
   parentTaskId: string | null;
+  deliveryMilestoneId: string | null;
 }
 
 const hours = (value: number | string): number | undefined => {
@@ -63,6 +65,7 @@ const TaskForm = ({ projectId, state, onClose }: TaskFormModalProps & { state: T
   // Only a top-level task may be a parent, which is exactly what the tree's
   // own rows are; their subtasks are one level down and never offered.
   const { data: tree } = useQuery(projectTasksQueryOptions(projectId));
+  const { data: milestonesData } = useQuery(deliveryMilestonesQueryOptions(projectId));
 
   const form = useForm<TaskFormValues>({
     initialValues: {
@@ -74,6 +77,7 @@ const TaskForm = ({ projectId, state, onClose }: TaskFormModalProps & { state: T
       dueDate: null,
       estimateHours: "",
       parentTaskId: state.parentTaskId === undefined ? null : String(state.parentTaskId),
+      deliveryMilestoneId: null,
     },
     validate: {
       title: (value) => {
@@ -101,6 +105,7 @@ const TaskForm = ({ projectId, state, onClose }: TaskFormModalProps & { state: T
         dueDate: values.dueDate,
         estimateHours: hours(values.estimateHours) ?? null,
         parentTaskId: values.parentTaskId === null ? null : Number(values.parentTaskId),
+        deliveryMilestoneId: values.deliveryMilestoneId === null ? null : Number(values.deliveryMilestoneId),
       };
       return createTask(projectId, input);
     },
@@ -162,6 +167,14 @@ const TaskForm = ({ projectId, state, onClose }: TaskFormModalProps & { state: T
             onChange={(value) => form.setFieldValue("parentTaskId", value)}
           />
         </Group>
+        <Select
+          label={t("deliveryMilestone")}
+          placeholder={t("noDeliveryMilestone")}
+          clearable
+          data={(milestonesData?.milestones ?? []).map((m) => ({ value: String(m.id), label: m.name }))}
+          value={form.values.deliveryMilestoneId}
+          onChange={(value) => form.setFieldValue("deliveryMilestoneId", value)}
+        />
         <Group justify="flex-end">
           <Button variant="default" onClick={onClose}>
             {t("cancel")}
