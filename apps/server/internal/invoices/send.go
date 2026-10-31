@@ -149,7 +149,7 @@ func (s *server) withSendDefaults(ctx context.Context, q *store.Queries, inv sto
 	if err != nil {
 		return err
 	}
-	mail := s.mailAvailable()
+	mail := s.mailAvailable(ctx)
 	ehfPreference = ehfPreference && resp.Ehf != nil
 	if !mail && (!ehfPreference || !canSendEhf) {
 		return nil
@@ -216,9 +216,13 @@ func mailFailed() gen.InvoicesConflictProblem {
 	return c
 }
 
+// sendingDisabled is the sentence of a send refused, and of a letter failed,
+// because Invoice settings choose no channel to send from or the chosen one
+// cannot send (integrations design T6).
+const sendingDisabled = "Sending is disabled in Invoice settings, or the chosen channel cannot send."
+
 func mailUnavailable() gen.InvoicesConflictProblem {
-	c := conflict(codeMailUnavailable, "E-mail is unavailable",
-		"This installation has no mail server configured, so a document cannot be sent by e-mail.")
+	c := conflict(codeMailUnavailable, "E-mail is unavailable", sendingDisabled)
 	c.Status = ptr(int32(http.StatusServiceUnavailable))
 	return c
 }
@@ -226,8 +230,11 @@ func mailUnavailable() gen.InvoicesConflictProblem {
 // PostInvoicesByIdSend Send an issued document by e-mail
 // (POST /api/v1/invoices/{id}/send)
 func (s *server) PostInvoicesByIdSend(ctx context.Context, req gen.PostInvoicesByIdSendRequestObject) (gen.PostInvoicesByIdSendResponseObject, error) {
-	// 1. An installation that cannot send reads nothing.
-	if !s.mailAvailable() {
+	// 1. Sending that is disabled, or whose channel cannot send, reads
+	// nothing (integrations design T6). The channel is read once and is the
+	// one the send goes out on.
+	channel, ok := s.sendingChannel(ctx)
+	if !ok {
 		return gen.PostInvoicesByIdSend503ApplicationProblemPlusJSONResponse(mailUnavailable()), nil
 	}
 
@@ -316,7 +323,7 @@ func (s *server) PostInvoicesByIdSend(ctx context.Context, req gen.PostInvoicesB
 	// already have accepted. The 30 seconds are the send's alone.
 	uncancelled := context.WithoutCancel(ctx)
 	sendCtx, cancelSend := context.WithTimeout(uncancelled, sendTimeout)
-	err = s.smtpSend(sendCtx, s.deps.Config.Mail, out)
+	err = s.outboundSend(sendCtx, channel, out)
 	cancelSend()
 	if err != nil {
 		// The error with the address taken out: a mail server's refusal
@@ -371,9 +378,8 @@ func (s *server) PostInvoicesByIdSend(ctx context.Context, req gen.PostInvoicesB
 	return gen.PostInvoicesByIdSend200JSONResponse(resp), nil
 }
 
-// envelope is one send's mail.Outbound: From the installation's address
-// (Config.Mail.From, which the SMTP client sets) under the seller snapshot's
-// legal name, Reply-To the current settings' e-mail when there is one, the
+// envelope is one send's mail.Outbound: From the chosen channel's address
+// (which Communications sets) under the seller snapshot's legal name, Reply-To the current settings' e-mail when there is one, the
 // cover mail in the document's language, a fresh bare Message-ID, and the
 // PDF attached under the download's own name.
 func (s *server) envelope(ctx context.Context, q *store.Queries, inv store.InvoicesInvoice, recipient string, pdf []byte) (mail.Outbound, error) {

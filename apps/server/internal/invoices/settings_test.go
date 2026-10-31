@@ -48,6 +48,21 @@ type settingsJSON struct {
 	TimesheetDefault     bool   `json:"timesheetDefault"`
 	TimesheetPersonLabel string `json:"timesheetPersonLabel"`
 	Revision             int32  `json:"revision"`
+	// The channel documents and reminders are sent from (integrations design
+	// T6): as stored, what it is now, and the channels a choice may name.
+	SendChannel      *string           `json:"sendChannel"`
+	SendChannelState string            `json:"sendChannelState"`
+	SendChannels     []sendChannelJSON `json:"sendChannels"`
+}
+
+// sendChannelJSON is one channel the Sending choice may name.
+type sendChannelJSON struct {
+	ID                  string `json:"id"`
+	Address             string `json:"address"`
+	DisplayName         string `json:"displayName"`
+	Provider            string `json:"provider"`
+	ProviderDisplayName string `json:"providerDisplayName"`
+	Available           bool   `json:"available"`
 }
 
 // problemJSON is a refusal as a client reads it: the conflict's code, the

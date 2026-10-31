@@ -12,9 +12,11 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
+	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/holidays"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/gen"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/kid"
@@ -496,8 +498,95 @@ func (s *server) GetInvoicesSettings(ctx context.Context, _ gen.GetInvoicesSetti
 	if err != nil {
 		return nil, err
 	}
-	return gen.GetInvoicesSettings200JSONResponse(settingsResponse(row, locked, next)), nil
+	resp, err := s.withSending(ctx, settingsResponse(row, locked, next), row.SendChannel)
+	if err != nil {
+		return nil, err
+	}
+	return gen.GetInvoicesSettings200JSONResponse(resp), nil
 }
+
+// The states of the stored sending channel, GET /settings' sendChannelState
+// (integrations design T6).
+const (
+	sendDisabled    = gen.InvoicesSettingsResponseSendChannelStateDisabled
+	sendReady       = gen.InvoicesSettingsResponseSendChannelStateReady
+	sendUnavailable = gen.InvoicesSettingsResponseSendChannelStateUnavailable
+	sendGone        = gen.InvoicesSettingsResponseSendChannelStateGone
+)
+
+// withSending adds the sending channel to a settings response: the stored
+// choice, what it is now, and the channels a choice may name - names and
+// addresses, as Communications answers them through contracts.OutboundMail.
+// It makes calls out of the module, so it runs outside any transaction. The
+// stored id is kept whatever its state: a channel that goes away is shown as
+// gone until an Owner chooses again, and Communications never writes this
+// module's settings.
+func (s *server) withSending(ctx context.Context, resp gen.InvoicesSettingsResponse, chosen *uuid.UUID) (gen.InvoicesSettingsResponse, error) {
+	channels, err := s.outboundChannels(ctx)
+	if err != nil {
+		return resp, fmt.Errorf("invoices: list the channels to send from: %w", err)
+	}
+	list := make([]gen.InvoicesSendChannel, 0, len(channels))
+	state := sendDisabled
+	for _, c := range channels {
+		list = append(list, gen.InvoicesSendChannel{
+			Id: c.ID, Address: c.Address, DisplayName: c.DisplayName, Provider: c.Provider,
+			ProviderDisplayName: c.ProviderDisplayName, Available: c.Available,
+		})
+		if chosen != nil && c.ID == *chosen {
+			state = sendUnavailable
+			if c.Available {
+				state = sendReady
+			}
+		}
+	}
+	if chosen != nil && state == sendDisabled {
+		state = sendGone
+	}
+	resp.SendChannel = chosen
+	resp.SendChannelState = &state
+	resp.SendChannels = &list
+	return resp, nil
+}
+
+// sendChannelFrom reads the request's sendChannel (integrations design T6):
+// absent keeps the stored one (keep true), null is Disabled, and an id is a
+// channel that must exist - unless it is the stored one, so a setting whose
+// channel has since gone can still be saved. A malformed id, or one no channel
+// has, is a 400 on sendChannel. It asks Communications, so it runs before the
+// transaction opens.
+func (s *server) sendChannelFrom(ctx context.Context, raw json.RawMessage, stored *uuid.UUID) (chosen *uuid.UUID, keep bool, errs map[string][]string, err error) {
+	switch {
+	case len(raw) == 0:
+		return nil, true, nil, nil
+	case string(raw) == "null":
+		return nil, false, nil, nil
+	}
+	var text string
+	if json.Unmarshal(raw, &text) != nil {
+		return nil, false, withFieldError(nil, "sendChannel", msgSendChannel), nil
+	}
+	id, parseErr := uuid.Parse(text)
+	if parseErr != nil {
+		return nil, false, withFieldError(nil, "sendChannel", msgSendChannel), nil
+	}
+	if stored != nil && *stored == id {
+		return &id, false, nil, nil
+	}
+	if _, chErr := s.outboundChannel(ctx, id); chErr != nil {
+		if errors.Is(chErr, contracts.ErrChannelUnknown) {
+			return nil, false, withFieldError(nil, "sendChannel", msgSendChannelUnknown), nil
+		}
+		return nil, false, nil, fmt.Errorf("invoices: read the channel to send from: %w", chErr)
+	}
+	return &id, false, nil, nil
+}
+
+// The two 400 sentences of sendChannel.
+const (
+	msgSendChannel        = "A sending channel is the id of a channel, or null for none"
+	msgSendChannelUnknown = "No active channel has this id"
+)
 
 // errRefused stops a locked transaction whose rule refused the request: the
 // transaction rolls back and the handler answers the refusal it recorded.
@@ -529,6 +618,15 @@ func (s *server) PutInvoicesSettings(ctx context.Context, req gen.PutInvoicesSet
 	}
 	errs = checkWorkVatCodes(parsed, stored, codes, errs)
 	errs = checkEnergyVatCodes(req.Body.EnergyVatCodes, stored, codes, errs)
+	sendChannel, keepSendChannel, sendErrs, err := s.sendChannelFrom(ctx, req.Body.SendChannel, stored.SendChannel)
+	if err != nil {
+		return nil, err
+	}
+	for field, msgs := range sendErrs {
+		for _, msg := range msgs {
+			errs = withFieldError(errs, field, msg)
+		}
+	}
 	if len(errs) > 0 {
 		return gen.PutInvoicesSettings400ApplicationProblemPlusJSONResponse(invalid(invalidSettingsTitle, errs)), nil
 	}
@@ -564,6 +662,12 @@ func (s *server) PutInvoicesSettings(ctx context.Context, req gen.PutInvoicesSet
 		if c := req.Body.EnergyVatCodes; c != nil {
 			parsed.EnergyVatCode, parsed.EnergyVatCodeExempt = c.Energy, c.EnergyExempt
 		}
+		// The sending channel a request leaves out is kept as stored
+		// (integrations design T6), as it is under the lock.
+		parsed.SendChannel = sendChannel
+		if keepSendChannel {
+			parsed.SendChannel = current.SendChannel
+		}
 		if msg := kidFitRefusal(parsed.KidLength, next); msg != "" {
 			unfit = withFieldError(nil, "kidLength", msg)
 			return errRefused
@@ -587,7 +691,11 @@ func (s *server) PutInvoicesSettings(ctx context.Context, req gen.PutInvoicesSet
 	if err != nil {
 		return nil, err
 	}
-	return gen.PutInvoicesSettings200JSONResponse(settingsResponse(saved, locked, next)), nil
+	resp, err := s.withSending(ctx, settingsResponse(saved, locked, next), saved.SendChannel)
+	if err != nil {
+		return nil, err
+	}
+	return gen.PutInvoicesSettings200JSONResponse(resp), nil
 }
 
 // ptr is a pointer to a copy of v.

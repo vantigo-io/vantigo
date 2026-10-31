@@ -66,7 +66,7 @@ var runItemAfterLock func(ctx context.Context, invoiceID int64) error
 // directory before any lock: paper when the billing profile's
 // ReminderDelivery says paper; otherwise e-mail to ReminderEmail — paper
 // with reminder_email_missing when it has none, paper with mail_unavailable
-// when this installation cannot send e-mail. A customer the directory no
+// when sending is disabled in Invoice settings or the chosen channel cannot send. A customer the directory no
 // longer knows has no address. An error is the directory's.
 func (s *server) recipientOf(ctx context.Context, customerID int32) (channel, recipient string, warnings []string, err error) {
 	profile, err := s.customerProfile(ctx, customerID)
@@ -76,7 +76,7 @@ func (s *server) recipientOf(ctx context.Context, customerID int32) (channel, re
 	switch {
 	case profile != nil && profile.ReminderDelivery == channelPaper:
 		return channelPaper, "", []string{}, nil
-	case !s.mailAvailable():
+	case !s.mailAvailable(ctx):
 		return channelPaper, "", []string{warningMailUnavailable}, nil
 	case profile == nil || strings.TrimSpace(profile.ReminderEmail) == "":
 		return channelPaper, "", []string{warningReminderEmailMissing}, nil

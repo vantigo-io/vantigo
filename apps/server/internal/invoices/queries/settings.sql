@@ -15,7 +15,10 @@ SELECT * FROM invoices.settings WHERE id = 1 FOR UPDATE;
 -- Peppol id, the KID agreement (EHF and KID design D2, D3), the VAT code
 -- each kind of work is invoiced at (invoices work design D6) and the
 -- timesheet's default and person label (D5), the two VAT codes an energy
--- line takes by its hint (energy consumption billing design D8), and moves
+-- line takes by its hint (energy consumption billing design D8), the channel
+-- documents and reminders are sent from (integrations design T6; null is
+-- Disabled, and the caller decides whether a request that leaves it out keeps
+-- the stored one), and moves
 -- the revision on. The
 -- label's CHECK refuses anything but initials, number or name. The caller holds the row (LockSettings) and has checked the
 -- revision and the series lock.
@@ -47,6 +50,7 @@ UPDATE invoices.settings SET
     timesheet_person_label = @timesheet_person_label,
     energy_vat_code = @energy_vat_code,
     energy_vat_code_exempt = @energy_vat_code_exempt,
+    send_channel = sqlc.narg(send_channel),
     updated_at = @now::timestamptz,
     revision = revision + 1
 WHERE id = 1
@@ -57,3 +61,10 @@ RETURNING *;
 -- and series start (D6 step 3). Two issues share it; PUT /settings and a rate
 -- change wait for both to commit.
 SELECT * FROM invoices.settings WHERE id = 1 FOR SHARE;
+
+-- name: GetSendChannel :one
+-- GetSendChannel reads the id of the channel documents and reminders are sent
+-- from (integrations design T6), null for Disabled. The id names a
+-- Communications channel; whether it can send now is asked of
+-- contracts.OutboundMail, never read from that schema.
+SELECT send_channel FROM invoices.settings WHERE id = 1;

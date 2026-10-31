@@ -93,8 +93,8 @@ func payReady(t *testing.T, opts ...modtest.Option) (*harness, *fakeSMTP) {
 	t.Helper()
 	fake := &fakeSMTP{}
 	h := newHarness(t, append([]modtest.Option{modtest.WithEnv("PUBLIC_BASE_URL", publicBaseURL),
-		modtest.WithSMTPSend(fake.send), modtest.WithEnv("MAIL_DRIVER", "smtp"),
-		modtest.WithEnv("SMTP_HOST", "smtp.example.invalid"), modtest.WithEnv("SMTP_FROM", "faktura@example.invalid")}, opts...)...)
+		withChannel(fake.send)}, opts...)...)
+	chooseChannel(t, h)
 	saveSeller(t, h, completeSeller(1))
 	h.customers.edit(customerAcme, func(p *contracts.CustomerBillingProfile) { p.InvoiceEmail = "faktura@acme.example" })
 	putVipps(t, h, vippstestKeys())

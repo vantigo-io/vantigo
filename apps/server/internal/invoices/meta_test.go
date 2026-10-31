@@ -8,7 +8,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/vantigo-io/vantigo/server/internal/config"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/store"
+	"github.com/vantigo-io/vantigo/server/internal/mail"
 	"github.com/vantigo-io/vantigo/server/internal/modtest"
 	"github.com/vantigo-io/vantigo/server/internal/peppol"
 )
@@ -149,17 +151,14 @@ func TestMeta_StorageAndTheCounter(t *testing.T) {
 	}
 }
 
-// Sending needs an installation whose mail driver is smtp (payments and
-// delivery design D1, D4): meta says whether it is, and canSend is
-// invoices:issue and that together — the log driver delivers nothing, so
-// nobody may send there, issuer or not. canRegisterPayments is
-// invoices:payments alone.
+// Sending needs a channel Invoice settings chose, that can send (integrations
+// design T6): meta says whether there is one, and canSend is invoices:issue and
+// that together - with sending disabled nobody may send, issuer or not.
+// canRegisterPayments is invoices:payments alone.
 func TestMeta_MailAvailabilityAndTheNewCapabilities(t *testing.T) {
 	t.Parallel()
-	withMail := newHarness(t,
-		modtest.WithEnv("MAIL_DRIVER", "smtp"),
-		modtest.WithEnv("SMTP_HOST", "smtp.example.invalid"),
-		modtest.WithEnv("SMTP_FROM", "faktura@example.invalid"))
+	withMail := newHarness(t, withChannel(func(context.Context, config.MailConfig, mail.Outbound) error { return nil }))
+	chooseChannel(t, withMail)
 	withoutMail := newHarness(t)
 
 	if meta := getMeta(t, withMail, "invoices:access", "invoices:issue"); !meta.MailAvailable || !meta.Capabilities.CanSend {
@@ -169,7 +168,7 @@ func TestMeta_MailAvailabilityAndTheNewCapabilities(t *testing.T) {
 		t.Errorf("with smtp, no invoices:issue: mailAvailable %v, canSend %v, want true, false", meta.MailAvailable, meta.Capabilities.CanSend)
 	}
 	if meta := getMeta(t, withoutMail, "invoices:access", "invoices:issue"); meta.MailAvailable || meta.Capabilities.CanSend {
-		t.Errorf("with the log driver, an issuer: mailAvailable %v, canSend %v, want false, false", meta.MailAvailable, meta.Capabilities.CanSend)
+		t.Errorf("with sending disabled, an issuer: mailAvailable %v, canSend %v, want false, false", meta.MailAvailable, meta.Capabilities.CanSend)
 	}
 
 	for _, h := range []*harness{withMail, withoutMail} {

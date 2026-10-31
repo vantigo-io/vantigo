@@ -99,7 +99,7 @@ const (
 	reasonLetterNotRendered = "The letter could not be rendered."
 	reasonLetterOutOfTime   = "The claim ran out of time before the send; it is retried."
 	reasonLetterNotMailed   = "The mail server did not accept the letter."
-	reasonMailUnavailable   = "This installation cannot send e-mail: MAIL_DRIVER is not smtp."
+	reasonMailUnavailable   = sendingDisabled
 	reasonNoRecipient       = "The letter has no recipient."
 	reasonNoStorage         = "This installation has no object store to keep the letter in."
 	reasonNoSettings        = "The invoice settings could not be read."
@@ -292,8 +292,9 @@ func (c *reminderClaim) dispatch(ctx context.Context) error {
 
 	// 3. The mail: only while the lease still covers the send and its mark,
 	// and only on the day its facts were judged for.
+	channel, sendable := c.s.sendingChannel(ctx)
 	switch {
-	case !c.s.mailAvailable():
+	case !sendable:
 		return c.fail(ctx, reasonMailUnavailable)
 	case letter.Recipient == "":
 		return c.fail(ctx, reasonNoRecipient)
@@ -321,7 +322,7 @@ func (c *reminderClaim) dispatch(ctx context.Context) error {
 	// A shutdown must not abort a transfer the mail server may already have
 	// accepted: the send's own timeout bounds it.
 	sendCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), reminderSendTimeout)
-	err = c.s.smtpSend(sendCtx, c.s.deps.Config.Mail, out)
+	err = c.s.outboundSend(sendCtx, channel, out)
 	cancel()
 	if err != nil {
 		// The address taken out: a mail server's refusal often quotes it.

@@ -26,7 +26,7 @@ import (
 // D10), driven by ProcessOne on the fixed clock: each claim judges its
 // letter again under the invoice's lock and the letter's, writes its facts
 // on the day it is mailed, renders and stores the PDF once under its hash,
-// and mails it through the SMTP seam (MAIL_DRIVER smtp) with the letter's
+// and mails it through the chosen channel (OutboundMail) with the letter's
 // own Message-ID. The clock starts on Saturday 12 September 2026 at noon.
 
 const remindersPath = invoicesPath + "/reminders"
@@ -96,8 +96,8 @@ const sellerMailbox = "faktura@selger.example"
 func workerHarness(t *testing.T, set string, opts ...modtest.Option) (*harness, *letterMail) {
 	t.Helper()
 	m := &letterMail{}
-	h := newHarness(t, append([]modtest.Option{modtest.WithSMTPSend(m.send), modtest.WithEnv("MAIL_DRIVER", "smtp"),
-		modtest.WithEnv("SMTP_HOST", "smtp.example.invalid"), modtest.WithEnv("SMTP_FROM", "faktura@example.invalid")}, opts...)...)
+	h := newHarness(t, append([]modtest.Option{withChannel(m.send)}, opts...)...)
+	chooseChannel(t, h)
 	h.customers.edit(customerAcme, func(p *contracts.CustomerBillingProfile) { p.ReminderEmail = "purring@acme.example" })
 	h.Exec(t, `UPDATE invoices.settings SET email = $1`, sellerMailbox)
 	remindersOn(t, h, set)
@@ -734,7 +734,7 @@ func TestReminderWorker_NoCallUnderALock(t *testing.T) {
 	h, mails := workerHarness(t, "")
 	_, letter := dueLetter(t, h, 1)
 	before := lockedContractCalls.count()
-	all := len(contractCalls.byMethod("SMTPSend", "ObjectStore.Exists", "ObjectStore.Put"))
+	all := len(contractCalls.byMethod("OutboundMail.Send", "ObjectStore.Exists", "ObjectStore.Put"))
 	dispatch(t, invoices.NewReminderWorker(h.Deps()))
 	if r := letterOf(t, h, letter); r.Status != "sent" || len(mails.delivered()) != 1 {
 		t.Fatalf("the letter = %s, want sent", r.Status)
@@ -742,7 +742,7 @@ func TestReminderWorker_NoCallUnderALock(t *testing.T) {
 	if calls := lockedContractCalls.since(before); len(calls) > 0 {
 		t.Errorf("calls made inside a transaction:\n%s", strings.Join(calls, "\n"))
 	}
-	made := contractCalls.byMethod("SMTPSend", "ObjectStore.Exists", "ObjectStore.Put")[all:]
+	made := contractCalls.byMethod("OutboundMail.Send", "ObjectStore.Exists", "ObjectStore.Put")[all:]
 	var methods []string
 	for _, c := range made {
 		methods = append(methods, c.method)
@@ -750,7 +750,7 @@ func TestReminderWorker_NoCallUnderALock(t *testing.T) {
 			t.Errorf("%s was made under a lock", c.method)
 		}
 	}
-	if !slices.Equal(methods, []string{"ObjectStore.Exists", "ObjectStore.Put", "SMTPSend"}) {
+	if !slices.Equal(methods, []string{"ObjectStore.Exists", "ObjectStore.Put", "OutboundMail.Send"}) {
 		t.Errorf("the dispatch's calls = %v, want the store's two, then the send", methods)
 	}
 }
@@ -864,8 +864,8 @@ func TestReminderWorker_LeaseLostBeforeTheReRead(t *testing.T) {
 func TestReminderWorker_NoObjectStore(t *testing.T) {
 	t.Parallel()
 	m := &letterMail{}
-	h := newHarnessWithoutStore(t, modtest.WithSMTPSend(m.send), modtest.WithEnv("MAIL_DRIVER", "smtp"),
-		modtest.WithEnv("SMTP_HOST", "smtp.example.invalid"), modtest.WithEnv("SMTP_FROM", "faktura@example.invalid"))
+	h := newHarnessWithoutStore(t, withChannel(m.send))
+	chooseChannel(t, h)
 	h.customers.edit(customerAcme, func(p *contracts.CustomerBillingProfile) { p.ReminderEmail = "purring@acme.example" })
 	remindersOn(t, h, "")
 	_, letter := dueLetter(t, h, 1)

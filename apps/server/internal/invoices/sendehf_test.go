@@ -14,8 +14,10 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/vantigo-io/vantigo/server/internal/config"
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/invoices"
+	"github.com/vantigo-io/vantigo/server/internal/mail"
 	"github.com/vantigo-io/vantigo/server/internal/modtest"
 	"github.com/vantigo-io/vantigo/server/internal/peppol"
 )
@@ -883,8 +885,8 @@ func TestDrafts_WarnsEhfBuyerReferenceMissing(t *testing.T) {
 // document that cannot go, or an installation without EHF, keeps the old one.
 func TestSend_EhfPreferredReplacesThePreferenceWarning(t *testing.T) {
 	t.Parallel()
-	h, _ := ehfReady(t, modtest.WithEnv("MAIL_DRIVER", "smtp"),
-		modtest.WithEnv("SMTP_HOST", "smtp.example.invalid"), modtest.WithEnv("SMTP_FROM", "faktura@example.invalid"))
+	h, _ := ehfReady(t, withChannel(func(context.Context, config.MailConfig, mail.Outbound) error { return nil }))
+	chooseChannel(t, h)
 	h.customers.edit(customerAcme, func(p *contracts.CustomerBillingProfile) {
 		p.InvoiceDelivery, p.InvoiceEmail = "ehf", "faktura@acme.example"
 	})
