@@ -241,8 +241,13 @@ describe("taskUpdateFrom", () => {
       startDate: "2026-02-01",
       dueDate: "2026-02-28",
       estimateHours: 4,
+      deliveryMilestoneId: null,
       revision: 3,
     });
+  });
+
+  it("carries deliveryMilestoneId when present", () => {
+    expect(taskUpdateFrom({ ...task, deliveryMilestoneId: 42 })).toMatchObject({ deliveryMilestoneId: 42 });
   });
 
   it("applies the one change the caller asked for", () => {

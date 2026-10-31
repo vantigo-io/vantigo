@@ -71,7 +71,7 @@ fanene; en prosjektleder finner også **Rediger** og **Endre status** der.
 | Fane | Hva den viser | Hvem ser den |
 | --- | --- | --- |
 | **Oversikt** | **Prosjektdetaljer** (beskrivelse, datoer, faktureringstype, budsjetterte timer, prosjektledere) og **Tidslinje** over hver endring, aldri med et beløp | alle som ser prosjektet |
-| **Oppgaver** | prosjektets oppgaver som liste eller tavle | alle som ser prosjektet |
+| **Oppgaver** | prosjektets leveransemilepæler og oppgaver som liste eller tavle | alle som ser prosjektet |
 | **Deltakere** | hvem som er på prosjektet og i hvilken rolle | alle som ser prosjektet |
 | **Fakturering** | det økonomiske sammendraget, fakturalinjer og arbeidstyper | prosjektledere, `projects:view-financials`, `projects:manage-all` |
 | **Økonomi** | budsjett mot ført arbeid, kostnader og faktureringsplanen | alle; beløp bare med økonomiske rettigheter |
@@ -121,27 +121,43 @@ kommentarer, og kan føre timer; en **Prosjektleder** ser dessuten beløpene, re
 prosjektet, endrer statusen og administrerer deltakere, linjer, arbeidstyper og
 milepæler. Én rolle per person per prosjekt.
 
-## Arbeid med oppgaver
+## Arbeid med oppgaver og leveransemilepæler
 
-Åpne fanen **Oppgaver**. Bryteren **Visning** viser oppgavene som en **Liste** —
+Åpne fanen **Oppgaver**. Øverst i fanen viser **Leveransemilepæler** viktige leveranser og
+faser: hver milepæl viser sin **Måldato**, **Status** (**Åpen** eller **Fullført**), og
+framdrift beregnet automatisk fra tilknyttede oppgaver (fullførte / totale oppgaver, % fullført,
+og estimerte timer). Deltakere og prosjektledere ser **Ny leveransemilepæl**; en handlingsmeny
+lar deg markere milepælen som fullført (eller gjenåpne den), redigere, flytte opp/ned og
+slette den. Å slette en leveransemilepæl frakobler oppgavene i stedet for å slette dem. Ved å
+klikke på en milepæl filtreres oppgavevisningen under til å kun vise oppgavene som tilhører den.
+
+Bryteren **Visning** viser oppgavene som en **Liste** —
 gruppene **Å gjøre**, **Pågår** og **Ferdig**, hver en tabell med **Tittel**,
 **Ansvarlig**, **Frist**, **Estimat**, **Sjekkliste** og **Kommentarer**, med
-deloppgavene foldet inn under den overordnede — eller som en **Tavle** med tre
-kolonner der deloppgaver er egne kort. Valget huskes i nettleseren din. Deltakere og
-prosjektledere ser **Ny oppgave**; en leser får de samme visningene uten handlingene.
+deloppgavene foldet inn under den overordnede — som en **Tavle** med tre
+kolonner der deloppgaver er egne kort, eller som en interaktiv **Tidslinje** som kartlegger
+oppgavebånd over kalenderdager ved siden av milepælmarkører og avhengighetspiler. Oppgaver tilknyttet en leveransemilepæl har en
+diamantmerket milepæl-tagg. Planleggingskonflikter der en forgjenger slutter etter at etterfølgeren starter markeres med et varselikon. Valget huskes i nettleseren din. Deltakere og
+prosjektledere ser **Bruk mal** og **Ny oppgave**; en leser får de samme visningene uten handlingene.
+
+**Bruk mal** åpner **Bruk prosjektmal**, hvor du kan velge en standardisert prosjektmal (f.eks. oppstart
+for ny kunde) og en **Oppstartsdato (T+0)**. Når malen tas i bruk, opprettes malens leveransemilepæler, oppgaver,
+deloppgaver og avhengighetskoblinger med kalenderdatoer beregnet ut fra oppstartsdatoen.
 
 **Ny oppgave** åpner skjemaet **Ny oppgave**: **Tittel** (påkrevd, høyst 200 tegn),
 **Beskrivelse**, **Status**, **Ansvarlig** (hvem som helst på prosjektet),
 **Startdato**, **Frist** (ikke før starten), **Estimat (timer)** (over 0 når det er
-satt) og **Overordnet oppgave**, som gjør den til en deloppgave (ett nivå ned).
+satt), **Leveransemilepæl** (valgfritt) og **Overordnet oppgave**, som gjør den til en deloppgave (ett nivå ned).
 
 Klikk på en oppgave for å åpne skuffen **Oppgave**: blyanten redigerer tittelen på
 stedet, søppelkurven sletter oppgaven etter *Vil du slette tittel?* — deloppgaver,
 sjekkliste og kommentarer slettes med den, og det kan ikke angres. Detaljskjemaet
-(**Status**, **Ansvarlig**, **Startdato**, **Frist**, **Estimat (timer)**,
+(**Status**, **Ansvarlig**, **Leveransemilepæl**, **Startdato**, **Frist**, **Estimat (timer)**,
 **Beskrivelse**) lagres med **Lagre endringer**. **Deloppgaver** har en
 avkrysningsboks per deloppgave som setter den til **Ferdig** eller tilbake til **Å
-gjøre**, og **Legg til deloppgave**. **Sjekkliste** er de små stegene inne i oppgaven
+gjøre**, og **Legg til deloppgave**. **Avhengigheter** kobler **Forgjengere** og
+**Etterfølgere** med automatisk sikring mot sirkulære løkker, konfliktvarsler, og et
+verktøy for å **Forskyve etterfølgende** oppgaver med et antall dager. **Sjekkliste** er de små stegene inne i oppgaven
 (**Legg til punkt**, kryss av, slett). **Kommentarer** er en tråd med **Legg inn
 kommentar** og **Last inn flere**; du redigerer og sletter dine egne, en
 prosjektleder sletter alles. På tavlen tilbyr kortets meny **Flytt til Å gjøre**,
@@ -149,7 +165,8 @@ prosjektleder sletter alles. På tavlen tilbyr kortets meny **Flytt til Å gjør
 tilbake fjerner den. En oppgave noen andre har lagret imens avvises med *Oppgaven ble
 endret av noen andre. Last den inn på nytt og prøv igjen.* Oppgaver følger prosjektets
 roller, ikke en rettighet, og låses aldri av prosjektets status — se
-[Tasks](/en/reference/projects/#tasks).
+[Tasks](/en/reference/projects/#tasks) og
+[Delivery milestones](/en/reference/projects/#delivery-milestones).
 
 ## Se dine egne oppgaver
 

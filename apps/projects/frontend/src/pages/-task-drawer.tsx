@@ -23,8 +23,10 @@ import { IconAlertCircle, IconCheck, IconPencil, IconPlus, IconTrash } from "@ta
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ContentSkeleton, useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
+import { deliveryMilestonesQueryOptions } from "../api/delivery-milestones";
 import { createTask, deleteTask, type Task, taskQueryOptions } from "../api/tasks";
 import { AssigneePicker } from "../components/assignee-picker";
+import { DeliveryMilestoneBadge } from "../components/delivery-milestone-badge";
 import { Field } from "../components/field";
 import { TaskStatusBadge } from "../components/task-status-badge";
 import "../i18n";
@@ -40,6 +42,7 @@ import {
 import { useTaskSave } from "../lib/use-task-save";
 import { TaskChecklist } from "./-task-checklist";
 import { TaskComments } from "./-task-comments";
+import { TaskDependencies } from "./-task-dependencies";
 
 export interface TaskDrawerProps {
   projectId: number;
@@ -100,6 +103,8 @@ const TaskDrawerBody = ({ projectId, taskId, onClose, canContribute, canManage, 
           <Subtasks projectId={projectId} task={task} canContribute={canContribute} />
         </>
       )}
+      <Divider />
+      <TaskDependencies projectId={projectId} task={task} canContribute={canContribute} />
       <Divider />
       <TaskChecklist taskId={task.id} canContribute={canContribute} />
       <Divider />
@@ -217,6 +222,7 @@ interface DetailsFormValues {
   dueDate: string | null;
   estimateHours: number | string;
   description: string;
+  deliveryMilestoneId: string | null;
 }
 
 const hours = (value: number | string): number | undefined => {
@@ -229,6 +235,7 @@ const hours = (value: number | string): number | undefined => {
 const TaskDetails = ({ projectId, task, canContribute }: { projectId: number; task: Task; canContribute: boolean }) => {
   const { t, formatters } = useI18n("projects");
   const dates = useProjectDates();
+  const { data: milestonesData } = useQuery(deliveryMilestonesQueryOptions(projectId));
   const form = useForm<DetailsFormValues>({
     initialValues: {
       status: task.status,
@@ -237,6 +244,7 @@ const TaskDetails = ({ projectId, task, canContribute }: { projectId: number; ta
       dueDate: task.dueDate ?? null,
       estimateHours: task.estimateHours ?? "",
       description: task.description ?? "",
+      deliveryMilestoneId: task.deliveryMilestoneId ? String(task.deliveryMilestoneId) : null,
     },
     validate: {
       estimateHours: (value) => {
@@ -263,6 +271,13 @@ const TaskDetails = ({ projectId, task, canContribute }: { projectId: number; ta
             <TaskStatusBadge status={task.status} />
           </Field>
           <Field label={t("assignee")}>{task.assignee?.displayName ?? t("unassigned")}</Field>
+          <Field label={t("deliveryMilestone")}>
+            {task.deliveryMilestone ? (
+              <DeliveryMilestoneBadge milestone={task.deliveryMilestone} />
+            ) : (
+              t("noDeliveryMilestone")
+            )}
+          </Field>
           <Field label={t("dates")}>{dates.range(task.startDate, task.dueDate)}</Field>
           <Field label={t("estimate")}>
             {task.estimateHours === null || task.estimateHours === undefined
@@ -287,6 +302,7 @@ const TaskDetails = ({ projectId, task, canContribute }: { projectId: number; ta
               startDate: values.startDate,
               dueDate: values.dueDate,
               estimateHours: hours(values.estimateHours) ?? null,
+              deliveryMilestoneId: values.deliveryMilestoneId === null ? null : Number(values.deliveryMilestoneId),
               description: values.description.trim() || null,
               revision: seededRevision,
             },
@@ -316,6 +332,14 @@ const TaskDetails = ({ projectId, task, canContribute }: { projectId: number; ta
             value={form.values.assigneeUserId}
             selected={task.assignee}
             onChange={(value) => form.setFieldValue("assigneeUserId", value)}
+          />
+          <Select
+            label={t("deliveryMilestone")}
+            placeholder={t("noDeliveryMilestone")}
+            clearable
+            data={(milestonesData?.milestones ?? []).map((m) => ({ value: String(m.id), label: m.name }))}
+            value={form.values.deliveryMilestoneId}
+            onChange={(value) => form.setFieldValue("deliveryMilestoneId", value)}
           />
           <DateInput
             label={t("startDate")}

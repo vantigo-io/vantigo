@@ -822,12 +822,39 @@ Forecast / estimate-to-complete and original-vs-revised budgets (tracking a
 budget's own history rather than only its current value) are candidates worth
 deciding on next, not committed work yet.
 
-### Phase 4 — Delivery milestones, timeline and templates
+### Phase 4 — Delivery milestones, timeline and templates (done)
 
 Delivery milestones as a lightweight entity (name, optional target date, %
 complete derived from linked tasks); a lightweight timeline (bars, drag,
 finish-to-start dependencies, opt-in cascade) — never a full Gantt in-house;
 project and task templates with relative dates.
+
+**Delivery A: Delivery milestones (done)** — execution deliverables separate from
+commercial billing milestones (`projects.billing_milestones`). Includes database schema
+(`projects.delivery_milestones`), CRUD API endpoints, task linking via
+`tasks.delivery_milestone_id` with `ON DELETE SET NULL` and mismatched-project validation,
+derived completion percentage and hour progress from linked tasks, manual 1-based positioning
+and status toggling (`open` / `completed`), timeline events, and UI integration on the Tasks tab
+with delivery milestone cards, progress bars, quick filtering, and task form/drawer dropdowns.
+Designed in [`docs/superpowers/specs/2026-10-31-projects-delivery-milestones-timeline-design.md`](docs/superpowers/specs/2026-10-31-projects-delivery-milestones-timeline-design.md).
+
+**Delivery B: Lightweight timeline and dependencies (done)** — finish-to-start (FS) task dependencies
+stored in `projects.task_dependencies`, cycle-free DAG reachability validation rejecting circular
+dependencies with 400 Bad Request (`cyclic_dependency`), cascading deletion on task removal, opt-in
+downstream cascade rescheduling (`POST /api/v1/projects/tasks/{taskId}/reschedule-downstream`) shifting
+downstream task dates by day delta in one atomic update. Interactive frontend Timeline view on the
+Tasks tab with calendar day tracks, milestone diamond markers at target dates, dependency connector
+arrows, conflict detection warning badges when predecessors finish after successors start, and dependency
+management (predecessors, successors, downstream reschedule) inside the Task drawer. Bilingual documentation
+and 100% test and contract coverage.
+
+**Delivery C: Project and task templates (done)** — reusable kickoff blueprints (`projects.templates`)
+with relative calendar day offsets ($T+0$), milestone indices, subtasks, and finish-to-start dependencies.
+API endpoints for template CRUD (`/api/v1/projects/templates`) and atomic instantiation onto a project
+(`POST /api/v1/projects/{id}/apply-template`) computing delivery milestone target dates, task and subtask
+start/due dates, milestone linking, and dependency wiring in a single transactional task order lock.
+Frontend integration with "Use template" modal on the Tasks tab, blueprint inspection, and date calculation.
+Bilingual reference and user guides, and 100% test and contract coverage.
 
 *Unblocks:* planning at kickoff; the "are we on track" view.
 

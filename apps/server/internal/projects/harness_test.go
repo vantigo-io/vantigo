@@ -925,26 +925,28 @@ type financialsJSON struct {
 // task through the tree and through my-tasks compares like with like.
 // assignee is a pointer because an unassigned task has no key at all.
 type taskJSON struct {
-	Id            int32         `json:"id"`
-	ProjectId     int32         `json:"projectId"`
-	ParentTaskId  *int32        `json:"parentTaskId"`
-	Title         string        `json:"title"`
-	Description   *string       `json:"description"`
-	Status        string        `json:"status"`
-	Assignee      *assigneeJSON `json:"assignee"`
-	StartDate     *string       `json:"startDate"`
-	DueDate       *string       `json:"dueDate"`
-	EstimateHours *float64      `json:"estimateHours"`
-	Position      int32         `json:"position"`
-	CompletedAt   *time.Time    `json:"completedAt"`
-	Revision      int32         `json:"revision"`
-	CreatedAt     time.Time     `json:"createdAt"`
-	UpdatedAt     time.Time     `json:"updatedAt"`
-	Checklist     checklistJSON `json:"checklist"`
-	CommentCount  int32         `json:"commentCount"`
-	Subtasks      []taskJSON    `json:"subtasks"`
-	ProjectCode   string        `json:"projectCode"`
-	ProjectName   string        `json:"projectName"`
+	Id                  int32                         `json:"id"`
+	ProjectId           int32                         `json:"projectId"`
+	ParentTaskId        *int32                        `json:"parentTaskId"`
+	Title               string                        `json:"title"`
+	Description         *string                       `json:"description"`
+	Status              string                        `json:"status"`
+	Assignee            *assigneeJSON                 `json:"assignee"`
+	StartDate           *string                       `json:"startDate"`
+	DueDate             *string                       `json:"dueDate"`
+	EstimateHours       *float64                      `json:"estimateHours"`
+	DeliveryMilestoneId *int32                        `json:"deliveryMilestoneId"`
+	DeliveryMilestone   *deliveryMilestoneSummaryJSON `json:"deliveryMilestone"`
+	Position            int32                         `json:"position"`
+	CompletedAt         *time.Time                    `json:"completedAt"`
+	Revision            int32                         `json:"revision"`
+	CreatedAt           time.Time                     `json:"createdAt"`
+	UpdatedAt           time.Time                     `json:"updatedAt"`
+	Checklist           checklistJSON                 `json:"checklist"`
+	CommentCount        int32                         `json:"commentCount"`
+	Subtasks            []taskJSON                    `json:"subtasks"`
+	ProjectCode         string                        `json:"projectCode"`
+	ProjectName         string                        `json:"projectName"`
 }
 
 // assigneeJSON decodes TaskAssignee. active is the user directory's answer,
@@ -1461,4 +1463,241 @@ type paginationJSON struct {
 	TotalPages      int32 `json:"totalPages"`
 	HasNextPage     bool  `json:"hasNextPage"`
 	HasPreviousPage bool  `json:"hasPreviousPage"`
+}
+
+type deliveryMilestoneJSON struct {
+	Id                      int32                        `json:"id"`
+	ProjectId               int32                        `json:"projectId"`
+	Name                    string                       `json:"name"`
+	Description             *string                      `json:"description"`
+	TargetDate              *string                      `json:"targetDate"`
+	Status                  string                       `json:"status"`
+	Position                int32                        `json:"position"`
+	CompletedAt             *time.Time                   `json:"completedAt"`
+	CompletedBy             *deliveryMilestonePersonJSON `json:"completedBy"`
+	TotalTasks              int32                        `json:"totalTasks"`
+	CompletedTasks          int32                        `json:"completedTasks"`
+	ProgressPercent         int32                        `json:"progressPercent"`
+	EstimatedHoursTotal     *float64                     `json:"estimatedHoursTotal"`
+	EstimatedHoursCompleted *float64                     `json:"estimatedHoursCompleted"`
+	Revision                int32                        `json:"revision"`
+	CreatedAt               time.Time                    `json:"createdAt"`
+	UpdatedAt               time.Time                    `json:"updatedAt"`
+}
+
+type deliveryMilestoneSummaryJSON struct {
+	Id         int32   `json:"id"`
+	Name       string  `json:"name"`
+	TargetDate *string `json:"targetDate"`
+}
+
+type deliveryMilestonePersonJSON struct {
+	Id          uuid.UUID `json:"id"`
+	DisplayName string    `json:"displayName"`
+}
+
+func deliveryMilestonesPath(projectID int32) string {
+	return fmt.Sprintf("/api/v1/projects/%d/delivery-milestones", projectID)
+}
+
+func deliveryMilestonePath(milestoneID int32) string {
+	return fmt.Sprintf("/api/v1/projects/delivery-milestones/%d", milestoneID)
+}
+
+func deliveryMilestonePositionPath(milestoneID int32) string {
+	return fmt.Sprintf("/api/v1/projects/delivery-milestones/%d/position", milestoneID)
+}
+
+func deliveryMilestoneStatusPath(milestoneID int32) string {
+	return fmt.Sprintf("/api/v1/projects/delivery-milestones/%d/status", milestoneID)
+}
+
+func createDeliveryMilestone(t *testing.T, c *modtest.Client, projectID int32, body map[string]any) deliveryMilestoneJSON {
+	t.Helper()
+	res := c.Do(http.MethodPost, deliveryMilestonesPath(projectID), body)
+	if res.Status != http.StatusCreated {
+		t.Fatalf("create delivery milestone: status = %d, want 201; body = %s", res.Status, string(res.Body))
+	}
+	var out deliveryMilestoneJSON
+	res.JSON(&out)
+	return out
+}
+
+func getDeliveryMilestones(t *testing.T, c *modtest.Client, projectID int32) []deliveryMilestoneJSON {
+	t.Helper()
+	res := c.Do(http.MethodGet, deliveryMilestonesPath(projectID), nil)
+	if res.Status != http.StatusOK {
+		t.Fatalf("get delivery milestones: status = %d, want 200; body = %s", res.Status, string(res.Body))
+	}
+	var out struct {
+		Milestones []deliveryMilestoneJSON `json:"milestones"`
+	}
+	res.JSON(&out)
+	return out.Milestones
+}
+
+func getDeliveryMilestone(t *testing.T, c *modtest.Client, milestoneID int32) deliveryMilestoneJSON {
+	t.Helper()
+	res := c.Do(http.MethodGet, deliveryMilestonePath(milestoneID), nil)
+	if res.Status != http.StatusOK {
+		t.Fatalf("get delivery milestone: status = %d, want 200; body = %s", res.Status, string(res.Body))
+	}
+	var out deliveryMilestoneJSON
+	res.JSON(&out)
+	return out
+}
+
+func getTask(t *testing.T, c *modtest.Client, taskID int32) taskJSON {
+	t.Helper()
+	res := c.Do(http.MethodGet, taskPath(taskID), nil)
+	if res.Status != http.StatusOK {
+		t.Fatalf("get task: status = %d, want 200; body = %s", res.Status, string(res.Body))
+	}
+	var out taskJSON
+	res.JSON(&out)
+	return out
+}
+
+type taskDependencyJSON struct {
+	Id                int32     `json:"id"`
+	ProjectId         int32     `json:"projectId"`
+	PredecessorTaskId int32     `json:"predecessorTaskId"`
+	SuccessorTaskId   int32     `json:"successorTaskId"`
+	CreatedAt         time.Time `json:"createdAt"`
+}
+
+func projectDependenciesPath(projectID int32) string {
+	return fmt.Sprintf("/api/v1/projects/%d/dependencies", projectID)
+}
+
+func projectDependencyPath(dependencyID int32) string {
+	return fmt.Sprintf("/api/v1/projects/dependencies/%d", dependencyID)
+}
+
+func taskRescheduleDownstreamPath(taskID int32) string {
+	return fmt.Sprintf("/api/v1/projects/tasks/%d/reschedule-downstream", taskID)
+}
+
+func createTaskDependency(t *testing.T, c *modtest.Client, projectID int32, predecessorID, successorID int32) taskDependencyJSON {
+	t.Helper()
+	res := c.Do(http.MethodPost, projectDependenciesPath(projectID), map[string]any{
+		"predecessorTaskId": predecessorID,
+		"successorTaskId":   successorID,
+	})
+	if res.Status != http.StatusCreated {
+		t.Fatalf("create task dependency: status = %d, want 201; body = %s", res.Status, string(res.Body))
+	}
+	var out taskDependencyJSON
+	res.JSON(&out)
+	return out
+}
+
+func getTaskDependencies(t *testing.T, c *modtest.Client, projectID int32) []taskDependencyJSON {
+	t.Helper()
+	res := c.Do(http.MethodGet, projectDependenciesPath(projectID), nil)
+	if res.Status != http.StatusOK {
+		t.Fatalf("get task dependencies: status = %d, want 200; body = %s", res.Status, string(res.Body))
+	}
+	var out struct {
+		Dependencies []taskDependencyJSON `json:"dependencies"`
+	}
+	res.JSON(&out)
+	return out.Dependencies
+}
+
+func deleteTaskDependency(t *testing.T, c *modtest.Client, dependencyID int32) {
+	t.Helper()
+	res := c.Do(http.MethodDelete, projectDependencyPath(dependencyID), nil)
+	if res.Status != http.StatusNoContent {
+		t.Fatalf("delete task dependency: status = %d, want 204; body = %s", res.Status, string(res.Body))
+	}
+}
+
+func rescheduleDownstreamTasks(t *testing.T, c *modtest.Client, taskID int32, daysDelta int32) (int32, []int32) {
+	t.Helper()
+	res := c.Do(http.MethodPost, taskRescheduleDownstreamPath(taskID), map[string]any{
+		"daysDelta": daysDelta,
+	})
+	if res.Status != http.StatusOK {
+		t.Fatalf("reschedule downstream: status = %d, want 200; body = %s", res.Status, string(res.Body))
+	}
+	var out struct {
+		ShiftedTasksCount int32   `json:"shiftedTasksCount"`
+		UpdatedTaskIds    []int32 `json:"updatedTaskIds"`
+	}
+	res.JSON(&out)
+	return out.ShiftedTasksCount, out.UpdatedTaskIds
+}
+
+type templateMilestoneJSON struct {
+	Name            string `json:"name"`
+	Description     string `json:"description,omitempty"`
+	TargetDayOffset int32  `json:"targetDayOffset"`
+}
+
+type templateSubtaskJSON struct {
+	Title          string `json:"title"`
+	StartDayOffset *int32 `json:"startDayOffset,omitempty"`
+	DueDayOffset   *int32 `json:"dueDayOffset,omitempty"`
+}
+
+type templateTaskJSON struct {
+	Title          string                `json:"title"`
+	Description    string                `json:"description,omitempty"`
+	StartDayOffset *int32                `json:"startDayOffset,omitempty"`
+	DueDayOffset   *int32                `json:"dueDayOffset,omitempty"`
+	MilestoneIndex *int32                `json:"milestoneIndex,omitempty"`
+	Subtasks       []templateSubtaskJSON `json:"subtasks,omitempty"`
+}
+
+type templateDependencyJSON struct {
+	PredecessorTaskIndex int32 `json:"predecessorTaskIndex"`
+	SuccessorTaskIndex   int32 `json:"successorTaskIndex"`
+}
+
+type templateJSON struct {
+	Id           int32                    `json:"id"`
+	Name         string                   `json:"name"`
+	Description  *string                  `json:"description,omitempty"`
+	BillingType  *string                  `json:"billingType,omitempty"`
+	Milestones   []templateMilestoneJSON  `json:"milestones"`
+	Tasks        []templateTaskJSON       `json:"tasks"`
+	Dependencies []templateDependencyJSON `json:"dependencies"`
+	Revision     int32                    `json:"revision"`
+	CreatedAt    time.Time                `json:"createdAt"`
+	UpdatedAt    time.Time                `json:"updatedAt"`
+}
+
+func projectTemplatesPath() string {
+	return "/api/v1/projects/templates"
+}
+
+func projectTemplatePath(id int32) string {
+	return fmt.Sprintf("/api/v1/projects/templates/%d", id)
+}
+
+func projectApplyTemplatePath(projectID int32) string {
+	return fmt.Sprintf("/api/v1/projects/%d/apply-template", projectID)
+}
+
+func createProjectTemplate(t *testing.T, c *modtest.Client, payload map[string]any) templateJSON {
+	t.Helper()
+	res := c.Do(http.MethodPost, projectTemplatesPath(), payload)
+	if res.Status != http.StatusCreated {
+		t.Fatalf("create project template: status = %d, want 201; body = %s", res.Status, string(res.Body))
+	}
+	var out templateJSON
+	res.JSON(&out)
+	return out
+}
+
+func getProjectTemplate(t *testing.T, c *modtest.Client, id int32) templateJSON {
+	t.Helper()
+	res := c.Do(http.MethodGet, projectTemplatePath(id), nil)
+	if res.Status != http.StatusOK {
+		t.Fatalf("get project template: status = %d, want 200; body = %s", res.Status, string(res.Body))
+	}
+	var out templateJSON
+	res.JSON(&out)
+	return out
 }

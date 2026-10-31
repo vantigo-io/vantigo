@@ -71,7 +71,7 @@ tab; a manager also finds **Edit** and **Change status** there.
 | Tab | What it shows | Who sees it |
 | --- | --- | --- |
 | **Overview** | **Project details** (description, dates, billing type, budget hours, managers) and the **Timeline** of every change, never with an amount | everyone who sees the project |
-| **Tasks** | the project's tasks as a list or a board | everyone who sees the project |
+| **Tasks** | the project's delivery milestones and tasks as a list or a board | everyone who sees the project |
 | **People** | who is on the project and in which role | everyone who sees the project |
 | **Billing** | the financial summary, billing lines and work types | managers, `projects:view-financials`, `projects:manage-all` |
 | **Economy** | budget against logged work, costs, and the invoice plan | everyone; amounts only with financial rights |
@@ -121,33 +121,51 @@ time; a **Manager** additionally sees the amounts, edits the project, changes it
 status and manages people, lines, work types and milestones. One role per person per
 project.
 
-## Work with tasks
+## Work with tasks and delivery milestones
 
-Open the **Tasks** tab. The **View** switch shows the tasks as a **List** — the groups
+Open the **Tasks** tab. At the top of the tab, **Delivery milestones** tracks key deliverables
+and phases: each milestone shows its **Target date**, **Status** (**Open** or **Completed**),
+and progress calculated automatically from its linked tasks (completed / total tasks, % complete,
+and estimated hours). Members and managers see **Add delivery milestone**; an action menu allows
+marking a milestone completed (or reopening it), editing, moving up/down, and deleting it. Deleting
+a delivery milestone unlinks its tasks rather than removing them. Clicking a milestone filters the
+task view below to show only tasks linked to that milestone.
+
+The **View** switch shows the tasks as a **List** — the groups
 **To do**, **In progress** and **Done**, each a table with **Title**, **Assignee**,
 **Due date**, **Estimate**, **Checklist** and **Comments**, subtasks folded under
-their parent — or as a **Board** of three columns where subtasks are cards of their
-own. The choice is remembered in your browser. Members and managers see **Add task**;
+their parent — as a **Board** of three columns where subtasks are cards of their
+own, or as an interactive **Timeline** mapping task bars across calendar days beside
+milestone markers and finish-to-start dependency arrows. Tasks linked to a delivery milestone display a diamond milestone tag. Any scheduling conflict where a predecessor finishes after a successor starts is flagged with a warning indicator. The choice is remembered
+in your browser. Members and managers see **Use template** and **Add task**;
 a viewer gets the same views without the actions.
+
+**Use template** opens **Use project template**, allowing you to pick a blueprint (e.g. Client Onboarding)
+and a **Kickoff date (T+0)**. Applying the template instantiates the blueprint's delivery milestones, tasks,
+subtasks, and task dependencies with relative calendar dates calculated from the kickoff date.
 
 **Add task** opens **New task**: **Title** (required, at most 200 characters),
 **Description**, **Status**, **Assignee** (anyone on the project), **Start date**,
-**Due date** (not before the start), **Estimate (hours)** (above 0 when set) and
+**Due date** (not before the start), **Estimate (hours)** (above 0 when set),
+**Delivery milestone** (optional) and
 **Parent task**, which makes it a subtask of a top-level task (one level deep).
 
 Click a task to open the **Task** drawer: the pencil edits the title in place and
 the bin deletes the task after *Delete title?* — subtasks, checklist and comments go
-with it, and it cannot be undone. The details form (**Status**, **Assignee**, **Start
-date**, **Due date**, **Estimate (hours)**, **Description**) is saved with **Save
+with it, and it cannot be undone. The details form (**Status**, **Assignee**, **Delivery milestone**,
+**Start date**, **Due date**, **Estimate (hours)**, **Description**) is saved with **Save
 changes**. **Subtasks** has a checkbox per subtask that marks it **Done** or back to
-**To do**, and **Add subtask**. **Checklist** is the small steps inside the task
+**To do**, and **Add subtask**. **Dependencies** links **Predecessors** and **Successors**
+with automatic prevention of cyclic dependency loops, conflict warnings, and an opt-in
+**Reschedule downstream** tool to cascade date changes by a delta in days. **Checklist** is the small steps inside the task
 (**Add item**, tick, delete). **Comments** is a thread with **Post comment** and
 **Load more**; you edit and delete your own, a manager deletes anyone's. On the board
 a card's menu offers **Move to To do**, **Move to In progress** and **Move to Done**;
 **Done** stamps the completion, moving back clears it. A task somebody else saved
 meanwhile is refused with *The task was changed by someone else. Reload it and try
 again.* Tasks follow the project's roles, not a permission, and are never locked by
-the project's status — see [Tasks](/en/reference/projects/#tasks).
+the project's status — see [Tasks](/en/reference/projects/#tasks) and
+[Delivery milestones](/en/reference/projects/#delivery-milestones).
 
 ## See your own tasks
 

@@ -126,6 +126,16 @@ const describeEntry = (t: Translate, entry: TimelineEntry): string => {
       return t("timelineMilestoneCancelled", { name: text(payload.name) });
     case "milestone-reopened":
       return t("timelineMilestoneReopened", { name: text(payload.name) });
+    case "delivery-milestone-added":
+      return t("timelineDeliveryMilestoneAdded", { name: text(payload.name) });
+    case "delivery-milestone-removed":
+      return t("timelineDeliveryMilestoneRemoved", { name: text(payload.name) });
+    case "delivery-milestone-changed":
+      return t("timelineDeliveryMilestoneChanged", { name: text(payload.name), fields: fieldList(t, payload.fields) });
+    case "delivery-milestone-completed":
+      return t("timelineDeliveryMilestoneCompleted", { name: text(payload.name) });
+    case "delivery-milestone-reopened":
+      return t("timelineDeliveryMilestoneReopened", { name: text(payload.name) });
     // The work-type events name the type and the fields a change moved,
     // never a percentage (work types design D1).
     case "work-type-added":

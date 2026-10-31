@@ -2,6 +2,7 @@ package projects
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"strings"
@@ -9,10 +10,12 @@ import (
 	"unicode/utf8"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
 	"github.com/vantigo-io/vantigo/server/internal/projects/gen"
+	"github.com/vantigo-io/vantigo/server/internal/projects/store"
 )
 
 // This file is design §4.1's task rules, written the way values.go writes a
@@ -207,14 +210,15 @@ func validateTaskPosition(position int32) string {
 // top-level task of this project is settled under the project's ordering lock,
 // not here.
 type parsedTask struct {
-	Title          string
-	Description    *string
-	Status         string
-	AssigneeUserID *uuid.UUID
-	StartDate      pgtype.Date
-	DueDate        pgtype.Date
-	EstimateHours  pgtype.Numeric
-	ParentTaskID   *int32
+	Title               string
+	Description         *string
+	Status              string
+	AssigneeUserID      *uuid.UUID
+	StartDate           pgtype.Date
+	DueDate             pgtype.Date
+	EstimateHours       pgtype.Numeric
+	DeliveryMilestoneID *int32
+	ParentTaskID        *int32
 }
 
 // validateTask runs every §4.1 rule that is a property of the body alone and
@@ -236,7 +240,7 @@ type parsedTask struct {
 //
 // statusRequired is the one rule a create and a full replace read differently
 // (validateTaskStatus); every other rule is the same on both paths.
-func (s *server) validateTask(ctx context.Context, body gen.TaskRequest, assigned *uuid.UUID, statusRequired bool) (parsedTask, map[string][]string, error) {
+func (s *server) validateTask(ctx context.Context, q *store.Queries, projectID int32, body gen.TaskRequest, assigned *uuid.UUID, statusRequired bool) (parsedTask, map[string][]string, error) {
 	errs := map[string][]string{}
 	add := func(field, msg string) {
 		if msg != "" {
@@ -252,6 +256,15 @@ func (s *server) validateTask(ctx context.Context, body gen.TaskRequest, assigne
 	add("status", msg)
 	add("dueDate", validateTaskDateOrder(body.StartDate, body.DueDate))
 	add("estimateHours", validateEstimateHours(body.EstimateHours))
+
+	if id := body.DeliveryMilestoneId; id != nil {
+		dm, err := q.GetDeliveryMilestone(ctx, *id)
+		if errors.Is(err, pgx.ErrNoRows) || (err == nil && dm.ProjectID != projectID) {
+			add("deliveryMilestoneId", "The delivery milestone does not exist on this project")
+		} else if err != nil {
+			return parsedTask{}, nil, fmt.Errorf("projects: get delivery milestone: %w", err)
+		}
+	}
 
 	// The assignee the task already carries is a stored fact, not a choice this
 	// body is making, so it is never re-validated — and never even looked up.
@@ -278,14 +291,15 @@ func (s *server) validateTask(ctx context.Context, body gen.TaskRequest, assigne
 	}
 
 	return parsedTask{
-		Title:          title,
-		Description:    description,
-		Status:         status,
-		AssigneeUserID: body.AssigneeUserId,
-		StartDate:      dateToPgtype(body.StartDate),
-		DueDate:        dateToPgtype(body.DueDate),
-		EstimateHours:  estimateHours,
-		ParentTaskID:   body.ParentTaskId,
+		Title:               title,
+		Description:         description,
+		Status:              status,
+		AssigneeUserID:      body.AssigneeUserId,
+		StartDate:           dateToPgtype(body.StartDate),
+		DueDate:             dateToPgtype(body.DueDate),
+		EstimateHours:       estimateHours,
+		DeliveryMilestoneID: body.DeliveryMilestoneId,
+		ParentTaskID:        body.ParentTaskId,
 	}, nil, nil
 }
 
@@ -303,13 +317,14 @@ func (s *server) validateTask(ctx context.Context, body gen.TaskRequest, assigne
 // validateTaskStatus refuses under statusIsRequired.
 func taskFromUpdate(body gen.TaskUpdateRequest) gen.TaskRequest {
 	return gen.TaskRequest{
-		Title:          body.Title,
-		Description:    body.Description,
-		Status:         &body.Status,
-		AssigneeUserId: body.AssigneeUserId,
-		StartDate:      body.StartDate,
-		DueDate:        body.DueDate,
-		EstimateHours:  body.EstimateHours,
+		Title:               body.Title,
+		Description:         body.Description,
+		Status:              &body.Status,
+		AssigneeUserId:      body.AssigneeUserId,
+		StartDate:           body.StartDate,
+		DueDate:             body.DueDate,
+		EstimateHours:       body.EstimateHours,
+		DeliveryMilestoneId: body.DeliveryMilestoneId,
 	}
 }
 

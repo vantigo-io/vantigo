@@ -11,6 +11,9 @@ sql:
       - ../db/migrations/00011_projects_milestones.sql
       - ../db/migrations/00031_projects_work_types.sql
       - ../db/migrations/00039_projects_invoiced_by.sql
+      - ../db/migrations/00096_projects_delivery_milestones.sql
+      - ../db/migrations/00097_projects_task_dependencies.sql
+      - ../db/migrations/00098_projects_templates.sql
     queries: queries
     gen:
       go:

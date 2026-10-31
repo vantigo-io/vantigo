@@ -58,6 +58,22 @@ type ProjectsCounter struct {
 	NextValue   int64
 }
 
+type ProjectsDeliveryMilestone struct {
+	ID                int32
+	ProjectID         int32
+	Name              string
+	Description       *string
+	TargetDate        pgtype.Date
+	Status            string
+	Position          int32
+	CompletedAt       *time.Time
+	CompletedByUserID *uuid.UUID
+	Revision          int32
+	CreatedByUserID   uuid.UUID
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
+}
+
 type ProjectsProject struct {
 	ID               int32
 	Code             string
@@ -87,22 +103,23 @@ type ProjectsProjectRole struct {
 }
 
 type ProjectsTask struct {
-	ID              int32
-	ProjectID       int32
-	ParentTaskID    *int32
-	Title           string
-	Description     *string
-	Status          string
-	AssigneeUserID  *uuid.UUID
-	StartDate       pgtype.Date
-	DueDate         pgtype.Date
-	EstimateHours   pgtype.Numeric
-	Position        int32
-	CompletedAt     *time.Time
-	CreatedByUserID uuid.UUID
-	Revision        int32
-	CreatedAt       time.Time
-	UpdatedAt       time.Time
+	ID                  int32
+	ProjectID           int32
+	ParentTaskID        *int32
+	Title               string
+	Description         *string
+	Status              string
+	AssigneeUserID      *uuid.UUID
+	StartDate           pgtype.Date
+	DueDate             pgtype.Date
+	EstimateHours       pgtype.Numeric
+	Position            int32
+	CompletedAt         *time.Time
+	CreatedByUserID     uuid.UUID
+	Revision            int32
+	CreatedAt           time.Time
+	UpdatedAt           time.Time
+	DeliveryMilestoneID *int32
 }
 
 type ProjectsTaskChecklistItem struct {
@@ -122,6 +139,29 @@ type ProjectsTaskComment struct {
 	Body         string
 	CreatedAt    time.Time
 	EditedAt     *time.Time
+}
+
+type ProjectsTaskDependency struct {
+	ID                int32
+	ProjectID         int32
+	PredecessorTaskID int32
+	SuccessorTaskID   int32
+	CreatedByUserID   uuid.UUID
+	CreatedAt         time.Time
+}
+
+type ProjectsTemplate struct {
+	ID              int32
+	Name            string
+	Description     *string
+	BillingType     *string
+	Milestones      []byte
+	Tasks           []byte
+	Dependencies    []byte
+	Revision        int32
+	CreatedByUserID uuid.UUID
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
 }
 
 type ProjectsTimelineEntry struct {

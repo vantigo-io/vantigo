@@ -14,24 +14,35 @@ import {
   Table,
   Text,
 } from "@mantine/core";
-import { IconAlertCircle, IconChevronDown, IconChevronRight, IconDots, IconPlus } from "@tabler/icons-react";
+import {
+  IconAlertCircle,
+  IconChevronDown,
+  IconChevronRight,
+  IconDots,
+  IconPlus,
+  IconTemplate,
+} from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { ContentSkeleton, EmptyState, useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import { projectQueryOptions } from "../api/projects";
 import { projectTasksQueryOptions, type Task } from "../api/tasks";
+import { DeliveryMilestoneBadge } from "../components/delivery-milestone-badge";
 import { TaskStatusBadge } from "../components/task-status-badge";
 import "../i18n";
 import { useProjectDates } from "../lib/dates";
 import { taskStatuses, taskStatusLabelKey } from "../lib/tasks";
 import { useTaskSave } from "../lib/use-task-save";
+import { ApplyTemplateModal } from "./-apply-template-modal";
+import { DeliveryMilestonesCard } from "./-delivery-milestones-card";
 import { TaskDrawer } from "./-task-drawer";
 import { TaskFormModal, type TaskModalState } from "./-task-form-modal";
+import { TaskTimelineView } from "./-task-timeline-view";
 
-/** Which of the two shapes of the same tree the caller last looked at. */
+/** Which of the shapes of the same tree the caller last looked at. */
 const VIEW_STORAGE_KEY = "projects.tasks.view";
 
-type TaskView = "list" | "board";
+type TaskView = "list" | "board" | "timeline";
 
 /**
  * The remembered view. Storage is a convenience, never a requirement: a
@@ -39,7 +50,9 @@ type TaskView = "list" | "board";
  */
 const readView = (): TaskView => {
   try {
-    return localStorage.getItem(VIEW_STORAGE_KEY) === "board" ? "board" : "list";
+    const stored = localStorage.getItem(VIEW_STORAGE_KEY);
+    if (stored === "board" || stored === "timeline") return stored;
+    return "list";
   } catch {
     return "list";
   }
@@ -89,6 +102,8 @@ export const ProjectTasks = ({
   const [view, setView] = useState<TaskView>(readView);
   const [openTaskId, setOpenTaskId] = useState<number | null>(openTaskIdFromHost ?? null);
   const [modalState, setModalState] = useState<TaskModalState | null>(null);
+  const [applyTemplateOpen, setApplyTemplateOpen] = useState(false);
+  const [selectedMilestoneId, setSelectedMilestoneId] = useState<number | null>(null);
 
   // The host's task follows the URL, and the URL follows the drawer: each new
   // value the host hands down opens the drawer on it, adjusted during render
@@ -121,16 +136,31 @@ export const ProjectTasks = ({
 
   const { canContribute, canManage } = project.data.capabilities;
   const tree = tasks.data ?? [];
+  const filteredTree =
+    selectedMilestoneId === null
+      ? tree
+      : tree.filter(
+          (t) =>
+            t.deliveryMilestoneId === selectedMilestoneId ||
+            t.subtasks?.some((st) => st.deliveryMilestoneId === selectedMilestoneId),
+        );
 
   const chooseView = (value: string) => {
-    const chosen: TaskView = value === "board" ? "board" : "list";
+    const chosen: TaskView = value === "board" ? "board" : value === "timeline" ? "timeline" : "list";
     setView(chosen);
     rememberView(chosen);
   };
 
   return (
-    <>
-      <Card withBorder padding="lg" radius="md" mt="md">
+    <Stack gap="md" mt="md">
+      <DeliveryMilestonesCard
+        projectId={projectId}
+        canContribute={canContribute}
+        selectedMilestoneId={selectedMilestoneId}
+        onSelectMilestone={setSelectedMilestoneId}
+      />
+
+      <Card withBorder padding="lg" radius="md">
         <Stack gap="md">
           <Group justify="space-between" wrap="wrap">
             <SegmentedControl
@@ -138,14 +168,29 @@ export const ProjectTasks = ({
               data={[
                 { value: "list", label: t("taskViewList") },
                 { value: "board", label: t("taskViewBoard") },
+                { value: "timeline", label: t("taskViewTimeline") },
               ]}
               value={view}
               onChange={chooseView}
             />
             {canContribute && (
-              <Button size="xs" leftSection={<IconPlus size={14} />} onClick={() => setModalState({ mode: "create" })}>
-                {t("addTask")}
-              </Button>
+              <Group gap="xs">
+                <Button
+                  size="xs"
+                  variant="default"
+                  leftSection={<IconTemplate size={14} />}
+                  onClick={() => setApplyTemplateOpen(true)}
+                >
+                  {t("useTemplate")}
+                </Button>
+                <Button
+                  size="xs"
+                  leftSection={<IconPlus size={14} />}
+                  onClick={() => setModalState({ mode: "create" })}
+                >
+                  {t("addTask")}
+                </Button>
+              </Group>
             )}
           </Group>
 
@@ -155,18 +200,31 @@ export const ProjectTasks = ({
             </Alert>
           )}
           {tasks.isPending && <ContentSkeleton rows={4} rowHeight={48} />}
-          {tasks.data && tree.length === 0 && <EmptyState title={t("noTasksYet")} size="sm" />}
+          {tasks.data && filteredTree.length === 0 && <EmptyState title={t("noTasksYet")} size="sm" />}
 
-          {tree.length > 0 &&
+          {filteredTree.length > 0 &&
             (view === "list" ? (
-              <TaskList tasks={tree} onOpen={openTask} />
+              <TaskList tasks={filteredTree} onOpen={openTask} />
+            ) : view === "board" ? (
+              <TaskBoard tasks={filteredTree} canContribute={canContribute} onOpen={openTask} />
             ) : (
-              <TaskBoard tasks={tree} canContribute={canContribute} onOpen={openTask} />
+              <TaskTimelineView
+                projectId={projectId}
+                tasks={filteredTree}
+                canContribute={canContribute}
+                onOpen={openTask}
+              />
             ))}
         </Stack>
       </Card>
 
       <TaskFormModal projectId={projectId} state={modalState} onClose={() => setModalState(null)} />
+      <ApplyTemplateModal
+        projectId={projectId}
+        projectStartDate={project.data.startDate}
+        opened={applyTemplateOpen}
+        onClose={() => setApplyTemplateOpen(false)}
+      />
       <TaskDrawer
         projectId={projectId}
         taskId={openTaskId}
@@ -176,7 +234,7 @@ export const ProjectTasks = ({
         canManage={canManage}
         currentUserId={currentUserId}
       />
-    </>
+    </Stack>
   );
 };
 
@@ -260,6 +318,7 @@ const TaskRow = ({ task, onOpen }: { task: Task; onOpen: (taskId: number) => voi
               <Box w={22} />
             )}
             <TaskTitleButton task={task} onOpen={onOpen} />
+            {task.deliveryMilestone && <DeliveryMilestoneBadge milestone={task.deliveryMilestone} size="xs" />}
           </Group>
         </Table.Td>
         <TaskCells task={task} />
@@ -271,6 +330,9 @@ const TaskRow = ({ task, onOpen }: { task: Task; onOpen: (taskId: number) => voi
               <Group gap="xs" wrap="nowrap" pl={34}>
                 <TaskStatusBadge status={subtask.status} size="xs" />
                 <TaskTitleButton task={subtask} onOpen={onOpen} />
+                {subtask.deliveryMilestone && (
+                  <DeliveryMilestoneBadge milestone={subtask.deliveryMilestone} size="xs" />
+                )}
               </Group>
             </Table.Td>
             <TaskCells task={subtask} />
@@ -400,7 +462,10 @@ const TaskCard = ({
     >
       <Stack gap="xs">
         <Group justify="space-between" align="start" wrap="nowrap">
-          <TaskTitleButton task={task} onOpen={onOpen} />
+          <Group gap="xs" wrap="wrap">
+            <TaskTitleButton task={task} onOpen={onOpen} />
+            {task.deliveryMilestone && <DeliveryMilestoneBadge milestone={task.deliveryMilestone} size="xs" />}
+          </Group>
           {canContribute && (
             // The menu opens on the card, which opens the drawer: the click
             // stops here so choosing a status never opens the task as well.

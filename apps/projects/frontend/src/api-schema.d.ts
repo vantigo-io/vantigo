@@ -37,6 +37,76 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/delivery-milestones/{milestoneId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get a delivery milestone by id */
+        get: operations["getProjectsDeliveryMilestonesByMilestoneId"];
+        /** Update a delivery milestone */
+        put: operations["putProjectsDeliveryMilestonesByMilestoneId"];
+        post?: never;
+        /** Delete a delivery milestone */
+        delete: operations["deleteProjectsDeliveryMilestonesByMilestoneId"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/delivery-milestones/{milestoneId}/position": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Move a delivery milestone's position */
+        put: operations["putProjectsDeliveryMilestonesByMilestoneIdPosition"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/delivery-milestones/{milestoneId}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Change delivery milestone status */
+        post: operations["postProjectsDeliveryMilestonesByMilestoneIdStatus"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/dependencies/{dependencyId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete a task dependency link */
+        delete: operations["deleteProjectsDependenciesByDependencyId"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/economy": {
         parameters: {
             query?: never;
@@ -145,6 +215,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{id}/apply-template": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Apply a template to a project */
+        post: operations["postProjectsByIdApplyTemplate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{id}/assignable-users": {
         parameters: {
             query?: never;
@@ -191,6 +278,42 @@ export interface paths {
         /** Change a project's billing line */
         put: operations["putProjectsByIdBillingLinesByLineId"];
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{id}/delivery-milestones": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List a project's delivery milestones */
+        get: operations["getProjectsByIdDeliveryMilestones"];
+        put?: never;
+        /** Create a delivery milestone on a project */
+        post: operations["postProjectsByIdDeliveryMilestones"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{id}/dependencies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List a project's task dependencies */
+        get: operations["getProjectsByIdDependencies"];
+        put?: never;
+        /** Create a task dependency link on a project */
+        post: operations["postProjectsByIdDependencies"];
         delete?: never;
         options?: never;
         head?: never;
@@ -537,6 +660,60 @@ export interface paths {
         put: operations["putProjectsTasksByTaskIdPosition"];
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/tasks/{taskId}/reschedule-downstream": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reschedule downstream tasks reachable via dependencies */
+        post: operations["postProjectsTasksByTaskIdRescheduleDownstream"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List project templates */
+        get: operations["getProjectsTemplates"];
+        put?: never;
+        /** Create a project template */
+        post: operations["postProjectsTemplates"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/templates/{templateId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get a project template */
+        get: operations["getProjectsTemplatesByTemplateId"];
+        /** Update a project template */
+        put: operations["putProjectsTemplatesByTemplateId"];
+        post?: never;
+        /** Delete a project template */
+        delete: operations["deleteProjectsTemplatesByTemplateId"];
         options?: never;
         head?: never;
         patch?: never;
@@ -902,6 +1079,117 @@ export interface components {
             /** Format: int64 */
             id: number;
         };
+        /** @description A new delivery milestone for a project. */
+        DeliveryMilestoneCreateRequest: {
+            /** @description At most 2000 characters once trimmed; a blank one is stored as null. */
+            description?: string | null;
+            /** @description Trimmed before validation and storage; never blank, at most 200 characters. */
+            name: string;
+            /**
+             * Format: date
+             * @description An optional target completion date for the deliverable.
+             */
+            targetDate?: string | null;
+        };
+        /** @description A project's delivery milestones in position order. */
+        DeliveryMilestoneListResponse: {
+            milestones: components["schemas"]["DeliveryMilestoneResponse"][];
+        };
+        /** @description The user who completed the delivery milestone. */
+        DeliveryMilestonePerson: {
+            displayName: string;
+            /** Format: uuid */
+            id: string;
+        };
+        /** @description Move a delivery milestone to a 1-based position in the project's milestones. */
+        DeliveryMilestonePositionRequest: {
+            /**
+             * Format: int32
+             * @description The 1-based place among the project's delivery milestones.
+             */
+            position: number;
+            /**
+             * Format: int32
+             * @description The revision the caller read the milestone at.
+             */
+            revision: number;
+        };
+        /** @description One delivery milestone — an execution deliverable with completion progress derived from linked tasks. */
+        DeliveryMilestoneResponse: {
+            /** Format: date-time */
+            completedAt?: string | null;
+            completedBy?: components["schemas"]["DeliveryMilestonePerson"];
+            /**
+             * Format: int32
+             * @description How many linked tasks stand in 'done'.
+             */
+            completedTasks: number;
+            /** Format: date-time */
+            createdAt: string;
+            description?: string | null;
+            /**
+             * Format: double
+             * @description Sum of estimate hours on completed linked tasks.
+             */
+            estimatedHoursCompleted?: number | null;
+            /**
+             * Format: double
+             * @description Sum of estimate hours across all linked tasks.
+             */
+            estimatedHoursTotal?: number | null;
+            /** Format: int32 */
+            id: number;
+            name: string;
+            /** Format: int32 */
+            position: number;
+            /**
+             * Format: int32
+             * @description Completion percentage derived from completed tasks (0 to 100).
+             */
+            progressPercent: number;
+            /** Format: int32 */
+            projectId: number;
+            /** Format: int32 */
+            revision: number;
+            /** @description 'open' or 'completed'. */
+            status: string;
+            /** Format: date */
+            targetDate?: string | null;
+            /**
+             * Format: int32
+             * @description Total number of tasks linked to this milestone.
+             */
+            totalTasks: number;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        /** @description Change the delivery milestone's status. */
+        DeliveryMilestoneStatusRequest: {
+            /**
+             * Format: int32
+             * @description The revision the caller read the milestone at.
+             */
+            revision: number;
+            /** @description 'open' or 'completed'. */
+            status: string;
+        };
+        /** @description Short reference to a delivery milestone on a task. */
+        DeliveryMilestoneSummary: {
+            /** Format: int32 */
+            id: number;
+            name: string;
+            /** Format: date */
+            targetDate?: string | null;
+        };
+        /** @description Full replace of a delivery milestone's fields, carrying the revision it was read at. */
+        DeliveryMilestoneUpdateRequest: {
+            description?: string | null;
+            name: string;
+            /** Format: int32 */
+            revision: number;
+            /** Format: date */
+            targetDate?: string | null;
+        };
         /** @description How many of the projects the caller may see stand in each status, for the list page's key-figure row. Every status is always present, 0 included. */
         GetProjectStatsResponse: {
             /** Format: int32 */
@@ -926,6 +1214,9 @@ export interface components {
             completedAt?: string | null;
             /** Format: date-time */
             createdAt: string;
+            deliveryMilestone?: components["schemas"]["DeliveryMilestoneSummary"];
+            /** Format: int32 */
+            deliveryMilestoneId?: number | null;
             description?: string | null;
             /** Format: date */
             dueDate?: string | null;
@@ -965,6 +1256,28 @@ export interface components {
         PaginatedResponseOfTimelineEntryResponse: {
             data: components["schemas"]["TimelineEntryResponse"][];
             pagination: components["schemas"]["PaginationMetadata"];
+        };
+        /** @description Instantiate a project template onto an existing project with relative day offsets calculated from kickoffDate. */
+        ProjectApplyTemplateRequest: {
+            /**
+             * Format: date
+             * @description The base calendar date for relative day offset calculations (T+0).
+             */
+            kickoffDate: string;
+            /**
+             * Format: int32
+             * @description The template to instantiate.
+             */
+            templateId: number;
+        };
+        /** @description Result of applying a template to a project. */
+        ProjectApplyTemplateResponse: {
+            /** Format: int32 */
+            dependenciesCreated: number;
+            /** Format: int32 */
+            milestonesCreated: number;
+            /** Format: int32 */
+            tasksCreated: number;
         };
         /** @description What the calling user may do with this project, so the frontend never re-derives authorization. */
         ProjectCapabilities: {
@@ -1652,6 +1965,99 @@ export interface components {
             /** Format: date-time */
             updatedAt: string;
         };
+        /** @description Create a reusable project template blueprint. */
+        ProjectTemplateCreateRequest: {
+            /** @description Optional default billing type. */
+            billingType?: string | null;
+            dependencies?: components["schemas"]["ProjectTemplateDependency"][];
+            description?: string | null;
+            milestones?: components["schemas"]["ProjectTemplateMilestone"][];
+            name: string;
+            tasks?: components["schemas"]["ProjectTemplateTask"][];
+        };
+        /** @description A dependency link within a template referencing tasks by their 0-based index. */
+        ProjectTemplateDependency: {
+            /** Format: int32 */
+            predecessorTaskIndex: number;
+            /** Format: int32 */
+            successorTaskIndex: number;
+        };
+        /** @description Reusable project template blueprints. */
+        ProjectTemplateListResponse: {
+            templates: components["schemas"]["ProjectTemplateResponse"][];
+        };
+        /** @description A delivery milestone definition in a template with a target day offset from project kickoff. */
+        ProjectTemplateMilestone: {
+            description?: string | null;
+            name: string;
+            /**
+             * Format: int32
+             * @description Number of calendar days from kickoff date (e.g. 14 for T+14).
+             */
+            targetDayOffset: number;
+        };
+        /** @description One project template blueprint. */
+        ProjectTemplateResponse: {
+            billingType?: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            dependencies: components["schemas"]["ProjectTemplateDependency"][];
+            description?: string | null;
+            /** Format: int32 */
+            id: number;
+            milestones: components["schemas"]["ProjectTemplateMilestone"][];
+            name: string;
+            /** Format: int32 */
+            revision: number;
+            tasks: components["schemas"]["ProjectTemplateTask"][];
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        /** @description A subtask blueprint within a template task. */
+        ProjectTemplateSubtask: {
+            description?: string | null;
+            /** Format: int32 */
+            dueDayOffset?: number | null;
+            /** Format: double */
+            estimateHours?: number | null;
+            /** Format: int32 */
+            startDayOffset?: number | null;
+            title: string;
+        };
+        /** @description A top-level task blueprint within a template. */
+        ProjectTemplateTask: {
+            description?: string | null;
+            /**
+             * Format: int32
+             * @description Relative due date offset in days from kickoff date.
+             */
+            dueDayOffset?: number | null;
+            /** Format: double */
+            estimateHours?: number | null;
+            /**
+             * Format: int32
+             * @description Optional 0-based index of the template's delivery milestone this task is linked to.
+             */
+            milestoneIndex?: number | null;
+            /**
+             * Format: int32
+             * @description Relative start date offset in days from kickoff date.
+             */
+            startDayOffset?: number | null;
+            subtasks?: components["schemas"]["ProjectTemplateSubtask"][];
+            title: string;
+        };
+        /** @description Update a reusable project template blueprint. */
+        ProjectTemplateUpdateRequest: {
+            billingType?: string | null;
+            dependencies?: components["schemas"]["ProjectTemplateDependency"][];
+            description?: string | null;
+            milestones?: components["schemas"]["ProjectTemplateMilestone"][];
+            name: string;
+            /** Format: int32 */
+            revision: number;
+            tasks?: components["schemas"]["ProjectTemplateTask"][];
+        };
         /** @description Every field of the project as it should stand after the update, carrying the revision it was read at. A revision that has moved on answers 409. */
         ProjectUpdateRequest: {
             /** @description 'time-and-materials', 'fixed-price' or 'non-billable'. An internal project (no customerId) must be 'non-billable'. */
@@ -1731,6 +2137,30 @@ export interface components {
             /** Format: int32 */
             total: number;
         };
+        /** @description Create a finish-to-start dependency link between two tasks in the same project. */
+        TaskDependencyCreateRequest: {
+            /** Format: int32 */
+            predecessorTaskId: number;
+            /** Format: int32 */
+            successorTaskId: number;
+        };
+        /** @description A project's task dependency links. */
+        TaskDependencyListResponse: {
+            dependencies: components["schemas"]["TaskDependencyResponse"][];
+        };
+        /** @description A finish-to-start dependency link between two tasks in the same project. */
+        TaskDependencyResponse: {
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: int32 */
+            id: number;
+            /** Format: int32 */
+            predecessorTaskId: number;
+            /** Format: int32 */
+            projectId: number;
+            /** Format: int32 */
+            successorTaskId: number;
+        };
         /** @description Where a task should sit — among which siblings, and how far down. The siblings are renumbered 1..n in one transaction, so the order never has a gap. */
         TaskPositionRequest: {
             /**
@@ -1750,6 +2180,11 @@ export interface components {
              * @description The one person the task is assigned to. The user must exist and be active.
              */
             assigneeUserId?: string | null;
+            /**
+             * Format: int32
+             * @description An optional delivery milestone on the same project this task belongs to.
+             */
+            deliveryMilestoneId?: number | null;
             description?: string | null;
             /**
              * Format: date
@@ -1773,6 +2208,20 @@ export interface components {
             /** @description Trimmed before validation and storage; at most 200 characters. */
             title: string;
         };
+        /** @description Shift the dates of downstream tasks reachable via dependencies by a delta in days. */
+        TaskRescheduleDownstreamRequest: {
+            /**
+             * Format: int32
+             * @description Positive or negative number of days to shift downstream tasks.
+             */
+            daysDelta: number;
+        };
+        /** @description Result of rescheduling downstream tasks. */
+        TaskRescheduleDownstreamResponse: {
+            /** Format: int32 */
+            shiftedTasksCount: number;
+            updatedTaskIds: number[];
+        };
         /** @description One task of a project. checklist and commentCount are aggregates over the task's own children, so a tree renders progress without reading either. */
         TaskResponse: {
             /** @description Absent — not null — when nobody is assigned. */
@@ -1787,6 +2236,12 @@ export interface components {
             completedAt?: string | null;
             /** Format: date-time */
             createdAt: string;
+            deliveryMilestone?: components["schemas"]["DeliveryMilestoneSummary"];
+            /**
+             * Format: int32
+             * @description The delivery milestone this task is linked to, absent when not linked.
+             */
+            deliveryMilestoneId?: number | null;
             description?: string | null;
             /** Format: date */
             dueDate?: string | null;
@@ -1828,6 +2283,11 @@ export interface components {
              * @description The one person the task is assigned to. The user must exist and be active; leaving it out clears the assignment.
              */
             assigneeUserId?: string | null;
+            /**
+             * Format: int32
+             * @description An optional delivery milestone on the same project this task belongs to. Leaving it out or null clears the milestone link.
+             */
+            deliveryMilestoneId?: number | null;
             description?: string | null;
             /**
              * Format: date
@@ -2096,6 +2556,350 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["AuthErrorResponse"];
                 };
+            };
+        };
+    };
+    getProjectsDeliveryMilestonesByMilestoneId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                milestoneId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeliveryMilestoneResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — the milestone does not exist, or belongs to a project the caller cannot see. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    putProjectsDeliveryMilestonesByMilestoneId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                milestoneId: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeliveryMilestoneUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeliveryMilestoneResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden — the caller cannot contribute to the project. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — the milestone does not exist, or belongs to a project the caller cannot see. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — the supplied revision is not the milestone's current one. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    deleteProjectsDeliveryMilestonesByMilestoneId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                milestoneId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content — the milestone is gone, remaining milestones renumbered, and linked tasks have been unlinked. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden — the caller cannot contribute to the project. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — the milestone does not exist, or belongs to a project the caller cannot see. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    putProjectsDeliveryMilestonesByMilestoneIdPosition: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                milestoneId: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeliveryMilestonePositionRequest"];
+            };
+        };
+        responses: {
+            /** @description OK — the milestone where it now sits; the project's delivery milestones have been renumbered 1..n. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeliveryMilestoneResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — the milestone does not exist, or belongs to a project the caller cannot see. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — the supplied revision is not the milestone's current one. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    postProjectsDeliveryMilestonesByMilestoneIdStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                milestoneId: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeliveryMilestoneStatusRequest"];
+            };
+        };
+        responses: {
+            /** @description OK — the milestone in its new status. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeliveryMilestoneResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — the milestone does not exist, or belongs to a project the caller cannot see. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — the supplied revision is not the milestone's current one. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    deleteProjectsDependenciesByDependencyId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                dependencyId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content — the dependency link has been removed. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden — the caller cannot contribute to the project. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — the dependency link does not exist, or belongs to a project the caller cannot see. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -2625,6 +3429,66 @@ export interface operations {
             };
         };
     };
+    postProjectsByIdApplyTemplate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProjectApplyTemplateRequest"];
+            };
+        };
+        responses: {
+            /** @description OK — template instantiated onto project. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectApplyTemplateResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden — caller cannot contribute to this project. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — project or template does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     getProjectsByIdAssignableUsers: {
         parameters: {
             query?: {
@@ -2866,6 +3730,229 @@ export interface operations {
                 };
                 content: {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    getProjectsByIdDeliveryMilestones: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK — the project's delivery milestones with derived progress from linked tasks. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeliveryMilestoneListResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such project, or one the caller cannot see. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    postProjectsByIdDeliveryMilestones: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeliveryMilestoneCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Created — the milestone, appended last among delivery milestones. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeliveryMilestoneResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden — the caller cannot contribute to this project. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such project, or one the caller cannot see. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getProjectsByIdDependencies: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK — the project's task dependency links. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskDependencyListResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such project, or one the caller cannot see. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    postProjectsByIdDependencies: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaskDependencyCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Created — the task dependency link. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskDependencyResponse"];
+                };
+            };
+            /** @description Bad Request — self-dependency, cyclic dependency, or tasks outside project. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden — the caller cannot contribute to this project. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such project or tasks, or one the caller cannot see. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — dependency link already exists. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
                 };
             };
         };
@@ -4443,6 +5530,316 @@ export interface operations {
                 };
             };
             /** @description Not Found — the task does not exist, or it belongs to a project the caller cannot see. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    postProjectsTasksByTaskIdRescheduleDownstream: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                taskId: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaskRescheduleDownstreamRequest"];
+            };
+        };
+        responses: {
+            /** @description OK — downstream tasks were shifted. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskRescheduleDownstreamResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden — the caller cannot contribute to this project. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — the task does not exist, or belongs to a project the caller cannot see. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getProjectsTemplates: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK — list of project template blueprints. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectTemplateListResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    postProjectsTemplates: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProjectTemplateCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Created — the new template. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectTemplateResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    getProjectsTemplatesByTemplateId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                templateId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK — the template. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectTemplateResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    putProjectsTemplatesByTemplateId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                templateId: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProjectTemplateUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description OK — template updated. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectTemplateResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — revision conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+        };
+    };
+    deleteProjectsTemplatesByTemplateId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                templateId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content — template deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
             404: {
                 headers: {
                     [name: string]: unknown;

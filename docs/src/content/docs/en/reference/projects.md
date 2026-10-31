@@ -5,6 +5,10 @@ sources:
   - apps/server/internal/projects
   - apps/projects/frontend
   - openapi/projects.yaml
+  - apps/server/internal/openapi/specs/projects.yaml
+  - apps/server/internal/db/migrations/00096_projects_delivery_milestones.sql
+  - apps/server/internal/db/migrations/00097_projects_task_dependencies.sql
+  - apps/server/internal/db/migrations/00098_projects_templates.sql
 ---
 The Projects module is where work is organised: a project is a named, coded piece of
 work for one customer (or none, which means internal), the people who may act on it,
@@ -42,8 +46,16 @@ percent-of-price arithmetic behind the invoice plan below — and nothing more.
   amount or a share of the fixed price, moving through `planned → ready → invoiced`
   with `cancelled` off to the side — see
   [Billing milestones and the invoice plan](#billing-milestones-and-the-invoice-plan).
+- **Delivery milestone** — an execution deliverable or phase of a project: `name`, an
+  optional `description` and `targetDate`, manual `position`, and `status` (`open` or
+  `completed`). Unlike commercial billing milestones, a delivery milestone derives its
+  completion and hour progress from linked tasks — see [Delivery milestones](#delivery-milestones).
+- **Project template** — a reusable blueprint (`projects.templates`) defining delivery milestones,
+  tasks, subtasks, and finish-to-start dependencies with relative day offsets ($T+0$) for fast project
+  kickoffs — see [Project templates and blueprints](#project-templates-and-blueprints).
 - **Task** — a piece of the project's work: `title`, `description`, `status`, one
-  optional `assigneeUserId`, `startDate`/`dueDate`, `estimateHours`, a `position`
+  optional `assigneeUserId`, `startDate`/`dueDate`, `estimateHours`, an optional
+  `deliveryMilestoneId`, a `position`
   among its siblings and an optional `parentTaskId` (see [Tasks](#tasks)). Each task
   carries **checklist items** and **comments**. Unlike projects and lines, tasks *are*
   deleted, cascading to their subtasks, checklist and comments — nothing outside
@@ -55,6 +67,8 @@ percent-of-price arithmetic behind the invoice plan below — and nothing more.
   `line-reactivated`, `milestone-added`, `milestone-changed`, `milestone-removed`,
   `milestone-ready`, `milestone-planned`, `milestone-invoiced`,
   `milestone-invoice-undone`, `milestone-cancelled`, `milestone-reopened`,
+  `delivery-milestone-added`, `delivery-milestone-changed`, `delivery-milestone-removed`,
+  `delivery-milestone-completed`, `delivery-milestone-reopened`,
   `work-type-added`, `work-type-changed`. There are no manual notes.
 
 `status` is one of `planned`, `active`, `on-hold`, `completed`, `cancelled`, and
@@ -1262,6 +1276,79 @@ project's code below, and links to the task's deep link,
 calendar, and the calendar cannot move one: projected items are not draggable. See
 [the kinds](/en/reference/calendar/#the-kinds).
 
+## Delivery milestones
+
+A **delivery milestone** is an execution deliverable or phase of a project: `name`, an
+optional `description`, an optional `targetDate`, manual `position` (1..n), and `status`
+(`open` or `completed`).
+
+Delivery milestones are distinct from commercial **billing milestones** (`projects.billing_milestones`):
+they track execution deliverable progress rather than money or invoice releases.
+
+- **Derived progress from linked tasks:** Each delivery milestone computes its progress
+  from linked tasks:
+  - `totalTasks` — total number of tasks linked to this milestone.
+  - `completedTasks` — number of linked tasks in status `done`.
+  - `progressPercent` — percentage rounded to the nearest integer (`round(completed / total * 100)`), or `0` when `totalTasks = 0`.
+  - `estimatedHoursTotal` and `estimatedHoursCompleted` — sum of `estimate_hours` across all linked tasks and completed linked tasks respectively.
+- **Task linking:** Each task may belong to at most one delivery milestone via `deliveryMilestoneId`.
+  Attempting to link a task to a milestone belonging to a different project returns **400 Bad Request**.
+  When a delivery milestone is deleted, linked tasks have their `delivery_milestone_id` set to `NULL`
+  (`ON DELETE SET NULL`), preserving the tasks and their work.
+- **Status flow:** A milestone is either `open` or `completed`. Transitioning to `completed`
+  stamps `completed_at` with the current time and `completed_by` with the actor's user ID.
+  Reopening clears both stamps.
+- **Position & ordering:** Milestones follow a manual 1-based order within the project.
+  `PUT /position` accepts `{ position, revision }` and renumbers the sequence in one transaction.
+- **Concurrency:** Updates carry the milestone's `revision`, returning **409 Conflict** on stale writes.
+- **Authorization:** Viewing requires read rights (`CanSee`). Creating, updating, reordering,
+  changing status, and deleting require contribute rights (`CanContribute`: `member`, `manager`, or `projects:manage-all`).
+  Outsiders receive **404 Not Found**.
+- **Timeline events:** `delivery-milestone-added`, `delivery-milestone-changed`,
+  `delivery-milestone-removed`, `delivery-milestone-completed`, `delivery-milestone-reopened`.
+
+## Task dependencies and timeline
+
+Projects supports **Finish-to-Start (FS)** task dependencies (`projects.task_dependencies`).
+A dependency states that a predecessor task must finish before its successor task can begin.
+
+- **Within-project scope:** Predecessor and successor tasks must belong to the exact same
+  project. Attempting to link tasks across projects returns **400 Bad Request**.
+- **Cycle-free DAG validation:** The dependency graph forms a directed acyclic graph (DAG).
+  Before inserting a link `(A -> B)`, the system performs graph reachability traversal from `B`.
+  If `A` is reachable from `B`, adding the link would introduce a directed cycle; the request is
+  refused with **400 Bad Request** (`cyclic_dependency`).
+- **Self-dependencies & duplicates:** A task cannot depend on itself (**400 Bad Request**).
+  Attempting to recreate an existing dependency link returns **409 Conflict**.
+- **Cascading deletion:** When a task is deleted, all dependencies where it acts as predecessor
+  or successor are removed automatically (`ON DELETE CASCADE`).
+- **Downstream cascade rescheduling:** When a task is delayed or advanced, callers can opt in
+  to cascade the shift to all reachable downstream tasks via `POST /api/v1/projects/tasks/{taskId}/reschedule-downstream`
+  with `{ daysDelta: integer }`. The system traverses all downstream successor paths and shifts
+  `startDate` and `dueDate` by `daysDelta` in a single atomic transaction.
+- **Timeline view:** In the frontend, the Tasks tab provides an interactive Timeline view
+  displaying task bars across calendar days, delivery milestone markers at their target dates,
+  and SVG connector arrows indicating finish-to-start dependencies. Schedule conflicts
+  (`predecessor.dueDate > successor.startDate`) are automatically highlighted with visual warning badges.
+
+## Project templates and blueprints
+
+Organizations frequently execute repeatable projects (e.g., client onboarding, ERP rollouts, SaaS setup).
+Vantigo provides reusable project blueprint templates (`projects.templates`) to instantiate pre-configured
+delivery milestones, tasks, subtasks, and dependency graphs in one operation.
+
+- **Relative day offsets ($T+0$):** Rather than absolute dates, blueprints define relative offsets from a kickoff date ($T+0$):
+  - `targetDayOffset` on milestones (e.g. $T+7$ days, $T+21$ days).
+  - `startDayOffset` and `dueDayOffset` on tasks and subtasks.
+- **Milestone linking & dependencies:** Tasks in a blueprint can link to milestones by 0-based milestone index,
+  and finish-to-start dependencies link predecessor and successor tasks by 0-based task index.
+- **Template instantiation (`POST /api/v1/projects/{id}/apply-template`):** When applying a template with a chosen `kickoffDate`:
+  1. An exclusive task-order lock (`AcquireTaskOrderLock`) is acquired for the target project.
+  2. Delivery milestones are created with `targetDate = kickoffDate + targetDayOffset`.
+  3. Tasks and subtasks are created with `startDate = kickoffDate + startDayOffset` and `dueDate = kickoffDate + dueDayOffset`, mapped to their instantiated delivery milestones.
+  4. Task dependencies are created linking the newly instantiated predecessor and successor task IDs.
+  5. The entire instantiation completes atomically inside a single transaction.
+
 ## Contracts for other modules
 
 Cross-module reads go through `internal/contracts` — never another module's schema or
@@ -1440,6 +1527,23 @@ create additionally requires `projects:create`.
 | `DELETE /api/v1/projects/milestones/{milestoneId}` | Only `planned` and never moved; otherwise 400. Manager only |
 | `PUT /api/v1/projects/milestones/{milestoneId}/position` | Renumber the plan 1..n; carries `revision` (checked, not bumped). Manager only |
 | `POST /api/v1/projects/milestones/{milestoneId}/status` | One move through the status flow — see [Billing milestones and the invoice plan](#billing-milestones-and-the-invoice-plan); 409 `invoiced_by_invoices` on undoing a milestone the Invoices module invoiced |
+| `GET /api/v1/projects/{id}/delivery-milestones` | The project's delivery milestones in position order, with derived task progress. Anyone who sees the project |
+| `POST /api/v1/projects/{id}/delivery-milestones` | Add a delivery milestone; appended last. Member or manager |
+| `GET /api/v1/projects/delivery-milestones/{milestoneId}` | One delivery milestone with task completion counts and hours. Anyone who sees the project |
+| `PUT /api/v1/projects/delivery-milestones/{milestoneId}` | Replace a delivery milestone, carrying `revision`; a stale one answers 409. Member or manager |
+| `DELETE /api/v1/projects/delivery-milestones/{milestoneId}` | Delete a delivery milestone; unlinks tasks (`deliveryMilestoneId = null`). Member or manager |
+| `PUT /api/v1/projects/delivery-milestones/{milestoneId}/position` | Renumber delivery milestones 1..n; carries `revision`. Member or manager |
+| `POST /api/v1/projects/delivery-milestones/{milestoneId}/status` | Set status to `open` or `completed`; completed stamps `completed_at` and `completed_by`. Member or manager |
+| `GET /api/v1/projects/{id}/dependencies` | List a project's task dependency links. Anyone who sees the project |
+| `POST /api/v1/projects/{id}/dependencies` | Create a finish-to-start dependency link between tasks; validated for cycles. Member or manager |
+| `DELETE /api/v1/projects/dependencies/{dependencyId}` | Delete a task dependency link. Member or manager |
+| `POST /api/v1/projects/tasks/{taskId}/reschedule-downstream` | Shift dates of all reachable downstream tasks by a day delta. Member or manager |
+| `GET /api/v1/projects/templates` | List reusable project blueprint templates. `projects:access` |
+| `POST /api/v1/projects/templates` | Create a new project blueprint template. `projects:access` |
+| `GET /api/v1/projects/templates/{templateId}` | Retrieve a project template by ID. `projects:access` |
+| `PUT /api/v1/projects/templates/{templateId}` | Update a project template with revision conflict guard. `projects:access` |
+| `DELETE /api/v1/projects/templates/{templateId}` | Delete a project template. `projects:access` |
+| `POST /api/v1/projects/{id}/apply-template` | Instantiate a template onto a project with relative offsets from `kickoffDate`. Member or manager |
 | `GET /api/v1/projects/{id}/economy` | Budget vs. logged, per line, per work type and in total, plus what the expenses cost and will bill; hours for anyone who sees the project, amounts and the `expenses` block need financial rights, cost and margin need `projects:view-costs` too — see [Project economy](#project-economy) |
 | `GET /api/v1/projects/economy` | The portfolio: one row per project the caller has financial rights on. `projects:access`; paged, filtered and sorted — see [Project economy](#project-economy) |
 | `GET /api/v1/projects/{id}/tasks` | The project's task tree, with checklist counts and comment counts. Anyone who sees the project |

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/holidays"
@@ -573,10 +574,12 @@ func milestonePerson(id *uuid.UUID, people map[uuid.UUID]contracts.UserEntry) *g
 // the single-written mapping — the same one-shared-conversion pattern
 // directoryProjectRow uses on the read side of the directory.
 type taskRow struct {
-	Task           store.ProjectsTask
-	ChecklistTotal int32
-	ChecklistDone  int32
-	CommentCount   int32
+	Task                        store.ProjectsTask
+	DeliveryMilestoneName       *string
+	DeliveryMilestoneTargetDate pgtype.Date
+	ChecklistTotal              int32
+	ChecklistDone               int32
+	CommentCount                int32
 }
 
 // countedTaskRows, taskRowsOf and taskRowOf convert the three queries that
@@ -587,8 +590,12 @@ func countedTaskRows(rows []store.ListProjectTasksRow) []taskRow {
 	out := make([]taskRow, 0, len(rows))
 	for _, r := range rows {
 		out = append(out, taskRow{
-			Task: r.ProjectsTask, ChecklistTotal: r.ChecklistTotal,
-			ChecklistDone: r.ChecklistDone, CommentCount: r.CommentCount,
+			Task:                        r.ProjectsTask,
+			DeliveryMilestoneName:       r.DeliveryMilestoneName,
+			DeliveryMilestoneTargetDate: r.DeliveryMilestoneTargetDate,
+			ChecklistTotal:              r.ChecklistTotal,
+			ChecklistDone:               r.ChecklistDone,
+			CommentCount:                r.CommentCount,
 		})
 	}
 	return out
@@ -598,8 +605,12 @@ func taskRowsOf(rows []store.ListTaskWithSubtasksRow) []taskRow {
 	out := make([]taskRow, 0, len(rows))
 	for _, r := range rows {
 		out = append(out, taskRow{
-			Task: r.ProjectsTask, ChecklistTotal: r.ChecklistTotal,
-			ChecklistDone: r.ChecklistDone, CommentCount: r.CommentCount,
+			Task:                        r.ProjectsTask,
+			DeliveryMilestoneName:       r.DeliveryMilestoneName,
+			DeliveryMilestoneTargetDate: r.DeliveryMilestoneTargetDate,
+			ChecklistTotal:              r.ChecklistTotal,
+			ChecklistDone:               r.ChecklistDone,
+			CommentCount:                r.CommentCount,
 		})
 	}
 	return out
@@ -607,8 +618,12 @@ func taskRowsOf(rows []store.ListTaskWithSubtasksRow) []taskRow {
 
 func taskRowOf(row store.GetTaskWithCountsRow) taskRow {
 	return taskRow{
-		Task: row.ProjectsTask, ChecklistTotal: row.ChecklistTotal,
-		ChecklistDone: row.ChecklistDone, CommentCount: row.CommentCount,
+		Task:                        row.ProjectsTask,
+		DeliveryMilestoneName:       row.DeliveryMilestoneName,
+		DeliveryMilestoneTargetDate: row.DeliveryMilestoneTargetDate,
+		ChecklistTotal:              row.ChecklistTotal,
+		ChecklistDone:               row.ChecklistDone,
+		CommentCount:                row.CommentCount,
 	}
 }
 
@@ -640,6 +655,14 @@ func taskResponse(row taskRow, assignees map[uuid.UUID]contracts.UserEntry) (gen
 		UpdatedAt:     row.Task.UpdatedAt,
 		Checklist:     gen.TaskChecklistProgress{Total: row.ChecklistTotal, Done: row.ChecklistDone},
 		CommentCount:  row.CommentCount,
+	}
+	resp.DeliveryMilestoneId = row.Task.DeliveryMilestoneID
+	if row.Task.DeliveryMilestoneID != nil && row.DeliveryMilestoneName != nil {
+		resp.DeliveryMilestone = &gen.DeliveryMilestoneSummary{
+			Id:         *row.Task.DeliveryMilestoneID,
+			Name:       *row.DeliveryMilestoneName,
+			TargetDate: dateFromPgtype(row.DeliveryMilestoneTargetDate),
+		}
 	}
 	if id := row.Task.AssigneeUserID; id != nil {
 		entry, ok := assignees[*id]
@@ -706,25 +729,27 @@ func myTaskResponse(row taskRow, projectCode, projectName string, assignees map[
 		return gen.MyTaskResponse{}, err
 	}
 	return gen.MyTaskResponse{
-		Id:            task.Id,
-		ProjectId:     task.ProjectId,
-		ProjectCode:   projectCode,
-		ProjectName:   projectName,
-		ParentTaskId:  task.ParentTaskId,
-		Title:         task.Title,
-		Description:   task.Description,
-		Status:        task.Status,
-		Assignee:      task.Assignee,
-		StartDate:     task.StartDate,
-		DueDate:       task.DueDate,
-		EstimateHours: task.EstimateHours,
-		Position:      task.Position,
-		CompletedAt:   task.CompletedAt,
-		Revision:      task.Revision,
-		CreatedAt:     task.CreatedAt,
-		UpdatedAt:     task.UpdatedAt,
-		Checklist:     task.Checklist,
-		CommentCount:  task.CommentCount,
+		Id:                  task.Id,
+		ProjectId:           task.ProjectId,
+		ProjectCode:         projectCode,
+		ProjectName:         projectName,
+		ParentTaskId:        task.ParentTaskId,
+		Title:               task.Title,
+		Description:         task.Description,
+		Status:              task.Status,
+		Assignee:            task.Assignee,
+		StartDate:           task.StartDate,
+		DueDate:             task.DueDate,
+		EstimateHours:       task.EstimateHours,
+		Position:            task.Position,
+		CompletedAt:         task.CompletedAt,
+		Revision:            task.Revision,
+		CreatedAt:           task.CreatedAt,
+		UpdatedAt:           task.UpdatedAt,
+		DeliveryMilestoneId: task.DeliveryMilestoneId,
+		DeliveryMilestone:   task.DeliveryMilestone,
+		Checklist:           task.Checklist,
+		CommentCount:        task.CommentCount,
 	}, nil
 }
 
