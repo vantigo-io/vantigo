@@ -42,8 +42,13 @@ percent-of-price arithmetic behind the invoice plan below — and nothing more.
   amount or a share of the fixed price, moving through `planned → ready → invoiced`
   with `cancelled` off to the side — see
   [Billing milestones and the invoice plan](#billing-milestones-and-the-invoice-plan).
+- **Delivery milestone** — an execution deliverable or phase of a project: `name`, an
+  optional `description` and `targetDate`, manual `position`, and `status` (`open` or
+  `completed`). Unlike commercial billing milestones, a delivery milestone derives its
+  completion and hour progress from linked tasks — see [Delivery milestones](#delivery-milestones).
 - **Task** — a piece of the project's work: `title`, `description`, `status`, one
-  optional `assigneeUserId`, `startDate`/`dueDate`, `estimateHours`, a `position`
+  optional `assigneeUserId`, `startDate`/`dueDate`, `estimateHours`, an optional
+  `deliveryMilestoneId`, a `position`
   among its siblings and an optional `parentTaskId` (see [Tasks](#tasks)). Each task
   carries **checklist items** and **comments**. Unlike projects and lines, tasks *are*
   deleted, cascading to their subtasks, checklist and comments — nothing outside
@@ -55,6 +60,8 @@ percent-of-price arithmetic behind the invoice plan below — and nothing more.
   `line-reactivated`, `milestone-added`, `milestone-changed`, `milestone-removed`,
   `milestone-ready`, `milestone-planned`, `milestone-invoiced`,
   `milestone-invoice-undone`, `milestone-cancelled`, `milestone-reopened`,
+  `delivery-milestone-added`, `delivery-milestone-changed`, `delivery-milestone-removed`,
+  `delivery-milestone-completed`, `delivery-milestone-reopened`,
   `work-type-added`, `work-type-changed`. There are no manual notes.
 
 `status` is one of `planned`, `active`, `on-hold`, `completed`, `cancelled`, and
@@ -1262,6 +1269,37 @@ project's code below, and links to the task's deep link,
 calendar, and the calendar cannot move one: projected items are not draggable. See
 [the kinds](/en/reference/calendar/#the-kinds).
 
+## Delivery milestones
+
+A **delivery milestone** is an execution deliverable or phase of a project: `name`, an
+optional `description`, an optional `targetDate`, manual `position` (1..n), and `status`
+(`open` or `completed`).
+
+Delivery milestones are distinct from commercial **billing milestones** (`projects.billing_milestones`):
+they track execution deliverable progress rather than money or invoice releases.
+
+- **Derived progress from linked tasks:** Each delivery milestone computes its progress
+  from linked tasks:
+  - `totalTasks` — total number of tasks linked to this milestone.
+  - `completedTasks` — number of linked tasks in status `done`.
+  - `progressPercent` — percentage rounded to the nearest integer (`round(completed / total * 100)`), or `0` when `totalTasks = 0`.
+  - `estimatedHoursTotal` and `estimatedHoursCompleted` — sum of `estimate_hours` across all linked tasks and completed linked tasks respectively.
+- **Task linking:** Each task may belong to at most one delivery milestone via `deliveryMilestoneId`.
+  Attempting to link a task to a milestone belonging to a different project returns **400 Bad Request**.
+  When a delivery milestone is deleted, linked tasks have their `delivery_milestone_id` set to `NULL`
+  (`ON DELETE SET NULL`), preserving the tasks and their work.
+- **Status flow:** A milestone is either `open` or `completed`. Transitioning to `completed`
+  stamps `completed_at` with the current time and `completed_by` with the actor's user ID.
+  Reopening clears both stamps.
+- **Position & ordering:** Milestones follow a manual 1-based order within the project.
+  `PUT /position` accepts `{ position, revision }` and renumbers the sequence in one transaction.
+- **Concurrency:** Updates carry the milestone's `revision`, returning **409 Conflict** on stale writes.
+- **Authorization:** Viewing requires read rights (`CanSee`). Creating, updating, reordering,
+  changing status, and deleting require contribute rights (`CanContribute`: `member`, `manager`, or `projects:manage-all`).
+  Outsiders receive **404 Not Found**.
+- **Timeline events:** `delivery-milestone-added`, `delivery-milestone-changed`,
+  `delivery-milestone-removed`, `delivery-milestone-completed`, `delivery-milestone-reopened`.
+
 ## Contracts for other modules
 
 Cross-module reads go through `internal/contracts` — never another module's schema or
@@ -1440,6 +1478,13 @@ create additionally requires `projects:create`.
 | `DELETE /api/v1/projects/milestones/{milestoneId}` | Only `planned` and never moved; otherwise 400. Manager only |
 | `PUT /api/v1/projects/milestones/{milestoneId}/position` | Renumber the plan 1..n; carries `revision` (checked, not bumped). Manager only |
 | `POST /api/v1/projects/milestones/{milestoneId}/status` | One move through the status flow — see [Billing milestones and the invoice plan](#billing-milestones-and-the-invoice-plan); 409 `invoiced_by_invoices` on undoing a milestone the Invoices module invoiced |
+| `GET /api/v1/projects/{id}/delivery-milestones` | The project's delivery milestones in position order, with derived task progress. Anyone who sees the project |
+| `POST /api/v1/projects/{id}/delivery-milestones` | Add a delivery milestone; appended last. Member or manager |
+| `GET /api/v1/projects/delivery-milestones/{milestoneId}` | One delivery milestone with task completion counts and hours. Anyone who sees the project |
+| `PUT /api/v1/projects/delivery-milestones/{milestoneId}` | Replace a delivery milestone, carrying `revision`; a stale one answers 409. Member or manager |
+| `DELETE /api/v1/projects/delivery-milestones/{milestoneId}` | Delete a delivery milestone; unlinks tasks (`deliveryMilestoneId = null`). Member or manager |
+| `PUT /api/v1/projects/delivery-milestones/{milestoneId}/position` | Renumber delivery milestones 1..n; carries `revision`. Member or manager |
+| `POST /api/v1/projects/delivery-milestones/{milestoneId}/status` | Set status to `open` or `completed`; completed stamps `completed_at` and `completed_by`. Member or manager |
 | `GET /api/v1/projects/{id}/economy` | Budget vs. logged, per line, per work type and in total, plus what the expenses cost and will bill; hours for anyone who sees the project, amounts and the `expenses` block need financial rights, cost and margin need `projects:view-costs` too — see [Project economy](#project-economy) |
 | `GET /api/v1/projects/economy` | The portfolio: one row per project the caller has financial rights on. `projects:access`; paged, filtered and sorted — see [Project economy](#project-economy) |
 | `GET /api/v1/projects/{id}/tasks` | The project's task tree, with checklist counts and comment counts. Anyone who sees the project |
