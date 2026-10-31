@@ -62,10 +62,9 @@ func (s *server) PostCommunicationsConversationsByIdMessagesByMessageIdRetry(ctx
 	now := s.deps.Clock()
 	if err := db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		txq := store.New(tx)
-		resetDeliveries, err := txq.ResetFailedMessageDeliveries(ctx, msg.ID)
-		if err != nil {
-			return fmt.Errorf("communications: reset failed deliveries: %w", err)
-		}
+		// The job first, conditionally: a retry that lost the race — or
+		// finds the job failed again since the read above — writes nothing,
+		// so no delivery is queued under a job that is not.
 		rows, err := txq.RetryFailedOutboxJob(ctx, store.RetryFailedOutboxJobParams{
 			ID:  *msg.JobID,
 			Now: now,
@@ -74,8 +73,11 @@ func (s *server) PostCommunicationsConversationsByIdMessagesByMessageIdRetry(ctx
 			return fmt.Errorf("communications: retry failed outbox job: %w", err)
 		}
 		if rows == 0 {
-			// Already retried concurrently
 			return nil
+		}
+		resetDeliveries, err := txq.ResetFailedMessageDeliveries(ctx, msg.ID)
+		if err != nil {
+			return fmt.Errorf("communications: reset failed deliveries: %w", err)
 		}
 		for _, deliveryID := range resetDeliveries {
 			dID := deliveryID

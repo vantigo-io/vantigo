@@ -398,14 +398,6 @@ func (c *graphClient) putRaw(ctx context.Context, cred graphCredential, path, co
 	return c.send(ctx, cred, http.MethodPut, path, &payload{data: data, contentType: contentType}, nil)
 }
 
-// postRaw sends data to path as it is, with contentType — a MIME message
-// base64-encoded as text/plain, a channel mailbox's sendMail or draft — and
-// reads the answer into into (nil discards it), under the same rules as
-// every call; Graph answers 202 or 201.
-func (c *graphClient) postRaw(ctx context.Context, cred graphCredential, path, contentType string, data []byte, into any, opts ...callOption) error {
-	return c.send(ctx, cred, http.MethodPost, path, &payload{data: data, contentType: contentType}, into, opts...)
-}
-
 // getRaw reads path's answer as it is, not decoded — a message's MIME,
 // …/messages/{id}/$value — through limit bytes (more is
 // errResponseTooLarge), sent with Prefer: graphImmutablePrefer and
@@ -474,7 +466,10 @@ func (c *graphClient) postAs(ctx context.Context, src tokenSource, path string, 
 	return c.doAs(ctx, src, http.MethodPost, path, body, into, opts...)
 }
 
-// postRawAs is postRaw with src's token.
+// postRawAs sends data to path as it is, with contentType — a MIME message
+// base64-encoded as text/plain, a mailbox's sendMail or draft — with src's
+// token, and reads the answer into into (nil discards it), under the same
+// rules as every call; Graph answers 202 or 201.
 func (c *graphClient) postRawAs(ctx context.Context, src tokenSource, path, contentType string, data []byte, into any, opts ...callOption) error {
 	return c.sendAs(ctx, src, http.MethodPost, path, &payload{data: data, contentType: contentType}, into, opts...)
 }

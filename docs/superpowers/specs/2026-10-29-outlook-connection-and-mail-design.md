@@ -758,10 +758,12 @@ count as unexpected.
   `POST /api/v1/entra/outlook/connect` accepts `feature: "calendar" | "mail"`. When the
   caller already has a live `entra.outlook_connections` row (`state <> 'closing'`) for
   their own account, `connect` requests the union of the base scopes, the existing row's
-  granted feature scopes and the requested feature's scopes, and `complete` merges the
-  existing row's scopes with the new token's granted scopes on `TakeOutlookConnection`,
-  so connecting `mail` after `calendar` (or `calendar` after `mail`, or reconnecting from
-  the *Connections* page) never drops a previously granted feature. `features` on
+  granted feature scopes and the requested feature's scopes, and `complete` records the
+  token's answer as the row's scopes on `TakeOutlookConnection` — as a refresh does; an
+  answer without a feature asked again is a consent withdrawn, which the row must not
+  claim —, so connecting `mail` after `calendar` (or `calendar` after `mail`, or
+  reconnecting from the *Connections* page) never drops a feature Microsoft still
+  consents to. `features` on
   `EntraOutlookConnection` lists every feature (`"calendar"`, `"mail"`, in alphabetical
   order) whose required scopes are present in `scopes`.
 - **Feature-scoped token checks**: `mailboxCalendar` requires `"calendar"`

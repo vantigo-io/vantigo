@@ -2,7 +2,6 @@ package entra
 
 import (
 	"context"
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"net/http"
@@ -307,7 +306,7 @@ func (m *channelMailbox) Forget(ctx context.Context, mailbox string) error {
 // (ErrMailboxUnknown otherwise, with no call): larger than MaxMessage
 // ErrMailTooLarge, the provider not available ErrMailboxUnavailable, both
 // before any call. Without bcc, POST /users/{id}/sendMail; with them, a
-// draft (sendThroughDraft). Neither is retried on a 5xx.
+// draft (sendMIME). Neither is retried on a 5xx.
 func (m *channelMailbox) Send(ctx context.Context, mailbox string, mime []byte, bcc []string) error {
 	oid, err := m.recorded(ctx, mailbox)
 	if err != nil {
@@ -320,65 +319,6 @@ func (m *channelMailbox) Send(ctx context.Context, mailbox string, mime []byte, 
 	if err != nil {
 		return err
 	}
-	body := []byte(base64.StdEncoding.EncodeToString(mime))
-	base := "/users/" + oid.String()
-	if len(bcc) == 0 {
-		return channelRefusal(m.client.postRaw(ctx, cred, base+"/sendMail", "text/plain", body, nil, noRetry))
-	}
-	return m.sendThroughDraft(ctx, cred, base, body, bcc)
-}
-
-// sendThroughDraft sends body — base64 MIME carrying a Bcc header — as a
-// draft created in the mailbox at base: POST …/messages, its
-// bccRecipients checked to hold every address in bcc, then POST
-// …/messages/{id}/send. A draft that lost a blind copy, or whose send
-// failed, is deleted best-effort and nothing is sent by it.
-func (m *channelMailbox) sendThroughDraft(ctx context.Context, cred graphCredential, base string, body []byte, bcc []string) error {
-	var draft struct {
-		ID            string `json:"id"`
-		BccRecipients []struct {
-			EmailAddress struct {
-				Address string `json:"address"`
-			} `json:"emailAddress"`
-		} `json:"bccRecipients"`
-	}
-	// The create answers the message whole, its body included: read
-	// through graphMaxBatchBody, as a message of MaxMessage may answer more
-	// than graphMaxBody.
-	if err := m.client.postRaw(ctx, cred, base+"/messages", "text/plain", body, &draft, noRetry, largeAnswer); err != nil {
-		return channelRefusal(err)
-	}
-	if draft.ID == "" || len(draft.ID) > mailboxMaxID {
-		return fmt.Errorf("%w: the draft's id", errTenantUnreachable)
-	}
-	path := base + "/messages/" + url.PathEscape(draft.ID)
-	for _, want := range bcc {
-		kept := false
-		for _, r := range draft.BccRecipients {
-			if strings.EqualFold(strings.TrimSpace(r.EmailAddress.Address), strings.TrimSpace(want)) {
-				kept = true
-				break
-			}
-		}
-		if !kept {
-			m.dropDraft(ctx, cred, path)
-			return errBccLost
-		}
-	}
-	if err := m.client.post(ctx, cred, path+"/send", nil, nil, noRetry); err != nil {
-		m.dropDraft(ctx, cred, path)
-		return channelRefusal(err)
-	}
-	return nil
-}
-
-// dropDraft deletes the draft at path, best-effort and past the caller's
-// context's end; a failure is logged by the tenant alone.
-func (m *channelMailbox) dropDraft(ctx context.Context, cred graphCredential, path string) {
-	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), channelDraftCleanup)
-	defer cancel()
-	if err := m.client.del(ctx, cred, path, noWords); err != nil {
-		m.client.logger.WarnContext(ctx, "entra: a channel mailbox's draft was not deleted",
-			"tenant", cred.tenantID.String(), "error", err.Error())
-	}
+	src := credentialSource{c: m.client, cred: cred}
+	return m.client.sendMIME(ctx, src, "/users/"+oid.String(), mime, bcc, func(err error) error { return err })
 }

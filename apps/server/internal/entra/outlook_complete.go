@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"slices"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -132,25 +131,18 @@ func (s *server) PostEntraOutlookComplete(ctx context.Context, _ gen.PostEntraOu
 				return err
 			}
 		}
-		effectiveScopes := cb.Scopes
-		if existing != nil && existing.State != outlookClosing && existing.UserID == p.UserID {
-			merged := append([]string{}, existing.Scopes...)
-			for _, s := range cb.Scopes {
-				if !slices.Contains(merged, s) {
-					merged = append(merged, s)
-				}
-			}
-			slices.Sort(merged)
-			effectiveScopes = slices.Compact(merged)
-		}
+		// The row's scopes are the token's answer, as a refresh records
+		// them (design M20): connect asked the features the row held again,
+		// so an answer without one of them is a consent withdrawn, which the
+		// row must not claim.
 		if existing != nil {
 			row, err = q.TakeOutlookConnection(ctx, store.TakeOutlookConnectionParams{
-				UserID: p.UserID, TenantID: cb.TID, Scopes: effectiveScopes, RefreshSealed: sealed, Now: now,
+				UserID: p.UserID, TenantID: cb.TID, Scopes: cb.Scopes, RefreshSealed: sealed, Now: now,
 				ObjectID: cb.OID, Revision: existing.Revision,
 			})
 		} else {
 			row, err = q.InsertOutlookConnection(ctx, store.InsertOutlookConnectionParams{
-				ObjectID: cb.OID, UserID: p.UserID, TenantID: cb.TID, Scopes: effectiveScopes, RefreshSealed: sealed, Now: now,
+				ObjectID: cb.OID, UserID: p.UserID, TenantID: cb.TID, Scopes: cb.Scopes, RefreshSealed: sealed, Now: now,
 			})
 		}
 		if err != nil {

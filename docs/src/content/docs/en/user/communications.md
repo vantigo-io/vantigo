@@ -143,7 +143,8 @@ When **Send from my address** is checked:
 - The `Reply-To` address is the channel's address and display name, so replies from the
   customer arrive in the shared channel and thread into the conversation.
 - If your Outlook connection needs reconnecting, the composer offers an inline
-  **Connect Outlook** or **Reconnect Outlook** button.
+  **Connect Outlook** or **Reconnect Outlook** button. Once Microsoft answers, you are back
+  in the same conversation, with the filters you had.
 - If sending fails because your Outlook connection expired or needs multi-factor authentication,
   the message card displays:
   *Sending failed because your Outlook connection needs reconnecting.* with a **Reconnect Outlook**

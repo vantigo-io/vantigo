@@ -60,13 +60,20 @@ func (s *server) PostEntraOutlookConnect(ctx context.Context, req gen.PostEntraO
 	if account == nil {
 		return gen.PostEntraOutlookConnect409ApplicationProblemPlusJSONResponse(noAccountProblem()), nil
 	}
+	// held is the caller's own live connection, whose granted features this
+	// connect asks again beside feature's (design M20): Microsoft answers
+	// the scopes it consents to as a whole, so a connect that named mail
+	// alone would come back without calendar.
 	existing, err := s.q.GetOutlookConnection(ctx, account.ObjectID)
+	held := false
 	switch {
 	case errors.Is(err, pgx.ErrNoRows):
 	case err != nil:
 		return nil, fmt.Errorf("entra: read the Outlook connection: %w", err)
 	case existing.State != outlookClosing && existing.UserID != p.UserID:
 		return gen.PostEntraOutlookConnect409ApplicationProblemPlusJSONResponse(accountTakenProblem()), nil
+	default:
+		held = existing.State != outlookClosing
 	}
 
 	mac, err := s.sessionMAC(p.SessionID)
@@ -74,12 +81,10 @@ func (s *server) PostEntraOutlookConnect(ctx context.Context, req gen.PostEntraO
 		return nil, err
 	}
 	requestedScopes := slices.Clone(scopes)
-	if err == nil && existing.State != outlookClosing && existing.UserID == p.UserID {
-		for _, fScopes := range outlookFeatures {
-			for _, fs := range fScopes {
-				if slices.Contains(existing.Scopes, strings.ToLower(fs)) && !slices.Contains(requestedScopes, fs) {
-					requestedScopes = append(requestedScopes, fs)
-				}
+	if held {
+		for _, scope := range grantedFeatureScopes(existing.Scopes) {
+			if !slices.Contains(requestedScopes, scope) {
+				requestedScopes = append(requestedScopes, scope)
 			}
 		}
 	}

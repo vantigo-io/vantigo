@@ -306,7 +306,11 @@ func (s *server) PostCommunicationsConversations(ctx context.Context, req gen.Po
 		sendAs = "personal"
 		fromAddress = apicommon.Ptr(status.Address)
 		if s.deps.Users != nil {
-			if u, err := s.deps.Users.User(ctx, caller); err == nil && u != nil && u.DisplayName != "" {
+			u, err := s.deps.Users.User(ctx, caller)
+			if err != nil {
+				return nil, fmt.Errorf("communications: get user directory entry: %w", err)
+			}
+			if u != nil && u.DisplayName != "" {
 				fromDisplayName = apicommon.Ptr(u.DisplayName)
 			}
 		}

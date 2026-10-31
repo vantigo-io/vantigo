@@ -16,6 +16,7 @@ import {
   replyToConversation,
   stageConversationAttachment,
 } from "../api/conversations";
+import { returnHere } from "./conversationHelpers";
 
 export type ConnectionButtonProps = {
   feature: "calendar" | "mail";
@@ -182,7 +183,7 @@ export function ConversationComposer({ conversation, onSent, connectionButton }:
           conversation.personalSender?.reason === "reconnect") &&
         connectionButton && (
           <Group mb="xs" gap="xs">
-            {connectionButton({ feature: "mail", returnTo: "/communications/inbox" })}
+            {connectionButton({ feature: "mail", returnTo: returnHere() })}
           </Group>
         )}
       {!noteMode && !canReply && (
