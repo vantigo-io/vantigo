@@ -822,7 +822,7 @@ Forecast / estimate-to-complete and original-vs-revised budgets (tracking a
 budget's own history rather than only its current value) are candidates worth
 deciding on next, not committed work yet.
 
-### Phase 4 — Delivery milestones, timeline and templates
+### Phase 4 — Delivery milestones, timeline and templates (done)
 
 Delivery milestones as a lightweight entity (name, optional target date, %
 complete derived from linked tasks); a lightweight timeline (bars, drag,
@@ -848,7 +848,13 @@ arrows, conflict detection warning badges when predecessors finish after success
 management (predecessors, successors, downstream reschedule) inside the Task drawer. Bilingual documentation
 and 100% test and contract coverage.
 
-**Delivery C: Project and task templates** — kickoff blueprints with relative date offsets.
+**Delivery C: Project and task templates (done)** — reusable kickoff blueprints (`projects.templates`)
+with relative calendar day offsets ($T+0$), milestone indices, subtasks, and finish-to-start dependencies.
+API endpoints for template CRUD (`/api/v1/projects/templates`) and atomic instantiation onto a project
+(`POST /api/v1/projects/{id}/apply-template`) computing delivery milestone target dates, task and subtask
+start/due dates, milestone linking, and dependency wiring in a single transactional task order lock.
+Frontend integration with "Use template" modal on the Tasks tab, blueprint inspection, and date calculation.
+Bilingual reference and user guides, and 100% test and contract coverage.
 
 *Unblocks:* planning at kickoff; the "are we on track" view.
 

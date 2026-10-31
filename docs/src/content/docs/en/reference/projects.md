@@ -8,6 +8,7 @@ sources:
   - apps/server/internal/openapi/specs/projects.yaml
   - apps/server/internal/db/migrations/00096_projects_delivery_milestones.sql
   - apps/server/internal/db/migrations/00097_projects_task_dependencies.sql
+  - apps/server/internal/db/migrations/00098_projects_templates.sql
 ---
 The Projects module is where work is organised: a project is a named, coded piece of
 work for one customer (or none, which means internal), the people who may act on it,
@@ -49,6 +50,9 @@ percent-of-price arithmetic behind the invoice plan below — and nothing more.
   optional `description` and `targetDate`, manual `position`, and `status` (`open` or
   `completed`). Unlike commercial billing milestones, a delivery milestone derives its
   completion and hour progress from linked tasks — see [Delivery milestones](#delivery-milestones).
+- **Project template** — a reusable blueprint (`projects.templates`) defining delivery milestones,
+  tasks, subtasks, and finish-to-start dependencies with relative day offsets ($T+0$) for fast project
+  kickoffs — see [Project templates and blueprints](#project-templates-and-blueprints).
 - **Task** — a piece of the project's work: `title`, `description`, `status`, one
   optional `assigneeUserId`, `startDate`/`dueDate`, `estimateHours`, an optional
   `deliveryMilestoneId`, a `position`
@@ -1327,6 +1331,24 @@ A dependency states that a predecessor task must finish before its successor tas
   and SVG connector arrows indicating finish-to-start dependencies. Schedule conflicts
   (`predecessor.dueDate > successor.startDate`) are automatically highlighted with visual warning badges.
 
+## Project templates and blueprints
+
+Organizations frequently execute repeatable projects (e.g., client onboarding, ERP rollouts, SaaS setup).
+Vantigo provides reusable project blueprint templates (`projects.templates`) to instantiate pre-configured
+delivery milestones, tasks, subtasks, and dependency graphs in one operation.
+
+- **Relative day offsets ($T+0$):** Rather than absolute dates, blueprints define relative offsets from a kickoff date ($T+0$):
+  - `targetDayOffset` on milestones (e.g. $T+7$ days, $T+21$ days).
+  - `startDayOffset` and `dueDayOffset` on tasks and subtasks.
+- **Milestone linking & dependencies:** Tasks in a blueprint can link to milestones by 0-based milestone index,
+  and finish-to-start dependencies link predecessor and successor tasks by 0-based task index.
+- **Template instantiation (`POST /api/v1/projects/{id}/apply-template`):** When applying a template with a chosen `kickoffDate`:
+  1. An exclusive task-order lock (`AcquireTaskOrderLock`) is acquired for the target project.
+  2. Delivery milestones are created with `targetDate = kickoffDate + targetDayOffset`.
+  3. Tasks and subtasks are created with `startDate = kickoffDate + startDayOffset` and `dueDate = kickoffDate + dueDayOffset`, mapped to their instantiated delivery milestones.
+  4. Task dependencies are created linking the newly instantiated predecessor and successor task IDs.
+  5. The entire instantiation completes atomically inside a single transaction.
+
 ## Contracts for other modules
 
 Cross-module reads go through `internal/contracts` — never another module's schema or
@@ -1516,6 +1538,12 @@ create additionally requires `projects:create`.
 | `POST /api/v1/projects/{id}/dependencies` | Create a finish-to-start dependency link between tasks; validated for cycles. Member or manager |
 | `DELETE /api/v1/projects/dependencies/{dependencyId}` | Delete a task dependency link. Member or manager |
 | `POST /api/v1/projects/tasks/{taskId}/reschedule-downstream` | Shift dates of all reachable downstream tasks by a day delta. Member or manager |
+| `GET /api/v1/projects/templates` | List reusable project blueprint templates. `projects:access` |
+| `POST /api/v1/projects/templates` | Create a new project blueprint template. `projects:access` |
+| `GET /api/v1/projects/templates/{templateId}` | Retrieve a project template by ID. `projects:access` |
+| `PUT /api/v1/projects/templates/{templateId}` | Update a project template with revision conflict guard. `projects:access` |
+| `DELETE /api/v1/projects/templates/{templateId}` | Delete a project template. `projects:access` |
+| `POST /api/v1/projects/{id}/apply-template` | Instantiate a template onto a project with relative offsets from `kickoffDate`. Member or manager |
 | `GET /api/v1/projects/{id}/economy` | Budget vs. logged, per line, per work type and in total, plus what the expenses cost and will bill; hours for anyone who sees the project, amounts and the `expenses` block need financial rights, cost and margin need `projects:view-costs` too — see [Project economy](#project-economy) |
 | `GET /api/v1/projects/economy` | The portfolio: one row per project the caller has financial rights on. `projects:access`; paged, filtered and sorted — see [Project economy](#project-economy) |
 | `GET /api/v1/projects/{id}/tasks` | The project's task tree, with checklist counts and comment counts. Anyone who sees the project |
