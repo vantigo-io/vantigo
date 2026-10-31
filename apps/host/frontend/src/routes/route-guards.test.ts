@@ -1,10 +1,13 @@
 import { QueryClient } from "@tanstack/react-query";
-import { isRedirect } from "@tanstack/react-router";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { isNotFound, isRedirect } from "@tanstack/react-router";
+import { connectionQueryOptions, type EntraConnection } from "@vantigo/entra-ui";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Route as RootRoute } from "./__root";
 import { Route as CommunicationsIndexRoute } from "./communications/index";
 import { Route as CustomersIndexRoute } from "./customers/index";
 import { Route as EnergyIndexRoute } from "./energy/index";
+import { Route as EntraRoute } from "./entra";
+import { Route as EntraIndexRoute } from "./entra/index";
 import { Route as IndexRoute } from "./index";
 import { Route as ProductsIndexRoute } from "./products/index";
 import { Route as ProjectTasksRoute } from "./projects/$projectId.tasks";
@@ -17,6 +20,11 @@ import { Route as TimeIndexRoute } from "./time/index";
 import { Route as TimePeopleRoute } from "./time/people";
 import { Route as TimeSettingsRoute } from "./time/settings";
 import { Route as WorkspaceRoute } from "./workspace";
+import { Route as WorkspaceEntraRoute } from "./workspace/entra";
+import { Route as WorkspaceEntraAccountsRoute } from "./workspace/entra/accounts";
+import { Route as WorkspaceEntraConnectionRoute } from "./workspace/entra/connection";
+import { Route as WorkspaceEntraIndexRoute } from "./workspace/entra/index";
+import { Route as WorkspaceEntraOutlookRoute } from "./workspace/entra/outlook";
 import { Route as WorkspaceIndexRoute } from "./workspace/index";
 import { Route as WorkspaceInvitationsRoute } from "./workspace/invitations";
 import { Route as WorkspaceOverviewRoute } from "./workspace/overview";
@@ -160,7 +168,7 @@ describe("workspace administration route guards", () => {
 
   it("does not let a system admin bypass the Owner requirement", async () => {
     fetchSession.mockResolvedValue(sessionWithRoles(["Member"], true));
-    getAuthorizationMe.mockResolvedValue({ permissions: ["*"], canManageAuthorization: false });
+    getAuthorizationMe.mockResolvedValue({ permissions: [], canManageAuthorization: false });
 
     await expectRedirectTo(WorkspaceRoute, "/");
     await expectRedirectTo(WorkspaceUsersRoute, "/");
@@ -182,7 +190,7 @@ describe("workspace administration route guards", () => {
 
   it("redirects a member without either from the /workspace layout", async () => {
     fetchSession.mockResolvedValue(sessionWithRoles(["Member"]));
-    getAuthorizationMe.mockResolvedValue({ permissions: ["*"], canManageAuthorization: false });
+    getAuthorizationMe.mockResolvedValue({ permissions: [], canManageAuthorization: false });
 
     await expectRedirectTo(WorkspaceRoute, "/");
 
@@ -205,6 +213,134 @@ describe("workspace administration route guards", () => {
 
     getAuthorizationMe.mockResolvedValue({ permissions: ["*"], canManageAuthorization: false });
     await expectRedirectTo(WorkspaceRolesRoute, "/");
+  });
+});
+
+// Integrations › Microsoft Entra ID (Integrations design T2, T3): the workspace
+// layout admits a holder of entra:manage while the module is on, and the page's
+// own route asks the module and the permission again.
+describe("the Integrations routes", () => {
+  const injectModules = (modules: string[]) => {
+    window.__VANTIGO_APP__ = { basePath: "/", title: "Vantigo", support: {}, modules };
+  };
+  const withEntra = ["staff", "entra"];
+  const withoutEntra = ["staff"];
+
+  beforeEach(() => injectModules(withEntra));
+  afterEach(() => {
+    delete window.__VANTIGO_APP__;
+  });
+
+  const entraManager = { permissions: ["entra:manage"], canManageAuthorization: false };
+
+  it("admits an Entra manager who is not an Owner to the /workspace layout while the module is on", async () => {
+    fetchSession.mockResolvedValue(sessionWithRoles(["Member"]));
+    getAuthorizationMe.mockResolvedValue(entraManager);
+
+    await expectAdmitted(WorkspaceRoute);
+  });
+
+  it("sends that same person home when the Entra module is off, and a member without the permission always", async () => {
+    fetchSession.mockResolvedValue(sessionWithRoles(["Member"]));
+    getAuthorizationMe.mockResolvedValue(entraManager);
+    injectModules(withoutEntra);
+    await expectRedirectTo(WorkspaceRoute, "/");
+
+    injectModules(withEntra);
+    getAuthorizationMe.mockResolvedValue({ permissions: ["staff:access"], canManageAuthorization: false });
+    await expectRedirectTo(WorkspaceRoute, "/");
+  });
+
+  it("admits an Owner and an Entra manager to /workspace/entra, and an authorization manager without entra:manage not", async () => {
+    fetchSession.mockResolvedValue(sessionWithRoles(["Owner"]));
+    getAuthorizationMe.mockResolvedValue({ permissions: ["*"], canManageAuthorization: true });
+    await expectAdmitted(WorkspaceEntraRoute);
+
+    fetchSession.mockResolvedValue(sessionWithRoles(["Member"]));
+    getAuthorizationMe.mockResolvedValue(entraManager);
+    await expectAdmitted(WorkspaceEntraRoute);
+
+    getAuthorizationMe.mockResolvedValue({ permissions: [], canManageAuthorization: true });
+    await expectRedirectTo(WorkspaceEntraRoute, "/");
+  });
+
+  it("answers the not-enabled page in place for /workspace/entra while the Entra module is off", async () => {
+    fetchSession.mockResolvedValue(sessionWithRoles(["Owner"]));
+    getAuthorizationMe.mockResolvedValue({ permissions: ["*"], canManageAuthorization: true });
+    injectModules(withoutEntra);
+
+    const thrown = await runGuard(WorkspaceEntraRoute, "/workspace/entra");
+    expect(isNotFound(thrown)).toBe(true);
+    expect((thrown as { data?: unknown }).data).toEqual({ moduleDisabled: "entra" });
+  });
+
+  it("keeps the four tabs plain children of that gate", () => {
+    for (const route of [
+      WorkspaceEntraIndexRoute,
+      WorkspaceEntraConnectionRoute,
+      WorkspaceEntraAccountsRoute,
+      WorkspaceEntraOutlookRoute,
+    ]) {
+      expect(route.options.component).toBeDefined();
+    }
+    for (const route of [WorkspaceEntraConnectionRoute, WorkspaceEntraAccountsRoute, WorkspaceEntraOutlookRoute]) {
+      expect(route.options.beforeLoad).toBeUndefined();
+    }
+  });
+
+  describe("the Status tab as the way in", () => {
+    // What stepsDone reads of a connection: registered or not.
+    const connection = (registered: boolean) =>
+      ({
+        tenantId: registered ? "11111111-1111-1111-1111-111111111111" : undefined,
+        clientId: registered ? "22222222-2222-2222-2222-222222222222" : undefined,
+        credentials: [],
+        status: "unconfigured",
+        permissionsMissing: [],
+        settings: {},
+      }) as unknown as EntraConnection;
+
+    const runIndexGuard = async (seed: EntraConnection | undefined) => {
+      const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      if (seed) queryClient.setQueryData(connectionQueryOptions().queryKey, seed);
+      try {
+        await (WorkspaceEntraIndexRoute.options.beforeLoad as (context: unknown) => unknown)({
+          context: { queryClient },
+        });
+      } catch (error) {
+        return error;
+      }
+      return undefined;
+    };
+
+    it("opens on Connection while step 1 is not done", async () => {
+      const thrown = await runIndexGuard(connection(false));
+      expect(isRedirect(thrown)).toBe(true);
+      expect((thrown as { options?: { to?: string } }).options?.to).toBe("/workspace/entra/connection");
+    });
+
+    it("opens on Status once step 1 is done", async () => {
+      expect(await runIndexGuard(connection(true))).toBeUndefined();
+    });
+
+    it("opens on Status, which says so, when the connection cannot be read", async () => {
+      vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("offline")));
+      try {
+        expect(await runIndexGuard(undefined)).toBeUndefined();
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
+  });
+
+  it("sends /entra and /entra/ on to /workspace/entra, for good", async () => {
+    await expectRedirectTo(EntraRoute, "/workspace/entra");
+    await expectRedirectTo(EntraIndexRoute, "/workspace/entra");
+    for (const route of [EntraRoute, EntraIndexRoute]) {
+      expect(route.options.component).toBeUndefined();
+      const thrown = await runGuard(route, "/entra");
+      expect((thrown as { options?: { replace?: boolean } }).options?.replace).toBe(true);
+    }
   });
 });
 

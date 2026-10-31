@@ -1,6 +1,6 @@
 import { type NotFoundRouteProps, notFound, Outlet } from "@tanstack/react-router";
 import { useI18n } from "@vantigo/frontend-shell";
-import { appForKey, isAppEnabled } from "../apps";
+import { appForKey, isAppEnabled, type ModuleWithApp } from "../apps";
 import { ModuleNotEnabledPage, NotFoundPage } from "../components/errors";
 import { enabledModuleKeys } from "../lib/enabled-modules";
 import type { ModuleKey } from "../navigation";
@@ -14,10 +14,19 @@ interface ModuleDisabled {
 const isModuleDisabled = (data: unknown): data is ModuleDisabled =>
   typeof data === "object" && data !== null && "moduleDisabled" in data;
 
-const AppNotFound = ({ app, data }: { app: ModuleKey; data: unknown }) => {
+/** The not-found a page of a module throws when the installation did not mount it; `ModuleNotFound` words it. */
+export const moduleDisabledNotFound = (module: ModuleKey) =>
+  notFound({ data: { moduleDisabled: module } satisfies ModuleDisabled });
+
+/**
+ * What a boundary renders for a not-found: the not-enabled page naming `labelKey`
+ * (a key in the host catalog) when the not-found carries the module marker, the
+ * ordinary 404 otherwise.
+ */
+export const ModuleNotFound = ({ labelKey, data }: { labelKey: string; data: unknown }) => {
   const { t } = useI18n("host");
   if (!isModuleDisabled(data)) return <NotFoundPage />;
-  return <ModuleNotEnabledPage appLabel={t(appForKey(app).label)} />;
+  return <ModuleNotEnabledPage appLabel={t(labelKey)} />;
 };
 
 /**
@@ -30,13 +39,11 @@ const AppNotFound = ({ app, data }: { app: ModuleKey; data: unknown }) => {
  * genuine 404 thrown by a child loader reaches the same boundary without the
  * marker and renders the ordinary not-found page.
  */
-export const appLayoutOptions = (app: ModuleKey) => ({
+export const appLayoutOptions = (app: ModuleWithApp) => ({
   staticData: { app },
   beforeLoad: () => {
-    if (!isAppEnabled(appForKey(app), enabledModuleKeys())) {
-      throw notFound({ data: { moduleDisabled: app } satisfies ModuleDisabled });
-    }
+    if (!isAppEnabled(appForKey(app), enabledModuleKeys())) throw moduleDisabledNotFound(app);
   },
-  notFoundComponent: ({ data }: NotFoundRouteProps) => <AppNotFound app={app} data={data} />,
+  notFoundComponent: ({ data }: NotFoundRouteProps) => <ModuleNotFound labelKey={appForKey(app).label} data={data} />,
   component: Outlet,
 });
