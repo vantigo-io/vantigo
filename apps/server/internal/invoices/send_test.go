@@ -116,8 +116,8 @@ func (f *fakeSMTP) last(t *testing.T, n int) sentMail {
 func sendReady(t *testing.T) (*harness, *fakeSMTP) {
 	t.Helper()
 	fake := &fakeSMTP{}
-	h := newHarness(t, modtest.WithSMTPSend(fake.send), modtest.WithEnv("MAIL_DRIVER", "smtp"),
-		modtest.WithEnv("SMTP_HOST", "smtp.example.invalid"), modtest.WithEnv("SMTP_FROM", "faktura@example.invalid"))
+	h := newHarness(t, withChannel(fake.send))
+	chooseChannel(t, h)
 	saveSeller(t, h, completeSeller(1))
 	h.customers.edit(customerAcme, func(p *contracts.CustomerBillingProfile) { p.InvoiceEmail = "faktura@acme.example" })
 	h.customers.edit(customerPerson, func(p *contracts.CustomerBillingProfile) { p.InvoiceEmail = "kari@example.org" })
@@ -305,7 +305,7 @@ func TestSend_TheOverrideWinsAndIsValidated(t *testing.T) {
 	}
 }
 
-// The envelope (D4 step 6): from the installation's address under the
+// The envelope (D4 step 6): from the chosen channel's address under the
 // seller snapshot's name, Reply-To the current settings' e-mail and none
 // when the settings have none, to the recipient, the Norwegian subject and
 // body in full, the stored PDF's very bytes attached under the download's
@@ -318,8 +318,8 @@ func TestSend_TheEnvelope(t *testing.T) {
 	sent(t, h, inv.ID, nil)
 	m := fake.last(t, 0)
 
-	if m.cfg.Driver != "smtp" || m.cfg.Host != "smtp.example.invalid" || m.cfg.From != "faktura@example.invalid" {
-		t.Errorf("mail config = %+v, want the installation's smtp driver, host and from", m.cfg)
+	if m.cfg.From != sendChannelAddress {
+		t.Errorf("mail config = %+v, want the chosen channel's address as From", m.cfg)
 	}
 	out := m.out
 	if out.DisplayName != "Kraft-Verket AS" || out.ReplyTo != "faktura@kraft-verket.no" ||
@@ -618,7 +618,7 @@ func TestSend_ACancelledRequestStillSendsAndLogs(t *testing.T) {
 // time and the sender; the row keeps the Message-ID and the attached bytes'
 // hash; a reader sees the log too, but not the address — that is for a
 // caller with invoices:issue; a draft has none. The send went through the
-// contract-call seam (SMTPSend), and never under a lock.
+// contract-call seam (OutboundMail.Send), and never under a lock.
 func TestSend_IsLogged(t *testing.T) {
 	t.Parallel()
 	h, fake := sendReady(t)
@@ -665,12 +665,12 @@ func TestSend_IsLogged(t *testing.T) {
 
 	var smtp []contractCall
 	for _, call := range contractCalls.by(userID) {
-		if call.method == "SMTPSend" {
+		if call.method == "OutboundMail.Send" {
 			smtp = append(smtp, call)
 		}
 	}
 	if len(smtp) != 2 || smtp[0].locked || smtp[1].locked {
-		t.Errorf("SMTPSend calls = %+v, want two, neither under a lock", smtp)
+		t.Errorf("OutboundMail.Send calls = %+v, want two, neither under a lock", smtp)
 	}
 }
 

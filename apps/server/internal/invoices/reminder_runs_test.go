@@ -26,8 +26,8 @@ import (
 func runReady(t *testing.T, set string, opts ...modtest.Option) *harness {
 	t.Helper()
 	fake := &fakeSMTP{}
-	h := newHarness(t, append([]modtest.Option{modtest.WithSMTPSend(fake.send), modtest.WithEnv("MAIL_DRIVER", "smtp"),
-		modtest.WithEnv("SMTP_HOST", "smtp.example.invalid"), modtest.WithEnv("SMTP_FROM", "faktura@example.invalid")}, opts...)...)
+	h := newHarness(t, append([]modtest.Option{withChannel(fake.send)}, opts...)...)
+	chooseChannel(t, h)
 	h.customers.edit(customerAcme, func(p *contracts.CustomerBillingProfile) { p.ReminderEmail = "purring@acme.example" })
 	remindersOn(t, h, set)
 	return h

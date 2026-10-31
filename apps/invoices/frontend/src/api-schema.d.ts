@@ -2058,7 +2058,7 @@ export interface components {
             /** @enum {string} */
             outcome: "delivered" | "failed";
         };
-        /** @description PUT /settings' body, a full replace (D2). Every text field is trimmed; an empty string is "not set". organisationNumber is nine digits with a valid mod-11 check digit; bankAccount eleven digits with a valid mod-11 check digit (spaces and dots are dropped); iban passes mod-97 and bic is 8 or 11 characters, both optional; country is ISO 3166-1 alpha-2; defaultPaymentTermsDays is 0-365; defaultCurrency is NOK and only NOK in this phase; seriesStart is 1 to 9007199254740991 (2^53 − 1) and cannot change once anything is issued (409 series_locked). peppolId, kidLength and kidAlgorithm are required and nullable (EHF and KID design D2, D3): a body without them is a 400, so a client that predates them cannot clear them by leaving them out. kidLength and kidAlgorithm are a pair or both null; the next number to be issued — the counter's, or seriesStart before the first issue — must fit in kidLength less one digits, else a 400 on kidLength. workVatCodes is required too (invoices work design D6; a body without it is a 400 on workVatCodes): the VAT code the uninvoiced view's wizard pre-fills for each kind of work, each a code that exists and — when it differs from the stored one — is active, else a 400 on workVatCodes.hours, workVatCodes.expenses or workVatCodes.milestones. timesheetDefault and timesheetPersonLabel are required too (invoices work design D5; a body without either, or with null, is a 400 on it): whether a new draft — the wizard's or one created by hand — carries a timesheet unless its request says, and how the timesheet names each person — initials, number or name, anything else a 400 on timesheetPersonLabel. energyVatCodes is optional (energy consumption billing design D8): absent keeps the stored codes; given, each is a code that exists and — when it differs from the stored one — is active, else a 400 on energyVatCodes.energy or energyVatCodes.energyExempt. revision is the one the caller read: a stale one is a 409 naming both. */
+        /** @description PUT /settings' body, a full replace (D2). Every text field is trimmed; an empty string is "not set". organisationNumber is nine digits with a valid mod-11 check digit; bankAccount eleven digits with a valid mod-11 check digit (spaces and dots are dropped); iban passes mod-97 and bic is 8 or 11 characters, both optional; country is ISO 3166-1 alpha-2; defaultPaymentTermsDays is 0-365; defaultCurrency is NOK and only NOK in this phase; seriesStart is 1 to 9007199254740991 (2^53 − 1) and cannot change once anything is issued (409 series_locked). peppolId, kidLength and kidAlgorithm are required and nullable (EHF and KID design D2, D3): a body without them is a 400, so a client that predates them cannot clear them by leaving them out. kidLength and kidAlgorithm are a pair or both null; the next number to be issued — the counter's, or seriesStart before the first issue — must fit in kidLength less one digits, else a 400 on kidLength. workVatCodes is required too (invoices work design D6; a body without it is a 400 on workVatCodes): the VAT code the uninvoiced view's wizard pre-fills for each kind of work, each a code that exists and — when it differs from the stored one — is active, else a 400 on workVatCodes.hours, workVatCodes.expenses or workVatCodes.milestones. timesheetDefault and timesheetPersonLabel are required too (invoices work design D5; a body without either, or with null, is a 400 on it): whether a new draft — the wizard's or one created by hand — carries a timesheet unless its request says, and how the timesheet names each person — initials, number or name, anything else a 400 on timesheetPersonLabel. energyVatCodes is optional (energy consumption billing design D8): absent keeps the stored codes; given, each is a code that exists and — when it differs from the stored one — is active, else a 400 on energyVatCodes.energy or energyVatCodes.energyExempt. sendChannel is optional and nullable (integrations design T6): absent keeps the stored channel, null is Disabled, and a given id that differs from the stored one must be a channel that exists, else a 400 on sendChannel. revision is the one the caller read: a stale one is a 409 naming both. */
         InvoicesSettingsRequest: {
             addressLine1: string;
             addressLine2?: string;
@@ -2088,6 +2088,11 @@ export interface components {
             postalCode: string;
             /** Format: int32 */
             revision: number;
+            /**
+             * Format: uuid
+             * @description The id of the Communications channel documents and reminder letters are sent from (integrations design T6), chosen among the ones GET /settings lists as sendChannels; null is Disabled and nothing is sent. Optional - absent keeps the stored channel, so a client that predates it does not disable sending by leaving it out; a given id must be a channel that exists, else a 400 on sendChannel, unless it is the stored one.
+             */
+            sendChannel?: string | null;
             /** Format: int64 */
             seriesStart: number;
             /** @description Whether a new invoice draft carries a timesheet unless its request says (invoices work design D5). Required — a body without it is a 400 on timesheetDefault. */
@@ -2142,6 +2147,18 @@ export interface components {
             postalCode: string;
             /** Format: int32 */
             revision: number;
+            /**
+             * Format: uuid
+             * @description The id of the channel documents and reminder letters are sent from (integrations design T6), as stored; null is Disabled. Always answered; optional in the schema only because the recorded exchanges predate it.
+             */
+            sendChannel?: string | null;
+            /**
+             * @description What the stored sendChannel is now: disabled (none chosen), ready (the channel can send), unavailable (it exists but cannot send now - its provider is off or an SMTP channel has no credentials) or gone (no active channel has the id, or Communications is off). Anything but ready sends nothing: GET /meta answers mailAvailable false. Always answered; optional only because the recorded exchanges predate it.
+             * @enum {string}
+             */
+            sendChannelState?: "disabled" | "ready" | "unavailable" | "gone";
+            /** @description The channels a Sending choice may name - the active mail channels with their provider, whether each can send now. Names and addresses only. Always answered; optional only because the recorded exchanges predate it. */
+            sendChannels?: components["schemas"]["InvoicesSendChannel"][];
             seriesLocked: boolean;
             /** Format: int64 */
             seriesStart: number;
@@ -4284,6 +4301,20 @@ export interface components {
             paidCount: number;
             /** Format: date-time */
             to: string;
+        };
+        /** @description One channel Invoices may send from, as Communications answers it through contracts.OutboundMail (integrations design T4, T6). */
+        InvoicesSendChannel: {
+            address: string;
+            /** @description Whether the channel can send now - its provider is offered and, for SMTP, its credentials are stored. */
+            available: boolean;
+            /** @description The channel's display name; empty when it has none. */
+            displayName: string;
+            /** Format: uuid */
+            id: string;
+            /** @description The provider's key - smtp or entra. */
+            provider: string;
+            /** @description The provider as an admin reads it - SMTP, Microsoft 365. */
+            providerDisplayName: string;
         };
         /** @description The VAT codes an energy line takes by its hint (energy consumption billing design D8) — energy for standard, energyExempt for a household in Nord-Norge (mval. § 6-6) — each the id of a code. 1 (code 3, 25 %) and 10 (code 5N, 0 %, seeded with the § 6-6 reason; 5 where that code could not be seeded) until changed. */
         InvoicesEnergyVatCodes: {

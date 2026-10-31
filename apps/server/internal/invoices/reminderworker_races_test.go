@@ -276,8 +276,8 @@ func TestHandoff_RacesReminderDispatch(t *testing.T) {
 func importRace(t *testing.T) (*harness, *letterMail, invoiceJSON, int64, []byte) {
 	t.Helper()
 	m := &letterMail{}
-	h, inv := matchHarness(t, modtest.WithPoolMaxConns(2), modtest.WithSMTPSend(m.send), modtest.WithEnv("MAIL_DRIVER", "smtp"),
-		modtest.WithEnv("SMTP_HOST", "smtp.example.invalid"), modtest.WithEnv("SMTP_FROM", "faktura@example.invalid"))
+	h, inv := matchHarness(t, modtest.WithPoolMaxConns(2), withChannel(m.send))
+	chooseChannel(t, h)
 	remindersOn(t, h, "")
 	moveClockTo(t, h, time.Date(2026, time.October, 27, 8, 0, 0, 0, time.UTC))
 	letter := queueLetter(t, h, inv.ID, 1, "reminder", false, "nb")

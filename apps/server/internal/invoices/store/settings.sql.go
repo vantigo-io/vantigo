@@ -8,10 +8,27 @@ package store
 import (
 	"context"
 	"time"
+
+	"github.com/google/uuid"
 )
 
+const getSendChannel = `-- name: GetSendChannel :one
+SELECT send_channel FROM invoices.settings WHERE id = 1
+`
+
+// GetSendChannel reads the id of the channel documents and reminders are sent
+// from (integrations design T6), null for Disabled. The id names a
+// Communications channel; whether it can send now is asked of
+// contracts.OutboundMail, never read from that schema.
+func (q *Queries) GetSendChannel(ctx context.Context) (*uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, getSendChannel)
+	var send_channel *uuid.UUID
+	err := row.Scan(&send_channel)
+	return send_channel, err
+}
+
 const getSettings = `-- name: GetSettings :one
-SELECT id, legal_name, organisation_number, vat_registered, in_foretaksregisteret, address_line1, address_line2, postal_code, city, country, bank_account, iban, bic, email, default_payment_terms_days, default_currency, footer_text, series_start, updated_at, revision, peppol_id, kid_length, kid_algorithm, work_vat_code_hours, work_vat_code_expenses, work_vat_code_milestones, timesheet_default, timesheet_person_label, energy_vat_code, energy_vat_code_exempt FROM invoices.settings WHERE id = 1
+SELECT id, legal_name, organisation_number, vat_registered, in_foretaksregisteret, address_line1, address_line2, postal_code, city, country, bank_account, iban, bic, email, default_payment_terms_days, default_currency, footer_text, series_start, updated_at, revision, peppol_id, kid_length, kid_algorithm, work_vat_code_hours, work_vat_code_expenses, work_vat_code_milestones, timesheet_default, timesheet_person_label, energy_vat_code, energy_vat_code_exempt, send_channel FROM invoices.settings WHERE id = 1
 `
 
 // GetSettings reads the installation's single settings row, the seller record
@@ -51,12 +68,13 @@ func (q *Queries) GetSettings(ctx context.Context) (InvoicesSetting, error) {
 		&i.TimesheetPersonLabel,
 		&i.EnergyVatCode,
 		&i.EnergyVatCodeExempt,
+		&i.SendChannel,
 	)
 	return i, err
 }
 
 const lockSettings = `-- name: LockSettings :one
-SELECT id, legal_name, organisation_number, vat_registered, in_foretaksregisteret, address_line1, address_line2, postal_code, city, country, bank_account, iban, bic, email, default_payment_terms_days, default_currency, footer_text, series_start, updated_at, revision, peppol_id, kid_length, kid_algorithm, work_vat_code_hours, work_vat_code_expenses, work_vat_code_milestones, timesheet_default, timesheet_person_label, energy_vat_code, energy_vat_code_exempt FROM invoices.settings WHERE id = 1 FOR UPDATE
+SELECT id, legal_name, organisation_number, vat_registered, in_foretaksregisteret, address_line1, address_line2, postal_code, city, country, bank_account, iban, bic, email, default_payment_terms_days, default_currency, footer_text, series_start, updated_at, revision, peppol_id, kid_length, kid_algorithm, work_vat_code_hours, work_vat_code_expenses, work_vat_code_milestones, timesheet_default, timesheet_person_label, energy_vat_code, energy_vat_code_exempt, send_channel FROM invoices.settings WHERE id = 1 FOR UPDATE
 `
 
 // LockSettings takes the settings row FOR UPDATE: PUT /settings and every rate
@@ -96,12 +114,13 @@ func (q *Queries) LockSettings(ctx context.Context) (InvoicesSetting, error) {
 		&i.TimesheetPersonLabel,
 		&i.EnergyVatCode,
 		&i.EnergyVatCodeExempt,
+		&i.SendChannel,
 	)
 	return i, err
 }
 
 const shareSettings = `-- name: ShareSettings :one
-SELECT id, legal_name, organisation_number, vat_registered, in_foretaksregisteret, address_line1, address_line2, postal_code, city, country, bank_account, iban, bic, email, default_payment_terms_days, default_currency, footer_text, series_start, updated_at, revision, peppol_id, kid_length, kid_algorithm, work_vat_code_hours, work_vat_code_expenses, work_vat_code_milestones, timesheet_default, timesheet_person_label, energy_vat_code, energy_vat_code_exempt FROM invoices.settings WHERE id = 1 FOR SHARE
+SELECT id, legal_name, organisation_number, vat_registered, in_foretaksregisteret, address_line1, address_line2, postal_code, city, country, bank_account, iban, bic, email, default_payment_terms_days, default_currency, footer_text, series_start, updated_at, revision, peppol_id, kid_length, kid_algorithm, work_vat_code_hours, work_vat_code_expenses, work_vat_code_milestones, timesheet_default, timesheet_person_label, energy_vat_code, energy_vat_code_exempt, send_channel FROM invoices.settings WHERE id = 1 FOR SHARE
 `
 
 // ShareSettings takes the settings row FOR SHARE: the issue's seller snapshot
@@ -141,6 +160,7 @@ func (q *Queries) ShareSettings(ctx context.Context) (InvoicesSetting, error) {
 		&i.TimesheetPersonLabel,
 		&i.EnergyVatCode,
 		&i.EnergyVatCodeExempt,
+		&i.SendChannel,
 	)
 	return i, err
 }
@@ -174,10 +194,11 @@ UPDATE invoices.settings SET
     timesheet_person_label = $25,
     energy_vat_code = $26,
     energy_vat_code_exempt = $27,
-    updated_at = $28::timestamptz,
+    send_channel = $28,
+    updated_at = $29::timestamptz,
     revision = revision + 1
 WHERE id = 1
-RETURNING id, legal_name, organisation_number, vat_registered, in_foretaksregisteret, address_line1, address_line2, postal_code, city, country, bank_account, iban, bic, email, default_payment_terms_days, default_currency, footer_text, series_start, updated_at, revision, peppol_id, kid_length, kid_algorithm, work_vat_code_hours, work_vat_code_expenses, work_vat_code_milestones, timesheet_default, timesheet_person_label, energy_vat_code, energy_vat_code_exempt
+RETURNING id, legal_name, organisation_number, vat_registered, in_foretaksregisteret, address_line1, address_line2, postal_code, city, country, bank_account, iban, bic, email, default_payment_terms_days, default_currency, footer_text, series_start, updated_at, revision, peppol_id, kid_length, kid_algorithm, work_vat_code_hours, work_vat_code_expenses, work_vat_code_milestones, timesheet_default, timesheet_person_label, energy_vat_code, energy_vat_code_exempt, send_channel
 `
 
 type UpdateSettingsParams struct {
@@ -208,6 +229,7 @@ type UpdateSettingsParams struct {
 	TimesheetPersonLabel    string
 	EnergyVatCode           int32
 	EnergyVatCodeExempt     int32
+	SendChannel             *uuid.UUID
 	Now                     time.Time
 }
 
@@ -215,7 +237,10 @@ type UpdateSettingsParams struct {
 // Peppol id, the KID agreement (EHF and KID design D2, D3), the VAT code
 // each kind of work is invoiced at (invoices work design D6) and the
 // timesheet's default and person label (D5), the two VAT codes an energy
-// line takes by its hint (energy consumption billing design D8), and moves
+// line takes by its hint (energy consumption billing design D8), the channel
+// documents and reminders are sent from (integrations design T6; null is
+// Disabled, and the caller decides whether a request that leaves it out keeps
+// the stored one), and moves
 // the revision on. The
 // label's CHECK refuses anything but initials, number or name. The caller holds the row (LockSettings) and has checked the
 // revision and the series lock.
@@ -248,6 +273,7 @@ func (q *Queries) UpdateSettings(ctx context.Context, arg UpdateSettingsParams) 
 		arg.TimesheetPersonLabel,
 		arg.EnergyVatCode,
 		arg.EnergyVatCodeExempt,
+		arg.SendChannel,
 		arg.Now,
 	)
 	var i InvoicesSetting
@@ -282,6 +308,7 @@ func (q *Queries) UpdateSettings(ctx context.Context, arg UpdateSettingsParams) 
 		&i.TimesheetPersonLabel,
 		&i.EnergyVatCode,
 		&i.EnergyVatCodeExempt,
+		&i.SendChannel,
 	)
 	return i, err
 }

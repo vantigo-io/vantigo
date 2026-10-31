@@ -11,7 +11,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
-	"github.com/vantigo-io/vantigo/server/internal/config"
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/accesspoint"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/store"
@@ -26,8 +25,8 @@ import (
 // deps.Users), the business calendar (deps.Calendar), the source modules' billable reads (deps.BillableHours,
 // BillableExpenses, BillableMilestones), Energy's consumption reads
 // (deps.Consumption) and their invoiced-work holders
-// (deps.InvoicedWork), the object store (server.objects), the SMTP seam
-// (deps.SMTPSend), the Peppol network (server.peppolLookup), the access
+// (deps.InvoicedWork), the object store (server.objects), the outbound mail
+// channels (deps.OutboundMail), the Peppol network (server.peppolLookup), the access
 // point (accessPoint) and the payment provider (paymentProvider). Every call is made through one of the thin accessors
 // below and through nowhere else, so "what does Invoices ask of its
 // neighbours, and when" has one place to read the answer and one place to
@@ -225,15 +224,38 @@ func (s *server) objectExists(ctx context.Context, key string) (bool, error) {
 	return s.objects.Exists(ctx, key)
 }
 
-// smtpSend hands one mail to the installation's SMTP server (payments and
-// delivery design D4): Deps.SMTPSend when a harness set one, otherwise
-// mail.SendOutbound, the platform's guarded path.
-func (s *server) smtpSend(ctx context.Context, cfg config.MailConfig, out mail.Outbound) error {
-	noteContractCall(ctx, "SMTPSend")
-	if s.deps.SMTPSend != nil {
-		return s.deps.SMTPSend(ctx, cfg, out)
+// outboundChannels lists the channels a Sending choice may name, as
+// Communications answers them through contracts.OutboundMail (integrations
+// design T4): none while the slot is not filled (Communications off).
+func (s *server) outboundChannels(ctx context.Context) ([]contracts.OutboundChannel, error) {
+	noteContractCall(ctx, "OutboundMail.Channels")
+	if s.deps.OutboundMail == nil {
+		return nil, nil
 	}
-	return mail.SendOutbound(ctx, cfg, out)
+	return s.deps.OutboundMail.Channels(ctx)
+}
+
+// outboundChannel answers one channel: contracts.ErrChannelUnknown when it is
+// gone - or when the slot is not filled, which a caller reads the same way.
+// No network call.
+func (s *server) outboundChannel(ctx context.Context, id uuid.UUID) (contracts.OutboundChannel, error) {
+	noteContractCall(ctx, "OutboundMail.Channel")
+	if s.deps.OutboundMail == nil {
+		return contracts.OutboundChannel{}, contracts.ErrChannelUnknown
+	}
+	return s.deps.OutboundMail.Channel(ctx, id)
+}
+
+// outboundSend hands one mail to the channel the Owner chose in Invoice
+// settings (integrations design T6), through Communications' channel: sent
+// From the channel's address, the Reply-To and the Message-ID kept. Never
+// under a lock; the caller bounds ctx.
+func (s *server) outboundSend(ctx context.Context, channel uuid.UUID, out mail.Outbound) error {
+	noteContractCall(ctx, "OutboundMail.Send")
+	if s.deps.OutboundMail == nil {
+		return contracts.ErrChannelUnknown
+	}
+	return s.deps.OutboundMail.Send(ctx, channel, out)
 }
 
 // errPeppolLookupDisabled is lookupReceiver's answer when PEPPOL_LOOKUP_ENABLED

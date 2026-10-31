@@ -579,6 +579,7 @@ type InvoicesSetting struct {
 	TimesheetPersonLabel    string
 	EnergyVatCode           int32
 	EnergyVatCodeExempt     int32
+	SendChannel             *uuid.UUID
 }
 
 type InvoicesTimesheetRow struct {

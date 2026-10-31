@@ -5,8 +5,10 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/holidays"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/gen"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/store"
@@ -14,7 +16,7 @@ import (
 
 // This file is GET /meta: the one read every Invoices page makes before it
 // draws anything (D2). It answers what this installation can do (an object
-// store or not, a mail driver that sends or not, EHF or not), what the seller
+// store or not, a channel chosen to send from or not, EHF or not), what the seller
 // still lacks, whether the series has started, the VAT codes a new line may
 // take today, and what the caller may do — so no client re-derives a rule
 // this module owns — and which work it can invoice.
@@ -52,7 +54,7 @@ func (s *server) GetInvoicesMeta(ctx context.Context, _ gen.GetInvoicesMetaReque
 		})
 	}
 	missing := sellerMissingFields(row)
-	mail := s.mailAvailable()
+	mail := s.mailAvailable(ctx)
 	ehf, rejected, err := s.ehfAvailable(ctx, q, row)
 	if err != nil {
 		return nil, err
@@ -107,11 +109,40 @@ func (s *server) GetInvoicesMeta(ctx context.Context, _ gen.GetInvoicesMetaReque
 	}), nil
 }
 
-// mailAvailable is whether this installation can send a document at all: its
-// mail driver is smtp (payments and delivery design D4). The log driver
-// delivers nothing, so a send there is refused before anything is read.
-func (s *server) mailAvailable() bool {
-	return s.deps.Config != nil && s.deps.Config.Mail.Driver == "smtp"
+// sendingChannel is the channel documents and reminder letters are sent from
+// now (integrations design T6), and whether it can send: the one Invoice
+// settings chose, with Communications answering that it exists and can send.
+// Disabled - nothing chosen, or Communications off - and a channel that is
+// gone or cannot send alike answer false; an error reading either is logged
+// and answers false, since a document must not be sent on a guess. No network
+// call; never read under a lock.
+func (s *server) sendingChannel(ctx context.Context) (uuid.UUID, bool) {
+	chosen, err := store.New(s.deps.Pool).GetSendChannel(ctx)
+	if err != nil {
+		s.deps.Logger.WarnContext(ctx, "invoices: the sending channel could not be read", "error", err.Error())
+		return uuid.UUID{}, false
+	}
+	if chosen == nil {
+		return uuid.UUID{}, false
+	}
+	ch, err := s.outboundChannel(ctx, *chosen)
+	switch {
+	case errors.Is(err, contracts.ErrChannelUnknown):
+		return uuid.UUID{}, false
+	case err != nil:
+		s.deps.Logger.WarnContext(ctx, "invoices: the sending channel could not be read", "error", err.Error())
+		return uuid.UUID{}, false
+	}
+	return ch.ID, ch.Available
+}
+
+// mailAvailable is whether a document can be sent by e-mail now: Invoice
+// settings choose a channel, and it can send. Otherwise sending is disabled -
+// a document is refused before anything is read (the send's 503), and a
+// letter goes on paper.
+func (s *server) mailAvailable(ctx context.Context) bool {
+	_, ok := s.sendingChannel(ctx)
+	return ok
 }
 
 // ehfAvailable is whether this installation can send a document as EHF

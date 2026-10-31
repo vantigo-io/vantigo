@@ -1362,6 +1362,30 @@ func (e InvoicesRunPreviewLetterWarnings) Valid() bool {
 	}
 }
 
+// Defines values for InvoicesSettingsResponseSendChannelState.
+const (
+	InvoicesSettingsResponseSendChannelStateDisabled    InvoicesSettingsResponseSendChannelState = "disabled"
+	InvoicesSettingsResponseSendChannelStateGone        InvoicesSettingsResponseSendChannelState = "gone"
+	InvoicesSettingsResponseSendChannelStateReady       InvoicesSettingsResponseSendChannelState = "ready"
+	InvoicesSettingsResponseSendChannelStateUnavailable InvoicesSettingsResponseSendChannelState = "unavailable"
+)
+
+// Valid indicates whether the value is a known member of the InvoicesSettingsResponseSendChannelState enum.
+func (e InvoicesSettingsResponseSendChannelState) Valid() bool {
+	switch e {
+	case InvoicesSettingsResponseSendChannelStateDisabled:
+		return true
+	case InvoicesSettingsResponseSendChannelStateGone:
+		return true
+	case InvoicesSettingsResponseSendChannelStateReady:
+		return true
+	case InvoicesSettingsResponseSendChannelStateUnavailable:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for InvoicesSettingsResponseTimesheetPersonLabel.
 const (
 	Initials InvoicesSettingsResponseTimesheetPersonLabel = "initials"
@@ -3601,6 +3625,24 @@ type InvoicesSeller struct {
 	VatRegistered        bool   `json:"vatRegistered"`
 }
 
+// InvoicesSendChannel One channel Invoices may send from, as Communications answers it through contracts.OutboundMail (integrations design T4, T6).
+type InvoicesSendChannel struct {
+	Address string `json:"address"`
+
+	// Available Whether the channel can send now - its provider is offered and, for SMTP, its credentials are stored.
+	Available bool `json:"available"`
+
+	// DisplayName The channel's display name; empty when it has none.
+	DisplayName string             `json:"displayName"`
+	Id          openapi_types.UUID `json:"id"`
+
+	// Provider The provider's key - smtp or entra.
+	Provider string `json:"provider"`
+
+	// ProviderDisplayName The provider as an admin reads it - SMTP, Microsoft 365.
+	ProviderDisplayName string `json:"providerDisplayName"`
+}
+
 // InvoicesSendDefaults What the Send dialog opens with (D4), on an issued document's GET and on the send's own response only, and only for a caller who may send (invoices:issue on an installation whose mail driver is smtp); never for a customer this module has anonymised, whom a send is refused. recipient is the customer's current invoice e-mail, absent when it has none; preference is the billing profile's invoice delivery (email, ehf, efaktura or paper), absent when unset. warnings are the send's, never refusals: delivery_preference_ehf (the customer expects EHF; an e-mailed PDF does not meet the e-invoicing duty), ehf_preferred (in place of delivery_preference_ehf when the caller can send as EHF on this installation — canSendEhf — and the document's ehf names nothing blocking it: send it as EHF instead; EHF and KID design D10), delivery_preference_other (the customer prefers efaktura or paper), buyer_norwegian_business (the buyer snapshot has a Norwegian organisation number and today, the business day of the server's clock, is before 2027-01-01: from that day a Norwegian business must receive an e-invoice), buyer_norwegian_business_required (the same buyer from 2027-01-01, when an e-mailed PDF no longer meets the duty). The server judges the date, never the browser. Absent when the directory could not be read.
 type InvoicesSendDefaults struct {
 	Preference *string  `json:"preference,omitempty"`
@@ -3613,7 +3655,7 @@ type InvoicesSendRequest struct {
 	Recipient *string `json:"recipient,omitempty"`
 }
 
-// InvoicesSettingsRequest PUT /settings' body, a full replace (D2). Every text field is trimmed; an empty string is "not set". organisationNumber is nine digits with a valid mod-11 check digit; bankAccount eleven digits with a valid mod-11 check digit (spaces and dots are dropped); iban passes mod-97 and bic is 8 or 11 characters, both optional; country is ISO 3166-1 alpha-2; defaultPaymentTermsDays is 0-365; defaultCurrency is NOK and only NOK in this phase; seriesStart is 1 to 9007199254740991 (2^53 − 1) and cannot change once anything is issued (409 series_locked). peppolId, kidLength and kidAlgorithm are required and nullable (EHF and KID design D2, D3): a body without them is a 400, so a client that predates them cannot clear them by leaving them out. kidLength and kidAlgorithm are a pair or both null; the next number to be issued — the counter's, or seriesStart before the first issue — must fit in kidLength less one digits, else a 400 on kidLength. workVatCodes is required too (invoices work design D6; a body without it is a 400 on workVatCodes): the VAT code the uninvoiced view's wizard pre-fills for each kind of work, each a code that exists and — when it differs from the stored one — is active, else a 400 on workVatCodes.hours, workVatCodes.expenses or workVatCodes.milestones. timesheetDefault and timesheetPersonLabel are required too (invoices work design D5; a body without either, or with null, is a 400 on it): whether a new draft — the wizard's or one created by hand — carries a timesheet unless its request says, and how the timesheet names each person — initials, number or name, anything else a 400 on timesheetPersonLabel. energyVatCodes is optional (energy consumption billing design D8): absent keeps the stored codes; given, each is a code that exists and — when it differs from the stored one — is active, else a 400 on energyVatCodes.energy or energyVatCodes.energyExempt. revision is the one the caller read: a stale one is a 409 naming both.
+// InvoicesSettingsRequest PUT /settings' body, a full replace (D2). Every text field is trimmed; an empty string is "not set". organisationNumber is nine digits with a valid mod-11 check digit; bankAccount eleven digits with a valid mod-11 check digit (spaces and dots are dropped); iban passes mod-97 and bic is 8 or 11 characters, both optional; country is ISO 3166-1 alpha-2; defaultPaymentTermsDays is 0-365; defaultCurrency is NOK and only NOK in this phase; seriesStart is 1 to 9007199254740991 (2^53 − 1) and cannot change once anything is issued (409 series_locked). peppolId, kidLength and kidAlgorithm are required and nullable (EHF and KID design D2, D3): a body without them is a 400, so a client that predates them cannot clear them by leaving them out. kidLength and kidAlgorithm are a pair or both null; the next number to be issued — the counter's, or seriesStart before the first issue — must fit in kidLength less one digits, else a 400 on kidLength. workVatCodes is required too (invoices work design D6; a body without it is a 400 on workVatCodes): the VAT code the uninvoiced view's wizard pre-fills for each kind of work, each a code that exists and — when it differs from the stored one — is active, else a 400 on workVatCodes.hours, workVatCodes.expenses or workVatCodes.milestones. timesheetDefault and timesheetPersonLabel are required too (invoices work design D5; a body without either, or with null, is a 400 on it): whether a new draft — the wizard's or one created by hand — carries a timesheet unless its request says, and how the timesheet names each person — initials, number or name, anything else a 400 on timesheetPersonLabel. energyVatCodes is optional (energy consumption billing design D8): absent keeps the stored codes; given, each is a code that exists and — when it differs from the stored one — is active, else a 400 on energyVatCodes.energy or energyVatCodes.energyExempt. sendChannel is optional and nullable (integrations design T6): absent keeps the stored channel, null is Disabled, and a given id that differs from the stored one must be a channel that exists, else a 400 on sendChannel. revision is the one the caller read: a stale one is a 409 naming both.
 type InvoicesSettingsRequest struct {
 	AddressLine1            string  `json:"addressLine1"`
 	AddressLine2            *string `json:"addressLine2,omitempty"`
@@ -3640,9 +3682,12 @@ type InvoicesSettingsRequest struct {
 	OrganisationNumber string          `json:"organisationNumber"`
 
 	// PeppolId The seller's Peppol participant id (D2), a four-digit scheme, a colon and an identifier, such as 0192:974760673; a 0192 id is the seller's own organisation number. Null or empty defaults it to 0192 and the organisation number when that is set.
-	PeppolId    json.RawMessage `json:"peppolId"`
-	PostalCode  string          `json:"postalCode"`
-	Revision    int32           `json:"revision"`
+	PeppolId   json.RawMessage `json:"peppolId"`
+	PostalCode string          `json:"postalCode"`
+	Revision   int32           `json:"revision"`
+
+	// SendChannel The id of the Communications channel documents and reminder letters are sent from (integrations design T6), chosen among the ones GET /settings lists as sendChannels; null is Disabled and nothing is sent. Optional - absent keeps the stored channel, so a client that predates it does not disable sending by leaving it out; a given id must be a channel that exists, else a 400 on sendChannel, unless it is the stored one.
+	SendChannel json.RawMessage `json:"sendChannel,omitempty"`
 	SeriesStart int64           `json:"seriesStart"`
 
 	// TimesheetDefault Whether a new invoice draft carries a timesheet unless its request says (invoices work design D5). Required — a body without it is a 400 on timesheetDefault.
@@ -3689,11 +3734,20 @@ type InvoicesSettingsResponse struct {
 	OrganisationNumber string `json:"organisationNumber"`
 
 	// PeppolId The seller's Peppol participant id; null when neither set nor derivable from the organisation number.
-	PeppolId     *string `json:"peppolId"`
-	PostalCode   string  `json:"postalCode"`
-	Revision     int32   `json:"revision"`
-	SeriesLocked bool    `json:"seriesLocked"`
-	SeriesStart  int64   `json:"seriesStart"`
+	PeppolId   *string `json:"peppolId"`
+	PostalCode string  `json:"postalCode"`
+	Revision   int32   `json:"revision"`
+
+	// SendChannel The id of the channel documents and reminder letters are sent from (integrations design T6), as stored; null is Disabled. Always answered; optional in the schema only because the recorded exchanges predate it.
+	SendChannel *openapi_types.UUID `json:"sendChannel"`
+
+	// SendChannelState What the stored sendChannel is now: disabled (none chosen), ready (the channel can send), unavailable (it exists but cannot send now - its provider is off or an SMTP channel has no credentials) or gone (no active channel has the id, or Communications is off). Anything but ready sends nothing: GET /meta answers mailAvailable false. Always answered; optional only because the recorded exchanges predate it.
+	SendChannelState *InvoicesSettingsResponseSendChannelState `json:"sendChannelState,omitempty"`
+
+	// SendChannels The channels a Sending choice may name - the active mail channels with their provider, whether each can send now. Names and addresses only. Always answered; optional only because the recorded exchanges predate it.
+	SendChannels *[]InvoicesSendChannel `json:"sendChannels,omitempty"`
+	SeriesLocked bool                   `json:"seriesLocked"`
+	SeriesStart  int64                  `json:"seriesStart"`
 
 	// TimesheetDefault Whether a new invoice draft carries a timesheet unless its request says (invoices work design D5); false until changed.
 	TimesheetDefault bool `json:"timesheetDefault"`
@@ -3709,6 +3763,9 @@ type InvoicesSettingsResponse struct {
 	// WorkVatCodes The VAT code each kind of work is invoiced at (invoices work design D6) — the settings' defaults, which the uninvoiced view's wizard pre-fills, each the id of a code. All three are 1 (code 3, 25 %) until changed.
 	WorkVatCodes InvoicesWorkVatCodes `json:"workVatCodes"`
 }
+
+// InvoicesSettingsResponseSendChannelState What the stored sendChannel is now: disabled (none chosen), ready (the channel can send), unavailable (it exists but cannot send now - its provider is off or an SMTP channel has no credentials) or gone (no active channel has the id, or Communications is off). Anything but ready sends nothing: GET /meta answers mailAvailable false. Always answered; optional only because the recorded exchanges predate it.
+type InvoicesSettingsResponseSendChannelState string
 
 // InvoicesSettingsResponseTimesheetPersonLabel How a timesheet names each person (invoices work design D5) — initials (the default), number or name — applied when its rows are written.
 type InvoicesSettingsResponseTimesheetPersonLabel string
