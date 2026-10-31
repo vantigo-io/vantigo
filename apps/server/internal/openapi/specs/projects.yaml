@@ -868,6 +868,38 @@ components:
                 - data
                 - pagination
             type: object
+        ProjectApplyTemplateRequest:
+            description: Instantiate a project template onto an existing project with relative day offsets calculated from kickoffDate.
+            properties:
+                kickoffDate:
+                    description: The base calendar date for relative day offset calculations (T+0).
+                    format: date
+                    type: string
+                templateId:
+                    description: The template to instantiate.
+                    format: int32
+                    type: integer
+            required:
+                - templateId
+                - kickoffDate
+            type: object
+        ProjectApplyTemplateResponse:
+            description: Result of applying a template to a project.
+            properties:
+                dependenciesCreated:
+                    format: int32
+                    type: integer
+                milestonesCreated:
+                    format: int32
+                    type: integer
+                tasksCreated:
+                    format: int32
+                    type: integer
+            required:
+                - milestonesCreated
+                - tasksCreated
+                - dependenciesCreated
+            type: object
         ProjectCapabilities:
             description: What the calling user may do with this project, so the frontend never re-derives authorization.
             properties:
@@ -1886,6 +1918,204 @@ components:
                 - createdAt
                 - updatedAt
                 - managers
+            type: object
+        ProjectTemplateCreateRequest:
+            description: Create a reusable project template blueprint.
+            properties:
+                billingType:
+                    description: Optional default billing type.
+                    nullable: true
+                    type: string
+                dependencies:
+                    items:
+                        $ref: '#/components/schemas/ProjectTemplateDependency'
+                    type: array
+                description:
+                    nullable: true
+                    type: string
+                milestones:
+                    items:
+                        $ref: '#/components/schemas/ProjectTemplateMilestone'
+                    type: array
+                name:
+                    type: string
+                tasks:
+                    items:
+                        $ref: '#/components/schemas/ProjectTemplateTask'
+                    type: array
+            required:
+                - name
+            type: object
+        ProjectTemplateDependency:
+            description: A dependency link within a template referencing tasks by their 0-based index.
+            properties:
+                predecessorTaskIndex:
+                    format: int32
+                    type: integer
+                successorTaskIndex:
+                    format: int32
+                    type: integer
+            required:
+                - predecessorTaskIndex
+                - successorTaskIndex
+            type: object
+        ProjectTemplateListResponse:
+            description: Reusable project template blueprints.
+            properties:
+                templates:
+                    items:
+                        $ref: '#/components/schemas/ProjectTemplateResponse'
+                    type: array
+            required:
+                - templates
+            type: object
+        ProjectTemplateMilestone:
+            description: A delivery milestone definition in a template with a target day offset from project kickoff.
+            properties:
+                description:
+                    nullable: true
+                    type: string
+                name:
+                    type: string
+                targetDayOffset:
+                    description: Number of calendar days from kickoff date (e.g. 14 for T+14).
+                    format: int32
+                    type: integer
+            required:
+                - name
+                - targetDayOffset
+            type: object
+        ProjectTemplateResponse:
+            description: One project template blueprint.
+            properties:
+                billingType:
+                    nullable: true
+                    type: string
+                createdAt:
+                    format: date-time
+                    type: string
+                dependencies:
+                    items:
+                        $ref: '#/components/schemas/ProjectTemplateDependency'
+                    type: array
+                description:
+                    nullable: true
+                    type: string
+                id:
+                    format: int32
+                    type: integer
+                milestones:
+                    items:
+                        $ref: '#/components/schemas/ProjectTemplateMilestone'
+                    type: array
+                name:
+                    type: string
+                revision:
+                    format: int32
+                    type: integer
+                tasks:
+                    items:
+                        $ref: '#/components/schemas/ProjectTemplateTask'
+                    type: array
+                updatedAt:
+                    format: date-time
+                    type: string
+            required:
+                - id
+                - name
+                - milestones
+                - tasks
+                - dependencies
+                - revision
+                - createdAt
+                - updatedAt
+            type: object
+        ProjectTemplateSubtask:
+            description: A subtask blueprint within a template task.
+            properties:
+                description:
+                    nullable: true
+                    type: string
+                dueDayOffset:
+                    format: int32
+                    nullable: true
+                    type: integer
+                estimateHours:
+                    format: double
+                    nullable: true
+                    type: number
+                startDayOffset:
+                    format: int32
+                    nullable: true
+                    type: integer
+                title:
+                    type: string
+            required:
+                - title
+            type: object
+        ProjectTemplateTask:
+            description: A top-level task blueprint within a template.
+            properties:
+                description:
+                    nullable: true
+                    type: string
+                dueDayOffset:
+                    description: Relative due date offset in days from kickoff date.
+                    format: int32
+                    nullable: true
+                    type: integer
+                estimateHours:
+                    format: double
+                    nullable: true
+                    type: number
+                milestoneIndex:
+                    description: Optional 0-based index of the template's delivery milestone this task is linked to.
+                    format: int32
+                    nullable: true
+                    type: integer
+                startDayOffset:
+                    description: Relative start date offset in days from kickoff date.
+                    format: int32
+                    nullable: true
+                    type: integer
+                subtasks:
+                    items:
+                        $ref: '#/components/schemas/ProjectTemplateSubtask'
+                    type: array
+                title:
+                    type: string
+            required:
+                - title
+            type: object
+        ProjectTemplateUpdateRequest:
+            description: Update a reusable project template blueprint.
+            properties:
+                billingType:
+                    nullable: true
+                    type: string
+                dependencies:
+                    items:
+                        $ref: '#/components/schemas/ProjectTemplateDependency'
+                    type: array
+                description:
+                    nullable: true
+                    type: string
+                milestones:
+                    items:
+                        $ref: '#/components/schemas/ProjectTemplateMilestone'
+                    type: array
+                name:
+                    type: string
+                revision:
+                    format: int32
+                    type: integer
+                tasks:
+                    items:
+                        $ref: '#/components/schemas/ProjectTemplateTask'
+                    type: array
+            required:
+                - name
+                - revision
             type: object
         ProjectUpdateRequest:
             description: Every field of the project as it should stand after the update, carrying the revision it was read at. A revision that has moved on answers 409.
@@ -3176,6 +3406,53 @@ paths:
                                 $ref: common.yaml#/components/schemas/ProblemDetails
                     description: Conflict — the supplied revision is not the project's current one.
             summary: Update a project
+            tags:
+                - Projects
+            x-vantigo-access: permission:projects:access
+    /api/v1/projects/{id}/apply-template:
+        post:
+            operationId: postProjectsByIdApplyTemplate
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ProjectApplyTemplateRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ProjectApplyTemplateResponse'
+                    description: OK — template instantiated onto project.
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden — caller cannot contribute to this project.
+                "404":
+                    description: Not Found — project or template does not exist.
+            summary: Apply a template to a project
             tags:
                 - Projects
             x-vantigo-access: permission:projects:access
@@ -4853,6 +5130,186 @@ paths:
                 "404":
                     description: Not Found — the task does not exist, or belongs to a project the caller cannot see.
             summary: Reschedule downstream tasks reachable via dependencies
+            tags:
+                - Projects
+            x-vantigo-access: permission:projects:access
+    /api/v1/projects/templates:
+        get:
+            operationId: getProjectsTemplates
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ProjectTemplateListResponse'
+                    description: OK — list of project template blueprints.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+            summary: List project templates
+            tags:
+                - Projects
+            x-vantigo-access: permission:projects:access
+        post:
+            operationId: postProjectsTemplates
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ProjectTemplateCreateRequest'
+                required: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ProjectTemplateResponse'
+                    description: Created — the new template.
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+            summary: Create a project template
+            tags:
+                - Projects
+            x-vantigo-access: permission:projects:access
+    /api/v1/projects/templates/{templateId}:
+        delete:
+            operationId: deleteProjectsTemplatesByTemplateId
+            parameters:
+                - in: path
+                  name: templateId
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+            responses:
+                "204":
+                    description: No Content — template deleted.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+            summary: Delete a project template
+            tags:
+                - Projects
+            x-vantigo-access: permission:projects:access
+        get:
+            operationId: getProjectsTemplatesByTemplateId
+            parameters:
+                - in: path
+                  name: templateId
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ProjectTemplateResponse'
+                    description: OK — the template.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+            summary: Get a project template
+            tags:
+                - Projects
+            x-vantigo-access: permission:projects:access
+        put:
+            operationId: putProjectsTemplatesByTemplateId
+            parameters:
+                - in: path
+                  name: templateId
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ProjectTemplateUpdateRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ProjectTemplateResponse'
+                    description: OK — template updated.
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/ProblemDetails
+                    description: Conflict — revision conflict.
+            summary: Update a project template
             tags:
                 - Projects
             x-vantigo-access: permission:projects:access

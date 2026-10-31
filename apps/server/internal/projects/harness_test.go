@@ -1628,3 +1628,76 @@ func rescheduleDownstreamTasks(t *testing.T, c *modtest.Client, taskID int32, da
 	res.JSON(&out)
 	return out.ShiftedTasksCount, out.UpdatedTaskIds
 }
+
+type templateMilestoneJSON struct {
+	Name            string `json:"name"`
+	Description     string `json:"description,omitempty"`
+	TargetDayOffset int32  `json:"targetDayOffset"`
+}
+
+type templateSubtaskJSON struct {
+	Title          string `json:"title"`
+	StartDayOffset *int32 `json:"startDayOffset,omitempty"`
+	DueDayOffset   *int32 `json:"dueDayOffset,omitempty"`
+}
+
+type templateTaskJSON struct {
+	Title          string                `json:"title"`
+	Description    string                `json:"description,omitempty"`
+	StartDayOffset *int32                `json:"startDayOffset,omitempty"`
+	DueDayOffset   *int32                `json:"dueDayOffset,omitempty"`
+	MilestoneIndex *int32                `json:"milestoneIndex,omitempty"`
+	Subtasks       []templateSubtaskJSON `json:"subtasks,omitempty"`
+}
+
+type templateDependencyJSON struct {
+	PredecessorTaskIndex int32 `json:"predecessorTaskIndex"`
+	SuccessorTaskIndex   int32 `json:"successorTaskIndex"`
+}
+
+type templateJSON struct {
+	Id           int32                    `json:"id"`
+	Name         string                   `json:"name"`
+	Description  *string                  `json:"description,omitempty"`
+	BillingType  *string                  `json:"billingType,omitempty"`
+	Milestones   []templateMilestoneJSON  `json:"milestones"`
+	Tasks        []templateTaskJSON       `json:"tasks"`
+	Dependencies []templateDependencyJSON `json:"dependencies"`
+	Revision     int32                    `json:"revision"`
+	CreatedAt    time.Time                `json:"createdAt"`
+	UpdatedAt    time.Time                `json:"updatedAt"`
+}
+
+func projectTemplatesPath() string {
+	return "/api/v1/projects/templates"
+}
+
+func projectTemplatePath(id int32) string {
+	return fmt.Sprintf("/api/v1/projects/templates/%d", id)
+}
+
+func projectApplyTemplatePath(projectID int32) string {
+	return fmt.Sprintf("/api/v1/projects/%d/apply-template", projectID)
+}
+
+func createProjectTemplate(t *testing.T, c *modtest.Client, payload map[string]any) templateJSON {
+	t.Helper()
+	res := c.Do(http.MethodPost, projectTemplatesPath(), payload)
+	if res.Status != http.StatusCreated {
+		t.Fatalf("create project template: status = %d, want 201; body = %s", res.Status, string(res.Body))
+	}
+	var out templateJSON
+	res.JSON(&out)
+	return out
+}
+
+func getProjectTemplate(t *testing.T, c *modtest.Client, id int32) templateJSON {
+	t.Helper()
+	res := c.Do(http.MethodGet, projectTemplatePath(id), nil)
+	if res.Status != http.StatusOK {
+		t.Fatalf("get project template: status = %d, want 200; body = %s", res.Status, string(res.Body))
+	}
+	var out templateJSON
+	res.JSON(&out)
+	return out
+}
