@@ -238,7 +238,17 @@ Communications' outbox is the working example.
    nothing without. A page may also be the host's own, composed from a module's
    package: **Settings → Connections** (`routes/settings/connections.tsx`) renders
    `@vantigo/entra-ui`'s `OutlookConnectionCard`, its sidebar entry and its route shown
-   only while `entra` is enabled (the route answers not found otherwise).
+   only while `entra` is enabled (the route answers not found otherwise). The same goes
+   for the organisation's side of that line: the workspace area's second sidebar
+   section, **Integrations** (`apps.ts`, `areas`), is a slot a module may take an item
+   in. Entra's item, **Microsoft Entra ID** at `/workspace/entra` (`routes/workspace/entra.tsx`),
+   carries `module: "entra"` and `requiredPermissions: ["entra:manage"]`; the area's
+   layout (`routes/workspace.tsx`) admits a holder of that permission while the module is
+   on, the item's route asks the module and the permission again, and the section hides
+   itself when none of its items shows. A module that takes such an item owns no app: it
+   has no tile and no `AppKey`, and the places that resolve an app by module key treat it
+   as not listed. The package exports the page's tabs, and the host mounts them as child
+   routes of its layout.
 8. **One sanctioned cross-module write.** A module never writes another's data —
    with one exception, made for merging customers:
    `contracts.CustomerReferenceHolder`. A module that stores customer ids in its

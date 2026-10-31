@@ -11,12 +11,13 @@ sources:
 Administrasjon av arbeidsområdet er der en **Eier** styrer hvem som kan bruke
 Vantigo og hva de kan gjøre. Åpne avatar-menyen øverst til høyre og velg
 **Administrer arbeidsområde**; sidemenyen har **Oversikt**, **Brukere**,
-**Invitasjoner** og **Roller og tilgang**.
+**Invitasjoner** og **Roller og tilgang**, og, under **Integrasjoner**, **Microsoft Entra ID**.
 
 Alt her krever eierrollen, med ett unntak: den en eier har delegert
 rolleadministrasjon til, ser bare **Roller og tilgang**, både i avatar-menyen og i
-sidemenyen. Den siste aktive eieren kan aldri degraderes, deaktiveres eller slettes,
-så arbeidsområdet har alltid én.
+sidemenyen; og den som har `entra:manage` uten å være eier, ser bare **Integrasjoner**
+([nedenfor](#integrasjoner)). Den siste aktive eieren kan aldri degraderes, deaktiveres
+eller slettes, så arbeidsområdet har alltid én.
 
 ## Les oversikten
 
@@ -411,6 +412,28 @@ Grupper — sett av brukere med roller knyttet til seg — finnes i Vantigo for
 SCIM-klargjøring og API-et, ikke som et skjermbilde her. Når identitetsleverandøren
 styrer grupper, får medlemmene de tilknyttede rollene automatisk; se
 [SSO- og SCIM-drift](/nb/admin/sso-scim/).
+
+## Integrasjoner
+
+**Integrasjoner** er den andre seksjonen i sidemenyen til **Administrer arbeidsområde**:
+stedet selskapets tilkoblinger til systemer andre steder styres. I dag har den ett punkt,
+**Microsoft Entra ID**, som kobler Vantigo til selskapets Microsoft Entra ID-leietaker;
+siden har fire faner — **Status**, **Tilkobling**, **Kontoer** og **Outlook og e-post** —
+beskrevet i [Microsoft Entra ID](/nb/user/entra/#hvor-den-er-og-de-fire-fanene).
+Seksjonen er der bare mens modulen Microsoft Entra ID er på i denne installasjonen, og
+bare for den som har `entra:manage`; en eier har alle rettigheter.
+
+- En eier ser hele Administrer arbeidsområde, med **Integrasjoner** etter resten.
+- Den som har `entra:manage` uten å være eier, ser bare **Integrasjoner** i sidemenyen —
+  slik en person med delegert rolleadministrasjon bare ser **Roller og tilgang** — og
+  finner **Microsoft Entra ID** i avatar-menyen. Stegene som er en eiers, leser
+  vedkommende uten skjemaene.
+- Uten `entra:manage`, eller mens modulen er av, finnes ingen seksjon **Integrasjoner**.
+
+Dine egne kontoer andre steder, som Outlook, kobler du til under **Innstillinger** ›
+**Tilkoblinger** ([Tilkoblinger](/nb/user/connections/)); postboksene Kommunikasjon
+sender fra, er dens **Kanaler**, ikke her. [Konfigurasjon](/nb/admin/configuration/) sier
+hvilke innstillinger som er arbeidsområdets og hvilke som er installasjonens.
 
 ## Sett opp en ny installasjon
 
