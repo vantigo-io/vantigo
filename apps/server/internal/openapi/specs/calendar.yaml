@@ -523,6 +523,9 @@ components:
         CalendarMeta:
             description: What the calendar app needs before it asks for a window.
             properties:
+                canManage:
+                    description: Whether the caller holds calendar:manage - the Calendar settings' Invitations card is for them (integrations design T6).
+                    type: boolean
                 canViewColleagues:
                     description: Whether the caller holds calendar:view-colleagues.
                     type: boolean
@@ -545,6 +548,7 @@ components:
                 - timeZone
                 - today
                 - canViewColleagues
+                - canManage
                 - invitationsAvailable
                 - sources
             type: object

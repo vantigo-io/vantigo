@@ -209,8 +209,11 @@ describe("the invoice settings", () => {
   });
 
   it.each([
-    [true, "Mail is configured (SMTP)"],
-    [false, "Mail is not configured (SMTP), so documents cannot be sent by e-mail. Issuing does not need it."],
+    [true, "Sending is set up: documents go out from the channel chosen under Sending"],
+    [
+      false,
+      "Sending is disabled, or the chosen channel cannot send, so documents cannot be sent by e-mail. Issuing does not need it.",
+    ],
   ])(
     "says in the checklist whether mail is configured (%s), which never holds issuing back",
     async (mailAvailable, words) => {
@@ -678,6 +681,119 @@ describe("the Consumption to invoice card", () => {
         within(card).getByRole("combobox", { name: "VAT code for exempt electricity (Nord-Norge)" }),
       ).toHaveAccessibleDescription("Choose a VAT code that exists and is offered for new lines."),
     );
+    expect(screen.queryByText("Could not save the settings")).not.toBeInTheDocument();
+  });
+
+  // Sending (integrations design T6): the channel documents and reminders go
+  // out from, chosen among the channels Communications offers, or Disabled.
+  const channels = [
+    {
+      id: "5c1f0e72-3b8a-4f0e-9d1a-2f6c8a4b7e10",
+      address: "faktura@selger.example",
+      displayName: "Faktura",
+      provider: "smtp",
+      providerDisplayName: "SMTP",
+      available: true,
+    },
+    {
+      id: "9a7d3b21-6e4c-4a18-b0f5-1c8e2d4f6a93",
+      address: "post@selger.example",
+      displayName: "",
+      provider: "entra",
+      providerDisplayName: "Microsoft 365",
+      available: false,
+    },
+  ];
+  const sendingCard = async () => within(await screen.findByTestId("sending-card"));
+
+  it("offers the channels with their provider, Disabled when none is chosen, and saves the choice", async () => {
+    const fetchMock = server({}, { settings: settings({ sendChannels: channels }), codes: vatCodes() });
+    renderWithProviders(<SettingsPage />);
+
+    const card = await sendingCard();
+    expect(card.getByRole("radio", { name: "Disabled" })).toBeChecked();
+    const faktura = card.getByRole("radio", { name: /Faktura.*faktura@selger\.example.*SMTP/ });
+    expect(faktura).not.toBeChecked();
+    // A channel that cannot send is shown as such and is not offered.
+    const post = card.getByRole("radio", { name: /post@selger\.example.*Microsoft 365.*Cannot send/ });
+    expect(post).toBeDisabled();
+
+    await userEvent.click(faktura);
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(sent(fetchMock, "PUT").url).toBe("/api/v1/invoices/settings"));
+    expect(sent(fetchMock, "PUT").body).toMatchObject({ sendChannel: channels[0].id, revision: 5 });
+  });
+
+  it("sends Disabled as null", async () => {
+    const fetchMock = server(
+      {},
+      {
+        settings: settings({ sendChannels: channels, sendChannel: channels[0].id, sendChannelState: "ready" }),
+        codes: vatCodes(),
+      },
+    );
+    renderWithProviders(<SettingsPage />);
+
+    const card = await sendingCard();
+    expect(card.getByRole("radio", { name: /Faktura/ })).toBeChecked();
+    await userEvent.click(card.getByRole("radio", { name: "Disabled" }));
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(sent(fetchMock, "PUT").url).toBe("/api/v1/invoices/settings"));
+    expect(sent(fetchMock, "PUT").body).toHaveProperty("sendChannel", null);
+  });
+
+  it("shows a stored channel that has gone as disabled, and keeps it on a save that does not touch it", async () => {
+    const gone = "0d4e8f12-7a3b-4c65-9e21-3b5a7c9d1f08";
+    const fetchMock = server(
+      {},
+      {
+        settings: settings({ sendChannels: channels, sendChannel: gone, sendChannelState: "gone" }),
+        codes: vatCodes(),
+      },
+    );
+    renderWithProviders(<SettingsPage />);
+
+    const card = await sendingCard();
+    expect(card.getByRole("radio", { name: "Disabled — the channel no longer exists" })).toBeChecked();
+    await userEvent.type(await screen.findByRole("textbox", { name: "Postal code" }), "0155");
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(sent(fetchMock, "PUT").url).toBe("/api/v1/invoices/settings"));
+    expect(sent(fetchMock, "PUT").body).toMatchObject({ sendChannel: gone });
+  });
+
+  it("keeps a stored channel that cannot send selectable, so it can be seen and changed", async () => {
+    server(
+      {},
+      {
+        settings: settings({ sendChannels: channels, sendChannel: channels[1].id, sendChannelState: "unavailable" }),
+        codes: vatCodes(),
+      },
+    );
+    renderWithProviders(<SettingsPage />);
+
+    const card = await sendingCard();
+    const post = card.getByRole("radio", { name: /post@selger\.example/ });
+    expect(post).toBeChecked();
+    expect(post).not.toBeDisabled();
+  });
+
+  it("says there are no channels, and puts a refused channel's words on the card", async () => {
+    server({
+      "PUT /api/v1/invoices/settings": jsonResponse(400, {
+        title: "Invalid invoice settings",
+        status: 400,
+        errors: { sendChannel: ["No active channel has this id"] },
+      }),
+    });
+    renderWithProviders(<SettingsPage />);
+
+    const card = await sendingCard();
+    expect(
+      card.getByText("There are no mail channels yet. Add one under Channels in Communications."),
+    ).toBeInTheDocument();
+    await userEvent.type(await screen.findByRole("textbox", { name: "Postal code" }), "0155");
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(await card.findByText("Choose one of the channels listed, or Disabled.")).toBeInTheDocument();
     expect(screen.queryByText("Could not save the settings")).not.toBeInTheDocument();
   });
 });

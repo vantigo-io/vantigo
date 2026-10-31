@@ -760,6 +760,9 @@ type CalendarItems struct {
 
 // CalendarMeta What the calendar app needs before it asks for a window.
 type CalendarMeta struct {
+	// CanManage Whether the caller holds calendar:manage - the Calendar settings' Invitations card is for them (integrations design T6).
+	CanManage bool `json:"canManage"`
+
 	// CanViewColleagues Whether the caller holds calendar:view-colleagues.
 	CanViewColleagues bool `json:"canViewColleagues"`
 

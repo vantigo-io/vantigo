@@ -5,7 +5,14 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import "../i18n";
 import { problemResponse, sent, sentAll } from "../test/api";
 import { renderWithProviders } from "../test/render";
-import { feedAddressFixture, mailboxSyncFixture, stubCalendarServer, subscriptionFixture } from "../test/server";
+import {
+  defaultMeta,
+  feedAddressFixture,
+  invitationSettingsFixture,
+  mailboxSyncFixture,
+  stubCalendarServer,
+  subscriptionFixture,
+} from "../test/server";
 import { type ConnectionButtonProps, SettingsPage } from "./settings";
 
 const card = (name: string) => screen.findByRole("region", { name });
@@ -668,5 +675,101 @@ describe("SettingsPage: the connection.button slot", () => {
     const region = await card("Outlook");
     expect(await within(region).findByRole("switch", { name: "Sync to my Outlook calendar" })).toBeInTheDocument();
     expect(within(region).queryByRole("button", { name: /^connect/ })).not.toBeInTheDocument();
+  });
+});
+
+describe("SettingsPage: invitations to people outside the company", () => {
+  const manager = () => defaultMeta({ canManage: true });
+
+  it("shows the card to a holder of calendar:manage alone, and asks the server for nothing otherwise", async () => {
+    const hidden = stubCalendarServer();
+    renderWithProviders(<SettingsPage />);
+    expect(await card("Outlook")).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Invitations to people outside the company" })).not.toBeInTheDocument();
+    expect(hidden.actualCalls.some(([url]) => String(url).includes("invitation-settings"))).toBe(false);
+  });
+
+  it("offers the channels with their provider, off when none is chosen, and saves the choice with its revision", async () => {
+    const user = userEvent.setup();
+    const fetchMock = stubCalendarServer({ meta: manager() });
+    renderWithProviders(<SettingsPage />);
+
+    const region = await card("Invitations to people outside the company");
+    expect(await within(region).findByRole("radio", { name: "Off" })).toBeChecked();
+    const kalender = within(region).getByRole("radio", { name: /Kalender.*kalender@selger\.example.*SMTP/ });
+    expect(kalender).not.toBeChecked();
+    // A channel that cannot send is shown as such and is not offered.
+    expect(
+      within(region).getByRole("radio", { name: /post@selger\.example.*Microsoft 365.*Cannot send/ }),
+    ).toBeDisabled();
+    expect(within(region).getByRole("button", { name: "Save" })).toBeDisabled();
+
+    await user.click(kalender);
+    await user.click(within(region).getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(sent(fetchMock, "PUT").url).toBe("/api/v1/calendar/invitation-settings"));
+    expect(sent(fetchMock, "PUT").body).toEqual({ invitationChannel: "4c2f8e10-6d3a-4b97-8a51-0e9d7c3b2a64" });
+    expect(sent(fetchMock, "PUT").headers).toMatchObject({ "if-match": "1" });
+    expect(await screen.findByText("Invitation settings saved")).toBeInTheDocument();
+    expect(await within(region).findByRole("radio", { name: /Kalender/ })).toBeChecked();
+  });
+
+  it("sends off as null", async () => {
+    const user = userEvent.setup();
+    const fetchMock = stubCalendarServer({
+      meta: manager(),
+      invitationSettings: invitationSettingsFixture({
+        invitationChannel: "4c2f8e10-6d3a-4b97-8a51-0e9d7c3b2a64",
+        state: "ready",
+      }),
+    });
+    renderWithProviders(<SettingsPage />);
+
+    const region = await card("Invitations to people outside the company");
+    expect(await within(region).findByRole("radio", { name: /Kalender/ })).toBeChecked();
+    await user.click(within(region).getByRole("radio", { name: "Off" }));
+    await user.click(within(region).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(sent(fetchMock, "PUT").url).toBe("/api/v1/calendar/invitation-settings"));
+    expect(sent(fetchMock, "PUT").body).toEqual({ invitationChannel: null });
+  });
+
+  it("shows a stored channel that has gone as off", async () => {
+    stubCalendarServer({
+      meta: manager(),
+      invitationSettings: invitationSettingsFixture({
+        invitationChannel: "0d4e8f12-7a3b-4c65-9e21-3b5a7c9d1f08",
+        state: "gone",
+      }),
+    });
+    renderWithProviders(<SettingsPage />);
+
+    const region = await card("Invitations to people outside the company");
+    expect(await within(region).findByRole("radio", { name: "Off — the channel no longer exists" })).toBeChecked();
+  });
+
+  it("says the settings changed on a stale save, and reloads them on request", async () => {
+    const user = userEvent.setup();
+    stubCalendarServer({
+      meta: manager(),
+      invitationSettingsRefusal: problemResponse(409, "Conflict", { code: "revision_mismatch" }),
+    });
+    renderWithProviders(<SettingsPage />);
+
+    const region = await card("Invitations to people outside the company");
+    await user.click(await within(region).findByRole("radio", { name: /Kalender/ }));
+    await user.click(within(region).getByRole("button", { name: "Save" }));
+    expect(await within(region).findByText("The settings changed")).toBeInTheDocument();
+    await user.click(within(region).getByRole("button", { name: "Reload" }));
+    await waitFor(() => expect(within(region).queryByText("The settings changed")).not.toBeInTheDocument());
+  });
+
+  it("says Invitasjoner til personer utenfor selskapet in Norwegian", async () => {
+    setLanguagePreference("nb");
+    stubCalendarServer({ meta: manager() });
+    renderWithProviders(<SettingsPage />);
+
+    const region = await card("Invitasjoner til personer utenfor selskapet");
+    expect(await within(region).findByRole("radio", { name: "Av" })).toBeChecked();
+    expect(within(region).getByRole("radio", { name: /post@selger\.example.*Kan ikke sende/ })).toBeDisabled();
   });
 });

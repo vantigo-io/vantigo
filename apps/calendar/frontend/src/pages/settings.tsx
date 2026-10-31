@@ -45,6 +45,7 @@ import {
   updateMailboxSync,
   waitsForConnection,
 } from "../api/mailbox-sync";
+import { calendarMetaQueryOptions } from "../api/meta";
 import { ApiConflictError, ApiValidationError, CALENDAR_QUERY_KEY } from "../api/request";
 import {
   type CalendarSubscription,
@@ -59,6 +60,7 @@ import {
 } from "../api/subscriptions";
 import "../i18n";
 import { colourForKind, colourForName, kindLabelKey, SUBSCRIPTION_COLOURS } from "../lib/colours";
+import { InvitationsCard } from "./-invitations-card";
 
 /** "2 hours ago", "in 3 days", "now": the largest whole unit, in the viewer's language. */
 const relativeTime = (instant: string, locale: string): string => {
@@ -109,12 +111,15 @@ export interface SettingsPageProps {
  */
 export const SettingsPage = ({ connectionButton }: SettingsPageProps = {}) => {
   const { t } = useI18n("calendar");
+  const meta = useQuery(calendarMetaQueryOptions());
   return (
     <Stack gap="lg">
       <PageHeader title={t("settings.title")} description={t("settings.description")} />
       <FeedSection />
       <OutlookSection connectionButton={connectionButton} />
       <SubscriptionsSection />
+      {/* The workspace's, not the person's: the channel invitations go out from (integrations design T6). */}
+      {meta.data?.canManage === true && <InvitationsCard />}
     </Stack>
   );
 };

@@ -1,6 +1,7 @@
 import type { Appointment } from "../api/appointments";
 import type { CalendarContact } from "../api/contacts";
 import type { FeedAddress, FeedAddresses, FeedVariant } from "../api/feed";
+import type { InvitationSettings } from "../api/invitation-settings";
 import type { CalendarItem, CalendarItems } from "../api/items";
 import { type MailboxSync, type MailboxSyncWrite, mailboxSyncCanRun } from "../api/mailbox-sync";
 import type { CalendarMeta } from "../api/meta";
@@ -25,6 +26,7 @@ export const defaultMeta = (overrides: Partial<CalendarMeta> = {}): CalendarMeta
   timeZone: "Europe/Oslo",
   today: "2026-10-19",
   canViewColleagues: false,
+  canManage: false,
   invitationsAvailable: true,
   sources: SOURCES,
   ...overrides,
@@ -86,6 +88,33 @@ export const mailboxSyncFixture = (overrides: Partial<MailboxSync> = {}): Mailbo
   ...overrides,
 });
 
+/** The invitation settings as a fresh installation answers them: off, two channels to choose among. */
+export const invitationSettingsFixture = (overrides: Partial<InvitationSettings> = {}): InvitationSettings => ({
+  invitationChannel: null,
+  state: "disabled",
+  channels: [
+    {
+      id: "4c2f8e10-6d3a-4b97-8a51-0e9d7c3b2a64",
+      address: "kalender@selger.example",
+      displayName: "Kalender",
+      provider: "smtp",
+      providerDisplayName: "SMTP",
+      available: true,
+    },
+    {
+      id: "8e1b5d37-2a4c-4f60-9b83-7d0c6e2f1a95",
+      address: "post@selger.example",
+      displayName: "",
+      provider: "entra",
+      providerDisplayName: "Microsoft 365",
+      available: false,
+    },
+  ],
+  revision: 1,
+  updatedAt: "2026-11-01T09:00:00Z",
+  ...overrides,
+});
+
 export interface CalendarServer {
   meta?: CalendarMeta;
   /** What `/items` answers, whatever the window; the window asked for is echoed back. */
@@ -110,6 +139,10 @@ export interface CalendarServer {
   mailboxSync?: MailboxSync;
   /** A response to `PUT /mailbox-sync` instead of the fake's own. */
   mailboxSyncRefusal?: Response;
+  /** What `/invitation-settings` answers at first; a PUT replaces the channel under If-Match, as the server would. */
+  invitationSettings?: InvitationSettings;
+  /** A response to `PUT /invitation-settings` instead of the fake's own. */
+  invitationSettingsRefusal?: Response;
 }
 
 /**
@@ -122,6 +155,7 @@ export const stubCalendarServer = (server: CalendarServer = {}): StubbedFetch =>
   let subscriptions = [...(server.subscriptions ?? [])];
   let resets = 0;
   let mailboxSync = server.mailboxSync ?? mailboxSyncFixture();
+  let invitationSettings = server.invitationSettings ?? invitationSettingsFixture();
   return stubFetch(
     (input: RequestInfo | URL, init?: RequestInit) => {
       const url = new URL(String(input), "http://localhost");
@@ -174,6 +208,23 @@ export const stubCalendarServer = (server: CalendarServer = {}): StubbedFetch =>
         : undefined;
       if (method === "GET" && appointmentMatch)
         return Promise.resolve(appointment ? jsonResponse(200, appointment) : new Response(null, { status: 404 }));
+      if (path === "/invitation-settings" && method === "GET")
+        return Promise.resolve(jsonResponse(200, invitationSettings));
+      if (path === "/invitation-settings" && method === "PUT") {
+        if (server.invitationSettingsRefusal) return Promise.resolve(server.invitationSettingsRefusal);
+        const ifMatch = Number(new Headers(init?.headers).get("If-Match")?.replaceAll('"', ""));
+        if (ifMatch !== invitationSettings.revision)
+          return Promise.resolve(problemResponse(409, "Conflict", { code: "revision_mismatch" }));
+        const write = JSON.parse(String(init?.body)) as { invitationChannel: string | null };
+        const channel = invitationSettings.channels.find((one) => one.id === write.invitationChannel);
+        invitationSettings = {
+          ...invitationSettings,
+          invitationChannel: write.invitationChannel,
+          state: write.invitationChannel === null ? "disabled" : channel?.available ? "ready" : "unavailable",
+          revision: invitationSettings.revision + 1,
+        };
+        return Promise.resolve(jsonResponse(200, invitationSettings));
+      }
       if (path === "/mailbox-sync" && method === "GET") return Promise.resolve(jsonResponse(200, mailboxSync));
       if (path === "/mailbox-sync" && method === "PUT") {
         if (server.mailboxSyncRefusal) return Promise.resolve(server.mailboxSyncRefusal);

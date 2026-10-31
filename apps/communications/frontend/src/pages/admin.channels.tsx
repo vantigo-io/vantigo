@@ -192,6 +192,16 @@ export function ChannelsPage() {
                       <Badge color={channel.isActive ? "teal" : "gray"}>
                         {channel.isActive ? t("active") : t("inactive")}
                       </Badge>
+                      {channel.available === false && (
+                        <>
+                          <Badge ml="xs" color="orange">
+                            {t("unavailable")}
+                          </Badge>
+                          <Text size="xs" c="dimmed">
+                            {channel.provider === "smtp" ? t("unavailableSmtp") : t("unavailableEntra")}
+                          </Text>
+                        </>
+                      )}
                     </Table.Td>
                     <Table.Td>
                       <ReceiveStatus sync={channel.sync} />

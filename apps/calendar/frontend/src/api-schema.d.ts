@@ -742,6 +742,8 @@ export interface components {
         };
         /** @description What the calendar app needs before it asks for a window. */
         CalendarMeta: {
+            /** @description Whether the caller holds calendar:manage - the Calendar settings' Invitations card is for them (integrations design T6). */
+            canManage: boolean;
             /** @description Whether the caller holds calendar:view-colleagues. */
             canViewColleagues: boolean;
             /** @description Whether invitations are mailed - the channel chosen in the Calendar settings can send (integrations design T6). When false, outside attendees are stored and marked not sent. */
