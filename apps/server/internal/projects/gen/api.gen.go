@@ -492,6 +492,22 @@ type PaginatedResponseOfTimelineEntryResponse struct {
 	Pagination externalRef0.PaginationMetadata `json:"pagination"`
 }
 
+// ProjectApplyTemplateRequest Instantiate a project template onto an existing project with relative day offsets calculated from kickoffDate.
+type ProjectApplyTemplateRequest struct {
+	// KickoffDate The base calendar date for relative day offset calculations (T+0).
+	KickoffDate openapi_types.Date `json:"kickoffDate"`
+
+	// TemplateId The template to instantiate.
+	TemplateId int32 `json:"templateId"`
+}
+
+// ProjectApplyTemplateResponse Result of applying a template to a project.
+type ProjectApplyTemplateResponse struct {
+	DependenciesCreated int32 `json:"dependenciesCreated"`
+	MilestonesCreated   int32 `json:"milestonesCreated"`
+	TasksCreated        int32 `json:"tasksCreated"`
+}
+
 // ProjectCapabilities What the calling user may do with this project, so the frontend never re-derives authorization.
 type ProjectCapabilities struct {
 	// CanContribute Whether the caller may write the project's work — tasks, checklists and comments. True for its members and its managers.
@@ -1084,6 +1100,88 @@ type ProjectSummaryResponse struct {
 	UpdatedAt time.Time              `json:"updatedAt"`
 }
 
+// ProjectTemplateCreateRequest Create a reusable project template blueprint.
+type ProjectTemplateCreateRequest struct {
+	// BillingType Optional default billing type.
+	BillingType  *string                      `json:"billingType,omitempty"`
+	Dependencies *[]ProjectTemplateDependency `json:"dependencies,omitempty"`
+	Description  *string                      `json:"description,omitempty"`
+	Milestones   *[]ProjectTemplateMilestone  `json:"milestones,omitempty"`
+	Name         string                       `json:"name"`
+	Tasks        *[]ProjectTemplateTask       `json:"tasks,omitempty"`
+}
+
+// ProjectTemplateDependency A dependency link within a template referencing tasks by their 0-based index.
+type ProjectTemplateDependency struct {
+	PredecessorTaskIndex int32 `json:"predecessorTaskIndex"`
+	SuccessorTaskIndex   int32 `json:"successorTaskIndex"`
+}
+
+// ProjectTemplateListResponse Reusable project template blueprints.
+type ProjectTemplateListResponse struct {
+	Templates []ProjectTemplateResponse `json:"templates"`
+}
+
+// ProjectTemplateMilestone A delivery milestone definition in a template with a target day offset from project kickoff.
+type ProjectTemplateMilestone struct {
+	Description *string `json:"description,omitempty"`
+	Name        string  `json:"name"`
+
+	// TargetDayOffset Number of calendar days from kickoff date (e.g. 14 for T+14).
+	TargetDayOffset int32 `json:"targetDayOffset"`
+}
+
+// ProjectTemplateResponse One project template blueprint.
+type ProjectTemplateResponse struct {
+	BillingType  *string                     `json:"billingType,omitempty"`
+	CreatedAt    time.Time                   `json:"createdAt"`
+	Dependencies []ProjectTemplateDependency `json:"dependencies"`
+	Description  *string                     `json:"description,omitempty"`
+	Id           int32                       `json:"id"`
+	Milestones   []ProjectTemplateMilestone  `json:"milestones"`
+	Name         string                      `json:"name"`
+	Revision     int32                       `json:"revision"`
+	Tasks        []ProjectTemplateTask       `json:"tasks"`
+	UpdatedAt    time.Time                   `json:"updatedAt"`
+}
+
+// ProjectTemplateSubtask A subtask blueprint within a template task.
+type ProjectTemplateSubtask struct {
+	Description    *string  `json:"description,omitempty"`
+	DueDayOffset   *int32   `json:"dueDayOffset,omitempty"`
+	EstimateHours  *float64 `json:"estimateHours,omitempty"`
+	StartDayOffset *int32   `json:"startDayOffset,omitempty"`
+	Title          string   `json:"title"`
+}
+
+// ProjectTemplateTask A top-level task blueprint within a template.
+type ProjectTemplateTask struct {
+	Description *string `json:"description,omitempty"`
+
+	// DueDayOffset Relative due date offset in days from kickoff date.
+	DueDayOffset  *int32   `json:"dueDayOffset,omitempty"`
+	EstimateHours *float64 `json:"estimateHours,omitempty"`
+
+	// MilestoneIndex Optional 0-based index of the template's delivery milestone this task is linked to.
+	MilestoneIndex *int32 `json:"milestoneIndex,omitempty"`
+
+	// StartDayOffset Relative start date offset in days from kickoff date.
+	StartDayOffset *int32                    `json:"startDayOffset,omitempty"`
+	Subtasks       *[]ProjectTemplateSubtask `json:"subtasks,omitempty"`
+	Title          string                    `json:"title"`
+}
+
+// ProjectTemplateUpdateRequest Update a reusable project template blueprint.
+type ProjectTemplateUpdateRequest struct {
+	BillingType  *string                      `json:"billingType,omitempty"`
+	Dependencies *[]ProjectTemplateDependency `json:"dependencies,omitempty"`
+	Description  *string                      `json:"description,omitempty"`
+	Milestones   *[]ProjectTemplateMilestone  `json:"milestones,omitempty"`
+	Name         string                       `json:"name"`
+	Revision     int32                        `json:"revision"`
+	Tasks        *[]ProjectTemplateTask       `json:"tasks,omitempty"`
+}
+
 // ProjectUpdateRequest Every field of the project as it should stand after the update, carrying the revision it was read at. A revision that has moved on answers 409.
 type ProjectUpdateRequest struct {
 	// BillingType 'time-and-materials', 'fixed-price' or 'non-billable'. An internal project (no customerId) must be 'non-billable'.
@@ -1457,8 +1555,17 @@ type PutProjectsTasksByTaskIdPositionJSONRequestBody = TaskPositionRequest
 // PostProjectsTasksByTaskIdRescheduleDownstreamJSONRequestBody defines body for PostProjectsTasksByTaskIdRescheduleDownstream for application/json ContentType.
 type PostProjectsTasksByTaskIdRescheduleDownstreamJSONRequestBody = TaskRescheduleDownstreamRequest
 
+// PostProjectsTemplatesJSONRequestBody defines body for PostProjectsTemplates for application/json ContentType.
+type PostProjectsTemplatesJSONRequestBody = ProjectTemplateCreateRequest
+
+// PutProjectsTemplatesByTemplateIdJSONRequestBody defines body for PutProjectsTemplatesByTemplateId for application/json ContentType.
+type PutProjectsTemplatesByTemplateIdJSONRequestBody = ProjectTemplateUpdateRequest
+
 // PutProjectsByIdJSONRequestBody defines body for PutProjectsById for application/json ContentType.
 type PutProjectsByIdJSONRequestBody = ProjectUpdateRequest
+
+// PostProjectsByIdApplyTemplateJSONRequestBody defines body for PostProjectsByIdApplyTemplate for application/json ContentType.
+type PostProjectsByIdApplyTemplateJSONRequestBody = ProjectApplyTemplateRequest
 
 // PostProjectsByIdBillingLinesJSONRequestBody defines body for PostProjectsByIdBillingLines for application/json ContentType.
 type PostProjectsByIdBillingLinesJSONRequestBody = BillingLineRequest
@@ -1591,12 +1698,30 @@ type ServerInterface interface {
 	// PostProjectsTasksByTaskIdRescheduleDownstream Reschedule downstream tasks reachable via dependencies
 	// (POST /api/v1/projects/tasks/{taskId}/reschedule-downstream)
 	PostProjectsTasksByTaskIdRescheduleDownstream(w http.ResponseWriter, r *http.Request, taskId int32)
+	// GetProjectsTemplates List project templates
+	// (GET /api/v1/projects/templates)
+	GetProjectsTemplates(w http.ResponseWriter, r *http.Request)
+	// PostProjectsTemplates Create a project template
+	// (POST /api/v1/projects/templates)
+	PostProjectsTemplates(w http.ResponseWriter, r *http.Request)
+	// DeleteProjectsTemplatesByTemplateId Delete a project template
+	// (DELETE /api/v1/projects/templates/{templateId})
+	DeleteProjectsTemplatesByTemplateId(w http.ResponseWriter, r *http.Request, templateId int32)
+	// GetProjectsTemplatesByTemplateId Get a project template
+	// (GET /api/v1/projects/templates/{templateId})
+	GetProjectsTemplatesByTemplateId(w http.ResponseWriter, r *http.Request, templateId int32)
+	// PutProjectsTemplatesByTemplateId Update a project template
+	// (PUT /api/v1/projects/templates/{templateId})
+	PutProjectsTemplatesByTemplateId(w http.ResponseWriter, r *http.Request, templateId int32)
 	// GetProjectsById Get a project by id
 	// (GET /api/v1/projects/{id})
 	GetProjectsById(w http.ResponseWriter, r *http.Request, id int32)
 	// PutProjectsById Update a project
 	// (PUT /api/v1/projects/{id})
 	PutProjectsById(w http.ResponseWriter, r *http.Request, id int32)
+	// PostProjectsByIdApplyTemplate Apply a template to a project
+	// (POST /api/v1/projects/{id}/apply-template)
+	PostProjectsByIdApplyTemplate(w http.ResponseWriter, r *http.Request, id int32)
 	// GetProjectsByIdAssignableUsers Search users assignable to a project
 	// (GET /api/v1/projects/{id}/assignable-users)
 	GetProjectsByIdAssignableUsers(w http.ResponseWriter, r *http.Request, id int32, params GetProjectsByIdAssignableUsersParams)
@@ -2802,6 +2927,112 @@ func (siw *ServerInterfaceWrapper) PostProjectsTasksByTaskIdRescheduleDownstream
 	handler.ServeHTTP(w, r)
 }
 
+// GetProjectsTemplates operation middleware
+func (siw *ServerInterfaceWrapper) GetProjectsTemplates(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetProjectsTemplates(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostProjectsTemplates operation middleware
+func (siw *ServerInterfaceWrapper) PostProjectsTemplates(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostProjectsTemplates(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteProjectsTemplatesByTemplateId operation middleware
+func (siw *ServerInterfaceWrapper) DeleteProjectsTemplatesByTemplateId(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "templateId" -------------
+	var templateId int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "templateId", r.PathValue("templateId"), &templateId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "templateId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteProjectsTemplatesByTemplateId(w, r, templateId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetProjectsTemplatesByTemplateId operation middleware
+func (siw *ServerInterfaceWrapper) GetProjectsTemplatesByTemplateId(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "templateId" -------------
+	var templateId int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "templateId", r.PathValue("templateId"), &templateId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "templateId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetProjectsTemplatesByTemplateId(w, r, templateId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutProjectsTemplatesByTemplateId operation middleware
+func (siw *ServerInterfaceWrapper) PutProjectsTemplatesByTemplateId(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "templateId" -------------
+	var templateId int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "templateId", r.PathValue("templateId"), &templateId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "templateId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutProjectsTemplatesByTemplateId(w, r, templateId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetProjectsById operation middleware
 func (siw *ServerInterfaceWrapper) GetProjectsById(w http.ResponseWriter, r *http.Request) {
 
@@ -2845,6 +3076,32 @@ func (siw *ServerInterfaceWrapper) PutProjectsById(w http.ResponseWriter, r *htt
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PutProjectsById(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostProjectsByIdApplyTemplate operation middleware
+func (siw *ServerInterfaceWrapper) PostProjectsByIdApplyTemplate(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostProjectsByIdApplyTemplate(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3648,6 +3905,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/projects/my-tasks", wrapper.GetProjectsMyTasks)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/projects/{id}", wrapper.GetProjectsById)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/projects/{id}", wrapper.PutProjectsById)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/projects/{id}/apply-template", wrapper.PostProjectsByIdApplyTemplate)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/projects/{id}/assignable-users", wrapper.GetProjectsByIdAssignableUsers)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/projects/{id}/billing-lines", wrapper.GetProjectsByIdBillingLines)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/projects/{id}/billing-lines", wrapper.PostProjectsByIdBillingLines)
@@ -3686,6 +3944,11 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/projects/tasks/{taskId}/comments/{commentId}", wrapper.PutProjectsTasksByTaskIdCommentsByCommentId)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/projects/tasks/{taskId}/position", wrapper.PutProjectsTasksByTaskIdPosition)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/projects/tasks/{taskId}/reschedule-downstream", wrapper.PostProjectsTasksByTaskIdRescheduleDownstream)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/projects/templates", wrapper.GetProjectsTemplates)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/projects/templates", wrapper.PostProjectsTemplates)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/projects/templates/{templateId}", wrapper.DeleteProjectsTemplatesByTemplateId)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/projects/templates/{templateId}", wrapper.GetProjectsTemplatesByTemplateId)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/projects/templates/{templateId}", wrapper.PutProjectsTemplatesByTemplateId)
 
 	return m
 }
@@ -5889,6 +6152,316 @@ func (response PostProjectsTasksByTaskIdRescheduleDownstream404Response) VisitPo
 	return nil
 }
 
+type GetProjectsTemplatesRequestObject struct {
+}
+
+type GetProjectsTemplatesResponseObject interface {
+	VisitGetProjectsTemplatesResponse(w http.ResponseWriter) error
+}
+
+type GetProjectsTemplates200JSONResponse ProjectTemplateListResponse
+
+func (response GetProjectsTemplates200JSONResponse) VisitGetProjectsTemplatesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProjectsTemplates401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetProjectsTemplates401JSONResponse) VisitGetProjectsTemplatesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProjectsTemplates403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetProjectsTemplates403JSONResponse) VisitGetProjectsTemplatesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostProjectsTemplatesRequestObject struct {
+	Body *PostProjectsTemplatesJSONRequestBody
+}
+
+type PostProjectsTemplatesResponseObject interface {
+	VisitPostProjectsTemplatesResponse(w http.ResponseWriter) error
+}
+
+type PostProjectsTemplates201JSONResponse ProjectTemplateResponse
+
+func (response PostProjectsTemplates201JSONResponse) VisitPostProjectsTemplatesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostProjectsTemplates400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response PostProjectsTemplates400ApplicationProblemPlusJSONResponse) VisitPostProjectsTemplatesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostProjectsTemplates401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostProjectsTemplates401JSONResponse) VisitPostProjectsTemplatesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostProjectsTemplates403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostProjectsTemplates403JSONResponse) VisitPostProjectsTemplatesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteProjectsTemplatesByTemplateIdRequestObject struct {
+	TemplateId int32 `json:"templateId"`
+}
+
+type DeleteProjectsTemplatesByTemplateIdResponseObject interface {
+	VisitDeleteProjectsTemplatesByTemplateIdResponse(w http.ResponseWriter) error
+}
+
+type DeleteProjectsTemplatesByTemplateId204Response struct {
+}
+
+func (response DeleteProjectsTemplatesByTemplateId204Response) VisitDeleteProjectsTemplatesByTemplateIdResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteProjectsTemplatesByTemplateId401JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteProjectsTemplatesByTemplateId401JSONResponse) VisitDeleteProjectsTemplatesByTemplateIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteProjectsTemplatesByTemplateId403JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteProjectsTemplatesByTemplateId403JSONResponse) VisitDeleteProjectsTemplatesByTemplateIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteProjectsTemplatesByTemplateId404Response struct {
+}
+
+func (response DeleteProjectsTemplatesByTemplateId404Response) VisitDeleteProjectsTemplatesByTemplateIdResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type GetProjectsTemplatesByTemplateIdRequestObject struct {
+	TemplateId int32 `json:"templateId"`
+}
+
+type GetProjectsTemplatesByTemplateIdResponseObject interface {
+	VisitGetProjectsTemplatesByTemplateIdResponse(w http.ResponseWriter) error
+}
+
+type GetProjectsTemplatesByTemplateId200JSONResponse ProjectTemplateResponse
+
+func (response GetProjectsTemplatesByTemplateId200JSONResponse) VisitGetProjectsTemplatesByTemplateIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProjectsTemplatesByTemplateId401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetProjectsTemplatesByTemplateId401JSONResponse) VisitGetProjectsTemplatesByTemplateIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProjectsTemplatesByTemplateId403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetProjectsTemplatesByTemplateId403JSONResponse) VisitGetProjectsTemplatesByTemplateIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProjectsTemplatesByTemplateId404Response struct {
+}
+
+func (response GetProjectsTemplatesByTemplateId404Response) VisitGetProjectsTemplatesByTemplateIdResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PutProjectsTemplatesByTemplateIdRequestObject struct {
+	TemplateId int32 `json:"templateId"`
+	Body       *PutProjectsTemplatesByTemplateIdJSONRequestBody
+}
+
+type PutProjectsTemplatesByTemplateIdResponseObject interface {
+	VisitPutProjectsTemplatesByTemplateIdResponse(w http.ResponseWriter) error
+}
+
+type PutProjectsTemplatesByTemplateId200JSONResponse ProjectTemplateResponse
+
+func (response PutProjectsTemplatesByTemplateId200JSONResponse) VisitPutProjectsTemplatesByTemplateIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutProjectsTemplatesByTemplateId400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response PutProjectsTemplatesByTemplateId400ApplicationProblemPlusJSONResponse) VisitPutProjectsTemplatesByTemplateIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutProjectsTemplatesByTemplateId401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutProjectsTemplatesByTemplateId401JSONResponse) VisitPutProjectsTemplatesByTemplateIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutProjectsTemplatesByTemplateId403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutProjectsTemplatesByTemplateId403JSONResponse) VisitPutProjectsTemplatesByTemplateIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutProjectsTemplatesByTemplateId404Response struct {
+}
+
+func (response PutProjectsTemplatesByTemplateId404Response) VisitPutProjectsTemplatesByTemplateIdResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PutProjectsTemplatesByTemplateId409ApplicationProblemPlusJSONResponse externalRef0.ProblemDetails
+
+func (response PutProjectsTemplatesByTemplateId409ApplicationProblemPlusJSONResponse) VisitPutProjectsTemplatesByTemplateIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetProjectsByIdRequestObject struct {
 	Id int32 `json:"id"`
 }
@@ -6032,6 +6605,79 @@ func (response PutProjectsById409ApplicationProblemPlusJSONResponse) VisitPutPro
 	w.WriteHeader(409)
 	_, err := buf.WriteTo(w)
 	return err
+}
+
+type PostProjectsByIdApplyTemplateRequestObject struct {
+	Id   int32 `json:"id"`
+	Body *PostProjectsByIdApplyTemplateJSONRequestBody
+}
+
+type PostProjectsByIdApplyTemplateResponseObject interface {
+	VisitPostProjectsByIdApplyTemplateResponse(w http.ResponseWriter) error
+}
+
+type PostProjectsByIdApplyTemplate200JSONResponse ProjectApplyTemplateResponse
+
+func (response PostProjectsByIdApplyTemplate200JSONResponse) VisitPostProjectsByIdApplyTemplateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostProjectsByIdApplyTemplate400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response PostProjectsByIdApplyTemplate400ApplicationProblemPlusJSONResponse) VisitPostProjectsByIdApplyTemplateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostProjectsByIdApplyTemplate401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostProjectsByIdApplyTemplate401JSONResponse) VisitPostProjectsByIdApplyTemplateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostProjectsByIdApplyTemplate403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostProjectsByIdApplyTemplate403JSONResponse) VisitPostProjectsByIdApplyTemplateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostProjectsByIdApplyTemplate404Response struct {
+}
+
+func (response PostProjectsByIdApplyTemplate404Response) VisitPostProjectsByIdApplyTemplateResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
 }
 
 type GetProjectsByIdAssignableUsersRequestObject struct {
@@ -7630,12 +8276,30 @@ type StrictServerInterface interface {
 	// PostProjectsTasksByTaskIdRescheduleDownstream Reschedule downstream tasks reachable via dependencies
 	// (POST /api/v1/projects/tasks/{taskId}/reschedule-downstream)
 	PostProjectsTasksByTaskIdRescheduleDownstream(ctx context.Context, request PostProjectsTasksByTaskIdRescheduleDownstreamRequestObject) (PostProjectsTasksByTaskIdRescheduleDownstreamResponseObject, error)
+	// GetProjectsTemplates List project templates
+	// (GET /api/v1/projects/templates)
+	GetProjectsTemplates(ctx context.Context, request GetProjectsTemplatesRequestObject) (GetProjectsTemplatesResponseObject, error)
+	// PostProjectsTemplates Create a project template
+	// (POST /api/v1/projects/templates)
+	PostProjectsTemplates(ctx context.Context, request PostProjectsTemplatesRequestObject) (PostProjectsTemplatesResponseObject, error)
+	// DeleteProjectsTemplatesByTemplateId Delete a project template
+	// (DELETE /api/v1/projects/templates/{templateId})
+	DeleteProjectsTemplatesByTemplateId(ctx context.Context, request DeleteProjectsTemplatesByTemplateIdRequestObject) (DeleteProjectsTemplatesByTemplateIdResponseObject, error)
+	// GetProjectsTemplatesByTemplateId Get a project template
+	// (GET /api/v1/projects/templates/{templateId})
+	GetProjectsTemplatesByTemplateId(ctx context.Context, request GetProjectsTemplatesByTemplateIdRequestObject) (GetProjectsTemplatesByTemplateIdResponseObject, error)
+	// PutProjectsTemplatesByTemplateId Update a project template
+	// (PUT /api/v1/projects/templates/{templateId})
+	PutProjectsTemplatesByTemplateId(ctx context.Context, request PutProjectsTemplatesByTemplateIdRequestObject) (PutProjectsTemplatesByTemplateIdResponseObject, error)
 	// GetProjectsById Get a project by id
 	// (GET /api/v1/projects/{id})
 	GetProjectsById(ctx context.Context, request GetProjectsByIdRequestObject) (GetProjectsByIdResponseObject, error)
 	// PutProjectsById Update a project
 	// (PUT /api/v1/projects/{id})
 	PutProjectsById(ctx context.Context, request PutProjectsByIdRequestObject) (PutProjectsByIdResponseObject, error)
+	// PostProjectsByIdApplyTemplate Apply a template to a project
+	// (POST /api/v1/projects/{id}/apply-template)
+	PostProjectsByIdApplyTemplate(ctx context.Context, request PostProjectsByIdApplyTemplateRequestObject) (PostProjectsByIdApplyTemplateResponseObject, error)
 	// GetProjectsByIdAssignableUsers Search users assignable to a project
 	// (GET /api/v1/projects/{id}/assignable-users)
 	GetProjectsByIdAssignableUsers(ctx context.Context, request GetProjectsByIdAssignableUsersRequestObject) (GetProjectsByIdAssignableUsersResponseObject, error)
@@ -8693,6 +9357,146 @@ func (sh *strictHandler) PostProjectsTasksByTaskIdRescheduleDownstream(w http.Re
 	}
 }
 
+// GetProjectsTemplates operation middleware
+func (sh *strictHandler) GetProjectsTemplates(w http.ResponseWriter, r *http.Request) {
+	var request GetProjectsTemplatesRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetProjectsTemplates(ctx, request.(GetProjectsTemplatesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetProjectsTemplates")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetProjectsTemplatesResponseObject); ok {
+		if err := validResponse.VisitGetProjectsTemplatesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostProjectsTemplates operation middleware
+func (sh *strictHandler) PostProjectsTemplates(w http.ResponseWriter, r *http.Request) {
+	var request PostProjectsTemplatesRequestObject
+
+	var body PostProjectsTemplatesJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostProjectsTemplates(ctx, request.(PostProjectsTemplatesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostProjectsTemplates")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostProjectsTemplatesResponseObject); ok {
+		if err := validResponse.VisitPostProjectsTemplatesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteProjectsTemplatesByTemplateId operation middleware
+func (sh *strictHandler) DeleteProjectsTemplatesByTemplateId(w http.ResponseWriter, r *http.Request, templateId int32) {
+	var request DeleteProjectsTemplatesByTemplateIdRequestObject
+
+	request.TemplateId = templateId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteProjectsTemplatesByTemplateId(ctx, request.(DeleteProjectsTemplatesByTemplateIdRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteProjectsTemplatesByTemplateId")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteProjectsTemplatesByTemplateIdResponseObject); ok {
+		if err := validResponse.VisitDeleteProjectsTemplatesByTemplateIdResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetProjectsTemplatesByTemplateId operation middleware
+func (sh *strictHandler) GetProjectsTemplatesByTemplateId(w http.ResponseWriter, r *http.Request, templateId int32) {
+	var request GetProjectsTemplatesByTemplateIdRequestObject
+
+	request.TemplateId = templateId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetProjectsTemplatesByTemplateId(ctx, request.(GetProjectsTemplatesByTemplateIdRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetProjectsTemplatesByTemplateId")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetProjectsTemplatesByTemplateIdResponseObject); ok {
+		if err := validResponse.VisitGetProjectsTemplatesByTemplateIdResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutProjectsTemplatesByTemplateId operation middleware
+func (sh *strictHandler) PutProjectsTemplatesByTemplateId(w http.ResponseWriter, r *http.Request, templateId int32) {
+	var request PutProjectsTemplatesByTemplateIdRequestObject
+
+	request.TemplateId = templateId
+
+	var body PutProjectsTemplatesByTemplateIdJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutProjectsTemplatesByTemplateId(ctx, request.(PutProjectsTemplatesByTemplateIdRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutProjectsTemplatesByTemplateId")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutProjectsTemplatesByTemplateIdResponseObject); ok {
+		if err := validResponse.VisitPutProjectsTemplatesByTemplateIdResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetProjectsById operation middleware
 func (sh *strictHandler) GetProjectsById(w http.ResponseWriter, r *http.Request, id int32) {
 	var request GetProjectsByIdRequestObject
@@ -8745,6 +9549,39 @@ func (sh *strictHandler) PutProjectsById(w http.ResponseWriter, r *http.Request,
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PutProjectsByIdResponseObject); ok {
 		if err := validResponse.VisitPutProjectsByIdResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostProjectsByIdApplyTemplate operation middleware
+func (sh *strictHandler) PostProjectsByIdApplyTemplate(w http.ResponseWriter, r *http.Request, id int32) {
+	var request PostProjectsByIdApplyTemplateRequestObject
+
+	request.Id = id
+
+	var body PostProjectsByIdApplyTemplateJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostProjectsByIdApplyTemplate(ctx, request.(PostProjectsByIdApplyTemplateRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostProjectsByIdApplyTemplate")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostProjectsByIdApplyTemplateResponseObject); ok {
+		if err := validResponse.VisitPostProjectsByIdApplyTemplateResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

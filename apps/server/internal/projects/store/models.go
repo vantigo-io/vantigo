@@ -150,6 +150,20 @@ type ProjectsTaskDependency struct {
 	CreatedAt         time.Time
 }
 
+type ProjectsTemplate struct {
+	ID              int32
+	Name            string
+	Description     *string
+	BillingType     *string
+	Milestones      []byte
+	Tasks           []byte
+	Dependencies    []byte
+	Revision        int32
+	CreatedByUserID uuid.UUID
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
+}
+
 type ProjectsTimelineEntry struct {
 	ID           int64
 	ProjectID    int32
