@@ -19,6 +19,7 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/calendar"
 	"github.com/vantigo-io/vantigo/server/internal/calendar/gen"
 	"github.com/vantigo-io/vantigo/server/internal/config"
+	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/mail"
 	"github.com/vantigo-io/vantigo/server/internal/modtest"
 )
@@ -32,18 +33,58 @@ import (
 // so a test shapes what it answers through identity's tables (directoryUser),
 // and every Notify it is asked for is on h.Notices().
 //
-// MAIL_DRIVER is smtp, so invitations are available (mailAvailable) and every
-// one reaches the mailbox through Deps.SMTPSend rather than a server; a test
-// that wants the log driver sets MAIL_DRIVER=log with WithEnv.
+// The Calendar settings choose a channel (inviteChannelID) that can send, so
+// invitations are available (mailAvailable) and every one reaches the mailbox
+// through Deps.OutboundMail rather than a server; a test that wants invitations
+// off clears the setting (invitationsOff).
 type harness struct {
 	*modtest.Harness
 	sources *fakeSources
 	mail    *mailbox
 }
 
-// smtpFrom is the harness installation's SMTP_FROM, the From and the
-// ORGANIZER of every invitation.
+// smtpFrom is the address of the harness installation's invitation channel, the
+// From and the ORGANIZER of every invitation.
 const smtpFrom = "calendar@example.invalid"
+
+// inviteChannelID is the id of that channel.
+var inviteChannelID = uuid.MustParse("7d2a4c18-9e05-4b3f-a6c1-0f8e2b5d9a34")
+
+// channelMail is a FakeOutboundMail whose Send also hands the message to the
+// mailbox fake, with the mail configuration it would have gone out on - the
+// channel's address as From.
+type channelMail struct {
+	*modtest.FakeOutboundMail
+	send func(ctx context.Context, cfg config.MailConfig, out mail.Outbound) error
+}
+
+func (m *channelMail) Send(ctx context.Context, id uuid.UUID, out mail.Outbound) error {
+	ch, err := m.Channel(ctx, id)
+	if err != nil {
+		return err
+	}
+	if !ch.Available {
+		return contracts.ErrChannelUnavailable
+	}
+	return m.send(ctx, config.MailConfig{Driver: "smtp", From: ch.Address}, out)
+}
+
+// withChannel wires the OutboundMail slot with one available channel
+// (inviteChannelID) whose sends go to send.
+func withChannel(send func(ctx context.Context, cfg config.MailConfig, out mail.Outbound) error) modtest.Option {
+	f := modtest.NewFakeOutboundMail()
+	f.SetChannels(contracts.OutboundChannel{
+		ID: inviteChannelID, Address: smtpFrom, Provider: "smtp", ProviderDisplayName: "SMTP", Available: true,
+	})
+	return modtest.WithOutboundMail(&channelMail{FakeOutboundMail: f, send: send})
+}
+
+// invitationsOff turns invitations off, as an Owner would in the Calendar
+// settings: no channel chosen.
+func invitationsOff(t *testing.T, h *harness) {
+	t.Helper()
+	h.Exec(t, `UPDATE calendar.settings SET invitation_channel = NULL`)
+}
 
 // newHarness is a calendar installation. Every harness carries the module's
 // lock rule out of its test: no call out of the module is made from inside one
@@ -56,14 +97,12 @@ func newHarness(t *testing.T, opts ...modtest.Option) *harness {
 		modtest.WithRecorder(recorder),
 		modtest.WithModule(calendar.Module()),
 		modtest.WithCalendarSources(sources.slot()...),
-		modtest.WithSMTPSend(box.send),
-		modtest.WithEnv("MAIL_DRIVER", "smtp"),
-		modtest.WithEnv("SMTP_HOST", "smtp.example.invalid"),
-		modtest.WithEnv("SMTP_FROM", smtpFrom),
+		withChannel(box.send),
 	}
 	before := lockedContractCalls.count()
 	h := &harness{Harness: modtest.New(t, append(base, opts...)...), sources: sources, mail: box}
 	sources.wire(h.Deps().Access)
+	h.Exec(t, `UPDATE calendar.settings SET invitation_channel = $1`, inviteChannelID)
 	t.Cleanup(func() {
 		if calls := lockedContractCalls.since(before); len(calls) > 0 {
 			t.Errorf("a call out of this module was made from inside one of its transactions:\n%s",
@@ -139,8 +178,8 @@ func (l *lockedCalls) since(n int) []string {
 	return slices.Clone(l.calls[n:])
 }
 
-// mailbox is the SMTP seam's fake, Staff's: every mail the module hands to
-// Deps.SMTPSend, kept in order — unless fail, when a test set it (failWith),
+// mailbox is the outbound mail's fake: every mail the module hands to
+// the OutboundMail slot, kept in order — unless fail, when a test set it (failWith),
 // refuses the mail, which is then not kept. It is safe for concurrent use.
 type mailbox struct {
 	mu   sync.Mutex

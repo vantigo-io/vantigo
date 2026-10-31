@@ -519,7 +519,7 @@ func (s *server) createAppointment(ctx context.Context, me uuid.UUID, body gen.A
 // with what the sends recorded on them; atts as they were when none of them
 // is mailed.
 func (s *server) reread(ctx context.Context, id int64, atts []store.CalendarAppointmentAttendee) ([]store.CalendarAppointmentAttendee, error) {
-	if len(outsideAttendees(atts)) == 0 || !s.mailAvailable() {
+	if len(outsideAttendees(atts)) == 0 || !s.mailAvailable(ctx) {
 		return atts, nil
 	}
 	out, err := s.queries().ListAttendees(ctx, id)

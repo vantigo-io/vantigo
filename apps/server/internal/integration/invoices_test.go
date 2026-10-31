@@ -64,9 +64,9 @@ func (s *smtpRecorder) mails() []mail.Outbound {
 
 // invoicesInstallation is the real customers and invoices modules composed
 // together, with a real file-system object store over a temporary directory
-// (the issue stores the PDF the send attaches) and the smtp driver configured
-// with the SMTP seam recorded — config.Load refuses the smtp driver without a
-// host and a from. The seller is saved complete, its e-mail sellerEmail, and
+// (the issue stores the PDF the send attaches) and the OutboundMail slot filled by a fake channel whose sends are recorded
+// (channel_test.go). The seller is saved complete, its Invoice settings
+// choosing that channel, its e-mail sellerEmail, and
 // the one caller answered may do everything both modules' fixtures need.
 // opts are applied after these, so one of them may replace one of these.
 func invoicesInstallation(t *testing.T, opts ...modtest.Option) (*modtest.Harness, *modtest.Client, *smtpRecorder) {
@@ -87,10 +87,7 @@ func installInvoices(t *testing.T, names, perms []string, opts ...modtest.Option
 	smtp := &smtpRecorder{}
 	h := newInstallationWith(t, append([]modtest.Option{
 		modtest.WithObjectStore(objects),
-		modtest.WithSMTPSend(smtp.send),
-		modtest.WithEnv("MAIL_DRIVER", "smtp"),
-		modtest.WithEnv("SMTP_HOST", "smtp.example.invalid"),
-		modtest.WithEnv("SMTP_FROM", "faktura@example.invalid"),
+		withChannel(smtp.send),
 	}, opts...), names...)
 	admin, adminID := h.SignInUser(t, append([]string{
 		"customers:view", "customers:create", "customers:update", "customers:delete", "customers:merge",
@@ -108,6 +105,7 @@ func installInvoices(t *testing.T, names, perms []string, opts ...modtest.Option
 		"peppolId": nil, "kidLength": nil, "kidAlgorithm": nil, "revision": 1,
 		"workVatCodes":     map[string]any{"hours": 1, "expenses": 1, "milestones": 1},
 		"timesheetDefault": false, "timesheetPersonLabel": "initials",
+		"sendChannel": sendChannelID.String(),
 	}, nil)
 	return h, admin, adminID, smtp
 }

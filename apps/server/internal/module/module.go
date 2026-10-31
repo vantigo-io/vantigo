@@ -282,10 +282,13 @@ type Deps struct {
 	// HTTPTransport gives an outbound HTTP client.
 	SMTPVerify func(ctx context.Context, cfg config.MailConfig) error
 	// SMTPSend is the function a module's own outbound mail path
-	// (communications' outbox delivery worker, and invoices' send) calls to
-	// deliver one message through a *caller-supplied* SMTP configuration —
-	// communications passes each channel's own stored credentials, invoices
-	// the process's SMTP_* settings (Config.Mail) — which is why this is a
+	// (communications' outbox delivery worker and its OutboundMail, and
+	// staff's notices) calls to deliver one message through a
+	// *caller-supplied* SMTP configuration — communications passes each
+	// channel's own stored credentials, staff the process's SMTP_* settings
+	// (Config.Mail), the system mailbox's, for the tenant's own employees;
+	// customers' mail (Invoices, Calendar) goes through OutboundMail and a
+	// channel, never through here — which is why this is a
 	// function taking a config rather than another mail.Sender. nil in
 	// production, meaning mail.SendOutbound
 	// itself, which dials through internal/mail's real DNS-rebinding guard;

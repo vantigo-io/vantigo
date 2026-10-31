@@ -122,13 +122,14 @@ func subscriptionLimit(limit int) gen.CalendarProblem {
 		fmt.Sprintf("You subscribe to %d calendars already, which is as many as one person may.", limit))
 }
 
-// invitationsUnavailable is the 503 a resend answers when the mail driver is
-// not smtp: no invitation can be sent at all.
+// invitationsUnavailable is the 503 a resend answers when invitations are off
+// in the Calendar settings or the chosen channel cannot send: no invitation can
+// be sent at all.
 func invitationsUnavailable() gen.CalendarProblem {
 	status := int32(http.StatusServiceUnavailable)
 	code := codeInvitationsUnavailable
 	title := "Invitations unavailable"
-	detail := "This installation does not send mail (the mail driver is not smtp), so no invitation can be sent."
+	detail := "Invitations are off in the Calendar settings, or the chosen channel cannot send, so no invitation can be sent."
 	return gen.CalendarProblem{Code: &code, Title: &title, Detail: &detail, Status: &status}
 }
 

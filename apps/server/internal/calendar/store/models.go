@@ -128,6 +128,13 @@ type CalendarMailboxSync struct {
 	ClaimedUntil  *time.Time
 }
 
+type CalendarSetting struct {
+	ID                int16
+	InvitationChannel *uuid.UUID
+	UpdatedAt         time.Time
+	Revision          int32
+}
+
 type CalendarSubscription struct {
 	ID           int64
 	UserID       uuid.UUID

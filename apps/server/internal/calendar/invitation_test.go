@@ -434,9 +434,10 @@ func TestInvitations_AFailedSendIsMarkedAndTheResendClearsIt(t *testing.T) {
 	}
 }
 
-func TestInvitations_WithoutTheSMTPDriverAttendeesAreStoredUnsentAndMetaSaysSo(t *testing.T) {
+func TestInvitations_WithInvitationsOffAttendeesAreStoredUnsentAndMetaSaysSo(t *testing.T) {
 	t.Parallel()
-	w := newInviting(t, "en", modtest.WithEnv("MAIL_DRIVER", "log"))
+	w := newInviting(t, "en")
+	invitationsOff(t, w.h)
 	a := create(t, w.owner, meeting(t, contactAttendee(olaID), emailAttendee(perMail, "")))
 	if n := len(w.h.mail.messages()); n != 0 {
 		t.Errorf("%d mails sent with the log driver", n)
@@ -449,7 +450,7 @@ func TestInvitations_WithoutTheSMTPDriverAttendeesAreStoredUnsentAndMetaSaysSo(t
 	var meta gen.CalendarMeta
 	do(t, w.owner, http.MethodGet, metaPath, nil, http.StatusOK, &meta)
 	if meta.InvitationsAvailable {
-		t.Error("invitationsAvailable is true with the log driver")
+		t.Error("invitationsAvailable is true with invitations off")
 	}
 	refused(t, w.owner.Do(http.MethodPost, resendPath(a.Id, a.Attendees[0].Id), nil), http.StatusServiceUnavailable, "invitations_unavailable")
 
@@ -461,7 +462,7 @@ func TestInvitations_WithoutTheSMTPDriverAttendeesAreStoredUnsentAndMetaSaysSo(t
 	c, _ := signIn(t, h)
 	do(t, c, http.MethodGet, metaPath, nil, http.StatusOK, &meta)
 	if !meta.InvitationsAvailable {
-		t.Error("invitationsAvailable is false with the smtp driver")
+		t.Error("invitationsAvailable is false with a channel chosen")
 	}
 }
 

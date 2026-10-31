@@ -122,6 +122,30 @@ func (e AppointmentVisibility) Valid() bool {
 	}
 }
 
+// Defines values for CalendarInvitationSettingsState.
+const (
+	CalendarInvitationSettingsStateDisabled    CalendarInvitationSettingsState = "disabled"
+	CalendarInvitationSettingsStateGone        CalendarInvitationSettingsState = "gone"
+	CalendarInvitationSettingsStateReady       CalendarInvitationSettingsState = "ready"
+	CalendarInvitationSettingsStateUnavailable CalendarInvitationSettingsState = "unavailable"
+)
+
+// Valid indicates whether the value is a known member of the CalendarInvitationSettingsState enum.
+func (e CalendarInvitationSettingsState) Valid() bool {
+	switch e {
+	case CalendarInvitationSettingsStateDisabled:
+		return true
+	case CalendarInvitationSettingsStateGone:
+		return true
+	case CalendarInvitationSettingsStateReady:
+		return true
+	case CalendarInvitationSettingsStateUnavailable:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for CalendarItemOutlookShowAs.
 const (
 	CalendarItemOutlookShowAsBusy             CalendarItemOutlookShowAs = "busy"
@@ -630,6 +654,23 @@ type CalendarContact struct {
 	Name  string `json:"name"`
 }
 
+// CalendarInvitationSettings The channel invitations to people outside the company are sent from (integrations design T6). invitationChannel is the id of a Communications channel as stored, null for off: nothing is sent, nothing is marked, and the appointment says invitations are off. state is what it is now - disabled (none chosen), ready (the channel can send), unavailable (it exists but cannot send now: its provider is off or an SMTP channel has no credentials) or gone (no active channel has the id, or Communications is off); anything but ready sends nothing. channels are the choices - the active mail channels with their provider and whether each can send - names and addresses only. revision is the one a PUT names in If-Match.
+type CalendarInvitationSettings struct {
+	Channels          []CalendarSendChannel           `json:"channels"`
+	InvitationChannel *openapi_types.UUID             `json:"invitationChannel"`
+	Revision          int32                           `json:"revision"`
+	State             CalendarInvitationSettingsState `json:"state"`
+	UpdatedAt         time.Time                       `json:"updatedAt"`
+}
+
+// CalendarInvitationSettingsState defines model for CalendarInvitationSettings.State.
+type CalendarInvitationSettingsState string
+
+// CalendarInvitationSettingsWrite PUT /invitation-settings' body. invitationChannel is required and nullable: a channel that exists (else a 400 on invitationChannel) - or the stored one, so a setting whose channel has since gone can still be saved -, or null for off. A body without it is a 400, so a client cannot turn invitations off by leaving it out.
+type CalendarInvitationSettingsWrite struct {
+	InvitationChannel json.RawMessage `json:"invitationChannel"`
+}
+
 // CalendarItem One thing on a person's calendar: an appointment's occurrence (kind calendar.appointment, with appointment set), a row another module projects through its calendar source (with path set), an event of a calendar the person subscribes to (kind calendar.subscription, with subscription set — calendar feed design D8), or an event of the person's Outlook calendar that blocks their time, read back by their Outlook sync (kind calendar.outlook, with outlook set and no title — calendar Outlook sync design O9.5). An all-day item spans startDate..endDate inclusive; a timed one spans startsAt..endsAt, endsAt exclusive (equal to startsAt for a point in time, which the view draws at its default length).
 type CalendarItem struct {
 	AllDay bool `json:"allDay"`
@@ -722,7 +763,7 @@ type CalendarMeta struct {
 	// CanViewColleagues Whether the caller holds calendar:view-colleagues.
 	CanViewColleagues bool `json:"canViewColleagues"`
 
-	// InvitationsAvailable Whether invitations are mailed — the mail driver is smtp. When false, outside attendees are stored and marked not sent.
+	// InvitationsAvailable Whether invitations are mailed - the channel chosen in the Calendar settings can send (integrations design T6). When false, outside attendees are stored and marked not sent.
 	InvitationsAvailable bool `json:"invitationsAvailable"`
 
 	// Sources Every kind a wired provider declares, enabled modules only — for the filter, the legend and the colours — calendar.subscription when the caller has at least one subscription, and calendar.outlook while the caller's Outlook sync is on.
@@ -735,7 +776,7 @@ type CalendarMeta struct {
 	Today openapi_types.Date `json:"today"`
 }
 
-// CalendarProblem An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: revision_mismatch (409: the If-Match revision has moved on), occurrence_not_in_series (409: the series' rule never produces that date), appointment_cancelled (409: the appointment is cancelled and nothing of it changes), invitations_unavailable (503: the mail driver is not smtp, so no invitation can be sent), subscription_limit (409: the caller has ten subscriptions already), mailbox_sync_unavailable (409: the Outlook sync cannot run now; detail carries the availability — switch_off, no_provider, unavailable or no_account) and mailbox_sync_off (409: Sync now of an Outlook sync that is turned off). errors carries the field errors of a 400, keyed by the request's camelCase field (a nested one as recurrence.rule, an element of a list as attendees[0]). A request the server could not decode answers a bare 400 with neither.
+// CalendarProblem An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: revision_mismatch (409: the If-Match revision has moved on), occurrence_not_in_series (409: the series' rule never produces that date), appointment_cancelled (409: the appointment is cancelled and nothing of it changes), invitations_unavailable (503: invitations are off in the Calendar settings, or the chosen channel cannot send, so no invitation can be sent), subscription_limit (409: the caller has ten subscriptions already), mailbox_sync_unavailable (409: the Outlook sync cannot run now; detail carries the availability — switch_off, no_provider, unavailable or no_account) and mailbox_sync_off (409: Sync now of an Outlook sync that is turned off). errors carries the field errors of a 400, keyed by the request's camelCase field (a nested one as recurrence.rule, an element of a list as attendees[0]). A request the server could not decode answers a bare 400 with neither.
 type CalendarProblem struct {
 	Code     *string              `json:"code,omitempty"`
 	Detail   *string              `json:"detail,omitempty"`
@@ -750,6 +791,24 @@ type CalendarProblem struct {
 type CalendarPublicHoliday struct {
 	Date openapi_types.Date `json:"date"`
 	Name string             `json:"name"`
+}
+
+// CalendarSendChannel One channel invitations may be sent from, as Communications answers it through contracts.OutboundMail (integrations design T4, T6).
+type CalendarSendChannel struct {
+	Address string `json:"address"`
+
+	// Available Whether the channel can send now - its provider is offered and, for SMTP, its credentials are stored.
+	Available bool `json:"available"`
+
+	// DisplayName The channel's display name; empty when it has none.
+	DisplayName string             `json:"displayName"`
+	Id          openapi_types.UUID `json:"id"`
+
+	// Provider The provider's key - smtp or entra.
+	Provider string `json:"provider"`
+
+	// ProviderDisplayName The provider as an admin reads it - SMTP, Microsoft 365.
+	ProviderDisplayName string `json:"providerDisplayName"`
 }
 
 // CalendarSourceKind One kind of item a module projects onto the calendar: a stable key, "<module>.<noun>", and the module it comes from.
@@ -997,6 +1056,12 @@ type GetCalendarFeedByFileParams struct {
 	IfNoneMatch *string `json:"If-None-Match,omitempty"`
 }
 
+// PutCalendarInvitationSettingsParams defines parameters for PutCalendarInvitationSettings.
+type PutCalendarInvitationSettingsParams struct {
+	// IfMatch The revision the setting was read at, bare (3) or quoted ("3"). A revision that has moved on is a 409 revision_mismatch.
+	IfMatch string `json:"If-Match"`
+}
+
 // GetCalendarItemsParams defines parameters for GetCalendarItems.
 type GetCalendarItemsParams struct {
 	// From The window's first day, inclusive, within ten years of today.
@@ -1038,6 +1103,9 @@ type PutCalendarAppointmentsByIdOccurrencesByDateJSONRequestBody = OccurrenceWri
 
 // PostCalendarAppointmentsByIdResponseJSONRequestBody defines body for PostCalendarAppointmentsByIdResponse for application/json ContentType.
 type PostCalendarAppointmentsByIdResponseJSONRequestBody = AppointmentResponseWrite
+
+// PutCalendarInvitationSettingsJSONRequestBody defines body for PutCalendarInvitationSettings for application/json ContentType.
+type PutCalendarInvitationSettingsJSONRequestBody = CalendarInvitationSettingsWrite
 
 // PutCalendarMailboxSyncJSONRequestBody defines body for PutCalendarMailboxSync for application/json ContentType.
 type PutCalendarMailboxSyncJSONRequestBody = MailboxSyncWrite
@@ -1098,6 +1166,12 @@ type ServerInterface interface {
 	// PostCalendarFeedByVariant Create or reset a calendar address
 	// (POST /api/v1/calendar/feed/{file})
 	PostCalendarFeedByVariant(w http.ResponseWriter, r *http.Request, file FeedVariant)
+	// GetCalendarInvitationSettings The invitation settings
+	// (GET /api/v1/calendar/invitation-settings)
+	GetCalendarInvitationSettings(w http.ResponseWriter, r *http.Request)
+	// PutCalendarInvitationSettings Change the invitation settings
+	// (PUT /api/v1/calendar/invitation-settings)
+	PutCalendarInvitationSettings(w http.ResponseWriter, r *http.Request, params PutCalendarInvitationSettingsParams)
 	// GetCalendarItems The caller's calendar
 	// (GET /api/v1/calendar/items)
 	GetCalendarItems(w http.ResponseWriter, r *http.Request, params GetCalendarItemsParams)
@@ -1616,6 +1690,65 @@ func (siw *ServerInterfaceWrapper) PostCalendarFeedByVariant(w http.ResponseWrit
 	handler.ServeHTTP(w, r)
 }
 
+// GetCalendarInvitationSettings operation middleware
+func (siw *ServerInterfaceWrapper) GetCalendarInvitationSettings(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetCalendarInvitationSettings(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutCalendarInvitationSettings operation middleware
+func (siw *ServerInterfaceWrapper) PutCalendarInvitationSettings(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params PutCalendarInvitationSettingsParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "If-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
+		var IfMatch string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-Match", Err: err})
+			return
+		}
+
+		params.IfMatch = IfMatch
+
+	} else {
+		err := fmt.Errorf("Header parameter If-Match is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "If-Match", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutCalendarInvitationSettings(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetCalendarItems operation middleware
 func (siw *ServerInterfaceWrapper) GetCalendarItems(w http.ResponseWriter, r *http.Request) {
 
@@ -2089,6 +2222,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/calendar/feed/{file}", wrapper.DeleteCalendarFeedByVariant)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/calendar/feed/{file}", wrapper.GetCalendarFeedByFile)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/calendar/feed/{file}", wrapper.PostCalendarFeedByVariant)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/calendar/invitation-settings", wrapper.GetCalendarInvitationSettings)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/calendar/invitation-settings", wrapper.PutCalendarInvitationSettings)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/calendar/items", wrapper.GetCalendarItems)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/calendar/mailbox-sync", wrapper.GetCalendarMailboxSync)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/calendar/mailbox-sync", wrapper.PutCalendarMailboxSync)
@@ -3126,6 +3261,134 @@ func (response PostCalendarFeedByVariant404Response) VisitPostCalendarFeedByVari
 	return nil
 }
 
+type GetCalendarInvitationSettingsRequestObject struct {
+}
+
+type GetCalendarInvitationSettingsResponseObject interface {
+	VisitGetCalendarInvitationSettingsResponse(w http.ResponseWriter) error
+}
+
+type GetCalendarInvitationSettings200JSONResponse CalendarInvitationSettings
+
+func (response GetCalendarInvitationSettings200JSONResponse) VisitGetCalendarInvitationSettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCalendarInvitationSettings401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetCalendarInvitationSettings401JSONResponse) VisitGetCalendarInvitationSettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCalendarInvitationSettings403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetCalendarInvitationSettings403JSONResponse) VisitGetCalendarInvitationSettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutCalendarInvitationSettingsRequestObject struct {
+	Params PutCalendarInvitationSettingsParams
+	Body   *PutCalendarInvitationSettingsJSONRequestBody
+}
+
+type PutCalendarInvitationSettingsResponseObject interface {
+	VisitPutCalendarInvitationSettingsResponse(w http.ResponseWriter) error
+}
+
+type PutCalendarInvitationSettings200JSONResponse CalendarInvitationSettings
+
+func (response PutCalendarInvitationSettings200JSONResponse) VisitPutCalendarInvitationSettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutCalendarInvitationSettings400ApplicationProblemPlusJSONResponse CalendarProblem
+
+func (response PutCalendarInvitationSettings400ApplicationProblemPlusJSONResponse) VisitPutCalendarInvitationSettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutCalendarInvitationSettings401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutCalendarInvitationSettings401JSONResponse) VisitPutCalendarInvitationSettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutCalendarInvitationSettings403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutCalendarInvitationSettings403JSONResponse) VisitPutCalendarInvitationSettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutCalendarInvitationSettings409ApplicationProblemPlusJSONResponse CalendarProblem
+
+func (response PutCalendarInvitationSettings409ApplicationProblemPlusJSONResponse) VisitPutCalendarInvitationSettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetCalendarItemsRequestObject struct {
 	Params GetCalendarItemsParams
 }
@@ -4132,6 +4395,12 @@ type StrictServerInterface interface {
 	// PostCalendarFeedByVariant Create or reset a calendar address
 	// (POST /api/v1/calendar/feed/{file})
 	PostCalendarFeedByVariant(ctx context.Context, request PostCalendarFeedByVariantRequestObject) (PostCalendarFeedByVariantResponseObject, error)
+	// GetCalendarInvitationSettings The invitation settings
+	// (GET /api/v1/calendar/invitation-settings)
+	GetCalendarInvitationSettings(ctx context.Context, request GetCalendarInvitationSettingsRequestObject) (GetCalendarInvitationSettingsResponseObject, error)
+	// PutCalendarInvitationSettings Change the invitation settings
+	// (PUT /api/v1/calendar/invitation-settings)
+	PutCalendarInvitationSettings(ctx context.Context, request PutCalendarInvitationSettingsRequestObject) (PutCalendarInvitationSettingsResponseObject, error)
 	// GetCalendarItems The caller's calendar
 	// (GET /api/v1/calendar/items)
 	GetCalendarItems(ctx context.Context, request GetCalendarItemsRequestObject) (GetCalendarItemsResponseObject, error)
@@ -4599,6 +4868,63 @@ func (sh *strictHandler) PostCalendarFeedByVariant(w http.ResponseWriter, r *htt
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PostCalendarFeedByVariantResponseObject); ok {
 		if err := validResponse.VisitPostCalendarFeedByVariantResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetCalendarInvitationSettings operation middleware
+func (sh *strictHandler) GetCalendarInvitationSettings(w http.ResponseWriter, r *http.Request) {
+	var request GetCalendarInvitationSettingsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetCalendarInvitationSettings(ctx, request.(GetCalendarInvitationSettingsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetCalendarInvitationSettings")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetCalendarInvitationSettingsResponseObject); ok {
+		if err := validResponse.VisitGetCalendarInvitationSettingsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutCalendarInvitationSettings operation middleware
+func (sh *strictHandler) PutCalendarInvitationSettings(w http.ResponseWriter, r *http.Request, params PutCalendarInvitationSettingsParams) {
+	var request PutCalendarInvitationSettingsRequestObject
+
+	request.Params = params
+
+	var body PutCalendarInvitationSettingsJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutCalendarInvitationSettings(ctx, request.(PutCalendarInvitationSettingsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutCalendarInvitationSettings")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutCalendarInvitationSettingsResponseObject); ok {
+		if err := validResponse.VisitPutCalendarInvitationSettingsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

@@ -202,6 +202,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/calendar/invitation-settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The invitation settings
+         * @description The channel invitations to people outside the company are sent from, what it is now, and the channels a choice may name (integrations design T6). Needs calendar:access and calendar:manage - the setting is the workspace's, not the caller's.
+         */
+        get: operations["getCalendarInvitationSettings"];
+        /**
+         * Change the invitation settings
+         * @description Replaces the channel invitations are sent from, whole, under the row's lock (integrations design T6). invitationChannel is required: a channel that exists, the stored one, or null for off. If-Match is the revision the setting was read at; one that has moved on is a 409 revision_mismatch.
+         */
+        put: operations["putCalendarInvitationSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/calendar/items": {
         parameters: {
             query?: never;
@@ -631,6 +655,23 @@ export interface components {
             id: number;
             name: string;
         };
+        /** @description The channel invitations to people outside the company are sent from (integrations design T6). invitationChannel is the id of a Communications channel as stored, null for off: nothing is sent, nothing is marked, and the appointment says invitations are off. state is what it is now - disabled (none chosen), ready (the channel can send), unavailable (it exists but cannot send now: its provider is off or an SMTP channel has no credentials) or gone (no active channel has the id, or Communications is off); anything but ready sends nothing. channels are the choices - the active mail channels with their provider and whether each can send - names and addresses only. revision is the one a PUT names in If-Match. */
+        CalendarInvitationSettings: {
+            channels: components["schemas"]["CalendarSendChannel"][];
+            /** Format: uuid */
+            invitationChannel: string | null;
+            /** Format: int32 */
+            revision: number;
+            /** @enum {string} */
+            state: "disabled" | "ready" | "unavailable" | "gone";
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        /** @description PUT /invitation-settings' body. invitationChannel is required and nullable: a channel that exists (else a 400 on invitationChannel) - or the stored one, so a setting whose channel has since gone can still be saved -, or null for off. A body without it is a 400, so a client cannot turn invitations off by leaving it out. */
+        CalendarInvitationSettingsWrite: {
+            /** Format: uuid */
+            invitationChannel: string | null;
+        };
         /** @description One thing on a person's calendar: an appointment's occurrence (kind calendar.appointment, with appointment set), a row another module projects through its calendar source (with path set), an event of a calendar the person subscribes to (kind calendar.subscription, with subscription set — calendar feed design D8), or an event of the person's Outlook calendar that blocks their time, read back by their Outlook sync (kind calendar.outlook, with outlook set and no title — calendar Outlook sync design O9.5). An all-day item spans startDate..endDate inclusive; a timed one spans startsAt..endsAt, endsAt exclusive (equal to startsAt for a point in time, which the view draws at its default length). */
         CalendarItem: {
             allDay: boolean;
@@ -703,7 +744,7 @@ export interface components {
         CalendarMeta: {
             /** @description Whether the caller holds calendar:view-colleagues. */
             canViewColleagues: boolean;
-            /** @description Whether invitations are mailed — the mail driver is smtp. When false, outside attendees are stored and marked not sent. */
+            /** @description Whether invitations are mailed - the channel chosen in the Calendar settings can send (integrations design T6). When false, outside attendees are stored and marked not sent. */
             invitationsAvailable: boolean;
             /** @description Every kind a wired provider declares, enabled modules only — for the filter, the legend and the colours — calendar.subscription when the caller has at least one subscription, and calendar.outlook while the caller's Outlook sync is on. */
             sources: components["schemas"]["CalendarSourceKind"][];
@@ -715,7 +756,7 @@ export interface components {
              */
             today: string;
         };
-        /** @description An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: revision_mismatch (409: the If-Match revision has moved on), occurrence_not_in_series (409: the series' rule never produces that date), appointment_cancelled (409: the appointment is cancelled and nothing of it changes), invitations_unavailable (503: the mail driver is not smtp, so no invitation can be sent), subscription_limit (409: the caller has ten subscriptions already), mailbox_sync_unavailable (409: the Outlook sync cannot run now; detail carries the availability — switch_off, no_provider, unavailable or no_account) and mailbox_sync_off (409: Sync now of an Outlook sync that is turned off). errors carries the field errors of a 400, keyed by the request's camelCase field (a nested one as recurrence.rule, an element of a list as attendees[0]). A request the server could not decode answers a bare 400 with neither. */
+        /** @description An RFC 9457 problem with this module's refusal code. code names the rule that refused and is what a client keys off, never the words: revision_mismatch (409: the If-Match revision has moved on), occurrence_not_in_series (409: the series' rule never produces that date), appointment_cancelled (409: the appointment is cancelled and nothing of it changes), invitations_unavailable (503: invitations are off in the Calendar settings, or the chosen channel cannot send, so no invitation can be sent), subscription_limit (409: the caller has ten subscriptions already), mailbox_sync_unavailable (409: the Outlook sync cannot run now; detail carries the availability — switch_off, no_provider, unavailable or no_account) and mailbox_sync_off (409: Sync now of an Outlook sync that is turned off). errors carries the field errors of a 400, keyed by the request's camelCase field (a nested one as recurrence.rule, an element of a list as attendees[0]). A request the server could not decode answers a bare 400 with neither. */
         CalendarProblem: {
             code?: string | null;
             detail?: string | null;
@@ -733,6 +774,20 @@ export interface components {
             /** Format: date */
             date: string;
             name: string;
+        };
+        /** @description One channel invitations may be sent from, as Communications answers it through contracts.OutboundMail (integrations design T4, T6). */
+        CalendarSendChannel: {
+            address: string;
+            /** @description Whether the channel can send now - its provider is offered and, for SMTP, its credentials are stored. */
+            available: boolean;
+            /** @description The channel's display name; empty when it has none. */
+            displayName: string;
+            /** Format: uuid */
+            id: string;
+            /** @description The provider's key - smtp or entra. */
+            provider: string;
+            /** @description The provider as an admin reads it - SMTP, Microsoft 365. */
+            providerDisplayName: string;
         };
         /** @description One kind of item a module projects onto the calendar: a stable key, "<module>.<noun>", and the module it comes from. */
         CalendarSourceKind: {
@@ -1756,6 +1811,107 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    getCalendarInvitationSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalendarInvitationSettings"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    putCalendarInvitationSettings: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description The revision the setting was read at, bare (3) or quoted ("3"). A revision that has moved on is a 409 revision_mismatch. */
+                "If-Match": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CalendarInvitationSettingsWrite"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalendarInvitationSettings"];
+                };
+            };
+            /** @description Bad Request - a body without invitationChannel, or a channel no active channel has (field errors), or an If-Match that is not a revision. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["CalendarProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Conflict - revision_mismatch. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["CalendarProblem"];
+                };
             };
         };
     };

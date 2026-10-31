@@ -92,8 +92,10 @@ type Outbound struct {
 // which resolves the server from the *channel's* stored credentials, which
 // differ per channel and can change between sends; cfg.From is then the
 // channel's own address. This is the same shape VerifyConnection already has,
-// for the same reason. Invoices' send is its other caller, with the process's
-// SMTP_* settings (Config.Mail) and the seller's address as ReplyTo.
+// for the same reason. Communications' OutboundMail is its other caller, for
+// Invoices' documents and Calendar's invitations, over the chosen channel's own
+// credentials; Staff's notices to employees take the process's SMTP_* settings
+// (Config.Mail), the system mailbox's.
 //
 // The caller bounds the send with ctx. Communications derives that deadline
 // from its lease so a send can never outlive the lease that protects it
