@@ -90,6 +90,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/dependencies/{dependencyId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete a task dependency link */
+        delete: operations["deleteProjectsDependenciesByDependencyId"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/economy": {
         parameters: {
             query?: never;
@@ -262,6 +279,24 @@ export interface paths {
         put?: never;
         /** Create a delivery milestone on a project */
         post: operations["postProjectsByIdDeliveryMilestones"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{id}/dependencies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List a project's task dependencies */
+        get: operations["getProjectsByIdDependencies"];
+        put?: never;
+        /** Create a task dependency link on a project */
+        post: operations["postProjectsByIdDependencies"];
         delete?: never;
         options?: never;
         head?: never;
@@ -607,6 +642,23 @@ export interface paths {
         /** Move a task among its siblings */
         put: operations["putProjectsTasksByTaskIdPosition"];
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/tasks/{taskId}/reschedule-downstream": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reschedule downstream tasks reachable via dependencies */
+        post: operations["postProjectsTasksByTaskIdRescheduleDownstream"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1916,6 +1968,30 @@ export interface components {
             /** Format: int32 */
             total: number;
         };
+        /** @description Create a finish-to-start dependency link between two tasks in the same project. */
+        TaskDependencyCreateRequest: {
+            /** Format: int32 */
+            predecessorTaskId: number;
+            /** Format: int32 */
+            successorTaskId: number;
+        };
+        /** @description A project's task dependency links. */
+        TaskDependencyListResponse: {
+            dependencies: components["schemas"]["TaskDependencyResponse"][];
+        };
+        /** @description A finish-to-start dependency link between two tasks in the same project. */
+        TaskDependencyResponse: {
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: int32 */
+            id: number;
+            /** Format: int32 */
+            predecessorTaskId: number;
+            /** Format: int32 */
+            projectId: number;
+            /** Format: int32 */
+            successorTaskId: number;
+        };
         /** @description Where a task should sit — among which siblings, and how far down. The siblings are renumbered 1..n in one transaction, so the order never has a gap. */
         TaskPositionRequest: {
             /**
@@ -1962,6 +2038,20 @@ export interface components {
             status?: string | null;
             /** @description Trimmed before validation and storage; at most 200 characters. */
             title: string;
+        };
+        /** @description Shift the dates of downstream tasks reachable via dependencies by a delta in days. */
+        TaskRescheduleDownstreamRequest: {
+            /**
+             * Format: int32
+             * @description Positive or negative number of days to shift downstream tasks.
+             */
+            daysDelta: number;
+        };
+        /** @description Result of rescheduling downstream tasks. */
+        TaskRescheduleDownstreamResponse: {
+            /** Format: int32 */
+            shiftedTasksCount: number;
+            updatedTaskIds: number[];
         };
         /** @description One task of a project. checklist and commentCount are aggregates over the task's own children, so a tree renders progress without reading either. */
         TaskResponse: {
@@ -2596,6 +2686,51 @@ export interface operations {
                 content: {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
+            };
+        };
+    };
+    deleteProjectsDependenciesByDependencyId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                dependencyId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content — the dependency link has been removed. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden — the caller cannot contribute to the project. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — the dependency link does not exist, or belongs to a project the caller cannot see. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -3474,6 +3609,122 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    getProjectsByIdDependencies: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK — the project's task dependency links. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskDependencyListResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such project, or one the caller cannot see. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    postProjectsByIdDependencies: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaskDependencyCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Created — the task dependency link. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskDependencyResponse"];
+                };
+            };
+            /** @description Bad Request — self-dependency, cyclic dependency, or tasks outside project. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden — the caller cannot contribute to this project. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such project or tasks, or one the caller cannot see. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — dependency link already exists. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
             };
         };
     };
@@ -5050,6 +5301,66 @@ export interface operations {
                 };
             };
             /** @description Not Found — the task does not exist, or it belongs to a project the caller cannot see. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    postProjectsTasksByTaskIdRescheduleDownstream: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                taskId: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaskRescheduleDownstreamRequest"];
+            };
+        };
+        responses: {
+            /** @description OK — downstream tasks were shifted. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskRescheduleDownstreamResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden — the caller cannot contribute to this project. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — the task does not exist, or belongs to a project the caller cannot see. */
             404: {
                 headers: {
                     [name: string]: unknown;
