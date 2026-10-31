@@ -52,6 +52,11 @@ const (
 
 	eventWorkTypeAdded   = "work-type-added"
 	eventWorkTypeChanged = "work-type-changed"
+
+	eventDeliveryMilestoneAdded         = "delivery-milestone-added"
+	eventDeliveryMilestoneChanged       = "delivery-milestone-changed"
+	eventDeliveryMilestoneRemoved       = "delivery-milestone-removed"
+	eventDeliveryMilestoneStatusChanged = "delivery-milestone-status-changed"
 )
 
 // recordEvent inserts one generated timeline entry. The actor's display name
@@ -518,4 +523,12 @@ func (s *server) GetProjectsByIdTimeline(ctx context.Context, req gen.GetProject
 		Data:       data,
 		Pagination: apicommon.Pagination(page, pageSize, int32(total)),
 	}, nil
+}
+
+func recordDeliveryMilestoneEvent(ctx context.Context, q *store.Queries, now time.Time, eventType string, m store.ProjectsDeliveryMilestone, extra map[string]any, by actor) error {
+	payload := map[string]any{"milestoneId": m.ID, "name": m.Name}
+	for k, v := range extra {
+		payload[k] = v
+	}
+	return recordEvent(ctx, q, now, m.ProjectID, eventType, payload, by)
 }

@@ -267,7 +267,7 @@ func (s *server) PostProjectsByIdTasks(ctx context.Context, req gen.PostProjects
 		return gen.PostProjectsByIdTasks403JSONResponse(forbidden()), nil
 	}
 
-	parsed, fieldErrs, err := s.validateTask(ctx, body, nil, statusDefaultsToTodo)
+	parsed, fieldErrs, err := s.validateTask(ctx, q, project.ID, body, nil, statusDefaultsToTodo)
 	if err != nil {
 		return nil, err
 	}
@@ -301,19 +301,20 @@ func (s *server) PostProjectsByIdTasks(ctx context.Context, req gen.PostProjects
 			return fmt.Errorf("projects: read the last sibling's position: %w", err)
 		}
 		created, err = txq.InsertTask(ctx, store.InsertTaskParams{
-			ProjectID:       project.ID,
-			ParentTaskID:    parsed.ParentTaskID,
-			Title:           parsed.Title,
-			Description:     parsed.Description,
-			Status:          parsed.Status,
-			AssigneeUserID:  parsed.AssigneeUserID,
-			StartDate:       parsed.StartDate,
-			DueDate:         parsed.DueDate,
-			EstimateHours:   parsed.EstimateHours,
-			Position:        last + 1,
-			CompletedAt:     completedAtFor("", parsed.Status, nil, now),
-			CreatedByUserID: by.UserID,
-			Now:             now,
+			ProjectID:           project.ID,
+			ParentTaskID:        parsed.ParentTaskID,
+			Title:               parsed.Title,
+			Description:         parsed.Description,
+			Status:              parsed.Status,
+			AssigneeUserID:      parsed.AssigneeUserID,
+			StartDate:           parsed.StartDate,
+			DueDate:             parsed.DueDate,
+			EstimateHours:       parsed.EstimateHours,
+			DeliveryMilestoneID: parsed.DeliveryMilestoneID,
+			Position:            last + 1,
+			CompletedAt:         completedAtFor("", parsed.Status, nil, now),
+			CreatedByUserID:     by.UserID,
+			Now:                 now,
 		})
 		return err
 	})
@@ -325,10 +326,11 @@ func (s *server) PostProjectsByIdTasks(ctx context.Context, req gen.PostProjects
 		return nil, fmt.Errorf("projects: create task: %w", err)
 	}
 
-	// A task that has just been created has no checklist items and no
-	// comments, because nothing has had the chance to add any: its aggregates
-	// are zero without asking for them.
-	resp, err := s.taskResponseFor(ctx, newTaskRow(created))
+	withCounts, err := q.GetTaskWithCounts(ctx, created.ID)
+	if err != nil {
+		return nil, fmt.Errorf("projects: get created task with counts: %w", err)
+	}
+	resp, err := s.taskResponseFor(ctx, taskRowOf(withCounts))
 	if err != nil {
 		return nil, err
 	}
@@ -401,7 +403,7 @@ func (s *server) PutProjectsTasksByTaskId(ctx context.Context, req gen.PutProjec
 	// it apart from one that is handing the task to somebody else: only the
 	// second is a new assignment, and only a new assignment needs an active
 	// account (tasks_validation.go).
-	parsed, fieldErrs, err := s.validateTask(ctx, taskFromUpdate(body), scope.Task.AssigneeUserID, statusIsRequired)
+	parsed, fieldErrs, err := s.validateTask(ctx, q, scope.Project.ID, taskFromUpdate(body), scope.Task.AssigneeUserID, statusIsRequired)
 	if err != nil {
 		return nil, err
 	}
@@ -424,17 +426,18 @@ func (s *server) PutProjectsTasksByTaskId(ctx context.Context, req gen.PutProjec
 			return fmt.Errorf("projects: lock task: %w", err)
 		}
 		_, err = txq.UpdateTask(ctx, store.UpdateTaskParams{
-			ID:             before.ID,
-			Revision:       body.Revision,
-			Title:          parsed.Title,
-			Description:    parsed.Description,
-			Status:         parsed.Status,
-			AssigneeUserID: parsed.AssigneeUserID,
-			StartDate:      parsed.StartDate,
-			DueDate:        parsed.DueDate,
-			EstimateHours:  parsed.EstimateHours,
-			CompletedAt:    completedAtFor(before.Status, parsed.Status, before.CompletedAt, now),
-			Now:            now,
+			ID:                  before.ID,
+			Revision:            body.Revision,
+			Title:               parsed.Title,
+			Description:         parsed.Description,
+			Status:              parsed.Status,
+			AssigneeUserID:      parsed.AssigneeUserID,
+			StartDate:           parsed.StartDate,
+			DueDate:             parsed.DueDate,
+			EstimateHours:       parsed.EstimateHours,
+			DeliveryMilestoneID: parsed.DeliveryMilestoneID,
+			CompletedAt:         completedAtFor(before.Status, parsed.Status, before.CompletedAt, now),
+			Now:                 now,
 		})
 		return err
 	})
