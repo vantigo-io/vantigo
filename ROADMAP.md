@@ -829,6 +829,20 @@ complete derived from linked tasks); a lightweight timeline (bars, drag,
 finish-to-start dependencies, opt-in cascade) — never a full Gantt in-house;
 project and task templates with relative dates.
 
+**Delivery A: Delivery milestones (done)** — execution deliverables separate from
+commercial billing milestones (`projects.billing_milestones`). Includes database schema
+(`projects.delivery_milestones`), CRUD API endpoints, task linking via
+`tasks.delivery_milestone_id` with `ON DELETE SET NULL` and mismatched-project validation,
+derived completion percentage and hour progress from linked tasks, manual 1-based positioning
+and status toggling (`open` / `completed`), timeline events, and UI integration on the Tasks tab
+with delivery milestone cards, progress bars, quick filtering, and task form/drawer dropdowns.
+Designed in [`docs/superpowers/specs/2026-10-31-projects-delivery-milestones-timeline-design.md`](docs/superpowers/specs/2026-10-31-projects-delivery-milestones-timeline-design.md).
+
+**Delivery B: Lightweight timeline and dependencies** — finish-to-start dependencies,
+timeline view, drag reschedule.
+
+**Delivery C: Project and task templates** — kickoff blueprints with relative date offsets.
+
 *Unblocks:* planning at kickoff; the "are we on track" view.
 
 ### Phase 5 — Capacity planning
