@@ -169,7 +169,15 @@ export const deleteComment = (taskId: number, commentId: number): Promise<void> 
 /** The fields a full replace needs, which a tree task and a my-tasks row both carry. */
 export type TaskUpdateSource = Pick<
   Task,
-  "title" | "description" | "status" | "assignee" | "startDate" | "dueDate" | "estimateHours" | "revision"
+  | "title"
+  | "description"
+  | "status"
+  | "assignee"
+  | "startDate"
+  | "dueDate"
+  | "estimateHours"
+  | "revision"
+  | "deliveryMilestoneId"
 >;
 
 /**
@@ -186,6 +194,7 @@ export const taskUpdateFrom = (task: TaskUpdateSource, changes: Partial<TaskUpda
   startDate: task.startDate ?? null,
   dueDate: task.dueDate ?? null,
   estimateHours: task.estimateHours ?? null,
+  deliveryMilestoneId: task.deliveryMilestoneId ?? null,
   revision: task.revision,
   ...changes,
 });
