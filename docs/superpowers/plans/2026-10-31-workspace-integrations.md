@@ -184,6 +184,6 @@ become permanent redirects. Branch `feat/workspace-integrations`, cut from `main
   module-boundaries.md` (en): the host's *Integrations* section as a slot beside the
   *Connections* page slot (rule 7's paragraph, `:236-241`); `ROADMAP.md`: *Integrations*
   under *Platform*.
-- [ ] **8. The gates.** `mise run frontend:check`, `mise run docs:check`,
+- [x] **8. The gates.** `mise run frontend:check`, `mise run docs:check`,
   `mise run server:check` (to show no Go changed); `git diff --stat 0e553d10.. -- apps/server openapi`
   empty. Fix what they find in the task that caused it.
