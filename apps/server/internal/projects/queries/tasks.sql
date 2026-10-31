@@ -31,10 +31,13 @@ SELECT * FROM projects.tasks WHERE id = @id FOR UPDATE;
 -- a move renders its answer from, since neither touches those children but
 -- both must report them.
 SELECT sqlc.embed(t),
+       dm.name                          AS delivery_milestone_name,
+       dm.target_date                   AS delivery_milestone_target_date,
        coalesce(c.total, 0)::integer    AS checklist_total,
        coalesce(c.done, 0)::integer     AS checklist_done,
        coalesce(m.comments, 0)::integer AS comment_count
 FROM projects.tasks t
+LEFT JOIN projects.delivery_milestones dm ON dm.id = t.delivery_milestone_id
 LEFT JOIN LATERAL (
     SELECT count(*) AS total, count(*) FILTER (WHERE i.done) AS done
     FROM projects.task_checklist_items i WHERE i.task_id = t.id
@@ -54,10 +57,13 @@ WHERE t.id = @id;
 -- subtasks, each group by position. Both filters are optional, and an absent
 -- one filters nothing.
 SELECT sqlc.embed(t),
+       dm.name                          AS delivery_milestone_name,
+       dm.target_date                   AS delivery_milestone_target_date,
        coalesce(c.total, 0)::integer    AS checklist_total,
        coalesce(c.done, 0)::integer     AS checklist_done,
        coalesce(m.comments, 0)::integer AS comment_count
 FROM projects.tasks t
+LEFT JOIN projects.delivery_milestones dm ON dm.id = t.delivery_milestone_id
 LEFT JOIN LATERAL (
     SELECT count(*) AS total, count(*) FILTER (WHERE i.done) AS done
     FROM projects.task_checklist_items i WHERE i.task_id = t.id
@@ -77,10 +83,13 @@ ORDER BY (t.parent_task_id IS NOT NULL), t.position, t.id;
 -- (its own id is not "not the id asked for"), so the caller never has to look
 -- for it among its children.
 SELECT sqlc.embed(t),
+       dm.name                          AS delivery_milestone_name,
+       dm.target_date                   AS delivery_milestone_target_date,
        coalesce(c.total, 0)::integer    AS checklist_total,
        coalesce(c.done, 0)::integer     AS checklist_done,
        coalesce(m.comments, 0)::integer AS comment_count
 FROM projects.tasks t
+LEFT JOIN projects.delivery_milestones dm ON dm.id = t.delivery_milestone_id
 LEFT JOIN LATERAL (
     SELECT count(*) AS total, count(*) FILTER (WHERE i.done) AS done
     FROM projects.task_checklist_items i WHERE i.task_id = t.id
@@ -105,11 +114,14 @@ ORDER BY (t.id <> @id), t.position, t.id;
 SELECT sqlc.embed(t),
        p.code AS project_code,
        p.name AS project_name,
+       dm.name                          AS delivery_milestone_name,
+       dm.target_date                   AS delivery_milestone_target_date,
        coalesce(c.total, 0)::integer    AS checklist_total,
        coalesce(c.done, 0)::integer     AS checklist_done,
        coalesce(m.comments, 0)::integer AS comment_count
 FROM projects.tasks t
 JOIN projects.projects p ON p.id = t.project_id
+LEFT JOIN projects.delivery_milestones dm ON dm.id = t.delivery_milestone_id
 LEFT JOIN LATERAL (
     SELECT count(*) AS total, count(*) FILTER (WHERE i.done) AS done
     FROM projects.task_checklist_items i WHERE i.task_id = t.id
@@ -169,11 +181,11 @@ WHERE t.id = v.id AND t.position <> v.ord::integer;
 -- number computed under the project's ordering lock.
 INSERT INTO projects.tasks (
     project_id, parent_task_id, title, description, status, assignee_user_id,
-    start_date, due_date, estimate_hours, position, completed_at,
+    start_date, due_date, estimate_hours, delivery_milestone_id, position, completed_at,
     created_by_user_id, created_at, updated_at
 ) VALUES (
     @project_id, @parent_task_id, @title, @description, @status, @assignee_user_id,
-    @start_date, @due_date, @estimate_hours, @position, @completed_at,
+    @start_date, @due_date, @estimate_hours, @delivery_milestone_id, @position, @completed_at,
     @created_by_user_id, @now::timestamptz, @now::timestamptz
 )
 RETURNING *;
@@ -192,6 +204,7 @@ UPDATE projects.tasks SET
     start_date = @start_date,
     due_date = @due_date,
     estimate_hours = @estimate_hours,
+    delivery_milestone_id = @delivery_milestone_id,
     completed_at = @completed_at,
     revision = revision + 1,
     updated_at = @now::timestamptz
