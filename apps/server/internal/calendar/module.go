@@ -46,7 +46,10 @@ import (
 // operation requires calendar:access; a colleague's calendar requires
 // calendar:view-colleagues beside it — the one thing not everyone should have
 // by default. Neither is sensitive, and both are delegable, as every other
-// module's are. There is no manage key: the module has no settings.
+// module's are. calendar:manage is the one workspace setting's: the channel
+// invitations to people outside the company are sent from (integrations design
+// T6); it is sensitive, since it decides whose address customers' mail comes
+// from, and read beside calendar:access.
 var permissions = []contracts.Permission{
 	{
 		Key: "calendar:access", Display: "Use Calendar",
@@ -57,6 +60,11 @@ var permissions = []contracts.Permission{
 		Key: "calendar:view-colleagues", Display: "See colleagues' calendars",
 		Description: "See a colleague's appointments as busy or free, with the title when it is shared.",
 		Category:    "Calendar", Sensitive: false, Delegable: true,
+	},
+	{
+		Key: "calendar:manage", Display: "Manage Calendar settings",
+		Description: "Choose the channel invitations to people outside the company are sent from, or turn them off.",
+		Category:    "Administration", Sensitive: true, Delegable: true,
 	},
 }
 
@@ -99,7 +107,8 @@ var subscriptionFetchLimit = ratelimit.Policy{Name: "calendar-subscription-fetch
 // (busy.go, calendar Outlook sync design O9.8): people's busy time, which
 // Planning's board reads. It reads Deps.CalendarSources, Deps.Users,
 // Deps.Calendar and, when wired, Deps.Directory, Deps.Projects and
-// Deps.Workforce, mails through Deps.SMTPSend and writes and reads people's
+// Deps.Workforce, mails outside attendees through Deps.OutboundMail (the
+// channel the Calendar settings chose) and writes and reads people's
 // mailboxes through Deps.MailboxCalendar.
 func Module() module.Module {
 	return module.Module{

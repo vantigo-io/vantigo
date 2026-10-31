@@ -7,7 +7,6 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/vantigo-io/vantigo/server/internal/config"
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/mail"
 )
@@ -210,25 +209,80 @@ func (s *server) usersNotify(ctx context.Context, id uuid.UUID, n contracts.Noti
 	return s.deps.Users.Notify(ctx, id, n)
 }
 
-// smtpSend hands one invitation to the installation's SMTP server:
-// Deps.SMTPSend when a harness set one, otherwise mail.SendOutbound, the
-// platform's guarded path — Staff's and Invoices' accessor. A caller asks
-// mailAvailable first.
-func (s *server) smtpSend(ctx context.Context, cfg config.MailConfig, out mail.Outbound) error {
-	if err := noteContractCall(ctx, "SMTPSend"); err != nil {
-		return err
+// outboundChannels lists the channels an invitation may be sent from, as
+// Communications answers them through contracts.OutboundMail (integrations
+// design T4): none while the slot is not filled (Communications off).
+func (s *server) outboundChannels(ctx context.Context) ([]contracts.OutboundChannel, error) {
+	if err := noteContractCall(ctx, "OutboundMail.Channels"); err != nil {
+		return nil, err
 	}
-	if s.deps.SMTPSend != nil {
-		return s.deps.SMTPSend(ctx, cfg, out)
+	if s.deps.OutboundMail == nil {
+		return nil, nil
 	}
-	return mail.SendOutbound(ctx, cfg, out)
+	return s.deps.OutboundMail.Channels(ctx)
 }
 
-// mailAvailable is whether this installation sends invitations at all: its
-// mail driver is smtp (calendar invitations design D3). Otherwise outside
-// attendees are stored and left not sent, and GET /meta says so.
-func (s *server) mailAvailable() bool {
-	return s.deps.Config != nil && s.deps.Config.Mail.Driver == "smtp"
+// outboundChannel answers one channel: contracts.ErrChannelUnknown when it is
+// gone - or when the slot is not filled, which a caller reads the same way.
+// No network call.
+func (s *server) outboundChannel(ctx context.Context, id uuid.UUID) (contracts.OutboundChannel, error) {
+	if err := noteContractCall(ctx, "OutboundMail.Channel"); err != nil {
+		return contracts.OutboundChannel{}, err
+	}
+	if s.deps.OutboundMail == nil {
+		return contracts.OutboundChannel{}, contracts.ErrChannelUnknown
+	}
+	return s.deps.OutboundMail.Channel(ctx, id)
+}
+
+// outboundSend hands one invitation to the channel an Owner chose in the
+// Calendar settings (integrations design T6), through Communications' channel:
+// sent From the channel's address with the organiser's name beside it. Never
+// inside a transaction; the caller bounds ctx.
+func (s *server) outboundSend(ctx context.Context, channel uuid.UUID, out mail.Outbound) error {
+	if err := noteContractCall(ctx, "OutboundMail.Send"); err != nil {
+		return err
+	}
+	if s.deps.OutboundMail == nil {
+		return contracts.ErrChannelUnknown
+	}
+	return s.deps.OutboundMail.Send(ctx, channel, out)
+}
+
+// invitationChannel is the channel invitations are sent from now, and whether
+// it can send: the one the Calendar settings chose, with Communications
+// answering that it exists and can send. Off - nothing chosen, or
+// Communications off - and a channel that is gone or cannot send alike answer
+// false, as a non-smtp mail driver used to: outside attendees are stored and
+// left not sent. An error reading either is logged and answers false, since an
+// invitation must not be sent on a guess. A caller asks first.
+func (s *server) invitationChannel(ctx context.Context) (contracts.OutboundChannel, bool) {
+	row, err := s.queries().GetSettings(ctx)
+	if err != nil {
+		s.deps.Logger.WarnContext(ctx, "calendar: the invitation channel could not be read", "error", err.Error())
+		return contracts.OutboundChannel{}, false
+	}
+	if row.InvitationChannel == nil {
+		return contracts.OutboundChannel{}, false
+	}
+	ch, err := s.outboundChannel(ctx, *row.InvitationChannel)
+	switch {
+	case errors.Is(err, contracts.ErrChannelUnknown):
+		return contracts.OutboundChannel{}, false
+	case err != nil:
+		s.deps.Logger.WarnContext(ctx, "calendar: the invitation channel could not be read", "error", err.Error())
+		return contracts.OutboundChannel{}, false
+	}
+	return ch, ch.Available
+}
+
+// mailAvailable is whether this installation sends invitations at all: the
+// Calendar settings choose a channel, and it can send (integrations design
+// T6). Otherwise outside attendees are stored and left not sent, and GET /meta
+// says so.
+func (s *server) mailAvailable(ctx context.Context) bool {
+	_, ok := s.invitationChannel(ctx)
+	return ok
 }
 
 // projectsRole is the role userID holds on project id, "" for none or when

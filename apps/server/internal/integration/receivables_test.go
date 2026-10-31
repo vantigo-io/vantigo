@@ -18,8 +18,8 @@ import (
 )
 
 // The receivables end to end (invoices payments and reminders design D3–D12,
-// Task 14): the real customers and invoices modules, the SMTP seam recorded
-// with MAIL_DRIVER=smtp, bank files built by bankfiletest — the parsers'
+// Task 14): the real customers and invoices modules, the OutboundMail channel
+// recorded (channel_test.go), bank files built by bankfiletest — the parsers'
 // own builders — and the reminder worker as worker mode builds it, so the
 // bank import, matching, the queue, the run, the letter and attention are
 // the module's own, against a customer the customers module made.

@@ -337,6 +337,50 @@ components:
                 - name
                 - email
             type: object
+        CalendarInvitationSettings:
+            description: 'The channel invitations to people outside the company are sent from (integrations design T6). invitationChannel is the id of a Communications channel as stored, null for off: nothing is sent, nothing is marked, and the appointment says invitations are off. state is what it is now - disabled (none chosen), ready (the channel can send), unavailable (it exists but cannot send now: its provider is off or an SMTP channel has no credentials) or gone (no active channel has the id, or Communications is off); anything but ready sends nothing. channels are the choices - the active mail channels with their provider and whether each can send - names and addresses only. revision is the one a PUT names in If-Match.'
+            properties:
+                channels:
+                    items:
+                        $ref: '#/components/schemas/CalendarSendChannel'
+                    type: array
+                invitationChannel:
+                    format: uuid
+                    nullable: true
+                    type: string
+                    x-omitempty: false
+                revision:
+                    format: int32
+                    type: integer
+                state:
+                    enum:
+                        - disabled
+                        - ready
+                        - unavailable
+                        - gone
+                    type: string
+                updatedAt:
+                    format: date-time
+                    type: string
+            required:
+                - invitationChannel
+                - state
+                - channels
+                - revision
+                - updatedAt
+            type: object
+        CalendarInvitationSettingsWrite:
+            description: 'PUT /invitation-settings'' body. invitationChannel is required and nullable: a channel that exists (else a 400 on invitationChannel) - or the stored one, so a setting whose channel has since gone can still be saved -, or null for off. A body without it is a 400, so a client cannot turn invitations off by leaving it out.'
+            properties:
+                invitationChannel:
+                    format: uuid
+                    nullable: true
+                    type: string
+                    x-go-type: json.RawMessage
+                    x-go-type-skip-optional-pointer: true
+            required:
+                - invitationChannel
+            type: object
         CalendarItem:
             description: 'One thing on a person''s calendar: an appointment''s occurrence (kind calendar.appointment, with appointment set), a row another module projects through its calendar source (with path set), an event of a calendar the person subscribes to (kind calendar.subscription, with subscription set — calendar feed design D8), or an event of the person''s Outlook calendar that blocks their time, read back by their Outlook sync (kind calendar.outlook, with outlook set and no title — calendar Outlook sync design O9.5). An all-day item spans startDate..endDate inclusive; a timed one spans startsAt..endsAt, endsAt exclusive (equal to startsAt for a point in time, which the view draws at its default length).'
             properties:
@@ -483,7 +527,7 @@ components:
                     description: Whether the caller holds calendar:view-colleagues.
                     type: boolean
                 invitationsAvailable:
-                    description: Whether invitations are mailed — the mail driver is smtp. When false, outside attendees are stored and marked not sent.
+                    description: Whether invitations are mailed - the channel chosen in the Calendar settings can send (integrations design T6). When false, outside attendees are stored and marked not sent.
                     type: boolean
                 sources:
                     description: Every kind a wired provider declares, enabled modules only — for the filter, the legend and the colours — calendar.subscription when the caller has at least one subscription, and calendar.outlook while the caller's Outlook sync is on.
@@ -505,7 +549,7 @@ components:
                 - sources
             type: object
         CalendarProblem:
-            description: 'An RFC 9457 problem with this module''s refusal code. code names the rule that refused and is what a client keys off, never the words: revision_mismatch (409: the If-Match revision has moved on), occurrence_not_in_series (409: the series'' rule never produces that date), appointment_cancelled (409: the appointment is cancelled and nothing of it changes), invitations_unavailable (503: the mail driver is not smtp, so no invitation can be sent), subscription_limit (409: the caller has ten subscriptions already), mailbox_sync_unavailable (409: the Outlook sync cannot run now; detail carries the availability — switch_off, no_provider, unavailable or no_account) and mailbox_sync_off (409: Sync now of an Outlook sync that is turned off). errors carries the field errors of a 400, keyed by the request''s camelCase field (a nested one as recurrence.rule, an element of a list as attendees[0]). A request the server could not decode answers a bare 400 with neither.'
+            description: 'An RFC 9457 problem with this module''s refusal code. code names the rule that refused and is what a client keys off, never the words: revision_mismatch (409: the If-Match revision has moved on), occurrence_not_in_series (409: the series'' rule never produces that date), appointment_cancelled (409: the appointment is cancelled and nothing of it changes), invitations_unavailable (503: invitations are off in the Calendar settings, or the chosen channel cannot send, so no invitation can be sent), subscription_limit (409: the caller has ten subscriptions already), mailbox_sync_unavailable (409: the Outlook sync cannot run now; detail carries the availability — switch_off, no_provider, unavailable or no_account) and mailbox_sync_off (409: Sync now of an Outlook sync that is turned off). errors carries the field errors of a 400, keyed by the request''s camelCase field (a nested one as recurrence.rule, an element of a list as attendees[0]). A request the server could not decode answers a bare 400 with neither.'
             properties:
                 code:
                     nullable: true
@@ -544,6 +588,34 @@ components:
             required:
                 - date
                 - name
+            type: object
+        CalendarSendChannel:
+            description: One channel invitations may be sent from, as Communications answers it through contracts.OutboundMail (integrations design T4, T6).
+            properties:
+                address:
+                    type: string
+                available:
+                    description: Whether the channel can send now - its provider is offered and, for SMTP, its credentials are stored.
+                    type: boolean
+                displayName:
+                    description: The channel's display name; empty when it has none.
+                    type: string
+                id:
+                    format: uuid
+                    type: string
+                provider:
+                    description: The provider's key - smtp or entra.
+                    type: string
+                providerDisplayName:
+                    description: The provider as an admin reads it - SMTP, Microsoft 365.
+                    type: string
+            required:
+                - id
+                - address
+                - displayName
+                - provider
+                - providerDisplayName
+                - available
             type: object
         CalendarSourceKind:
             description: 'One kind of item a module projects onto the calendar: a stable key, "<module>.<noun>", and the module it comes from.'
@@ -1586,6 +1658,84 @@ paths:
             tags:
                 - Calendar
             x-vantigo-access: permission:calendar:access
+    /api/v1/calendar/invitation-settings:
+        get:
+            description: The channel invitations to people outside the company are sent from, what it is now, and the channels a choice may name (integrations design T6). Needs calendar:access and calendar:manage - the setting is the workspace's, not the caller's.
+            operationId: getCalendarInvitationSettings
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CalendarInvitationSettings'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+            summary: The invitation settings
+            tags:
+                - Calendar
+            x-vantigo-access: permission:calendar:access+calendar:manage
+        put:
+            description: 'Replaces the channel invitations are sent from, whole, under the row''s lock (integrations design T6). invitationChannel is required: a channel that exists, the stored one, or null for off. If-Match is the revision the setting was read at; one that has moved on is a 409 revision_mismatch.'
+            operationId: putCalendarInvitationSettings
+            parameters:
+                - description: The revision the setting was read at, bare (3) or quoted ("3"). A revision that has moved on is a 409 revision_mismatch.
+                  in: header
+                  name: If-Match
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/CalendarInvitationSettingsWrite'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CalendarInvitationSettings'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/CalendarProblem'
+                    description: Bad Request - a body without invitationChannel, or a channel no active channel has (field errors), or an If-Match that is not a revision.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/CalendarProblem'
+                    description: Conflict - revision_mismatch.
+            summary: Change the invitation settings
+            tags:
+                - Calendar
+            x-vantigo-access: permission:calendar:access+calendar:manage
     /api/v1/calendar/items:
         get:
             description: 'The caller''s calendar in a window (calendar design D5): their appointments — owned, or attended with any status — expanded in their own zones with their exceptions applied, then every enabled module''s calendar source in module order, each under its own permission, then the caller''s subscriptions'' events as last fetched (calendar feed design D8), then the public holidays. A timed item is in the window when it overlaps from 00:00 to the end of to in timeZone; an all-day one when its dates overlap from..to.'

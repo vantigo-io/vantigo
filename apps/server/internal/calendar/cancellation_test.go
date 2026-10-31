@@ -16,7 +16,8 @@ import (
 
 func TestDelete_WithNobodyInvitedRemovesTheRowAndTellsTheColleagues(t *testing.T) {
 	t.Parallel()
-	w := newInviting(t, "en", modtest.WithEnv("MAIL_DRIVER", "log"))
+	w := newInviting(t, "en")
+	invitationsOff(t, w.h)
 	colleague := directoryUser(t, w.h, "Liv Lund", true)
 	a := create(t, w.owner, meeting(t, attendees(userAttendees(colleague.String()), []map[string]any{emailAttendee(perMail, "")})...))
 	before := len(w.h.Notices())

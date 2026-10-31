@@ -35,8 +35,8 @@ import (
 // invoices tests (invoices_test.go), which compose customers and invoices
 // and give the installation what a send needs beyond the database: a real
 // file-system object store over a temporary directory, where the issue
-// stores the PDF the send attaches, and the smtp driver with the SMTP seam
-// (modtest.WithSMTPSend) recording each envelope instead of dialing out.
+// stores the PDF the send attaches, and the OutboundMail slot filled by a fake
+// channel (channel_test.go) recording each envelope instead of dialing out.
 //
 // That is the whole point. Each module's own suite hands the other side an
 // imitation; here `Deps.Expenses` is the expenses module's own provider and

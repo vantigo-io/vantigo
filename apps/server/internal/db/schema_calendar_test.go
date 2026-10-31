@@ -37,8 +37,9 @@ func TestCalendarBaseline_AppliesAndIsIdempotent(t *testing.T) {
 	// subscriptions, pinned by TestCalendarFeed_AppliesAndIsIdempotent, and
 	// 00081's, the Outlook sync's setting and map, pinned by
 	// TestCalendarMailboxSync_AppliesAndIsIdempotent, and 00083's busy rows,
-	// pinned by TestCalendarMailboxBusy_AppliesAndIsIdempotent.
-	if want := []string{"appointment_attendees", "appointment_exceptions", "appointments", "feed_tokens", "mailbox_busy", "mailbox_events", "mailbox_sync", "subscriptions"}; !equalStrings(tables, want) {
+	// pinned by TestCalendarMailboxBusy_AppliesAndIsIdempotent, and 00097's
+	// settings row, pinned by TestCalendarSettings_AppliesAndIsIdempotent.
+	if want := []string{"appointment_attendees", "appointment_exceptions", "appointments", "feed_tokens", "mailbox_busy", "mailbox_events", "mailbox_sync", "settings", "subscriptions"}; !equalStrings(tables, want) {
 		t.Errorf("calendar tables = %v, want %v", tables, want)
 	}
 

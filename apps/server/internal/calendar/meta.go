@@ -12,8 +12,8 @@ import (
 //
 // What the app needs before it asks for a window (calendar design D3): the
 // business zone and today in it, whether the caller may open a colleague's
-// calendar, whether invitations are mailed (calendar invitations design D3:
-// the mail driver is smtp), and every kind the enabled modules' sources declare — for the
+// calendar, whether invitations are mailed (integrations design T6: the Calendar
+// settings choose a channel, and it can send), and every kind the enabled modules' sources declare — for the
 // filter, the legend and the colours — which costs no provider a query, with
 // calendar.subscription after them when the caller subscribes to a calendar,
 // and calendar.outlook last while the caller's Outlook sync is on.
@@ -52,7 +52,7 @@ func (s *server) GetCalendarMeta(ctx context.Context, _ gen.GetCalendarMetaReque
 		TimeZone:             c.zone().String(),
 		Today:                apiDate(today),
 		CanViewColleagues:    c.CanViewColleagues,
-		InvitationsAvailable: s.mailAvailable(),
+		InvitationsAvailable: s.mailAvailable(ctx),
 		Sources:              kinds,
 	}, nil
 }

@@ -17,11 +17,11 @@ import (
 )
 
 // This file is the invitation mail (calendar invitations design D3): one
-// message per outside attendee, From the installation's SMTP_FROM with the
-// owner's name, text and HTML in the owner's language and the iCalendar
+// message per outside attendee, From the address of the channel the Owner
+// chose in the Calendar settings with the owner's name beside it, text and HTML in the owner's language and the iCalendar
 // object (ics.go) as the third alternative and as an attachment. It goes
 // after the write has committed, never inside it, through the module's one
-// SMTP accessor (smtpSend), one after the other on a context detached from
+// outbound accessor (outboundSend, contracts.OutboundMail), one after the other on a context detached from
 // the request, under one budget for the request's whole after-commit work —
 // its colleagues' notices included. Nothing is queued and nothing retries by
 // itself: a send that fails, or that the budget left unmade, is recorded on
@@ -35,8 +35,8 @@ import (
 // when it did not; an occurrence moved, cancelled or put back REQUEST to
 // every outside attendee; a cancellation (cancellation.go) CANCEL to every
 // outside attendee who had been invited; and the resend REQUEST to the one
-// named. When the mail driver is not smtp nothing is sent and nothing is
-// marked.
+// named. When invitations are off in the Calendar settings, or the chosen
+// channel cannot send, nothing is sent and nothing is marked.
 
 // afterCommitBudget bounds everything one request does after its commit —
 // its invitations and its colleagues' notices, all of them together — and
@@ -113,8 +113,9 @@ func (s *server) sendInvitations(b *budget, job invitationJob) {
 	}
 	ctx := b.records()
 	logger := s.deps.Logger
-	if !s.mailAvailable() {
-		logger.InfoContext(ctx, "calendar: invitations not sent: the mail driver is not smtp",
+	channel, ok := s.invitationChannel(ctx)
+	if !ok {
+		logger.InfoContext(ctx, "calendar: invitations not sent: invitations are off, or the chosen channel cannot send",
 			"appointment_id", job.appt.ID, "attendees", len(to))
 		return
 	}
@@ -159,9 +160,9 @@ func (s *server) sendInvitations(b *budget, job invitationJob) {
 				"appointment_id", job.appt.ID, "attendee_id", at.ID)
 			continue
 		}
-		out, err := s.invitationMail(job, at, recipient, everyone, organiser, lang)
+		out, err := s.invitationMail(job, at, recipient, everyone, organiser, lang, channel.Address)
 		if err == nil {
-			err = s.smtpSend(b.ctx, s.deps.Config.Mail, out)
+			err = s.outboundSend(b.ctx, channel.ID, out)
 		}
 		if err != nil {
 			redact := regexp.MustCompile("(?i)" + regexp.QuoteMeta(recipient.address))
@@ -250,8 +251,10 @@ func (s *server) addressOf(ctx context.Context, at store.CalendarAppointmentAtte
 	return icsAttendee{}, false
 }
 
-// invitationMail is the message to one outside attendee.
-func (s *server) invitationMail(job invitationJob, at store.CalendarAppointmentAttendee, recipient icsAttendee, everyone []icsAttendee, organiser, lang string) (mail.Outbound, error) {
+// invitationMail is the message to one outside attendee, sent from the address
+// of the channel the Calendar settings chose: the ORGANIZER of its iCalendar
+// object, as it is the mail's From.
+func (s *server) invitationMail(job invitationJob, at store.CalendarAppointmentAttendee, recipient icsAttendee, everyone []icsAttendee, organiser, lang, from string) (mail.Outbound, error) {
 	link, err := s.rsvpLink(at)
 	if err != nil {
 		return mail.Outbound{}, err
@@ -264,7 +267,7 @@ func (s *server) invitationMail(job invitationJob, at store.CalendarAppointmentA
 	body, err := buildICS(icsInput{
 		method: job.method, appt: job.appt, excs: job.excs, attendees: listed,
 		link: link, rsvpSentence: w.rsvpSentence,
-		organiser: organiser, from: s.deps.Config.Mail.From, now: s.deps.Clock(),
+		organiser: organiser, from: from, now: s.deps.Clock(),
 	})
 	if err != nil {
 		return mail.Outbound{}, err
@@ -397,7 +400,7 @@ func (s *server) PostCalendarAppointmentsByIdAttendeesByAttendeeIdResend(ctx con
 	if a.CancelledAt != nil {
 		return gen.PostCalendarAppointmentsByIdAttendeesByAttendeeIdResend409ApplicationProblemPlusJSONResponse(appointmentCancelled(*a.CancelledAt)), nil
 	}
-	if !s.mailAvailable() {
+	if !s.mailAvailable(ctx) {
 		return gen.PostCalendarAppointmentsByIdAttendeesByAttendeeIdResend503ApplicationProblemPlusJSONResponse(invitationsUnavailable()), nil
 	}
 	atts, err := q.ListAttendees(ctx, a.ID)
