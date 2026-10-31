@@ -145,6 +145,7 @@ type setup struct {
 	mailboxCalendar contracts.MailboxCalendar
 	channelMailbox  contracts.ChannelMailbox
 	personalMailbox contracts.PersonalMailbox
+	outboundMail    contracts.OutboundMail
 	calendarBusy    contracts.CalendarBusy
 	hours           contracts.BillableHours
 	billExpenses    contracts.BillableExpenses
@@ -395,6 +396,17 @@ func WithChannelMailbox(m contracts.ChannelMailbox) Option {
 // slot (Outlook connection design M20); a composed Entra's own replaces it.
 func WithPersonalMailbox(m contracts.PersonalMailbox) Option {
 	return func(s *setup) { s.personalMailbox = m }
+}
+
+// WithOutboundMail sets Deps.OutboundMail, for Invoices' and Calendar's
+// sending to be tested against a fake channel provider (FakeOutboundMail) —
+// its channels and refusals set by the test — without composing
+// Communications beside them: depguard keeps it out of their tests.
+// module.Compose and module.Workers keep a value set here when no enabled
+// module provides the slot (integrations design T4); a composed
+// Communications' own replaces it.
+func WithOutboundMail(m contracts.OutboundMail) Option {
+	return func(s *setup) { s.outboundMail = m }
 }
 
 // WithCalendarBusy sets Deps.CalendarBusy, for a module that reads the
@@ -680,6 +692,7 @@ func New(t *testing.T, opts ...Option) *Harness {
 		MailboxCalendar:          s.mailboxCalendar,
 		ChannelMailbox:           s.channelMailbox,
 		PersonalMailbox:          s.personalMailbox,
+		OutboundMail:             s.outboundMail,
 		CalendarBusy:             s.calendarBusy,
 		BillableHours:            s.hours,
 		BillableExpenses:         s.billExpenses,

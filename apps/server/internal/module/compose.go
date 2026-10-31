@@ -383,6 +383,14 @@ func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.
 		return nil, err
 	}
 
+	// The outbound mail (contracts.OutboundMail, integrations design T4)
+	// resolves after the personal mailbox, by the helper Workers uses too:
+	// Invoices' reminder worker sends through it in worker mode as the API
+	// does, and its provider, Communications, reads deps.ChannelMailbox.
+	if deps, err = withOutboundMail(deps, mods); err != nil {
+		return nil, err
+	}
+
 	// The calendar's busy time (contracts.CalendarBusy, calendar Outlook sync
 	// design O9.8) resolves last, after the mailbox calendar: its provider,
 	// the calendar's server, reads the rest of Deps while it is built.

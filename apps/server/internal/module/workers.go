@@ -107,6 +107,13 @@ func Workers(deps Deps, mods ...Module) []worker.Worker {
 	if err != nil {
 		panic(err.Error())
 	}
+	// The outbound mail slot, resolved as Compose resolves it (integrations
+	// design T4): Invoices' reminder worker sends through it, and worker mode
+	// never composes. Two providers panic, as two personal mailboxes do.
+	deps, err = withOutboundMail(deps, enabled)
+	if err != nil {
+		panic(err.Error())
+	}
 	var out []worker.Worker
 	for _, mod := range enabled {
 		if mod.Workers == nil {
@@ -204,6 +211,21 @@ func withPersonalMailbox(deps Deps, enabled []Module) (Deps, error) {
 	}
 	if provider != nil {
 		deps.PersonalMailbox = provider.PersonalMailbox(deps)
+	}
+	return deps, nil
+}
+
+// withOutboundMail resolves contracts.OutboundMail from the enabled modules —
+// at most one may declare it — keeping a preset value when none does (the
+// seam modtest.WithOutboundMail fills). Compose and Workers both call it,
+// after the personal mailbox: its provider reads deps.ChannelMailbox.
+func withOutboundMail(deps Deps, enabled []Module) (Deps, error) {
+	provider, err := soleProvider(enabled, "outbound mail", func(m Module) bool { return m.OutboundMail != nil })
+	if err != nil {
+		return deps, err
+	}
+	if provider != nil {
+		deps.OutboundMail = provider.OutboundMail(deps)
 	}
 	return deps, nil
 }

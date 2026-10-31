@@ -2592,6 +2592,81 @@ func TestCompose_ResolvesTheChannelMailboxSlot(t *testing.T) {
 	})
 }
 
+// fakeOutboundMail is a contracts.OutboundMail that answers nothing: these
+// tests only need distinct values to assert on, and what Deps carried when it
+// was built. The embedded nil interface panics on a call, which no test here
+// makes.
+type fakeOutboundMail struct {
+	contracts.OutboundMail
+	name    string
+	channel contracts.ChannelMailbox // whatever Deps carried when it was built
+}
+
+// The OutboundMail slot (contracts.OutboundMail, integrations design T4) is a
+// sole-provider slot, resolved before any Mount runs and after the channel and
+// personal mailboxes, so its provider sees them on Deps; it reaches every
+// module's Deps. Two enabled providers are a compose error naming both, and a
+// preset value survives when no enabled module provides one.
+func TestCompose_ResolvesTheOutboundMailSlot(t *testing.T) {
+	specs := map[string]string{"alpha": alphaContract, "beta": betaContract}
+	t.Run("one provider", func(t *testing.T) {
+		mailbox := &fakeChannelMailbox{key: "entra"}
+		var provider *fakeOutboundMail
+		var got Deps
+		_, err := compose(Deps{Access: &fakeAccess{}, OutboundMail: &fakeOutboundMail{name: "preset"}}, fakeLoad(specs),
+			Module{Name: "beta", ChannelMailbox: func(Deps) contracts.ChannelMailbox { return mailbox }, Mount: staticHandler("beta")},
+			Module{Name: "alpha",
+				OutboundMail: func(d Deps) contracts.OutboundMail {
+					provider = &fakeOutboundMail{name: "alpha", channel: d.ChannelMailbox}
+					return provider
+				},
+				Mount: func(d Deps) (http.Handler, error) {
+					got = d
+					return staticHandler("alpha")(d)
+				}},
+		)
+		if err != nil {
+			t.Fatalf("compose: %v", err)
+		}
+		if provider == nil || got.OutboundMail != provider {
+			t.Errorf("Deps.OutboundMail = %v, want the provider's", got.OutboundMail)
+		}
+		if provider != nil && provider.channel != mailbox {
+			t.Errorf("the provider was built seeing Deps.ChannelMailbox = %v, want the channel mailbox resolved first", provider.channel)
+		}
+	})
+	t.Run("two providers", func(t *testing.T) {
+		provide := func(Deps) contracts.OutboundMail { return &fakeOutboundMail{} }
+		_, err := compose(Deps{Access: &fakeAccess{}}, fakeLoad(specs),
+			Module{Name: "alpha", OutboundMail: provide, Mount: staticHandler("alpha")},
+			Module{Name: "beta", OutboundMail: provide, Mount: staticHandler("beta")},
+		)
+		if err == nil || !strings.Contains(err.Error(), "outbound mail") ||
+			!strings.Contains(err.Error(), "alpha") || !strings.Contains(err.Error(), "beta") {
+			t.Errorf("compose = %v, want an error naming outbound mail, alpha and beta", err)
+		}
+	})
+	t.Run("preset kept", func(t *testing.T) {
+		preset := &fakeOutboundMail{name: "preset"}
+		var got Deps
+		_, err := compose(
+			Deps{Access: &fakeAccess{}, Config: &config.Config{Modules: []string{"alpha"}}, OutboundMail: preset},
+			fakeLoad(specs),
+			Module{Name: "alpha", Mount: func(d Deps) (http.Handler, error) {
+				got = d
+				return staticHandler("alpha")(d)
+			}},
+			Module{Name: "beta", OutboundMail: func(Deps) contracts.OutboundMail { return &fakeOutboundMail{name: "beta"} }, Mount: staticHandler("beta")},
+		)
+		if err != nil {
+			t.Fatalf("compose: %v", err)
+		}
+		if got.OutboundMail != preset {
+			t.Errorf("Deps.OutboundMail = %v, want the preset: beta (the provider) is disabled", got.OutboundMail)
+		}
+	})
+}
+
 // fakeCalendarBusy is a contracts.CalendarBusy that answers nothing: these
 // tests only need distinct values to assert on, and what Deps carried when
 // it was built. The embedded nil interface panics on a call, which no test
