@@ -91,7 +91,9 @@ func bodyLimits(d module.Deps) map[string]int64 {
 // validate a conversation's customerId — so Directory is left nil. What it
 // does provide is the contracts.CustomerReferenceHolder a customer merge
 // re-points its conversations, suggestions and candidates through (customers
-// merge design D1).
+// merge design D1), and contracts.OutboundMail, its channels as Invoices and
+// Calendar send customer mail through them (outbound_mail.go, integrations
+// design T4).
 func Module() module.Module {
 	return module.Module{
 		Name:                 "communications",
@@ -100,6 +102,7 @@ func Module() module.Module {
 		Workers:              workers,
 		CustomerReferences:   newCustomerReferenceHolder,
 		CustomerPersonalData: newCustomerPersonalData,
+		OutboundMail:         newOutboundMail,
 	}
 }
 

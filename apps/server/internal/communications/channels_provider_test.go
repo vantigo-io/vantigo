@@ -111,8 +111,10 @@ func TestCreateChannel_EntraSharedMailbox(t *testing.T) {
 	for _, call := range fake.Calls() {
 		methods = append(methods, call.Method)
 	}
-	if strings.Join(methods, ",") != "Status,Check" {
-		t.Errorf("calls = %v, want Status then Check", methods)
+	// Status and Check make the channel; the GET reads the provider's status
+	// again, for the channel's available (integrations design T5).
+	if strings.Join(methods, ",") != "Status,Check,Status" {
+		t.Errorf("calls = %v, want Status then Check, then the GET's Status", methods)
 	}
 }
 
