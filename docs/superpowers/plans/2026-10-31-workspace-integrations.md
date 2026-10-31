@@ -141,7 +141,7 @@ become permanent redirects. Branch `feat/workspace-integrations`, cut from `main
   Outlook connection off?* confirmation. `EntraPage` renders both for now. Tests: the
   existing tests that toggle a switch "with the account rules" now assert the narrower
   request body and press the new button.
-- [ ] **2. `feat(entra-ui)`: the four tab components.** Move `RegisterForm`,
+- [x] **2. `feat(entra-ui)`: the four tab components.** Move `RegisterForm`,
   `PermissionsStep` and `TestResult` out of `pages/entra.tsx` into `components/`;
   add `pages/tab-frame.tsx` (the connection and owner queries, skeleton and error shared
   by the tabs) and `EntraStatusTab`, `EntraConnectionTab`, `EntraAccountsTab`,
