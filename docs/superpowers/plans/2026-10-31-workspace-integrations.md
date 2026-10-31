@@ -152,7 +152,7 @@ become permanent redirects. Branch `feat/workspace-integrations`, cut from `main
   `pages/entra.test.tsx` by tab (`status-tab.test.tsx`, `connection-tab.test.tsx`,
   `accounts-tab.test.tsx`, `outlook-tab.test.tsx`), each asserting the cards it took and
   the callout's text; one small test keeps `EntraPage` honest.
-- [ ] **3. `feat(host,entra-ui)`: Integrations, `/workspace/entra` in four tabs.**
+- [x] **3. `feat(host,entra-ui)`: Integrations, `/workspace/entra` in four tabs.**
   `apps.ts`: remove `moduleApp("entra", …)`, narrow `AppKey` to the modules that have an
   app, add the Integrations `NavSection` to the workspace area; `account-menu.ts`: the
   *Microsoft Entra ID* entry; catalogs en/nb (`navigation.integrations`,

@@ -55,7 +55,15 @@ import {
   visibleNavSections,
 } from "./navigation";
 
-export type AppKey = "home" | ModuleKey;
+/**
+ * The modules that own an app (a switcher tile and a sidebar). Entra is a
+ * module without one: its page is Microsoft Entra ID under *Integrations* in
+ * Workspace admin (Integrations design T2), so it is not here and
+ * `appForKey("entra")` is a type error.
+ */
+export type ModuleWithApp = Exclude<ModuleKey, "entra">;
+
+export type AppKey = "home" | ModuleWithApp;
 
 /**
  * The administration areas: like apps they own a URL prefix, a header title
@@ -102,7 +110,7 @@ const permissionsUnlocking = (items: readonly NavItem[]) => [
 
 /** A module app: one unlabeled sidebar section, a tile shown when any of its entries would be. */
 const moduleApp = (
-  key: ModuleKey,
+  key: ModuleWithApp,
   label: string,
   icon: NavItem["icon"],
   home: string,
@@ -483,17 +491,6 @@ export const apps: readonly AppDefinition[] = [
       requiredPermissions: ["energy:tariffs-view"],
     },
   ]),
-  // The connection to the tenant (Entra design D15): one page, the status and
-  // the wizard, behind entra:manage. The Owner-only steps are the page's to
-  // show read-only; the server refuses their writes to anyone else.
-  moduleApp("entra", "navigation.entra", IconBrandWindows, "/entra", [
-    {
-      label: "navigation.entra",
-      to: "/entra",
-      icon: IconBrandWindows,
-      requiredPermissions: ["entra:manage"],
-    },
-  ]),
 ];
 
 /** Every sidebar destination across apps, for consumers that span apps (spotlight, permission guard). */
@@ -549,6 +546,24 @@ export const areas: readonly AreaDefinition[] = [
             to: "/workspace/roles",
             icon: IconShieldCheck,
             capability: "authorization",
+          },
+        ],
+      },
+      // The tenant's connections to systems elsewhere (Integrations design T2).
+      // Microsoft Entra ID is the connection to the tenant (Entra design D15), in
+      // four tabs, behind entra:manage while the module is on. The Owner-only
+      // steps are the tabs' to show read-only; the server refuses their writes
+      // to anyone else. A module takes an item here as Entra's Connections page
+      // takes one under Settings.
+      {
+        label: "navigation.integrations",
+        items: [
+          {
+            label: "navigation.entra",
+            to: "/workspace/entra",
+            icon: IconBrandWindows,
+            module: "entra",
+            requiredPermissions: ["entra:manage"],
           },
         ],
       },

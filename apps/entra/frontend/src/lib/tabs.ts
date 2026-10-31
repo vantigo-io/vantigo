@@ -20,4 +20,9 @@ const tabOf = (tab: EntraTab) => {
 };
 
 export const entraTabPath = (tab: EntraTab): string => tabOf(tab).path;
+
+/** The tab a location belongs to; anything under `/workspace/entra` that is not another tab's is *Status*. */
+export const entraTabForPath = (pathname: string): EntraTab =>
+  entraTabs.find((tab) => tab.value !== "status" && (pathname === tab.path || pathname.startsWith(`${tab.path}/`)))
+    ?.value ?? "status";
 export const entraTabLabelKey = (tab: EntraTab) => tabOf(tab).labelKey;

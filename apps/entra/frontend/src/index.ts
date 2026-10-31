@@ -17,7 +17,7 @@ export {
 } from "./components/outlook-connection";
 export { entraCatalog } from "./i18n";
 export { stepsDone } from "./lib/steps";
-export { type EntraTab, entraTabLabelKey, entraTabPath, entraTabs } from "./lib/tabs";
+export { type EntraTab, entraTabForPath, entraTabLabelKey, entraTabPath, entraTabs } from "./lib/tabs";
 export { EntraAccountsTab, type EntraAccountsTabProps } from "./pages/accounts-tab";
 export { EntraConnectionTab } from "./pages/connection-tab";
 /** @deprecated The four tabs are the page now; kept for one release. */

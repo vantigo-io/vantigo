@@ -90,6 +90,7 @@ import { Route as TimeDayRouteImport } from './routes/time/day'
 import { Route as TimePeopleRouteImport } from './routes/time/people'
 import { Route as TimeSettingsRouteImport } from './routes/time/settings'
 import { Route as WorkspaceIndexRouteImport } from './routes/workspace/index'
+import { Route as WorkspaceEntraRouteImport } from './routes/workspace/entra'
 import { Route as WorkspaceInvitationsRouteImport } from './routes/workspace/invitations'
 import { Route as WorkspaceOverviewRouteImport } from './routes/workspace/overview'
 import { Route as WorkspaceRolesRouteImport } from './routes/workspace/roles'
@@ -126,6 +127,10 @@ import { Route as StaffGroupsIndexRouteImport } from './routes/staff/groups.inde
 import { Route as StaffGroupsIdRouteImport } from './routes/staff/groups.$id'
 import { Route as StaffPeopleIndexRouteImport } from './routes/staff/people.index'
 import { Route as StaffPeopleIdRouteImport } from './routes/staff/people.$id'
+import { Route as WorkspaceEntraIndexRouteImport } from './routes/workspace/entra/index'
+import { Route as WorkspaceEntraAccountsRouteImport } from './routes/workspace/entra/accounts'
+import { Route as WorkspaceEntraConnectionRouteImport } from './routes/workspace/entra/connection'
+import { Route as WorkspaceEntraOutlookRouteImport } from './routes/workspace/entra/outlook'
 import { Route as EnergyMeteringPointsImportIndexRouteImport } from './routes/energy/metering-points/import.index'
 import { Route as EnergyMeteringPointsImportImportIdRouteImport } from './routes/energy/metering-points/import.$importId'
 import { Route as InvoicesPaymentsFilesBankFileIdRouteImport } from './routes/invoices/payments.files.$bankFileId'
@@ -536,6 +541,11 @@ const WorkspaceIndexRoute = WorkspaceIndexRouteImport.update({
   path: '/',
   getParentRoute: () => WorkspaceRoute,
 } as any)
+const WorkspaceEntraRoute = WorkspaceEntraRouteImport.update({
+  id: '/entra',
+  path: '/entra',
+  getParentRoute: () => WorkspaceRoute,
+} as any)
 const WorkspaceInvitationsRoute = WorkspaceInvitationsRouteImport.update({
   id: '/invitations',
   path: '/invitations',
@@ -732,6 +742,27 @@ const StaffPeopleIdRoute = StaffPeopleIdRouteImport.update({
   path: '/people/$id',
   getParentRoute: () => StaffRoute,
 } as any)
+const WorkspaceEntraIndexRoute = WorkspaceEntraIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => WorkspaceEntraRoute,
+} as any)
+const WorkspaceEntraAccountsRoute = WorkspaceEntraAccountsRouteImport.update({
+  id: '/accounts',
+  path: '/accounts',
+  getParentRoute: () => WorkspaceEntraRoute,
+} as any)
+const WorkspaceEntraConnectionRoute =
+  WorkspaceEntraConnectionRouteImport.update({
+    id: '/connection',
+    path: '/connection',
+    getParentRoute: () => WorkspaceEntraRoute,
+  } as any)
+const WorkspaceEntraOutlookRoute = WorkspaceEntraOutlookRouteImport.update({
+  id: '/outlook',
+  path: '/outlook',
+  getParentRoute: () => WorkspaceEntraRoute,
+} as any)
 const EnergyMeteringPointsImportIndexRoute =
   EnergyMeteringPointsImportIndexRouteImport.update({
     id: '/metering-points/import/',
@@ -818,6 +849,7 @@ export interface FileRoutesByFullPath {
   '/time/day': typeof TimeDayRoute
   '/time/people': typeof TimePeopleRoute
   '/time/settings': typeof TimeSettingsRoute
+  '/workspace/entra': typeof WorkspaceEntraRouteWithChildren
   '/workspace/invitations': typeof WorkspaceInvitationsRoute
   '/workspace/overview': typeof WorkspaceOverviewRoute
   '/workspace/roles': typeof WorkspaceRolesRoute
@@ -860,6 +892,9 @@ export interface FileRoutesByFullPath {
   '/projects/$projectId/time': typeof ProjectsProjectIdTimeRoute
   '/staff/groups/$id': typeof StaffGroupsIdRoute
   '/staff/people/$id': typeof StaffPeopleIdRoute
+  '/workspace/entra/accounts': typeof WorkspaceEntraAccountsRoute
+  '/workspace/entra/connection': typeof WorkspaceEntraConnectionRoute
+  '/workspace/entra/outlook': typeof WorkspaceEntraOutlookRoute
   '/customers/$customerId/': typeof CustomersCustomerIdIndexRoute
   '/customers/contacts/': typeof CustomersContactsIndexRoute
   '/customers/import/': typeof CustomersImportIndexRoute
@@ -869,6 +904,7 @@ export interface FileRoutesByFullPath {
   '/projects/$projectId/': typeof ProjectsProjectIdIndexRoute
   '/staff/groups/': typeof StaffGroupsIndexRoute
   '/staff/people/': typeof StaffPeopleIndexRoute
+  '/workspace/entra/': typeof WorkspaceEntraIndexRoute
   '/energy/metering-points/import/$importId': typeof EnergyMeteringPointsImportImportIdRoute
   '/invoices/payments/files/$bankFileId': typeof InvoicesPaymentsFilesBankFileIdRoute
   '/energy/metering-points/import/': typeof EnergyMeteringPointsImportIndexRoute
@@ -965,6 +1001,9 @@ export interface FileRoutesByTo {
   '/projects/$projectId/time': typeof ProjectsProjectIdTimeRoute
   '/staff/groups/$id': typeof StaffGroupsIdRoute
   '/staff/people/$id': typeof StaffPeopleIdRoute
+  '/workspace/entra/accounts': typeof WorkspaceEntraAccountsRoute
+  '/workspace/entra/connection': typeof WorkspaceEntraConnectionRoute
+  '/workspace/entra/outlook': typeof WorkspaceEntraOutlookRoute
   '/customers/$customerId': typeof CustomersCustomerIdIndexRoute
   '/customers/contacts': typeof CustomersContactsIndexRoute
   '/customers/import': typeof CustomersImportIndexRoute
@@ -974,6 +1013,7 @@ export interface FileRoutesByTo {
   '/projects/$projectId': typeof ProjectsProjectIdIndexRoute
   '/staff/groups': typeof StaffGroupsIndexRoute
   '/staff/people': typeof StaffPeopleIndexRoute
+  '/workspace/entra': typeof WorkspaceEntraIndexRoute
   '/energy/metering-points/import/$importId': typeof EnergyMeteringPointsImportImportIdRoute
   '/invoices/payments/files/$bankFileId': typeof InvoicesPaymentsFilesBankFileIdRoute
   '/energy/metering-points/import': typeof EnergyMeteringPointsImportIndexRoute
@@ -1046,6 +1086,7 @@ export interface FileRoutesById {
   '/time/day': typeof TimeDayRoute
   '/time/people': typeof TimePeopleRoute
   '/time/settings': typeof TimeSettingsRoute
+  '/workspace/entra': typeof WorkspaceEntraRouteWithChildren
   '/workspace/invitations': typeof WorkspaceInvitationsRoute
   '/workspace/overview': typeof WorkspaceOverviewRoute
   '/workspace/roles': typeof WorkspaceRolesRoute
@@ -1088,6 +1129,9 @@ export interface FileRoutesById {
   '/projects/$projectId/time': typeof ProjectsProjectIdTimeRoute
   '/staff/groups/$id': typeof StaffGroupsIdRoute
   '/staff/people/$id': typeof StaffPeopleIdRoute
+  '/workspace/entra/accounts': typeof WorkspaceEntraAccountsRoute
+  '/workspace/entra/connection': typeof WorkspaceEntraConnectionRoute
+  '/workspace/entra/outlook': typeof WorkspaceEntraOutlookRoute
   '/customers/$customerId/': typeof CustomersCustomerIdIndexRoute
   '/customers/contacts/': typeof CustomersContactsIndexRoute
   '/customers/import/': typeof CustomersImportIndexRoute
@@ -1097,6 +1141,7 @@ export interface FileRoutesById {
   '/projects/$projectId/': typeof ProjectsProjectIdIndexRoute
   '/staff/groups/': typeof StaffGroupsIndexRoute
   '/staff/people/': typeof StaffPeopleIndexRoute
+  '/workspace/entra/': typeof WorkspaceEntraIndexRoute
   '/energy/metering-points/import/$importId': typeof EnergyMeteringPointsImportImportIdRoute
   '/invoices/payments/files/$bankFileId': typeof InvoicesPaymentsFilesBankFileIdRoute
   '/energy/metering-points/import/': typeof EnergyMeteringPointsImportIndexRoute
@@ -1170,6 +1215,7 @@ export interface FileRouteTypes {
     | '/time/day'
     | '/time/people'
     | '/time/settings'
+    | '/workspace/entra'
     | '/workspace/invitations'
     | '/workspace/overview'
     | '/workspace/roles'
@@ -1212,6 +1258,9 @@ export interface FileRouteTypes {
     | '/projects/$projectId/time'
     | '/staff/groups/$id'
     | '/staff/people/$id'
+    | '/workspace/entra/accounts'
+    | '/workspace/entra/connection'
+    | '/workspace/entra/outlook'
     | '/customers/$customerId/'
     | '/customers/contacts/'
     | '/customers/import/'
@@ -1221,6 +1270,7 @@ export interface FileRouteTypes {
     | '/projects/$projectId/'
     | '/staff/groups/'
     | '/staff/people/'
+    | '/workspace/entra/'
     | '/energy/metering-points/import/$importId'
     | '/invoices/payments/files/$bankFileId'
     | '/energy/metering-points/import/'
@@ -1317,6 +1367,9 @@ export interface FileRouteTypes {
     | '/projects/$projectId/time'
     | '/staff/groups/$id'
     | '/staff/people/$id'
+    | '/workspace/entra/accounts'
+    | '/workspace/entra/connection'
+    | '/workspace/entra/outlook'
     | '/customers/$customerId'
     | '/customers/contacts'
     | '/customers/import'
@@ -1326,6 +1379,7 @@ export interface FileRouteTypes {
     | '/projects/$projectId'
     | '/staff/groups'
     | '/staff/people'
+    | '/workspace/entra'
     | '/energy/metering-points/import/$importId'
     | '/invoices/payments/files/$bankFileId'
     | '/energy/metering-points/import'
@@ -1397,6 +1451,7 @@ export interface FileRouteTypes {
     | '/time/day'
     | '/time/people'
     | '/time/settings'
+    | '/workspace/entra'
     | '/workspace/invitations'
     | '/workspace/overview'
     | '/workspace/roles'
@@ -1439,6 +1494,9 @@ export interface FileRouteTypes {
     | '/projects/$projectId/time'
     | '/staff/groups/$id'
     | '/staff/people/$id'
+    | '/workspace/entra/accounts'
+    | '/workspace/entra/connection'
+    | '/workspace/entra/outlook'
     | '/customers/$customerId/'
     | '/customers/contacts/'
     | '/customers/import/'
@@ -1448,6 +1506,7 @@ export interface FileRouteTypes {
     | '/projects/$projectId/'
     | '/staff/groups/'
     | '/staff/people/'
+    | '/workspace/entra/'
     | '/energy/metering-points/import/$importId'
     | '/invoices/payments/files/$bankFileId'
     | '/energy/metering-points/import/'
@@ -2052,6 +2111,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof WorkspaceIndexRouteImport
       parentRoute: typeof WorkspaceRoute
     }
+    '/workspace/entra': {
+      id: '/workspace/entra'
+      path: '/entra'
+      fullPath: '/workspace/entra'
+      preLoaderRoute: typeof WorkspaceEntraRouteImport
+      parentRoute: typeof WorkspaceRoute
+    }
     '/workspace/invitations': {
       id: '/workspace/invitations'
       path: '/invitations'
@@ -2303,6 +2369,34 @@ declare module '@tanstack/react-router' {
       fullPath: '/staff/people/$id'
       preLoaderRoute: typeof StaffPeopleIdRouteImport
       parentRoute: typeof StaffRoute
+    }
+    '/workspace/entra/': {
+      id: '/workspace/entra/'
+      path: '/'
+      fullPath: '/workspace/entra/'
+      preLoaderRoute: typeof WorkspaceEntraIndexRouteImport
+      parentRoute: typeof WorkspaceEntraRoute
+    }
+    '/workspace/entra/accounts': {
+      id: '/workspace/entra/accounts'
+      path: '/accounts'
+      fullPath: '/workspace/entra/accounts'
+      preLoaderRoute: typeof WorkspaceEntraAccountsRouteImport
+      parentRoute: typeof WorkspaceEntraRoute
+    }
+    '/workspace/entra/connection': {
+      id: '/workspace/entra/connection'
+      path: '/connection'
+      fullPath: '/workspace/entra/connection'
+      preLoaderRoute: typeof WorkspaceEntraConnectionRouteImport
+      parentRoute: typeof WorkspaceEntraRoute
+    }
+    '/workspace/entra/outlook': {
+      id: '/workspace/entra/outlook'
+      path: '/outlook'
+      fullPath: '/workspace/entra/outlook'
+      preLoaderRoute: typeof WorkspaceEntraOutlookRouteImport
+      parentRoute: typeof WorkspaceEntraRoute
     }
     '/energy/metering-points/import/': {
       id: '/energy/metering-points/import/'
@@ -2655,7 +2749,26 @@ const TimeRouteChildren: TimeRouteChildren = {
 
 const TimeRouteWithChildren = TimeRoute._addFileChildren(TimeRouteChildren)
 
+interface WorkspaceEntraRouteChildren {
+  WorkspaceEntraAccountsRoute: typeof WorkspaceEntraAccountsRoute
+  WorkspaceEntraConnectionRoute: typeof WorkspaceEntraConnectionRoute
+  WorkspaceEntraOutlookRoute: typeof WorkspaceEntraOutlookRoute
+  WorkspaceEntraIndexRoute: typeof WorkspaceEntraIndexRoute
+}
+
+const WorkspaceEntraRouteChildren: WorkspaceEntraRouteChildren = {
+  WorkspaceEntraAccountsRoute: WorkspaceEntraAccountsRoute,
+  WorkspaceEntraConnectionRoute: WorkspaceEntraConnectionRoute,
+  WorkspaceEntraOutlookRoute: WorkspaceEntraOutlookRoute,
+  WorkspaceEntraIndexRoute: WorkspaceEntraIndexRoute,
+}
+
+const WorkspaceEntraRouteWithChildren = WorkspaceEntraRoute._addFileChildren(
+  WorkspaceEntraRouteChildren,
+)
+
 interface WorkspaceRouteChildren {
+  WorkspaceEntraRoute: typeof WorkspaceEntraRouteWithChildren
   WorkspaceInvitationsRoute: typeof WorkspaceInvitationsRoute
   WorkspaceOverviewRoute: typeof WorkspaceOverviewRoute
   WorkspaceRolesRoute: typeof WorkspaceRolesRoute
@@ -2664,6 +2777,7 @@ interface WorkspaceRouteChildren {
 }
 
 const WorkspaceRouteChildren: WorkspaceRouteChildren = {
+  WorkspaceEntraRoute: WorkspaceEntraRouteWithChildren,
   WorkspaceInvitationsRoute: WorkspaceInvitationsRoute,
   WorkspaceOverviewRoute: WorkspaceOverviewRoute,
   WorkspaceRolesRoute: WorkspaceRolesRoute,

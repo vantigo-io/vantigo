@@ -2,6 +2,7 @@ import { IconCalendarEvent, IconCalendarStats, IconUsersGroup } from "@tabler/ic
 import { planningNavItems } from "@vantigo/planning-ui";
 import { staffNavItems } from "@vantigo/staff-ui";
 import { describe, expect, it } from "vitest";
+import { accountMenuSections } from "./account-menu";
 import {
   activeAppKey,
   allNavSections,
@@ -15,6 +16,7 @@ import {
   switcherTiles,
 } from "./apps";
 import { navigationCatalog } from "./catalogs/navigation";
+import { type NavVisibilityContext, visibleNavSections } from "./navigation";
 
 const allModules = [
   "calendar",
@@ -48,7 +50,6 @@ describe("the app registry", () => {
       "communications",
       "products",
       "energy",
-      "entra",
     ]);
     for (const app of apps.slice(1)) expect(app.module).toBe(app.key);
   });
@@ -112,7 +113,6 @@ describe("the app registry", () => {
       "/energy/metering-points",
       "/energy/prices",
       "/energy/tariffs",
-      "/entra",
     ]);
   });
 
@@ -130,22 +130,17 @@ describe("the app registry", () => {
     expect(navigationCatalog.nb["navigation.myCalendar"]).toBe("Min kalender");
   });
 
-  // The connection to the tenant (Entra design D15): one page behind
-  // entra:manage, so the tile is absent without it.
-  it("gives Microsoft Entra ID its one page behind entra:manage, and no tile without it", () => {
-    const entra = appForKey("entra");
-    expect(entra.requiredPermissions).toEqual(["entra:manage"]);
-    const items = entra.navSections.flatMap((section) => section.items);
-    expect(items.map((item) => [item.label, item.to, item.requiredPermissions])).toEqual([
-      ["navigation.entra", "/entra", ["entra:manage"]],
-    ]);
+  // The connection to the tenant (Entra design D15) is a page of Workspace admin, not an app
+  // (Integrations design T2): the module has no tile, no sidebar of its own and no AppKey.
+  it("gives Microsoft Entra ID no app: no tile, whoever asks", () => {
+    expect(apps.some((app) => app.key === ("entra" as never) || app.module === "entra")).toBe(false);
+    expect(() => appForKey("entra" as never)).toThrow(/entra/);
+    const tiles = (permissions: string[]) => switcherTiles(permissions, allModules, "home").map((tile) => tile.app.key);
+    expect(tiles(["entra:manage"])).not.toContain("entra");
+    expect(tiles(["*"])).not.toContain("entra");
+    expect(allNavSections.flatMap((section) => section.items).some((item) => item.to.startsWith("/entra"))).toBe(false);
     expect(navigationCatalog.en["navigation.entra"]).toBe("Microsoft Entra ID");
     expect(navigationCatalog.nb["navigation.entra"]).toBe("Microsoft Entra ID");
-    expect(isAppEnabled(entra, ["staff"])).toBe(false);
-    expect(isAppEnabled(entra, ["staff", "entra"])).toBe(true);
-    const tiles = (permissions: string[]) => switcherTiles(permissions, allModules, "home").map((tile) => tile.app.key);
-    expect(tiles(["staff:access", "staff:manage", "identity:manage"])).not.toContain("entra");
-    expect(tiles(["entra:manage"])).toContain("entra");
   });
 
   it("requires, for a tile, any permission that unlocks one of its sidebar entries", () => {
@@ -538,7 +533,12 @@ describe("the app registry", () => {
 });
 
 describe("the administration areas", () => {
-  const visibility = { permissions: [], isOwner: false, canManageAuthorization: false, enabledModules: allModules };
+  const visibility: NavVisibilityContext = {
+    permissions: [],
+    isOwner: false,
+    canManageAuthorization: false,
+    enabledModules: allModules,
+  };
 
   it("declares settings, workspace and admin, none of them a switcher tile", () => {
     expect(areas.map((area) => area.key)).toEqual(["settings", "workspace", "admin"]);
@@ -556,7 +556,6 @@ describe("the administration areas", () => {
       "communications",
       "products",
       "energy",
-      "entra",
     ]);
     expect(tiles.some((tile) => tile.current)).toBe(false);
   });
@@ -566,8 +565,9 @@ describe("the administration areas", () => {
       const prefix = `/${area.key}`;
       for (const item of area.navSections.flatMap((section) => section.items)) {
         expect(item.to === prefix || item.to.startsWith(`${prefix}/`)).toBe(true);
-        // An area belongs to no module; only an entry a module provides, Entra's Connections, names its module.
-        expect(item.module).toBe(item.to === "/settings/connections" ? "entra" : undefined);
+        // An area belongs to no module; only an entry a module provides, Entra's Connections and its
+        // Integrations page, names its module.
+        expect(item.module).toBe(["/settings/connections", "/workspace/entra"].includes(item.to) ? "entra" : undefined);
       }
     }
   });
@@ -582,18 +582,63 @@ describe("the administration areas", () => {
     expect(isAppEnabled(areaForKey("settings"), [])).toBe(true);
   });
 
-  it("shows the whole workspace area to an Owner and only roles to an authorization manager", () => {
-    const paths = (sections: ReturnType<typeof appNavSections>) =>
-      sections.flatMap((section) => section.items.map((item) => item.to));
-    expect(paths(appNavSections(areaForKey("workspace"), allModules, { ...visibility, isOwner: true }))).toEqual([
+  const workspacePaths = (sections: ReturnType<typeof appNavSections>) =>
+    sections.flatMap((section) => section.items.map((item) => item.to));
+  const ownerOnWorkspace: NavVisibilityContext = { ...visibility, isOwner: true, permissions: ["*"] };
+  const workspaceFor = (context: NavVisibilityContext, modules: readonly (typeof allModules)[number][] = allModules) =>
+    appNavSections(areaForKey("workspace"), modules, { ...context, enabledModules: modules });
+
+  it("shows the whole workspace area to an Owner, then Integrations", () => {
+    expect(workspacePaths(workspaceFor(ownerOnWorkspace))).toEqual([
       "/workspace/overview",
       "/workspace/users",
       "/workspace/invitations",
+      "/workspace/entra",
     ]);
-    expect(
-      paths(appNavSections(areaForKey("workspace"), allModules, { ...visibility, canManageAuthorization: true })),
-    ).toEqual(["/workspace/roles"]);
-    expect(paths(appNavSections(areaForKey("workspace"), allModules, visibility))).toEqual([]);
+    expect(workspaceFor(ownerOnWorkspace).map((section) => section.label)).toEqual([
+      undefined,
+      "navigation.integrations",
+    ]);
+  });
+
+  it("shows an Entra manager who is not an Owner the Integrations section alone", () => {
+    const manager = { ...visibility, permissions: ["entra:manage"] };
+    const sections = workspaceFor(manager);
+    expect(workspacePaths(sections)).toEqual(["/workspace/entra"]);
+    expect(sections.map((section) => section.label)).toEqual(["navigation.integrations"]);
+  });
+
+  it("shows an authorization manager roles alone, and nothing of Integrations without entra:manage", () => {
+    expect(workspacePaths(workspaceFor({ ...visibility, canManageAuthorization: true }))).toEqual(["/workspace/roles"]);
+    expect(workspacePaths(workspaceFor(visibility))).toEqual([]);
+  });
+
+  it("shows an authorization manager who also manages Entra both sections", () => {
+    const both = { ...visibility, canManageAuthorization: true, permissions: ["entra:manage"] };
+    expect(workspacePaths(workspaceFor(both))).toEqual(["/workspace/roles", "/workspace/entra"]);
+  });
+
+  it("hides Integrations, section and all, while the Entra module is off", () => {
+    const withoutEntra = allModules.filter((key) => key !== "entra");
+    const sections = workspaceFor(ownerOnWorkspace, withoutEntra);
+    expect(workspacePaths(sections)).toEqual(["/workspace/overview", "/workspace/users", "/workspace/invitations"]);
+    expect(sections.map((section) => section.label)).toEqual([undefined]);
+    expect(workspacePaths(workspaceFor({ ...visibility, permissions: ["entra:manage"] }, withoutEntra))).toEqual([]);
+  });
+
+  it("gates the Integrations item on the module and its permission, as Connections gates on the module", () => {
+    const integrations = areaForKey("workspace").navSections.find(
+      (section) => section.label === "navigation.integrations",
+    );
+    expect(integrations?.items).toHaveLength(1);
+    expect(integrations?.items[0]).toMatchObject({
+      label: "navigation.entra",
+      to: "/workspace/entra",
+      module: "entra",
+      requiredPermissions: ["entra:manage"],
+    });
+    expect(navigationCatalog.en["navigation.integrations"]).toBe("Integrations");
+    expect(navigationCatalog.nb["navigation.integrations"]).toBe("Integrasjoner");
   });
 
   it("shows the settings pages to everyone and gives system admin no sidebar", () => {
@@ -619,6 +664,25 @@ describe("the administration areas", () => {
     ).toEqual(["/settings/profile", "/settings/security"]);
     expect(navigationCatalog.en["navigation.connections"]).toBe("Connections");
     expect(navigationCatalog.nb["navigation.connections"]).toBe("Tilkoblinger");
+  });
+
+  // The way in for someone who sees Integrations alone: an Entra manager who is not an Owner has no
+  // Workspace admin entry, as an authorization manager has Roles & access instead.
+  it("offers an Entra manager Microsoft Entra ID in the avatar menu, while the module is on", () => {
+    const menuPaths = (context: NavVisibilityContext) =>
+      visibleNavSections(accountMenuSections, context).flatMap((section) => section.items.map((item) => item.to));
+    const manager = { ...visibility, permissions: ["entra:manage"] };
+    expect(menuPaths(manager)).toEqual(["/settings", "/docs", "/workspace/entra"]);
+    expect(menuPaths({ ...ownerOnWorkspace, canManageAuthorization: true })).toEqual([
+      "/settings",
+      "/docs",
+      "/workspace/overview",
+      "/workspace/roles",
+      "/workspace/entra",
+    ]);
+    const withoutEntra = allModules.filter((key) => key !== "entra");
+    expect(menuPaths({ ...manager, enabledModules: withoutEntra })).toEqual(["/settings", "/docs"]);
+    expect(menuPaths(visibility)).toEqual(["/settings", "/docs"]);
   });
 
   it("names the area in the header", () => {
@@ -668,7 +732,6 @@ describe("switcherTiles", () => {
       ["communications", false],
       ["products", false],
       ["energy", false],
-      ["entra", false],
     ]);
     expect(tiles.some((tile) => tile.current)).toBe(false);
   });

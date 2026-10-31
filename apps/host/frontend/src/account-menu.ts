@@ -1,4 +1,11 @@
-import { IconBuilding, IconBuildingSkyscraper, IconHelp, IconSettings, IconShieldCheck } from "@tabler/icons-react";
+import {
+  IconBrandWindows,
+  IconBuilding,
+  IconBuildingSkyscraper,
+  IconHelp,
+  IconSettings,
+  IconShieldCheck,
+} from "@tabler/icons-react";
 import type { NavItem } from "./navigation";
 
 export interface AccountMenuSection {
@@ -27,6 +34,15 @@ export const accountMenuSections: readonly AccountMenuSection[] = [
     items: [
       { label: "navigation.workspaceAdmin", to: "/workspace/overview", icon: IconBuilding, ownerOnly: true },
       { label: "navigation.rolesAccess", to: "/workspace/roles", icon: IconShieldCheck, capability: "authorization" },
+      // Under Integrations in Workspace admin; here so a holder of entra:manage who is not an Owner can
+      // reach it, as an authorization manager reaches Roles & access. Spotlight reads this list too.
+      {
+        label: "navigation.entra",
+        to: "/workspace/entra",
+        icon: IconBrandWindows,
+        module: "entra",
+        requiredPermissions: ["entra:manage"],
+      },
     ],
   },
   {
