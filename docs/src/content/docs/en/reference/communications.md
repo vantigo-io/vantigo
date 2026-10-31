@@ -933,22 +933,30 @@ can choose **Send from my address** on both new conversations and replies (`send
   of whether an individual message was sent from the channel's shared mailbox or from an author's personal mailbox.
 - **`From` and `Reply-To`**: For a message with `send_as = 'personal'` (migration
   `00095_communications_personal_sending.sql`), the `From` header carries the author's personal directory
-  email address and display name (`from_address`, `from_display_name`). The `Reply-To` header is set to the
-  channel's address and display name (`reply_to_address`). Customer replies therefore arrive directly in the
-  shared channel mailbox and thread into the conversation without reading anyone's personal Inbox.
-- **Availability check**: Before beginning a transaction, `contractscalls.go` checks
+  email address and display name (`from_address`, `from_display_name`), both recorded when the message is
+  composed. The `Reply-To` header is set to the channel's address and display name as they are when the
+  outbox sends; `GetConversation` answers it as `replyToAddress`, read from the channel at the time of the
+  read, not stored with the message. Customer replies therefore arrive directly in the shared channel
+  mailbox and thread into the conversation without reading anyone's personal Inbox.
+- **Availability check**: Before beginning a transaction, the handler checks
   `PersonalMailbox.Status(ctx)`. If personal sending is not available (`!Available`), the API returns 409
-  `connection_needed`. It also enforces the 3 MB MIME size budget (`contracts.MaxChannelMessageBytes`),
-  returning 422 `too_large` if exceeded.
+  `connection_needed`. It also enforces the 3 MB MIME size budget (`contracts.MaxPersonalMessageBytes`, the
+  same figure as a channel mailbox's), returning 422 `too_large` if exceeded. A failure to read the
+  author's display name is a 500, never a message sent without one.
 - **Outbox dispatch & immediate failure**: The outbox dispatches personal messages via
   `PersonalMailbox.Send(contracts.AsUser(ctx, authorUserID), mime, bcc)`. If Microsoft refuses due to an
   expired session, revoked token, or missing consent (`contracts.ErrConnectionNeeded`), the outbox job fails
   immediately as a terminal failure after 1 attempt (`connection_needed`, never silently falling back to the
   channel's address).
-- **Retry**: Once the author reconnects their Outlook connection, they can call
-  `POST /api/v1/communications/conversations/{id}/messages/{messageId}/retry`. This endpoint is restricted
-  to the message's author, verifies `PersonalMailbox.Status(ctx).Available`, and re-queues the deliveries
-  and outbox job.
+- **Retry**: `POST /api/v1/communications/conversations/{id}/messages/{messageId}/retry`
+  (`communications:conversations-reply` and `communications:conversations-view`) re-queues an outbound
+  message whose outbox job is `failed`: 409 `message_not_failed` otherwise, 422 `channel_inactive` when
+  the channel is off. A message sent from the author's own address may be retried by its author alone
+  (403 `forbidden`), and only while `PersonalMailbox.Status(ctx).Available` (422
+  `personal_sender_unavailable`); a channel message may be retried by anyone the permissions allow. The
+  job is re-queued first, conditionally on its status still being `failed` — a retry that loses that
+  race writes nothing and answers `queued` all the same —, then its `submission_failed` deliveries go
+  back to `queued` with an event each.
 
 ## AI draft and customer suggestion
 

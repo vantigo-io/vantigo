@@ -142,7 +142,8 @@ Når **Send fra min adresse** er valgt:
 - `Reply-To`-adressen er kanalens adresse og visningsnavn, slik at svar fra kunden kommer
   tilbake til den delte kanalen og trådes inn i samtalen.
 - Dersom Outlook-tilkoblingen din må kobles til på nytt, tilbyr skrivefeltet en integrert knapp
-  for **Koble til Outlook** eller **Koble til Outlook på nytt**.
+  for **Koble til Outlook** eller **Koble til Outlook på nytt**. Når Microsoft har svart, er du
+  tilbake i den samme samtalen, med filtrene du hadde.
 - Dersom en personlig sending mislykkes ved utsending fordi Microsoft avviste påloggingen din
   eller krevde ny flerfaktorautentisering, viser meldingskortet:
   *Sendingen mislyktes fordi Outlook-tilkoblingen din må kobles til på nytt.* med en knapp for

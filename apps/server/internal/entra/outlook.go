@@ -179,6 +179,17 @@ func hasScopes(granted []string, want []string) bool {
 	return true
 }
 
+// grantedFeatureScopes is the Graph scopes, as outlookFeatures spells them,
+// of every feature granted allows, features in alphabetical order so two
+// connects ask the same scope string.
+func grantedFeatureScopes(granted []string) []string {
+	var out []string
+	for _, feature := range featuresOf(granted) {
+		out = append(out, outlookFeatures[feature]...)
+	}
+	return out
+}
+
 // featuresOf is the features granted, normalised, allows, sorted.
 func featuresOf(granted []string) []string {
 	out := []string{}

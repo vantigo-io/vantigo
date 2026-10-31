@@ -289,7 +289,41 @@ func TestConnect_IncrementalConsent_PreservesFeatures(t *testing.T) {
 		t.Errorf("incremental connect scope = %q, want both Calendars.ReadWrite and Mail.Send", scopeParam)
 	}
 
-	// 3. Complete Mail connect
+	// 3. Complete the mail connect: Microsoft answers the union it consented
+	// to, as it does when both were asked.
+	completeConnect(t, f, c, u, oid, []string{"User.Read", "openid", "profile", "Calendars.ReadWrite", "Mail.Send"})
+
+	// 4. Verify both features are present on the connection
+	conn2 := getOutlook(t, c)
+	if !slices.Equal(conn2.Features, []string{"calendar", "mail"}) {
+		t.Errorf("after incremental connect features = %v, want ['calendar', 'mail']", conn2.Features)
+	}
+}
+
+// TestComplete_RecordsTheAnswerAlone proves the row's scopes are the token's
+// answer and nothing more: a connect that asked calendar again beside mail,
+// answered without calendar — a consent withdrawn meanwhile —, leaves a
+// connection with mail alone, which the calendar's calls then refuse as
+// consent_missing instead of failing at Graph.
+func TestComplete_RecordsTheAnswerAlone(t *testing.T) {
+	t.Parallel()
+	f := newOutlookFixture(t)
+	c, _, oid := f.person(t, "kari@nordlys.no")
+	connectOutlookWithFeature(t, f, c, oid, "kari@nordlys.no", "calendar", []string{"Calendars.ReadWrite"})
+
+	u, _ := startConnectWithFeature(t, c, "mail", "/settings/connections")
+	completeConnect(t, f, c, u, oid, []string{"User.Read", "openid", "profile", "Mail.Send"})
+
+	conn := getOutlook(t, c)
+	if !slices.Equal(conn.Features, []string{"mail"}) {
+		t.Errorf("features after an answer without calendar = %v, want ['mail']", conn.Features)
+	}
+}
+
+// completeConnect redeems the connect u started for oid with granted as the
+// token's answer and completes it.
+func completeConnect(t *testing.T, f *outlookFixture, c *modtest.Client, u *url.URL, oid uuid.UUID, granted []string) {
+	t.Helper()
 	q := u.Query()
 	g := graphtest.CodeGrant{
 		ClientID:    q.Get("client_id"),
@@ -300,20 +334,12 @@ func TestConnect_IncrementalConsent_PreservesFeatures(t *testing.T) {
 		OID:         oid.String(),
 		TID:         tenantID,
 		UPN:         "kari@nordlys.no",
-		Granted:     []string{"User.Read", "openid", "profile", "Mail.Send"},
+		Granted:     granted,
 	}
 	code := f.g.IssueCode(g)
-	callQuery := url.Values{"code": {code}, "state": {q.Get("state")}}
-	callback(t, c, callQuery)
-
+	callback(t, c, url.Values{"code": {code}, "state": {q.Get("state")}})
 	r := c.Do(http.MethodPost, outlookCompletePath, nil)
 	if r.Status != http.StatusOK {
 		t.Fatalf("POST /outlook/complete: %d %s", r.Status, r.Body)
-	}
-
-	// 4. Verify both features are present on the connection
-	conn2 := getOutlook(t, c)
-	if !slices.Equal(conn2.Features, []string{"calendar", "mail"}) {
-		t.Errorf("after incremental connect features = %v, want ['calendar', 'mail']", conn2.Features)
 	}
 }

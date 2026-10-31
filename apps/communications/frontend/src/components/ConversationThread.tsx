@@ -24,7 +24,7 @@ import {
   safeHtmlSrcDoc,
 } from "../api/conversations";
 import { type ConnectionButtonProps, ConversationComposer } from "./ConversationComposer";
-import { participantName, relative } from "./conversationHelpers";
+import { participantName, relative, returnHere } from "./conversationHelpers";
 
 export type ConversationThreadProps = {
   conversation: ConversationDetail;
@@ -205,10 +205,7 @@ function MessageCard({
   const rawPath = message.rawDownloadPath ?? null;
   const unscanned = message.attachments.some((file) => file.downloadAvailable && file.scanStatus === "unscanned");
   const hasConnectionNeeded =
-    message.direction === "outbound" &&
-    message.deliveries.some(
-      (d) => d.error === "connection_needed" || (d.status === "submission_failed" && d.error === "connection_needed"),
-    );
+    message.direction === "outbound" && message.deliveries.some((d) => d.error === "connection_needed");
 
   const retry = useMutation({
     mutationFn: () => retryMessage(conversation.id, message.id),
@@ -357,7 +354,7 @@ function MessageCard({
       {hasConnectionNeeded && (
         <Alert color="red" variant="light" mt="xs" title={t("sendFailedConnectionNeeded")}>
           <Group justify="space-between" align="center" mt="xs">
-            {connectionButton?.({ feature: "mail", returnTo: "/communications/inbox" })}
+            {connectionButton?.({ feature: "mail", returnTo: returnHere() })}
             <Button size="xs" color="red" loading={retry.isPending} onClick={() => retry.mutate()}>
               {t("retrySend")}
             </Button>

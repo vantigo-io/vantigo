@@ -21,6 +21,7 @@ import {
 import type { ConnectionButtonProps } from "../components/ConversationComposer";
 import { ConversationList } from "../components/ConversationList";
 import { ConversationThread } from "../components/ConversationThread";
+import { returnHere } from "../components/conversationHelpers";
 import { InboxFilters, type InboxSearch } from "../components/InboxFilters";
 import "../i18n";
 import "../styles.css";
@@ -190,7 +191,7 @@ export function InboxPage({ connectionButton }: InboxPageProps = {}) {
           {!personalSender?.available &&
             (personalSender?.reason === "not_connected" || personalSender?.reason === "reconnect") &&
             connectionButton && (
-              <Group gap="xs">{connectionButton({ feature: "mail", returnTo: "/communications/inbox" })}</Group>
+              <Group gap="xs">{connectionButton({ feature: "mail", returnTo: returnHere() })}</Group>
             )}
           {create.error && (
             <Text size="xs" c="red">

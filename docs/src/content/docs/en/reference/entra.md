@@ -1423,11 +1423,13 @@ computed under the purpose `entra/outlook-connect-session` from the session's id
    else `422 feature_unknown`; the switch on and the tenant and client saved, else `409
    switch_off`; a [certain account](#the-certain-account), else `409 no_account`; and no
    live connection of that account held by another person, else `409 account_taken`
-   (refused early here; `complete` still decides). When the caller already holds an active
-   connection, the requested scopes include the union of the base scopes, their existing
-   row's granted feature scopes, and the requested feature's scopes, and `complete` merges
-   them into `features` (`calendar`, `mail`) on `TakeOutlookConnection`, so connecting
-   `mail` after `calendar` or `calendar` after `mail` preserves previously granted features.
+   (refused early here; `complete` still decides). When the caller already holds a live
+   connection of their own, the `scope` asked is the base scopes, the feature's Graph scopes
+   and those of every feature the row's granted scopes already allow (features in
+   alphabetical order), so connecting `mail` after `calendar` or `calendar` after `mail`
+   asks Microsoft for both; `complete` then records the token's answer as the row's
+   scopes and nothing more, as a refresh does — an answer without a feature asked again is
+   a consent withdrawn, and the row must not claim it.
    It seals a fresh state and nonce (256 random bits each), a PKCE verifier and the rest
    into `vantigo.entra.connect` and answers `200 {authorizeUrl}`, clearing any
    `vantigo.entra.connected` an earlier, uncompleted connect left, so that connect can no

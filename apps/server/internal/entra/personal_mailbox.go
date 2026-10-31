@@ -2,11 +2,8 @@ package entra
 
 import (
 	"context"
-	"encoding/base64"
 	"errors"
 	"fmt"
-	"net/url"
-	"strings"
 
 	"github.com/jackc/pgx/v5"
 
@@ -86,8 +83,13 @@ func (p *personalMailbox) Status(ctx context.Context) (contracts.PersonalMailSta
 	return status, nil
 }
 
-// Send sends mime from the mailbox of contracts.UserID(ctx) using their delegated
-// connection and saves to Sent Items.
+// Send sends mime from the mailbox of contracts.UserID(ctx) using their
+// delegated connection and saves to Sent Items. It checks, with no call,
+// what the token cannot: the switch, the caller's account, and that the
+// caller's own live connection is that account's — never another person's
+// row for the same account. The rest — reconnect, closing, the account on
+// use and the mail scope — is the token's to decide (outlookTokens.issue,
+// feature "mail"), as Status reads it.
 func (p *personalMailbox) Send(ctx context.Context, mime []byte, bcc []string) error {
 	userID, ok := contracts.UserID(ctx)
 	if !ok {
@@ -118,75 +120,10 @@ func (p *personalMailbox) Send(ctx context.Context, mime []byte, bcc []string) e
 		return fmt.Errorf("entra: read the Outlook connection: %w", err)
 	}
 	if row.ObjectID != account.ObjectID {
-		return needsPerson(outlookNeedsClosing)
+		return needsPerson(outlookNotConnected)
 	}
-	if row.State == outlookReconnect {
-		reason := outlookCodeSignInAgain
-		if row.ErrorCode != nil {
-			reason = *row.ErrorCode
-		}
-		return needsPerson(reason)
-	}
-	if row.State == outlookClosing {
-		return needsPerson(outlookNeedsClosing)
-	}
-	if !hasScopes(row.Scopes, outlookFeatures["mail"]) {
-		return needsPerson(outlookCodeConsentMissing)
-	}
-
 	src := mailboxSource{delegatedSource: p.tokens.sourceWithFeature(account.ObjectID, "mail", false)}
-	body := []byte(base64.StdEncoding.EncodeToString(mime))
-	base := "/users/" + account.ObjectID.String()
-	if len(bcc) == 0 {
-		return channelRefusal(src.answer(p.client.postRawAs(ctx, src, base+"/sendMail", "text/plain", body, nil, noRetry)))
-	}
-	return p.sendThroughDraft(ctx, src, base, body, bcc)
-}
-
-// sendThroughDraft sends body — base64 MIME carrying a Bcc header — as a
-// draft created in the user's mailbox at base: POST …/messages, checks bccRecipients,
-// then POST …/messages/{id}/send.
-func (p *personalMailbox) sendThroughDraft(ctx context.Context, src mailboxSource, base string, body []byte, bcc []string) error {
-	var draft struct {
-		ID            string `json:"id"`
-		BccRecipients []struct {
-			EmailAddress struct {
-				Address string `json:"address"`
-			} `json:"emailAddress"`
-		} `json:"bccRecipients"`
-	}
-	if err := p.client.postRawAs(ctx, src, base+"/messages", "text/plain", body, &draft, noRetry, largeAnswer); err != nil {
-		return channelRefusal(src.answer(err))
-	}
-	if draft.ID == "" || len(draft.ID) > mailboxMaxID {
-		return fmt.Errorf("%w: the draft's id", errTenantUnreachable)
-	}
-	path := base + "/messages/" + url.PathEscape(draft.ID)
-	for _, want := range bcc {
-		kept := false
-		for _, r := range draft.BccRecipients {
-			if strings.EqualFold(strings.TrimSpace(r.EmailAddress.Address), strings.TrimSpace(want)) {
-				kept = true
-				break
-			}
-		}
-		if !kept {
-			p.dropDraft(ctx, src, path)
-			return errBccLost
-		}
-	}
-	if err := p.client.postAs(ctx, src, path+"/send", nil, nil, noRetry); err != nil {
-		p.dropDraft(ctx, src, path)
-		return channelRefusal(src.answer(err))
-	}
-	return nil
-}
-
-// dropDraft deletes the draft at path, best-effort.
-func (p *personalMailbox) dropDraft(ctx context.Context, src mailboxSource, path string) {
-	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), channelDraftCleanup)
-	defer cancel()
-	_ = p.client.delAs(ctx, src, path, noWords)
+	return p.client.sendMIME(ctx, src, "/users/"+account.ObjectID.String(), mime, bcc, src.answer)
 }
 
 // accountFor returns the directory account for the user in context, checked to be

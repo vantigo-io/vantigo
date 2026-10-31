@@ -10,3 +10,10 @@ export const relative = (date: string) =>
   }).format(new Date(date));
 
 export const participantName = (item: Pick<Participant, "displayName" | "address">) => item.displayName || item.address;
+
+/**
+ * Where a connect started from the inbox returns to: the page as it is, its selected conversation and
+ * filters in the search, so the person lands back where they chose to connect — never a bare inbox.
+ */
+export const returnHere = () =>
+  typeof window === "undefined" ? "/communications/inbox" : `${window.location.pathname}${window.location.search}`;
