@@ -137,8 +137,12 @@ The **View** switch shows the tasks as a **List** — the groups
 their parent — as a **Board** of three columns where subtasks are cards of their
 own, or as an interactive **Timeline** mapping task bars across calendar days beside
 milestone markers and finish-to-start dependency arrows. Tasks linked to a delivery milestone display a diamond milestone tag. Any scheduling conflict where a predecessor finishes after a successor starts is flagged with a warning indicator. The choice is remembered
-in your browser. Members and managers see **Add task**;
+in your browser. Members and managers see **Use template** and **Add task**;
 a viewer gets the same views without the actions.
+
+**Use template** opens **Use project template**, allowing you to pick a blueprint (e.g. Client Onboarding)
+and a **Kickoff date (T+0)**. Applying the template instantiates the blueprint's delivery milestones, tasks,
+subtasks, and task dependencies with relative calendar dates calculated from the kickoff date.
 
 **Add task** opens **New task**: **Title** (required, at most 200 characters),
 **Description**, **Status**, **Assignee** (anyone on the project), **Start date**,

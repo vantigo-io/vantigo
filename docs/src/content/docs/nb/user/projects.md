@@ -138,7 +138,11 @@ deloppgavene foldet inn under den overordnede — som en **Tavle** med tre
 kolonner der deloppgaver er egne kort, eller som en interaktiv **Tidslinje** som kartlegger
 oppgavebånd over kalenderdager ved siden av milepælmarkører og avhengighetspiler. Oppgaver tilknyttet en leveransemilepæl har en
 diamantmerket milepæl-tagg. Planleggingskonflikter der en forgjenger slutter etter at etterfølgeren starter markeres med et varselikon. Valget huskes i nettleseren din. Deltakere og
-prosjektledere ser **Ny oppgave**; en leser får de samme visningene uten handlingene.
+prosjektledere ser **Bruk mal** og **Ny oppgave**; en leser får de samme visningene uten handlingene.
+
+**Bruk mal** åpner **Bruk prosjektmal**, hvor du kan velge en standardisert prosjektmal (f.eks. oppstart
+for ny kunde) og en **Oppstartsdato (T+0)**. Når malen tas i bruk, opprettes malens leveransemilepæler, oppgaver,
+deloppgaver og avhengighetskoblinger med kalenderdatoer beregnet ut fra oppstartsdatoen.
 
 **Ny oppgave** åpner skjemaet **Ny oppgave**: **Tittel** (påkrevd, høyst 200 tegn),
 **Beskrivelse**, **Status**, **Ansvarlig** (hvem som helst på prosjektet),
