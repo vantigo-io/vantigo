@@ -66,7 +66,7 @@ func (q *Queries) DeleteTask(ctx context.Context, id int32) (int64, error) {
 
 const getTask = `-- name: GetTask :one
 
-SELECT id, project_id, parent_task_id, title, description, status, assignee_user_id, start_date, due_date, estimate_hours, position, completed_at, created_by_user_id, revision, created_at, updated_at FROM projects.tasks WHERE id = $1
+SELECT id, project_id, parent_task_id, title, description, status, assignee_user_id, start_date, due_date, estimate_hours, position, completed_at, created_by_user_id, revision, created_at, updated_at, delivery_milestone_id FROM projects.tasks WHERE id = $1
 `
 
 // The task queries (design §3.1, §4.1). Three things run through them: a
@@ -104,16 +104,20 @@ func (q *Queries) GetTask(ctx context.Context, id int32) (ProjectsTask, error) {
 		&i.Revision,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.DeliveryMilestoneID,
 	)
 	return i, err
 }
 
 const getTaskWithCounts = `-- name: GetTaskWithCounts :one
-SELECT t.id, t.project_id, t.parent_task_id, t.title, t.description, t.status, t.assignee_user_id, t.start_date, t.due_date, t.estimate_hours, t.position, t.completed_at, t.created_by_user_id, t.revision, t.created_at, t.updated_at,
+SELECT t.id, t.project_id, t.parent_task_id, t.title, t.description, t.status, t.assignee_user_id, t.start_date, t.due_date, t.estimate_hours, t.position, t.completed_at, t.created_by_user_id, t.revision, t.created_at, t.updated_at, t.delivery_milestone_id,
+       dm.name                          AS delivery_milestone_name,
+       dm.target_date                   AS delivery_milestone_target_date,
        coalesce(c.total, 0)::integer    AS checklist_total,
        coalesce(c.done, 0)::integer     AS checklist_done,
        coalesce(m.comments, 0)::integer AS comment_count
 FROM projects.tasks t
+LEFT JOIN projects.delivery_milestones dm ON dm.id = t.delivery_milestone_id
 LEFT JOIN LATERAL (
     SELECT count(*) AS total, count(*) FILTER (WHERE i.done) AS done
     FROM projects.task_checklist_items i WHERE i.task_id = t.id
@@ -126,10 +130,12 @@ WHERE t.id = $1
 `
 
 type GetTaskWithCountsRow struct {
-	ProjectsTask   ProjectsTask
-	ChecklistTotal int32
-	ChecklistDone  int32
-	CommentCount   int32
+	ProjectsTask                ProjectsTask
+	DeliveryMilestoneName       *string
+	DeliveryMilestoneTargetDate pgtype.Date
+	ChecklistTotal              int32
+	ChecklistDone               int32
+	CommentCount                int32
 }
 
 // GetTaskWithCounts is one task in the shape the contract answers with: the
@@ -156,6 +162,9 @@ func (q *Queries) GetTaskWithCounts(ctx context.Context, id int32) (GetTaskWithC
 		&i.ProjectsTask.Revision,
 		&i.ProjectsTask.CreatedAt,
 		&i.ProjectsTask.UpdatedAt,
+		&i.ProjectsTask.DeliveryMilestoneID,
+		&i.DeliveryMilestoneName,
+		&i.DeliveryMilestoneTargetDate,
 		&i.ChecklistTotal,
 		&i.ChecklistDone,
 		&i.CommentCount,
@@ -166,30 +175,31 @@ func (q *Queries) GetTaskWithCounts(ctx context.Context, id int32) (GetTaskWithC
 const insertTask = `-- name: InsertTask :one
 INSERT INTO projects.tasks (
     project_id, parent_task_id, title, description, status, assignee_user_id,
-    start_date, due_date, estimate_hours, position, completed_at,
+    start_date, due_date, estimate_hours, delivery_milestone_id, position, completed_at,
     created_by_user_id, created_at, updated_at
 ) VALUES (
     $1, $2, $3, $4, $5, $6,
-    $7, $8, $9, $10, $11,
-    $12, $13::timestamptz, $13::timestamptz
+    $7, $8, $9, $10, $11, $12,
+    $13, $14::timestamptz, $14::timestamptz
 )
-RETURNING id, project_id, parent_task_id, title, description, status, assignee_user_id, start_date, due_date, estimate_hours, position, completed_at, created_by_user_id, revision, created_at, updated_at
+RETURNING id, project_id, parent_task_id, title, description, status, assignee_user_id, start_date, due_date, estimate_hours, position, completed_at, created_by_user_id, revision, created_at, updated_at, delivery_milestone_id
 `
 
 type InsertTaskParams struct {
-	ProjectID       int32
-	ParentTaskID    *int32
-	Title           string
-	Description     *string
-	Status          string
-	AssigneeUserID  *uuid.UUID
-	StartDate       pgtype.Date
-	DueDate         pgtype.Date
-	EstimateHours   pgtype.Numeric
-	Position        int32
-	CompletedAt     *time.Time
-	CreatedByUserID uuid.UUID
-	Now             time.Time
+	ProjectID           int32
+	ParentTaskID        *int32
+	Title               string
+	Description         *string
+	Status              string
+	AssigneeUserID      *uuid.UUID
+	StartDate           pgtype.Date
+	DueDate             pgtype.Date
+	EstimateHours       pgtype.Numeric
+	DeliveryMilestoneID *int32
+	Position            int32
+	CompletedAt         *time.Time
+	CreatedByUserID     uuid.UUID
+	Now                 time.Time
 }
 
 // InsertTask creates one task. created_at and updated_at are the same instant
@@ -207,6 +217,7 @@ func (q *Queries) InsertTask(ctx context.Context, arg InsertTaskParams) (Project
 		arg.StartDate,
 		arg.DueDate,
 		arg.EstimateHours,
+		arg.DeliveryMilestoneID,
 		arg.Position,
 		arg.CompletedAt,
 		arg.CreatedByUserID,
@@ -230,19 +241,23 @@ func (q *Queries) InsertTask(ctx context.Context, arg InsertTaskParams) (Project
 		&i.Revision,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.DeliveryMilestoneID,
 	)
 	return i, err
 }
 
 const listMyOpenTasks = `-- name: ListMyOpenTasks :many
-SELECT t.id, t.project_id, t.parent_task_id, t.title, t.description, t.status, t.assignee_user_id, t.start_date, t.due_date, t.estimate_hours, t.position, t.completed_at, t.created_by_user_id, t.revision, t.created_at, t.updated_at,
+SELECT t.id, t.project_id, t.parent_task_id, t.title, t.description, t.status, t.assignee_user_id, t.start_date, t.due_date, t.estimate_hours, t.position, t.completed_at, t.created_by_user_id, t.revision, t.created_at, t.updated_at, t.delivery_milestone_id,
        p.code AS project_code,
        p.name AS project_name,
+       dm.name                          AS delivery_milestone_name,
+       dm.target_date                   AS delivery_milestone_target_date,
        coalesce(c.total, 0)::integer    AS checklist_total,
        coalesce(c.done, 0)::integer     AS checklist_done,
        coalesce(m.comments, 0)::integer AS comment_count
 FROM projects.tasks t
 JOIN projects.projects p ON p.id = t.project_id
+LEFT JOIN projects.delivery_milestones dm ON dm.id = t.delivery_milestone_id
 LEFT JOIN LATERAL (
     SELECT count(*) AS total, count(*) FILTER (WHERE i.done) AS done
     FROM projects.task_checklist_items i WHERE i.task_id = t.id
@@ -263,12 +278,14 @@ type ListMyOpenTasksParams struct {
 }
 
 type ListMyOpenTasksRow struct {
-	ProjectsTask   ProjectsTask
-	ProjectCode    string
-	ProjectName    string
-	ChecklistTotal int32
-	ChecklistDone  int32
-	CommentCount   int32
+	ProjectsTask                ProjectsTask
+	ProjectCode                 string
+	ProjectName                 string
+	DeliveryMilestoneName       *string
+	DeliveryMilestoneTargetDate pgtype.Date
+	ChecklistTotal              int32
+	ChecklistDone               int32
+	CommentCount                int32
 }
 
 // ListMyOpenTasks is design §4.1's "my tasks": every task assigned to the
@@ -306,8 +323,11 @@ func (q *Queries) ListMyOpenTasks(ctx context.Context, arg ListMyOpenTasksParams
 			&i.ProjectsTask.Revision,
 			&i.ProjectsTask.CreatedAt,
 			&i.ProjectsTask.UpdatedAt,
+			&i.ProjectsTask.DeliveryMilestoneID,
 			&i.ProjectCode,
 			&i.ProjectName,
+			&i.DeliveryMilestoneName,
+			&i.DeliveryMilestoneTargetDate,
 			&i.ChecklistTotal,
 			&i.ChecklistDone,
 			&i.CommentCount,
@@ -323,11 +343,14 @@ func (q *Queries) ListMyOpenTasks(ctx context.Context, arg ListMyOpenTasksParams
 }
 
 const listProjectTasks = `-- name: ListProjectTasks :many
-SELECT t.id, t.project_id, t.parent_task_id, t.title, t.description, t.status, t.assignee_user_id, t.start_date, t.due_date, t.estimate_hours, t.position, t.completed_at, t.created_by_user_id, t.revision, t.created_at, t.updated_at,
+SELECT t.id, t.project_id, t.parent_task_id, t.title, t.description, t.status, t.assignee_user_id, t.start_date, t.due_date, t.estimate_hours, t.position, t.completed_at, t.created_by_user_id, t.revision, t.created_at, t.updated_at, t.delivery_milestone_id,
+       dm.name                          AS delivery_milestone_name,
+       dm.target_date                   AS delivery_milestone_target_date,
        coalesce(c.total, 0)::integer    AS checklist_total,
        coalesce(c.done, 0)::integer     AS checklist_done,
        coalesce(m.comments, 0)::integer AS comment_count
 FROM projects.tasks t
+LEFT JOIN projects.delivery_milestones dm ON dm.id = t.delivery_milestone_id
 LEFT JOIN LATERAL (
     SELECT count(*) AS total, count(*) FILTER (WHERE i.done) AS done
     FROM projects.task_checklist_items i WHERE i.task_id = t.id
@@ -349,10 +372,12 @@ type ListProjectTasksParams struct {
 }
 
 type ListProjectTasksRow struct {
-	ProjectsTask   ProjectsTask
-	ChecklistTotal int32
-	ChecklistDone  int32
-	CommentCount   int32
+	ProjectsTask                ProjectsTask
+	DeliveryMilestoneName       *string
+	DeliveryMilestoneTargetDate pgtype.Date
+	ChecklistTotal              int32
+	ChecklistDone               int32
+	CommentCount                int32
 }
 
 // ListProjectTasks is a whole project's tasks, aggregates included, in one
@@ -388,6 +413,9 @@ func (q *Queries) ListProjectTasks(ctx context.Context, arg ListProjectTasksPara
 			&i.ProjectsTask.Revision,
 			&i.ProjectsTask.CreatedAt,
 			&i.ProjectsTask.UpdatedAt,
+			&i.ProjectsTask.DeliveryMilestoneID,
+			&i.DeliveryMilestoneName,
+			&i.DeliveryMilestoneTargetDate,
 			&i.ChecklistTotal,
 			&i.ChecklistDone,
 			&i.CommentCount,
@@ -403,11 +431,14 @@ func (q *Queries) ListProjectTasks(ctx context.Context, arg ListProjectTasksPara
 }
 
 const listTaskWithSubtasks = `-- name: ListTaskWithSubtasks :many
-SELECT t.id, t.project_id, t.parent_task_id, t.title, t.description, t.status, t.assignee_user_id, t.start_date, t.due_date, t.estimate_hours, t.position, t.completed_at, t.created_by_user_id, t.revision, t.created_at, t.updated_at,
+SELECT t.id, t.project_id, t.parent_task_id, t.title, t.description, t.status, t.assignee_user_id, t.start_date, t.due_date, t.estimate_hours, t.position, t.completed_at, t.created_by_user_id, t.revision, t.created_at, t.updated_at, t.delivery_milestone_id,
+       dm.name                          AS delivery_milestone_name,
+       dm.target_date                   AS delivery_milestone_target_date,
        coalesce(c.total, 0)::integer    AS checklist_total,
        coalesce(c.done, 0)::integer     AS checklist_done,
        coalesce(m.comments, 0)::integer AS comment_count
 FROM projects.tasks t
+LEFT JOIN projects.delivery_milestones dm ON dm.id = t.delivery_milestone_id
 LEFT JOIN LATERAL (
     SELECT count(*) AS total, count(*) FILTER (WHERE i.done) AS done
     FROM projects.task_checklist_items i WHERE i.task_id = t.id
@@ -421,10 +452,12 @@ ORDER BY (t.id <> $1), t.position, t.id
 `
 
 type ListTaskWithSubtasksRow struct {
-	ProjectsTask   ProjectsTask
-	ChecklistTotal int32
-	ChecklistDone  int32
-	CommentCount   int32
+	ProjectsTask                ProjectsTask
+	DeliveryMilestoneName       *string
+	DeliveryMilestoneTargetDate pgtype.Date
+	ChecklistTotal              int32
+	ChecklistDone               int32
+	CommentCount                int32
 }
 
 // ListTaskWithSubtasks is one task and the subtasks under it, aggregates
@@ -457,6 +490,9 @@ func (q *Queries) ListTaskWithSubtasks(ctx context.Context, id int32) ([]ListTas
 			&i.ProjectsTask.Revision,
 			&i.ProjectsTask.CreatedAt,
 			&i.ProjectsTask.UpdatedAt,
+			&i.ProjectsTask.DeliveryMilestoneID,
+			&i.DeliveryMilestoneName,
+			&i.DeliveryMilestoneTargetDate,
 			&i.ChecklistTotal,
 			&i.ChecklistDone,
 			&i.CommentCount,
@@ -472,7 +508,7 @@ func (q *Queries) ListTaskWithSubtasks(ctx context.Context, id int32) ([]ListTas
 }
 
 const lockTask = `-- name: LockTask :one
-SELECT id, project_id, parent_task_id, title, description, status, assignee_user_id, start_date, due_date, estimate_hours, position, completed_at, created_by_user_id, revision, created_at, updated_at FROM projects.tasks WHERE id = $1 FOR UPDATE
+SELECT id, project_id, parent_task_id, title, description, status, assignee_user_id, start_date, due_date, estimate_hours, position, completed_at, created_by_user_id, revision, created_at, updated_at, delivery_milestone_id FROM projects.tasks WHERE id = $1 FOR UPDATE
 `
 
 // LockTask is GetTask with the row held for the rest of the transaction: an
@@ -500,6 +536,7 @@ func (q *Queries) LockTask(ctx context.Context, id int32) (ProjectsTask, error) 
 		&i.Revision,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.DeliveryMilestoneID,
 	)
 	return i, err
 }
@@ -613,25 +650,27 @@ UPDATE projects.tasks SET
     start_date = $5,
     due_date = $6,
     estimate_hours = $7,
-    completed_at = $8,
+    delivery_milestone_id = $8,
+    completed_at = $9,
     revision = revision + 1,
-    updated_at = $9::timestamptz
-WHERE id = $10 AND revision = $11
-RETURNING id, project_id, parent_task_id, title, description, status, assignee_user_id, start_date, due_date, estimate_hours, position, completed_at, created_by_user_id, revision, created_at, updated_at
+    updated_at = $10::timestamptz
+WHERE id = $11 AND revision = $12
+RETURNING id, project_id, parent_task_id, title, description, status, assignee_user_id, start_date, due_date, estimate_hours, position, completed_at, created_by_user_id, revision, created_at, updated_at, delivery_milestone_id
 `
 
 type UpdateTaskParams struct {
-	Title          string
-	Description    *string
-	Status         string
-	AssigneeUserID *uuid.UUID
-	StartDate      pgtype.Date
-	DueDate        pgtype.Date
-	EstimateHours  pgtype.Numeric
-	CompletedAt    *time.Time
-	Now            time.Time
-	ID             int32
-	Revision       int32
+	Title               string
+	Description         *string
+	Status              string
+	AssigneeUserID      *uuid.UUID
+	StartDate           pgtype.Date
+	DueDate             pgtype.Date
+	EstimateHours       pgtype.Numeric
+	DeliveryMilestoneID *int32
+	CompletedAt         *time.Time
+	Now                 time.Time
+	ID                  int32
+	Revision            int32
 }
 
 // UpdateTask applies one edit, guarded by the revision the caller read (design
@@ -648,6 +687,7 @@ func (q *Queries) UpdateTask(ctx context.Context, arg UpdateTaskParams) (Project
 		arg.StartDate,
 		arg.DueDate,
 		arg.EstimateHours,
+		arg.DeliveryMilestoneID,
 		arg.CompletedAt,
 		arg.Now,
 		arg.ID,
@@ -671,6 +711,7 @@ func (q *Queries) UpdateTask(ctx context.Context, arg UpdateTaskParams) (Project
 		&i.Revision,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.DeliveryMilestoneID,
 	)
 	return i, err
 }
