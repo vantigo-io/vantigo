@@ -5,6 +5,9 @@ sources:
   - apps/server/internal/projects
   - apps/projects/frontend
   - openapi/projects.yaml
+  - apps/server/internal/openapi/specs/projects.yaml
+  - apps/server/internal/db/migrations/00096_projects_delivery_milestones.sql
+  - apps/server/internal/db/migrations/00097_projects_task_dependencies.sql
 ---
 The Projects module is where work is organised: a project is a named, coded piece of
 work for one customer (or none, which means internal), the people who may act on it,
@@ -1300,6 +1303,30 @@ they track execution deliverable progress rather than money or invoice releases.
 - **Timeline events:** `delivery-milestone-added`, `delivery-milestone-changed`,
   `delivery-milestone-removed`, `delivery-milestone-completed`, `delivery-milestone-reopened`.
 
+## Task dependencies and timeline
+
+Projects supports **Finish-to-Start (FS)** task dependencies (`projects.task_dependencies`).
+A dependency states that a predecessor task must finish before its successor task can begin.
+
+- **Within-project scope:** Predecessor and successor tasks must belong to the exact same
+  project. Attempting to link tasks across projects returns **400 Bad Request**.
+- **Cycle-free DAG validation:** The dependency graph forms a directed acyclic graph (DAG).
+  Before inserting a link `(A -> B)`, the system performs graph reachability traversal from `B`.
+  If `A` is reachable from `B`, adding the link would introduce a directed cycle; the request is
+  refused with **400 Bad Request** (`cyclic_dependency`).
+- **Self-dependencies & duplicates:** A task cannot depend on itself (**400 Bad Request**).
+  Attempting to recreate an existing dependency link returns **409 Conflict**.
+- **Cascading deletion:** When a task is deleted, all dependencies where it acts as predecessor
+  or successor are removed automatically (`ON DELETE CASCADE`).
+- **Downstream cascade rescheduling:** When a task is delayed or advanced, callers can opt in
+  to cascade the shift to all reachable downstream tasks via `POST /api/v1/projects/tasks/{taskId}/reschedule-downstream`
+  with `{ daysDelta: integer }`. The system traverses all downstream successor paths and shifts
+  `startDate` and `dueDate` by `daysDelta` in a single atomic transaction.
+- **Timeline view:** In the frontend, the Tasks tab provides an interactive Timeline view
+  displaying task bars across calendar days, delivery milestone markers at their target dates,
+  and SVG connector arrows indicating finish-to-start dependencies. Schedule conflicts
+  (`predecessor.dueDate > successor.startDate`) are automatically highlighted with visual warning badges.
+
 ## Contracts for other modules
 
 Cross-module reads go through `internal/contracts` — never another module's schema or
@@ -1485,6 +1512,10 @@ create additionally requires `projects:create`.
 | `DELETE /api/v1/projects/delivery-milestones/{milestoneId}` | Delete a delivery milestone; unlinks tasks (`deliveryMilestoneId = null`). Member or manager |
 | `PUT /api/v1/projects/delivery-milestones/{milestoneId}/position` | Renumber delivery milestones 1..n; carries `revision`. Member or manager |
 | `POST /api/v1/projects/delivery-milestones/{milestoneId}/status` | Set status to `open` or `completed`; completed stamps `completed_at` and `completed_by`. Member or manager |
+| `GET /api/v1/projects/{id}/dependencies` | List a project's task dependency links. Anyone who sees the project |
+| `POST /api/v1/projects/{id}/dependencies` | Create a finish-to-start dependency link between tasks; validated for cycles. Member or manager |
+| `DELETE /api/v1/projects/dependencies/{dependencyId}` | Delete a task dependency link. Member or manager |
+| `POST /api/v1/projects/tasks/{taskId}/reschedule-downstream` | Shift dates of all reachable downstream tasks by a day delta. Member or manager |
 | `GET /api/v1/projects/{id}/economy` | Budget vs. logged, per line, per work type and in total, plus what the expenses cost and will bill; hours for anyone who sees the project, amounts and the `expenses` block need financial rights, cost and margin need `projects:view-costs` too — see [Project economy](#project-economy) |
 | `GET /api/v1/projects/economy` | The portfolio: one row per project the caller has financial rights on. `projects:access`; paged, filtered and sorted — see [Project economy](#project-economy) |
 | `GET /api/v1/projects/{id}/tasks` | The project's task tree, with checklist counts and comment counts. Anyone who sees the project |

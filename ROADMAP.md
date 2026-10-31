@@ -838,8 +838,15 @@ and status toggling (`open` / `completed`), timeline events, and UI integration 
 with delivery milestone cards, progress bars, quick filtering, and task form/drawer dropdowns.
 Designed in [`docs/superpowers/specs/2026-10-31-projects-delivery-milestones-timeline-design.md`](docs/superpowers/specs/2026-10-31-projects-delivery-milestones-timeline-design.md).
 
-**Delivery B: Lightweight timeline and dependencies** — finish-to-start dependencies,
-timeline view, drag reschedule.
+**Delivery B: Lightweight timeline and dependencies (done)** — finish-to-start (FS) task dependencies
+stored in `projects.task_dependencies`, cycle-free DAG reachability validation rejecting circular
+dependencies with 400 Bad Request (`cyclic_dependency`), cascading deletion on task removal, opt-in
+downstream cascade rescheduling (`POST /api/v1/projects/tasks/{taskId}/reschedule-downstream`) shifting
+downstream task dates by day delta in one atomic update. Interactive frontend Timeline view on the
+Tasks tab with calendar day tracks, milestone diamond markers at target dates, dependency connector
+arrows, conflict detection warning badges when predecessors finish after successors start, and dependency
+management (predecessors, successors, downstream reschedule) inside the Task drawer. Bilingual documentation
+and 100% test and contract coverage.
 
 **Delivery C: Project and task templates** — kickoff blueprints with relative date offsets.
 

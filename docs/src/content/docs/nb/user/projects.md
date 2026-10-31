@@ -134,9 +134,10 @@ klikke på en milepæl filtreres oppgavevisningen under til å kun vise oppgaven
 Bryteren **Visning** viser oppgavene som en **Liste** —
 gruppene **Å gjøre**, **Pågår** og **Ferdig**, hver en tabell med **Tittel**,
 **Ansvarlig**, **Frist**, **Estimat**, **Sjekkliste** og **Kommentarer**, med
-deloppgavene foldet inn under den overordnede — eller som en **Tavle** med tre
-kolonner der deloppgaver er egne kort. Oppgaver tilknyttet en leveransemilepæl har en
-diamantmerket milepæl-tagg. Valget huskes i nettleseren din. Deltakere og
+deloppgavene foldet inn under den overordnede — som en **Tavle** med tre
+kolonner der deloppgaver er egne kort, eller som en interaktiv **Tidslinje** som kartlegger
+oppgavebånd over kalenderdager ved siden av milepælmarkører og avhengighetspiler. Oppgaver tilknyttet en leveransemilepæl har en
+diamantmerket milepæl-tagg. Planleggingskonflikter der en forgjenger slutter etter at etterfølgeren starter markeres med et varselikon. Valget huskes i nettleseren din. Deltakere og
 prosjektledere ser **Ny oppgave**; en leser får de samme visningene uten handlingene.
 
 **Ny oppgave** åpner skjemaet **Ny oppgave**: **Tittel** (påkrevd, høyst 200 tegn),
@@ -150,7 +151,9 @@ sjekkliste og kommentarer slettes med den, og det kan ikke angres. Detaljskjemae
 (**Status**, **Ansvarlig**, **Leveransemilepæl**, **Startdato**, **Frist**, **Estimat (timer)**,
 **Beskrivelse**) lagres med **Lagre endringer**. **Deloppgaver** har en
 avkrysningsboks per deloppgave som setter den til **Ferdig** eller tilbake til **Å
-gjøre**, og **Legg til deloppgave**. **Sjekkliste** er de små stegene inne i oppgaven
+gjøre**, og **Legg til deloppgave**. **Avhengigheter** kobler **Forgjengere** og
+**Etterfølgere** med automatisk sikring mot sirkulære løkker, konfliktvarsler, og et
+verktøy for å **Forskyve etterfølgende** oppgaver med et antall dager. **Sjekkliste** er de små stegene inne i oppgaven
 (**Legg til punkt**, kryss av, slett). **Kommentarer** er en tråd med **Legg inn
 kommentar** og **Last inn flere**; du redigerer og sletter dine egne, en
 prosjektleder sletter alles. På tavlen tilbyr kortets meny **Flytt til Å gjøre**,

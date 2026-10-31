@@ -134,8 +134,9 @@ task view below to show only tasks linked to that milestone.
 The **View** switch shows the tasks as a **List** — the groups
 **To do**, **In progress** and **Done**, each a table with **Title**, **Assignee**,
 **Due date**, **Estimate**, **Checklist** and **Comments**, subtasks folded under
-their parent — or as a **Board** of three columns where subtasks are cards of their
-own. Tasks linked to a delivery milestone display a diamond milestone tag. The choice is remembered
+their parent — as a **Board** of three columns where subtasks are cards of their
+own, or as an interactive **Timeline** mapping task bars across calendar days beside
+milestone markers and finish-to-start dependency arrows. Tasks linked to a delivery milestone display a diamond milestone tag. Any scheduling conflict where a predecessor finishes after a successor starts is flagged with a warning indicator. The choice is remembered
 in your browser. Members and managers see **Add task**;
 a viewer gets the same views without the actions.
 
@@ -150,7 +151,9 @@ the bin deletes the task after *Delete title?* — subtasks, checklist and comme
 with it, and it cannot be undone. The details form (**Status**, **Assignee**, **Delivery milestone**,
 **Start date**, **Due date**, **Estimate (hours)**, **Description**) is saved with **Save
 changes**. **Subtasks** has a checkbox per subtask that marks it **Done** or back to
-**To do**, and **Add subtask**. **Checklist** is the small steps inside the task
+**To do**, and **Add subtask**. **Dependencies** links **Predecessors** and **Successors**
+with automatic prevention of cyclic dependency loops, conflict warnings, and an opt-in
+**Reschedule downstream** tool to cascade date changes by a delta in days. **Checklist** is the small steps inside the task
 (**Add item**, tick, delete). **Comments** is a thread with **Post comment** and
 **Load more**; you edit and delete your own, a manager deletes anyone's. On the board
 a card's menu offers **Move to To do**, **Move to In progress** and **Move to Done**;
