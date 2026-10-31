@@ -29,11 +29,12 @@ import { useTaskSave } from "../lib/use-task-save";
 import { DeliveryMilestonesCard } from "./-delivery-milestones-card";
 import { TaskDrawer } from "./-task-drawer";
 import { TaskFormModal, type TaskModalState } from "./-task-form-modal";
+import { TaskTimelineView } from "./-task-timeline-view";
 
-/** Which of the two shapes of the same tree the caller last looked at. */
+/** Which of the shapes of the same tree the caller last looked at. */
 const VIEW_STORAGE_KEY = "projects.tasks.view";
 
-type TaskView = "list" | "board";
+type TaskView = "list" | "board" | "timeline";
 
 /**
  * The remembered view. Storage is a convenience, never a requirement: a
@@ -41,7 +42,9 @@ type TaskView = "list" | "board";
  */
 const readView = (): TaskView => {
   try {
-    return localStorage.getItem(VIEW_STORAGE_KEY) === "board" ? "board" : "list";
+    const stored = localStorage.getItem(VIEW_STORAGE_KEY);
+    if (stored === "board" || stored === "timeline") return stored;
+    return "list";
   } catch {
     return "list";
   }
@@ -134,7 +137,7 @@ export const ProjectTasks = ({
         );
 
   const chooseView = (value: string) => {
-    const chosen: TaskView = value === "board" ? "board" : "list";
+    const chosen: TaskView = value === "board" ? "board" : value === "timeline" ? "timeline" : "list";
     setView(chosen);
     rememberView(chosen);
   };
@@ -156,6 +159,7 @@ export const ProjectTasks = ({
               data={[
                 { value: "list", label: t("taskViewList") },
                 { value: "board", label: t("taskViewBoard") },
+                { value: "timeline", label: t("taskViewTimeline") },
               ]}
               value={view}
               onChange={chooseView}
@@ -178,8 +182,15 @@ export const ProjectTasks = ({
           {filteredTree.length > 0 &&
             (view === "list" ? (
               <TaskList tasks={filteredTree} onOpen={openTask} />
-            ) : (
+            ) : view === "board" ? (
               <TaskBoard tasks={filteredTree} canContribute={canContribute} onOpen={openTask} />
+            ) : (
+              <TaskTimelineView
+                projectId={projectId}
+                tasks={filteredTree}
+                canContribute={canContribute}
+                onOpen={openTask}
+              />
             ))}
         </Stack>
       </Card>

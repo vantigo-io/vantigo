@@ -42,6 +42,7 @@ import {
 import { useTaskSave } from "../lib/use-task-save";
 import { TaskChecklist } from "./-task-checklist";
 import { TaskComments } from "./-task-comments";
+import { TaskDependencies } from "./-task-dependencies";
 
 export interface TaskDrawerProps {
   projectId: number;
@@ -102,6 +103,8 @@ const TaskDrawerBody = ({ projectId, taskId, onClose, canContribute, canManage, 
           <Subtasks projectId={projectId} task={task} canContribute={canContribute} />
         </>
       )}
+      <Divider />
+      <TaskDependencies projectId={projectId} task={task} canContribute={canContribute} />
       <Divider />
       <TaskChecklist taskId={task.id} canContribute={canContribute} />
       <Divider />
