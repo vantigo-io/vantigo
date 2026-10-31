@@ -841,19 +841,20 @@ func TestOutboxWorker_StolenLeaseMakesTheFailureASilentNoOp(t *testing.T) {
 	}
 }
 
-// TestOutboxWorker_ChannelWithoutCredentialFallsBackToHostSmtpConfig is
-// inventory §15.2 step 1's first branch: "credential is null -> fall back to
-// host config SmtpOptions". It matters more than its obscure fixture suggests —
-// this is how any deployment that never configured PER-CHANNEL credentials
-// sends mail at all, i.e. the default configuration, and it reaches a different
-// settings-resolution path from every other test in this file.
+// TestOutboxWorker_ChannelWithoutCredentialIsUnavailable is the end of the
+// fall-back inventory §15.2 step 1 once had (integrations design T5): a channel
+// with no credential row sends nothing, even with the host's SMTP configured —
+// those credentials are the system mailbox's, for the tenant's own employees,
+// and a customer's mail never takes them. The job fails on its first attempt
+// with the code channel_unavailable, no retry can mend it, and SMTPSend is
+// never reached.
 //
 // The channels API creates a credential atomically with the channel, so the
 // only way to reach the branch is to delete the credential row directly. That
 // is the same hazard TestUpdateChannel_MissingCredentialWhenNoneExists already
 // documents, not a contrivance: the resulting row shape is exactly what a
 // credential-less channel looks like.
-func TestOutboxWorker_ChannelWithoutCredentialFallsBackToHostSmtpConfig(t *testing.T) {
+func TestOutboxWorker_ChannelWithoutCredentialIsUnavailable(t *testing.T) {
 	t.Parallel()
 	f := &fakeSMTP{}
 	h := newHarness(t,
@@ -867,8 +868,9 @@ func TestOutboxWorker_ChannelWithoutCredentialFallsBackToHostSmtpConfig(t *testi
 	)
 	fx := seedOutboxJob(t, h)
 	h.Exec(t, `DELETE FROM communications.channel_credentials WHERE channel_id = $1`, fx.channelID)
+	m := newMeterHarness(t)
+	w := m.worker(t, h)
 
-	w := communications.NewOutboxWorker(h.Deps())
 	processed, err := w.ProcessOne(context.Background())
 	if err != nil {
 		t.Fatalf("ProcessOne: %v", err)
@@ -876,32 +878,10 @@ func TestOutboxWorker_ChannelWithoutCredentialFallsBackToHostSmtpConfig(t *testi
 	if !processed {
 		t.Fatal("ProcessOne = false, want true")
 	}
-
-	cfgs := f.configs()
-	if len(cfgs) != 1 {
-		t.Fatalf("sends = %d, want exactly 1: a credential-less channel still sends, on the host settings", len(cfgs))
+	if n := len(f.configs()); n != 0 {
+		t.Fatalf("sends = %d, want none: a credential-less channel does not fall back to the host's SMTP", n)
 	}
-	got := cfgs[0]
-	if got.Driver != "smtp" {
-		t.Errorf("Driver = %q, want smtp", got.Driver)
-	}
-	if got.Host != "host-smtp.example.test" || got.Port != 2525 {
-		t.Errorf("host/port = %s:%d, want the process SMTP_HOST/SMTP_PORT", got.Host, got.Port)
-	}
-	if got.Username != "host-user" || got.Password != "host-password" {
-		t.Errorf("credentials = %q/%q, want the process SMTP_USERNAME/SMTP_PASSWORD", got.Username, got.Password)
-	}
-	if got.TLS != "starttls" {
-		t.Errorf("TLS = %q, want starttls (SMTP_TLS's default)", got.TLS)
-	}
-	// The envelope's From is the CHANNEL's address, not the host SMTP_FROM:
-	// the fallback supplies the server, never the sending identity.
-	if got.From != fx.channelAddress {
-		t.Errorf("From = %q, want the channel address %q, not the host SMTP_FROM", got.From, fx.channelAddress)
-	}
-	if job := readOutboxJob(t, h, fx.messageID); job.status != "completed" {
-		t.Errorf("job status = %q, want completed", job.status)
-	}
+	assertFailedAtOnce(t, h, m, w, fx.messageID, "channel_unavailable")
 }
 
 // ---- claim mechanics (fix round 1, minor 5) ----

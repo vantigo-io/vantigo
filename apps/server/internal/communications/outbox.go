@@ -21,6 +21,7 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/db"
 	"github.com/vantigo-io/vantigo/server/internal/mail"
 	"github.com/vantigo-io/vantigo/server/internal/module"
+	"github.com/vantigo-io/vantigo/server/internal/secrets"
 	"github.com/vantigo-io/vantigo/server/internal/storage"
 	"github.com/vantigo-io/vantigo/server/internal/worker"
 )
@@ -138,6 +139,8 @@ func outboxTerminalCode(err error) string {
 		return "channel_misconfigured"
 	case errors.Is(err, contracts.ErrConnectionNeeded):
 		return "connection_needed"
+	case errors.Is(err, errChannelNoCredentials):
+		return "channel_unavailable"
 	}
 	return ""
 }
@@ -924,29 +927,32 @@ func (w *OutboxWorker) attachmentContent(ctx context.Context, key string) ([]byt
 }
 
 // smtpConfig is SmtpDeliveryProvider's settings resolution (inventory §15.2
-// step 1): the channel's own stored credential, or the host's SMTP
-// configuration when the channel has none. The TLS decision is
-// smtpTLSMode's — shared with channel verification, so a channel that verifies
-// is a channel that can send.
+// step 1): the channel's own stored credential and nothing else. A channel
+// without one is Unavailable and sends nothing (integrations design T5): the
+// installation's SMTP_* credentials are the system mailbox's, for the tenant's
+// own employees, and a customer's mail never takes them. The reading is
+// smtpConfigOf's, shared with OutboundMail.Send.
 func (w *OutboxWorker) smtpConfig(message store.GetOutboundMessageForSendRow) (config.MailConfig, error) {
-	if message.CredentialSettingsJson == nil {
-		// No credential: fall back to the host configuration, as .NET falls
-		// back to SmtpOptions. A deployment with neither cannot send, and
-		// fails this job rather than silently doing nothing.
-		host := config.MailConfig{}
-		if w.deps.Config != nil {
-			host = w.deps.Config.Mail
-		}
-		if strings.TrimSpace(host.Host) == "" {
-			return config.MailConfig{}, fmt.Errorf("communications: the channel has no credential and no host smtp configuration is set")
-		}
-		host.Driver = "smtp"
-		host.From = message.ChannelAddress
-		return host, nil
-	}
+	return smtpConfigOf(w.deps.Secrets, message.ChannelAddress, message.CredentialSettingsJson, message.CredentialSecretCiphertext)
+}
 
+// errChannelNoCredentials is the fixed sentence of a send on an SMTP channel
+// that has no stored credentials (integrations design T5): the channel is
+// Unavailable, nothing is sent, and no retry mends it until an admin enters
+// the credentials.
+var errChannelNoCredentials = errors.New("communications: the channel has no credentials")
+
+// smtpConfigOf is an SMTP channel's delivery settings from its credential row
+// — settingsJSON and the sealed password — sent From the channel's own
+// address, or errChannelNoCredentials when the channel has no row. There is no
+// fall-back to the host's SMTP. The TLS decision is smtpTLSMode's — shared with
+// channel verification, so a channel that verifies is a channel that can send.
+func smtpConfigOf(box *secrets.Box, address string, settingsJSON, sealedPassword *string) (config.MailConfig, error) {
+	if settingsJSON == nil {
+		return config.MailConfig{}, errChannelNoCredentials
+	}
 	var settings smtpProviderSettings
-	if err := json.Unmarshal([]byte(*message.CredentialSettingsJson), &settings); err != nil {
+	if err := json.Unmarshal([]byte(*settingsJSON), &settings); err != nil {
 		return config.MailConfig{}, fmt.Errorf("communications: decode channel settings: %w", err)
 	}
 	tlsMode, err := smtpTLSMode(settings.UseSsl, settings.Port)
@@ -958,19 +964,19 @@ func (w *OutboxWorker) smtpConfig(message store.GetOutboundMessageForSendRow) (c
 		username = *settings.Username
 	}
 	password := ""
-	if message.CredentialSecretCiphertext != nil && w.deps.Secrets != nil {
+	if sealedPassword != nil && box != nil {
 		// A credential that can no longer be opened becomes an empty password
 		// rather than an error, the same swallow the update path already makes
 		// (inventory §15.6).
-		if sealed, decodeErr := decodeCiphertext(*message.CredentialSecretCiphertext); decodeErr == nil {
-			if opened, openErr := w.deps.Secrets.Open(channelCredentialPurpose, sealed); openErr == nil {
+		if sealed, decodeErr := decodeCiphertext(*sealedPassword); decodeErr == nil {
+			if opened, openErr := box.Open(channelCredentialPurpose, sealed); openErr == nil {
 				password = string(opened)
 			}
 		}
 	}
 	return config.MailConfig{
 		Driver: "smtp", Host: settings.Host, Port: int(settings.Port),
-		Username: username, Password: password, From: message.ChannelAddress, TLS: tlsMode,
+		Username: username, Password: password, From: address, TLS: tlsMode,
 	}, nil
 }
 

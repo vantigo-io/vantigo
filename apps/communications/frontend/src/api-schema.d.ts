@@ -477,6 +477,8 @@ export interface components {
         };
         ChannelResponse: {
             address: string;
+            /** @description Whether the channel can send now (integrations design T5, T7) - its provider is offered and, for SMTP, its credentials are stored; an SMTP channel without credentials sends nothing, and the channels page shows it Unavailable. Always answered; optional in the schema only because the recorded exchanges predate it. */
+            available?: boolean;
             /** Format: date-time */
             createdAt: string;
             displayName: string | null;

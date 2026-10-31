@@ -17,6 +17,7 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/communications/gen"
 	"github.com/vantigo-io/vantigo/server/internal/communications/store"
 	"github.com/vantigo-io/vantigo/server/internal/config"
+	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/db"
 	"github.com/vantigo-io/vantigo/server/internal/mail"
 )
@@ -255,6 +256,13 @@ func channelResponseOf(row channelRow, settingsJSON *string) (gen.ChannelRespons
 			}{Id: ms.Mailbox, OnClose: ms.OnClose, Folder: ms.Folder}
 		}
 	}
+	// What the row alone says of whether the channel can send (integrations
+	// design T5): an SMTP channel has stored credentials, a Microsoft 365 one
+	// a mailbox. Whether the provider is offered now is the provider's own
+	// state, which a call out of the module reads — never inside the
+	// transaction that built this response — and withProviderState folds in.
+	resp.Available = apicommon.Ptr(row.Provider == providerEntra && resp.Mailbox != nil ||
+		row.Provider == providerSMTP && settingsJSON != nil)
 	if settingsJSON == nil {
 		return resp, nil
 	}
@@ -275,6 +283,37 @@ func channelResponseOf(row channelRow, settingsJSON *string) (gen.ChannelRespons
 		Username: settings.Username,
 	}
 	return resp, nil
+}
+
+// entraOffered is whether the mail channels provider is filled under "entra"
+// and available now (its Status), the one fact about a provider that decides
+// whether a Microsoft 365 channel can send. A status that does not answer is
+// not offered, and logged. It makes a call out of the module, so it is asked
+// outside any transaction.
+func (s *server) entraOffered(ctx context.Context) (bool, error) {
+	m, err := s.channelMailbox(ctx)
+	if err != nil || m == nil {
+		return false, err
+	}
+	status, err := s.mailboxStatus(ctx, m)
+	if errors.Is(err, errCallInsideTransaction) {
+		return false, err
+	}
+	if err != nil {
+		s.deps.Logger.WarnContext(ctx, "communications: the mail channels provider's status did not answer", "err", err)
+		return false, nil
+	}
+	return status.State == contracts.MailboxAvailable, nil
+}
+
+// withProviderState folds the provider's state into a response's available: a
+// Microsoft 365 channel whose provider is not offered cannot send (offered is
+// entraOffered's answer). An SMTP channel's available is its credentials'.
+func withProviderState(resp gen.ChannelResponse, entraOffered bool) gen.ChannelResponse {
+	if resp.Provider == providerEntra && resp.Available != nil && !entraOffered {
+		resp.Available = apicommon.Ptr(false)
+	}
+	return resp
 }
 
 // channelSyncs is each channel's mailbox sync row, for ChannelResponse.sync.
@@ -450,6 +489,10 @@ func (s *server) GetCommunicationsChannels(ctx context.Context, _ gen.GetCommuni
 	if err != nil {
 		return nil, err
 	}
+	offered, err := s.entraOffered(ctx)
+	if err != nil {
+		return nil, err
+	}
 	data := make([]gen.ChannelResponse, 0, len(rows))
 	for _, row := range rows {
 		resp, err := channelResponseOf(channelRowFromList(row), row.CredentialSettingsJson)
@@ -460,7 +503,7 @@ func (s *server) GetCommunicationsChannels(ctx context.Context, _ gen.GetCommuni
 		if r, ok := syncs[row.ID]; ok {
 			sync = &r
 		}
-		data = append(data, withSync(resp, sync))
+		data = append(data, withProviderState(withSync(resp, sync), offered))
 	}
 	return gen.GetCommunicationsChannels200JSONResponse(data), nil
 }
@@ -597,6 +640,8 @@ func (s *server) PostCommunicationsChannels(ctx context.Context, req gen.PostCom
 		}
 		return nil, fmt.Errorf("communications: create channel: %w", txErr)
 	}
+	// A Microsoft 365 channel is created only while its provider is offered
+	// (resolveSharedMailbox asked), so its own availability is the answer.
 	return gen.PostCommunicationsChannels201JSONResponse(resp), nil
 }
 
@@ -632,7 +677,11 @@ func (s *server) GetCommunicationsChannelsById(ctx context.Context, req gen.GetC
 	if err != nil {
 		return nil, err
 	}
-	return gen.GetCommunicationsChannelsById200JSONResponse(withSync(resp, sync)), nil
+	offered, err := s.entraOffered(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return gen.GetCommunicationsChannelsById200JSONResponse(withProviderState(withSync(resp, sync), offered)), nil
 }
 
 // PutCommunicationsChannelsById Update a channel
@@ -980,7 +1029,11 @@ func (s *server) PutCommunicationsChannelsById(ctx context.Context, req gen.PutC
 	} else if unwatch != "" {
 		s.unwatchMailbox(ctx, req.Id, unwatch)
 	}
-	return gen.PutCommunicationsChannelsById200JSONResponse(resp), nil
+	offered, err := s.entraOffered(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return gen.PutCommunicationsChannelsById200JSONResponse(withProviderState(resp, offered)), nil
 }
 
 // errChannelProviderChanged reports that a channel's provider was switched
@@ -1308,6 +1361,9 @@ func (s *server) PostCommunicationsChannelsByIdProvider(ctx context.Context, req
 	})
 	switch {
 	case txErr == nil:
+		// The switch is made only while the provider is offered
+		// (resolveSharedMailbox asked), so the channel's own availability is
+		// the answer.
 		return gen.PostCommunicationsChannelsByIdProvider200JSONResponse(resp), nil
 	case errors.Is(txErr, errChannelVanished):
 		return gen.PostCommunicationsChannelsByIdProvider404Response{}, nil

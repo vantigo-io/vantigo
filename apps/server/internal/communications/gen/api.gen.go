@@ -86,7 +86,10 @@ type ChannelRecipientRequest struct {
 
 // ChannelResponse defines model for ChannelResponse.
 type ChannelResponse struct {
-	Address        string             `json:"address"`
+	Address string `json:"address"`
+
+	// Available Whether the channel can send now (integrations design T5, T7) - its provider is offered and, for SMTP, its credentials are stored; an SMTP channel without credentials sends nothing, and the channels page shows it Unavailable. Always answered; optional in the schema only because the recorded exchanges predate it.
+	Available      *bool              `json:"available,omitempty"`
 	CreatedAt      time.Time          `json:"createdAt"`
 	DisplayName    *string            `json:"displayName"`
 	HasCredentials bool               `json:"hasCredentials"`
