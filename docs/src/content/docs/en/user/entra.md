@@ -1,19 +1,21 @@
 ---
 title: Microsoft Entra ID
-description: Connecting the company's Microsoft Entra ID tenant on the Microsoft Entra ID page — the Status card, the wizard's six steps and what Done means on each, the permissions to copy, the secret shown once, the connection test, the account rules and the Outlook connection switch with its status, counts and redirect URI, the Mail channels switch with its status and the Exchange Online commands to copy, the warning for permissions Vantigo does not use, the Groups table confirming a group Vantigo did not create, connecting existing users by the directory picker and the review of exact matches — and who sees what.
+description: Connecting the company's Microsoft Entra ID tenant on the Microsoft Entra ID page under Integrations in Workspace admin — its four tabs, Status, Connection, Accounts and Outlook and mail, where the page is and the redirect from /entra, the Status card, the wizard's six steps and what Done means on each, the permissions to copy, the secret shown once, the connection test, the account rules and the Outlook connection switch with its status, counts and redirect URI, the Mail channels switch with its status and the Exchange Online commands to copy, the warning for permissions Vantigo does not use, the Groups table confirming a group Vantigo did not create, connecting existing users by the directory picker and the review of exact matches — and who sees what.
 sidebar:
   order: 47
 sources:
   - apps/entra/frontend
   - apps/host/frontend/src/routes/entra
   - apps/host/frontend/src/routes/entra.tsx
+  - apps/host/frontend/src/routes/workspace/entra
+  - apps/host/frontend/src/routes/workspace/entra.tsx
 ---
 
-The **Microsoft Entra ID** app connects Vantigo to your company's Microsoft Entra ID
+The **Microsoft Entra ID** page, under **Integrations** in Workspace admin, connects Vantigo to your company's Microsoft Entra ID
 tenant, so that the accounts Staff gives people are made there: each person's Microsoft
 account is created ahead of their first day, enabled on it with a Temporary Access Pass,
 kept up to date, and disabled when they leave. Staff decides who gets an account and
-when ([Staff's Account tab](/en/user/staff/#account)); this app is where the connection
+when ([Staff's Account tab](/en/user/staff/#account)); this page is where the connection
 is set up and watched. The operator's procedure, with what to do in the Microsoft portal,
 is in [the administration guide](/en/admin/entra/); the rules are in [the
 reference](/en/reference/entra/).
@@ -22,29 +24,51 @@ reference](/en/reference/entra/).
 
 | What | Who |
 | --- | --- |
-| The **Microsoft Entra ID** tile, the page, the **Status** card, the accounts and the **Groups** table — **Confirm** on an account or a group Vantigo did not create — and the recent events | `entra:manage` |
+| **Microsoft Entra ID** under **Workspace admin** › **Integrations**, its **Status** card, the accounts and the **Groups** table — **Confirm** on an account or a group Vantigo did not create — and the recent events | `entra:manage` |
 | Steps **1 Register the application**, **2 Add a client secret** and **3 Grant the permissions and the role** — **Save**, **Add the secret**, **Revoke**, **Test connection** | an **Owner**, signed in with a second factor; to anyone else with `entra:manage` they are shown read-only, with *An Owner does this step. You can see what is set, but not change it.* |
-| Step **4 Set the account rules** — **Save the account rules** | `entra:manage` |
+| Step **4 Set the account rules** — **Save the account rules** — and the **Outlook and mail** tab — **Save the Outlook and mail settings** | `entra:manage` |
 | Steps **5 Sign-in** and **6 Provisioning** | an **Owner**: they are the **Single sign-on** card's forms; anyone else reads the step without them |
 | **Search the directory** in the connect dialog and **Find matches in the directory…** on **Users** ([connect existing users](#connect-existing-users)) | an **Owner**, signed in with a second factor when Owners must use one |
 
 `entra:manage` is in the category Administration and cannot be delegated: only an Owner
-gives it to a role. The Owner holds it already. An Owner who signed in without a second
+gives it to a role. The Owner holds it already. A holder who is not an Owner sees only the
+**Integrations** section of Workspace admin
+([Workspace administration](/en/user/workspace-administration/#integrations)). An Owner who signed in without a second
 factor while Owners must use one sees the forms, but saving them is refused.
 
-## The page
+## Where it is, and the four tabs
 
-Open **Microsoft Entra ID** from the app switcher. The page is a wizard of six steps,
-one card each, in the order you do them. Each card says where to go in the Microsoft
-Entra admin center, what to copy, and carries a mark: *Done* once Vantigo has what the
-step needs, *Not done* until then, and *Optional* on the last two steps — the mark comes
-from what Vantigo has stored, so it is right however the step was done. Keep the portal
-open in another tab and work down the page.
+Open the avatar menu at the top right, choose **Workspace admin**, and in the sidebar
+choose **Microsoft Entra ID** under **Integrations**. Someone who holds `entra:manage` but
+is not an Owner finds **Microsoft Entra ID** in the avatar menu itself. The page is not in
+the app switcher; its address is `/workspace/entra`, and the old address `/entra`
+redirects to it, so a link kept from before still works.
 
-### The Status card
+The page has four tabs, each with an address of its own, so a tab can be linked to:
 
-Once the connection has been tested, a **Status** card sits above the steps; before
-that, and again after step 1 changes, it is not shown:
+| Tab | What it holds |
+| --- | --- |
+| **Status** | How far the set-up is, the **Status** card once the connection is configured, and a line for each switch |
+| **Connection** | Steps **1 Register the application**, **2 Add a client secret** and **3 Grant the permissions and the role** |
+| **Accounts** | Step **4 Set the account rules**, steps **5 Sign-in** and **6 Provisioning**, and the **Groups** table |
+| **Outlook and mail** | The **Outlook connection** switch, which calendar sync runs on, and the **Mail channels** switch |
+
+The set-up is a wizard of six steps, one card each, in the order you do them. Each card
+says where to go in the Microsoft Entra admin center, what to copy, and carries a mark:
+*Done* once Vantigo has what the step needs, *Not done* until then, and *Optional* on the
+last two steps — the mark comes from what Vantigo has stored, so it is right however the
+step was done. Keep the portal open in another tab and work down the cards.
+
+Until step 1 is saved the page opens on **Connection**, since there is nothing yet to
+show a status of. From then on it opens on **Status**, which says *1 of 4 required steps
+done — continue in* **Connection** or **Accounts** — the four steps that carry a mark;
+steps 5 and 6 are optional — until all four are done, and then says nothing more of it.
+The step numbers stay on the cards.
+
+### The Status tab
+
+Once the connection has been tested, a **Status** card sits on the **Status** tab; before
+that, and again after step 1 changes, a notice *Not connected yet* stands in its place:
 
 - **Connected** or **Failing**, and, when there is one, the reason in a sentence: a
   secret refused, the tenant not answering, no consent granted, the secrets expired, a
@@ -78,9 +102,14 @@ that, and again after step 1 changes, it is not shown:
   like — with what was reported in words, such as *3 members added* or *the team waits
   until the group is fifteen minutes old and Teams has seen it*.
 
+Under the card, **What is turned on** has a line each for the **Outlook connection and
+calendar sync** and the **Mail channels**: *On* or *Off*, with a link to **Outlook and
+mail**, where they are turned on and off.
+
 ### The Groups table
 
-Under the **Status** card, shown with it, **Groups** lists the groups Vantigo keeps in
+On the **Accounts** tab, after step 6 and shown once the connection is configured,
+**Groups** lists the groups Vantigo keeps in
 the tenant for Staff's groups ([Groups in Staff](/en/user/staff/#groups)), deleted and
 kept ones included, greyed out: each group's **Name** as Vantigo last wrote it, with its
 mail nickname under it; its **Type**, *Security* or *Microsoft 365*; **Team**, *Yes* once
@@ -166,13 +195,10 @@ The rules every account follows, which anyone with `entra:manage` may change:
   lifetime (minutes)** (10 to 43,200), whether **The pass can be used once only**, and
   **Who hands over the pass**. The card says, with the path, that the tenant's
   authentication methods policy must enable the pass for the users, or Microsoft
-  refuses it;
-- **Outlook connection**: **Outlook connection: let people connect their Outlook to
-  Vantigo** ([below](#outlook-connection));
-- **Mail channels**: **Mail channels: let Communications send and receive through
-  Exchange Online shared mailboxes** ([below](#mail-channels)).
+  refuses it.
 
-Choose **Save the account rules**. A value outside its rule is marked on its field with
+The Outlook connection and the Mail channels, which used to end this step, are switches on
+the **Outlook and mail** tab ([below](#outlook-connection)). Choose **Save the account rules**. A value outside its rule is marked on its field with
 the reason. If someone else saved the connection since you opened the page, the page
 says so and reloads it: check what is there now and make your change again.
 
@@ -219,12 +245,11 @@ connect are synced.
    switch added to its **Web** platform, and the delegated permissions `openid`,
    `profile`, `offline_access` and `Calendars.ReadWrite` with admin consent. The
    [administration guide](/en/admin/entra/#outlook-connection) has the steps.
-2. In step **4 Set the account rules**, under **Outlook connection**, turn on **Outlook
-   connection: let people connect their Outlook to Vantigo**, and choose **Save the
-   account rules**.
+2. On the **Outlook and mail** tab, turn on **Outlook connection: let people connect
+   their Outlook to Vantigo**, and choose **Save the Outlook and mail settings**.
 3. Connect your own Outlook under **Settings → Connections** to check that it works.
 
-Under the switch, the card shows the **Redirect URI** to add to the registration, with a
+Under the switch, the tab shows the **Redirect URI** to add to the registration, with a
 copy button, and a line says where the connection stands:
 
 - **Ready** — someone has connected since the switch was turned on;
@@ -274,16 +299,17 @@ mail arriving in the mailbox's Inbox from the day the channel is added comes int
 Communications Inbox; the access the commands below grant covers both. Vantigo only reads
 the Inbox — the mail stays there in Outlook, as it was.
 
-1. In step **4 Set the account rules**, under **Mail channels**, turn on **Mail channels:
+1. On the **Outlook and mail** tab, under **Mail channels**, turn on **Mail channels:
    let Communications send and receive through Exchange Online shared mailboxes**, and
-   choose **Save the account rules**.
+   choose **Save the Outlook and mail settings**.
 2. Under the switch, **Commands for Exchange Online PowerShell** shows the six commands
    to run, with the application's client id and object id filled in and a copy button.
    Until the connection has been tested, *Test the connection first* says so, and the
    commands show `<client id>` and `<object id>` instead. An Exchange administrator runs
    them, replacing `post@firma.no` with each shared mailbox's address — the
    [administration guide](/en/admin/entra/#mail-channels) has the procedure.
-3. Add the mailbox as a channel in Communications, under **Channels**.
+3. Add the mailbox as a channel in Communications, under **Channels** — once the
+   switch is on, **Open Channels** under the settings leads there.
 
 While the switch is on, a line under it says where the mail channels stand:
 
@@ -313,7 +339,8 @@ registers, Vantigo links it but writes nothing to it — no details, no enable, 
 no disable, no delete — until someone with `entra:manage` confirms it is the person's.
 Staff's Account tab and dashboard say so, and the dashboard links here.
 
-1. In the **Status** card's accounts, find the one reading *Adopted — confirm*.
+1. On the **Status** tab, in the **Status** card's accounts, find the one reading
+   *Adopted — confirm*.
 2. Check in the portal that it is the person's.
 3. Choose **Confirm** beside it, then **Confirm** in *Confirm the adoption of …?*.
 
@@ -329,7 +356,8 @@ member, no delete — until someone with `entra:manage` confirms it is that grou
 Staff group's page says *Found in Microsoft Entra ID and awaiting confirmation there*
 meanwhile.
 
-1. In the **Groups** table, find the group reading *Adopted — confirm*.
+1. On the **Accounts** tab, in the **Groups** table, find the group reading *Adopted —
+   confirm*.
 2. Check in the portal that it is the group meant — its name, its owners, its members.
 3. Choose **Confirm** beside it, then **Confirm** in *Confirm the adoption of …?*, which
    says what follows: *Confirming lets Vantigo manage it for Staff. Its first write makes
@@ -427,5 +455,5 @@ minute. The review is refused when single sign-on is not configured.
 Nothing more happens here day to day: Staff's accounts worker does the work, and each
 person's account shows on their **Account** tab in Staff, where HR shows the
 Temporary Access Pass once. Come back to the page when Staff's dashboard says a secret
-is about to expire or the connection is failing, and look at the **Status** card and
-the recent events.
+is about to expire or the connection is failing, and look at the **Status** tab: its
+card and the recent events.

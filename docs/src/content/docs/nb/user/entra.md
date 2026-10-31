@@ -1,20 +1,22 @@
 ---
 title: Microsoft Entra ID
-description: Å koble selskapets Microsoft Entra ID-leietaker til på siden Microsoft Entra ID — kortet Status, veiviserens seks steg og hva Ferdig betyr på hvert, tillatelsene som skal kopieres, hemmeligheten som vises én gang, tilkoblingstesten, kontoreglene og bryteren Outlook-tilkobling med status, antall og omdirigerings-URI, bryteren E-postkanaler med status og kommandoene for Exchange Online som skal kopieres, varselet om tillatelser Vantigo ikke bruker, tabellen Grupper å bekrefte en gruppe Vantigo ikke opprettet, og å koble til eksisterende brukere med katalogvelgeren og gjennomgangen av nøyaktige treff — og hvem som ser hva.
+description: Å koble selskapets Microsoft Entra ID-leietaker til på siden Microsoft Entra ID under Integrasjoner i Administrer arbeidsområde — de fire fanene Status, Tilkobling, Kontoer og Outlook og e-post, hvor siden ligger og videresendingen fra /entra, kortet Status, veiviserens seks steg og hva Ferdig betyr på hvert, tillatelsene som skal kopieres, hemmeligheten som vises én gang, tilkoblingstesten, kontoreglene og bryteren Outlook-tilkobling med status, antall og omdirigerings-URI, bryteren E-postkanaler med status og kommandoene for Exchange Online som skal kopieres, varselet om tillatelser Vantigo ikke bruker, tabellen Grupper å bekrefte en gruppe Vantigo ikke opprettet, og å koble til eksisterende brukere med katalogvelgeren og gjennomgangen av nøyaktige treff — og hvem som ser hva.
 sidebar:
   order: 47
 sources:
   - apps/entra/frontend
   - apps/host/frontend/src/routes/entra
   - apps/host/frontend/src/routes/entra.tsx
+  - apps/host/frontend/src/routes/workspace/entra
+  - apps/host/frontend/src/routes/workspace/entra.tsx
 ---
 
-Appen **Microsoft Entra ID** kobler Vantigo til selskapets Microsoft Entra
-ID-leietaker, slik at kontoene Ansatte gir folk, lages der: hver persons
+Siden **Microsoft Entra ID**, under **Integrasjoner** i Administrer arbeidsområde,
+kobler Vantigo til selskapets Microsoft Entra ID-leietaker, slik at kontoene Ansatte gir folk, lages der: hver persons
 Microsoft-konto opprettes før første arbeidsdag, aktiveres den dagen med et midlertidig
 tilgangspass, holdes oppdatert og deaktiveres når personen slutter. Ansatte bestemmer
 hvem som får en konto og når ([fanen Konto i Ansatte](/nb/user/staff/#konto)); denne
-appen er der tilkoblingen settes opp og følges med på. Driftsprosedyren, med hva du gjør
+siden er der tilkoblingen settes opp og følges med på. Driftsprosedyren, med hva du gjør
 i Microsoft-portalen, står i [administrasjonsveiledningen](/nb/admin/entra/); reglene
 står i [referansen](/en/reference/entra/).
 
@@ -22,29 +24,52 @@ står i [referansen](/en/reference/entra/).
 
 | Hva | Hvem |
 | --- | --- |
-| Flisen **Microsoft Entra ID**, siden, kortet **Status**, kontoene og tabellen **Grupper** — **Bekreft** på en konto eller en gruppe Vantigo ikke opprettet — og de siste hendelsene | `entra:manage` |
+| **Microsoft Entra ID** under **Administrer arbeidsområde** › **Integrasjoner**, kortet **Status**, kontoene og tabellen **Grupper** — **Bekreft** på en konto eller en gruppe Vantigo ikke opprettet — og de siste hendelsene | `entra:manage` |
 | Stegene **1 Registrer applikasjonen**, **2 Legg til en klienthemmelighet** og **3 Gi tillatelsene og rollen** — **Lagre**, **Legg til hemmeligheten**, **Trekk tilbake**, **Test tilkoblingen** | en **eier**, innlogget med en andre faktor; for alle andre med `entra:manage` vises de skrivebeskyttet, med *En eier gjør dette steget. Du ser hva som er satt, men kan ikke endre det.* |
-| Steg **4 Sett kontoreglene** — **Lagre kontoreglene** | `entra:manage` |
+| Steg **4 Sett kontoreglene** — **Lagre kontoreglene** — og fanen **Outlook og e-post** — **Lagre innstillingene for Outlook og e-post** | `entra:manage` |
 | Stegene **5 Innlogging** og **6 Klargjøring** | en **eier**: de er skjemaene fra kortet **Single sign-on**; alle andre leser steget uten dem |
 | **Søk i katalogen** i tilkoblingsdialogen og **Finn treff i katalogen…** under **Brukere** ([koble til eksisterende brukere](#koble-til-eksisterende-brukere)) | en **eier**, innlogget med en andre faktor når eiere må bruke en |
 
 `entra:manage` hører til kategorien Administrasjon og kan ikke delegeres: bare en eier
-gir den til en rolle. Eieren har den allerede. En eier som logget inn uten en andre
+gir den til en rolle. Eieren har den allerede. Den som har den uten å være eier, ser bare
+seksjonen **Integrasjoner** i Administrer arbeidsområde
+([Administrasjon av arbeidsområdet](/nb/user/workspace-administration/#integrasjoner)). En eier som logget inn uten en andre
 faktor mens eiere må bruke en, ser skjemaene, men lagringen avvises.
 
-## Siden
+## Hvor den er, og de fire fanene
 
-Åpne **Microsoft Entra ID** fra appvelgeren. Siden er en veiviser med seks steg, ett
-kort hvert, i den rekkefølgen du gjør dem. Hvert kort sier hvor du går i Microsoft
-Entra admin center, hva du skal kopiere, og får et merke: *Ferdig* når Vantigo har det
-steget trenger, *Ikke gjort* til da, og *Valgfritt* på de to siste stegene — merket
-kommer fra det Vantigo har lagret, så det stemmer uansett hvordan steget ble gjort. Ha
-portalen åpen i en annen fane og arbeid deg nedover siden.
+Åpne avatar-menyen øverst til høyre, velg **Administrer arbeidsområde**, og velg
+**Microsoft Entra ID** under **Integrasjoner** i sidemenyen. Den som har `entra:manage`
+uten å være eier, finner **Microsoft Entra ID** i selve avatar-menyen. Siden er ikke i
+appvelgeren; adressen er `/workspace/entra`, og den gamle adressen `/entra` sender deg
+videre dit, så en lenke du har beholdt fra før, virker fortsatt.
 
-### Kortet Status
+Siden har fire faner, hver med sin egen adresse, så en fane kan lenkes til:
 
-Når tilkoblingen er testet, står et kort **Status** over stegene; før det, og igjen
-etter at steg 1 endres, vises det ikke:
+| Fane | Hva den har |
+| --- | --- |
+| **Status** | Hvor langt oppsettet er kommet, kortet **Status** når tilkoblingen er satt opp, og en linje for hver bryter |
+| **Tilkobling** | Stegene **1 Registrer applikasjonen**, **2 Legg til en klienthemmelighet** og **3 Gi tillatelsene og rollen** |
+| **Kontoer** | Steg **4 Sett kontoreglene**, stegene **5 Innlogging** og **6 Klargjøring**, og tabellen **Grupper** |
+| **Outlook og e-post** | Bryteren **Outlook-tilkobling**, som kalendersynkroniseringen kjører på, og bryteren **E-postkanaler** |
+
+Oppsettet er en veiviser med seks steg, ett kort hvert, i den rekkefølgen du gjør dem.
+Hvert kort sier hvor du går i Microsoft Entra admin center, hva du skal kopiere, og får
+et merke: *Ferdig* når Vantigo har det steget trenger, *Ikke gjort* til da, og
+*Valgfritt* på de to siste stegene — merket kommer fra det Vantigo har lagret, så det
+stemmer uansett hvordan steget ble gjort. Ha portalen åpen i en annen fane og arbeid deg
+nedover kortene.
+
+Til steg 1 er lagret, åpner siden på **Tilkobling**, siden det ikke er noen status å vise
+ennå. Etter det åpner den på **Status**, som sier *1 av 4 nødvendige trinn er gjort —
+fortsett i* **Tilkobling** eller **Kontoer** — de fire stegene som har et merke; steg 5 og
+6 er valgfrie — til alle fire er gjort, og sier så ikke mer om det. Stegnumrene blir stående
+på kortene.
+
+### Fanen Status
+
+Når tilkoblingen er testet, står et kort **Status** på fanen **Status**; før det, og igjen
+etter at steg 1 endres, står et varsel *Ikke tilkoblet ennå* i stedet:
 
 - **Tilkoblet** eller **Feiler**, og, når det finnes en, årsaken i en setning: en
   hemmelighet avvist, leietakeren svarer ikke, samtykke ikke gitt, hemmelighetene
@@ -81,10 +106,14 @@ etter at steg 1 endres, vises det ikke:
   for eksempel *3 medlemmer lagt til* eller *teamet venter til gruppen er femten
   minutter gammel og Teams har sett den*.
 
+Under kortet har **Hva som er slått på** en linje for **Outlook-tilkobling og
+kalendersynkronisering** og en for **E-postkanaler**: *På* eller *Av*, med en lenke til
+**Outlook og e-post**, der de slås på og av.
+
 ### Tabellen Grupper
 
-Under kortet **Status**, og vist sammen med det, viser **Grupper** gruppene Vantigo
-holder i leietakeren for Ansattes grupper ([Grupper i Ansatte](/nb/user/staff/#grupper)),
+På fanen **Kontoer**, etter steg 6 og vist når tilkoblingen er satt opp, viser **Grupper**
+gruppene Vantigo holder i leietakeren for Ansattes grupper ([Grupper i Ansatte](/nb/user/staff/#grupper)),
 slettede og beholdte medregnet og nedtonet: hver gruppes **Navn** slik Vantigo sist
 skrev det, med e-postaliaset under; **Type**, *Sikkerhet* eller *Microsoft 365*;
 **Team**, *Ja* når den er blitt et team i Microsoft Teams, ellers *Nei*; **Tilstand** —
@@ -171,13 +200,10 @@ Reglene hver konto følger, som alle med `entra:manage` kan endre:
 - **Når noen begynner**: **Skriv ansettelsesdatoen**, **Levetid for midlertidig
   tilgangspass (minutter)** (10 til 43 200), om **Passet kan bare brukes én gang**, og
   **Hvem som overleverer passet**. Kortet sier, med stien, at leietakerens policy for
-  autentiseringsmetoder må slå på passet for brukerne, ellers avviser Microsoft det;
-- **Outlook-tilkobling**: **Outlook-tilkobling: la folk koble Outlook til Vantigo**
-  ([nedenfor](#outlook-tilkobling));
-- **E-postkanaler**: **E-postkanaler: la Kommunikasjon sende og motta gjennom delte
-  postbokser i Exchange Online** ([nedenfor](#e-postkanaler)).
+  autentiseringsmetoder må slå på passet for brukerne, ellers avviser Microsoft det.
 
-Velg **Lagre kontoreglene**. En verdi utenfor regelen merkes på feltet med årsaken. Har
+Outlook-tilkoblingen og e-postkanalene, som før sto sist i dette steget, er brytere på
+fanen **Outlook og e-post** ([nedenfor](#outlook-tilkobling)). Velg **Lagre kontoreglene**. En verdi utenfor regelen merkes på feltet med årsaken. Har
 noen andre lagret tilkoblingen siden du åpnet siden, sier siden fra og laster den inn på
 nytt: se hva som står der nå, og gjør endringen din på nytt.
 
@@ -224,13 +250,12 @@ applikasjonen får ikke noe mer for det, og bare de som kobler til, blir synkron
    bryteren, lagt til **Web**-plattformen, og de delegerte tillatelsene `openid`,
    `profile`, `offline_access` og `Calendars.ReadWrite` med administratorsamtykke.
    [Administrasjonsveiledningen](/nb/admin/entra/#outlook-tilkobling) har stegene.
-2. I steg **4 Sett kontoreglene**, under **Outlook-tilkobling**, slår du på
-   **Outlook-tilkobling: la folk koble Outlook til Vantigo**, og velger **Lagre
-   kontoreglene**.
+2. På fanen **Outlook og e-post** slår du på **Outlook-tilkobling: la folk koble Outlook
+   til Vantigo**, og velger **Lagre innstillingene for Outlook og e-post**.
 3. Koble til din egen Outlook under **Innstillinger → Tilkoblinger** for å sjekke at det
    virker.
 
-Under bryteren viser kortet **Omdirigerings-URI** som skal legges til registreringen,
+Under bryteren viser fanen **Omdirigerings-URI** som skal legges til registreringen,
 med en kopieringsknapp, og en linje sier hvor tilkoblingen står:
 
 - **Klar** — noen har koblet til siden bryteren ble slått på;
@@ -279,9 +304,9 @@ kommer til innboksen i postboksen fra den dagen kanalen legges til, kommer inn i
 Kommunikasjon; tilgangen kommandoene nedenfor gir, dekker begge deler. Vantigo leser bare
 innboksen — e-posten blir liggende der i Outlook, som den var.
 
-1. I steg **4 Sett kontoreglene**, under **E-postkanaler**, slå på **E-postkanaler: la
+1. På fanen **Outlook og e-post**, under **E-postkanaler**, slå på **E-postkanaler: la
    Kommunikasjon sende og motta gjennom delte postbokser i Exchange Online**, og velg
-   **Lagre kontoreglene**.
+   **Lagre innstillingene for Outlook og e-post**.
 2. Under bryteren viser **Kommandoer for Exchange Online PowerShell** de seks kommandoene
    som skal kjøres, med applikasjonens applikasjons-ID og objekt-ID fylt inn og en
    kopieringsknapp. Før tilkoblingen er testet, sier *Test tilkoblingen først* fra, og
@@ -289,7 +314,8 @@ innboksen — e-posten blir liggende der i Outlook, som den var.
    Exchange-administrator kjører dem og bytter ut `post@firma.no` med adressen til hver
    delte postboks — [administrasjonsveiledningen](/nb/admin/entra/#mail-channels) har
    framgangsmåten.
-3. Legg til postboksen som kanal i Kommunikasjon, under **Kanaler**.
+3. Legg til postboksen som kanal i Kommunikasjon, under **Kanaler** — når bryteren er på,
+   leder **Åpne Kanaler** under innstillingene dit.
 
 Mens bryteren er på, sier en linje under den hvor e-postkanalene står:
 
@@ -319,7 +345,8 @@ ingen aktivering, ikke noe pass, ingen deaktivering, ingen sletting — før noe
 `entra:manage` bekrefter at den er personens. Fanen Konto i Ansatte og dashbordet sier
 fra, og dashbordet lenker hit.
 
-1. Finn kontoen som står som *Overtatt – bekreft* blant kontoene på kortet **Status**.
+1. Finn kontoen som står som *Overtatt – bekreft* blant kontoene på kortet **Status**,
+   på fanen **Status**.
 2. Sjekk i portalen at den er personens.
 3. Velg **Bekreft** ved siden av den, og så **Bekreft** i *Bekrefte overtakelsen av
    …?*.
@@ -336,7 +363,8 @@ ikke noe navn, ingen eier, ingen medlemmer, ingen sletting — før noen med
 `entra:manage` bekrefter at det er den gruppen. Ansatte-gruppens side sier *Funnet i
 Microsoft Entra ID og venter på bekreftelse der* så lenge.
 
-1. Finn gruppen som står som *Overtatt – bekreft* i tabellen **Grupper**.
+1. Finn gruppen som står som *Overtatt – bekreft* i tabellen **Grupper** på fanen
+   **Kontoer**.
 2. Sjekk i portalen at det er gruppen som er ment — navnet, eierne, medlemmene.
 3. Velg **Bekreft** ved siden av den, og så **Bekreft** i *Bekrefte overtakelsen av
    …?*, som sier hva som følger: *Bekrefter du, forvalter Vantigo den for Ansatte. Den
@@ -432,5 +460,5 @@ om et minutt. Gjennomgangen avvises når enkel pålogging ikke er satt opp.
 Ingenting mer skjer her fra dag til dag: kontoarbeideren i Ansatte gjør jobben, og hver
 persons konto vises på fanen **Konto** i Ansatte, der HR viser det midlertidige
 tilgangspasset én gang. Kom tilbake til siden når Ansattes dashbord sier at en
-hemmelighet snart utløper eller at tilkoblingen feiler, og se på kortet **Status** og
+hemmelighet snart utløper eller at tilkoblingen feiler, og se på fanen **Status**: kortet og
 de siste hendelsene.

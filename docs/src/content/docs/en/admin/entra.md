@@ -27,7 +27,8 @@ first day with a Temporary Access Pass, kept in step as the person moves, disabl
 day after the end, deleted later or never. Staff decides; the module carries it out
 through Microsoft Graph. This page is the operator's side: what the tenant needs, the
 six steps of the module's wizard, what a leaver's steps do, and what to do when
-something fails. What the module does and the rules it checks are in [the
+something fails. The page itself is **Microsoft Entra ID** under **Integrations** in
+Workspace admin, in four tabs. What the module does and the rules it checks are in [the
 reference](/en/reference/entra/); the wizard's screens are in [the user
 guide](/en/user/entra/).
 
@@ -54,13 +55,15 @@ guide](/en/user/entra/).
 
 Nothing about the module is in `vantigo.env`: there is no `ENTRA_*` variable. The
 tenant, the client, the secrets and the account rules are in the database, set on the
-module's page.
+module's page under **Integrations** — a workspace setting, not an instance one
+([Configuration](/en/admin/configuration/)).
 
 ## Enable the module
 
 1. Leave `MODULES` unset, or add `entra` beside `staff`.
 2. Restart Vantigo (`docker compose up -d`).
-3. Verify: the tile **Microsoft Entra ID** is in the app switcher for an Owner, and
+3. Verify: **Microsoft Entra ID** is in the sidebar of **Workspace admin**, under
+   **Integrations**, for an Owner (the module has no tile in the app switcher), and
    `GET /api/v1/entra/connection` answers 401 without a session rather than the 404 a
    disabled module's path answers.
 
@@ -71,10 +74,14 @@ every hour; it has no setting.
 
 ## Connect the tenant
 
-Open **Microsoft Entra ID** from the app switcher. The page is the wizard: six steps,
-each a card with the portal path, what to copy, and *Done* once Vantigo has what it
-needs (*Optional* on the last two); a **Status** card sits above them once the
-connection has been tested. Work through them in order, the portal in another tab.
+Open the avatar menu, choose **Workspace admin**, and under **Integrations** choose
+**Microsoft Entra ID** (`/workspace/entra`; the old address `/entra` redirects to it). The
+page has four tabs. The wizard is six steps, each a card with the portal path, what to
+copy, and *Done* once Vantigo has what it needs (*Optional* on the last two): steps 1 to 3
+are on **Connection** and steps 4 to 6 on **Accounts**; **Status** shows the **Status**
+card once the connection has been tested, and how many of the four marked steps are done;
+**Outlook and mail** holds the two switches below. Until step 1 is saved the page opens on
+**Connection**. Work through the steps in order, the portal in another tab.
 
 ### 1. Register the application
 
@@ -175,7 +182,8 @@ The account rules, which a holder of `entra:manage` may set as well as an Owner:
   person's Account tab in Staff; the hand-over setting is stored for a later release
   and does not yet send the manager anything.
 
-Choose **Save the account rules**. Once the connection is connected, the card also
+The Outlook connection and Mail channels switches are on the **Outlook and mail** tab, not
+in this step. Choose **Save the account rules**. Once the connection is connected, the card also
 lists **The tenant's licences**, each with its seats assigned and bought — the part
 numbers a Staff group's licences can name.
 
@@ -259,8 +267,7 @@ their own sign-in, and nobody else. How it works is in [the reference](/en/refer
 
 ### Turn on the Outlook connection
 
-1. On the module page, in step **4 Set the account rules**, under **Outlook
-   connection**, copy the **Redirect URI** — `APP_URL`, the base path and
+1. On the **Outlook and mail** tab, under **Outlook connection**, copy the **Redirect URI** — `APP_URL`, the base path and
    `/api/v1/entra/outlook/callback`, such as
    `https://vantigo.example.com/api/v1/entra/outlook/callback`.
 2. In the registration, open **Authentication**. Under the **Web** platform — the one
@@ -274,22 +281,24 @@ their own sign-in, and nobody else. How it works is in [the reference](/en/refer
    permissions of step 3.
 4. Choose **Grant admin consent for** your organisation, and confirm, so nobody is asked
    to consent — or refused for want of approval — when they connect.
-5. Back on the module page, turn on **Outlook connection: let people connect their
-   Outlook to Vantigo** and choose **Save the account rules** (`entra:manage`). Calendar
+5. Back on the **Outlook and mail** tab, turn on **Outlook connection: let people connect
+   their Outlook to Vantigo** and choose **Save the Outlook and mail settings**
+   (`entra:manage`). Calendar
    sync and personal sending in Communications are then available to everyone who connects
    ([below](#calendar-sync)); step 3 asks for nothing more.
 
 ### Verify the Outlook connection
 
 Connect yourself: open **Settings → Connections** and choose **Connect Outlook**. You are
-back on the page within seconds, reading **Connected as** and your account. On the module
-page the line under the switch has moved from **Nobody has connected yet: …** to
+back on the page within seconds, reading **Connected as** and your account. On the
+**Outlook and mail** tab the line under the switch has moved from **Nobody has connected yet: …** to
 **Ready**, *People connected:* counts you, and the **Status** card's recent events show
 *A person connected Outlook*.
 
 ### Turn the Outlook connection off
 
-Turn the switch off and choose **Save the account rules**. While anyone is connected or
+Turn the switch off on the **Outlook and mail** tab and choose **Save the Outlook and mail
+settings**. While anyone is connected or
 waiting to reconnect the page asks first — *Everyone will have to connect Outlook
 again.* — and **Turn off and save** saves it. Every person's connection closes in the
 same save, each recorded as *An Outlook connection was closed* (*the Outlook connection
@@ -483,7 +492,7 @@ reference](/en/reference/entra/#change-notifications).
 3. Wait for the next sync of a person who has it on: after one that worked, Vantigo
    subscribes their mailbox.
 
-Verify: on the module page, under **Calendar sync**, **Change notifications** reads
+Verify: on the **Outlook and mail** tab, under the Outlook connection switch, **Change notifications** reads
 **On, watching 1 mailbox. Last notification: none yet.** (the number grows with the
 mailboxes). Change an appointment's copy in that person's Outlook: within a minute the
 change is in Vantigo and **Last notification** shows the time.
@@ -575,12 +584,14 @@ the module sends and reads is in
 
 ### Turn on mail channels
 
-1. On the module page, in step **4 Set the account rules**, under **Mail channels**, turn
+1. On the **Outlook and mail** tab, under **Mail channels**, turn
    on **Mail channels: let Communications send and receive through Exchange Online shared
-   mailboxes** and choose **Save the account rules**. Anyone with `entra:manage` may.
+   mailboxes** and choose **Save the Outlook and mail settings**. Anyone with `entra:manage`
+   may.
 2. Under the switch, **Commands for Exchange Online PowerShell** shows six commands with
    your application's **client id** and its **object id** filled in. If it says *Test the
-   connection first*, choose **Test connection** in step 3 (an Owner) and come back: the
+   connection first*, choose **Test connection** in step 3 on **Connection** (an Owner) and
+   come back: the
    placeholders `<client id>` and `<object id>` are filled once a test has read them.
    Copy the commands with the copy button beside them (*Copy Commands for Exchange Online
    PowerShell* to a screen reader).
@@ -620,7 +631,7 @@ the module sends and reads is in
    **`InScope` is `True`** for both *Application Mail Full Access* and *Application
    MailboxSettings.Read* on the mailbox. It reads Exchange's own assignments, not the
    registration's consents, and is not delayed by the cache below.
-2. On the module page, the line under the switch reads **Ready: at the last test the
+2. On the **Outlook and mail** tab, the line under the switch reads **Ready: at the last test the
    application held no Microsoft Graph mail permission for the whole tenant. Access granted
    in Exchange is not visible here — check it with Test-ServicePrincipalAuthorization.**
    It speaks for the registration's permissions only; step 1 is the check of Exchange's.
@@ -750,12 +761,13 @@ the new person that account's employee number.
 Until then the person's Account tab in Staff says *The directory holds an account
 under the person's employee number that Vantigo did not create. Staff writes nothing
 to it until someone who manages Microsoft Entra ID confirms the adoption on the
-Microsoft Entra ID page.*, and the dashboard raises an item that links to the page.
+Microsoft Entra ID page.*, and the dashboard raises an item that links to the **Status**
+tab, where the account is listed.
 
 To confirm:
 
-1. Open **Microsoft Entra ID**. In the **Status** card's list of the module's
-   accounts, the user reads *Adopted — confirm*.
+1. Open **Microsoft Entra ID** under **Integrations**. On the **Status** tab, in the
+   **Status** card's list of the module's accounts, the user reads *Adopted — confirm*.
 2. Check in the portal that the user is the person's — the name, the principal name,
    who uses it.
 3. Choose **Confirm** beside it, and **Confirm** again in *Confirm the adoption of …?*.
@@ -771,7 +783,7 @@ whoever is registered under that number in Staff.
 The day after a person's last employment ends, Staff has the module disable the
 account, whatever the connection's status as long as a secret works — unless the
 account is one Vantigo did not create and nobody has confirmed. In this order,
-each but the first switched in step 4:
+each but the first switched in step 4 (**Accounts**):
 
 | Step | What happens in the tenant |
 | --- | --- |
@@ -824,7 +836,7 @@ nickname — and links it to the Staff group, but **writes nothing to it until a
 who keeps groups in Staff could take over any group in the tenant by giving a Staff
 group its nickname. Until then the group's page in Staff says *Found in Microsoft Entra
 ID and awaiting confirmation there* — not a failure, and no item on Staff's dashboard —
-and the module page's **Groups** table marks the group *Adopted — confirm*. The module
+and the **Groups** table on the **Accounts** tab marks the group *Adopted — confirm*. The module
 never touches a group holding the nickname that is dynamic, role-assignable, a
 distribution list or a mail-enabled security group (which Exchange keeps), or that
 another Staff group already uses, nor a nickname two groups hold; and it refuses a group
@@ -834,8 +846,8 @@ says why: rename that group's nickname in the portal, or give the Staff group an
 
 To confirm an adopted group:
 
-1. Open **Microsoft Entra ID**. In the **Groups** table, the group reads *Adopted —
-   confirm*.
+1. Open **Microsoft Entra ID** under **Integrations**. On the **Accounts** tab, in the
+   **Groups** table, the group reads *Adopted — confirm*.
 2. Check in the portal that it is the group meant for that Staff group — its name, its
    owners, its members.
 3. Choose **Confirm** beside it, and **Confirm** again in *Confirm the adoption of …?*.
@@ -870,7 +882,7 @@ by a group change. The leaver's **Remove the licences** step is the exception: i
 removes every licence assigned to the person directly, Vantigo's or not. The choices a
 group's
 **Licences** offer are the tenant's licences as the last connection test, or the last
-look at **The tenant's licences** in step 4, read them: test again after you buy a new
+look at **The tenant's licences** in step 4 (**Accounts**), read them: test again after you buy a new
 licence.
 
 **An archived group, or one HR turned Microsoft Entra ID off for**, follows Staff's
@@ -882,7 +894,7 @@ licence.
 | Empty (never) | At the next cycle the group is renamed with ` (archived)` after its name and kept, its members as they stood; Vantigo writes nothing to it afterwards. |
 
 A deleted Microsoft 365 group takes its mailbox, its SharePoint site and its team with it
-when the 30 days are over. The module page's **Groups** table shows a kept security group
+when the 30 days are over. The **Groups** table on the **Accounts** tab shows a kept security group
 as *Emptied and kept*, and a group Vantigo did not create as *Deleted* — Vantigo has let
 go of it, though the tenant keeps it. Should HR turn Microsoft Entra ID on again for the
 Staff group, a kept security group is found by its nickname and is Vantigo's own again,
