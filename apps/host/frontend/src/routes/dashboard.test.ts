@@ -817,7 +817,9 @@ describe("the dashboard's staff account attention items", () => {
   });
 
   it("opens the Microsoft Entra ID page for an adoption nobody confirmed, and words it with the name", () => {
-    expect(attentionHref({ module: "staff", type: "accountUnconfirmedInEntra", entityId: "1042" })).toBe("/entra");
+    expect(attentionHref({ module: "staff", type: "accountUnconfirmedInEntra", entityId: "1042" })).toBe(
+      "/workspace/entra",
+    );
     const key = attentionTitleKey({ module: "staff", type: "accountUnconfirmedInEntra" }) as string;
     for (const lng of ["en", "nb"]) {
       const sentence = i18n.t(key, { ns: "host", lng, name: "Kari Nordmann" });

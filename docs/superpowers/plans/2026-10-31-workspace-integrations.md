@@ -167,7 +167,7 @@ become permanent redirects. Branch `feat/workspace-integrations`, cut from `main
   Entra module off — the key and path lists, the menu entry), `route-guards.test.ts`
   (the area guard and the child gate, the redirects), `catalogs/parity.test.ts` unchanged
   and green.
-- [ ] **4. `feat(host)`: the dashboard opens the Status tab.** `attentionHref` for
+- [x] **4. `feat(host)`: the dashboard opens the Status tab.** `attentionHref` for
   `accountUnconfirmedInEntra` → `/workspace/entra`; its test.
 - [ ] **5. `docs(admin)`: the Configuration page, en and nb.** New `admin/configuration.md`
   (`sources: apps/server/internal/config`): the two tiers table (T1), the rule, today's
