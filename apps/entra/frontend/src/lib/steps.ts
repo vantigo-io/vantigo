@@ -18,3 +18,16 @@ export const stepsDone = (connection: EntraConnection) => ({
     connection.permissionsMissing.length === 0,
   accounts: Boolean(connection.settings.upnDomain),
 });
+
+/** How many of the four steps that carry a mark are done (steps 5 and 6 are optional and carry none). */
+export const requiredStepsDone = (connection: EntraConnection) => {
+  const done = stepsDone(connection);
+  return [done.register, done.secret, done.permissions, done.accounts].filter(Boolean).length;
+};
+
+/** The tab holding the first required step not done: steps 1 to 3 are *Connection*'s, step 4 *Accounts*'; none when all are done. */
+export const nextStepTab = (connection: EntraConnection): "connection" | "accounts" | undefined => {
+  const done = stepsDone(connection);
+  if (!done.register || !done.secret || !done.permissions) return "connection";
+  return done.accounts ? undefined : "accounts";
+};
