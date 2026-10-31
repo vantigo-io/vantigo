@@ -4,6 +4,10 @@ description: "Microsoft Entra ID as Staff's identity provider: the connection to
 sources:
   - apps/server/internal/entra
   - apps/entra/frontend
+  - apps/host/frontend/src/routes/workspace/entra
+  - apps/host/frontend/src/routes/workspace/entra.tsx
+  - apps/host/frontend/src/routes/entra
+  - apps/host/frontend/src/routes/entra.tsx
   - openapi/entra.yaml
   - apps/server/internal/openapi/specs/entra.yaml
   - apps/server/internal/db/migrations/00061_entra_baseline.sql
@@ -21,8 +25,10 @@ the start, enabled on the first day with a Temporary Access Pass, kept in step a
 person moves, disabled the day after the end, and deleted when Staff asks. It is a
 vertical-slice module inside the single Vantigo binary (`apps/server/internal/entra`),
 owns the `entra` schema in the shared PostgreSQL database, and serves
-`openapi/entra.yaml` under `/api/v1/entra`. Its app is `apps/entra/frontend`
-(`@vantigo/entra-ui`), the tile **Microsoft Entra ID**.
+`openapi/entra.yaml` under `/api/v1/entra`. Its frontend package is
+`apps/entra/frontend` (`@vantigo/entra-ui`); it owns no app and no tile in the switcher,
+and its page is **Microsoft Entra ID** under **Integrations** in Workspace admin
+([the page](#the-page)).
 
 **Staff decides and the module executes.** The module is the first provider in the
 many-provider slot `IdentityProvisioners`: it fills `contracts.IdentityProvisioner`
@@ -211,11 +217,51 @@ lost (Staff's **Run now (new pass)** issues another); a connect under way answer
 `expired`; and a stored refresh token that cannot be opened moves its connection to
 `reconnect` with `sign_in_again` at its next use, so each person connects again.
 
+## The page
+
+The page is the host's, composed from the package's tab components
+(Integrations design T2, T3). It is a layout route, `/workspace/entra`, with four child
+routes, rendered as tabs under one header, each tab a link:
+
+| Route | Tab | Component (`@vantigo/entra-ui`) | Holds |
+| --- | --- | --- | --- |
+| `/workspace/entra` | Status | `EntraStatusTab` | The progress callout, the **Status** card (a notice while the connection is unconfigured) and one line per switch |
+| `/workspace/entra/connection` | Connection | `EntraConnectionTab` | Steps 1 to 3: register the application, the client secrets, the permissions and **Test connection** |
+| `/workspace/entra/accounts` | Accounts | `EntraAccountsTab` | Step 4 the account rules; steps 5 and 6 as the render props `signIn` and `provisioning`, which the host fills with identity's `SsoSettingsCard`; the **Groups** table |
+| `/workspace/entra/outlook` | Outlook and mail | `EntraOutlookTab` | The Outlook connection switch with its status and change notifications, and the Mail channels switch with its status and commands |
+
+- **The gate.** The workspace layout (`/workspace`) admits an Owner, an authorization
+  manager, and a holder of `entra:manage` while `entra` is in `MODULES`; the layout route
+  `/workspace/entra` asks again: the module turned on, otherwise the not-enabled page in
+  place (as an app's layout does), and `entra:manage`, otherwise a redirect home. The
+  Owner-only steps stay the Owner's inside the tabs; the tab bar hides nothing by role.
+  The sidebar item is `module: "entra"`, `requiredPermissions: ["entra:manage"]`, in the
+  second section of the workspace area, *Integrations*; the avatar menu lists the page under
+  the same flags for someone who sees nothing else of Workspace admin.
+- **The way in.** The index route redirects to `/workspace/entra/connection` while
+  `stepsDone(connection).register` is false (step 1 is not done), and opens *Status* from
+  then on. *Status* says *n of 4 required steps done — continue in* the tab of the first
+  step not done (steps 1 to 3: *Connection*; step 4: *Accounts*); steps 5 and 6 are
+  optional and carry no mark.
+- **`/entra` and `/entra/`** redirect, replacing the history entry, to `/workspace/entra`:
+  the module had a tile and the route `/entra` before the page moved, and links to it
+  survive. The Outlook callback's `return_to` is held to a same-origin path
+  and falls back to `/settings/connections`; it never named `/entra`.
+- **Exports.** `EntraStatusTab`, `EntraConnectionTab`, `EntraAccountsTab`
+  (`EntraAccountsTabProps`: `signIn`, `provisioning`), `EntraOutlookTab`, `entraTabs`
+  (value, path and label key of each tab), `entraTabPath`, `entraTabForPath`,
+  `stepsDone` and `connectionQueryOptions`. `EntraPage`, the four tabs one under the other,
+  is **deprecated** and exported for one release.
+- **The settings request.** `PUT /connection/settings` keeps every field it leaves out
+  ([the account rules](#the-account-rules)), so the page sends it in two parts: the
+  *Accounts* tab the ten account-rule fields, the *Outlook and mail* tab `outlookConnect`
+  and `mailChannels`, each under `If-Match` on the version it read.
+
 ## Permissions
 
 | Key | Name | Grants | Sensitive | Delegable |
 | --- | --- | --- | --- | --- |
-| `entra:manage` | Manage Microsoft Entra ID | The tile and its page; the connection's status, secrets (without their values), accounts and events; confirming an [adopted account](#adopted-accounts) or an [adopted group](#adopted-groups); the [account rules](#the-account-rules), the tenant's licences and the module's [groups](#groups-in-the-tenant). | yes | **no** |
+| `entra:manage` | Manage Microsoft Entra ID | The page under **Integrations** in Workspace admin; the connection's status, secrets (without their values), accounts and events; confirming an [adopted account](#adopted-accounts) or an [adopted group](#adopted-groups); the [account rules](#the-account-rules), the tenant's licences and the module's [groups](#groups-in-the-tenant). | yes | **no** |
 
 It is in the category "Administration". The Owner holds it through the wildcard;
 anyone else needs a role that grants it, and because it is not delegable, only an Owner

@@ -27,7 +27,8 @@ første dag med et midlertidig tilgangspass, holdt i takt når personen flytter 
 deaktivert dagen etter slutt, slettet senere eller aldri. Ansatte bestemmer; modulen
 utfører det gjennom Microsoft Graph. Denne siden er driftssiden: hva leietakeren
 trenger, de seks stegene i modulens veiviser, hva stegene for en som slutter gjør, og
-hva du gjør når noe feiler. Hva modulen gjør og reglene den sjekker, står i
+hva du gjør når noe feiler. Selve siden er **Microsoft Entra ID** under **Integrasjoner**
+i Administrer arbeidsområde, i fire faner. Hva modulen gjør og reglene den sjekker, står i
 [referansen](/en/reference/entra/); skjermbildene i veiviseren står i
 [brukerveiledningen](/nb/user/entra/).
 
@@ -54,13 +55,15 @@ hva du gjør når noe feiler. Hva modulen gjør og reglene den sjekker, står i
 
 Ingenting ved modulen står i `vantigo.env`: det finnes ingen `ENTRA_*`-variabel.
 Leietakeren, klienten, hemmelighetene og kontoreglene ligger i databasen, satt på
-modulens side.
+modulens side under **Integrasjoner** — en innstilling på arbeidsområdenivå, ikke på
+installasjonsnivå ([Konfigurasjon](/nb/admin/configuration/)).
 
 ## Slå på modulen
 
 1. La `MODULES` være usatt, eller legg til `entra` ved siden av `staff`.
 2. Start Vantigo på nytt (`docker compose up -d`).
-3. Verifiser: flisen **Microsoft Entra ID** står i appvelgeren for en eier, og
+3. Verifiser: **Microsoft Entra ID** står i sidemenyen til **Administrer arbeidsområde**,
+   under **Integrasjoner**, for en eier (modulen har ingen flis i appvelgeren), og
    `GET /api/v1/entra/connection` svarer 401 uten økt i stedet for 404-en en avslått
    moduls sti svarer.
 
@@ -71,10 +74,15 @@ time; den har ingen innstilling.
 
 ## Koble til leietakeren
 
-Åpne **Microsoft Entra ID** fra appvelgeren. Siden er veiviseren: seks steg, hvert et
-kort med stien i portalen, hva du skal kopiere, og *Ferdig* når Vantigo har det det
-trenger (*Valgfritt* på de to siste); et kort **Status** står over dem når tilkoblingen
-er testet. Gå gjennom dem i rekkefølge, med portalen i en annen fane.
+Åpne avatar-menyen, velg **Administrer arbeidsområde**, og velg **Microsoft Entra ID**
+under **Integrasjoner** (`/workspace/entra`; den gamle adressen `/entra` sender deg videre
+dit). Siden har fire faner. Veiviseren er seks steg, hvert et kort med stien i portalen,
+hva du skal kopiere, og *Ferdig* når Vantigo har det det trenger (*Valgfritt* på de to
+siste): stegene 1 til 3 står på **Tilkobling** og stegene 4 til 6 på **Kontoer**;
+**Status** viser kortet **Status** når tilkoblingen er testet, og hvor mange av de fire
+stegene med merke som er gjort; **Outlook og e-post** har de to bryterne nedenfor. Til
+steg 1 er lagret, åpner siden på **Tilkobling**. Gå gjennom stegene i rekkefølge, med
+portalen i en annen fane.
 
 ### 1. Registrer applikasjonen
 
@@ -176,7 +184,8 @@ Kontoreglene, som en med `entra:manage` kan sette i tillegg til en eier:
   på personens fane Konto i Ansatte; innstillingen for hvem som gir det videre lagres for
   en senere utgivelse og sender ennå ingenting til lederen.
 
-Velg **Lagre kontoreglene**. Når tilkoblingen er tilkoblet, viser kortet også
+Bryterne for Outlook-tilkobling og e-postkanaler står på fanen **Outlook og e-post**, ikke
+i dette steget. Velg **Lagre kontoreglene**. Når tilkoblingen er tilkoblet, viser kortet også
 **Leietakerens lisenser**, hver med setene som er tildelt og kjøpt — delenumrene en
 Ansatte-gruppes lisenser kan peke på.
 
@@ -260,7 +269,7 @@ synkronisert med sin egen pålogging, og ingen andre. Hvordan det virker, står 
 
 ### Slå på Outlook-tilkoblingen
 
-1. På modulsiden, i steg **4 Sett kontoreglene**, under **Outlook-tilkobling**, kopierer
+1. På fanen **Outlook og e-post**, under **Outlook-tilkobling**, kopierer
    du **Omdirigerings-URI** — `APP_URL`, basestien og `/api/v1/entra/outlook/callback`,
    for eksempel `https://vantigo.example.com/api/v1/entra/outlook/callback`.
 2. I registreringen, åpne **Authentication**. Under **Web**-plattformen — den
@@ -274,8 +283,9 @@ synkronisert med sin egen pålogging, og ingen andre. Hvordan det virker, står 
    applikasjonstillatelsene fra steg 3.
 4. Velg **Grant admin consent for** organisasjonen deres, og bekreft, så ingen blir bedt
    om samtykke — eller avvist fordi godkjenning mangler — når de kobler til.
-5. Tilbake på modulsiden slår du på **Outlook-tilkobling: la folk koble Outlook til
-   Vantigo** og velger **Lagre kontoreglene** (`entra:manage`). Kalendersynkronisering
+5. Tilbake på fanen **Outlook og e-post** slår du på **Outlook-tilkobling: la folk koble
+   Outlook til Vantigo** og velger **Lagre innstillingene for Outlook og e-post**
+   (`entra:manage`). Kalendersynkronisering
    og personlig sending i Kommunikasjon er da tilgjengelig for alle som kobler til
    ([under](#kalendersynkronisering)); steg 3 ber ikke om noe mer.
 
@@ -283,13 +293,14 @@ synkronisert med sin egen pålogging, og ingen andre. Hvordan det virker, står 
 
 Koble til selv: åpne **Innstillinger → Tilkoblinger** og velg **Koble til Outlook**. Du
 er tilbake på siden i løpet av sekunder, og den sier **Tilkoblet som** og kontoen din. På
-modulsiden har linjen under bryteren gått fra **Ingen har koblet til ennå: …** til
+fanen **Outlook og e-post** har linjen under bryteren gått fra **Ingen har koblet til ennå: …** til
 **Klar**, *Personer tilkoblet:* teller deg, og de siste hendelsene på kortet **Status**
 viser *En person koblet til Outlook*.
 
 ### Slå av Outlook-tilkoblingen
 
-Slå av bryteren og velg **Lagre kontoreglene**. Er noen tilkoblet eller venter på ny
+Slå av bryteren på fanen **Outlook og e-post** og velg **Lagre innstillingene for Outlook og
+e-post**. Er noen tilkoblet eller venter på ny
 tilkobling, spør siden først — *Alle må koble til Outlook på nytt.* — og **Slå av og
 lagre** lagrer. Hver persons tilkobling lukkes i den samme lagringen, hver registrert som
 *En Outlook-tilkobling ble lukket* (*Outlook-tilkoblingen ble slått av*);
@@ -489,7 +500,7 @@ dem. Hva Vantigo ber om og svarer, står i [referansen](/en/reference/entra/#cha
 3. Vent på neste synkronisering for en person som har den på: etter en som virket,
    abonnerer Vantigo på postboksen.
 
-Verifiser: på modulsiden, under **Kalendersynkronisering**, står **Endringsvarsler** som
+Verifiser: på fanen **Outlook og e-post**, under bryteren for Outlook-tilkobling, står **Endringsvarsler** som
 **På, overvåker 1 postboks. Siste varsel: ingen ennå.** (tallet vokser med postboksene).
 Endre kopien av en avtale i personens Outlook: innen et minutt er endringen i Vantigo, og
 **Siste varsel** viser tidspunktet.
@@ -583,12 +594,13 @@ Hvordan modulen sender og leser, står i
 
 ### Slå på e-postkanaler
 
-1. På modulsiden, i steg **4 Sett kontoreglene**, under **E-postkanaler**, slå på
+1. På fanen **Outlook og e-post**, under **E-postkanaler**, slå på
    **E-postkanaler: la Kommunikasjon sende og motta gjennom delte postbokser i Exchange
-   Online**, og velg **Lagre kontoreglene**. Alle med `entra:manage` kan gjøre det.
+   Online**, og velg **Lagre innstillingene for Outlook og e-post**. Alle med
+   `entra:manage` kan gjøre det.
 2. Under bryteren viser **Kommandoer for Exchange Online PowerShell** seks kommandoer med
    applikasjonens **applikasjons-ID** og **objekt-ID** fylt inn. Står det *Test
-   tilkoblingen først*, velg **Test tilkoblingen** i steg 3 (en eier) og kom tilbake:
+   tilkoblingen først*, velg **Test tilkoblingen** i steg 3 på **Tilkobling** (en eier) og kom tilbake:
    plassholderne `<applikasjons-ID>` og `<objekt-ID>` fylles inn når en test har lest
    dem. Kopier kommandoene med kopieringsknappen ved siden av (*Kopier Kommandoer for
    Exchange Online PowerShell* for en skjermleser).
@@ -629,7 +641,7 @@ Hvordan modulen sender og leser, står i
    **`InScope` er `True`** for både *Application Mail Full Access* og *Application
    MailboxSettings.Read* på postboksen. Den leser Exchanges egne tildelinger, ikke
    samtykkene i registreringen, og forsinkes ikke av hurtigbufferen nedenfor.
-2. På modulsiden sier linjen under bryteren **Klar: ved siste test hadde applikasjonen
+2. På fanen **Outlook og e-post** sier linjen under bryteren **Klar: ved siste test hadde applikasjonen
    ingen e-posttillatelse i Microsoft Graph for hele leietakeren. Tilgang gitt i Exchange
    vises ikke her – sjekk den med Test-ServicePrincipalAuthorization.** Den gjelder bare
    tillatelsene i registreringen; punkt 1 er sjekken av Exchanges.
@@ -762,12 +774,12 @@ Ansatte, ta over en annens konto ved å gi den nye personen kontoens ansattnumme
 Til da sier personens fane Konto i Ansatte *Katalogen har en konto under personens
 ansattnummer som Vantigo ikke opprettet. Ansatte skriver ingenting til den før noen som
 administrerer Microsoft Entra ID, bekrefter overtakelsen på siden for Microsoft Entra
-ID.*, og dashbordet viser et varsel som lenker til siden.
+ID.*, og dashbordet viser et varsel som lenker til fanen **Status**, der kontoen står.
 
 Slik bekrefter du:
 
-1. Åpne **Microsoft Entra ID**. I listen over modulens kontoer på kortet **Status**
-   står brukeren som *Overtatt – bekreft*.
+1. Åpne **Microsoft Entra ID** under **Integrasjoner**. På fanen **Status**, i listen over
+   modulens kontoer på kortet **Status**, står brukeren som *Overtatt – bekreft*.
 2. Sjekk i portalen at brukeren er personens — navnet, brukerhovednavnet, hvem som
    bruker den.
 3. Velg **Bekreft** ved siden av den, og **Bekreft** igjen i *Bekrefte overtakelsen av
@@ -784,7 +796,7 @@ den som er registrert under det nummeret i Ansatte.
 Dagen etter at en persons siste arbeidsforhold slutter, får Ansatte modulen til å
 deaktivere kontoen, uansett tilkoblingens status så lenge en hemmelighet virker — med
 mindre kontoen er en Vantigo ikke opprettet og ingen har bekreftet. I denne
-rekkefølgen, alle unntatt det første slått av eller på i steg 4:
+rekkefølgen, alle unntatt det første slått av eller på i steg 4 (**Kontoer**):
 
 | Steg | Hva som skjer i leietakeren |
 | --- | --- |
@@ -838,7 +850,7 @@ ingen eier, ingen medlemmer, ingen sletting. Ellers kunne alle som holder gruppe
 Ansatte, ta over hvilken som helst gruppe i leietakeren ved å gi en Ansatte-gruppe
 aliaset dens. Til da sier gruppens side i Ansatte *Funnet i Microsoft Entra ID og venter
 på bekreftelse der* — ingen feil, og ikke noe varsel på dashbordet i Ansatte — og
-tabellen **Grupper** på modulens side merker gruppen *Overtatt – bekreft*. Modulen
+tabellen **Grupper** på fanen **Kontoer** merker gruppen *Overtatt – bekreft*. Modulen
 rører aldri en gruppe med aliaset som er dynamisk, rolletildelbar, en
 distribusjonsliste eller en e-postaktivert sikkerhetsgruppe (som Exchange holder), eller
 som en annen Ansatte-gruppe alt bruker, heller ikke et alias to grupper har; og den
@@ -848,8 +860,8 @@ Ansatte-gruppen et annet **E-postalias** før den lages.
 
 Slik bekrefter du en overtatt gruppe:
 
-1. Åpne **Microsoft Entra ID**. I tabellen **Grupper** står gruppen som *Overtatt –
-   bekreft*.
+1. Åpne **Microsoft Entra ID** under **Integrasjoner**. På fanen **Kontoer**, i tabellen
+   **Grupper**, står gruppen som *Overtatt – bekreft*.
 2. Sjekk i portalen at det er gruppen som er ment for den Ansatte-gruppen — navnet,
    eierne, medlemmene.
 3. Velg **Bekreft** ved siden av den, og **Bekreft** igjen i *Bekrefte overtakelsen av
@@ -885,7 +897,7 @@ den før, fjernes av en gruppeendring. Steget **Fjern lisensene** for en som slu
 unntaket: det fjerner hver lisens som er tildelt personen direkte, Vantigos eller ikke.
 Valgene en gruppes
 **Lisenser** gir, er leietakerens lisenser slik den siste tilkoblingstesten, eller det
-siste blikket på **Leietakerens lisenser** i steg 4, leste dem: test igjen etter at du
+siste blikket på **Leietakerens lisenser** i steg 4 (**Kontoer**), leste dem: test igjen etter at du
 har kjøpt en ny lisens.
 
 **En arkivert gruppe, eller en HR har slått av Microsoft Entra ID for**, følger Ansattes
@@ -897,7 +909,7 @@ har kjøpt en ny lisens.
 | Tom (aldri) | Ved neste runde får gruppen ` (archived)` etter navnet og beholdes, med medlemmene slik de var; Vantigo skriver ingenting til den etterpå. |
 
 En slettet Microsoft 365-gruppe tar med seg postboksen, SharePoint-området og teamet når
-de 30 dagene er omme. Tabellen **Grupper** på modulens side viser en beholdt
+de 30 dagene er omme. Tabellen **Grupper** på fanen **Kontoer** viser en beholdt
 sikkerhetsgruppe som *Tømt og beholdt*, og en gruppe Vantigo ikke opprettet, som
 *Slettet* — Vantigo har gitt slipp på den, men leietakeren har den fortsatt. Slår HR på
 Microsoft Entra ID igjen for Ansatte-gruppen, finnes en beholdt sikkerhetsgruppe igjen
