@@ -14,7 +14,14 @@ import {
   Table,
   Text,
 } from "@mantine/core";
-import { IconAlertCircle, IconChevronDown, IconChevronRight, IconDots, IconPlus } from "@tabler/icons-react";
+import {
+  IconAlertCircle,
+  IconChevronDown,
+  IconChevronRight,
+  IconDots,
+  IconPlus,
+  IconTemplate,
+} from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { ContentSkeleton, EmptyState, useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
@@ -26,6 +33,7 @@ import "../i18n";
 import { useProjectDates } from "../lib/dates";
 import { taskStatuses, taskStatusLabelKey } from "../lib/tasks";
 import { useTaskSave } from "../lib/use-task-save";
+import { ApplyTemplateModal } from "./-apply-template-modal";
 import { DeliveryMilestonesCard } from "./-delivery-milestones-card";
 import { TaskDrawer } from "./-task-drawer";
 import { TaskFormModal, type TaskModalState } from "./-task-form-modal";
@@ -94,6 +102,7 @@ export const ProjectTasks = ({
   const [view, setView] = useState<TaskView>(readView);
   const [openTaskId, setOpenTaskId] = useState<number | null>(openTaskIdFromHost ?? null);
   const [modalState, setModalState] = useState<TaskModalState | null>(null);
+  const [applyTemplateOpen, setApplyTemplateOpen] = useState(false);
   const [selectedMilestoneId, setSelectedMilestoneId] = useState<number | null>(null);
 
   // The host's task follows the URL, and the URL follows the drawer: each new
@@ -165,9 +174,23 @@ export const ProjectTasks = ({
               onChange={chooseView}
             />
             {canContribute && (
-              <Button size="xs" leftSection={<IconPlus size={14} />} onClick={() => setModalState({ mode: "create" })}>
-                {t("addTask")}
-              </Button>
+              <Group gap="xs">
+                <Button
+                  size="xs"
+                  variant="default"
+                  leftSection={<IconTemplate size={14} />}
+                  onClick={() => setApplyTemplateOpen(true)}
+                >
+                  {t("useTemplate")}
+                </Button>
+                <Button
+                  size="xs"
+                  leftSection={<IconPlus size={14} />}
+                  onClick={() => setModalState({ mode: "create" })}
+                >
+                  {t("addTask")}
+                </Button>
+              </Group>
             )}
           </Group>
 
@@ -196,6 +219,12 @@ export const ProjectTasks = ({
       </Card>
 
       <TaskFormModal projectId={projectId} state={modalState} onClose={() => setModalState(null)} />
+      <ApplyTemplateModal
+        projectId={projectId}
+        projectStartDate={project.data.startDate}
+        opened={applyTemplateOpen}
+        onClose={() => setApplyTemplateOpen(false)}
+      />
       <TaskDrawer
         projectId={projectId}
         taskId={openTaskId}

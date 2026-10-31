@@ -215,6 +215,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{id}/apply-template": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Apply a template to a project */
+        post: operations["postProjectsByIdApplyTemplate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{id}/assignable-users": {
         parameters: {
             query?: never;
@@ -660,6 +677,43 @@ export interface paths {
         /** Reschedule downstream tasks reachable via dependencies */
         post: operations["postProjectsTasksByTaskIdRescheduleDownstream"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List project templates */
+        get: operations["getProjectsTemplates"];
+        put?: never;
+        /** Create a project template */
+        post: operations["postProjectsTemplates"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/templates/{templateId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get a project template */
+        get: operations["getProjectsTemplatesByTemplateId"];
+        /** Update a project template */
+        put: operations["putProjectsTemplatesByTemplateId"];
+        post?: never;
+        /** Delete a project template */
+        delete: operations["deleteProjectsTemplatesByTemplateId"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1202,6 +1256,28 @@ export interface components {
         PaginatedResponseOfTimelineEntryResponse: {
             data: components["schemas"]["TimelineEntryResponse"][];
             pagination: components["schemas"]["PaginationMetadata"];
+        };
+        /** @description Instantiate a project template onto an existing project with relative day offsets calculated from kickoffDate. */
+        ProjectApplyTemplateRequest: {
+            /**
+             * Format: date
+             * @description The base calendar date for relative day offset calculations (T+0).
+             */
+            kickoffDate: string;
+            /**
+             * Format: int32
+             * @description The template to instantiate.
+             */
+            templateId: number;
+        };
+        /** @description Result of applying a template to a project. */
+        ProjectApplyTemplateResponse: {
+            /** Format: int32 */
+            dependenciesCreated: number;
+            /** Format: int32 */
+            milestonesCreated: number;
+            /** Format: int32 */
+            tasksCreated: number;
         };
         /** @description What the calling user may do with this project, so the frontend never re-derives authorization. */
         ProjectCapabilities: {
@@ -1888,6 +1964,99 @@ export interface components {
             status: string;
             /** Format: date-time */
             updatedAt: string;
+        };
+        /** @description Create a reusable project template blueprint. */
+        ProjectTemplateCreateRequest: {
+            /** @description Optional default billing type. */
+            billingType?: string | null;
+            dependencies?: components["schemas"]["ProjectTemplateDependency"][];
+            description?: string | null;
+            milestones?: components["schemas"]["ProjectTemplateMilestone"][];
+            name: string;
+            tasks?: components["schemas"]["ProjectTemplateTask"][];
+        };
+        /** @description A dependency link within a template referencing tasks by their 0-based index. */
+        ProjectTemplateDependency: {
+            /** Format: int32 */
+            predecessorTaskIndex: number;
+            /** Format: int32 */
+            successorTaskIndex: number;
+        };
+        /** @description Reusable project template blueprints. */
+        ProjectTemplateListResponse: {
+            templates: components["schemas"]["ProjectTemplateResponse"][];
+        };
+        /** @description A delivery milestone definition in a template with a target day offset from project kickoff. */
+        ProjectTemplateMilestone: {
+            description?: string | null;
+            name: string;
+            /**
+             * Format: int32
+             * @description Number of calendar days from kickoff date (e.g. 14 for T+14).
+             */
+            targetDayOffset: number;
+        };
+        /** @description One project template blueprint. */
+        ProjectTemplateResponse: {
+            billingType?: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            dependencies: components["schemas"]["ProjectTemplateDependency"][];
+            description?: string | null;
+            /** Format: int32 */
+            id: number;
+            milestones: components["schemas"]["ProjectTemplateMilestone"][];
+            name: string;
+            /** Format: int32 */
+            revision: number;
+            tasks: components["schemas"]["ProjectTemplateTask"][];
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        /** @description A subtask blueprint within a template task. */
+        ProjectTemplateSubtask: {
+            description?: string | null;
+            /** Format: int32 */
+            dueDayOffset?: number | null;
+            /** Format: double */
+            estimateHours?: number | null;
+            /** Format: int32 */
+            startDayOffset?: number | null;
+            title: string;
+        };
+        /** @description A top-level task blueprint within a template. */
+        ProjectTemplateTask: {
+            description?: string | null;
+            /**
+             * Format: int32
+             * @description Relative due date offset in days from kickoff date.
+             */
+            dueDayOffset?: number | null;
+            /** Format: double */
+            estimateHours?: number | null;
+            /**
+             * Format: int32
+             * @description Optional 0-based index of the template's delivery milestone this task is linked to.
+             */
+            milestoneIndex?: number | null;
+            /**
+             * Format: int32
+             * @description Relative start date offset in days from kickoff date.
+             */
+            startDayOffset?: number | null;
+            subtasks?: components["schemas"]["ProjectTemplateSubtask"][];
+            title: string;
+        };
+        /** @description Update a reusable project template blueprint. */
+        ProjectTemplateUpdateRequest: {
+            billingType?: string | null;
+            dependencies?: components["schemas"]["ProjectTemplateDependency"][];
+            description?: string | null;
+            milestones?: components["schemas"]["ProjectTemplateMilestone"][];
+            name: string;
+            /** Format: int32 */
+            revision: number;
+            tasks?: components["schemas"]["ProjectTemplateTask"][];
         };
         /** @description Every field of the project as it should stand after the update, carrying the revision it was read at. A revision that has moved on answers 409. */
         ProjectUpdateRequest: {
@@ -3257,6 +3426,66 @@ export interface operations {
                 content: {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
+            };
+        };
+    };
+    postProjectsByIdApplyTemplate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProjectApplyTemplateRequest"];
+            };
+        };
+        responses: {
+            /** @description OK — template instantiated onto project. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectApplyTemplateResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden — caller cannot contribute to this project. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — project or template does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -5361,6 +5590,256 @@ export interface operations {
                 };
             };
             /** @description Not Found — the task does not exist, or belongs to a project the caller cannot see. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getProjectsTemplates: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK — list of project template blueprints. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectTemplateListResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    postProjectsTemplates: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProjectTemplateCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Created — the new template. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectTemplateResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    getProjectsTemplatesByTemplateId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                templateId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK — the template. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectTemplateResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    putProjectsTemplatesByTemplateId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                templateId: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProjectTemplateUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description OK — template updated. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectTemplateResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — revision conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+        };
+    };
+    deleteProjectsTemplatesByTemplateId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                templateId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content — template deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
             404: {
                 headers: {
                     [name: string]: unknown;
