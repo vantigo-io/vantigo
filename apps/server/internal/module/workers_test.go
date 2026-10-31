@@ -369,6 +369,28 @@ func TestWorkers_ResolveTheChannelMailboxSlot(t *testing.T) {
 	}
 }
 
+// Worker mode never composes, so Workers resolves the OutboundMail slot
+// itself, as Compose does (integrations design T4): Invoices' reminder worker
+// sends through it. From the enabled provider, and the caller's own when no
+// enabled module provides one.
+func TestWorkers_ResolveTheOutboundMailSlot(t *testing.T) {
+	built, preset := &fakeOutboundMail{name: "owner"}, &fakeOutboundMail{name: "preset"}
+	var seen contracts.OutboundMail
+	reader := Module{Name: "reader", Workers: func(d Deps) []worker.Worker {
+		seen = d.OutboundMail
+		return nil
+	}}
+	owner := Module{Name: "owner", OutboundMail: func(Deps) contracts.OutboundMail { return built }}
+	Workers(Deps{Config: &config.Config{Modules: []string{"reader", "owner"}}, OutboundMail: preset}, reader, owner)
+	if seen != built {
+		t.Errorf("the workers saw Deps.OutboundMail = %v, want the enabled owner's", seen)
+	}
+	Workers(Deps{Config: &config.Config{Modules: []string{"reader"}}, OutboundMail: preset}, reader, owner)
+	if seen != preset {
+		t.Errorf("the workers saw Deps.OutboundMail = %v, want the caller's, the owner being disabled", seen)
+	}
+}
+
 // Worker mode never composes, so Workers collects the calendar sources itself,
 // as Compose does: from the enabled modules only (calendar design D1).
 func TestWorkers_CollectCalendarSourcesFromEnabledModulesOnly(t *testing.T) {

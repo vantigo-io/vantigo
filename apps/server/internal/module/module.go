@@ -237,6 +237,19 @@ type Deps struct {
 	// calls it, never inside a transaction. nil when no enabled module
 	// provides one (entra disabled).
 	PersonalMailbox contracts.PersonalMailbox
+	// OutboundMail is Communications' channels as other modules send through
+	// them (see contracts.OutboundMail, integrations design T4, module-boundaries
+	// rule 17): the one way Invoices and Calendar write to a customer, from a
+	// channel an Owner chose. Compose sets it, on every module's Deps copy,
+	// from whichever enabled module declares Module.OutboundMail, after the
+	// channel and the personal mailbox — so its provider may read
+	// deps.ChannelMailbox while it is built; Workers sets it too, the same
+	// way, because Invoices' reminder worker sends in worker mode. Both keep a
+	// preset value when no enabled module provides one (the seam
+	// modtest.WithOutboundMail fills). Consumers call it outside any
+	// transaction. nil when Communications is disabled, which a consumer
+	// answers as "sending is disabled".
+	OutboundMail contracts.OutboundMail
 	// CalendarBusy is the calendar's busy time of people, provider-gated
 	// (see contracts.CalendarBusy, calendar Outlook sync design O9.8).
 	// Compose sets it, on every module's Deps copy, from whichever enabled
@@ -477,6 +490,13 @@ type Module struct {
 	// reads nothing while it is built — and put the result on every module's
 	// Deps.
 	PersonalMailbox func(Deps) contracts.PersonalMailbox
+	// OutboundMail builds this module's contracts.OutboundMail, if it sends
+	// other modules' mail through its channels (integrations design T4:
+	// Communications). At most one enabled module may set it; Compose and
+	// Workers call it after the personal mailbox — its provider may read
+	// deps.ChannelMailbox while it is built, never while it serves outside
+	// the provider's own calls — and put the result on every module's Deps.
+	OutboundMail func(Deps) contracts.OutboundMail
 	// CalendarBusy builds this module's contracts.CalendarBusy, if it answers
 	// people's busy time to other modules (calendar Outlook sync design
 	// O9.8). At most one enabled module may set it; Compose calls it last of
