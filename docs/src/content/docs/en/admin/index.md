@@ -57,7 +57,15 @@ application.
   beside `staff`, which it requires; an app registration with eight application
   permissions, admin consent and the User Administrator role; client secrets added and
   rotated by an Owner; the Temporary Access Pass policy; and what a leaver's steps and a
-  delete do in the tenant. Nothing of it is in `vantigo.env`.
+  delete do in the tenant. Nothing of it is in `vantigo.env`; its page is under
+  **Integrations** in Workspace admin.
+
+## Configuration
+
+[Configuration](/en/admin/configuration/) explains the two tiers every setting belongs
+to — the instance's, in the environment, which you own, and the workspace's, in the
+database, which the tenant's Owner edits under Workspace admin — lists the instance's
+settings by what they decide, and says where each of the workspace's is edited.
 
 ## The complete configuration reference
 

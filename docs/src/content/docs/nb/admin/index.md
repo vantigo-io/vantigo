@@ -58,7 +58,15 @@ applikasjonen.
   applikasjonstillatelser, administratorsamtykke og rollen User Administrator;
   klienthemmeligheter som en eier legger til og roterer; policyen for midlertidig
   tilgangspass; og hva stegene for en som slutter og en sletting gjør i leietakeren.
-  Ingenting av det står i `vantigo.env`.
+  Ingenting av det står i `vantigo.env`; siden ligger under **Integrasjoner** i
+  Administrer arbeidsområde.
+
+## Konfigurasjon
+
+[Konfigurasjon](/nb/admin/configuration/) forklarer de to nivåene hver innstilling
+hører til — installasjonens, i miljøet, som du eier, og arbeidsområdets, i databasen,
+som leietakerens eier redigerer under Administrer arbeidsområde — lister installasjonens
+innstillinger etter hva de avgjør, og sier hvor hver av arbeidsområdets redigeres.
 
 ## Den komplette konfigurasjonsreferansen
 
