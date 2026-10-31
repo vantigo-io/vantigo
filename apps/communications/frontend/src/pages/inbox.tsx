@@ -190,9 +190,7 @@ export function InboxPage({ connectionButton }: InboxPageProps = {}) {
           )}
           {!personalSender?.available &&
             (personalSender?.reason === "not_connected" || personalSender?.reason === "reconnect") &&
-            connectionButton && (
-              <Group gap="xs">{connectionButton({ feature: "mail", returnTo: returnHere() })}</Group>
-            )}
+            connectionButton && <Group gap="xs">{connectionButton({ feature: "mail", returnTo: returnHere() })}</Group>}
           {create.error && (
             <Text size="xs" c="red">
               {create.error.message}
