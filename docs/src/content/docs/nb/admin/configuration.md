@@ -80,14 +80,17 @@ og [administrasjonslytteren](/nb/admin/management-listener/).
 | `SMTP_USERNAME`, `SMTP_PASSWORD` | ikke satt | Valgfri legitimasjon |
 | `SMTP_TLS` | `starttls` | `starttls`, `implicit` eller `none` |
 
-Den skriver til folkene som arbeider i installasjonen: invitasjoner og gjenoppretting av
-passord, Ansattes varsler og Kalenders varsler til kolleger. Tre ting som skriver til
-*kunder* bruker den fortsatt i dag — Fakturas dokumentutsendelser og purrebrev, Kalenders
-invitasjoner til folk utenfor bedriften, og en SMTP-kanal i Kommunikasjon som ikke har
-egen legitimasjon. Postboksene et selskap sender fra i eget navn, hører til
+Den skriver bare til folkene som arbeider i installasjonen: invitasjoner og gjenoppretting
+av passord, Ansattes varsler og Kalenders varsler til kolleger. Ingenting som skriver til
+*kunder* bruker den. Postboksene et selskap sender fra i eget navn, hører til
 arbeidsområdet: [kanalene i Kommunikasjon](/nb/user/communications/#sett-opp-en-kanal),
 med en Microsoft 365-kanal satt opp under
-[Microsoft Entra ID](/nb/admin/entra/#e-postkanaler).
+[Microsoft Entra ID](/nb/admin/entra/#e-postkanaler). Fakturaers dokumentutsendelser og
+purrebrev går fra kanalen som er valgt i fakturainnstillingene
+([Sende et dokument på e-post](/nb/user/invoices/#sende-et-dokument-på-e-post)),
+Kalenders invitasjoner til folk utenfor bedriften fra den som er valgt i
+kalenderinnstillingene ([Inviter folk utenfor bedriften](/nb/user/calendar/#inviter-folk-utenfor-bedriften)),
+og en SMTP-kanal uten egen legitimasjon sender ingenting.
 
 ### Lagring
 
