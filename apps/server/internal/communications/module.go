@@ -40,6 +40,26 @@ var permissions = []contracts.Permission{
 	{Key: "communications:suppressions-manage", Display: "Manage communications suppressions", Description: "View, create, and remove suppressed email addresses.", Category: "Communications", Sensitive: false, Delegable: true},
 }
 
+// aiTasks are the AI jobs this module performs (contracts.AITask), declared
+// the way permissions are: Compose collects them into Deps.AITasks, the list
+// the AI models page shows an Owner, who chooses the model each one uses. A
+// task is declared by the delivery that performs it, so the reading of
+// incoming mail is declared when that feature lands.
+var aiTasks = []contracts.AITask{
+	{
+		Key:         aiTaskComposeReply,
+		Module:      "communications",
+		Display:     "Draft a reply",
+		Description: "Writes an editable reply to a customer for the person answering a conversation, in the tone and with the instruction they give. The model is sent the conversation's subject and its latest incoming messages, up to 20; nothing is sent until the person asks for a draft, and the draft is only a suggestion they review.",
+	},
+	{
+		Key:         aiTaskCustomerSuggestion,
+		Module:      "communications",
+		Display:     "Suggest the customer",
+		Description: "Suggests which of a few candidate customers a conversation is from. The model is sent the conversation's latest incoming messages, up to 20, and the candidate customers' numbers, and answers with one of them and how sure it is; a suggestion that is not confident is not saved.",
+	},
+}
+
 // channelCheckLimit is the policy of the channel operations that reach the
 // mail channels provider (Outlook connection design M12): creating,
 // switching and verifying a channel, each reaching Microsoft Graph up to
@@ -98,6 +118,7 @@ func Module() module.Module {
 	return module.Module{
 		Name:                 "communications",
 		Permissions:          permissions,
+		AITasks:              aiTasks,
 		Mount:                mount,
 		Workers:              workers,
 		CustomerReferences:   newCustomerReferenceHolder,

@@ -166,9 +166,9 @@ func TestAiDraft_ContextFromARealImport(t *testing.T) {
 	fake := modtest.NewFakeChannelMailbox()
 	in := newInbox(t, nil, fake,
 		modtest.WithTransport(tr),
-		modtest.WithEnv("COMMUNICATIONS_AI_ENABLED", "1"),
-		modtest.WithEnv("COMMUNICATIONS_AI_API_KEY", "sk-test-key"),
-		modtest.WithEnv("COMMUNICATIONS_AI_MODEL", "gpt-4o-mini"))
+		modtest.WithEnv("AI_PROVIDER", "openai"),
+		modtest.WithEnv("AI_API_KEY", "sk-test-key"),
+		modtest.WithEnv("AI_MODELS", "gpt-4o-mini"))
 	mail := in.plainMail("")
 	mail.HTML = "<p>The heat pump is <b>broken</b></p>"
 	m := in.importOne(t, mail, "")
