@@ -17,7 +17,6 @@ export interface UseAssistantShellOptions {
   onNavigate: (route: string) => void;
   /** Opens the Assistant app, on a conversation when there is one. */
   onOpenInAssistant: (conversationId: string | null) => void;
-  appLabel?: (app: string) => string;
 }
 
 /**
@@ -34,7 +33,6 @@ export const useAssistantShell = ({
   context,
   onNavigate,
   onOpenInAssistant,
-  appLabel,
 }: UseAssistantShellOptions) => {
   const availability = useAssistantAvailability(enabled);
   const panel = useAssistantPanel();
@@ -50,6 +48,8 @@ export const useAssistantShell = ({
   return {
     /** The person has the assistant: Spotlight may offer to ask it, the Assistant app is offered. */
     available,
+    /** The panel can be opened from where the person is (the Assistant app shows the conversations itself). */
+    visible,
     /** The provider runs on this installation. */
     local: availability.local,
     panel,
@@ -75,7 +75,6 @@ export const useAssistantShell = ({
                 }}
                 pendingQuestion={panel.pending}
                 onQuestionSent={panel.consumeQuestion}
-                appLabel={appLabel}
               />
             ),
           }

@@ -39,6 +39,7 @@ import {
 } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, redirect } from "@tanstack/react-router";
+import { AssistantPersonSwitch } from "@vantigo/assistant-ui";
 import { DirectoryMatches, type DirectoryPick, DirectoryPicker } from "@vantigo/entra-ui";
 import { appUrl, ContentSkeleton, EmptyState, PageHeader, useI18n } from "@vantigo/frontend-shell";
 import { useMemo, useState } from "react";
@@ -154,6 +155,7 @@ const UsersPage = () => {
   const [matchesOpen, setMatchesOpen] = useState(false);
   // The Entra module's directory picker and review, while the module is enabled (plan reading 7).
   const entraOn = enabledModuleKeys().includes("entra");
+  const assistantOn = enabledModuleKeys().includes("assistant");
   const form = useForm({
     initialValues: { displayName: "", email: "", role: "User" as UserRole, password: "" },
     validate: {
@@ -836,6 +838,8 @@ const UsersPage = () => {
                 {t("admin.promotionStopsManaging")}
               </Text>
             )}
+            {/* The assistant's per-person switch (Assistant design S8): it saves on its own, under its own version. */}
+            {editing && assistantOn && <AssistantPersonSwitch userId={editing.id} />}
             {!editing && mode === "initial" && (
               <PasswordInput
                 label={t("admin.initialPassword")}

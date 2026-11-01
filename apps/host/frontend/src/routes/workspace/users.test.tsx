@@ -3,6 +3,7 @@ import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ManagedUser } from "../../api/users";
+import { stubFetch } from "../../test/fetch";
 import { renderRoute } from "../../test/render-route";
 import { Route as UsersRoute } from "./users";
 import "../../i18n";
@@ -84,6 +85,45 @@ const openActions = (name: string) => {
 beforeEach(() => {
   for (const fn of Object.values(api)) fn.mockReset();
   api.listInvitations.mockResolvedValue([]);
+});
+
+describe("the assistant's per-person switch", () => {
+  const assistantApi = (person = { userId: "u-1", enabled: false, version: 0 }) =>
+    stubFetch((input: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(input);
+      const json = (body: unknown) =>
+        new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
+      if (path === "/api/v1/assistant/people/u-1" && !init?.method) return json(person);
+      if (path === "/api/v1/assistant/people/u-1" && init?.method === "PUT")
+        return json({ ...person, enabled: JSON.parse(String(init.body)).enabled, version: person.version + 1 });
+      if (path === "/api/v1/assistant/settings")
+        return json({ mode: "per_person", retentionMonths: 12, sensitiveDefault: "off", version: 1 });
+      return new Response(null, { status: 404 });
+    });
+
+  it("sits in the edit dialog and saves on its own, under the version it read", async () => {
+    const fetchMock = assistantApi();
+    await renderUsers([user({})]);
+    openActions("Kari Nordmann");
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Edit details" }));
+
+    const toggle = await screen.findByRole("switch", { name: /Has the assistant/ });
+    expect(toggle).not.toBeChecked();
+    fireEvent.click(toggle);
+    await waitFor(() => expect(toggle).toBeChecked());
+    const put = fetchMock.actualCalls.find(([, init]) => init?.method === "PUT");
+    expect(put?.[0]).toBe("/api/v1/assistant/people/u-1");
+    expect(new Headers(put?.[1]?.headers).get("If-Match")).toBe("0");
+    expect(api.updateUser).not.toHaveBeenCalled();
+  });
+
+  it("is not in the add dialog, where there is no person yet", async () => {
+    assistantApi();
+    await renderUsers([user({})]);
+    fireEvent.click(await screen.findByRole("button", { name: "Add user" }));
+    await screen.findByRole("dialog");
+    expect(screen.queryByRole("switch", { name: /Has the assistant/ })).not.toBeInTheDocument();
+  });
 });
 
 describe("the users page's statuses", () => {

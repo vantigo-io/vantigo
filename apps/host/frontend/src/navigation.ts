@@ -4,6 +4,7 @@ import type { ComponentType } from "react";
 // injected runtime config (see lib/enabled-modules.ts); which destinations
 // belong to which module is declared by the app registry (apps.ts).
 export const moduleKeys = [
+  "assistant",
   "calendar",
   "communications",
   "customers",
@@ -22,10 +23,12 @@ export type ModuleKey = (typeof moduleKeys)[number];
 /**
  * An instance fact a destination depends on that is not a module: the AI
  * models page exists while the instance has an AI provider (Integrations
- * design T1, T13). The host learns it by asking the API, not from the page it
- * was served as modules are, so it is part of the visibility context.
+ * design T1, T13), and the Assistant app while the signed-in person has the
+ * assistant (design S8). The host learns them by asking the API, not from the
+ * page it was served as modules are, so they are part of the visibility
+ * context.
  */
-export type NavFeature = "ai";
+export type NavFeature = "ai" | "assistant";
 
 export interface NavItem {
   label: string;

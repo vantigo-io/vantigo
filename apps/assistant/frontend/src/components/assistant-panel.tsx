@@ -31,7 +31,6 @@ export interface AssistantPanelProps {
   /** A question to send into a fresh conversation (from Spotlight). */
   pendingQuestion?: PendingQuestion;
   onQuestionSent: () => void;
-  appLabel?: (app: string) => string;
 }
 
 /** The recent conversations, in a menu in the header. */

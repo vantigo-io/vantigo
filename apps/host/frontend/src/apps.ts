@@ -28,6 +28,7 @@ import {
   IconListCheck,
   IconMailbox,
   IconMailOff,
+  IconMessageChatbot,
   IconPackage,
   IconPlugConnected,
   IconReceipt2,
@@ -51,6 +52,7 @@ import { accountMenuSections } from "./account-menu";
 import {
   hasPermissions,
   type ModuleKey,
+  type NavFeature,
   type NavItem,
   type NavSection,
   type NavVisibilityContext,
@@ -104,6 +106,12 @@ export interface AppDefinition {
   navSections: readonly NavSection[];
   /** The tile is hidden unless the user holds one of these. Undefined = always shown. */
   requiredPermissions?: readonly string[];
+  /**
+   * The tile is hidden unless this instance fact holds for the caller. The
+   * Assistant has no permission of its own (design S8): the person has it or
+   * not, and the root layout learns that from GET /assistant/availability.
+   */
+  feature?: NavFeature;
 }
 
 const permissionsUnlocking = (items: readonly NavItem[]) => [
@@ -165,6 +173,17 @@ const planningNavPresentation: Record<PlanningNavItem["key"], Pick<NavItem, "lab
 /** Every app, in switcher order. Home has no module and no sidebar. */
 export const apps: readonly AppDefinition[] = [
   { key: "home", label: "navigation.home", icon: IconLayoutDashboard, home: "/dashboard", navSections: [] },
+  // The Assistant app lists the person's conversations itself, so it has no sidebar entries to offer;
+  // its tile and its Spotlight destination appear only for a person who has the assistant.
+  {
+    key: "assistant",
+    module: "assistant",
+    label: "navigation.assistant",
+    icon: IconMessageChatbot,
+    home: "/assistant",
+    navSections: [],
+    feature: "assistant",
+  },
   moduleApp("calendar", "navigation.calendar", IconCalendar, "/calendar", [
     {
       label: "navigation.calendar",
@@ -518,6 +537,17 @@ export const allNavSections: readonly NavSection[] = apps.flatMap((app) => app.n
  */
 export const spotlightNavSections: readonly NavSection[] = [
   { items: [{ label: "navigation.dashboard", to: "/dashboard", icon: IconLayoutDashboard }] },
+  {
+    items: [
+      {
+        label: "navigation.assistant",
+        to: "/assistant",
+        icon: IconMessageChatbot,
+        module: "assistant",
+        feature: "assistant",
+      },
+    ],
+  },
   ...allNavSections,
   // External destinations open a new tab, which is not what a Spotlight jump does.
   ...accountMenuSections.map((section) => ({ ...section, items: section.items.filter((item) => !item.external) })),
@@ -584,6 +614,16 @@ export const areas: readonly AreaDefinition[] = [
           // design T13): the Owner's, and present only while the instance has an AI
           // provider, which the root layout learns from GET /owner/ai/settings.
           { label: "navigation.aiModels", to: "/workspace/ai", icon: IconSparkles, ownerOnly: true, feature: "ai" },
+          // Who has the assistant, how long conversations are kept and what it may use (Assistant
+          // design S8, S16): the Owner's, while the module is on and the instance has an AI provider.
+          {
+            label: "navigation.assistantSettings",
+            to: "/workspace/assistant",
+            icon: IconMessageChatbot,
+            ownerOnly: true,
+            module: "assistant",
+            feature: "ai",
+          },
         ],
       },
     ],
@@ -653,7 +693,9 @@ export const switcherTiles = (
   permissions: string[] | undefined,
   enabledModules: readonly ModuleKey[],
   activeKey: AppKey | AreaKey | undefined,
+  features: readonly NavFeature[] = [],
 ): SwitcherTile[] =>
   apps
     .filter((app) => hasPermissions(permissions, app.requiredPermissions))
+    .filter((app) => !app.feature || features.includes(app.feature))
     .map((app) => ({ app, current: app.key === activeKey, enabled: isAppEnabled(app, enabledModules) }));
