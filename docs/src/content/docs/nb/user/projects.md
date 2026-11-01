@@ -145,7 +145,9 @@ for ny kunde) og en **Oppstartsdato (T+0)**, som er prosjektets startdato eller 
 bruk, opprettes malens leveransemilepæler, oppgaver, deloppgaver og avhengighetskoblinger med kalenderdatoer
 beregnet ut fra oppstartsdatoen, ved siden av det prosjektet allerede har. Finnes det ingen maler ennå, sier
 dialogen *Ingen maler tilgjengelig ennå.*, og til den som kan lage maler legger den til en lenke, **Lag en
-under Prosjektmaler** — se [Bygg prosjektmaler](#bygg-prosjektmaler).
+under Prosjektmaler** — se [Bygg prosjektmaler](#bygg-prosjektmaler). En mal som bryter
+en av malreglene, avvises med *Malen bryter en regel og må rettes under Prosjektmaler*,
+fulgt av regelen; ingenting fra den legges til.
 
 **Ny oppgave** åpner skjemaet **Ny oppgave**: **Tittel** (påkrevd, høyst 200 tegn),
 **Beskrivelse**, **Status**, **Ansvarlig** (hvem som helst på prosjektet),
@@ -219,7 +221,8 @@ Radens meny har **Rediger**, det samme skjemaet lagret med **Lagre endringer**, 
 **Slett malen**, som først spør *Vil du slette navn?*. Prosjekter som allerede er
 startet fra en mal, beholder milepælene og oppgavene sine når malen endres eller
 slettes. En mal noen andre har lagret imens, avvises med *Malen ble endret av noen
-andre. Lukk den, åpne den igjen og gjør endringene dine på nytt.* Se
+andre. Åpne den igjen og gjør endringene dine på nytt.*; redigeringen lukkes, og når
+du åpner malen igjen, ser du det som ble lagret. Se
 [Project templates and blueprints](/en/reference/projects/#project-templates-and-blueprints).
 
 ## Sett opp fakturalinjer

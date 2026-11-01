@@ -146,7 +146,9 @@ template instantiates the blueprint's delivery milestones, tasks, subtasks, and 
 relative calendar dates calculated from the kickoff date, beside whatever the project already has. With no
 templates yet the dialog says *No templates available yet.*, and to someone who may create templates it
 adds a link, **Create one under Project templates** — see
-[Build project templates](#build-project-templates).
+[Build project templates](#build-project-templates). A template that breaks one of the
+template rules is refused with *The template breaks a rule and must be fixed under
+Project templates*, followed by the rule; nothing from it is added.
 
 **Add task** opens **New task**: **Title** (required, at most 200 characters),
 **Description**, **Status**, **Assignee** (anyone on the project), **Start date**,
@@ -219,7 +221,8 @@ The row's menu offers **Edit**, the same form saved with **Save changes**, and
 **Delete template**, which asks *Delete name?* first. Projects already started
 from a template keep their milestones and tasks when it is edited or deleted. A
 template somebody else saved meanwhile is refused with *The template was changed by
-someone else. Close it, open it again and redo your changes.* See
+someone else. Open it again and redo your changes.*; the editor closes, and opening
+the template again shows what was saved. See
 [Project templates and blueprints](/en/reference/projects/#project-templates-and-blueprints).
 
 ## Set up billing lines

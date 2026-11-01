@@ -175,7 +175,8 @@ describe("TemplateFormModal", () => {
     await userEvent.click(await screen.findByRole("button", { name: "Save changes" }));
 
     expect(await screen.findByText(/The template was changed by someone else/)).toBeInTheDocument();
-    expect(onClose).not.toHaveBeenCalled();
+    // The form holds a stale revision: it closes so the next Edit reads the refetched one.
+    expect(onClose).toHaveBeenCalled();
   });
 
   it("offers no dependency until there are two tasks to link", async () => {
