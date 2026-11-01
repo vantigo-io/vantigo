@@ -6,6 +6,7 @@ sidebar:
 sources:
   - apps/host/frontend
   - apps/server/internal/identity
+  - apps/server/internal/db/migrations/00098_identity_ai_task_models.sql
 ---
 
 Workspace administration is where an **Owner** manages who can use Vantigo and what

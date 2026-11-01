@@ -70,7 +70,8 @@ Branch `feat/ai-platform`, cut from `claude/entra-id-redesign-strategy-7cc8ba` a
    `:403` and `:571` answer 503 `ai_unavailable` (`aiUnavailableMessage`, `:104`) when
    `s.ai == nil`; `callerGaveUp(ctx, err)` asks only the request context (`:218`). With
    the model chosen per task and resolved at call time, the row's `provider` and `model`
-   must come from the answer: `ai.Response` carries `Provider` and `Model` and is returned
+   must come from the answer, and a guard row that never calls asks `Client.ModelFor` (the model
+   Complete would use now): `ai.Response` carries `Provider` and `Model` and is returned
    (those two set, the rest zero) **with** an error whenever the model was resolved, so the
    exception path still names the model it asked. `ai_interactions.model` is
    `varchar(150) NOT NULL`, so `limitUTF16(model, 150)` stays where the row is built.
@@ -139,7 +140,7 @@ Branch `feat/ai-platform`, cut from `claude/entra-id-redesign-strategy-7cc8ba` a
 
 ## Tasks
 
-- [ ] **1. `feat(config)`: `AI_*` and the renamed variables.** `AIProvider`, `AIAPIKey`,
+- [x] **1. `feat(config)`: `AI_*` and the renamed variables.** `AIProvider`, `AIAPIKey`,
   `AIBaseURL`, `AIModels` on `Config` (validation: provider `openai` or empty; key required
   with the provider and printable without space; base URL an absolute `https` URL with no
   user/query/fragment; models a comma list of 1–150-character printable tokens, at least
@@ -149,7 +150,7 @@ Branch `feat/ai-platform`, cut from `claude/entra-id-redesign-strategy-7cc8ba` a
   for now (one model: `AIModels[0]`) so the commit builds and every test passes. `main.go`
   logs the renamed variables once. Tests: defaults, configured, each refusal, each alias
   case, `AI_*` winning over a legacy value, the redaction.
-- [ ] **2. `feat(ai)`: the platform package.** `srv/ai`: `Request{Prompt}`,
+- [x] **2. `feat(ai)`: the platform package.** `srv/ai`: `Request{Prompt}`,
   `Response{Text, InputTokens, OutputTokens, Provider, Model}`, `Resolver`, `New(cfg,
   transport, resolver) *Client` (nil unless `AIProvider` is set), `Client.Complete(ctx,
   task, req)` — resolve the task's model, refuse one outside `AI_MODELS` (`modelNotAllowedError`,
@@ -160,7 +161,7 @@ Branch `feat/ai-platform`, cut from `claude/entra-id-redesign-strategy-7cc8ba` a
   on the wire (URL from `AI_BASE_URL`, bearer, body), each typed error and its type name,
   the cancellation kept for `errors.Is`, a disallowed model refused with no request, a nil
   resolver using the plan default, an unconfigured config giving nil.
-- [ ] **3. `feat(module)`: tasks, the `AIModels` slot and `Deps.AI`.** `contracts/ai.go`
+- [x] **3. `feat(module)`: tasks, the `AIModels` slot and `Deps.AI`.** `contracts/ai.go`
   (`AITask`, `ValidateAITask`, `AIModels`); `module.Deps.AITasks`, `Deps.AI`;
   `Module.AITasks`, `Module.AIModels`; Compose collects and validates tasks in the catalog
   loop, resolves the sole `AIModels` provider (two refused, naming both), builds `Deps.AI`
@@ -169,7 +170,7 @@ Branch `feat/ai-platform`, cut from `claude/entra-id-redesign-strategy-7cc8ba` a
   a task is collected, a disabled module's is absent, a duplicate key and a wrong module
   prefix are refused, two `AIModels` providers are refused, `Deps.AI` is nil without
   `AI_PROVIDER` and non-nil with it, and calls the provider's resolver.
-- [ ] **4. `feat(communications)`: the two operations through `Deps.AI`.** Declare
+- [x] **4. `feat(communications)`: the two operations through `Deps.AI`.** Declare
   `communications.compose-reply` ("Draft a reply") and `communications.customer-suggestion`
   ("Suggest the customer"); `server.ai` becomes `deps.AI`; `s.deps.AI.Complete(ctx,
   task, ai.Request{Prompt})`; the row's `provider` and `model` from the answer; delete
@@ -178,7 +179,7 @@ Branch `feat/ai-platform`, cut from `claude/entra-id-redesign-strategy-7cc8ba` a
   assertions follow. Tests: the 37 existing ones green; new — each operation's request
   names the model `WithAIModels` chose for **its** task, the row records it, and a
   disallowed answer from the resolver is audited as an exception row.
-- [ ] **5. `feat(identity)`: the model per task.** Migration `00098_identity_ai_task_models.sql`
+- [x] **5. `feat(identity)`: the model per task.** Migration `00098_identity_ai_task_models.sql`
   (`task_key text PK`, `model varchar(150) NOT NULL`, `updated_at timestamptz NOT NULL`,
   `updated_by uuid NULL`; Down drops it); `sqlc.yaml` schema list; `queries/ai_task_models.sql`
   (list, get-for-update, upsert, count) and `store` regenerated; `ai_models.go`: the
@@ -196,7 +197,7 @@ Branch `feat/ai-platform`, cut from `claude/entra-id-redesign-strategy-7cc8ba` a
   allowed → plan), the cache and its eviction, the import once and never twice (second mount,
   rows surviving, a changed variable ignored), the not-allowed and unconfigured cases, only
   `communications.*` tasks imported.
-- [ ] **6. `feat(identity)`: the AI settings endpoints.** `openapi/identity.yaml`:
+- [x] **6. `feat(identity)`: the AI settings endpoints.** `openapi/identity.yaml`:
   `getIdentityOwnerAiSettings`, `putIdentityOwnerAiTasksByKey` (`policy:Owner`, rate limit
   `policyUserManagement`, the schemas `AiSettings`, `AiModule`, `AiTask`, `AiTaskRequest`);
   `go generate` for the Go contract, the embedded copy and `bun run gen:client` for
@@ -211,7 +212,7 @@ Branch `feat/ai-platform`, cut from `claude/entra-id-redesign-strategy-7cc8ba` a
   body and the audit, `source` for chosen/default/plan, 412 on a stale version and success on
   the fresh one, 422, 404 for an unknown task and for no provider, the audit row, the change
   taking effect on the very next `ModelFor`, a module that is off not listed.
-- [ ] **7. `feat(host)`: the *AI models* page.** `api/ai.ts` (`fetchAiSettings`,
+- [x] **7. `feat(host)`: the *AI models* page.** `api/ai.ts` (`fetchAiSettings`,
   `updateAiTask`, query key); `NavItem.feature` and `NavVisibilityContext.features`
   (`navigation.ts`), the spotlight prop; the root layout's Owner-only query; `apps.ts`:
   the Integrations section's second item (`navigation.aiModels`, `to: "/workspace/ai"`,
@@ -224,20 +225,47 @@ Branch `feat/ai-platform`, cut from `claude/entra-id-redesign-strategy-7cc8ba` a
   an Owner with it, hidden from a non-Owner), `route-guards.test.ts` (the route's gate),
   `routes/workspace/ai.test.tsx` (facts, grouping, saving, locked state with one model,
   conflict), `catalogs/parity.test.ts` unchanged and green.
-- [ ] **8. `docs(admin)`: configuration, authentication, installation — en and nb.**
-  `admin/configuration.md`: `AI_*` in the instance table, the renamed variables and their
-  release, the import of `COMMUNICATIONS_AI_MODEL`, *AI models* in the workspace table;
-  `admin/authentication.md`: the AI settings leave the Communications paragraph and point to
-  Configuration; `admin/installation.md`: the AI variables; `deploy/compose/vantigo.env.example`
-  and `README.md`.
-- [ ] **9. `docs(user)`: *AI models* in Workspace administration — en and nb.**
+- [x] **8. `docs(admin)`: configuration, installation — en and nb.**
+  `admin/configuration.md`: `AI_*` in the instance table and its own *AI* section, the renamed
+  variables and the import of `COMMUNICATIONS_AI_MODEL`, *AI models* in the workspace table;
+  `admin/installation.md`: the secret to inject is `AI_API_KEY`, and a pointer; the Compose
+  example and its README. `admin/authentication.md` holds no AI paragraph (the brief assumed one),
+  so there is nothing to move out of it.
+- [x] **9. `docs(user)`: *AI models* in Workspace administration — en and nb.**
   `user/workspace-administration.md`: what the Owner sees (provider, allowed models, "an API
   key is configured by Vantigo"), what the Owner changes (a model per task), what Vantigo
-  decides; `user/communications.md`: the AI draft's availability sentence points to it.
-- [ ] **10. `docs(reference)`: the task keys, `Deps.AI`, the slot, the roadmap.**
+  decides, when the item is absent; `user/communications.md`: the AI draft points to it.
+- [x] **9a. `chore(lint)`: `internal/ai` joins depguard's `platform` list.** One line in
+  `apps/server/.golangci.yml`, so the package can import no business module.
+- [x] **10. `docs(reference)`: the task keys, `Deps.AI`, the slot, the roadmap.**
   `reference/communications.md` (*AI draft and customer suggestion*: the task keys, `Deps.AI`,
   the new sentence, the aliases); `contributing/platform-packages.md` (`ai`);
   `contributing/module-boundaries.md` (the `AIModels` slot, `AITasks`); `ROADMAP.md`.
-- [ ] **11. The gates.** `mise run server:check`, `mise run server:test`,
+- [x] **11. The gates.** `mise run server:check`, `mise run server:test`,
   `mise run frontend:check`, `mise run docs:check`; `go generate ./...` and `bun run
   gen:client` leave no diff; fix what they find in the task that caused it.
+
+## Departures from the brief and the spec
+
+1. **Endpoint paths** are `GET /api/v1/identity/owner/ai/settings` and
+   `PUT /api/v1/identity/owner/ai/tasks/{key}`, not `/api/v1/ai/…`: a module mounts under
+   `/api/v1/<name>/`, and identity's Owner-only endpoints live under `owner/` (reading 9). The
+   write is `policy:Owner+OwnerManagement` as the single sign-on writes are; the read `policy:Owner`.
+2. **`If-Match` is the task's `updated_at` in microseconds** (`"0"` for a task with no row), since
+   the spec fixes the table without a version column (reading 10).
+3. **No settings answer without a provider**: both endpoints are 404 `ai_not_configured`, which the
+   host reads as "absent"; the nav item is gated by a new `NavItem.feature` the root layout fills
+   from that answer (reading 11), rather than by a module key.
+4. **`Client.ModelFor`**, and the typed errors keep their old
+   unexported names (`aiTransportError`…) so audit labels written before and after the move are the
+   same words; two are new (`aiModelUnavailableError`, `aiModelNotAllowedError`).
+5. **Communications' 503 message** changed, so its two tests' expected text changed with it —
+   the one edit to the existing AI tests beyond construction. The "enabled without a key" and
+   "other provider" tests keep driving the aliases, where those rules live.
+6. **`admin/authentication.md` has no AI paragraph**, so it is untouched; the AI wording lives in
+   `admin/configuration.md` and `admin/installation.md`.
+7. **Migration number `00098`**: delivery B holds `00096` and `00097`.
+8. **The `Docs-Impact` trailer is absent from the plan commit**, as the caller asked; the
+   waiver is range-wide in `tools/docs/check-coverage.ts`, so no commit of this series carries one.
+9. **Rule 5's count** in `module-boundaries.md` goes to twenty with `AIModels`; delivery B's
+   `OutboundMail` makes it twenty-one on whichever lands second.
