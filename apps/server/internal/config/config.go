@@ -22,6 +22,7 @@ import (
 	"strings"
 	"time"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5/pgconn"
 
@@ -508,34 +509,36 @@ type Config struct {
 	// rule is duration()'s own "must be positive".
 	CommunicationsRetentionPoll time.Duration
 
-	// CommunicationsAIEnabled turns the communications AI draft and
-	// customer-suggestion operations on (COMMUNICATIONS_AI_ENABLED, .NET's
-	// CommunicationsAiOptions.Enabled, default false). It is one of the three
-	// values availability is computed from (communications inventory §17.1):
-	// both operations answer 503 ai_unavailable unless this is set, the
-	// provider is "openai", and an API key is configured. Read as this file's
-	// strict "0"/"1" switch rather than .NET's more permissive bool binding,
-	// the same shape every other flag here uses.
-	CommunicationsAIEnabled bool
-	// CommunicationsAIProvider names the chat provider
-	// (COMMUNICATIONS_AI_PROVIDER, default "openai"). .NET registers a chat
-	// client only when this equals "openai" case-insensitively
-	// (DB/CommunicationsDatabaseConfiguration.cs:45-57), and so does this
-	// port: any other value leaves the feature unavailable rather than
-	// refusing to start, so a second provider stays additive.
-	CommunicationsAIProvider string
-	// CommunicationsAIModel is the chat model (COMMUNICATIONS_AI_MODEL,
-	// default "gpt-4o-mini"). communications applies .NET's own 150-character
-	// limit (SV/CommunicationsAiService.cs:37) where it uses the value, which
-	// is also ai_interactions.model's column width.
+	// AIProvider names the AI provider the platform calls (AI_PROVIDER, AI as a
+	// platform provider design T11). "openai" today; empty is the unavailable
+	// state: no client is built, every AI operation answers 503 ai_unavailable
+	// and the AI models page does not exist. Instance tier: the operator sets
+	// it, no screen edits it. The three renamed COMMUNICATIONS_AI_* variables
+	// map onto it for one release (see Renamed).
+	AIProvider string
+	// AIAPIKey is the provider credential (AI_API_KEY), required with
+	// AIProvider. It never leaves srv/ai, is redacted by redact.go's mirror
+	// and is never shown by any screen: the AI models page says only that one
+	// is configured.
+	AIAPIKey string
+	// AIBaseURL is the provider's base URL (AI_BASE_URL), an absolute https URL
+	// with no query or fragment, for an OpenAI-compatible endpoint. Empty means
+	// the provider's own address.
+	AIBaseURL string
+	// AIModels are the models the plan allows (AI_MODELS), in the order the
+	// operator wrote them, the first being the plan's default. At least one
+	// when AIProvider is set, none otherwise.
+	AIModels []string
+	// CommunicationsAIModel is COMMUNICATIONS_AI_MODEL as the operator wrote
+	// it, or empty. It has no default and no reader but identity's one-time
+	// import into identity.ai_task_models (T12): once the table has rows the
+	// variable is ignored. It is also the one allowed model while the provider
+	// itself comes from the renamed variables and AI_MODELS is unset.
 	CommunicationsAIModel string
-	// CommunicationsAIAPIKey is the provider credential
-	// (COMMUNICATIONS_AI_API_KEY, .NET's CommunicationsAiOptions.ApiKey,
-	// nullable). Blank leaves the feature unavailable, and per inventory
-	// §17.1 no chat client, network client or provider dependency is
-	// constructed at all in that state. Redacted by redact.go's mirror like
-	// every other secret in this file.
-	CommunicationsAIAPIKey string
+	// Renamed lists the renamed variables the operator still sets, for
+	// cmd/vantigo to name in one log line at boot. Empty when only the current
+	// names are in use.
+	Renamed []RenamedVariable
 }
 
 // IsDevelopment reports whether APP_ENV=development.
@@ -642,7 +645,7 @@ func Load(env map[string]string) (*Config, error) {
 	objectStorage(&p, env, c)
 	communicationsAttachments(&p, env, c)
 	communicationsRetention(&p, env, c)
-	communicationsAI(&p, env, c)
+	aiConfig(&p, env, c)
 
 	if len(p) > 0 {
 		return nil, fmt.Errorf("invalid configuration:\n  %s", strings.Join(p, "\n  "))
@@ -1180,24 +1183,146 @@ func communicationsRetention(p *problems, env map[string]string, c *Config) {
 	c.CommunicationsRetentionPoll = duration(p, env, "COMMUNICATIONS_RETENTION_POLL", time.Hour)
 }
 
-// communicationsAI loads CommunicationsAiOptions (communications inventory
-// §17.1, design doc §7): the on/off switch, the provider and model names,
-// and the API key. Nothing here refuses to start — an unset or half-set AI
-// configuration is the documented "unavailable" state the two AI operations
-// answer 503 for, not a misconfiguration, exactly as .NET simply declines to
-// register a chat client for it. Only COMMUNICATIONS_AI_ENABLED can be
-// rejected, and only for not being the strict "0"/"1" flag reads.
-func communicationsAI(p *problems, env map[string]string, c *Config) {
-	c.CommunicationsAIEnabled = flag(p, env, "COMMUNICATIONS_AI_ENABLED")
-	c.CommunicationsAIProvider = strings.TrimSpace(env["COMMUNICATIONS_AI_PROVIDER"])
-	if c.CommunicationsAIProvider == "" {
-		c.CommunicationsAIProvider = "openai"
+// RenamedVariable is an environment variable that was renamed. It is read as
+// an alias for its replacement for one release, unless the replacement is set
+// too, in which case it is ignored.
+type RenamedVariable struct {
+	Old string
+	New string
+	// Ignored is true when the replacement was set as well, or the old
+	// variable switched nothing on, so it changed nothing.
+	Ignored bool
+}
+
+// aiLegacyModel is the model COMMUNICATIONS_AI_MODEL defaulted to, and so the
+// one model an installation configured only through the renamed variables
+// allows when it never named one.
+const aiLegacyModel = "gpt-4o-mini"
+
+// aiModelMaxChars is the longest model identifier accepted, which is also
+// communications.ai_interactions.model's column width.
+const aiModelMaxChars = 150
+
+// aiAPIKeyMax bounds AI_API_KEY.
+const aiAPIKeyMax = 400
+
+// aiProviders are the providers srv/ai implements. A second one is one file
+// there and one word here.
+var aiProviders = []string{"openai"}
+
+// aiConfig loads the AI platform's instance configuration (AI as a platform
+// provider design T11): AI_PROVIDER, AI_API_KEY, AI_BASE_URL and AI_MODELS,
+// and the three COMMUNICATIONS_AI_* variables that were renamed to them, read
+// for one release as aliases. An unset provider is the ordinary unavailable
+// state and never refuses to start; a half-set AI_* configuration does. A
+// problem never echoes the key.
+//
+// The aliases keep the old rule exactly: COMMUNICATIONS_AI_ENABLED=1 turns the
+// provider on (COMMUNICATIONS_AI_PROVIDER, "openai" unless said, and any other
+// provider is unavailable rather than an error), COMMUNICATIONS_AI_API_KEY is
+// the key, and the one allowed model is COMMUNICATIONS_AI_MODEL (default
+// "gpt-4o-mini"). An AI_* variable that is set wins, and the alias set beside
+// it is named as ignored.
+func aiConfig(p *problems, env map[string]string, c *Config) {
+	get := func(name string) string { return strings.TrimSpace(env[name]) }
+	provider, key, baseURL, models := get("AI_PROVIDER"), get("AI_API_KEY"), get("AI_BASE_URL"), get("AI_MODELS")
+	c.CommunicationsAIModel = get("COMMUNICATIONS_AI_MODEL")
+
+	legacyEnabled := flag(p, env, "COMMUNICATIONS_AI_ENABLED")
+	fromAliases := provider == "" && legacyEnabled
+	keyFromAlias := fromAliases && key == ""
+	for _, v := range []struct {
+		old, now string
+		used     bool
+	}{
+		{"COMMUNICATIONS_AI_ENABLED", "AI_PROVIDER", fromAliases},
+		{"COMMUNICATIONS_AI_PROVIDER", "AI_PROVIDER", fromAliases},
+		{"COMMUNICATIONS_AI_API_KEY", "AI_API_KEY", keyFromAlias},
+	} {
+		if get(v.old) != "" {
+			c.Renamed = append(c.Renamed, RenamedVariable{Old: v.old, New: v.now, Ignored: !v.used})
+		}
 	}
-	c.CommunicationsAIModel = strings.TrimSpace(env["COMMUNICATIONS_AI_MODEL"])
-	if c.CommunicationsAIModel == "" {
-		c.CommunicationsAIModel = "gpt-4o-mini"
+	if fromAliases {
+		provider = get("COMMUNICATIONS_AI_PROVIDER")
+		if provider == "" {
+			provider = "openai"
+		}
+		if keyFromAlias {
+			key = get("COMMUNICATIONS_AI_API_KEY")
+		}
 	}
-	c.CommunicationsAIAPIKey = strings.TrimSpace(env["COMMUNICATIONS_AI_API_KEY"])
+
+	if provider == "" {
+		for _, v := range []struct{ name, value string }{{"AI_API_KEY", key}, {"AI_BASE_URL", baseURL}, {"AI_MODELS", models}} {
+			if v.value != "" {
+				p.add(v.name, "is set without AI_PROVIDER")
+			}
+		}
+		return
+	}
+	provider = strings.ToLower(provider)
+	if !slices.Contains(aiProviders, provider) {
+		if fromAliases {
+			// The old rule: a provider this build does not implement leaves
+			// the feature unavailable instead of refusing to start.
+			return
+		}
+		p.add("AI_PROVIDER", "must be one of: %s", strings.Join(aiProviders, ", "))
+		return
+	}
+
+	if fromAliases && key == "" {
+		// The old rule again: enabled without a key is unavailable, not an error.
+		return
+	}
+	switch {
+	case key == "":
+		p.add("AI_API_KEY", "is required with AI_PROVIDER")
+	case len(key) > aiAPIKeyMax || strings.ContainsFunc(key, func(r rune) bool { return r <= ' ' || r == 0x7f }):
+		p.add("AI_API_KEY", "must be at most %d bytes of printable characters with no space", aiAPIKeyMax)
+	}
+
+	if baseURL != "" {
+		u, err := url.Parse(baseURL)
+		switch {
+		case err != nil || u.Scheme != "https" || u.Host == "" || u.Opaque != "":
+			p.add("AI_BASE_URL", "must be an absolute https URL")
+		case u.User != nil || u.RawQuery != "" || u.ForceQuery || u.Fragment != "":
+			p.add("AI_BASE_URL", "must have no user, query or fragment")
+		default:
+			c.AIBaseURL = strings.TrimSuffix(baseURL, "/")
+		}
+	}
+
+	var list []string
+	switch {
+	case models != "":
+		for _, m := range strings.Split(models, ",") {
+			if m = strings.TrimSpace(m); m != "" {
+				list = append(list, m)
+			}
+		}
+	case fromAliases:
+		legacy := c.CommunicationsAIModel
+		if legacy == "" {
+			legacy = aiLegacyModel
+		}
+		list = []string{legacy}
+	}
+	if len(list) == 0 {
+		p.add("AI_MODELS", "must name at least one model when AI_PROVIDER is set, such as gpt-4o-mini,gpt-4o")
+	}
+	for i, m := range list {
+		switch {
+		case utf8.RuneCountInString(m) > aiModelMaxChars || strings.ContainsFunc(m, func(r rune) bool { return unicode.IsSpace(r) || unicode.IsControl(r) }):
+			p.add("AI_MODELS", "names a model longer than %d characters or holding a space or control character", aiModelMaxChars)
+		case slices.Contains(list[:i], m):
+			p.add("AI_MODELS", "names %q twice", m)
+		}
+	}
+
+	c.AIProvider, c.AIAPIKey, c.AIModels = provider, key, list
 }
 
 func invalidPathRune(r rune) bool {

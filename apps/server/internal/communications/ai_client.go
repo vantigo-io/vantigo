@@ -110,23 +110,14 @@ type aiChatClient struct {
 // option checks .NET's registration performs do not all pass. transport is
 // Deps.HTTPTransport: nil in production, a fake in tests.
 func newAIChatClient(cfg *config.Config, transport http.RoundTripper) *aiChatClient {
-	if cfg == nil || !cfg.CommunicationsAIEnabled {
+	if cfg == nil || !strings.EqualFold(cfg.AIProvider, aiProviderName) || cfg.AIAPIKey == "" || len(cfg.AIModels) == 0 {
 		return nil
 	}
-	if !strings.EqualFold(strings.TrimSpace(cfg.CommunicationsAIProvider), aiProviderName) {
-		return nil
-	}
-	apiKey := strings.TrimSpace(cfg.CommunicationsAIAPIKey)
-	if apiKey == "" {
-		return nil
-	}
+	apiKey := cfg.AIAPIKey
 	if transport == nil {
 		transport = http.DefaultTransport
 	}
-	model := strings.TrimSpace(cfg.CommunicationsAIModel)
-	if model == "" {
-		model = aiDefaultModel
-	}
+	model := cfg.AIModels[0]
 	return &aiChatClient{
 		model:  limitUTF16(model, aiModelMaxChars),
 		apiKey: apiKey,

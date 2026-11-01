@@ -42,7 +42,7 @@ func (c Config) redacted() redactedConfig {
 	if len(v.AppSecret) > 0 {
 		v.AppSecret = []byte(redactedText)
 	}
-	v.CommunicationsAIAPIKey = redact(v.CommunicationsAIAPIKey)
+	v.AIAPIKey = redact(v.AIAPIKey)
 	v.EnergySpotPriceServiceKey = redact(v.EnergySpotPriceServiceKey)
 	return v
 }
