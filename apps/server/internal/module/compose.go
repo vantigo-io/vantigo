@@ -16,6 +16,7 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/httpx"
 	"github.com/vantigo-io/vantigo/server/internal/openapi"
+	"github.com/vantigo-io/vantigo/server/internal/operations"
 )
 
 // Compose mounts each module at /api/v1/<name>/, serves the combined
@@ -435,6 +436,15 @@ func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.
 		deps.CalendarBusy = busyProvider.CalendarBusy(deps)
 	}
 
+	// The operations dispatcher (module boundaries rule 15) exists before any
+	// module mounts, so the assistant module can hold it, and is bound once the
+	// router it dispatches through exists, below. Only the module named
+	// assistant is given it; no other module's Deps carries it.
+	var ops *operations.Dispatcher
+	if names[AssistantModule] {
+		ops = operations.New()
+	}
+
 	outer := http.NewServeMux()
 	mounts := make([]moduleMount, 0, len(mods))
 	order := make([]string, 0, len(mods))
@@ -448,6 +458,10 @@ func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.
 		modDeps := deps
 		modDeps.Doc = doc
 		modDeps.Catalog = catalog
+		modDeps.Operations = nil
+		if mod.Name == AssistantModule {
+			modDeps.Operations = ops
+		}
 		handler, err := mod.Mount(modDeps)
 		if err != nil {
 			return nil, fmt.Errorf("module: mount %s: %w", mod.Name, err)
@@ -510,8 +524,22 @@ func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.
 	outer.HandleFunc("/api/", httpx.NotFound)
 	outer.HandleFunc("/api", httpx.NotFound)
 
-	return dispatchModules(mounts, outer), nil
+	api := dispatchModules(mounts, outer)
+	if ops != nil {
+		origin := ""
+		if deps.Config != nil { // only a test composes without one
+			origin = deps.Config.AppOrigin
+		}
+		if err := ops.Bind(body, catalog, deps.Access, api, operations.Options{Origin: origin}); err != nil {
+			return nil, fmt.Errorf("module: bind the operations dispatcher: %w", err)
+		}
+	}
+	return api, nil
 }
+
+// AssistantModule is the name of the one module that receives
+// Deps.Operations.
+const AssistantModule = "assistant"
 
 // soleProvider returns the one module among mods for which declares reports
 // true, nil when none does, and an error naming both when two do. what
