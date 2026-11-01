@@ -722,6 +722,29 @@ linters:
               desc: "vippstest is a test fake: only _test.go files may import it"
             - pkg: github.com/vantigo-io/vantigo/server/internal/entra/graphtest
               desc: "graphtest is a test fake: only _test.go files may import it"
+        operations:
+          # The Assistant's dispatcher calls any operation of the merged
+          # contract in-process, through the router, as the person (module
+          # boundaries rule 15). Only the assistant module holds it. Compose
+          # (internal/module) builds and binds it, internal/server composes the
+          # API, and the internal/modtest harness builds one over a harness's API
+          # for the tests; internal/integration is the test-only package that
+          # composes every real module (it has no production code); the package's
+          # own files are the rest. Nothing else may import it, so no module can
+          # reach the router this way.
+          files:
+            - "$all"
+            - "!**/internal/assistant/**"
+            - "!**/internal/module/**"
+            - "!**/internal/server/**"
+            - "!**/internal/modtest/**"
+            - "!**/internal/integration/**"
+            - "!**/internal/operations/**"
+          deny:
+            - pkg: github.com/vantigo-io/vantigo/server/internal/operations$
+              desc: "only internal/assistant, internal/module, internal/server and the test harnesses (internal/modtest, internal/integration) may import internal/operations"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/operations/
+              desc: "only internal/assistant, internal/module, internal/server and the test harnesses (internal/modtest, internal/integration) may import internal/operations"
         platform:
           # Every platform package, not only the two the modules mount
           # through: nothing below cmd/vantigo may know a business module

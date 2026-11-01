@@ -178,11 +178,9 @@ func readChatStream(r io.Reader, onDelta func(text string)) (ChatResponse, error
 	br := bufio.NewReaderSize(r, 64<<10)
 	for !done {
 		line, err := readLine(br)
-		if err != nil && !(errors.Is(err, io.EOF) && line != "") {
-			if errors.Is(err, io.EOF) {
-				return ChatResponse{}, aiDecodeError{}
-			}
-			if errors.Is(err, errLineTooLong) {
+		// A last line without its newline is read with io.EOF and still counts.
+		if err != nil && (line == "" || !errors.Is(err, io.EOF)) {
+			if errors.Is(err, io.EOF) || errors.Is(err, errLineTooLong) {
 				return ChatResponse{}, aiDecodeError{}
 			}
 			return ChatResponse{}, aiTransportError{err: err}

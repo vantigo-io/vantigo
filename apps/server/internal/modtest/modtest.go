@@ -62,6 +62,7 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/mail"
 	"github.com/vantigo-io/vantigo/server/internal/module"
 	"github.com/vantigo-io/vantigo/server/internal/openapi/contracttest"
+	"github.com/vantigo-io/vantigo/server/internal/operations"
 	"github.com/vantigo-io/vantigo/server/internal/peppol"
 	"github.com/vantigo-io/vantigo/server/internal/ratelimit"
 	"github.com/vantigo-io/vantigo/server/internal/secrets"
@@ -108,6 +109,14 @@ type Harness struct {
 	// WithoutAccounts' change) and the modules under test, from which
 	// Workers resolves the background workers as worker mode does.
 	mods []module.Module
+
+	// api is the composed API handler, grants identity's AssistantGrants:
+	// what Operations and AssistantContext are built over.
+	api    http.Handler
+	grants contracts.AssistantGrants
+
+	opsMu sync.Mutex
+	ops   *operations.Dispatcher
 
 	mu    sync.Mutex
 	clock time.Time
@@ -763,6 +772,8 @@ func New(t *testing.T, opts ...Option) *Harness {
 	if err != nil {
 		t.Fatalf("modtest: compose: %v", err)
 	}
+	h.api = api
+	h.grants = identityModule.AssistantGrants(h.deps)
 
 	assets := fstest.MapFS{
 		"index.html":      {Data: []byte(indexHTML)},

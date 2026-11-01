@@ -19,6 +19,7 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/config"
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/mail"
+	"github.com/vantigo-io/vantigo/server/internal/operations"
 	"github.com/vantigo-io/vantigo/server/internal/peppol"
 	"github.com/vantigo-io/vantigo/server/internal/ratelimit"
 	"github.com/vantigo-io/vantigo/server/internal/secrets"
@@ -283,6 +284,13 @@ type Deps struct {
 	// Workers does not, since a grant is issued while the person's own message
 	// request is being served.
 	AssistantGrants contracts.AssistantGrants
+	// Operations is the dispatcher that calls the merged contract's operations
+	// in-process, through the composed router, as the assistant principal
+	// (the Assistant design S2, module boundaries rule 15). Compose sets it
+	// only on the Deps of the module named "assistant"; it is nil for every
+	// other module, and for the assistant until Compose has composed the
+	// router, so it is for use while serving, never while mounting.
+	Operations *operations.Dispatcher
 	// AI is the platform's AI client (srv/ai): the one place the provider's
 	// key lives, called with a task key and never with a model. Compose builds
 	// it from Config (AI_PROVIDER and friends), HTTPTransport and AIModels, last
