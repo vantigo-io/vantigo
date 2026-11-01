@@ -96,9 +96,20 @@ Connection, Accounts, Outlook and mail), the tile gone from the app switcher, `/
 redirecting, the area guard admitting a holder of `entra:manage`, the new administration
 page *Configuration* with the two tiers. Frontend and documentation only.
 
-**Deliveries B to D (planned)** — outbound mail through Communications' channels with
-`contracts.OutboundMail` and the end of the system-mailbox fallback; Vantigo hosted mail
-as a fourth channel provider; AI models, a model per task, on one page.
+**Delivery B (done)** — outbound mail through Communications' channels with
+`contracts.OutboundMail` and the end of the system-mailbox fallback.
+
+**Delivery C (planned)** — Vantigo hosted mail as a fourth channel provider.
+
+**Delivery D (done, `feat/ai-platform`)** — AI as a platform provider with a model per task:
+the provider, the key and the allowed models are instance configuration (`AI_PROVIDER`,
+`AI_API_KEY`, `AI_BASE_URL`, `AI_MODELS`, the old `COMMUNICATIONS_AI_*` read as aliases for one
+more release) read into one client, `srv/ai`, that every module calls as `Deps.AI` with a task
+key; modules declare their AI tasks (`Module.AITasks`); identity keeps an Owner's model per task
+(`identity.ai_task_models`, imported once from `COMMUNICATIONS_AI_MODEL`) and the Owner chooses
+under **Workspace admin** › **Integrations** › **AI models**. Communications' AI draft and
+customer suggestion are the first two tasks and behave as before. A second provider, a fallback
+model per task and an Owner's own key stay out of scope.
 
 ## Customers
 
