@@ -20,6 +20,12 @@ export const useProjectDates = () => {
   };
 };
 
+/** A shift of whole days in words: "2 days later", "1 day earlier". */
+export const useDayShiftLabel = () => {
+  const { t } = useI18n("projects");
+  return (days: number) => (days >= 0 ? t("shiftDaysLater", { count: days }) : t("shiftDaysEarlier", { count: -days }));
+};
+
 /**
  * The calendar date `date` falls on where the browser is, as YYYY-MM-DD.
  * Not `toISOString()`, which is the UTC date: just after midnight in Oslo

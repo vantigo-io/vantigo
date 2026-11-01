@@ -155,8 +155,8 @@ rett på tidslinjen:
   flytte oppgaven en dag. **Enter** åpner den, slik et klikk gjør.
 
 Flyttingen lagres som enhver annen endring av oppgaven; har noen endret oppgaven i mellomtiden,
-går båndet tilbake og du får beskjeden *Oppgaven ble endret av noen andre. Last den inn på nytt
-og prøv igjen.* Når flyttingen endret fristen til en oppgave som andre avhenger av, spør
+går båndet tilbake, oppgavene leses inn på nytt og du får beskjeden *Oppgaven ble endret av noen
+andre. Den er lastet inn på nytt; prøv igjen.* Når flyttingen endret fristen til en oppgave som andre avhenger av, spør
 tidslinjen *Flytte N avhengige oppgaver D dager senere?* (eller *tidligere*): **Flytt avhengige
 oppgaver** flytter alle oppgavene etter den like mange dager, **La dem stå** lar dem ligge der de
 er. Ingenting etter den flyttes uten det svaret. En leser ser tidslinjen, men båndene står stille.
@@ -189,8 +189,12 @@ verktøy for å **Forskyve etterfølgende** oppgaver med et antall dager. **Sjek
 kommentar** og **Last inn flere**; du redigerer og sletter dine egne, en
 prosjektleder sletter alles. På tavlen tilbyr kortets meny **Flytt til Å gjøre**,
 **Flytt til Pågår** og **Flytt til Ferdig**; **Ferdig** stempler fullføringen, flytting
-tilbake fjerner den. En oppgave noen andre har lagret imens avvises med *Oppgaven ble
-endret av noen andre. Last den inn på nytt og prøv igjen.* Oppgaver følger prosjektets
+tilbake fjerner den. En oppgave noen andre har lagret imens avvises, og oppgavene leses
+inn på nytt. I skuffens tittel og detaljer, som beholder det du har skrevet, står det
+*Oppgaven ble endret av noen andre. Last den inn på nytt og prøv igjen.* — lukk og åpne
+oppgaven igjen; alle andre steder (menyen på et kort på tavlen, en deloppgave, **Mine
+oppgaver**, tidslinjen) står det *Oppgaven ble endret av noen andre. Den er lastet inn på
+nytt; prøv igjen.* Oppgaver følger prosjektets
 roller, ikke en rettighet, og låses aldri av prosjektets status — se
 [Tasks](/en/reference/projects/#tasks) og
 [Delivery milestones](/en/reference/projects/#delivery-milestones).

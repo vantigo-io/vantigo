@@ -14,7 +14,7 @@ import { ApiValidationError } from "../api/request";
 import { projectTasksQueryOptions, type Task } from "../api/tasks";
 import { TaskStatusBadge } from "../components/task-status-badge";
 import "../i18n";
-import { useProjectDates } from "../lib/dates";
+import { useDayShiftLabel, useProjectDates } from "../lib/dates";
 
 interface TaskDependenciesProps {
   projectId: number;
@@ -24,6 +24,7 @@ interface TaskDependenciesProps {
 
 export const TaskDependencies = ({ projectId, task, canContribute }: TaskDependenciesProps) => {
   const { t } = useI18n("projects");
+  const shiftLabel = useDayShiftLabel();
   const dates = useProjectDates();
   const queryClient = useQueryClient();
 
@@ -90,11 +91,11 @@ export const TaskDependencies = ({ projectId, task, canContribute }: TaskDepende
 
   const rescheduleMutation = useMutation({
     mutationFn: (days: number) => rescheduleDownstreamTasks(task.id, { daysDelta: days }),
-    onSuccess: (res) => {
+    onSuccess: (res, days) => {
       queryClient.invalidateQueries({ queryKey: ["projects", "tasks"] });
       notifications.show({
         color: "teal",
-        title: t("rescheduleDownstreamSuccess", { count: res.shiftedTasksCount, days: shiftDays }),
+        title: t("rescheduleDownstreamSuccess", { count: res.shiftedTasksCount, shift: shiftLabel(days) }),
         message: "",
       });
     },

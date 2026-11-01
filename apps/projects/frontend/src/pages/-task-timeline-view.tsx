@@ -18,16 +18,17 @@ import { useI18n } from "@vantigo/frontend-shell";
 import { type KeyboardEvent, type PointerEvent, useEffect, useMemo, useRef, useState } from "react";
 import { type DeliveryMilestone, deliveryMilestonesQueryOptions } from "../api/delivery-milestones";
 import { projectDependenciesQueryOptions, rescheduleDownstreamTasks, type TaskDependency } from "../api/dependencies";
-import type { Task } from "../api/tasks";
+import { projectTasksQueryOptions, type Task } from "../api/tasks";
 import { DeliveryMilestoneBadge } from "../components/delivery-milestone-badge";
 import { TaskStatusBadge } from "../components/task-status-badge";
 import "../i18n";
-import { useProjectDates } from "../lib/dates";
+import { useDayShiftLabel, useProjectDates } from "../lib/dates";
 import {
   type DragMode,
+  datedDownstreamCount,
   dateToUtcDays,
-  downstreamTaskIds,
   dueDelta,
+  flattenTree,
   headerSegments,
   isoWeek,
   isTimelineZoom,
@@ -135,6 +136,7 @@ export const TaskTimelineView = ({ projectId, tasks, canContribute, onOpen }: Ta
   const dates = useProjectDates();
   const queryClient = useQueryClient();
   const save = useTaskSave();
+  const shiftLabel = useDayShiftLabel();
 
   const dependenciesQuery = useQuery(projectDependenciesQueryOptions(projectId));
   const milestonesQuery = useQuery(deliveryMilestonesQueryOptions(projectId));
@@ -145,7 +147,8 @@ export const TaskTimelineView = ({ projectId, tasks, canContribute, onOpen }: Ta
   const [zoom, setZoom] = useState<TimelineZoom>(readZoom);
   const dayWidth = ZOOM_DAY_WIDTH[zoom];
   const [drag, setDrag] = useState<DragState | null>(null);
-  const [pendingMove, setPendingMove] = useState<PendingMove | null>(null);
+  // One entry per task whose move is saved or saving but not yet in the list.
+  const [pendingMoves, setPendingMoves] = useState<ReadonlyMap<number, PendingMove>>(() => new Map());
   const [shiftPrompt, setShiftPrompt] = useState<ShiftPrompt | null>(null);
   // The pointer handlers read the drag synchronously, between renders.
   const dragRef = useRef<DragState | null>(null);
@@ -158,7 +161,7 @@ export const TaskTimelineView = ({ projectId, tasks, canContribute, onOpen }: Ta
       queryClient.invalidateQueries({ queryKey: ["projects", "tasks"] });
       notifications.show({
         color: "teal",
-        title: t("rescheduleDownstreamSuccess", { count: result.shiftedTasksCount, days }),
+        title: t("rescheduleDownstreamSuccess", { count: result.shiftedTasksCount, shift: shiftLabel(days) }),
         message: "",
       });
     },
@@ -197,12 +200,19 @@ export const TaskTimelineView = ({ projectId, tasks, canContribute, onOpen }: Ta
    * list still holds the revision the move was made from — so a dropped bar
    * stays where it was dropped instead of jumping back until the refetch.
    */
-  const shownDates = (task: Task): TaskDates =>
-    pendingMove && pendingMove.taskId === task.id && pendingMove.revision === task.revision ? pendingMove : task;
+  const livePendingMove = (task: Task): PendingMove | undefined => {
+    const pending = pendingMoves.get(task.id);
+    return pending && pending.revision === task.revision ? pending : undefined;
+  };
 
-  /** A task waiting on its own save cannot be moved again: the next save would carry a stale revision. */
-  const isBusy = (task: Task) =>
-    save.isPending || Boolean(pendingMove && pendingMove.taskId === task.id && pendingMove.revision === task.revision);
+  const shownDates = (task: Task): TaskDates => livePendingMove(task) ?? task;
+
+  /**
+   * A task waiting on its own save cannot be moved again: the next save would
+   * carry a stale revision. Nor can anything while a save or a downstream
+   * shift is under way, since the shift moves tasks the list has not reread.
+   */
+  const isBusy = (task: Task) => save.isPending || shift.isPending || livePendingMove(task) !== undefined;
 
   const taskIndexMap = useMemo(() => {
     const map = new Map<number, { task: Task; index: number }>();
@@ -348,21 +358,36 @@ export const TaskTimelineView = ({ projectId, tasks, canContribute, onOpen }: Ta
     const dueDate = next.dueDate ?? null;
     if (startDate === (task.startDate ?? null) && dueDate === (task.dueDate ?? null)) return;
     const days = dueDelta(task, next);
-    const count = downstreamTaskIds(task.id, dependencies).size;
-    setPendingMove({ taskId: task.id, revision: task.revision, startDate, dueDate });
+    // Counted against the whole project's tasks, not just the filtered rows,
+    // the way the server counts them: a task without dates is not shifted.
+    const allTasks = queryClient.getQueryData(projectTasksQueryOptions(projectId).queryKey);
+    const count = datedDownstreamCount(task.id, dependencies, allTasks ? flattenTree(allTasks) : flattenedTasks);
+    setPendingMoves((moves) => {
+      // Entries the list has already caught up with go as a new one comes in.
+      const kept = new Map([...moves].filter(([id, move]) => taskIndexMap.get(id)?.task.revision === move.revision));
+      kept.set(task.id, { taskId: task.id, revision: task.revision, startDate, dueDate });
+      return kept;
+    });
     save.mutate(
       { task, changes: { startDate, dueDate } },
       {
         onSuccess: () => {
           if (days !== 0 && count > 0) setShiftPrompt({ taskId: task.id, count, days });
         },
-        onError: () => setPendingMove(null),
+        onError: () =>
+          setPendingMoves((moves) => {
+            const kept = new Map(moves);
+            kept.delete(task.id);
+            return kept;
+          }),
       },
     );
   };
 
   const onBarPointerDown = (event: PointerEvent<HTMLDivElement>, task: Task) => {
     if (!canContribute || event.button !== 0 || isBusy(task)) return;
+    // A flag left by an Escape whose click never came must not eat this one.
+    suppressClickRef.current = false;
     const edge = (event.target as HTMLElement).dataset.edge;
     const mode: DragMode = edge === "start" || edge === "end" ? edge : "move";
     // jsdom, and some old browsers, have no pointer capture; the drag still
@@ -399,12 +424,16 @@ export const TaskTimelineView = ({ projectId, tasks, canContribute, onOpen }: Ta
     if (!current || current.pointerId !== event.pointerId) return;
     dragRef.current = null;
     setDrag(null);
-    if (current.moved) suppressClickRef.current = true;
+    // A press that never passed the threshold is a click, whatever a narrow
+    // scale rounded it to: it opens the task and moves nothing.
+    if (!current.moved) return;
+    suppressClickRef.current = true;
     commitMove(task, moveTaskDates(task, current.mode, current.days));
   };
 
   const onBarPointerCancel = () => {
     dragRef.current = null;
+    suppressClickRef.current = false;
     setDrag(null);
   };
 
@@ -429,9 +458,6 @@ export const TaskTimelineView = ({ projectId, tasks, canContribute, onOpen }: Ta
     if (isBusy(task)) return;
     commitMove(task, moveTaskDates(task, "move", event.key === "ArrowRight" ? 1 : -1));
   };
-
-  const shiftLabel = (days: number) =>
-    days > 0 ? t("timelineShiftLater", { count: days }) : t("timelineShiftEarlier", { count: -days });
 
   return (
     <Stack gap="sm">

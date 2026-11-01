@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { TaskDependency } from "../api/dependencies";
 import {
+  datedDownstreamCount,
   dateToUtcDays,
   downstreamTaskIds,
   dueDelta,
@@ -77,6 +78,17 @@ describe("downstreamTaskIds", () => {
     const deps = [link(1, 1, 2), link(2, 1, 3), link(3, 2, 4), link(4, 3, 4), link(5, 9, 1)];
     expect([...downstreamTaskIds(1, deps)].sort()).toEqual([2, 3, 4]);
     expect(downstreamTaskIds(4, deps).size).toBe(0);
+  });
+
+  it("counts only the reachable tasks with a date to shift, as the server shifts them", () => {
+    const deps = [link(1, 1, 2), link(2, 2, 3), link(3, 1, 4)];
+    const tasks = [
+      { id: 2, dueDate: "2026-11-06" },
+      { id: 3, startDate: null, dueDate: null }, // reached, but nothing to move
+      { id: 4, startDate: "2026-11-09" },
+    ];
+    expect(datedDownstreamCount(1, deps, tasks)).toBe(2);
+    expect(datedDownstreamCount(1, deps, [])).toBe(0);
   });
 });
 

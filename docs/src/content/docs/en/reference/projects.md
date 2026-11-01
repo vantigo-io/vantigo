@@ -1342,11 +1342,15 @@ A dependency states that a predecessor task must finish before its successor tas
   its left edge (`startDate`) by whole days, or presses Alt+Left/Right on a focused bar to move
   both by a day. The due date stops at the start date, and a task with one date moves that
   date. The drop is the ordinary full-replace `PUT /api/v1/projects/tasks/{taskId}` carrying
-  the task's `revision`, so a stale one answers **409 Conflict** as any task edit does; a drop
-  that changes no date sends nothing. Without `canContribute` the bars do not move, and the
+  the task's `revision`, so a stale one answers **409 Conflict** as any task edit does, after
+  which the frontend rereads the project's tasks and the bar can be moved again; a drop
+  that changes no date, or a press that never travels past 3 pixels, sends nothing. Each
+  saved move holds its bar in place, and the bar still, until the list carries a newer
+  revision of that task; while a save or a downstream shift is in flight no bar moves. Without `canContribute` the bars do not move, and the
   server refuses the same `PUT` with **403 Forbidden** regardless.
 - **Downstream shift after a move (M8):** when a move changed the `dueDate` of a task with
-  successors, the frontend asks whether to shift them by the same number of days and, only on
+  successors, the frontend asks whether to shift them by the same number of days — counting,
+  as the server does, only the reachable tasks that have a date — and, only on
   **Shift dependent tasks**, calls `reschedule-downstream` with that `daysDelta`. A move of the
   start date alone never asks.
 - **Zoom:** Day, Week and Month scales (40, 16 and 5 pixels a day) label the header with day

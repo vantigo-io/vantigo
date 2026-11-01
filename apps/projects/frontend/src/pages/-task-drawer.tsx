@@ -133,7 +133,7 @@ const TaskHeader = ({
   // The title being typed, and the revision the task stood at when the caller
   // started typing it — the same reason the details form holds one.
   const [draft, setDraft] = useState<{ title: string; revision: number } | null>(null);
-  const save = useTaskSave();
+  const save = useTaskSave(undefined, { holdsRevision: true });
 
   const remove = useMutation({
     mutationFn: () => deleteTask(task.id),
@@ -261,7 +261,7 @@ const TaskDetails = ({ projectId, task, canContribute }: { projectId: number; ta
   // revision with these older fields would quietly overwrite whatever somebody
   // else changed meanwhile instead of being refused with a 409.
   const [seededRevision, setSeededRevision] = useState(task.revision);
-  const save = useTaskSave(form.setErrors);
+  const save = useTaskSave(form.setErrors, { holdsRevision: true });
 
   if (!canContribute) {
     return (
