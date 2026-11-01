@@ -361,7 +361,11 @@ the allocations and their terms — a customer contract's notice, handover and
 non-compete — and the requests, finds a request's candidates and fills it, reads the
 planners' notes and the people's wishes, and keeps the Planning settings. A
 planner also needs **View the staff directory** from Staff, since the plan shows only
-the people Staff answers them. **Manage identity**
+the people Staff answers them. In Calendar, **Use Calendar** gives the app, **See
+colleagues' calendars** a colleague's busy and free times, and **Manage Calendar
+settings**, marked sensitive and in the Administration category, the channel invitations to
+people outside the company are sent from, since it decides whose address customers' mail
+comes from ([where invitations are sent from](/en/user/calendar/#where-invitations-are-sent-from)). **Manage identity**
 (`identity:manage`) is the one permission of the identity module itself.
 
 ### Assignments
