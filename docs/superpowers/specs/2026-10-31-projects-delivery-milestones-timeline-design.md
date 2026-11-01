@@ -169,8 +169,11 @@ departs from the decisions above:
   its tasks. The progress figures are derived; the status is the team's call.
 - **M3:** a new subtask that names no delivery milestone takes its parent's. Later edits
   never re-inherit.
-- **M7:** cycles are refused under the project's task-order lock; there is no depth limit.
-  Template dependencies are checked for cycles and duplicates when the template is saved.
+- **M7:** cycles are refused under the project's task-order lock. Template dependencies are
+  checked for cycles and duplicates when the template is saved. *Follow-up (delivered):* the
+  longest chain of linked tasks through a new link is capped at 100 links, decided under the
+  same lock (400 `Dependency chain too long` on `successorTaskId`), and templates are held to
+  the same cap.
 - **M8 / Delivery B:** #202 shipped the timeline read-only; dates moved through the task form,
   and the downstream shift was the explicit **Reschedule downstream** action in the task
   drawer, bounded to ±3650 days and leaving tasks without dates alone. A follow-up delivered
@@ -180,9 +183,23 @@ departs from the decisions above:
   the due date of a task with successors asks *Shift N dependent tasks …?* and calls the same
   reschedule-downstream endpoint only on **Shift dependent tasks** — M8's opt-in, as a prompt
   after the move rather than a toggle before it. The drawer's action stays.
-- **Delivery C:** templates carry milestones, tasks, subtasks and dependencies but not
-  checklists. Templates are edited on their own screen (Projects → **Project templates**); writing
-  one needs `projects:create`.
+- **Delivery C:** templates carry milestones, tasks, subtasks and dependencies. Templates are
+  edited on their own screen (Projects → **Project templates**); writing one needs
+  `projects:create`.
 
-Later: checklists in templates, and "save this project as a template". (Drag and zoom on
-the timeline, once on this list, are delivered.)
+Follow-up, delivered after #202:
+
+- **Checklists in templates.** Each template task and subtask carries an optional `checklist`
+  (item texts in order, each 1–500 characters, at most 100 per task); apply creates them unticked
+  in its transaction. The blueprint is JSON, so no migration.
+- **Save a project as a template** (`POST /api/v1/projects/{id}/save-as-template`, needs
+  `projects:create` and sight of the project). It snapshots milestones, top-level tasks with
+  subtasks and checklists, milestone links and the dependencies between top-level tasks
+  (dependencies touching a subtask are skipped), anchoring offsets on the project's start date
+  (earlier dates clamp to 0) or else the earliest copied date. It records nothing on the timeline
+  and refuses, with the template's field errors, a plan that breaks a template rule.
+- The template revision conflict names the template; the catalog page lost its read-only branch,
+  which the route's projects:create guard made unreachable.
+
+Nothing from the original later-list is left; drag and zoom, checklists in templates, saving
+a project as a template and the dependency chain cap are all delivered.

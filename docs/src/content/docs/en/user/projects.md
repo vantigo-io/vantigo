@@ -138,7 +138,9 @@ their parent — as a **Board** of three columns where subtasks are cards of the
 own, or as an interactive **Timeline** mapping task bars across calendar days beside
 milestone markers and finish-to-start dependency arrows. Tasks linked to a delivery milestone display a diamond milestone tag. Any scheduling conflict where a predecessor finishes after a successor starts is flagged with a warning indicator. The choice is remembered
 in your browser. Members and managers see **Use template** and **Add task**;
-a viewer gets the same views without the actions.
+a viewer gets the same views without the actions. Whoever may create projects
+(`projects:create`) also sees **Save as template**, on any project they can see —
+see [Save a project as a template](#save-a-project-as-a-template).
 
 The timeline's scale switch — **Day**, **Week** or **Month** — sets how much of the calendar
 fits on screen; the header numbers the days, the ISO weeks (*W45*) or names the months, and
@@ -163,8 +165,9 @@ answer. A viewer sees the timeline, but its bars do not move.
 
 **Use template** opens **Use project template**, allowing you to pick a blueprint (e.g. Client Onboarding)
 and a **Kickoff date (T+0)**, which defaults to the project's start date or else today. Applying the
-template instantiates the blueprint's delivery milestones, tasks, subtasks, and task dependencies with
-relative calendar dates calculated from the kickoff date, beside whatever the project already has. With no
+template instantiates the blueprint's delivery milestones, tasks, subtasks, their checklists (every item
+unticked), and task dependencies with relative calendar dates calculated from the kickoff date, beside
+whatever the project already has. With no
 templates yet the dialog says *No templates available yet.*, and to someone who may create templates it
 adds a link, **Create one under Project templates** — see
 [Build project templates](#build-project-templates). A template that breaks one of the
@@ -215,28 +218,31 @@ form on it.
 **Use template** applies. It is offered to whoever may create projects
 (`projects:access` and `projects:create`); everyone else in the app still sees every
 template in **Use template**. The table lists each template's **Name** and
-description, and how many **Delivery milestones**, **Tasks**, **Subtasks** and
-**Dependencies** it holds. With none yet the page says **No project templates yet**.
+description, and how many **Delivery milestones**, **Tasks**, **Subtasks**,
+**Checklist items** and **Dependencies** it holds. With none yet the page says **No project templates yet**.
 
 **New template** opens **New project template**:
 
 1. Give it a **Name** (required, at most 200 characters) and, if you like, a
    **Description** (at most 2000 characters).
-2. Under **Delivery milestones**, **Add milestone** for each one: a **Name** and a
+2. Under **Delivery milestones**, **Add milestone** for each one: a **Name**, a
    **Target day** — days from the kickoff, so `T+0` is the kickoff day and `T+14` two
-   weeks later.
+   weeks later — and, if you like, a **Description** (at most 2000 characters).
 3. Under **Tasks**, **Add task** for each one: a **Title**, an optional
    **Description**, **Start day** and **Due day** (not before the start day),
    **Estimate (hours)** (above 0 when set) and the **Delivery milestone** it belongs
-   to. **Add subtask** nests a subtask under it with the same fields, less the
-   milestone.
+   to. Under **Checklist**, **Add checklist item** adds a line for each small step
+   (1–500 characters, at most 100 per task); applying the template creates them in
+   this order, unticked. **Add subtask** nests a subtask under it with the same
+   fields, its own checklist included, less the milestone.
 4. Under **Dependencies**, **Add dependency** (once there are two tasks) and pick the
    **Predecessor** and the **Successor**, which waits for it. Only top-level tasks
    are linked, a task cannot depend on itself, a pair is listed once, and the links
    may not form a loop.
 5. **Create** saves it.
 
-The arrows on each row move it up or down and the bin removes it. Removing a
+The arrows on each row — a checklist item's too — move it up or down and the bin
+removes it. Removing a
 milestone unlinks its tasks; removing a task takes its subtasks and its
 dependencies with it. A field the template's rules refuse is marked where it is,
 before anything is sent.
@@ -248,6 +254,31 @@ template somebody else saved meanwhile is refused with *The template was changed
 someone else. Open it again and redo your changes.*; the editor closes, and opening
 the template again shows what was saved. See
 [Project templates and blueprints](/en/reference/projects/#project-templates-and-blueprints).
+
+## Save a project as a template
+
+A project that went well can start the next one. On the project's **Tasks** tab,
+**Save as template** opens **Save project as template** (it needs `projects:create`,
+the permission the template catalog asks; seeing the project is enough otherwise):
+
+1. The **Name** starts as the project's name; change it if you like (required, at
+   most 200 characters), and add a **Description** (at most 2000 characters).
+2. **Save template** stores it. The notification *Template name created* links to
+   **Open Project templates**, where the new template can be edited like any other.
+
+The template gets the project's delivery milestones in their planned order, its
+top-level tasks with their subtasks, descriptions, estimates and checklists, each
+task's delivery milestone, and the dependencies between top-level tasks. A
+dependency to or from a subtask is left out, since templates link top-level tasks
+only. Assignees, statuses, comments, logged time and ticks are not copied.
+
+Dates become days from the project's **start date**: a date before the start
+becomes `T+0`. A project without a start date counts from its earliest milestone or
+task date instead, and a milestone without a target date gets `T+0`. A plan that
+breaks a template rule — a checklist of more than 100 items, say — is refused with
+*The project's plan breaks a template rule*, followed by the rule, and nothing is
+saved. Saving does not change the project or its timeline. See
+[Save a project as a template](/en/reference/projects/#save-a-project-as-a-template).
 
 ## Set up billing lines
 
