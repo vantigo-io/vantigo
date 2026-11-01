@@ -11,11 +11,11 @@ import (
 )
 
 // TestProjectsTaskDependencies_AppliesAndIsIdempotent proves
-// 00097_projects_task_dependencies.sql applies, rolls back and re-applies cleanly,
+// 00100_projects_task_dependencies.sql applies, rolls back and re-applies cleanly,
 // creating the task_dependencies table.
 func TestProjectsTaskDependencies_AppliesAndIsIdempotent(t *testing.T) {
 	url := testdb.URL(t)
-	applyUpDownUp(t, url, 97) // 00097_projects_task_dependencies.sql
+	applyUpDownUp(t, url, 100) // 00100_projects_task_dependencies.sql
 
 	ctx := context.Background()
 	pool, err := db.Open(ctx, url)

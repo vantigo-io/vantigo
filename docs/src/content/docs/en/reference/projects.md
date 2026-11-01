@@ -6,9 +6,9 @@ sources:
   - apps/projects/frontend
   - openapi/projects.yaml
   - apps/server/internal/openapi/specs/projects.yaml
-  - apps/server/internal/db/migrations/00096_projects_delivery_milestones.sql
-  - apps/server/internal/db/migrations/00097_projects_task_dependencies.sql
-  - apps/server/internal/db/migrations/00098_projects_templates.sql
+  - apps/server/internal/db/migrations/00099_projects_delivery_milestones.sql
+  - apps/server/internal/db/migrations/00100_projects_task_dependencies.sql
+  - apps/server/internal/db/migrations/00101_projects_templates.sql
 ---
 The Projects module is where work is organised: a project is a named, coded piece of
 work for one customer (or none, which means internal), the people who may act on it,
