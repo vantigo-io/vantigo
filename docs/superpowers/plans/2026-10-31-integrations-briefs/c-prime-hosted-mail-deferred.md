@@ -1,4 +1,6 @@
-# Brief C — Vantigo hosted mail
+> **Deferred (the owner, 2026-11-01).** Do not start this brief. The hosted mail service needs its own research and design before anything here is built; see the spec's T8 banner and delivery C′. What ships meanwhile is [`c-hosted-mail-placeholder.md`](c-hosted-mail-placeholder.md), the greyed entry. This text is kept as the design to pick up; when it is, the brief must be re-read against the spec and against what B and the placeholder landed.
+
+# Brief C′ — Vantigo hosted mail (deferred)
 
 You are implementing delivery **C** of the design
 `docs/superpowers/specs/2026-10-31-integrations-and-configuration-tiers-design.md`

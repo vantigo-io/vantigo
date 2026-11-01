@@ -28,6 +28,10 @@ Four things follow, and this design covers them all:
    disabled, reached through a shared service of ours in the pattern of
    `vantigo-spotprices`: Mailgun behind it, consumption tracked, test tenants held to a
    list of addresses. The same service is a mail driver for the system tier.
+   **Deferred on 2026-11-01** (the owner's answer 7): the service needs its own
+   research before it is built. Until then the provider is *shown* in the channel form,
+   greyed and marked as not yet available, and nothing behind it exists (T8–T10 stand
+   as the design to pick up).
 4. **AI as a platform provider with a model per task.** The key and the allowed models
    come from the environment and are shown read-only; each module declares the AI
    tasks it performs, and the Owner picks a model per task on one page.
@@ -286,7 +290,7 @@ What an Owner may send to customers from, after this design:
 | Provider | Key | Credential | Where it is set up |
 | --- | --- | --- | --- |
 | Microsoft 365 mailbox | `entra` | the tenant's admin consent (M10) | Entra › Outlook and mail, then a channel |
-| Vantigo hosted mail | `hosted` | the instance's service key (T9) — Vantigo's | a channel; the domain and the test list are facts the channel shows |
+| Vantigo hosted mail | `hosted` | the instance's service key (T9) — Vantigo's | a channel; the domain and the test list are facts the channel shows. **Deferred:** shown greyed in the channel form with "Not yet available", not offered, until T8–T10 are built |
 | SMTP credentials | `smtp` | entered in the channel form, sealed in the database | a channel |
 | Disabled | — | — | the consumer's setting (T6), or no channel |
 
@@ -295,6 +299,13 @@ Google Workspace adds a fifth key later through the same `ChannelMailbox` slot.
 Invoices and Calendar radios, and the Entra *Outlook and mail* tab all read one truth.
 
 ### T8 — Vantigo hosted mail: the channel provider
+
+> **T8, T9 and T10 are deferred** (the owner, 2026-11-01): building a mail service of
+> our own needs a research pass of its own — Mailgun's EU region and DNS automation for
+> per-tenant domains, where the service runs, the allowances, how events reach a
+> tenant — before any of this is built. What ships meanwhile is only the greyed entry
+> in the channel form (delivery C below). The three decisions stay as written, as the
+> design to pick up.
 
 A third provider in `srv/communications`, present when `MAIL_SERVICE_URL` is set
 (T9), implemented on the platform client of T9 the way the Microsoft 365 provider is
@@ -527,6 +538,9 @@ The map, by delivery (A–D below), in both languages where the section is bilin
    per module and per task within a module.
 6. **The hosted service**: Mailgun behind a middleware of ours, consumption tracked,
    test tenants held to listed addresses.
+7. **(2026-11-01) The hosted service is deferred.** It needs thorough thought before it
+   is built. For now the channel form shows *Vantigo hosted mail* greyed with "Not yet
+   available"; nothing is built behind it, and no `MAIL_SERVICE_*` setting exists.
 
 ## Deliveries
 
@@ -543,18 +557,27 @@ schema it touches, numbers assigned when the first task lands.
   fails with the sentence), Invoices and Calendar sending from a chosen channel and
   refusing when disabled or the channel is gone, the slot's errors mapped to each
   consumer's words.
-- **C — Vantigo hosted mail** (`feat/hosted-mail`): T8, T9, T10's consumer side.
-  Lands with or after the service's first release and the `vantigo-infra` change.
-  Tests against a fake service (the `graphtest` pattern): test-mode refusal,
-  idempotent repeat, 429 with `Retry-After`, the events webhook's signature and
-  window, `MAIL_DRIVER=vantigo` for an invitation.
+- **C — the greyed entry** (`feat/hosted-mail-placeholder`): frontend only, after B.
+  The channel form's provider choice shows *Vantigo hosted mail* (nb *Vantigo-driftet
+  e-post*) disabled, with the hint "Not yet available" (nb "Ikke tilgjengelig ennå"),
+  below Microsoft 365 and SMTP; nothing is sent to the API, no provider key exists
+  server-side, and `GET /channel-providers` is unchanged. Docs: `U/communications.md`
+  *Set up a channel* names the entry and says it is not yet offered, en and nb.
+  Tests: the entry renders disabled and cannot be chosen.
+- **C′ — Vantigo hosted mail, deferred**: T8, T9, T10's consumer side, after the
+  service has had its own research and design and its first release, with the
+  `vantigo-infra` change. Tests against a fake service (the `graphtest` pattern):
+  test-mode refusal, idempotent repeat, 429 with `Retry-After`, the events webhook's
+  signature and window, `MAIL_DRIVER=vantigo` for an invitation. C′ replaces C's
+  greyed entry with the real provider.
 - **D — AI models** (`feat/ai-platform`): T11, T12, T13. Migration:
   `identity.ai_task_models`. Tests: the import, a disallowed model refused, the
   resolver's three-step fallback, Communications' two operations unchanged on the wire
   through `Deps.AI`, the page hidden without `AI_PROVIDER`.
 
-A and B are independent and may be worked in parallel; C depends on B; D on nothing
-but A's section. Each delivery's plan lists T15's pages as its own step.
+A and B are independent and may be worked in parallel; C depends on B (it edits the
+same channel form); C′ on C and on the service; D on nothing but A's section. Each
+delivery's plan lists T15's pages as its own step.
 
 ## Testing
 
