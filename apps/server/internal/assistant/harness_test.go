@@ -137,6 +137,10 @@ type detail struct {
 		ID    string `json:"id"`
 		State string `json:"state"`
 	} `json:"activeRun"`
+	LastRun *struct {
+		State     string `json:"state"`
+		ErrorCode string `json:"errorCode"`
+	} `json:"lastRun"`
 	Actions []struct {
 		OperationID string `json:"operationId"`
 		Mode        string `json:"mode"`

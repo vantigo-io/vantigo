@@ -299,7 +299,10 @@ type AssistantConversationDetail struct {
 	Actions      []AssistantAction     `json:"actions"`
 	ActiveRun    *AssistantRun         `json:"activeRun,omitempty"`
 	Conversation AssistantConversation `json:"conversation"`
-	Messages     []AssistantMessage    `json:"messages"`
+
+	// LastRun The latest run of the conversation when it is over, so a client that polled or reloaded can tell a run that failed or was stopped from one that finished.
+	LastRun  *AssistantRun      `json:"lastRun,omitempty"`
+	Messages []AssistantMessage `json:"messages"`
 }
 
 // AssistantConversationList defines model for AssistantConversationList.

@@ -227,6 +227,10 @@ func TestRun_AFailingModelEndsInAnErrorEvent(t *testing.T) {
 	if state, code := modtest.One[string](t, h, `SELECT state FROM assistant.runs`), modtest.One[string](t, h, `SELECT error_code FROM assistant.runs`); state != "failed" || code != "ai_failed" {
 		t.Errorf("run = %s %s, want failed ai_failed", state, code)
 	}
+	// A client that reloads finds out how it ended.
+	if d := getConversation(t, c, conv.ID); d.ActiveRun != nil || d.LastRun == nil || d.LastRun.State != "failed" || d.LastRun.ErrorCode != "ai_failed" {
+		t.Errorf("lastRun = %+v, want failed ai_failed", d.LastRun)
+	}
 	// And the person can try again.
 	if r := ask(t, c, conv.ID, "Again"); r.Status != http.StatusOK {
 		t.Errorf("after a failure: %d", r.Status)
