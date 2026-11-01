@@ -11,7 +11,8 @@ sources:
 Administrasjon av arbeidsområdet er der en **Eier** styrer hvem som kan bruke
 Vantigo og hva de kan gjøre. Åpne avatar-menyen øverst til høyre og velg
 **Administrer arbeidsområde**; sidemenyen har **Oversikt**, **Brukere**,
-**Invitasjoner** og **Roller og tilgang**, og, under **Integrasjoner**, **Microsoft Entra ID**.
+**Invitasjoner** og **Roller og tilgang**, og, under **Integrasjoner**, **Microsoft Entra ID**
+og, når Vantigo har satt opp KI for installasjonen, **KI-modeller**.
 
 Alt her krever eierrollen, med ett unntak: den en eier har delegert
 rolleadministrasjon til, ser bare **Roller og tilgang**, både i avatar-menyen og i
@@ -421,24 +422,62 @@ styrer grupper, får medlemmene de tilknyttede rollene automatisk; se
 ## Integrasjoner
 
 **Integrasjoner** er den andre seksjonen i sidemenyen til **Administrer arbeidsområde**:
-stedet selskapets tilkoblinger til systemer andre steder styres. I dag har den ett punkt,
-**Microsoft Entra ID**, som kobler Vantigo til selskapets Microsoft Entra ID-leietaker;
-siden har fire faner — **Status**, **Tilkobling**, **Kontoer** og **Outlook og e-post** —
-beskrevet i [Microsoft Entra ID](/nb/user/entra/#hvor-den-er-og-de-fire-fanene).
-Seksjonen er der bare mens modulen Microsoft Entra ID er på i denne installasjonen, og
-bare for den som har `entra:manage`; en eier har alle rettigheter.
+stedet selskapets tilkoblinger til systemer andre steder styres. Den har to punkter.
+**Microsoft Entra ID** kobler Vantigo til selskapets Microsoft Entra ID-leietaker; siden har
+fire faner — **Status**, **Tilkobling**, **Kontoer** og **Outlook og e-post** — beskrevet i
+[Microsoft Entra ID](/nb/user/entra/#hvor-den-er-og-de-fire-fanene). Det er der bare mens
+modulen Microsoft Entra ID er på i denne installasjonen, og bare for den som har
+`entra:manage`; en eier har alle rettigheter. **KI-modeller** er bare eierens, og er der bare
+mens Vantigo har satt opp KI for denne installasjonen ([nedenfor](#ki-modeller)).
 
 - En eier ser hele Administrer arbeidsområde, med **Integrasjoner** etter resten.
 - Den som har `entra:manage` uten å være eier, ser bare **Integrasjoner** i sidemenyen —
   slik en person med delegert rolleadministrasjon bare ser **Roller og tilgang** — og
   finner **Microsoft Entra ID** i avatar-menyen. Stegene som er en eiers, leser
-  vedkommende uten skjemaene.
-- Uten `entra:manage`, eller mens modulen er av, finnes ingen seksjon **Integrasjoner**.
+  vedkommende uten skjemaene. Vedkommende ser ikke **KI-modeller**.
+- Uten `entra:manage` (og uten å være eier) finnes ingen seksjon **Integrasjoner**. For en
+  eier finnes den heller ikke mens modulen Microsoft Entra ID er av og KI ikke er satt opp.
 
 Dine egne kontoer andre steder, som Outlook, kobler du til under **Innstillinger** ›
 **Tilkoblinger** ([Tilkoblinger](/nb/user/connections/)); postboksene Kommunikasjon
 sender fra, er dens **Kanaler**, ikke her. [Konfigurasjon](/nb/admin/configuration/) sier
 hvilke innstillinger som er arbeidsområdets og hvilke som er installasjonens.
+
+### KI-modeller
+
+Noen funksjoner ber en KI-modell om hjelp — i dag Kommunikasjons *Draft a reply* og
+*Suggest the customer*. **KI-modeller** (en eiers side under **Integrasjoner**) er der du
+velger hvilken modell hver av disse jobbene bruker. Siden finnes bare mens Vantigo har satt
+opp KI for installasjonen: ellers er det ikke noe punkt i sidemenyen, og adressen svarer
+«siden finnes ikke».
+
+**Det du ser.** Kortet **Abonnementet** forteller hva Vantigo har satt opp, som fakta uten
+felt å redigere: **Leverandør**, **Modeller abonnementet tillater**, og «En API-nøkkel er
+satt opp av Vantigo.» Selve nøkkelen vises aldri, for noen, noe sted. Under kommer ett kort
+for hver modul som bruker KI, med modulens eget navn, og en rad for hver **oppgave** den
+utfører: hva modellen blir bedt om å gjøre og med hvilke data, og en liste over modellene
+abonnementet tillater. Oppgavene har engelske navn. En modul som er slått av, er ikke med.
+
+Et merke sier hvor modellen kommer fra så lenge ingen har valgt: **Standard** er modellen
+oppgavens modul anbefaler, **Abonnementets standard** abonnementets første modell. En oppgave
+noen har valgt for, har ikke noe merke.
+
+**Det du endrer.** Åpne listen til en oppgave og velg en modell. Den lagres med en gang —
+«Modellen er lagret» — og oppgaven bruker den neste gang den kjøres; alle servere følger
+innen omtrent 20 sekunder. Valget gjelder den ene oppgaven; de andre er uendret. Hvis noen
+andre endret den samme oppgaven etter at du åpnet siden, får du beskjed om «KI-modellene er
+endret», siden lastes på nytt, og du velger på nytt. Når abonnementet bare tillater én modell,
+er alle lister låst med den modellen vist, og det er ingenting å velge.
+
+**Det Vantigo bestemmer.** Leverandøren, nøkkelen, modellene abonnementet tillater og hva
+hver oppgave er — en oppgave kommer sammen med funksjonen som bruker den. En modell du valgte
+som abonnementet senere slutter å tillate, blir ignorert: oppgaven bruker modulens anbefaling,
+eller abonnementets første modell, til du velger på nytt. Hvert valg føres i revisjonsloggen
+som `ai-task-model.changed`, med modellen før og etter, og ingenting føres om hva modellen ble
+spurt om eller svarte utover det funksjonen selv beholder (Kommunikasjon beholder sammendrag og
+tall, aldri tekst:
+[AI draft and customer suggestion](/en/reference/communications/#ai-draft-and-customer-suggestion)).
+Innstillingene som hører til installasjonen, står i [Konfigurasjon](/nb/admin/configuration/#ki).
 
 ## Sett opp en ny installasjon
 

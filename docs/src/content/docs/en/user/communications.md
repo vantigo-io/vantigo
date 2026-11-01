@@ -185,7 +185,11 @@ Above the composer, **Draft with AI** writes a first draft for you. Pick a tone
 — this is required — and click **Draft with AI**. The draft lands in the editor,
 headed "AI draft — review before sending. Nothing has been sent." Read it, edit it, and
 send it like any other reply; **Regenerate draft** asks for another one. When the
-assistant is not configured the panel says so and you write the reply yourself.
+assistant is not configured the panel says so and you write the reply yourself. Which AI
+model writes the draft, and which one suggests customers, is an Owner's choice under
+**Workspace admin** › **Integrations** › **AI models**
+([AI models](/en/user/workspace-administration/#ai-models)); the choice changes nothing
+you do here.
 
 ## Add an internal note
 
