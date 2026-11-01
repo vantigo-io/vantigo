@@ -15,6 +15,7 @@ import (
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/vantigo-io/vantigo/server/internal/ai"
 	"github.com/vantigo-io/vantigo/server/internal/config"
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/mail"
@@ -260,6 +261,28 @@ type Deps struct {
 	// modtest.WithCalendarBusy fills). Only Planning reads it, never inside a
 	// transaction. nil when the calendar is disabled.
 	CalendarBusy contracts.CalendarBusy
+	// AITasks are the AI tasks the enabled modules declare
+	// (Module.AITasks, contracts.AITask), by key — composed the way Catalog is
+	// composed from Permissions: a disabled module's are absent, and a key two
+	// modules declare is refused. Compose sets it, on every module's Deps copy,
+	// before any slot is resolved, so identity's AIModels provider may read it
+	// while it is built. Workers does not: no worker performs a task yet.
+	AITasks map[string]contracts.AITask
+	// AIModels is the model chosen per AI task (contracts.AIModels, AI as a
+	// platform provider design T12), the single-provider slot identity fills.
+	// Compose sets it, on every module's Deps copy, from whichever enabled
+	// module declares Module.AIModels, and hands it to the client below as its
+	// resolver; a module does not call it, it calls AI. A preset value is kept
+	// when no enabled module provides one (the seam modtest.WithAIModels
+	// fills). nil when no enabled module provides one: every task then uses
+	// the plan's default.
+	AIModels contracts.AIModels
+	// AI is the platform's AI client (srv/ai): the one place the provider's
+	// key lives, called with a task key and never with a model. Compose builds
+	// it from Config (AI_PROVIDER and friends), HTTPTransport and AIModels, last
+	// of the AI slots; a preset value is kept. nil is the unavailable state —
+	// no provider is configured — which a caller answers as 503 ai_unavailable.
+	AI *ai.Client
 	// HTTPTransport is the RoundTripper a module's own outbound HTTP client
 	// (customers' Brreg lookup, so far the only one) dials through. nil in
 	// production, meaning http.DefaultTransport; a test harness sets it to a
@@ -500,6 +523,18 @@ type Module struct {
 	// deps.ChannelMailbox while it is built, never while it serves outside
 	// the provider's own calls — and put the result on every module's Deps.
 	OutboundMail func(Deps) contracts.OutboundMail
+	// AITasks are the AI jobs this module performs (contracts.AITask), declared
+	// the way Permissions are: Compose validates each, refuses a key two
+	// modules declare, and collects the enabled modules' into Deps.AITasks, the
+	// list the AI models page shows an Owner. A task is declared by the delivery
+	// that performs it.
+	AITasks []contracts.AITask
+	// AIModels builds this module's contracts.AIModels, if it keeps the
+	// workspace's choice of model per AI task (identity). At most one enabled
+	// module may set it; Compose calls it after the other slots, with
+	// Deps.AITasks set, and gives the result to the AI client it builds. Workers
+	// never calls it.
+	AIModels func(Deps) contracts.AIModels
 	// CalendarBusy builds this module's contracts.CalendarBusy, if it answers
 	// people's busy time to other modules (calendar Outlook sync design
 	// O9.8). At most one enabled module may set it; Compose calls it last of

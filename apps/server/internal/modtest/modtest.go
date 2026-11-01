@@ -157,6 +157,7 @@ type setup struct {
 	peppolLookup    func(ctx context.Context, participant string) (peppol.Result, error)
 	poolMaxConns    int32
 	accounts        contracts.AccountProvisioning
+	aiModels        contracts.AIModels
 	noAccounts      bool
 	wrapUsers       func(contracts.UserDirectory) contracts.UserDirectory
 }
@@ -509,6 +510,18 @@ func WithAccounts(p contracts.AccountProvisioning) Option {
 	return func(s *setup) { s.accounts = p }
 }
 
+// WithAIModels makes m the installation's contracts.AIModels, for a module
+// under test (communications) whose subject is what it does with the model it
+// is given — which one each task asks for, a model the plan does not allow, a
+// resolver that fails — rather than identity's table of choices, which
+// identity's tests prove. Identity provides the slot and Compose would
+// overwrite a preset Deps.AIModels, so the option replaces identity's
+// Module.AIModels in the composition instead. Unset, the slot is identity's
+// real resolver over an empty table: every task uses the plan's default.
+func WithAIModels(m contracts.AIModels) Option {
+	return func(s *setup) { s.aiModels = m }
+}
+
 // WithoutAccounts composes identity without its Module.Accounts, so
 // Deps.Accounts is nil for every module: an installation where no module
 // provides account provisioning, which a consumer answers as "accounts are
@@ -715,6 +728,9 @@ func New(t *testing.T, opts ...Option) *Harness {
 		identityModule.Accounts = nil
 	case s.accounts != nil:
 		identityModule.Accounts = func(module.Deps) contracts.AccountProvisioning { return s.accounts }
+	}
+	if s.aiModels != nil {
+		identityModule.AIModels = func(module.Deps) contracts.AIModels { return s.aiModels }
 	}
 	if s.wrapUsers != nil && identityModule.Users != nil {
 		users := identityModule.Users
