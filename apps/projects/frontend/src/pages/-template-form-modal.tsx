@@ -156,7 +156,14 @@ const TemplateForm = ({ state, onClose }: TemplateFormModalProps & { state: Temp
         );
         return;
       }
-      const conflict = (error as ApiError).status === 409;
+      const status = (error as ApiError).status;
+      const conflict = status === 409;
+      // The list the form was seeded from is stale: refetch it so the next
+      // Edit opens the current revision (or no longer shows a deleted one).
+      if (conflict || status === 404) {
+        queryClient.invalidateQueries({ queryKey: ["projects", "templates"] });
+        onClose();
+      }
       notifications.show({
         color: "red",
         title: t("couldNotSaveTemplate"),

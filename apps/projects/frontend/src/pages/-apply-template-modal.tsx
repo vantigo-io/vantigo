@@ -73,14 +73,24 @@ export const ApplyTemplateModal = ({
           dependencies: result.dependenciesCreated,
         }),
       });
-      onClose();
+      handleClose();
     },
     onError: (error) => {
-      notifications.show({
-        color: "red",
-        title: t("couldNotApplyTemplate"),
-        message: error instanceof ApiValidationError ? error.message : (error as ApiError).message,
-      });
+      // A refusal on anything but the request's own two fields is the stored
+      // blueprint breaking a rule (one saved before the rules were tightened):
+      // say so, and where it is fixed, rather than the bare problem title.
+      let message = (error as ApiError).message;
+      if (error instanceof ApiValidationError) {
+        const fields = error.fieldErrors;
+        const blueprint = Object.keys(fields).find((field) => field !== "kickoffDate" && field !== "templateId");
+        const first = blueprint ?? Object.keys(fields)[0];
+        message = blueprint
+          ? t("templateBreaksRules", { reason: fields[blueprint] })
+          : first
+            ? fields[first]
+            : error.message;
+      }
+      notifications.show({ color: "red", title: t("couldNotApplyTemplate"), message });
     },
   });
 
@@ -89,8 +99,11 @@ export const ApplyTemplateModal = ({
     label: tmpl.name,
   }));
 
+  // The modal stays mounted, so each opening starts again from the project's
+  // start date rather than the date left from the last one.
   const handleClose = () => {
     setSelectedTemplateId(null);
+    setKickoffDate(defaultKickoff);
     onClose();
   };
 

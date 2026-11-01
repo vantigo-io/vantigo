@@ -523,6 +523,7 @@ export const projectsCatalog = {
     templateApplied: "Template applied successfully",
     templateAppliedMessage: "Created {{milestones}} milestones, {{tasks}} tasks, and {{dependencies}} dependencies.",
     couldNotApplyTemplate: "Could not apply template",
+    templateBreaksRules: "The template breaks a rule and must be fixed under Project templates: {{reason}}",
     templateMilestonesPreview: "Milestones ({{count}})",
     templateTasksPreview: "Tasks ({{count}})",
     templateDependenciesPreview: "{{count}} dependencies",
@@ -548,8 +549,7 @@ export const projectsCatalog = {
     editTemplateTitle: "Edit project template",
     templateSaved: "Template saved",
     couldNotSaveTemplate: "Could not save the template",
-    templateChangedElsewhere:
-      "The template was changed by someone else. Close it, open it again and redo your changes.",
+    templateChangedElsewhere: "The template was changed by someone else. Open it again and redo your changes.",
     templateOffsetHelp:
       "Dates are days from the kickoff date the template is applied with: T+0 is the kickoff day, T+14 two weeks later.",
     addTemplateMilestone: "Add milestone",
@@ -1139,6 +1139,7 @@ export const projectsCatalog = {
     templateApplied: "Malen ble tatt i bruk",
     templateAppliedMessage: "Opprettet {{milestones}} milepæler, {{tasks}} oppgaver og {{dependencies}} avhengigheter.",
     couldNotApplyTemplate: "Kunne ikke ta i bruk malen",
+    templateBreaksRules: "Malen bryter en regel og må rettes under Prosjektmaler: {{reason}}",
     templateMilestonesPreview: "Milepæler ({{count}})",
     templateTasksPreview: "Oppgaver ({{count}})",
     templateDependenciesPreview: "{{count}} avhengigheter",
@@ -1164,8 +1165,7 @@ export const projectsCatalog = {
     editTemplateTitle: "Rediger prosjektmal",
     templateSaved: "Malen er lagret",
     couldNotSaveTemplate: "Kunne ikke lagre malen",
-    templateChangedElsewhere:
-      "Malen ble endret av noen andre. Lukk den, åpne den igjen og gjør endringene dine på nytt.",
+    templateChangedElsewhere: "Malen ble endret av noen andre. Åpne den igjen og gjør endringene dine på nytt.",
     templateOffsetHelp:
       "Datoer er dager fra oppstartsdatoen malen tas i bruk med: T+0 er oppstartsdagen, T+14 er to uker senere.",
     addTemplateMilestone: "Legg til milepæl",
