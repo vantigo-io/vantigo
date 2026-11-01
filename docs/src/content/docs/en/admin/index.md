@@ -43,10 +43,10 @@ application.
   business time zone every module judges a day in is the workspace's, set under
   [Workspace administration](/en/user/workspace-administration/#workspace-settings).
 - **Calendar.** [Calendar](/en/admin/calendar/) is on when `calendar` is in `MODULES`
-  (or `MODULES` is unset), with two permissions — `calendar:access` to use it, and
-  `calendar:view-colleagues` to see colleagues' busy and free times. Invitations to
-  people outside the company need the SMTP driver, a sending domain with SPF, DKIM and
-  DMARC, and — for invitees outside your network — the public host; the
+  (or `MODULES` is unset), with three permissions — `calendar:access` to use it,
+  `calendar:view-colleagues` to see colleagues' busy and free times, and `calendar:manage` to
+  choose the channel invitations are sent from. Invitations to people outside the company
+  need that channel chosen, a sending domain with SPF, DKIM and DMARC, and — for invitees outside your network — the public host; the
   `calendar-cancellations` worker erases a cancelled appointment once its last day has
   passed. A person's calendar address — the feed a phone subscribes to — is on the
   public host's list, rate limited, with its token in the path; the

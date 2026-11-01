@@ -43,10 +43,10 @@ applikasjonen.
   Forretningstidssonen hver modul dømmer en dag etter, er arbeidsområdets, satt under
   [Administrasjon av arbeidsområdet](/nb/user/workspace-administration/#innstillinger-for-arbeidsområdet).
 - **Kalender.** [Kalender](/nb/admin/calendar/) er på når `calendar` står i `MODULES`
-  (eller `MODULES` ikke er satt), med to rettigheter — `calendar:access` for å bruke den,
-  og `calendar:view-colleagues` for å se når kolleger er opptatt og ledige. Invitasjoner
-  til folk utenfor bedriften trenger SMTP-driveren, et avsenderdomene med SPF, DKIM og
-  DMARC, og — for mottakere utenfor nettverket ditt — den offentlige verten;
+  (eller `MODULES` ikke er satt), med tre rettigheter — `calendar:access` for å bruke den,
+  `calendar:view-colleagues` for å se når kolleger er opptatt og ledige, og `calendar:manage`
+  for å velge kanalen invitasjoner sendes fra. Invitasjoner til folk utenfor bedriften
+  trenger at kanalen er valgt, et avsenderdomene med SPF, DKIM og DMARC, og — for mottakere utenfor nettverket ditt — den offentlige verten;
   arbeideren `calendar-cancellations` sletter en avlyst avtale når den siste dagen er
   passert. En persons kalenderadresse — strømmen en mobil abonnerer på — står på listen
   til den offentlige verten, med en grense, og med tokenet i stien; arbeideren

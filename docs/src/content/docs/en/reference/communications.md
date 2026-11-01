@@ -1,6 +1,6 @@
 ---
 title: "Communications module"
-description: "Business email from shared mailboxes: the channels' providers — SMTP, and Microsoft 365 shared mailboxes through the Microsoft Entra ID module, created by address or switched from SMTP, with an optional import window and Outlook on-close behavior — the outbox and its delivery through either, the size a Microsoft 365 channel takes; receiving into a Microsoft 365 channel — the mailbox sync, change notifications, receipts, parsing, sanitising, threading, the customer linker, reply and reply-all, and Outlook state on close —; retention and the operator's configuration."
+description: "Business email from shared mailboxes: the channels' providers — SMTP, and Microsoft 365 shared mailboxes through the Microsoft Entra ID module, created by address or switched from SMTP, with an optional import window and Outlook on-close behavior — the outbox and its delivery through either, the size a Microsoft 365 channel takes; the OutboundMail slot, through which Invoices and Calendar send customer mail from a channel an Owner chose, and the end of any fall-back to the installation's SMTP; receiving into a Microsoft 365 channel — the mailbox sync, change notifications, receipts, parsing, sanitising, threading, the customer linker, reply and reply-all, and Outlook state on close —; retention and the operator's configuration."
 sources:
   - apps/server/internal/communications
   - apps/communications/frontend
@@ -10,6 +10,7 @@ sources:
   - apps/server/internal/db/migrations/00092_communications_inbound.sql
   - apps/server/internal/db/migrations/00094_communications_mailbox_marks.sql
   - apps/server/internal/db/migrations/00095_communications_personal_sending.sql
+  - apps/server/internal/contracts/outbound_mail.go
 ---
 Communications is a module inside the single Vantigo binary, not a separately
 deployed service. It runs in the same process as Identity, Customers, Products and
@@ -163,10 +164,22 @@ Two consequences follow from the key derivation: every replica must share the sa
 `APP_SECRET`, and changing `APP_SECRET` makes every stored channel credential
 unrecoverable — they must be re-entered.
 
-The `SMTP_*` environment variables are a **different thing**: they configure
-identity's own application mail (invitations and password resets), not the mailboxes
-conversations are sent through. See
-[identity and authentication](/en/admin/authentication/).
+**A channel with no stored credentials is Unavailable and sends nothing** (integrations
+design T5). Every channel this API creates gets its credential row in the same
+transaction, so the state is reached only when the row has been deleted directly. There
+is **no fall-back to the installation's SMTP**: `smtpConfig` reads the channel's row and
+nothing else, and nothing in the module reads `Config.Mail` (a test parses the package to
+prove it). `ChannelResponse.available` is false for such a channel, the channels page
+shows it **Unavailable**, `OutboundMail.Channels` lists it with `available` false, and an
+outbox job on it fails at once with the code `channel_unavailable` and the sentence *the
+channel has no credentials* in the log (below); no retry can mend it.
+
+The `SMTP_*` environment variables are a **different thing**: they configure the system
+mailbox (`Deps.Mail`), which writes to the tenant's own employees — identity's
+invitations and password resets, Staff's notices, Calendar's colleague notices —, and
+which **no channel, document or invitation ever uses**. See
+[identity and authentication](/en/admin/authentication/) and
+[installation](/en/admin/installation/).
 
 **SMTP AUTH in Exchange Online.** An SMTP channel whose server is Exchange Online signs
 in with SMTP AUTH and a password. Microsoft withdrew the removal it had planned for
@@ -199,6 +212,11 @@ only from a mailbox its `Check` resolved and recorded — a shared one. Someone 
 - **The answer.** `ChannelResponse.mailbox` is `{id, onClose: "none"|"read"|"move", folder: string|null}`
   for a Microsoft 365 channel and null otherwise; `settings`, the SMTP shape (`host`,
   `port`, `useSsl`, `username`), is null for it, and `hasCredentials` false.
+  `available` is whether a channel can send now: an SMTP channel has stored credentials; a
+  Microsoft 365 one has a mailbox and its provider is offered (the slot filled under
+  `entra` and its `Status` available). The list, the read and the update answer it with the
+  provider's state read at that moment (outside any transaction); a create or a switch
+  answers it from the row alone, the provider having just been asked.
 - **Every call of the slot is made outside a transaction** — before it opens or after it
   commits — through the accessors in `contractscalls.go`, which refuse one made inside
   (a programming error, answered as a 500).
@@ -301,6 +319,48 @@ Microsoft 365 one, so the three share one bucket, `communications-channel-check`
 a minute per client address** — SMTP channels included. A refused request is the
 router's 429.
 
+### Customer mail from other modules
+
+Invoices sends documents and reminder letters, and Calendar its invitations to outside
+attendees, **through a channel an Owner chose** — never on the installation's `SMTP_*`
+credentials (integrations design T4–T6). The seam is `contracts.OutboundMail`, a
+single-provider slot Communications fills through `Module.OutboundMail` and Compose and
+Workers resolve into `Deps.OutboundMail`, refusing two ([module
+boundaries](/en/contributing/module-boundaries/) rule 17). It is nil when Communications
+is off, which a consumer reads as *sending is disabled*.
+
+| Call | What it does |
+| --- | --- |
+| `Channels(ctx)` | The active channels of the mail type, oldest first, each as `{id, address, displayName, provider, providerDisplayName, available}`. No network call, and no Communications permission: names and addresses only. |
+| `Channel(ctx, id)` | One channel, or `ErrChannelUnknown` when no active channel of the mail type has the id. |
+| `Send(ctx, id, out)` | Sends `out` from the channel, synchronously, under the caller's context. |
+
+`available` is the channel's own state: an SMTP channel has stored credentials; a
+Microsoft 365 channel has a mailbox and its provider is offered. `Send` refuses a channel
+that cannot send before it builds or dials anything.
+
+- **From and the rest.** The message is sent From the **channel's address**; the caller's
+  `DisplayName` is the name beside it, and its `Reply-To`, `Message-ID` and attachments are
+  kept. An SMTP channel sends through the same seam the outbox uses (`Deps.SMTPSend`,
+  else `mail.SendOutbound`) over its own sealed credentials; a Microsoft 365 channel
+  renders the message as MIME from the channel's address and hands it to the
+  `ChannelMailbox` slot's `Send`.
+- **Errors.** `ErrChannelUnknown`; `ErrChannelUnavailable` — the provider is off, the
+  mailbox is outside the provider's scope or gone (`ErrMailboxUnavailable`, `Unknown`,
+  `Denied`, `Gone`), or an SMTP channel has no credentials (the wrapped sentence is *the
+  channel has no credentials*); `ErrMailTooLarge`, from the Microsoft 365 provider's
+  limit; `ErrRecipientRefused`, defined with the slot for a provider that holds a tenant
+  to a list of addresses and answered by none yet; and any other error is a failure to
+  retry — at least once, as SMTP.
+- **Synchronous, never queued.** The outbox stays Communications' own conversations';
+  every consumer keeps its evidence and its retry (Invoices the delivery row and the
+  letter's attempts, Calendar the attendee's *Resend*). `Send` is made outside any
+  transaction, and the consumers' accessors refuse it inside one.
+- **A channel that goes away.** A consumer stores a channel's id with no foreign key
+  across schemas; deactivating a channel makes `Channel` answer `ErrChannelUnknown`, and
+  the consumer shows its setting as *gone* and behaves as disabled until an Owner chooses
+  again. Communications never writes a consumer's settings.
+
 ### Delivery semantics
 
 Outbound email is **at-least-once**. The outbox worker claims a job with a lease,
@@ -371,6 +431,7 @@ mend it — `provider_unavailable` aside, which ends a day's hold (below).
 | `too_large` | `ErrMailTooLarge`: over `MaxMessage`, Graph's 413, or Exchange's 400 `ErrorMessageSizeExceeded`, `MessageSizeExceeded` or `ErrorMessageTooBig` (the mailbox's own send limit below Graph's) |
 | `bcc_unsupported` | `contracts.ErrBccUnsupported`: the draft did not keep every blind copy, so nothing was sent — a retry would build the same draft |
 | `channel_misconfigured` | the channel's `settings` name no mailbox |
+| `channel_unavailable` | an SMTP channel with no credential row: nothing to send with, and no fall-back to the installation's SMTP |
 | `provider_unavailable` | the provider stayed unavailable for 24 hours after the job was queued (below) |
 
 The job becomes `failed` and its deliveries `submission_failed`, `jobs_failed` counts

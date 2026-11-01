@@ -177,8 +177,8 @@ prosedyrene og gjenopprettingen.
 - **`DATABASE_URL`** — bygges av `compose.yaml` fra verdiene i `.env`, med ulik rolle
   per tjeneste, så ikke sett den i `vantigo.env` i tillegg. Se
   [Databaseroller](#databaseroller).
-- **`SMTP_HOST`, `SMTP_FROM`** (`vantigo.env`) — påkrevd for at serveren skal starte
-  i det hele tatt. `SMTP_FROM` tolkes som en ren adresse: `no-reply@example.com`
+- **`SMTP_HOST`, `SMTP_FROM`** (`vantigo.env`) — systempostboksen, som skriver til dine egne
+  ansatte; påkrevd for at serveren skal starte i det hele tatt. `SMTP_FROM` tolkes som en ren adresse: `no-reply@example.com`
   godtas, `Vantigo <no-reply@example.com>` avvises ved oppstart. `SMTP_PORT` har
   standardverdi 587, `SMTP_USERNAME` og `SMTP_PASSWORD` er valgfrie, og `SMTP_TLS` er
   `starttls` som standard (`implicit` forhandler også TLS; `none` er klartekst). La
@@ -545,13 +545,25 @@ innholdssikkerhetspolicy i stedet for applikasjonens; se
 
 ## E-post og observerbarhet
 
-Identitetsinvitasjoner og passordgjenoppretting bruker innstillingene `MAIL_DRIVER` og
-`SMTP_*`. Leveringslegitimasjon per postkasse for Kommunikasjon-modulen konfigureres
-gjennom Kommunikasjon-API-et, der vert, port og et beskyttet passord lagres som
-postkasselegitimasjon — det finnes ingen miljøvariabel for dem. En kanal kan i stedet
-sende fra en delt postboks i Microsoft 365, uten egen legitimasjon, når **E-postkanaler**
-i Microsoft Entra ID-modulen er satt opp ([E-postkanaler](/nb/admin/entra/#mail-channels));
-det finnes ingen annen leverandør. Se
+**To slags e-post, to veier.** Installasjonens egen e-post — `MAIL_DRIVER` og `SMTP_*` — er
+**systempostboksen**: den skriver til tenantens **egne ansatte**, aldri til kundene.
+Identitetens invitasjoner og passordgjenoppretting, Ansattes meldinger og meldingene
+Kalender sender en kollega, går den veien, og ingenting annet. **Ingen kanal, ingen
+dokumenter og ingen invitasjoner bruker den noen gang.**
+
+E-post til **kunder** går gjennom en kanal en eier har valgt. Fakturaers dokumenter og
+purrebrev, og Kalenders invitasjoner til folk utenfor bedriften, går hver ut fra en
+Kommunikasjon-kanal som er navngitt i modulens egne innstillinger — **Utsending** i
+fakturainnstillingene, **Invitasjoner til personer utenfor selskapet** i
+kalenderinnstillingene —, eller ikke i det hele tatt mens innstillingen er **Avslått** eller
+**Av**, som en installasjon starter med
+([Customer mail from other modules](/en/reference/communications/#customer-mail-from-other-modules)).
+Legitimasjonen til en kanal konfigureres gjennom Kommunikasjon-API-et, der vert, port og et
+beskyttet passord lagres som postkasselegitimasjon — det finnes ingen miljøvariabel for
+dem —, og en kanal uten den er **Utilgjengelig** og sender ingenting: den faller ikke
+tilbake på `SMTP_*`. En kanal kan i stedet sende fra en delt postboks i Microsoft 365,
+uten egen legitimasjon, når **E-postkanaler** i Microsoft Entra ID-modulen er satt opp
+([E-postkanaler](/nb/admin/entra/#mail-channels)); det finnes ingen annen leverandør. Se
 [Kommunikasjon](/en/reference/communications/#providers).
 
 Modulene Prosjekter og Tid trenger ingen egen miljøvariabel; se
@@ -691,13 +703,11 @@ først når `invoices` legges til, ved siden av `customers`. Se
 `invoices:payments` — registrere og fjerne betalinger — som ingen innebygd rolle har;
 Owner har den gjennom jokertegnet, og alle andre trenger en rolle som gir den. Å sende
 et dokument på e-post ligger under `invoices:issue`, så hver rolle som har
-`invoices:issue` kan sende fra denne utgivelsen. Det går gjennom den samme
-`SMTP_*`-konfigurasjonen som identitetens e-post
-([E-post og observerbarhet](#e-post-og-observerbarhet)): en installasjon uten en
-fungerende SMTP-server kan ikke sende fakturaer, og en på `MAIL_DRIVER=log` (bare
-utvikling) svarer hver sending med 503. En retur går til konvoluttavsenderen,
-`SMTP_FROM`, ikke til selgerens Reply-To, og Vantigo registrerer ingen: pek `SMTP_FROM`
-mot en postkasse noen leser hvis returer betyr noe.
+`invoices:issue` kan sende fra denne utgivelsen. Det gikk først ut gjennom den samme
+`SMTP_*`-konfigurasjonen som identitetens e-post; det gjør det ikke lenger — et dokument
+går ut fra en kanal en eier har valgt (utgivelsen der kundepost tar en kanal, under). En
+retur går til kanalens adresse, ikke til selgerens Reply-To, og Vantigo registrerer ingen:
+pek kanalen mot en postkasse noen leser hvis returer betyr noe.
 
 Dokumenter utstedt før denne utgivelsen til en norsk virksomhet har ikke
 organisasjonsnummer i kjøperøyeblikksbildet — `buyer_foreign_id` viser `no…` i stedet
@@ -861,6 +871,25 @@ tilbake 00071 dropper stemplene, så hvert bilde skrives til leietakeren én gan
 etter neste oppgradering; å rulle tilbake 00070 dropper de styrte profilbildene, så
 hver brukers eget profilbilde er bildet deres igjen til Ansatte legger inn HRs bilder
 på nytt. Bildene i Ansattes objektlager berøres ikke i noe tilfelle.
+
+**Utgivelsen der kundepost tar en kanal.** Den har `00096_invoices_send_channel.sql`, én
+tom kolonne i Fakturaers innstillinger, og `00097_calendar_settings.sql`, Kalenders første
+innstilling for arbeidsområdet, én rad uten kanal, og én ny rettighet, `calendar:manage`
+(«Administrere kalenderinnstillinger», sensitiv og delegerbar, som Owner har gjennom
+jokertegnet). **Etter oppgraderingen sender Fakturaer og Kalender ingenting til kunder før
+en eier velger en kanal**: dokumenter og purrebrev ble sendt fra `SMTP_FROM` før, og
+invitasjoner også; nå starter **Utsending** i fakturainnstillingene og **Invitasjoner til
+personer utenfor selskapet** i kalenderinnstillingene på **Avslått** og **Av**. Til da
+finnes ikke knappen **Send**, en kunde som vil ha purringer på e-post får brev på papir, og
+en deltaker utenfra lagres som **Ikke sendt**. En eier setter opp en kanal i Kommunikasjon
+og velger den begge steder
+([Fakturaer](/nb/user/invoices/#velge-hvor-dokumentene-sendes-fra),
+[Kalender](/nb/user/calendar/#hvor-invitasjonene-sendes-fra)); et purrebrev som ikke kunne
+gå i mellomtiden, prøves på nytt innen de 48 timene. En Kommunikasjon-**SMTP-kanal uten
+lagret legitimasjon** sender ikke lenger på `SMTP_*` som reserveløsning: den er
+**Utilgjengelig**, og en melding i kø på den feiler med en gang. Ingenting slettes av
+oppgraderingen, `SMTP_*` er fortsatt påkrevd for systempostboksen, og å rulle migreringene
+tilbake fjerner de to innstillingene (valgene, ikke noen e-post).
 
 For en komplett driftsbok for sikkerhetskopi, én migrator, token-rotasjon og
 Owner-nødtilgang, se [SSO- og SCIM-drift](/nb/admin/sso-scim/).

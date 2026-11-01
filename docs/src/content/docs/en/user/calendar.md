@@ -143,27 +143,32 @@ Up to 50 people of all three kinds together can be on one appointment. Press **S
 each person you added from outside is sent their invitation straight away, one mail
 each. Saving never waits for the mail.
 
+Invitations go out from **a mail channel your company chose** in the Calendar settings —
+never from the mail server set up for Vantigo's own mail ([where invitations are sent
+from](#where-invitations-are-sent-from)). Until a channel is chosen, nothing is sent.
+
 Each row in the list shows what kind of attendee it is, their name, and their answer.
 A contact or an address also shows how their invitation went:
 
 - **Invited 3 Nov 2026** — the last invitation was sent that day.
-- **Not sent** — nothing has been sent. When your installation cannot send mail, every
-  contact and address shows this, and the sheet says "Invitations by mail are not set up
-  on this installation". The person is kept on the appointment; once mail is set up,
-  press **Resend** (or change the time or the place).
+- **Not sent** — nothing has been sent. When invitations are off — no channel is chosen in
+  the Calendar settings, or the chosen one cannot send — every contact and address shows
+  this, and the sheet says "Invitations by mail are not set up on this installation". The
+  person is kept on the appointment; once invitations are on, press **Resend** (or change
+  the time or the place).
 - **Sending failed** — the last mail to them did not go out. Press **Resend** to try
   again. If it keeps failing, ask your administrator; for a contact, check that they
   still have an address in Customers.
 
-**Resend** is beside every contact and address on a saved appointment, as long as your
-installation can send mail.
+**Resend** is beside every contact and address on a saved appointment, as long as
+invitations are on.
 
 A contact Customers has anonymised shows as **A contact**, and nothing more is sent to
 them.
 
 ### What the person receives
 
-One mail, from your company's own sending address, under your name, titled
+One mail, from the address of the channel your company chose, under your name, titled
 **Invitation:** followed by the title and the day, and written in your language — the **Preferred
 language** in [your profile](/en/user/getting-started/#edit-your-profile): Norwegian when
 it is **Norwegian**, English otherwise, **Automatic** included. It says what the appointment is, when (in the time zone
@@ -174,7 +179,7 @@ calendar.
 
 The answer that reaches you is the one given **through the link**. If they use their
 mail program's own buttons instead, the appointment is added to their calendar, but the
-answer goes to your company's sending address and not to you — the mail tells them so.
+answer goes to the channel's address and not to you — the mail tells them so.
 
 They never see your description through the link, nor who else is invited; the mail
 itself lists the other people from outside the company, as mail programs expect, but
@@ -199,6 +204,27 @@ accepted: …" — with a link to the appointment.
   cancellation, if they had been sent an invitation. An address you type that is
   already a contact on the list is kept once, as the contact.
 - Changing only the title, the description or who can see it sends nothing.
+
+### Where invitations are sent from
+
+Open **My calendar** — the settings page of the Calendar app. Anyone who holds
+`calendar:manage` ("Manage Calendar settings", an Administration permission an Owner can
+give to others) sees a last card there, **Invitations to people outside the company**,
+with **Sent from**: a list of the mail channels of
+[Communications](/en/user/communications/#set-up-a-channel), each with its name, its
+address and a badge with its provider (**SMTP** or **Microsoft 365**), and **Off**. Choose
+one and click **Save**.
+
+- A channel marked **Cannot send** is shown but cannot be chosen anew; one already chosen
+  stays selected, and nothing is sent until it is mended.
+- A channel that was deactivated reads **Off — the channel no longer exists**; invitations
+  are off until someone chooses another.
+- **Off**, where a new installation starts, sends no invitation and marks no one: outside
+  attendees are stored as **Not sent**, and **Resend** answers that invitations are off.
+- If a colleague saved the card meanwhile, it says **The settings changed** and offers
+  **Reload**.
+
+Without `calendar:manage` the card is not there. The setting is the company's, not yours.
 
 ### Resend an invitation
 

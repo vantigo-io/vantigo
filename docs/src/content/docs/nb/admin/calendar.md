@@ -1,10 +1,11 @@
 ---
 title: Kalender
-description: Slå på Kalender og gi folk de to rettighetene; hva invitasjoner til folk utenfor bedriften trenger — SMTP-driveren, et avsenderdomene med SPF, DKIM og DMARC, den offentlige verten og rutene dens; kalenderstrømmen på den offentlige verten, grensen for den og proxyens logg; avlysnings-, abonnements- og postbokssynkroniseringsarbeideren og innstillingene deres, og hva Vantigo henter fra internett; hvordan du sjekker at en invitasjon gikk og at strømmen svarer, og hva som kan gå galt.
+description: Slå på Kalender og gi folk de tre rettighetene; hva invitasjoner til folk utenfor bedriften trenger — en kanal valgt i kalenderinnstillingene, et avsenderdomene med SPF, DKIM og DMARC, den offentlige verten og rutene dens; kalenderstrømmen på den offentlige verten, grensen for den og proxyens logg; avlysnings-, abonnements- og postbokssynkroniseringsarbeideren og innstillingene deres, og hva Vantigo henter fra internett; hvordan du sjekker at en invitasjon gikk og at strømmen svarer, og hva som kan gå galt.
 sidebar:
   order: 45
 sources:
   - apps/server/internal/calendar/invitations.go
+  - apps/server/internal/calendar/settings.go
   - apps/server/internal/calendar/rsvp.go
   - apps/server/internal/calendar/cancellations_worker.go
   - apps/server/internal/calendar/module.go
@@ -34,12 +35,15 @@ skjermbildene, står i [brukerveiledningen](/nb/user/calendar/).
   senere trenger ingen migrering. En applikasjonsrolle med minst mulig rettigheter
   trenger `calendar`-skjemaet tildelt som alle de andre
   ([Installasjon](/nb/admin/installation/)).
-- Kalender har ingen egne innstillinger for arbeidsområdet: kalenderadressene og
-  abonnementene til hver person er deres egne, på skjermbildet **Min kalender**. De to
-  rettighetene er `calendar:access`, for å
-  bruke den, og `calendar:view-colleagues`, for å se når kolleger er opptatt og ledige,
-  som et arbeidsområde som vil at alle skal se hverandres, gir til ansattrollen
-  ([Permissions](/en/reference/calendar/#permissions)).
+- Kalender har **én innstilling for arbeidsområdet**: kanalen invitasjoner til folk
+  utenfor bedriften sendes fra ([under](#invitasjoner-til-folk-utenfor-bedriften)). Resten
+  er hver persons egen — kalenderadressene og abonnementene deres, på skjermbildet **Min
+  kalender**. De tre rettighetene er `calendar:access`, for å bruke den;
+  `calendar:view-colleagues`, for å se når kolleger er opptatt og ledige, som et
+  arbeidsområde som vil at alle skal se hverandres, gir til ansattrollen; og
+  `calendar:manage`, for å velge kanalen — sensitiv, fordi den avgjør hvem kundenes
+  e-post kommer fra, og holdt av eiere; deleger den til den som administrerer bedriftens
+  e-post ([Permissions](/en/reference/calendar/#permissions)).
 
 ## Slå på modulen
 
@@ -58,35 +62,47 @@ adresse som er skrevet inn. Hver av dem får en invitasjon på e-post, én meldi
 person, i oppsettet Gmail, Outlook og Apple Mail viser sine egne **Ja / Kanskje / Nei**-
 knapper for, med en lenke å svare med som lander svaret i Vantigo
 ([invitations](/en/reference/calendar/#invitations)). Kolleger på en avtale får i stedet
-en kort melding gjennom identitetsmodulen. Begge går gjennom installasjonens egen
-e-postkonfigurasjon; ingenting her har en egen innstilling.
+en kort melding gjennom identitetsmodulen. De to går forskjellige veier: kollegameldingen
+er systempostboksens — installasjonens egen `SMTP_*`-konfigurasjon, for dine egne ansatte
+([E-postlevering](/nb/admin/authentication/#e-postlevering)) —, mens en invitasjon til
+noen utenfor går **gjennom en Kommunikasjon-kanal en eier har valgt**, og aldri med den
+legitimasjonen.
 
 ### Forutsetninger
 
-1. **SMTP-driveren.** `MAIL_DRIVER=smtp` med `SMTP_HOST`, `SMTP_FROM` og resten av
-   [E-postlevering](/nb/admin/authentication/#e-postlevering). Med en annen driver
-   lagres en deltaker utenfra, men får aldri e-post: arket viser dem som
-   **Ikke sendt**, med merknaden «Invitasjoner på e-post er ikke satt opp på denne
-   installasjonen», loggen sier `calendar: invitations not sent: the mail driver is not
-   smtp`, `GET /api/v1/calendar/meta` svarer
-   `invitationsAvailable: false`, og **Send på nytt** svarer 503
-   `invitations_unavailable`.
-2. **Et avsenderdomene med SPF, DKIM og DMARC.** Hver invitasjon sendes **fra
-   `SMTP_FROM`**, under arrangørens navn, og oppgir `SMTP_FROM` som arrangør
-   (`ORGANIZER`) — det ene oppsettet ingen e-postklient avviser; arrangørens egen
-   adresse brukes aldri. Derfor må `SMTP_FROM` være en adresse på et domene du styrer,
-   der SPF-oppføringen nevner SMTP-serveren din, der serveren signerer e-posten med
-   DKIM, og som publiserer en DMARC-policy de to stemmer med. Grunnen er Googles: siden
-   2022 legger Google Kalender som standard en invitasjon inn i mottakerens kalender
-   **bare når avsenderen er kjent**, og en uautentisert avsender er ikke det —
-   invitasjonen venter da i e-posten til personen klikker i den, eller havner i
-   søppelposten, og knappene vises kanskje ikke i det hele tatt. Navnet på en
-   e-postserver, eller en gratis e-postadresse, som `SMTP_FROM` holder ikke.
-3. **En postkasse bak `SMTP_FROM`**, eller et sluk. Når en mottaker trykker på en av
+1. **En kanal, valgt.** Sett opp en e-postkanal i Kommunikasjon som kan sende — en
+   SMTP-kanal med legitimasjonen sin, eller en delt Microsoft 365-postboks
+   ([Sett opp en kanal](/nb/user/communications/#sett-opp-en-kanal)) — og velg den, som
+   den som har `calendar:manage`, under **Invitasjoner til personer utenfor selskapet →
+   Sendes fra** på **Min kalender** i Kalender-appen
+   (`PUT /api/v1/calendar/invitation-settings`). **Av er der en installasjon starter.** Så
+   lenge ingen kanal er valgt, eller den valgte er deaktivert eller ikke kan sende (en
+   SMTP-kanal uten legitimasjon, en Microsoft 365-kanal mens leverandøren er av), lagres en
+   deltaker utenfra, men får aldri e-post: arket viser dem som **Ikke sendt**, med
+   merknaden «Invitasjoner på e-post er ikke satt opp på denne installasjonen», loggen
+   sier `calendar: invitations not sent: invitations are off, or the chosen channel cannot
+   send`, `GET /api/v1/calendar/meta` svarer `invitationsAvailable: false`, og **Send på
+   nytt** svarer 503 `invitations_unavailable`. E-postdriveren og `SMTP_*` har ingen del i
+   det.
+2. **Et avsenderdomene med SPF, DKIM og DMARC.** Hver invitasjon sendes **fra kanalens
+   adresse**, under arrangørens navn, og oppgir den adressen som arrangør (`ORGANIZER`) —
+   det ene oppsettet ingen e-postklient avviser; arrangørens egen adresse brukes aldri.
+   Derfor må kanalens adresse være på et domene du styrer, der SPF-oppføringen nevner
+   kanalens server, der e-posten signeres med DKIM, og som publiserer en DMARC-policy de
+   to stemmer med — en Microsoft 365-postboks på ditt eget domene sender allerede
+   autentisert. Grunnen er Googles: siden 2022 legger Google Kalender som standard en
+   invitasjon inn i mottakerens kalender **bare når avsenderen er kjent**, og en
+   uautentisert avsender er ikke det — invitasjonen venter da i e-posten til personen
+   klikker i den, eller havner i søppelposten, og knappene vises kanskje ikke i det hele
+   tatt. Navnet på en e-postserver, eller en gratis e-postadresse, som kanalens adresse
+   holder ikke.
+3. **En postkasse bak kanalens adresse**, eller et sluk. Når en mottaker trykker på en av
    klientens egne knapper, sender klienten svaret sitt (`METHOD:REPLY`) til arrangøren —
-   altså til `SMTP_FROM`. Vantigo leser ikke den postkassen: svaret som teller, er det
-   som gis gjennom lenken, og det er det invitasjonen ber om. La postkassen ta imot og
-   kaste, eller la noen kikke i den; ikke la den sende e-posten i retur.
+   altså til kanalens adresse. Vantigo leser ikke det som et svar: det som teller, er det
+   som gis gjennom lenken, og det er det invitasjonen ber om. På en Microsoft 365-kanal
+   kommer e-posten til den delte postboksen og importeres til innboksen i Kommunikasjon
+   som all annen e-post; på en SMTP-kanal la postkassen ta imot og kaste, eller la noen
+   kikke i den; ikke la den sende e-posten i retur.
 4. **`PUBLIC_BASE_URL`, for folk utenfor nettverket ditt.** Svarlenken er
    `PUBLIC_BASE_URL/rsvp?token=…` når `PUBLIC_BASE_URL` er satt, og `APP_URL` (med
    `APP_BASE_PATH`)`/rsvp?token=…` ellers. Siden trenger ingen innlogging i noen av
@@ -130,8 +146,8 @@ også inn, ved siden av disse, én rute fra Microsoft Entra ID-modulen:
    har hos Gmail eller Outlook.com under **Deltakere → Med e-post** — utenfor ditt eget
    domene, så sjekken er det en kunde ser. Lagre.
 2. **Deltakerraden.** Åpne avtalen igjen: raden viser **Invitert** og dagens dato
-   (**Invitert 3. nov. 2026**). **Sending mislyktes** betyr at SMTP-serveren avviste eller ikke svarte; se under.
-3. **E-posten.** Den kommer fra `SMTP_FROM` under navnet ditt, med emnet
+   (**Invitert 3. nov. 2026**). **Sending mislyktes** betyr at kanalens server avviste eller ikke svarte; se under.
+3. **E-posten.** Den kommer fra kanalens adresse under navnet ditt, med emnet
    `Invitasjon: <tittel> · <dag>` (eller `Invitation: …` når foretrukket språk i profilen
    din ikke er norsk), med klientens egne knapper og et `invite.ics`-vedlegg. I Gmail skal
    **Vis original** si `SPF: PASS`, `DKIM: PASS` og `DMARC: PASS`.
@@ -467,16 +483,16 @@ oppdatering — én gang, uten at noe går tapt. Avtaler beholder identifikatore
   en port på veien fjernet `text/calendar`-delen. Be dem svare med lenken, som virker i
   alle klienter.
 - **Invitasjonen står ikke i mottakerens Google-kalender før de klikker i e-posten,
-  eller havner i søppelposten.** Domenet til `SMTP_FROM` feiler SPF, DKIM eller DMARC,
+  eller havner i søppelposten.** Domenet til kanalens adresse feiler SPF, DKIM eller DMARC,
   eller er ukjent for mottakeren. Sjekk **Vis original** i Gmail og rett domenets
   oppføringer.
-- **Outlook forkaster invitasjonen uten spor.** Mottakerens adresse er `SMTP_FROM`
-  selv: Outlook forkaster en invitasjon der arrangøren er mottakeren. Inviter en annen
+- **Outlook forkaster invitasjonen uten spor.** Mottakerens adresse er kanalens egen: Outlook forkaster en invitasjon der arrangøren er mottakeren. Inviter en annen
   adresse.
-- **Alle deltakere viser Ikke sendt.** `MAIL_DRIVER` er ikke `smtp`; arket sier det.
-  Sett den, start på nytt, og trykk så **Send på nytt** på hver, eller endre avtalens
-  tidspunkt eller sted, som sender til alle.
-- **Sending mislyktes** på en deltaker. SMTP-serveren avviste eller svarte ikke —
+- **Alle deltakere viser Ikke sendt.** Invitasjoner er av: ingen kanal er valgt under
+  **Invitasjoner til personer utenfor selskapet**, eller den valgte er deaktivert eller kan
+  ikke sende; arket sier det. Velg en kanal som kan sende, og trykk så **Send på nytt**
+  på hver, eller endre avtalens tidspunkt eller sted, som sender til alle.
+- **Sending mislyktes** på en deltaker. Kanalens server avviste eller svarte ikke —
   loggen har grunnen — eller deltakeren er en kontaktperson som har fått adressen
   fjernet i Kunder, eller er anonymisert der (raden viser da **En kontakt**). Rett
   årsaken og trykk **Send på nytt**; en kontaktperson uten adresse må få en i Kunder
@@ -492,7 +508,7 @@ oppdatering — én gang, uten at noe går tapt. Avtaler beholder identifikatore
 - **Mottakere avvises med 429.** `TRUSTED_PROXY_HOPS` og `TRUSTED_PROXY_CIDRS` er ikke
   satt, så alle mottakere deler proxyens adresse og dens ene bøtte.
 - **«Jeg svarte med knappene, og arrangøren ser ikke noe svar.»** Knappene sender
-  e-post til `SMTP_FROM`, som Vantigo ikke leser. Svar med lenken.
+  e-post til kanalens adresse, som Vantigo ikke leser som et svar. Svar med lenken.
 - **En avlyst avtale er der fortsatt.** Den siste dagen er ikke passert, eller
   arbeideren er av (`CALENDAR_CANCELLATIONS_ENABLED=0`).
 - **`CALENDAR_WORKERS_POLL` avvist ved oppstart.** Den er ikke en varighet, eller er

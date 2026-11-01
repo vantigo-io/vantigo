@@ -145,27 +145,32 @@ Opptil 50 personer av alle de tre slagene til sammen kan stå på én avtale. Tr
 **Lagre**: hver person du la til utenfra, får invitasjonen sin med en gang, én e-post
 hver. Lagringen venter aldri på e-posten.
 
+Invitasjoner går fra **en e-postkanal bedriften har valgt** i kalenderinnstillingene —
+aldri fra e-postserveren som er satt opp for Vantigos egen e-post ([hvor invitasjonene
+sendes fra](#hvor-invitasjonene-sendes-fra)). Til en kanal er valgt, sendes ingenting.
+
 Hver rad i listen viser hva slags deltaker det er, navnet og svaret. En kontaktperson
 eller en adresse viser også hvordan det gikk med invitasjonen:
 
 - **Invitert 3. nov. 2026** — den siste invitasjonen ble sendt den dagen.
-- **Ikke sendt** — ingenting er sendt. Når installasjonen din ikke kan sende e-post,
-  viser alle kontaktpersoner og adresser dette, og arket sier «Invitasjoner på e-post er
-  ikke satt opp på denne installasjonen». Personen blir stående på avtalen; når e-post
-  er satt opp, trykker du **Send på nytt** (eller endrer tidspunktet eller stedet).
+- **Ikke sendt** — ingenting er sendt. Når invitasjoner er av — ingen kanal er valgt i
+  kalenderinnstillingene, eller den valgte kan ikke sende — viser alle kontaktpersoner og
+  adresser dette, og arket sier «Invitasjoner på e-post er ikke satt opp på denne
+  installasjonen». Personen blir stående på avtalen; når invitasjoner er på, trykker du
+  **Send på nytt** (eller endrer tidspunktet eller stedet).
 - **Sending mislyktes** — den siste e-posten til dem gikk ikke ut. Trykk
   **Send på nytt** for å prøve igjen. Feiler den fortsatt, spør administratoren din; for
   en kontaktperson, sjekk at de fortsatt har en adresse i Kunder.
 
 **Send på nytt** står ved hver kontaktperson og adresse på en lagret avtale, så lenge
-installasjonen din kan sende e-post.
+invitasjoner er på.
 
 En kontaktperson Kunder har anonymisert, vises som **En kontakt**, og får ikke mer
 sendt.
 
 ### Hva personen får
 
-Én e-post, fra bedriftens egen avsenderadresse, under navnet ditt, med emnet
+Én e-post, fra adressen til kanalen bedriften har valgt, under navnet ditt, med emnet
 **Invitasjon:** fulgt av tittelen og dagen, og skrevet på språket ditt — **Foretrukket
 språk** i [profilen din](/nb/user/getting-started/#rediger-profilen-din): norsk når det er
 **Norsk**, ellers engelsk, også når det er **Automatisk**. Den sier hva
@@ -175,8 +180,8 @@ Avtalen er lagt ved, så e-postprogrammet deres kan vise sine egne svarknapper o
 den i kalenderen deres.
 
 Svaret som når deg, er det som gis **gjennom lenken**. Bruker de e-postprogrammets egne
-knapper i stedet, legges avtalen i kalenderen deres, men svaret går til bedriftens
-avsenderadresse og ikke til deg — e-posten sier det.
+knapper i stedet, legges avtalen i kalenderen deres, men svaret går til kanalens
+adresse og ikke til deg — e-posten sier det.
 
 Gjennom lenken ser de aldri beskrivelsen din, og heller ikke hvem andre som er
 invitert; selve e-posten lister de andre utenfra, slik e-postprogrammer venter, men
@@ -201,6 +206,28 @@ lenke til avtalen.
   hvis de hadde fått en invitasjon. En adresse du skriver inn som alt står i listen som
   kontaktperson, beholdes én gang, som kontaktpersonen.
 - Endrer du bare tittelen, beskrivelsen eller hvem som kan se den, sendes ingenting.
+
+### Hvor invitasjonene sendes fra
+
+Åpne **Min kalender** — innstillingssiden i Kalender-appen. Den som har `calendar:manage`
+(«Administrere kalenderinnstillinger», en administrasjonstillatelse en eier kan gi til
+andre), ser et siste kort der, **Invitasjoner til personer utenfor selskapet**, med
+**Sendes fra**: en liste over e-postkanalene i
+[Kommunikasjon](/nb/user/communications/#sett-opp-en-kanal), hver med navn, adresse og et
+merke med leverandøren (**SMTP** eller **Microsoft 365**), og **Av**. Velg en og klikk
+**Lagre**.
+
+- En kanal merket **Kan ikke sende** vises, men kan ikke velges på nytt; en som allerede er
+  valgt, blir stående valgt, og ingenting sendes før den er reparert.
+- En kanal som er deaktivert, står som **Av – kanalen finnes ikke lenger**; invitasjoner er
+  av til noen velger en annen.
+- **Av**, som en ny installasjon starter med, sender ingen invitasjon og merker ingen:
+  deltakere utenfra lagres som **Ikke sendt**, og **Send på nytt** svarer at invitasjoner
+  er av.
+- Har en kollega lagret kortet i mellomtiden, sier det **Innstillingene er endret** og
+  tilbyr **Last på nytt**.
+
+Uten `calendar:manage` finnes ikke kortet. Innstillingen er bedriftens, ikke din.
 
 ### Send en invitasjon på nytt
 

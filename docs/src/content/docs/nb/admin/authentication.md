@@ -893,25 +893,23 @@ mål som bare nås gjennom DNS64 på det lokale prefikset `64:ff9b:1::/48` avvis
 videre (det finnes ingen fast forskyvning å dekode en innebygd adresse fra); en
 resolver på det velkjente prefikset `64:ff9b::/96` fungerer som normalt.
 
-Fakturaer sender gjennom den samme konfigurasjonen: et dokument som sendes på e-post
-til en kunde går ut fra `SMTP_FROM`, under selgerens navn og med selgerens e-post som
-Reply-To, gjennom denne SMTP-serveren og vakten dens
-([Fakturaer](/en/reference/invoices/#sending-a-document)). Under `MAIL_DRIVER=log` kan
-ingenting sendes den veien: sendingen svarer 503 `mail_unavailable`, og
-`GET /invoices/meta` svarer `mailAvailable: false`.
+Dette er **systempostboksen**: identitetens invitasjoner og passordtilbakestillinger,
+Ansattes meldinger og meldingen Kalender sender en kollega på en avtale, gjennom
+identitetsmodulen, på adressen identitetsmodulen har. Den skriver til tenantens **egne
+ansatte** og til ingen andre. **E-post til kunder bruker aldri disse innstillingene.**
+Fakturaers dokumenter og purrebrev, og Kalenders invitasjoner til folk utenfor bedriften,
+går ut fra en Kommunikasjon-kanal en eier har valgt — i fakturainnstillingene og i
+kalenderinnstillingene —, og sendes ikke i det hele tatt mens innstillingen er avslått,
+uansett hva `MAIL_DRIVER` er
+([Fakturaer](/en/reference/invoices/#the-sending-channel),
+[Kalender](/nb/admin/calendar/#invitasjoner-til-folk-utenfor-bedriften)). En invitasjon
+Gmail skal legge i mottakerens kalender, trenger at kanalens domene består SPF, DKIM og
+DMARC.
 
-Kalender sender også gjennom den. En invitasjon til noen utenfor bedriften går ut fra
-`SMTP_FROM` under arrangørens navn, med `SMTP_FROM` som invitasjonens arrangør, og en
-kollega på en avtale får en melding fra identitetsmodulen på adressen identitetsmodulen
-har; med en annen driver enn `smtp` sendes ingen invitasjon, og `GET /calendar/meta`
-svarer `invitationsAvailable: false`. En invitasjon Gmail skal legge i mottakerens
-kalender, trenger at domenet til `SMTP_FROM` består SPF, DKIM og DMARC
-([Kalender](/nb/admin/calendar/#invitasjoner-til-folk-utenfor-bedriften)).
-
-Dette er identitetsmodulens applikasjonspost, og Fakturaers og Kalenders. Kommunikasjons
-postkasselegitimasjon per kanal er noe helt annet — den konfigureres gjennom
-Kommunikasjons-API-et og forsegles i hvile, aldri via miljøvariabler. Se
-[Kommunikasjon](/en/reference/communications/).
+Kommunikasjons postkasselegitimasjon per kanal er noe helt annet — den konfigureres
+gjennom Kommunikasjons-API-et og forsegles i hvile, aldri via miljøvariabler — og en kanal
+uten den er **Utilgjengelig**, ikke en kanal som faller tilbake på denne konfigurasjonen.
+Se [Kommunikasjon](/en/reference/communications/).
 
 ## Nøkkelmateriale
 

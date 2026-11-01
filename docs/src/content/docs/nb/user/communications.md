@@ -232,6 +232,15 @@ feilet og Vantigo prøver igjen (*E-postkanaler gjennom Microsoft 365 er ikke
 tilgjengelige.* mens **E-postkanaler** er av eller Entra-tilkoblingen feiler; e-posten
 venter i postboksen). En SMTP-kanal viser **Sender bare**.
 
+En kanal som ikke kan sende, viser et oransje merke **Utilgjengelig** i kolonnen
+**Status**, med årsaken under: *Kanalen har ingen lagret legitimasjon og sender derfor
+ingenting.* for en SMTP-kanal som mangler legitimasjon, eller *E-postkanaler gjennom
+Microsoft 365 er ikke tilgjengelige, så kanalen sender ingenting.* for en
+Microsoft 365-kanal mens leverandøren er av. **En SMTP-kanal uten legitimasjon sender
+ingenting**: Vantigo faller aldri tilbake på e-postserverinnstillingene administratoren
+har satt opp for sin egen e-post. En melding i kø på en slik kanal feiler med en gang, og
+en kanal som er utilgjengelig tilbys ikke Fakturering eller Kalender som sted å sende fra.
+
 En kanal sender på en av to måter, sin **Leverandør**:
 
 - **SMTP** — gjennom en e-postserver, med en SMTP-konto. Administratoren må ha
@@ -239,7 +248,8 @@ En kanal sender på en av to måter, sin **Leverandør**:
   lagres kryptert og vises aldri igjen, og hemmeligheten det krypteres under, er
   forklart under [SMTP](/en/reference/communications/#smtp). E-postserverinnstillingene en
   administrator setter opp for Vantigos egne invitasjoner og passordtilbakestillinger er
-  noe annet og brukes ikke her.
+  noe annet: de skriver til dine egne ansatte, og ingen kanal, faktura eller invitasjon
+  bruker dem noen gang.
 - **Microsoft 365** — fra en **delt postboks** i Exchange Online, gjennom Microsoft 365,
   uten passord å legge inn. Den **mottar** også: e-post som kommer til innboksen i den
   delte postboksen fra den dagen kanalen legges til, kommer inn i Innboks — ikke e-posten
@@ -252,6 +262,15 @@ En kanal sender på en av to måter, sin **Leverandør**:
   samtykket som gjelder hele leietakeren. Så lenge denne advarselen vises, kan alle som
   administrerer kanaler i Kommunikasjon, sende som hvilken som helst delt postboks i
   leietakeren.* Kanalene virker likevel.
+
+Fakturaer og Kalender sender til kundene dine **gjennom en kanal du velger**:
+fakturainnstillingene har et kort **Utsending** og kalenderinnstillingene et kort
+**Invitasjoner til personer utenfor selskapet**, hver med kanalene her og leverandøren
+deres, eller **Avslått**
+([Sende et dokument på e-post](/nb/user/invoices/#sende-et-dokument-på-e-post),
+[Inviter folk utenfor bedriften](/nb/user/calendar/#inviter-folk-utenfor-bedriften)). Å
+deaktivere en kanal de bruker, gjør at de sier at kanalen ikke finnes lenger, og de
+sender ingenting før noen velger en annen.
 
 ### Legg til en SMTP-kanal
 

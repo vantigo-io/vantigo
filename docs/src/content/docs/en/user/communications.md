@@ -232,6 +232,15 @@ channel.* — or **Last sync failed: …** when one attempt failed and Vantigo t
 Entra connection is failing; the mail waits in the mailbox).
 An SMTP channel shows **Sends only**.
 
+A channel that cannot send shows an orange **Unavailable** badge in the **Status** column,
+with the reason beneath: *This channel has no stored credentials, so it sends nothing.* for
+an SMTP channel whose credentials are missing, or *Microsoft 365 mail channels are not
+available, so this channel sends nothing.* for a Microsoft 365 channel while its provider
+is off. **An SMTP channel without credentials sends nothing**: Vantigo never falls back on
+the mail server settings the administrator configured for its own mail. A message queued on
+such a channel fails at once, and a channel that is unavailable is not offered to Invoices
+or Calendar as a place to send from.
+
 A channel sends one of two ways, its **Provider**:
 
 - **SMTP** — through a mail server, with an SMTP account. The administrator must have the
@@ -239,7 +248,8 @@ A channel sends one of two ways, its **Provider**:
   stored encrypted and never shown again, and the secret it is encrypted under is
   explained under [SMTP](/en/reference/communications/#smtp). The mail server settings an
   administrator configures for Vantigo's own invitations and password resets are a
-  different thing and are not used here.
+  different thing: they write to your own employees, and no channel, invoice or
+  invitation ever uses them.
 - **Microsoft 365** — from an Exchange Online **shared mailbox**, through Microsoft 365,
   with no password to enter. It also **receives**: mail arriving in the shared mailbox's
   Inbox from the day the channel is added comes into the Inbox — not the mail that was
@@ -252,6 +262,14 @@ A channel sends one of two ways, its **Provider**:
   RBAC for Applications and remove the tenant-wide consent. While this shows, anyone who
   manages channels in Communications can send as any shared mailbox in the tenant.* The
   channels still work.
+
+Invoices and Calendar send to your customers **through a channel you choose**: Invoice
+settings has a **Sending** card and Calendar's settings an **Invitations to people outside
+the company** card, each listing the channels here with their provider, or **Disabled**
+([Sending a document by e-mail](/en/user/invoices/#sending-a-document-by-e-mail),
+[Invite people outside the company](/en/user/calendar/#invite-people-outside-the-company)).
+Deactivating a channel they use makes them say the channel no longer exists, and they
+send nothing until someone chooses another.
 
 ### Add an SMTP channel
 
