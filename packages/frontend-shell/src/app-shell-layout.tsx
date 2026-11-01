@@ -20,6 +20,14 @@ export interface AppShellLayoutProps {
   nav?: (closeMobileNav: () => void) => ReactNode;
   /** Optional overlay rendered with access to the mobile-nav close callback. */
   overlay?: (closeMobileNav: () => void) => ReactNode;
+  /**
+   * A right-hand panel that pushes the page (the Assistant's). It belongs to the
+   * layout, not to a page, so it stays open while the person moves between apps.
+   * Below the `sm` breakpoint an open panel is a full-screen sheet. A panel that
+   * is not `opened` stays mounted but slides out of the way, so its state (and a
+   * run it is following) survives being closed. Omit for no panel.
+   */
+  aside?: { opened: boolean; width: number; children: ReactNode };
   /** The host's router link, so shell components (breadcrumbs) navigate client-side. Plain anchors without it. */
   linkComponent?: ShellLinkComponent;
   children: ReactNode;
@@ -103,6 +111,7 @@ export const AppShellLayout = ({
   headerActions,
   nav,
   overlay,
+  aside,
   linkComponent,
   children,
 }: AppShellLayoutProps) => {
@@ -115,6 +124,11 @@ export const AppShellLayout = ({
     <AppShell
       header={{ height: 60 }}
       navbar={nav ? { width: 260, breakpoint: "sm", collapsed: { mobile: !opened } } : undefined}
+      aside={
+        aside
+          ? { width: aside.width, breakpoint: "sm", collapsed: { desktop: !aside.opened, mobile: !aside.opened } }
+          : undefined
+      }
       footer={showFooter ? { height: 36 } : undefined}
       padding="md"
     >
@@ -167,6 +181,8 @@ export const AppShellLayout = ({
       )}
 
       <AppShell.Main>{children}</AppShell.Main>
+
+      {aside && <AppShell.Aside>{aside.children}</AppShell.Aside>}
 
       {overlay?.(close)}
 
