@@ -150,7 +150,8 @@ under Prosjektmaler** — se [Bygg prosjektmaler](#bygg-prosjektmaler).
 **Ny oppgave** åpner skjemaet **Ny oppgave**: **Tittel** (påkrevd, høyst 200 tegn),
 **Beskrivelse**, **Status**, **Ansvarlig** (hvem som helst på prosjektet),
 **Startdato**, **Frist** (ikke før starten), **Estimat (timer)** (over 0 når det er
-satt), **Leveransemilepæl** (valgfritt) og **Overordnet oppgave**, som gjør den til en deloppgave (ett nivå ned).
+satt), **Leveransemilepæl** (valgfritt) og **Overordnet oppgave**, som gjør den til en deloppgave (ett nivå ned). En
+deloppgave uten leveransemilepæl hører til den overordnede oppgavens.
 
 Klikk på en oppgave for å åpne skuffen **Oppgave**: blyanten redigerer tittelen på
 stedet, søppelkurven sletter oppgaven etter *Vil du slette tittel?* — deloppgaver,

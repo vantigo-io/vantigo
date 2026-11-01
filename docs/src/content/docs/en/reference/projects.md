@@ -1293,8 +1293,11 @@ they track execution deliverable progress rather than money or invoice releases.
   - `estimatedHoursTotal` and `estimatedHoursCompleted` — sum of `estimate_hours` across all linked tasks and completed linked tasks respectively.
 - **Task linking:** Each task may belong to at most one delivery milestone via `deliveryMilestoneId`.
   Attempting to link a task to a milestone belonging to a different project returns **400 Bad Request**.
-  When a delivery milestone is deleted, linked tasks have their `delivery_milestone_id` set to `NULL`
-  (`ON DELETE SET NULL`), preserving the tasks and their work.
+  A new subtask that names no milestone takes its parent's; later edits do not re-inherit.
+  When a delivery milestone is deleted, its tasks are unlinked in the same transaction and
+  their `revision` moves, so a client holding one gets **409 Conflict** rather than a refusal
+  over the gone milestone; the tasks and their work are kept. A milestone deleted between a
+  task write's check and the write itself is the same **400** on `deliveryMilestoneId`.
 - **Status flow:** A milestone is either `open` or `completed`. Transitioning to `completed`
   stamps `completed_at` with the current time and `completed_by` with the actor's user ID.
   Reopening clears both stamps.
@@ -1306,6 +1309,8 @@ they track execution deliverable progress rather than money or invoice releases.
   Outsiders receive **404 Not Found**.
 - **Timeline events:** `delivery-milestone-added`, `delivery-milestone-changed`,
   `delivery-milestone-removed`, `delivery-milestone-completed`, `delivery-milestone-reopened`.
+  `delivery-milestone-changed` names the `fields` the edit moved and is not recorded when
+  none did; setting the status a milestone already has records nothing.
 
 ## Task dependencies and timeline
 
@@ -1325,7 +1330,9 @@ A dependency states that a predecessor task must finish before its successor tas
 - **Downstream cascade rescheduling:** When a task is delayed or advanced, callers can opt in
   to cascade the shift to all reachable downstream tasks via `POST /api/v1/projects/tasks/{taskId}/reschedule-downstream`
   with `{ daysDelta: integer }`. The system traverses all downstream successor paths and shifts
-  `startDate` and `dueDate` by `daysDelta` in a single atomic transaction.
+  `startDate` and `dueDate` by `daysDelta` in a single atomic transaction, under the project's
+  task-order lock. A task reached twice (a diamond) shifts once; a task with neither date is
+  left alone and not counted. `daysDelta` outside ±3650 is refused with **400 Bad Request**.
 - **Timeline view:** In the frontend, the Tasks tab provides an interactive Timeline view
   displaying task bars across calendar days, delivery milestone markers at their target dates,
   and SVG connector arrows indicating finish-to-start dependencies. Schedule conflicts

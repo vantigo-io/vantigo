@@ -242,6 +242,25 @@ func TestTaskDependencies_RescheduleDownstream(t *testing.T) {
 	if countLeaf != 0 {
 		t.Errorf("leaf task downstream count = %d, want 0", countLeaf)
 	}
+
+	// A successor with no dates has nothing to shift: it is neither counted
+	// nor given a new revision.
+	tUndated := createTask(t, c, p.Id, map[string]any{"title": "Undated"})
+	_ = createTaskDependency(t, c, p.Id, t3.Id, tUndated.Id)
+	countUndated, _ := rescheduleDownstreamTasks(t, c, t3.Id, 1)
+	if countUndated != 0 {
+		t.Errorf("undated successor shifted count = %d, want 0", countUndated)
+	}
+	if got := getTask(t, c, tUndated.Id); got.Revision != tUndated.Revision {
+		t.Errorf("undated successor revision = %d, want unchanged %d", got.Revision, tUndated.Revision)
+	}
+
+	// A shift past ten years either way is refused before it can overflow.
+	res := c.Do(http.MethodPost, taskRescheduleDownstreamPath(t1.Id),
+		map[string]any{"daysDelta": 3651})
+	if res.Status != http.StatusBadRequest {
+		t.Errorf("daysDelta=3651 code = %d, want 400; body = %s", res.Status, string(res.Body))
+	}
 }
 
 func TestTaskDependencies_Permissions(t *testing.T) {

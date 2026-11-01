@@ -245,10 +245,31 @@ func TestPostProjectsDeliveryMilestonesByMilestoneIdStatus_ToggleStatus(t *testi
 		t.Errorf("reopened.CompletedAt = %v, want nil", reopened.CompletedAt)
 	}
 
+	// Setting the status it already has records nothing.
+	resSame := c.Do(http.MethodPost, deliveryMilestoneStatusPath(m.Id), map[string]any{
+		"status":   "open",
+		"revision": reopened.Revision,
+	})
+	if resSame.Status != http.StatusOK {
+		t.Fatalf("status open again code = %d, want 200; body = %s", resSame.Status, string(resSame.Body))
+	}
+	var same deliveryMilestoneJSON
+	resSame.JSON(&same)
+
+	// The timeline names the move the way the app renders it, one entry each.
+	for event, want := range map[string]int{
+		"delivery-milestone-completed": 1,
+		"delivery-milestone-reopened":  1,
+	} {
+		if n := h.Count(t, `SELECT count(*) FROM projects.timeline_entries WHERE project_id = $1 AND event_type = $2`, p.Id, event); n != want {
+			t.Errorf("%s entries = %d, want %d", event, n, want)
+		}
+	}
+
 	// Invalid status -> 400
 	resBad := c.Do(http.MethodPost, deliveryMilestoneStatusPath(m.Id), map[string]any{
 		"status":   "invalid-status",
-		"revision": reopened.Revision,
+		"revision": same.Revision,
 	})
 	if resBad.Status != http.StatusBadRequest {
 		t.Errorf("invalid status code = %d, want 400", resBad.Status)
@@ -294,6 +315,11 @@ func TestDeleteProjectsDeliveryMilestonesByMilestoneId_UnlinksTasksAndRenumbers(
 	resTask.JSON(&taskResp)
 	if taskResp.DeliveryMilestoneId != nil {
 		t.Errorf("task.DeliveryMilestoneId = %v, want nil after milestone deletion", taskResp.DeliveryMilestoneId)
+	}
+	// Unlinking is a change to the task: a client holding the old revision is
+	// told so with a 409, not refused over the gone milestone.
+	if taskResp.Revision <= task.Revision {
+		t.Errorf("task.Revision = %d after unlink, want above %d", taskResp.Revision, task.Revision)
 	}
 
 	// Verify remaining milestone is renumbered to position 1
@@ -357,5 +383,30 @@ func TestTasksDeliveryMilestoneMismatch_Validation(t *testing.T) {
 	resUpdate.JSON(&updatedTask)
 	if updatedTask.DeliveryMilestoneId != nil {
 		t.Errorf("updatedTask.DeliveryMilestoneId = %v, want nil", updatedTask.DeliveryMilestoneId)
+	}
+}
+
+// A new subtask that names no delivery milestone belongs to its parent's
+// (design M3); one that names its own keeps it.
+func TestTasksSubtaskInheritsParentDeliveryMilestone(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, _ := signIn(t, h, "projects:create")
+
+	p := createProject(t, c, map[string]any{"code": "DMIL7", "name": "Inherit Milestone"})
+	m1 := createDeliveryMilestone(t, c, p.Id, map[string]any{"name": "Parent's"})
+	m2 := createDeliveryMilestone(t, c, p.Id, map[string]any{"name": "Its own"})
+	parent := createTask(t, c, p.Id, map[string]any{"title": "Parent", "deliveryMilestoneId": m1.Id})
+
+	inherited := createTask(t, c, p.Id, map[string]any{"title": "Step", "parentTaskId": parent.Id})
+	if inherited.DeliveryMilestoneId == nil || *inherited.DeliveryMilestoneId != m1.Id {
+		t.Errorf("inheriting subtask milestone = %v, want %d", inherited.DeliveryMilestoneId, m1.Id)
+	}
+
+	own := createTask(t, c, p.Id, map[string]any{
+		"title": "Other step", "parentTaskId": parent.Id, "deliveryMilestoneId": m2.Id,
+	})
+	if own.DeliveryMilestoneId == nil || *own.DeliveryMilestoneId != m2.Id {
+		t.Errorf("explicit subtask milestone = %v, want %d", own.DeliveryMilestoneId, m2.Id)
 	}
 }

@@ -293,6 +293,15 @@ func (s *server) PostProjectsByIdTasks(ctx context.Context, req gen.PostProjects
 			if err := checkParent(ctx, txq, project.ID, *parsed.ParentTaskID, 0); err != nil {
 				return err
 			}
+			// A new subtask that names no delivery milestone belongs to its
+			// parent's (design M3): the step is part of the same deliverable.
+			if parsed.DeliveryMilestoneID == nil {
+				parent, err := txq.GetTask(ctx, *parsed.ParentTaskID)
+				if err != nil {
+					return fmt.Errorf("projects: read the parent's delivery milestone: %w", err)
+				}
+				parsed.DeliveryMilestoneID = parent.DeliveryMilestoneID
+			}
 		}
 		last, err := txq.MaxSiblingPosition(ctx, store.MaxSiblingPositionParams{
 			ProjectID: project.ID, ParentTaskID: parsed.ParentTaskID,
@@ -321,6 +330,10 @@ func (s *server) PostProjectsByIdTasks(ctx context.Context, req gen.PostProjects
 	if isParentRefusal(err) {
 		return gen.PostProjectsByIdTasks400ApplicationProblemPlusJSONResponse(
 			invalidProject(parentFieldError(err, *parsed.ParentTaskID))), nil
+	}
+	if db.IsForeignKeyViolation(err, tasksDeliveryMilestoneFK) {
+		return gen.PostProjectsByIdTasks400ApplicationProblemPlusJSONResponse(
+			invalidProject(fieldError("deliveryMilestoneId", deliveryMilestoneGoneMessage))), nil
 	}
 	if err != nil {
 		return nil, fmt.Errorf("projects: create task: %w", err)
@@ -444,6 +457,9 @@ func (s *server) PutProjectsTasksByTaskId(ctx context.Context, req gen.PutProjec
 	switch {
 	case errors.Is(err, errTaskGone):
 		return gen.PutProjectsTasksByTaskId404Response{}, nil
+	case db.IsForeignKeyViolation(err, tasksDeliveryMilestoneFK):
+		return gen.PutProjectsTasksByTaskId400ApplicationProblemPlusJSONResponse(
+			invalidProject(fieldError("deliveryMilestoneId", deliveryMilestoneGoneMessage))), nil
 	case errors.Is(err, pgx.ErrNoRows):
 		// The revision the task actually carries is read again rather than
 		// taken from the row the handler loaded: the write that beat this one

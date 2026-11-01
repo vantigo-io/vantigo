@@ -142,11 +142,12 @@ func (q *Queries) ListTaskDependenciesByProject(ctx context.Context, projectID i
 
 const shiftTasksDates = `-- name: ShiftTasksDates :many
 UPDATE projects.tasks SET
-    start_date = CASE WHEN start_date IS NOT NULL THEN start_date + $1::integer ELSE NULL END,
-    due_date = CASE WHEN due_date IS NOT NULL THEN due_date + $1::integer ELSE NULL END,
+    start_date = start_date + $1::integer,
+    due_date = due_date + $1::integer,
     revision = revision + 1,
     updated_at = $2::timestamptz
 WHERE id = ANY($3::integer[])
+  AND (start_date IS NOT NULL OR due_date IS NOT NULL)
 RETURNING id
 `
 
@@ -156,7 +157,9 @@ type ShiftTasksDatesParams struct {
 	Ids       []int32
 }
 
-// ShiftTasksDates shifts start_date and due_date by days_delta for the given task ids.
+// ShiftTasksDates shifts start_date and due_date by days_delta for the given
+// task ids. A task with neither date has nothing to shift, so it is left
+// alone: its revision does not move and it is not counted as shifted.
 func (q *Queries) ShiftTasksDates(ctx context.Context, arg ShiftTasksDatesParams) ([]int32, error) {
 	rows, err := q.db.Query(ctx, shiftTasksDates, arg.DaysDelta, arg.Now, arg.Ids)
 	if err != nil {

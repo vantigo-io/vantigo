@@ -53,10 +53,11 @@ const (
 	eventWorkTypeAdded   = "work-type-added"
 	eventWorkTypeChanged = "work-type-changed"
 
-	eventDeliveryMilestoneAdded         = "delivery-milestone-added"
-	eventDeliveryMilestoneChanged       = "delivery-milestone-changed"
-	eventDeliveryMilestoneRemoved       = "delivery-milestone-removed"
-	eventDeliveryMilestoneStatusChanged = "delivery-milestone-status-changed"
+	eventDeliveryMilestoneAdded     = "delivery-milestone-added"
+	eventDeliveryMilestoneChanged   = "delivery-milestone-changed"
+	eventDeliveryMilestoneRemoved   = "delivery-milestone-removed"
+	eventDeliveryMilestoneCompleted = "delivery-milestone-completed"
+	eventDeliveryMilestoneReopened  = "delivery-milestone-reopened"
 )
 
 // recordEvent inserts one generated timeline entry. The actor's display name
@@ -523,6 +524,23 @@ func (s *server) GetProjectsByIdTimeline(ctx context.Context, req gen.GetProject
 		Data:       data,
 		Pagination: apicommon.Pagination(page, pageSize, int32(total)),
 	}, nil
+}
+
+// deliveryMilestoneFields names what an edit moved, in the order the form
+// shows the fields, so the timeline entry says what changed rather than only
+// that something did.
+func deliveryMilestoneFields(before, after store.ProjectsDeliveryMilestone) []string {
+	var fields []string
+	if before.Name != after.Name {
+		fields = append(fields, "name")
+	}
+	if !equalStringPtr(before.Description, after.Description) {
+		fields = append(fields, "description")
+	}
+	if !equalDate(before.TargetDate, after.TargetDate) {
+		fields = append(fields, "targetDate")
+	}
+	return fields
 }
 
 func recordDeliveryMilestoneEvent(ctx context.Context, q *store.Queries, now time.Time, eventType string, m store.ProjectsDeliveryMilestone, extra map[string]any, by actor) error {

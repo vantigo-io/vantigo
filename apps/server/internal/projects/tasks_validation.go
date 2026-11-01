@@ -155,6 +155,14 @@ func parentTaskIsSubtask(id int32) string {
 	return fmt.Sprintf("Task %d is itself a subtask, and a task can only be nested one level deep", id)
 }
 
+// tasksDeliveryMilestoneFK is the task's link to its delivery milestone. The
+// milestone is checked before the write, but outside its transaction, so a
+// milestone deleted in between surfaces as this constraint; it is the same
+// field error the check would have given.
+const tasksDeliveryMilestoneFK = "tasks_delivery_milestone_id_fkey"
+
+const deliveryMilestoneGoneMessage = "The delivery milestone does not exist on this project"
+
 func taskCannotNestItself() string {
 	return "A task cannot be a subtask of itself"
 }
@@ -260,7 +268,7 @@ func (s *server) validateTask(ctx context.Context, q *store.Queries, projectID i
 	if id := body.DeliveryMilestoneId; id != nil {
 		dm, err := q.GetDeliveryMilestone(ctx, *id)
 		if errors.Is(err, pgx.ErrNoRows) || (err == nil && dm.ProjectID != projectID) {
-			add("deliveryMilestoneId", "The delivery milestone does not exist on this project")
+			add("deliveryMilestoneId", deliveryMilestoneGoneMessage)
 		} else if err != nil {
 			return parsedTask{}, nil, fmt.Errorf("projects: get delivery milestone: %w", err)
 		}

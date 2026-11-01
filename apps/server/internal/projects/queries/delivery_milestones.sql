@@ -89,6 +89,15 @@ UPDATE projects.delivery_milestones SET
 WHERE id = @id
 RETURNING *;
 
+-- name: UnlinkTasksFromDeliveryMilestone :exec
+-- UnlinkTasksFromDeliveryMilestone clears the milestone from every task linked
+-- to it and bumps their revision, before the milestone itself is deleted.
+UPDATE projects.tasks
+SET delivery_milestone_id = NULL,
+    revision              = revision + 1,
+    updated_at            = @now
+WHERE delivery_milestone_id = @delivery_milestone_id;
+
 -- name: DeleteDeliveryMilestone :execrows
 -- DeleteDeliveryMilestone removes one delivery milestone by id.
 DELETE FROM projects.delivery_milestones WHERE id = @id;
