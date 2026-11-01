@@ -21,6 +21,23 @@ describe("AppShellLayout", () => {
     expect(screen.getByText("content")).toBeInTheDocument();
   });
 
+  it("keeps an aside mounted while it is closed and pushes the page when it is open", () => {
+    const view = (opened: boolean) => (
+      <MantineProvider env="test">
+        <AppShellLayout aside={{ opened, width: 400, children: <div>panel body</div> }}>
+          <div>content</div>
+        </AppShellLayout>
+      </MantineProvider>
+    );
+    const { rerender, container } = render(view(false));
+    // Closed: still in the tree (its state survives), collapsed out of the way.
+    expect(screen.getByText("panel body")).toBeInTheDocument();
+    expect(container.querySelector("aside")).toBeInTheDocument();
+    rerender(view(true));
+    expect(screen.getByText("panel body")).toBeInTheDocument();
+    expect(screen.getByText("content")).toBeInTheDocument();
+  });
+
   it("renders the sidebar and the burger when nav is given", () => {
     render(
       <MantineProvider env="test">
