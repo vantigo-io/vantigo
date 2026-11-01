@@ -77,8 +77,7 @@ type GetSessionByIDRow struct {
 // GetSessionByID is GetSessionByTokenHash for a session named by id rather than
 // by cookie — the session an assistant grant is bound to (Access.Check). It
 // rejects every state that ends a session, exactly as that query does, and the
-// two must agree, so a change to one is a change to the other. The query that
-// rejects every state that ends a session: a revoked row; an idle or
+// two must agree, so a change to one is a change to the other. A revoked row; an idle or
 // absolute bound that has elapsed (the privileged pair applies while the
 // user currently holds Owner or SystemAdmin, decided here per request); a
 // disabled or pending user (a pending user's only way in is their

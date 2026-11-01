@@ -138,7 +138,7 @@ func (s *server) GetIdentityOwnerAiSettings(ctx context.Context, _ gen.GetIdenti
 		Provider:      gen.AiSettingsProvider(s.deps.Config.AIProvider),
 		AllowedModels: slices.Clone(allowed),
 		PlanDefault:   allowed[0],
-		KeyConfigured: true,
+		KeyConfigured: s.deps.Config.AIAPIKey != "",
 		Modules:       modules,
 	}), nil
 }

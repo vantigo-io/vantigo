@@ -38,13 +38,16 @@ func (e AccountResponseAvatarManagedBy) Valid() bool {
 
 // Defines values for AiSettingsProvider.
 const (
-	Openai AiSettingsProvider = "openai"
+	Openai           AiSettingsProvider = "openai"
+	OpenaiCompatible AiSettingsProvider = "openai-compatible"
 )
 
 // Valid indicates whether the value is a known member of the AiSettingsProvider enum.
 func (e AiSettingsProvider) Valid() bool {
 	switch e {
 	case Openai:
+		return true
+	case OpenaiCompatible:
 		return true
 	default:
 		return false
@@ -299,7 +302,7 @@ type AiSettings struct {
 	// AllowedModels The models the plan allows (AI_MODELS), in the order the operator wrote them; the first is the plan's default.
 	AllowedModels []string `json:"allowedModels"`
 
-	// KeyConfigured Always true while this is answered, since an API key is configured by Vantigo. The key is never sent.
+	// KeyConfigured Whether an API key is configured (AI_API_KEY). A local model (Ollama, vLLM, LM Studio) takes none, so this is false there. The key itself is never sent.
 	KeyConfigured bool `json:"keyConfigured"`
 
 	// Modules The modules that perform AI tasks and are enabled, by name, each with its tasks by key. A module that is off is not listed.
@@ -308,11 +311,11 @@ type AiSettings struct {
 	// PlanDefault The model a task uses when nobody chose one and the module recommends none the plan allows — the first of allowedModels.
 	PlanDefault string `json:"planDefault"`
 
-	// Provider The provider the plan calls (AI_PROVIDER).
+	// Provider The provider the plan calls (AI_PROVIDER), as the operator wrote it. openai-compatible is the OpenAI protocol served by something else, such as a local model.
 	Provider AiSettingsProvider `json:"provider"`
 }
 
-// AiSettingsProvider The provider the plan calls (AI_PROVIDER).
+// AiSettingsProvider The provider the plan calls (AI_PROVIDER), as the operator wrote it. openai-compatible is the OpenAI protocol served by something else, such as a local model.
 type AiSettingsProvider string
 
 // AiSettingsModule One module's AI tasks.
@@ -2046,139 +2049,139 @@ func (t *PutIdentityAccessUsersByIdRoles403JSONResponseBody) UnmarshalJSON(b []b
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
-
+	// GetIdentityAccessAudit List the authorization audit events
 	// (GET /api/v1/identity/access/audit)
 	GetIdentityAccessAudit(w http.ResponseWriter, r *http.Request)
-
+	// GetIdentityAccessCatalog List the permission catalog
 	// (GET /api/v1/identity/access/catalog)
 	GetIdentityAccessCatalog(w http.ResponseWriter, r *http.Request)
-
+	// GetIdentityAccessDelegations List the authorization delegations
 	// (GET /api/v1/identity/access/delegations)
 	GetIdentityAccessDelegations(w http.ResponseWriter, r *http.Request)
-
+	// PostIdentityAccessDelegations Create an authorization delegation
 	// (POST /api/v1/identity/access/delegations)
 	PostIdentityAccessDelegations(w http.ResponseWriter, r *http.Request)
-
+	// PutIdentityAccessDelegationsById Update an authorization delegation
 	// (PUT /api/v1/identity/access/delegations/{id})
 	PutIdentityAccessDelegationsById(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
-
+	// PostIdentityAccessDelegationsByIdRevoke Revoke an authorization delegation
 	// (POST /api/v1/identity/access/delegations/{id}/revoke)
 	PostIdentityAccessDelegationsByIdRevoke(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
-
+	// GetIdentityAccessGroups List the access groups
 	// (GET /api/v1/identity/access/groups)
 	GetIdentityAccessGroups(w http.ResponseWriter, r *http.Request)
-
+	// PostIdentityAccessGroups Create an access group
 	// (POST /api/v1/identity/access/groups)
 	PostIdentityAccessGroups(w http.ResponseWriter, r *http.Request)
-
+	// DeleteIdentityAccessGroupsByGroupIdMembersByUserId Remove a member from an access group
 	// (DELETE /api/v1/identity/access/groups/{groupId}/members/{userId})
 	DeleteIdentityAccessGroupsByGroupIdMembersByUserId(w http.ResponseWriter, r *http.Request, groupId openapi_types.UUID, userId openapi_types.UUID)
-
+	// PostIdentityAccessGroupsByGroupIdMembersByUserId Add a member to an access group
 	// (POST /api/v1/identity/access/groups/{groupId}/members/{userId})
 	PostIdentityAccessGroupsByGroupIdMembersByUserId(w http.ResponseWriter, r *http.Request, groupId openapi_types.UUID, userId openapi_types.UUID)
-
+	// PutIdentityAccessGroupsByGroupIdMembersByUserId Add a member to an access group (same as POST)
 	// (PUT /api/v1/identity/access/groups/{groupId}/members/{userId})
 	PutIdentityAccessGroupsByGroupIdMembersByUserId(w http.ResponseWriter, r *http.Request, groupId openapi_types.UUID, userId openapi_types.UUID)
-
+	// DeleteIdentityAccessGroupsByGroupIdRoleMappingsByRoleId Unmap a role from an access group
 	// (DELETE /api/v1/identity/access/groups/{groupId}/role-mappings/{roleId})
 	DeleteIdentityAccessGroupsByGroupIdRoleMappingsByRoleId(w http.ResponseWriter, r *http.Request, groupId openapi_types.UUID, roleId openapi_types.UUID)
-
+	// PostIdentityAccessGroupsByGroupIdRoleMappingsByRoleId Map a role to an access group
 	// (POST /api/v1/identity/access/groups/{groupId}/role-mappings/{roleId})
 	PostIdentityAccessGroupsByGroupIdRoleMappingsByRoleId(w http.ResponseWriter, r *http.Request, groupId openapi_types.UUID, roleId openapi_types.UUID)
-
+	// PutIdentityAccessGroupsByGroupIdRoleMappingsByRoleId Map a role to an access group (same as POST)
 	// (PUT /api/v1/identity/access/groups/{groupId}/role-mappings/{roleId})
 	PutIdentityAccessGroupsByGroupIdRoleMappingsByRoleId(w http.ResponseWriter, r *http.Request, groupId openapi_types.UUID, roleId openapi_types.UUID)
-
+	// DeleteIdentityAccessGroupsById Delete an access group
 	// (DELETE /api/v1/identity/access/groups/{id})
 	DeleteIdentityAccessGroupsById(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
-
+	// GetIdentityAccessGroupsById Get an access group by id
 	// (GET /api/v1/identity/access/groups/{id})
 	GetIdentityAccessGroupsById(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
-
+	// PutIdentityAccessGroupsById Update an access group
 	// (PUT /api/v1/identity/access/groups/{id})
 	PutIdentityAccessGroupsById(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
-
+	// GetIdentityAccessMe Get the caller's own effective access
 	// (GET /api/v1/identity/access/me)
 	GetIdentityAccessMe(w http.ResponseWriter, r *http.Request)
-
+	// GetIdentityAccessRoles List the roles
 	// (GET /api/v1/identity/access/roles)
 	GetIdentityAccessRoles(w http.ResponseWriter, r *http.Request)
-
+	// PostIdentityAccessRoles Create a custom role
 	// (POST /api/v1/identity/access/roles)
 	PostIdentityAccessRoles(w http.ResponseWriter, r *http.Request)
-
+	// DeleteIdentityAccessRolesById Delete a custom role
 	// (DELETE /api/v1/identity/access/roles/{id})
 	DeleteIdentityAccessRolesById(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
-
+	// PutIdentityAccessRolesById Update a custom role
 	// (PUT /api/v1/identity/access/roles/{id})
 	PutIdentityAccessRolesById(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
-
+	// PutIdentityAccessRolesByIdPermissions Replace a role's permissions
 	// (PUT /api/v1/identity/access/roles/{id}/permissions)
 	PutIdentityAccessRolesByIdPermissions(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
-
+	// GetIdentityAccessUsers List the users with their access
 	// (GET /api/v1/identity/access/users)
 	GetIdentityAccessUsers(w http.ResponseWriter, r *http.Request)
-
+	// GetIdentityAccessUsersById Get a user's access by id
 	// (GET /api/v1/identity/access/users/{id})
 	GetIdentityAccessUsersById(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
-
+	// PutIdentityAccessUsersByIdRoles Replace a user's roles
 	// (PUT /api/v1/identity/access/users/{id}/roles)
 	PutIdentityAccessUsersByIdRoles(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
-
+	// GetIdentityAccount Get the caller's account
 	// (GET /api/v1/identity/account)
 	GetIdentityAccount(w http.ResponseWriter, r *http.Request)
-
+	// PutIdentityAccount Update the caller's account
 	// (PUT /api/v1/identity/account)
 	PutIdentityAccount(w http.ResponseWriter, r *http.Request)
-
+	// DeleteIdentityAccountAvatar Remove the caller's avatar
 	// (DELETE /api/v1/identity/account/avatar)
 	DeleteIdentityAccountAvatar(w http.ResponseWriter, r *http.Request)
-
+	// GetIdentityAccountAvatar Get the caller's avatar
 	// (GET /api/v1/identity/account/avatar)
 	GetIdentityAccountAvatar(w http.ResponseWriter, r *http.Request)
-
+	// PostIdentityAccountAvatar Upload the caller's avatar
 	// (POST /api/v1/identity/account/avatar)
 	PostIdentityAccountAvatar(w http.ResponseWriter, r *http.Request)
-
+	// PutIdentityAccountAvatar Upload the caller's avatar (same as POST)
 	// (PUT /api/v1/identity/account/avatar)
 	PutIdentityAccountAvatar(w http.ResponseWriter, r *http.Request)
-
+	// GetIdentityAccountMfa Get the caller's two-factor status
 	// (GET /api/v1/identity/account/mfa)
 	GetIdentityAccountMfa(w http.ResponseWriter, r *http.Request)
-
+	// PostIdentityAccountMfaDisable Turn off the caller's two-factor sign-in
 	// (POST /api/v1/identity/account/mfa/disable)
 	PostIdentityAccountMfaDisable(w http.ResponseWriter, r *http.Request)
-
+	// PostIdentityAccountMfaEnable Turn on the caller's two-factor sign-in
 	// (POST /api/v1/identity/account/mfa/enable)
 	PostIdentityAccountMfaEnable(w http.ResponseWriter, r *http.Request)
-
+	// PostIdentityAccountMfaRecoveryCodes Generate new recovery codes for the caller
 	// (POST /api/v1/identity/account/mfa/recovery-codes)
 	PostIdentityAccountMfaRecoveryCodes(w http.ResponseWriter, r *http.Request)
-
+	// GetIdentityAccountMfaSetup Get the caller's authenticator setup
 	// (GET /api/v1/identity/account/mfa/setup)
 	GetIdentityAccountMfaSetup(w http.ResponseWriter, r *http.Request)
-
+	// PostIdentityAccountMfaSetup Start the caller's authenticator setup
 	// (POST /api/v1/identity/account/mfa/setup)
 	PostIdentityAccountMfaSetup(w http.ResponseWriter, r *http.Request)
-
+	// GetIdentityAccountPasskeys List the caller's passkeys
 	// (GET /api/v1/identity/account/passkeys)
 	GetIdentityAccountPasskeys(w http.ResponseWriter, r *http.Request)
-
+	// PostIdentityAccountPasskeysBegin Begin adding a passkey
 	// (POST /api/v1/identity/account/passkeys/begin)
 	PostIdentityAccountPasskeysBegin(w http.ResponseWriter, r *http.Request)
-
+	// PostIdentityAccountPasskeysComplete Complete adding a passkey
 	// (POST /api/v1/identity/account/passkeys/complete)
 	PostIdentityAccountPasskeysComplete(w http.ResponseWriter, r *http.Request)
-
+	// DeleteIdentityAccountPasskeysByCredentialId Remove one of the caller's passkeys
 	// (DELETE /api/v1/identity/account/passkeys/{credentialId})
 	DeleteIdentityAccountPasskeysByCredentialId(w http.ResponseWriter, r *http.Request, credentialId string)
-
+	// PostIdentityAccountPassword Change the caller's password
 	// (POST /api/v1/identity/account/password)
 	PostIdentityAccountPassword(w http.ResponseWriter, r *http.Request)
-
+	// PatchIdentityAccountProfile Update parts of the caller's profile
 	// (PATCH /api/v1/identity/account/profile)
 	PatchIdentityAccountProfile(w http.ResponseWriter, r *http.Request)
-
+	// PutIdentityAccountProfile Replace the caller's profile
 	// (PUT /api/v1/identity/account/profile)
 	PutIdentityAccountProfile(w http.ResponseWriter, r *http.Request)
 	// PostIdentityAccountSessionsRevoke Sign out of every session for the current account
@@ -2190,10 +2193,10 @@ type ServerInterface interface {
 	// GetIdentityBootstrapStatus Get whether one-time local Owner bootstrap is available
 	// (GET /api/v1/identity/bootstrap-status)
 	GetIdentityBootstrapStatus(w http.ResponseWriter, r *http.Request)
-
+	// PostIdentityInvitationsAccept Accept an invitation and create the account
 	// (POST /api/v1/identity/invitations/accept)
 	PostIdentityInvitationsAccept(w http.ResponseWriter, r *http.Request)
-
+	// GetIdentityInvitationsValidate Check that an invitation is still valid
 	// (GET /api/v1/identity/invitations/validate)
 	GetIdentityInvitationsValidate(w http.ResponseWriter, r *http.Request, params GetIdentityInvitationsValidateParams)
 	// PostIdentityLogin Sign in with the application cookie
@@ -2205,10 +2208,10 @@ type ServerInterface interface {
 	// PostIdentityLogout Sign out of the application cookie
 	// (POST /api/v1/identity/logout)
 	PostIdentityLogout(w http.ResponseWriter, r *http.Request)
-
+	// GetIdentityOidcCallback Finish an OpenID Connect sign-in (redirect)
 	// (GET /api/v1/identity/oidc/callback)
 	GetIdentityOidcCallback(w http.ResponseWriter, r *http.Request, params GetIdentityOidcCallbackParams)
-
+	// PostIdentityOidcCallback Finish an OpenID Connect sign-in (form post)
 	// (POST /api/v1/identity/oidc/callback)
 	PostIdentityOidcCallback(w http.ResponseWriter, r *http.Request)
 	// GetIdentityOidcChallenge Start workforce OpenID Connect sign-in
@@ -2223,43 +2226,43 @@ type ServerInterface interface {
 	// PutIdentityOwnerAiTasksByKey Choose the model of an AI task
 	// (PUT /api/v1/identity/owner/ai/tasks/{key})
 	PutIdentityOwnerAiTasksByKey(w http.ResponseWriter, r *http.Request, key string, params PutIdentityOwnerAiTasksByKeyParams)
-
+	// GetIdentityOwnerInvitations List the pending invitations
 	// (GET /api/v1/identity/owner/invitations)
 	GetIdentityOwnerInvitations(w http.ResponseWriter, r *http.Request)
-
+	// PostIdentityOwnerInvitations Invite a user
 	// (POST /api/v1/identity/owner/invitations)
 	PostIdentityOwnerInvitations(w http.ResponseWriter, r *http.Request)
-
+	// PostIdentityOwnerInvitationsByIdResend Resend an invitation
 	// (POST /api/v1/identity/owner/invitations/{id}/resend)
 	PostIdentityOwnerInvitationsByIdResend(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
-
+	// PostIdentityOwnerInvitationsByIdRevoke Revoke an invitation
 	// (POST /api/v1/identity/owner/invitations/{id}/revoke)
 	PostIdentityOwnerInvitationsByIdRevoke(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
-
+	// GetIdentityOwnerMfa Get the Owner's two-factor status
 	// (GET /api/v1/identity/owner/mfa)
 	GetIdentityOwnerMfa(w http.ResponseWriter, r *http.Request)
-
+	// PostIdentityOwnerMfaDisable Turn off the Owner's two-factor sign-in
 	// (POST /api/v1/identity/owner/mfa/disable)
 	PostIdentityOwnerMfaDisable(w http.ResponseWriter, r *http.Request)
-
+	// PostIdentityOwnerMfaEnable Turn on the Owner's two-factor sign-in
 	// (POST /api/v1/identity/owner/mfa/enable)
 	PostIdentityOwnerMfaEnable(w http.ResponseWriter, r *http.Request)
-
+	// PostIdentityOwnerMfaRecoveryCodes Generate new recovery codes for the Owner
 	// (POST /api/v1/identity/owner/mfa/recovery-codes)
 	PostIdentityOwnerMfaRecoveryCodes(w http.ResponseWriter, r *http.Request)
-
+	// PostIdentityOwnerMfaResetByUserId Reset a user's two-factor sign-in
 	// (POST /api/v1/identity/owner/mfa/reset/{userId})
 	PostIdentityOwnerMfaResetByUserId(w http.ResponseWriter, r *http.Request, userId openapi_types.UUID)
-
+	// GetIdentityOwnerMfaSetup Get the Owner's authenticator setup
 	// (GET /api/v1/identity/owner/mfa/setup)
 	GetIdentityOwnerMfaSetup(w http.ResponseWriter, r *http.Request)
-
+	// PostIdentityOwnerMfaSetup Start the Owner's authenticator setup
 	// (POST /api/v1/identity/owner/mfa/setup)
 	PostIdentityOwnerMfaSetup(w http.ResponseWriter, r *http.Request)
-
+	// GetIdentityOwnerProvisioningRoles List the roles Staff may give provisioned users
 	// (GET /api/v1/identity/owner/provisioning-roles)
 	GetIdentityOwnerProvisioningRoles(w http.ResponseWriter, r *http.Request)
-
+	// PutIdentityOwnerProvisioningRoles Replace the roles Staff may give provisioned users
 	// (PUT /api/v1/identity/owner/provisioning-roles)
 	PutIdentityOwnerProvisioningRoles(w http.ResponseWriter, r *http.Request)
 	// GetIdentityOwnerSso Get the single sign-on settings
@@ -2283,43 +2286,43 @@ type ServerInterface interface {
 	// GetIdentityOwnerSystemStatus Get non-sensitive static identity and account status
 	// (GET /api/v1/identity/owner/system-status)
 	GetIdentityOwnerSystemStatus(w http.ResponseWriter, r *http.Request)
-
+	// GetIdentityOwnerUsers List the users
 	// (GET /api/v1/identity/owner/users)
 	GetIdentityOwnerUsers(w http.ResponseWriter, r *http.Request)
-
+	// PostIdentityOwnerUsers Create a user
 	// (POST /api/v1/identity/owner/users)
 	PostIdentityOwnerUsers(w http.ResponseWriter, r *http.Request)
-
+	// DeleteIdentityOwnerUsersById Delete a user
 	// (DELETE /api/v1/identity/owner/users/{id})
 	DeleteIdentityOwnerUsersById(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
-
+	// PutIdentityOwnerUsersById Update a user
 	// (PUT /api/v1/identity/owner/users/{id})
 	PutIdentityOwnerUsersById(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
-
+	// GetIdentityOwnerUsersByIdAvatar Get a user's avatar
 	// (GET /api/v1/identity/owner/users/{id}/avatar)
 	GetIdentityOwnerUsersByIdAvatar(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
-
+	// PostIdentityOwnerUsersByIdDisable Disable a user
 	// (POST /api/v1/identity/owner/users/{id}/disable)
 	PostIdentityOwnerUsersByIdDisable(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
-
+	// PostIdentityOwnerUsersByIdEnable Enable a user
 	// (POST /api/v1/identity/owner/users/{id}/enable)
 	PostIdentityOwnerUsersByIdEnable(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
-
+	// PostIdentityOwnerUsersByIdManage Let Staff manage a user
 	// (POST /api/v1/identity/owner/users/{id}/manage)
 	PostIdentityOwnerUsersByIdManage(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
-
+	// PostIdentityOwnerUsersByIdPassword Set a user's password
 	// (POST /api/v1/identity/owner/users/{id}/password)
 	PostIdentityOwnerUsersByIdPassword(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
-
+	// PostIdentityOwnerUsersByIdPasswordReset Send a user a password reset link
 	// (POST /api/v1/identity/owner/users/{id}/password-reset)
 	PostIdentityOwnerUsersByIdPasswordReset(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
-
+	// DeleteIdentityOwnerUsersByIdSsoLink Disconnect a user from the single sign-on provider
 	// (DELETE /api/v1/identity/owner/users/{id}/sso-link)
 	DeleteIdentityOwnerUsersByIdSsoLink(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
-
+	// PostIdentityOwnerUsersByIdSsoLink Connect a user to the single sign-on provider
 	// (POST /api/v1/identity/owner/users/{id}/sso-link)
 	PostIdentityOwnerUsersByIdSsoLink(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
-
+	// PostIdentityOwnerUsersByIdUnmanage Stop Staff managing a user
 	// (POST /api/v1/identity/owner/users/{id}/unmanage)
 	PostIdentityOwnerUsersByIdUnmanage(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
 	// GetIdentityOwnerWorkspace Get the workspace's settings
@@ -2328,61 +2331,61 @@ type ServerInterface interface {
 	// PutIdentityOwnerWorkspace Change the workspace's settings
 	// (PUT /api/v1/identity/owner/workspace)
 	PutIdentityOwnerWorkspace(w http.ResponseWriter, r *http.Request)
-
+	// PostIdentityPasskeysLoginBegin Begin signing in with a passkey
 	// (POST /api/v1/identity/passkeys/login/begin)
 	PostIdentityPasskeysLoginBegin(w http.ResponseWriter, r *http.Request)
-
+	// PostIdentityPasskeysLoginComplete Complete signing in with a passkey
 	// (POST /api/v1/identity/passkeys/login/complete)
 	PostIdentityPasskeysLoginComplete(w http.ResponseWriter, r *http.Request)
-
+	// PostIdentityPasswordRecoveryRequest Ask for a password reset link
 	// (POST /api/v1/identity/password-recovery/request)
 	PostIdentityPasswordRecoveryRequest(w http.ResponseWriter, r *http.Request)
-
+	// PostIdentityPasswordRecoveryReset Reset a password with a reset link
 	// (POST /api/v1/identity/password-recovery/reset)
 	PostIdentityPasswordRecoveryReset(w http.ResponseWriter, r *http.Request)
 	// GetIdentityProviders Get the configured workforce sign-in providers
 	// (GET /api/v1/identity/providers)
 	GetIdentityProviders(w http.ResponseWriter, r *http.Request)
-
+	// GetIdentityScimV2Groups List the groups (SCIM)
 	// (GET /api/v1/identity/scim/v2/Groups)
 	GetIdentityScimV2Groups(w http.ResponseWriter, r *http.Request, params GetIdentityScimV2GroupsParams)
-
+	// PostIdentityScimV2Groups Create a group (SCIM)
 	// (POST /api/v1/identity/scim/v2/Groups)
 	PostIdentityScimV2Groups(w http.ResponseWriter, r *http.Request)
-
+	// DeleteIdentityScimV2GroupsById Delete a group (SCIM)
 	// (DELETE /api/v1/identity/scim/v2/Groups/{id})
 	DeleteIdentityScimV2GroupsById(w http.ResponseWriter, r *http.Request, id string, params DeleteIdentityScimV2GroupsByIdParams)
-
+	// GetIdentityScimV2GroupsById Get a group (SCIM)
 	// (GET /api/v1/identity/scim/v2/Groups/{id})
 	GetIdentityScimV2GroupsById(w http.ResponseWriter, r *http.Request, id string, params GetIdentityScimV2GroupsByIdParams)
-
+	// PatchIdentityScimV2GroupsById Update a group (SCIM)
 	// (PATCH /api/v1/identity/scim/v2/Groups/{id})
 	PatchIdentityScimV2GroupsById(w http.ResponseWriter, r *http.Request, id string, params PatchIdentityScimV2GroupsByIdParams)
-
+	// GetIdentityScimV2ResourceTypes List the SCIM resource types
 	// (GET /api/v1/identity/scim/v2/ResourceTypes)
 	GetIdentityScimV2ResourceTypes(w http.ResponseWriter, r *http.Request)
-
+	// GetIdentityScimV2Schemas List the SCIM schemas
 	// (GET /api/v1/identity/scim/v2/Schemas)
 	GetIdentityScimV2Schemas(w http.ResponseWriter, r *http.Request)
-
+	// GetIdentityScimV2ServiceProviderConfig Get the SCIM service provider configuration
 	// (GET /api/v1/identity/scim/v2/ServiceProviderConfig)
 	GetIdentityScimV2ServiceProviderConfig(w http.ResponseWriter, r *http.Request)
-
+	// GetIdentityScimV2Users List the users (SCIM)
 	// (GET /api/v1/identity/scim/v2/Users)
 	GetIdentityScimV2Users(w http.ResponseWriter, r *http.Request, params GetIdentityScimV2UsersParams)
-
+	// PostIdentityScimV2Users Create a user (SCIM)
 	// (POST /api/v1/identity/scim/v2/Users)
 	PostIdentityScimV2Users(w http.ResponseWriter, r *http.Request)
-
+	// DeleteIdentityScimV2UsersById Delete a user (SCIM)
 	// (DELETE /api/v1/identity/scim/v2/Users/{id})
 	DeleteIdentityScimV2UsersById(w http.ResponseWriter, r *http.Request, id string, params DeleteIdentityScimV2UsersByIdParams)
-
+	// GetIdentityScimV2UsersById Get a user (SCIM)
 	// (GET /api/v1/identity/scim/v2/Users/{id})
 	GetIdentityScimV2UsersById(w http.ResponseWriter, r *http.Request, id string)
-
+	// PatchIdentityScimV2UsersById Update a user (SCIM)
 	// (PATCH /api/v1/identity/scim/v2/Users/{id})
 	PatchIdentityScimV2UsersById(w http.ResponseWriter, r *http.Request, id string, params PatchIdentityScimV2UsersByIdParams)
-
+	// PutIdentityScimV2UsersById Replace a user (SCIM)
 	// (PUT /api/v1/identity/scim/v2/Users/{id})
 	PutIdentityScimV2UsersById(w http.ResponseWriter, r *http.Request, id string, params PutIdentityScimV2UsersByIdParams)
 	// GetIdentitySession Get the authenticated browser session
@@ -14512,139 +14515,139 @@ func (response PostIdentitySystemUsersByUserIdSessionsRevoke404JSONResponse) Vis
 
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
-
+	// GetIdentityAccessAudit List the authorization audit events
 	// (GET /api/v1/identity/access/audit)
 	GetIdentityAccessAudit(ctx context.Context, request GetIdentityAccessAuditRequestObject) (GetIdentityAccessAuditResponseObject, error)
-
+	// GetIdentityAccessCatalog List the permission catalog
 	// (GET /api/v1/identity/access/catalog)
 	GetIdentityAccessCatalog(ctx context.Context, request GetIdentityAccessCatalogRequestObject) (GetIdentityAccessCatalogResponseObject, error)
-
+	// GetIdentityAccessDelegations List the authorization delegations
 	// (GET /api/v1/identity/access/delegations)
 	GetIdentityAccessDelegations(ctx context.Context, request GetIdentityAccessDelegationsRequestObject) (GetIdentityAccessDelegationsResponseObject, error)
-
+	// PostIdentityAccessDelegations Create an authorization delegation
 	// (POST /api/v1/identity/access/delegations)
 	PostIdentityAccessDelegations(ctx context.Context, request PostIdentityAccessDelegationsRequestObject) (PostIdentityAccessDelegationsResponseObject, error)
-
+	// PutIdentityAccessDelegationsById Update an authorization delegation
 	// (PUT /api/v1/identity/access/delegations/{id})
 	PutIdentityAccessDelegationsById(ctx context.Context, request PutIdentityAccessDelegationsByIdRequestObject) (PutIdentityAccessDelegationsByIdResponseObject, error)
-
+	// PostIdentityAccessDelegationsByIdRevoke Revoke an authorization delegation
 	// (POST /api/v1/identity/access/delegations/{id}/revoke)
 	PostIdentityAccessDelegationsByIdRevoke(ctx context.Context, request PostIdentityAccessDelegationsByIdRevokeRequestObject) (PostIdentityAccessDelegationsByIdRevokeResponseObject, error)
-
+	// GetIdentityAccessGroups List the access groups
 	// (GET /api/v1/identity/access/groups)
 	GetIdentityAccessGroups(ctx context.Context, request GetIdentityAccessGroupsRequestObject) (GetIdentityAccessGroupsResponseObject, error)
-
+	// PostIdentityAccessGroups Create an access group
 	// (POST /api/v1/identity/access/groups)
 	PostIdentityAccessGroups(ctx context.Context, request PostIdentityAccessGroupsRequestObject) (PostIdentityAccessGroupsResponseObject, error)
-
+	// DeleteIdentityAccessGroupsByGroupIdMembersByUserId Remove a member from an access group
 	// (DELETE /api/v1/identity/access/groups/{groupId}/members/{userId})
 	DeleteIdentityAccessGroupsByGroupIdMembersByUserId(ctx context.Context, request DeleteIdentityAccessGroupsByGroupIdMembersByUserIdRequestObject) (DeleteIdentityAccessGroupsByGroupIdMembersByUserIdResponseObject, error)
-
+	// PostIdentityAccessGroupsByGroupIdMembersByUserId Add a member to an access group
 	// (POST /api/v1/identity/access/groups/{groupId}/members/{userId})
 	PostIdentityAccessGroupsByGroupIdMembersByUserId(ctx context.Context, request PostIdentityAccessGroupsByGroupIdMembersByUserIdRequestObject) (PostIdentityAccessGroupsByGroupIdMembersByUserIdResponseObject, error)
-
+	// PutIdentityAccessGroupsByGroupIdMembersByUserId Add a member to an access group (same as POST)
 	// (PUT /api/v1/identity/access/groups/{groupId}/members/{userId})
 	PutIdentityAccessGroupsByGroupIdMembersByUserId(ctx context.Context, request PutIdentityAccessGroupsByGroupIdMembersByUserIdRequestObject) (PutIdentityAccessGroupsByGroupIdMembersByUserIdResponseObject, error)
-
+	// DeleteIdentityAccessGroupsByGroupIdRoleMappingsByRoleId Unmap a role from an access group
 	// (DELETE /api/v1/identity/access/groups/{groupId}/role-mappings/{roleId})
 	DeleteIdentityAccessGroupsByGroupIdRoleMappingsByRoleId(ctx context.Context, request DeleteIdentityAccessGroupsByGroupIdRoleMappingsByRoleIdRequestObject) (DeleteIdentityAccessGroupsByGroupIdRoleMappingsByRoleIdResponseObject, error)
-
+	// PostIdentityAccessGroupsByGroupIdRoleMappingsByRoleId Map a role to an access group
 	// (POST /api/v1/identity/access/groups/{groupId}/role-mappings/{roleId})
 	PostIdentityAccessGroupsByGroupIdRoleMappingsByRoleId(ctx context.Context, request PostIdentityAccessGroupsByGroupIdRoleMappingsByRoleIdRequestObject) (PostIdentityAccessGroupsByGroupIdRoleMappingsByRoleIdResponseObject, error)
-
+	// PutIdentityAccessGroupsByGroupIdRoleMappingsByRoleId Map a role to an access group (same as POST)
 	// (PUT /api/v1/identity/access/groups/{groupId}/role-mappings/{roleId})
 	PutIdentityAccessGroupsByGroupIdRoleMappingsByRoleId(ctx context.Context, request PutIdentityAccessGroupsByGroupIdRoleMappingsByRoleIdRequestObject) (PutIdentityAccessGroupsByGroupIdRoleMappingsByRoleIdResponseObject, error)
-
+	// DeleteIdentityAccessGroupsById Delete an access group
 	// (DELETE /api/v1/identity/access/groups/{id})
 	DeleteIdentityAccessGroupsById(ctx context.Context, request DeleteIdentityAccessGroupsByIdRequestObject) (DeleteIdentityAccessGroupsByIdResponseObject, error)
-
+	// GetIdentityAccessGroupsById Get an access group by id
 	// (GET /api/v1/identity/access/groups/{id})
 	GetIdentityAccessGroupsById(ctx context.Context, request GetIdentityAccessGroupsByIdRequestObject) (GetIdentityAccessGroupsByIdResponseObject, error)
-
+	// PutIdentityAccessGroupsById Update an access group
 	// (PUT /api/v1/identity/access/groups/{id})
 	PutIdentityAccessGroupsById(ctx context.Context, request PutIdentityAccessGroupsByIdRequestObject) (PutIdentityAccessGroupsByIdResponseObject, error)
-
+	// GetIdentityAccessMe Get the caller's own effective access
 	// (GET /api/v1/identity/access/me)
 	GetIdentityAccessMe(ctx context.Context, request GetIdentityAccessMeRequestObject) (GetIdentityAccessMeResponseObject, error)
-
+	// GetIdentityAccessRoles List the roles
 	// (GET /api/v1/identity/access/roles)
 	GetIdentityAccessRoles(ctx context.Context, request GetIdentityAccessRolesRequestObject) (GetIdentityAccessRolesResponseObject, error)
-
+	// PostIdentityAccessRoles Create a custom role
 	// (POST /api/v1/identity/access/roles)
 	PostIdentityAccessRoles(ctx context.Context, request PostIdentityAccessRolesRequestObject) (PostIdentityAccessRolesResponseObject, error)
-
+	// DeleteIdentityAccessRolesById Delete a custom role
 	// (DELETE /api/v1/identity/access/roles/{id})
 	DeleteIdentityAccessRolesById(ctx context.Context, request DeleteIdentityAccessRolesByIdRequestObject) (DeleteIdentityAccessRolesByIdResponseObject, error)
-
+	// PutIdentityAccessRolesById Update a custom role
 	// (PUT /api/v1/identity/access/roles/{id})
 	PutIdentityAccessRolesById(ctx context.Context, request PutIdentityAccessRolesByIdRequestObject) (PutIdentityAccessRolesByIdResponseObject, error)
-
+	// PutIdentityAccessRolesByIdPermissions Replace a role's permissions
 	// (PUT /api/v1/identity/access/roles/{id}/permissions)
 	PutIdentityAccessRolesByIdPermissions(ctx context.Context, request PutIdentityAccessRolesByIdPermissionsRequestObject) (PutIdentityAccessRolesByIdPermissionsResponseObject, error)
-
+	// GetIdentityAccessUsers List the users with their access
 	// (GET /api/v1/identity/access/users)
 	GetIdentityAccessUsers(ctx context.Context, request GetIdentityAccessUsersRequestObject) (GetIdentityAccessUsersResponseObject, error)
-
+	// GetIdentityAccessUsersById Get a user's access by id
 	// (GET /api/v1/identity/access/users/{id})
 	GetIdentityAccessUsersById(ctx context.Context, request GetIdentityAccessUsersByIdRequestObject) (GetIdentityAccessUsersByIdResponseObject, error)
-
+	// PutIdentityAccessUsersByIdRoles Replace a user's roles
 	// (PUT /api/v1/identity/access/users/{id}/roles)
 	PutIdentityAccessUsersByIdRoles(ctx context.Context, request PutIdentityAccessUsersByIdRolesRequestObject) (PutIdentityAccessUsersByIdRolesResponseObject, error)
-
+	// GetIdentityAccount Get the caller's account
 	// (GET /api/v1/identity/account)
 	GetIdentityAccount(ctx context.Context, request GetIdentityAccountRequestObject) (GetIdentityAccountResponseObject, error)
-
+	// PutIdentityAccount Update the caller's account
 	// (PUT /api/v1/identity/account)
 	PutIdentityAccount(ctx context.Context, request PutIdentityAccountRequestObject) (PutIdentityAccountResponseObject, error)
-
+	// DeleteIdentityAccountAvatar Remove the caller's avatar
 	// (DELETE /api/v1/identity/account/avatar)
 	DeleteIdentityAccountAvatar(ctx context.Context, request DeleteIdentityAccountAvatarRequestObject) (DeleteIdentityAccountAvatarResponseObject, error)
-
+	// GetIdentityAccountAvatar Get the caller's avatar
 	// (GET /api/v1/identity/account/avatar)
 	GetIdentityAccountAvatar(ctx context.Context, request GetIdentityAccountAvatarRequestObject) (GetIdentityAccountAvatarResponseObject, error)
-
+	// PostIdentityAccountAvatar Upload the caller's avatar
 	// (POST /api/v1/identity/account/avatar)
 	PostIdentityAccountAvatar(ctx context.Context, request PostIdentityAccountAvatarRequestObject) (PostIdentityAccountAvatarResponseObject, error)
-
+	// PutIdentityAccountAvatar Upload the caller's avatar (same as POST)
 	// (PUT /api/v1/identity/account/avatar)
 	PutIdentityAccountAvatar(ctx context.Context, request PutIdentityAccountAvatarRequestObject) (PutIdentityAccountAvatarResponseObject, error)
-
+	// GetIdentityAccountMfa Get the caller's two-factor status
 	// (GET /api/v1/identity/account/mfa)
 	GetIdentityAccountMfa(ctx context.Context, request GetIdentityAccountMfaRequestObject) (GetIdentityAccountMfaResponseObject, error)
-
+	// PostIdentityAccountMfaDisable Turn off the caller's two-factor sign-in
 	// (POST /api/v1/identity/account/mfa/disable)
 	PostIdentityAccountMfaDisable(ctx context.Context, request PostIdentityAccountMfaDisableRequestObject) (PostIdentityAccountMfaDisableResponseObject, error)
-
+	// PostIdentityAccountMfaEnable Turn on the caller's two-factor sign-in
 	// (POST /api/v1/identity/account/mfa/enable)
 	PostIdentityAccountMfaEnable(ctx context.Context, request PostIdentityAccountMfaEnableRequestObject) (PostIdentityAccountMfaEnableResponseObject, error)
-
+	// PostIdentityAccountMfaRecoveryCodes Generate new recovery codes for the caller
 	// (POST /api/v1/identity/account/mfa/recovery-codes)
 	PostIdentityAccountMfaRecoveryCodes(ctx context.Context, request PostIdentityAccountMfaRecoveryCodesRequestObject) (PostIdentityAccountMfaRecoveryCodesResponseObject, error)
-
+	// GetIdentityAccountMfaSetup Get the caller's authenticator setup
 	// (GET /api/v1/identity/account/mfa/setup)
 	GetIdentityAccountMfaSetup(ctx context.Context, request GetIdentityAccountMfaSetupRequestObject) (GetIdentityAccountMfaSetupResponseObject, error)
-
+	// PostIdentityAccountMfaSetup Start the caller's authenticator setup
 	// (POST /api/v1/identity/account/mfa/setup)
 	PostIdentityAccountMfaSetup(ctx context.Context, request PostIdentityAccountMfaSetupRequestObject) (PostIdentityAccountMfaSetupResponseObject, error)
-
+	// GetIdentityAccountPasskeys List the caller's passkeys
 	// (GET /api/v1/identity/account/passkeys)
 	GetIdentityAccountPasskeys(ctx context.Context, request GetIdentityAccountPasskeysRequestObject) (GetIdentityAccountPasskeysResponseObject, error)
-
+	// PostIdentityAccountPasskeysBegin Begin adding a passkey
 	// (POST /api/v1/identity/account/passkeys/begin)
 	PostIdentityAccountPasskeysBegin(ctx context.Context, request PostIdentityAccountPasskeysBeginRequestObject) (PostIdentityAccountPasskeysBeginResponseObject, error)
-
+	// PostIdentityAccountPasskeysComplete Complete adding a passkey
 	// (POST /api/v1/identity/account/passkeys/complete)
 	PostIdentityAccountPasskeysComplete(ctx context.Context, request PostIdentityAccountPasskeysCompleteRequestObject) (PostIdentityAccountPasskeysCompleteResponseObject, error)
-
+	// DeleteIdentityAccountPasskeysByCredentialId Remove one of the caller's passkeys
 	// (DELETE /api/v1/identity/account/passkeys/{credentialId})
 	DeleteIdentityAccountPasskeysByCredentialId(ctx context.Context, request DeleteIdentityAccountPasskeysByCredentialIdRequestObject) (DeleteIdentityAccountPasskeysByCredentialIdResponseObject, error)
-
+	// PostIdentityAccountPassword Change the caller's password
 	// (POST /api/v1/identity/account/password)
 	PostIdentityAccountPassword(ctx context.Context, request PostIdentityAccountPasswordRequestObject) (PostIdentityAccountPasswordResponseObject, error)
-
+	// PatchIdentityAccountProfile Update parts of the caller's profile
 	// (PATCH /api/v1/identity/account/profile)
 	PatchIdentityAccountProfile(ctx context.Context, request PatchIdentityAccountProfileRequestObject) (PatchIdentityAccountProfileResponseObject, error)
-
+	// PutIdentityAccountProfile Replace the caller's profile
 	// (PUT /api/v1/identity/account/profile)
 	PutIdentityAccountProfile(ctx context.Context, request PutIdentityAccountProfileRequestObject) (PutIdentityAccountProfileResponseObject, error)
 	// PostIdentityAccountSessionsRevoke Sign out of every session for the current account
@@ -14656,10 +14659,10 @@ type StrictServerInterface interface {
 	// GetIdentityBootstrapStatus Get whether one-time local Owner bootstrap is available
 	// (GET /api/v1/identity/bootstrap-status)
 	GetIdentityBootstrapStatus(ctx context.Context, request GetIdentityBootstrapStatusRequestObject) (GetIdentityBootstrapStatusResponseObject, error)
-
+	// PostIdentityInvitationsAccept Accept an invitation and create the account
 	// (POST /api/v1/identity/invitations/accept)
 	PostIdentityInvitationsAccept(ctx context.Context, request PostIdentityInvitationsAcceptRequestObject) (PostIdentityInvitationsAcceptResponseObject, error)
-
+	// GetIdentityInvitationsValidate Check that an invitation is still valid
 	// (GET /api/v1/identity/invitations/validate)
 	GetIdentityInvitationsValidate(ctx context.Context, request GetIdentityInvitationsValidateRequestObject) (GetIdentityInvitationsValidateResponseObject, error)
 	// PostIdentityLogin Sign in with the application cookie
@@ -14671,10 +14674,10 @@ type StrictServerInterface interface {
 	// PostIdentityLogout Sign out of the application cookie
 	// (POST /api/v1/identity/logout)
 	PostIdentityLogout(ctx context.Context, request PostIdentityLogoutRequestObject) (PostIdentityLogoutResponseObject, error)
-
+	// GetIdentityOidcCallback Finish an OpenID Connect sign-in (redirect)
 	// (GET /api/v1/identity/oidc/callback)
 	GetIdentityOidcCallback(ctx context.Context, request GetIdentityOidcCallbackRequestObject) (GetIdentityOidcCallbackResponseObject, error)
-
+	// PostIdentityOidcCallback Finish an OpenID Connect sign-in (form post)
 	// (POST /api/v1/identity/oidc/callback)
 	PostIdentityOidcCallback(ctx context.Context, request PostIdentityOidcCallbackRequestObject) (PostIdentityOidcCallbackResponseObject, error)
 	// GetIdentityOidcChallenge Start workforce OpenID Connect sign-in
@@ -14689,43 +14692,43 @@ type StrictServerInterface interface {
 	// PutIdentityOwnerAiTasksByKey Choose the model of an AI task
 	// (PUT /api/v1/identity/owner/ai/tasks/{key})
 	PutIdentityOwnerAiTasksByKey(ctx context.Context, request PutIdentityOwnerAiTasksByKeyRequestObject) (PutIdentityOwnerAiTasksByKeyResponseObject, error)
-
+	// GetIdentityOwnerInvitations List the pending invitations
 	// (GET /api/v1/identity/owner/invitations)
 	GetIdentityOwnerInvitations(ctx context.Context, request GetIdentityOwnerInvitationsRequestObject) (GetIdentityOwnerInvitationsResponseObject, error)
-
+	// PostIdentityOwnerInvitations Invite a user
 	// (POST /api/v1/identity/owner/invitations)
 	PostIdentityOwnerInvitations(ctx context.Context, request PostIdentityOwnerInvitationsRequestObject) (PostIdentityOwnerInvitationsResponseObject, error)
-
+	// PostIdentityOwnerInvitationsByIdResend Resend an invitation
 	// (POST /api/v1/identity/owner/invitations/{id}/resend)
 	PostIdentityOwnerInvitationsByIdResend(ctx context.Context, request PostIdentityOwnerInvitationsByIdResendRequestObject) (PostIdentityOwnerInvitationsByIdResendResponseObject, error)
-
+	// PostIdentityOwnerInvitationsByIdRevoke Revoke an invitation
 	// (POST /api/v1/identity/owner/invitations/{id}/revoke)
 	PostIdentityOwnerInvitationsByIdRevoke(ctx context.Context, request PostIdentityOwnerInvitationsByIdRevokeRequestObject) (PostIdentityOwnerInvitationsByIdRevokeResponseObject, error)
-
+	// GetIdentityOwnerMfa Get the Owner's two-factor status
 	// (GET /api/v1/identity/owner/mfa)
 	GetIdentityOwnerMfa(ctx context.Context, request GetIdentityOwnerMfaRequestObject) (GetIdentityOwnerMfaResponseObject, error)
-
+	// PostIdentityOwnerMfaDisable Turn off the Owner's two-factor sign-in
 	// (POST /api/v1/identity/owner/mfa/disable)
 	PostIdentityOwnerMfaDisable(ctx context.Context, request PostIdentityOwnerMfaDisableRequestObject) (PostIdentityOwnerMfaDisableResponseObject, error)
-
+	// PostIdentityOwnerMfaEnable Turn on the Owner's two-factor sign-in
 	// (POST /api/v1/identity/owner/mfa/enable)
 	PostIdentityOwnerMfaEnable(ctx context.Context, request PostIdentityOwnerMfaEnableRequestObject) (PostIdentityOwnerMfaEnableResponseObject, error)
-
+	// PostIdentityOwnerMfaRecoveryCodes Generate new recovery codes for the Owner
 	// (POST /api/v1/identity/owner/mfa/recovery-codes)
 	PostIdentityOwnerMfaRecoveryCodes(ctx context.Context, request PostIdentityOwnerMfaRecoveryCodesRequestObject) (PostIdentityOwnerMfaRecoveryCodesResponseObject, error)
-
+	// PostIdentityOwnerMfaResetByUserId Reset a user's two-factor sign-in
 	// (POST /api/v1/identity/owner/mfa/reset/{userId})
 	PostIdentityOwnerMfaResetByUserId(ctx context.Context, request PostIdentityOwnerMfaResetByUserIdRequestObject) (PostIdentityOwnerMfaResetByUserIdResponseObject, error)
-
+	// GetIdentityOwnerMfaSetup Get the Owner's authenticator setup
 	// (GET /api/v1/identity/owner/mfa/setup)
 	GetIdentityOwnerMfaSetup(ctx context.Context, request GetIdentityOwnerMfaSetupRequestObject) (GetIdentityOwnerMfaSetupResponseObject, error)
-
+	// PostIdentityOwnerMfaSetup Start the Owner's authenticator setup
 	// (POST /api/v1/identity/owner/mfa/setup)
 	PostIdentityOwnerMfaSetup(ctx context.Context, request PostIdentityOwnerMfaSetupRequestObject) (PostIdentityOwnerMfaSetupResponseObject, error)
-
+	// GetIdentityOwnerProvisioningRoles List the roles Staff may give provisioned users
 	// (GET /api/v1/identity/owner/provisioning-roles)
 	GetIdentityOwnerProvisioningRoles(ctx context.Context, request GetIdentityOwnerProvisioningRolesRequestObject) (GetIdentityOwnerProvisioningRolesResponseObject, error)
-
+	// PutIdentityOwnerProvisioningRoles Replace the roles Staff may give provisioned users
 	// (PUT /api/v1/identity/owner/provisioning-roles)
 	PutIdentityOwnerProvisioningRoles(ctx context.Context, request PutIdentityOwnerProvisioningRolesRequestObject) (PutIdentityOwnerProvisioningRolesResponseObject, error)
 	// GetIdentityOwnerSso Get the single sign-on settings
@@ -14749,43 +14752,43 @@ type StrictServerInterface interface {
 	// GetIdentityOwnerSystemStatus Get non-sensitive static identity and account status
 	// (GET /api/v1/identity/owner/system-status)
 	GetIdentityOwnerSystemStatus(ctx context.Context, request GetIdentityOwnerSystemStatusRequestObject) (GetIdentityOwnerSystemStatusResponseObject, error)
-
+	// GetIdentityOwnerUsers List the users
 	// (GET /api/v1/identity/owner/users)
 	GetIdentityOwnerUsers(ctx context.Context, request GetIdentityOwnerUsersRequestObject) (GetIdentityOwnerUsersResponseObject, error)
-
+	// PostIdentityOwnerUsers Create a user
 	// (POST /api/v1/identity/owner/users)
 	PostIdentityOwnerUsers(ctx context.Context, request PostIdentityOwnerUsersRequestObject) (PostIdentityOwnerUsersResponseObject, error)
-
+	// DeleteIdentityOwnerUsersById Delete a user
 	// (DELETE /api/v1/identity/owner/users/{id})
 	DeleteIdentityOwnerUsersById(ctx context.Context, request DeleteIdentityOwnerUsersByIdRequestObject) (DeleteIdentityOwnerUsersByIdResponseObject, error)
-
+	// PutIdentityOwnerUsersById Update a user
 	// (PUT /api/v1/identity/owner/users/{id})
 	PutIdentityOwnerUsersById(ctx context.Context, request PutIdentityOwnerUsersByIdRequestObject) (PutIdentityOwnerUsersByIdResponseObject, error)
-
+	// GetIdentityOwnerUsersByIdAvatar Get a user's avatar
 	// (GET /api/v1/identity/owner/users/{id}/avatar)
 	GetIdentityOwnerUsersByIdAvatar(ctx context.Context, request GetIdentityOwnerUsersByIdAvatarRequestObject) (GetIdentityOwnerUsersByIdAvatarResponseObject, error)
-
+	// PostIdentityOwnerUsersByIdDisable Disable a user
 	// (POST /api/v1/identity/owner/users/{id}/disable)
 	PostIdentityOwnerUsersByIdDisable(ctx context.Context, request PostIdentityOwnerUsersByIdDisableRequestObject) (PostIdentityOwnerUsersByIdDisableResponseObject, error)
-
+	// PostIdentityOwnerUsersByIdEnable Enable a user
 	// (POST /api/v1/identity/owner/users/{id}/enable)
 	PostIdentityOwnerUsersByIdEnable(ctx context.Context, request PostIdentityOwnerUsersByIdEnableRequestObject) (PostIdentityOwnerUsersByIdEnableResponseObject, error)
-
+	// PostIdentityOwnerUsersByIdManage Let Staff manage a user
 	// (POST /api/v1/identity/owner/users/{id}/manage)
 	PostIdentityOwnerUsersByIdManage(ctx context.Context, request PostIdentityOwnerUsersByIdManageRequestObject) (PostIdentityOwnerUsersByIdManageResponseObject, error)
-
+	// PostIdentityOwnerUsersByIdPassword Set a user's password
 	// (POST /api/v1/identity/owner/users/{id}/password)
 	PostIdentityOwnerUsersByIdPassword(ctx context.Context, request PostIdentityOwnerUsersByIdPasswordRequestObject) (PostIdentityOwnerUsersByIdPasswordResponseObject, error)
-
+	// PostIdentityOwnerUsersByIdPasswordReset Send a user a password reset link
 	// (POST /api/v1/identity/owner/users/{id}/password-reset)
 	PostIdentityOwnerUsersByIdPasswordReset(ctx context.Context, request PostIdentityOwnerUsersByIdPasswordResetRequestObject) (PostIdentityOwnerUsersByIdPasswordResetResponseObject, error)
-
+	// DeleteIdentityOwnerUsersByIdSsoLink Disconnect a user from the single sign-on provider
 	// (DELETE /api/v1/identity/owner/users/{id}/sso-link)
 	DeleteIdentityOwnerUsersByIdSsoLink(ctx context.Context, request DeleteIdentityOwnerUsersByIdSsoLinkRequestObject) (DeleteIdentityOwnerUsersByIdSsoLinkResponseObject, error)
-
+	// PostIdentityOwnerUsersByIdSsoLink Connect a user to the single sign-on provider
 	// (POST /api/v1/identity/owner/users/{id}/sso-link)
 	PostIdentityOwnerUsersByIdSsoLink(ctx context.Context, request PostIdentityOwnerUsersByIdSsoLinkRequestObject) (PostIdentityOwnerUsersByIdSsoLinkResponseObject, error)
-
+	// PostIdentityOwnerUsersByIdUnmanage Stop Staff managing a user
 	// (POST /api/v1/identity/owner/users/{id}/unmanage)
 	PostIdentityOwnerUsersByIdUnmanage(ctx context.Context, request PostIdentityOwnerUsersByIdUnmanageRequestObject) (PostIdentityOwnerUsersByIdUnmanageResponseObject, error)
 	// GetIdentityOwnerWorkspace Get the workspace's settings
@@ -14794,61 +14797,61 @@ type StrictServerInterface interface {
 	// PutIdentityOwnerWorkspace Change the workspace's settings
 	// (PUT /api/v1/identity/owner/workspace)
 	PutIdentityOwnerWorkspace(ctx context.Context, request PutIdentityOwnerWorkspaceRequestObject) (PutIdentityOwnerWorkspaceResponseObject, error)
-
+	// PostIdentityPasskeysLoginBegin Begin signing in with a passkey
 	// (POST /api/v1/identity/passkeys/login/begin)
 	PostIdentityPasskeysLoginBegin(ctx context.Context, request PostIdentityPasskeysLoginBeginRequestObject) (PostIdentityPasskeysLoginBeginResponseObject, error)
-
+	// PostIdentityPasskeysLoginComplete Complete signing in with a passkey
 	// (POST /api/v1/identity/passkeys/login/complete)
 	PostIdentityPasskeysLoginComplete(ctx context.Context, request PostIdentityPasskeysLoginCompleteRequestObject) (PostIdentityPasskeysLoginCompleteResponseObject, error)
-
+	// PostIdentityPasswordRecoveryRequest Ask for a password reset link
 	// (POST /api/v1/identity/password-recovery/request)
 	PostIdentityPasswordRecoveryRequest(ctx context.Context, request PostIdentityPasswordRecoveryRequestRequestObject) (PostIdentityPasswordRecoveryRequestResponseObject, error)
-
+	// PostIdentityPasswordRecoveryReset Reset a password with a reset link
 	// (POST /api/v1/identity/password-recovery/reset)
 	PostIdentityPasswordRecoveryReset(ctx context.Context, request PostIdentityPasswordRecoveryResetRequestObject) (PostIdentityPasswordRecoveryResetResponseObject, error)
 	// GetIdentityProviders Get the configured workforce sign-in providers
 	// (GET /api/v1/identity/providers)
 	GetIdentityProviders(ctx context.Context, request GetIdentityProvidersRequestObject) (GetIdentityProvidersResponseObject, error)
-
+	// GetIdentityScimV2Groups List the groups (SCIM)
 	// (GET /api/v1/identity/scim/v2/Groups)
 	GetIdentityScimV2Groups(ctx context.Context, request GetIdentityScimV2GroupsRequestObject) (GetIdentityScimV2GroupsResponseObject, error)
-
+	// PostIdentityScimV2Groups Create a group (SCIM)
 	// (POST /api/v1/identity/scim/v2/Groups)
 	PostIdentityScimV2Groups(ctx context.Context, request PostIdentityScimV2GroupsRequestObject) (PostIdentityScimV2GroupsResponseObject, error)
-
+	// DeleteIdentityScimV2GroupsById Delete a group (SCIM)
 	// (DELETE /api/v1/identity/scim/v2/Groups/{id})
 	DeleteIdentityScimV2GroupsById(ctx context.Context, request DeleteIdentityScimV2GroupsByIdRequestObject) (DeleteIdentityScimV2GroupsByIdResponseObject, error)
-
+	// GetIdentityScimV2GroupsById Get a group (SCIM)
 	// (GET /api/v1/identity/scim/v2/Groups/{id})
 	GetIdentityScimV2GroupsById(ctx context.Context, request GetIdentityScimV2GroupsByIdRequestObject) (GetIdentityScimV2GroupsByIdResponseObject, error)
-
+	// PatchIdentityScimV2GroupsById Update a group (SCIM)
 	// (PATCH /api/v1/identity/scim/v2/Groups/{id})
 	PatchIdentityScimV2GroupsById(ctx context.Context, request PatchIdentityScimV2GroupsByIdRequestObject) (PatchIdentityScimV2GroupsByIdResponseObject, error)
-
+	// GetIdentityScimV2ResourceTypes List the SCIM resource types
 	// (GET /api/v1/identity/scim/v2/ResourceTypes)
 	GetIdentityScimV2ResourceTypes(ctx context.Context, request GetIdentityScimV2ResourceTypesRequestObject) (GetIdentityScimV2ResourceTypesResponseObject, error)
-
+	// GetIdentityScimV2Schemas List the SCIM schemas
 	// (GET /api/v1/identity/scim/v2/Schemas)
 	GetIdentityScimV2Schemas(ctx context.Context, request GetIdentityScimV2SchemasRequestObject) (GetIdentityScimV2SchemasResponseObject, error)
-
+	// GetIdentityScimV2ServiceProviderConfig Get the SCIM service provider configuration
 	// (GET /api/v1/identity/scim/v2/ServiceProviderConfig)
 	GetIdentityScimV2ServiceProviderConfig(ctx context.Context, request GetIdentityScimV2ServiceProviderConfigRequestObject) (GetIdentityScimV2ServiceProviderConfigResponseObject, error)
-
+	// GetIdentityScimV2Users List the users (SCIM)
 	// (GET /api/v1/identity/scim/v2/Users)
 	GetIdentityScimV2Users(ctx context.Context, request GetIdentityScimV2UsersRequestObject) (GetIdentityScimV2UsersResponseObject, error)
-
+	// PostIdentityScimV2Users Create a user (SCIM)
 	// (POST /api/v1/identity/scim/v2/Users)
 	PostIdentityScimV2Users(ctx context.Context, request PostIdentityScimV2UsersRequestObject) (PostIdentityScimV2UsersResponseObject, error)
-
+	// DeleteIdentityScimV2UsersById Delete a user (SCIM)
 	// (DELETE /api/v1/identity/scim/v2/Users/{id})
 	DeleteIdentityScimV2UsersById(ctx context.Context, request DeleteIdentityScimV2UsersByIdRequestObject) (DeleteIdentityScimV2UsersByIdResponseObject, error)
-
+	// GetIdentityScimV2UsersById Get a user (SCIM)
 	// (GET /api/v1/identity/scim/v2/Users/{id})
 	GetIdentityScimV2UsersById(ctx context.Context, request GetIdentityScimV2UsersByIdRequestObject) (GetIdentityScimV2UsersByIdResponseObject, error)
-
+	// PatchIdentityScimV2UsersById Update a user (SCIM)
 	// (PATCH /api/v1/identity/scim/v2/Users/{id})
 	PatchIdentityScimV2UsersById(ctx context.Context, request PatchIdentityScimV2UsersByIdRequestObject) (PatchIdentityScimV2UsersByIdResponseObject, error)
-
+	// PutIdentityScimV2UsersById Replace a user (SCIM)
 	// (PUT /api/v1/identity/scim/v2/Users/{id})
 	PutIdentityScimV2UsersById(ctx context.Context, request PutIdentityScimV2UsersByIdRequestObject) (PutIdentityScimV2UsersByIdResponseObject, error)
 	// GetIdentitySession Get the authenticated browser session

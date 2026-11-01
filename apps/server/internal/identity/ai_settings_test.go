@@ -125,6 +125,23 @@ func TestAISettings_ThePlanAsFactsAndTheTasksByModule(t *testing.T) {
 	}
 }
 
+// A local model takes no key: the plan is answered as the operator wrote it,
+// openai-compatible, with no key configured (the page says so instead of
+// claiming one).
+func TestAISettings_ALocalModelHasNoKey(t *testing.T) {
+	t.Parallel()
+	h := newAIHarness(t,
+		withEnv("AI_PROVIDER", "openai-compatible"),
+		withEnv("AI_BASE_URL", "http://ollama:11434/v1"),
+		withEnv("AI_MODELS", "qwen3:14b"),
+	)
+	owner, _ := h.bootstrapOwner(t)
+	s := getAISettings(t, owner)
+	if s.Provider != "openai-compatible" || s.KeyConfigured || !slices.Equal(s.AllowedModels, []string{"qwen3:14b"}) {
+		t.Errorf("facts = %+v, want openai-compatible, qwen3:14b and no key configured", s)
+	}
+}
+
 // A module that is off declares no tasks, so the settings do not list it.
 func TestAISettings_AModuleThatIsOffIsNotListed(t *testing.T) {
 	t.Parallel()

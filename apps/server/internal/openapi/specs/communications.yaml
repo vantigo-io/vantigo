@@ -1221,6 +1221,7 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/CommunicationErrorResponse'
                     description: Service Unavailable
+            summary: Download a message attachment
             tags:
                 - ConversationEndpoints
             x-vantigo-access: permission:communications:conversations-view
@@ -1249,6 +1250,7 @@ paths:
                             schema:
                                 $ref: common.yaml#/components/schemas/AuthErrorResponse
                     description: Forbidden
+            summary: List the providers a channel can use
             tags:
                 - ChannelEndpoints
             x-vantigo-access: permission:communications:channels-manage
@@ -1276,6 +1278,7 @@ paths:
                             schema:
                                 $ref: common.yaml#/components/schemas/AuthErrorResponse
                     description: Forbidden
+            summary: List the mail channels
             tags:
                 - ChannelEndpoints
             x-vantigo-access: permission:communications:channels-manage
@@ -1341,6 +1344,7 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/CommunicationErrorResponse'
                     description: Service Unavailable — provider_unreachable, Microsoft 365 did not answer.
+            summary: Create a mail channel
             tags:
                 - ChannelEndpoints
             x-vantigo-access: permission:communications:channels-manage
@@ -1375,6 +1379,7 @@ paths:
                     description: Forbidden
                 "404":
                     description: Not Found
+            summary: Get a mail channel by id
             tags:
                 - ChannelEndpoints
             x-vantigo-access: permission:communications:channels-manage
@@ -1421,6 +1426,7 @@ paths:
                     description: Forbidden
                 "404":
                     description: Not Found
+            summary: Update a mail channel
             tags:
                 - ChannelEndpoints
             x-vantigo-access: permission:communications:channels-manage
@@ -1496,6 +1502,7 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/CommunicationErrorResponse'
                     description: Service Unavailable — provider_unreachable, Microsoft 365 did not answer.
+            summary: Switch a mail channel to another provider
             tags:
                 - ChannelEndpoints
             x-vantigo-access: permission:communications:channels-manage
@@ -1546,6 +1553,7 @@ paths:
                         Retry-After:
                             schema:
                                 type: string
+            summary: Verify a mail channel's connection
             tags:
                 - ChannelEndpoints
             x-vantigo-access: permission:communications:channels-manage
@@ -1607,6 +1615,7 @@ paths:
                     description: Forbidden
                 "404":
                     description: Not Found
+            summary: List the conversations in the inbox
             tags:
                 - ConversationEndpoints
             x-vantigo-access: permission:communications:conversations-view
@@ -1671,6 +1680,7 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/CommunicationErrorResponse'
                     description: Unprocessable Entity
+            summary: Create a conversation
             tags:
                 - ConversationEndpoints
             x-vantigo-access: permission:communications:conversations-reply
@@ -1711,6 +1721,7 @@ paths:
                     description: Forbidden
                 "404":
                     description: Not Found
+            summary: Download an attachment from a conversation
             tags:
                 - ConversationEndpoints
             x-vantigo-access: permission:communications:conversations-view
@@ -1745,6 +1756,7 @@ paths:
                     description: Forbidden
                 "404":
                     description: Not Found
+            summary: Get a conversation with its messages
             tags:
                 - ConversationEndpoints
             x-vantigo-access: permission:communications:conversations-view
@@ -1797,6 +1809,7 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/CommunicationErrorResponse'
                     description: Unprocessable Entity
+            summary: Update a conversation (status, assignee, customer)
             tags:
                 - ConversationEndpoints
             x-vantigo-access: permission:communications:conversations-manage+communications:conversations-view
@@ -1855,6 +1868,7 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/CommunicationErrorResponse'
                     description: Service Unavailable
+            summary: Ask the AI which customer a conversation belongs to
             tags:
                 - ConversationAiEndpoints
             x-vantigo-access: permission:communications:conversations-manage+communications:conversations-view
@@ -1918,6 +1932,7 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/CommunicationErrorResponse'
                     description: Service Unavailable
+            summary: Ask the AI to draft a reply to a conversation
             tags:
                 - ConversationAiEndpoints
             x-vantigo-access: permission:communications:conversations-reply+communications:conversations-view
@@ -2005,6 +2020,7 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/CommunicationErrorResponse'
                     description: Service Unavailable
+            summary: Attach a file to a reply being composed
             tags:
                 - ConversationEndpoints
             x-vantigo-access: permission:communications:conversations-reply+communications:conversations-view
@@ -2058,6 +2074,7 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/CommunicationErrorResponse'
                     description: Unprocessable Entity — channel_inactive, personal_sender_unavailable.
+            summary: Retry sending a failed message
             tags:
                 - ConversationEndpoints
             x-vantigo-access: permission:communications:conversations-reply+communications:conversations-view
@@ -2105,6 +2122,7 @@ paths:
                     description: Forbidden
                 "404":
                     description: Not Found
+            summary: Add an internal note to a conversation
             tags:
                 - ConversationEndpoints
             x-vantigo-access: permission:communications:conversations-manage+communications:conversations-view
@@ -2136,6 +2154,7 @@ paths:
                     description: Forbidden
                 "404":
                     description: Not Found
+            summary: Mark a conversation as read
             tags:
                 - ConversationEndpoints
             x-vantigo-access: permission:communications:conversations-view
@@ -2209,6 +2228,7 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/CommunicationErrorResponse'
                     description: Unprocessable Entity
+            summary: Send a reply in a conversation
             tags:
                 - ConversationEndpoints
             x-vantigo-access: permission:communications:conversations-reply+communications:conversations-view
@@ -2245,6 +2265,7 @@ paths:
                     description: Forbidden
                 "404":
                     description: Not Found
+            summary: Remove a tag from a conversation
             tags:
                 - TagEndpoints
             x-vantigo-access: permission:communications:conversations-manage
@@ -2280,6 +2301,7 @@ paths:
                     description: Forbidden
                 "404":
                     description: Not Found
+            summary: Put a tag on a conversation
             tags:
                 - TagEndpoints
             x-vantigo-access: permission:communications:conversations-manage
@@ -2327,6 +2349,7 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/CommunicationErrorResponse'
                     description: Service Unavailable — attachment_storage_unavailable, the object store did not answer.
+            summary: Download a message as it was received
             tags:
                 - ConversationEndpoints
             x-vantigo-access: permission:communications:conversations-view
@@ -2353,6 +2376,7 @@ paths:
                             schema:
                                 $ref: common.yaml#/components/schemas/AuthErrorResponse
                     description: Forbidden
+            summary: Get whether the caller can send from their own mailbox
             tags:
                 - ConversationEndpoints
             x-vantigo-access: permission:communications:conversations-view
@@ -2500,6 +2524,7 @@ paths:
                             schema:
                                 $ref: common.yaml#/components/schemas/AuthErrorResponse
                     description: Forbidden
+            summary: List the suppressed email addresses
             tags:
                 - SuppressionEndpoints
             x-vantigo-access: permission:communications:suppressions-manage
@@ -2543,6 +2568,7 @@ paths:
                             schema:
                                 $ref: common.yaml#/components/schemas/AuthErrorResponse
                     description: Forbidden
+            summary: Suppress an email address
             tags:
                 - SuppressionEndpoints
             x-vantigo-access: permission:communications:suppressions-manage
@@ -2573,6 +2599,7 @@ paths:
                     description: Forbidden
                 "404":
                     description: Not Found
+            summary: Lift the suppression of an email address
             tags:
                 - SuppressionEndpoints
             x-vantigo-access: permission:communications:suppressions-manage
@@ -2606,6 +2633,7 @@ paths:
                     description: Forbidden
                 "404":
                     description: Not Found
+            summary: Get a suppression by id
             tags:
                 - SuppressionEndpoints
             x-vantigo-access: permission:communications:suppressions-manage
@@ -2633,6 +2661,7 @@ paths:
                             schema:
                                 $ref: common.yaml#/components/schemas/AuthErrorResponse
                     description: Forbidden
+            summary: List the conversation tags
             tags:
                 - TagEndpoints
             x-vantigo-access: permission:communications:conversations-view
@@ -2676,6 +2705,7 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/CommunicationErrorResponse'
                     description: Conflict
+            summary: Create a conversation tag
             tags:
                 - TagEndpoints
             x-vantigo-access: permission:communications:conversations-manage

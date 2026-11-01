@@ -9,6 +9,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** List the authorization audit events */
         get: operations["getIdentityAccessAudit"];
         put?: never;
         post?: never;
@@ -25,6 +26,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** List the permission catalog */
         get: operations["getIdentityAccessCatalog"];
         put?: never;
         post?: never;
@@ -41,8 +43,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** List the authorization delegations */
         get: operations["getIdentityAccessDelegations"];
         put?: never;
+        /** Create an authorization delegation */
         post: operations["postIdentityAccessDelegations"];
         delete?: never;
         options?: never;
@@ -58,6 +62,7 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
+        /** Update an authorization delegation */
         put: operations["putIdentityAccessDelegationsById"];
         post?: never;
         delete?: never;
@@ -75,6 +80,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Revoke an authorization delegation */
         post: operations["postIdentityAccessDelegationsByIdRevoke"];
         delete?: never;
         options?: never;
@@ -89,8 +95,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** List the access groups */
         get: operations["getIdentityAccessGroups"];
         put?: never;
+        /** Create an access group */
         post: operations["postIdentityAccessGroups"];
         delete?: never;
         options?: never;
@@ -106,8 +114,11 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
+        /** Add a member to an access group (same as POST) */
         put: operations["putIdentityAccessGroupsByGroupIdMembersByUserId"];
+        /** Add a member to an access group */
         post: operations["postIdentityAccessGroupsByGroupIdMembersByUserId"];
+        /** Remove a member from an access group */
         delete: operations["deleteIdentityAccessGroupsByGroupIdMembersByUserId"];
         options?: never;
         head?: never;
@@ -122,8 +133,11 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
+        /** Map a role to an access group (same as POST) */
         put: operations["putIdentityAccessGroupsByGroupIdRoleMappingsByRoleId"];
+        /** Map a role to an access group */
         post: operations["postIdentityAccessGroupsByGroupIdRoleMappingsByRoleId"];
+        /** Unmap a role from an access group */
         delete: operations["deleteIdentityAccessGroupsByGroupIdRoleMappingsByRoleId"];
         options?: never;
         head?: never;
@@ -137,9 +151,12 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Get an access group by id */
         get: operations["getIdentityAccessGroupsById"];
+        /** Update an access group */
         put: operations["putIdentityAccessGroupsById"];
         post?: never;
+        /** Delete an access group */
         delete: operations["deleteIdentityAccessGroupsById"];
         options?: never;
         head?: never;
@@ -153,6 +170,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Get the caller's own effective access */
         get: operations["getIdentityAccessMe"];
         put?: never;
         post?: never;
@@ -169,8 +187,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** List the roles */
         get: operations["getIdentityAccessRoles"];
         put?: never;
+        /** Create a custom role */
         post: operations["postIdentityAccessRoles"];
         delete?: never;
         options?: never;
@@ -186,8 +206,10 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
+        /** Update a custom role */
         put: operations["putIdentityAccessRolesById"];
         post?: never;
+        /** Delete a custom role */
         delete: operations["deleteIdentityAccessRolesById"];
         options?: never;
         head?: never;
@@ -202,6 +224,7 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
+        /** Replace a role's permissions */
         put: operations["putIdentityAccessRolesByIdPermissions"];
         post?: never;
         delete?: never;
@@ -217,6 +240,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** List the users with their access */
         get: operations["getIdentityAccessUsers"];
         put?: never;
         post?: never;
@@ -233,6 +257,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Get a user's access by id */
         get: operations["getIdentityAccessUsersById"];
         put?: never;
         post?: never;
@@ -250,6 +275,7 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
+        /** Replace a user's roles */
         put: operations["putIdentityAccessUsersByIdRoles"];
         post?: never;
         delete?: never;
@@ -265,7 +291,9 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Get the caller's account */
         get: operations["getIdentityAccount"];
+        /** Update the caller's account */
         put: operations["putIdentityAccount"];
         post?: never;
         delete?: never;
@@ -281,9 +309,13 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Get the caller's avatar */
         get: operations["getIdentityAccountAvatar"];
+        /** Upload the caller's avatar (same as POST) */
         put: operations["putIdentityAccountAvatar"];
+        /** Upload the caller's avatar */
         post: operations["postIdentityAccountAvatar"];
+        /** Remove the caller's avatar */
         delete: operations["deleteIdentityAccountAvatar"];
         options?: never;
         head?: never;
@@ -297,6 +329,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Get the caller's two-factor status */
         get: operations["getIdentityAccountMfa"];
         put?: never;
         post?: never;
@@ -315,6 +348,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Turn off the caller's two-factor sign-in */
         post: operations["postIdentityAccountMfaDisable"];
         delete?: never;
         options?: never;
@@ -331,6 +365,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Turn on the caller's two-factor sign-in */
         post: operations["postIdentityAccountMfaEnable"];
         delete?: never;
         options?: never;
@@ -347,6 +382,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Generate new recovery codes for the caller */
         post: operations["postIdentityAccountMfaRecoveryCodes"];
         delete?: never;
         options?: never;
@@ -361,8 +397,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Get the caller's authenticator setup */
         get: operations["getIdentityAccountMfaSetup"];
         put?: never;
+        /** Start the caller's authenticator setup */
         post: operations["postIdentityAccountMfaSetup"];
         delete?: never;
         options?: never;
@@ -377,6 +415,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** List the caller's passkeys */
         get: operations["getIdentityAccountPasskeys"];
         put?: never;
         post?: never;
@@ -396,6 +435,7 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
+        /** Remove one of the caller's passkeys */
         delete: operations["deleteIdentityAccountPasskeysByCredentialId"];
         options?: never;
         head?: never;
@@ -411,6 +451,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Begin adding a passkey */
         post: operations["postIdentityAccountPasskeysBegin"];
         delete?: never;
         options?: never;
@@ -427,6 +468,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Complete adding a passkey */
         post: operations["postIdentityAccountPasskeysComplete"];
         delete?: never;
         options?: never;
@@ -443,6 +485,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Change the caller's password */
         post: operations["postIdentityAccountPassword"];
         delete?: never;
         options?: never;
@@ -458,11 +501,13 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
+        /** Replace the caller's profile */
         put: operations["putIdentityAccountProfile"];
         post?: never;
         delete?: never;
         options?: never;
         head?: never;
+        /** Update parts of the caller's profile */
         patch: operations["patchIdentityAccountProfile"];
         trace?: never;
     };
@@ -526,6 +571,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Accept an invitation and create the account */
         post: operations["postIdentityInvitationsAccept"];
         delete?: never;
         options?: never;
@@ -540,6 +586,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Check that an invitation is still valid */
         get: operations["getIdentityInvitationsValidate"];
         put?: never;
         post?: never;
@@ -607,10 +654,16 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** @description The workforce OpenID Connect redirect URI, served by the authentication handler rather than an endpoint (so the .NET OpenAPI dump omits it). Exchanges the authorization code, then redirects to the redirect URI the challenge set, or to /sign-in?error=… on failure. */
+        /**
+         * Finish an OpenID Connect sign-in (redirect)
+         * @description The workforce OpenID Connect redirect URI, served by the authentication handler rather than an endpoint (so the .NET OpenAPI dump omits it). Exchanges the authorization code, then redirects to the redirect URI the challenge set, or to /sign-in?error=… on failure.
+         */
         get: operations["getIdentityOidcCallback"];
         put?: never;
-        /** @description The same redirect URI for the form_post response mode (the ASP.NET default), with the authorization response in a form body. */
+        /**
+         * Finish an OpenID Connect sign-in (form post)
+         * @description The same redirect URI for the form_post response mode (the ASP.NET default), with the authorization response in a form body.
+         */
         post: operations["postIdentityOidcCallback"];
         delete?: never;
         options?: never;
@@ -699,8 +752,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** List the pending invitations */
         get: operations["getIdentityOwnerInvitations"];
         put?: never;
+        /** Invite a user */
         post: operations["postIdentityOwnerInvitations"];
         delete?: never;
         options?: never;
@@ -717,6 +772,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Resend an invitation */
         post: operations["postIdentityOwnerInvitationsByIdResend"];
         delete?: never;
         options?: never;
@@ -733,6 +789,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Revoke an invitation */
         post: operations["postIdentityOwnerInvitationsByIdRevoke"];
         delete?: never;
         options?: never;
@@ -747,6 +804,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Get the Owner's two-factor status */
         get: operations["getIdentityOwnerMfa"];
         put?: never;
         post?: never;
@@ -765,6 +823,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Turn off the Owner's two-factor sign-in */
         post: operations["postIdentityOwnerMfaDisable"];
         delete?: never;
         options?: never;
@@ -781,6 +840,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Turn on the Owner's two-factor sign-in */
         post: operations["postIdentityOwnerMfaEnable"];
         delete?: never;
         options?: never;
@@ -797,6 +857,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Generate new recovery codes for the Owner */
         post: operations["postIdentityOwnerMfaRecoveryCodes"];
         delete?: never;
         options?: never;
@@ -813,6 +874,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Reset a user's two-factor sign-in */
         post: operations["postIdentityOwnerMfaResetByUserId"];
         delete?: never;
         options?: never;
@@ -827,8 +889,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Get the Owner's authenticator setup */
         get: operations["getIdentityOwnerMfaSetup"];
         put?: never;
+        /** Start the Owner's authenticator setup */
         post: operations["postIdentityOwnerMfaSetup"];
         delete?: never;
         options?: never;
@@ -843,9 +907,15 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** @description The roles Staff may give the users it provisions, by name, each with its permission keys. */
+        /**
+         * List the roles Staff may give provisioned users
+         * @description The roles Staff may give the users it provisions, by name, each with its permission keys.
+         */
         get: operations["getIdentityOwnerProvisioningRoles"];
-        /** @description Replaces the roles Staff may give the users it provisions with roleIds, whole. Custom roles only: a built-in, system or unknown role, or a role carrying a permission that grants administration (identity:manage, staff:manage, staff:personal-data, staff:approve), is refused 400 role_not_assignable, the message naming the role and the key, and nothing changes. A role's delete removes it from the set. Audited provisioning-roles.replaced. */
+        /**
+         * Replace the roles Staff may give provisioned users
+         * @description Replaces the roles Staff may give the users it provisions with roleIds, whole. Custom roles only: a built-in, system or unknown role, or a role carrying a permission that grants administration (identity:manage, staff:manage, staff:personal-data, staff:approve), is refused 400 role_not_assignable, the message naming the role and the key, and nothing changes. A role's delete removes it from the set. Audited provisioning-roles.replaced.
+         */
         put: operations["putIdentityOwnerProvisioningRoles"];
         post?: never;
         delete?: never;
@@ -982,8 +1052,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** List the users */
         get: operations["getIdentityOwnerUsers"];
         put?: never;
+        /** Create a user */
         post: operations["postIdentityOwnerUsers"];
         delete?: never;
         options?: never;
@@ -999,10 +1071,16 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        /** @description Edits another user's display name, email and role (User or Owner). 409 account_exists for an email another account has; 409 last_active_owner for demoting the last active Owner; 409 account_pending for promoting a pending user (one Staff created who has not accepted their invitation) to Owner. Promoting a user Staff manages to Owner stops Staff managing them in the same change, audited user.staff-unmanaged with the reason promoted, since Staff never manages an Owner. */
+        /**
+         * Update a user
+         * @description Edits another user's display name, email and role (User or Owner). 409 account_exists for an email another account has; 409 last_active_owner for demoting the last active Owner; 409 account_pending for promoting a pending user (one Staff created who has not accepted their invitation) to Owner. Promoting a user Staff manages to Owner stops Staff managing them in the same change, audited user.staff-unmanaged with the reason promoted, since Staff never manages an Owner.
+         */
         put: operations["putIdentityOwnerUsersById"];
         post?: never;
-        /** @description Deletes another user. Refused 409 account_managed for a user Staff manages (stop Staff managing them first), before any other check; 409 last_active_owner for the last active Owner; 409 provenance_conflict for a user SCIM provisioned; 400 for the caller's own account. */
+        /**
+         * Delete a user
+         * @description Deletes another user. Refused 409 account_managed for a user Staff manages (stop Staff managing them first), before any other check; 409 last_active_owner for the last active Owner; 409 provenance_conflict for a user SCIM provisioned; 400 for the caller's own account.
+         */
         delete: operations["deleteIdentityOwnerUsersById"];
         options?: never;
         head?: never;
@@ -1016,6 +1094,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Get a user's avatar */
         get: operations["getIdentityOwnerUsersByIdAvatar"];
         put?: never;
         post?: never;
@@ -1034,7 +1113,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** @description Disables another user and ends their sessions. The disable is recorded as an Owner's (disabledBy owner), also over a user Staff disabled (that override audited user.disabled-by-changed beside user.disabled), and Staff never re-enables a user an Owner disabled. 409 last_active_owner for the last active Owner; a pending user does not count as an active Owner. */
+        /**
+         * Disable a user
+         * @description Disables another user and ends their sessions. The disable is recorded as an Owner's (disabledBy owner), also over a user Staff disabled (that override audited user.disabled-by-changed beside user.disabled), and Staff never re-enables a user an Owner disabled. 409 last_active_owner for the last active Owner; a pending user does not count as an active Owner.
+         */
         post: operations["postIdentityOwnerUsersByIdDisable"];
         delete?: never;
         options?: never;
@@ -1051,7 +1133,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** @description Enables another user, ending their sessions, and clears disabledBy; enabling a user Staff disabled is also audited user.disabled-by-changed. 409 account_pending for a pending user (one Staff created who has not accepted their invitation): the account becomes usable only by accepting it. */
+        /**
+         * Enable a user
+         * @description Enables another user, ending their sessions, and clears disabledBy; enabling a user Staff disabled is also audited user.disabled-by-changed. 409 account_pending for a pending user (one Staff created who has not accepted their invitation): the account becomes usable only by accepting it.
+         */
         post: operations["postIdentityOwnerUsersByIdEnable"];
         delete?: never;
         options?: never;
@@ -1068,7 +1153,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** @description Adopts the user for Staff: marks them managed by Staff (managedBy staff) with the employee number that ties them to a person in Staff's register, so Staff's provisioning may enable, disable and update them. Changing the number of a managed user is the same call. Refused 409 account_privileged for an Owner or a SystemAdmin (an Owner handles Owners by hand), 409 employee_number_taken when another user holds the number however it is cased, 400 invalid_request for a module other than staff or a number that is blank, longer than 16 characters or holding a control character, and 400 for the caller's own account. A SCIM-mapped user may be adopted. Audited user.staff-managed. */
+        /**
+         * Let Staff manage a user
+         * @description Adopts the user for Staff: marks them managed by Staff (managedBy staff) with the employee number that ties them to a person in Staff's register, so Staff's provisioning may enable, disable and update them. Changing the number of a managed user is the same call. Refused 409 account_privileged for an Owner or a SystemAdmin (an Owner handles Owners by hand), 409 employee_number_taken when another user holds the number however it is cased, 400 invalid_request for a module other than staff or a number that is blank, longer than 16 characters or holding a control character, and 400 for the caller's own account. A SCIM-mapped user may be adopted. Audited user.staff-managed.
+         */
         post: operations["postIdentityOwnerUsersByIdManage"];
         delete?: never;
         options?: never;
@@ -1085,6 +1173,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Set a user's password */
         post: operations["postIdentityOwnerUsersByIdPassword"];
         delete?: never;
         options?: never;
@@ -1101,6 +1190,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Send a user a password reset link */
         post: operations["postIdentityOwnerUsersByIdPasswordReset"];
         delete?: never;
         options?: never;
@@ -1117,9 +1207,15 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** @description Announces the directory account an existing user holds (Entra phase 2 design L2), so that the user's next sign-in through the configured workforce OIDC provider (matched on the token's oid under the provider's issuer, else on its principal name — preferred_username, or the verified email — against the user principal name) or the provider's SCIM push (matched on userName against the user principal name, then externalId against the object id) attaches to this user as a regular provisioning would, the email claim not consulted; the user's address, name and roles are kept. The announcement replaces the user's earlier one whole; the same again changes nothing. Refused 400 invalid_request with neither key, an invalid principal name or object id, or for the caller's own account; 409 sso_not_configured while OIDC is off; 409 account_pending for a pending user, whose way in is their invitation; 409 account_linked for a user already linked under the issuer; 409 sso_link_taken when another user's announcement, an account Staff announced, or another user's SCIM mapping (its userName equal to the principal name, ignoring case, or its externalId to the object id) names the object id or the principal name. A disabled user, an Owner and a SystemAdmin may be announced. Audited account.link-expected with the names of the keys, never the address. */
+        /**
+         * Connect a user to the single sign-on provider
+         * @description Announces the directory account an existing user holds (Entra phase 2 design L2), so that the user's next sign-in through the configured workforce OIDC provider (matched on the token's oid under the provider's issuer, else on its principal name — preferred_username, or the verified email — against the user principal name) or the provider's SCIM push (matched on userName against the user principal name, then externalId against the object id) attaches to this user as a regular provisioning would, the email claim not consulted; the user's address, name and roles are kept. The announcement replaces the user's earlier one whole; the same again changes nothing. Refused 400 invalid_request with neither key, an invalid principal name or object id, or for the caller's own account; 409 sso_not_configured while OIDC is off; 409 account_pending for a pending user, whose way in is their invitation; 409 account_linked for a user already linked under the issuer; 409 sso_link_taken when another user's announcement, an account Staff announced, or another user's SCIM mapping (its userName equal to the principal name, ignoring case, or its externalId to the object id) names the object id or the principal name. A disabled user, an Owner and a SystemAdmin may be announced. Audited account.link-expected with the names of the keys, never the address.
+         */
         post: operations["postIdentityOwnerUsersByIdSsoLink"];
-        /** @description Disconnects the user from the configured workforce OIDC provider (Entra phase 2 design L2): withdraws their announced link, if any (audited account.link-unexpected), and removes every link of theirs under the provider's issuer (audited account.unlinked with the count). A SCIM mapping is not touched. Nothing to remove is 200 with the user unchanged; a user left without a credential keeps their account and signs in again through a password reset or a new announcement. 400 for the caller's own account; 409 sso_not_configured while OIDC is off. */
+        /**
+         * Disconnect a user from the single sign-on provider
+         * @description Disconnects the user from the configured workforce OIDC provider (Entra phase 2 design L2): withdraws their announced link, if any (audited account.link-unexpected), and removes every link of theirs under the provider's issuer (audited account.unlinked with the count). A SCIM mapping is not touched. Nothing to remove is 200 with the user unchanged; a user left without a credential keeps their account and signs in again through a password reset or a new announcement. 400 for the caller's own account; 409 sso_not_configured while OIDC is off.
+         */
         delete: operations["deleteIdentityOwnerUsersByIdSsoLink"];
         options?: never;
         head?: never;
@@ -1135,7 +1231,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** @description Stops Staff managing the user: clears managedBy and the employee number. A pending user stays pending, the Owner's to finish or delete. Unmanaging a user Staff does not manage changes nothing. 400 for the caller's own account. Audited user.staff-unmanaged. */
+        /**
+         * Stop Staff managing a user
+         * @description Stops Staff managing the user: clears managedBy and the employee number. A pending user stays pending, the Owner's to finish or delete. Unmanaging a user Staff does not manage changes nothing. 400 for the caller's own account. Audited user.staff-unmanaged.
+         */
         post: operations["postIdentityOwnerUsersByIdUnmanage"];
         delete?: never;
         options?: never;
@@ -1173,6 +1272,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Begin signing in with a passkey */
         post: operations["postIdentityPasskeysLoginBegin"];
         delete?: never;
         options?: never;
@@ -1189,6 +1289,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Complete signing in with a passkey */
         post: operations["postIdentityPasskeysLoginComplete"];
         delete?: never;
         options?: never;
@@ -1205,6 +1306,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Ask for a password reset link */
         post: operations["postIdentityPasswordRecoveryRequest"];
         delete?: never;
         options?: never;
@@ -1221,6 +1323,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Reset a password with a reset link */
         post: operations["postIdentityPasswordRecoveryReset"];
         delete?: never;
         options?: never;
@@ -1252,8 +1355,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** List the groups (SCIM) */
         get: operations["getIdentityScimV2Groups"];
         put?: never;
+        /** Create a group (SCIM) */
         post: operations["postIdentityScimV2Groups"];
         delete?: never;
         options?: never;
@@ -1268,12 +1373,15 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Get a group (SCIM) */
         get: operations["getIdentityScimV2GroupsById"];
         put?: never;
         post?: never;
+        /** Delete a group (SCIM) */
         delete: operations["deleteIdentityScimV2GroupsById"];
         options?: never;
         head?: never;
+        /** Update a group (SCIM) */
         patch: operations["patchIdentityScimV2GroupsById"];
         trace?: never;
     };
@@ -1284,6 +1392,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** List the SCIM resource types */
         get: operations["getIdentityScimV2ResourceTypes"];
         put?: never;
         post?: never;
@@ -1300,6 +1409,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** List the SCIM schemas */
         get: operations["getIdentityScimV2Schemas"];
         put?: never;
         post?: never;
@@ -1316,6 +1426,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Get the SCIM service provider configuration */
         get: operations["getIdentityScimV2ServiceProviderConfig"];
         put?: never;
         post?: never;
@@ -1332,8 +1443,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** List the users (SCIM) */
         get: operations["getIdentityScimV2Users"];
         put?: never;
+        /** Create a user (SCIM) */
         post: operations["postIdentityScimV2Users"];
         delete?: never;
         options?: never;
@@ -1348,12 +1461,16 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Get a user (SCIM) */
         get: operations["getIdentityScimV2UsersById"];
+        /** Replace a user (SCIM) */
         put: operations["putIdentityScimV2UsersById"];
         post?: never;
+        /** Delete a user (SCIM) */
         delete: operations["deleteIdentityScimV2UsersById"];
         options?: never;
         head?: never;
+        /** Update a user (SCIM) */
         patch: operations["patchIdentityScimV2UsersById"];
         trace?: never;
     };
@@ -1508,17 +1625,17 @@ export interface components {
         AiSettings: {
             /** @description The models the plan allows (AI_MODELS), in the order the operator wrote them; the first is the plan's default. */
             allowedModels: string[];
-            /** @description Always true while this is answered, since an API key is configured by Vantigo. The key is never sent. */
+            /** @description Whether an API key is configured (AI_API_KEY). A local model (Ollama, vLLM, LM Studio) takes none, so this is false there. The key itself is never sent. */
             keyConfigured: boolean;
             /** @description The modules that perform AI tasks and are enabled, by name, each with its tasks by key. A module that is off is not listed. */
             modules: components["schemas"]["AiSettingsModule"][];
             /** @description The model a task uses when nobody chose one and the module recommends none the plan allows — the first of allowedModels. */
             planDefault: string;
             /**
-             * @description The provider the plan calls (AI_PROVIDER).
+             * @description The provider the plan calls (AI_PROVIDER), as the operator wrote it. openai-compatible is the OpenAI protocol served by something else, such as a local model.
              * @enum {string}
              */
-            provider: "openai";
+            provider: "openai" | "openai-compatible";
         };
         /** @description One module's AI tasks. */
         AiSettingsModule: {

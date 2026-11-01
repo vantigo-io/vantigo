@@ -9,7 +9,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** @description A message's attachment. A clean one (the composer's) is answered as its declared media type; an unscanned one (received with an inbound message) as an attachment to save — Content-Disposition attachment with its file name — and as its media type only when that is passive (an image other than SVG, PDF, plain text, an Office document, zip), application/octet-stream otherwise. */
+        /**
+         * Download a message attachment
+         * @description A message's attachment. A clean one (the composer's) is answered as its declared media type; an unscanned one (received with an inbound message) as an attachment to save — Content-Disposition attachment with its file name — and as its media type only when that is passive (an image other than SVG, PDF, plain text, an Office document, zip), application/octet-stream otherwise.
+         */
         get: operations["getCommunicationsAttachmentsByIdDownload"];
         put?: never;
         post?: never;
@@ -26,7 +29,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** @description The providers a channel can use — SMTP always, Microsoft 365 while a mail channels provider is enabled — with whether each is available now. */
+        /**
+         * List the providers a channel can use
+         * @description The providers a channel can use — SMTP always, Microsoft 365 while a mail channels provider is enabled — with whether each is available now.
+         */
         get: operations["getCommunicationsChannelProviders"];
         put?: never;
         post?: never;
@@ -43,8 +49,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** List the mail channels */
         get: operations["getCommunicationsChannels"];
         put?: never;
+        /** Create a mail channel */
         post: operations["postCommunicationsChannels"];
         delete?: never;
         options?: never;
@@ -59,7 +67,9 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Get a mail channel by id */
         get: operations["getCommunicationsChannelsById"];
+        /** Update a mail channel */
         put: operations["putCommunicationsChannelsById"];
         post?: never;
         delete?: never;
@@ -77,7 +87,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** @description Switches an SMTP channel to Microsoft 365 by its own address, keeping its id, conversations and default flag; the SMTP credentials are deleted in the same transaction. */
+        /**
+         * Switch a mail channel to another provider
+         * @description Switches an SMTP channel to Microsoft 365 by its own address, keeping its id, conversations and default flag; the SMTP credentials are deleted in the same transaction.
+         */
         post: operations["postCommunicationsChannelsByIdProvider"];
         delete?: never;
         options?: never;
@@ -94,6 +107,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Verify a mail channel's connection */
         post: operations["postCommunicationsChannelsByIdVerify"];
         delete?: never;
         options?: never;
@@ -108,8 +122,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** List the conversations in the inbox */
         get: operations["getCommunicationsConversations"];
         put?: never;
+        /** Create a conversation */
         post: operations["postCommunicationsConversations"];
         delete?: never;
         options?: never;
@@ -124,6 +140,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Download an attachment from a conversation */
         get: operations["getCommunicationsConversationsByConversationIdAttachmentsByAttachmentId"];
         put?: never;
         post?: never;
@@ -140,12 +157,14 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Get a conversation with its messages */
         get: operations["getCommunicationsConversationsById"];
         put?: never;
         post?: never;
         delete?: never;
         options?: never;
         head?: never;
+        /** Update a conversation (status, assignee, customer) */
         patch: operations["patchCommunicationsConversationsById"];
         trace?: never;
     };
@@ -158,6 +177,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Ask the AI which customer a conversation belongs to */
         post: operations["postCommunicationsConversationsByIdAiCustomerSuggestion"];
         delete?: never;
         options?: never;
@@ -174,6 +194,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Ask the AI to draft a reply to a conversation */
         post: operations["postCommunicationsConversationsByIdAiDraft"];
         delete?: never;
         options?: never;
@@ -190,6 +211,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Attach a file to a reply being composed */
         post: operations["postCommunicationsConversationsByIdAttachments"];
         delete?: never;
         options?: never;
@@ -206,7 +228,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** @description Re-queues a failed outbound message in the conversation so the outbox attempts delivery again. When the message has sendAs=personal, only its author may retry it and their personal sender connection must be available now (422 personal_sender_unavailable otherwise). */
+        /**
+         * Retry sending a failed message
+         * @description Re-queues a failed outbound message in the conversation so the outbox attempts delivery again. When the message has sendAs=personal, only its author may retry it and their personal sender connection must be available now (422 personal_sender_unavailable otherwise).
+         */
         post: operations["postCommunicationsConversationsByIdMessagesByMessageIdRetry"];
         delete?: never;
         options?: never;
@@ -223,6 +248,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Add an internal note to a conversation */
         post: operations["postCommunicationsConversationsByIdNotes"];
         delete?: never;
         options?: never;
@@ -239,6 +265,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Mark a conversation as read */
         post: operations["postCommunicationsConversationsByIdRead"];
         delete?: never;
         options?: never;
@@ -255,6 +282,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Send a reply in a conversation */
         post: operations["postCommunicationsConversationsByIdReply"];
         delete?: never;
         options?: never;
@@ -270,8 +298,10 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
+        /** Put a tag on a conversation */
         put: operations["putCommunicationsConversationsByIdTagsByTagId"];
         post?: never;
+        /** Remove a tag from a conversation */
         delete: operations["deleteCommunicationsConversationsByIdTagsByTagId"];
         options?: never;
         head?: never;
@@ -285,7 +315,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** @description The message as it was received, whole — RFC 5322, its HTML unsanitised, its attachments inside — as a file to save, message-{id}.eml. Vantigo never renders it. 404 when the message has no original (only an inbound message has one) or the object is gone. */
+        /**
+         * Download a message as it was received
+         * @description The message as it was received, whole — RFC 5322, its HTML unsanitised, its attachments inside — as a file to save, message-{id}.eml. Vantigo never renders it. 404 when the message has no original (only an inbound message has one) or the object is gone.
+         */
         get: operations["getCommunicationsMessagesByIdRaw"];
         put?: never;
         post?: never;
@@ -302,7 +335,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** @description Whether the signed-in caller can send outbound mail from their own connected Microsoft 365 address (Outlook connection design M20), and the address and display name they would send from. */
+        /**
+         * Get whether the caller can send from their own mailbox
+         * @description Whether the signed-in caller can send outbound mail from their own connected Microsoft 365 address (Outlook connection design M20), and the address and display name they would send from.
+         */
         get: operations["getCommunicationsPersonalSender"];
         put?: never;
         post?: never;
@@ -370,8 +406,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** List the suppressed email addresses */
         get: operations["getCommunicationsSuppressions"];
         put?: never;
+        /** Suppress an email address */
         post: operations["postCommunicationsSuppressions"];
         delete?: never;
         options?: never;
@@ -386,9 +424,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Get a suppression by id */
         get: operations["getCommunicationsSuppressionsById"];
         put?: never;
         post?: never;
+        /** Lift the suppression of an email address */
         delete: operations["deleteCommunicationsSuppressionsById"];
         options?: never;
         head?: never;
@@ -402,8 +442,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** List the conversation tags */
         get: operations["getCommunicationsTags"];
         put?: never;
+        /** Create a conversation tag */
         post: operations["postCommunicationsTags"];
         delete?: never;
         options?: never;

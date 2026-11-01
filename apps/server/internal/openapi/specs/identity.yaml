@@ -230,7 +230,7 @@ components:
                         type: string
                     type: array
                 keyConfigured:
-                    description: Always true while this is answered, since an API key is configured by Vantigo. The key is never sent.
+                    description: Whether an API key is configured (AI_API_KEY). A local model (Ollama, vLLM, LM Studio) takes none, so this is false there. The key itself is never sent.
                     type: boolean
                 modules:
                     description: The modules that perform AI tasks and are enabled, by name, each with its tasks by key. A module that is off is not listed.
@@ -241,9 +241,10 @@ components:
                     description: The model a task uses when nobody chose one and the module recommends none the plan allows — the first of allowedModels.
                     type: string
                 provider:
-                    description: The provider the plan calls (AI_PROVIDER).
+                    description: The provider the plan calls (AI_PROVIDER), as the operator wrote it. openai-compatible is the OpenAI protocol served by something else, such as a local model.
                     enum:
                         - openai
+                        - openai-compatible
                     type: string
             required:
                 - provider
@@ -2231,6 +2232,7 @@ paths:
                             schema:
                                 $ref: common.yaml#/components/schemas/AuthErrorResponse
                     description: Forbidden
+            summary: List the authorization audit events
             tags:
                 - Authorization
             x-vantigo-access: policy:OwnerManagement
@@ -2258,6 +2260,7 @@ paths:
                             schema:
                                 $ref: common.yaml#/components/schemas/AuthErrorResponse
                     description: Forbidden
+            summary: List the permission catalog
             tags:
                 - Authorization
             x-vantigo-access: policy:AuthorizationManagement
@@ -2285,6 +2288,7 @@ paths:
                             schema:
                                 $ref: common.yaml#/components/schemas/AuthErrorResponse
                     description: Forbidden
+            summary: List the authorization delegations
             tags:
                 - Authorization
             x-vantigo-access: policy:OwnerManagement
@@ -2330,6 +2334,7 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/CodeMessageError'
                     description: Conflict
+            summary: Create an authorization delegation
             tags:
                 - Authorization
             x-vantigo-access: policy:OwnerManagement
@@ -2383,6 +2388,7 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/CodeMessageError'
                     description: Conflict
+            summary: Update an authorization delegation
             tags:
                 - Authorization
             x-vantigo-access: policy:OwnerManagement
@@ -2430,6 +2436,7 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/CodeMessageError'
                     description: Conflict
+            summary: Revoke an authorization delegation
             tags:
                 - Authorization
             x-vantigo-access: policy:OwnerManagement
@@ -2457,6 +2464,7 @@ paths:
                             schema:
                                 $ref: common.yaml#/components/schemas/AuthErrorResponse
                     description: Forbidden
+            summary: List the access groups
             tags:
                 - Identity control plane
             x-vantigo-access: policy:OwnerManagement
@@ -2500,6 +2508,7 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/CodeMessageError'
                     description: Conflict
+            summary: Create an access group
             tags:
                 - Identity control plane
             x-vantigo-access: policy:OwnerManagement
@@ -2559,6 +2568,7 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/CodeMessageError'
                     description: Conflict
+            summary: Remove a member from an access group
             tags:
                 - Identity control plane
             x-vantigo-access: policy:OwnerManagement
@@ -2617,6 +2627,7 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/CodeMessageError'
                     description: Conflict
+            summary: Add a member to an access group
             tags:
                 - Identity control plane
             x-vantigo-access: policy:OwnerManagement
@@ -2675,6 +2686,7 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/CodeMessageError'
                     description: Conflict
+            summary: Add a member to an access group (same as POST)
             tags:
                 - Identity control plane
             x-vantigo-access: policy:OwnerManagement
@@ -2734,6 +2746,7 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/CodeMessageError'
                     description: Conflict
+            summary: Unmap a role from an access group
             tags:
                 - Identity control plane
             x-vantigo-access: policy:OwnerManagement
@@ -2792,6 +2805,7 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/CodeMessageError'
                     description: Conflict
+            summary: Map a role to an access group
             tags:
                 - Identity control plane
             x-vantigo-access: policy:OwnerManagement
@@ -2850,6 +2864,7 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/CodeMessageError'
                     description: Conflict
+            summary: Map a role to an access group (same as POST)
             tags:
                 - Identity control plane
             x-vantigo-access: policy:OwnerManagement
@@ -2899,6 +2914,7 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/CodeMessageError'
                     description: Conflict
+            summary: Delete an access group
             tags:
                 - Identity control plane
             x-vantigo-access: policy:OwnerManagement
@@ -2932,6 +2948,7 @@ paths:
                     description: Forbidden
                 "404":
                     description: Not Found
+            summary: Get an access group by id
             tags:
                 - Identity control plane
             x-vantigo-access: policy:OwnerManagement
@@ -2984,6 +3001,7 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/CodeMessageError'
                     description: Conflict
+            summary: Update an access group
             tags:
                 - Identity control plane
             x-vantigo-access: policy:OwnerManagement
@@ -3005,6 +3023,7 @@ paths:
                     description: Unauthorized
                 "404":
                     description: Not Found
+            summary: Get the caller's own effective access
             tags:
                 - AuthorizationManagementEndpoints
             x-vantigo-access: session
@@ -3032,6 +3051,7 @@ paths:
                             schema:
                                 $ref: common.yaml#/components/schemas/AuthErrorResponse
                     description: Forbidden
+            summary: List the roles
             tags:
                 - Authorization
             x-vantigo-access: policy:AuthorizationManagement
@@ -3077,6 +3097,7 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/CodeMessageError'
                     description: Conflict
+            summary: Create a custom role
             tags:
                 - Authorization
             x-vantigo-access: policy:AuthorizationManagement
@@ -3122,6 +3143,7 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/CodeMessageError'
                     description: Conflict
+            summary: Delete a custom role
             tags:
                 - Authorization
             x-vantigo-access: policy:AuthorizationManagement
@@ -3176,6 +3198,7 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/CodeMessageError'
                     description: Conflict
+            summary: Update a custom role
             tags:
                 - Authorization
             x-vantigo-access: policy:AuthorizationManagement
@@ -3231,6 +3254,7 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/CodeMessageError'
                     description: Conflict
+            summary: Replace a role's permissions
             tags:
                 - Authorization
             x-vantigo-access: policy:AuthorizationManagement
@@ -3258,6 +3282,7 @@ paths:
                             schema:
                                 $ref: common.yaml#/components/schemas/AuthErrorResponse
                     description: Forbidden
+            summary: List the users with their access
             tags:
                 - Authorization
             x-vantigo-access: policy:AuthorizationManagement
@@ -3292,6 +3317,7 @@ paths:
                     description: Forbidden
                 "404":
                     description: Not Found
+            summary: Get a user's access by id
             tags:
                 - Authorization
             x-vantigo-access: policy:AuthorizationManagement
@@ -3347,6 +3373,7 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/CodeMessageError'
                     description: Conflict
+            summary: Replace a user's roles
             tags:
                 - Authorization
             x-vantigo-access: policy:AuthorizationManagement
@@ -3372,6 +3399,7 @@ paths:
                             schema:
                                 $ref: common.yaml#/components/schemas/AuthErrorResponse
                     description: Forbidden
+            summary: Get the caller's account
             tags:
                 - Personal account settings
             x-vantigo-access: policy:ActiveAccount
@@ -3409,6 +3437,7 @@ paths:
                             schema:
                                 $ref: common.yaml#/components/schemas/AuthErrorResponse
                     description: Forbidden
+            summary: Update the caller's account
             tags:
                 - Personal account settings
             x-vantigo-access: policy:ActiveAccount
@@ -3436,6 +3465,7 @@ paths:
                             schema:
                                 $ref: common.yaml#/components/schemas/AuthErrorResponse
                     description: 'Conflict: avatar_managed — Staff''s photo is the picture (a managed avatar), and the avatar cannot be changed here while it stands.'
+            summary: Remove the caller's avatar
             tags:
                 - Personal account settings
             x-vantigo-access: policy:ActiveAccount
@@ -3467,6 +3497,7 @@ paths:
                     description: Forbidden
                 "404":
                     description: Not Found
+            summary: Get the caller's avatar
             tags:
                 - Personal account settings
             x-vantigo-access: policy:ActiveAccount
@@ -3515,6 +3546,7 @@ paths:
                             schema:
                                 $ref: common.yaml#/components/schemas/AuthErrorResponse
                     description: 'Conflict: avatar_managed — Staff''s photo is the picture (a managed avatar), and the avatar cannot be changed here while it stands.'
+            summary: Upload the caller's avatar
             tags:
                 - Personal account settings
             x-vantigo-access: policy:ActiveAccount
@@ -3563,6 +3595,7 @@ paths:
                             schema:
                                 $ref: common.yaml#/components/schemas/AuthErrorResponse
                     description: 'Conflict: avatar_managed — Staff''s photo is the picture (a managed avatar), and the avatar cannot be changed here while it stands.'
+            summary: Upload the caller's avatar (same as POST)
             tags:
                 - Personal account settings
             x-vantigo-access: policy:ActiveAccount
@@ -3598,6 +3631,7 @@ paths:
                         Retry-After:
                             schema:
                                 type: string
+            summary: Get the caller's two-factor status
             tags:
                 - AuthAccountEndpoints
             x-vantigo-access: policy:ActiveAccount
@@ -3652,6 +3686,7 @@ paths:
                         Retry-After:
                             schema:
                                 type: string
+            summary: Turn off the caller's two-factor sign-in
             tags:
                 - AuthAccountEndpoints
             x-vantigo-access: policy:ActiveAccount
@@ -3706,6 +3741,7 @@ paths:
                         Retry-After:
                             schema:
                                 type: string
+            summary: Turn on the caller's two-factor sign-in
             tags:
                 - AuthAccountEndpoints
             x-vantigo-access: policy:ActiveAccount
@@ -3760,6 +3796,7 @@ paths:
                         Retry-After:
                             schema:
                                 type: string
+            summary: Generate new recovery codes for the caller
             tags:
                 - AuthAccountEndpoints
             x-vantigo-access: policy:ActiveAccount
@@ -3795,6 +3832,7 @@ paths:
                         Retry-After:
                             schema:
                                 type: string
+            summary: Get the caller's authenticator setup
             tags:
                 - AuthAccountEndpoints
             x-vantigo-access: policy:ActiveAccount
@@ -3848,6 +3886,7 @@ paths:
                         Retry-After:
                             schema:
                                 type: string
+            summary: Start the caller's authenticator setup
             tags:
                 - AuthAccountEndpoints
             x-vantigo-access: policy:ActiveAccount
@@ -3881,6 +3920,7 @@ paths:
                             schema:
                                 $ref: common.yaml#/components/schemas/AuthErrorResponse
                     description: Not Implemented
+            summary: List the caller's passkeys
             tags:
                 - Personal account settings
             x-vantigo-access: policy:ActiveAccount
@@ -3939,6 +3979,7 @@ paths:
                         Retry-After:
                             schema:
                                 type: string
+            summary: Remove one of the caller's passkeys
             tags:
                 - Personal account settings
             x-vantigo-access: policy:ActiveAccount
@@ -3999,6 +4040,7 @@ paths:
                             schema:
                                 $ref: common.yaml#/components/schemas/AuthErrorResponse
                     description: Not Implemented
+            summary: Begin adding a passkey
             tags:
                 - Personal account settings
             x-vantigo-access: policy:ActiveAccount
@@ -4053,6 +4095,7 @@ paths:
                         Retry-After:
                             schema:
                                 type: string
+            summary: Complete adding a passkey
             tags:
                 - Personal account settings
             x-vantigo-access: policy:ActiveAccount
@@ -4107,6 +4150,7 @@ paths:
                         Retry-After:
                             schema:
                                 type: string
+            summary: Change the caller's password
             tags:
                 - Personal account settings
             x-vantigo-access: policy:ActiveAccount
@@ -4145,6 +4189,7 @@ paths:
                             schema:
                                 $ref: common.yaml#/components/schemas/AuthErrorResponse
                     description: Forbidden
+            summary: Update parts of the caller's profile
             tags:
                 - Personal account settings
             x-vantigo-access: policy:ActiveAccount
@@ -4182,6 +4227,7 @@ paths:
                             schema:
                                 $ref: common.yaml#/components/schemas/AuthErrorResponse
                     description: Forbidden
+            summary: Replace the caller's profile
             tags:
                 - Personal account settings
             x-vantigo-access: policy:ActiveAccount
@@ -4301,6 +4347,7 @@ paths:
                         Retry-After:
                             schema:
                                 type: string
+            summary: Accept an invitation and create the account
             tags:
                 - AuthAccountEndpoints
             x-vantigo-access: anonymous
@@ -4329,6 +4376,7 @@ paths:
                         Retry-After:
                             schema:
                                 type: string
+            summary: Check that an invitation is still valid
             tags:
                 - AuthAccountEndpoints
             x-vantigo-access: anonymous
@@ -4472,6 +4520,7 @@ paths:
                         Location:
                             schema:
                                 type: string
+            summary: Finish an OpenID Connect sign-in (redirect)
             x-vantigo-access: anonymous
         post:
             description: The same redirect URI for the form_post response mode (the ASP.NET default), with the authorization response in a form body.
@@ -4498,6 +4547,7 @@ paths:
                         Location:
                             schema:
                                 type: string
+            summary: Finish an OpenID Connect sign-in (form post)
             x-vantigo-access: anonymous
     /api/v1/identity/oidc/challenge:
         get:
@@ -4689,6 +4739,7 @@ paths:
                         Retry-After:
                             schema:
                                 type: string
+            summary: List the pending invitations
             tags:
                 - Owner account management
             x-vantigo-access: policy:Owner+OwnerManagement
@@ -4742,6 +4793,7 @@ paths:
                         Retry-After:
                             schema:
                                 type: string
+            summary: Invite a user
             tags:
                 - Owner account management
             x-vantigo-access: policy:Owner+OwnerManagement
@@ -4799,6 +4851,7 @@ paths:
                         Retry-After:
                             schema:
                                 type: string
+            summary: Resend an invitation
             tags:
                 - Owner account management
             x-vantigo-access: policy:Owner+OwnerManagement
@@ -4849,6 +4902,7 @@ paths:
                         Retry-After:
                             schema:
                                 type: string
+            summary: Revoke an invitation
             tags:
                 - Owner account management
             x-vantigo-access: policy:Owner+OwnerManagement
@@ -4884,6 +4938,7 @@ paths:
                         Retry-After:
                             schema:
                                 type: string
+            summary: Get the Owner's two-factor status
             tags:
                 - AuthAccountEndpoints
             x-vantigo-access: policy:ActiveAccount
@@ -4938,6 +4993,7 @@ paths:
                         Retry-After:
                             schema:
                                 type: string
+            summary: Turn off the Owner's two-factor sign-in
             tags:
                 - AuthAccountEndpoints
             x-vantigo-access: policy:ActiveAccount
@@ -4992,6 +5048,7 @@ paths:
                         Retry-After:
                             schema:
                                 type: string
+            summary: Turn on the Owner's two-factor sign-in
             tags:
                 - AuthAccountEndpoints
             x-vantigo-access: policy:ActiveAccount
@@ -5046,6 +5103,7 @@ paths:
                         Retry-After:
                             schema:
                                 type: string
+            summary: Generate new recovery codes for the Owner
             tags:
                 - AuthAccountEndpoints
             x-vantigo-access: policy:ActiveAccount
@@ -5109,6 +5167,7 @@ paths:
                         Retry-After:
                             schema:
                                 type: string
+            summary: Reset a user's two-factor sign-in
             tags:
                 - Owner account management
             x-vantigo-access: policy:Owner+OwnerManagement
@@ -5144,6 +5203,7 @@ paths:
                         Retry-After:
                             schema:
                                 type: string
+            summary: Get the Owner's authenticator setup
             tags:
                 - AuthAccountEndpoints
             x-vantigo-access: policy:ActiveAccount
@@ -5197,6 +5257,7 @@ paths:
                         Retry-After:
                             schema:
                                 type: string
+            summary: Start the Owner's authenticator setup
             tags:
                 - AuthAccountEndpoints
             x-vantigo-access: policy:ActiveAccount
@@ -5233,6 +5294,7 @@ paths:
                         Retry-After:
                             schema:
                                 type: string
+            summary: List the roles Staff may give provisioned users
             tags:
                 - Owner account management
             x-vantigo-access: policy:Owner+OwnerManagement
@@ -5287,6 +5349,7 @@ paths:
                         Retry-After:
                             schema:
                                 type: string
+            summary: Replace the roles Staff may give provisioned users
             tags:
                 - Owner account management
             x-vantigo-access: policy:Owner+OwnerManagement
@@ -5634,6 +5697,7 @@ paths:
                         Retry-After:
                             schema:
                                 type: string
+            summary: List the users
             tags:
                 - Owner account management
             x-vantigo-access: policy:Owner+OwnerManagement
@@ -5687,6 +5751,7 @@ paths:
                         Retry-After:
                             schema:
                                 type: string
+            summary: Create a user
             tags:
                 - Owner account management
             x-vantigo-access: policy:Owner+OwnerManagement
@@ -5740,6 +5805,7 @@ paths:
                         Retry-After:
                             schema:
                                 type: string
+            summary: Delete a user
             tags:
                 - Owner account management
             x-vantigo-access: policy:Owner+OwnerManagement
@@ -5803,6 +5869,7 @@ paths:
                         Retry-After:
                             schema:
                                 type: string
+            summary: Update a user
             tags:
                 - Owner account management
             x-vantigo-access: policy:Owner+OwnerManagement
@@ -5852,6 +5919,7 @@ paths:
                         Retry-After:
                             schema:
                                 type: string
+            summary: Get a user's avatar
             tags:
                 - Owner account management
             x-vantigo-access: policy:Owner+OwnerManagement
@@ -5909,6 +5977,7 @@ paths:
                         Retry-After:
                             schema:
                                 type: string
+            summary: Disable a user
             tags:
                 - Owner account management
             x-vantigo-access: policy:Owner+OwnerManagement
@@ -5966,6 +6035,7 @@ paths:
                         Retry-After:
                             schema:
                                 type: string
+            summary: Enable a user
             tags:
                 - Owner account management
             x-vantigo-access: policy:Owner+OwnerManagement
@@ -6030,6 +6100,7 @@ paths:
                         Retry-After:
                             schema:
                                 type: string
+            summary: Let Staff manage a user
             tags:
                 - Owner account management
             x-vantigo-access: policy:Owner+OwnerManagement
@@ -6093,6 +6164,7 @@ paths:
                         Retry-After:
                             schema:
                                 type: string
+            summary: Set a user's password
             tags:
                 - Owner account management
             x-vantigo-access: policy:Owner+OwnerManagement
@@ -6149,6 +6221,7 @@ paths:
                         Retry-After:
                             schema:
                                 type: string
+            summary: Send a user a password reset link
             tags:
                 - Owner account management
             x-vantigo-access: policy:Owner+OwnerManagement
@@ -6206,6 +6279,7 @@ paths:
                         Retry-After:
                             schema:
                                 type: string
+            summary: Disconnect a user from the single sign-on provider
             tags:
                 - Owner account management
             x-vantigo-access: policy:Owner+OwnerManagement
@@ -6269,6 +6343,7 @@ paths:
                         Retry-After:
                             schema:
                                 type: string
+            summary: Connect a user to the single sign-on provider
             tags:
                 - Owner account management
             x-vantigo-access: policy:Owner+OwnerManagement
@@ -6320,6 +6395,7 @@ paths:
                         Retry-After:
                             schema:
                                 type: string
+            summary: Stop Staff managing a user
             tags:
                 - Owner account management
             x-vantigo-access: policy:Owner+OwnerManagement
@@ -6421,6 +6497,7 @@ paths:
                         Retry-After:
                             schema:
                                 type: string
+            summary: Begin signing in with a passkey
             tags:
                 - Passkey sign-in
             x-vantigo-access: anonymous
@@ -6469,6 +6546,7 @@ paths:
                         Retry-After:
                             schema:
                                 type: string
+            summary: Complete signing in with a passkey
             tags:
                 - Passkey sign-in
             x-vantigo-access: anonymous
@@ -6505,6 +6583,7 @@ paths:
                         Retry-After:
                             schema:
                                 type: string
+            summary: Ask for a password reset link
             tags:
                 - AuthAccountEndpoints
             x-vantigo-access: anonymous
@@ -6541,6 +6620,7 @@ paths:
                         Retry-After:
                             schema:
                                 type: string
+            summary: Reset a password with a reset link
             tags:
                 - AuthAccountEndpoints
             x-vantigo-access: anonymous
@@ -6605,6 +6685,7 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/ScimError'
                     description: Too Many Requests
+            summary: List the groups (SCIM)
             tags:
                 - SCIM 2.0
             x-vantigo-access: scim
@@ -6671,6 +6752,7 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/ScimError'
                     description: Too Many Requests
+            summary: Create a group (SCIM)
             tags:
                 - SCIM 2.0
             x-vantigo-access: scim
@@ -6722,6 +6804,7 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/ScimError'
                     description: Too Many Requests
+            summary: Delete a group (SCIM)
             tags:
                 - SCIM 2.0
             x-vantigo-access: scim
@@ -6766,6 +6849,7 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/ScimError'
                     description: Too Many Requests
+            summary: Get a group (SCIM)
             tags:
                 - SCIM 2.0
             x-vantigo-access: scim
@@ -6845,6 +6929,7 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/ScimError'
                     description: Too Many Requests
+            summary: Update a group (SCIM)
             tags:
                 - SCIM 2.0
             x-vantigo-access: scim
@@ -6870,6 +6955,7 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/ScimError'
                     description: Too Many Requests
+            summary: List the SCIM resource types
             tags:
                 - SCIM 2.0
             x-vantigo-access: scim
@@ -6895,6 +6981,7 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/ScimError'
                     description: Too Many Requests
+            summary: List the SCIM schemas
             tags:
                 - SCIM 2.0
             x-vantigo-access: scim
@@ -6920,6 +7007,7 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/ScimError'
                     description: Too Many Requests
+            summary: Get the SCIM service provider configuration
             tags:
                 - SCIM 2.0
             x-vantigo-access: scim
@@ -6966,6 +7054,7 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/ScimError'
                     description: Too Many Requests
+            summary: List the users (SCIM)
             tags:
                 - SCIM 2.0
             x-vantigo-access: scim
@@ -7032,6 +7121,7 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/ScimError'
                     description: Too Many Requests
+            summary: Create a user (SCIM)
             tags:
                 - SCIM 2.0
             x-vantigo-access: scim
@@ -7085,6 +7175,7 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/ScimError'
                     description: Too Many Requests
+            summary: Delete a user (SCIM)
             tags:
                 - SCIM 2.0
             x-vantigo-access: scim
@@ -7125,6 +7216,7 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/ScimError'
                     description: Too Many Requests
+            summary: Get a user (SCIM)
             tags:
                 - SCIM 2.0
             x-vantigo-access: scim
@@ -7204,6 +7296,7 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/ScimError'
                     description: Too Many Requests
+            summary: Update a user (SCIM)
             tags:
                 - SCIM 2.0
             x-vantigo-access: scim
@@ -7283,6 +7376,7 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/ScimError'
                     description: Too Many Requests
+            summary: Replace a user (SCIM)
             tags:
                 - SCIM 2.0
             x-vantigo-access: scim
