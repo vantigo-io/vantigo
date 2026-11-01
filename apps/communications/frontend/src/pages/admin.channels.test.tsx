@@ -193,8 +193,42 @@ describe("admin channels", () => {
     expect(await screen.findByRole("textbox", { name: "SMTP host" })).toBeTruthy();
     fireEvent.click(screen.getByRole("combobox", { name: /^Provider/ }));
     const options = await screen.findAllByRole("option");
-    expect(options.map((option) => option.textContent)).toEqual(["SMTP"]);
+    expect(options.map((option) => option.textContent)).toEqual(["SMTP", "Vantigo hosted mailNot yet available"]);
     expect(screen.queryByText(/Mailgun/)).toBeNull();
+  });
+
+  it("lists Vantigo hosted mail greyed below the offered providers, and choosing it changes nothing", async () => {
+    mocks.fetchProviders.mockResolvedValue([smtpProvider, entraProvider]);
+    mocks.fetchChannels.mockResolvedValue([]);
+    renderPage();
+    fireEvent.click(await screen.findByRole("button", { name: "Add channel" }));
+    await screen.findByRole("textbox", { name: "SMTP host" });
+    fireEvent.click(screen.getByRole("combobox", { name: /^Provider/ }));
+    const options = await screen.findAllByRole("option");
+    expect(options.map((option) => option.textContent)).toEqual([
+      "SMTP",
+      "Microsoft 365",
+      "Vantigo hosted mailNot yet available",
+    ]);
+    const hosted = options[2];
+    expect(hosted.getAttribute("aria-disabled")).toBe("true");
+    expect(within(hosted).getByText("Not yet available")).toBeTruthy();
+    fireEvent.click(hosted);
+    expect(screen.getByRole("textbox", { name: "SMTP host" })).toBeTruthy();
+    expect((screen.getByRole("combobox", { name: /^Provider/ }) as HTMLInputElement).value).toBe("SMTP");
+    expect(screen.queryByRole("textbox", { name: "Mailbox folder" })).toBeNull();
+    expect(mocks.createChannel).not.toHaveBeenCalled();
+  });
+
+  it("names Vantigo hosted mail in Norwegian", async () => {
+    setLanguagePreference("nb");
+    mocks.fetchChannels.mockResolvedValue([]);
+    renderPage();
+    fireEvent.click(await screen.findByRole("button", { name: "Legg til kanal" }));
+    await screen.findByRole("textbox", { name: "SMTP-vert" });
+    fireEvent.click(screen.getByRole("combobox", { name: /^Leverandør/ }));
+    const options = await screen.findAllByRole("option");
+    expect(options.map((option) => option.textContent)).toContain("Vantigo-driftet e-postIkke tilgjengelig ennå");
   });
 
   it("creates an SMTP channel with the expected payload", async () => {
