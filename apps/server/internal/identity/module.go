@@ -79,6 +79,8 @@ var limits = map[string]ratelimit.Policy{
 	"postIdentityOwnerSsoScimToken":           policyUserManagement,
 	"deleteIdentityOwnerSsoScimPrevious":      policyUserManagement,
 	"deleteIdentityOwnerSsoScim":              policyUserManagement,
+	"getIdentityOwnerAiSettings":              policyUserManagement,
+	"putIdentityOwnerAiTasksByKey":            policyUserManagement,
 
 	"getIdentityOwnerInvitations":            policyInvitations,
 	"postIdentityOwnerInvitations":           policyInvitations,

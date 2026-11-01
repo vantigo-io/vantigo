@@ -36,6 +36,42 @@ func (e AccountResponseAvatarManagedBy) Valid() bool {
 	}
 }
 
+// Defines values for AiSettingsProvider.
+const (
+	Openai AiSettingsProvider = "openai"
+)
+
+// Valid indicates whether the value is a known member of the AiSettingsProvider enum.
+func (e AiSettingsProvider) Valid() bool {
+	switch e {
+	case Openai:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AiSettingsTaskSource.
+const (
+	Chosen  AiSettingsTaskSource = "chosen"
+	Default AiSettingsTaskSource = "default"
+	Plan    AiSettingsTaskSource = "plan"
+)
+
+// Valid indicates whether the value is a known member of the AiSettingsTaskSource enum.
+func (e AiSettingsTaskSource) Valid() bool {
+	switch e {
+	case Chosen:
+		return true
+	case Default:
+		return true
+	case Plan:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for AuthSessionResponseTimeZoneSource.
 const (
 	Business AuthSessionResponseTimeZoneSource = "business"
@@ -256,6 +292,67 @@ type AccountResponseAvatarManagedBy string
 type AdministrationScopeResponse struct {
 	DelegationScopes []DelegationScopeResponse `json:"delegationScopes"`
 	IsOwner          bool                      `json:"isOwner"`
+}
+
+// AiSettings The installation's AI plan as an Owner sees it (AI as a platform provider design T12, T13): the provider, the models the plan allows and whether a key is configured, all instance configuration shown as facts, and the AI tasks the enabled modules perform, grouped by module, each with the model it uses now. The key itself is never answered, in any form.
+type AiSettings struct {
+	// AllowedModels The models the plan allows (AI_MODELS), in the order the operator wrote them; the first is the plan's default.
+	AllowedModels []string `json:"allowedModels"`
+
+	// KeyConfigured Always true while this is answered, since an API key is configured by Vantigo. The key is never sent.
+	KeyConfigured bool `json:"keyConfigured"`
+
+	// Modules The modules that perform AI tasks and are enabled, by name, each with its tasks by key. A module that is off is not listed.
+	Modules []AiSettingsModule `json:"modules"`
+
+	// PlanDefault The model a task uses when nobody chose one and the module recommends none the plan allows — the first of allowedModels.
+	PlanDefault string `json:"planDefault"`
+
+	// Provider The provider the plan calls (AI_PROVIDER).
+	Provider AiSettingsProvider `json:"provider"`
+}
+
+// AiSettingsProvider The provider the plan calls (AI_PROVIDER).
+type AiSettingsProvider string
+
+// AiSettingsModule One module's AI tasks.
+type AiSettingsModule struct {
+	// Module The module's name, such as communications.
+	Module string           `json:"module"`
+	Tasks  []AiSettingsTask `json:"tasks"`
+}
+
+// AiSettingsTask One AI job a module performs and the model it uses.
+type AiSettingsTask struct {
+	// Default The model the module recommends for the task, or null when it recommends none. It applies while nobody has chosen, and only when the plan allows it.
+	Default *string `json:"default"`
+
+	// Description What the model is asked to do, and with what data.
+	Description string `json:"description"`
+
+	// Display What the task is called, in English.
+	Display string `json:"display"`
+
+	// Key The task's key, module.task-name, such as communications.compose-reply.
+	Key string `json:"key"`
+
+	// Model The model the task uses now, always one the plan allows — the choice if there is one and it is still allowed, else the module's recommendation if allowed, else the plan's default.
+	Model string `json:"model"`
+
+	// Source Where model comes from: chosen (an Owner chose it), default (the module's recommendation) or plan (the plan's default).
+	Source AiSettingsTaskSource `json:"source"`
+
+	// Version The task's version for If-Match, bare — the microseconds of the choice's last change since the epoch, 0 while nobody has chosen. It moves with every save of the task.
+	Version string `json:"version"`
+}
+
+// AiSettingsTaskSource Where model comes from: chosen (an Owner chose it), default (the module's recommendation) or plan (the plan's default).
+type AiSettingsTaskSource string
+
+// AiTaskRequest defines model for AiTaskRequest.
+type AiTaskRequest struct {
+	// Model The model the task is to use, one of allowedModels. Anything else is refused 422 model_not_allowed.
+	Model string `json:"model"`
 }
 
 // AssignRolesResponse defines model for AssignRolesResponse.
@@ -1321,6 +1418,15 @@ type PostIdentityOidcCallbackFormdataBody struct {
 	State            *string `form:"state,omitempty" json:"state,omitempty"`
 }
 
+// PutIdentityOwnerAiTasksByKeyJSONBody defines parameters for PutIdentityOwnerAiTasksByKey.
+type PutIdentityOwnerAiTasksByKeyJSONBody = AiTaskRequest
+
+// PutIdentityOwnerAiTasksByKeyParams defines parameters for PutIdentityOwnerAiTasksByKey.
+type PutIdentityOwnerAiTasksByKeyParams struct {
+	// IfMatch The task's version as the settings answered it, bare (1767268800000000) or quoted. A version that has moved on is a 412 version_mismatch.
+	IfMatch string `json:"If-Match"`
+}
+
 // PostIdentityOwnerInvitationsJSONBody defines parameters for PostIdentityOwnerInvitations.
 type PostIdentityOwnerInvitationsJSONBody = InvitationRequest
 
@@ -1546,6 +1652,9 @@ type PostIdentityLogin2faJSONRequestBody = PostIdentityLogin2faJSONBody
 
 // PostIdentityOidcCallbackFormdataRequestBody defines body for PostIdentityOidcCallback for application/x-www-form-urlencoded ContentType.
 type PostIdentityOidcCallbackFormdataRequestBody PostIdentityOidcCallbackFormdataBody
+
+// PutIdentityOwnerAiTasksByKeyJSONRequestBody defines body for PutIdentityOwnerAiTasksByKey for application/json ContentType.
+type PutIdentityOwnerAiTasksByKeyJSONRequestBody = PutIdentityOwnerAiTasksByKeyJSONBody
 
 // PostIdentityOwnerInvitationsJSONRequestBody defines body for PostIdentityOwnerInvitations for application/json ContentType.
 type PostIdentityOwnerInvitationsJSONRequestBody = PostIdentityOwnerInvitationsJSONBody
@@ -2108,6 +2217,12 @@ type ServerInterface interface {
 	// GetIdentityOidcComplete Complete workforce OpenID Connect sign-in
 	// (GET /api/v1/identity/oidc/complete)
 	GetIdentityOidcComplete(w http.ResponseWriter, r *http.Request)
+	// GetIdentityOwnerAiSettings Get the AI plan and the model per task
+	// (GET /api/v1/identity/owner/ai/settings)
+	GetIdentityOwnerAiSettings(w http.ResponseWriter, r *http.Request)
+	// PutIdentityOwnerAiTasksByKey Choose the model of an AI task
+	// (PUT /api/v1/identity/owner/ai/tasks/{key})
+	PutIdentityOwnerAiTasksByKey(w http.ResponseWriter, r *http.Request, key string, params PutIdentityOwnerAiTasksByKeyParams)
 
 	// (GET /api/v1/identity/owner/invitations)
 	GetIdentityOwnerInvitations(w http.ResponseWriter, r *http.Request)
@@ -3417,6 +3532,74 @@ func (siw *ServerInterfaceWrapper) GetIdentityOidcComplete(w http.ResponseWriter
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetIdentityOidcComplete(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetIdentityOwnerAiSettings operation middleware
+func (siw *ServerInterfaceWrapper) GetIdentityOwnerAiSettings(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetIdentityOwnerAiSettings(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutIdentityOwnerAiTasksByKey operation middleware
+func (siw *ServerInterfaceWrapper) PutIdentityOwnerAiTasksByKey(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "key" -------------
+	var key string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "key", r.PathValue("key"), &key, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "key", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params PutIdentityOwnerAiTasksByKeyParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "If-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
+		var IfMatch string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-Match", Err: err})
+			return
+		}
+
+		params.IfMatch = IfMatch
+
+	} else {
+		err := fmt.Errorf("Header parameter If-Match is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "If-Match", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutIdentityOwnerAiTasksByKey(w, r, key, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -4987,6 +5170,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/identity/oidc/callback", wrapper.PostIdentityOidcCallback)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/identity/oidc/challenge", wrapper.GetIdentityOidcChallenge)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/identity/oidc/complete", wrapper.GetIdentityOidcComplete)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/identity/owner/ai/settings", wrapper.GetIdentityOwnerAiSettings)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/identity/owner/ai/tasks/{key}", wrapper.PutIdentityOwnerAiTasksByKey)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/identity/owner/invitations", wrapper.GetIdentityOwnerInvitations)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/identity/owner/invitations", wrapper.PostIdentityOwnerInvitations)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/identity/owner/invitations/{id}/resend", wrapper.PostIdentityOwnerInvitationsByIdResend)
@@ -9062,6 +9247,225 @@ type GetIdentityOidcComplete404Response struct {
 func (response GetIdentityOidcComplete404Response) VisitGetIdentityOidcCompleteResponse(w http.ResponseWriter) error {
 	w.WriteHeader(404)
 	return nil
+}
+
+type GetIdentityOwnerAiSettingsRequestObject struct {
+}
+
+type GetIdentityOwnerAiSettingsResponseObject interface {
+	VisitGetIdentityOwnerAiSettingsResponse(w http.ResponseWriter) error
+}
+
+type GetIdentityOwnerAiSettings200JSONResponse AiSettings
+
+func (response GetIdentityOwnerAiSettings200JSONResponse) VisitGetIdentityOwnerAiSettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetIdentityOwnerAiSettings401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetIdentityOwnerAiSettings401JSONResponse) VisitGetIdentityOwnerAiSettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetIdentityOwnerAiSettings403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetIdentityOwnerAiSettings403JSONResponse) VisitGetIdentityOwnerAiSettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetIdentityOwnerAiSettings404JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetIdentityOwnerAiSettings404JSONResponse) VisitGetIdentityOwnerAiSettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetIdentityOwnerAiSettings429ResponseHeaders struct {
+	RetryAfter *string
+}
+
+type GetIdentityOwnerAiSettings429JSONResponse struct {
+	Body    externalRef0.AuthErrorResponse
+	Headers GetIdentityOwnerAiSettings429ResponseHeaders
+}
+
+func (response GetIdentityOwnerAiSettings429JSONResponse) VisitGetIdentityOwnerAiSettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutIdentityOwnerAiTasksByKeyRequestObject struct {
+	Key    string `json:"key"`
+	Params PutIdentityOwnerAiTasksByKeyParams
+	Body   *PutIdentityOwnerAiTasksByKeyJSONRequestBody
+}
+
+type PutIdentityOwnerAiTasksByKeyResponseObject interface {
+	VisitPutIdentityOwnerAiTasksByKeyResponse(w http.ResponseWriter) error
+}
+
+type PutIdentityOwnerAiTasksByKey200JSONResponse AiSettingsTask
+
+func (response PutIdentityOwnerAiTasksByKey200JSONResponse) VisitPutIdentityOwnerAiTasksByKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutIdentityOwnerAiTasksByKey400JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutIdentityOwnerAiTasksByKey400JSONResponse) VisitPutIdentityOwnerAiTasksByKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutIdentityOwnerAiTasksByKey401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutIdentityOwnerAiTasksByKey401JSONResponse) VisitPutIdentityOwnerAiTasksByKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutIdentityOwnerAiTasksByKey403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutIdentityOwnerAiTasksByKey403JSONResponse) VisitPutIdentityOwnerAiTasksByKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutIdentityOwnerAiTasksByKey404JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutIdentityOwnerAiTasksByKey404JSONResponse) VisitPutIdentityOwnerAiTasksByKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutIdentityOwnerAiTasksByKey412JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutIdentityOwnerAiTasksByKey412JSONResponse) VisitPutIdentityOwnerAiTasksByKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(412)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutIdentityOwnerAiTasksByKey422JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutIdentityOwnerAiTasksByKey422JSONResponse) VisitPutIdentityOwnerAiTasksByKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutIdentityOwnerAiTasksByKey429ResponseHeaders struct {
+	RetryAfter *string
+}
+
+type PutIdentityOwnerAiTasksByKey429JSONResponse struct {
+	Body    externalRef0.AuthErrorResponse
+	Headers PutIdentityOwnerAiTasksByKey429ResponseHeaders
+}
+
+func (response PutIdentityOwnerAiTasksByKey429JSONResponse) VisitPutIdentityOwnerAiTasksByKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
 }
 
 type GetIdentityOwnerInvitationsRequestObject struct {
@@ -14279,6 +14683,12 @@ type StrictServerInterface interface {
 	// GetIdentityOidcComplete Complete workforce OpenID Connect sign-in
 	// (GET /api/v1/identity/oidc/complete)
 	GetIdentityOidcComplete(ctx context.Context, request GetIdentityOidcCompleteRequestObject) (GetIdentityOidcCompleteResponseObject, error)
+	// GetIdentityOwnerAiSettings Get the AI plan and the model per task
+	// (GET /api/v1/identity/owner/ai/settings)
+	GetIdentityOwnerAiSettings(ctx context.Context, request GetIdentityOwnerAiSettingsRequestObject) (GetIdentityOwnerAiSettingsResponseObject, error)
+	// PutIdentityOwnerAiTasksByKey Choose the model of an AI task
+	// (PUT /api/v1/identity/owner/ai/tasks/{key})
+	PutIdentityOwnerAiTasksByKey(ctx context.Context, request PutIdentityOwnerAiTasksByKeyRequestObject) (PutIdentityOwnerAiTasksByKeyResponseObject, error)
 
 	// (GET /api/v1/identity/owner/invitations)
 	GetIdentityOwnerInvitations(ctx context.Context, request GetIdentityOwnerInvitationsRequestObject) (GetIdentityOwnerInvitationsResponseObject, error)
@@ -16244,6 +16654,67 @@ func (sh *strictHandler) GetIdentityOidcComplete(w http.ResponseWriter, r *http.
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetIdentityOidcCompleteResponseObject); ok {
 		if err := validResponse.VisitGetIdentityOidcCompleteResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetIdentityOwnerAiSettings operation middleware
+func (sh *strictHandler) GetIdentityOwnerAiSettings(w http.ResponseWriter, r *http.Request) {
+	var request GetIdentityOwnerAiSettingsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetIdentityOwnerAiSettings(ctx, request.(GetIdentityOwnerAiSettingsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetIdentityOwnerAiSettings")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetIdentityOwnerAiSettingsResponseObject); ok {
+		if err := validResponse.VisitGetIdentityOwnerAiSettingsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutIdentityOwnerAiTasksByKey operation middleware
+func (sh *strictHandler) PutIdentityOwnerAiTasksByKey(w http.ResponseWriter, r *http.Request, key string, params PutIdentityOwnerAiTasksByKeyParams) {
+	var request PutIdentityOwnerAiTasksByKeyRequestObject
+
+	request.Key = key
+	request.Params = params
+
+	var body PutIdentityOwnerAiTasksByKeyJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		if !errors.Is(err, io.EOF) {
+			sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+			return
+		}
+	} else {
+		request.Body = &body
+	}
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutIdentityOwnerAiTasksByKey(ctx, request.(PutIdentityOwnerAiTasksByKeyRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutIdentityOwnerAiTasksByKey")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutIdentityOwnerAiTasksByKeyResponseObject); ok {
+		if err := validResponse.VisitPutIdentityOwnerAiTasksByKeyResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
