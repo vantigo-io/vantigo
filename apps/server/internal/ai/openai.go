@@ -10,9 +10,13 @@ import (
 )
 
 const (
-	// ProviderOpenAI is the one provider this build implements, and the value
+	// ProviderOpenAI is the provider this build implements, and the value
 	// AI_PROVIDER and ai_interactions.provider carry.
 	ProviderOpenAI = "openai"
+	// ProviderOpenAICompatible is ProviderOpenAI under a name that reads better
+	// beside a base URL that is not OpenAI's: Ollama, vLLM, LM Studio. It is the
+	// same implementation; the name the operator set is the one reported.
+	ProviderOpenAICompatible = "openai-compatible"
 	// defaultOpenAIBaseURL is the chat-completions host, used unless
 	// AI_BASE_URL names an OpenAI-compatible endpoint.
 	defaultOpenAIBaseURL  = "https://api.openai.com/v1"
@@ -25,18 +29,23 @@ const (
 // Communications' ai_client.go unchanged on the wire: one POST with a model
 // and a single user message, no system message.
 type openAI struct {
+	// apiKey is empty for a local model that takes none; no Authorization
+	// header is sent then.
 	apiKey  string
 	baseURL string
 	client  *http.Client
+	// chatTimeout is Chat's budget (AI_TIMEOUT); complete keeps its own.
+	chatTimeout time.Duration
 }
 
-func newOpenAI(apiKey, baseURL string, transport http.RoundTripper) *openAI {
+func newOpenAI(apiKey, baseURL string, transport http.RoundTripper, chatTimeout time.Duration) *openAI {
 	if baseURL == "" {
 		baseURL = defaultOpenAIBaseURL
 	}
 	return &openAI{
-		apiKey:  apiKey,
-		baseURL: baseURL,
+		apiKey:      apiKey,
+		baseURL:     baseURL,
+		chatTimeout: chatTimeout,
 		// Redirects are never followed, for the same reason the brreg client
 		// does not follow them: a redirect would re-send this request — API
 		// key included — to a host no operator named.
@@ -67,7 +76,7 @@ func (o *openAI) complete(ctx context.Context, model, prompt string) (completion
 		return completion{}, aiTransportError{err: err}
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+o.apiKey)
+	o.authorize(req)
 
 	resp, err := o.client.Do(req)
 	if err != nil {
@@ -107,6 +116,13 @@ func (o *openAI) complete(ctx context.Context, model, prompt string) (completion
 		out.outputTokens = tokenCount(parsed.Usage.CompletionTokens)
 	}
 	return out, nil
+}
+
+// authorize sets the bearer credential, when there is one.
+func (o *openAI) authorize(req *http.Request) {
+	if o.apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+o.apiKey)
+	}
 }
 
 // tokenCount narrows a reported token count to the int32 an audit column
