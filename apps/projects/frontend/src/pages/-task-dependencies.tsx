@@ -49,7 +49,7 @@ export const TaskDependencies = ({ projectId, task, canContribute }: TaskDepende
 
   const taskMap = useMemo(() => new Map<number, Task>(allTasks.map((tk) => [tk.id, tk])), [allTasks]);
 
-  const deps = dependenciesQuery.data?.dependencies ?? [];
+  const deps = useMemo(() => dependenciesQuery.data?.dependencies ?? [], [dependenciesQuery.data]);
   const predecessors = useMemo(() => deps.filter((d) => d.successorTaskId === task.id), [deps, task.id]);
   const successors = useMemo(() => deps.filter((d) => d.predecessorTaskId === task.id), [deps, task.id]);
 
