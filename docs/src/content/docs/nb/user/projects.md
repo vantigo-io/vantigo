@@ -278,9 +278,13 @@ statuser, kommentarer, førte timer og kryss kopieres ikke.
 
 Datoene blir dager fra prosjektets **startdato**: en dato før starten blir `T+0`.
 Et prosjekt uten startdato regner i stedet fra sin tidligste milepæl- eller
-oppgavedato, og en milepæl uten måldato får `T+0`. En plan som bryter en malregel —
-en sjekkliste med mer enn 100 punkter, for eksempel — avvises med
-*Prosjektplanen bryter en malregel*, fulgt av regelen, og ingenting lagres. Å lagre
+oppgavedato, og en milepæl uten måldato får `T+0`. En plan som bryter en malregel,
+avvises med navnet på oppgaven, og ingenting lagres: en sjekkliste med mer enn 100
+punkter gir *Oppgaven «tittel» har mer enn 100 sjekklistepunkter, flere enn en mal
+kan ha* (eller nevner deloppgaven og oppgaven dens), og en kjede på mer enn 100
+koblede avhengigheter, koblet før den grensen fantes, nevner oppgaven den fører
+fram til. Alle andre regler gir *Prosjektplanen bryter en malregel*, fulgt av
+oppgaven og regelen. Å lagre
 endrer verken prosjektet eller tidslinjen. Se
 [Save a project as a template](/en/reference/projects/#save-a-project-as-a-template).
 

@@ -643,7 +643,7 @@ func validateTemplateData(
 		seen[pair] = i
 	}
 	if indicesValid {
-		cyclic, longest := templateDependencyChains(len(tasks), dependencies)
+		cyclic, longest, _ := templateDependencyChains(len(tasks), dependencies)
 		switch {
 		case cyclic:
 			add("dependencies", "The dependencies form a cycle: a task would have to wait for itself.")
@@ -661,12 +661,12 @@ func validateTemplateData(
 
 // templateDependencyChains reports whether the dependencies, every index of
 // which is already known to be in bounds, form a cycle among the template's
-// tasks, and otherwise the number of links in the longest chain they make.
-// Kahn's algorithm: a graph is acyclic exactly when repeatedly removing the
+// tasks, and otherwise the number of links in the longest chain they make and
+// the index of the task that chain ends at. Kahn's algorithm: a graph is acyclic exactly when repeatedly removing the
 // tasks nothing waits on removes every task, and removing them in that order
 // visits every task after everything it waits on, so the longest chain ending
 // at each one is known by the time it is removed.
-func templateDependencyChains(taskCount int, dependencies []gen.ProjectTemplateDependency) (cyclic bool, longest int) {
+func templateDependencyChains(taskCount int, dependencies []gen.ProjectTemplateDependency) (cyclic bool, longest, end int) {
 	incoming := make([]int, taskCount)
 	chain := make([]int, taskCount)
 	successors := make([][]int32, taskCount)
@@ -685,7 +685,9 @@ func templateDependencyChains(taskCount int, dependencies []gen.ProjectTemplateD
 		next := ready[len(ready)-1]
 		ready = ready[:len(ready)-1]
 		removed++
-		longest = max(longest, chain[next])
+		if chain[next] > longest {
+			longest, end = chain[next], int(next)
+		}
 		for _, succ := range successors[next] {
 			chain[succ] = max(chain[succ], chain[next]+1)
 			incoming[succ]--
@@ -694,5 +696,5 @@ func templateDependencyChains(taskCount int, dependencies []gen.ProjectTemplateD
 			}
 		}
 	}
-	return removed < taskCount, longest
+	return removed < taskCount, longest, end
 }

@@ -186,6 +186,25 @@ describe("frontend API client", () => {
       expect(error).not.toBeInstanceOf(ApiConflictError);
     });
 
+    it("keeps a validation problem's own fields beside its field errors", async () => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue(
+          jsonResponse(400, {
+            title: "Invalid template",
+            errors: { "tasks[0].checklist": ["Too many"] },
+            rows: { "tasks[0].checklist": { task: "Kickoff" } },
+          }),
+        ),
+      );
+      const client = createApiClient();
+
+      const error = (await client.request("/api/v1/x").catch((e: unknown) => e)) as ApiValidationError;
+
+      expect(error.fieldErrors).toEqual({ "tasks[0].checklist": "Too many" });
+      expect(error.problem?.rows).toEqual({ "tasks[0].checklist": { task: "Kickoff" } });
+    });
+
     it("still throws the generic error for a 409 with no top-level title (nested-error-shaped body)", async () => {
       vi.stubGlobal(
         "fetch",

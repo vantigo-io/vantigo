@@ -1910,6 +1910,31 @@ export interface components {
             /** Format: uuid */
             userId: string;
         };
+        /** @description A refused save as template. The shape of HttpValidationProblemDetails, plus rows, which names the project's own task, subtask or milestone each template field error is about, since a template index (tasks[3]) is nothing a person can find on the project. */
+        ProjectSaveAsTemplateProblem: {
+            detail?: string | null;
+            errors?: {
+                [key: string]: string[];
+            };
+            instance?: string | null;
+            /** @description By the same field keys as errors, the project row each error is about. Absent for an error on the request's own name or description. For dependencies, the task at the end of the longest chain. */
+            rows?: {
+                [key: string]: components["schemas"]["ProjectSaveAsTemplateProblemRow"];
+            };
+            /** Format: int32 */
+            status?: number | null;
+            title?: string | null;
+            type?: string | null;
+        };
+        /** @description The project row a save-as-template field error is about, by its title or name as the project shows it. */
+        ProjectSaveAsTemplateProblemRow: {
+            /** @description The delivery milestone's name. */
+            milestone?: string;
+            /** @description The subtask's title, under task. */
+            subtask?: string;
+            /** @description The top-level task's title. */
+            task?: string;
+        };
         /** @description Save a project's plan as a new template. Everything else the template holds is read from the project. */
         ProjectSaveAsTemplateRequest: {
             description?: string | null;
@@ -4328,13 +4353,13 @@ export interface operations {
                     "application/json": components["schemas"]["ProjectTemplateResponse"];
                 };
             };
-            /** @description Bad Request — the name or description is invalid, or the project's plan breaks a template rule (the field errors name it). */
+            /** @description Bad Request — the name or description is invalid, or the project's plan breaks a template rule; the field errors are keyed by template field and rows names the project's task, subtask or milestone each is about. */
             400: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                    "application/problem+json": components["schemas"]["ProjectSaveAsTemplateProblem"];
                 };
             };
             /** @description Unauthorized */

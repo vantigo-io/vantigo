@@ -275,9 +275,12 @@ only. Assignees, statuses, comments, logged time and ticks are not copied.
 Dates become days from the project's **start date**: a date before the start
 becomes `T+0`. A project without a start date counts from its earliest milestone or
 task date instead, and a milestone without a target date gets `T+0`. A plan that
-breaks a template rule — a checklist of more than 100 items, say — is refused with
-*The project's plan breaks a template rule*, followed by the rule, and nothing is
-saved. Saving does not change the project or its timeline. See
+breaks a template rule is refused, naming the task, and nothing is saved: a checklist
+of more than 100 items says *The task "title" has more than 100 checklist items, more
+than a template holds* (or names the subtask and its task), and a chain of more than
+100 linked dependencies, linked before that limit existed, names the task it leads
+to. Any other rule reads *The project's plan breaks a template rule*, followed by
+the task and the rule. Saving does not change the project or its timeline. See
 [Save a project as a template](/en/reference/projects/#save-a-project-as-a-template).
 
 ## Set up billing lines
