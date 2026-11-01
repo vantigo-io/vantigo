@@ -20,6 +20,7 @@ export const targets = [
   { module: "planning", output: "apps/planning/frontend/src/api-schema.d.ts" },
   { module: "calendar", output: "apps/calendar/frontend/src/api-schema.d.ts" },
   { module: "entra", output: "apps/entra/frontend/src/api-schema.d.ts" },
+  { module: "assistant", output: "apps/assistant/frontend/src/api-schema.d.ts" },
 ] as const;
 
 const header =

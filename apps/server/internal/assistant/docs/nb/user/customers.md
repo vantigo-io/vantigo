@@ -1,0 +1,467 @@
+---
+title: Kunder
+description: Kundekort, kontakter, oppfølginger og kunde 360-visningen.
+sidebar:
+  order: 10
+sources:
+  - apps/customers/frontend
+  - apps/host/frontend/src/routes/customers/-customer-360-panel.tsx
+  - apps/host/frontend/src/routes/customers/-customers-list.tsx
+  - apps/host/frontend/src/routes/customers/-import-pages.tsx
+  - apps/host/frontend/src/routes/customers/import.index.tsx
+  - apps/host/frontend/src/routes/customers/import.$importId.tsx
+  - apps/host/frontend/src/api/customer-overview.ts
+  - apps/host/frontend/src/catalogs/customer.ts
+---
+
+Appen **Kunder** holder orden på selskapene og personene du gjør forretninger med,
+menneskene du snakker med hos hver av dem, og det som har skjedd mellom dere.
+Sidemenyen har tre områder: **Kunder** (krever `customers:view`), **Kontakter** (krever
+`customers:contacts-view` eller `customers:associations-view`) og **Oppfølginger**
+(krever `customers:timeline-view`). Hva hvert skjermbilde lar deg endre, avhenger av
+flere rettigheter, nevnt ved oppgaven de gjelder og samlet under [Rettigheter](#rettigheter).
+
+## Finne en kunde
+
+**Kunder** lister alle kundene i en tabell, med kort over den: **Kunder totalt**,
+**Aktive** og **Nye siste 30 dager**, og — med `customers:legal-identity-view` —
+**Virksomheter**, **Privatpersoner**, **Mangler juridisk identitet** og **Land**.
+
+- **Søket** treffer navnet, kundenummeret og kundens egen e-post og telefon. Med
+  `customers:legal-identity-view` treffer det også juridisk navn og
+  organisasjonsnummer; med både `customers:contacts-view` og
+  `customers:associations-view` treffer det også navnet og e-posten til en tilknyttet
+  kontakt. Se [listeendepunktet og søk](/en/reference/customers/#the-list-endpoint-and-search).
+- **Status** står på **Alle åpne** som standard: alle aktive og deaktiverte kunder.
+  Velg **Arkivert** for å se arkiverte kunder; ellers er de skjult.
+- **Type** avgrenser til **Bedrift** eller **Privat**; **Eier** til **Mine** eller
+  **Uten eier**; **Merkelapp** til én merkelapp; **Gruppe** til én gruppe eller
+  **Ingen gruppe**.
+- Klikk på overskriften **Nummer**, **Navn** eller **Opprettet** for å sortere etter
+  den: én gang stigende, én gang til synkende, en tredje gang for å slå sorteringen av.
+
+Alle filtrene og sorteringen ligger i sideadressen, så en filtrert liste kan bokmerkes
+eller sendes til en kollega. Klikk på en rad for å åpne kunden; blyanten ytterst på
+raden åpner redigeringsskjemaet direkte. **Fant ingen kunder.** betyr at ingenting traff.
+
+## Opprette en kunde
+
+Trykk **Opprett ny kunde** (`customers:create`; også en hurtighandling i søket).
+Skjemaet spør om:
+
+- **Kundetype**: **Bedrift** eller **Privat**. Den kan ikke endres senere i dette
+  skjemaet — se [Endre type](#endre-type).
+- **Navn**. For en bedrift søker du i Brønnøysundregistrene etter selskapsnavn eller
+  organisasjonsnummer mens du skriver; velger du et treff, får kunden det juridiske
+  navnet og organisasjonsnummeret som juridisk identitet, hentet fra
+  Brønnøysundregistrene. Skriver du videre i stedet, lagres navnet alene. Oppslaget
+  krever `customers:lookup-view`, og å lagre en identitet `customers:legal-identity-manage`;
+  skjemaet sier det under feltet. For en privatperson er det personens fulle navn.
+- **E-post** og **Telefon**, kundens egne; redigeres etterpå fra kundesiden.
+- **Status**: **Aktiv**, **Deaktivert** eller **Arkivert**.
+
+Mens du skriver, viser **Eksisterende kunder med lignende navn** opptil tre kunder med
+navn som inneholder det du skrev — et hint om å se etter før du oppretter et duplikat.
+
+Tilhører organisasjonsnummeret allerede en annen kunde, avvises lagringen med
+**Juridisk identitet er allerede i bruk**, som navngir kundene som har den (når du
+har `customers:view`). Åpne en av dem i stedet, eller trykk **Opprett likevel** når to
+kunder virkelig deler en identitet — to avdelinger i samme selskap, for eksempel. Med
+`customers:merge` peker advarselen også på **Slå sammen…** som måten å samle to
+oppføringer på. Regelen er
+[duplikatvernet for juridisk identitet](/en/reference/customers/#the-duplicate-identity-guard).
+
+## Kundesiden
+
+Toppen viser navnet, den juridiske identiteten som merker (juridisk navn,
+organisasjonsnummer, land, type og kilde — eller *Juridisk identitet er ikke
+tilgjengelig for denne kontoen* uten `customers:legal-identity-view`), statusen,
+typen og kundenummeret. Ved siden av står **Rediger kunde**, **Endre type**, **Slå
+sammen…**, **Arkiver kunde** eller **Gjenopprett kunde**, **Personopplysninger** (bare
+privatpersoner) og **Åpne i innboksen**, hver vist bare med rettigheten den krever.
+
+En rad med faner — **Oversikt**, **Energi**, **Prosjekter** og **Fakturaer** — vises
+når mer enn én er tilgjengelig for deg. De tre modulfanene viser modulens eget panel
+for denne kunden og krever at modulen er på og en rettighet i den
+(`energy:metering-points-view`, `projects:access`, `invoices:access`).
+
+**Oversikt** åpner med panelet **Kunde 360**: **Åpne prosjekter**, **Ufakturerte
+timer**, **Utlegg klare til fakturering**, **Utestående**, **Fakturert i år** og
+**Siste aktivitet** — hver flis vises bare når modulen er på og for deg — pluss en
+tabell over åpne prosjekter (**Kode**, **Navn**, **Status**, **Sist ført**) og **Se
+alle … åpne prosjekter** når det finnes flere. **Utestående** er det kunden fortsatt
+skylder på utstedte fakturaer, med hvor mange fakturaer det gjelder, hvor mange som
+er forfalt og det eldste forfallet, og eventuelle på vent eller til inkasso;
+**Fakturert i år** er årets fakturaer minus årets kreditnotaer, med fjorårets tall
+under. Begge krever Faktura-modulen og `invoices:access`, og kommer med lenken **Se
+fakturaer** til kundens Fakturaer-fane; se
+[Customer 360](/en/reference/customers/#customer-360). Under det kommer kortene
+**Kunderelasjon**, **Kontakt og adresser**, **Register**, **Fakturering**,
+**Kontakter**, **Vedlegg** og **Tidslinje**, beskrevet i avsnittene som følger.
+
+Et banner øverst sier fra når kunden er arkivert, slått sammen med en annen, planlagt
+anonymisert eller anonymisert; en sammenslått eller anonymisert kunde er
+skrivebeskyttet, og alle redigeringshandlinger forsvinner fra siden.
+
+## Redigere, arkivere og gjenopprette
+
+**Rediger kunde** (`customers:update`) åpner opprettelsesskjemaet redusert til **Navn**
+og **Status**. **Deaktivert** beholder kunden i listene, men sperrer den for
+fakturering — se [Statuses](/en/reference/customers/#statuses). Advarselen om duplikat
+identitet gjelder her også, med **Lagre likevel** som overstyring.
+
+Har noen andre lagret kunden mens skjemaet ditt var åpent, avvises lagringen med
+**Kunden er endret**: trykk **Last inn på nytt** for å hente deres versjon — det du
+skrev, forkastes — og lagre igjen. Det samme varselet dukker opp i alle skjemaer som
+redigerer kunderaden (kontaktdetaljer, eier, gruppe, fakturering).
+
+**Arkiver kunde** (`customers:delete`) spør *Arkivere {navn}? Kunden beholdes, men
+skjules fra de fleste lister til den gjenopprettes.* En arkivert kunde nås fortsatt
+fra andre moduler og nektes ny faktura. **Gjenopprett kunde** (`customers:update`)
+setter den aktiv igjen uten bekreftelse.
+
+## Endre type
+
+**Endre type** (`customers:update`) gjør en bedrift om til en privatperson eller
+omvendt, gjennom en bekreftelse som forklarer hva som skjer: kontakter, tidslinjen
+og alt annet knyttet til kunden beholdes; en juridisk identitet fjernes, siden den
+tilhører den gamle typen; skjemaer og nøkkeltall behandler kunden som den nye typen
+fra nå av. Bekreft med **Endre til privat** eller **Endre til bedrift**. Regelen er
+[Customer type vs. legal identity type](/en/reference/customers/#customer-type-vs-legal-identity-type).
+
+## Eier, gruppe og merkelapper
+
+Kortet **Kunderelasjon** viser hvem som eier relasjonen, hvilken gruppe kunden er i og
+hvilke merkelapper den har. Med `customers:update` har hver av dem en kontroll:
+
+- **Eier**: søk etter en kollega og velg vedkommende, eller **Fjern eier**.
+- **Gruppe**: en av installasjonens grupper, eller **Ingen gruppe**. En gruppe kan ha
+  standard betalingsbetingelser, som faktureringskortet viser at kunden arver.
+- **Merkelapper**: velg blant eksisterende, eller skriv et nytt navn og velg
+  **Opprett «…»** for å opprette og sette den på i ett.
+
+Ordforrådene administreres fra kundelisten (`customers:update`). **Administrer
+merkelapper** ved merkelappfilteret gir en merkelapp nytt navn, en **Farge** eller
+sletter den, som fjerner den fra alle kundene som hadde den. **Administrer grupper**
+ved gruppefilteret oppretter en gruppe med **Navn på gruppe** og valgfrie **Standard
+betalingsbetingelser (dager)**, redigerer eller sletter den — avvist så lenge noen
+kunde er i den. Reglene er
+[Owner and tags](/en/reference/customers/#owner-and-tags) og
+[Groups](/en/reference/customers/#groups).
+
+## Kontaktdetaljer og adresser
+
+**Kontakt og adresser** viser kundens egen **E-post**, **Telefon** og **Nettside**;
+**Rediger kontaktdetaljer** (`customers:update`) endrer dem.
+
+Adressene listes under etter type — **Fakturaadresse**, **Postadresse**,
+**Leveringsadresse**, **Besøksadresse** — og den primære av hver type har merket
+**Primær**. **Legg til adresse** spør om **Adressetype**, en valgfri **Merkelapp**,
+**Adresselinje 1** og **2**, **Postnummer**, **Poststed**, **Region** og **Land**; en
+norsk adresse trenger et firesifret postnummer og et poststed. Kryss av
+**Primæradresse** for å gjøre den til primær av sin type. Den første adressen av en
+type er primær uansett, og du kan ikke fjerne krysset på den eneste eller primære —
+trykk **Gjør til primær** på en annen rad i stedet. **Slett adresse** spør først og
+kan ikke angres.
+
+Når registerkortet har opplysninger og kunden ennå ikke har en adresse av den typen,
+åpner **Bruk forretningsadressen fra registeret** og **Bruk postadressen fra
+registeret** skjemaet ferdig utfylt fra Brønnøysundregistrene, som besøks- eller
+postadresse; ingenting lagres uten et klikk. Se [Addresses](/en/reference/customers/#addresses).
+
+## Registerkortet
+
+For en bedriftskunde med norsk organisasjonsnummer som juridisk identitet, og med
+`customers:legal-identity-view`, viser kortet **Register** hva Brønnøysundregistrene
+sier: **Organisasjonsform**, **Næringskode**, **Ansatte**, **Registrert i
+Merverdiavgiftsregisteret**, **Stiftet**, kontaktopplysninger, **Overordnet enhet**,
+**Forretningsadresse** og **Postadresse**, og når opplysningene ble hentet. Røde merker
+flagger et selskap som er **Konkurs**, **Under avvikling**, **Under tvangsavvikling**
+eller **Slettet**.
+
+**Oppdater** (`customers:legal-identity-manage`) leser registeret på nytt; hver
+forskjell skrives til tidslinjen som hendelsen **Registerendring**, og kortet sier
+hvor mange endringer du bør se etter. Kaller registeret selskapet noe annet, tilbyr
+**Registeret har et annet navn** valget **Oppdater juridisk navn**. Se
+[Registry record](/en/reference/customers/#registry-record).
+
+## Fakturering
+
+Kortet **Fakturering** viser faktureringsprofilen: **E-post for faktura**, **E-post
+for purring**, **Betalingsbetingelser**, **Valuta**, **Standard timepris**,
+**Dokumentspråk**, **Fakturalevering**, **Purrelevering**, **Peppol-ID**, **GLN** og
+**Deres referanse**. Et tomt felt viser *Ikke satt — standard for fakturering
+gjelder*, med et hint om hva som brukes i stedet (kundens egen e-post, gruppens
+betalingsbetingelser, en EHF-mottaker utledet fra organisasjonsnummeret). **Før du
+fakturerer denne kunden** lister det som ville stoppet en faktura: EHF uten Peppol-ID
+eller organisasjonsnummer, e-post uten noen adresse, eFaktura på en bedrift, ingen
+fakturaadresse.
+
+Redigering krever `customers:billing-manage`. Leveringsmåtene er **E-post**, **EHF**,
+**eFaktura** (bare privatkunder) og **Papir**. **Sjekk EHF** spør Peppol-nettverket om
+kunden kan motta EHF-fakturaer og beholder svaret med dato; kan den det, og EHF ennå
+ikke er valgt, tilbyr **Denne kunden kan motta EHF-fakturaer** valget **Bruk EHF**. Se
+[Billing profile](/en/reference/customers/#billing-profile) og
+[Peppol lookup](/en/reference/customers/#peppol-lookup).
+
+## Kontakter og rollene deres
+
+En kontakt er en person. Kundens kort **Kontakter** lister menneskene som er knyttet
+til den, med **Roller**, **E-post** og **Telefon** — en nedtonet verdi er kontaktens
+egen, arvet fordi ingen er satt for denne kunden.
+
+**Legg til kontakt** søker blant eksisterende kontakter etter navn, telefon eller
+e-post. Velg en, eller velg **Fant ingen kontakt — opprett "…" som ny kontakt** og fyll
+inn **Fornavn** og **Etternavn** (pluss **Mellomnavn**, **Prefiks**, **Suffiks**,
+**Telefon**, **E-post**). Beskriv deretter koblingen:
+
+- **Tittel**, for eksempel *CEO*.
+- **Roller**: **Faktura** (hvem som får fakturaen og purringen), **Prosjekt** (hvem
+  dere snakker med til daglig) og **Beslutningstaker** (hvem som godkjenner), hver med
+  en **Primær**-bryter. Den første kontakten som får en rolle, er primær for den; slår
+  du **Primær** på for en annen kontakt, flyttes den. Den kan ikke slås av på den
+  primære innehaveren — gjør en annen kontakt primær i stedet.
+- **Telefon hos denne kunden** og **E-post hos denne kunden**, brukt for denne kunden
+  i stedet for kontaktens egne.
+
+En kobling trenger en tittel eller minst én rolle. Blyanten på en rad åpner
+**Rediger kobling — {navn}**; fjern-ikonet kobler kontakten fra etter en bekreftelse,
+og begge beholdes. Se
+[Contacts and associations](/en/reference/customers/#contacts-and-associations).
+
+**Kontakter** i sidemenyen lister alle kontakter med **Navn**, **Telefon**, **E-post**
+og **Kunder**, søkbare etter navn, telefon eller e-post; **Opprett ny kontakt**
+oppretter en uten kunde, blyanten redigerer den, søppelkassen sletter den direkte.
+Kontaktens egen side har **Rediger kontakt** og et kort **Kunder** som speiler kundens
+kontaktkort, med **Legg til kunde**. Kontakter krever `customers:contacts-view` og
+`customers:contacts-manage`; koblingene `customers:associations-view` og
+`customers:associations-manage`.
+
+## Tidslinjen
+
+Kortet **Tidslinje** er kundens historikk, nyeste først: automatiske hendelser
+systemet skriver (kunde opprettet, eier endret, registerendring, sammenslått og så
+videre) og manuelle hendelser du legger til. Hver hendelse viser typen, merket
+**Manuell** eller **Automatisk**, når den skjedde, hvem som registrerte den, og
+detaljene; **Last inn flere** henter eldre hendelser. Lesing krever
+`customers:timeline-view`. Avgrens med bryteren **Kilde** (**Alle**, **Manuell**,
+**Automatisk**), **Hendelsestyper** og et **Tidspunkt**-intervall; **Nullstill** tømmer dem.
+
+**Legg til hendelse** (`customers:timeline-manage`) registrerer et øyeblikk: **Type**
+(**Samtale**, **Møte**, **E-post**, **Notat**, **Annet** eller **Registerendring**),
+**Dato** (ikke i fremtiden), valgfri **Tid**, en **Beskrivelse**, en valgfri
+**Kilde-URL** vist som **Åpne kilde** på hendelsen, og en oppfølging (neste avsnitt).
+Tiden du skriver er i din egen tidssone, som feltnavnet sier — **Tid (Europe/Oslo)** —
+og som du velger under [Velg tidssonen
+din](/nb/user/getting-started/#velg-tidssonen-din); hendelsen viser den for hver leser
+i deres sone, uten sone etter. **Dato**, og «ikke i fremtiden» den sjekkes mot, er
+virksomhetens tidssone (satt under [Administrasjon av
+arbeidsområdet](/nb/user/workspace-administration/#innstillinger-for-arbeidsområdet)),
+og datoen må være dagen tiden din faller på der: 23:30 30. juni i London er 1. juli i
+Oslo, så med et arbeidsområde i Oslo dateres den hendelsen 1. juli. En hendelse som er
+lagret fra før, blir stående som den er, og redigerer du bare beskrivelsen, kreves
+aldri en ny dato og flyttes aldri tiden, uansett hvilken sone du leser den i.
+Menyen på en manuell hendelse tilbyr **Rediger**, **Revisjonshistorikk** og **Slett**.
+Alle lagrede versjoner beholdes, og **Revisjonshistorikk** lister dem som **Revisjon
+1**, **Revisjon 2** og så videre, med hvem som endret og når. Er en hendelse endret
+under deg, avvises lagringen med **Denne hendelsen er endret**. Se [The timeline](/en/reference/customers/#the-timeline).
+
+Menyen på en manuell hendelse tilbyr også **Legg ved fil…**, som legger en fil på den
+hendelsen — e-posten bak en **E-post**-hendelse, referatet fra et **Møte**. Hendelsen
+lister da filene sine under teksten, hver en nedlasting, med et kryss for å fjerne den.
+Se [Vedlegg](#vedlegg).
+
+## Vedlegg
+
+Kortet **Vedlegg** er kundens dokumenter: en signert kontrakt, en taushetsavtale, et
+skannet brev — og, oppført med hendelsen de hører til, filene som er lagt på
+tidslinjehendelser. Lesing krever `customers:timeline-view`; uten den viser kortet *Kunne ikke laste
+vedlegg*. Hver rad viser filens navn, størrelsen og dagen den ble lastet opp, og **På: E-post ·
+12. okt. 2026** for en som ligger på en hendelse (eller **På en slettet hendelse: …** når
+hendelsen siden er slettet; filen blir). Klikk på navnet for å laste den ned, med navnet
+den ble lastet opp under.
+
+**Legg til vedlegg** (`customers:timeline-manage`) tar en **PDF-, JPEG-, PNG- eller
+HEIC-fil** på høyst **10 MB**; velgeren tilbyr ikke noe annet, og en fil hvis innhold ikke
+er det navnet sier, avvises — *An attachment must be a PDF, JPEG, PNG or HEIC file, and its
+contents must match the type and file name it is sent under*. Word- og Excel-filer tas
+ikke imot: eksporter en kontrakt til PDF først. En kunde har høyst **200** vedlegg, på
+kunden og på hendelsene til sammen; det 201. avvises, og meldingen sier det: *A customer
+carries at most 200 attachments … Remove one first.* Hver
+opplasting og hver fjerning registreres på tidslinjen som **Vedlegg lagt til** eller
+**Vedlegg fjernet**, med navnet ditt og filens. **Slett** på en rad spør først og fjerner
+filen for godt.
+
+En sammenslått eller anonymisert kunde viser fortsatt filene sine, og ingenting kan
+legges til eller fjernes. Se [Attachments](/en/reference/customers/#attachments).
+
+## Oppfølginger
+
+En oppfølging er en dato på en manuell tidslinjehendelse: det du har lovet å gjøre
+videre, og eventuelt hvem som skal gjøre det. I hendelsesskjemaet setter du **Følg
+opp** — den kan være fram i tid — og deretter **Tildelt**; den tildelte kan ikke
+velges før datoen, og fjerner du datoen, fjernes tildelingen.
+
+Hendelsen viser så **Følg opp {dato}**, den tildelte eller **Ikke tildelt**, og
+**forfalt** i rødt når datoen er passert. **Merk som utført** krysser den av, og
+deretter står det **Fulgt opp {dato}**; **Åpne igjen** tar det tilbake (begge krever
+`customers:timeline-manage`).
+
+**Oppfølginger** i sidemenyen er det du har på bordet på tvers av alle kunder, eldste
+frist først, med **Frist**, **Kunde**, **Beskrivelse** og **Tildelt**. **Tildelt**
+filtrerer til **Meg** eller **Ikke tildelt**; **Status** til **Åpne**, **Forfalt**,
+**Utført** eller **Alle**; arkiverte kunders oppfølginger vises bare under **Utført**
+og **Alle**. Med `customers:timeline-manage` har hver åpen rad **Merk som utført**.
+Siden krever `customers:view` i tillegg til `customers:timeline-view`, fordi hver rad
+navngir en kunde. Se [Follow-ups](/en/reference/customers/#follow-ups).
+
+**Forfalt** under **Status**, og dashbordets punkter for forfalte oppfølginger og
+oppfølginger med frist i dag, regner dagen i dag i virksomhetens tidssone (satt under
+[Administrasjon av
+arbeidsområdet](/nb/user/workspace-administration/#innstillinger-for-arbeidsområdet)),
+den samme dagen for alle: en oppfølging med frist mandag er forfalt fra midnatt natt
+til tirsdag der, uansett hvor du er.
+
+## Eksport og import
+
+**Eksporter** (`customers:view`) laster ned listen slik du ser den — søk, filtre og
+sortering, alle sider — som semikolonseparert CSV. Identitetskolonnene krever
+`customers:legal-identity-view`; over 5000 kunder avvises — snevre inn filteret.
+
+**Importer** henter inn kundene dine fra et annet system eller et regneark. Det krever
+`customers:import` og `customers:view`; det importen skriver, krever de samme
+tillatelsene som å skrive det for hånd (se tabellen nedenfor). Trykk **Importer** i
+kundelisten for å åpne **Importer kunder**.
+
+1. **Last opp filen.** Slipp en CSV-fil på siden eller velg en. Filer separert med
+   semikolon, komma og tabulator leses alle, i UTF-8 eller Windows-kodingen (ANSI)
+   eldre Excel lagrer i, med første rad som kolonnenavn. En fil kan være opptil 50 MB
+   og 100 000 rader; del en større fil og importer den i flere omganger. **Last ned
+   mal** gir deg en overskriftsrad med alle kolonnene du kan importere.
+2. **Velg kolonner.** Velg **Hva som skal gjøres med radene**: **Opprett nye
+   kunder**, **Oppdater eksisterende kunder** eller **Opprett og oppdater**. Ved
+   oppdatering velger du hvordan du vil **Finn kunden etter**: **Kundenummer** eller
+   **Organisasjonsnummer**. Hver kolonne i filen står oppført med de første verdiene;
+   velg under **Importeres som** hvilket kundefelt den blir, eller la den stå som
+   **Importeres ikke**. Vantigo foreslår felt for vanlige navn som *Kundenr*,
+   *Org.nr*, *E-post* og *Postnummer*, og husker valgene du gjorde for en fil med de
+   samme kolonnene. Har filen en kolonne med organisasjonsnummer, foreslår Vantigo
+   **Opprett og oppdater** og å finne kunden etter **Organisasjonsnummer**, selv om
+   filen også har et kundenummer — kundenumrene fra et annet system er ikke
+   Vantigos. Mangler filen et felt alle kundene trenger, bruker du **Legg til
+   en verdi for alle rader** for å sette én verdi for alle — et land, en status, en
+   valuta, eller en gruppe eller merkelapp som markerer partiet.
+   **Forhåndsvisning** viser de første radene slik de vil bli lest, med eventuelle
+   feil markert. Valgene lagres etter hvert som du gjør dem.
+3. **Kontroller filen.** Hver rad prøves akkurat som importen ville gjort, uten å
+   lagre noe. En fremdriftslinje viser hvor langt den har kommet, og **Stopp**
+   avbryter. Resultatet er **Rader**, **Ville blitt opprettet**, **Ville blitt
+   oppdatert**, **Ville blitt hoppet over** og **Har feil**, med hver feil etter
+   **Rad** og **Kolonne**. En rad som gjentar organisasjonsnummeret fra en tidligere
+   rad med de samme verdiene i alle valgte kolonner, er den samme kunden oppført på
+   nytt — en leverandørs fil lister kunden én gang for hvert målepunkt — og hoppes
+   over med *Same customer as row N.*, uten å telle som feil. En gjentakelse med en
+   annen verdi i en valgt kolonne er en feil. Under feilene viser **Blir opprettet**
+   og **Blir oppdatert** hva hver av disse radene vil lagre: **Navn**,
+   **Organisasjonsnummer** og **Postadresse** på én linje — ved en oppdatering
+   adressen kunden beholder, eller **Blir fjernet** når tomme adresseceller i filen
+   fjerner den. En verdi Vantigo helt eller delvis har hentet fra Brønnøysund i stedet
+   for fra filen, er merket **Fra Brønnøysund**, slik at du
+   ser hva registeret legger til før du importerer. **Endre valg av kolonner** tar deg
+   tilbake til steg 2.
+4. **Importer** lagrer radene, etter en bekreftelse som sier hvor mange kunder som
+   opprettes og oppdateres. Du kan forlate siden og komme tilbake: importen kjører i
+   bakgrunnen, og siden viser fremdriften. **Stopp** beholder radene som allerede er
+   lagret, og prøver ikke resten; trykker du før importen har startet, kontrolleres
+   filen på nytt i stedet. Når den er ferdig, viser siden **Opprettet**,
+   **Oppdatert**, **Hoppet over** og **Feilet**, og lister de nye kundene som lenker
+   og radene som ble hoppet over med raden hver av dem gjentar. Radene som ble hoppet
+   over, er ikke med i filen med radene som feilet.
+
+**Organisasjonsnummeret fyller inn resten.** Har en rad et norsk organisasjonsnummer
+for en bedrift, slår Vantigo opp det raden mangler i Brønnøysundregistrene: en ny
+kunde uten navn får navnet selskapet er registrert med, og en postadresse som mangler,
+eller mangler en del som gateadressen eller postnummeret, får selskapets registrerte
+postadresse (eller forretningsadressen når det ikke har noen postadresse). Det filen
+oppgir, vinner alltid: bare tomme deler fylles inn, og en adresse en kunde allerede
+har, erstattes aldri; for en kunde som oppdateres, slås adressen bare opp når den er
+ufullstendig. Kjenner Brønnøysund organisasjonen, merkes identiteten som hentet fra
+Brønnøysund med det registrerte navnet, og kortet **Register** fylles ut for en kunde
+importen oppretter, eller en kunde importen endrer organisasjonsnummeret til. Kjenner
+ikke Brønnøysund organisasjonsnummeret, eller kan registeret ikke nås, kontrolleres
+raden som den ville blitt uten oppslaget, og mangler den fortsatt navn, eller har den
+en ufullstendig adresse, feiler den med en feil på organisasjonsnummeret som sier
+hvorfor. **Forhåndsvisning** slår ikke opp noe, så den
+kan vise feil som kontrollen vil fylle inn.
+
+Feiler noen rader, gir **Last ned radene som feilet** deg akkurat de radene, med dine
+egne kolonner og en feilkolonne først. Rett dem og last opp den filen: valget av
+kolonner foreslås igjen. Ved oppdatering endres bare feltene som er valgt; en tom
+celle i en valgt kolonne tømmer feltet, og en kundes navn tømmes aldri. **Siste
+importer** på importsiden lister tidligere importer du kan fortsette med eller
+slette; de fjernes automatisk etter 30 dager. Kundene en import opprettet, blir
+stående. Alle reglene står i [Export, and import from a
+file](/en/reference/customers/#export-and-import-from-a-file).
+
+## Slå sammen duplikater
+
+Når to oppføringer er samme kunde, åpner du den du vil beholde og trykker **Slå
+sammen…** (`customers:merge`). I **Slå et duplikat sammen med {navn}** søker du etter
+duplikatet etter navn eller nummer. Dialogen forklarer hva som skjer: duplikatets
+kontakter, adresser, tidslinje, merkelapper og vedlegg — og det Prosjekter, Energi og
+Kommunikasjon har for det — flyttes hit; opplysningene om det blir stående lesbare i
+denne kundens tidslinje; og det arkiveres. Denne kunden beholder alle sine egne
+opplysninger.
+
+**Slå sammen** holdes tilbake, og dialogen sier hvorfor, når de to er av ulik type
+(endre den ene først) eller denne kunden er arkivert (gjenopprett den først);
+serveren avviser også et duplikat som allerede er slått sammen. Etterpå lister
+dialogen det som ble flyttet. Den sammenslåtte kunden nås fortsatt under sitt gamle
+nummer med banneret **Slått sammen inn i #… …**, som lenker til denne kunden; den
+kan ikke lenger redigeres eller gjenopprettes. Se
+[Merging duplicates](/en/reference/customers/#merging-duplicates).
+
+## Personopplysninger
+
+For en privatperson samler **Personopplysninger** (`customers:personal-data`)
+handlingene personvernforordningen ber om:
+
+- **Eksporter personopplysninger** laster ned alt som er lagret om personen som én
+  JSON-fil, med vedleggene oppført ved navn — last ned hvert av dem fra kortet
+  **Vedlegg** mens personen ennå ikke er anonymisert; selve filen bærer ingen bytes.
+- **Planlegg anonymisering…** velger dagen da personens navn, juridiske identitet,
+  kontaktopplysninger, adresser, kontakter, korrespondanse, vedlegg og innholdet i hver
+  tidslinjehendelse fjernes; kundenummeret, datoene og hva som skjedde når, beholdes
+  for regnskapet. Det finnes ingen standarddato: velg en etter at hver
+  oppbevaringsperiode etter bokføringsreglene er over. Kunden må arkiveres først —
+  valget er nedtonet med *Arkiver kunden først* til den er det — og en sammenslått
+  person planlegges på kunden som tok den opp i seg.
+- Når den er planlagt, viser siden **Anonymisering planlagt til {dato}**, og menyen
+  tilbyr **Endre anonymiseringsdato…** og **Avbryt anonymisering**; gjenoppretter du
+  kunden, avbrytes den også.
+
+En anonymisering kan ikke angres. Etterpå viser siden **Anonymisert {dato}**, ingenting
+på den kan endres, og bare eksporten står igjen. Se
+[Personal data and anonymisation](/en/reference/customers/#personal-data-and-anonymisation).
+
+## Rettigheter
+
+| For å | Trenger du |
+| --- | --- |
+| Se listen, en kundeside, faktureringsprofilen og 360-panelet; eksportere | `customers:view` |
+| Opprette en kunde | `customers:create` |
+| Redigere, gjenopprette, endre type, sette eier, gruppe og merkelapper, administrere merkelapper og grupper, redigere kontaktdetaljer og adresser | `customers:update` |
+| Arkivere en kunde | `customers:delete` |
+| Se den juridiske identiteten og registerkortet | `customers:legal-identity-view` |
+| Lagre en juridisk identitet, oppdatere registeropplysningene, oppdatere juridisk navn | `customers:legal-identity-manage` |
+| Slå opp et selskap i Brønnøysundregistrene | `customers:lookup-view` |
+| Se kontakter / opprette, redigere og slette dem | `customers:contacts-view` / `customers:contacts-manage` |
+| Se en kundes kontakter / koble til, redigere og koble fra | `customers:associations-view` / `customers:associations-manage` |
+| Lese tidslinjen og oppfølginger; se og laste ned vedlegg | `customers:timeline-view` |
+| Legge til, redigere og slette tidslinjehendelser; sette og krysse av oppfølginger; legge til og slette vedlegg | `customers:timeline-manage` |
+| Redigere faktureringsprofilen, sjekke og bruke EHF | `customers:billing-manage` |
+| Importere kunder | `customers:import` og `customers:view`; å opprette og oppdatere krever `customers:create` og `customers:update`, og feltene for juridisk identitet og fakturering sine egne nøkler |
+| Slå sammen et duplikat | `customers:merge` |
+| Eksportere personopplysninger og planlegge en anonymisering | `customers:personal-data` |
+
+Hele listen, med hva hver nøkkel beskytter, står under [Permissions](/en/reference/customers/#permissions).

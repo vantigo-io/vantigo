@@ -1,0 +1,213 @@
+---
+title: "Objektlagring"
+description: "Filsystemleverandøren, modulomfang, nøkkelvalidering og strømmede nedlastinger."
+sidebar:
+  order: 41
+sources:
+  - apps/server/internal/storage
+  - apps/server/internal/invoices/bankimport.go
+  - apps/server/internal/invoices/reminderpdf.go
+  - apps/server/internal/invoices/print_batches.go
+  - apps/server/internal/staff/objects.go
+  - apps/server/internal/customers/objects.go
+---
+Objektlagring er applikasjonsporten Kommunikasjon mellomlagrer og serverer vedlegg
+gjennom. Moduler snakker aldri med en leverandør-SDK: de får et `ObjectStore` avgrenset
+til sitt eget navnerom og sender relative nøkler.
+
+## Leverandørsettet er en regresjon fra .NET-implementasjonen
+
+**Det lokale filsystemet er den eneste støttede leverandøren.** Implementasjonen
+(`apps/server/internal/storage`) inneholder én driver, `fs.go`, og konfigurasjonen
+godtar bare `fs`:
+
+```text
+STORAGE_PROVIDER: must be "fs" if set
+```
+
+S3/MinIO- og Azure Blob-leverandørene som .NET-implementasjonen tilbød, **finnes ikke i
+denne porten**. Det finnes ingen `STORAGE_S3_*`, ingen `STORAGE_AZURE_BLOB_*`, ingen
+autentisering med tilgangsnøkkel, SAS, tilkoblingsstreng eller administrert identitet,
+og ingen provisjonering av containere. En installasjon som trenger ekstern
+objektlagring i dag, må montere varig lagring som den eier eksklusivt inn i
+containeren og peke `fs`-driveren på den. Å legge til en driver er additivt — porten
+er leverandørnøytral — men ingenting i dette repositoriet implementerer en.
+
+## Konfigurasjon
+
+| Variabel | Formål | Standard |
+| --- | --- | --- |
+| `STORAGE_PROVIDER` | `fs`, eller ikke satt | ikke satt |
+| `STORAGE_FS_ROOT` | Absolutt rotkatalog; påkrevd når leverandøren er `fs` | ikke satt |
+| `STORAGE_FS_ALLOW_INSECURE_ROOT` | Lemp på kontrollen av gruppe-/verdensskrivbar rot | `0` |
+
+```text
+STORAGE_PROVIDER=fs
+STORAGE_FS_ROOT=/var/lib/vantigo/objects
+```
+
+`STORAGE_FS_ROOT` må være en absolutt sti, og å sette den uten `STORAGE_PROVIDER=fs`
+er en konfigurasjonsfeil, ikke en stilltiende no-op.
+
+**Lagring som ikke er satt, feiler lukket ved hver operasjon, ikke ved oppstart.** Med
+`STORAGE_PROVIDER` ikke satt starter prosessen likevel og betjener alt annet; hver
+lagringsoperasjon rapporterer da `storage: not configured`. Det er med vilje: en
+installasjon som aldri laster opp et vedlegg, trenger ikke lagring provisjonert for å
+starte.
+
+`STORAGE_FS_ALLOW_INSECURE_ROOT` godtas **bare når `APP_ENV=development`**; utenfor
+development er den en oppstartsfeil uansett hva den ville ha gjort — samme form som
+`MAIL_DRIVER=log` og `OWNERS_ALLOW_INSECURE_NO_MFA`.
+
+## Filsystemdriveren
+
+Roten må finnes eller kunne opprettes ved initialisering, må ikke selv være en
+symbolsk lenke, og — utenfor development — må ikke være gruppe- eller verdensskrivbar.
+Kataloger driveren oppretter har modus `0700`: applikasjonsidentiteten alene. Gi den
+et volum applikasjonsbrukeren eier eksklusivt; pek den ikke på en delt skrivbar
+katalog.
+
+Innesperringen håndheves av operativsystemet, ikke av et par av kontroller-så-åpne.
+Driveren åpner roten én gang som en `os.Root` og utfører hver operasjon gjennom den,
+så hvert navn løses opp med `openat`-stil innesperring i bruksøyeblikket: en symlenke
+plantet inne i roten i etterkant — selv en tidsbestemt til å lande mellom en kontroll
+og systemkallet — kan fortsatt ikke få en operasjon til å havne utenfor roten.
+Nøkkelvalideringen kjører uansett foran dette og avviser former med traversering,
+URL-koding, absolutte stier, omvendt skråstrek, kontrolltegn og duplisert prefiks, så
+meningsløs inndata får en tydelig typet avvisning før noe systemkall. De to utfyller
+hverandre og er ikke overflødige.
+
+Skrivinger går til en midlertidig fil under roten og flyttes atomisk på plass ved
+omdøping, så et krasj midt i en skriving etterlater aldri et delvis skrevet objekt som
+lesbart. Nøkler er begrenset til 1024 UTF-8-byte. **Ingen API returnerer noen gang en
+fysisk filsystemsti.**
+
+## Modulomfang og den fysiske nøkkelen
+
+Hver modul får et avgrenset lager, og omfanget prefikserer hver nøkkel før den når
+driveren. Den fysiske nøkkelen er:
+
+```text
+{scope}/{relative-key}
+```
+
+**Det finnes ikke noe leietakersegment.** .NET-implementasjonens fysiske nøkkel var
+`tenants/{tenant-id}/{scope}/{relative-key}`; dette er en applikasjon for én leietaker,
+og leietakersegmentet er borte sammen med resten av flerleietakerskapet. Ingenting
+slår opp en leietaker, og ingen lagringsoperasjon feiler i mangel av en.
+
+Omfangsnavn er kanonisk ASCII med små bokstaver `[a-z0-9-]`, høyst 64 tegn, uten
+skråstreker eller punktum. Kommunikasjon bruker omfanget `communications`, så ett av
+dens vedlegg havner på `communications/<relative-key>`. Utgifter bruker omfanget
+`expenses`: en kvitterings relative nøkkel er `receipts/<entryId>/<uuid>`, så dens
+fysiske nøkkel er `expenses/receipts/<entryId>/<uuid>`. Fakturaer bruker omfanget
+`invoices`: PDF-en til et utstedt dokument har den relative nøkkelen
+`documents/<id>/<number>-<sha256>.pdf`, så dens fysiske nøkkel er
+`invoices/documents/<id>/<number>-<sha256>.pdf` — lagret én gang etter at utstedelsen
+er bekreftet, og aldri slettet eller overskrevet, siden et utstedt dokument er
+regnskapsmateriale ([Fakturaer](/en/reference/invoices/#the-pdf)). Å sende et dokument
+som EHF legger til tre til ved siden av, som oppbevares på samme måte: EHF-en slik den
+ble overlevert, `documents/<id>/<number>-<sha256>.xml` (`application/xml`), lagret én
+gang etter hashen når dokumentet sendes; og, når aksesspunktet bekrefter leveringen,
+kvitteringen `documents/<id>/<number>-<transmission>-receipt.json` og kopien det leverte
+`documents/<id>/<number>-<transmission>-delivered.xml`
+([E-faktura](/nb/admin/e-invoicing/#objektene-som-skrives)). En importert bankfil
+oppbevares slik den ble lastet opp, under `bank-files/<sha256>.ocr` (en OCR-giro-fil) eller
+`bank-files/<sha256>.xml` (en camt.054-fil) — med hashen av innholdet som nøkkel, lagret
+én gang før importens transaksjon og aldri slettet eller overskrevet, siden den er
+dokumentasjonen for innbetalingene som bokføres fra den (bokføringsloven § 10); en import
+som feiler etter å ha lagret den, etterlater et objekt som neste import av de samme
+bytene bruker igjen ([Innbetalinger fra banken](/nb/admin/payments/)). PDF-en til et
+purrebrev lagres under `reminders/<invoiceId>/<reminderId>-<sentOn>-<sha256>.pdf` — med
+hashen av innholdet som nøkkel, lagt inn bare når ingenting ligger der fra før, før brevet
+sendes på e-post eller når det skrives ut, og aldri slettet eller overskrevet: et brev som
+lages på nytt med andre tall (et nytt forsøk samme dag etter en betaling), får sin egen
+nøkkel, og brevets rad viser til objektet det gikk med
+([jobben](/en/reference/invoices/#the-worker)). PDF-en til et papirbrev lagres på samme
+måte når utskriftsbunken skrives ut, under postleggingsdagen; en ny utskrift skriver det ut
+igjen under en ny nøkkel, og bunkens samlede PDF lages fra brevenes rader hver gang den
+lastes ned, og lagres aldri; et brev der PDF-en ikke kunne lagres da det ble skrevet ut,
+lagres neste gang bunken bekreftes postlagt eller lastes ned, og hver av dem stopper ved
+det første brevet lageret avviser, så et brudd koster en forespørsel bare ett tidsavbrudd
+([papir og postlegging](/en/reference/invoices/#paper-and-posting)). Ansatte bruker
+omfanget `staff`: et dokuments relative nøkkel er `people/<personId>/<uuid>`, så dets
+fysiske nøkkel er `staff/people/<personId>/<uuid>` ([Ansatte](/en/reference/staff/#documents)). Kunder bruker
+omfanget `customers`: et vedleggs relative nøkkel er `attachments/<uuid>`, så dets fysiske
+nøkkel er `customers/attachments/<uuid>` — en nøkkel som ikke navngir noen kunde, siden en
+sammenslåing flytter vedleggets rad til kunden som overlever, og lageret ikke kan gi nytt
+navn ([Kunder](/en/reference/customers/#attachments)). Et avgrenset lager
+avviser en relativ nøkkel som er lik omfanget sitt eller allerede begynner med
+`{scope}/`: kallere sender bare relative nøkler og må aldri bygge prefikset selv.
+
+**Utgifters kvitteringer, spesielt.** De er det eneste denne modulen lagrer. En
+kvittering leses av den som får se utgiften den hører til — samme regel som styrer
+utgiften selv, ikke en egen regel — og alltid gjennom applikasjonens eget
+nedlastingsendepunkt (nedenfor), aldri en direkte lesing fra lagringen. Et objekt
+fjernes sammen med utgiften sin: ved en vanlig sletting forsvinner objektet når
+fjerningen av databaseraden er bekreftet, og ved en mislykket eller avvist skriving
+fjernes objektet som ble mellomlagret for den igjen, så en feil etterlater aldri et
+objekt ingenting peker på. Det ene vinduet ingenting lukker, er at prosessen dør
+mellom skrivingen av objektet og fullføringen av den kompenserende fjerningen eller
+bekreftelsen — det finnes ingen bakgrunnsopprydder i dag, så en kvittering som blir
+foreldreløs på den måten overlever forespørselen som forårsaket den. Se
+[Utgifter](/en/reference/expenses/#receipts) for opplastingsreglene (typer, størrelse,
+antall, sniffing) og hastighetsbegrensningen.
+
+**Ansattes dokumenter, spesielt.** En persons arkiv: arbeidsavtaler, attester,
+sertifikater, korrespondanse, helsedokumenter og virksomhetens egne kategorier, hver en
+PDF, JPEG, PNG eller HEIC på høyst 10 MiB. Et dokument leses av personen selv, av
+`staff:manage` (unntatt helsedokumenter) og av `staff:personal-data`, alltid gjennom
+Ansattes eget nedlastingsendepunkt. Objektet skrives før raden og fjernes igjen hvis
+raden avvises. En sletting — for hånd, eller av sletteregelens kjøring — fjerner raden og
+fører objektet inn i Ansattes logg over objekter som skal fjernes
+(`staff.object_deletions`) i én transaksjon; deretter fjernes objektet, og en fjerning
+lageret avviser blir stående i loggen til Ansattes slettearbeider fullfører den, så et
+dokument som skal slettes aldri overlates til tilfeldighetene. Loggradene et lagringsbrudd etterlater, er det man
+bør følge med på: de er objektene Ansatte fortsatt skylder en fjerning. Slås modulen av,
+blir objektene og loggradene liggende urørt til den slås på igjen. Se
+[Ansatte](/en/reference/staff/#documents) for opplastingsreglene og
+hastighetsbegrensningen.
+
+**Kunders vedlegg, spesielt.** En kundes dokumenter — en kontrakt, en taushetsavtale,
+korrespondansen bak en tidslinjehendelse — hver en PDF, JPEG, PNG eller HEIC på høyst 10
+MiB, høyst 200 per kunde. Et vedlegg leses med `customers:timeline-view` og skrives med
+`customers:timeline-manage`, alltid gjennom Kunders eget nedlastingsendepunkt. Objektet
+skrives før raden og fjernes igjen hvis raden avvises. En sletting — for hånd, eller av en
+privatpersons anonymisering — fjerner raden og fører objektet inn i Kunders logg over
+objekter som skal fjernes (`customers.object_deletions`) i én transaksjon; deretter fjernes
+objektet, og en fjerning lageret avviser blir stående i loggen til `customers-anonymisation`-
+arbeideren, som tømmer den etter hver runde (gjennomganger på hundre rader, i høyst ti
+minutter), med nye forsøk til lageret bekrefter, så en fil
+som skal slettes aldri overlates til tilfeldighetene. En sammenslåing flytter radene og lar
+objektene ligge. Loggradene et lagringsbrudd etterlater, er det man bør følge med på: de er
+objektene Kunder fortsatt skylder en fjerning, navngitt i arbeiderens logg; med
+`CUSTOMERS_ANONYMISATION_ENABLED=0` venter de, som planlagte anonymiseringer gjør. Se
+[Kunder](/en/reference/customers/#attachments) for opplastingsreglene og
+hastighetsbegrensningen.
+
+## Nedlastinger
+
+Nedlastinger strømmes alltid gjennom et autorisert applikasjonsendepunkt.
+
+**Lagringskontrakten har ingen operasjon for forhåndssignerte URL-er**, og ingen
+leverandør omdirigerer noen gang en kaller til en direkte lagrings-URL.
+Kommunikasjons nedlastingsendepunkt autoriserer vedlegget, laster det gjennom det
+avgrensede lageret og returnerer bytene med den lagrede innholdstypen og et renset
+filnavn; feltet `downloadPath` i DTO-ene er det samme applikasjonsendepunktet på samme
+opprinnelse, aldri en lagringsplassering. Se
+[Kommunikasjon](/en/reference/communications/) for vedleggets livssyklus.
+
+Utgifters `GET /attachments/{id}` følger samme form: det autoriserer kvitteringen
+gjennom utgiften den hører til, laster den gjennom modulens eget `expenses`-avgrensede
+lager, og strømmer bytene tilbake med innholdstypen de ble sniffet som ved opplasting
+og filnavnet slik det ble oppgitt — aldri en lagringsplassering av noe slag. Se
+[Utgifter](/en/reference/expenses/#receipts).
+
+Ansattes `GET /documents/{id}` gjør det samme gjennom sitt `staff`-avgrensede lager,
+med dokumentets egen synlighet; et dokument hvis objekt ikke kan leses, svarer 503
+`storage_unavailable`, ikke 404. Se [Ansatte](/en/reference/staff/#reading-changing-and-removing).
+
+Kunders `GET /customers/{id}/attachments/{attachmentId}` gjør det samme gjennom sitt
+`customers`-avgrensede lager, under tidslinjens leserettighet, med de samme hodene og den
+samme 503-en for et objekt som ikke kan leses. Se
+[Kunder](/en/reference/customers/#attachments).

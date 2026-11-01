@@ -1,0 +1,449 @@
+---
+title: Prosjekter
+description: Prosjekter per kunde, deltakerne, oppgavene, milepælene og økonomien.
+sidebar:
+  order: 20
+sources:
+  - apps/projects/frontend
+  - apps/host/frontend/src/routes/projects
+  - apps/host/frontend/src/catalogs/project.ts
+---
+
+Appen **Prosjekter** er der arbeidet organiseres: et prosjekt er et kodet stykke
+arbeid for én kunde (eller et internt), personene som kan handle på det, oppgavene
+dets, og faktureringsreglene appene Timer, Utlegg og Fakturaer leser senere. De tre
+områdene — **Prosjekter**, **Mine oppgaver** og **Prosjektøkonomi** — krever alle
+rettigheten `projects:access`. Inne i et prosjekt avgjøres hva du kan gjøre av
+prosjektrollen din (**Prosjektleder**, **Deltaker** eller **Leser**) og noen få
+globale rettigheter, listet i
+[Roles and permissions](/en/reference/projects/#roles-and-permissions).
+
+## Finn et prosjekt
+
+Åpne **Prosjekter** i sidemenyen. Siden åpner med tre tellere — **Aktive**,
+**Planlagte** og **På vent** — og en tabell med **Kode**, **Navn**, **Kunde**,
+**Status**, **Prosjektledere** og **Datoer**. Et internt prosjekt viser merket
+**Internt** i stedet for en kunde. Klikk på en kode for å åpne prosjektet.
+
+Verktøylinjen avgrenser listen, og hvert valg havner i adressefeltet, så en filtrert
+liste overlever en oppfrisking og kan sendes som lenke: søkefeltet (**Søk etter kode
+eller navn…**), **Status** (**Alle statuser** når det er tomt), **Prosjekttype**
+(**Kundeprosjekter** eller **Interne prosjekter**), **Kunde**, søkt mens du skriver,
+og bryteren **Mine prosjekter**, som bare beholder prosjektene du har en rolle i.
+
+Du ser bare prosjektene du har en rolle i, med mindre `projects:view-all` eller
+`projects:manage-all` viser deg alle; en lenke til et annet svarer **Fant ikke prosjektet**.
+
+## Opprett et prosjekt
+
+Klikk **Nytt prosjekt** på Prosjekter-siden (det krever `projects:create`;
+hurtighandlingen **Opprett prosjekt** i søket åpner det samme skjemaet). Fyll inn:
+
+- **Kunde** — søk og velg én, eller velg **Internt prosjekt**, det første
+  alternativet. En tom velger avvises med *Velg en kunde, eller velg Internt
+  prosjekt*: et internt prosjekt er alltid et uttrykkelig valg.
+- **Prosjektnavn**, påkrevd.
+- **Prosjektkode** — 2–20 bokstaver og tall, gjort om til store bokstaver mens du
+  skriver, unik i hele installasjonen. Mens du skriver navnet foreslår skjemaet en
+  kode av kundens og prosjektets forbokstaver og et løpenummer; klikk **Bruk
+  forslaget** for å ta det, eller skriv din egen (se
+  [The suggestion](/en/reference/projects/#the-suggestion)). En kode som er i bruk
+  avvises på feltet.
+- **Beskrivelse**, **Startdato** og **Sluttdato**; slutten kan ikke være før starten.
+- **Faktureringstype**: **Løpende timer**, **Fastpris** eller **Ikke fakturerbart**.
+  **Internt prosjekt** låser den til **Ikke fakturerbart** — ingen kan faktureres.
+- **Budsjetterte timer**, planleggingsbudsjettet alle på prosjektet kan se.
+- Beløpene bare prosjektledere og de med `projects:view-financials` eller
+  `projects:manage-all` kan lese: **Fastprisbeløp** (vises og kreves bare på et
+  fastprisprosjekt), **Budsjettbeløp**, **Standard timepris** og **Valuta** (tre
+  bokstaver, NOK som standard, påkrevd så snart et beløp er satt).
+
+Klikk **Opprett**. Du blir prosjektets **Prosjektleder**, det dukker opp med statusen
+**Planlagt**, og tidslinjen noterer *Prosjektet ble opprettet som KODE*
+(se [Domain model](/en/reference/projects/#domain-model)).
+
+## Les prosjektsiden
+
+Et prosjekt åpner på toppfeltet sitt — kode og navn, et statusmerke og en lenke til
+kunden eller merket **Internt** — over en rad med faner. Toppfeltet står på alle
+fanene; en prosjektleder finner også **Rediger** og **Endre status** der.
+
+| Fane | Hva den viser | Hvem ser den |
+| --- | --- | --- |
+| **Oversikt** | **Prosjektdetaljer** (beskrivelse, datoer, faktureringstype, budsjetterte timer, prosjektledere) og **Tidslinje** over hver endring, aldri med et beløp | alle som ser prosjektet |
+| **Oppgaver** | prosjektets leveransemilepæler og oppgaver som liste eller tavle | alle som ser prosjektet |
+| **Deltakere** | hvem som er på prosjektet og i hvilken rolle | alle som ser prosjektet |
+| **Fakturering** | det økonomiske sammendraget, fakturalinjer og arbeidstyper | prosjektledere, `projects:view-financials`, `projects:manage-all` |
+| **Økonomi** | budsjett mot ført arbeid, kostnader og faktureringsplanen | alle; beløp bare med økonomiske rettigheter |
+| **Timer** | timene som er ført på prosjektet, fra Timer-appen | `time:access`, når Timer er aktivert |
+| **Utlegg** | utleggene som er ført på prosjektet, fra Utlegg-appen | `expenses:access`, når Utlegg er aktivert |
+| **Fakturagrunnlag** | prosjektets arbeid som ikke er fakturert ennå — godkjente timer, utlegg og milepæler klare til fakturering — og veien til et fakturautkast av det, fra Fakturaer-appen ([fakturere arbeid](/nb/user/invoices/#fakturere-arbeid)) | `invoices:access` og `invoices:create`, når Fakturaer er aktivert |
+| **Bemanning** | prosjektets plan — hvem som er satt opp på det uke for uke, hva de åpne behovene fortsatt etterspør, og behovene — fra Bemanning-appen ([på prosjektsiden](/nb/user/planning/#på-prosjektsiden)) | `planning:access` og `planning:view`, når Bemanning er aktivert |
+
+## Rediger et prosjekt
+
+Klikk **Rediger** i toppfeltet (prosjektledere og `projects:manage-all`). Skjemaet er
+det du opprettet prosjektet med; **Lagre endringer** erstatter hvert felt med det
+skjemaet inneholder. Endrer du **Prosjektkode**, spør skjemaet først *Vil du endre
+prosjektkoden?*, fordi timelister og fakturalinjer viser til den; den gamle står på tidslinjen.
+
+**Valuta** kan ikke fjernes så lenge et beløp, en linje med fast beløp, et
+linjebudsjett eller en milepæl er satt, og kan ikke byttes så lenge en linje med fast
+beløp, et budsjettbeløp på en linje eller en åpen milepæl finnes; lagringen avvises på
+feltet til disse er priset om, fjernet eller avlyst (se
+[Domain model](/en/reference/projects/#domain-model)). Har noen lagret prosjektet mens
+skjemaet ditt sto åpent, avvises lagringen med *Prosjektet ble endret av noen andre.
+Last det inn på nytt og prøv igjen.*
+
+## Endre status, avslutt eller avbryt et prosjekt
+
+Klikk **Endre status** i toppfeltet (prosjektledere og `projects:manage-all`) og velg
+**Planlagt**, **Aktivt**, **På vent**, **Fullført** eller **Avbrutt**; den gjeldende
+er grået ut. Alle overganger er tillatt, gjenåpning inkludert, og hver skrives til
+tidslinjen. Bare et **Aktivt** prosjekt er åpent for arbeid: Timer-appen avviser timer
+på enhver annen status, og budsjettvarsler reises bare for aktive prosjekter. Oppgaver
+kan fortsatt redigeres uansett status. Prosjekter slettes eller arkiveres aldri: å
+avslutte ett er **Fullført**, å gi det opp er **Avbrutt**, og begge beholder
+prosjektet og alt som er ført mot det lesbart, fordi andre apper viser til dem.
+
+## Administrer deltakerne på et prosjekt
+
+Åpne fanen **Deltakere**. **Deltakere på prosjektet** lister hver person med sin
+**Rolle**; en deaktivert konto bærer merket **Inaktiv**. En prosjektleder (eller
+`projects:manage-all`) får i tillegg **Legg til deltaker** — velg en **Person** (søk
+etter navn eller e-post blant aktive brukere som ikke er på prosjektet) og en
+**Rolle** — rollevelgeren på hver rad, som endrer rollen med én gang, og fjern-ikonet,
+som spør *Vil du fjerne navn?* og advarer om at tilgangen går tapt mens ført arbeid står.
+
+Rollene utvides i rekkefølge: en **Leser** ser prosjektet, deltakerne, oppgavene og
+tidslinjen; en **Deltaker** skriver i tillegg oppgaver, sjekklistepunkter og
+kommentarer, og kan føre timer; en **Prosjektleder** ser dessuten beløpene, redigerer
+prosjektet, endrer statusen og administrerer deltakere, linjer, arbeidstyper og
+milepæler. Én rolle per person per prosjekt.
+
+## Arbeid med oppgaver og leveransemilepæler
+
+Åpne fanen **Oppgaver**. Øverst i fanen viser **Leveransemilepæler** viktige leveranser og
+faser: hver milepæl viser sin **Måldato**, **Status** (**Åpen** eller **Fullført**), og
+framdrift beregnet automatisk fra tilknyttede oppgaver (fullførte / totale oppgaver, % fullført,
+og estimerte timer). Deltakere og prosjektledere ser **Ny leveransemilepæl**; en handlingsmeny
+lar deg markere milepælen som fullført (eller gjenåpne den), redigere, flytte opp/ned og
+slette den. Å slette en leveransemilepæl frakobler oppgavene i stedet for å slette dem. Ved å
+klikke på en milepæl filtreres oppgavevisningen under til å kun vise oppgavene som tilhører den.
+
+Bryteren **Visning** viser oppgavene som en **Liste** —
+gruppene **Å gjøre**, **Pågår** og **Ferdig**, hver en tabell med **Tittel**,
+**Ansvarlig**, **Frist**, **Estimat**, **Sjekkliste** og **Kommentarer**, med
+deloppgavene foldet inn under den overordnede — som en **Tavle** med tre
+kolonner der deloppgaver er egne kort, eller som en interaktiv **Tidslinje** som kartlegger
+oppgavebånd over kalenderdager ved siden av milepælmarkører og avhengighetspiler. Oppgaver tilknyttet en leveransemilepæl har en
+diamantmerket milepæl-tagg. Planleggingskonflikter der en forgjenger slutter etter at etterfølgeren starter markeres med et varselikon. Valget huskes i nettleseren din. Deltakere og
+prosjektledere ser **Bruk mal** og **Ny oppgave**; en leser får de samme visningene uten handlingene.
+Den som kan opprette prosjekter (`projects:create`), ser også **Lagre som mal** på hvert prosjekt
+vedkommende kan se — se [Lagre et prosjekt som mal](#lagre-et-prosjekt-som-mal).
+
+Tidslinjens skalabryter — **Dag**, **Uke** eller **Måned** — bestemmer hvor mye av kalenderen
+som får plass på skjermen; overskriften nummererer dagene, ISO-ukene (*U45*) eller navngir
+månedene, og nettleseren din husker skalaen. En deltaker eller prosjektleder flytter en oppgave
+rett på tidslinjen:
+
+- **Dra båndet** for å flytte start- og fristdatoen sammen med hele dager.
+- **Dra høyre kant** for å endre bare fristen, eller **venstre kant** for å endre bare
+  startdatoen. Fristen flyttes aldri før startdatoen; en oppgave med bare én dato flytter den
+  datoen uansett hvilken del du holder i.
+- Mens du drar, vises de nye datoene ved siden av båndet. **Escape** setter båndet tilbake og
+  lagrer ingenting; slipper du der du startet, lagres heller ingenting.
+- **Med tastaturet** tabber du til et bånd og trykker **Alt+venstre** eller **Alt+høyre** for å
+  flytte oppgaven en dag. **Enter** åpner den, slik et klikk gjør.
+
+Flyttingen lagres som enhver annen endring av oppgaven; har noen endret oppgaven i mellomtiden,
+går båndet tilbake, oppgavene leses inn på nytt og du får beskjeden *Oppgaven ble endret av noen
+andre. Den er lastet inn på nytt; prøv igjen.* Når flyttingen endret fristen til en oppgave som andre avhenger av, spør
+tidslinjen *Flytte N avhengige oppgaver D dager senere?* (eller *tidligere*): **Flytt avhengige
+oppgaver** flytter alle oppgavene etter den like mange dager, **La dem stå** lar dem ligge der de
+er. Ingenting etter den flyttes uten det svaret. En leser ser tidslinjen, men båndene står stille.
+
+**Bruk mal** åpner **Bruk prosjektmal**, hvor du kan velge en standardisert prosjektmal (f.eks. oppstart
+for ny kunde) og en **Oppstartsdato (T+0)**, som er prosjektets startdato eller ellers i dag. Når malen tas i
+bruk, opprettes malens leveransemilepæler, oppgaver, deloppgaver, sjekklistene deres (hvert punkt uten kryss)
+og avhengighetskoblinger med kalenderdatoer beregnet ut fra oppstartsdatoen, ved siden av det prosjektet
+allerede har. Finnes det ingen maler ennå, sier
+dialogen *Ingen maler tilgjengelig ennå.*, og til den som kan lage maler legger den til en lenke, **Lag en
+under Prosjektmaler** — se [Bygg prosjektmaler](#bygg-prosjektmaler). En mal som bryter
+en av malreglene, avvises med *Malen bryter en regel og må rettes under Prosjektmaler*,
+fulgt av regelen; ingenting fra den legges til.
+
+**Ny oppgave** åpner skjemaet **Ny oppgave**: **Tittel** (påkrevd, høyst 200 tegn),
+**Beskrivelse**, **Status**, **Ansvarlig** (hvem som helst på prosjektet),
+**Startdato**, **Frist** (ikke før starten), **Estimat (timer)** (over 0 når det er
+satt), **Leveransemilepæl** (valgfritt) og **Overordnet oppgave**, som gjør den til en deloppgave (ett nivå ned). En
+deloppgave uten leveransemilepæl hører til den overordnede oppgavens.
+
+Klikk på en oppgave for å åpne skuffen **Oppgave**: blyanten redigerer tittelen på
+stedet, søppelkurven sletter oppgaven etter *Vil du slette tittel?* — deloppgaver,
+sjekkliste og kommentarer slettes med den, og det kan ikke angres. Detaljskjemaet
+(**Status**, **Ansvarlig**, **Leveransemilepæl**, **Startdato**, **Frist**, **Estimat (timer)**,
+**Beskrivelse**) lagres med **Lagre endringer**. **Deloppgaver** har en
+avkrysningsboks per deloppgave som setter den til **Ferdig** eller tilbake til **Å
+gjøre**, og **Legg til deloppgave**. **Avhengigheter** kobler **Forgjengere** og
+**Etterfølgere** med automatisk sikring mot sirkulære løkker, konfliktvarsler, og et
+verktøy for å **Forskyve etterfølgende** oppgaver med et antall dager. **Sjekkliste** er de små stegene inne i oppgaven
+(**Legg til punkt**, kryss av, slett). **Kommentarer** er en tråd med **Legg inn
+kommentar** og **Last inn flere**; du redigerer og sletter dine egne, en
+prosjektleder sletter alles. På tavlen tilbyr kortets meny **Flytt til Å gjøre**,
+**Flytt til Pågår** og **Flytt til Ferdig**; **Ferdig** stempler fullføringen, flytting
+tilbake fjerner den. En oppgave noen andre har lagret imens avvises, og oppgavene leses
+inn på nytt. I skuffens tittel og detaljer, som beholder det du har skrevet, står det
+*Oppgaven ble endret av noen andre. Last den inn på nytt og prøv igjen.* — lukk og åpne
+oppgaven igjen; alle andre steder (menyen på et kort på tavlen, en deloppgave, **Mine
+oppgaver**, tidslinjen) står det *Oppgaven ble endret av noen andre. Den er lastet inn på
+nytt; prøv igjen.* Oppgaver følger prosjektets
+roller, ikke en rettighet, og låses aldri av prosjektets status — se
+[Tasks](/en/reference/projects/#tasks) og
+[Delivery milestones](/en/reference/projects/#delivery-milestones).
+
+## Se dine egne oppgaver
+
+**Mine oppgaver** i sidemenyen lister hver åpen oppgave som er tildelt deg på tvers
+av prosjektene du kan se, etter frist og deretter prosjekt: **Prosjekt**, **Tittel**,
+**Status**, **Frist** og **Estimat**. Koden åpner prosjektet, tittelen åpner oppgaven
+i skuffen. **Status**-velgeren på en rad endrer statusen direkte — og siden
+**Ferdig** ikke er åpen, er det slik en oppgave forlater listen. Er ingenting
+tildelt, sier siden **Ingenting er tildelt deg**. Hurtighandlingen **Opprett
+oppgave** i søket lander her: den spør først etter **Prosjekt**, og åpner så det
+vanlige skjemaet **Ny oppgave** på det.
+
+## Bygg prosjektmaler
+
+**Prosjektmaler** i sidemenyen er arbeidsområdets katalog over malene som **Bruk
+mal** tar i bruk. Den tilbys den som kan opprette prosjekter (`projects:access` og
+`projects:create`); alle andre i appen ser fortsatt hver mal i **Bruk mal**.
+Tabellen viser hver mals **Navn** og beskrivelse, og hvor mange
+**Leveransemilepæler**, **Oppgaver**, **Deloppgaver**, **Sjekklistepunkter** og
+**Avhengigheter** den har.
+Finnes det ingen ennå, sier siden **Ingen prosjektmaler ennå**.
+
+**Ny mal** åpner **Ny prosjektmal**:
+
+1. Gi den et **Navn** (påkrevd, høyst 200 tegn) og, om du vil, en **Beskrivelse**
+   (høyst 2000 tegn).
+2. Under **Leveransemilepæler** velger du **Legg til milepæl** for hver av dem: et
+   **Navn**, en **Måldag** — dager fra oppstart, så `T+0` er oppstartsdagen og
+   `T+14` to uker senere — og, om du vil, en **Beskrivelse** (høyst 2000 tegn).
+3. Under **Oppgaver** velger du **Legg til oppgave** for hver av dem: en **Tittel**,
+   en valgfri **Beskrivelse**, **Startdag** og **Fristdag** (ikke før startdagen),
+   **Estimat (timer)** (over 0 når det er satt) og **Leveransemilepælen** den hører
+   til. Under **Sjekkliste** legger **Legg til sjekklistepunkt** til en linje for
+   hvert lille steg (1–500 tegn, høyst 100 per oppgave); når malen tas i bruk,
+   opprettes de i denne rekkefølgen, uten kryss. **Legg til deloppgave** legger en
+   deloppgave under den med de samme feltene, også sin egen sjekkliste, bortsett fra
+   milepælen.
+4. Under **Avhengigheter** velger du **Legg til avhengighet** (når det finnes to
+   oppgaver) og velger **Forgjenger** og **Etterfølger**, som venter på den. Bare
+   hovedoppgaver kobles, en oppgave kan ikke avhenge av seg selv, et par står bare én
+   gang, og koblingene kan ikke danne en sløyfe.
+5. **Opprett** lagrer den.
+
+Pilene på hver rad — også på et sjekklistepunkt — flytter den opp eller ned, og
+søppelkurven fjerner den. Fjerner
+du en milepæl, kobles oppgavene dens fra; fjerner du en oppgave, forsvinner
+deloppgavene og avhengighetene dens med den. Et felt malens regler avviser, merkes
+der det står, før noe sendes.
+
+Radens meny har **Rediger**, det samme skjemaet lagret med **Lagre endringer**, og
+**Slett malen**, som først spør *Vil du slette navn?*. Prosjekter som allerede er
+startet fra en mal, beholder milepælene og oppgavene sine når malen endres eller
+slettes. En mal noen andre har lagret imens, avvises med *Malen ble endret av noen
+andre. Åpne den igjen og gjør endringene dine på nytt.*; redigeringen lukkes, og når
+du åpner malen igjen, ser du det som ble lagret. Se
+[Project templates and blueprints](/en/reference/projects/#project-templates-and-blueprints).
+
+## Lagre et prosjekt som mal
+
+Et prosjekt som gikk bra, kan starte det neste. I fanen **Oppgaver** på prosjektet
+åpner **Lagre som mal** dialogen **Lagre prosjektet som mal** (den krever
+`projects:create`, rettigheten malkatalogen spør om; ellers holder det å se
+prosjektet):
+
+1. **Navn** starter som prosjektets navn; endre det om du vil (påkrevd, høyst 200
+   tegn), og legg til en **Beskrivelse** (høyst 2000 tegn).
+2. **Lagre mal** lagrer den. Varselet *Malen navn er opprettet* lenker til **Åpne
+   Prosjektmaler**, der den nye malen kan redigeres som alle andre.
+
+Malen får prosjektets leveransemilepæler i planlagt rekkefølge, hovedoppgavene med
+deloppgaver, beskrivelser, estimater og sjekklister, hver oppgaves
+leveransemilepæl, og avhengighetene mellom hovedoppgavene. En avhengighet til eller
+fra en deloppgave utelates, fordi maler bare kobler hovedoppgaver. Ansvarlige,
+statuser, kommentarer, førte timer og kryss kopieres ikke.
+
+Datoene blir dager fra prosjektets **startdato**: en dato før starten blir `T+0`.
+Et prosjekt uten startdato regner i stedet fra sin tidligste milepæl- eller
+oppgavedato, og en milepæl uten måldato får `T+0`. En plan som bryter en malregel,
+avvises med navnet på oppgaven, og ingenting lagres: en sjekkliste med mer enn 100
+punkter gir *Oppgaven «tittel» har mer enn 100 sjekklistepunkter, flere enn en mal
+kan ha* (eller nevner deloppgaven og oppgaven dens), og en kjede på mer enn 100
+koblede avhengigheter, koblet før den grensen fantes, nevner oppgaven den fører
+fram til. Alle andre regler gir *Prosjektplanen bryter en malregel*, fulgt av
+oppgaven og regelen. Å lagre
+endrer verken prosjektet eller tidslinjen. Se
+[Save a project as a template](/en/reference/projects/#save-a-project-as-a-template).
+
+## Sett opp fakturalinjer
+
+Åpne fanen **Fakturering**. Den krever økonomiske rettigheter på prosjektet —
+prosjektleder, `projects:view-financials` eller `projects:manage-all`; alle andre
+leser *Du kan ikke se beløpene på dette prosjektet*. Den åpner med **Økonomisk
+sammendrag** (**Faktureringstype**, **Fastprisbeløp**, **Budsjettbeløp**, **Standard
+timepris**, **Valuta**) og kortet **Fakturalinjer**, med **Sporingskode**,
+**Produkt**, **Enhet**, **Prisregel**, **Listepris**, **Budsjett** og **Status**.
+
+En prosjektleder klikker **Legg til fakturalinje** og fyller inn:
+
+- **Linjekode** — 1–10 bokstaver og tall, unik i prosjektet; sporingskoden
+  timelistene viser til er `PROSJEKTKODE-LINJEKODE`.
+- **Produktvariant** — et tjenesteprodukt fra Produkter-appen, søkt mens du skriver.
+  Uten rettighet til å se produkter sier skjemaet *Du trenger tilgang til produkter
+  for å velge en variant*.
+- **Prisregel**: **Listepris**, **Fast beløp** (i prosjektets valuta) eller
+  **Rabatt** (**Rabatt (%)**, over 0 og høyst 100). Et fast beløp krever at prosjektet
+  har en valuta.
+- **Budsjetterte timer** og **Budsjettbeløp** for linjen, valgfrie og over 0; beløpet
+  krever også en valuta.
+
+Linjer slettes aldri: blyanten på en rad åpner linjen med en bryter **Aktiv**; en
+linje som er slått av viser **Inaktiv** og kan slås på igjen. Uten Produkter-appen
+står det *Fakturalinjer krever produktmodulen, som ikke er aktivert*; når katalogen
+ikke kan leses, listes linjene under en advarsel og er uendret. Se
+[Billing lines and the optional Products dependency](/en/reference/projects/#billing-lines-and-the-optional-products-dependency).
+
+## Definer arbeidstyper
+
+Under linjene på fanen **Fakturering** lister **Arbeidstyper** overtid og andre slags
+timer, som hver ganger opp satsen en timeføring ellers ville fakturert og kostet:
+**Navn**, **Faktureringsfaktor**, **Kostnadsfaktor** og **Status**, med eller uten Produkter.
+
+En prosjektleder klikker **Legg til arbeidstype**: et **Navn** (unikt i prosjektet,
+uten hensyn til store og små bokstaver, høyst 100 tegn), en **Faktureringsfaktor** og
+en **Kostnadsfaktor** i prosent — 150 % er halvannen gang satsen, 100 % satsen slik
+den er; hver over 0, høyst 1000, høyst to desimaler. Et opptatt navn avvises med
+*Prosjektet har allerede en arbeidstype med det navnet*. Arbeidstyper slettes aldri:
+bryteren **Aktiv** i redigeringsskjemaet deaktiverer en, så ingen ny timeføring kan
+velge den, og aktiverer den igjen senere. Å endre en faktor flytter ingenting som
+allerede er sendt inn — se [Work types](/en/reference/projects/#work-types).
+
+## Planlegg faktureringen med milepæler
+
+På fanen **Økonomi** er **Faktureringsplan** hva prosjektet faktureres i, i den
+rekkefølgen milepælene faktureres. Den er økonomiske data tvers igjennom: uten
+økonomiske rettigheter leser du *Faktureringsplanen er for dem som kan se prosjektets
+økonomi*. Over kortet står **Planlagt**, **Klar til fakturering** og **Fakturert**;
+under det, på et fastprisprosjekt, sier en merknad hvor mye *av fastprisen som ikke
+er planlagt ennå* eller at *planen er … mer enn fastprisen*; ingen av delene hindrer lagring.
+
+Milepæler faktureres i prosjektets valuta; til prosjektet har en, sier kortet det og
+tilbyr en prosjektleder **Rediger prosjektet**. En prosjektleder (eller
+`projects:manage-all`) klikker **Ny milepæl**: **Navn**, **Beskrivelse**, **Planlagt
+dato**, og **Prises som** enten **Et beløp** eller **En andel av fastprisen** — bare
+tilbudt på et fastprisprosjekt, med omtrent hva den utgjør. En andel følger en senere
+endring av fastprisen til milepælen er fakturert.
+
+Hver rad viser **Milepæl**, **Planlagt dato** (med **Forfalt** når datoen har passert
+og milepælen fortsatt er planlagt eller klar), **Beløp** og **Status**, og en meny med
+overgangene den tillater:
+
+| Handling | Hvem | Hva som skjer |
+| --- | --- | --- |
+| **Rediger**, **Flytt opp**, **Flytt ned** | prosjektleder | så lenge milepælen er **Planlagt** eller **Klar til fakturering** |
+| **Merk som klar til fakturering** / **Sett tilbake til planlagt** | prosjektleder | stempler hvem og når |
+| **Merk som fakturert** | økonomiske rettigheter | spør etter en valgfri **Fakturareferanse** og **Fakturadato**, og låser beløpet |
+| **Angre faktureringen** | økonomiske rettigheter | tilbake til klar; referanse, dato og låst beløp nullstilles |
+| **Avlys milepælen** | prosjektleder | den blir stående sist i planen med strek over, og faktureres ikke |
+| **Gjenåpne milepælen** | prosjektleder | en avlyst milepæl går tilbake til planlagt |
+| **Slett milepælen** | prosjektleder | bare så lenge den fortsatt er planlagt og aldri flyttet; ellers avlys den |
+
+En overgang avvises når prosjektet ikke lenger støtter milepælen — ingen valuta,
+ingen fastpris bak en andel, eller et beløp i en valuta prosjektet har forlatt;
+meldingen oppgir grunnen (full tabell:
+[Billing milestones and the invoice plan](/en/reference/projects/#billing-milestones-and-the-invoice-plan)).
+
+Når en faktura utstedt i **Fakturaer** fakturerer en milepæl som er klar til
+fakturering, blir milepælen **Fakturert** av seg selv, av den som utstedte fakturaen,
+med fakturaens dato og beløpet låst, og statusen sier *Fakturert på faktura 1042* — en
+lenke til fakturaen når Fakturaer-modulen er på og du har `invoices:access`, ellers bare
+tekst. En slik milepæl tilbyr ikke **Angre faktureringen**: bare en kreditnota som
+returnerer fakturalinjen dens, setter den tilbake til klar til fakturering — og
+kreditnotaen gjør det alltid, også om prosjektet er endret siden. Å angre den på annet
+vis avvises: *Faktura 1042 fakturerte denne milepælen. Bare en kreditnota som krediterer
+linjen, tar den tilbake.* **Merk som fakturert** for hånd er der fortsatt for milepæler
+du fakturerer utenfor Vantigo.
+
+Der du kan åpne prosjektets fane **Fakturagrunnlag**, lenker faktureringsplanen dit —
+**Fakturer arbeidet** — for å fakturere milepælene som er klare, sammen med resten av
+prosjektets arbeid ([fakturere arbeid](/nb/user/invoices/#fakturere-arbeid)).
+
+Med Utlegg aktivert sier en linje under tabellen hvor mange *utlegg klare til
+fakturering* det er, med **Se utleggene** når du kan åpne Utlegg-fanen.
+
+## Følg budsjettet og det førte arbeidet
+
+Øverst på fanen **Økonomi** står **Budsjett og ført arbeid**. Alle som ser prosjektet
+ser det; beløpene vises bare med økonomiske rettigheter og en prosjektvaluta,
+**Margin** bare med `projects:view-costs` i tillegg.
+
+- **Budsjett brukt** er en prosent av ett grunnlag, i tjenerens rekkefølge:
+  **Budsjettbeløp**, ellers **Fastpris** på et fastprisprosjekt, ellers
+  **Budsjetterte timer** — det ene grunnlaget en deltaker ser. Uten noe står det
+  **Ingen budsjett satt**. Det røde merket **Over budsjett** følger det nøyaktige
+  forholdet, ikke den avrundede prosenten.
+- En stolpe deler det førte arbeidet i **Godkjent**, **Sendt inn** og **Utkast**, de
+  tre gruppene Timer-appens statuser samles i; avviste føringer ligger i Utkast.
+- **Verdi av arbeidet** er hva de førte timene fakturerer; **Margin** er verdien av
+  arbeidet pluss hva utleggene fakturerer, minus hva begge koster. Merknader sier hva
+  tallene utelater: timer uten sats, timer uten kostnad, og oppgavenes samlede estimat.
+- En tabell per fakturalinje — **Linje**, **Budsjett**, **Ført**, **Brukt**,
+  **Gjenstår** — tar med inaktive linjer og en rad **Ingen fakturalinje** når noe er
+  ført uten linje. **Timer per arbeidstype** følger når noen føring valgte en type.
+
+Timene kommer fra Timer-appen; uten den står det *Timer dukker opp her når Timeføring
+er slått på*. Utleggene kommer fra Utlegg-appen inn i en egen seksjon **Kostnader**:
+radene **Godkjent**, **Sendt inn — venter på godkjenning** og **Utkast** med
+**Linjer**, **Kostnad** og **Til kunden**, en rad **Totalt**, **Herav
+leverandørfakturaer** når det finnes noen, og merknader om uprisede utlegg og andre
+valutaer. Utlegg måles aldri mot budsjettet, og seksjonen sier det. Definisjonene
+står i [Project economy](/en/reference/projects/#project-economy).
+
+## Sammenlign prosjekter i Prosjektøkonomi
+
+**Prosjektøkonomi** i sidemenyen lister hvert prosjekt du kan se økonomien på — dem
+du leder, eller alle med `projects:view-financials` eller `projects:manage-all` — som
+**Prosjekt**, **Kunde**, **Status**, **Budsjett brukt**, **Verdi av arbeidet**,
+**Timer til behandling**, **Neste milepæl** og **Klar til fakturering**. Tre kort
+teller **Prosjekter**, dem som er **Over budsjett**, og hva som er **Klar til
+fakturering** per valuta, delt i milepæler og utleggslinjer.
+
+Verktøylinjen har søkefeltet, **Status** (**Aktivt** som standard; **Alle statuser**
+opphever det), **Kunde**, **Sorter etter** (**Mest av budsjettet brukt**, **Mest
+klart til fakturering**, **Neste milepæl først**, **Prosjektkode**), og bryterne
+**Bare over budsjett** og **Bare med noe klart til fakturering**. En rad med utlegg
+klare i en annen valuta sier **Mer klart i en annen valuta**; prosjektets egen
+Økonomi-fane viser dem. Er det ingenting å vise, står det *Prosjekter du kan se
+økonomien på dukker opp her* (se [The portfolio](/en/reference/projects/#the-portfolio)).
+
+## Rettigheter i korte trekk
+
+| Skjermbilde eller handling | Krever |
+| --- | --- |
+| Appen Prosjekter: Prosjekter, Mine oppgaver, Prosjektøkonomi | `projects:access` |
+| **Nytt prosjekt** | `projects:create` |
+| **Prosjektmaler**: opprette, redigere og slette maler | `projects:create` |
+| **Bruk mal** på et prosjekt | rollen **Deltaker** eller **Prosjektleder** |
+| Å se alle prosjekter, ikke bare dine egne | `projects:view-all` eller `projects:manage-all` |
+| **Rediger**, **Endre status**, Deltakere, fakturalinjer, arbeidstyper, milepæler | rollen **Prosjektleder**, eller `projects:manage-all` |
+| Oppgaver, sjekklistepunkter og kommentarer | rollen **Deltaker** eller **Prosjektleder** |
+| Fanen **Fakturering**, faktureringsplanen og beløpene på **Økonomi** | rollen **Prosjektleder**, `projects:view-financials` eller `projects:manage-all` |
+| **Merk som fakturert** og **Angre faktureringen** | økonomiske rettigheter på prosjektet |
+| **Margin** og kostnadstallene | økonomiske rettigheter og `projects:view-costs` |
+| Fanen **Timer** | `time:access`, Timer aktivert |
+| Fanen **Utlegg** | `expenses:access`, Utlegg aktivert |
+| Fanen **Fakturagrunnlag**, og **Fakturer arbeidet** i faktureringsplanen | `invoices:access` og `invoices:create`, Fakturaer aktivert |
+| Fanen **Bemanning** | `planning:access` og `planning:view`, Bemanning aktivert |

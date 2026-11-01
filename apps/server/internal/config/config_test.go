@@ -890,8 +890,8 @@ func TestLoad_TrustedProxyHopsRequireCIDRsOutsideDevelopment(t *testing.T) {
 }
 
 func TestLoad_Modules(t *testing.T) {
-	if cfg := mustLoad(t, validEnv()); !slices.Equal(cfg.Modules, []string{"customers", "products", "energy", "communications", "projects", "time", "expenses", "invoices", "staff", "planning", "calendar", "entra"}) {
-		t.Errorf("Modules = %v, want the default customers,products,energy,communications,projects,time,expenses,invoices,staff,planning,calendar,entra when MODULES is unset", cfg.Modules)
+	if cfg := mustLoad(t, validEnv()); !slices.Equal(cfg.Modules, []string{"customers", "products", "energy", "communications", "projects", "time", "expenses", "invoices", "staff", "planning", "calendar", "entra", "assistant"}) {
+		t.Errorf("Modules = %v, want the default customers,products,energy,communications,projects,time,expenses,invoices,staff,planning,calendar,entra,assistant when MODULES is unset", cfg.Modules)
 	}
 
 	cfg := mustLoad(t, with(validEnv(), "MODULES", " Customers ,, ENERGY,products "))
@@ -899,7 +899,7 @@ func TestLoad_Modules(t *testing.T) {
 		t.Errorf("Modules = %v, want trimmed, lower-cased entries with empties dropped", cfg.Modules)
 	}
 
-	if msg := loadError(t, with(validEnv(), "MODULES", "customers,widgets")); !strings.Contains(msg, `"widgets" is not a known module`) || !strings.Contains(msg, "customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, calendar, entra") {
+	if msg := loadError(t, with(validEnv(), "MODULES", "customers,widgets")); !strings.Contains(msg, `"widgets" is not a known module`) || !strings.Contains(msg, "customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, calendar, entra, assistant") {
 		t.Errorf("error = %q, want it to name the bad value and the known set", msg)
 	}
 
