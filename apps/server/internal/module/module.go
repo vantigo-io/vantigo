@@ -286,7 +286,7 @@ type Deps struct {
 	AssistantGrants contracts.AssistantGrants
 	// Operations is the dispatcher that calls the merged contract's operations
 	// in-process, through the composed router, as the assistant principal
-	// (the Assistant design S2, module boundaries rule 15). Compose sets it
+	// (the Assistant design S2, module boundaries rule 18). Compose sets it
 	// only on the Deps of the module named "assistant"; it is nil for every
 	// other module, and for the assistant until Compose has composed the
 	// router, so it is for use while serving, never while mounting.

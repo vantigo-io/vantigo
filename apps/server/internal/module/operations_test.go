@@ -14,7 +14,7 @@ import (
 
 // Compose gives the operations dispatcher to the module named assistant, and
 // to no other, and binds it to the router it composed (module boundaries
-// rule 15).
+// rule 18).
 
 const assistantContract = `
 openapi: 3.0.3

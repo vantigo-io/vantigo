@@ -134,7 +134,7 @@ Alle er på som standard unntatt arbeideren for spotpriser.
 | `INVOICES_EHF_ENABLED`, `INVOICES_STORECOVE_BASE_URL` | `1`, Storecoves API | Å sende fakturaer som EHF ([E-faktura](/nb/admin/e-invoicing/)) |
 | `INVOICES_VIPPS_ENABLED`, `INVOICES_VIPPS_BASE_URL` | `1`, Vipps' API | Betaling med Vipps MobilePay ([Betalinger](/nb/admin/payments/)) |
 | `ENERGY_SPOT_PRICE_SERVICE_URL`, `ENERGY_SPOT_PRICE_SERVICE_KEY`, `ENERGY_SPOT_PRICE_HISTORY_FROM` | ikke satt | Den delte spotpristjenesten Vantigo setter en installasjon opp med, bærernøkkelen til den (en hemmelighet, vist ingen steder) og eldste dag som kopieres |
-| `AI_PROVIDER`, `AI_API_KEY`, `AI_BASE_URL`, `AI_MODELS` | ikke satt | KI-abonnementet: leverandøren, nøkkelen (en hemmelighet, vist ingen steder), et valgfritt kompatibelt endepunkt og modellene abonnementet tillater. Ikke satt er alle KI-funksjoner utilgjengelige ([KI](#ki)) |
+| `AI_PROVIDER`, `AI_API_KEY`, `AI_BASE_URL`, `AI_MODELS`, `AI_TIMEOUT` | ikke satt, ikke satt, ikke satt, ikke satt, `120s` | KI-abonnementet: leverandøren, nøkkelen (en hemmelighet, vist ingen steder; valgfri for en modell på eget nettverk), et valgfritt kompatibelt endepunkt, modellene abonnementet tillater og hvor lenge en samtale kan ta. Ikke satt er alle KI-funksjoner utilgjengelige ([KI](#ki)) |
 
 ### KI
 
@@ -145,14 +145,40 @@ arbeidsområdets valg.
 
 | Innstilling | Standard | Betydning |
 | --- | --- | --- |
-| `AI_PROVIDER` | ikke satt | Leverandøren; `openai` foreløpig. Ikke satt er ingen KI-funksjon tilgjengelig: KI-utkastet og kundeforslaget i Kommunikasjon svarer at KI ikke er tilgjengelig, og **KI-modeller** vises ikke under Integrasjoner |
-| `AI_API_KEY` | påkrevd sammen med leverandøren | Leverandørens nøkkel, en hemmelighet: den vises ingen steder, i ingen form, og **KI-modeller** sier bare at en er satt |
-| `AI_BASE_URL` | leverandørens egen adresse | En absolutt `https`-adresse, for et OpenAI-kompatibelt endepunkt; uten bruker, spørring eller fragment |
+| `AI_PROVIDER` | ikke satt | Leverandøren: `openai`, eller `openai-compatible` for alt som snakker OpenAIs protokoll, for eksempel en modell du kjører selv ([en lokal modell](#en-lokal-modell)). Den vises slik du skrev den. Ikke satt er ingen KI-funksjon tilgjengelig: KI-utkastet og kundeforslaget i Kommunikasjon svarer at KI ikke er tilgjengelig, og **KI-modeller** vises ikke under Integrasjoner |
+| `AI_API_KEY` | påkrevd sammen med leverandøren, med mindre `AI_BASE_URL` er satt | Leverandørens nøkkel, en hemmelighet: den vises ingen steder, i ingen form, og **KI-modeller** sier bare om en er satt. Den kan være tom når `AI_BASE_URL` peker på et endepunkt, siden en modell på eget nettverk ikke trenger noen; da sendes aldri en nøkkel |
+| `AI_BASE_URL` | leverandørens egen adresse | En absolutt adresse til et OpenAI-kompatibelt endepunkt, med versjonsstien (`https://api.openai.com/v1`); uten bruker, spørring eller fragment. `https`, eller `http` når verten er en loopback-adresse, en privat adresse (`10.x`, `172.16`–`172.31`, `192.168.x`, `fc00::/7`) eller et navn uten punktum som `ollama`. En offentlig vert over `http` avvises, og det samme gjelder enhver `http`-adresse mens `AI_API_KEY` er satt: en nøkkel sendes aldri i klartekst |
 | `AI_MODELS` | påkrevd sammen med leverandøren | Modellene abonnementet tillater, kommaseparert, der den første er abonnementets standard: `gpt-4o-mini,gpt-4o`. Minst én, ingen gjentatt, hver på opptil 150 tegn uten mellomrom |
+| `AI_TIMEOUT` | `120s` | Hvor lenge ett samtalekall kan ta, som en Go-varighet over null og høyst `10m`. Lokale modeller er trege; et kall med én enkelt forespørsel beholder sine egne 30 sekunder |
 
-`AI_API_KEY`, `AI_BASE_URL` og `AI_MODELS` uten `AI_PROVIDER` avvises ved oppstart, og det
-samme gjelder en leverandør uten nøkkel eller modell; en leverandør som ikke er satt, er den
+`AI_API_KEY`, `AI_BASE_URL`, `AI_MODELS` og `AI_TIMEOUT` uten `AI_PROVIDER` avvises ved oppstart, og det
+samme gjelder en leverandør uten modell, eller uten verken nøkkel eller basisadresse; en leverandør som ikke er satt, er den
 vanlige tilstanden «ingen KI» og aldri en feil.
+
+#### En lokal modell
+
+Spørsmålene som stilles til KI-en, og dataene den leser for å svare, går til leverandøren du
+setter opp. Med en modell som kjører på ditt eget nettverk blir de på installasjonen: ingenting
+forlater den. Enhver tjener som snakker OpenAIs samtaleprotokoll fungerer — Ollama, vLLM,
+LM Studio. Slik ser en Ollama-tjener ved siden av Vantigo ut i `vantigo.env`:
+
+```
+AI_PROVIDER=openai-compatible
+AI_BASE_URL=http://ollama:11434/v1
+AI_MODELS=qwen3:14b
+AI_TIMEOUT=180s
+```
+
+Det er ingen `AI_API_KEY`, og ingen sendes. `http://ollama:11434/v1` godtas fordi `ollama` er et
+navn uten punktum, som bare kan slås opp på ditt eget nettverk; den samme adressen med et
+offentlig vertsnavn avvises når prosessen starter, med en melding som nevner `AI_BASE_URL`.
+Modellen må støtte **verktøykall** (en modell med funksjonskall: for Ollama en som er merket
+*tools* i biblioteket), og `AI_MODELS` må nevne den nøyaktig slik tjeneren gjør. Hent modellen
+til tjeneren først. Velg `AI_TIMEOUT` etter det tregeste svaret du vil godta; en liten modell på
+en prosessor kan trenge minutter.
+
+Hver KI-jobb får fortsatt en modell per oppgave under **KI-modeller**, blant dem `AI_MODELS`
+lister.
 
 Hver KI-jobb en modul utfører, er en **oppgave** som modulen deklarerer, som *Draft a
 reply* eller *Suggest the customer* i Kommunikasjon (oppgavenavnene vises på engelsk). En eier velger modellen hver oppgave

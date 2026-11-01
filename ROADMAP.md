@@ -111,6 +111,40 @@ under **Workspace admin** › **Integrations** › **AI models**. Communications
 customer suggestion are the first two tasks and behave as before. A second provider, a fallback
 model per task and an Owner's own key stay out of scope.
 
+### The Assistant (in progress)
+
+Decided in
+[`docs/superpowers/specs/2026-11-01-assistant-design.md`](docs/superpowers/specs/2026-11-01-assistant-design.md).
+Every person gets an **Assistant** (nb **Assistent**) that answers "how do I…" from the
+documentation, reads what they may read and, later, does what they may do — one change at a
+time or in bulk — and never more than they could do in the interface. It acts through the
+real API as the person (module boundaries rule 18), so no module writes anything for it and
+no second permission model exists. It runs on a model the installation chooses, including one
+on its own network.
+
+**Delivery 0 — the platform (done, `feat/assistant-platform`)** — `ai.Chat`, a streamed
+conversation with tools against any OpenAI-compatible endpoint; local models as a
+first-class deployment (`AI_PROVIDER=openai-compatible`, no key beside `AI_BASE_URL`,
+`http://` for a loopback, private or single-label host, `AI_TIMEOUT`); the assistant grant
+and `Principal.Via` (identity, migration `00102`); the `Operations` dispatcher with its
+`auto` / `confirm` / `never` modes, given to the module named `assistant` alone; a `summary`
+on every operation, required by the OpenAPI lint, and `x-vantigo-assistant`. No screen.
+
+**Delivery A (planned) — the Assistant app, read-only** — the `assistant` module and its
+schema, the workspace setting and per-person switches, private conversations that stream and
+can be resumed, `search_docs`, `search_operations`, `describe_operation`, `call_operation` for
+`auto` operations and `navigate`; the `/assistant` app and the panel in the shell; retention
+and erasure.
+
+**Delivery T (planned) — tours** — `show_tour` over a registry of targets each module
+exports, tested against the source, with markers on the most-used screens.
+
+**Delivery B (planned) — writes** — `confirm` operations behind a confirmation card, the
+persisted run, a daily token budget and the Owner's count view.
+
+**Delivery C (planned) — bulk changes** — `propose_bulk` with preview, canary and a worker
+job, on a job runner shared with the imports.
+
 ## Customers
 
 Customers is the hub Energy, Projects, Time, Expenses and Invoices all hang off — a

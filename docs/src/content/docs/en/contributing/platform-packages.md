@@ -1,12 +1,13 @@
 ---
 title: Platform packages
-description: The packages under the server's internal/ that every module may use — the secrets box that seals and MACs values under keys derived from APP_SECRET, the mail package's outbound message, its calendar part and its rendering as MIME, its reading of a received message and the sanitising of its HTML, the AI client with its model-per-task seam, the payments port with its Vipps MobilePay adapter, and the public-holiday calendar.
+description: The packages under the server's internal/ that every module may use — the secrets box that seals and MACs values under keys derived from APP_SECRET, the mail package's outbound message, its calendar part and its rendering as MIME, its reading of a received message and the sanitising of its HTML, the AI client with its model-per-task seam and its chat, the operations dispatcher the assistant calls the API through, the payments port with its Vipps MobilePay adapter, and the public-holiday calendar.
 sidebar:
   order: 5
 sources:
   - apps/server/internal/secrets
   - apps/server/internal/mail
   - apps/server/internal/ai
+  - apps/server/internal/operations
   - apps/server/internal/payments
   - apps/server/internal/holidays
   - apps/server/internal/imagemeta
@@ -166,12 +167,14 @@ is the one client for the AI provider the installation is configured with, and t
 its key lives. A module receives it as `Deps.AI` (an `*ai.Client`, nil when no provider is
 configured) and calls it with a **task key**, never with a model or a key. It has no SQL and
 imports no business module (depguard's `platform` list), and its request and response types
-(`ai.Request`, `ai.Response`) are provider-neutral, so a second provider is one file beside
-`openai.go` and one word in `config`.
+(`ai.Request`, `ai.Response`, `ai.ChatRequest`, `ai.ChatResponse`) are provider-neutral, so a
+second provider is one file beside `openai.go` and one word in `config`.
 
-- **Configuration** is the instance's: `AI_PROVIDER`, `AI_API_KEY`, `AI_BASE_URL` and
-  `AI_MODELS` ([Configuration](/en/admin/configuration/#ai)). `ai.New(cfg, transport, resolver)`
-  answers nil unless a provider, a key and a model are all configured.
+- **Configuration** is the instance's: `AI_PROVIDER`, `AI_API_KEY`, `AI_BASE_URL`, `AI_MODELS` and
+  `AI_TIMEOUT` ([Configuration](/en/admin/configuration/#ai)). `ai.New(cfg, transport, resolver)`
+  answers nil unless a provider, a model, and a key or a base URL are configured: a key is
+  optional once `AI_BASE_URL` names an endpoint, because a local model takes none (no
+  `Authorization` header is sent then).
 - **`Complete(ctx, task, req)`** resolves the task's model through a `Resolver`
   (`ModelFor(ctx, task)`; `contracts.AIModels`, which identity fills with an Owner's choices,
   satisfies it, and a nil resolver gives every task `AI_MODELS[0]`), **refuses a model outside
@@ -179,10 +182,29 @@ imports no business module (depguard's `platform` list), and its request and res
   provider and the model it used, also on an error, so a consumer's audit row can say which
   model it asked. `ModelFor(ctx, task)` on the client answers the same model without calling,
   for a consumer that records a call it refused first.
+- **`Chat(ctx, task, req, onDelta)`** is the second door, for a conversation. `ai.ChatRequest` is a
+  system message, typed messages (`ai.RoleUser`, `ai.RoleAssistant` with its `ToolCalls`,
+  `ai.RoleTool` answering a `ToolCallID`) and `ai.Tool`s described by a JSON Schema, with an
+  optional `MaxTokens`. The model is resolved and allowed exactly as `Complete`'s is. The answer
+  **streams**: `onDelta` (it may be nil) receives each text delta as it arrives, from the
+  goroutine that called `Chat`, and the returned `ai.ChatResponse` carries the assembled
+  assistant message with its tool calls, the provider's finish reason and the token counts.
+  The implementation is the OpenAI-compatible Chat Completions API with `stream: true` and
+  `stream_options.include_usage`, read as server-sent events up to `[DONE]`, so one
+  implementation serves OpenAI, Ollama, vLLM, LM Studio and Azure OpenAI's compatible
+  endpoint. It tolerates what they differ in: a server that reports no usage (the counts are
+  then nil), one that sends a whole tool call in a single chunk, and one that numbers every call
+  of a parallel batch from 0 (a changed call id at an index starts a new call). A tool call's
+  `Arguments` is always valid JSON: text the model sent that is not JSON is carried as a JSON
+  string, so a caller can tell the model it did not send an object. A stream that ends before
+  `[DONE]` is an `aiDecodeError`; half an answer is never handed on. The budget is `AI_TIMEOUT`
+  (default 120 seconds) for the whole call, because local models are slow; `Complete` keeps its
+  30. The token limit is sent as `max_completion_tokens` to OpenAI's own endpoint and as
+  `max_tokens` to any other, which every compatible server understands.
 - **The guard** every outbound client has: redirects are never followed (a redirect would send
   the key to a host nobody named), the transport is `Deps.HTTPTransport` (nil in production,
   meaning `http.DefaultTransport`; a fake in every test, so no test opens a socket), a 30 second
-  budget bounds the call, and a response is read up to 4 MiB.
+  budget bounds a `Complete` call, and a response is read up to 4 MiB (a streamed answer up to 8).
 - **Typed errors**, whose type names are the labels a consumer may record (Communications writes
   them to `ai_interactions.error_summary`) and never a message, which could carry provider or
   customer text: `aiTransportError` (it keeps its cause for `errors.Is`, so a cancelled caller
@@ -195,6 +217,49 @@ imports no business module (depguard's `platform` list), and its request and res
 
 Which tasks exist is declared by the modules (`Module.AITasks`) and which model each uses is an
 Owner's choice that identity keeps: see [the AI platform](/en/contributing/module-boundaries/#the-ai-platform).
+
+## The operations dispatcher
+
+[`apps/server/internal/operations`](https://github.com/vantigo-io/vantigo/tree/main/apps/server/internal/operations)
+is how the Assistant reads and changes things: it calls the operations of the merged contract
+in-process, through the composed router, as the person the assistant acts for. It is not
+available to a module. `module.Compose` hands it, as `Deps.Operations`, to the module named
+`assistant` alone, and depguard refuses every other import ([module boundaries rule
+18](/en/contributing/module-boundaries/), which also says how a call is the person's own).
+
+- **Building it.** `operations.New()` is unbound; `Bind(contract, catalog, access, handler,
+  opts)` loads the merged contract (the body of `GET /api/openapi.json`), computes every
+  operation's **mode** once and keeps the access and the composed handler. Compose does both,
+  so the dispatcher is for use while serving, never while mounting.
+- **`Mode`** is `auto`, `confirm` or `never`: the operation's `x-vantigo-assistant`; else `never`
+  for an `anonymous`, `scim` or `session` rule, an Owner-tier policy, a `Sensitive` permission,
+  a file upload or download or the assistant's own API; else `auto` for `GET` and `confirm` for
+  every other method.
+- **`List(ctx, userID)`** is the operations whose mode is not `never` and whose rule the user
+  meets: a `permission:` rule is asked of `Access.UserHolds` (once per key per call), and
+  `policy:ActiveAccount` and `policy:Business` are listed, the call deciding. `Search(ctx,
+  userID, query, limit)` narrows it by a token match over the summary, description, tag and
+  path (never the operationId alone), best first. **`Info(id)`** and `All()` answer for every
+  operation, `never` ones included.
+- **`Describe(id)`** is the operation as a model reads it, in at most 8 KB of JSON: the
+  summary and mode, the path, query and header parameters, the request body and the success
+  response, with every `$ref` resolved to a depth limit (a cycle is cut with a note), enums
+  inline and descriptions kept. A schema too large is cut to fewer levels, and last to names.
+- **`Call(ctx, CallRequest)`** builds the request from the operation's declared path, query and
+  header parameters and a JSON body, refuses it with a typed `*operations.Error` (stable
+  codes: `operation_unknown`, `operation_never`, `confirmation_required`, `no_grant`,
+  `invalid_request`, `not_ready`, `call_failed`) before anything is dispatched when the
+  operation is unknown, `never`, or `confirm` without `Confirmed`, when the context carries no
+  grant (`contracts.WithAssistantGrant`) or user (`contracts.AsUser`), or when the call does
+  not fit the operation. Once dispatched, the router's answer is a `CallResult` — a status and
+  a JSON body, truncated to nothing with `Truncated` above 1 MiB. The request is built on a
+  fresh context holding only the grant, with `RemoteAddr` `assistant-<user id>`, so the
+  per-client rate limits are per person.
+- **Tests** run the real router and the real identity: `modtest.Harness.Operations(t)` binds a
+  dispatcher to a harness's composed API and `AssistantContext(t, client, ttl)` issues a grant
+  for a signed-in client. The package's own tests bind it to a small synthetic contract and
+  `TestOperations_TheRealContract` (`internal/integration`) checks the mode of every operation
+  of the shipped contract.
 
 ## The payments port
 

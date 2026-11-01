@@ -132,7 +132,7 @@ poll. All are on by default except the spot-price worker.
 | `INVOICES_EHF_ENABLED`, `INVOICES_STORECOVE_BASE_URL` | `1`, Storecove's API | Sending invoices as EHF ([E-invoicing](/en/admin/e-invoicing/)) |
 | `INVOICES_VIPPS_ENABLED`, `INVOICES_VIPPS_BASE_URL` | `1`, Vipps' API | Vipps MobilePay payments ([Payments](/en/admin/payments/)) |
 | `ENERGY_SPOT_PRICE_SERVICE_URL`, `ENERGY_SPOT_PRICE_SERVICE_KEY`, `ENERGY_SPOT_PRICE_HISTORY_FROM` | unset | The shared spot-price service Vantigo provisions an installation with, its bearer key (a secret, shown nowhere) and the oldest day copied |
-| `AI_PROVIDER`, `AI_API_KEY`, `AI_BASE_URL`, `AI_MODELS` | unset | The AI plan: the provider, its key (a secret, shown nowhere), an optional compatible endpoint and the models the plan allows. Unset, every AI feature is unavailable ([AI](#ai)) |
+| `AI_PROVIDER`, `AI_API_KEY`, `AI_BASE_URL`, `AI_MODELS`, `AI_TIMEOUT` | unset, unset, unset, unset, `120s` | The AI plan: the provider, its key (a secret, shown nowhere; optional for a model on your own network), an optional compatible endpoint, the models the plan allows and how long a chat may take. Unset, every AI feature is unavailable ([AI](#ai)) |
 
 ### AI
 
@@ -142,14 +142,40 @@ interface. Which of the allowed models each AI job uses is the workspace's choic
 
 | Setting | Default | Meaning |
 | --- | --- | --- |
-| `AI_PROVIDER` | unset | The provider; `openai` today. Unset, no AI feature is available: Communications' AI draft and customer suggestion answer that AI is unavailable, and **AI models** does not appear under Integrations |
-| `AI_API_KEY` | required with the provider | The provider's key, a secret: it is shown nowhere, in no form, and **AI models** says only that one is configured |
-| `AI_BASE_URL` | the provider's own address | An absolute `https` URL, for an OpenAI-compatible endpoint; no user, query or fragment |
+| `AI_PROVIDER` | unset | The provider: `openai`, or `openai-compatible` for anything that speaks OpenAI's protocol, such as a model you run yourself ([a local model](#a-local-model)). It is shown as you wrote it. Unset, no AI feature is available: Communications' AI draft and customer suggestion answer that AI is unavailable, and **AI models** does not appear under Integrations |
+| `AI_API_KEY` | required with the provider, unless `AI_BASE_URL` is set | The provider's key, a secret: it is shown nowhere, in no form, and **AI models** says only whether one is configured. It may be empty when `AI_BASE_URL` names an endpoint, since a model on your own network takes none; then no key is ever sent |
+| `AI_BASE_URL` | the provider's own address | An absolute URL for an OpenAI-compatible endpoint, up to and including the version path (`https://api.openai.com/v1`); no user, query or fragment. `https`, or `http` when the host is a loopback address, a private address (`10.x`, `172.16`–`172.31`, `192.168.x`, `fc00::/7`) or a name with no dot such as `ollama`. A public host over `http` is refused, and so is any `http` address while `AI_API_KEY` is set: a key is never sent in the clear |
 | `AI_MODELS` | required with the provider | The models the plan allows, comma-separated, the first being the plan's default: `gpt-4o-mini,gpt-4o`. At least one, none repeated, each up to 150 characters with no space |
+| `AI_TIMEOUT` | `120s` | How long one chat call may take, as a Go duration above zero and at most `10m`. Local models are slow; a single-prompt call keeps its own 30 seconds |
 
-`AI_API_KEY`, `AI_BASE_URL` and `AI_MODELS` without `AI_PROVIDER` are refused at start, as
-is a provider with no key or no model; an unset provider is the ordinary "no AI" state
+`AI_API_KEY`, `AI_BASE_URL`, `AI_MODELS` and `AI_TIMEOUT` without `AI_PROVIDER` are refused at start, as
+is a provider with no model, or with neither a key nor a base URL; an unset provider is the ordinary "no AI" state
 and never an error.
+
+#### A local model
+
+Questions asked of the AI, and the data it reads to answer them, go to the provider you
+configure. With a model that runs on your own network, they stay on the installation: nothing
+leaves it. Any server that speaks OpenAI's chat protocol works — Ollama, vLLM, LM Studio.
+This is what an Ollama server next to Vantigo looks like in `vantigo.env`:
+
+```
+AI_PROVIDER=openai-compatible
+AI_BASE_URL=http://ollama:11434/v1
+AI_MODELS=qwen3:14b
+AI_TIMEOUT=180s
+```
+
+There is no `AI_API_KEY`, and none is sent. `http://ollama:11434/v1` is accepted because
+`ollama` is a name with no dot, which only resolves inside your own network; the same
+address with a public host name is refused when the process starts, with a message naming
+`AI_BASE_URL`. The model must support **tool calling** (a function-calling model: for Ollama,
+one tagged *tools* in its library), and `AI_MODELS` must name it exactly as the server does.
+Pull the model on the server first. Choose `AI_TIMEOUT` for the slowest answer you will accept;
+a small model on a CPU can need minutes.
+
+Every AI job is still assigned a model per task under **AI models**, among the ones
+`AI_MODELS` lists.
 
 Every AI job a module performs is a **task** that the module declares, such as *Draft a
 reply* or *Suggest the customer* in Communications. An Owner chooses the model each task
