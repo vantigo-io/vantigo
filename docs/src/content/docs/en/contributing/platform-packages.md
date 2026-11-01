@@ -231,11 +231,28 @@ available to a module. `module.Compose` hands it, as `Deps.Operations`, to the m
   opts)` loads the merged contract (the body of `GET /api/openapi.json`), computes every
   operation's **mode** once and keeps the access and the composed handler. Compose does both,
   so the dispatcher is for use while serving, never while mounting.
-- **`Mode`** is `auto`, `confirm` or `never`: the operation's `x-vantigo-assistant`; else `never`
-  for an `anonymous`, `scim` or `session` rule, an Owner-tier policy, a `Sensitive` permission,
-  a file upload or download or the assistant's own API; else `auto` for `GET` and `confirm` for
-  every other method.
-- **`List(ctx, userID)`** is the operations whose mode is not `never` and whose rule the user
+- **`Mode`** is `auto`, `confirm` or `never`. The **contract's mode**, computed once at `Bind`, is
+  the operation's `x-vantigo-assistant`; else `never` for an `anonymous`, `scim` or `session` rule,
+  an Owner-tier policy, a permission missing from the catalog, a file upload or download or the
+  assistant's own API; else `auto` for `GET` and `confirm` for every other method. It is the widest
+  an operation can ever be, and it no longer looks at `Sensitive`: that moved into the gate.
+- **`Info`** describes one operation: `ID`, `Method`, `Path`, `Tag`, `Summary`, `Description`,
+  `Mode`, `Permissions` — the keys its access rule names, empty for a `policy:` or `session` rule —
+  and `Sensitive`, true when any of them is `Sensitive` in the catalog. From `All` and `Info(id)`
+  `Mode` is the contract's; from `List` and `Search` it is the effective mode below.
+- **`SetGate(Gate)`** installs the function that narrows the contract's mode for the workspace:
+  `type Gate func(ctx, Info) Mode`. Only the assistant module calls it, while it mounts; the
+  dispatcher keeps the **narrower** of the contract's mode and the gate's answer (`never` over
+  `confirm` over `auto`), so a gate can never widen the contract, and it is called for every
+  operation on every `List` and `Search`, so it must be cheap and cache. **Without a gate — and
+  after `SetGate(nil)` — the dispatcher fails closed**: an operation whose `Info.Sensitive` is true
+  is `never`. A gate that cannot decide answers `never`. The Assistant's gate applies the Owner's
+  permission levels ([the reference](/en/reference/assistant/#permission-levels-and-the-gate)).
+- **`Effective(ctx, id)`** is the **effective mode** — the contract's mode narrowed by the gate —
+  for the context's workspace, and false for an unknown operation. `List`, `Search` and `Call` all
+  work from it: a narrowed operation is absent from the first two and refused by `Call` as
+  `operation_never`, before the confirmation check, whether or not anyone confirmed.
+- **`List(ctx, userID)`** is the operations whose effective mode is not `never` and whose rule the user
   meets: a `permission:` rule is asked of `Access.UserHolds` (once per key per call), and
   `policy:ActiveAccount` and `policy:Business` are listed, the call deciding. `Search(ctx,
   userID, query, limit)` narrows it by a token match over the summary, description, tag and

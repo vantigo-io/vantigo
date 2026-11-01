@@ -52,6 +52,7 @@ your thing, a managed **SaaS offering** is available where we run the platform f
 | **Planning**           | Who works on what: allocations of people on projects, capacity, the unbooked. | 🚧 In development |
 | **Calendar**           | One calendar per person: appointments and what the other apps hold.   | 🚧 In development |
 | **Microsoft Entra ID** | The accounts of Staff's people in your Entra tenant, kept in step.    | 🚧 In development |
+| **Assistant**          | Answers "how do I…" from the documentation and reads the data a person may read. | 🚧 In development |
 
 Identity — accounts, sign-in, MFA, RBAC, OIDC and SCIM — is always part of the
 application and is never listed as an optional module. Which business modules a
@@ -81,7 +82,7 @@ docker compose up -d
 Compose starts PostgreSQL, applies the database migrations as a one-shot `migrate`
 job, and then brings up the single Vantigo application on <http://localhost:8080>.
 Customers, Communications, Products, Energy, Projects, Time, Expenses, Invoices,
-Staff, Planning, Calendar and Microsoft Entra ID are modules in that one application.
+Staff, Planning, Calendar, Microsoft Entra ID and Assistant are modules in that one application.
 
 The stack runs outside development, so `vantigo.env` must carry `APP_SECRET` before
 the first start — at least 32 bytes of key material, generated with
@@ -121,6 +122,7 @@ vantigo/
 │   │       ├── planning/            # Planning vertical slice (who works on what)
 │   │       ├── calendar/            # Calendar vertical slice
 │   │       ├── entra/               # Microsoft Entra ID (accounts in the tenant, for Staff)
+│   │       ├── assistant/           # Assistant vertical slice (conversations, runs and tools)
 │   │       ├── module/              # The platform modules mount through
 │   │       ├── db/                  # Pool and the embedded goose migrations
 │   │       └── web/                 # The embedded SPA
@@ -136,7 +138,8 @@ vantigo/
 │   ├── staff/frontend/              # @vantigo/staff-ui
 │   ├── planning/frontend/           # @vantigo/planning-ui
 │   ├── calendar/frontend/           # @vantigo/calendar-ui
-│   └── entra/frontend/              # @vantigo/entra-ui
+│   ├── entra/frontend/              # @vantigo/entra-ui
+│   └── assistant/frontend/          # @vantigo/assistant-ui
 ├── packages/
 │   ├── frontend-shell/              # @vantigo/frontend-shell — shared shell, theme, branding
 │   └── frontend-api-client/         # @vantigo/frontend-api-client — generated types and client

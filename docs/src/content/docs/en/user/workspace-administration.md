@@ -13,7 +13,7 @@ Workspace administration is where an **Owner** manages who can use Vantigo and w
 they may do. Open the avatar menu at the top right and choose **Workspace admin**;
 its sidebar has **Overview**, **Users**, **Invitations** and **Roles & access**, and,
 under **Integrations**, **Microsoft Entra ID** and, once Vantigo has set up AI for the
-installation, **AI models**.
+installation, **AI models** and **Assistant**.
 
 Everything here needs the Owner role, with one exception: a person to whom an Owner
 has delegated role administration sees **Roles & access** alone, both in the avatar
@@ -96,6 +96,10 @@ The actions menu on a row (the three dots) offers:
 - **Set initial password** — choose a new password for the person on their behalf.
   "The administrator-chosen password is active now." Use this for someone locked
   out without email access, and ask them to change it afterwards.
+
+While the Assistant module is on, the **Edit user** dialog also carries the switch **Has the
+assistant**, which takes effect when the assistant is set to *Per person*
+([Assistant](#assistant)).
 
 Resetting another administrator's two-factor authentication is not offered on this
 screen; it exists in the API for an Owner whose own session is MFA-verified.
@@ -412,20 +416,22 @@ groups, their members receive the mapped roles automatically; see
 ## Integrations
 
 **Integrations** is the second section of the **Workspace admin** sidebar: the one place
-the company's connections to systems elsewhere are managed. It has two items.
+the company's connections to systems elsewhere are managed, and the Owner's settings for the
+assistant. It has three items.
 **Microsoft Entra ID** connects Vantigo to the company's Microsoft Entra ID tenant; its
 page has four tabs — **Status**, **Connection**, **Accounts** and **Outlook and mail** —
 described in [Microsoft Entra ID](/en/user/entra/#where-it-is-and-the-four-tabs). It is there
 only while the Microsoft Entra ID module is on in this installation, and only for someone
 who holds `entra:manage`; an Owner holds every permission. **AI models** is the Owner's
 alone, and is there only while Vantigo has set up AI for this installation
-([below](#ai-models)).
+([below](#ai-models)). **Assistant** is the Owner's alone too, and is there while the Assistant
+module is on and AI is set up ([below](#assistant)).
 
 - An Owner sees all of Workspace admin, with **Integrations** after the rest.
 - Someone who holds `entra:manage` but is not an Owner sees **Integrations** alone in
   the sidebar — the way a person with delegated role administration sees **Roles &
   access** alone — and finds **Microsoft Entra ID** in the avatar menu. The steps that
-  are an Owner's they read without their forms. They do not see **AI models**.
+  are an Owner's they read without their forms. They do not see **AI models** or **Assistant**.
 - Without `entra:manage` (and not an Owner), there is no **Integrations** section. For
   an Owner there is none either while the Microsoft Entra ID module is off and AI is not
   set up.
@@ -473,6 +479,80 @@ digests and counts, never text:
 [AI draft and customer suggestion](/en/reference/communications/#ai-draft-and-customer-suggestion)).
 The settings that belong to the installation are in
 [Configuration](/en/admin/configuration/#ai).
+
+### Assistant
+
+The [Assistant](/en/user/assistant/) answers people's questions from the documentation and
+reads the data they may read. **Assistant** (an Owner's page under **Integrations**) is where you
+decide who has it, how long conversations are kept and what it may use. It is there while the
+Assistant module is on in this installation and the installation has an AI provider; without
+one, the assistant is not offered to anybody. It is the Owner's alone.
+[Configuration](/en/admin/configuration/#ai) says what the installation sets up.
+
+**Who has the assistant.** Choose one of three, and it is saved at once:
+
+| Mode | Who has the assistant |
+| --- | --- |
+| **Enabled for all** (the default) | Every active user. The per-person switches are ignored. |
+| **Per person** | Only the people whose own switch is on. |
+| **Disabled for all** | Nobody, whatever their switches say. |
+
+The per-person switch is **Has the assistant**, in the **Edit user** dialog of a person under
+**Users** (the actions menu on their row › **Edit details**). It saves by itself and counts only
+in **Per person** mode; the dialog says so beside it. It is off until you turn it on. Someone
+whose account is disabled or locked out has no assistant in any mode.
+
+**How long conversations are kept.** **Keep conversations for** takes 1 to 60 months, 12 by
+default; choose **Save** after changing it. A conversation is deleted, whole, once its last
+activity is older than that, and the deletion runs once a day, so a shorter time takes effect at the next
+daily run. Nobody, an Owner included, can read a person's conversations; only how long they live is yours
+to set.
+
+**Where the data goes.** A notice beside the settings says it plainly. When the model is on
+this installation's own network: *The model runs on this installation. Questions and data are
+not sent anywhere else.* Otherwise: *Questions and the data the assistant reads are sent to*
+the provider — the questions, the documentation it finds and whatever it reads for the person
+asking. Turning on **Can read** below for a provider that is not local is a decision to
+let that data leave; the notice is repeated beside the switch.
+
+#### What the assistant may use
+
+The assistant reads through the same API the screens use, as the person asking, so it can only ever
+use what that person may. This card decides how much of that it may use *at all*. The levels
+can only **narrow** what the person may do, never widen it, and they never change what the person
+sees on a screen.
+
+- **Sensitive data** has two values, **Not available** (the default) and **Can read**. It sets the
+  default level of every permission that is marked **Sensitive** in the role editor — in Customers,
+  for example, the contacts, the timeline, the legal identity and the billing profiles. With **Not
+  available** the assistant cannot read behind a sensitive permission even for a person who holds
+  it.
+- **The permission table** lists the permissions of the modules switched on, grouped by module and
+  category, with the **Sensitive** badge where there is one. Each has a **level**, chosen in the row
+  and saved at once:
+
+  | Level | The assistant may |
+  | --- | --- |
+  | **Off** | Use no operation whose access rule names the permission. |
+  | **Read** | Read behind the permission. Operations that change data are not available to it. |
+  | **Read and change** | Use the permission as far as the person may. *Changes come in a later version*: until then this level reads exactly as **Read** does, and the page says so. |
+
+- **Defaults and overrides.** A permission that is not sensitive starts at **Read and change**; a
+  sensitive one takes the **Sensitive data** switch's value, **Off** or **Read**. Only the levels
+  you set yourself are stored, marked **Changed**, so a permission a later release adds takes its
+  default. **Reset to default** on a row removes your choice, and the **Show** filter narrows the
+  table to **All**, **Sensitive** or the **Changed** ones.
+- **A change takes effect at the assistant's next step**, within about a second on any server, also
+  in an answer already under way.
+- **Operations whose rule names no permission** — those open to any signed-in person or to a business
+  account — are not touched by these levels. Operations that belong to Owners and administrators,
+  and file uploads and downloads, are never available to the assistant, whatever you set.
+- **Every change is recorded** with the level before and after, the person who made it and when,
+  in the assistant's own record. The [reference](/en/reference/assistant/#the-owners-audit) says
+  where.
+
+If someone else changed the settings while you had the page open, you are told *Somebody else saved
+these settings*, the page reloads, and you make your change again.
 
 ## Set up a new installation
 

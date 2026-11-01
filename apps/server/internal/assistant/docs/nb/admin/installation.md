@@ -84,10 +84,10 @@ engangsjobb, og starter deretter Vantigo:
 - **API-kontrakten** — `GET http://localhost:8080/api/openapi.json` (krever en sesjon)
 
 Modulene Kunder, Produkter, Energi, Kommunikasjon, Prosjekter, Tid, Utgifter,
-Fakturaer, Ansatte, Bemanning, Kalender og Microsoft Entra ID er aktivert som standard
+Fakturaer, Ansatte, Bemanning, Kalender, Microsoft Entra ID og Assistent er aktivert som standard
 (`MODULES` i `vantigo.env`). De deler én PostgreSQL-database ved navn `vantigo`, med
 uavhengige skjemaer `identity`, `customers`, `products`, `energy`, `communications`,
-`projects`, `time`, `expenses`, `invoices`, `staff`, `planning`, `calendar` og `entra`, hver med sin egen
+`projects`, `time`, `expenses`, `invoices`, `staff`, `planning`, `calendar`, `entra` og `assistant`, hver med sin egen
 migreringshistorikk.
 
 ## Hva stacken inneholder
@@ -188,13 +188,13 @@ prosedyrene og gjenopprettingen.
   denne installasjonen aktiverer. `identity` er alltid montert og listes aldri. Usatt
   aktiverer hver modul binæren kan montere: `customers`, `products`, `energy`,
   `communications`, `projects`, `time`, `expenses`, `invoices`, `staff`, `planning`,
-  `calendar` og `entra`. `energy`, `communications`, `projects` og `invoices` krever hver
+  `calendar`, `entra` og `assistant`. `energy`, `communications`, `projects` og `invoices` krever hver
   `customers`, `time` krever `projects`, `planning` krever både `projects` og `staff`,
   og `entra` krever `staff`; `projects` bruker
   også `products` når den er aktivert og svarer 409 på endepunktene for
   faktureringslinjer når den ikke er det; `expenses` krever ingenting og leser
-  `projects` bare når den tilfeldigvis er aktivert; `staff` og `calendar` krever
-  ingenting.
+  `projects` bare når den tilfeldigvis er aktivert; `staff`, `calendar` og `assistant` krever
+  ingenting (assistenten har bare nytte av seg mens `AI_PROVIDER` er satt).
   For en mindre installasjon lister du bare det du vil ha, for eksempel
   `MODULES=customers,products`.
 - **`OWNERS_REQUIRE_MFA=0` og `OWNERS_ALLOW_INSECURE_NO_MFA=1`** (`vantigo.env`) —
@@ -269,9 +269,9 @@ ALTER DEFAULT PRIVILEGES FOR ROLE "vantigo" GRANT USAGE, SELECT ON SEQUENCES TO 
 -- Standardrettigheter dekker bare objekter som opprettes etterpå; gi rettigheter
 -- på skjemaene de aktiverte modulene allerede har opprettet (legg til/fjern
 -- skjemaer så de stemmer med MODULES aktivert i din installasjon).
-GRANT USAGE ON SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, calendar, entra TO "vantigo_app";
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, calendar, entra TO "vantigo_app";
-GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, calendar, entra TO "vantigo_app";
+GRANT USAGE ON SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, calendar, entra, assistant TO "vantigo_app";
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, calendar, entra, assistant TO "vantigo_app";
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, calendar, entra, assistant TO "vantigo_app";
 ```
 
 ## Bakgrunnsjobber og skalering
@@ -291,7 +291,9 @@ kalendermodulens avlysningsjobb `calendar-cancellations` med mindre
 `calendar-subscriptions` med mindre `CALENDAR_SUBSCRIPTIONS_ENABLED=0`, og kalendermodulens
 postbokssynkronisering `calendar-mailbox-sync` med mindre `CALENDAR_MAILBOX_SYNC_ENABLED=0`,
 og Microsoft Entra ID-modulens `entra-outlook-sweep`, alltid, som rydder i folks
-Outlook-tilkoblinger hver time) inne i API-prosessen: `WORKERS_IN_PROCESS=1`, standardverdien. Utrullinger som
+Outlook-tilkoblinger hver time, og Assistentens `assistant-runs`, alltid, som feiler en
+kjøring en omstart etterlot som pågående, og `assistant-retention`, alltid, som sletter samtaler
+som er eldre enn oppbevaringstiden én gang i døgnet) inne i API-prosessen: `WORKERS_IN_PROCESS=1`, standardverdien. Utrullinger som
 skalerer API-et horisontalt bør flytte dem til én dedikert worker-container, slik at
 hver ekstra HTTP-replika ikke mangedobler pollerne:
 
@@ -317,7 +319,7 @@ hver ekstra HTTP-replika ikke mangedobler pollerne:
 Replikaer som verken skal migrere eller kjøre bakgrunnsjobber kan kjøre kommandoen
 `server` i stedet for `api`; den serverer bare, uansett hva `WORKERS_IN_PROCESS` sier.
 Uansett topologi tar oppbevaringsoppryddingen, registerjobbene, EHF-hendelsesjobben,
-kalenderens avlysningsjobb og `entra-outlook-sweep` en rådgivende lås (advisory lock) i PostgreSQL, så hver av dem kjører på nøyaktig én
+kalenderens avlysningsjobb, `entra-outlook-sweep` og `assistant-retention` en rådgivende lås (advisory lock) i PostgreSQL, så hver av dem kjører på nøyaktig én
 instans per syklus; utboksen, `invoices-ehf`-jobben, `invoices-reminders`-jobben,
 `invoices-billing`-jobben, `invoices-payments`-jobben, `communications-mailbox-sync` og
 kalenderens abonnements- og postboksjobb tar i stedet én rad om gangen under en tidsbegrenset lås, så
@@ -503,7 +505,7 @@ må den nye URI-en legges til appregistreringen
 API-prefiksene forblir `/api/v1/identity`, `/api/v1/customers`, `/api/v1/products`,
 `/api/v1/energy`, `/api/v1/communications`, `/api/v1/projects`, `/api/v1/time`,
 `/api/v1/expenses`, `/api/v1/invoices`, `/api/v1/staff`, `/api/v1/planning`,
-`/api/v1/calendar` og `/api/v1/entra`.
+`/api/v1/calendar`, `/api/v1/entra` og `/api/v1/assistant`.
 
 For eksempel, med nginx:
 
@@ -807,6 +809,21 @@ før en eier legger dem til. En rolle med minste privilegium trenger tilgang til
 `planning` ([Databaseroller](#databaseroller)). Den starter ingen bakgrunnsjobb og
 trenger ingen innstilling; det er ikke noe mer å gjøre. Å rulle migreringen tilbake
 dropper skjemaet med alle allokeringene. Se [Bemanning](/nb/user/planning/).
+
+**Utgivelsen med Assistenten.** Den har `00103_assistant_baseline.sql`, skjemaet
+`assistant`: innstillingene (alle har assistenten, samtaler beholdes i 12 måneder, sensitive
+data er ikke tilgjengelige for den), hver persons bryter, samtalene med meldinger, kjøringer og
+handlingslogg, og eierens tillatelsesnivåer, alt tomt. En installasjon som lar `MODULES` stå
+usatt, får modulen, og **Assistent**-flisen for alle, ved oppgradering; en som lister
+`MODULES`, får den når `assistant` legges til. Den trenger ingen rettighet og ingen annen
+modul, men har bare nytte av seg mens `AI_PROVIDER` er satt, med en modell som støtter
+verktøykall ([Konfigurasjon](/nb/admin/configuration/#ki)); uten en tilbys assistenten ikke til
+noen. En rolle med minste privilegium trenger tilgang til skjemaet `assistant`
+([Databaseroller](#databaseroller)). Den starter to bakgrunnsjobber: `assistant-runs`, som
+feiler en kjøring en omstart etterlot som pågående, og `assistant-retention`, som sletter
+samtaler som er eldre enn oppbevaringstiden og samtalene til personer identity har slettet.
+Å rulle migreringen tilbake dropper skjemaet med alle samtalene. Se
+[Assistent](/nb/user/assistant/) og [referansen for Assistent](/en/reference/assistant/).
 
 **Utgivelsen med kompetanse i Ansatte.** Den har `00066_staff_competence.sql`:
 kompetansekatalogen — fem kategorier og femten norske sertifikater forhåndsdefinert — og

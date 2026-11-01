@@ -7,6 +7,7 @@ sources:
   - docs
   - tools/docs
   - apps/server/internal/docs
+  - apps/server/internal/assistant/docsindex.go
   - scripts/spa-embed-overlay.sh
   - scripts/restore-embed-overlay.sh
 ---
@@ -55,6 +56,35 @@ The site is built twice from the same content:
 Links in pages are written as site paths without a base (`/en/user/`); a rehype plugin
 in the Astro config prefixes them with the base at build time, so a page never needs
 to know which build it is in.
+
+## The assistant's copy
+
+The user guide and the administration guide are also **embedded in the server for the
+[Assistant](/en/user/assistant/)**, which answers "how do I…" by searching them, in the
+person's language. `go generate` (a directive in `apps/server/generate.go`) copies
+`docs/src/content/docs/{en,nb}/{user,admin}/*.md` into
+`apps/server/internal/assistant/docs/`, which the binary embeds, and the directory is committed.
+`TestEmbeddedDocsAreTheDocumentation` (`internal/assistant`) fails when the copy differs from
+the pages, so **a change to a user or administration page is not finished until you have run**
+
+```bash
+cd apps/server && go generate -run "rm -rf internal/assistant/docs" ./generate.go
+```
+
+and committed the directory with the page. The reference and contributing sections are not
+embedded.
+
+What you write is what the assistant reads, so a few habits pay twice:
+
+- **Headings are the index.** The assistant cuts a page at its `##` and `###` headings, ranks
+  sections by their words with a heading's counting extra, and links to a section by the heading's
+  Starlight anchor. A heading that says the task ("Create a metering point") is found by
+  the question; renaming one changes the link the assistant gives, and a test pins the headings
+  it is known to be asked about.
+- **Name screens as the interface names them**, in each language, because the assistant repeats
+  the steps as written.
+- **A page in English only** is found for Norwegian readers too, as the fallback.
+  ([How the index works](/en/reference/assistant/#the-documentation-index).)
 
 ## The rule: documentation changes with the code
 

@@ -18,6 +18,7 @@ sources:
   - apps/expenses/frontend/eslint.config.js
   - apps/invoices/frontend/eslint.config.js
   - apps/planning/frontend/eslint.config.js
+  - apps/assistant/frontend/eslint.config.js
   - apps/products/frontend/eslint.config.js
   - apps/projects/frontend/eslint.config.js
   - apps/staff/frontend/eslint.config.js
@@ -26,7 +27,7 @@ sources:
 Vantigo is a modular monolith: one Go binary, one container, one PostgreSQL
 database — with strict module boundaries so any module can later be extracted into
 its own deployable without a rewrite. Customers, Products, Energy, Communications,
-Projects, Time, Expenses, Invoices, Staff, Calendar, Entra and Planning are vertical-slice modules composed only
+Projects, Time, Expenses, Invoices, Staff, Calendar, Entra, Planning and Assistant are vertical-slice modules composed only
 by `cmd/vantigo`, on the Identity platform.
 
 Modules never reference each other directly. Synchronous cross-module needs go
@@ -83,7 +84,7 @@ Communications' outbox is the working example.
    type, never a store type, and the reason is rules 8, 9 and 10's.
 4. **One schema per module.** Each module maps tables only into its own PostgreSQL
    schema (`identity`, `customers`, `products`, `energy`, `communications`,
-   `projects`, `time`, `expenses`, `invoices`, `staff`, `calendar`, `entra`, `planning`), and no module's migrations or queries reference
+   `projects`, `time`, `expenses`, `invoices`, `staff`, `calendar`, `entra`, `planning`, `assistant`), and no module's migrations or queries reference
    another's. **No cross-schema foreign keys or joins** — reference other modules'
    data by opaque ID only. That is what keeps a future "move this schema to its own
    server" a connection-string change instead of a data migration.
@@ -807,12 +808,22 @@ Communications' outbox is the working example.
       satisfies `scim` or a `policy:` rule naming `Owner`, `OwnerManagement`,
       `AuthorizationManagement` or `SystemAdmin`, and it ends with its time, its revocation, its
       session (a sign-out, an expiry) or its user (disabled, locked out).
-    - **Every operation has an assistant mode** (`auto`, `confirm`, `never`), computed once by
+    - **Every operation has a contract mode** (`auto`, `confirm`, `never`), computed once by
       `Compose`: the operation's `x-vantigo-assistant` when it has one (the OpenAPI lint
       checks the values, and refuses `auto` or `confirm` behind a rule an assistant is never
       admitted to); otherwise `never` for an `anonymous`, `scim` or `session` rule, an Owner-tier
-      policy, any `Sensitive` permission in the catalog, a file upload or download, or the
+      policy, a permission missing from the catalog, a file upload or download, or the
       assistant's own API; otherwise `auto` for `GET` and `confirm` for every other method.
+      The contract's mode is the widest an operation can ever be. **A gate narrows it for the
+      workspace**: the module named `assistant` installs one with `Operations.SetGate` while it
+      mounts, which applies the Owner's permission level of each permission the rule names (*Off*
+      makes it `never`, *Read* turns `confirm` into `never`), and the dispatcher keeps the narrower
+      of the two, so a gate can never widen the contract. `Info` carries the contract's `Mode`,
+      the `Permissions` the rule names and whether any is `Sensitive`; `List`, `Search`, `Effective`
+      and `Call` answer the effective mode. **Without a gate the dispatcher fails closed**: an
+      operation whose rule names a `Sensitive` permission is `never`, which is how the platform
+      behaved before the Assistant module existed, and a gate that cannot decide answers `never`
+      ([the reference](/en/reference/assistant/#permission-levels-and-the-gate)).
       `never` operations are not offered to the model and `Call` refuses them; `confirm`
       ones are refused unless the call says the person confirmed. A `POST` that only reads is
       marked `auto` by hand; an operation that would pass a secret through the model is marked
@@ -824,6 +835,19 @@ Communications' outbox is the working example.
       assistant searches by, so the OpenAPI lint requires one on every operation.
     `modtest.Harness.Operations` and `AssistantContext` bind a dispatcher to a harness and
     issue a grant for a signed-in client.
+
+19. **A module that holds a person's data learns of their erasure by asking.** When identity erases
+    a person it deletes the user and tells no module, and no module may reach into identity's
+    schema or be called by it. A module that keeps data about a user, and has no contract that is
+    told of the erasure, **sweeps against `contracts.UserDirectory`**: on a schedule, in chunks, it
+    asks `Users(ids)` about the user ids it holds — "an id that does not exist is simply absent" —
+    and deletes the rows of those that are gone. The first is the Assistant's conversations, runs,
+    actions and switches, swept by its daily retention worker
+    ([erasure](/en/reference/assistant/#erasure)). The price is written down in the module's
+    reference: the data of an erased person can outlive the erasure by one cycle, and a disabled
+    user is still known and is kept. A module that is handed the erasure instead — a customer's,
+    through `contracts.CustomerPersonalData` (rule 9) — keeps rule 9's discipline. Tested with a user
+    identity does not know and the sweep run on the module's own worker.
 
 ## The AI platform
 
@@ -963,6 +987,19 @@ none is a numbered rule above because no module reaches into another.
   assert none was. Entra's `channel_mailbox_test.go` proves `Send` refuses a mailbox no
   `Check` recorded without a call, and `TestCompose_ResolvesTheChannelMailboxSlot` that
   two providers are refused.
+- **Rule 18**: by depguard and by test. depguard forbids every import of `internal/operations`
+  but `internal/assistant`, `internal/module`, `internal/server` and the test harnesses; a
+  `module` test composes a module called `alpha` and one called `assistant` and proves which is
+  handed the dispatcher; the dispatcher's own tests bind it to a small synthetic contract and
+  prove each mode, the gate (it narrows, never widens, and a missing or failing gate
+  falls back to the closed default) and that a call carries no value of the caller's; and
+  `TestOperations_TheRealContract` derives the contract's mode and the default gate's mode of every
+  operation of the shipped contract again from the catalog, pinning the hand-written marks. The
+  assistant module's tests run every level, the switch and its overrides through the real
+  dispatcher and the real router.
+- **Rule 19**: by test. The Assistant's erasure test seeds conversations, runs and a switch for a
+  user identity does not know, runs the module's retention cycle, and proves they are gone while a
+  living user's and a disabled user's are not.
 - **The harness**, `apps/server/internal/modtest`, is what these tests mount their
   modules through: an in-process installation on a real, migrated PostgreSQL database,
   the real server stack over `module.Compose` with identity beside the module under
@@ -1000,7 +1037,7 @@ MODULES=customers,products
 ```
 
 Unset enables every module this binary can mount
-(`customers,products,energy,communications,projects,time,expenses,invoices,staff,calendar,entra,planning`). Identity is always mounted and
+(`customers,products,energy,communications,projects,time,expenses,invoices,staff,calendar,entra,planning,assistant`). Identity is always mounted and
 is never listed. Entries are trimmed and lower-cased, empty entries are ignored, and a
 name the binary does not know fails startup naming both the value and the known set.
 
@@ -1029,7 +1066,8 @@ called only by Staff's accounts worker, the slot's one consumer, so `entra` with
 `staff` would hold a tenant's credential nothing uses and is rejected too (`entra
 requires staff`). Planning books Staff's people on Projects' projects, so `planning`
 requires both `projects` and `staff` (`planning requires projects`, `planning requires
-staff`). A module that starts requiring
+staff`). Assistant requires nobody: it reaches the other modules only through the dispatcher, which
+lists whichever are enabled, and it is of use only while `AI_PROVIDER` is set. A module that starts requiring
 another module's contract adds its own check in `internal/config`.
 
 A contract can also be **optional**. `contracts.ProductCatalog` is the first:
@@ -1335,6 +1373,23 @@ the caller's own confirmed bookings, the kind `planning.allocation`, when `calen
 composed — its builder answers nil otherwise, since Planning does not require the
 calendar and nothing would read the source. It has no background worker. With `planning` off
 nothing else changes. See [Planning](/en/reference/planning/#contracts-consumed).
+
+**The Assistant reads identity and calls the contract.** It is the one module that receives
+`Deps.Operations`, the platform's dispatcher (rule 18): its tools search, describe and call the
+operations of the enabled modules as the signed-in person, so it imports none of them and none
+knows it exists. From identity it takes `Deps.AssistantGrants` (the grant each run acts under, issued
+from the person's own request and revoked when the run ends) and `Deps.Users`
+(`contracts.UserDirectory`: the person's language, whether a user exists for the Owner's switch, and
+the erasure sweep, rule 19); from the platform `Deps.AI`, whose `Chat` it calls with the AI task
+`assistant.chat` (`Module.AITasks`, an Owner's choice under **AI models**), and `Deps.Catalog`, the
+permission catalog its Owner-level table lists. It declares **no permissions**: whether a person has
+the assistant is the Owner's mode and the person's own switch, and what it may use is the Owner's
+permission levels, applied through `SetGate`. It provides no contract, fills no slot and requires no
+other module, so `MODULES=assistant` alone is valid; with no AI provider `Deps.AI` is nil and nobody has
+the assistant. Its workers are `assistant-runs` and `assistant-retention`. The host mounts its panel in
+the app layout; the module frontend never imports another's, and a record's label for the panel's
+chip comes from resolvers the host registers (rule 7). See
+[Assistant](/en/reference/assistant/).
 
 **Entra reads identity and Staff, and is called by Staff.** It reads of identity only
 `Deps.SSOConnections` (`contracts.SSOConnections`, rule 12), for the directory's exact

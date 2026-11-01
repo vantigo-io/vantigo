@@ -51,7 +51,7 @@ veiledningene det lenkes til fra hver gruppe, sier hvordan du velger.
 | `PUBLIC_BASE_URL` | ikke satt | `https`-adressen betalingssiden, kalenderens svarside og Microsofts endringsvarsler nås på fra internett |
 | `PORT` | `8080` | Porten det lyttes på |
 | `DATABASE_URL`, `MIGRATIONS_DATABASE_URL` | påkrevd; den andre er som den første | Kjøretidsrollens tilkobling og eierrollen migreringene bruker |
-| `MODULES` | alle modulene binæren kjenner | Forretningsmodulene denne installasjonen betjener |
+| `MODULES` | alle modulene binæren kjenner | Forretningsmodulene denne installasjonen betjener: `customers`, `products`, `energy`, `communications`, `projects`, `time`, `expenses`, `invoices`, `staff`, `planning`, `calendar`, `entra` og `assistant`. `assistant` har ingen egne rettigheter og trenger ingen annen modul, men har bare nytte av seg mens `AI_PROVIDER` er satt ([KI](#ki)) |
 | `WORKERS_IN_PROCESS` | `1` | Om API-prosessen også kjører bakgrunnsarbeiderne |
 | `SHUTDOWN_TIMEOUT`, `LOG_LEVEL` | `30s`, `info` | Hvor lenge et stopp tømmer pågående arbeid; loggens detaljnivå |
 | `APP_SECRET` | påkrevd | Nøkkelmaterialet for hele prosessen: cookies, CSRF, forseglede hemmeligheter |
@@ -134,7 +134,7 @@ Alle er på som standard unntatt arbeideren for spotpriser.
 | `INVOICES_EHF_ENABLED`, `INVOICES_STORECOVE_BASE_URL` | `1`, Storecoves API | Å sende fakturaer som EHF ([E-faktura](/nb/admin/e-invoicing/)) |
 | `INVOICES_VIPPS_ENABLED`, `INVOICES_VIPPS_BASE_URL` | `1`, Vipps' API | Betaling med Vipps MobilePay ([Betalinger](/nb/admin/payments/)) |
 | `ENERGY_SPOT_PRICE_SERVICE_URL`, `ENERGY_SPOT_PRICE_SERVICE_KEY`, `ENERGY_SPOT_PRICE_HISTORY_FROM` | ikke satt | Den delte spotpristjenesten Vantigo setter en installasjon opp med, bærernøkkelen til den (en hemmelighet, vist ingen steder) og eldste dag som kopieres |
-| `AI_PROVIDER`, `AI_API_KEY`, `AI_BASE_URL`, `AI_MODELS`, `AI_TIMEOUT` | ikke satt, ikke satt, ikke satt, ikke satt, `120s` | KI-abonnementet: leverandøren, nøkkelen (en hemmelighet, vist ingen steder; valgfri for en modell på eget nettverk), et valgfritt kompatibelt endepunkt, modellene abonnementet tillater og hvor lenge en samtale kan ta. Ikke satt er alle KI-funksjoner utilgjengelige ([KI](#ki)) |
+| `AI_PROVIDER`, `AI_API_KEY`, `AI_BASE_URL`, `AI_MODELS`, `AI_TIMEOUT`, `AI_CONTEXT_TOKENS` | ikke satt, ikke satt, ikke satt, ikke satt, `120s`, `16000` | KI-abonnementet: leverandøren, nøkkelen (en hemmelighet, vist ingen steder; valgfri for en modell på eget nettverk), et valgfritt kompatibelt endepunkt, modellene abonnementet tillater, hvor lenge en samtale kan ta og hvor mye av en samtale assistenten sender modellen. Ikke satt er alle KI-funksjoner utilgjengelige ([KI](#ki)) |
 
 ### KI
 
@@ -150,6 +150,7 @@ arbeidsområdets valg.
 | `AI_BASE_URL` | leverandørens egen adresse | En absolutt adresse til et OpenAI-kompatibelt endepunkt, med versjonsstien (`https://api.openai.com/v1`); uten bruker, spørring eller fragment. `https`, eller `http` når verten er en loopback-adresse, en privat adresse (`10.x`, `172.16`–`172.31`, `192.168.x`, `fc00::/7`) eller et navn uten punktum som `ollama`. En offentlig vert over `http` avvises, og det samme gjelder enhver `http`-adresse mens `AI_API_KEY` er satt: en nøkkel sendes aldri i klartekst |
 | `AI_MODELS` | påkrevd sammen med leverandøren | Modellene abonnementet tillater, kommaseparert, der den første er abonnementets standard: `gpt-4o-mini,gpt-4o`. Minst én, ingen gjentatt, hver på opptil 150 tegn uten mellomrom |
 | `AI_TIMEOUT` | `120s` | Hvor lenge ett samtalekall kan ta, som en Go-varighet over null og høyst `10m`. Lokale modeller er trege; et kall med én enkelt forespørsel beholder sine egne 30 sekunder |
+| `AI_CONTEXT_TOKENS` | `16000` | Hvor mye av en samtale [Assistenten](/nb/user/assistant/) sender modellen, som et antall tokens fra `2000` til `1000000`; en verdi utenfor det området avvises ved oppstart. Sett den til kontekstvinduet til modellen du kjører, eller litt under. Den anslås til omtrent fire tegn per token, så den er en rettesnor og ikke et mål; over den erstatter assistenten først de eldre resultatene fra verktøyene sine med en enlinjes merknad, og dropper så de eldste rundene i samtalen, slik at det siste spørsmålet alltid sendes. Lokale modeller har små vinduer; en hostet modell kan ta langt mer |
 
 `AI_API_KEY`, `AI_BASE_URL`, `AI_MODELS` og `AI_TIMEOUT` uten `AI_PROVIDER` avvises ved oppstart, og det
 samme gjelder en leverandør uten modell, eller uten verken nøkkel eller basisadresse; en leverandør som ikke er satt, er den
@@ -179,6 +180,22 @@ en prosessor kan trenge minutter.
 
 Hver KI-jobb får fortsatt en modell per oppgave under **KI-modeller**, blant dem `AI_MODELS`
 lister.
+
+#### Assistentens modell
+
+[Assistenten](/nb/user/assistant/) er den ene KI-funksjonen som fører en samtale og lar modellen be
+om verktøy: den søker i dokumentasjonen og leser data gjennom API-et, som den som spør, ved å
+returnere verktøykall. **Den trenger en modell som støtter verktøykall** (funksjonskall). En modell
+som ikke gjør det, blir enten avvist av tjeneren når assistenten spør den, eller svarer uten
+dokumentasjonen og personens data og blir dårligere av det; prøv modellen du velger ved å stille
+assistenten et hvordan-spørsmål og et spørsmål om data. Assistenten er oppgaven **Assistant chat**
+(`assistant.chat`), og en eier velger modellen under **KI-modeller** som for alle andre. Hvert svar
+kan ta flere kall til modellen — den leser, så svarer den — så `AI_TIMEOUT` er grensen for hvert
+kall, ikke for hele svaret. `AI_CONTEXT_TOKENS` begrenser hva hvert kall sendes. Spørsmålene,
+dokumentasjonen den finner og dataene den leser går til leverandøren; en eier ser hvor under
+**Administrer arbeidsområde** › **Assistent**
+([veiledning](/nb/user/workspace-administration/#assistent)). Assistenten er tilgjengelig for ingen
+mens `AI_PROVIDER` ikke er satt.
 
 Hver KI-jobb en modul utfører, er en **oppgave** som modulen deklarerer, som *Draft a
 reply* eller *Suggest the customer* i Kommunikasjon (oppgavenavnene vises på engelsk). En eier velger modellen hver oppgave
@@ -234,6 +251,7 @@ endres ikke: begge operasjonene bruker den modellen til en eier velger en annen.
 | Kontoreglene, innlogging og klargjøring, gruppene Vantigo holder i leietakeren | **Integrasjoner** › **Microsoft Entra ID** › **Kontoer** | `entra:manage` (innlogging og klargjøring: en eier) |
 | Outlook-tilkoblingen, kalendersynkronisering på den, og e-postkanaler | **Integrasjoner** › **Microsoft Entra ID** › **Outlook og e-post** | `entra:manage` |
 | Modellen hver KI-oppgave bruker, blant modellene abonnementet tillater | **Administrer arbeidsområde** › **Integrasjoner** › **KI-modeller** ([veiledning](/nb/user/workspace-administration/#ki-modeller)) | en eier |
+| Hvem som har assistenten, hvor lenge samtaler beholdes og hva assistenten kan bruke | **Administrer arbeidsområde** › **Integrasjoner** › **Assistent** ([veiledning](/nb/user/workspace-administration/#assistent)); hver persons egen bryter under **Brukere** › **Rediger detaljer** | en eier |
 | Postboksene Kommunikasjon sender fra, og SMTP-kontoene den bruker | **Kommunikasjon** › **Kanaler** | `communications:channels-manage` |
 | En moduls egne regler: Fakturainnstillinger, Ansatteinnstillinger, Bemanningsinnstillinger, Timeinnstillinger, Utleggsinnstillinger | Modulens innstillingsside i sidemenyen | modulens rettighet |
 

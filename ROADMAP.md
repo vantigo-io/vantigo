@@ -130,11 +130,17 @@ and `Principal.Via` (identity, migration `00102`); the `Operations` dispatcher w
 `auto` / `confirm` / `never` modes, given to the module named `assistant` alone; a `summary`
 on every operation, required by the OpenAPI lint, and `x-vantigo-assistant`. No screen.
 
-**Delivery A (planned) — the Assistant app, read-only** — the `assistant` module and its
-schema, the workspace setting and per-person switches, private conversations that stream and
-can be resumed, `search_docs`, `search_operations`, `describe_operation`, `call_operation` for
-`auto` operations and `navigate`; the `/assistant` app and the panel in the shell; retention
-and erasure.
+**Delivery A — the Assistant app, read-only (done, `feat/assistant-app`)** — the `assistant`
+module and its schema (migration `00103`), the workspace mode and per-person switches, private
+conversations that stream over server-sent events, outlive the connection and can be resumed,
+`search_docs` over the embedded user and administration guides, `search_operations`,
+`describe_operation`, `call_operation` for `auto` operations and `navigate`; **what the
+assistant may use** — the Owner's sensitive data switch and a level per permission (*Off*, *Read*,
+*Read and change*), applied by a gate the module installs on the dispatcher, which fails closed
+without one; the `/assistant` app and the docked panel with its context chip, the header button,
+Cmd/Ctrl+J and Spotlight's *Ask the assistant*; retention (12 months by default) and the erasure
+sweep. Documented in [the user guide](docs/src/content/docs/en/user/assistant.md), the
+[reference](docs/src/content/docs/en/reference/assistant.md) and module boundaries rule 19.
 
 **Delivery T (planned) — tours** — `show_tour` over a registry of targets each module
 exports, tested against the source, with markers on the most-used screens.
