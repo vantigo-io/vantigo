@@ -154,7 +154,8 @@ your browser remembers the scale. A member or manager reschedules a task on the 
   day. **Enter** opens it, as a click does.
 
 The move saves as any other task edit; if someone changed the task meanwhile, the bar goes
-back and you are told *The task was changed by someone else. Reload it and try again.* When the move changed the due date
+back, the tasks are read again and you are told *The task was changed by someone else. It has
+been reloaded; try again.* When the move changed the due date
 of a task that others depend on, the timeline asks *Shift N dependent tasks D days later?*
 (or *earlier*): **Shift dependent tasks** moves every task downstream of it by the same number
 of days, **Leave them** keeps them where they are. Nothing downstream moves without that
@@ -189,8 +190,11 @@ with automatic prevention of cyclic dependency loops, conflict warnings, and an 
 **Load more**; you edit and delete your own, a manager deletes anyone's. On the board
 a card's menu offers **Move to To do**, **Move to In progress** and **Move to Done**;
 **Done** stamps the completion, moving back clears it. A task somebody else saved
-meanwhile is refused with *The task was changed by someone else. Reload it and try
-again.* Tasks follow the project's roles, not a permission, and are never locked by
+meanwhile is refused, and the tasks are read again. In the drawer's title and details,
+which keep what you typed, it says *The task was changed by someone else. Reload it and
+try again.* — close and reopen the task; everywhere else (a board card's menu, a subtask,
+**My tasks**, the timeline) it says *The task was changed by someone else. It has been
+reloaded; try again.* Tasks follow the project's roles, not a permission, and are never locked by
 the project's status — see [Tasks](/en/reference/projects/#tasks) and
 [Delivery milestones](/en/reference/projects/#delivery-milestones).
 

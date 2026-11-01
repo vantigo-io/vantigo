@@ -84,13 +84,19 @@ const sampleDependencies: TaskDependency[] = [
 const stubTimelineData = ({
   dependencies = sampleDependencies,
   milestones = sampleMilestones,
+  conflict = false,
 }: {
   dependencies?: TaskDependency[];
   milestones?: DeliveryMilestone[];
+  /** Every task save answers 409, as a revision that moved on does. */
+  conflict?: boolean;
 } = {}) =>
   stubFetch((input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(String(input), "http://localhost");
     const taskPut = url.pathname.match(/^\/api\/v1\/projects\/tasks\/(\d+)$/);
+    if (taskPut && init?.method === "PUT" && conflict) {
+      return Promise.resolve(jsonResponse(409, { title: "Revision conflict", status: 409 }));
+    }
     if (taskPut && init?.method === "PUT") {
       const body = JSON.parse(String(init.body));
       const task = sampleTasks.find((tk) => tk.id === Number(taskPut[1]));
@@ -195,9 +201,9 @@ describe("TaskTimelineView zoom and rescheduling", () => {
 
   // Waits for the links and milestones to load: who depends on whom is what
   // the downstream question is asked from.
-  const renderTimeline = async (canContribute = true) => {
+  const renderTimeline = async (canContribute = true, onOpen: (taskId: number) => void = vi.fn()) => {
     const rendered = renderWithProviders(
-      <TaskTimelineView projectId={7} tasks={sampleTasks} canContribute={canContribute} onOpen={vi.fn()} />,
+      <TaskTimelineView projectId={7} tasks={sampleTasks} canContribute={canContribute} onOpen={onOpen} />,
     );
     await waitFor(() => expect(rendered.queryClient.isFetching()).toBe(0));
     return rendered;
@@ -304,6 +310,98 @@ describe("TaskTimelineView zoom and rescheduling", () => {
       path: "/api/v1/projects/tasks/1/reschedule-downstream",
       body: { daysDelta: 2 },
     });
+    expect(await screen.findByText("Shifted 1 downstream task 2 days later")).toBeInTheDocument();
+  });
+
+  it("counts only the dependent tasks that have a date to shift", async () => {
+    // Task 3 depends on task 1 too, but has neither date: the server leaves it alone.
+    stubTimelineData({
+      dependencies: [...sampleDependencies, { ...sampleDependencies[0], id: 102, successorTaskId: 3 }],
+    });
+    await renderTimeline();
+    const bar = await screen.findByTestId("timeline-bar-1");
+
+    dragBar(bar, bar, 100, 140);
+
+    expect(await screen.findByText("Shift 1 dependent task 1 day later?")).toBeInTheDocument();
+  });
+
+  it("rereads the tasks after a 409 and lets the bar be moved again", async () => {
+    const fetchMock = stubTimelineData({ dependencies: [], conflict: true });
+    const { queryClient } = await renderTimeline();
+    const invalidate = vi.spyOn(queryClient, "invalidateQueries");
+    const bar = await screen.findByTestId("timeline-bar-1");
+    const before = bar.style.left;
+
+    dragBar(bar, bar, 100, 180);
+
+    expect(
+      await screen.findByText("The task was changed by someone else. It has been reloaded; try again."),
+    ).toBeInTheDocument();
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ["projects", "tasks"] });
+    await waitFor(() => expect(screen.getByTestId("timeline-bar-1").style.left).toBe(before));
+
+    dragBar(screen.getByTestId("timeline-bar-1"), screen.getByTestId("timeline-bar-1"), 100, 140);
+    await waitFor(() => expect(writes(fetchMock)).toHaveLength(2));
+  });
+
+  it("keeps each saved move in place until the list catches up, not just the latest", async () => {
+    // The stub answers the saves, but the tasks prop never refreshes: both
+    // moves stay pending, as when their refetches are still in flight.
+    const fetchMock = stubTimelineData({ dependencies: [] });
+    await renderTimeline();
+    const first = await screen.findByTestId("timeline-bar-1");
+    const firstLeft = Number.parseFloat(first.style.left);
+
+    dragBar(first, first, 100, 180);
+    await waitFor(() => expect(writes(fetchMock)).toHaveLength(1));
+    await settle();
+    const second = screen.getByTestId("timeline-bar-2");
+    dragBar(second, second, 300, 340);
+    await waitFor(() => expect(writes(fetchMock)).toHaveLength(2));
+    await settle();
+
+    expect(Number.parseFloat(screen.getByTestId("timeline-bar-1").style.left)).toBe(firstLeft + 80);
+    // Still holding the revision its save was made from, the first bar cannot be moved again.
+    dragBar(screen.getByTestId("timeline-bar-1"), screen.getByTestId("timeline-bar-1"), 100, 180);
+    await settle();
+    expect(writes(fetchMock)).toHaveLength(2);
+  });
+
+  it("treats a press under the drag threshold as a click, even at the month scale", async () => {
+    const fetchMock = stubTimelineData();
+    const onOpen = vi.fn();
+    await renderTimeline(true, onOpen);
+    await userEvent.click(screen.getByRole("radio", { name: "Month" }));
+    const bar = screen.getByTestId("timeline-bar-1");
+
+    dragBar(bar, bar, 100, 103); // 3px is more than half a 5px day, but not a drag
+    fireEvent.click(bar);
+
+    await settle();
+    expect(writes(fetchMock)).toHaveLength(0);
+    expect(onOpen).toHaveBeenCalledWith(1);
+  });
+
+  it("does not swallow the next click after an Escape or a cancelled pointer", async () => {
+    stubTimelineData();
+    const onOpen = vi.fn();
+    await renderTimeline(true, onOpen);
+    const bar = await screen.findByTestId("timeline-bar-1");
+
+    fireEvent.pointerDown(bar, { pointerId: 1, button: 0, clientX: 100 });
+    fireEvent.pointerMove(bar, { pointerId: 1, clientX: 200 });
+    fireEvent.keyDown(window, { key: "Escape" });
+    // The pointer is let go elsewhere: no click reaches the bar.
+    dragBar(bar, bar, 100, 100);
+    fireEvent.click(bar);
+    expect(onOpen).toHaveBeenCalledTimes(1);
+
+    fireEvent.pointerDown(bar, { pointerId: 2, button: 0, clientX: 100 });
+    fireEvent.pointerMove(bar, { pointerId: 2, clientX: 200 });
+    fireEvent.pointerCancel(bar, { pointerId: 2 });
+    fireEvent.click(bar);
+    expect(onOpen).toHaveBeenCalledTimes(2);
   });
 
   it("leaves the dependent tasks alone when told to", async () => {

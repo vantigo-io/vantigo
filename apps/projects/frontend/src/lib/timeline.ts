@@ -1,4 +1,5 @@
 import type { TaskDependency } from "../api/dependencies";
+import type { Task } from "../api/tasks";
 
 const MS_PER_DAY = 1000 * 60 * 60 * 24;
 
@@ -74,6 +75,26 @@ export const downstreamTaskIds = (taskId: number, dependencies: TaskDependency[]
   }
   return reached;
 };
+
+/**
+ * How many tasks the downstream shift would move: the reachable ones with a
+ * date to move, since the server leaves a task with neither date alone. A
+ * task `tasks` does not hold is not counted.
+ */
+export const datedDownstreamCount = (
+  taskId: number,
+  dependencies: TaskDependency[],
+  tasks: (TaskDates & { id: number })[],
+): number => {
+  const byId = new Map(tasks.map((task) => [task.id, task]));
+  return [...downstreamTaskIds(taskId, dependencies)].filter((id) => {
+    const task = byId.get(id);
+    return Boolean(task?.startDate || task?.dueDate);
+  }).length;
+};
+
+/** A task tree as one list, parents followed by their subtasks. */
+export const flattenTree = (tasks: Task[]): Task[] => tasks.flatMap((task) => [task, ...(task.subtasks ?? [])]);
 
 /** The ISO 8601 week number of a UTC epoch day: weeks start on Monday, week 1 holds the year's first Thursday. */
 export const isoWeek = (epochDays: number): number => {

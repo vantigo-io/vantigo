@@ -9,15 +9,28 @@ import "../i18n";
 /** What a full replace needs, which a tree task and a my-tasks row both carry. */
 type Savable = Parameters<typeof taskUpdateFrom>[0] & Pick<Task, "id">;
 
+export interface TaskSaveOptions {
+  /**
+   * The caller sends a revision of its own — the one an open editor was
+   * seeded from — rather than the task's as it stands, so rereading the task
+   * does not make a retry succeed and the caller is told to reload instead.
+   */
+  holdsRevision?: boolean;
+}
+
 /**
  * Saving a task from wherever it was changed — a board card's menu, the
- * drawer, a my-tasks row. An update is a full replace, so the caller passes
- * the task as it stands and only the fields it means to change.
+ * drawer, a my-tasks row, the timeline. An update is a full replace, so the
+ * caller passes the task as it stands and only the fields it means to change.
  *
- * A 409 is the one error worth wording ourselves: the revision has moved on,
- * and the only way out is to read the task again.
+ * A 409 is the one error worth wording ourselves: the revision has moved on.
+ * The tasks are reread straight away, so a caller saving the task as it
+ * stands can simply try again; one holding its own revision is told to reload.
  */
-export const useTaskSave = (onValidationError?: (fieldErrors: Record<string, string>) => void) => {
+export const useTaskSave = (
+  onValidationError?: (fieldErrors: Record<string, string>) => void,
+  { holdsRevision = false }: TaskSaveOptions = {},
+) => {
   const { t } = useI18n("projects");
   const queryClient = useQueryClient();
   return useMutation({
@@ -33,10 +46,11 @@ export const useTaskSave = (onValidationError?: (fieldErrors: Record<string, str
         return;
       }
       const conflict = (error as ApiError).status === 409;
+      if (conflict) queryClient.invalidateQueries({ queryKey: ["projects", "tasks"] });
       notifications.show({
         color: "red",
         title: t("couldNotSaveTask"),
-        message: conflict ? t("taskChangedElsewhere") : error.message,
+        message: conflict ? t(holdsRevision ? "taskChangedElsewhere" : "taskReloadedAfterConflict") : error.message,
       });
     },
   });
