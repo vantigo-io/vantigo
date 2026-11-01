@@ -11,11 +11,13 @@ how to commit, and what to report. They are written for **Claude Sonnet 5.5**
 | --- | --- | --- | --- | --- |
 | [A](a-workspace-integrations.md) | Integrations section, Entra in four tabs, `A/configuration.md` | `feat/workspace-integrations` | nothing | host frontend, Entra frontend, docs |
 | [B](b-outbound-mail-slot.md) | `contracts.OutboundMail`, the fallback's end, Invoices' and Calendar's sending setting | `feat/outbound-mail-slot` | nothing | Go (communications, invoices, calendar, contracts, module), two migrations, frontends, docs |
-| [C](c-hosted-mail.md) | Vantigo hosted mail: the platform client, the `hosted` provider, `MAIL_DRIVER=vantigo`, the events webhook | `feat/hosted-mail` | **B merged**; the service's contract (T10) | Go (hostedmail, mail, communications, config), docs |
+| [C](c-hosted-mail-placeholder.md) | *Vantigo hosted mail* shown greyed, "Not yet available", in the channel form | `feat/hosted-mail-placeholder` | **B merged** | Communications frontend, docs |
+| [C′](c-prime-hosted-mail-deferred.md) | **Deferred (2026-11-01).** The hosted mail service itself: platform client, `hosted` provider, `MAIL_DRIVER=vantigo`, events webhook | `feat/hosted-mail` | its own research and design; the service's first release | Go (hostedmail, mail, communications, config), docs |
 | [D](d-ai-platform.md) | `srv/ai`, tasks per module, identity's `ai_task_models`, the *AI models* page | `feat/ai-platform` | **A merged** (the section) | Go (ai, identity, communications, module, contracts, config), one migration, host frontend, docs |
 
 **Order.** A and B may run at once, each in its own worktree. D starts once A is on
-`main`; C once B is, and once the `vantigo-mail` service's first release exists. Anders
+`main`; C once B is. C′ does not start until the service has been researched, designed
+and released, and the owner says so. Anders
 merges each pull request himself; open each against `main` only after the previous one
 it depends on has landed (stacking a delivery on another's branch has sent a delivery
 into its base branch before).
