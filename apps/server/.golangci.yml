@@ -735,6 +735,7 @@ linters:
           # makes impossible anywhere else. See its doc.go — if anything
           # non-test is ever added there, it needs a rule of its own.
           files:
+            - "**/internal/ai/**"
             - "**/internal/module/**"
             - "**/internal/contracts/**"
             - "**/internal/apicommon/**"
