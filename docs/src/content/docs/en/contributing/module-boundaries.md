@@ -8,6 +8,7 @@ sources:
   - apps/server/.golangci.yml
   - apps/server/generate.go
   - apps/server/internal/openapi/openapi.go
+  - apps/server/internal/openapi/lint.go
   - apps/server/internal/openapi/gen
   - apps/calendar/frontend/eslint.config.js
   - apps/communications/frontend/eslint.config.js
