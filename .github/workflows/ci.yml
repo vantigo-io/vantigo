@@ -45,7 +45,7 @@ jobs:
           persist-credentials: false
 
       - name: 💾 Set up toolchain
-        uses: jdx/mise-action@82a612c5ab8bcda7cc5db6b7e81a8e7584c3dc6e # v5.2.3
+        uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
         with:
           install_args: "aqua:caarlos0/svu"
 
@@ -100,7 +100,7 @@ jobs:
           persist-credentials: false
 
       - name: 💾 Set up toolchain
-        uses: jdx/mise-action@82a612c5ab8bcda7cc5db6b7e81a8e7584c3dc6e # v5.2.3
+        uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
         with:
           # Only bun: the rest of mise.toml (Go, the JDK, the release tools)
           # is other jobs' business.
@@ -172,7 +172,7 @@ jobs:
           persist-credentials: false
 
       - name: 💾 Set up toolchain
-        uses: jdx/mise-action@82a612c5ab8bcda7cc5db6b7e81a8e7584c3dc6e # v5.2.3
+        uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
         with:
           # Bun, and Node for Astro: the rest of mise.toml (Go, the JDK, the
           # release tools) is other jobs' business.
@@ -228,7 +228,7 @@ jobs:
           persist-credentials: false
 
       - name: 💾 Set up toolchain
-        uses: jdx/mise-action@82a612c5ab8bcda7cc5db6b7e81a8e7584c3dc6e # v5.2.3
+        uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
         with:
           # Only bun: the rest of mise.toml (Go, the JDK, the release tools)
           # is other jobs' business.
@@ -287,7 +287,7 @@ jobs:
           persist-credentials: false
 
       - name: 💾 Set up toolchain
-        uses: jdx/mise-action@82a612c5ab8bcda7cc5db6b7e81a8e7584c3dc6e # v5.2.3
+        uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
         with:
           install_args: "go bun aqua:golangci/golangci-lint aqua:goreleaser/goreleaser aqua:rhysd/actionlint aqua:koalaman/shellcheck aqua:sqlc-dev/sqlc"
 
@@ -390,7 +390,7 @@ jobs:
           persist-credentials: false
 
       - name: 💾 Set up toolchain
-        uses: jdx/mise-action@82a612c5ab8bcda7cc5db6b7e81a8e7584c3dc6e # v5.2.3
+        uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
         with:
           install_args: "java"
 
@@ -487,7 +487,7 @@ jobs:
           persist-credentials: false
 
       - name: 💾 Set up toolchain
-        uses: jdx/mise-action@82a612c5ab8bcda7cc5db6b7e81a8e7584c3dc6e # v5.2.3
+        uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
         with:
           install_args: "go bun node trivy"
 
@@ -610,7 +610,7 @@ jobs:
           persist-credentials: false
 
       - name: 💾 Set up toolchain
-        uses: jdx/mise-action@82a612c5ab8bcda7cc5db6b7e81a8e7584c3dc6e # v5.2.3
+        uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
         with:
           install_args: "go bun node trivy aqua:sigstore/cosign"
 
@@ -815,7 +815,7 @@ jobs:
           persist-credentials: false
 
       - name: 💾 Set up toolchain
-        uses: jdx/mise-action@82a612c5ab8bcda7cc5db6b7e81a8e7584c3dc6e # v5.2.3
+        uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
         with:
           install_args: "go bun node aqua:goreleaser/goreleaser aqua:sigstore/cosign aqua:anchore/syft"
 
