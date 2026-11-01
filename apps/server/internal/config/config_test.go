@@ -1939,3 +1939,42 @@ func TestConfig_InvoicesVipps(t *testing.T) {
 		}
 	}
 }
+
+// TestLoad_AIContextTokens pins AI_CONTEXT_TOKENS (the Assistant design S7):
+// 16000 unless set, from 2000 to 1000000.
+func TestLoad_AIContextTokens(t *testing.T) {
+	if cfg := mustLoad(t, validEnv()); cfg.AIContextTokens != 16000 {
+		t.Errorf("AIContextTokens = %d, want 16000", cfg.AIContextTokens)
+	}
+	if cfg := mustLoad(t, with(validEnv(), "AI_CONTEXT_TOKENS", "8000")); cfg.AIContextTokens != 8000 {
+		t.Errorf("AIContextTokens = %d, want 8000", cfg.AIContextTokens)
+	}
+	for _, bad := range []string{"1999", "1000001", "lots"} {
+		if msg := loadError(t, with(validEnv(), "AI_CONTEXT_TOKENS", bad)); !strings.Contains(msg, "AI_CONTEXT_TOKENS: must be an integer from 2000 to 1000000") {
+			t.Errorf("AI_CONTEXT_TOKENS=%s: %q", bad, msg)
+		}
+	}
+}
+
+// TestConfig_AILocal pins what the assistant tells an Owner about where the
+// data goes: only an AI_BASE_URL on a loopback, private or single-label host
+// is local.
+func TestConfig_AILocal(t *testing.T) {
+	for base, want := range map[string]bool{
+		"":                              false,
+		"https://api.example.com/v1":    false,
+		"http://ollama:11434/v1":        true,
+		"http://localhost:11434/v1":     true,
+		"http://10.1.2.3/v1":            true,
+		"https://gpu.internal.example/": false,
+	} {
+		cfg := &Config{AIBaseURL: base}
+		if got := cfg.AILocal(); got != want {
+			t.Errorf("AILocal(%q) = %v, want %v", base, got, want)
+		}
+	}
+	var none *Config
+	if none.AILocal() {
+		t.Error("a nil Config is not local")
+	}
+}

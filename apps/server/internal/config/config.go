@@ -530,6 +530,11 @@ type Config struct {
 	// default 120s, at most 10m): local models are slow. Complete keeps its own
 	// 30 s.
 	AITimeout time.Duration
+	// AIContextTokens is the size, in tokens, the assistant keeps a
+	// conversation's context within before it summarises older tool results
+	// (AI_CONTEXT_TOKENS, default 16000, from 2000 to 1000000): local models
+	// have small windows. It is an estimate, four characters to a token.
+	AIContextTokens int
 	// AIModels are the models the plan allows (AI_MODELS), in the order the
 	// operator wrote them, the first being the plan's default. At least one
 	// when AIProvider is set, none otherwise.
@@ -651,6 +656,7 @@ func Load(env map[string]string) (*Config, error) {
 	communicationsAttachments(&p, env, c)
 	communicationsRetention(&p, env, c)
 	aiConfig(&p, env, c)
+	c.AIContextTokens = integer(&p, env, "AI_CONTEXT_TOKENS", 16000, 2000, 1000000)
 
 	if len(p) > 0 {
 		return nil, fmt.Errorf("invalid configuration:\n  %s", strings.Join(p, "\n  "))
@@ -1224,6 +1230,19 @@ const (
 	aiDefaultTimeout = 120 * time.Second
 	aiMaxTimeout     = 10 * time.Minute
 )
+
+// AILocal reports whether the AI provider's endpoint is local to the
+// installation: AI_BASE_URL names a loopback or private-network address or a
+// single-label host. An unset AI_BASE_URL is the provider's own public address,
+// so it is not. The assistant tells the Owner so before data leaves the
+// installation. No name is resolved.
+func (c *Config) AILocal() bool {
+	if c == nil || c.AIBaseURL == "" {
+		return false
+	}
+	u, err := url.Parse(c.AIBaseURL)
+	return err == nil && localAIHost(u.Hostname())
+}
 
 // localAIHost reports whether host may be spoken to over plain http: a loopback
 // or private-network (RFC 1918, unique-local) address, or a single-label name
