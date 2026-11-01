@@ -1778,6 +1778,50 @@ components:
                 - role
                 - createdAt
             type: object
+        ProjectSaveAsTemplateProblem:
+            description: A refused save as template. The shape of HttpValidationProblemDetails, plus rows, which names the project's own task, subtask or milestone each template field error is about, since a template index (tasks[3]) is nothing a person can find on the project.
+            properties:
+                detail:
+                    nullable: true
+                    type: string
+                errors:
+                    additionalProperties:
+                        items:
+                            type: string
+                        type: array
+                    type: object
+                instance:
+                    nullable: true
+                    type: string
+                rows:
+                    additionalProperties:
+                        $ref: '#/components/schemas/ProjectSaveAsTemplateProblemRow'
+                    description: By the same field keys as errors, the project row each error is about. Absent for an error on the request's own name or description. For dependencies, the task at the end of the longest chain.
+                    type: object
+                status:
+                    format: int32
+                    nullable: true
+                    type: integer
+                title:
+                    nullable: true
+                    type: string
+                type:
+                    nullable: true
+                    type: string
+            type: object
+        ProjectSaveAsTemplateProblemRow:
+            description: The project row a save-as-template field error is about, by its title or name as the project shows it.
+            properties:
+                milestone:
+                    description: The delivery milestone's name.
+                    type: string
+                subtask:
+                    description: The subtask's title, under task.
+                    type: string
+                task:
+                    description: The top-level task's title.
+                    type: string
+            type: object
         ProjectSaveAsTemplateRequest:
             description: Save a project's plan as a new template. Everything else the template holds is read from the project.
             properties:
@@ -4121,8 +4165,8 @@ paths:
                     content:
                         application/problem+json:
                             schema:
-                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
-                    description: Bad Request — the name or description is invalid, or the project's plan breaks a template rule (the field errors name it).
+                                $ref: '#/components/schemas/ProjectSaveAsTemplateProblem'
+                    description: Bad Request — the name or description is invalid, or the project's plan breaks a template rule; the field errors are keyed by template field and rows names the project's task, subtask or milestone each is about.
                 "401":
                     content:
                         application/json:

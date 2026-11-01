@@ -76,25 +76,57 @@ describe("SaveAsTemplateModal", () => {
     expect(onClose).not.toHaveBeenCalled();
   });
 
-  it("says when the project's plan breaks a template rule", async () => {
+  const refuse = (errors: Record<string, string[]>, rows?: Record<string, Record<string, string>>) =>
     stubFetch(() =>
       Promise.resolve(
-        jsonResponse(
-          400,
-          {
-            title: "Invalid template",
-            status: 400,
-            errors: { "tasks[0].checklist": ["A checklist holds at most 100 items."] },
-          },
-          "application/problem+json",
-        ),
+        jsonResponse(400, { title: "Invalid template", status: 400, errors, rows }, "application/problem+json"),
       ),
+    );
+
+  it("names the subtask whose checklist is too long, in the caller's language", async () => {
+    refuse(
+      { "tasks[1].subtasks[0].checklist": ["A checklist holds at most 100 items."] },
+      { "tasks[1].subtasks[0].checklist": { task: "Launch", subtask: "Long list" } },
     );
     renderModal();
     await userEvent.click(await screen.findByRole("button", { name: "Save template" }));
 
     expect(
-      await screen.findByText("The project's plan breaks a template rule: A checklist holds at most 100 items."),
+      await screen.findByText(
+        "The subtask “Long list” under “Launch” has more than 100 checklist items, more than a template holds. Shorten the checklist and try again.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("names the task a too long dependency chain ends at", async () => {
+    refuse(
+      { dependencies: ["This would make a chain of 101 linked dependencies; a chain may hold at most 100."] },
+      { dependencies: { task: "Step 101" } },
+    );
+    renderModal();
+    await userEvent.click(await screen.findByRole("button", { name: "Save template" }));
+
+    expect(
+      await screen.findByText(
+        "The dependencies leading to “Step 101” chain more than 100 links, more than a template holds. Remove a link and try again.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("falls back to the server's rule, naming the row, for anything else", async () => {
+    refuse(
+      { "tasks[0].dueDayOffset": ["Due day offset cannot be earlier than start day offset."] },
+      {
+        "tasks[0].dueDayOffset": { task: "Kickoff" },
+      },
+    );
+    renderModal();
+    await userEvent.click(await screen.findByRole("button", { name: "Save template" }));
+
+    expect(
+      await screen.findByText(
+        "The project's plan breaks a template rule: The task “Kickoff”: Due day offset cannot be earlier than start day offset.",
+      ),
     ).toBeInTheDocument();
   });
 });

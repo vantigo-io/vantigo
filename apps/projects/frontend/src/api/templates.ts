@@ -16,6 +16,7 @@ export type ProjectTemplateUpdateInput = Schemas["ProjectTemplateUpdateRequest"]
 export type ProjectApplyTemplateInput = Schemas["ProjectApplyTemplateRequest"];
 export type ProjectApplyTemplateResult = Schemas["ProjectApplyTemplateResponse"];
 export type ProjectSaveAsTemplateInput = Schemas["ProjectSaveAsTemplateRequest"];
+export type SaveAsTemplateProblemRow = Schemas["ProjectSaveAsTemplateProblemRow"];
 
 /**
  * List of available reusable project templates.

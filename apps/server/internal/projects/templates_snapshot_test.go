@@ -283,23 +283,41 @@ func TestProjectTemplates_SaveAsTemplate_Access(t *testing.T) {
 	}
 }
 
+// saveAsTemplateProblemJSON decodes the save-as-template refusal: the
+// template's field errors, and the project row each is about.
+type saveAsTemplateProblemJSON struct {
+	Errors map[string][]string `json:"errors"`
+	Rows   map[string]struct {
+		Task      string `json:"task"`
+		Subtask   string `json:"subtask"`
+		Milestone string `json:"milestone"`
+	} `json:"rows"`
+}
+
 // A plan that breaks a template rule is refused with the template's field
-// errors rather than stored as a template apply would refuse.
+// errors rather than stored as a template apply would refuse, and each error
+// names the project's own row, since tasks[1] is nothing a person can find.
 func TestProjectTemplates_SaveAsTemplate_RefusesAPlanThatBreaksATemplateRule(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
 	c, _ := signIn(t, h, "projects:create")
 	p := createProject(t, c, map[string]any{"code": "SAVEBAD1"})
-	task := createTask(t, c, p.Id, map[string]any{"title": "Long list"})
+	createTask(t, c, p.Id, map[string]any{"title": "Fine"})
+	parent := createTask(t, c, p.Id, map[string]any{"title": "Launch"})
+	sub := createTask(t, c, p.Id, map[string]any{"title": "Long list", "parentTaskId": parent.Id})
 	for i := range 101 {
-		addChecklistItem(t, c, task.Id, fmt.Sprintf("Item %d", i+1))
+		addChecklistItem(t, c, sub.Id, fmt.Sprintf("Item %d", i+1))
 	}
 
 	r := c.Do(http.MethodPost, projectSaveAsTemplatePath(p.Id), map[string]any{"name": "Too long"})
-	var problem validationProblemJSON
+	var problem saveAsTemplateProblemJSON
 	r.JSON(&problem)
-	if r.Status != http.StatusBadRequest || len(problem.Errors["tasks[0].checklist"]) == 0 {
-		t.Errorf("status %d errors %v, want 400 under tasks[0].checklist", r.Status, problem.Errors)
+	const field = "tasks[1].subtasks[0].checklist"
+	if r.Status != http.StatusBadRequest || len(problem.Errors[field]) == 0 {
+		t.Fatalf("status %d errors %v, want 400 under %s", r.Status, problem.Errors, field)
+	}
+	if row := problem.Rows[field]; row.Task != "Launch" || row.Subtask != "Long list" {
+		t.Errorf("rows[%s] = %+v, want Launch / Long list", field, row)
 	}
 	res := c.Do(http.MethodGet, projectTemplatesPath(), nil)
 	var list struct {
@@ -310,6 +328,42 @@ func TestProjectTemplates_SaveAsTemplate_RefusesAPlanThatBreaksATemplateRule(t *
 		if tmpl.Name == "Too long" {
 			t.Errorf("a refused snapshot was stored")
 		}
+	}
+
+	// A refusal of the request's own name names no row.
+	r = c.Do(http.MethodPost, projectSaveAsTemplatePath(p.Id), map[string]any{"name": " "})
+	problem = saveAsTemplateProblemJSON{}
+	r.JSON(&problem)
+	if r.Status != http.StatusBadRequest || len(problem.Errors["name"]) == 0 || len(problem.Rows) != 0 {
+		t.Errorf("blank name: status %d problem %+v, want 400 under name and no rows", r.Status, problem)
+	}
+}
+
+// A chain longer than a project may now make — one linked before the cap
+// existed — is refused naming the task the longest chain ends at.
+func TestProjectTemplates_SaveAsTemplate_NamesTheEndOfATooLongChain(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, userID := signIn(t, h, "projects:create")
+	p := createProject(t, c, map[string]any{"code": "SAVEBAD2"})
+	ids := make([]int32, 102)
+	for i := range ids {
+		ids[i] = createTask(t, c, p.Id, map[string]any{"title": fmt.Sprintf("Step %d", i)}).Id
+	}
+	// Behind the API, which would refuse the 101st link.
+	for i := 1; i < len(ids); i++ {
+		h.Exec(t, `INSERT INTO projects.task_dependencies (project_id, predecessor_task_id, successor_task_id, created_by_user_id)
+			VALUES ($1, $2, $3, $4)`, p.Id, ids[i-1], ids[i], userID)
+	}
+
+	r := c.Do(http.MethodPost, projectSaveAsTemplatePath(p.Id), map[string]any{"name": "Chain"})
+	var problem saveAsTemplateProblemJSON
+	r.JSON(&problem)
+	if r.Status != http.StatusBadRequest || len(problem.Errors["dependencies"]) == 0 {
+		t.Fatalf("status %d errors %v, want 400 under dependencies", r.Status, problem.Errors)
+	}
+	if row := problem.Rows["dependencies"]; row.Task != "Step 101" {
+		t.Errorf("rows[dependencies] = %+v, want the chain's last task, Step 101", row)
 	}
 }
 

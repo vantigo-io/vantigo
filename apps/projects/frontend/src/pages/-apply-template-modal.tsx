@@ -3,7 +3,7 @@ import { DateInput } from "@mantine/dates";
 import { notifications } from "@mantine/notifications";
 import { IconCheck, IconDiamond, IconListCheck, IconTemplate } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useI18n, useShellLink } from "@vantigo/frontend-shell";
+import { appUrl, useI18n, useShellLink } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import { ApiValidationError } from "../api/projects";
 import type { ApiError } from "../api/request";
@@ -151,7 +151,7 @@ export const ApplyTemplateModal = ({
                   {t("noTemplatesManageLink")}
                 </Anchor>
               ) : (
-                <Anchor size="sm" href={PROJECT_TEMPLATES_PATH}>
+                <Anchor size="sm" href={appUrl(PROJECT_TEMPLATES_PATH)}>
                   {t("noTemplatesManageLink")}
                 </Anchor>
               ))}

@@ -1039,6 +1039,31 @@ type ProjectRoleResponse struct {
 	UserId openapi_types.UUID `json:"userId"`
 }
 
+// ProjectSaveAsTemplateProblem A refused save as template. The shape of HttpValidationProblemDetails, plus rows, which names the project's own task, subtask or milestone each template field error is about, since a template index (tasks[3]) is nothing a person can find on the project.
+type ProjectSaveAsTemplateProblem struct {
+	Detail   *string              `json:"detail,omitempty"`
+	Errors   *map[string][]string `json:"errors,omitempty"`
+	Instance *string              `json:"instance,omitempty"`
+
+	// Rows By the same field keys as errors, the project row each error is about. Absent for an error on the request's own name or description. For dependencies, the task at the end of the longest chain.
+	Rows   *map[string]ProjectSaveAsTemplateProblemRow `json:"rows,omitempty"`
+	Status *int32                                      `json:"status,omitempty"`
+	Title  *string                                     `json:"title,omitempty"`
+	Type   *string                                     `json:"type,omitempty"`
+}
+
+// ProjectSaveAsTemplateProblemRow The project row a save-as-template field error is about, by its title or name as the project shows it.
+type ProjectSaveAsTemplateProblemRow struct {
+	// Milestone The delivery milestone's name.
+	Milestone *string `json:"milestone,omitempty"`
+
+	// Subtask The subtask's title, under task.
+	Subtask *string `json:"subtask,omitempty"`
+
+	// Task The top-level task's title.
+	Task *string `json:"task,omitempty"`
+}
+
 // ProjectSaveAsTemplateRequest Save a project's plan as a new template. Everything else the template holds is read from the project.
 type ProjectSaveAsTemplateRequest struct {
 	Description *string `json:"description,omitempty"`
@@ -7718,7 +7743,7 @@ func (response PostProjectsByIdSaveAsTemplate201JSONResponse) VisitPostProjectsB
 	return err
 }
 
-type PostProjectsByIdSaveAsTemplate400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+type PostProjectsByIdSaveAsTemplate400ApplicationProblemPlusJSONResponse ProjectSaveAsTemplateProblem
 
 func (response PostProjectsByIdSaveAsTemplate400ApplicationProblemPlusJSONResponse) VisitPostProjectsByIdSaveAsTemplateResponse(w http.ResponseWriter) error {
 

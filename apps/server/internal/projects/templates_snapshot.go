@@ -6,7 +6,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -97,7 +99,7 @@ type projectPlan struct {
 func (s *server) PostProjectsByIdSaveAsTemplate(ctx context.Context, req gen.PostProjectsByIdSaveAsTemplateRequestObject) (gen.PostProjectsByIdSaveAsTemplateResponseObject, error) {
 	if req.Body == nil {
 		return gen.PostProjectsByIdSaveAsTemplate400ApplicationProblemPlusJSONResponse(
-			apicommon.ValidationProblem("Invalid template", map[string][]string{"body": {"Request body is required."}}),
+			saveAsTemplateProblem(apicommon.ValidationProblem("Invalid template", map[string][]string{"body": {"Request body is required."}}), nil),
 		), nil
 	}
 
@@ -120,7 +122,7 @@ func (s *server) PostProjectsByIdSaveAsTemplate(ctx context.Context, req gen.Pos
 	name, desc, errs := validateTemplateHeader(req.Body.Name, req.Body.Description)
 	if errs != nil {
 		return gen.PostProjectsByIdSaveAsTemplate400ApplicationProblemPlusJSONResponse(
-			apicommon.ValidationProblem("Invalid template", errs),
+			saveAsTemplateProblem(apicommon.ValidationProblem("Invalid template", errs), nil),
 		), nil
 	}
 
@@ -151,11 +153,15 @@ func (s *server) PostProjectsByIdSaveAsTemplate(ctx context.Context, req gen.Pos
 		return nil, err
 	}
 	// The snapshot is held to the rules a template sent by hand is, so a plan
-	// that breaks one — a checklist longer than a template holds, a date
-	// before another it must follow — is refused, naming the row, rather
-	// than stored as a template apply would refuse.
+	// that breaks one — a checklist longer than a template holds, a chain of
+	// dependencies longer than a project may now make — is refused rather
+	// than stored as a template apply would refuse. The field errors are the
+	// template's (tasks[3].checklist), which nobody can find on the project,
+	// so rows names the project's own task, subtask or milestone beside each.
 	if d := validateTemplateData(milestones, tasks, deps); d != nil {
-		return gen.PostProjectsByIdSaveAsTemplate400ApplicationProblemPlusJSONResponse(*d), nil
+		return gen.PostProjectsByIdSaveAsTemplate400ApplicationProblemPlusJSONResponse(
+			saveAsTemplateProblem(*d, snapshotRows(*d, milestones, tasks, deps)),
+		), nil
 	}
 
 	milestonesJSON, err := json.Marshal(milestones)
@@ -195,6 +201,71 @@ func (s *server) PostProjectsByIdSaveAsTemplate(ctx context.Context, req gen.Pos
 		return nil, err
 	}
 	return gen.PostProjectsByIdSaveAsTemplate201JSONResponse(resp), nil
+}
+
+// saveAsTemplateProblem is a validation problem in the save-as-template
+// refusal's shape, rows (nil for none) beside its field errors.
+func saveAsTemplateProblem(p apicommon.HttpValidationProblemDetails, rows map[string]gen.ProjectSaveAsTemplateProblemRow) gen.ProjectSaveAsTemplateProblem {
+	out := gen.ProjectSaveAsTemplateProblem{
+		Detail: p.Detail, Errors: p.Errors, Instance: p.Instance, Status: p.Status, Title: p.Title, Type: p.Type,
+	}
+	if len(rows) > 0 {
+		out.Rows = &rows
+	}
+	return out
+}
+
+// snapshotFieldRow reads which template row a field error is about.
+var snapshotFieldRow = regexp.MustCompile(`^(?:milestones\[(\d+)\]|tasks\[(\d+)\](?:\.subtasks\[(\d+)\])?)`)
+
+// snapshotRows names, for each of a refused snapshot's field errors, the
+// project row it is about: a milestone by its name, a task by its title, a
+// subtask by its own and its parent's. The dependencies error is about the
+// chain as a whole, so it names the task the longest chain ends at — the one
+// a person would look at to see the chain.
+func snapshotRows(
+	d apicommon.HttpValidationProblemDetails,
+	milestones []gen.ProjectTemplateMilestone,
+	tasks []gen.ProjectTemplateTask,
+	deps []gen.ProjectTemplateDependency,
+) map[string]gen.ProjectSaveAsTemplateProblemRow {
+	if d.Errors == nil {
+		return nil
+	}
+	index := func(s string) int {
+		n, _ := strconv.Atoi(s)
+		return n
+	}
+	rows := map[string]gen.ProjectSaveAsTemplateProblemRow{}
+	for field := range *d.Errors {
+		if field == "dependencies" {
+			if cyclic, _, end := templateDependencyChains(len(tasks), deps); !cyclic && end < len(tasks) {
+				rows[field] = gen.ProjectSaveAsTemplateProblemRow{Task: &tasks[end].Title}
+			}
+			continue
+		}
+		m := snapshotFieldRow.FindStringSubmatch(field)
+		switch {
+		case m == nil:
+		case m[1] != "":
+			if i := index(m[1]); i < len(milestones) {
+				rows[field] = gen.ProjectSaveAsTemplateProblemRow{Milestone: &milestones[i].Name}
+			}
+		default:
+			i := index(m[2])
+			if i >= len(tasks) {
+				continue
+			}
+			row := gen.ProjectSaveAsTemplateProblemRow{Task: &tasks[i].Title}
+			if m[3] != "" && tasks[i].Subtasks != nil {
+				if j := index(m[3]); j < len(*tasks[i].Subtasks) {
+					row.Subtask = &(*tasks[i].Subtasks)[j].Title
+				}
+			}
+			rows[field] = row
+		}
+	}
+	return rows
 }
 
 // snapshotProjectPlan turns a project's plan into a template's blueprint. It

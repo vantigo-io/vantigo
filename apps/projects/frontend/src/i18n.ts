@@ -597,7 +597,7 @@ export const projectsCatalog = {
     templateDependencyTaskRequired: "Pick a task",
     templateDependencySelf: "A task cannot depend on itself",
     templateDependencyCycle: "These dependencies form a loop: a task would end up waiting for itself.",
-    templateDependencyChainTooLong: "These dependencies chain more than 100 tasks one after another.",
+    templateDependencyChainTooLong: "These dependencies chain more than 100 links one after another.",
     templateChecklistItems: "Checklist items",
     templateChecklistItemNumber: "Checklist item {{number}}",
     addTemplateChecklistItem: "Add checklist item",
@@ -611,6 +611,13 @@ export const projectsCatalog = {
     templateCreatedFromProject: "Template {{name}} created",
     openProjectTemplates: "Open Project templates",
     saveAsTemplatePlanBreaksRules: "The project's plan breaks a template rule: {{reason}}",
+    saveAsTemplateTaskRow: "The task “{{task}}”",
+    saveAsTemplateSubtaskRow: "The subtask “{{subtask}}” under “{{task}}”",
+    saveAsTemplateMilestoneRow: "The milestone “{{milestone}}”",
+    saveAsTemplateChecklistTooLong:
+      "{{row}} has more than 100 checklist items, more than a template holds. Shorten the checklist and try again.",
+    saveAsTemplateChainTooLong:
+      "The dependencies leading to “{{task}}” chain more than 100 links, more than a template holds. Remove a link and try again.",
 
     myTasks: "My tasks",
     myTasksDescription: "Every open task assigned to you, across the projects you can see.",
@@ -1245,7 +1252,7 @@ export const projectsCatalog = {
     templateDependencySelf: "En oppgave kan ikke avhenge av seg selv",
     templateDependencyCycle:
       "Disse avhengighetene danner en sløyfe: en oppgave ville endt opp med å vente på seg selv.",
-    templateDependencyChainTooLong: "Disse avhengighetene kjeder mer enn 100 oppgaver etter hverandre.",
+    templateDependencyChainTooLong: "Disse avhengighetene kjeder mer enn 100 koblinger etter hverandre.",
     templateChecklistItems: "Sjekklistepunkter",
     templateChecklistItemNumber: "Sjekklistepunkt {{number}}",
     addTemplateChecklistItem: "Legg til sjekklistepunkt",
@@ -1259,6 +1266,13 @@ export const projectsCatalog = {
     templateCreatedFromProject: "Malen {{name}} er opprettet",
     openProjectTemplates: "Åpne Prosjektmaler",
     saveAsTemplatePlanBreaksRules: "Prosjektplanen bryter en malregel: {{reason}}",
+    saveAsTemplateTaskRow: "Oppgaven «{{task}}»",
+    saveAsTemplateSubtaskRow: "Deloppgaven «{{subtask}}» under «{{task}}»",
+    saveAsTemplateMilestoneRow: "Milepælen «{{milestone}}»",
+    saveAsTemplateChecklistTooLong:
+      "{{row}} har mer enn 100 sjekklistepunkter, flere enn en mal kan ha. Kort ned sjekklisten og prøv igjen.",
+    saveAsTemplateChainTooLong:
+      "Avhengighetene fram til «{{task}}» kjeder mer enn 100 koblinger, flere enn en mal kan ha. Fjern en kobling og prøv igjen.",
 
     myTasks: "Mine oppgaver",
     myTasksDescription: "Alle åpne oppgaver som er tildelt deg, på tvers av prosjektene du ser.",

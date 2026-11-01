@@ -1468,8 +1468,14 @@ offsets. A milestone without a target date gets `targetDayOffset` 0, the contrac
 The snapshot is read in one read-only transaction, so it never mixes two states of a plan being
 edited, and it is held to the template rules before it is stored: a plan that breaks one — a
 checklist of more than 100 items, say — is refused with **400** and the template's own field errors
-(`tasks[0].checklist`) rather than stored as a template applying would refuse. Saving records
-nothing on the project's timeline; it is a read of the project.
+(`tasks[0].checklist`) rather than stored as a template applying would refuse. A template index
+is nothing a person can find on the project, so the refusal (`ProjectSaveAsTemplateProblem`)
+carries `rows` beside `errors`, by the same field keys: the project row each error is about, as
+`{ task }`, `{ task, subtask }` or `{ milestone }`, by title or name. The `dependencies` error —
+in practice a chain of more than 100 links linked before the cap existed, since a project's own
+links can form no cycle — names the task the longest chain ends at. An error on the request's own
+`name` or `description` has no row. Saving records nothing on the project's timeline; it is a
+read of the project.
 
 ## Contracts for other modules
 

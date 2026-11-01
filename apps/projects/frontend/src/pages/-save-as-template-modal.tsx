@@ -3,9 +3,9 @@ import { useForm } from "@mantine/form";
 import { notifications } from "@mantine/notifications";
 import { IconCheck } from "@tabler/icons-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useI18n } from "@vantigo/frontend-shell";
+import { appUrl, useI18n } from "@vantigo/frontend-shell";
 import { type ApiError, ApiValidationError } from "../api/request";
-import { saveProjectAsTemplate } from "../api/templates";
+import { type SaveAsTemplateProblemRow, saveProjectAsTemplate } from "../api/templates";
 import "../i18n";
 import { TEMPLATE_DESCRIPTION_MAX, TEMPLATE_NAME_MAX } from "../lib/templates";
 import { nameLength } from "../lib/work-types";
@@ -18,6 +18,9 @@ export interface SaveAsTemplateModalProps {
   opened: boolean;
   onClose: () => void;
 }
+
+/** A task's or subtask's checklist as a whole: the only rule there is its length. */
+const CHECKLIST_FIELD = /^tasks\[\d+\](\.subtasks\[\d+\])?\.checklist$/;
 
 interface SaveAsTemplateValues {
   name: string;
@@ -71,7 +74,7 @@ const SaveAsTemplateForm = ({ projectId, projectName, onClose }: Omit<SaveAsTemp
         icon: <IconCheck size={16} />,
         title: t("templateCreatedFromProject", { name: saved.name }),
         message: (
-          <Anchor size="sm" href={PROJECT_TEMPLATES_PATH}>
+          <Anchor size="sm" href={appUrl(PROJECT_TEMPLATES_PATH)}>
             {t("openProjectTemplates")}
           </Anchor>
         ),
@@ -87,15 +90,31 @@ const SaveAsTemplateForm = ({ projectId, projectName, onClose }: Omit<SaveAsTemp
           form.setErrors(own);
           return;
         }
-        // Anything else is the project's plan breaking a template rule — a
-        // checklist longer than a template holds, say — which is fixed on the
-        // project, not in this form.
-        const [first] = Object.values(fields);
-        notifications.show({
-          color: "red",
-          title: t("couldNotSaveTemplate"),
-          message: first ? t("saveAsTemplatePlanBreaksRules", { reason: first }) : error.message,
-        });
+        // Anything else is the project's plan breaking a template rule, which
+        // is fixed on the project, not in this form. The field is the
+        // template's (tasks[1].checklist), so the server names the project's
+        // own row beside it; the two rules a real plan can break are said
+        // here, the rest fall back to the server's text.
+        const rows = (error.problem?.rows ?? {}) as Record<string, SaveAsTemplateProblemRow>;
+        const [field, reason] = Object.entries(fields)[0] ?? [];
+        const row = field ? rows[field] : undefined;
+        const rowName = row?.task
+          ? row.subtask
+            ? t("saveAsTemplateSubtaskRow", { task: row.task, subtask: row.subtask })
+            : t("saveAsTemplateTaskRow", { task: row.task })
+          : row?.milestone
+            ? t("saveAsTemplateMilestoneRow", { milestone: row.milestone })
+            : undefined;
+        let message = error.message;
+        if (field && rowName && CHECKLIST_FIELD.test(field)) {
+          message = t("saveAsTemplateChecklistTooLong", { row: rowName });
+        } else if (field === "dependencies" && row?.task) {
+          // The server names a row here only for a chain, never a cycle.
+          message = t("saveAsTemplateChainTooLong", { task: row.task });
+        } else if (reason) {
+          message = t("saveAsTemplatePlanBreaksRules", { reason: rowName ? `${rowName}: ${reason}` : reason });
+        }
+        notifications.show({ color: "red", title: t("couldNotSaveTemplate"), message });
         return;
       }
       notifications.show({ color: "red", title: t("couldNotSaveTemplate"), message: (error as ApiError).message });

@@ -27,12 +27,19 @@ export type ApiClient = {
 export class ApiValidationError extends Error {
   readonly errors: Record<string, string[]>;
   readonly status: number;
+  /**
+   * The parsed problem body, when the client read one: a module's own fields
+   * beside the field errors are read from here by that module, the way
+   * `ApiConflictError.problem` carries a conflict's.
+   */
+  readonly problem?: Record<string, unknown>;
 
-  constructor(title: string, errors: Record<string, string[]>, status = 400) {
+  constructor(title: string, errors: Record<string, string[]>, status = 400, problem?: Record<string, unknown>) {
     super(title);
     this.name = "ApiValidationError";
     this.errors = errors;
     this.status = status;
+    this.problem = problem;
   }
 
   get fields(): Record<string, string[]> {
@@ -163,7 +170,12 @@ export const createApiClient = (clientOptions: ApiClientOptions = {}): ApiClient
     if (response.status === 404) throw new NotFoundError(problemMessage(problem, response.status));
     const fields = normalizeFields(details.error?.fields ?? details.errors);
     if ((response.status === 400 || response.status === 409) && fields) {
-      throw new ApiValidationError(problemMessage(problem, response.status), fields, response.status);
+      throw new ApiValidationError(
+        problemMessage(problem, response.status),
+        fields,
+        response.status,
+        details as Record<string, unknown>,
+      );
     }
     // A nested `error.code` (the identity shape) wins; a problem document's
     // top-level `code` (the modules' conflict shape, any status) is the fallback.
