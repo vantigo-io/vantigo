@@ -78,14 +78,17 @@ The **system mailbox**: the sender Vantigo itself writes from.
 | `SMTP_USERNAME`, `SMTP_PASSWORD` | unset | Optional credentials |
 | `SMTP_TLS` | `starttls` | `starttls`, `implicit` or `none` |
 
-It writes to the people who work in the installation: invitations and password
-recovery, Staff's notices and Calendar's notices to colleagues. Three things that write
-to *customers* still use it today — Invoices' document sends and reminder letters,
-Calendar's invitations to people outside the company, and a Communications SMTP channel
-that has no credential of its own. The mailboxes a company sends from in its own name
-are the workspace's: [Communications' channels](/en/user/communications/#set-up-a-channel),
+It writes only to the people who work in the installation: invitations and password
+recovery, Staff's notices and Calendar's notices to colleagues. Nothing that writes to
+*customers* uses it. The mailboxes a company sends from in its own name are the
+workspace's: [Communications' channels](/en/user/communications/#set-up-a-channel),
 with a Microsoft 365 channel set up under
-[Microsoft Entra ID](/en/admin/entra/#mail-channels).
+[Microsoft Entra ID](/en/admin/entra/#mail-channels). Invoices' document sends and
+reminder letters go from the channel chosen in Invoice settings
+([Sending a document by e-mail](/en/user/invoices/#sending-a-document-by-e-mail)),
+Calendar's invitations to people outside the company from the one chosen in Calendar
+settings ([Invite people outside the company](/en/user/calendar/#invite-people-outside-the-company)),
+and an SMTP channel without credentials of its own sends nothing.
 
 ### Storage
 
