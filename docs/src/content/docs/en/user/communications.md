@@ -263,6 +263,9 @@ A channel sends one of two ways, its **Provider**:
   manages channels in Communications can send as any shared mailbox in the tenant.* The
   channels still work.
 
+The provider list in the **Add email channel** dialog also shows **Vantigo hosted mail**,
+greyed, with *Not yet available*: it is not offered yet, and cannot be chosen.
+
 Invoices and Calendar send to your customers **through a channel you choose**: Invoice
 settings has a **Sending** card and Calendar's settings an **Invitations to people outside
 the company** card, each listing the channels here with their provider, or **Disabled**

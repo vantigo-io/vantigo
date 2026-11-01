@@ -263,6 +263,10 @@ En kanal sender på en av to måter, sin **Leverandør**:
   administrerer kanaler i Kommunikasjon, sende som hvilken som helst delt postboks i
   leietakeren.* Kanalene virker likevel.
 
+Leverandørlisten i dialogen **Legg til e-postkanal** viser også **Vantigo-driftet
+e-post**, nedtonet og med *Ikke tilgjengelig ennå*: den tilbys ikke ennå og kan ikke
+velges.
+
 Fakturaer og Kalender sender til kundene dine **gjennom en kanal du velger**:
 fakturainnstillingene har et kort **Utsending** og kalenderinnstillingene et kort
 **Invitasjoner til personer utenfor selskapet**, hver med kanalene her og leverandøren
