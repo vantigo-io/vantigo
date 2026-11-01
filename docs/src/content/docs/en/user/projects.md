@@ -141,8 +141,12 @@ in your browser. Members and managers see **Use template** and **Add task**;
 a viewer gets the same views without the actions.
 
 **Use template** opens **Use project template**, allowing you to pick a blueprint (e.g. Client Onboarding)
-and a **Kickoff date (T+0)**. Applying the template instantiates the blueprint's delivery milestones, tasks,
-subtasks, and task dependencies with relative calendar dates calculated from the kickoff date.
+and a **Kickoff date (T+0)**, which defaults to the project's start date or else today. Applying the
+template instantiates the blueprint's delivery milestones, tasks, subtasks, and task dependencies with
+relative calendar dates calculated from the kickoff date, beside whatever the project already has. With no
+templates yet the dialog says *No templates available yet.*, and to someone who may create templates it
+adds a link, **Create one under Project templates** — see
+[Build project templates](#build-project-templates).
 
 **Add task** opens **New task**: **Title** (required, at most 200 characters),
 **Description**, **Status**, **Assignee** (anyone on the project), **Start date**,
@@ -177,6 +181,45 @@ drawer. The **Status** picker on a row changes the status directly — and since
 page says **Nothing assigned to you**. The Spotlight quick action **Create task**
 lands here: it asks for the **Project** first, then opens the ordinary **New task**
 form on it.
+
+## Build project templates
+
+**Project templates** in the sidebar is the workspace's catalog of blueprints that
+**Use template** applies. It is offered to whoever may create projects
+(`projects:access` and `projects:create`); everyone else in the app still sees every
+template in **Use template**. The table lists each template's **Name** and
+description, and how many **Delivery milestones**, **Tasks**, **Subtasks** and
+**Dependencies** it holds. With none yet the page says **No project templates yet**.
+
+**New template** opens **New project template**:
+
+1. Give it a **Name** (required, at most 200 characters) and, if you like, a
+   **Description** (at most 2000 characters).
+2. Under **Delivery milestones**, **Add milestone** for each one: a **Name** and a
+   **Target day** — days from the kickoff, so `T+0` is the kickoff day and `T+14` two
+   weeks later.
+3. Under **Tasks**, **Add task** for each one: a **Title**, an optional
+   **Description**, **Start day** and **Due day** (not before the start day),
+   **Estimate (hours)** (above 0 when set) and the **Delivery milestone** it belongs
+   to. **Add subtask** nests a subtask under it with the same fields, less the
+   milestone.
+4. Under **Dependencies**, **Add dependency** (once there are two tasks) and pick the
+   **Predecessor** and the **Successor**, which waits for it. Only top-level tasks
+   are linked, a task cannot depend on itself, a pair is listed once, and the links
+   may not form a loop.
+5. **Create** saves it.
+
+The arrows on each row move it up or down and the bin removes it. Removing a
+milestone unlinks its tasks; removing a task takes its subtasks and its
+dependencies with it. A field the template's rules refuse is marked where it is,
+before anything is sent.
+
+The row's menu offers **Edit**, the same form saved with **Save changes**, and
+**Delete template**, which asks *Delete name?* first. Projects already started
+from a template keep their milestones and tasks when it is edited or deleted. A
+template somebody else saved meanwhile is refused with *The template was changed by
+someone else. Close it, open it again and redo your changes.* See
+[Project templates and blueprints](/en/reference/projects/#project-templates-and-blueprints).
 
 ## Set up billing lines
 
@@ -327,6 +370,8 @@ can see appear here* (see [The portfolio](/en/reference/projects/#the-portfolio)
 | --- | --- |
 | The Projects app: Projects, My tasks, Project economy | `projects:access` |
 | **New project** | `projects:create` |
+| **Project templates**: creating, editing and deleting templates | `projects:create` |
+| **Use template** on a project | the **Member** or **Manager** role |
 | Seeing every project, not only your own | `projects:view-all` or `projects:manage-all` |
 | **Edit**, **Change status**, People, billing lines, work types, milestones | the **Manager** role, or `projects:manage-all` |
 | Tasks, checklist items and comments | the **Member** or **Manager** role |

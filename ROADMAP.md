@@ -874,7 +874,10 @@ with relative calendar day offsets ($T+0$), milestone indices, subtasks, and fin
 API endpoints for template CRUD (`/api/v1/projects/templates`) and atomic instantiation onto a project
 (`POST /api/v1/projects/{id}/apply-template`) computing delivery milestone target dates, task and subtask
 start/due dates, milestone linking, and dependency wiring in a single transactional task order lock.
-Frontend integration with "Use template" modal on the Tasks tab, blueprint inspection, and date calculation.
+Template writes need `projects:create` on top of `projects:access`, and a template is checked against the
+rules of the milestones, tasks and dependencies it becomes (duplicate pairs and cycles included). A
+Project templates catalog page with a full editor — milestones, tasks, subtasks and dependencies, rows that
+move and go away — and the "Use template" modal on the Tasks tab, blueprint inspection, and date calculation.
 Bilingual reference and user guides, and 100% test and contract coverage.
 
 *Unblocks:* planning at kickoff; the "are we on track" view.
