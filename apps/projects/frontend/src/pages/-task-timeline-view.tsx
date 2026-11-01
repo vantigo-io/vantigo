@@ -1,48 +1,184 @@
-import { Badge, Box, Card, Group, ScrollArea, Stack, Text, Tooltip } from "@mantine/core";
+import {
+  Badge,
+  Box,
+  Button,
+  Card,
+  Group,
+  Modal,
+  ScrollArea,
+  SegmentedControl,
+  Stack,
+  Text,
+  Tooltip,
+} from "@mantine/core";
+import { notifications } from "@mantine/notifications";
 import { IconAlertTriangle, IconDiamondFilled } from "@tabler/icons-react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useI18n } from "@vantigo/frontend-shell";
-import { useMemo } from "react";
-import { deliveryMilestonesQueryOptions } from "../api/delivery-milestones";
-import { projectDependenciesQueryOptions } from "../api/dependencies";
+import { type KeyboardEvent, type PointerEvent, useEffect, useMemo, useRef, useState } from "react";
+import { type DeliveryMilestone, deliveryMilestonesQueryOptions } from "../api/delivery-milestones";
+import { projectDependenciesQueryOptions, rescheduleDownstreamTasks, type TaskDependency } from "../api/dependencies";
 import type { Task } from "../api/tasks";
 import { DeliveryMilestoneBadge } from "../components/delivery-milestone-badge";
 import { TaskStatusBadge } from "../components/task-status-badge";
 import "../i18n";
 import { useProjectDates } from "../lib/dates";
+import {
+  type DragMode,
+  dateToUtcDays,
+  downstreamTaskIds,
+  dueDelta,
+  headerSegments,
+  isoWeek,
+  isTimelineZoom,
+  moveTaskDates,
+  pixelsToDays,
+  type TaskDates,
+  type TimelineZoom,
+  timelineZooms,
+  utcDaysToDateStr,
+  ZOOM_DAY_WIDTH,
+} from "../lib/timeline";
+import { useTaskSave } from "../lib/use-task-save";
 
 export interface TaskTimelineViewProps {
   projectId: number;
   tasks: Task[];
+  /** Whether the caller may move tasks (`capabilities.canContribute`); without it the timeline only shows. */
   canContribute: boolean;
   onOpen: (taskId: number) => void;
 }
 
-const DAY_WIDTH = 42; // Width of 1 day column in pixels
 const ROW_HEIGHT = 44; // Height of each task row in pixels
 const HEADER_HEIGHT = 50;
+/** A bar narrower than this has no room for edge handles or a title, and is moved whole. */
+const MIN_HANDLED_WIDTH = 24;
+/** How far a pointer travels before a press is a drag rather than a click. */
+const DRAG_THRESHOLD = 3;
 
-/** Parse YYYY-MM-DD into UTC epoch days */
-const dateToUtcDays = (dateStr: string): number => {
-  const [y, m, d] = dateStr.split("-").map(Number);
-  return Math.floor(Date.UTC(y, m - 1, d) / (1000 * 60 * 60 * 24));
+// Stable fallbacks while the queries load, so the memos below do not rerun
+// on every render.
+const EMPTY_DEPENDENCIES: TaskDependency[] = [];
+const EMPTY_MILESTONES: DeliveryMilestone[] = [];
+
+/** The scale the viewer last chose, remembered beside the Tasks tab's view. */
+const ZOOM_STORAGE_KEY = "projects.tasks.timelineZoom";
+
+/** Storage is a convenience: a private window or blocked site data simply starts on days. */
+const readZoom = (): TimelineZoom => {
+  try {
+    const stored = localStorage.getItem(ZOOM_STORAGE_KEY);
+    return isTimelineZoom(stored) ? stored : "day";
+  } catch {
+    return "day";
+  }
 };
 
-/** Convert UTC epoch days back to YYYY-MM-DD */
-const utcDaysToDateStr = (days: number): string => {
-  const date = new Date(days * 1000 * 60 * 60 * 24);
-  return date.toISOString().split("T")[0];
+const rememberZoom = (zoom: TimelineZoom) => {
+  try {
+    localStorage.setItem(ZOOM_STORAGE_KEY, zoom);
+  } catch {
+    // Remembering the choice is not worth failing the click over.
+  }
 };
 
-export const TaskTimelineView = ({ projectId, tasks, onOpen }: TaskTimelineViewProps) => {
-  const { t } = useI18n("projects");
+const zoomLabelKey: Record<TimelineZoom, string> = {
+  day: "timelineZoomDay",
+  week: "timelineZoomWeek",
+  month: "timelineZoomMonth",
+};
+
+/** A bar's place on the chart, or null for a task with no date at all. */
+const barOf = (dates: TaskDates, startEpochDays: number, dayWidth: number) => {
+  const start = dates.startDate ? dateToUtcDays(dates.startDate) : null;
+  const end = dates.dueDate ? dateToUtcDays(dates.dueDate) : null;
+  const from = start ?? end;
+  const to = end ?? start;
+  if (from === null || to === null) return null;
+  return { left: (from - startEpochDays) * dayWidth, width: Math.max(dayWidth, (to - from + 1) * dayWidth) };
+};
+
+/** The bar being dragged: which task, by which part, from where, and how many days so far. */
+interface DragState {
+  taskId: number;
+  mode: DragMode;
+  pointerId: number;
+  originX: number;
+  days: number;
+  moved: boolean;
+}
+
+/** A saved move the task list has not caught up with yet, drawn in place of the stale dates. */
+interface PendingMove extends TaskDates {
+  taskId: number;
+  revision: number;
+}
+
+/** The downstream shift the caller is asked about after a move changed a due date (M8). */
+interface ShiftPrompt {
+  taskId: number;
+  count: number;
+  days: number;
+}
+
+/**
+ * The Tasks tab's timeline: one row per task, bars across calendar days,
+ * delivery milestones as diamonds and finish-to-start links as arrows. A
+ * contributor drags a bar's body to move both dates, an edge to move one, or
+ * presses Alt+Left/Right on a focused bar; the move saves as any task edit
+ * does, and a moved due date with successors asks before shifting them —
+ * never silently (M8). Nothing here is a drag-and-drop library: the workspace
+ * carries none, so it is pointer events with the pointer captured by the bar.
+ */
+export const TaskTimelineView = ({ projectId, tasks, canContribute, onOpen }: TaskTimelineViewProps) => {
+  const { t, formatters } = useI18n("projects");
   const dates = useProjectDates();
+  const queryClient = useQueryClient();
+  const save = useTaskSave();
 
   const dependenciesQuery = useQuery(projectDependenciesQueryOptions(projectId));
   const milestonesQuery = useQuery(deliveryMilestonesQueryOptions(projectId));
 
-  const dependencies = dependenciesQuery.data?.dependencies ?? [];
-  const milestones = milestonesQuery.data?.milestones ?? [];
+  const dependencies = dependenciesQuery.data?.dependencies ?? EMPTY_DEPENDENCIES;
+  const milestones = milestonesQuery.data?.milestones ?? EMPTY_MILESTONES;
+
+  const [zoom, setZoom] = useState<TimelineZoom>(readZoom);
+  const dayWidth = ZOOM_DAY_WIDTH[zoom];
+  const [drag, setDrag] = useState<DragState | null>(null);
+  const [pendingMove, setPendingMove] = useState<PendingMove | null>(null);
+  const [shiftPrompt, setShiftPrompt] = useState<ShiftPrompt | null>(null);
+  // The pointer handlers read the drag synchronously, between renders.
+  const dragRef = useRef<DragState | null>(null);
+  // A drag ends in a click on the bar; that click must not open the task.
+  const suppressClickRef = useRef(false);
+
+  const shift = useMutation({
+    mutationFn: ({ taskId, days }: ShiftPrompt) => rescheduleDownstreamTasks(taskId, { daysDelta: days }),
+    onSuccess: (result, { days }) => {
+      queryClient.invalidateQueries({ queryKey: ["projects", "tasks"] });
+      notifications.show({
+        color: "teal",
+        title: t("rescheduleDownstreamSuccess", { count: result.shiftedTasksCount, days }),
+        message: "",
+      });
+    },
+    onError: (error) => {
+      notifications.show({ color: "red", title: t("couldNotRescheduleDownstream"), message: error.message });
+    },
+  });
+
+  // Escape abandons a drag: the bar goes back where it was and nothing is saved.
+  useEffect(() => {
+    if (!drag) return;
+    const onKey = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      dragRef.current = null;
+      suppressClickRef.current = true;
+      setDrag(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [drag]);
 
   // Flatten task tree (parents followed by subtasks)
   const flattenedTasks = useMemo(() => {
@@ -55,6 +191,18 @@ export const TaskTimelineView = ({ projectId, tasks, onOpen }: TaskTimelineViewP
     }
     return list;
   }, [tasks]);
+
+  /**
+   * The dates each task is drawn at: its own, or a saved move's while the
+   * list still holds the revision the move was made from — so a dropped bar
+   * stays where it was dropped instead of jumping back until the refetch.
+   */
+  const shownDates = (task: Task): TaskDates =>
+    pendingMove && pendingMove.taskId === task.id && pendingMove.revision === task.revision ? pendingMove : task;
+
+  /** A task waiting on its own save cannot be moved again: the next save would carry a stale revision. */
+  const isBusy = (task: Task) =>
+    save.isPending || Boolean(pendingMove && pendingMove.taskId === task.id && pendingMove.revision === task.revision);
 
   const taskIndexMap = useMemo(() => {
     const map = new Map<number, { task: Task; index: number }>();
@@ -106,107 +254,189 @@ export const TaskTimelineView = ({ projectId, tasks, onOpen }: TaskTimelineViewP
     return { startEpochDays: minDays, totalDays: span };
   }, [flattenedTasks, milestones, todayUtcDays]);
 
-  // Days list for timeline columns
-  const dayColumns = useMemo(() => {
-    const cols: { daysSinceEpoch: number; dateStr: string; label: string; isToday: boolean }[] = [];
-    for (let i = 0; i < totalDays; i++) {
-      const dayEpoch = startEpochDays + i;
-      const dateStr = utcDaysToDateStr(dayEpoch);
-      const d = new Date(dayEpoch * 1000 * 60 * 60 * 24);
-      const dayNum = d.getUTCDate();
-      const monthShort = d.toLocaleString("en", { month: "short", timeZone: "UTC" });
-      cols.push({
-        daysSinceEpoch: dayEpoch,
-        dateStr,
-        label: `${dayNum} ${dayNum === 1 ? monthShort : ""}`.trim(),
-        isToday: dayEpoch === todayUtcDays,
-      });
-    }
-    return cols;
-  }, [startEpochDays, totalDays, todayUtcDays]);
-
-  const timelineWidth = totalDays * DAY_WIDTH;
-
-  // Calculate task bar bounding box: { left, width, hasConflict }
-  const taskCoordinates = useMemo(() => {
-    const coords = new Map<number, { left: number; width: number; rowIndex: number; hasConflict: boolean }>();
-
-    flattenedTasks.forEach((task, idx) => {
-      let startD = task.startDate ? dateToUtcDays(task.startDate) : null;
-      let endD = task.dueDate ? dateToUtcDays(task.dueDate) : null;
-
-      if (!startD && !endD) return;
-
-      if (startD && !endD) endD = startD;
-      if (!startD && endD) startD = endD;
-
-      if (startD !== null && endD !== null) {
-        const left = (startD - startEpochDays) * DAY_WIDTH;
-        const width = Math.max(DAY_WIDTH, (endD - startD + 1) * DAY_WIDTH);
-        coords.set(task.id, { left, width, rowIndex: idx, hasConflict: false });
+  // The header's cells at the chosen scale: a day, a week or a month each.
+  const segments = useMemo(() => {
+    return headerSegments(startEpochDays, totalDays, zoom).map((segment) => {
+      const dateStr = utcDaysToDateStr(segment.firstDay);
+      let label: string;
+      if (zoom === "week") label = t("timelineWeekLabel", { week: isoWeek(segment.firstDay) });
+      else if (zoom === "month")
+        label = formatters.formatDate(dateStr, { month: "short", year: "numeric", timeZone: "UTC" });
+      else {
+        const dayNum = new Date(segment.firstDay * 1000 * 60 * 60 * 24).getUTCDate();
+        label =
+          dayNum === 1
+            ? `${dayNum} ${formatters.formatDate(dateStr, { month: "short", timeZone: "UTC" })}`
+            : `${dayNum}`;
       }
+      return { ...segment, label, isToday: zoom === "day" && segment.firstDay === todayUtcDays };
     });
+  }, [startEpochDays, totalDays, zoom, todayUtcDays, t, formatters]);
 
-    return coords;
-  }, [flattenedTasks, startEpochDays]);
+  const timelineWidth = totalDays * dayWidth;
+
+  // Calculate task bar bounding box: { left, width, rowIndex }
+  const taskCoordinates = new Map<number, { left: number; width: number; rowIndex: number }>();
+  flattenedTasks.forEach((task, idx) => {
+    const bar = barOf(shownDates(task), startEpochDays, dayWidth);
+    if (bar) taskCoordinates.set(task.id, { ...bar, rowIndex: idx });
+  });
 
   // Detect conflicts and build dependency connector paths
-  const dependencyLinks = useMemo(() => {
-    const links: {
-      id: number;
-      path: string;
-      hasConflict: boolean;
-      predecessorId: number;
-      successorId: number;
-    }[] = [];
+  const dependencyLinks: {
+    id: number;
+    path: string;
+    hasConflict: boolean;
+    predecessorId: number;
+    successorId: number;
+  }[] = [];
 
-    for (const dep of dependencies) {
-      const pred = taskIndexMap.get(dep.predecessorTaskId);
-      const succ = taskIndexMap.get(dep.successorTaskId);
-      if (!pred || !succ) continue;
+  for (const dep of dependencies) {
+    const pred = taskIndexMap.get(dep.predecessorTaskId);
+    const succ = taskIndexMap.get(dep.successorTaskId);
+    if (!pred || !succ) continue;
 
-      const predCoords = taskCoordinates.get(pred.task.id);
-      const succCoords = taskCoordinates.get(succ.task.id);
+    const predCoords = taskCoordinates.get(pred.task.id);
+    const succCoords = taskCoordinates.get(succ.task.id);
 
-      const hasConflict = Boolean(pred.task.dueDate && succ.task.startDate && pred.task.dueDate > succ.task.startDate);
+    const predDue = shownDates(pred.task).dueDate;
+    const succStart = shownDates(succ.task).startDate;
+    const hasConflict = Boolean(predDue && succStart && predDue > succStart);
 
-      if (predCoords && succCoords) {
-        // Connector starts at middle-right of predecessor bar
-        const startX = predCoords.left + predCoords.width;
-        const startY = predCoords.rowIndex * ROW_HEIGHT + ROW_HEIGHT / 2;
+    if (predCoords && succCoords) {
+      // Connector starts at middle-right of predecessor bar
+      const startX = predCoords.left + predCoords.width;
+      const startY = predCoords.rowIndex * ROW_HEIGHT + ROW_HEIGHT / 2;
 
-        // Connector ends at middle-left of successor bar
-        const endX = succCoords.left;
-        const endY = succCoords.rowIndex * ROW_HEIGHT + ROW_HEIGHT / 2;
+      // Connector ends at middle-left of successor bar
+      const endX = succCoords.left;
+      const endY = succCoords.rowIndex * ROW_HEIGHT + ROW_HEIGHT / 2;
 
-        let path: string;
-        if (endX >= startX + 10) {
-          // Normal S-curve bezier or stepped line
-          const midX = (startX + endX) / 2;
-          path = `M ${startX} ${startY} C ${midX} ${startY}, ${midX} ${endY}, ${endX} ${endY}`;
-        } else {
-          // Loop-around backward connector (indicates conflict / overlap)
-          const loopX = Math.max(startX + 14, startX);
-          path = `M ${startX} ${startY} L ${loopX} ${startY} L ${loopX} ${endY} L ${endX} ${endY}`;
-        }
-
-        links.push({
-          id: dep.id,
-          path,
-          hasConflict,
-          predecessorId: pred.task.id,
-          successorId: succ.task.id,
-        });
+      let path: string;
+      if (endX >= startX + 10) {
+        // Normal S-curve bezier or stepped line
+        const midX = (startX + endX) / 2;
+        path = `M ${startX} ${startY} C ${midX} ${startY}, ${midX} ${endY}, ${endX} ${endY}`;
+      } else {
+        // Loop-around backward connector (indicates conflict / overlap)
+        const loopX = Math.max(startX + 14, startX);
+        path = `M ${startX} ${startY} L ${loopX} ${startY} L ${loopX} ${endY} L ${endX} ${endY}`;
       }
-    }
 
-    return links;
-  }, [dependencies, taskIndexMap, taskCoordinates]);
+      dependencyLinks.push({
+        id: dep.id,
+        path,
+        hasConflict,
+        predecessorId: pred.task.id,
+        successorId: succ.task.id,
+      });
+    }
+  }
+
+  const chooseZoom = (value: string) => {
+    if (!isTimelineZoom(value)) return;
+    setZoom(value);
+    rememberZoom(value);
+  };
+
+  /**
+   * Saves a moved task through the same full replace every task edit uses; a
+   * 409 is worded by the save hook. A move that changed nothing saves nothing.
+   */
+  const commitMove = (task: Task, next: TaskDates) => {
+    const startDate = next.startDate ?? null;
+    const dueDate = next.dueDate ?? null;
+    if (startDate === (task.startDate ?? null) && dueDate === (task.dueDate ?? null)) return;
+    const days = dueDelta(task, next);
+    const count = downstreamTaskIds(task.id, dependencies).size;
+    setPendingMove({ taskId: task.id, revision: task.revision, startDate, dueDate });
+    save.mutate(
+      { task, changes: { startDate, dueDate } },
+      {
+        onSuccess: () => {
+          if (days !== 0 && count > 0) setShiftPrompt({ taskId: task.id, count, days });
+        },
+        onError: () => setPendingMove(null),
+      },
+    );
+  };
+
+  const onBarPointerDown = (event: PointerEvent<HTMLDivElement>, task: Task) => {
+    if (!canContribute || event.button !== 0 || isBusy(task)) return;
+    const edge = (event.target as HTMLElement).dataset.edge;
+    const mode: DragMode = edge === "start" || edge === "end" ? edge : "move";
+    // jsdom, and some old browsers, have no pointer capture; the drag still
+    // works while the pointer stays over the bar.
+    if (typeof event.currentTarget.setPointerCapture === "function") {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    }
+    const state: DragState = {
+      taskId: task.id,
+      mode,
+      pointerId: event.pointerId,
+      originX: event.clientX,
+      days: 0,
+      moved: false,
+    };
+    dragRef.current = state;
+    setDrag(state);
+  };
+
+  const onBarPointerMove = (event: PointerEvent<HTMLDivElement>) => {
+    const current = dragRef.current;
+    if (!current || current.pointerId !== event.pointerId) return;
+    const dx = event.clientX - current.originX;
+    const days = pixelsToDays(dx, dayWidth);
+    const moved = current.moved || Math.abs(dx) > DRAG_THRESHOLD;
+    if (days === current.days && moved === current.moved) return;
+    const next = { ...current, days, moved };
+    dragRef.current = next;
+    setDrag(next);
+  };
+
+  const onBarPointerUp = (event: PointerEvent<HTMLDivElement>, task: Task) => {
+    const current = dragRef.current;
+    if (!current || current.pointerId !== event.pointerId) return;
+    dragRef.current = null;
+    setDrag(null);
+    if (current.moved) suppressClickRef.current = true;
+    commitMove(task, moveTaskDates(task, current.mode, current.days));
+  };
+
+  const onBarPointerCancel = () => {
+    dragRef.current = null;
+    setDrag(null);
+  };
+
+  const onBarClick = (task: Task) => {
+    if (suppressClickRef.current) {
+      suppressClickRef.current = false;
+      return;
+    }
+    onOpen(task.id);
+  };
+
+  // The keyboard's way to do what a drag does: Alt+Left/Right moves the
+  // whole task a day; Enter or Space opens it, as a click does.
+  const onBarKeyDown = (event: KeyboardEvent<HTMLDivElement>, task: Task) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      onOpen(task.id);
+      return;
+    }
+    if (!canContribute || !event.altKey || (event.key !== "ArrowLeft" && event.key !== "ArrowRight")) return;
+    event.preventDefault();
+    if (isBusy(task)) return;
+    commitMove(task, moveTaskDates(task, "move", event.key === "ArrowRight" ? 1 : -1));
+  };
+
+  const shiftLabel = (days: number) =>
+    days > 0 ? t("timelineShiftLater", { count: days }) : t("timelineShiftEarlier", { count: -days });
 
   return (
     <Stack gap="sm">
       {/* Legend */}
-      <Group justify="space-between" align="center" px="xs">
+      <Group justify="space-between" align="center" px="xs" wrap="wrap">
         <Group gap="md">
           <Group gap={6}>
             <Box
@@ -235,6 +465,13 @@ export const TaskTimelineView = ({ projectId, tasks, onOpen }: TaskTimelineViewP
             </Group>
           )}
         </Group>
+        <SegmentedControl
+          size="xs"
+          aria-label={t("timelineZoom")}
+          data={timelineZooms.map((value) => ({ value, label: t(zoomLabelKey[value]) }))}
+          value={zoom}
+          onChange={chooseZoom}
+        />
       </Group>
 
       {/* Main Timeline View Grid */}
@@ -302,7 +539,7 @@ export const TaskTimelineView = ({ projectId, tasks, onOpen }: TaskTimelineViewP
                 minHeight: HEADER_HEIGHT + flattenedTasks.length * ROW_HEIGHT,
               }}
             >
-              {/* Timeline Header Row (Days/Dates) */}
+              {/* Timeline Header Row (days, weeks or months) */}
               <Box
                 style={{
                   height: HEADER_HEIGHT,
@@ -314,22 +551,28 @@ export const TaskTimelineView = ({ projectId, tasks, onOpen }: TaskTimelineViewP
                   zIndex: 2,
                 }}
               >
-                {dayColumns.map((col) => (
+                {segments.map((segment) => (
                   <Box
-                    key={col.daysSinceEpoch}
+                    key={segment.key}
                     style={{
-                      width: DAY_WIDTH,
+                      width: segment.length * dayWidth,
                       flexShrink: 0,
                       borderRight: "1px solid var(--mantine-color-gray-2)",
                       display: "flex",
                       flexDirection: "column",
                       alignItems: "center",
                       justifyContent: "center",
-                      backgroundColor: col.isToday ? "var(--mantine-color-blue-0)" : undefined,
+                      overflow: "hidden",
+                      backgroundColor: segment.isToday ? "var(--mantine-color-blue-0)" : undefined,
                     }}
                   >
-                    <Text size="10px" fw={col.isToday ? 700 : 500} c={col.isToday ? "blue" : "dimmed"}>
-                      {col.label}
+                    <Text
+                      size="10px"
+                      fw={segment.isToday ? 700 : 500}
+                      c={segment.isToday ? "blue" : "dimmed"}
+                      style={{ whiteSpace: "nowrap" }}
+                    >
+                      {segment.label}
                     </Text>
                   </Box>
                 ))}
@@ -339,7 +582,7 @@ export const TaskTimelineView = ({ projectId, tasks, onOpen }: TaskTimelineViewP
               {milestones.map((m) => {
                 if (!m.targetDate) return null;
                 const mDays = dateToUtcDays(m.targetDate);
-                const leftPos = (mDays - startEpochDays) * DAY_WIDTH + DAY_WIDTH / 2 - 8;
+                const leftPos = (mDays - startEpochDays) * dayWidth + dayWidth / 2 - 8;
                 if (leftPos < -20 || leftPos > timelineWidth + 20) return null;
 
                 return (
@@ -381,17 +624,17 @@ export const TaskTimelineView = ({ projectId, tasks, onOpen }: TaskTimelineViewP
                   pointerEvents: "none",
                 }}
               >
-                {dayColumns.map((col, idx) => (
+                {segments.map((segment) => (
                   <Box
-                    key={col.daysSinceEpoch}
+                    key={segment.key}
                     style={{
                       position: "absolute",
-                      left: idx * DAY_WIDTH,
+                      left: segment.offset * dayWidth,
                       top: 0,
-                      width: DAY_WIDTH,
+                      width: segment.length * dayWidth,
                       height: "100%",
                       borderRight: "1px solid var(--mantine-color-gray-1)",
-                      backgroundColor: col.isToday ? "rgba(34, 139, 230, 0.04)" : "transparent",
+                      backgroundColor: segment.isToday ? "rgba(34, 139, 230, 0.04)" : "transparent",
                     }}
                   />
                 ))}
@@ -401,7 +644,7 @@ export const TaskTimelineView = ({ projectId, tasks, onOpen }: TaskTimelineViewP
                   <Box
                     style={{
                       position: "absolute",
-                      left: (todayUtcDays - startEpochDays) * DAY_WIDTH + DAY_WIDTH / 2,
+                      left: (todayUtcDays - startEpochDays) * dayWidth + dayWidth / 2,
                       top: -HEADER_HEIGHT,
                       width: 2,
                       height: HEADER_HEIGHT + flattenedTasks.length * ROW_HEIGHT,
@@ -468,6 +711,7 @@ export const TaskTimelineView = ({ projectId, tasks, onOpen }: TaskTimelineViewP
               {flattenedTasks.map((task, idx) => {
                 const coords = taskCoordinates.get(task.id);
                 const topY = HEADER_HEIGHT + idx * ROW_HEIGHT;
+                const shown = shownDates(task);
 
                 const isDone = task.status === "done";
                 const isInProgress = task.status === "in-progress";
@@ -479,6 +723,12 @@ export const TaskTimelineView = ({ projectId, tasks, onOpen }: TaskTimelineViewP
                 const hasConflict = dependencyLinks.some(
                   (l) => l.hasConflict && (l.predecessorId === task.id || l.successorId === task.id),
                 );
+
+                const dragging = drag?.taskId === task.id ? drag : null;
+                const preview = dragging ? moveTaskDates(task, dragging.mode, dragging.days) : null;
+                const ghost = preview ? barOf(preview, startEpochDays, dayWidth) : null;
+                const roomy = coords ? coords.width >= MIN_HANDLED_WIDTH : false;
+                const range = dates.range(shown.startDate, shown.dueDate);
 
                 return (
                   <Box
@@ -493,37 +743,123 @@ export const TaskTimelineView = ({ projectId, tasks, onOpen }: TaskTimelineViewP
                     }}
                   >
                     {coords ? (
-                      <Tooltip
-                        label={`${task.title} (${dates.range(task.startDate, task.dueDate)})${
-                          hasConflict ? ` — ${t("dependencyConflictWarning")}` : ""
-                        }`}
-                        withArrow
-                      >
-                        <Box
-                          onClick={() => onOpen(task.id)}
-                          style={{
-                            position: "absolute",
-                            left: coords.left,
-                            top: 8,
-                            width: coords.width,
-                            height: 28,
-                            backgroundColor: barBg,
-                            borderRadius: 4,
-                            cursor: "pointer",
-                            display: "flex",
-                            alignItems: "center",
-                            padding: "0 8px",
-                            boxShadow: "0 1px 2px rgba(0,0,0,0.1)",
-                            border: hasConflict ? "2px solid var(--mantine-color-red-6)" : "none",
-                            zIndex: 1,
-                            overflow: "hidden",
-                          }}
+                      <>
+                        <Tooltip
+                          label={`${task.title} (${range})${hasConflict ? ` — ${t("dependencyConflictWarning")}` : ""}`}
+                          withArrow
+                          disabled={drag !== null}
                         >
-                          <Text size="11px" fw={600} c="white" truncate>
-                            {task.title}
-                          </Text>
-                        </Box>
-                      </Tooltip>
+                          <Box
+                            role="button"
+                            tabIndex={0}
+                            aria-label={t(canContribute ? "timelineBarMovableLabel" : "timelineBarLabel", {
+                              title: task.title,
+                              dates: range,
+                            })}
+                            data-testid={`timeline-bar-${task.id}`}
+                            onClick={() => onBarClick(task)}
+                            onKeyDown={(event) => onBarKeyDown(event, task)}
+                            onPointerDown={(event) => onBarPointerDown(event, task)}
+                            onPointerMove={onBarPointerMove}
+                            onPointerUp={(event) => onBarPointerUp(event, task)}
+                            onPointerCancel={onBarPointerCancel}
+                            style={{
+                              position: "absolute",
+                              left: coords.left,
+                              top: 8,
+                              width: coords.width,
+                              height: 28,
+                              backgroundColor: barBg,
+                              borderRadius: 4,
+                              cursor: canContribute ? (dragging ? "grabbing" : "grab") : "pointer",
+                              // A contributor's touch drags the bar rather than scrolling the chart.
+                              touchAction: canContribute ? "none" : undefined,
+                              display: "flex",
+                              alignItems: "center",
+                              padding: roomy ? "0 8px" : 0,
+                              boxShadow: "0 1px 2px rgba(0,0,0,0.1)",
+                              border: hasConflict ? "2px solid var(--mantine-color-red-6)" : "none",
+                              opacity: dragging ? 0.4 : 1,
+                              zIndex: 1,
+                              overflow: "hidden",
+                              userSelect: "none",
+                            }}
+                          >
+                            {canContribute && roomy && (
+                              <>
+                                <Box
+                                  data-edge="start"
+                                  data-testid={`timeline-bar-${task.id}-start`}
+                                  aria-hidden
+                                  style={{
+                                    position: "absolute",
+                                    left: 0,
+                                    top: 0,
+                                    bottom: 0,
+                                    width: 6,
+                                    cursor: "ew-resize",
+                                  }}
+                                />
+                                <Box
+                                  data-edge="end"
+                                  data-testid={`timeline-bar-${task.id}-end`}
+                                  aria-hidden
+                                  style={{
+                                    position: "absolute",
+                                    right: 0,
+                                    top: 0,
+                                    bottom: 0,
+                                    width: 6,
+                                    cursor: "ew-resize",
+                                  }}
+                                />
+                              </>
+                            )}
+                            {roomy && (
+                              <Text size="11px" fw={600} c="white" truncate style={{ pointerEvents: "none" }}>
+                                {task.title}
+                              </Text>
+                            )}
+                          </Box>
+                        </Tooltip>
+                        {ghost && preview && (
+                          <>
+                            <Box
+                              aria-hidden
+                              style={{
+                                position: "absolute",
+                                left: ghost.left,
+                                top: 8,
+                                width: ghost.width,
+                                height: 28,
+                                borderRadius: 4,
+                                border: "2px dashed var(--mantine-color-blue-6)",
+                                backgroundColor: "rgba(34, 139, 230, 0.15)",
+                                pointerEvents: "none",
+                                zIndex: 2,
+                              }}
+                            />
+                            <Box
+                              role="status"
+                              style={{
+                                position: "absolute",
+                                left: ghost.left + ghost.width + 6,
+                                top: 10,
+                                padding: "2px 6px",
+                                borderRadius: 4,
+                                whiteSpace: "nowrap",
+                                backgroundColor: "var(--mantine-color-dark-6)",
+                                color: "var(--mantine-color-white)",
+                                fontSize: 11,
+                                pointerEvents: "none",
+                                zIndex: 5,
+                              }}
+                            >
+                              {dates.range(preview.startDate, preview.dueDate)}
+                            </Box>
+                          </>
+                        )}
+                      </>
                     ) : (
                       /* Unscheduled placeholder */
                       <Box
@@ -546,6 +882,29 @@ export const TaskTimelineView = ({ projectId, tasks, onOpen }: TaskTimelineViewP
           </ScrollArea>
         </Box>
       </Card>
+
+      <Modal opened={shiftPrompt !== null} onClose={() => setShiftPrompt(null)} title={t("timelineShiftTitle")}>
+        {shiftPrompt && (
+          <Stack gap="md">
+            <Text size="sm">
+              {t("timelineShiftPrompt", { count: shiftPrompt.count, shift: shiftLabel(shiftPrompt.days) })}
+            </Text>
+            <Group justify="flex-end" gap="xs">
+              <Button variant="default" onClick={() => setShiftPrompt(null)}>
+                {t("timelineShiftLeave")}
+              </Button>
+              <Button
+                onClick={() => {
+                  shift.mutate(shiftPrompt);
+                  setShiftPrompt(null);
+                }}
+              >
+                {t("timelineShiftConfirm")}
+              </Button>
+            </Group>
+          </Stack>
+        )}
+      </Modal>
     </Stack>
   );
 };
