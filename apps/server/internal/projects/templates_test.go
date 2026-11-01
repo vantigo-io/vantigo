@@ -8,7 +8,7 @@ import (
 func TestProjectTemplates_CRUD(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
-	c, _ := signIn(t, h)
+	c, _ := signIn(t, h, "projects:create")
 
 	// 1. Create template
 	payload := map[string]any{
@@ -162,10 +162,54 @@ func TestProjectTemplates_CRUD(t *testing.T) {
 	}
 }
 
+// The contract's access rule, enforced by the router before the handler runs:
+// the catalog is readable by everyone in the module, but creating, changing or
+// deleting a template needs projects:create on top of projects:access — the
+// people who may start projects own the blueprints they are started from.
+func TestProjectTemplates_WritesNeedCreatePermission(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	owner, _ := signIn(t, h, "projects:create")
+	tmpl := createProjectTemplate(t, owner, map[string]any{"name": "Onboarding"})
+
+	reader, _ := signIn(t, h)
+	if r := reader.Do(http.MethodGet, projectTemplatesPath(), nil); r.Status != http.StatusOK {
+		t.Errorf("list without projects:create: status %d, want 200", r.Status)
+	}
+	if r := reader.Do(http.MethodGet, projectTemplatePath(tmpl.Id), nil); r.Status != http.StatusOK {
+		t.Errorf("get without projects:create: status %d, want 200", r.Status)
+	}
+
+	cases := []struct {
+		name, method, path string
+		body               any
+	}{
+		{"create", http.MethodPost, projectTemplatesPath(), map[string]any{"name": "Mine"}},
+		{"update", http.MethodPut, projectTemplatePath(tmpl.Id), map[string]any{"name": "Renamed", "revision": tmpl.Revision}},
+		{"delete", http.MethodDelete, projectTemplatePath(tmpl.Id), nil},
+	}
+	for _, tc := range cases {
+		if r := reader.Do(tc.method, tc.path, tc.body); r.Status != http.StatusForbidden {
+			t.Errorf("%s without projects:create: status %d body %s, want 403", tc.name, r.Status, r.Body)
+		}
+	}
+
+	// projects:create alone, without projects:access, is not enough either.
+	outsider := h.SignIn(t, "projects:create")
+	if r := outsider.Do(http.MethodPost, projectTemplatesPath(), map[string]any{"name": "Mine"}); r.Status != http.StatusForbidden {
+		t.Errorf("create without projects:access: status %d, want 403", r.Status)
+	}
+
+	// Nothing above changed the template.
+	if got := getProjectTemplate(t, owner, tmpl.Id); got.Name != "Onboarding" || got.Revision != tmpl.Revision {
+		t.Errorf("template after refused writes = %q rev %d, want %q rev %d", got.Name, got.Revision, "Onboarding", tmpl.Revision)
+	}
+}
+
 func TestProjectTemplates_Validation(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
-	c, _ := signIn(t, h)
+	c, _ := signIn(t, h, "projects:create")
 
 	// Empty name
 	res := c.Do(http.MethodPost, projectTemplatesPath(), map[string]any{

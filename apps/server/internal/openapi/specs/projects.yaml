@@ -5191,11 +5191,11 @@ paths:
                         application/json:
                             schema:
                                 $ref: common.yaml#/components/schemas/AuthErrorResponse
-                    description: Forbidden
+                    description: Forbidden — the caller lacks projects:create, which every change to the template catalog needs.
             summary: Create a project template
             tags:
                 - Projects
-            x-vantigo-access: permission:projects:access
+            x-vantigo-access: permission:projects:access+projects:create
     /api/v1/projects/templates/{templateId}:
         delete:
             operationId: deleteProjectsTemplatesByTemplateId
@@ -5220,13 +5220,13 @@ paths:
                         application/json:
                             schema:
                                 $ref: common.yaml#/components/schemas/AuthErrorResponse
-                    description: Forbidden
+                    description: Forbidden — the caller lacks projects:create, which every change to the template catalog needs.
                 "404":
                     description: Not Found
             summary: Delete a project template
             tags:
                 - Projects
-            x-vantigo-access: permission:projects:access
+            x-vantigo-access: permission:projects:access+projects:create
         get:
             operationId: getProjectsTemplatesByTemplateId
             parameters:
@@ -5300,7 +5300,7 @@ paths:
                         application/json:
                             schema:
                                 $ref: common.yaml#/components/schemas/AuthErrorResponse
-                    description: Forbidden
+                    description: Forbidden — the caller lacks projects:create, which every change to the template catalog needs.
                 "404":
                     description: Not Found
                 "409":
@@ -5312,6 +5312,6 @@ paths:
             summary: Update a project template
             tags:
                 - Projects
-            x-vantigo-access: permission:projects:access
+            x-vantigo-access: permission:projects:access+projects:create
 servers:
     - url: /
