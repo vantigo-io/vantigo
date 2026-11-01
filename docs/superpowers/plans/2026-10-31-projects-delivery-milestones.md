@@ -49,12 +49,12 @@ docs/src/content/docs/nb/user/projects.md
 
 ## Tasks
 
-- [ ] **Task 1: Database Migration `00096_projects_delivery_milestones.sql`**
+- [x] **Task 1: Database Migration `00096_projects_delivery_milestones.sql`**
   - Create table `projects.delivery_milestones` (id, project_id, name, description, target_date, status, position, completed_at, completed_by_user_id, revision, created_by_user_id, created_at, updated_at).
   - Add `delivery_milestone_id` to `projects.tasks` with foreign key and index.
   - Update `apps/server/internal/projects/sqlc.yaml` to include migration `00096`.
 
-- [ ] **Task 2: OpenAPI Specification in `openapi/projects.yaml`**
+- [x] **Task 2: OpenAPI Specification in `openapi/projects.yaml`**
   - Define paths:
     - `GET /api/v1/projects/{projectId}/delivery-milestones`
     - `POST /api/v1/projects/{projectId}/delivery-milestones`
@@ -67,7 +67,7 @@ docs/src/content/docs/nb/user/projects.md
   - Update `CreateTaskRequest`, `UpdateTaskRequest`, `TaskResponse`, `TaskTreeResponse` with `deliveryMilestoneId` and `deliveryMilestone` summary.
   - Run code generation: `go generate ./...` in `apps/server` and `bun run gen:client`.
 
-- [ ] **Task 3: SQL Queries for Delivery Milestones**
+- [x] **Task 3: SQL Queries for Delivery Milestones**
   - In `apps/server/internal/projects/queries/delivery_milestones.sql`:
     - List project delivery milestones with task count aggregations (`COUNT(t.id)` total, `COUNT(t.id) FILTER (WHERE t.status = 'done')` completed, `SUM(t.estimate_hours)` total and completed).
     - Insert delivery milestone with next position.
@@ -78,29 +78,29 @@ docs/src/content/docs/nb/user/projects.md
     - Delete delivery milestone and renumber remaining.
   - Run `mise exec -- sqlc generate` in `apps/server`.
 
-- [ ] **Task 4: Go Backend Implementation**
+- [x] **Task 4: Go Backend Implementation**
   - Create `delivery_milestones.go` implementing strict server interface handlers.
   - Create `delivery_milestones_validation.go` with validation logic and concurrency guards.
   - Update task creation & update handlers in `tasks.go` and `tasks_validation.go` to validate and persist `delivery_milestone_id` (ensuring project match).
   - Emit timeline entries (`delivery-milestone-added`, `delivery-milestone-changed`, `delivery-milestone-removed`, `delivery-milestone-status-changed`).
 
-- [ ] **Task 5: Backend Tests & Contract Coverage**
+- [x] **Task 5: Backend Tests & Contract Coverage**
   - Create `delivery_milestones_test.go` covering CRUD, permissions, validation errors, concurrency conflict (409), reordering, status transitions, and task milestone unlinking.
   - Verify all OpenAPI operations are exercised to satisfy `RequireCoverage` in `main_test.go`.
   - Run `mise run server:test` and `mise run server:check`.
 
-- [ ] **Task 6: Frontend API Client & State Hooks**
+- [x] **Task 6: Frontend API Client & State Hooks**
   - Create `apps/projects/frontend/src/api/delivery-milestones.ts` with React Query options and mutation hooks.
   - Add Vitest tests `delivery-milestones.test.ts`.
 
-- [ ] **Task 7: Frontend UI Components**
+- [x] **Task 7: Frontend UI Components**
   - Create `DeliveryMilestoneBadge` component with diamond indicator and progress tooltip.
   - Create `DeliveryMilestonesCard` on the project tasks tab / overview.
   - Create `DeliveryMilestoneModal` for creating and editing delivery milestones.
   - Add delivery milestone dropdown selector in the task form and task drawer.
   - Add i18n translations in `apps/projects/frontend/src/i18n.ts` for English and Norwegian Bokmål.
 
-- [ ] **Task 8: Documentation & Quality Gates**
+- [x] **Task 8: Documentation & Quality Gates**
   - Update `docs/src/content/docs/en/reference/projects.md` with the new delivery milestones domain model, endpoints, and validation rules.
   - Update `docs/src/content/docs/en/user/projects.md` and `docs/src/content/docs/nb/user/projects.md`.
   - Update `ROADMAP.md` noting Delivery A completion.
