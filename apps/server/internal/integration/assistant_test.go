@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/vantigo-io/vantigo/server/internal/assistant"
 	"github.com/vantigo-io/vantigo/server/internal/calendar"
 	"github.com/vantigo-io/vantigo/server/internal/communications"
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
@@ -40,7 +41,7 @@ func everyModule() []module.Module {
 	return []module.Module{
 		customers.Module(), products.Module(), energy.Module(), communications.Module(),
 		projects.Module(), timetracking.Module(), expenses.Module(), invoices.Module(),
-		staff.Module(), planning.Module(), calendar.Module(), entra.Module(),
+		staff.Module(), planning.Module(), calendar.Module(), entra.Module(), assistant.Module(),
 	}
 }
 
@@ -71,6 +72,25 @@ var markedByHand = map[string]string{
 	"postCalendarFeedByVariant":                   "never",
 	"postCommunicationsChannels":                  "never", // the SMTP password in the body
 	"putCommunicationsChannelsById":               "never",
+
+	// The assistant never calls itself (S4). Every operation of its own API says
+	// so, though its access rules (session, OwnerManagement) already close them.
+	"getAssistantAvailability":    "never",
+	"getAssistantMe":              "never",
+	"putAssistantMe":              "never",
+	"listAssistantConversations":  "never",
+	"createAssistantConversation": "never",
+	"getAssistantConversation":    "never",
+	"updateAssistantConversation": "never",
+	"deleteAssistantConversation": "never",
+	"sendAssistantMessage":        "never",
+	"stopAssistantRun":            "never",
+	"getAssistantSettings":        "never",
+	"putAssistantSettings":        "never",
+	"getAssistantPermissions":     "never",
+	"putAssistantPermission":      "never",
+	"getAssistantPerson":          "never",
+	"putAssistantPerson":          "never",
 }
 
 func TestOperations_TheRealContract(t *testing.T) {

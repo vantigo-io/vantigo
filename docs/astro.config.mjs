@@ -25,6 +25,7 @@ const contracts = [
   "planning",
   "calendar",
   "entra",
+  "assistant",
 ];
 
 /**

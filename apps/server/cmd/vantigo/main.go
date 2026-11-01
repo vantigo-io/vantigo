@@ -34,6 +34,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/vantigo-io/vantigo/server/internal/assistant"
 	"github.com/vantigo-io/vantigo/server/internal/buildinfo"
 	"github.com/vantigo-io/vantigo/server/internal/calendar"
 	"github.com/vantigo-io/vantigo/server/internal/communications"
@@ -324,6 +325,7 @@ func businessModules(access *identity.Access) []module.Module {
 		planning.Module(),
 		calendar.Module(),
 		entra.Module(),
+		assistant.Module(),
 	}
 }
 

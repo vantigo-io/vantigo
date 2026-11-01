@@ -11,6 +11,13 @@ package server
 // truth; the drift test in internal/openapi fails if the copy is stale.
 //go:generate sh -c "rm -f internal/openapi/specs/*.yaml && cp ../../openapi/*.yaml internal/openapi/specs/"
 
+// The Assistant answers "how do I…" from the documentation, which the binary
+// carries: the user guide and the administration guide, in both languages, are
+// copied into the module and embedded. docs/src/content/docs stays the single
+// source of truth; internal/assistant/docs_fresh_test.go fails if the copy is
+// stale.
+//go:generate sh -c "rm -rf internal/assistant/docs && mkdir -p internal/assistant/docs/en/user internal/assistant/docs/en/admin internal/assistant/docs/nb/user internal/assistant/docs/nb/admin && cp ../../docs/src/content/docs/en/user/*.md internal/assistant/docs/en/user/ && cp ../../docs/src/content/docs/en/admin/*.md internal/assistant/docs/en/admin/ && cp ../../docs/src/content/docs/nb/user/*.md internal/assistant/docs/nb/user/ && cp ../../docs/src/content/docs/nb/admin/*.md internal/assistant/docs/nb/admin/"
+
 // The contract's generated Go code. oapi-codegen is pinned here, in one place,
 // and runs the same way locally and in CI's drift check.
 //go:generate go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.8.0 -config internal/openapi/gen/cfg-common.yaml ../../openapi/common.yaml
@@ -27,6 +34,7 @@ package server
 //go:generate go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.8.0 -config internal/openapi/gen/cfg-planning.yaml ../../openapi/planning.yaml
 //go:generate go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.8.0 -config internal/openapi/gen/cfg-calendar.yaml ../../openapi/calendar.yaml
 //go:generate go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.8.0 -config internal/openapi/gen/cfg-entra.yaml ../../openapi/entra.yaml
+//go:generate go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.8.0 -config internal/openapi/gen/cfg-assistant.yaml ../../openapi/assistant.yaml
 
 // sqlc's typed query layer. Pinned in mise.toml ("aqua:sqlc-dev/sqlc"), so it
 // is already on PATH by the time go generate runs.
@@ -43,3 +51,4 @@ package server
 //go:generate sqlc generate -f internal/planning/sqlc.yaml
 //go:generate sqlc generate -f internal/calendar/sqlc.yaml
 //go:generate sqlc generate -f internal/entra/sqlc.yaml
+//go:generate sqlc generate -f internal/assistant/sqlc.yaml

@@ -1,0 +1,208 @@
+---
+title: "Object storage"
+description: "The filesystem provider, module scopes, key validation and streamed downloads."
+sidebar:
+  order: 41
+sources:
+  - apps/server/internal/storage
+  - apps/server/internal/invoices/bankimport.go
+  - apps/server/internal/invoices/reminderpdf.go
+  - apps/server/internal/invoices/print_batches.go
+  - apps/server/internal/staff/objects.go
+  - apps/server/internal/customers/objects.go
+---
+Object storage is the application port Communications stages and serves attachments
+through. Modules never talk to a provider SDK: they receive an `ObjectStore` scoped
+to their own namespace and pass relative keys.
+
+## The provider set is a regression from the .NET implementation
+
+**The local filesystem is the only supported provider.** The implementation
+(`apps/server/internal/storage`) contains one driver, `fs.go`, and configuration
+accepts only `fs`:
+
+```text
+STORAGE_PROVIDER: must be "fs" if set
+```
+
+The S3/MinIO and Azure Blob providers the .NET implementation offered **do not
+exist in this port**. There is no `STORAGE_S3_*`, no `STORAGE_AZURE_BLOB_*`, no
+access-key, SAS, connection-string or managed-identity authentication, and no
+container provisioning. A deployment that needs remote object storage today must
+mount durable, exclusively-owned storage into the container and point the `fs`
+driver at it. Adding a driver is additive — the port is provider-neutral — but
+nothing in this repository implements one.
+
+## Configuration
+
+| Variable | Purpose | Default |
+| --- | --- | --- |
+| `STORAGE_PROVIDER` | `fs`, or unset | unset |
+| `STORAGE_FS_ROOT` | Absolute root directory; required when the provider is `fs` | unset |
+| `STORAGE_FS_ALLOW_INSECURE_ROOT` | Relax the group/world-writable root check | `0` |
+
+```text
+STORAGE_PROVIDER=fs
+STORAGE_FS_ROOT=/var/lib/vantigo/objects
+```
+
+`STORAGE_FS_ROOT` must be an absolute path, and setting it without
+`STORAGE_PROVIDER=fs` is a configuration error rather than a silent no-op.
+
+**Unset storage fails closed at each operation, not at startup.** With
+`STORAGE_PROVIDER` unset the process still starts and serves everything else; every
+storage operation then reports `storage: not configured`. That is deliberate: an
+installation that never uploads an attachment does not need storage provisioned to
+boot.
+
+`STORAGE_FS_ALLOW_INSECURE_ROOT` is accepted **only when `APP_ENV=development`**;
+outside development it is a startup error regardless of what it would have done —
+the same shape as `MAIL_DRIVER=log` and `OWNERS_ALLOW_INSECURE_NO_MFA`.
+
+## The filesystem driver
+
+The root must exist or be creatable at initialisation, must not itself be a symbolic
+link, and — outside development — must not be group- or world-writable. Directories
+the driver creates are mode `0700`: the application identity alone. Give it a volume
+the application user exclusively owns; do not point it at a shared writable
+directory.
+
+Containment is enforced by the operating system, not by a check-then-open pair. The
+driver opens the root once as an `os.Root` and performs every operation through it,
+so each name is resolved with `openat`-style containment at the moment of use: a
+symlink planted inside the root afterwards — even one timed to land between a check
+and the syscall — still cannot make an operation land outside the root. Key
+validation runs in front of that anyway, rejecting traversal, URL-encoded, absolute,
+backslash, control-character and duplicate-prefix forms, so nonsense input gets a
+clear typed rejection before any syscall. The two are complementary, not redundant.
+
+Writes go to a temporary file under the root and are atomically renamed into place,
+so a crash mid-write never leaves a partially written object readable. Keys are
+bounded at 1024 UTF-8 bytes. **No API ever returns a physical filesystem path.**
+
+## Module scopes and the physical key
+
+Every module gets a scoped store, and the scope prefixes every key before it reaches
+the driver. The physical key is:
+
+```text
+{scope}/{relative-key}
+```
+
+**There is no tenant segment.** The .NET implementation's physical key was
+`tenants/{tenant-id}/{scope}/{relative-key}`; this is a single-tenant application and
+the tenant segment is gone along with the rest of tenancy. Nothing resolves a tenant,
+and no storage operation fails for want of one.
+
+Scope names are canonical lowercase ASCII `[a-z0-9-]`, at most 64 characters, with no
+slashes or dots. Communications uses the scope `communications`, so one of its
+attachments lands at `communications/<relative-key>`. Expenses uses the scope
+`expenses`: a receipt's relative key is `receipts/<entryId>/<uuid>`, so its
+physical key is `expenses/receipts/<entryId>/<uuid>`. Invoices uses the scope
+`invoices`: an issued document's PDF has the relative key
+`documents/<id>/<number>-<sha256>.pdf`, so its physical key is
+`invoices/documents/<id>/<number>-<sha256>.pdf` — stored once after the issue
+commits and never deleted or overwritten, since an issued document is bookkeeping
+material ([Invoices](/en/reference/invoices/#the-pdf)). Sending a document as EHF adds
+three more beside it, kept the same way: the EHF as submitted,
+`documents/<id>/<number>-<sha256>.xml` (`application/xml`), stored once by its hash when
+the document is sent; and, once the access point confirms delivery, its receipt
+`documents/<id>/<number>-<transmission>-receipt.json` and the copy it delivered
+`documents/<id>/<number>-<transmission>-delivered.xml`
+([E-invoicing](/en/admin/e-invoicing/#the-objects-written)). An imported bank file is
+kept as it was uploaded, under `bank-files/<sha256>.ocr` (an OCR giro file) or
+`bank-files/<sha256>.xml` (a camt.054 file) — keyed by the hash of its bytes, stored once
+before the import's transaction and never deleted or overwritten, since it is the
+documentation of the payments booked from it (bokføringsloven § 10); an import that
+fails after storing it leaves an object the next import of the same bytes reuses
+([Payments from the bank](/en/admin/payments/)). A reminder letter's PDF is stored
+under `reminders/<invoiceId>/<reminderId>-<sentOn>-<sha256>.pdf` — keyed by the hash of
+its bytes, put only when nothing is there yet, before the letter is mailed or when it is
+printed, and never deleted or overwritten: a letter rendered again with other figures
+(a retry the same day after a payment) gets a key of its own, and the letter's row names
+the object it went with ([the worker](/en/reference/invoices/#the-worker)). A paper letter's
+PDF is stored the same way when its print batch is printed, under its posting day; a
+reprint prints it again under a new key, and the batch's combined PDF is rendered from
+the letters' rows each time it is downloaded, never stored; a letter whose PDF could not
+be stored when it was printed is stored when the batch is next posted or downloaded, and
+each of those stops at the first letter the store fails, so an outage holds a request for
+one store timeout
+([paper and posting](/en/reference/invoices/#paper-and-posting)). Staff uses the scope
+`staff`: a document's relative key is `people/<personId>/<uuid>`, so its physical key is
+`staff/people/<personId>/<uuid>` ([Staff](/en/reference/staff/#documents)). Customers uses the
+scope `customers`: an attachment's relative key is `attachments/<uuid>`, so its physical key
+is `customers/attachments/<uuid>` — a key that names no customer, since a merge moves the
+attachment's row to the surviving customer and the store has no rename
+([Customers](/en/reference/customers/#attachments)). A scoped store refuses a
+relative key that equals its scope or already begins with `{scope}/`: callers pass
+relative keys only and must never construct the prefix themselves.
+
+**Expenses' receipts, specifically.** They are the only thing this module stores.
+A receipt is read by whoever may see the expense it is on — the same rule that
+governs the expense itself, not a rule of its own — and always through the
+application's own download endpoint (below), never a direct storage read. An
+object is removed with its expense: on an ordinary delete the object goes once
+the database row's removal has committed, and on a failed or refused write the
+object that was staged for it is removed again, so a failure never leaves an
+object nothing points at. The one window nothing closes is the process dying
+between writing the object and that compensating removal or commit completing —
+there is no background sweeper today, so a receipt orphaned that way outlives the
+request that caused it. See [Expenses](/en/reference/expenses/#receipts) for the upload rules
+(types, size, count, sniffing) and the rate limit.
+
+**Staff's documents, specifically.** A person's archive: contracts, attests,
+certificates, correspondence, health documents and the company's own categories, each a
+PDF, JPEG, PNG or HEIC of at most 10 MiB. A document is read by the person, by
+`staff:manage` (health documents excepted) and by `staff:personal-data`, always through
+Staff's own download endpoint. The object is written before its row and removed again
+if the row is refused. A delete — by hand, or by the retention erase — removes the row
+and records the object in Staff's ledger of objects to remove (`staff.object_deletions`)
+in one transaction; the object is then removed, and a removal the store refuses stays in
+the ledger for Staff's retention worker to finish, so a document that has to be erased
+is never left to chance.
+The ledger rows a store outage leaves are what to watch: they are the objects Staff
+still owes a removal. Switching the module off leaves its objects and its ledger rows
+where they are, untouched, until it is switched on again. See
+[Staff](/en/reference/staff/#documents) for the upload rules and the rate limit.
+
+**Customers' attachments, specifically.** A customer's documents — a contract, an NDA,
+the correspondence behind a timeline entry — each a PDF, JPEG, PNG or HEIC of at most 10
+MiB, at most 200 a customer. An attachment is read with `customers:timeline-view` and
+written with `customers:timeline-manage`, always through Customers' own download endpoint.
+The object is written before its row and removed again if the row is refused. A delete —
+by hand, or by a private person's anonymisation — removes the row and records the object
+in Customers' ledger of objects to remove (`customers.object_deletions`) in one
+transaction; the object is then removed, and a removal the store refuses stays in the
+ledger for the `customers-anonymisation` worker, which drains it after each cycle (passes
+of a hundred rows, for at most ten minutes), retried until the store confirms, so a file that has to be erased is never left to chance. A merge
+moves the rows and leaves the objects where they are. The ledger rows a store outage
+leaves are what to watch: they are the objects Customers still owes a removal, named in
+the worker's log; with `CUSTOMERS_ANONYMISATION_ENABLED=0` they wait, as scheduled
+anonymisations do. See [Customers](/en/reference/customers/#attachments) for the upload
+rules and the rate limit.
+
+## Downloads
+
+Downloads always stream through an authorized application endpoint.
+
+**The storage contract has no presigned-URL operation**, and no provider ever
+redirects a caller to a direct storage URL. Communications' download endpoint
+authorizes the attachment, loads it through the scoped store, and returns the bytes
+with the stored content type and a sanitized filename; the `downloadPath` field in
+its DTOs is that same-origin application endpoint, never a storage location. See
+[Communications](/en/reference/communications/) for the attachment lifecycle.
+
+Expenses' `GET /attachments/{id}` follows the same shape: it authorizes the
+receipt through the expense it belongs to, loads it through the module's own
+`expenses`-scoped store, and streams the bytes back with the content type they
+were sniffed as on upload and the file name as it was given — never a storage
+location of any kind. See [Expenses](/en/reference/expenses/#receipts).
+
+Staff's `GET /documents/{id}` does the same through its `staff`-scoped store, with
+the document's own visibility; a document whose object cannot be read answers 503
+`storage_unavailable`, not 404. See [Staff](/en/reference/staff/#reading-changing-and-removing).
+
+Customers' `GET /customers/{id}/attachments/{attachmentId}` does the same through its
+`customers`-scoped store, under the timeline's read permission, with the same headers and
+the same 503 for an object that cannot be read. See
+[Customers](/en/reference/customers/#attachments).

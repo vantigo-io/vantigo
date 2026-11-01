@@ -1,0 +1,1245 @@
+components:
+    schemas:
+        AssistantAction:
+            additionalProperties: false
+            description: "What the assistant did for the caller: a tool or operation, its mode and the HTTP status the router answered. No request or response bodies."
+            properties:
+                createdAt:
+                    format: date-time
+                    type: string
+                durationMs:
+                    format: int32
+                    type: integer
+                httpStatus:
+                    format: int32
+                    type: integer
+                id:
+                    format: uuid
+                    type: string
+                mode:
+                    type: string
+                operationId:
+                    type: string
+                runId:
+                    format: uuid
+                    type: string
+            required:
+                - id
+                - runId
+                - operationId
+                - mode
+                - durationMs
+                - createdAt
+            type: object
+        AssistantAvailability:
+            additionalProperties: false
+            properties:
+                available:
+                    type: boolean
+                local:
+                    description: True when the provider's endpoint is on a loopback, private or single-label host.
+                    type: boolean
+                reason:
+                    description: Why not, when not available.
+                    enum:
+                        - not_configured
+                        - disabled
+                        - not_enabled
+                    type: string
+            required:
+                - available
+                - local
+            type: object
+        AssistantConversation:
+            additionalProperties: false
+            properties:
+                archived:
+                    type: boolean
+                createdAt:
+                    format: date-time
+                    type: string
+                id:
+                    format: uuid
+                    type: string
+                lastActivityAt:
+                    format: date-time
+                    type: string
+                originApp:
+                    type: string
+                originRoute:
+                    type: string
+                pinned:
+                    type: boolean
+                running:
+                    description: A run is in progress.
+                    type: boolean
+                title:
+                    type: string
+            required:
+                - id
+                - title
+                - originApp
+                - originRoute
+                - pinned
+                - archived
+                - running
+                - createdAt
+                - lastActivityAt
+            type: object
+        AssistantConversationDetail:
+            additionalProperties: false
+            properties:
+                actions:
+                    items:
+                        $ref: "#/components/schemas/AssistantAction"
+                    type: array
+                activeRun:
+                    $ref: "#/components/schemas/AssistantRun"
+                conversation:
+                    $ref: "#/components/schemas/AssistantConversation"
+                messages:
+                    items:
+                        $ref: "#/components/schemas/AssistantMessage"
+                    type: array
+            required:
+                - conversation
+                - messages
+                - actions
+            type: object
+        AssistantConversationList:
+            additionalProperties: false
+            properties:
+                items:
+                    items:
+                        $ref: "#/components/schemas/AssistantConversation"
+                    type: array
+                nextCursor:
+                    nullable: true
+                    type: string
+            required:
+                - items
+            type: object
+        AssistantCreateConversationRequest:
+            additionalProperties: false
+            properties:
+                origin:
+                    $ref: "#/components/schemas/AssistantOrigin"
+            required:
+                - origin
+            type: object
+        AssistantMe:
+            additionalProperties: false
+            properties:
+                lastConversationId:
+                    format: uuid
+                    nullable: true
+                    type: string
+            type: object
+        AssistantMeRequest:
+            additionalProperties: false
+            properties:
+                lastConversationId:
+                    format: uuid
+                    nullable: true
+                    type: string
+            required:
+                - lastConversationId
+            type: object
+        AssistantMessage:
+            additionalProperties: false
+            properties:
+                context:
+                    $ref: "#/components/schemas/AssistantMessageContext"
+                createdAt:
+                    format: date-time
+                    type: string
+                id:
+                    format: uuid
+                    type: string
+                inputTokens:
+                    format: int32
+                    type: integer
+                model:
+                    type: string
+                outputTokens:
+                    format: int32
+                    type: integer
+                parts:
+                    items:
+                        $ref: "#/components/schemas/AssistantPart"
+                    type: array
+                role:
+                    enum:
+                        - user
+                        - assistant
+                        - tool
+                    type: string
+                runId:
+                    format: uuid
+                    nullable: true
+                    type: string
+            required:
+                - id
+                - role
+                - parts
+                - createdAt
+            type: object
+        AssistantMessageContext:
+            additionalProperties: false
+            description: "The context chip as a message was sent with it: the app, the route, the route's ids and a label for the record or the screen. Never the page's contents."
+            properties:
+                app:
+                    maxLength: 40
+                    type: string
+                label:
+                    maxLength: 200
+                    type: string
+                params:
+                    additionalProperties:
+                        maxLength: 100
+                        type: string
+                    type: object
+                route:
+                    maxLength: 300
+                    type: string
+            required:
+                - app
+                - route
+            type: object
+        AssistantOrigin:
+            additionalProperties: false
+            description: "Where a conversation began: the app key and the route."
+            properties:
+                app:
+                    maxLength: 40
+                    type: string
+                route:
+                    maxLength: 300
+                    type: string
+            required:
+                - app
+                - route
+            type: object
+        AssistantPart:
+            additionalProperties: false
+            description: "One typed part of a message. text: the words (Markdown); tool_call: the assistant asked for a tool (name, label, the arguments it gave); tool_result: what the tool answered the model, compacted (status ok, refused or error); link: a record or screen in the app (route, label)."
+            properties:
+                arguments:
+                    additionalProperties: true
+                    type: object
+                callId:
+                    type: string
+                content:
+                    type: string
+                label:
+                    type: string
+                name:
+                    type: string
+                route:
+                    type: string
+                status:
+                    enum:
+                        - ok
+                        - refused
+                        - error
+                    type: string
+                text:
+                    type: string
+                type:
+                    enum:
+                        - text
+                        - tool_call
+                        - tool_result
+                        - link
+                    type: string
+            required:
+                - type
+            type: object
+        AssistantPermission:
+            additionalProperties: false
+            properties:
+                defaultLevel:
+                    $ref: "#/components/schemas/AssistantPermissionLevel"
+                description:
+                    type: string
+                display:
+                    type: string
+                effectiveLevel:
+                    $ref: "#/components/schemas/AssistantPermissionLevel"
+                key:
+                    type: string
+                override:
+                    $ref: "#/components/schemas/AssistantPermissionLevel"
+                    nullable: true
+                sensitive:
+                    type: boolean
+            required:
+                - key
+                - display
+                - sensitive
+                - defaultLevel
+                - effectiveLevel
+            type: object
+        AssistantPermissionGroup:
+            additionalProperties: false
+            properties:
+                category:
+                    type: string
+                module:
+                    type: string
+                permissions:
+                    items:
+                        $ref: "#/components/schemas/AssistantPermission"
+                    type: array
+            required:
+                - module
+                - category
+                - permissions
+            type: object
+        AssistantPermissionLevel:
+            enum:
+                - off
+                - read
+                - change
+            type: string
+        AssistantPermissionRequest:
+            additionalProperties: false
+            properties:
+                level:
+                    description: The level, or null to reset the permission to its default.
+                    enum:
+                        - off
+                        - read
+                        - change
+                        - null
+                    nullable: true
+                    type: string
+            required:
+                - level
+            type: object
+        AssistantPermissionResult:
+            additionalProperties: false
+            properties:
+                permission:
+                    $ref: "#/components/schemas/AssistantPermission"
+                version:
+                    format: int32
+                    type: integer
+            required:
+                - version
+                - permission
+            type: object
+        AssistantPermissions:
+            additionalProperties: false
+            properties:
+                groups:
+                    items:
+                        $ref: "#/components/schemas/AssistantPermissionGroup"
+                    type: array
+                version:
+                    format: int32
+                    type: integer
+            required:
+                - version
+                - groups
+            type: object
+        AssistantPerson:
+            additionalProperties: false
+            properties:
+                enabled:
+                    type: boolean
+                userId:
+                    format: uuid
+                    type: string
+                version:
+                    format: int32
+                    type: integer
+            required:
+                - userId
+                - enabled
+                - version
+            type: object
+        AssistantPersonRequest:
+            additionalProperties: false
+            properties:
+                enabled:
+                    type: boolean
+            required:
+                - enabled
+            type: object
+        AssistantProblem:
+            description: "An RFC 9457 problem with this module's refusal code: assistant_unavailable (403), not_found (404), run_in_progress (409), version_conflict (409), ai_unavailable (503), invalid (400). errors carries the field errors of a 400."
+            properties:
+                code:
+                    nullable: true
+                    type: string
+                detail:
+                    nullable: true
+                    type: string
+                errors:
+                    additionalProperties:
+                        items:
+                            type: string
+                        type: array
+                    type: object
+                status:
+                    format: int32
+                    nullable: true
+                    type: integer
+                title:
+                    nullable: true
+                    type: string
+                type:
+                    nullable: true
+                    type: string
+            type: object
+        AssistantRun:
+            additionalProperties: false
+            properties:
+                conversationId:
+                    format: uuid
+                    type: string
+                endedAt:
+                    format: date-time
+                    type: string
+                errorCode:
+                    type: string
+                id:
+                    format: uuid
+                    type: string
+                startedAt:
+                    format: date-time
+                    type: string
+                state:
+                    enum:
+                        - running
+                        - done
+                        - failed
+                        - stopped
+                    type: string
+                stopRequested:
+                    type: boolean
+                toolCalls:
+                    format: int32
+                    type: integer
+            required:
+                - id
+                - conversationId
+                - state
+                - toolCalls
+                - startedAt
+                - stopRequested
+            type: object
+        AssistantSendMessageRequest:
+            additionalProperties: false
+            properties:
+                context:
+                    $ref: "#/components/schemas/AssistantMessageContext"
+                text:
+                    maxLength: 8000
+                    minLength: 1
+                    type: string
+            required:
+                - text
+            type: object
+        AssistantSettings:
+            additionalProperties: false
+            properties:
+                configured:
+                    description: The instance has an AI provider.
+                    type: boolean
+                local:
+                    type: boolean
+                mode:
+                    enum:
+                        - all
+                        - per_person
+                        - disabled
+                    type: string
+                models:
+                    items:
+                        type: string
+                    type: array
+                provider:
+                    type: string
+                retentionMonths:
+                    format: int32
+                    maximum: 60
+                    minimum: 1
+                    type: integer
+                sensitiveDefault:
+                    description: "The default level of every Sensitive permission: off (not available) or read (can read)."
+                    enum:
+                        - off
+                        - read
+                    type: string
+                updatedAt:
+                    format: date-time
+                    type: string
+                version:
+                    format: int32
+                    type: integer
+            required:
+                - mode
+                - retentionMonths
+                - sensitiveDefault
+                - version
+                - updatedAt
+                - configured
+                - local
+                - models
+            type: object
+        AssistantSettingsRequest:
+            additionalProperties: false
+            properties:
+                mode:
+                    enum:
+                        - all
+                        - per_person
+                        - disabled
+                    type: string
+                retentionMonths:
+                    format: int32
+                    type: integer
+                sensitiveDefault:
+                    enum:
+                        - off
+                        - read
+                    type: string
+            type: object
+        AssistantUpdateConversationRequest:
+            additionalProperties: false
+            properties:
+                archived:
+                    type: boolean
+                pinned:
+                    type: boolean
+                title:
+                    maxLength: 200
+                    type: string
+            type: object
+info:
+    title: Vantigo Assistant API
+    version: "1"
+openapi: 3.0.3
+paths:
+    /api/v1/assistant/availability:
+        get:
+            description: "Whether the signed-in caller has the assistant: the instance has an AI provider, the workspace mode allows the caller, and (in per-person mode) their own switch is on. The shell asks it to decide whether to show the Assistant button. reason says why not: not_configured (no AI provider), disabled (the Owner turned the assistant off for everyone), not_enabled (per-person mode and the caller's switch is off). local says whether the provider's endpoint is local to the installation, for the data notice."
+            operationId: getAssistantAvailability
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/AssistantAvailability"
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+            summary: Say whether the assistant is available to the caller
+            tags:
+                - Assistant
+            x-vantigo-access: session
+            x-vantigo-assistant: never
+    /api/v1/assistant/conversations:
+        get:
+            description: The caller's own conversations, pinned first and then by last activity, newest first, a page at a time. q matches the title and the words of the conversation; archived=true lists the archived ones instead of the live ones.
+            operationId: listAssistantConversations
+            parameters:
+                - description: Words to find in the title or the conversation.
+                  in: query
+                  name: q
+                  required: false
+                  schema:
+                      maxLength: 200
+                      type: string
+                - description: true lists archived conversations; the default lists the others.
+                  in: query
+                  name: archived
+                  required: false
+                  schema:
+                      type: boolean
+                - description: The nextCursor of the previous page.
+                  in: query
+                  name: cursor
+                  required: false
+                  schema:
+                      type: string
+                - description: Page size, 30 by default.
+                  in: query
+                  name: limit
+                  required: false
+                  schema:
+                      format: int32
+                      maximum: 100
+                      minimum: 1
+                      type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/AssistantConversationList"
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/AssistantProblem"
+                    description: Bad Request - a cursor that is not one
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/AssistantProblem"
+                    description: Forbidden - assistant_unavailable (the assistant is not available to the caller), or the session's own refusal.
+            summary: List the caller's conversations
+            tags:
+                - Assistant
+            x-vantigo-access: session
+            x-vantigo-assistant: never
+        post:
+            description: Starts an empty conversation that remembers where it began (app and route), and makes it the caller's last open one.
+            operationId: createAssistantConversation
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: "#/components/schemas/AssistantCreateConversationRequest"
+                required: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/AssistantConversation"
+                    description: Created
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/AssistantProblem"
+                    description: Bad Request - a field error
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/AssistantProblem"
+                    description: Forbidden - assistant_unavailable (the assistant is not available to the caller), or the session's own refusal.
+            summary: Start a conversation
+            tags:
+                - Assistant
+            x-vantigo-access: session
+            x-vantigo-assistant: never
+    /api/v1/assistant/conversations/{id}:
+        delete:
+            description: Deletes the conversation with its messages, runs and action log. A run in progress is stopped first.
+            operationId: deleteAssistantConversation
+            responses:
+                "204":
+                    description: No Content
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/AssistantProblem"
+                    description: Forbidden - assistant_unavailable (the assistant is not available to the caller), or the session's own refusal.
+                "404":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/AssistantProblem"
+                    description: "Not Found - not_found. Also what another person's conversation, run or action answers: the assistant never says whether it exists."
+            summary: Delete a conversation
+            tags:
+                - Assistant
+            x-vantigo-access: session
+            x-vantigo-assistant: never
+        get:
+            description: "The conversation, its messages in order, the run in progress if there is one, and the action log: what the assistant did for the caller, with no request or response bodies. A client that finds a run running polls this every two seconds."
+            operationId: getAssistantConversation
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/AssistantConversationDetail"
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/AssistantProblem"
+                    description: Forbidden - assistant_unavailable (the assistant is not available to the caller), or the session's own refusal.
+                "404":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/AssistantProblem"
+                    description: "Not Found - not_found. Also what another person's conversation, run or action answers: the assistant never says whether it exists."
+            summary: Get a conversation with its messages
+            tags:
+                - Assistant
+            x-vantigo-access: session
+            x-vantigo-assistant: never
+        parameters:
+            - in: path
+              name: id
+              required: true
+              schema:
+                  format: uuid
+                  type: string
+        patch:
+            description: Changes the title, the pin or the archived state; a field left out is kept.
+            operationId: updateAssistantConversation
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: "#/components/schemas/AssistantUpdateConversationRequest"
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/AssistantConversation"
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/AssistantProblem"
+                    description: Bad Request - a field error
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/AssistantProblem"
+                    description: Forbidden - assistant_unavailable (the assistant is not available to the caller), or the session's own refusal.
+                "404":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/AssistantProblem"
+                    description: "Not Found - not_found. Also what another person's conversation, run or action answers: the assistant never says whether it exists."
+            summary: Rename, pin or archive a conversation
+            tags:
+                - Assistant
+            x-vantigo-access: session
+            x-vantigo-assistant: never
+    /api/v1/assistant/conversations/{id}/messages:
+        parameters:
+            - in: path
+              name: id
+              required: true
+              schema:
+                  format: uuid
+                  type: string
+        post:
+            description: "Starts a run and answers text/event-stream, flushed per event: run (the run's id), delta (a piece of text), tool (a tool call started or done, with a short label), message (a persisted message), done, and error (a code). The run is detached from the connection: a client that disconnects stops hearing, not the run, which continues on the server and can be followed by polling the conversation. One run per conversation at a time: a second message while one runs is a 409 run_in_progress."
+            operationId: sendAssistantMessage
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: "#/components/schemas/AssistantSendMessageRequest"
+                required: true
+            responses:
+                "200":
+                    content:
+                        text/event-stream:
+                            schema:
+                                type: string
+                    description: OK - an event stream.
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/AssistantProblem"
+                    description: Bad Request - an empty or oversized message
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/AssistantProblem"
+                    description: Forbidden - assistant_unavailable (the assistant is not available to the caller), or the session's own refusal.
+                "404":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/AssistantProblem"
+                    description: "Not Found - not_found. Also what another person's conversation, run or action answers: the assistant never says whether it exists."
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/AssistantProblem"
+                    description: Conflict - run_in_progress.
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Too Many Requests
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/AssistantProblem"
+                    description: Service Unavailable - ai_unavailable.
+            summary: Send a message and stream the assistant's answer
+            tags:
+                - Assistant
+            x-vantigo-access: session
+            x-vantigo-assistant: never
+    /api/v1/assistant/me:
+        get:
+            description: The conversation the caller had open last, which the panel reopens, on any device.
+            operationId: getAssistantMe
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/AssistantMe"
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/AssistantProblem"
+                    description: Forbidden - assistant_unavailable (the assistant is not available to the caller), or the session's own refusal.
+            summary: Get the caller's assistant state
+            tags:
+                - Assistant
+            x-vantigo-access: session
+            x-vantigo-assistant: never
+        put:
+            description: Sets lastConversationId, or clears it with null. A conversation that is not the caller's is a 404.
+            operationId: putAssistantMe
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: "#/components/schemas/AssistantMeRequest"
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/AssistantMe"
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/AssistantProblem"
+                    description: Forbidden - assistant_unavailable (the assistant is not available to the caller), or the session's own refusal.
+                "404":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/AssistantProblem"
+                    description: "Not Found - not_found. Also what another person's conversation, run or action answers: the assistant never says whether it exists."
+            summary: Remember the conversation the caller has open
+            tags:
+                - Assistant
+            x-vantigo-access: session
+            x-vantigo-assistant: never
+    /api/v1/assistant/people/{userId}:
+        get:
+            description: Whether the person's own switch is on (it is off until an Owner turns it on); it matters in per-person mode. Owner only.
+            operationId: getAssistantPerson
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/AssistantPerson"
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/AssistantProblem"
+                    description: "Not Found - not_found. Also what another person's conversation, run or action answers: the assistant never says whether it exists."
+            summary: Get a person's assistant switch
+            tags:
+                - Assistant
+            x-vantigo-access: policy:OwnerManagement
+            x-vantigo-assistant: never
+        parameters:
+            - in: path
+              name: userId
+              required: true
+              schema:
+                  format: uuid
+                  type: string
+        put:
+            description: Sets the person's own switch. Guarded by If-Match on the person's version (0 for a person with no row yet), audited with before and after. Owner only.
+            operationId: putAssistantPerson
+            parameters:
+                - description: The version the person's switch was read at, bare (3) or quoted ("3"). A version that has moved on is a 409 version_conflict.
+                  in: header
+                  name: If-Match
+                  required: true
+                  schema:
+                      type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: "#/components/schemas/AssistantPersonRequest"
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/AssistantPerson"
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/AssistantProblem"
+                    description: Bad Request - a field error, or an If-Match that is not a version
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/AssistantProblem"
+                    description: "Not Found - not_found. Also what another person's conversation, run or action answers: the assistant never says whether it exists."
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/AssistantProblem"
+                    description: Conflict - version_conflict.
+            summary: Switch the assistant on or off for a person
+            tags:
+                - Assistant
+            x-vantigo-access: policy:OwnerManagement
+            x-vantigo-assistant: never
+    /api/v1/assistant/runs/{id}/stop:
+        parameters:
+            - in: path
+              name: id
+              required: true
+              schema:
+                  format: uuid
+                  type: string
+        post:
+            description: Asks the run to stop at its next step. A run already over is answered as it is.
+            operationId: stopAssistantRun
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/AssistantRun"
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/AssistantProblem"
+                    description: Forbidden - assistant_unavailable (the assistant is not available to the caller), or the session's own refusal.
+                "404":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/AssistantProblem"
+                    description: "Not Found - not_found. Also what another person's conversation, run or action answers: the assistant never says whether it exists."
+            summary: Stop a run
+            tags:
+                - Assistant
+            x-vantigo-access: session
+            x-vantigo-assistant: never
+    /api/v1/assistant/settings:
+        get:
+            description: The workspace's mode, retention and sensitive data switch, with the provider and models the instance is configured for and whether that provider is local, for the data notice. Owner only.
+            operationId: getAssistantSettings
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/AssistantSettings"
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+            summary: Get the Assistant settings
+            tags:
+                - Assistant
+            x-vantigo-access: policy:OwnerManagement
+            x-vantigo-assistant: never
+        put:
+            description: Changes the mode, the retention in months (1 to 60) and the sensitive data switch; a field left out is kept. Guarded by If-Match, audited with before and after. Owner only.
+            operationId: putAssistantSettings
+            parameters:
+                - description: The version the settings was read at, bare (3) or quoted ("3"). A version that has moved on is a 409 version_conflict.
+                  in: header
+                  name: If-Match
+                  required: true
+                  schema:
+                      type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: "#/components/schemas/AssistantSettingsRequest"
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/AssistantSettings"
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/AssistantProblem"
+                    description: Bad Request - field errors, or an If-Match that is not a version
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/AssistantProblem"
+                    description: Conflict - version_conflict.
+            summary: Change the Assistant settings
+            tags:
+                - Assistant
+            x-vantigo-access: policy:OwnerManagement
+            x-vantigo-assistant: never
+    /api/v1/assistant/settings/permissions:
+        get:
+            description: The permission catalog of the enabled modules grouped by module and category, each with its default level, the Owner's override and the effective level. Owner only.
+            operationId: getAssistantPermissions
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/AssistantPermissions"
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+            summary: List what the assistant may use
+            tags:
+                - Assistant
+            x-vantigo-access: policy:OwnerManagement
+            x-vantigo-assistant: never
+    /api/v1/assistant/settings/permissions/{key}:
+        parameters:
+            - description: A permission key of the catalog, such as customers:view.
+              in: path
+              name: key
+              required: true
+              schema:
+                  type: string
+        put:
+            description: Sets the level the assistant may use the permission at (off, read, change), or resets it to its default with null. Guarded by If-Match on the settings' version, audited with before and after. A key outside the catalog is a 404. Owner only.
+            operationId: putAssistantPermission
+            parameters:
+                - description: The version the settings was read at, bare (3) or quoted ("3"). A version that has moved on is a 409 version_conflict.
+                  in: header
+                  name: If-Match
+                  required: true
+                  schema:
+                      type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: "#/components/schemas/AssistantPermissionRequest"
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/AssistantPermissionResult"
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/AssistantProblem"
+                    description: Bad Request - an unknown level, or an If-Match that is not a version
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/AssistantProblem"
+                    description: "Not Found - not_found. Also what another person's conversation, run or action answers: the assistant never says whether it exists."
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/AssistantProblem"
+                    description: Conflict - version_conflict.
+            summary: Set the level of one permission
+            tags:
+                - Assistant
+            x-vantigo-access: policy:OwnerManagement
+            x-vantigo-assistant: never
+servers:
+    - url: /

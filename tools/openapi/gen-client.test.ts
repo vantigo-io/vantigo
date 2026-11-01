@@ -25,6 +25,7 @@ describe("gen:client", () => {
       planning: "apps/planning/frontend/src/api-schema.d.ts",
       calendar: "apps/calendar/frontend/src/api-schema.d.ts",
       entra: "apps/entra/frontend/src/api-schema.d.ts",
+      assistant: "apps/assistant/frontend/src/api-schema.d.ts",
     });
   });
 
