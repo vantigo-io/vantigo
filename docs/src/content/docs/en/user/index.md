@@ -66,7 +66,7 @@ shorter than yours:
 | App | Areas |
 | --- | --- |
 | [Customers](/en/user/customers/) | Customers, Contacts, Follow-ups |
-| [Projects](/en/user/projects/) | Projects, My tasks, Project economy |
+| [Projects](/en/user/projects/) | Projects, My tasks, Project economy, Project templates |
 | [Time](/en/user/time/) | My week, Approvals, People, Time settings |
 | [Calendar](/en/user/calendar/) | Calendar (your own, and a colleague's with the picker), My calendar (your calendar on your phone, and calendars from elsewhere) |
 | [Expenses](/en/user/expenses/) | My expenses, Expense approvals, Reimbursements, Expense settings |

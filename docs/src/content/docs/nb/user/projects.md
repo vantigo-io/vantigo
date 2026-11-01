@@ -141,8 +141,11 @@ diamantmerket milepæl-tagg. Planleggingskonflikter der en forgjenger slutter et
 prosjektledere ser **Bruk mal** og **Ny oppgave**; en leser får de samme visningene uten handlingene.
 
 **Bruk mal** åpner **Bruk prosjektmal**, hvor du kan velge en standardisert prosjektmal (f.eks. oppstart
-for ny kunde) og en **Oppstartsdato (T+0)**. Når malen tas i bruk, opprettes malens leveransemilepæler, oppgaver,
-deloppgaver og avhengighetskoblinger med kalenderdatoer beregnet ut fra oppstartsdatoen.
+for ny kunde) og en **Oppstartsdato (T+0)**, som er prosjektets startdato eller ellers i dag. Når malen tas i
+bruk, opprettes malens leveransemilepæler, oppgaver, deloppgaver og avhengighetskoblinger med kalenderdatoer
+beregnet ut fra oppstartsdatoen, ved siden av det prosjektet allerede har. Finnes det ingen maler ennå, sier
+dialogen *Ingen maler tilgjengelig ennå.*, og til den som kan lage maler legger den til en lenke, **Lag en
+under Prosjektmaler** — se [Bygg prosjektmaler](#bygg-prosjektmaler).
 
 **Ny oppgave** åpner skjemaet **Ny oppgave**: **Tittel** (påkrevd, høyst 200 tegn),
 **Beskrivelse**, **Status**, **Ansvarlig** (hvem som helst på prosjektet),
@@ -178,6 +181,45 @@ i skuffen. **Status**-velgeren på en rad endrer statusen direkte — og siden
 tildelt, sier siden **Ingenting er tildelt deg**. Hurtighandlingen **Opprett
 oppgave** i søket lander her: den spør først etter **Prosjekt**, og åpner så det
 vanlige skjemaet **Ny oppgave** på det.
+
+## Bygg prosjektmaler
+
+**Prosjektmaler** i sidemenyen er arbeidsområdets katalog over malene som **Bruk
+mal** tar i bruk. Den tilbys den som kan opprette prosjekter (`projects:access` og
+`projects:create`); alle andre i appen ser fortsatt hver mal i **Bruk mal**.
+Tabellen viser hver mals **Navn** og beskrivelse, og hvor mange
+**Leveransemilepæler**, **Oppgaver**, **Deloppgaver** og **Avhengigheter** den har.
+Finnes det ingen ennå, sier siden **Ingen prosjektmaler ennå**.
+
+**Ny mal** åpner **Ny prosjektmal**:
+
+1. Gi den et **Navn** (påkrevd, høyst 200 tegn) og, om du vil, en **Beskrivelse**
+   (høyst 2000 tegn).
+2. Under **Leveransemilepæler** velger du **Legg til milepæl** for hver av dem: et
+   **Navn** og en **Måldag** — dager fra oppstart, så `T+0` er oppstartsdagen og
+   `T+14` to uker senere.
+3. Under **Oppgaver** velger du **Legg til oppgave** for hver av dem: en **Tittel**,
+   en valgfri **Beskrivelse**, **Startdag** og **Fristdag** (ikke før startdagen),
+   **Estimat (timer)** (over 0 når det er satt) og **Leveransemilepælen** den hører
+   til. **Legg til deloppgave** legger en deloppgave under den med de samme feltene,
+   bortsett fra milepælen.
+4. Under **Avhengigheter** velger du **Legg til avhengighet** (når det finnes to
+   oppgaver) og velger **Forgjenger** og **Etterfølger**, som venter på den. Bare
+   hovedoppgaver kobles, en oppgave kan ikke avhenge av seg selv, et par står bare én
+   gang, og koblingene kan ikke danne en sløyfe.
+5. **Opprett** lagrer den.
+
+Pilene på hver rad flytter den opp eller ned, og søppelkurven fjerner den. Fjerner
+du en milepæl, kobles oppgavene dens fra; fjerner du en oppgave, forsvinner
+deloppgavene og avhengighetene dens med den. Et felt malens regler avviser, merkes
+der det står, før noe sendes.
+
+Radens meny har **Rediger**, det samme skjemaet lagret med **Lagre endringer**, og
+**Slett malen**, som først spør *Vil du slette navn?*. Prosjekter som allerede er
+startet fra en mal, beholder milepælene og oppgavene sine når malen endres eller
+slettes. En mal noen andre har lagret imens, avvises med *Malen ble endret av noen
+andre. Lukk den, åpne den igjen og gjør endringene dine på nytt.* Se
+[Project templates and blueprints](/en/reference/projects/#project-templates-and-blueprints).
 
 ## Sett opp fakturalinjer
 
@@ -326,6 +368,8 @@ klare i en annen valuta sier **Mer klart i en annen valuta**; prosjektets egen
 | --- | --- |
 | Appen Prosjekter: Prosjekter, Mine oppgaver, Prosjektøkonomi | `projects:access` |
 | **Nytt prosjekt** | `projects:create` |
+| **Prosjektmaler**: opprette, redigere og slette maler | `projects:create` |
+| **Bruk mal** på et prosjekt | rollen **Deltaker** eller **Prosjektleder** |
 | Å se alle prosjekter, ikke bare dine egne | `projects:view-all` eller `projects:manage-all` |
 | **Rediger**, **Endre status**, Deltakere, fakturalinjer, arbeidstyper, milepæler | rollen **Prosjektleder**, eller `projects:manage-all` |
 | Oppgaver, sjekklistepunkter og kommentarer | rollen **Deltaker** eller **Prosjektleder** |

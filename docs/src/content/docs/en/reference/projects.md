@@ -1344,10 +1344,55 @@ delivery milestones, tasks, subtasks, and dependency graphs in one operation.
   and finish-to-start dependencies link predecessor and successor tasks by 0-based task index.
 - **Template instantiation (`POST /api/v1/projects/{id}/apply-template`):** When applying a template with a chosen `kickoffDate`:
   1. An exclusive task-order lock (`AcquireTaskOrderLock`) is acquired for the target project.
-  2. Delivery milestones are created with `targetDate = kickoffDate + targetDayOffset`.
+  2. Delivery milestones are created with `targetDate = kickoffDate + targetDayOffset`, appended after the
+     project's own, each recording a `delivery-milestone-added` timeline entry as adding one by hand does.
   3. Tasks and subtasks are created with `startDate = kickoffDate + startDayOffset` and `dueDate = kickoffDate + dueDayOffset`, mapped to their instantiated delivery milestones.
   4. Task dependencies are created linking the newly instantiated predecessor and successor task IDs.
   5. The entire instantiation completes atomically inside a single transaction.
+
+### Who may change the catalog
+
+Templates are workspace-wide, not per project, so they are guarded by permissions rather than by a
+project's roles. The contract's `x-vantigo-access` says it and the router enforces it before the
+handler runs:
+
+- **Reading** — `GET /api/v1/projects/templates` and `GET /api/v1/projects/templates/{templateId}` —
+  needs `projects:access`.
+- **Creating, updating and deleting** a template needs `projects:access` **and** `projects:create`,
+  the same two as creating a project: the people who may start projects own the blueprints they are
+  started from. Without either the router answers **403**.
+- **Applying** a template is a write to the target project, so it follows that project's roles: a
+  caller who cannot see the project gets **404**, one who can see it but is not a member or manager
+  (nor holds `projects:manage-all`) gets **403**.
+
+In the app, **Project templates** (`/projects/templates`) is offered to callers holding both
+`projects:access` and `projects:create`; see the
+[user guide](/en/user/projects/#build-project-templates).
+
+### Validation and status codes
+
+A create or update is checked against the rules the rows it becomes are held to, so a saved template
+never fails to apply on a rule a hand-made row would have been refused for. Each refusal is a **400**
+validation problem keyed by the field (`milestones[0].name`, `tasks[1].subtasks[0].estimateHours`,
+`dependencies[2].successorTaskIndex`, or `dependencies` for a cycle):
+
+- the template's `name` is required and at most 200 characters, its `description` at most 2000
+  (characters, not bytes, after trimming);
+- each milestone has the delivery milestone rules: a `name` of 1–200 characters and a `description`
+  of at most 2000; `targetDayOffset` is not negative;
+- each task and subtask has the task rules: a `title` of 1–200 characters, a `description` of at
+  most 4000, and an `estimateHours` that, when set, is above 0 and at most 999 999.99; the day
+  offsets are not negative and `dueDayOffset` is not before `startDayOffset`;
+- a task's `milestoneIndex` and a dependency's two task indices point at a milestone or top-level
+  task of the same template; a task cannot depend on itself, a pair is listed once (the project's
+  dependency table holds each pair once), and the dependencies may not form a cycle.
+
+Names, titles and descriptions are stored trimmed, a blank description as none. `PUT` carries the
+`revision` it was read at: an unknown template is **404**, a revision that has moved on **409**.
+`DELETE` answers **204**, or **404** for an unknown template; projects already started from it keep
+what it created. Applying checks the stored template against the same rules again and answers
+**400** rather than half-applying one saved before a rule existed, and **404** for an unknown
+template.
 
 ## Contracts for other modules
 
@@ -1539,10 +1584,10 @@ create additionally requires `projects:create`.
 | `DELETE /api/v1/projects/dependencies/{dependencyId}` | Delete a task dependency link. Member or manager |
 | `POST /api/v1/projects/tasks/{taskId}/reschedule-downstream` | Shift dates of all reachable downstream tasks by a day delta. Member or manager |
 | `GET /api/v1/projects/templates` | List reusable project blueprint templates. `projects:access` |
-| `POST /api/v1/projects/templates` | Create a new project blueprint template. `projects:access` |
+| `POST /api/v1/projects/templates` | Create a new project blueprint template. `projects:access` and `projects:create` |
 | `GET /api/v1/projects/templates/{templateId}` | Retrieve a project template by ID. `projects:access` |
-| `PUT /api/v1/projects/templates/{templateId}` | Update a project template with revision conflict guard. `projects:access` |
-| `DELETE /api/v1/projects/templates/{templateId}` | Delete a project template. `projects:access` |
+| `PUT /api/v1/projects/templates/{templateId}` | Update a project template with revision conflict guard. `projects:access` and `projects:create` |
+| `DELETE /api/v1/projects/templates/{templateId}` | Delete a project template. `projects:access` and `projects:create` |
 | `POST /api/v1/projects/{id}/apply-template` | Instantiate a template onto a project with relative offsets from `kickoffDate`. Member or manager |
 | `GET /api/v1/projects/{id}/economy` | Budget vs. logged, per line, per work type and in total, plus what the expenses cost and will bill; hours for anyone who sees the project, amounts and the `expenses` block need financial rights, cost and margin need `projects:view-costs` too — see [Project economy](#project-economy) |
 | `GET /api/v1/projects/economy` | The portfolio: one row per project the caller has financial rights on. `projects:access`; paged, filtered and sorted — see [Project economy](#project-economy) |
@@ -1604,7 +1649,9 @@ every tab of the detail page rather than on the Overview tab alone.
 
 The app is registered in `apps/host/frontend/src/apps.ts` and shows in the switcher
 for anyone with `projects:access`, greying out with "Not enabled" when the module is
-off. The host also owns the detail tab list, which is how Time, Expenses, Invoices and
+off. Its sidebar is Projects, My tasks and Project economy on `projects:access`, and
+Project templates (`/projects/templates`) on `projects:access` together with
+`projects:create` — the permissions every template write is checked against. The host also owns the detail tab list, which is how Time, Expenses, Invoices and
 Planning each add a tab exactly as Energy does on the customer page — the Tasks and
 Economy tabs are two entries in that same list, gated on nothing but seeing the project.
 Planning's tab renders the Planning package's own `ProjectPlan` component, gated on the
