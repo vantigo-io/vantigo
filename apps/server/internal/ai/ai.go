@@ -13,8 +13,13 @@
 // models are instance configuration; which allowed model a task uses is the
 // workspace's, chosen by an Owner and kept by identity (contracts.AIModels).
 //
+// Client.Chat is the second door, for a conversation: a system message, typed
+// messages and JSON Schema tools, streamed, against any OpenAI-compatible
+// endpoint — OpenAI, or a local model served by Ollama, vLLM or LM Studio,
+// which needs no key. It is the same guard under a longer budget (AI_TIMEOUT).
+//
 // A nil *Client is the unavailable state. New answers it for any configuration
-// without a provider, a key and a model, so an installation that has no AI
+// without a provider, a model, and a key or a base URL, so an installation that has no AI
 // constructs no network client and every caller's availability check is one
 // nil test.
 //
@@ -31,8 +36,10 @@ package ai
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"slices"
+	"time"
 
 	"github.com/vantigo-io/vantigo/server/internal/config"
 )
@@ -62,6 +69,84 @@ type Response struct {
 	Model    string
 }
 
+// Role says who wrote a Message. The system message is not one of them: it is
+// ChatRequest.System, so a provider that keeps it elsewhere than in the list
+// (Anthropic's separate field) maps it in its own file.
+type Role string
+
+const (
+	// RoleUser is the person's message.
+	RoleUser Role = "user"
+	// RoleAssistant is the model's earlier answer: its text, its tool calls, or both.
+	RoleAssistant Role = "assistant"
+	// RoleTool is the result of one ToolCall, named by ToolCallID.
+	RoleTool Role = "tool"
+)
+
+// Message is one turn of a chat, in terms no provider owns.
+type Message struct {
+	Role Role
+	// Text is the message's content: what the person wrote, what the model
+	// said (possibly empty beside ToolCalls), or a tool's result.
+	Text string
+	// ToolCalls are the calls an assistant message asked for.
+	ToolCalls []ToolCall
+	// ToolCallID names the ToolCall a RoleTool message answers.
+	ToolCallID string
+}
+
+// Tool is a function the model may call, described by a JSON Schema.
+type Tool struct {
+	Name        string
+	Description string
+	// Parameters is the JSON Schema of the arguments, an object schema. Empty
+	// means a function that takes none.
+	Parameters json.RawMessage
+}
+
+// ToolCall is one call the model asked for.
+type ToolCall struct {
+	// ID pairs the call with the RoleTool message that answers it.
+	ID   string
+	Name string
+	// Arguments is always valid JSON, normally an object. Text the model sent
+	// that is not JSON (local models do) is carried as a JSON string instead,
+	// so a caller can see it is not an object and tell the model so.
+	Arguments json.RawMessage
+}
+
+// ChatRequest is one chat turn asked of the provider.
+type ChatRequest struct {
+	System   string
+	Messages []Message
+	Tools    []Tool
+	// MaxTokens bounds the answer; zero leaves it to the provider.
+	MaxTokens int
+}
+
+// ChatResponse is the model's answer, or — with an error — what is known of
+// the call that failed.
+type ChatResponse struct {
+	// Message is the assistant's answer: its text and the tool calls it asks for.
+	Message Message
+	// FinishReason is the provider's own word for why the answer ended
+	// ("stop", "tool_calls", "length"). Servers differ — Ollama says "stop"
+	// beside tool calls — so a caller decides by Message.ToolCalls.
+	FinishReason string
+	// InputTokens and OutputTokens are as Response's: nil when the provider
+	// reported none, as Ollama's compatible endpoint may not.
+	InputTokens  *int32
+	OutputTokens *int32
+	// Provider and Model name what served the call, set whenever the model
+	// was resolved, also on an error.
+	Provider string
+	Model    string
+}
+
+// DefaultChatTimeout is the budget of one Chat call when the configuration
+// names none (AI_TIMEOUT's default): local models are slow.
+const DefaultChatTimeout = 120 * time.Second
+
 // Resolver answers which model a task is to use. Identity's table of choices
 // is the production one (contracts.AIModels satisfies it structurally); a nil
 // Resolver gives every task the plan's default, the first of AI_MODELS.
@@ -74,6 +159,10 @@ type Resolver interface {
 // this package's typed errors. A second provider is a second implementation.
 type chatProvider interface {
 	complete(ctx context.Context, model, prompt string) (completion, error)
+	// chat streams a conversation turn: onDelta (which may be nil) receives
+	// each text delta as it arrives, and the answer is the assembled message.
+	// The result's Provider and Model are Chat's to fill.
+	chat(ctx context.Context, model string, req ChatRequest, onDelta func(text string)) (ChatResponse, error)
 }
 
 // completion is a provider's answer before Complete adds what it knows.
@@ -94,9 +183,15 @@ type Client struct {
 
 // New builds the client for cfg over transport (Deps.HTTPTransport: nil in
 // production, meaning http.DefaultTransport; a fake in every test) and
-// resolver, or returns nil when cfg names no provider, no key or no model.
+// resolver, or returns nil when cfg names no provider, no model, or no key
+// where an endpoint that needs one is configured. A key is optional once
+// AI_BASE_URL names an endpoint (config.Load has already refused a key over
+// plain http): Ollama, vLLM and LM Studio take none.
 func New(cfg *config.Config, transport http.RoundTripper, resolver Resolver) *Client {
-	if cfg == nil || cfg.AIProvider == "" || cfg.AIAPIKey == "" || len(cfg.AIModels) == 0 {
+	if cfg == nil || cfg.AIProvider == "" || len(cfg.AIModels) == 0 {
+		return nil
+	}
+	if cfg.AIAPIKey == "" && cfg.AIBaseURL == "" {
 		return nil
 	}
 	if transport == nil {
@@ -104,8 +199,12 @@ func New(cfg *config.Config, transport http.RoundTripper, resolver Resolver) *Cl
 	}
 	var chat chatProvider
 	switch cfg.AIProvider {
-	case ProviderOpenAI:
-		chat = newOpenAI(cfg.AIAPIKey, cfg.AIBaseURL, transport)
+	case ProviderOpenAI, ProviderOpenAICompatible:
+		timeout := cfg.AITimeout
+		if timeout <= 0 {
+			timeout = DefaultChatTimeout
+		}
+		chat = newOpenAI(cfg.AIAPIKey, cfg.AIBaseURL, transport, timeout)
 	default:
 		// config accepts only the providers implemented here, so this is a
 		// configuration this build cannot serve: unavailable, never a panic.
@@ -119,8 +218,9 @@ func New(cfg *config.Config, transport http.RoundTripper, resolver Resolver) *Cl
 	}
 }
 
-// Provider is the provider's name, "openai". It is a fact the AI models page
-// states; the key is not one and has no accessor.
+// Provider is the provider's name as the operator set it, "openai" or
+// "openai-compatible". It is a fact the AI models page states; the key is not
+// one and has no accessor.
 func (c *Client) Provider() string { return c.provider }
 
 // Models are the models the plan allows, the first being the plan's default.
@@ -180,4 +280,35 @@ func (c *Client) Complete(ctx context.Context, task string, req Request) (Respon
 	}
 	out.Text, out.InputTokens, out.OutputTokens = done.text, done.inputTokens, done.outputTokens
 	return out, nil
+}
+
+// Chat asks the provider for the next turn of a conversation: the system
+// message, the messages so far and the tools the model may call. The answer
+// streams — onDelta (which may be nil) receives each text delta as it
+// arrives, from the goroutine that called Chat — and the returned ChatResponse
+// carries the assembled assistant message with its tool calls and the token
+// counts. The model is resolved and allowed exactly as Complete's is, the
+// call is under the same guard (no redirect, Deps.HTTPTransport) and the
+// failures are the same typed errors; a stream that ends before the provider
+// said it was done is a decode error, the budget is AI_TIMEOUT for the whole
+// call, and the returned ChatResponse names the provider and the model once
+// resolved whatever the outcome.
+func (c *Client) Chat(ctx context.Context, task string, req ChatRequest, onDelta func(text string)) (ChatResponse, error) {
+	out := ChatResponse{Provider: c.provider}
+
+	model, err := c.resolve(ctx, task)
+	if err != nil {
+		return out, err
+	}
+	out.Model = model
+	if !slices.Contains(c.models, model) {
+		return out, aiModelNotAllowedError{}
+	}
+
+	done, err := c.chat.chat(ctx, model, req, onDelta)
+	if err != nil {
+		return out, err
+	}
+	done.Provider, done.Model = out.Provider, out.Model
+	return done, nil
 }
