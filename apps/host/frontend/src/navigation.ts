@@ -19,6 +19,14 @@ export const moduleKeys = [
 ] as const;
 export type ModuleKey = (typeof moduleKeys)[number];
 
+/**
+ * An instance fact a destination depends on that is not a module: the AI
+ * models page exists while the instance has an AI provider (Integrations
+ * design T1, T13). The host learns it by asking the API, not from the page it
+ * was served as modules are, so it is part of the visibility context.
+ */
+export type NavFeature = "ai";
+
 export interface NavItem {
   label: string;
   to: string;
@@ -47,6 +55,8 @@ export interface NavItem {
   guardPermissions?: readonly string[];
   /** The module that must be enabled for this destination. */
   module?: ModuleKey;
+  /** The instance feature that must be present for this destination. */
+  feature?: NavFeature;
   /**
    * The destination is a page the server serves beside the SPA, not a client
    * route: `to` is its path under the app's base path, it opens in a new tab,
@@ -78,6 +88,8 @@ export interface NavVisibilityContext {
   isSystemAdmin?: boolean;
   /** Enabled module keys; undefined while unknown (hides module destinations). */
   enabledModules?: readonly ModuleKey[];
+  /** The instance features present; undefined while unknown (hides feature destinations). */
+  features?: readonly NavFeature[];
 }
 
 /**
@@ -87,7 +99,14 @@ export interface NavVisibilityContext {
  */
 export const visibleNavSections = <S extends NavSection>(
   sections: readonly S[],
-  { permissions, isOwner, canManageAuthorization, isSystemAdmin = false, enabledModules }: NavVisibilityContext,
+  {
+    permissions,
+    isOwner,
+    canManageAuthorization,
+    isSystemAdmin = false,
+    enabledModules,
+    features,
+  }: NavVisibilityContext,
 ): S[] =>
   sections
     .map((section) => ({
@@ -98,6 +117,7 @@ export const visibleNavSections = <S extends NavSection>(
           (!item.systemAdminOnly || isSystemAdmin) &&
           (!item.capability || canManageAuthorization) &&
           (!item.module || enabledModules?.includes(item.module) === true) &&
+          (!item.feature || features?.includes(item.feature) === true) &&
           hasPermissions(permissions, item.requiredPermissions) &&
           hasAllPermissions(permissions, item.requiredAllPermissions),
       ),

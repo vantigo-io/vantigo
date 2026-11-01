@@ -34,7 +34,7 @@ import { MY_PAGE_ROUTE_PATH, PEOPLE_ROUTE_PATH } from "@vantigo/staff-ui/lib/rou
 import { useState } from "react";
 import "../i18n";
 import { spotlightNavSections } from "../apps";
-import { hasPermissions, type ModuleKey, navSearchFor, visibleNavSections } from "../navigation";
+import { hasPermissions, type ModuleKey, type NavFeature, navSearchFor, visibleNavSections } from "../navigation";
 
 const MIN_SEARCH_LENGTH = 2;
 const MAX_RESULTS = 5;
@@ -45,6 +45,7 @@ interface AppSpotlightProps {
   canManageAuthorization: boolean;
   isSystemAdmin?: boolean;
   enabledModules?: readonly ModuleKey[];
+  features?: readonly NavFeature[];
   onNavigate?: () => void;
 }
 
@@ -58,6 +59,7 @@ export const AppSpotlight = ({
   canManageAuthorization,
   isSystemAdmin,
   enabledModules,
+  features,
   onNavigate,
 }: AppSpotlightProps) => {
   const { t } = useI18n("host");
@@ -73,6 +75,7 @@ export const AppSpotlight = ({
     canManageAuthorization,
     isSystemAdmin,
     enabledModules,
+    features,
   }).flatMap((section) =>
     section.items.map((item) => ({
       ...item,

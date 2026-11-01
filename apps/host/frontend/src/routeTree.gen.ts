@@ -90,6 +90,7 @@ import { Route as TimeDayRouteImport } from './routes/time/day'
 import { Route as TimePeopleRouteImport } from './routes/time/people'
 import { Route as TimeSettingsRouteImport } from './routes/time/settings'
 import { Route as WorkspaceIndexRouteImport } from './routes/workspace/index'
+import { Route as WorkspaceAiRouteImport } from './routes/workspace/ai'
 import { Route as WorkspaceEntraRouteImport } from './routes/workspace/entra'
 import { Route as WorkspaceInvitationsRouteImport } from './routes/workspace/invitations'
 import { Route as WorkspaceOverviewRouteImport } from './routes/workspace/overview'
@@ -541,6 +542,11 @@ const WorkspaceIndexRoute = WorkspaceIndexRouteImport.update({
   path: '/',
   getParentRoute: () => WorkspaceRoute,
 } as any)
+const WorkspaceAiRoute = WorkspaceAiRouteImport.update({
+  id: '/ai',
+  path: '/ai',
+  getParentRoute: () => WorkspaceRoute,
+} as any)
 const WorkspaceEntraRoute = WorkspaceEntraRouteImport.update({
   id: '/entra',
   path: '/entra',
@@ -849,6 +855,7 @@ export interface FileRoutesByFullPath {
   '/time/day': typeof TimeDayRoute
   '/time/people': typeof TimePeopleRoute
   '/time/settings': typeof TimeSettingsRoute
+  '/workspace/ai': typeof WorkspaceAiRoute
   '/workspace/entra': typeof WorkspaceEntraRouteWithChildren
   '/workspace/invitations': typeof WorkspaceInvitationsRoute
   '/workspace/overview': typeof WorkspaceOverviewRoute
@@ -959,6 +966,7 @@ export interface FileRoutesByTo {
   '/time/day': typeof TimeDayRoute
   '/time/people': typeof TimePeopleRoute
   '/time/settings': typeof TimeSettingsRoute
+  '/workspace/ai': typeof WorkspaceAiRoute
   '/workspace/invitations': typeof WorkspaceInvitationsRoute
   '/workspace/overview': typeof WorkspaceOverviewRoute
   '/workspace/roles': typeof WorkspaceRolesRoute
@@ -1086,6 +1094,7 @@ export interface FileRoutesById {
   '/time/day': typeof TimeDayRoute
   '/time/people': typeof TimePeopleRoute
   '/time/settings': typeof TimeSettingsRoute
+  '/workspace/ai': typeof WorkspaceAiRoute
   '/workspace/entra': typeof WorkspaceEntraRouteWithChildren
   '/workspace/invitations': typeof WorkspaceInvitationsRoute
   '/workspace/overview': typeof WorkspaceOverviewRoute
@@ -1215,6 +1224,7 @@ export interface FileRouteTypes {
     | '/time/day'
     | '/time/people'
     | '/time/settings'
+    | '/workspace/ai'
     | '/workspace/entra'
     | '/workspace/invitations'
     | '/workspace/overview'
@@ -1325,6 +1335,7 @@ export interface FileRouteTypes {
     | '/time/day'
     | '/time/people'
     | '/time/settings'
+    | '/workspace/ai'
     | '/workspace/invitations'
     | '/workspace/overview'
     | '/workspace/roles'
@@ -1451,6 +1462,7 @@ export interface FileRouteTypes {
     | '/time/day'
     | '/time/people'
     | '/time/settings'
+    | '/workspace/ai'
     | '/workspace/entra'
     | '/workspace/invitations'
     | '/workspace/overview'
@@ -2111,6 +2123,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof WorkspaceIndexRouteImport
       parentRoute: typeof WorkspaceRoute
     }
+    '/workspace/ai': {
+      id: '/workspace/ai'
+      path: '/ai'
+      fullPath: '/workspace/ai'
+      preLoaderRoute: typeof WorkspaceAiRouteImport
+      parentRoute: typeof WorkspaceRoute
+    }
     '/workspace/entra': {
       id: '/workspace/entra'
       path: '/entra'
@@ -2768,6 +2787,7 @@ const WorkspaceEntraRouteWithChildren = WorkspaceEntraRoute._addFileChildren(
 )
 
 interface WorkspaceRouteChildren {
+  WorkspaceAiRoute: typeof WorkspaceAiRoute
   WorkspaceEntraRoute: typeof WorkspaceEntraRouteWithChildren
   WorkspaceInvitationsRoute: typeof WorkspaceInvitationsRoute
   WorkspaceOverviewRoute: typeof WorkspaceOverviewRoute
@@ -2777,6 +2797,7 @@ interface WorkspaceRouteChildren {
 }
 
 const WorkspaceRouteChildren: WorkspaceRouteChildren = {
+  WorkspaceAiRoute: WorkspaceAiRoute,
   WorkspaceEntraRoute: WorkspaceEntraRouteWithChildren,
   WorkspaceInvitationsRoute: WorkspaceInvitationsRoute,
   WorkspaceOverviewRoute: WorkspaceOverviewRoute,

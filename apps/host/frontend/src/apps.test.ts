@@ -630,7 +630,7 @@ describe("the administration areas", () => {
     const integrations = areaForKey("workspace").navSections.find(
       (section) => section.label === "navigation.integrations",
     );
-    expect(integrations?.items).toHaveLength(1);
+    expect(integrations?.items).toHaveLength(2);
     expect(integrations?.items[0]).toMatchObject({
       label: "navigation.entra",
       to: "/workspace/entra",
@@ -639,6 +639,55 @@ describe("the administration areas", () => {
     });
     expect(navigationCatalog.en["navigation.integrations"]).toBe("Integrations");
     expect(navigationCatalog.nb["navigation.integrations"]).toBe("Integrasjoner");
+  });
+
+  // AI models (Integrations design T13): the Owner's, and there only while the instance has an AI
+  // provider, which the root layout learns from the settings endpoint and passes as a feature.
+  describe("the AI models item", () => {
+    const withAi: NavVisibilityContext = { ...ownerOnWorkspace, features: ["ai"] };
+
+    it("is the Owner's second Integrations item, present while the instance has an AI provider", () => {
+      expect(workspacePaths(workspaceFor(withAi))).toEqual([
+        "/workspace/overview",
+        "/workspace/users",
+        "/workspace/invitations",
+        "/workspace/entra",
+        "/workspace/ai",
+      ]);
+      const item = areaForKey("workspace")
+        .navSections.flatMap((section) => section.items)
+        .find((one) => one.to === "/workspace/ai");
+      expect(item).toMatchObject({ label: "navigation.aiModels", ownerOnly: true, feature: "ai" });
+      expect(item?.module).toBeUndefined();
+      expect(navigationCatalog.en["navigation.aiModels"]).toBe("AI models");
+      expect(navigationCatalog.nb["navigation.aiModels"]).toBe("KI-modeller");
+    });
+
+    it("is absent without an AI provider, whether the features are unknown or empty", () => {
+      expect(workspacePaths(workspaceFor(ownerOnWorkspace))).not.toContain("/workspace/ai");
+      expect(workspacePaths(workspaceFor({ ...ownerOnWorkspace, features: [] }))).not.toContain("/workspace/ai");
+    });
+
+    it("is not offered to anyone but an Owner, the Entra manager included", () => {
+      const manager = { ...visibility, permissions: ["entra:manage"], features: ["ai" as const] };
+      expect(workspacePaths(workspaceFor(manager))).toEqual(["/workspace/entra"]);
+      expect(workspacePaths(workspaceFor({ ...manager, canManageAuthorization: true }))).toEqual([
+        "/workspace/roles",
+        "/workspace/entra",
+      ]);
+    });
+
+    it("does not depend on the Entra module: with Entra off it is the section's only item", () => {
+      const withoutEntra = allModules.filter((key) => key !== "entra");
+      const sections = workspaceFor(withAi, withoutEntra);
+      expect(workspacePaths(sections)).toEqual([
+        "/workspace/overview",
+        "/workspace/users",
+        "/workspace/invitations",
+        "/workspace/ai",
+      ]);
+      expect(sections.map((section) => section.label)).toEqual([undefined, "navigation.integrations"]);
+    });
   });
 
   it("shows the settings pages to everyone and gives system admin no sidebar", () => {

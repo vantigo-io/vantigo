@@ -35,6 +35,7 @@ import {
   IconReportMoney,
   IconShieldCheck,
   IconShieldLock,
+  IconSparkles,
   IconTelescope,
   IconUser,
   IconUserPlus,
@@ -565,6 +566,10 @@ export const areas: readonly AreaDefinition[] = [
             module: "entra",
             requiredPermissions: ["entra:manage"],
           },
+          // The AI plan Vantigo provisioned and the model each task uses (Integrations
+          // design T13): the Owner's, and present only while the instance has an AI
+          // provider, which the root layout learns from GET /owner/ai/settings.
+          { label: "navigation.aiModels", to: "/workspace/ai", icon: IconSparkles, ownerOnly: true, feature: "ai" },
         ],
       },
     ],
