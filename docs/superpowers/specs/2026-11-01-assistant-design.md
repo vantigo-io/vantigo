@@ -120,14 +120,18 @@ derives it at boot from the merged contract and the catalog:
    - the access rule is `anonymous`, `scim` or `session`;
    - it is a `policy:` rule naming `Owner`, `OwnerManagement`, `AuthorizationManagement`
      or `SystemAdmin`;
-   - any permission it names is `Sensitive` in the catalog;
+   - any permission it names is `Sensitive` in the catalog — **until the Owner says
+     otherwise (S16)**. Delivery 0 applies this rule unconditionally; delivery A moves
+     it into the workspace's permission levels and keeps it as the dispatcher's
+     fail-closed default;
    - it is a file upload or download (`multipart/*`, or a response that is not JSON);
    - it is the assistant's own API.
 3. Otherwise `auto` for `GET`, and `confirm` for every other method. A `POST` that only
    reads, such as a search, is marked `auto` explicitly.
 
-`never` operations are not in the catalog the model sees. Sensitive operations can be
-added later, behind a step-up confirmation, by marking them.
+`never` operations are not in the catalog the model sees. The contract's mode is the
+widest an operation can ever be; the workspace's permission levels (S16) can only
+narrow it.
 
 ### S5 — The tool surface is small and filtered by permission
 
@@ -346,12 +350,64 @@ It runs in four steps:
 - **operationIds stay as they are.** They are API.
 - **Search** indexes summary, description, tag and path, never only the operationId.
 
+### S16 — The Owner decides what the assistant may use
+
+Added on 2026-11-01, after delivery 0 showed 427 of 780 operations `never`. Most of them
+are `never` only because they sit behind a `Sensitive` permission, and in customers
+alone that covers contacts, the timeline, legal identity and billing profiles.
+
+**Workspace admin › Assistant** gains a section, *What the assistant may use*:
+
+- **The sensitive data switch** has two values: *Not available* (the default) and *Can
+  read*. It sets the **default level** of every permission the catalog marks
+  `Sensitive`.
+- **The permission table** lists the catalog of the enabled modules, grouped by module
+  and category, with the *Sensitive* badge where the catalog has one. Each permission
+  has a **level**:
+
+  | Level | The assistant may |
+  | --- | --- |
+  | **Off** | call no operation whose rule names the permission |
+  | **Read** | call its `auto` operations; its `confirm` operations become `never` |
+  | **Read and change** | call it as the contract's mode says (`confirm` needs delivery B) |
+
+  The defaults: a permission that is not sensitive is *Read and change*, and a
+  sensitive permission takes the switch's value (*Off* or *Read*).
+- **Overrides:** an Owner may set any permission's level. Only overrides are stored, so
+  a new permission in a later release takes its default. Each row offers *Reset to
+  default*.
+- **Before delivery B,** *Read and change* is stored and shown, and the interface says
+  that changes come in a later version.
+
+**The effective mode of an operation for this workspace** starts from the contract's
+mode (S4 without its `Sensitive` clause). Each permission the operation's rule names
+can then narrow it:
+- **Off** makes it `never`;
+- **Read** turns `confirm` into `never`;
+- **Read and change** leaves it as it is.
+
+Operations behind `policy:ActiveAccount`, `policy:Business` or `session` name no
+permission. Only the contract's mode applies to them.
+
+**Rules**
+- **The levels only narrow, never widen.** The person must still hold the permission
+  themselves, and the router still checks every call (S2, S3).
+- **The dispatcher fails closed.** It applies the levels through a gate the assistant
+  module installs. Without a gate, a sensitive permission makes its operations `never`,
+  which is delivery 0's behaviour.
+- **A change takes effect at the next tool call.** It is cached with the settings'
+  version.
+- **Changes are audited** with before and after, like the mode (S8).
+- **The data notice (S7) sits beside the switch.** It names where the data goes, so
+  turning on *Can read* for a provider that is not local is a decision the Owner makes
+  knowingly.
+
 ## Deliveries
 
 | Delivery | Contents | Depends on |
 | --- | --- | --- |
 | **0 — Platform** | `ai.Chat` with tools and streaming (S6), local models (S7); the assistant grant and principal (S3); the `Operations` dispatcher and the modes (S2, S4); `x-vantigo-assistant` and the summary lint (S4, S15); the new boundary rule; docs | nothing |
-| **A — The Assistant app (read)** | The `assistant` module: schema, settings and switches (S8), conversations (S9), runs and SSE, `search_docs`, `search_operations`, `describe_operation`, `call_operation` for `auto`, `navigate` (S5); the `/assistant` app and the panel (S10); retention and erasure; docs in en and nb | 0 merged |
+| **A — The Assistant app (read)** | The `assistant` module: schema, settings and switches (S8), what the assistant may use (S16), conversations (S9), runs and SSE, `search_docs`, `search_operations`, `describe_operation`, `call_operation` for `auto`, `navigate` (S5); the `/assistant` app and the panel (S10); retention and erasure; docs in en and nb | 0 merged |
 | **T — Tours** | `show_tour`, the target registry and its test, markers on the most-used screens (S11) | A merged |
 | **B — Writes** | `confirm` with cards, the persisted run state machine, query invalidation, the daily budget, the Owner's count view (S12, S14) | A merged |
 | **C — Bulk** | `propose_bulk`, preview, canary, worker job, shared job runner (S13) | B merged |

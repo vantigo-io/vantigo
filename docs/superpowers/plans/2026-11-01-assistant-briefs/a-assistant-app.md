@@ -2,7 +2,7 @@
 
 You are implementing delivery **A** of the design
 `docs/superpowers/specs/2026-11-01-assistant-design.md`. It carries decisions **S1, S5
-(the A tools), S8, S9, S10 and S14 (the per-run caps)**.
+(the A tools), S8, S9, S10, S14 (the per-run caps) and S16**.
 
 Read that file in full first, then this brief. Delivery **0** must be on `main`: check
 for `internal/operations` and `ai.Client.Chat`. If it is not, stop and report. You work
@@ -36,7 +36,9 @@ resume.
 **Workspace admin › Assistant** (Owner) has:
 - the three-value mode;
 - the retention;
-- the data notice for a provider that is not local.
+- the data notice for a provider that is not local;
+- *What the assistant may use* (S16): the sensitive data switch, and the permission
+  table with a level per permission (Off, Read, Read and change).
 
 **Workspace admin › Users ›** a person has the per-person switch.
 
@@ -108,6 +110,47 @@ resume.
      URL is local, for the notice;
    - every chat endpoint refuses `403 assistant_unavailable` when the assistant is not
      available.
+3a. **What the assistant may use** (S16):
+   - **The dispatcher (`internal/operations`):**
+     - Split the mode into the **contract mode** (S4 without its `Sensitive` clause)
+       and the gate's narrowing.
+     - `Info` gains `Permissions []string` (the keys the access rule names, empty for
+       a `policy:` or `session` rule) and `Sensitive bool` (any of them `Sensitive`).
+     - Add `SetGate(func(ctx context.Context, info Info) Mode)`. `List`, `Search` and
+       `Call` apply it, and `Call` applies it before the confirmation check.
+     - **Without a gate, the dispatcher keeps delivery 0's behaviour:** a sensitive
+       permission makes its operations `never`. Test this fail-closed default.
+     - Update `TestOperations_TheRealContract` to pin the contract modes and the
+       default gate's modes separately.
+   - **Tables:**
+     - `settings.sensitive_default`: `off` | `read`, default `off`.
+     - `permission_levels(permission_key text PK, level text CHECK IN ('off', 'read',
+       'change'), updated_at, updated_by)`. Only overrides are stored.
+   - **The gate.** The assistant module installs it at mount. It computes the
+     workspace's level per permission from the overrides, the switch and the catalog's
+     `Sensitive` flag, and narrows as S16 says. Cache it by the settings' version.
+   - **Endpoints:**
+     - `GET …/settings/permissions`: the catalog of the enabled modules grouped by
+       module and category, each row with its key, display, sensitive, the default
+       level, the override and the effective level.
+     - `PUT …/settings/permissions/{key}` with `{level}` or `{level: null}` (reset),
+       under `If-Match` on the settings' version, with 404 for a key not in the
+       catalog.
+     - The switch is a field of `PUT …/settings`.
+     - All of these are `policy:OwnerManagement` and audited with before and after.
+   - **The UI** is a card on the Owner's Assistant page:
+     - the switch with the data notice beside it;
+     - the table grouped by module, with a filter (all / sensitive / overridden), a
+       select per row and *Reset to default*;
+     - *Read and change* is selectable but marked "Changes come in a later version".
+   - **Tests:**
+     - every level against an `auto` and a `confirm` operation;
+     - the switch moving the sensitive defaults;
+     - an override surviving a switch change;
+     - a narrowed operation absent from `search_operations` and refused by `Call`;
+     - an operation the person cannot call staying uncallable whatever the level;
+     - the Owner endpoints' `If-Match`, 404 and audit;
+     - the card's filter and reset.
 4. **Endpoints** (`openapi/assistant.yaml`):
    - **Each one** gets a summary, `x-vantigo-access`, and `x-vantigo-assistant: never`.
      The assistant never calls itself; S4 already says so, but state it.
@@ -234,7 +277,8 @@ resume.
       are kept, what is sent to the provider), and why it might be unavailable. List it
       in `user/index.md`.
     - **`user/workspace-administration.md`:** *Assistant* (mode, retention, the
-      notice), and the per-person switch on the user page.
+      notice, *What the assistant may use*: the sensitive data switch, the levels and
+      what each allows), and the per-person switch on the user page.
     - **`admin/configuration.md`:** `AI_CONTEXT_TOKENS`, and that the assistant needs a
       model with tool calling.
     - **New `reference/assistant.md`** (English only), listed in `reference/index.md`:
@@ -242,10 +286,12 @@ resume.
       - availability;
       - runs, caps, SSE and reconnect;
       - the tools;
+      - the permission levels and the gate (S16): how an operation's effective mode
+        is computed, the fail-closed default;
       - retention and erasure, including that a customer's GDPR erase does not search
         conversation text (S9).
     - **`module-boundaries.md`:** the assistant module's slots and its use of
-      `Operations`.
+      `Operations`, including `SetGate`.
     - **`ROADMAP.md`:** A done.
 
     Every new page declares its `sources`.
@@ -270,6 +316,7 @@ resume.
       - streamed text rendering;
       - the button hidden when unavailable;
       - the Owner card's three modes;
+      - the permission table's levels, filter and reset;
       - the person switch;
       - i18n parity.
 
@@ -279,6 +326,7 @@ resume.
 - Add `show_tour` or `data-assist` markers. That is T.
 - Add bulk plans.
 - Give the Owner any way to read a person's conversations.
+- Let a permission level widen what the contract or the person's own permissions allow.
 - Store request or response bodies in `actions`.
 - Use `EventSource`.
 - Import one module frontend package from another.
