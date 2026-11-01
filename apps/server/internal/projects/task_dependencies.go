@@ -14,7 +14,6 @@ import (
 )
 
 var (
-	errDependencySelf            = errors.New("projects: a task cannot depend on itself")
 	errDependencyPredecessorGone = errors.New("projects: predecessor task not found on this project")
 	errDependencySuccessorGone   = errors.New("projects: successor task not found on this project")
 	errDependencyAlreadyExists   = errors.New("projects: dependency link already exists")
