@@ -355,12 +355,13 @@ func TestProjectTemplates_ApplyTemplate(t *testing.T) {
 	var t0, t1, sub *taskJSON
 	for i := range tasks {
 		tk := &tasks[i]
-		if tk.Title == "Setup CI/CD" {
+		switch tk.Title {
+		case "Setup CI/CD":
 			t0 = tk
 			if len(tk.Subtasks) > 0 {
 				sub = &tk.Subtasks[0]
 			}
-		} else if tk.Title == "Marketing Campaign" {
+		case "Marketing Campaign":
 			t1 = tk
 		}
 	}

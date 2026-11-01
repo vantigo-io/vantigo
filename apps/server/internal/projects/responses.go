@@ -583,9 +583,7 @@ type taskRow struct {
 }
 
 // countedTaskRows, taskRowsOf and taskRowOf convert the three queries that
-// carry the aggregates. newTaskRow is the fourth case: a task that was just
-// inserted, which has no checklist items and no comments yet because nothing
-// has had the chance to add any.
+// carry the aggregates.
 func countedTaskRows(rows []store.ListProjectTasksRow) []taskRow {
 	out := make([]taskRow, 0, len(rows))
 	for _, r := range rows {
@@ -626,8 +624,6 @@ func taskRowOf(row store.GetTaskWithCountsRow) taskRow {
 		CommentCount:                row.CommentCount,
 	}
 }
-
-func newTaskRow(task store.ProjectsTask) taskRow { return taskRow{Task: task} }
 
 // taskResponse projects one task. The assignee is embedded rather than named
 // by id alone (design §4.1), and an id the directory no longer knows still

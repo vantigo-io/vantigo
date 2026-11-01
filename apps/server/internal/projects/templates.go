@@ -16,10 +16,6 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/projects/store"
 )
 
-var (
-	errTemplateGone = errors.New("projects: the template no longer exists")
-)
-
 func templateResponseFromRow(r store.ProjectsTemplate) (gen.ProjectTemplateResponse, error) {
 	var milestones []gen.ProjectTemplateMilestone
 	if len(r.Milestones) > 0 {
