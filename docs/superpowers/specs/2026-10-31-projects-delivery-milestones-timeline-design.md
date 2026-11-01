@@ -153,4 +153,31 @@ Generated timeline entries on `projects.timeline_entries`:
 - `delivery-milestone-added`
 - `delivery-milestone-changed`
 - `delivery-milestone-removed`
-- `delivery-milestone-status-changed`
+- `delivery-milestone-completed` / `delivery-milestone-reopened` (a status change; nothing
+  when the status did not move)
+
+`delivery-milestone-changed` carries the `fields` the edit moved and is not recorded when
+none did. Applying a template records `delivery-milestone-added` for each milestone it
+creates.
+
+## 4. As delivered, and what is left for later
+
+The three deliveries landed as one pull request (#202) rather than three. Where it
+departs from the decisions above:
+
+- **M4:** a milestone's `status` is set by hand (`POST .../status`); it is not derived from
+  its tasks. The progress figures are derived; the status is the team's call.
+- **M3:** a new subtask that names no delivery milestone takes its parent's. Later edits
+  never re-inherit.
+- **M7:** cycles are refused under the project's task-order lock; there is no depth limit.
+  Template dependencies are checked for cycles and duplicates when the template is saved.
+- **M8 / Delivery B:** the timeline is read-only — no drag-to-reschedule and no zoom
+  presets. Dates move through the task form, and the downstream shift is the explicit
+  **Reschedule downstream** action in the task drawer, bounded to ±3650 days and leaving
+  tasks without dates alone.
+- **Delivery C:** templates carry milestones, tasks, subtasks and dependencies but not
+  checklists. Templates are edited on their own screen (Projects → **Project templates**); writing
+  one needs `projects:create`.
+
+Later: drag and zoom on the timeline, checklists in templates, and "save this project as
+a template".
