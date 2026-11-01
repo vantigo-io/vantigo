@@ -32,6 +32,10 @@ import (
 // blind seam behind. The provider is a genuine external-network boundary; the
 // fake replaces the network, not the module's own logic.
 
+// aiUnavailableText is the 503 ai_unavailable message: the sentence the
+// operation always had, and where an Owner chooses models (AI models page).
+const aiUnavailableText = "Communications AI is not available. An Owner chooses models under Workspace admin › AI models."
+
 // ---- the fake provider ----
 
 // chatCall is one request the module made to the chat endpoint, decoded far
@@ -137,9 +141,9 @@ func newAIHarness(t *testing.T, tr http.RoundTripper) *modtest.Harness {
 	t.Helper()
 	return newHarness(t,
 		modtest.WithTransport(tr),
-		modtest.WithEnv("COMMUNICATIONS_AI_ENABLED", "1"),
-		modtest.WithEnv("COMMUNICATIONS_AI_API_KEY", "sk-test-key"),
-		modtest.WithEnv("COMMUNICATIONS_AI_MODEL", "gpt-4o-mini"),
+		modtest.WithEnv("AI_PROVIDER", "openai"),
+		modtest.WithEnv("AI_API_KEY", "sk-test-key"),
+		modtest.WithEnv("AI_MODELS", "gpt-4o-mini"),
 	)
 }
 
@@ -226,7 +230,7 @@ func interactionCount(t *testing.T, h *modtest.Harness, convID string) int {
 // the one path that does not.
 func TestAiDraft_UnconfiguredIs503(t *testing.T) {
 	t.Parallel()
-	h := newHarness(t) // no COMMUNICATIONS_AI_* at all
+	h := newHarness(t) // no AI_* at all
 	convID := aiConversation(t, h)
 
 	r := doDraft(draftClient(t, h), convID, draftBody("concise", "Reply to the customer."))
@@ -235,8 +239,8 @@ func TestAiDraft_UnconfiguredIs503(t *testing.T) {
 	}
 	var body commErrorJSON
 	r.JSON(&body)
-	if body.Error.Code != "ai_unavailable" || body.Error.Message != "Communications AI is not available." {
-		t.Errorf("error = %+v, want ai_unavailable / %q", body.Error, "Communications AI is not available.")
+	if body.Error.Code != "ai_unavailable" || body.Error.Message != aiUnavailableText {
+		t.Errorf("error = %+v, want ai_unavailable / %q", body.Error, aiUnavailableText)
 	}
 	if n := interactionCount(t, h, convID); n != 0 {
 		t.Errorf("ai_interactions rows = %d, want 0 when unavailable", n)
@@ -256,8 +260,8 @@ func TestAiCustomerSuggestion_UnconfiguredIs503(t *testing.T) {
 	}
 	var body commErrorJSON
 	r.JSON(&body)
-	if body.Error.Code != "ai_unavailable" || body.Error.Message != "Communications AI is not available." {
-		t.Errorf("error = %+v, want ai_unavailable / %q", body.Error, "Communications AI is not available.")
+	if body.Error.Code != "ai_unavailable" || body.Error.Message != aiUnavailableText {
+		t.Errorf("error = %+v, want ai_unavailable / %q", body.Error, aiUnavailableText)
 	}
 	if n := interactionCount(t, h, convID); n != 0 {
 		t.Errorf("ai_interactions rows = %d, want 0 when unavailable", n)

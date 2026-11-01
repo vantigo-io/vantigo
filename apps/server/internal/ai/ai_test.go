@@ -195,6 +195,27 @@ func TestComplete_RefusesAModelTheResolverNamesOutsideTheAllowedList(t *testing.
 	}
 }
 
+func TestModelFor_IsTheModelCompleteWouldUseAndNeverCallsTheProvider(t *testing.T) {
+	tr := &fakeTransport{}
+	c := ai.New(configured(), tr, choose{"t": "gpt-4o", "unlisted": "gpt-5-unlisted"})
+
+	if got, err := c.ModelFor(context.Background(), "t"); err != nil || got != "gpt-4o" {
+		t.Errorf("ModelFor = %q, %v, want gpt-4o", got, err)
+	}
+	if _, err := c.ModelFor(context.Background(), "unlisted"); typeName(err) != "aiModelNotAllowedError" {
+		t.Errorf("ModelFor(a model outside the plan) = %v, want aiModelNotAllowedError", err)
+	}
+	if _, err := c.ModelFor(context.Background(), "no-such-task"); typeName(err) != "aiModelUnavailableError" {
+		t.Errorf("ModelFor(a resolver failure) = %v, want aiModelUnavailableError", err)
+	}
+	if got, err := ai.New(configured(), tr, nil).ModelFor(context.Background(), "t"); err != nil || got != "gpt-4o-mini" {
+		t.Errorf("ModelFor with no resolver = %q, %v, want the plan default", got, err)
+	}
+	if len(tr.Calls()) != 0 {
+		t.Errorf("%d requests, want none: asking which model is not a call", len(tr.Calls()))
+	}
+}
+
 func TestComplete_AResolverFailureIsATypedErrorThatQuotesNothing(t *testing.T) {
 	tr := &fakeTransport{}
 	got, err := ai.New(configured(), tr, failing{}).Complete(context.Background(), "t", ai.Request{Prompt: "p"})

@@ -20,6 +20,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/vantigo-io/vantigo/server/internal/ai"
 	"github.com/vantigo-io/vantigo/server/internal/apicommon"
 	"github.com/vantigo-io/vantigo/server/internal/communications/gen"
 	"github.com/vantigo-io/vantigo/server/internal/communications/store"
@@ -29,7 +30,10 @@ import (
 // EP/ConversationAiEndpoints.cs, communications inventory §17):
 // postCommunicationsConversationsByIdAiDraft and
 // postCommunicationsConversationsByIdAiCustomerSuggestion. The provider
-// itself lives in ai_client.go.
+// itself is the platform's (srv/ai, reached through Deps.AI): each operation
+// is an AI task this module declares (aiTasks in module.go), calls it with the
+// task's key and never with a model or a key, and the model each task uses is
+// an Owner's choice kept by identity.
 //
 // The two operations look symmetrical and are not. Four asymmetries are
 // deliberate and each is pinned by its own test in ai_test.go:
@@ -98,10 +102,21 @@ const (
 	aiTimestampLayout = "2006-01-02T15:04:05.0000000Z07:00"
 )
 
+const (
+	// The two AI tasks this module performs (contracts.AITask, aiTasks in
+	// module.go). The keys are the primary key of an Owner's choice of model
+	// and never change once shipped.
+	aiTaskComposeReply       = "communications.compose-reply"
+	aiTaskCustomerSuggestion = "communications.customer-suggestion"
+	// aiModelMaxChars is .NET's Limit(Options.Model.Trim(), 150) (:37), which
+	// is also ai_interactions.model's column width.
+	aiModelMaxChars = 150
+)
+
 // The wire strings, byte-exact including the trailing period.
 const (
 	aiUnavailableCode    = "ai_unavailable"
-	aiUnavailableMessage = "Communications AI is not available."
+	aiUnavailableMessage = "Communications AI is not available. An Owner chooses models under Workspace admin › AI models."
 	aiFailedCode         = "ai_failed"
 	aiDraftFailedMessage = "The AI draft could not be generated."
 	aiInvalidRequestCode = "invalid_request"
@@ -176,7 +191,7 @@ func sanitizeModelText(v string, max int) string {
 
 // errorTypeName is `exception.GetType().Name` (:292): a short type label for
 // error_summary, never the error's message, which could carry provider or
-// customer text. ai_client.go returns only its own named error types, so this
+// customer text. srv/ai returns only its own named error types, so this
 // always yields a meaningful name.
 func errorTypeName(err error) string {
 	name := strings.TrimPrefix(fmt.Sprintf("%T", err), "*")
@@ -275,20 +290,37 @@ func (s *server) latestMessageID(ctx context.Context, q *store.Queries, conversa
 // newAIInteraction is NewInteraction (:214-226): the row's invariant fields,
 // built before the provider is called so every outcome — success, guard,
 // validation failure, exception — only adds its own summary before writing.
-// Provider is the hardcoded "openai" .NET always stores, independent of what
-// the operator configured.
-func (s *server) newAIInteraction(operation string, conversationID uuid.UUID, messageID *uuid.UUID, requester uuid.UUID, digest string) store.InsertAiInteractionParams {
+// Provider and Model are what the platform client answers for the task: the
+// model is the Owner's choice for that task and so is only known to the
+// client, which names it again on the call's own answer (noteAnswer), the
+// authority for a call that was made. A guard that refuses before any call
+// keeps what is asked here, and a model that cannot be named — the choice
+// cannot be read — is recorded as empty rather than failing the audit row.
+func (s *server) newAIInteraction(ctx context.Context, task, operation string, conversationID uuid.UUID, messageID *uuid.UUID, requester uuid.UUID, digest string) store.InsertAiInteractionParams {
+	model, _ := s.deps.AI.ModelFor(ctx, task)
 	return store.InsertAiInteractionParams{
 		ID:              uuid.New(),
 		ConversationID:  conversationID,
 		MessageID:       messageID,
 		Operation:       operation,
 		RequesterUserID: &requester,
-		Provider:        aiProviderName,
-		Model:           s.ai.model,
+		Provider:        s.deps.AI.Provider(),
+		Model:           limitUTF16(model, aiModelMaxChars),
 		ContextDigest:   digest,
 		ContextVersion:  aiContextVersion,
 		CreatedAt:       s.deps.Clock(),
+	}
+}
+
+// noteAnswer records on row what served the call: the provider and the model
+// the platform client resolved for the task, which it names on the answer
+// whether the call succeeded or not.
+func noteAnswer(row *store.InsertAiInteractionParams, resp ai.Response) {
+	if resp.Provider != "" {
+		row.Provider = resp.Provider
+	}
+	if resp.Model != "" {
+		row.Model = limitUTF16(resp.Model, aiModelMaxChars)
 	}
 }
 
@@ -398,7 +430,7 @@ func (s *server) PostCommunicationsConversationsByIdAiDraft(ctx context.Context,
 	// state: no chat client, no network client, no provider dependency was
 	// ever constructed, and no interaction row is written here — the one
 	// path that writes none.
-	if s.ai == nil {
+	if s.deps.AI == nil {
 		return gen.PostCommunicationsConversationsByIdAiDraft503JSONResponse(
 			flatErrorBody(aiUnavailableCode, aiUnavailableMessage)), nil
 	}
@@ -432,13 +464,14 @@ func (s *server) PostCommunicationsConversationsByIdAiDraft(ctx context.Context,
 	if err != nil {
 		return nil, err
 	}
-	row := s.newAIInteraction("draft", req.Id, messageID, caller, digest)
+	row := s.newAIInteraction(ctx, aiTaskComposeReply, "draft", req.Id, messageID, caller, digest)
 
 	// A wall-clock stopwatch, not Deps.Clock: this measures how long the
 	// provider took, which a harness-frozen clock would always report as 0.
 	started := time.Now()
-	completion, callErr := s.ai.complete(ctx, draftPrompt(tone, instruction, contextBlock))
+	resp, callErr := s.deps.AI.Complete(ctx, aiTaskComposeReply, ai.Request{Prompt: draftPrompt(tone, instruction, contextBlock)})
 	row.DurationMs = apicommon.Ptr(time.Since(started).Milliseconds())
+	noteAnswer(&row, resp)
 
 	if callErr != nil {
 		if callerGaveUp(ctx, callErr) {
@@ -460,9 +493,9 @@ func (s *server) PostCommunicationsConversationsByIdAiDraft(ctx context.Context,
 			flatErrorBody(aiFailedCode, aiDraftFailedMessage)), nil
 	}
 
-	draftSubject, text := parseDraft(completion.text, conv.Subject)
-	row.InputTokenCount = completion.inputTokens
-	row.OutputTokenCount = completion.outputTokens
+	draftSubject, text := parseDraft(resp.Text, conv.Subject)
+	row.InputTokenCount = resp.InputTokens
+	row.OutputTokenCount = resp.OutputTokens
 	row.ResultSummary = apicommon.Ptr(summaryDraftGenerated)
 	row.ValidationSummary = apicommon.Ptr(fmt.Sprintf("text_chars=%d;product_data=%t", utf16Length(text), aiProductDataUsed))
 	if err := s.recordInteraction(ctx, q, row); err != nil {
@@ -566,7 +599,7 @@ func (s *server) PostCommunicationsConversationsByIdAiCustomerSuggestion(ctx con
 		return nil, err
 	}
 
-	if s.ai == nil {
+	if s.deps.AI == nil {
 		return gen.PostCommunicationsConversationsByIdAiCustomerSuggestion503JSONResponse(
 			flatErrorBody(aiUnavailableCode, aiUnavailableMessage)), nil
 	}
@@ -606,7 +639,7 @@ func (s *server) PostCommunicationsConversationsByIdAiCustomerSuggestion(ctx con
 	if err != nil {
 		return nil, err
 	}
-	row := s.newAIInteraction("customer_suggestion", req.Id, messageID, caller, aiDigest(digestContext))
+	row := s.newAIInteraction(ctx, aiTaskCustomerSuggestion, "customer_suggestion", req.Id, messageID, caller, aiDigest(digestContext))
 
 	// Guard 1 (:101-108): a confirmed customer, or an association already
 	// made manually or automatically, protects the conversation. The refusal
@@ -636,8 +669,9 @@ func (s *server) PostCommunicationsConversationsByIdAiCustomerSuggestion(ctx con
 	}
 
 	started := time.Now()
-	completion, callErr := s.ai.complete(ctx, suggestionPrompt(csv, digestContext))
+	resp, callErr := s.deps.AI.Complete(ctx, aiTaskCustomerSuggestion, ai.Request{Prompt: suggestionPrompt(csv, digestContext)})
 	row.DurationMs = apicommon.Ptr(time.Since(started).Milliseconds())
+	noteAnswer(&row, resp)
 
 	if callErr != nil {
 		if callerGaveUp(ctx, callErr) {
@@ -685,10 +719,10 @@ func (s *server) PostCommunicationsConversationsByIdAiCustomerSuggestion(ctx con
 		}), nil
 	}
 
-	row.InputTokenCount = completion.inputTokens
-	row.OutputTokenCount = completion.outputTokens
+	row.InputTokenCount = resp.InputTokens
+	row.OutputTokenCount = resp.OutputTokens
 
-	customerID, confidence, rationale, validation, ok := parseSuggestion(completion.text, candidates)
+	customerID, confidence, rationale, validation, ok := parseSuggestion(resp.Text, candidates)
 	row.ValidationSummary = apicommon.Ptr(validation)
 	if !ok {
 		row.ResultSummary = apicommon.Ptr(summaryMalformed)

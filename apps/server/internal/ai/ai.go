@@ -127,6 +127,33 @@ func (c *Client) Provider() string { return c.provider }
 // The slice is a copy.
 func (c *Client) Models() []string { return slices.Clone(c.models) }
 
+// resolve is the model the resolver names for task, allowed or not.
+func (c *Client) resolve(ctx context.Context, task string) (string, error) {
+	if c.resolver == nil {
+		return c.models[0], nil
+	}
+	model, err := c.resolver.ModelFor(ctx, task)
+	if err != nil {
+		return "", aiModelUnavailableError{err: err}
+	}
+	return model, nil
+}
+
+// ModelFor is the model Complete would use for task now: what the resolver
+// names, provided the plan allows it. A consumer that records which model a
+// call was for even when it never makes one (a guard that refuses first) asks
+// here; Complete's own Response is authoritative for a call that was made.
+func (c *Client) ModelFor(ctx context.Context, task string) (string, error) {
+	model, err := c.resolve(ctx, task)
+	if err != nil {
+		return "", err
+	}
+	if !slices.Contains(c.models, model) {
+		return "", aiModelNotAllowedError{}
+	}
+	return model, nil
+}
+
 // Complete asks the provider for task's completion. The model is whatever the
 // Resolver answers for task, and a model outside Models is refused before any
 // request is made. Every failure is one of this package's typed errors — a
@@ -138,14 +165,9 @@ func (c *Client) Models() []string { return slices.Clone(c.models) }
 func (c *Client) Complete(ctx context.Context, task string, req Request) (Response, error) {
 	out := Response{Provider: c.provider}
 
-	var model string
-	if c.resolver == nil {
-		model = c.models[0]
-	} else {
-		var err error
-		if model, err = c.resolver.ModelFor(ctx, task); err != nil {
-			return out, aiModelUnavailableError{err: err}
-		}
+	model, err := c.resolve(ctx, task)
+	if err != nil {
+		return out, err
 	}
 	out.Model = model
 	if !slices.Contains(c.models, model) {

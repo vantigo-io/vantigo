@@ -25,14 +25,6 @@ const storageScope = "communications"
 type server struct {
 	deps  module.Deps
 	store storage.ObjectStore
-	// ai is the configured chat provider, or nil when the AI feature is not
-	// available — disabled, a provider this port does not implement, or no
-	// API key (communications inventory §17.1). nil is the ordinary
-	// unconfigured state, not an error: both AI operations check for it and
-	// answer 503 ai_unavailable, so a deployment without AI constructs no
-	// chat client, no network client and no provider dependency at all, as
-	// .NET's registration likewise declines to.
-	ai *aiChatClient
 }
 
 // History: task 7 fix round 1 added a resolveReplyRecipientsFunc field here
@@ -65,11 +57,7 @@ func newServer(d module.Deps) (*server, error) {
 	if err != nil {
 		return nil, err
 	}
-	// newAIChatClient answers nil for any unconfigured or non-"openai"
-	// setup, which is exactly the 503 ai_unavailable state — so this never
-	// fails the mount, and a server built from a bare module.Deps (d.Config
-	// nil, module_internal_test.go) simply has no AI.
-	return &server{deps: d, store: store, ai: newAIChatClient(d.Config, d.HTTPTransport)}, nil
+	return &server{deps: d, store: store}, nil
 }
 
 // moduleObjectStore is this module's object store: d.ObjectStore when a test
