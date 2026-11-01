@@ -1187,7 +1187,9 @@ A person has at most one address per **variant** ([`feed_tokens`](#the-schema)):
 - **`busy`** — its busy spans and nothing else, for a receptionist's or a partner's
   calendar to subscribe to ([what each carries](#what-the-two-variants-carry)).
 
-The address is `<base>/api/v1/calendar/feed/<token>.ics`. The token is the pay link's and
+The address is `<base>/api/v1/calendar/feed/<token>.ics`. It holds the token, so the
+Assistant is never given it: `GET /feed` and `POST /feed/{file}`, the two operations that
+answer an address, are marked `x-vantigo-assistant: never` ([module boundaries rule 18](/en/contributing/module-boundaries/)). The token is the pay link's and
 the answer link's: 32 random bytes, base64url without padding, 43 characters. The row
 keeps its hex SHA-256, by which a request is matched, and **never the token**; and it
 keeps the whole address **sealed** by the secrets box under the purpose

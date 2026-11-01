@@ -454,7 +454,9 @@ opp KI for installasjonen: ellers er det ikke noe punkt i sidemenyen, og adresse
 
 **Det du ser.** Kortet **Abonnementet** forteller hva Vantigo har satt opp, som fakta uten
 felt å redigere: **Leverandør**, **Modeller abonnementet tillater**, og «En API-nøkkel er
-satt opp av Vantigo.» Selve nøkkelen vises aldri, for noen, noe sted. Under kommer ett kort
+satt opp av Vantigo.» — eller, for en modell som kjører på ditt eget nettverk og ikke trenger
+noen, «Ingen API-nøkkel er satt opp.» Selve nøkkelen vises aldri, for noen, noe sted.
+Leverandøren står som **OpenAI-compatible** for en slik modell. Under kommer ett kort
 for hver modul som bruker KI, med modulens eget navn, og en rad for hver **oppgave** den
 utfører: hva modellen blir bedt om å gjøre og med hvilke data, og en liste over modellene
 abonnementet tillater. Oppgavene har engelske navn. En modul som er slått av, er ikke med.

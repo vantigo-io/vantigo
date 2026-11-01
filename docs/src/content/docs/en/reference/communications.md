@@ -1038,8 +1038,8 @@ mail yet.
 ### Availability
 
 Both operations answer 503 `ai_unavailable` when `Deps.AI` is nil, which it is unless
-`AI_PROVIDER` (`openai`), `AI_API_KEY` and `AI_MODELS` are set
-([Configuration](/en/admin/configuration/#ai)). The message is "Communications AI is not
+`AI_PROVIDER` (`openai`, or `openai-compatible` for a model on the installation's own network), `AI_MODELS` and
+either `AI_API_KEY` or `AI_BASE_URL` are set ([Configuration](/en/admin/configuration/#ai)). The message is "Communications AI is not
 available. An Owner chooses models under Workspace admin › AI models." — the second sentence
 points to the page where the model of each task is chosen once AI is set up. A half-set
 configuration is refused at startup; an unset one is the unavailable state, in which no client,
@@ -1080,3 +1080,12 @@ operations require different permission pairs (`communications:conversations-rep
 (a coded body for the draft, none for the suggestion); and a provider failure is a 422
 `ai_failed` for the draft but a 200 with outcome `failed` and null suggestion fields for the
 suggestion. A suggestion below 0.70 confidence is returned and not saved.
+
+## The Assistant
+
+The Assistant calls this module's operations through the same API as the interface, as the
+person it acts for ([module boundaries rule 18](/en/contributing/module-boundaries/)), and
+each operation's mode is derived from its access rule. Two operations are marked
+`x-vantigo-assistant: never` by hand, because their bodies carry an SMTP password that would
+pass through the model and its provider: `POST /channels` and `PUT /channels/{id}`. Everything
+behind `communications:conversations-view` is `never` already, that permission being sensitive.
