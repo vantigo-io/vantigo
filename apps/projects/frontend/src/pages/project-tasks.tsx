@@ -81,6 +81,8 @@ export interface ProjectTasksProps {
   openTaskId?: number;
   /** Told whenever the open task changes, so the host can keep the URL in step; `undefined` = closed. */
   onOpenTaskChange?: (taskId: number | undefined) => void;
+  /** Whether the caller may create templates (`projects:create`), so Use template can point them at the catalog. */
+  canManageTemplates?: boolean;
 }
 
 /**
@@ -95,6 +97,7 @@ export const ProjectTasks = ({
   currentUserId,
   openTaskId: openTaskIdFromHost,
   onOpenTaskChange,
+  canManageTemplates,
 }: ProjectTasksProps) => {
   const { t } = useI18n("projects");
   const project = useQuery(projectQueryOptions(projectId));
@@ -224,6 +227,7 @@ export const ProjectTasks = ({
         projectStartDate={project.data.startDate}
         opened={applyTemplateOpen}
         onClose={() => setApplyTemplateOpen(false)}
+        canManageTemplates={canManageTemplates}
       />
       <TaskDrawer
         projectId={projectId}

@@ -1,33 +1,48 @@
-import { Badge, Button, Divider, Group, Modal, Paper, Select, Stack, Text } from "@mantine/core";
+import { Anchor, Badge, Button, Divider, Group, Modal, Paper, Select, Stack, Text } from "@mantine/core";
 import { DateInput } from "@mantine/dates";
 import { notifications } from "@mantine/notifications";
 import { IconCheck, IconDiamond, IconListCheck, IconTemplate } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useI18n } from "@vantigo/frontend-shell";
+import { useI18n, useShellLink } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import { ApiValidationError } from "../api/projects";
 import type { ApiError } from "../api/request";
 import { applyProjectTemplate, type ProjectTemplate, projectTemplatesQueryOptions } from "../api/templates";
 import "../i18n";
+import { localIsoDate } from "../lib/dates";
 
 export interface ApplyTemplateModalProps {
   projectId: number;
   projectStartDate?: string | null;
   opened: boolean;
   onClose: () => void;
+  /**
+   * Whether the caller may create templates (`projects:create`, which the
+   * host reads). With none to pick from, they are pointed at the catalog
+   * rather than left at an empty picker.
+   */
+  canManageTemplates?: boolean;
 }
 
-export const ApplyTemplateModal = ({ projectId, projectStartDate, opened, onClose }: ApplyTemplateModalProps) => {
+/** Where the template catalog lives in the host. */
+export const PROJECT_TEMPLATES_PATH = "/projects/templates";
+
+export const ApplyTemplateModal = ({
+  projectId,
+  projectStartDate,
+  opened,
+  onClose,
+  canManageTemplates = false,
+}: ApplyTemplateModalProps) => {
   const { t } = useI18n("projects");
+  const Link = useShellLink();
   const queryClient = useQueryClient();
   const { data: templatesData, isPending } = useQuery(projectTemplatesQueryOptions());
 
   const templates = templatesData?.templates ?? [];
 
   const defaultKickoff =
-    projectStartDate && /^\d{4}-\d{2}-\d{2}$/.test(projectStartDate)
-      ? projectStartDate
-      : new Date().toISOString().slice(0, 10);
+    projectStartDate && /^\d{4}-\d{2}-\d{2}$/.test(projectStartDate) ? projectStartDate : localIsoDate();
 
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
   const [kickoffDate, setKickoffDate] = useState<string | null>(defaultKickoff);
@@ -110,13 +125,31 @@ export const ApplyTemplateModal = ({ projectId, projectStartDate, opened, onClos
           withAsterisk
         />
 
+        {!isPending && templates.length === 0 && (
+          <Text size="sm" c="dimmed">
+            {t("noTemplatesAvailable")}{" "}
+            {canManageTemplates &&
+              (Link ? (
+                <Anchor
+                  size="sm"
+                  renderRoot={(anchorProps) => <Link to={PROJECT_TEMPLATES_PATH} {...anchorProps} />}
+                  onClick={handleClose}
+                >
+                  {t("noTemplatesManageLink")}
+                </Anchor>
+              ) : (
+                <Anchor size="sm" href={PROJECT_TEMPLATES_PATH}>
+                  {t("noTemplatesManageLink")}
+                </Anchor>
+              ))}
+          </Text>
+        )}
+
         <DateInput
           label={t("kickoffDate")}
           valueFormat={t("dateInputFormat")}
           value={kickoffDate}
-          onChange={(val) =>
-            setKickoffDate(typeof val === "string" ? val : val ? (val as Date).toISOString().slice(0, 10) : null)
-          }
+          onChange={(val) => setKickoffDate(typeof val === "string" ? val : val ? localIsoDate(val as Date) : null)}
           withAsterisk
         />
 

@@ -36,6 +36,7 @@ import {
   IconShieldCheck,
   IconShieldLock,
   IconTelescope,
+  IconTemplate,
   IconUser,
   IconUserPlus,
   IconUserQuestion,
@@ -238,6 +239,19 @@ export const apps: readonly AppDefinition[] = [
       to: "/projects/economy",
       icon: IconReportMoney,
       requiredPermissions: ["projects:access"],
+    },
+    {
+      // The catalog is the people's who own it: every template write asks
+      // projects:create on top of projects:access, the same two as starting
+      // a project, so the entry and the route ask both. Everyone else in the
+      // app still sees every template where it is used, in Use template on a
+      // project's Tasks tab. projects:create rides in requiredAllPermissions so
+      // the app tile keeps following projects:access alone.
+      label: "navigation.projectTemplates",
+      to: "/projects/templates",
+      icon: IconTemplate,
+      requiredPermissions: ["projects:access"],
+      requiredAllPermissions: ["projects:create"],
     },
   ]),
   moduleApp("time", "navigation.time", IconClock, "/time", [

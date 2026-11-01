@@ -2,6 +2,8 @@ import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import { ProjectTasks } from "@vantigo/projects-ui/pages/project-tasks";
 import { fetchSession, sessionQueryKey } from "../../api/auth";
+import { getAuthorizationMe } from "../../api/authorization";
+import { hasPermissions } from "../../navigation";
 
 /**
  * The project's Tasks tab. The tab itself is the package's; the session user
@@ -19,12 +21,22 @@ export const ProjectTasksTab = () => {
   // The same session key the root layout uses, so this reads its cache. The
   // package needs the caller's id only to know whose comments are their own.
   const session = useQuery({ queryKey: sessionQueryKey, queryFn: fetchSession, staleTime: 300_000 });
+  // Whether Use template may point the caller at the template catalog, which
+  // only projects:create may add to.
+  const authorization = useQuery({
+    queryKey: ["authorization", "me", "none"],
+    queryFn: getAuthorizationMe,
+    enabled: !!session.data,
+    retry: false,
+    staleTime: 300_000,
+  });
 
   return (
     <ProjectTasks
       projectId={projectId}
       currentUserId={session.data?.user.id}
       openTaskId={task}
+      canManageTemplates={hasPermissions(authorization.data?.permissions, ["projects:create"])}
       // Opening a task is a place the caller can go back from; closing one
       // consumes the intent instead, so neither a refresh nor Back reopens a
       // drawer the caller just shut.

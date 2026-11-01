@@ -19,3 +19,13 @@ export const useProjectDates = () => {
     },
   };
 };
+
+/**
+ * The calendar date `date` falls on where the browser is, as YYYY-MM-DD.
+ * Not `toISOString()`, which is the UTC date: just after midnight in Oslo
+ * that is still yesterday.
+ */
+export const localIsoDate = (date: Date = new Date()): string => {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+};
