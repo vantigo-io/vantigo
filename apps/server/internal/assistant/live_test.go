@@ -1,9 +1,10 @@
 package assistant_test
 
 import (
-	"net/http"
+	"context"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/vantigo-io/vantigo/server/internal/modtest"
 )
@@ -27,15 +28,12 @@ func TestLive_ARealLocalModelAnswersAHowTo(t *testing.T) {
 	)
 	c, _ := person(t, h)
 	conv := startConversation(t, c)
-	r := ask(t, c, conv.ID, "How do I add a metering point?")
-	if r.Status != http.StatusOK {
-		t.Fatalf("send: %d %s", r.Status, r.Body)
-	}
-	for _, e := range parseStream(r.Body) {
-		if e.Name != "delta" {
-			t.Logf("%s %s", e.Name, string(e.Data))
-		}
-	}
+	// A real model is slower than the test client's timeout, and the run is
+	// detached from the connection: send, hang up, and follow it by polling.
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	ask(t, c, conv.ID, "How do I add a metering point?", modtest.Context(ctx), modtest.SkipContract("a live run, followed by polling"))
+	waitForLong(t, 8*time.Minute, func() bool { return !running(t, c, conv.ID) })
 	d := getConversation(t, c, conv.ID)
 	for _, m := range d.Messages {
 		for _, p := range m.Parts {
@@ -43,4 +41,16 @@ func TestLive_ARealLocalModelAnswersAHowTo(t *testing.T) {
 		}
 	}
 	t.Logf("actions: %+v", d.Actions)
+}
+
+func waitForLong(t *testing.T, d time.Duration, cond func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(d)
+	for time.Now().Before(deadline) {
+		if cond() {
+			return
+		}
+		time.Sleep(time.Second)
+	}
+	t.Fatal("timed out")
 }
