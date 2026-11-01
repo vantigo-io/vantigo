@@ -13,8 +13,8 @@ installasjonens innstillinger, og sier hvor hver av arbeidsområdets redigeres.
 
 | Nivå | Eier | Hvor den bor | Redigeres av | Eksempler |
 | --- | --- | --- | --- | --- |
-| **Installasjon** | Vantigo, eller driftsansvarlig som kjører installasjonen | Miljøet (`vantigo.env`), validert når prosessen starter | Ingen i grensesnittet: driftsansvarlig endrer miljøet og starter på nytt | `DATABASE_URL`, `APP_SECRET`, `APP_URL`, `MODULES`, `STORAGE_*`, `MAIL_DRIVER` og `SMTP_*`, `TRUSTED_PROXY_*`, hver arbeiders poll, `ENERGY_SPOT_PRICE_SERVICE_*` |
-| **Arbeidsområde** | Leietakeren — selskapet som bruker installasjonen | Databasen | En eier, eller den som har rettigheten, under **Administrer arbeidsområde** eller i modulens egne innstillinger | Single sign-on, tilkoblingen til Microsoft Entra ID og reglene for den, kanalene i Kommunikasjon, hver moduls innstillinger |
+| **Installasjon** | Vantigo, eller driftsansvarlig som kjører installasjonen | Miljøet (`vantigo.env`), validert når prosessen starter | Ingen i grensesnittet: driftsansvarlig endrer miljøet og starter på nytt | `DATABASE_URL`, `APP_SECRET`, `APP_URL`, `MODULES`, `STORAGE_*`, `MAIL_DRIVER` og `SMTP_*`, `TRUSTED_PROXY_*`, hver arbeiders poll, `ENERGY_SPOT_PRICE_SERVICE_*`, `AI_*` |
+| **Arbeidsområde** | Leietakeren — selskapet som bruker installasjonen | Databasen | En eier, eller den som har rettigheten, under **Administrer arbeidsområde** eller i modulens egne innstillinger | Single sign-on, tilkoblingen til Microsoft Entra ID og reglene for den, kanalene i Kommunikasjon, modellen hver KI-oppgave bruker, hver moduls innstillinger |
 
 **En innstilling bor på ett nivå**, så det er ingen presedensregel å lære: ingen
 innstilling på arbeidsområdenivå leses fra miljøet, og ingen innstilling på
@@ -24,10 +24,12 @@ fra installasjonen som angår en side — som en skrivebeskyttet linje, aldri et
 hemmelighet — en nøkkel, et passord, et token — vises aldri i noen form: siden sier bare
 at en er satt.
 
-Det eneste overlappet i historien er en engangsimport: variablene `OIDC_*` og `SCIM_*`
+Overlappene i historien er to engangsimporter. Variablene `OIDC_*` og `SCIM_*`
 ble lest én gang, inn i arbeidsområdets innstillinger for single sign-on, og blir
 ignorert siden
 ([OIDC og SCIM for arbeidsstyrken](/nb/admin/authentication/#oidc-og-scim-for-arbeidsstyrken)).
+`COMMUNICATIONS_AI_MODEL` leses én gang, inn i modellen som er valgt for hver av
+Kommunikasjons KI-oppgaver, og blir ignorert siden ([importen](#importen-av-communications_ai_model)).
 
 ## Installasjonens innstillinger
 
@@ -132,7 +134,68 @@ Alle er på som standard unntatt arbeideren for spotpriser.
 | `INVOICES_EHF_ENABLED`, `INVOICES_STORECOVE_BASE_URL` | `1`, Storecoves API | Å sende fakturaer som EHF ([E-faktura](/nb/admin/e-invoicing/)) |
 | `INVOICES_VIPPS_ENABLED`, `INVOICES_VIPPS_BASE_URL` | `1`, Vipps' API | Betaling med Vipps MobilePay ([Betalinger](/nb/admin/payments/)) |
 | `ENERGY_SPOT_PRICE_SERVICE_URL`, `ENERGY_SPOT_PRICE_SERVICE_KEY`, `ENERGY_SPOT_PRICE_HISTORY_FROM` | ikke satt | Den delte spotpristjenesten Vantigo setter en installasjon opp med, bærernøkkelen til den (en hemmelighet, vist ingen steder) og eldste dag som kopieres |
-| `COMMUNICATIONS_AI_ENABLED`, `COMMUNICATIONS_AI_PROVIDER`, `COMMUNICATIONS_AI_MODEL`, `COMMUNICATIONS_AI_API_KEY` | av, `openai`, `gpt-4o-mini`, ikke satt | KI-utkastet og kundeforslaget i Kommunikasjon; ikke satt svarer begge at funksjonen ikke er tilgjengelig. Nøkkelen er en hemmelighet |
+| `AI_PROVIDER`, `AI_API_KEY`, `AI_BASE_URL`, `AI_MODELS` | ikke satt | KI-abonnementet: leverandøren, nøkkelen (en hemmelighet, vist ingen steder), et valgfritt kompatibelt endepunkt og modellene abonnementet tillater. Ikke satt er alle KI-funksjoner utilgjengelige ([KI](#ki)) |
+
+### KI
+
+KI-abonnementet er Vantigos: leverandøren, nøkkelen og modellene det tillater hører til
+installasjonen, leses én gang når prosessen starter, og blir bare *vist* i
+grensesnittet. Hvilken av de tillatte modellene hver KI-oppgave bruker, er
+arbeidsområdets valg.
+
+| Innstilling | Standard | Betydning |
+| --- | --- | --- |
+| `AI_PROVIDER` | ikke satt | Leverandøren; `openai` foreløpig. Ikke satt er ingen KI-funksjon tilgjengelig: KI-utkastet og kundeforslaget i Kommunikasjon svarer at KI ikke er tilgjengelig, og **KI-modeller** vises ikke under Integrasjoner |
+| `AI_API_KEY` | påkrevd sammen med leverandøren | Leverandørens nøkkel, en hemmelighet: den vises ingen steder, i ingen form, og **KI-modeller** sier bare at en er satt |
+| `AI_BASE_URL` | leverandørens egen adresse | En absolutt `https`-adresse, for et OpenAI-kompatibelt endepunkt; uten bruker, spørring eller fragment |
+| `AI_MODELS` | påkrevd sammen med leverandøren | Modellene abonnementet tillater, kommaseparert, der den første er abonnementets standard: `gpt-4o-mini,gpt-4o`. Minst én, ingen gjentatt, hver på opptil 150 tegn uten mellomrom |
+
+`AI_API_KEY`, `AI_BASE_URL` og `AI_MODELS` uten `AI_PROVIDER` avvises ved oppstart, og det
+samme gjelder en leverandør uten nøkkel eller modell; en leverandør som ikke er satt, er den
+vanlige tilstanden «ingen KI» og aldri en feil.
+
+Hver KI-jobb en modul utfører, er en **oppgave** som modulen deklarerer, som *Draft a
+reply* eller *Suggest the customer* i Kommunikasjon (oppgavenavnene vises på engelsk). En eier velger modellen hver oppgave
+bruker blant `AI_MODELS`, under **Administrer arbeidsområde** › **Integrasjoner** ›
+**KI-modeller** ([veiledning](/nb/user/workspace-administration/#ki-modeller)). En oppgave
+ingen har valgt for, bruker modellen modulen anbefaler hvis abonnementet tillater den, og
+ellers den første i `AI_MODELS`. En ny `AI_MODELS` gjelder når prosessen starter på nytt; et
+valg av en modell listen ikke lenger har, blir ignorert, og oppgaven faller tilbake som over,
+til en eier velger på nytt. Oppgavene deklareres av modulene, i koden: en modul som er av, har
+ingen, og en oppgave kommer sammen med funksjonen som utfører den.
+
+#### De omdøpte variablene
+
+Kommunikasjons fire KI-variabler ble omdøpt da KI ble en plattforminnstilling. De gamle
+navnene leses som alias i én utgivelse til, og prosessen nevner dem du fortsatt har satt,
+i én advarsel ved hver oppstart.
+
+| Var | Er | Slik leses den gamle |
+| --- | --- | --- |
+| `COMMUNICATIONS_AI_ENABLED=1` | `AI_PROVIDER` | Slår leverandøren på når `AI_PROVIDER` ikke er satt |
+| `COMMUNICATIONS_AI_PROVIDER` | `AI_PROVIDER` | Leverandøren (`openai` når den ikke er satt); en annen verdi gjør KI utilgjengelig, som før |
+| `COMMUNICATIONS_AI_API_KEY` | `AI_API_KEY` | Nøkkelen, når `AI_API_KEY` ikke er satt; slått på uten nøkkel gjør KI utilgjengelig, som før |
+| `COMMUNICATIONS_AI_MODEL` | `AI_MODELS` | Så lenge leverandøren kommer fra de gamle variablene og `AI_MODELS` ikke er satt, den ene modellen abonnementet tillater (`gpt-4o-mini` når den ikke er satt); og importert én gang, under |
+
+En `AI_*`-variabel som er satt, vinner alltid, og den gamle ved siden av blir nevnt som
+ignorert. Sett de nye navnene og fjern de gamle før neste utgivelse, som slutter å lese dem.
+
+#### Importen av `COMMUNICATIONS_AI_MODEL`
+
+Kommunikasjon brukte én modell til begge KI-operasjonene sine. Ved første oppstart av API-et
+som ikke finner noen modell valgt for noen oppgave, mens `COMMUNICATIONS_AI_MODEL` er satt,
+et KI-abonnement er satt opp og abonnementet tillater modellen, skrives modellen som valget
+for hver av Kommunikasjons oppgaver, revisjonslogges som `ai-task-models.imported` uten
+aktør, og loggen advarer om at variabelen nå blir ignorert og bør fjernes. Oppførselen
+endres ikke: begge operasjonene bruker den modellen til en eier velger en annen.
+
+- En modell `AI_MODELS` ikke har, blir **ikke** importert, og loggen sier fra om det; en eier
+  velger under **KI-modeller**.
+- Uten KI-abonnement, eller med Kommunikasjon av, importeres ingenting og ingenting sies:
+  variabelen venter på at det ene eller det andre kommer.
+- Så snart en oppgave har et valg, blir variabelen ignorert ved hver oppstart, med en
+  advarsel som nevner den til du fjerner den. Den leses aldri igjen, så en endret verdi
+  endrer ingenting.
 
 ## Arbeidsområdets innstillinger, og hvor hver redigeres
 
@@ -144,6 +207,7 @@ Alle er på som standard unntatt arbeideren for spotpriser.
 | Tilkoblingen til Microsoft Entra ID: leietaker, applikasjon, klienthemmeligheter og tillatelser | **Administrer arbeidsområde** › **Integrasjoner** › **Microsoft Entra ID** › **Tilkobling** ([veiledning](/nb/user/entra/#hvor-den-er-og-de-fire-fanene)) | en eier |
 | Kontoreglene, innlogging og klargjøring, gruppene Vantigo holder i leietakeren | **Integrasjoner** › **Microsoft Entra ID** › **Kontoer** | `entra:manage` (innlogging og klargjøring: en eier) |
 | Outlook-tilkoblingen, kalendersynkronisering på den, og e-postkanaler | **Integrasjoner** › **Microsoft Entra ID** › **Outlook og e-post** | `entra:manage` |
+| Modellen hver KI-oppgave bruker, blant modellene abonnementet tillater | **Administrer arbeidsområde** › **Integrasjoner** › **KI-modeller** ([veiledning](/nb/user/workspace-administration/#ki-modeller)) | en eier |
 | Postboksene Kommunikasjon sender fra, og SMTP-kontoene den bruker | **Kommunikasjon** › **Kanaler** | `communications:channels-manage` |
 | En moduls egne regler: Fakturainnstillinger, Ansatteinnstillinger, Bemanningsinnstillinger, Timeinnstillinger, Utleggsinnstillinger | Modulens innstillingsside i sidemenyen | modulens rettighet |
 

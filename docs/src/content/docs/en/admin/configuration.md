@@ -13,8 +13,8 @@ says where each of the workspace's is edited.
 
 | Tier | Owner | Where it lives | Edited by | Examples |
 | --- | --- | --- | --- | --- |
-| **Instance** | Vantigo, or the operator who runs the installation | The environment (`vantigo.env`), validated when the process starts | Nobody in the interface: the operator changes the environment and restarts | `DATABASE_URL`, `APP_SECRET`, `APP_URL`, `MODULES`, `STORAGE_*`, `MAIL_DRIVER` and `SMTP_*`, `TRUSTED_PROXY_*`, every worker's poll, `ENERGY_SPOT_PRICE_SERVICE_*` |
-| **Workspace** | The tenant — the company that uses the installation | The database | An Owner, or whoever holds the permission, under **Workspace admin** or in the module's own settings | Single sign-on, the Microsoft Entra ID connection and its rules, Communications' channels, each module's settings |
+| **Instance** | Vantigo, or the operator who runs the installation | The environment (`vantigo.env`), validated when the process starts | Nobody in the interface: the operator changes the environment and restarts | `DATABASE_URL`, `APP_SECRET`, `APP_URL`, `MODULES`, `STORAGE_*`, `MAIL_DRIVER` and `SMTP_*`, `TRUSTED_PROXY_*`, every worker's poll, `ENERGY_SPOT_PRICE_SERVICE_*`, `AI_*` |
+| **Workspace** | The tenant — the company that uses the installation | The database | An Owner, or whoever holds the permission, under **Workspace admin** or in the module's own settings | Single sign-on, the Microsoft Entra ID connection and its rules, Communications' channels, the model each AI task uses, each module's settings |
 
 **A setting lives in exactly one tier**, so there is no precedence rule to learn: no
 workspace setting is read from the environment, and no instance setting is offered for
@@ -23,9 +23,11 @@ may choose, and the interface may *show* an instance fact that bears on a page �
 a read-only line, never a field. A secret — a key, a password, a token — is never
 shown at all, in any form: the page says only that one is set.
 
-The one overlap in history is a one-time import: the `OIDC_*` and `SCIM_*` variables
+The overlaps in history are two one-time imports. The `OIDC_*` and `SCIM_*` variables
 were read once, into the workspace's single sign-on settings, and are ignored since
 ([Workforce OIDC and SCIM](/en/admin/authentication/#workforce-oidc-and-scim)).
+`COMMUNICATIONS_AI_MODEL` is read once, into the model chosen for each of Communications'
+AI tasks, and is ignored since ([the import](#the-import-of-communications_ai_model)).
 
 ## The instance's settings
 
@@ -130,7 +132,67 @@ poll. All are on by default except the spot-price worker.
 | `INVOICES_EHF_ENABLED`, `INVOICES_STORECOVE_BASE_URL` | `1`, Storecove's API | Sending invoices as EHF ([E-invoicing](/en/admin/e-invoicing/)) |
 | `INVOICES_VIPPS_ENABLED`, `INVOICES_VIPPS_BASE_URL` | `1`, Vipps' API | Vipps MobilePay payments ([Payments](/en/admin/payments/)) |
 | `ENERGY_SPOT_PRICE_SERVICE_URL`, `ENERGY_SPOT_PRICE_SERVICE_KEY`, `ENERGY_SPOT_PRICE_HISTORY_FROM` | unset | The shared spot-price service Vantigo provisions an installation with, its bearer key (a secret, shown nowhere) and the oldest day copied |
-| `COMMUNICATIONS_AI_ENABLED`, `COMMUNICATIONS_AI_PROVIDER`, `COMMUNICATIONS_AI_MODEL`, `COMMUNICATIONS_AI_API_KEY` | off, `openai`, `gpt-4o-mini`, unset | The AI draft and customer suggestion in Communications; unset, both answer that the feature is unavailable. The key is a secret |
+| `AI_PROVIDER`, `AI_API_KEY`, `AI_BASE_URL`, `AI_MODELS` | unset | The AI plan: the provider, its key (a secret, shown nowhere), an optional compatible endpoint and the models the plan allows. Unset, every AI feature is unavailable ([AI](#ai)) |
+
+### AI
+
+The AI plan is Vantigo's: the provider, the key and the models it allows belong to the
+installation, are read once when the process starts, and are only *shown* in the
+interface. Which of the allowed models each AI job uses is the workspace's choice.
+
+| Setting | Default | Meaning |
+| --- | --- | --- |
+| `AI_PROVIDER` | unset | The provider; `openai` today. Unset, no AI feature is available: Communications' AI draft and customer suggestion answer that AI is unavailable, and **AI models** does not appear under Integrations |
+| `AI_API_KEY` | required with the provider | The provider's key, a secret: it is shown nowhere, in no form, and **AI models** says only that one is configured |
+| `AI_BASE_URL` | the provider's own address | An absolute `https` URL, for an OpenAI-compatible endpoint; no user, query or fragment |
+| `AI_MODELS` | required with the provider | The models the plan allows, comma-separated, the first being the plan's default: `gpt-4o-mini,gpt-4o`. At least one, none repeated, each up to 150 characters with no space |
+
+`AI_API_KEY`, `AI_BASE_URL` and `AI_MODELS` without `AI_PROVIDER` are refused at start, as
+is a provider with no key or no model; an unset provider is the ordinary "no AI" state
+and never an error.
+
+Every AI job a module performs is a **task** that the module declares, such as *Draft a
+reply* or *Suggest the customer* in Communications. An Owner chooses the model each task
+uses among `AI_MODELS`, under **Workspace admin** › **Integrations** › **AI models**
+([guide](/en/user/workspace-administration/#ai-models)). A task nobody has chosen for uses
+the model its module recommends if the plan allows it, and otherwise the first of
+`AI_MODELS`. A new `AI_MODELS` takes effect when the process restarts; a choice for a
+model the list no longer holds is ignored, and the task falls back as above, until an
+Owner chooses again. Tasks are declared by the modules, in the code: a module that is off
+has none, and a task is added with the feature that performs it.
+
+#### The renamed variables
+
+Communications' four AI variables were renamed when AI became a platform setting. The
+old names are read as aliases for one more release, and the process names the ones you
+still set in a single warning at every start.
+
+| Was | Is | How the old one is read |
+| --- | --- | --- |
+| `COMMUNICATIONS_AI_ENABLED=1` | `AI_PROVIDER` | Turns the provider on when `AI_PROVIDER` is unset |
+| `COMMUNICATIONS_AI_PROVIDER` | `AI_PROVIDER` | The provider (`openai` when unset); another value leaves AI unavailable, as before |
+| `COMMUNICATIONS_AI_API_KEY` | `AI_API_KEY` | The key, when `AI_API_KEY` is unset; enabled without a key leaves AI unavailable, as before |
+| `COMMUNICATIONS_AI_MODEL` | `AI_MODELS` | While the provider comes from the old variables and `AI_MODELS` is unset, the one model the plan allows (`gpt-4o-mini` when unset); and imported once, below |
+
+An `AI_*` variable that is set always wins, and the old one beside it is named as
+ignored. Set the new names and remove the old before the next release, which stops
+reading them.
+
+#### The import of `COMMUNICATIONS_AI_MODEL`
+
+Communications used one model for both of its AI operations. At the first start of the
+API that finds no model chosen for any task, while `COMMUNICATIONS_AI_MODEL` is set, an AI
+plan is configured and the plan allows that model, the model is written as the choice for
+each of Communications' tasks, audited `ai-task-models.imported` with no actor, and the
+log warns that the variable is now ignored and should be removed. The behaviour does not
+change: both operations keep using that model until an Owner chooses another.
+
+- A model that `AI_MODELS` does not hold is **not** imported, and the log says so; an Owner
+  chooses under **AI models**.
+- With no AI plan, or with Communications off, nothing is imported and nothing is said:
+  the variable waits for either to arrive.
+- Once any task has a choice the variable is ignored at every start, with a warning naming
+  it until you remove it. It is never read again, so a changed value changes nothing.
 
 ## The workspace's settings, and where each is edited
 
@@ -142,6 +204,7 @@ poll. All are on by default except the spot-price worker.
 | The Microsoft Entra ID connection: tenant, application, client secrets and permissions | **Workspace admin** › **Integrations** › **Microsoft Entra ID** › **Connection** ([guide](/en/user/entra/#where-it-is-and-the-four-tabs)) | an Owner |
 | The account rules, sign-in and provisioning, the groups Vantigo keeps in the tenant | **Integrations** › **Microsoft Entra ID** › **Accounts** | `entra:manage` (sign-in and provisioning: an Owner) |
 | The Outlook connection, calendar sync on it, and Mail channels | **Integrations** › **Microsoft Entra ID** › **Outlook and mail** | `entra:manage` |
+| The model each AI task uses, among the models the plan allows | **Workspace admin** › **Integrations** › **AI models** ([guide](/en/user/workspace-administration/#ai-models)) | an Owner |
 | The mailboxes Communications sends from, and the SMTP accounts it uses | **Communications** › **Channels** | `communications:channels-manage` |
 | A module's own rules: Invoice settings, Staff settings, Planning settings, Time settings, Expense settings | The module's settings page in its sidebar | the module's permission |
 

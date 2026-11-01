@@ -306,7 +306,7 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
   The `OIDC_*` and `SCIM_*` lines in `vantigo.env.example` exist only so an
   installation upgraded from an earlier release imports them at its first
   start; remove them afterwards. Do not put secrets in source-controlled
-  files — inject `COMMUNICATIONS_AI_API_KEY` (and, for that one import,
+  files — inject `AI_API_KEY` (and, for that one import,
   `OIDC_CLIENT_SECRET` and the SCIM tokens) from a secret store instead.
 - SCIM uses `/api/v1/identity/scim/v2`, bearer tokens, and
   `application/scim+json`; the token is generated on the card, shown once, and
