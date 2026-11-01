@@ -139,6 +139,8 @@ kolonner der deloppgaver er egne kort, eller som en interaktiv **Tidslinje** som
 oppgavebånd over kalenderdager ved siden av milepælmarkører og avhengighetspiler. Oppgaver tilknyttet en leveransemilepæl har en
 diamantmerket milepæl-tagg. Planleggingskonflikter der en forgjenger slutter etter at etterfølgeren starter markeres med et varselikon. Valget huskes i nettleseren din. Deltakere og
 prosjektledere ser **Bruk mal** og **Ny oppgave**; en leser får de samme visningene uten handlingene.
+Den som kan opprette prosjekter (`projects:create`), ser også **Lagre som mal** på hvert prosjekt
+vedkommende kan se — se [Lagre et prosjekt som mal](#lagre-et-prosjekt-som-mal).
 
 Tidslinjens skalabryter — **Dag**, **Uke** eller **Måned** — bestemmer hvor mye av kalenderen
 som får plass på skjermen; overskriften nummererer dagene, ISO-ukene (*U45*) eller navngir
@@ -163,8 +165,9 @@ er. Ingenting etter den flyttes uten det svaret. En leser ser tidslinjen, men b�
 
 **Bruk mal** åpner **Bruk prosjektmal**, hvor du kan velge en standardisert prosjektmal (f.eks. oppstart
 for ny kunde) og en **Oppstartsdato (T+0)**, som er prosjektets startdato eller ellers i dag. Når malen tas i
-bruk, opprettes malens leveransemilepæler, oppgaver, deloppgaver og avhengighetskoblinger med kalenderdatoer
-beregnet ut fra oppstartsdatoen, ved siden av det prosjektet allerede har. Finnes det ingen maler ennå, sier
+bruk, opprettes malens leveransemilepæler, oppgaver, deloppgaver, sjekklistene deres (hvert punkt uten kryss)
+og avhengighetskoblinger med kalenderdatoer beregnet ut fra oppstartsdatoen, ved siden av det prosjektet
+allerede har. Finnes det ingen maler ennå, sier
 dialogen *Ingen maler tilgjengelig ennå.*, og til den som kan lage maler legger den til en lenke, **Lag en
 under Prosjektmaler** — se [Bygg prosjektmaler](#bygg-prosjektmaler). En mal som bryter
 en av malreglene, avvises med *Malen bryter en regel og må rettes under Prosjektmaler*,
@@ -216,7 +219,8 @@ vanlige skjemaet **Ny oppgave** på det.
 mal** tar i bruk. Den tilbys den som kan opprette prosjekter (`projects:access` og
 `projects:create`); alle andre i appen ser fortsatt hver mal i **Bruk mal**.
 Tabellen viser hver mals **Navn** og beskrivelse, og hvor mange
-**Leveransemilepæler**, **Oppgaver**, **Deloppgaver** og **Avhengigheter** den har.
+**Leveransemilepæler**, **Oppgaver**, **Deloppgaver**, **Sjekklistepunkter** og
+**Avhengigheter** den har.
 Finnes det ingen ennå, sier siden **Ingen prosjektmaler ennå**.
 
 **Ny mal** åpner **Ny prosjektmal**:
@@ -224,20 +228,24 @@ Finnes det ingen ennå, sier siden **Ingen prosjektmaler ennå**.
 1. Gi den et **Navn** (påkrevd, høyst 200 tegn) og, om du vil, en **Beskrivelse**
    (høyst 2000 tegn).
 2. Under **Leveransemilepæler** velger du **Legg til milepæl** for hver av dem: et
-   **Navn** og en **Måldag** — dager fra oppstart, så `T+0` er oppstartsdagen og
-   `T+14` to uker senere.
+   **Navn**, en **Måldag** — dager fra oppstart, så `T+0` er oppstartsdagen og
+   `T+14` to uker senere — og, om du vil, en **Beskrivelse** (høyst 2000 tegn).
 3. Under **Oppgaver** velger du **Legg til oppgave** for hver av dem: en **Tittel**,
    en valgfri **Beskrivelse**, **Startdag** og **Fristdag** (ikke før startdagen),
    **Estimat (timer)** (over 0 når det er satt) og **Leveransemilepælen** den hører
-   til. **Legg til deloppgave** legger en deloppgave under den med de samme feltene,
-   bortsett fra milepælen.
+   til. Under **Sjekkliste** legger **Legg til sjekklistepunkt** til en linje for
+   hvert lille steg (1–500 tegn, høyst 100 per oppgave); når malen tas i bruk,
+   opprettes de i denne rekkefølgen, uten kryss. **Legg til deloppgave** legger en
+   deloppgave under den med de samme feltene, også sin egen sjekkliste, bortsett fra
+   milepælen.
 4. Under **Avhengigheter** velger du **Legg til avhengighet** (når det finnes to
    oppgaver) og velger **Forgjenger** og **Etterfølger**, som venter på den. Bare
    hovedoppgaver kobles, en oppgave kan ikke avhenge av seg selv, et par står bare én
    gang, og koblingene kan ikke danne en sløyfe.
 5. **Opprett** lagrer den.
 
-Pilene på hver rad flytter den opp eller ned, og søppelkurven fjerner den. Fjerner
+Pilene på hver rad — også på et sjekklistepunkt — flytter den opp eller ned, og
+søppelkurven fjerner den. Fjerner
 du en milepæl, kobles oppgavene dens fra; fjerner du en oppgave, forsvinner
 deloppgavene og avhengighetene dens med den. Et felt malens regler avviser, merkes
 der det står, før noe sendes.
@@ -249,6 +257,32 @@ slettes. En mal noen andre har lagret imens, avvises med *Malen ble endret av no
 andre. Åpne den igjen og gjør endringene dine på nytt.*; redigeringen lukkes, og når
 du åpner malen igjen, ser du det som ble lagret. Se
 [Project templates and blueprints](/en/reference/projects/#project-templates-and-blueprints).
+
+## Lagre et prosjekt som mal
+
+Et prosjekt som gikk bra, kan starte det neste. I fanen **Oppgaver** på prosjektet
+åpner **Lagre som mal** dialogen **Lagre prosjektet som mal** (den krever
+`projects:create`, rettigheten malkatalogen spør om; ellers holder det å se
+prosjektet):
+
+1. **Navn** starter som prosjektets navn; endre det om du vil (påkrevd, høyst 200
+   tegn), og legg til en **Beskrivelse** (høyst 2000 tegn).
+2. **Lagre mal** lagrer den. Varselet *Malen navn er opprettet* lenker til **Åpne
+   Prosjektmaler**, der den nye malen kan redigeres som alle andre.
+
+Malen får prosjektets leveransemilepæler i planlagt rekkefølge, hovedoppgavene med
+deloppgaver, beskrivelser, estimater og sjekklister, hver oppgaves
+leveransemilepæl, og avhengighetene mellom hovedoppgavene. En avhengighet til eller
+fra en deloppgave utelates, fordi maler bare kobler hovedoppgaver. Ansvarlige,
+statuser, kommentarer, førte timer og kryss kopieres ikke.
+
+Datoene blir dager fra prosjektets **startdato**: en dato før starten blir `T+0`.
+Et prosjekt uten startdato regner i stedet fra sin tidligste milepæl- eller
+oppgavedato, og en milepæl uten måldato får `T+0`. En plan som bryter en malregel —
+en sjekkliste med mer enn 100 punkter, for eksempel — avvises med
+*Prosjektplanen bryter en malregel*, fulgt av regelen, og ingenting lagres. Å lagre
+endrer verken prosjektet eller tidslinjen. Se
+[Save a project as a template](/en/reference/projects/#save-a-project-as-a-template).
 
 ## Sett opp fakturalinjer
 

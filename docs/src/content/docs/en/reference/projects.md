@@ -1322,7 +1322,14 @@ A dependency states that a predecessor task must finish before its successor tas
 - **Cycle-free DAG validation:** The dependency graph forms a directed acyclic graph (DAG).
   Before inserting a link `(A -> B)`, the system performs graph reachability traversal from `B`.
   If `A` is reachable from `B`, adding the link would introduce a directed cycle; the request is
-  refused with **400 Bad Request** (`cyclic_dependency`).
+  refused with **400 Bad Request**, the problem titled `Cyclic dependency`.
+- **Chain length limit:** The longest chain of linked tasks through a new link — the longest chain
+  ending at the predecessor, the link, and the longest chain starting at the successor — may hold at
+  most **100 links**. A link that would make it longer is refused with **400 Bad Request**, the
+  problem titled `Dependency chain too long` and the field error on `successorTaskId` naming the
+  length it would have made. Like the cycle check, it is decided under the project's task-order lock
+  from the links the transaction holds, so two links racing to extend one chain cannot both pass.
+  Templates are held to the same limit.
 - **Self-dependencies & duplicates:** A task cannot depend on itself (**400 Bad Request**).
   Attempting to recreate an existing dependency link returns **409 Conflict**.
 - **Cascading deletion:** When a task is deleted, all dependencies where it acts as predecessor
@@ -1361,18 +1368,23 @@ A dependency states that a predecessor task must finish before its successor tas
 
 Organizations frequently execute repeatable projects (e.g., client onboarding, ERP rollouts, SaaS setup).
 Vantigo provides reusable project blueprint templates (`projects.templates`) to instantiate pre-configured
-delivery milestones, tasks, subtasks, and dependency graphs in one operation.
+delivery milestones, tasks, subtasks, their checklists, and dependency graphs in one operation. The
+blueprint is stored in JSON columns, so a new optional field such as `checklist` needed no migration:
+a template saved before it existed simply has none.
 
 - **Relative day offsets ($T+0$):** Rather than absolute dates, blueprints define relative offsets from a kickoff date ($T+0$):
   - `targetDayOffset` on milestones (e.g. $T+7$ days, $T+21$ days).
   - `startDayOffset` and `dueDayOffset` on tasks and subtasks.
 - **Milestone linking & dependencies:** Tasks in a blueprint can link to milestones by 0-based milestone index,
-  and finish-to-start dependencies link predecessor and successor tasks by 0-based task index.
+  and finish-to-start dependencies link predecessor and successor tasks by 0-based task index. Only
+  top-level tasks are linked; a subtask takes its parent's milestone when the template is applied.
+- **Checklists:** Each task and subtask may carry a `checklist`, the item texts in order.
 - **Template instantiation (`POST /api/v1/projects/{id}/apply-template`):** When applying a template with a chosen `kickoffDate`:
   1. An exclusive task-order lock (`AcquireTaskOrderLock`) is acquired for the target project.
   2. Delivery milestones are created with `targetDate = kickoffDate + targetDayOffset`, appended after the
      project's own, each recording a `delivery-milestone-added` timeline entry as adding one by hand does.
-  3. Tasks and subtasks are created with `startDate = kickoffDate + startDayOffset` and `dueDate = kickoffDate + dueDayOffset`, mapped to their instantiated delivery milestones.
+  3. Tasks and subtasks are created with `startDate = kickoffDate + startDayOffset` and `dueDate = kickoffDate + dueDayOffset`, mapped to their instantiated delivery milestones,
+     each with its checklist created in order and unchecked, numbered 1..n.
   4. Task dependencies are created linking the newly instantiated predecessor and successor task IDs.
   5. The entire instantiation completes atomically inside a single transaction.
 
@@ -1390,6 +1402,10 @@ handler runs:
 - **Applying** a template is a write to the target project, so it follows that project's roles: a
   caller who cannot see the project gets **404**, one who can see it but is not a member or manager
   (nor holds `projects:manage-all`) gets **403**.
+- **Saving a project as a template** adds to the catalog, so the router asks `projects:access` and
+  `projects:create` of it (**403** without either); the handler then asks that the caller can see
+  the project — any role in it, `projects:view-all` or `projects:manage-all` — and answers the bare
+  **404** an unknown project gets when they cannot. A viewer may snapshot a plan they can read.
 
 In the app, **Project templates** (`/projects/templates`) is offered to callers holding both
 `projects:access` and `projects:create`; see the
@@ -1409,9 +1425,12 @@ validation problem keyed by the field (`milestones[0].name`, `tasks[1].subtasks[
 - each task and subtask has the task rules: a `title` of 1–200 characters, a `description` of at
   most 4000, and an `estimateHours` that, when set, is above 0 and at most 999 999.99; the day
   offsets are not negative and `dueDayOffset` is not before `startDayOffset`;
+- each task's and subtask's `checklist` holds at most 100 items (`tasks[0].checklist`), each with
+  the checklist item rule: 1–500 characters after trimming (`tasks[0].subtasks[1].checklist[2]`);
 - a task's `milestoneIndex` and a dependency's two task indices point at a milestone or top-level
   task of the same template; a task cannot depend on itself, a pair is listed once (the project's
-  dependency table holds each pair once), and the dependencies may not form a cycle.
+  dependency table holds each pair once), the dependencies may not form a cycle, and their longest
+  chain holds at most 100 links, the limit a hand-made link is held to (both under `dependencies`).
 
 Names, titles and descriptions are stored trimmed, a blank description as none. `PUT` carries the
 `revision` it was read at: an unknown template is **404**, a revision that has moved on **409**.
@@ -1419,6 +1438,38 @@ Names, titles and descriptions are stored trimmed, a blank description as none. 
 what it created. Applying checks the stored template against the same rules again and answers
 **400** rather than half-applying one saved before a rule existed, and **404** for an unknown
 template.
+
+### Save a project as a template
+
+`POST /api/v1/projects/{id}/save-as-template` with `{ name, description? }` reads the project's plan
+and stores it as a new template, answering **201** with the template. The name and description
+follow the template rules above (**400** on `name` or `description`). What is copied:
+
+- the **delivery milestones** in their planned order (`position`, so a completed milestone keeps
+  its place), with name and description;
+- the **top-level tasks** in their order, each with its **subtasks** in order, their titles,
+  descriptions and `estimateHours`, and every task's and subtask's **checklist** item texts in
+  order;
+- each top-level task's **milestone link**, as the index of that milestone;
+- the **dependencies between top-level tasks**. A dependency with a subtask at either end is
+  skipped, because a template links top-level tasks only; a subtask's own milestone link is not
+  kept either, since apply gives a subtask its parent's.
+
+Assignees, statuses, completion stamps, comments, logged time and checklist ticks are not copied;
+the billing type is taken from the project.
+
+Dates become **day offsets from an anchor**. The anchor is the project's **start date** when it has
+one; a date before it becomes offset **0** (a template's offsets cannot be negative), so a task that
+started before its project starts at T+0 in the template. A project without a start date is anchored
+on the **earliest date** among the copied milestone target dates and task and subtask start and due
+dates, which no copied date can come before. A project with no dates at all gives every task no
+offsets. A milestone without a target date gets `targetDayOffset` 0, the contract requiring one.
+
+The snapshot is read in one read-only transaction, so it never mixes two states of a plan being
+edited, and it is held to the template rules before it is stored: a plan that breaks one — a
+checklist of more than 100 items, say — is refused with **400** and the template's own field errors
+(`tasks[0].checklist`) rather than stored as a template applying would refuse. Saving records
+nothing on the project's timeline; it is a read of the project.
 
 ## Contracts for other modules
 
