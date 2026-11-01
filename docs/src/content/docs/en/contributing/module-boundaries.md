@@ -62,11 +62,13 @@ Communications' outbox is the working example.
    `internal/mail` is such a platform import, and a module that sends mail goes through
    its guarded path (`mail.SendOutbound`, or the test seam `Deps.SMTPSend`).
    `mail.Outbound` and `mail.SendOutbound` were made for Communications, which sends
-   with each channel's own stored credentials; Invoices sends with the installation's
-   `SMTP_*` configuration, as identity's mail does. Invoices' one change to the package
-   is `ReplyTo`: `mail.Outbound` carries a `ReplyTo`, written as the `Reply-To` header
-   when set and absent when empty, so a document sent from the installation's
-   `SMTP_FROM` can have its replies reach the seller's own mailbox.
+   with each channel's own stored credentials, and which Invoices and Calendar hand to
+   `OutboundMail` ([rule 17](#the-rules)) to send from a channel an Owner chose; the
+   installation's own `SMTP_*` configuration is the system mailbox's, for the tenant's
+   employees (identity's and Staff's mail), and no customer's mail takes it. Invoices'
+   one change to the package is `ReplyTo`: `mail.Outbound` carries a `ReplyTo`, written
+   as the `Reply-To` header when set and absent when empty, so a document sent from a
+   channel can have its replies reach the seller's own mailbox.
 2. **The platform imports no module.** `internal/module` and `internal/contracts` —
    the platform modules mount through — may not import any business module, so the
    composition machinery never depends on what it composes.
@@ -117,6 +119,9 @@ Communications' outbox is the working example.
    mailboxes as Communications' channels send from; rule 15; optional for its consumer,
    nil when Entra is off), `PersonalMailbox` (`contracts.PersonalMailbox`, entra — a person's
    delegated mailbox to send from in Communications; rule 16; optional, nil when Entra is off),
+   `OutboundMail` (`contracts.OutboundMail`, communications — its channels as Invoices and
+   Calendar send customer mail through them; rule 17; optional for its consumers, nil when
+   Communications is off, which they read as "sending is disabled"),
    and `CalendarBusy` (`contracts.CalendarBusy`, calendar — people's busy
    time, which Planning's board shows; provider-gated, rule 12; optional for its
    consumer, nil when the calendar is off). `module.Compose`
@@ -741,6 +746,29 @@ Communications' outbox is the working example.
     `contracts.ErrConnectionNeeded`, the outbox fails immediately with terminal code
     `connection_needed` after 1 attempt, never falling back to the shared channel mailbox.
     `modtest.FakePersonalMailbox` backs tests.
+17. **Customer mail goes through a channel the Owner chose.** The ninth sanctioned
+    cross-module direction, Invoices and Calendar → Communications, made so that no mail to a
+    *customer* leaves on the installation's `SMTP_*` credentials (integrations design T4–T6):
+    `contracts.OutboundMail`, in the single-provider slot `OutboundMail` (rule 5), which
+    Communications fills through `Module.OutboundMail`; Compose and Workers resolve it into
+    `Deps.OutboundMail` after the channel and personal mailboxes, refusing two. A consumer
+    names a channel **by id** — `invoices.settings.send_channel`, `calendar.settings.invitation_channel`,
+    each with no foreign key across schemas (rule 4) — and never reads `communications.*`;
+    Communications is the authority on channels. `Channels` and `Channel` make no network call
+    and answer to any module without a Communications permission (names and addresses
+    only); `Send` is synchronous under the caller's context, keeps the caller's `Reply-To`
+    and `Message-ID` (the idempotency key a provider honours), sends From the channel's
+    address, and answers `ErrChannelUnknown`, `ErrChannelUnavailable` (its provider is off
+    or its credential missing — nothing was sent), `ErrMailTooLarge`, `ErrRecipientRefused`
+    (reserved for a provider that holds a tenant to a list of addresses) or a failure to
+    retry, at least once. **Nothing is queued on a consumer's behalf and nothing is called
+    inside a transaction**: each consumer's accessor in `contractscalls.go` reports the call
+    and refuses one made inside a lock, and each keeps its own evidence and retry (Invoices
+    the delivery row and the letter's attempts, Calendar the attendee's *Resend*). A null
+    setting is *disabled*, as is a nil slot; a channel that goes away leaves the setting
+    as it was, shown as gone, and Communications never writes a consumer's settings. The
+    system mailbox (`Deps.Mail`) keeps its one job, writing to the tenant's own employees.
+    `modtest.FakeOutboundMail` backs tests.
 
 ## How they are enforced
 
