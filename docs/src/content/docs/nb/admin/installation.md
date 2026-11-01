@@ -646,7 +646,10 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
   `/var/run/secrets/azure/tokens`
   ([Workload identity](/nb/admin/sso-scim/#microsoft-entra-id-workload-identity)).
   Ikke legg hemmeligheter i filer under versjonskontroll — injiser
-  `COMMUNICATIONS_AI_API_KEY` fra en hemmelighetsforvalter i stedet.
+  `AI_API_KEY` fra en hemmelighetsforvalter i stedet. KI-abonnementet (`AI_PROVIDER`,
+  `AI_API_KEY`, `AI_BASE_URL`, `AI_MODELS`) er også konfigurasjon på installasjonsnivå, og en
+  eier velger modellen til hver KI-oppgave under **KI-modeller**: se
+  [KI](/nb/admin/configuration/#ki).
 - SCIM bruker `/api/v1/identity/scim/v2`, bearer-tokener og `application/scim+json`.
   En Owner utsteder tokenet med **Nytt token** på kortet, og roterer det der med en
   overlapping på høyst 24 timer. Se [SSO- og SCIM-drift](/nb/admin/sso-scim/#scim).

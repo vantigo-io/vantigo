@@ -623,8 +623,10 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
   workload identity token file saved on the card must lie in, the webhook's
   `/var/run/secrets/azure/tokens` by default
   ([Workload identity](/en/admin/sso-scim/#microsoft-entra-id-workload-identity)).
-  Do not put secrets in source-controlled files — inject `COMMUNICATIONS_AI_API_KEY`
-  from a secret store instead.
+  Do not put secrets in source-controlled files — inject `AI_API_KEY`
+  from a secret store instead. The AI plan (`AI_PROVIDER`, `AI_API_KEY`, `AI_BASE_URL`,
+  `AI_MODELS`) is instance configuration too, and an Owner chooses the model of each AI
+  task under **AI models**: see [AI](/en/admin/configuration/#ai).
 - SCIM uses `/api/v1/identity/scim/v2`, bearer tokens and `application/scim+json`.
   An Owner issues the token with **New token** on the card, and rotates it there with
   an overlap of at most 24 hours. See [SSO and SCIM operations](/en/admin/sso-scim/#scim).
