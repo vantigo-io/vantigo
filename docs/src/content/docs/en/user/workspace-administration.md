@@ -11,7 +11,8 @@ sources:
 Workspace administration is where an **Owner** manages who can use Vantigo and what
 they may do. Open the avatar menu at the top right and choose **Workspace admin**;
 its sidebar has **Overview**, **Users**, **Invitations** and **Roles & access**, and,
-under **Integrations**, **Microsoft Entra ID**.
+under **Integrations**, **Microsoft Entra ID** and, once Vantigo has set up AI for the
+installation, **AI models**.
 
 Everything here needs the Owner role, with one exception: a person to whom an Owner
 has delegated role administration sees **Roles & access** alone, both in the avatar
@@ -410,25 +411,65 @@ groups, their members receive the mapped roles automatically; see
 ## Integrations
 
 **Integrations** is the second section of the **Workspace admin** sidebar: the one place
-the company's connections to systems elsewhere are managed. Today it has one item,
-**Microsoft Entra ID**, which connects Vantigo to the company's Microsoft Entra ID tenant;
-its page has four tabs — **Status**, **Connection**, **Accounts** and **Outlook and
-mail** — described in [Microsoft Entra ID](/en/user/entra/#where-it-is-and-the-four-tabs).
-The section is there only while the Microsoft Entra ID module is on in this installation,
-and only for someone who holds `entra:manage`; an Owner holds every permission.
+the company's connections to systems elsewhere are managed. It has two items.
+**Microsoft Entra ID** connects Vantigo to the company's Microsoft Entra ID tenant; its
+page has four tabs — **Status**, **Connection**, **Accounts** and **Outlook and mail** —
+described in [Microsoft Entra ID](/en/user/entra/#where-it-is-and-the-four-tabs). It is there
+only while the Microsoft Entra ID module is on in this installation, and only for someone
+who holds `entra:manage`; an Owner holds every permission. **AI models** is the Owner's
+alone, and is there only while Vantigo has set up AI for this installation
+([below](#ai-models)).
 
 - An Owner sees all of Workspace admin, with **Integrations** after the rest.
 - Someone who holds `entra:manage` but is not an Owner sees **Integrations** alone in
   the sidebar — the way a person with delegated role administration sees **Roles &
   access** alone — and finds **Microsoft Entra ID** in the avatar menu. The steps that
-  are an Owner's they read without their forms.
-- Without `entra:manage`, or while the module is off, there is no **Integrations**
-  section.
+  are an Owner's they read without their forms. They do not see **AI models**.
+- Without `entra:manage` (and not an Owner), there is no **Integrations** section. For
+  an Owner there is none either while the Microsoft Entra ID module is off and AI is not
+  set up.
 
 Your own accounts elsewhere, such as your Outlook, are connected under **Settings** ›
 **Connections** ([Connections](/en/user/connections/)); the mailboxes Communications
 sends from are its **Channels**, not here. [Configuration](/en/admin/configuration/) says
 which settings are the workspace's and which the installation's.
+
+### AI models
+
+Some features ask an AI model for help — today, Communications' *Draft a reply* and
+*Suggest the customer*. **AI models** (an Owner's page under **Integrations**) is where you
+choose which model each of those jobs uses. It is there only while Vantigo has set up AI for
+the installation: otherwise there is no item in the sidebar, and the address answers "page
+not found".
+
+**What you see.** The card titled **The plan** states what Vantigo set up, as facts with no field
+to edit: the **Provider**, the **Models the plan allows**, and "An API key is configured by
+Vantigo." The key itself is never shown, to anyone, anywhere. Below it, one card for each
+module that uses AI, named as the module is, with a row for each **task** it performs: what
+the model is asked to do and with what data, and a select of the models the plan allows.
+Tasks are named in English. A module that is turned off is not listed.
+
+A badge says where a model comes from while nobody has chosen: **Default** is the model the
+task's module recommends, **Plan default** the plan's first model. A task someone has
+chosen for has no badge.
+
+**What you change.** Open a task's select and choose a model. It is saved at once — "Model
+saved" — and the task uses it the next time it runs; every server follows within about 20
+seconds. The choice is for that one task; the others are unchanged. If someone else changed
+the same task after you opened the page, you are told "The AI models have changed", the page
+reloads, and you choose again. When the plan allows only one model, every select is locked
+with that model shown, and there is nothing to choose.
+
+**What Vantigo decides.** The provider, the key, the models the plan allows and what each
+task is — a task is added with the feature that uses it. A model you chose that the plan
+later stops allowing is ignored: the task uses its module's recommendation, or the plan's
+first model, until you choose again. Every choice is recorded in the audit trail as
+`ai-task-model.changed`, with the model before and after, and nothing is recorded of what
+the model was asked or answered beyond what the feature itself keeps (Communications keeps
+digests and counts, never text:
+[AI draft and customer suggestion](/en/reference/communications/#ai-draft-and-customer-suggestion)).
+The settings that belong to the installation are in
+[Configuration](/en/admin/configuration/#ai).
 
 ## Set up a new installation
 

@@ -185,7 +185,11 @@ Over skrivefeltet skriver **Skriv utkast med KI** et første utkast for deg. Vel
 er obligatorisk — og klikk **Skriv utkast med KI**. Utkastet havner i editoren, med
 overskriften «KI-utkast — se gjennom før sending. Ingenting er sendt.» Les det, rediger
 det og send det som ethvert annet svar; **Lag utkast på nytt** ber om et nytt. Når
-assistenten ikke er satt opp, sier panelet fra, og du skriver svaret selv.
+assistenten ikke er satt opp, sier panelet fra, og du skriver svaret selv. Hvilken
+KI-modell som skriver utkastet, og hvilken som foreslår kunder, er en eiers valg under
+**Administrer arbeidsområde** › **Integrasjoner** › **KI-modeller**
+([KI-modeller](/nb/user/workspace-administration/#ki-modeller)); valget endrer ingenting
+av det du gjør her.
 
 ## Legg til et internt notat
 
