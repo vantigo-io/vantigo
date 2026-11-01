@@ -57,7 +57,15 @@ type Info struct {
 	Tag         string `json:"tag,omitempty"`
 	Summary     string `json:"summary"`
 	Description string `json:"description,omitempty"`
-	Mode        Mode   `json:"mode"`
+	// Mode is the contract's mode (S4 without its Sensitive clause) from All
+	// and Info, and the mode the assistant may use the operation in now — the
+	// gate's answer — from List and Search.
+	Mode Mode `json:"mode"`
+	// Permissions are the keys the access rule names: empty for a policy: or
+	// session rule.
+	Permissions []string `json:"permissions,omitempty"`
+	// Sensitive says any of Permissions is Sensitive in the catalog.
+	Sensitive bool `json:"sensitive,omitempty"`
 }
 
 // entry is one operation with what List, Describe and Call need.
@@ -98,7 +106,44 @@ type Options struct {
 // Dispatcher lists, describes and calls operations. The zero value is not
 // usable; build it with New and Bind it.
 type Dispatcher struct {
-	st atomic.Pointer[state]
+	st   atomic.Pointer[state]
+	gate atomic.Pointer[Gate]
+}
+
+// SetGate installs the gate that narrows each operation's contract mode (the
+// Assistant design S16): only the assistant module calls it, while it mounts.
+// Without one — and after SetGate(nil) — the dispatcher fails closed: an
+// operation whose access rule names a Sensitive permission is never.
+func (d *Dispatcher) SetGate(g Gate) {
+	if g == nil {
+		d.gate.Store(nil)
+		return
+	}
+	d.gate.Store(&g)
+}
+
+// effective is the mode the assistant may use e in now: the gate's answer,
+// never wider than the contract's.
+func (d *Dispatcher) effective(ctx context.Context, e *entry) Mode {
+	gate := Gate(defaultGate)
+	if g := d.gate.Load(); g != nil {
+		gate = *g
+	}
+	return narrower(e.Mode, gate(ctx, e.Info))
+}
+
+// Effective is the mode the assistant may use the operation in now, for ctx's
+// workspace, and false when there is no such operation.
+func (d *Dispatcher) Effective(ctx context.Context, id string) (Mode, bool) {
+	st, err := d.bound()
+	if err != nil {
+		return ModeNever, false
+	}
+	e, ok := st.byID[id]
+	if !ok {
+		return ModeNever, false
+	}
+	return d.effective(ctx, e), true
 }
 
 // New returns an unbound dispatcher. Every method but Bind answers an error
@@ -157,7 +202,15 @@ func newEntry(path, method string, item *openapi3.PathItem, op *openapi3.Operati
 	if len(op.Tags) > 0 {
 		e.Tag = op.Tags[0]
 	}
-	e.Mode = effectiveMode(method, path, op, rule, e.ruleOK, catalog)
+	e.Mode = contractMode(method, path, op, rule, e.ruleOK, catalog)
+	if e.ruleOK && rule.Kind == contracts.RulePermission {
+		e.Permissions = slices.Clone(rule.Names)
+		for _, key := range rule.Names {
+			if perm, ok := catalog[key]; ok && perm.Sensitive {
+				e.Sensitive = true
+			}
+		}
+	}
 
 	// Path-level parameters first; an operation's own override them.
 	seen := map[string]int{}
@@ -263,7 +316,8 @@ func (d *Dispatcher) Info(id string) (Info, bool) {
 }
 
 // List is the operations userID may call, as the assistant sees them: those
-// whose mode is not never and whose access rule the user meets. A permission
+// whose effective mode (the contract's, narrowed by the gate) is not never
+// and whose access rule the user meets; each carries that effective mode. A permission
 // rule is asked of Access.UserHolds (once per key per call); policy:ActiveAccount
 // and policy:Business are listed, and the call decides, Business's MFA being
 // the session's. The order is by path, then method.
@@ -275,7 +329,8 @@ func (d *Dispatcher) List(ctx context.Context, userID uuid.UUID) ([]Info, error)
 	held := map[string]bool{}
 	var out []Info
 	for _, e := range st.entries {
-		if e.Mode == ModeNever {
+		mode := d.effective(ctx, e)
+		if mode == ModeNever {
 			continue
 		}
 		ok, err := st.meets(ctx, userID, e, held)
@@ -283,7 +338,9 @@ func (d *Dispatcher) List(ctx context.Context, userID uuid.UUID) ([]Info, error)
 			return nil, err
 		}
 		if ok {
-			out = append(out, e.Info)
+			info := e.Info
+			info.Mode = mode
+			out = append(out, info)
 		}
 	}
 	return out, nil
@@ -483,9 +540,11 @@ func (d *Dispatcher) Call(ctx context.Context, req CallRequest) (CallResult, err
 	if !ok {
 		return CallResult{}, &Error{Code: CodeUnknownOperation, Message: fmt.Sprintf("there is no operation %q", req.OperationID)}
 	}
-	switch e.Mode {
+	// The gate first, and the confirmation after it: a narrowed operation is
+	// refused as never whether or not the person confirmed.
+	switch d.effective(ctx, e) {
 	case ModeNever:
-		return CallResult{}, &Error{Code: CodeNever, Message: fmt.Sprintf("the assistant may never call %s", e.ID)}
+		return CallResult{}, &Error{Code: CodeNever, Message: fmt.Sprintf("the assistant may not call %s", e.ID)}
 	case ModeConfirm:
 		if !req.Confirmed {
 			return CallResult{}, &Error{Code: CodeConfirmationRequired, Message: fmt.Sprintf("%s changes something and needs the person's confirmation", e.ID)}
