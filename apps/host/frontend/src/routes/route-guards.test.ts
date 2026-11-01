@@ -20,6 +20,7 @@ import { Route as TimeIndexRoute } from "./time/index";
 import { Route as TimePeopleRoute } from "./time/people";
 import { Route as TimeSettingsRoute } from "./time/settings";
 import { Route as WorkspaceRoute } from "./workspace";
+import { Route as WorkspaceAiRoute } from "./workspace/ai";
 import { Route as WorkspaceEntraRoute } from "./workspace/entra";
 import { Route as WorkspaceEntraAccountsRoute } from "./workspace/entra/accounts";
 import { Route as WorkspaceEntraConnectionRoute } from "./workspace/entra/connection";
@@ -31,10 +32,16 @@ import { Route as WorkspaceOverviewRoute } from "./workspace/overview";
 import { Route as WorkspaceRolesRoute } from "./workspace/roles";
 import { Route as WorkspaceUsersRoute } from "./workspace/users";
 
-const { fetchSession, getAuthorizationMe, fetchBootstrapStatus } = vi.hoisted(() => ({
+const { fetchSession, getAuthorizationMe, fetchBootstrapStatus, fetchAiSettings } = vi.hoisted(() => ({
   fetchSession: vi.fn(),
   getAuthorizationMe: vi.fn(),
   fetchBootstrapStatus: vi.fn(),
+  fetchAiSettings: vi.fn(),
+}));
+
+vi.mock("../api/ai", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../api/ai")>()),
+  fetchAiSettings,
 }));
 
 vi.mock("../api/auth", async (importOriginal) => ({
@@ -213,6 +220,47 @@ describe("workspace administration route guards", () => {
 
     getAuthorizationMe.mockResolvedValue({ permissions: ["*"], canManageAuthorization: false });
     await expectRedirectTo(WorkspaceRolesRoute, "/");
+  });
+});
+
+// Integrations › AI models (Integrations design T13): the Owner's, and there only while the
+// settings endpoint answers; a 404 from it is the instance having no AI provider.
+describe("the AI models route", () => {
+  const apiError = (status: number) => Object.assign(new Error(`status ${status}`), { status });
+
+  beforeEach(() => {
+    fetchAiSettings.mockReset();
+    fetchAiSettings.mockResolvedValue({ provider: "openai", allowedModels: ["m"], modules: [] });
+  });
+
+  it("admits an Owner while the instance has an AI provider", async () => {
+    fetchSession.mockResolvedValue(sessionWithRoles(["Owner"]));
+    await expectAdmitted(WorkspaceAiRoute, "/workspace/ai");
+    expect(fetchAiSettings).toHaveBeenCalledOnce();
+  });
+
+  it("answers not-found, as an unknown URL does, when the instance has no AI provider", async () => {
+    fetchSession.mockResolvedValue(sessionWithRoles(["Owner"]));
+    fetchAiSettings.mockRejectedValue(apiError(404));
+
+    const thrown = await runGuard(WorkspaceAiRoute, "/workspace/ai");
+    expect(isNotFound(thrown)).toBe(true);
+  });
+
+  it("lets the page render and say it could not load when the settings fail for another reason", async () => {
+    fetchSession.mockResolvedValue(sessionWithRoles(["Owner"]));
+    fetchAiSettings.mockRejectedValue(apiError(500));
+
+    await expectAdmitted(WorkspaceAiRoute, "/workspace/ai");
+  });
+
+  it("sends anyone but an Owner home without asking the API", async () => {
+    fetchSession.mockResolvedValue(sessionWithRoles(["Member"]));
+    await expectRedirectTo(WorkspaceAiRoute, "/", "/workspace/ai");
+
+    fetchSession.mockResolvedValue(null);
+    await expectRedirectTo(WorkspaceAiRoute, "/", "/workspace/ai");
+    expect(fetchAiSettings).not.toHaveBeenCalled();
   });
 });
 

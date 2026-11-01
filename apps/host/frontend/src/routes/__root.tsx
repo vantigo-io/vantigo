@@ -27,6 +27,7 @@ import "../i18n";
 import { accountMenuSections } from "../account-menu";
 import { getProfile, profileQueryKey } from "../api/account";
 import { fetchBootstrapStatus } from "../api/account-lifecycle";
+import { aiSettingsQueryKey, fetchAiSettings } from "../api/ai";
 import { fetchSession, sessionQueryKey, signOut } from "../api/auth";
 import { getAuthorizationMe } from "../api/authorization";
 import { fetchSystemStatus, shouldShowMaintenance, systemStatusQueryKey } from "../api/system-status";
@@ -37,7 +38,7 @@ import { ModuleAccessGuard } from "../components/module-access-guard";
 import { enabledModuleKeys } from "../lib/enabled-modules";
 import { mfaEnrolmentRedirect } from "../lib/mfa-enrolment-gate";
 import { publicPaths, sessionlessPaths } from "../lib/public-paths";
-import { activeNavPath, type NavSection, visibleNavSections } from "../navigation";
+import { activeNavPath, type NavFeature, type NavSection, visibleNavSections } from "../navigation";
 
 const renderNavSections = (
   sections: readonly NavSection[],
@@ -103,6 +104,16 @@ const RootLayout = () => {
     retry: false,
     staleTime: 300_000,
   });
+  // The AI models page exists while the instance has an AI provider (Integrations design T13): the
+  // Owner's settings answer, or 404 while there is none. Nobody else is asked, since nobody else is
+  // offered the page.
+  const aiSettings = useQuery({
+    queryKey: aiSettingsQueryKey,
+    queryFn: fetchAiSettings,
+    enabled: !isPublic && session?.user.roles.includes("Owner") === true && session.mfaEnrollmentRequired !== true,
+    retry: false,
+    staleTime: 300_000,
+  });
   const profile = useQuery({
     queryKey: profileQueryKey(session?.user.id ?? "unknown"),
     queryFn: getProfile,
@@ -134,12 +145,14 @@ const RootLayout = () => {
   const permissions = authorization.data?.permissions;
   const canManageAuthorization = authorization.data?.canManageAuthorization === true;
   const enabledModules = enabledModuleKeys();
+  const features: readonly NavFeature[] = aiSettings.isSuccess ? ["ai"] : [];
   const visibility = {
     permissions,
     isOwner,
     canManageAuthorization,
     isSystemAdmin: session.isSystemAdmin,
     enabledModules,
+    features,
   };
   // The app or area is whatever the deepest matched route declares; public
   // paths declare none and render sidebar-less.
@@ -226,6 +239,7 @@ const RootLayout = () => {
           canManageAuthorization={canManageAuthorization}
           isSystemAdmin={session.isSystemAdmin}
           enabledModules={enabledModules}
+          features={features}
         />
       )}
       <TanStackRouterDevtools />

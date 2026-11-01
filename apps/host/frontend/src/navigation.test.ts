@@ -11,6 +11,7 @@ const fixture: readonly NavSection[] = [
       { label: "products", to: "/products", icon, module: "products", requiredPermissions: ["products:products-view"] },
       { label: "categories", to: "/products/categories", icon, module: "products" },
       { label: "channels", to: "/communications/channels", icon, module: "communications" },
+      { label: "ai", to: "/ai", icon, ownerOnly: true, feature: "ai" },
     ],
   },
   {
@@ -61,6 +62,15 @@ describe("navigation permissions", () => {
 
   it("hides module destinations while enabled modules are unknown", () => {
     expect(labels(visibleNavSections(fixture, context({ enabledModules: undefined })))).toEqual(["open"]);
+  });
+
+  it("hides a feature's destination until the instance is known to have it", () => {
+    const owner = { isOwner: true };
+    expect(labels(visibleNavSections(fixture, context(owner)))).not.toContain("ai");
+    expect(labels(visibleNavSections(fixture, context({ ...owner, features: [] })))).not.toContain("ai");
+    expect(labels(visibleNavSections(fixture, context({ ...owner, features: ["ai"] })))).toContain("ai");
+    // The feature is one more condition, never a replacement for the Owner's.
+    expect(labels(visibleNavSections(fixture, context({ features: ["ai"] })))).not.toContain("ai");
   });
 
   it("gates owner, authorization and system admin items separately", () => {
