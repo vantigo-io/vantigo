@@ -1,4 +1,4 @@
-import { Alert, Button, Modal, PasswordInput, Select, Stack, Text, TextInput } from "@mantine/core";
+import { Alert, Button, Group, Modal, PasswordInput, Select, Stack, Text, TextInput } from "@mantine/core";
 import { useForm } from "@mantine/form";
 import { useMutation } from "@tanstack/react-query";
 import { useI18n } from "@vantigo/frontend-shell";
@@ -33,6 +33,13 @@ export type ChannelFormProps = {
   providers: ChannelProvider[];
   providerLabel: (key: string) => string;
 };
+
+/**
+ * The entry for Vantigo hosted mail: listed so the Owner sees it is coming, never
+ * selectable, never submitted. It is not a `ChannelProviderKey` and the API does not
+ * know it.
+ */
+const hostedOption = "hosted";
 
 const initialValues: ChannelFormValues = {
   address: "",
@@ -107,7 +114,20 @@ export function ChannelForm({ opened, onClose, onCreated, providers, providerLab
             data={[
               { value: "smtp", label: providerLabel("smtp") },
               ...(entraAvailable ? [{ value: "entra", label: providerLabel("entra") }] : []),
+              { value: hostedOption, label: t("providerHosted"), disabled: true },
             ]}
+            renderOption={({ option }) =>
+              option.value === hostedOption ? (
+                <Group justify="space-between" wrap="nowrap" w="100%">
+                  <Text size="sm">{option.label}</Text>
+                  <Text size="xs" c="dimmed">
+                    {t("providerHostedHint")}
+                  </Text>
+                </Group>
+              ) : (
+                <Text size="sm">{option.label}</Text>
+              )
+            }
           />
           {provider === "smtp" ? (
             <>
