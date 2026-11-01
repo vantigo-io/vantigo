@@ -18,7 +18,14 @@ const onboarding: ProjectTemplate = {
     { name: "Kickoff", targetDayOffset: 0 },
     { name: "Handover", targetDayOffset: 21 },
   ],
-  tasks: [{ title: "Discovery", subtasks: [{ title: "Agenda" }, { title: "Invite" }] }, { title: "Design" }],
+  tasks: [
+    {
+      title: "Discovery",
+      checklist: ["Book the room"],
+      subtasks: [{ title: "Agenda", checklist: ["Draft", "Review"] }, { title: "Invite" }],
+    },
+    { title: "Design" },
+  ],
   dependencies: [{ predecessorTaskIndex: 0, successorTaskIndex: 1 }],
   revision: 1,
   createdAt: "2026-10-31T00:00:00Z",
@@ -34,22 +41,22 @@ const stubCatalog = (templates: ProjectTemplate[], onDelete?: () => Response) =>
 describe("ProjectTemplatesPage", () => {
   it("lists each template with its counts", async () => {
     stubCatalog([onboarding]);
-    renderWithProviders(<ProjectTemplatesPage canManage />);
+    renderWithProviders(<ProjectTemplatesPage />);
 
     const row = (await screen.findByText("Onboarding")).closest("tr") as HTMLElement;
     expect(within(row).getByText("Three weeks from kickoff to handover")).toBeInTheDocument();
-    // Milestones, tasks, subtasks, dependencies.
+    // Milestones, tasks, subtasks, checklist items, dependencies.
     expect(
       within(row)
         .getAllByRole("cell")
-        .slice(1, 5)
+        .slice(1, 6)
         .map((cell) => cell.textContent),
-    ).toEqual(["2", "2", "2", "1"]);
+    ).toEqual(["2", "2", "2", "3", "1"]);
   });
 
-  it("offers New, Edit and Delete to a caller who may manage templates", async () => {
+  it("offers New, Edit and Delete", async () => {
     stubCatalog([onboarding]);
-    renderWithProviders(<ProjectTemplatesPage canManage />);
+    renderWithProviders(<ProjectTemplatesPage />);
 
     expect(await screen.findByRole("button", { name: "New template" })).toBeInTheDocument();
     await userEvent.click(await screen.findByRole("button", { name: "Actions for Onboarding" }));
@@ -58,18 +65,9 @@ describe("ProjectTemplatesPage", () => {
     expect(screen.getAllByLabelText(/^Title/)[0]).toHaveValue("Discovery");
   });
 
-  it("is read-only without the permission", async () => {
-    stubCatalog([onboarding]);
-    renderWithProviders(<ProjectTemplatesPage canManage={false} />);
-
-    expect(await screen.findByText("Onboarding")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "New template" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Actions for Onboarding" })).not.toBeInTheDocument();
-  });
-
   it("says how to start when there are none", async () => {
     stubCatalog([]);
-    renderWithProviders(<ProjectTemplatesPage canManage />);
+    renderWithProviders(<ProjectTemplatesPage />);
 
     expect(await screen.findByText("No project templates yet")).toBeInTheDocument();
     expect(screen.getByText(/Create one with New template/)).toBeInTheDocument();
@@ -77,7 +75,7 @@ describe("ProjectTemplatesPage", () => {
 
   it("deletes a template after confirming", async () => {
     const fetchMock = stubCatalog([onboarding], () => new Response(null, { status: 204 }));
-    renderWithProviders(<ProjectTemplatesPage canManage />);
+    renderWithProviders(<ProjectTemplatesPage />);
 
     await userEvent.click(await screen.findByRole("button", { name: "Actions for Onboarding" }));
     await userEvent.click(await screen.findByRole("menuitem", { name: "Delete template" }));

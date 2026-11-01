@@ -25,6 +25,7 @@ import { createProjectTemplate, type ProjectTemplate, updateProjectTemplate } fr
 import "../i18n";
 import {
   draftFromTemplate,
+  emptyChecklistItem,
   emptyDependency,
   emptyMilestone,
   emptySubtask,
@@ -34,6 +35,7 @@ import {
   removeMilestone,
   removeTask,
   type TemplateDraft,
+  type TemplateDraftChecklistItem,
   type TemplateDraftSubtask,
   templateInputFromDraft,
   validateTemplateDraft,
@@ -49,8 +51,8 @@ export interface TemplateFormModalProps {
 
 /**
  * Creates or edits one project template: its name and description, then its
- * delivery milestones, tasks (each with its subtasks) and the dependencies
- * between tasks. Every date is a day offset from the kickoff the template is
+ * delivery milestones, tasks (each with its subtasks, and each of those with
+ * its checklist) and the dependencies between tasks. Every date is a day offset from the kickoff the template is
  * later applied with, so "T+14" is two weeks in. The form is mounted fresh
  * each time the modal opens, so no previous template's rows survive a close.
  */
@@ -214,6 +216,59 @@ const TemplateForm = ({ state, onClose }: TemplateFormModalProps & { state: Temp
     </Group>
   );
 
+  // A task's or subtask's checklist: one line of text per item, in the order
+  // apply creates them. Moving or removing an item renumbers the rows after
+  // it, so it clears the errors the way restructure does.
+  const checklistRows = (path: string, items: TemplateDraftChecklistItem[]) => (
+    <Stack gap={4}>
+      <Text size="sm" fw={500}>
+        {t("checklist")}
+      </Text>
+      {typeof form.errors[`${path}.checklist`] === "string" && (
+        <Text size="xs" c="red">
+          {form.errors[`${path}.checklist`]}
+        </Text>
+      )}
+      {items.map((item, k) => {
+        const label = t("templateChecklistItemNumber", { number: k + 1 });
+        return (
+          <Group key={item.key} align="start" wrap="nowrap">
+            <TextInput
+              flex={1}
+              size="xs"
+              aria-label={label}
+              placeholder={t("checklistItem")}
+              {...form.getInputProps(`${path}.checklist.${k}.text`)}
+            />
+            <RowActions
+              label={label}
+              index={k}
+              count={items.length}
+              onMove={(to) => {
+                form.clearErrors();
+                form.reorderListItem(`${path}.checklist`, { from: k, to });
+              }}
+              onRemove={() => {
+                form.clearErrors();
+                form.removeListItem(`${path}.checklist`, k);
+              }}
+            />
+          </Group>
+        );
+      })}
+      <Group>
+        <Button
+          size="xs"
+          variant="subtle"
+          leftSection={<IconPlus size={14} />}
+          onClick={() => form.insertListItem(`${path}.checklist`, emptyChecklistItem())}
+        >
+          {t("addTemplateChecklistItem")}
+        </Button>
+      </Group>
+    </Stack>
+  );
+
   const subtaskRows = (taskIndex: number, subtasks: TemplateDraftSubtask[]) =>
     subtasks.map((subtask, j) => {
       const path = `tasks.${taskIndex}.subtasks.${j}`;
@@ -249,6 +304,7 @@ const TemplateForm = ({ state, onClose }: TemplateFormModalProps & { state: Temp
             </Group>
             <Textarea label={t("description")} rows={1} {...form.getInputProps(`${path}.description`)} />
             {scheduleFields(path)}
+            {checklistRows(path, subtask.checklist)}
           </Stack>
         </Paper>
       );
@@ -352,6 +408,7 @@ const TemplateForm = ({ state, onClose }: TemplateFormModalProps & { state: Temp
                 </Group>
                 <Textarea label={t("description")} rows={1} {...form.getInputProps(`tasks.${i}.description`)} />
                 {scheduleFields(`tasks.${i}`)}
+                {checklistRows(`tasks.${i}`, task.checklist)}
                 {subtaskRows(i, task.subtasks)}
                 <Group>
                   <Button

@@ -53,4 +53,4 @@ export { ProjectPeople } from "./pages/project-people";
 export { ProjectTasks, type ProjectTasksProps } from "./pages/project-tasks";
 export { ProjectDetailHeader, ProjectOverview } from "./pages/projects.$projectId";
 export { ProjectsPage, type ProjectsSearch } from "./pages/projects.index";
-export { ProjectTemplatesPage, type ProjectTemplatesPageProps } from "./pages/templates";
+export { ProjectTemplatesPage } from "./pages/templates";

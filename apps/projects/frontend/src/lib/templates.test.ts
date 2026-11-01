@@ -3,14 +3,17 @@ import type { ProjectTemplate } from "../api/templates";
 import {
   dependenciesHaveCycle,
   draftFromTemplate,
+  emptyChecklistItem,
   emptyDependency,
   emptyMilestone,
   emptyTask,
   formPathFromServerField,
+  longestDependencyChain,
   moveRow,
   removeMilestone,
   removeTask,
   type TemplateDraft,
+  templateChecklistCount,
   templateInputFromDraft,
   templateSubtaskCount,
   validateTemplateDraft,
@@ -62,6 +65,26 @@ describe("draftFromTemplate and templateInputFromDraft", () => {
     ]);
     expect(input.tasks?.[1]?.estimateHours).toBe(12.5);
     expect(input.dependencies).toEqual(stored.dependencies);
+  });
+
+  it("carries checklists through in order, trimmed, and leaves an empty one out", () => {
+    const draft = draftFromTemplate({
+      ...stored,
+      tasks: [
+        { title: "A", checklist: ["One", "Two"], subtasks: [{ title: "a", checklist: ["Sub"] }] },
+        { title: "B" },
+      ],
+      dependencies: [],
+    });
+    const first = draft.tasks[0];
+    if (!first) throw new Error("fixture");
+    expect(first.checklist.map((item) => item.text)).toEqual(["One", "Two"]);
+    first.checklist = moveRow(first.checklist, 1, 0);
+    first.checklist.push({ ...emptyChecklistItem(), text: "  Three  " });
+    const input = templateInputFromDraft(draft);
+    expect(input.tasks?.[0]?.checklist).toEqual(["Two", "One", "Three"]);
+    expect(input.tasks?.[0]?.subtasks?.[0]?.checklist).toEqual(["Sub"]);
+    expect(input.tasks?.[1]?.checklist).toBeUndefined();
   });
 
   it("starts a new template empty", () => {
@@ -143,6 +166,7 @@ describe("validateTemplateDraft", () => {
       startDayOffset: "",
       dueDayOffset: "",
       estimateHours: "",
+      checklist: [],
     };
     expect(validateTemplateDraft(draft)).toMatchObject({
       name: "templateNameRequired",
@@ -202,6 +226,58 @@ describe("validateTemplateDraft", () => {
     ];
     expect(validateTemplateDraft(draft)).toEqual({ dependencies: "templateDependencyCycle" });
   });
+
+  it("refuses a blank or too long checklist item, and more than 100 of them", () => {
+    const draft = valid();
+    const [first, second] = draft.tasks;
+    if (!first || !second) throw new Error("fixture");
+    first.checklist = [
+      { ...emptyChecklistItem(), text: "Fine" },
+      { ...emptyChecklistItem(), text: "  " },
+    ];
+    const sub = first.subtasks[0];
+    if (!sub) throw new Error("fixture");
+    sub.checklist = [{ ...emptyChecklistItem(), text: "å".repeat(501) }];
+    second.checklist = Array.from({ length: 101 }, (_, i) => ({ ...emptyChecklistItem(), text: `Item ${i}` }));
+    expect(validateTemplateDraft(draft)).toEqual({
+      "tasks.0.checklist.1.text": "templateChecklistItemRequired",
+      "tasks.0.subtasks.0.checklist.0.text": "checklistTextTooLong",
+      "tasks.1.checklist": "templateChecklistTooLong",
+    });
+    sub.checklist = [{ ...emptyChecklistItem(), text: "å".repeat(500) }];
+    second.checklist = second.checklist.slice(0, 100);
+    first.checklist = first.checklist.slice(0, 1);
+    expect(validateTemplateDraft(draft)).toEqual({});
+  });
+
+  it("refuses a dependency chain of more than 100 links", () => {
+    const tasks = Array.from({ length: 102 }, (_, i) => ({ ...emptyTask(), title: `T${i}` }));
+    const chain = (links: number) =>
+      tasks.slice(0, links).map((task, i) => ({
+        ...emptyDependency(),
+        predecessorKey: task.key,
+        successorKey: tasks[i + 1]?.key ?? null,
+      }));
+    const draft: TemplateDraft = { name: "Chain", description: "", milestones: [], tasks, dependencies: chain(100) };
+    expect(validateTemplateDraft(draft)).toEqual({});
+    draft.dependencies = chain(101);
+    expect(validateTemplateDraft(draft)).toEqual({ dependencies: "templateDependencyChainTooLong" });
+  });
+});
+
+describe("longestDependencyChain", () => {
+  it("counts the links of the longest chain", () => {
+    expect(longestDependencyChain([])).toBe(0);
+    expect(
+      longestDependencyChain([
+        ["a", "b"],
+        ["a", "c"],
+        ["b", "d"],
+        ["c", "d"],
+        ["d", "e"],
+      ]),
+    ).toBe(3);
+  });
 });
 
 describe("dependenciesHaveCycle", () => {
@@ -230,11 +306,25 @@ describe("formPathFromServerField", () => {
     expect(formPathFromServerField("tasks[1].subtasks[0].title")).toBe("tasks.1.subtasks.0.title");
     expect(formPathFromServerField("dependencies[2].successorTaskIndex")).toBe("dependencies.2.successorKey");
     expect(formPathFromServerField("dependencies")).toBe("dependencies");
+    expect(formPathFromServerField("tasks[0].subtasks[1].checklist[2]")).toBe("tasks.0.subtasks.1.checklist.2.text");
+    expect(formPathFromServerField("tasks[0].checklist")).toBe("tasks.0.checklist");
   });
 });
 
 describe("templateSubtaskCount", () => {
   it("counts the subtasks under every task", () => {
     expect(templateSubtaskCount(stored)).toBe(1);
+  });
+});
+
+describe("templateChecklistCount", () => {
+  it("counts the checklist items under every task and subtask", () => {
+    expect(templateChecklistCount(stored)).toBe(0);
+    expect(
+      templateChecklistCount({
+        ...stored,
+        tasks: [{ title: "A", checklist: ["1", "2"], subtasks: [{ title: "a", checklist: ["3"] }, { title: "b" }] }],
+      }),
+    ).toBe(3);
   });
 });

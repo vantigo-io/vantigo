@@ -229,6 +229,24 @@ describe("ProjectTasks", () => {
     expect(within(card).queryByRole("button", { name: /^Actions for/ })).not.toBeInTheDocument();
   });
 
+  it("offers Save as template to whoever may create templates, even on a project they only read", async () => {
+    stubTasks(false);
+    renderWithProviders(<ProjectTasks projectId={7} canManageTemplates />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "Save as template" }));
+    const dialog = await screen.findByRole("dialog", { name: "Save project as template" });
+    expect(within(dialog).getByLabelText(/^Name/)).toHaveValue("Website");
+    expect(screen.queryByRole("button", { name: "Use template" })).not.toBeInTheDocument();
+  });
+
+  it("does not offer Save as template without the permission", async () => {
+    stubTasks(true);
+    renderWithProviders(<ProjectTasks projectId={7} />);
+
+    expect(await screen.findByRole("button", { name: "Use template" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Save as template" })).not.toBeInTheDocument();
+  });
+
   it("reports a tree it could not read", async () => {
     stubTasks(true, [], jsonResponse(500, { title: "Tasks are unavailable" }));
     renderWithProviders(<ProjectTasks projectId={7} />);

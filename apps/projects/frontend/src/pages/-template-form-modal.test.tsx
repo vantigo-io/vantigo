@@ -189,4 +189,41 @@ describe("TemplateFormModal", () => {
     expect(add).toBeEnabled();
     expect(within(screen.getByRole("dialog")).getAllByLabelText(/^Title/)).toHaveLength(2);
   });
+
+  it("edits a task's checklist: adds, reorders and removes items, and refuses a blank one", async () => {
+    const fetchMock = stubFetch(() => Promise.resolve(jsonResponse(201, { ...stored, name: "Lists" })));
+    const { onClose } = renderModal({ mode: "create" });
+
+    const [templateName] = await screen.findAllByLabelText(/^Name/);
+    await userEvent.type(templateName as HTMLElement, "Lists");
+    await userEvent.click(screen.getByRole("button", { name: "Add task" }));
+    await userEvent.type(screen.getByLabelText(/^Title/), "Kickoff");
+
+    const add = screen.getByRole("button", { name: "Add checklist item" });
+    await userEvent.click(add);
+    await userEvent.click(add);
+    await userEvent.click(add);
+    await userEvent.type(screen.getByRole("textbox", { name: "Checklist item 1" }), "Agenda");
+    await userEvent.type(screen.getByRole("textbox", { name: "Checklist item 2" }), "Room");
+
+    // The third is still blank: refused before anything is sent.
+    await userEvent.click(screen.getByRole("button", { name: "Create" }));
+    expect(await screen.findByText("Write the item or remove it")).toBeInTheDocument();
+    expect(fetchMock.calls).toHaveLength(0);
+
+    await userEvent.click(screen.getByRole("button", { name: "Remove Checklist item 3" }));
+    await userEvent.click(screen.getByRole("button", { name: "Move Checklist item 2 up" }));
+    await userEvent.click(screen.getByRole("button", { name: "Create" }));
+
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(sentBody(fetchMock).tasks).toEqual([{ title: "Kickoff", checklist: ["Room", "Agenda"], subtasks: [] }]);
+  });
+
+  it("shows a stored subtask's checklist", async () => {
+    renderModal({
+      mode: "edit",
+      template: { ...stored, tasks: [{ title: "Discovery", subtasks: [{ title: "Agenda", checklist: ["Draft"] }] }] },
+    });
+    expect(await screen.findByRole("textbox", { name: "Checklist item 1" })).toHaveValue("Draft");
+  });
 });
