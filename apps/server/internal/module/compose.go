@@ -145,6 +145,7 @@ func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.
 
 	names := make(map[string]bool, len(mods))
 	catalog := make(map[string]contracts.Permission)
+	var aiTasks map[string]contracts.AITask
 	for _, mod := range mods {
 		if names[mod.Name] {
 			return nil, fmt.Errorf("module: duplicate module name %q", mod.Name)
@@ -160,7 +161,24 @@ func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.
 			}
 			catalog[perm.Key] = perm
 		}
+
+		// The AI tasks are composed beside the permissions: the same module
+		// that declares what a person may do declares what it asks a model to
+		// do, and a disabled module's vanish with its permissions.
+		for _, task := range mod.AITasks {
+			if err := contracts.ValidateAITask(mod.Name, task); err != nil {
+				return nil, fmt.Errorf("module: %w", err)
+			}
+			if _, ok := aiTasks[task.Key]; ok {
+				return nil, fmt.Errorf("module: duplicate AI task %q", task.Key)
+			}
+			if aiTasks == nil {
+				aiTasks = make(map[string]contracts.AITask)
+			}
+			aiTasks[task.Key] = task
+		}
 	}
+	deps.AITasks = aiTasks
 
 	// The customer directory, the user directory, the product catalog, the
 	// project directory, project actuals, project expenses and customer
@@ -388,6 +406,14 @@ func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.
 	// Invoices' reminder worker sends through it in worker mode as the API
 	// does, and its provider, Communications, reads deps.ChannelMailbox.
 	if deps, err = withOutboundMail(deps, mods); err != nil {
+		return nil, err
+	}
+
+	// The model per AI task (contracts.AIModels) and the AI client built over it
+	// resolve after every other slot, with Deps.AITasks already set: identity's
+	// provider reads the tasks while it is built. Workers does not resolve
+	// them, since no worker performs a task.
+	if deps, err = withAI(deps, mods); err != nil {
 		return nil, err
 	}
 
