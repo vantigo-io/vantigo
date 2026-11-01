@@ -167,19 +167,19 @@ func (s *server) PostProjectsByIdDependencies(ctx context.Context, req gen.PostP
 		}
 
 		predTask, err := txq.GetTask(ctx, body.PredecessorTaskId)
-		if errors.Is(err, pgx.ErrNoRows) || predTask.ProjectID != project.ID {
-			return errDependencyPredecessorGone
-		}
-		if err != nil {
+		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 			return fmt.Errorf("projects: check predecessor task: %w", err)
+		}
+		if err != nil || predTask.ProjectID != project.ID {
+			return errDependencyPredecessorGone
 		}
 
 		succTask, err := txq.GetTask(ctx, body.SuccessorTaskId)
-		if errors.Is(err, pgx.ErrNoRows) || succTask.ProjectID != project.ID {
-			return errDependencySuccessorGone
-		}
-		if err != nil {
+		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 			return fmt.Errorf("projects: check successor task: %w", err)
+		}
+		if err != nil || succTask.ProjectID != project.ID {
+			return errDependencySuccessorGone
 		}
 
 		_, err = txq.FindTaskDependencyByPair(ctx, store.FindTaskDependencyByPairParams{
@@ -283,6 +283,10 @@ func (s *server) DeleteProjectsDependenciesByDependencyId(ctx context.Context, r
 	return gen.DeleteProjectsDependenciesByDependencyId204Response{}, nil
 }
 
+// maxRescheduleDays bounds a downstream shift to ten years either way, far
+// past any real plan and short of the date arithmetic overflowing.
+const maxRescheduleDays = 3650
+
 // PostProjectsTasksByTaskIdRescheduleDownstream shifts dates on all downstream tasks
 // (POST /api/v1/projects/tasks/{taskId}/reschedule-downstream)
 func (s *server) PostProjectsTasksByTaskIdRescheduleDownstream(ctx context.Context, req gen.PostProjectsTasksByTaskIdRescheduleDownstreamRequestObject) (gen.PostProjectsTasksByTaskIdRescheduleDownstreamResponseObject, error) {
@@ -305,6 +309,13 @@ func (s *server) PostProjectsTasksByTaskIdRescheduleDownstream(ctx context.Conte
 	}
 
 	daysDelta := req.Body.DaysDelta
+	if daysDelta < -maxRescheduleDays || daysDelta > maxRescheduleDays {
+		return gen.PostProjectsTasksByTaskIdRescheduleDownstream400ApplicationProblemPlusJSONResponse(
+			apicommon.ValidationProblem("Invalid reschedule request", map[string][]string{
+				"daysDelta": {fmt.Sprintf("Shift by at most %d days either way.", maxRescheduleDays)},
+			}),
+		), nil
+	}
 	if daysDelta == 0 {
 		return gen.PostProjectsTasksByTaskIdRescheduleDownstream200JSONResponse{
 			ShiftedTasksCount: 0,

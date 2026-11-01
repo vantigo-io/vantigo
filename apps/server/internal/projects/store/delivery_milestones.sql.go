@@ -328,6 +328,26 @@ func (q *Queries) RenumberDeliveryMilestones(ctx context.Context, arg RenumberDe
 	return err
 }
 
+const unlinkTasksFromDeliveryMilestone = `-- name: UnlinkTasksFromDeliveryMilestone :exec
+UPDATE projects.tasks
+SET delivery_milestone_id = NULL,
+    revision              = revision + 1,
+    updated_at            = $1
+WHERE delivery_milestone_id = $2
+`
+
+type UnlinkTasksFromDeliveryMilestoneParams struct {
+	Now                 time.Time
+	DeliveryMilestoneID *int32
+}
+
+// UnlinkTasksFromDeliveryMilestone clears the milestone from every task linked
+// to it and bumps their revision, before the milestone itself is deleted.
+func (q *Queries) UnlinkTasksFromDeliveryMilestone(ctx context.Context, arg UnlinkTasksFromDeliveryMilestoneParams) error {
+	_, err := q.db.Exec(ctx, unlinkTasksFromDeliveryMilestone, arg.Now, arg.DeliveryMilestoneID)
+	return err
+}
+
 const updateDeliveryMilestone = `-- name: UpdateDeliveryMilestone :one
 UPDATE projects.delivery_milestones SET
     name = $1,

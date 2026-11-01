@@ -89,12 +89,15 @@ export const DeliveryMilestonesCard = ({
             </Text>
           ) : (
             <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }} spacing="sm">
-              {milestones.map((milestone, idx) => (
+              {milestones.map((milestone) => (
                 <MilestoneTile
                   key={milestone.id}
                   milestone={milestone}
-                  isFirst={idx === 0}
-                  isLast={idx === milestones.length - 1}
+                  // The list shows completed milestones last, so the arrows
+                  // follow the stored position the move is sent as, not the
+                  // order on screen.
+                  isFirst={milestone.position === 1}
+                  isLast={milestone.position === milestones.length}
                   isSelected={selectedMilestoneId === milestone.id}
                   canContribute={canContribute}
                   onSelect={() => onSelectMilestone(selectedMilestoneId === milestone.id ? null : milestone.id)}

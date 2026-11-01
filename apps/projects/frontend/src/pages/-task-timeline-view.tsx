@@ -65,7 +65,13 @@ export const TaskTimelineView = ({ projectId, tasks, onOpen }: TaskTimelineViewP
   }, [flattenedTasks]);
 
   // Determine timeline date boundaries
-  const todayUtcDays = useMemo(() => Math.floor(Date.now() / (1000 * 60 * 60 * 24)), []);
+  // Today is the browser's calendar date, counted the way the task dates are
+  // (days since the epoch at UTC midnight); Date.now() alone is the UTC day,
+  // which just after midnight in Oslo is still yesterday.
+  const todayUtcDays = useMemo(() => {
+    const now = new Date();
+    return Math.floor(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()) / (1000 * 60 * 60 * 24));
+  }, []);
 
   const { startEpochDays, totalDays } = useMemo(() => {
     let minDays = todayUtcDays - 3;
@@ -173,7 +179,7 @@ export const TaskTimelineView = ({ projectId, tasks, onOpen }: TaskTimelineViewP
         const endX = succCoords.left;
         const endY = succCoords.rowIndex * ROW_HEIGHT + ROW_HEIGHT / 2;
 
-        let path = "";
+        let path: string;
         if (endX >= startX + 10) {
           // Normal S-curve bezier or stepped line
           const midX = (startX + endX) / 2;

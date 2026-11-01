@@ -371,7 +371,14 @@ func (s *server) PutProjectsDeliveryMilestonesByMilestoneId(ctx context.Context,
 			return fmt.Errorf("projects: update delivery milestone: %w", err)
 		}
 
-		return recordDeliveryMilestoneEvent(ctx, txq, now, eventDeliveryMilestoneChanged, updated, nil, by)
+		// An edit that changed nothing still bumps the revision but records
+		// no event, the way billing milestones do.
+		fields := deliveryMilestoneFields(locked, updated)
+		if len(fields) == 0 {
+			return nil
+		}
+		return recordDeliveryMilestoneEvent(ctx, txq, now, eventDeliveryMilestoneChanged, updated,
+			map[string]any{"fields": fields}, by)
 	})
 
 	var revConflict revisionRefusal
@@ -432,6 +439,16 @@ func (s *server) DeleteProjectsDeliveryMilestonesByMilestoneId(ctx context.Conte
 		}
 		if err != nil {
 			return fmt.Errorf("projects: lock delivery milestone: %w", err)
+		}
+
+		// The foreign key would unlink the tasks on its own (ON DELETE SET
+		// NULL), but silently: their revision would not move, and a client
+		// holding one would resend the gone milestone and be refused with a
+		// 400 instead of the 409 that says the task changed under it.
+		if err := txq.UnlinkTasksFromDeliveryMilestone(ctx, store.UnlinkTasksFromDeliveryMilestoneParams{
+			DeliveryMilestoneID: &locked.ID, Now: now,
+		}); err != nil {
+			return fmt.Errorf("projects: unlink tasks from delivery milestone: %w", err)
 		}
 
 		rows, err := txq.DeleteDeliveryMilestone(ctx, req.MilestoneId)
@@ -626,9 +643,14 @@ func (s *server) PostProjectsDeliveryMilestonesByMilestoneIdStatus(ctx context.C
 			return fmt.Errorf("projects: update delivery milestone status: %w", err)
 		}
 
-		return recordDeliveryMilestoneEvent(ctx, txq, now, eventDeliveryMilestoneStatusChanged, updated, map[string]any{
-			"old": locked.Status, "new": body.Status,
-		}, by)
+		if locked.Status == updated.Status {
+			return nil
+		}
+		event := eventDeliveryMilestoneReopened
+		if updated.Status == "completed" {
+			event = eventDeliveryMilestoneCompleted
+		}
+		return recordDeliveryMilestoneEvent(ctx, txq, now, event, updated, nil, by)
 	})
 
 	var revConflict revisionRefusal

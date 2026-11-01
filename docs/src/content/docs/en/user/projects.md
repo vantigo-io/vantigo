@@ -152,7 +152,8 @@ adds a link, **Create one under Project templates** — see
 **Description**, **Status**, **Assignee** (anyone on the project), **Start date**,
 **Due date** (not before the start), **Estimate (hours)** (above 0 when set),
 **Delivery milestone** (optional) and
-**Parent task**, which makes it a subtask of a top-level task (one level deep).
+**Parent task**, which makes it a subtask of a top-level task (one level deep). A
+subtask left without a delivery milestone joins its parent task's.
 
 Click a task to open the **Task** drawer: the pencil edits the title in place and
 the bin deletes the task after *Delete title?* — subtasks, checklist and comments go

@@ -29,11 +29,14 @@ RETURNING *;
 DELETE FROM projects.task_dependencies WHERE id = @id;
 
 -- name: ShiftTasksDates :many
--- ShiftTasksDates shifts start_date and due_date by days_delta for the given task ids.
+-- ShiftTasksDates shifts start_date and due_date by days_delta for the given
+-- task ids. A task with neither date has nothing to shift, so it is left
+-- alone: its revision does not move and it is not counted as shifted.
 UPDATE projects.tasks SET
-    start_date = CASE WHEN start_date IS NOT NULL THEN start_date + @days_delta::integer ELSE NULL END,
-    due_date = CASE WHEN due_date IS NOT NULL THEN due_date + @days_delta::integer ELSE NULL END,
+    start_date = start_date + @days_delta::integer,
+    due_date = due_date + @days_delta::integer,
     revision = revision + 1,
     updated_at = @now::timestamptz
 WHERE id = ANY(@ids::integer[])
+  AND (start_date IS NOT NULL OR due_date IS NOT NULL)
 RETURNING id;
