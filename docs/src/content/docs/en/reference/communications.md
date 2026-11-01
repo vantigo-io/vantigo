@@ -1021,10 +1021,62 @@ can choose **Send from my address** on both new conversations and replies (`send
 
 ## AI draft and customer suggestion
 
-Both AI operations answer 503 `ai_unavailable` unless all three conditions hold:
-`COMMUNICATIONS_AI_ENABLED=1`, `COMMUNICATIONS_AI_PROVIDER` is `openai` (the
-default), and `COMMUNICATIONS_AI_API_KEY` is set. `COMMUNICATIONS_AI_MODEL` defaults
-to `gpt-4o-mini`. A half-set configuration is the documented unavailable state, not a
-startup error: no chat client, network client or provider dependency is constructed
-at all in that state, and any other provider name leaves the feature unavailable
-rather than refusing to start, so a second provider stays additive.
+Two operations ask a model for help: `POST /api/v1/communications/conversations/{id}/ai/draft`
+and `…/ai/customer-suggestion`. Each is an **AI task** this module declares
+(`Module.AITasks`, [the AI platform](/en/contributing/module-boundaries/#the-ai-platform)), and
+each calls the platform's AI client, `Deps.AI`, with the task's key and a prompt. The module
+holds no key, names no model and builds no client of its own.
+
+| Task key | Shown to an Owner as | The model is asked |
+| --- | --- | --- |
+| `communications.compose-reply` | *Draft a reply* | for an editable reply, from the conversation's subject and its newest 20 incoming messages, in the tone and with the instruction the agent gave |
+| `communications.customer-suggestion` | *Suggest the customer* | to name one of the candidate customers a conversation could be from, from its newest 20 incoming messages and the candidates' numbers, with a confidence |
+
+A task is declared by the delivery that performs it, so there is no task for reading incoming
+mail yet.
+
+### Availability
+
+Both operations answer 503 `ai_unavailable` when `Deps.AI` is nil, which it is unless
+`AI_PROVIDER` (`openai`), `AI_API_KEY` and `AI_MODELS` are set
+([Configuration](/en/admin/configuration/#ai)). The message is "Communications AI is not
+available. An Owner chooses models under Workspace admin › AI models." — the second sentence
+points to the page where the model of each task is chosen once AI is set up. A half-set
+configuration is refused at startup; an unset one is the unavailable state, in which no client,
+network client or provider dependency is constructed at all. No interaction row is written for
+a 503.
+
+The four `COMMUNICATIONS_AI_*` variables that configured the feature before are read for one
+more release as aliases of the `AI_*` settings, with the rules they always had: enabled needs
+the flag, the provider `openai` (any other value leaves AI unavailable rather than failing the
+start) and a key, and `COMMUNICATIONS_AI_MODEL` (default `gpt-4o-mini`) is the one allowed model
+until `AI_MODELS` is set. `COMMUNICATIONS_AI_MODEL` is imported once, into the model of both
+tasks, by identity at its first API mount that finds no choice written
+([the import](/en/admin/configuration/#the-import-of-communications_ai_model)).
+
+### The model, and the interaction row
+
+The model a task uses is the Owner's choice for it, among `AI_MODELS`: the client asks identity's
+`AIModels` slot at the moment of the call, so a change applies to the next request in the
+process that saved it and within 20 seconds elsewhere. A model outside `AI_MODELS` is refused
+before any request is made.
+
+Every call that reaches the platform client writes one `communications.ai_interactions` row, and
+the row names what served it: `provider` is the client's, and `model` is the one the client
+resolved for the task — also when the call then failed. A call the module refuses before the
+provider (the protected-customer and too-few-candidates guards) records the model the task
+*would* have used, or an empty one when the choice cannot be read. `error_summary` is the short
+type name of the client's error, never its message: `aiTransportError` (no response, including
+a timeout of the client's 30 seconds), `aiStatusError` (a non-2xx status), `aiDecodeError`,
+`aiEmptyResponseError`, `aiModelUnavailableError` (the choice could not be read) or
+`aiModelNotAllowedError`. A caller that disconnects mid-call is not an outage: nothing is recorded.
+The row holds digests, timings and token counts and never a prompt, a context or an answer.
+
+### What did not change
+
+The wire and the rules around the call are as they were before the client moved: the two
+operations require different permission pairs (`communications:conversations-reply` with
+`…-view` for the draft, `…-manage` with `…-view` for the suggestion); their 404 shapes differ
+(a coded body for the draft, none for the suggestion); and a provider failure is a 422
+`ai_failed` for the draft but a 200 with outcome `failed` and null suggestion fields for the
+suggestion. A suggestion below 0.70 confidence is returned and not saved.

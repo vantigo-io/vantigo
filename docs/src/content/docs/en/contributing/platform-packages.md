@@ -1,11 +1,12 @@
 ---
 title: Platform packages
-description: The packages under the server's internal/ that every module may use — the secrets box that seals and MACs values under keys derived from APP_SECRET, the mail package's outbound message, its calendar part and its rendering as MIME, its reading of a received message and the sanitising of its HTML, the payments port with its Vipps MobilePay adapter, and the public-holiday calendar.
+description: The packages under the server's internal/ that every module may use — the secrets box that seals and MACs values under keys derived from APP_SECRET, the mail package's outbound message, its calendar part and its rendering as MIME, its reading of a received message and the sanitising of its HTML, the AI client with its model-per-task seam, the payments port with its Vipps MobilePay adapter, and the public-holiday calendar.
 sidebar:
   order: 5
 sources:
   - apps/server/internal/secrets
   - apps/server/internal/mail
+  - apps/server/internal/ai
   - apps/server/internal/payments
   - apps/server/internal/holidays
   - apps/server/internal/imagemeta
@@ -14,7 +15,7 @@ sources:
 A module may import the platform but never another module (see
 [Module boundaries](/en/contributing/module-boundaries/)). This page describes the
 platform packages a module reaches for when it holds something it must not store in
-clear, when it sends a mail of its own, when it takes a payment, when it counts days
+clear, when it sends a mail of its own, when it asks an AI model for something, when it takes a payment, when it counts days
 around the public holidays, and when it stores a picture people will see.
 
 ## The secrets box
@@ -157,6 +158,43 @@ is a plain text of it — blocks and `<br>` as line breaks, list items as `- `, 
 collapsed — for a message that has only HTML. Communications'
 [receiving](/en/reference/communications/#receiving) is the one user. The package's corpus
 of hand-built messages is `testdata/mime/`, each with its expected reading beside it.
+
+## The AI client
+
+[`apps/server/internal/ai`](https://github.com/vantigo-io/vantigo/tree/main/apps/server/internal/ai)
+is the one client for the AI provider the installation is configured with, and the one place
+its key lives. A module receives it as `Deps.AI` (an `*ai.Client`, nil when no provider is
+configured) and calls it with a **task key**, never with a model or a key. It has no SQL and
+imports no business module (depguard's `platform` list), and its request and response types
+(`ai.Request`, `ai.Response`) are provider-neutral, so a second provider is one file beside
+`openai.go` and one word in `config`.
+
+- **Configuration** is the instance's: `AI_PROVIDER`, `AI_API_KEY`, `AI_BASE_URL` and
+  `AI_MODELS` ([Configuration](/en/admin/configuration/#ai)). `ai.New(cfg, transport, resolver)`
+  answers nil unless a provider, a key and a model are all configured.
+- **`Complete(ctx, task, req)`** resolves the task's model through a `Resolver`
+  (`ModelFor(ctx, task)`; `contracts.AIModels`, which identity fills with an Owner's choices,
+  satisfies it, and a nil resolver gives every task `AI_MODELS[0]`), **refuses a model outside
+  `AI_MODELS`** before any request is made, and calls the provider. The answer names the
+  provider and the model it used, also on an error, so a consumer's audit row can say which
+  model it asked. `ModelFor(ctx, task)` on the client answers the same model without calling,
+  for a consumer that records a call it refused first.
+- **The guard** every outbound client has: redirects are never followed (a redirect would send
+  the key to a host nobody named), the transport is `Deps.HTTPTransport` (nil in production,
+  meaning `http.DefaultTransport`; a fake in every test, so no test opens a socket), a 30 second
+  budget bounds the call, and a response is read up to 4 MiB.
+- **Typed errors**, whose type names are the labels a consumer may record (Communications writes
+  them to `ai_interactions.error_summary`) and never a message, which could carry provider or
+  customer text: `aiTransportError` (it keeps its cause for `errors.Is`, so a cancelled caller
+  can be told from an outage), `aiStatusError`, `aiDecodeError`, `aiEmptyResponseError`,
+  `aiModelUnavailableError` and `aiModelNotAllowedError`.
+- **Tests** drive the real client through a fake `http.RoundTripper` — the provider is the
+  boundary, so the network is what is replaced, never the client, which would leave a seam that
+  keeps passing after the implementation is deleted. `modtest.WithAIModels` pins the model per
+  task in a module's tests.
+
+Which tasks exist is declared by the modules (`Module.AITasks`) and which model each uses is an
+Owner's choice that identity keeps: see [the AI platform](/en/contributing/module-boundaries/#the-ai-platform).
 
 ## The payments port
 

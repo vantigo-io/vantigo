@@ -44,11 +44,13 @@ Communications' outbox is the working example.
    — the shared table of addresses the guarded outbound clients refuse to
    dial (today `internal/mail`'s SMTP guard, `internal/peppol`'s SMP
    client, the calendar's fetch of the calendars a person subscribes to and the
-   energy module's spot-price feed; Brreg, OIDC and the AI client use
-   `http.DefaultTransport`), and its one exception, `DialContextAllowingPrivate`,
+   energy module's spot-price feed; Brreg and OIDC use `http.DefaultTransport`, and
+   the AI client dials through `Deps.HTTPTransport`, `http.DefaultTransport` in production), and its one exception, `DialContextAllowingPrivate`,
    which also admits RFC 1918 and unique-local addresses and has exactly one
    caller, the energy module's client for the shared spot-price service
    ([The service client and its guard](/en/reference/energy/#the-service-client-and-its-guard)) —
+   `internal/ai` — the AI client, the one place the provider's key lives, called with a task
+   key and never with a model ([The AI platform](#the-ai-platform)) —
    `internal/payments` — the payments port, shared by Invoices and a later Point of
    sale, with its Vipps MobilePay adapter `internal/payments/vipps`; interfaces,
    values and the adapter only, no SQL, so each consumer keeps its own tables
@@ -87,7 +89,7 @@ Communications' outbox is the working example.
 5. **One module, one mount.** A module exposes one `Module()` returning a
    `module.Module`: its name, its `Mount`, the permissions it contributes, the
    background workers it contributes, and the cross-module contracts it *provides*.
-   There are nineteen single-provider slots, each filled by at most one enabled module:
+   There are twenty-one single-provider slots, each filled by at most one enabled module:
    `Directory` (`contracts.CustomerDirectory`, customers), `Users`
    (`contracts.UserDirectory`, identity), `Calendar` (`contracts.BusinessCalendar`,
    identity — the workspace's business time zone and the day an instant falls on in
@@ -122,9 +124,11 @@ Communications' outbox is the working example.
    `OutboundMail` (`contracts.OutboundMail`, communications — its channels as Invoices and
    Calendar send customer mail through them; rule 17; optional for its consumers, nil when
    Communications is off, which they read as "sending is disabled"),
-   and `CalendarBusy` (`contracts.CalendarBusy`, calendar — people's busy
+   `CalendarBusy` (`contracts.CalendarBusy`, calendar — people's busy
    time, which Planning's board shows; provider-gated, rule 12; optional for its
-   consumer, nil when the calendar is off). `module.Compose`
+   consumer, nil when the calendar is off), and `AIModels` (`contracts.AIModels`,
+   identity — the model an Owner chose for each AI task, which the platform AI client asks
+   and no module calls; [The AI platform](#the-ai-platform)). `module.Compose`
    mounts each module at `/api/v1/<name>/` and builds every provider before any
    `Mount` runs, so a module's `Deps` already carries what it consumes; `Calendar`,
    then `Accounts` and then `SSOConnections` are resolved right after `Users`, so the
@@ -769,6 +773,38 @@ Communications' outbox is the working example.
     as it was, shown as gone, and Communications never writes a consumer's settings. The
     system mailbox (`Deps.Mail`) keeps its one job, writing to the tenant's own employees.
     `modtest.FakeOutboundMail` backs tests.
+
+## The AI platform
+
+AI is a platform provider, like mail: the provider, its key and the models the plan allows are
+the instance's configuration (`AI_*`, [Configuration](/en/admin/configuration/#ai)), and the
+workspace's only choice is which allowed model each job uses. Three pieces make that work, and
+none is a numbered rule above because no module reaches into another.
+
+- **`Deps.AI`** is the platform's client ([the AI client](/en/contributing/platform-packages/#the-ai-client)),
+  built once by `module.Compose` from `Config`, `Deps.HTTPTransport` and the `AIModels` slot,
+  and put on every module's `Deps`; nil when no provider is configured, which a consumer answers
+  as unavailable. A module calls `Deps.AI.Complete(ctx, taskKey, ai.Request{…})`. It never names
+  a model, holds a key or builds a client of its own, and never calls `Deps.AIModels`.
+- **`Module.AITasks`** declares the jobs a module performs with a model, the way
+  `Module.Permissions` declares what a person may do: a `contracts.AITask` has a `Key`
+  (`<module>.<task-name>`, lower case, always the declaring module's own prefix, and the primary
+  key of an Owner's choice, so it never changes once shipped), the declaring `Module`, a
+  `Display`, a `Description` of what the model is asked and with what data, and an optional
+  recommended `Default` model. `Compose` validates each (`contracts.ValidateAITask`), refuses a
+  key declared twice and collects the **enabled** modules' into `Deps.AITasks`, so a disabled
+  module's tasks vanish with its permissions. A task is declared by the delivery that performs it:
+  one nothing calls is a row on a page that does nothing.
+- **`Module.AIModels`** is the single-provider slot for the choice of model per task. Identity
+  fills it: its table `identity.ai_task_models`, read through a short cache, resolved as the
+  Owner's choice if the plan still allows it, else the task's `Default` if allowed, else the first
+  of `AI_MODELS`. `Compose` resolves it after every other slot, with `Deps.AITasks` already set,
+  refuses two providers, and hands it to the client as its resolver. `module.Workers` resolves
+  neither the tasks nor the client: no worker performs a task yet. A test pins the choice with
+  `modtest.WithAIModels`, which replaces identity's provider in the composition the way
+  `WithAccounts` replaces its accounts.
+
+`internal/ai` is on depguard's `platform` list, so it can import no business module.
 
 ## How they are enforced
 
