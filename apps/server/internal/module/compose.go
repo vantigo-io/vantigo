@@ -436,7 +436,7 @@ func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.
 		deps.CalendarBusy = busyProvider.CalendarBusy(deps)
 	}
 
-	// The operations dispatcher (module boundaries rule 15) exists before any
+	// The operations dispatcher (module boundaries rule 18) exists before any
 	// module mounts, so the assistant module can hold it, and is bound once the
 	// router it dispatches through exists, below. Only the module named
 	// assistant is given it; no other module's Deps carries it.

@@ -8,6 +8,7 @@ sources:
   - apps/server/internal/config
   - apps/server/cmd/vantigo
   - apps/server/internal/db/migrations/00070_identity_managed_avatars.sql
+  - apps/server/internal/db/migrations/00102_identity_assistant_grants.sql
 ---
 Vantigo autentiserer nettleser-SPA-en og API-et på samme opprinnelse med en
 applikasjonsinformasjonskapsel utstedt av identitetsmodulen. API-et svarer med
@@ -808,6 +809,39 @@ ikke utestengt, som hver rettighetskontroll krever. De to spørringene holdes i 
 en deaktivering, en utestengning, en deaktivering i katalogen eller en rolleendring
 stopper en slik lesing på aller neste forespørsel, slik den stopper en økt
 ([Kalender → strømmen](/nb/admin/calendar/#kalenderstrømmen-på-den-offentlige-verten)).
+
+## Assistentens tilganger
+
+Assistenten handler på vegne av en person gjennom samme API som grensesnittet bruker, og gjør
+det under en **assistenttilgang**: en post identitetsmodulen holder så lenge én melding blir
+besvart. En assistenttilgang er ikke legitimasjon, og det er ingenting å sette opp.
+
+- **Hva den er.** Når en person sender Assistenten en melding, utsteder identitetsmodulen en
+  tilgang bundet til *personens nåværende økt*, samtalen og kjøringen, i
+  `identity.assistant_grants`. Den har ingen hemmelighet. Id-en bæres bare på konteksten til
+  Assistentens egen forespørsel i prosessen, aldri i en header, en informasjonskapsel eller en
+  spørrestreng, så en forespørsel som kommer over nettverket kan ikke presentere en: den er
+  ganske enkelt ikke innlogget.
+- **Hvem den er.** Så lenge en tilgang gjelder, er Assistenten personen, nøyaktig: samme
+  bruker, samme økt, samme roller og samme tilstand for tofaktor. Hver tilgangsregel vurderes
+  for den økten slik den ville blitt for personens egen nettleser, og håndtererens egne regler
+  per rad gjelder også, så Assistenten kan ikke gjøre noe personen ikke selv kunne gjort i
+  grensesnittet. Modulene registrerer personen som aktør for det den gjør, og forespørselen
+  bærer at den kom gjennom Assistenten (`Principal.Via`).
+- **Hva den aldri er.** En tilgang nektes en operasjon på eiernivå (`Owner`,
+  `OwnerManagement`, `AuthorizationManagement`, `SystemAdmin`) og en SCIM-operasjon, uansett
+  hva personen har, så en eiers egne innstillinger forblir utenfor Assistentens rekkevidde.
+  Operasjoner som trenger en sensitiv tillatelse, håndterer filer eller ville sendt en
+  hemmelighet gjennom en modell, tilbys ikke Assistenten i det hele tatt.
+- **Hvordan den tar slutt.** Ved det første av: levetiden (Assistenten ber om minutter; ingen
+  tilgang kan leve lenger enn en time), tilbakekallingen, slutten på økten — **utlogging,
+  øktens inaktivitets- eller absolutte grense, en tilbakekalling av personens økter** — og at
+  personen deaktiveres, deaktiveres av katalogen eller utestenges. Assistenten stopper ved sitt
+  neste steg: forespørselen den skulle gjøre svarer `401`, eller `403` for en utestengt person.
+  Tilganger som tok slutt for mer enn et døgn siden, slettes når personens neste utstedes, og en
+  slettet økt eller bruker tar tilgangene sine med seg.
+
+En installasjon uten Assistenten har aldri en rad i `identity.assistant_grants`.
 
 ## Hastighetsbegrensninger
 

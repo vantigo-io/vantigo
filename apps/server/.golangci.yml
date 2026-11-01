@@ -725,7 +725,7 @@ linters:
         operations:
           # The Assistant's dispatcher calls any operation of the merged
           # contract in-process, through the router, as the person (module
-          # boundaries rule 15). Only the assistant module holds it. Compose
+          # boundaries rule 18). Only the assistant module holds it. Compose
           # (internal/module) builds and binds it, internal/server composes the
           # API, and the internal/modtest harness builds one over a harness's API
           # for the tests; internal/integration is the test-only package that

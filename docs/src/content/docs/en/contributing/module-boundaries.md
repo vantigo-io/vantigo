@@ -89,7 +89,7 @@ Communications' outbox is the working example.
 5. **One module, one mount.** A module exposes one `Module()` returning a
    `module.Module`: its name, its `Mount`, the permissions it contributes, the
    background workers it contributes, and the cross-module contracts it *provides*.
-   There are twenty-one single-provider slots, each filled by at most one enabled module:
+   There are twenty-two single-provider slots, each filled by at most one enabled module:
    `Directory` (`contracts.CustomerDirectory`, customers), `Users`
    (`contracts.UserDirectory`, identity), `Calendar` (`contracts.BusinessCalendar`,
    identity — the workspace's business time zone and the day an instant falls on in
@@ -128,7 +128,10 @@ Communications' outbox is the working example.
    time, which Planning's board shows; provider-gated, rule 12; optional for its
    consumer, nil when the calendar is off), and `AIModels` (`contracts.AIModels`,
    identity — the model an Owner chose for each AI task, which the platform AI client asks
-   and no module calls; [The AI platform](#the-ai-platform)). `module.Compose`
+   and no module calls; [The AI platform](#the-ai-platform)), and `AssistantGrants`
+   (`contracts.AssistantGrants`, identity — issues and ends the grants the assistant acts
+   under; rule 18; resolved by `Compose` after the AI slot, not by `Workers`).
+   `module.Compose`
    mounts each module at `/api/v1/<name>/` and builds every provider before any
    `Mount` runs, so a module's `Deps` already carries what it consumes; `Calendar`,
    then `Accounts` and then `SSOConnections` are resolved right after `Users`, so the
@@ -218,7 +221,8 @@ Communications' outbox is the working example.
    invoice's issue takes them in (rule 10) — so the two can never wait on each
    other.
 6. **Never reach around the boundary.** Do not call another module's HTTP endpoints
-   from inside the process, and do not reach into another module's schema.
+   from inside the process (the one sanctioned exception is the Assistant's dispatcher, rule
+   18), and do not reach into another module's schema.
 
    **The public host is the platform's.** When `PUBLIC_BASE_URL` names a host of its
    own, `security.PublicHostGate` (`internal/security/publichost.go`) answers 404 on it
@@ -774,6 +778,52 @@ Communications' outbox is the working example.
     system mailbox (`Deps.Mail`) keeps its one job, writing to the tenant's own employees.
     `modtest.FakeOutboundMail` backs tests.
 
+18. **The assistant calls the contract as the person.** The tenth sanctioned exception to
+    rule 6, and the only one that reaches an HTTP endpoint (the Assistant design S2–S4):
+    the platform's **`Operations` dispatcher** (`internal/operations`) may call any operation
+    of the merged contract of the enabled modules *in-process, through the composed router*,
+    for the assistant principal and no one else. No module learns the assistant exists: the
+    coupling is to the public contract, which is the most stable surface there is.
+
+    - **Only the module named `assistant` receives it.** `Compose` builds the dispatcher
+      unbound before any module mounts, sets `Deps.Operations` on that module's `Deps` alone
+      (every other module's is nil, whatever the caller preset) and binds it, once the
+      router and the merged contract exist, to the contract, the composed catalog,
+      `Deps.Access` and the composed handler. It is for use while serving, never while
+      mounting. depguard forbids every other import of `internal/operations` — only
+      `internal/assistant`, `internal/module`, `internal/server` and the test harnesses
+      `internal/modtest` and `internal/integration` may — and a test composes a module
+      called `alpha` and one called `assistant` and proves which of them is handed it.
+    - **A call is the person's own.** The assistant module asks identity for a *grant*
+      (`Deps.AssistantGrants.Issue`, from the request of the person's message) and puts it on
+      the call's context with `contracts.WithAssistantGrant`; the dispatcher builds an
+      in-process request carrying nothing else of the caller's. The grant is a context value:
+      no header, cookie or query parameter can present one, so a network request cannot.
+      `Access.Check` answers the grant's session principal — same user, session, roles and
+      MFA state — with `Principal.Via` set, so the rate limit, the access rule, the body cap,
+      the handler's row-level rules and every refusal behave exactly as they do for the
+      browser. A 4xx or 5xx is a *result*, so the model can read the refusal. The grant never
+      satisfies `scim` or a `policy:` rule naming `Owner`, `OwnerManagement`,
+      `AuthorizationManagement` or `SystemAdmin`, and it ends with its time, its revocation, its
+      session (a sign-out, an expiry) or its user (disabled, locked out).
+    - **Every operation has an assistant mode** (`auto`, `confirm`, `never`), computed once by
+      `Compose`: the operation's `x-vantigo-assistant` when it has one (the OpenAPI lint
+      checks the values, and refuses `auto` or `confirm` behind a rule an assistant is never
+      admitted to); otherwise `never` for an `anonymous`, `scim` or `session` rule, an Owner-tier
+      policy, any `Sensitive` permission in the catalog, a file upload or download, or the
+      assistant's own API; otherwise `auto` for `GET` and `confirm` for every other method.
+      `never` operations are not offered to the model and `Call` refuses them; `confirm`
+      ones are refused unless the call says the person confirmed. A `POST` that only reads is
+      marked `auto` by hand; an operation that would pass a secret through the model is marked
+      `never`. `TestOperations_TheRealContract` derives every mode again from the contracts and
+      pins the hand-written marks, so changing one is a decision.
+    - **Modules do nothing for it.** No operation is written, annotated or exposed for the
+      assistant but the optional `x-vantigo-assistant`; a module that grows an operation grows
+      the assistant's reach with it, behind the same rule. The contract's `summary` is what the
+      assistant searches by, so the OpenAPI lint requires one on every operation.
+    `modtest.Harness.Operations` and `AssistantContext` bind a dispatcher to a harness and
+    issue a grant for a signed-in client.
+
 ## The AI platform
 
 AI is a platform provider, like mail: the provider, its key and the models the plan allows are
@@ -784,8 +834,11 @@ none is a numbered rule above because no module reaches into another.
 - **`Deps.AI`** is the platform's client ([the AI client](/en/contributing/platform-packages/#the-ai-client)),
   built once by `module.Compose` from `Config`, `Deps.HTTPTransport` and the `AIModels` slot,
   and put on every module's `Deps`; nil when no provider is configured, which a consumer answers
-  as unavailable. A module calls `Deps.AI.Complete(ctx, taskKey, ai.Request{…})`. It never names
-  a model, holds a key or builds a client of its own, and never calls `Deps.AIModels`.
+  as unavailable. A module calls `Deps.AI.Complete(ctx, taskKey, ai.Request{…})` for one prompt
+  and one answer, or `Deps.AI.Chat(ctx, taskKey, ai.ChatRequest{…}, onDelta)` for a conversation
+  with tools whose answer streams. It never names a model, holds a key or builds a client of its
+  own, and never calls `Deps.AIModels`. The provider may be a model running on the
+  installation's own network (`AI_PROVIDER=openai-compatible`, [Configuration](/en/admin/configuration/#ai)).
 - **`Module.AITasks`** declares the jobs a module performs with a model, the way
   `Module.Permissions` declares what a person may do: a `contracts.AITask` has a `Key`
   (`<module>.<task-name>`, lower case, always the declaring module's own prefix, and the primary
@@ -804,7 +857,7 @@ none is a numbered rule above because no module reaches into another.
   `modtest.WithAIModels`, which replaces identity's provider in the composition the way
   `WithAccounts` replaces its accounts.
 
-`internal/ai` is on depguard's `platform` list, so it can import no business module.
+`internal/ai` and `internal/operations` are on depguard's `platform` list, so they can import no business module.
 
 ## How they are enforced
 

@@ -8,6 +8,7 @@ sources:
   - apps/server/internal/config
   - apps/server/cmd/vantigo
   - apps/server/internal/db/migrations/00070_identity_managed_avatars.sql
+  - apps/server/internal/db/migrations/00102_identity_assistant_grants.sql
 ---
 Vantigo authenticates the browser SPA and the same-origin API with an application
 cookie issued by the identity module. The API answers JSON `401`/`403` problems
@@ -777,6 +778,38 @@ is configured not deactivated by the directory unless an Owner — and not locke
 every permission check requires. The two queries are kept in step, so a disable, a
 lockout, a deactivation in the directory or a role change stops such a read at its very
 next request, as it stops a session ([Calendar → the feed](/en/admin/calendar/#the-feed-on-the-public-host)).
+
+## Assistant grants
+
+The Assistant acts for a person through the same API the interface uses, and it does so
+under an **assistant grant**: a record identity keeps for as long as one message is being
+answered. A grant is not a credential and there is nothing to configure.
+
+- **What it is.** When a person sends the Assistant a message, identity issues a grant bound
+  to *that person's current session*, the conversation and the run, in
+  `identity.assistant_grants`. It has no secret. Its id is carried only on the context of the
+  Assistant's own in-process request, never in a header, a cookie or a query string, so a
+  request that arrives over the network cannot present one: it is simply unauthenticated.
+- **Whose it is.** While a grant is current, the Assistant is the person, exactly: the same
+  user, the same session, the same roles and the same second-factor state. Every access rule
+  is evaluated for that session as it would be for the person's own browser, and the handlers'
+  own row-level rules apply as well, so the Assistant can do nothing the person could not do in
+  the interface. Modules record the person as the actor of what it does, and the request carries
+  that it came through the Assistant (`Principal.Via`).
+- **What it is never.** A grant is refused an Owner-tier operation (`Owner`,
+  `OwnerManagement`, `AuthorizationManagement`, `SystemAdmin`) and a SCIM operation,
+  whatever the person holds, so an Owner's own settings stay out of the Assistant's reach.
+  Operations that need a sensitive permission, handle files or would pass a secret through a
+  model are not offered to the Assistant at all.
+- **How it ends.** At the first of: its lifetime (the Assistant asks for minutes; no grant may
+  live longer than an hour), its revocation, the end of its session — **signing out, the
+  session's idle or absolute limit, a revocation of the person's sessions** — and the person
+  being disabled, deactivated by the directory or locked out. The Assistant stops at its next
+  step: the request it was about to make answers `401`, or `403` for a locked-out person.
+  Grants that ended more than a day ago are deleted when the person's next is issued, and a
+  deleted session or user takes its grants with it.
+
+An installation without the Assistant never has a row in `identity.assistant_grants`.
 
 ## Rate limits
 
