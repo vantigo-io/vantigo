@@ -39,6 +39,13 @@ describe("the projects route tree", () => {
     expect(ids).not.toContain("/projects/$projectId");
   });
 
+  it("matches /projects/templates on the static route, not the project detail one", () => {
+    const ids = matchedRouteIds("/projects/templates");
+
+    expect(ids).toContain("/projects/templates");
+    expect(ids).not.toContain("/projects/$projectId");
+  });
+
   it("still matches a project id, and its tasks tab, on the dynamic route", () => {
     expect(matchedRouteIds("/projects/31")).toContain("/projects/$projectId/");
     expect(matchedRouteIds("/projects/31/tasks")).toContain("/projects/$projectId/tasks");

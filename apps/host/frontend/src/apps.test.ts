@@ -76,6 +76,7 @@ describe("the app registry", () => {
       "/projects",
       "/projects/my-tasks",
       "/projects/economy",
+      "/projects/templates",
       "/time",
       "/time/approvals",
       "/time/people",
@@ -163,7 +164,11 @@ describe("the app registry", () => {
   // installation did not mount the module. My tasks and the economy portfolio
   // come after the list and carry no search strategy of their own — the
   // portfolio's own validator supplies its defaults, and my tasks takes no URL
-  // search params beyond the create intent Spotlight hands it.
+  // search params beyond the create intent Spotlight hands it. The template
+  // catalog is a fourth entry, offered only to the callers who may change it
+  // (projects:create with projects:access, what the API asks of every
+  // template write); the extra permission is all-of, so the tile still
+  // follows projects:access alone.
   it("gives Projects a list, My tasks and the economy portfolio behind projects:access, and a tile that follows them", () => {
     const projects = appForKey("projects");
     expect(projects).toMatchObject({ module: "projects", label: "navigation.projects", home: "/projects" });
@@ -173,8 +178,30 @@ describe("the app registry", () => {
       ["navigation.projects", "/projects", "projects-list"],
       ["navigation.myTasks", "/projects/my-tasks", undefined],
       ["navigation.projectsEconomy", "/projects/economy", undefined],
+      ["navigation.projectTemplates", "/projects/templates", undefined],
     ]);
     for (const item of items) expect(item.requiredPermissions).toEqual(["projects:access"]);
+    expect(items.map((item) => item.requiredAllPermissions)).toEqual([
+      undefined,
+      undefined,
+      undefined,
+      ["projects:create"],
+    ]);
+  });
+
+  it("offers Project templates in the sidebar only with projects:create and projects:access", () => {
+    const projectsItems = (permissions: string[]) =>
+      visibleNavSections(appForKey("projects").navSections, {
+        permissions,
+        isOwner: false,
+        canManageAuthorization: false,
+        enabledModules: allModules,
+      })
+        .flatMap((section) => section.items)
+        .map((item) => item.to);
+    expect(projectsItems(["projects:access"])).not.toContain("/projects/templates");
+    expect(projectsItems(["projects:create"])).not.toContain("/projects/templates");
+    expect(projectsItems(["projects:access", "projects:create"])).toContain("/projects/templates");
   });
 
   it("shows the Projects tile for projects:access, hides it without, and mutes it when the module is off", () => {

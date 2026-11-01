@@ -8,6 +8,7 @@ export * from "./api/people";
 export * from "./api/products";
 export * from "./api/projects";
 export * from "./api/tasks";
+export * from "./api/templates";
 export { AssigneePicker, type AssigneePickerProps } from "./components/assignee-picker";
 export { BudgetBar, type BudgetBarProps } from "./components/budget-bar";
 export { CustomerPicker, type CustomerPickerProps, type CustomerPickerValue } from "./components/customer-picker";
@@ -25,6 +26,7 @@ export * from "./lib/milestones";
 export * from "./lib/roles";
 export * from "./lib/status";
 export * from "./lib/tasks";
+export * from "./lib/templates";
 export { type CodeSuggestion, useCodeSuggestion } from "./lib/use-code-suggestion";
 export { useTaskSave } from "./lib/use-task-save";
 export {
@@ -42,6 +44,7 @@ export { ProjectFormModal, type ProjectModalState } from "./pages/-project-form-
 export { ProjectTimeline } from "./pages/-project-timeline";
 export { TaskDrawer, type TaskDrawerProps } from "./pages/-task-drawer";
 export { TaskFormModal, type TaskFormModalProps, type TaskModalState } from "./pages/-task-form-modal";
+export { TemplateFormModal, type TemplateFormModalProps, type TemplateModalState } from "./pages/-template-form-modal";
 export { MyTasksPage } from "./pages/my-tasks";
 export { EconomyPortfolio } from "./pages/portfolio";
 export { ProjectBilling } from "./pages/project-billing";
@@ -50,3 +53,4 @@ export { ProjectPeople } from "./pages/project-people";
 export { ProjectTasks, type ProjectTasksProps } from "./pages/project-tasks";
 export { ProjectDetailHeader, ProjectOverview } from "./pages/projects.$projectId";
 export { ProjectsPage, type ProjectsSearch } from "./pages/projects.index";
+export { ProjectTemplatesPage, type ProjectTemplatesPageProps } from "./pages/templates";

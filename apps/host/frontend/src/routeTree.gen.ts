@@ -75,6 +75,7 @@ import { Route as ProjectsIndexRouteImport } from './routes/projects/index'
 import { Route as ProjectsProjectIdRouteImport } from './routes/projects/$projectId'
 import { Route as ProjectsEconomyRouteImport } from './routes/projects/economy'
 import { Route as ProjectsMyTasksRouteImport } from './routes/projects/my-tasks'
+import { Route as ProjectsTemplatesRouteImport } from './routes/projects/templates'
 import { Route as SettingsIndexRouteImport } from './routes/settings/index'
 import { Route as SettingsConnectionsRouteImport } from './routes/settings/connections'
 import { Route as SettingsProfileRouteImport } from './routes/settings/profile'
@@ -466,6 +467,11 @@ const ProjectsMyTasksRoute = ProjectsMyTasksRouteImport.update({
   path: '/my-tasks',
   getParentRoute: () => ProjectsRoute,
 } as any)
+const ProjectsTemplatesRoute = ProjectsTemplatesRouteImport.update({
+  id: '/templates',
+  path: '/templates',
+  getParentRoute: () => ProjectsRoute,
+} as any)
 const SettingsIndexRoute = SettingsIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -838,6 +844,7 @@ export interface FileRoutesByFullPath {
   '/projects/$projectId': typeof ProjectsProjectIdRouteWithChildren
   '/projects/economy': typeof ProjectsEconomyRoute
   '/projects/my-tasks': typeof ProjectsMyTasksRoute
+  '/projects/templates': typeof ProjectsTemplatesRoute
   '/settings/connections': typeof SettingsConnectionsRoute
   '/settings/profile': typeof SettingsProfileRoute
   '/settings/security': typeof SettingsSecurityRoute
@@ -948,6 +955,7 @@ export interface FileRoutesByTo {
   '/products/tax-categories': typeof ProductsTaxCategoriesRoute
   '/projects/economy': typeof ProjectsEconomyRoute
   '/projects/my-tasks': typeof ProjectsMyTasksRoute
+  '/projects/templates': typeof ProjectsTemplatesRoute
   '/settings/connections': typeof SettingsConnectionsRoute
   '/settings/profile': typeof SettingsProfileRoute
   '/settings/security': typeof SettingsSecurityRoute
@@ -1075,6 +1083,7 @@ export interface FileRoutesById {
   '/projects/$projectId': typeof ProjectsProjectIdRouteWithChildren
   '/projects/economy': typeof ProjectsEconomyRoute
   '/projects/my-tasks': typeof ProjectsMyTasksRoute
+  '/projects/templates': typeof ProjectsTemplatesRoute
   '/settings/connections': typeof SettingsConnectionsRoute
   '/settings/profile': typeof SettingsProfileRoute
   '/settings/security': typeof SettingsSecurityRoute
@@ -1204,6 +1213,7 @@ export interface FileRouteTypes {
     | '/projects/$projectId'
     | '/projects/economy'
     | '/projects/my-tasks'
+    | '/projects/templates'
     | '/settings/connections'
     | '/settings/profile'
     | '/settings/security'
@@ -1314,6 +1324,7 @@ export interface FileRouteTypes {
     | '/products/tax-categories'
     | '/projects/economy'
     | '/projects/my-tasks'
+    | '/projects/templates'
     | '/settings/connections'
     | '/settings/profile'
     | '/settings/security'
@@ -1440,6 +1451,7 @@ export interface FileRouteTypes {
     | '/projects/$projectId'
     | '/projects/economy'
     | '/projects/my-tasks'
+    | '/projects/templates'
     | '/settings/connections'
     | '/settings/profile'
     | '/settings/security'
@@ -2004,6 +2016,13 @@ declare module '@tanstack/react-router' {
       path: '/my-tasks'
       fullPath: '/projects/my-tasks'
       preLoaderRoute: typeof ProjectsMyTasksRouteImport
+      parentRoute: typeof ProjectsRoute
+    }
+    '/projects/templates': {
+      id: '/projects/templates'
+      path: '/templates'
+      fullPath: '/projects/templates'
+      preLoaderRoute: typeof ProjectsTemplatesRouteImport
       parentRoute: typeof ProjectsRoute
     }
     '/settings/': {
@@ -2673,6 +2692,7 @@ interface ProjectsRouteChildren {
   ProjectsProjectIdRoute: typeof ProjectsProjectIdRouteWithChildren
   ProjectsEconomyRoute: typeof ProjectsEconomyRoute
   ProjectsMyTasksRoute: typeof ProjectsMyTasksRoute
+  ProjectsTemplatesRoute: typeof ProjectsTemplatesRoute
   ProjectsIndexRoute: typeof ProjectsIndexRoute
 }
 
@@ -2680,6 +2700,7 @@ const ProjectsRouteChildren: ProjectsRouteChildren = {
   ProjectsProjectIdRoute: ProjectsProjectIdRouteWithChildren,
   ProjectsEconomyRoute: ProjectsEconomyRoute,
   ProjectsMyTasksRoute: ProjectsMyTasksRoute,
+  ProjectsTemplatesRoute: ProjectsTemplatesRoute,
   ProjectsIndexRoute: ProjectsIndexRoute,
 }
 
