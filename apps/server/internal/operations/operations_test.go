@@ -384,8 +384,11 @@ func TestMode_EveryKindOfOperation(t *testing.T) {
 		"ruleActivePost":      ModeConfirm,
 		"ruleBusiness":        ModeAuto,
 		"ruleInvalid":         ModeNever,
-		// A sensitive permission, alone or beside another; one the catalog lacks.
-		"getSecret":       ModeNever,
+		// A sensitive permission is the contract's concern no more (S16): the
+		// contract mode stands, and the gate narrows it (TestGate_*, and the
+		// fail-closed default in TestMode_TheDefaultGateFailsClosed). A key the
+		// catalog lacks is never.
+		"getSecret":       ModeAuto,
 		"getUncatalogued": ModeNever,
 		// Files and redirects.
 		"exportThings":     ModeNever,
@@ -500,11 +503,13 @@ func TestList_OnlyWhatTheUserMayCall(t *testing.T) {
 			}
 		}
 	})
-	t.Run("a sensitive operation marked confirm is listed for whoever holds its permission", func(t *testing.T) {
-		f := newFixture(t, "things:sensitive")
+	t.Run("without a gate a sensitive operation is not listed, marked or not", func(t *testing.T) {
+		f := newFixture(t, "things:sensitive", "things:view")
 		got, _ := f.d.List(context.Background(), f.user)
-		if !slices.Contains(ids(got), "putSecretMarked") {
-			t.Errorf("List omits putSecretMarked: %v", ids(got))
+		for _, id := range []string{"putSecretMarked", "getSecret"} {
+			if slices.Contains(ids(got), id) {
+				t.Errorf("List includes %s with no gate installed: %v", id, ids(got))
+			}
 		}
 	})
 	t.Run("nobody holding nothing sees only the policy-ruled calls", func(t *testing.T) {
@@ -1021,5 +1026,108 @@ func TestInfo(t *testing.T) {
 	}
 	if _, ok := f.d.Info("nope"); ok {
 		t.Error("Info found an operation that is not there")
+	}
+}
+
+func TestMode_TheDefaultGateFailsClosed(t *testing.T) {
+	f := newFixture(t, "things:view", "things:edit", "things:sensitive")
+	for id, want := range map[string]Mode{
+		"getSecret":       ModeNever, // sensitive permission: delivery 0's rule
+		"putSecretMarked": ModeNever, // marked, but sensitive: still closed without a gate
+		"getThing":        ModeAuto,
+		"updateThing":     ModeConfirm,
+		"ruleOwner":       ModeNever,
+	} {
+		got, ok := f.d.Effective(context.Background(), id)
+		if !ok || got != want {
+			t.Errorf("Effective(%s) = %q, %v, want %q", id, got, ok, want)
+		}
+	}
+	info, _ := f.d.Info("getSecret")
+	if !info.Sensitive || !slices.Equal(info.Permissions, []string{"things:view", "things:sensitive"}) || info.Mode != ModeAuto {
+		t.Errorf("Info(getSecret) = %+v, want the contract's mode, both permissions and Sensitive", info)
+	}
+	if info, _ := f.d.Info("ruleActive"); len(info.Permissions) != 0 || info.Sensitive {
+		t.Errorf("a policy rule names no permission: %+v", info)
+	}
+	_, err := f.d.Call(f.ctxOnly(), CallRequest{OperationID: "getSecret"})
+	if !errors.Is(err, ErrNever) {
+		t.Errorf("Call(getSecret) with no gate = %v, want ErrNever", err)
+	}
+	f.d.SetGate(func(context.Context, Info) Mode { return ModeAuto })
+	f.d.SetGate(nil)
+	if got, _ := f.d.Effective(context.Background(), "getSecret"); got != ModeNever {
+		t.Errorf("after SetGate(nil) getSecret = %q, want the default gate back", got)
+	}
+}
+
+// ctxOnly is a run's context.
+func (f *fixture) ctxOnly() context.Context { ctx, _ := f.ctx(); return ctx }
+
+func TestGate_NarrowsListSearchAndCall(t *testing.T) {
+	f := newFixture(t, "things:view", "things:edit", "things:sensitive")
+	// A gate that reads things:view, switches things:edit off and opens the
+	// sensitive permission to reading.
+	f.d.SetGate(func(_ context.Context, info Info) Mode {
+		mode := info.Mode
+		for _, key := range info.Permissions {
+			switch key {
+			case "things:edit":
+				return ModeNever
+			case "things:sensitive":
+				if mode == ModeConfirm {
+					mode = ModeNever
+				}
+			}
+		}
+		return mode
+	})
+	ctx := context.Background()
+	got, _ := f.d.List(ctx, f.user)
+	for _, id := range []string{"getSecret", "listThings"} {
+		if !slices.Contains(ids(got), id) {
+			t.Errorf("List omits %s the gate allows: %v", id, ids(got))
+		}
+	}
+	for _, id := range []string{"createThing", "updateThing", "putSecretMarked"} {
+		if slices.Contains(ids(got), id) {
+			t.Errorf("List includes %s the gate narrowed to never", id)
+		}
+	}
+	for _, info := range got {
+		if info.ID == "getSecret" && info.Mode != ModeAuto {
+			t.Errorf("getSecret listed as %q", info.Mode)
+		}
+	}
+	found, _ := f.d.Search(ctx, f.user, "update a thing", 20)
+	for _, info := range found {
+		if info.ID == "updateThing" {
+			t.Error("Search finds updateThing, which the gate narrowed to never")
+		}
+	}
+	runCtx, _ := f.ctx()
+	// The gate refuses before the confirmation check, confirmed or not.
+	for _, confirmed := range []bool{false, true} {
+		_, err := f.d.Call(runCtx, CallRequest{OperationID: "updateThing", PathParams: map[string]any{"id": "1"}, Confirmed: confirmed})
+		if !errors.Is(err, ErrNever) {
+			t.Errorf("Call(updateThing, confirmed %v) = %v, want ErrNever", confirmed, err)
+		}
+	}
+	if _, err := f.d.Call(runCtx, CallRequest{OperationID: "getSecret", PathParams: map[string]any{"id": "1"}}); err != nil {
+		t.Errorf("Call(getSecret) = %v, want it allowed by the gate", err)
+	}
+}
+
+func TestGate_NeverWidensTheContract(t *testing.T) {
+	f := newFixture(t, "things:view", "things:edit")
+	f.d.SetGate(func(context.Context, Info) Mode { return ModeAuto })
+	for id, want := range map[string]Mode{"ruleOwner": ModeNever, "updateThing": ModeConfirm, "getThing": ModeAuto, "ruleSession": ModeNever} {
+		if got, _ := f.d.Effective(context.Background(), id); got != want {
+			t.Errorf("a gate answering auto: Effective(%s) = %q, want the contract's %q", id, got, want)
+		}
+	}
+	runCtx, _ := f.ctx()
+	if _, err := f.d.Call(runCtx, CallRequest{OperationID: "updateThing", PathParams: map[string]any{"id": "1"}}); !errors.Is(err, ErrConfirmationRequired) {
+		t.Errorf("Call(updateThing) = %v, want ErrConfirmationRequired", err)
 	}
 }

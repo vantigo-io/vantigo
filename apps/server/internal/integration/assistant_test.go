@@ -112,8 +112,13 @@ func TestOperations_TheRealContract(t *testing.T) {
 		t.Fatalf("the dispatcher knows %d operations, the contracts declare %d", len(all), len(contract))
 	}
 
-	// The mode is S4's, derived here again from the contract alone.
+	// The contract's mode is S4's without its Sensitive clause (S16), derived
+	// here again from the contract alone; the default gate's mode, which is what
+	// a dispatcher with no gate allows, is the contract's with every operation
+	// that names a Sensitive permission closed (delivery 0's rule), derived
+	// separately.
 	counts := map[operations.Mode]int{}
+	gated := map[operations.Mode]int{}
 	for _, info := range all {
 		counts[info.Mode]++
 		d, ok := contract[info.ID]
@@ -126,10 +131,28 @@ func TestOperations_TheRealContract(t *testing.T) {
 		}
 		want := derivedMode(t, info, d.method, d.access, d.mark, catalog)
 		if info.Mode != want {
-			t.Errorf("%s (%s %s, %s): mode %q, want %q", info.ID, d.method, info.Path, d.access, info.Mode, want)
+			t.Errorf("%s (%s %s, %s): contract mode %q, want %q", info.ID, d.method, info.Path, d.access, info.Mode, want)
 		}
+		wantSensitive := namesSensitive(d.access, catalog)
+		if info.Sensitive != wantSensitive {
+			t.Errorf("%s (%s): Sensitive = %v, want %v", info.ID, d.access, info.Sensitive, wantSensitive)
+		}
+		wantGated := want
+		if wantSensitive {
+			wantGated = operations.ModeNever
+		}
+		got, _ := ops.Effective(context.Background(), info.ID)
+		if got != wantGated {
+			t.Errorf("%s (%s): the default gate's mode %q, want %q", info.ID, d.access, got, wantGated)
+		}
+		gated[got]++
 	}
-	t.Logf("%d operations: %d auto, %d confirm, %d never", len(all), counts[operations.ModeAuto], counts[operations.ModeConfirm], counts[operations.ModeNever])
+	t.Logf("%d operations by contract: %d auto, %d confirm, %d never; behind the default gate: %d auto, %d confirm, %d never",
+		len(all), counts[operations.ModeAuto], counts[operations.ModeConfirm], counts[operations.ModeNever],
+		gated[operations.ModeAuto], gated[operations.ModeConfirm], gated[operations.ModeNever])
+	if gated[operations.ModeNever] <= counts[operations.ModeNever] {
+		t.Errorf("the default gate closed nothing: %d never beside the contract's %d", gated[operations.ModeNever], counts[operations.ModeNever])
+	}
 	if counts[operations.ModeAuto] == 0 || counts[operations.ModeConfirm] == 0 || counts[operations.ModeNever] == 0 {
 		t.Errorf("modes = %v, want all three in use", counts)
 	}
@@ -164,9 +187,23 @@ func identityPermissions() module.Module {
 	return module.Module{Permissions: []contracts.Permission{{Key: "identity:manage", Sensitive: true}}}
 }
 
-// derivedMode is S4 restated from the contract alone: the explicit mark, else
-// never for a rule or a file or a sensitive permission, else GET → auto and
-// the rest → confirm.
+// namesSensitive reports whether an access rule names a Sensitive permission.
+func namesSensitive(access string, catalog map[string]contracts.Permission) bool {
+	kind, list, _ := strings.Cut(access, ":")
+	if kind != "permission" {
+		return false
+	}
+	for _, key := range strings.Split(list, "+") {
+		if catalog[key].Sensitive {
+			return true
+		}
+	}
+	return false
+}
+
+// derivedMode is S4 restated from the contract alone, without its Sensitive
+// clause (S16): the explicit mark, else never for a rule or a file or a
+// permission the catalog lacks, else GET → auto and the rest → confirm.
 func derivedMode(t *testing.T, info operations.Info, method, access, mark string, catalog map[string]contracts.Permission) operations.Mode {
 	t.Helper()
 	if mark != "" {
@@ -184,7 +221,7 @@ func derivedMode(t *testing.T, info operations.Info, method, access, mark string
 		}
 	case "permission":
 		for _, key := range strings.Split(list, "+") {
-			if p, ok := catalog[key]; !ok || p.Sensitive {
+			if _, ok := catalog[key]; !ok {
 				return operations.ModeNever
 			}
 		}
@@ -211,7 +248,6 @@ func isFile(id string) bool {
 var filesOrRedirects = []string{
 	"getCalendarFeedByFile",
 	"getCommunicationsAttachmentsByIdDownload",
-	"getCommunicationsConversationsByConversationIdAttachmentsByAttachmentId",
 	"getCommunicationsMessagesByIdRaw",
 	"getCustomersByIdAttachmentsByAttachmentId",
 	"getCustomersExport",
