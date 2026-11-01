@@ -6,6 +6,7 @@ sidebar:
 sources:
   - apps/host/frontend
   - apps/server/internal/identity
+  - apps/server/internal/db/migrations/00098_identity_ai_task_models.sql
 ---
 
 Administrasjon av arbeidsområdet er der en **Eier** styrer hvem som kan bruke
