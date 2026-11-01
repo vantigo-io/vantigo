@@ -89,18 +89,37 @@ func (w *retentionWorker) Run(ctx context.Context) error {
 // how many conversations retention deleted and how many people the sweep found
 // erased; it deletes nothing and answers zeros when another replica holds the
 // lease.
+//
+// The lease's session is a pooled connection held for the whole expiry, so the
+// expiry runs its statements on that connection and never asks the pool for a
+// second one: a worker that holds one connection while waiting for another
+// deadlocks the pool once as many workers do it as the pool has connections
+// (four on a four-core host), and readiness, which needs one too, fails with
+// them. The sweep asks identity, whose queries take their own connections, so
+// it runs after the lease's connection is back in the pool; it is idempotent,
+// and only the replica that won the lease runs it.
 func (w *retentionWorker) RunCycle(ctx context.Context) (expired, erased int, err error) {
+	acquired, expired, err := w.expireUnderLease(ctx)
+	if err != nil || !acquired {
+		return expired, 0, err
+	}
+	erased, err = sweepErased(ctx, w.deps)
+	return expired, erased, err
+}
+
+// expireUnderLease takes the lease on a connection of its own and, when it
+// wins it, runs the expiry on that same connection.
+func (w *retentionWorker) expireUnderLease(ctx context.Context) (acquired bool, expired int, err error) {
 	conn, err := w.deps.Pool.Acquire(ctx)
 	if err != nil {
-		return 0, 0, fmt.Errorf("assistant: acquire a connection for the retention lease: %w", err)
+		return false, 0, fmt.Errorf("assistant: acquire a connection for the retention lease: %w", err)
 	}
 	defer conn.Release()
-	var acquired bool
 	if err := conn.QueryRow(ctx, `SELECT pg_try_advisory_lock($1)`, retentionLeaseKey).Scan(&acquired); err != nil {
-		return 0, 0, fmt.Errorf("assistant: take the retention lease: %w", err)
+		return false, 0, fmt.Errorf("assistant: take the retention lease: %w", err)
 	}
 	if !acquired {
-		return 0, 0, nil
+		return false, 0, nil
 	}
 	defer func() {
 		release := context.WithoutCancel(ctx)
@@ -109,17 +128,12 @@ func (w *retentionWorker) RunCycle(ctx context.Context) (expired, erased int, er
 			_ = conn.Conn().Close(release)
 		}
 	}()
-
-	if expired, err = w.expire(ctx); err != nil {
-		return expired, 0, err
-	}
-	erased, err = sweepErased(ctx, w.deps)
-	return expired, erased, err
+	expired, err = w.expire(ctx, store.New(conn))
+	return true, expired, err
 }
 
 // expire deletes whole conversations by their last activity, a chunk at a time.
-func (w *retentionWorker) expire(ctx context.Context) (int, error) {
-	q := store.New(w.deps.Pool)
+func (w *retentionWorker) expire(ctx context.Context, q *store.Queries) (int, error) {
 	settings, err := q.GetSettings(ctx)
 	if err != nil {
 		return 0, fmt.Errorf("assistant: read the retention: %w", err)

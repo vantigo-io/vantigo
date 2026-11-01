@@ -113,3 +113,22 @@ func TestWorkers_ErasedPeopleLeaveNothingBehind(t *testing.T) {
 		t.Errorf("%d conversations left, want the living's and the disabled user's", n)
 	}
 }
+
+// The retention lease is held on a pooled connection, so a cycle that asked
+// the pool for a second connection while holding it would wait for ever on a
+// pool of one — and, with as many such workers as connections, deadlock the
+// installation's pool at boot (the image smoke test's readiness check on a
+// four-core runner). On a pool of one the cycle must finish.
+func TestWorkers_RetentionNeedsOneConnection(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, modtest.NewFakeChatModel(), modtest.WithPoolMaxConns(1))
+	_, user := person(t, h)
+	seedConversation(t, h, user, h.Now().AddDate(0, -13, 0), "done")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	expired, _, err := assistant.RetentionCycle(ctx, h.Deps())
+	if err != nil || expired != 1 {
+		t.Fatalf("RetentionCycle on a pool of one = %d, %v, want 1 and no error", expired, err)
+	}
+}
