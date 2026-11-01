@@ -2,6 +2,7 @@ package projects_test
 
 import (
 	"net/http"
+	"strings"
 	"testing"
 )
 
@@ -278,6 +279,132 @@ func TestProjectTemplates_Validation(t *testing.T) {
 	})
 	if res.Status != http.StatusBadRequest {
 		t.Errorf("self dependency status = %d, want 400", res.Status)
+	}
+
+	threeTasks := []map[string]any{{"title": "A"}, {"title": "B"}, {"title": "C"}}
+	refused := []struct {
+		name  string
+		body  map[string]any
+		field string
+	}{
+		{
+			// The project's dependency table holds each pair once, so a
+			// pair listed twice would fail the apply rather than the save.
+			name: "a dependency listed twice",
+			body: map[string]any{"name": "Duplicate", "tasks": threeTasks, "dependencies": []map[string]any{
+				{"predecessorTaskIndex": 0, "successorTaskIndex": 1},
+				{"predecessorTaskIndex": 0, "successorTaskIndex": 1},
+			}},
+			field: "dependencies[1].successorTaskIndex",
+		},
+		{
+			name: "a cycle",
+			body: map[string]any{"name": "Cycle", "tasks": threeTasks, "dependencies": []map[string]any{
+				{"predecessorTaskIndex": 0, "successorTaskIndex": 1},
+				{"predecessorTaskIndex": 1, "successorTaskIndex": 2},
+				{"predecessorTaskIndex": 2, "successorTaskIndex": 0},
+			}},
+			field: "dependencies",
+		},
+		{
+			// Counted in characters, not bytes: 2001 of them, each two bytes.
+			name: "a milestone description over 2000 characters",
+			body: map[string]any{"name": "Long", "milestones": []map[string]any{
+				{"name": "M1", "targetDayOffset": 0, "description": strings.Repeat("ø", 2001)},
+			}},
+			field: "milestones[0].description",
+		},
+		{
+			name: "a negative estimate",
+			body: map[string]any{"name": "Estimate", "tasks": []map[string]any{
+				{"title": "A", "estimateHours": -1},
+			}},
+			field: "tasks[0].estimateHours",
+		},
+		{
+			name: "a zero subtask estimate",
+			body: map[string]any{"name": "Estimate", "tasks": []map[string]any{
+				{"title": "A", "subtasks": []map[string]any{{"title": "a", "estimateHours": 0}}},
+			}},
+			field: "tasks[0].subtasks[0].estimateHours",
+		},
+	}
+	for _, tc := range refused {
+		r := c.Do(http.MethodPost, projectTemplatesPath(), tc.body)
+		if r.Status != http.StatusBadRequest {
+			t.Errorf("%s: status %d, want 400", tc.name, r.Status)
+			continue
+		}
+		var problem struct {
+			Errors map[string][]string `json:"errors"`
+		}
+		r.JSON(&problem)
+		if len(problem.Errors[tc.field]) == 0 {
+			t.Errorf("%s: errors %v, want one under %q", tc.name, problem.Errors, tc.field)
+		}
+	}
+
+	// 200 two-byte characters is a name of 200 characters, which fits.
+	createProjectTemplate(t, c, map[string]any{"name": strings.Repeat("æ", 200)})
+
+	// A diamond is not a cycle.
+	createProjectTemplate(t, c, map[string]any{"name": "Diamond", "tasks": append(threeTasks, map[string]any{"title": "D"}), "dependencies": []map[string]any{
+		{"predecessorTaskIndex": 0, "successorTaskIndex": 1},
+		{"predecessorTaskIndex": 0, "successorTaskIndex": 2},
+		{"predecessorTaskIndex": 1, "successorTaskIndex": 3},
+		{"predecessorTaskIndex": 2, "successorTaskIndex": 3},
+	}})
+}
+
+// Applying writes what was trimmed, and records each delivery milestone it
+// creates on the project's timeline the way adding one by hand does.
+func TestProjectTemplates_Apply_TrimsAndRecordsTheTimeline(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, _ := signIn(t, h, "projects:create")
+	tmpl := createProjectTemplate(t, c, map[string]any{
+		"name": "Padded",
+		"milestones": []map[string]any{
+			{"name": "  Kickoff  ", "description": "  Week one  ", "targetDayOffset": 0},
+			{"name": "Handover", "description": "   ", "targetDayOffset": 14},
+		},
+		"tasks": []map[string]any{{"title": "  Call  ", "description": " Agenda "}},
+	})
+	if tmpl.Milestones[0].Name != "Kickoff" || tmpl.Tasks[0].Title != "Call" {
+		t.Errorf("stored names = %q, %q, want them trimmed", tmpl.Milestones[0].Name, tmpl.Tasks[0].Title)
+	}
+
+	p := createProject(t, c, map[string]any{"code": "APPTRIM1"})
+	res := c.Do(http.MethodPost, projectApplyTemplatePath(p.Id), map[string]any{
+		"templateId":  tmpl.Id,
+		"kickoffDate": "2026-11-10",
+	})
+	if res.Status != http.StatusOK {
+		t.Fatalf("apply template status = %d, want 200; body = %s", res.Status, string(res.Body))
+	}
+
+	milestones := getDeliveryMilestones(t, c, p.Id)
+	if len(milestones) != 2 || milestones[0].Name != "Kickoff" {
+		t.Fatalf("milestones = %+v, want Kickoff first", milestones)
+	}
+	if milestones[0].Description == nil || *milestones[0].Description != "Week one" {
+		t.Errorf("milestones[0].Description = %v, want %q", milestones[0].Description, "Week one")
+	}
+	if milestones[1].Description != nil {
+		t.Errorf("milestones[1].Description = %q, want none for a blank one", *milestones[1].Description)
+	}
+	if tasks := getTasks(t, c, p.Id); len(tasks) != 1 || tasks[0].Title != "Call" {
+		t.Errorf("tasks = %+v, want one titled Call", tasks)
+	}
+
+	added := 0
+	for _, e := range readTimeline(t, c, p.Id, "").Data {
+		if e.EventType == "delivery-milestone-added" {
+			added++
+		}
+	}
+	if added != 2 {
+		t.Errorf("delivery-milestone-added entries = %d, want 2", added)
 	}
 }
 
