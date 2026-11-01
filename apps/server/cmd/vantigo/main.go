@@ -142,6 +142,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 	logger := telemetry.NewLogger(stdout, cfg.LogLevel, false)
 	slog.SetDefault(logger)
+	logRenamedVariables(logger, cfg)
 
 	// Installed before migrate() runs so a SIGTERM that arrives mid-migration
 	// waits for it to finish instead of killing the process outright (Go's
@@ -211,6 +212,25 @@ func healthcheck(port string, stderr io.Writer) int {
 		return 1
 	}
 	return 0
+}
+
+// logRenamedVariables names, in one line, the variables the operator still
+// sets under a name that was renamed: those read as aliases for one release,
+// and those ignored because the new name is set as well. It says nothing when
+// only current names are in use.
+func logRenamedVariables(logger *slog.Logger, cfg *config.Config) {
+	if len(cfg.Renamed) == 0 {
+		return
+	}
+	names := make([]string, 0, len(cfg.Renamed))
+	for _, r := range cfg.Renamed {
+		note := r.Old + " -> " + r.New
+		if r.Ignored {
+			note += " (ignored)"
+		}
+		names = append(names, note)
+	}
+	logger.Warn("config: these variables were renamed and are read as aliases for one more release; set the new names instead", "variables", names)
 }
 
 // migrate runs on context.Background: aborting DDL halfway on SIGTERM is

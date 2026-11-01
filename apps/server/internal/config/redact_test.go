@@ -22,7 +22,7 @@ const (
 	fmtSCIMPrevious     = "scim-previous-token-value"
 	fmtDBPassword       = "db-password-value"
 	fmtMigrationsPass   = "migrations password value"
-	fmtCommsAIKey       = "communications-ai-api-key-value"
+	fmtAIKey            = "ai-api-key-value"
 	fmtManagementToken  = "management-token-value-0123456789ab"
 )
 
@@ -31,7 +31,7 @@ const (
 // decimal bytes (%v, %d).
 func secretPatterns() []string {
 	var out []string
-	for _, s := range []string{fmtAppSecret, fmtSMTPPassword, fmtOIDCClientSecret, fmtSCIMToken, fmtSCIMPrevious, fmtDBPassword, fmtMigrationsPass, fmtCommsAIKey, fmtManagementToken} {
+	for _, s := range []string{fmtAppSecret, fmtSMTPPassword, fmtOIDCClientSecret, fmtSCIMToken, fmtSCIMPrevious, fmtDBPassword, fmtMigrationsPass, fmtAIKey, fmtManagementToken} {
 		out = append(out, s, hex.EncodeToString([]byte(s)), strings.ToUpper(hex.EncodeToString([]byte(s))))
 	}
 	decimal := make([]string, 0, len(fmtAppSecret))
@@ -51,7 +51,9 @@ func secretConfig(t *testing.T) *Config {
 		"SCIM_TOKEN", fmtSCIMToken,
 		"SCIM_PREVIOUS_TOKEN", fmtSCIMPrevious,
 		"SCIM_PREVIOUS_TOKEN_EXPIRES_AT", time.Now().Add(time.Hour).UTC().Format(time.RFC3339),
-		"COMMUNICATIONS_AI_API_KEY", fmtCommsAIKey,
+		"AI_PROVIDER", "openai",
+		"AI_MODELS", "gpt-4o-mini",
+		"AI_API_KEY", fmtAIKey,
 		"MANAGEMENT_PORT", "9090",
 		"MANAGEMENT_TOKEN", fmtManagementToken,
 		"DATABASE_URL", "postgres://vantigo:"+fmtDBPassword+"@db.internal:5432/vantigo?sslmode=verify-full",

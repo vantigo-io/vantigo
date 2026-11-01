@@ -1127,59 +1127,141 @@ func TestLoad_StorageFSAllowInsecureRoot(t *testing.T) {
 	}
 }
 
-// TestLoad_CommunicationsAIDefaults pins CommunicationsAiOptions' defaults
-// (communications inventory §17.1): off, "openai", "gpt-4o-mini", no key —
-// the state in which the two AI operations answer 503 ai_unavailable. An
-// unconfigured AI feature is never a load error, exactly as .NET simply
-// declines to register a chat client for it.
-func TestLoad_CommunicationsAIDefaults(t *testing.T) {
+// TestLoad_AIDefaults pins the unavailable state: no AI_* variable and no
+// renamed one leaves no provider, no key and no model, and is never a load
+// error — both AI operations answer 503 ai_unavailable and the AI models page
+// does not exist.
+func TestLoad_AIDefaults(t *testing.T) {
 	cfg := mustLoad(t, validEnv())
-	if cfg.CommunicationsAIEnabled {
-		t.Error("CommunicationsAIEnabled = true, want false by default")
+	if cfg.AIProvider != "" || cfg.AIAPIKey != "" || cfg.AIBaseURL != "" || len(cfg.AIModels) != 0 {
+		t.Errorf("AI = %q/%q/%q/%v, want everything empty by default", cfg.AIProvider, cfg.AIAPIKey, cfg.AIBaseURL, cfg.AIModels)
 	}
-	if cfg.CommunicationsAIProvider != "openai" {
-		t.Errorf("CommunicationsAIProvider = %q, want %q", cfg.CommunicationsAIProvider, "openai")
+	if cfg.CommunicationsAIModel != "" {
+		t.Errorf("CommunicationsAIModel = %q, want empty: it has no default, it is imported only when set", cfg.CommunicationsAIModel)
 	}
-	if cfg.CommunicationsAIModel != "gpt-4o-mini" {
-		t.Errorf("CommunicationsAIModel = %q, want %q", cfg.CommunicationsAIModel, "gpt-4o-mini")
-	}
-	if cfg.CommunicationsAIAPIKey != "" {
-		t.Errorf("CommunicationsAIAPIKey = %q, want empty", cfg.CommunicationsAIAPIKey)
+	if len(cfg.Renamed) != 0 {
+		t.Errorf("Renamed = %v, want none", cfg.Renamed)
 	}
 }
 
-// TestLoad_CommunicationsAIConfigured pins that each value is read and
-// trimmed, that a blank provider or model falls back to its default rather
-// than becoming empty, and that COMMUNICATIONS_AI_ENABLED is this file's
-// strict "0"/"1" flag.
-func TestLoad_CommunicationsAIConfigured(t *testing.T) {
+func TestLoad_AIConfigured(t *testing.T) {
 	cfg := mustLoad(t, with(validEnv(),
-		"COMMUNICATIONS_AI_ENABLED", "1",
-		"COMMUNICATIONS_AI_PROVIDER", "  openai  ",
-		"COMMUNICATIONS_AI_MODEL", "  gpt-4.1-mini  ",
-		"COMMUNICATIONS_AI_API_KEY", "  sk-test-key  ",
+		"AI_PROVIDER", "  OpenAI  ",
+		"AI_API_KEY", "  sk-test-key  ",
+		"AI_BASE_URL", "https://llm.example.com/v1/",
+		"AI_MODELS", " gpt-4o-mini , gpt-4o,, gpt-4.1 ",
 	))
-	if !cfg.CommunicationsAIEnabled {
-		t.Error("CommunicationsAIEnabled = false, want true")
+	if cfg.AIProvider != "openai" {
+		t.Errorf("AIProvider = %q, want it trimmed and lower-cased", cfg.AIProvider)
 	}
-	if cfg.CommunicationsAIProvider != "openai" {
-		t.Errorf("CommunicationsAIProvider = %q, want it trimmed", cfg.CommunicationsAIProvider)
+	if cfg.AIAPIKey != "sk-test-key" {
+		t.Errorf("AIAPIKey = %q, want it trimmed", cfg.AIAPIKey)
 	}
-	if cfg.CommunicationsAIModel != "gpt-4.1-mini" {
-		t.Errorf("CommunicationsAIModel = %q, want it trimmed", cfg.CommunicationsAIModel)
+	if cfg.AIBaseURL != "https://llm.example.com/v1" {
+		t.Errorf("AIBaseURL = %q, want the trailing slash dropped", cfg.AIBaseURL)
 	}
-	if cfg.CommunicationsAIAPIKey != "sk-test-key" {
-		t.Errorf("CommunicationsAIAPIKey = %q, want it trimmed", cfg.CommunicationsAIAPIKey)
+	if want := []string{"gpt-4o-mini", "gpt-4o", "gpt-4.1"}; !slices.Equal(cfg.AIModels, want) {
+		t.Errorf("AIModels = %v, want %v: trimmed, blanks dropped, the first the plan's default", cfg.AIModels, want)
+	}
+	if len(cfg.Renamed) != 0 {
+		t.Errorf("Renamed = %v, want none when only the current names are used", cfg.Renamed)
+	}
+}
+
+func TestLoad_AIRefusals(t *testing.T) {
+	configured := with(validEnv(), "AI_PROVIDER", "openai", "AI_API_KEY", "sk-test-key", "AI_MODELS", "gpt-4o-mini")
+	long := strings.Repeat("m", 151)
+	for _, tc := range []struct {
+		name string
+		env  map[string]string
+		want string
+	}{
+		{"an unknown provider", with(configured, "AI_PROVIDER", "mystery"), "AI_PROVIDER: must be one of: openai"},
+		{"no key", with(configured, "AI_API_KEY", ""), "AI_API_KEY: is required with AI_PROVIDER"},
+		{"a key with a space", with(configured, "AI_API_KEY", "sk test"), "AI_API_KEY: must be at most"},
+		{"no models", with(configured, "AI_MODELS", " , "), "AI_MODELS: must name at least one model"},
+		{"a model twice", with(configured, "AI_MODELS", "a,b,a"), `AI_MODELS: names "a" twice`},
+		{"a model with a space", with(configured, "AI_MODELS", "a b"), "AI_MODELS: names a model longer than"},
+		{"a model too long", with(configured, "AI_MODELS", long), "AI_MODELS: names a model longer than"},
+		{"an http base URL", with(configured, "AI_BASE_URL", "http://llm.example.com"), "AI_BASE_URL: must be an absolute https URL"},
+		{"a base URL with a query", with(configured, "AI_BASE_URL", "https://llm.example.com/v1?x=1"), "AI_BASE_URL: must have no user, query or fragment"},
+		{"a key without the provider", with(validEnv(), "AI_API_KEY", "sk-test-key"), "AI_API_KEY: is set without AI_PROVIDER"},
+		{"models without the provider", with(validEnv(), "AI_MODELS", "gpt-4o"), "AI_MODELS: is set without AI_PROVIDER"},
+		{"a base URL without the provider", with(validEnv(), "AI_BASE_URL", "https://llm.example.com"), "AI_BASE_URL: is set without AI_PROVIDER"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			msg := loadError(t, tc.env)
+			if !strings.Contains(msg, tc.want) {
+				t.Errorf("error = %q, want it to contain %q", msg, tc.want)
+			}
+			if strings.Contains(msg, "sk-test-key") || strings.Contains(msg, "sk test") {
+				t.Errorf("error = %q, must never echo the key", msg)
+			}
+		})
+	}
+}
+
+// TestLoad_AIRenamedVariables pins the one-release aliases: the three
+// COMMUNICATIONS_AI_* variables that were renamed map onto AI_* exactly as
+// they behaved, the one allowed model is COMMUNICATIONS_AI_MODEL (default
+// gpt-4o-mini), an AI_* variable that is set wins, and every renamed variable
+// set is named for the boot log.
+func TestLoad_AIRenamedVariables(t *testing.T) {
+	legacy := with(validEnv(), "COMMUNICATIONS_AI_ENABLED", "1", "COMMUNICATIONS_AI_API_KEY", "  sk-legacy  ")
+	cfg := mustLoad(t, legacy)
+	if cfg.AIProvider != "openai" || cfg.AIAPIKey != "sk-legacy" || !slices.Equal(cfg.AIModels, []string{"gpt-4o-mini"}) {
+		t.Errorf("AI = %q/%q/%v, want openai, the legacy key and the legacy default model", cfg.AIProvider, cfg.AIAPIKey, cfg.AIModels)
+	}
+	if cfg.CommunicationsAIModel != "" {
+		t.Errorf("CommunicationsAIModel = %q, want empty when the variable is unset", cfg.CommunicationsAIModel)
+	}
+	if want := []RenamedVariable{{Old: "COMMUNICATIONS_AI_ENABLED", New: "AI_PROVIDER"}, {Old: "COMMUNICATIONS_AI_API_KEY", New: "AI_API_KEY"}}; !slices.Equal(cfg.Renamed, want) {
+		t.Errorf("Renamed = %v, want %v", cfg.Renamed, want)
 	}
 
-	blank := mustLoad(t, with(validEnv(), "COMMUNICATIONS_AI_PROVIDER", "   ", "COMMUNICATIONS_AI_MODEL", "   "))
-	if blank.CommunicationsAIProvider != "openai" || blank.CommunicationsAIModel != "gpt-4o-mini" {
-		t.Errorf("provider/model = %q/%q, want the defaults for a blank value",
-			blank.CommunicationsAIProvider, blank.CommunicationsAIModel)
+	withModel := mustLoad(t, with(legacy, "COMMUNICATIONS_AI_MODEL", "  gpt-4.1-mini  ", "COMMUNICATIONS_AI_PROVIDER", " OpenAI "))
+	if !slices.Equal(withModel.AIModels, []string{"gpt-4.1-mini"}) || withModel.CommunicationsAIModel != "gpt-4.1-mini" {
+		t.Errorf("models = %v, import model = %q, want the legacy model in both", withModel.AIModels, withModel.CommunicationsAIModel)
+	}
+	if len(withModel.Renamed) != 3 {
+		t.Errorf("Renamed = %v, want all three named", withModel.Renamed)
 	}
 
+	// A provider this build does not implement is unavailable, never an error.
+	other := mustLoad(t, with(legacy, "COMMUNICATIONS_AI_PROVIDER", "anthropic"))
+	if other.AIProvider != "" || len(other.AIModels) != 0 {
+		t.Errorf("AI = %q/%v, want the old rule's unavailable state for a provider that is not implemented", other.AIProvider, other.AIModels)
+	}
+
+	// Not enabled: the old variables switch nothing on, and are named to be removed.
+	off := mustLoad(t, with(validEnv(), "COMMUNICATIONS_AI_ENABLED", "0", "COMMUNICATIONS_AI_API_KEY", "sk-legacy"))
+	if off.AIProvider != "" {
+		t.Errorf("AIProvider = %q, want none: the flag is off", off.AIProvider)
+	}
+	for _, r := range off.Renamed {
+		if !r.Ignored {
+			t.Errorf("%s is marked used, want ignored while the flag is off", r.Old)
+		}
+	}
+
+	// AI_* wins; the aliases set beside them are named as ignored.
+	wins := mustLoad(t, with(legacy, "AI_PROVIDER", "openai", "AI_API_KEY", "sk-new", "AI_MODELS", "gpt-4o"))
+	if wins.AIAPIKey != "sk-new" || !slices.Equal(wins.AIModels, []string{"gpt-4o"}) {
+		t.Errorf("AI = %q/%v, want the AI_* values", wins.AIAPIKey, wins.AIModels)
+	}
+	for _, r := range wins.Renamed {
+		if !r.Ignored {
+			t.Errorf("%s is marked used, want ignored beside AI_*", r.Old)
+		}
+	}
+
+	// The strict flag syntax is kept.
 	if msg := loadError(t, with(validEnv(), "COMMUNICATIONS_AI_ENABLED", "true")); !strings.Contains(msg, "COMMUNICATIONS_AI_ENABLED") {
 		t.Errorf("error = %q, want a non-0/1 flag value rejected", msg)
+	}
+	// Enabled without a key is the old rule's unavailable state, not an error.
+	if keyless := mustLoad(t, with(validEnv(), "COMMUNICATIONS_AI_ENABLED", "1")); keyless.AIProvider != "" {
+		t.Errorf("AIProvider = %q, want none: enabled without a key was always unavailable", keyless.AIProvider)
 	}
 }
 
