@@ -21,6 +21,7 @@ import {
   normalizeTimelineEntry,
   updateTimelineEntry,
 } from "../api/timeline";
+import { businessToday } from "../lib/follow-up-dates";
 import { stubFetch } from "../test/fetch";
 import { CustomerTimeline } from "./-customer-timeline";
 
@@ -808,7 +809,9 @@ describe("the timeline's follow-ups", () => {
   // block is pinned to 2020, so only a `dueOn` computed from the clock can
   // catch that mutation.
   it("does not call a follow-up due today overdue", async () => {
-    const today = new Date().toISOString().slice(0, 10);
+    // Today as isOverdue reads it, on the business day, not UTC's date: the two
+    // differ for the hours around midnight, when UTC's is still yesterday.
+    const today = businessToday();
     const fetchMock = vi.fn((input: RequestInfo | URL) => {
       if (String(input).includes("/timeline?")) {
         return Promise.resolve(
