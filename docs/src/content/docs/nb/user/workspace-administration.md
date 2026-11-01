@@ -13,7 +13,7 @@ Administrasjon av arbeidsområdet er der en **Eier** styrer hvem som kan bruke
 Vantigo og hva de kan gjøre. Åpne avatar-menyen øverst til høyre og velg
 **Administrer arbeidsområde**; sidemenyen har **Oversikt**, **Brukere**,
 **Invitasjoner** og **Roller og tilgang**, og, under **Integrasjoner**, **Microsoft Entra ID**
-og, når Vantigo har satt opp KI for installasjonen, **KI-modeller**.
+og, når Vantigo har satt opp KI for installasjonen, **KI-modeller** og **Assistent**.
 
 Alt her krever eierrollen, med ett unntak: den en eier har delegert
 rolleadministrasjon til, ser bare **Roller og tilgang**, både i avatar-menyen og i
@@ -98,6 +98,9 @@ Handlingsmenyen på en rad (de tre prikkene) tilbyr:
 - **Angi startpassord** — velg et nytt passord for personen på deres vegne.
   "Administratorens valgte passord er aktivt nå." Bruk dette for noen som er
   utestengt uten tilgang til e-post, og be dem bytte det etterpå.
+
+Mens modulen Assistent er på, har dialogen **Rediger bruker** også bryteren **Har assistenten**,
+som gjelder når assistenten er satt til *Per person* ([Assistent](#assistent)).
 
 Å tilbakestille en annen administrators tofaktorautentisering tilbys ikke i dette
 skjermbildet; det finnes i API-et for en eier hvis egen økt er MFA-bekreftet.
@@ -423,19 +426,22 @@ styrer grupper, får medlemmene de tilknyttede rollene automatisk; se
 ## Integrasjoner
 
 **Integrasjoner** er den andre seksjonen i sidemenyen til **Administrer arbeidsområde**:
-stedet selskapets tilkoblinger til systemer andre steder styres. Den har to punkter.
+stedet selskapets tilkoblinger til systemer andre steder styres, og eierens innstillinger for
+assistenten. Den har tre punkter.
 **Microsoft Entra ID** kobler Vantigo til selskapets Microsoft Entra ID-leietaker; siden har
 fire faner — **Status**, **Tilkobling**, **Kontoer** og **Outlook og e-post** — beskrevet i
 [Microsoft Entra ID](/nb/user/entra/#hvor-den-er-og-de-fire-fanene). Det er der bare mens
 modulen Microsoft Entra ID er på i denne installasjonen, og bare for den som har
 `entra:manage`; en eier har alle rettigheter. **KI-modeller** er bare eierens, og er der bare
-mens Vantigo har satt opp KI for denne installasjonen ([nedenfor](#ki-modeller)).
+mens Vantigo har satt opp KI for denne installasjonen ([nedenfor](#ki-modeller)). **Assistent** er
+også bare eierens, og er der mens modulen Assistent er på og KI er satt opp
+([nedenfor](#assistent)).
 
 - En eier ser hele Administrer arbeidsområde, med **Integrasjoner** etter resten.
 - Den som har `entra:manage` uten å være eier, ser bare **Integrasjoner** i sidemenyen —
   slik en person med delegert rolleadministrasjon bare ser **Roller og tilgang** — og
   finner **Microsoft Entra ID** i avatar-menyen. Stegene som er en eiers, leser
-  vedkommende uten skjemaene. Vedkommende ser ikke **KI-modeller**.
+  vedkommende uten skjemaene. Vedkommende ser ikke **KI-modeller** eller **Assistent**.
 - Uten `entra:manage` (og uten å være eier) finnes ingen seksjon **Integrasjoner**. For en
   eier finnes den heller ikke mens modulen Microsoft Entra ID er av og KI ikke er satt opp.
 
@@ -481,6 +487,80 @@ spurt om eller svarte utover det funksjonen selv beholder (Kommunikasjon beholde
 tall, aldri tekst:
 [AI draft and customer suggestion](/en/reference/communications/#ai-draft-and-customer-suggestion)).
 Innstillingene som hører til installasjonen, står i [Konfigurasjon](/nb/admin/configuration/#ki).
+
+### Assistent
+
+[Assistenten](/nb/user/assistant/) svarer på folks spørsmål fra dokumentasjonen og leser
+dataene de har lov til å lese. **Assistent** (en eiers side under **Integrasjoner**) er der du
+bestemmer hvem som har den, hvor lenge samtaler beholdes og hva den kan bruke. Siden finnes mens
+modulen Assistent er på i denne installasjonen og installasjonen har en AI-leverandør; uten en
+tilbys assistenten ikke til noen. Den er bare eierens.
+[Konfigurasjon](/nb/admin/configuration/#ki) sier hva installasjonen setter opp.
+
+**Hvem har assistenten.** Velg én av tre, og valget lagres med en gang:
+
+| Modus | Hvem har assistenten |
+| --- | --- |
+| **Slått på for alle** (standard) | Alle aktive brukere. De personlige bryterne ignoreres. |
+| **Per person** | Bare de som har sin egen bryter på. |
+| **Slått av for alle** | Ingen, uansett hva bryterne sier. |
+
+Den personlige bryteren er **Har assistenten**, i dialogen **Rediger bruker** for en person under
+**Brukere** (handlingsmenyen på raden › **Rediger detaljer**). Den lagres av seg selv og teller
+bare i modusen **Per person**; dialogen sier det ved siden av. Den er av til du slår den på. Den
+som har en deaktivert eller utestengt konto, har ikke assistenten i noen modus.
+
+**Hvor lenge samtaler beholdes.** **Behold samtaler i** tar 1 til 60 måneder, 12 som standard;
+velg **Lagre** etter at du har endret den. En samtale slettes, hel, når siste aktivitet er eldre
+enn det, og slettingen kjører én gang i døgnet, så en kortere tid gjelder fra neste daglige
+kjøring. Ingen, heller ikke en eier, kan lese en persons samtaler; bare hvor lenge de lever, er
+din å bestemme.
+
+**Hvor dataene går.** En merknad ved siden av innstillingene sier det rett ut. Når modellen
+kjører på installasjonens eget nettverk: *Modellen kjører på denne installasjonen. Spørsmål og
+data sendes ikke andre steder.* Ellers: *Spørsmål og dataene assistenten leser, sendes til*
+leverandøren — spørsmålene, dokumentasjonen den finner og det den leser for den som spør. Å slå
+på **Kan lese** nedenfor for en leverandør som ikke er lokal, er en beslutning om å la de dataene
+forlate installasjonen; merknaden gjentas ved siden av bryteren.
+
+#### Hva assistenten kan bruke
+
+Assistenten leser gjennom det samme API-et som skjermbildene bruker, som den som spør, så den
+kan aldri bruke mer enn den personen kan. Dette kortet bestemmer hvor mye av det den kan bruke
+*i det hele tatt*. Nivåene kan bare **snevre inn** det personen kan gjøre, aldri utvide det, og de
+endrer aldri hva personen ser på et skjermbilde.
+
+- **Sensitive data** har to verdier, **Ikke tilgjengelig** (standard) og **Kan lese**. Den
+  setter standardnivået for hver tillatelse som er merket **Sensitiv** i rolleeditoren — i
+  Kunder for eksempel kontaktene, tidslinjen, den juridiske identiteten og faktureringsprofilene.
+  Med **Ikke tilgjengelig** kan assistenten ikke lese bak en sensitiv tillatelse, heller ikke for
+  en person som har den.
+- **Tillatelsestabellen** lister tillatelsene til modulene som er slått på, gruppert etter modul
+  og kategori, med merket **Sensitiv** der det finnes. Hver har et **nivå**, valgt på raden og
+  lagret med en gang:
+
+  | Nivå | Assistenten kan |
+  | --- | --- |
+  | **Av** | Bruke ingen operasjon der tilgangsregelen nevner tillatelsen. |
+  | **Lese** | Lese bak tillatelsen. Operasjoner som endrer data er ikke tilgjengelige for den. |
+  | **Lese og endre** | Bruke tillatelsen så langt personen kan. *Endringer kommer i en senere versjon*: til da virker dette nivået nøyaktig som **Lese**, og siden sier det. |
+
+- **Standarder og overstyringer.** En tillatelse som ikke er sensitiv, starter på **Lese og
+  endre**; en sensitiv tar verdien til bryteren **Sensitive data**, **Av** eller **Lese**. Bare
+  nivåene du selv setter, lagres, merket **Endret**, så en tillatelse en senere utgivelse legger
+  til, får standarden sin. **Tilbakestill til standard** på en rad fjerner valget ditt, og
+  filteret **Vis** snevrer tabellen inn til **Alle**, **Sensitive** eller de **Endret**.
+- **En endring gjelder fra assistentens neste steg**, innen omtrent ett sekund på hvilken som
+  helst server, også i et svar som allerede er i gang.
+- **Operasjoner der regelen ikke nevner noen tillatelse** — de som er åpne for alle påloggede
+  eller for en forretningskonto — berøres ikke av nivåene. Operasjoner som hører til eiere og
+  administratorer, og opplasting og nedlasting av filer, er aldri tilgjengelige for assistenten,
+  uansett hva du setter.
+- **Hver endring føres** med nivået før og etter, hvem som gjorde den og når, i assistentens
+  egen logg. [Referansen](/en/reference/assistant/#the-owners-audit) sier hvor.
+
+Hvis noen andre endret innstillingene mens du hadde siden åpen, får du beskjed om *Noen andre har
+lagret disse innstillingene*, siden lastes på nytt, og du gjør endringen din på nytt.
 
 ## Sett opp en ny installasjon
 

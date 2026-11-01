@@ -49,7 +49,7 @@ the guides linked from each group say how to choose.
 | `PUBLIC_BASE_URL` | unset | The `https` address the pay page, the calendar answer page and Microsoft's change notifications are reached at from the internet |
 | `PORT` | `8080` | The listen port |
 | `DATABASE_URL`, `MIGRATIONS_DATABASE_URL` | required; the second defaults to the first | The runtime role's connection and the owner role the migrations use |
-| `MODULES` | every module the binary knows | The business modules this installation serves |
+| `MODULES` | every module the binary knows | The business modules this installation serves: `customers`, `products`, `energy`, `communications`, `projects`, `time`, `expenses`, `invoices`, `staff`, `planning`, `calendar`, `entra` and `assistant`. The `assistant` has no permissions of its own and needs no other module, but is of use only while `AI_PROVIDER` is set ([AI](#ai)) |
 | `WORKERS_IN_PROCESS` | `1` | Whether the API process also runs the background workers |
 | `SHUTDOWN_TIMEOUT`, `LOG_LEVEL` | `30s`, `info` | How long a stop drains in-flight work; the log's verbosity |
 | `APP_SECRET` | required | The process-wide key material: cookies, CSRF, sealed secrets |
@@ -132,7 +132,7 @@ poll. All are on by default except the spot-price worker.
 | `INVOICES_EHF_ENABLED`, `INVOICES_STORECOVE_BASE_URL` | `1`, Storecove's API | Sending invoices as EHF ([E-invoicing](/en/admin/e-invoicing/)) |
 | `INVOICES_VIPPS_ENABLED`, `INVOICES_VIPPS_BASE_URL` | `1`, Vipps' API | Vipps MobilePay payments ([Payments](/en/admin/payments/)) |
 | `ENERGY_SPOT_PRICE_SERVICE_URL`, `ENERGY_SPOT_PRICE_SERVICE_KEY`, `ENERGY_SPOT_PRICE_HISTORY_FROM` | unset | The shared spot-price service Vantigo provisions an installation with, its bearer key (a secret, shown nowhere) and the oldest day copied |
-| `AI_PROVIDER`, `AI_API_KEY`, `AI_BASE_URL`, `AI_MODELS`, `AI_TIMEOUT` | unset, unset, unset, unset, `120s` | The AI plan: the provider, its key (a secret, shown nowhere; optional for a model on your own network), an optional compatible endpoint, the models the plan allows and how long a chat may take. Unset, every AI feature is unavailable ([AI](#ai)) |
+| `AI_PROVIDER`, `AI_API_KEY`, `AI_BASE_URL`, `AI_MODELS`, `AI_TIMEOUT`, `AI_CONTEXT_TOKENS` | unset, unset, unset, unset, `120s`, `16000` | The AI plan: the provider, its key (a secret, shown nowhere; optional for a model on your own network), an optional compatible endpoint, the models the plan allows, how long a chat may take and how much of a conversation the assistant sends the model. Unset, every AI feature is unavailable ([AI](#ai)) |
 
 ### AI
 
@@ -147,6 +147,7 @@ interface. Which of the allowed models each AI job uses is the workspace's choic
 | `AI_BASE_URL` | the provider's own address | An absolute URL for an OpenAI-compatible endpoint, up to and including the version path (`https://api.openai.com/v1`); no user, query or fragment. `https`, or `http` when the host is a loopback address, a private address (`10.x`, `172.16`–`172.31`, `192.168.x`, `fc00::/7`) or a name with no dot such as `ollama`. A public host over `http` is refused, and so is any `http` address while `AI_API_KEY` is set: a key is never sent in the clear |
 | `AI_MODELS` | required with the provider | The models the plan allows, comma-separated, the first being the plan's default: `gpt-4o-mini,gpt-4o`. At least one, none repeated, each up to 150 characters with no space |
 | `AI_TIMEOUT` | `120s` | How long one chat call may take, as a Go duration above zero and at most `10m`. Local models are slow; a single-prompt call keeps its own 30 seconds |
+| `AI_CONTEXT_TOKENS` | `16000` | How much of a conversation the [Assistant](/en/user/assistant/) sends the model, as a number of tokens from `2000` to `1000000`; a value outside that range is refused at start. Set it to the context window of the model you run, or a little below. It is estimated at about four characters to a token, so it is a guide and not a measure; past it, the assistant first replaces the older results of its tools with a one-line note, and then drops the oldest turns of the conversation, so the latest question is always sent. Local models have small windows; a hosted model may take far more |
 
 `AI_API_KEY`, `AI_BASE_URL`, `AI_MODELS` and `AI_TIMEOUT` without `AI_PROVIDER` are refused at start, as
 is a provider with no model, or with neither a key nor a base URL; an unset provider is the ordinary "no AI" state
@@ -176,6 +177,21 @@ a small model on a CPU can need minutes.
 
 Every AI job is still assigned a model per task under **AI models**, among the ones
 `AI_MODELS` lists.
+
+#### The assistant's model
+
+The [Assistant](/en/user/assistant/) is the one AI feature that holds a conversation and lets the
+model ask for tools: it searches the documentation and reads data through the API, as the person
+asking, by returning tool calls. **It needs a model that supports tool calls** (function calling). A
+model that does not is either refused by the server when the assistant asks it, or answers without
+the documentation and the person's data and is the worse for it; test the model you choose by
+asking the assistant a how-to question and a question about data. The assistant is the task
+**Assistant chat** (`assistant.chat`), and an Owner chooses its model under **AI models** like any
+other. Each answer may take several calls to the model — it reads, then answers — so `AI_TIMEOUT` is
+the limit of each, not of the whole answer. `AI_CONTEXT_TOKENS` bounds what each call is sent.
+Questions, the documentation it finds and the data it reads go to the provider; an Owner sees
+where under **Workspace admin** › **Assistant** ([guide](/en/user/workspace-administration/#assistant)).
+The assistant is available to nobody while `AI_PROVIDER` is unset.
 
 Every AI job a module performs is a **task** that the module declares, such as *Draft a
 reply* or *Suggest the customer* in Communications. An Owner chooses the model each task
@@ -231,6 +247,7 @@ change: both operations keep using that model until an Owner chooses another.
 | The account rules, sign-in and provisioning, the groups Vantigo keeps in the tenant | **Integrations** › **Microsoft Entra ID** › **Accounts** | `entra:manage` (sign-in and provisioning: an Owner) |
 | The Outlook connection, calendar sync on it, and Mail channels | **Integrations** › **Microsoft Entra ID** › **Outlook and mail** | `entra:manage` |
 | The model each AI task uses, among the models the plan allows | **Workspace admin** › **Integrations** › **AI models** ([guide](/en/user/workspace-administration/#ai-models)) | an Owner |
+| Who has the assistant, how long conversations are kept and what the assistant may use | **Workspace admin** › **Integrations** › **Assistant** ([guide](/en/user/workspace-administration/#assistant)); each person's own switch in **Users** › **Edit details** | an Owner |
 | The mailboxes Communications sends from, and the SMTP accounts it uses | **Communications** › **Channels** | `communications:channels-manage` |
 | A module's own rules: Invoice settings, Staff settings, Planning settings, Time settings, Expense settings | The module's settings page in its sidebar | the module's permission |
 

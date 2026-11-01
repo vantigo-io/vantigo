@@ -84,10 +84,10 @@ job, and then starts Vantigo:
 - **API contract** — `GET http://localhost:8080/api/openapi.json` (requires a session)
 
 The Customers, Products, Energy, Communications, Projects, Time, Expenses, Invoices,
-Staff, Planning, Calendar and Microsoft Entra ID modules are enabled by default
+Staff, Planning, Calendar, Microsoft Entra ID and Assistant modules are enabled by default
 (`MODULES` in `vantigo.env`). They share one PostgreSQL database named `vantigo`, with
 independent `identity`, `customers`, `products`, `energy`, `communications`,
-`projects`, `time`, `expenses`, `invoices`, `staff`, `planning`, `calendar` and `entra`
+`projects`, `time`, `expenses`, `invoices`, `staff`, `planning`, `calendar`, `entra` and `assistant`
 schemas and migration histories.
 
 ## What the stack contains
@@ -186,12 +186,13 @@ and the recovery.
   deployment enables. `identity` is always mounted and never listed. Unset enables
   every module the binary can mount: `customers`, `products`, `energy`,
   `communications`, `projects`, `time`, `expenses`, `invoices`, `staff`, `planning`,
-  `calendar` and `entra`. `energy`, `communications`, `projects` and `invoices` each
+  `calendar`, `entra` and `assistant`. `energy`, `communications`, `projects` and `invoices` each
   require `customers`, `time` requires `projects`, `planning` requires both `projects`
   and `staff`, and `entra` requires `staff`; `projects` also
   uses `products` when it is enabled and answers 409 on its billing-line endpoints when
   it is not; `expenses` requires nothing and reads `projects` only when it happens to be
-  enabled; `staff` and `calendar` require nothing. To run
+  enabled; `staff`, `calendar` and `assistant` require nothing (the assistant is of
+  use only while `AI_PROVIDER` is set). To run
   a smaller install, list only what you want, for example `MODULES=customers,products`.
 - **`OWNERS_REQUIRE_MFA=0` and `OWNERS_ALLOW_INSECURE_NO_MFA=1`** (`vantigo.env`) —
   shipped in the example because a fresh installation has nobody around to enrol an
@@ -264,9 +265,9 @@ ALTER DEFAULT PRIVILEGES FOR ROLE "vantigo" GRANT USAGE, SELECT ON SEQUENCES TO 
 -- Default privileges only cover objects created afterwards; grant on the
 -- schemas the enabled modules already created (add/remove schemas to match
 -- the MODULES enabled in your installation).
-GRANT USAGE ON SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, calendar, entra TO "vantigo_app";
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, calendar, entra TO "vantigo_app";
-GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, calendar, entra TO "vantigo_app";
+GRANT USAGE ON SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, calendar, entra, assistant TO "vantigo_app";
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, calendar, entra, assistant TO "vantigo_app";
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, calendar, entra, assistant TO "vantigo_app";
 ```
 
 ## Background workers and scaling
@@ -285,7 +286,9 @@ always, the invoices billing worker `invoices-billing`, always, the invoices pay
 subscriptions worker `calendar-subscriptions` unless `CALENDAR_SUBSCRIPTIONS_ENABLED=0`, and the
 calendar mailbox sync worker `calendar-mailbox-sync` unless `CALENDAR_MAILBOX_SYNC_ENABLED=0`, and the
 Microsoft Entra ID module's `entra-outlook-sweep`, always, which tidies the people's
-Outlook connections every hour) inside the
+Outlook connections every hour, and the Assistant's `assistant-runs`, always, which fails a run
+a restart left running, and `assistant-retention`, always, which deletes conversations past
+their retention once a day) inside the
 API process: `WORKERS_IN_PROCESS=1`, the default. Deployments that scale the API
 horizontally should move them to one dedicated worker container, so that every extra
 HTTP replica does not multiply the pollers:
@@ -311,7 +314,7 @@ HTTP replica does not multiply the pollers:
 Replicas that should neither migrate nor run workers can run the `server` command
 instead of `api`; it serves only, whatever `WORKERS_IN_PROCESS` says. Whichever topology
 you use, retention cleanup, the registry workers, the EHF events worker, the
-calendar cancellations worker and `entra-outlook-sweep` take a PostgreSQL advisory lock, so each runs on exactly one instance per cycle; the outbox,
+calendar cancellations worker, `entra-outlook-sweep` and `assistant-retention` take a PostgreSQL advisory lock, so each runs on exactly one instance per cycle; the outbox,
 the `invoices-ehf` worker, the `invoices-reminders` worker, the `invoices-billing` worker,
 the `invoices-payments` worker, `communications-mailbox-sync` and the calendar subscriptions and mailbox sync workers instead take one row at a time under a time-limited lease, so any number of
 instances share the work without sending anything twice. The reminder worker sends one letter at a time, at most one a
@@ -484,7 +487,7 @@ registration ([Microsoft Entra ID](/en/admin/entra/#outlook-connection)). The AP
 prefixes remain `/api/v1/identity`, `/api/v1/customers`, `/api/v1/products`,
 `/api/v1/energy`, `/api/v1/communications`, `/api/v1/projects`, `/api/v1/time`,
 `/api/v1/expenses`, `/api/v1/invoices`, `/api/v1/staff`, `/api/v1/planning`,
-`/api/v1/calendar` and `/api/v1/entra`.
+`/api/v1/calendar`, `/api/v1/entra` and `/api/v1/assistant`.
 
 For example, with nginx:
 
@@ -776,6 +779,21 @@ Owner adds them. A least-privilege role needs the `planning` schema granted
 ([Database roles](#database-roles)). It starts no worker and needs no setting; there is
 nothing else to do. Rolling the migration back drops the schema with every
 allocation. See [Planning](/en/user/planning/).
+
+**The release with the Assistant.** It brings `00103_assistant_baseline.sql`, the `assistant`
+schema: the settings (everyone has the assistant, conversations kept 12 months, sensitive
+data not available to it), each person's switch, the conversations and their messages, runs
+and action log, and the Owner's permission levels, all empty. An installation that leaves
+`MODULES` unset gets the module, and the **Assistant** tile for everyone, on upgrade; one that
+lists `MODULES` gets it once `assistant` is added. It needs no permission and no other module,
+but it is of use only while `AI_PROVIDER` is set, with a model that supports tool calls
+([Configuration](/en/admin/configuration/#ai)); without one, the assistant is not offered to
+anyone. A least-privilege role needs the `assistant` schema granted ([Database
+roles](#database-roles)). It starts two workers: `assistant-runs`, which fails a run left
+running by a restart, and `assistant-retention`, which deletes conversations past their
+retention and those of people identity has erased. Rolling the migration back drops the
+schema with every conversation. See [Assistant](/en/user/assistant/) and the [Assistant
+reference](/en/reference/assistant/).
 
 **The release with Staff competence.** It brings `00066_staff_competence.sql`: the
 competence catalogue — five categories and fifteen Norwegian certificates seeded — and
