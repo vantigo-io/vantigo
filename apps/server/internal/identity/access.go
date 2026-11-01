@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -50,6 +51,19 @@ type Access struct {
 	// test sets it (SetOIDCHTTPClient), before the module mounts, to reach a
 	// fake provider.
 	oidcHTTPClient *http.Client
+	// ai is the Owner's choice of model per AI task through its cache
+	// (ai_models.go). The AIModels slot hands it to the platform AI client and
+	// the settings endpoints read and evict the same one, so a save is in
+	// effect at once in this process. It is built on first use, from the Deps
+	// of whichever of the two asks first.
+	ai     *aiModels
+	aiOnce sync.Once
+}
+
+// aiModelsFor is the one resolver of this Access, built over d the first time.
+func (a *Access) aiModelsFor(d module.Deps) *aiModels {
+	a.aiOnce.Do(func() { a.ai = newAIModels(d) })
+	return a.ai
 }
 
 var _ contracts.Access = (*Access)(nil)

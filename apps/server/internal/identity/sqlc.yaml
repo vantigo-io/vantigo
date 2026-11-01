@@ -13,6 +13,7 @@ sql:
       - ../db/migrations/00059_identity_expected_accounts.sql
       - ../db/migrations/00064_identity_expected_links.sql
       - ../db/migrations/00070_identity_managed_avatars.sql
+      - ../db/migrations/00098_identity_ai_task_models.sql
     queries: queries
     gen:
       go:
