@@ -1357,7 +1357,7 @@ says.
 | `GET /claims` (`userId`, `status`, `from`, `to`, `reimbursed`, paging) | The same visibility rule the entries' list applies, one level up |
 | `POST /claims` | Record a trip — your own, or (`userId`) a colleague's, with `expenses:manage` |
 | `GET /claims/{id}` | The claim with its lines, its totals per currency and its capabilities |
-| `POST /claims/{id}/per-diem-suggestion` | Whoever may see the claim — the days its times imply, priced; it writes nothing |
+| `POST /claims/{id}/per-diem-suggestion` | Whoever may see the claim — the days its times imply, priced; it writes nothing, so it is marked `x-vantigo-assistant: auto`, the one `POST` the Assistant may call without asking ([module boundaries rule 18](/en/contributing/module-boundaries/)) |
 | `PUT /claims/{id}`, `DELETE /claims/{id}` | Owner or `expenses:manage`, while draft or rejected, not past the lock |
 | `PUT /entries/{id}`, `DELETE /entries/{id}` | Owner or `expenses:manage`, while draft or rejected, not past the lock; a supplier invoice moved to another project, or an outlay made one, is judged by the saving caller's financial rights again |
 | `POST /entries/{id}/attachments`, `DELETE /attachments/{id}` | Same as edit, an outlay or a supplier invoice only |

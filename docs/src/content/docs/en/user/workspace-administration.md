@@ -445,7 +445,9 @@ not found".
 
 **What you see.** The card titled **The plan** states what Vantigo set up, as facts with no field
 to edit: the **Provider**, the **Models the plan allows**, and "An API key is configured by
-Vantigo." The key itself is never shown, to anyone, anywhere. Below it, one card for each
+Vantigo." — or, for a model that runs on your own network, which needs none, "No API key is
+configured." The key itself is never shown, to anyone, anywhere. The provider reads
+**OpenAI-compatible** for such a model. Below it, one card for each
 module that uses AI, named as the module is, with a row for each **task** it performs: what
 the model is asked to do and with what data, and a select of the models the plan allows.
 Tasks are named in English. A module that is turned off is not listed.
