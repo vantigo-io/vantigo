@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -97,7 +98,7 @@ func (s *server) PostProjectsTemplates(ctx context.Context, req gen.PostProjects
 			apicommon.ValidationProblem("Invalid template", map[string][]string{"name": {"Template name is required."}}),
 		), nil
 	}
-	if len(name) > 200 {
+	if utf8.RuneCountInString(name) > 200 {
 		return gen.PostProjectsTemplates400ApplicationProblemPlusJSONResponse(
 			apicommon.ValidationProblem("Invalid template", map[string][]string{"name": {"Template name is at most 200 characters."}}),
 		), nil
@@ -106,7 +107,7 @@ func (s *server) PostProjectsTemplates(ctx context.Context, req gen.PostProjects
 	var desc *string
 	if body.Description != nil {
 		d := strings.TrimSpace(*body.Description)
-		if len(d) > 2000 {
+		if utf8.RuneCountInString(d) > 2000 {
 			return gen.PostProjectsTemplates400ApplicationProblemPlusJSONResponse(
 				apicommon.ValidationProblem("Invalid template", map[string][]string{"description": {"Description is at most 2000 characters."}}),
 			), nil
@@ -209,7 +210,7 @@ func (s *server) PutProjectsTemplatesByTemplateId(ctx context.Context, req gen.P
 			apicommon.ValidationProblem("Invalid template", map[string][]string{"name": {"Template name is required."}}),
 		), nil
 	}
-	if len(name) > 200 {
+	if utf8.RuneCountInString(name) > 200 {
 		return gen.PutProjectsTemplatesByTemplateId400ApplicationProblemPlusJSONResponse(
 			apicommon.ValidationProblem("Invalid template", map[string][]string{"name": {"Template name is at most 200 characters."}}),
 		), nil
@@ -218,7 +219,7 @@ func (s *server) PutProjectsTemplatesByTemplateId(ctx context.Context, req gen.P
 	var desc *string
 	if body.Description != nil {
 		d := strings.TrimSpace(*body.Description)
-		if len(d) > 2000 {
+		if utf8.RuneCountInString(d) > 2000 {
 			return gen.PutProjectsTemplatesByTemplateId400ApplicationProblemPlusJSONResponse(
 				apicommon.ValidationProblem("Invalid template", map[string][]string{"description": {"Description is at most 2000 characters."}}),
 			), nil
@@ -355,6 +356,12 @@ func (s *server) PostProjectsByIdApplyTemplate(ctx context.Context, req gen.Post
 	if err != nil {
 		return nil, err
 	}
+	// The stored blueprint passed these rules when it was saved; asking them
+	// again trims what is inserted and refuses, rather than half-applies, a
+	// template saved before a rule existed.
+	if d := validateTemplateData(tmpl.Milestones, tmpl.Tasks, tmpl.Dependencies); d != nil {
+		return gen.PostProjectsByIdApplyTemplate400ApplicationProblemPlusJSONResponse(*d), nil
+	}
 
 	by, err := s.callerAs(ctx)
 	if err != nil {
@@ -395,6 +402,9 @@ func (s *server) PostProjectsByIdApplyTemplate(ctx context.Context, req gen.Post
 			})
 			if err != nil {
 				return fmt.Errorf("projects: insert delivery milestone from template: %w", err)
+			}
+			if err := recordDeliveryMilestoneEvent(ctx, txq, now, eventDeliveryMilestoneAdded, row, nil, by); err != nil {
+				return err
 			}
 			milestoneIndexToID[int32(i)] = row.ID
 			milestonesCount++
@@ -535,80 +545,112 @@ func (s *server) PostProjectsByIdApplyTemplate(ctx context.Context, req gen.Post
 	}, nil
 }
 
+// validateTemplateData checks a template's blueprint against the rules the
+// rows it becomes are held to, so applying a valid template never fails on a
+// rule a hand-made milestone or task would have been refused for: the
+// delivery milestone name and description rules, the task title, description
+// and estimate rules, non-negative day offsets, a due offset no earlier than
+// the start offset, and indices that point at a milestone or top-level task
+// of the same template. Dependencies are additionally refused when a pair is
+// listed twice (the project's dependency table holds each pair once) or when
+// they form a cycle, which no project's dependency graph may contain.
+//
+// It trims the names, titles and descriptions in place, so what is stored —
+// and what apply inserts — is the value the rules were asked of.
 func validateTemplateData(
 	milestones []gen.ProjectTemplateMilestone,
 	tasks []gen.ProjectTemplateTask,
 	dependencies []gen.ProjectTemplateDependency,
 ) *apicommon.HttpValidationProblemDetails {
 	invalid := map[string][]string{}
-
-	for i, m := range milestones {
-		name := strings.TrimSpace(m.Name)
-		if name == "" {
-			invalid[fmt.Sprintf("milestones[%d].name", i)] = []string{"Milestone name is required."}
-		} else if len(name) > 200 {
-			invalid[fmt.Sprintf("milestones[%d].name", i)] = []string{"Milestone name is at most 200 characters."}
+	add := func(field, msg string) {
+		if msg != "" {
+			invalid[field] = append(invalid[field], msg)
 		}
-		if m.TargetDayOffset < 0 {
-			invalid[fmt.Sprintf("milestones[%d].targetDayOffset", i)] = []string{"Target day offset cannot be negative."}
+	}
+	offsets := func(prefix string, start, due *int32) {
+		if start != nil && *start < 0 {
+			add(prefix+".startDayOffset", "Start day offset cannot be negative.")
+		}
+		if due != nil && *due < 0 {
+			add(prefix+".dueDayOffset", "Due day offset cannot be negative.")
+		}
+		if start != nil && due != nil && *due < *start {
+			add(prefix+".dueDayOffset", "Due day offset cannot be earlier than start day offset.")
 		}
 	}
 
-	for i, t := range tasks {
-		title := strings.TrimSpace(t.Title)
-		if title == "" {
-			invalid[fmt.Sprintf("tasks[%d].title", i)] = []string{"Task title is required."}
-		} else if len(title) > 200 {
-			invalid[fmt.Sprintf("tasks[%d].title", i)] = []string{"Task title is at most 200 characters."}
+	for i := range milestones {
+		m := &milestones[i]
+		prefix := fmt.Sprintf("milestones[%d]", i)
+		var msg string
+		m.Name, msg = validateDeliveryMilestoneName(m.Name)
+		add(prefix+".name", msg)
+		m.Description, msg = validateDeliveryMilestoneDescription(m.Description)
+		add(prefix+".description", msg)
+		if m.TargetDayOffset < 0 {
+			add(prefix+".targetDayOffset", "Target day offset cannot be negative.")
 		}
-		if t.StartDayOffset != nil && *t.StartDayOffset < 0 {
-			invalid[fmt.Sprintf("tasks[%d].startDayOffset", i)] = []string{"Start day offset cannot be negative."}
-		}
-		if t.DueDayOffset != nil && *t.DueDayOffset < 0 {
-			invalid[fmt.Sprintf("tasks[%d].dueDayOffset", i)] = []string{"Due day offset cannot be negative."}
-		}
-		if t.StartDayOffset != nil && t.DueDayOffset != nil && *t.DueDayOffset < *t.StartDayOffset {
-			invalid[fmt.Sprintf("tasks[%d].dueDayOffset", i)] = []string{"Due day offset cannot be earlier than start day offset."}
-		}
+	}
+
+	for i := range tasks {
+		t := &tasks[i]
+		prefix := fmt.Sprintf("tasks[%d]", i)
+		var msg string
+		t.Title, msg = validateTaskTitle(t.Title)
+		add(prefix+".title", msg)
+		t.Description, msg = validateTaskDescription(t.Description)
+		add(prefix+".description", msg)
+		add(prefix+".estimateHours", validateEstimateHours(t.EstimateHours))
+		offsets(prefix, t.StartDayOffset, t.DueDayOffset)
 		if t.MilestoneIndex != nil {
 			idx := int(*t.MilestoneIndex)
 			if idx < 0 || idx >= len(milestones) {
-				invalid[fmt.Sprintf("tasks[%d].milestoneIndex", i)] = []string{"Milestone index out of bounds."}
+				add(prefix+".milestoneIndex", "Milestone index out of bounds.")
 			}
 		}
-		if t.Subtasks != nil {
-			for j, sub := range *t.Subtasks {
-				subTitle := strings.TrimSpace(sub.Title)
-				if subTitle == "" {
-					invalid[fmt.Sprintf("tasks[%d].subtasks[%d].title", i, j)] = []string{"Subtask title is required."}
-				} else if len(subTitle) > 200 {
-					invalid[fmt.Sprintf("tasks[%d].subtasks[%d].title", i, j)] = []string{"Subtask title is at most 200 characters."}
-				}
-				if sub.StartDayOffset != nil && *sub.StartDayOffset < 0 {
-					invalid[fmt.Sprintf("tasks[%d].subtasks[%d].startDayOffset", i, j)] = []string{"Start day offset cannot be negative."}
-				}
-				if sub.DueDayOffset != nil && *sub.DueDayOffset < 0 {
-					invalid[fmt.Sprintf("tasks[%d].subtasks[%d].dueDayOffset", i, j)] = []string{"Due day offset cannot be negative."}
-				}
-				if sub.StartDayOffset != nil && sub.DueDayOffset != nil && *sub.DueDayOffset < *sub.StartDayOffset {
-					invalid[fmt.Sprintf("tasks[%d].subtasks[%d].dueDayOffset", i, j)] = []string{"Due day offset cannot be earlier than start day offset."}
-				}
-			}
+		if t.Subtasks == nil {
+			continue
+		}
+		for j := range *t.Subtasks {
+			sub := &(*t.Subtasks)[j]
+			subPrefix := fmt.Sprintf("%s.subtasks[%d]", prefix, j)
+			sub.Title, msg = validateTaskTitle(sub.Title)
+			add(subPrefix+".title", msg)
+			sub.Description, msg = validateTaskDescription(sub.Description)
+			add(subPrefix+".description", msg)
+			add(subPrefix+".estimateHours", validateEstimateHours(sub.EstimateHours))
+			offsets(subPrefix, sub.StartDayOffset, sub.DueDayOffset)
 		}
 	}
 
+	indicesValid := true
+	seen := make(map[[2]int32]int, len(dependencies))
 	for i, d := range dependencies {
+		prefix := fmt.Sprintf("dependencies[%d]", i)
 		pred := int(d.PredecessorTaskIndex)
 		succ := int(d.SuccessorTaskIndex)
 		if pred < 0 || pred >= len(tasks) {
-			invalid[fmt.Sprintf("dependencies[%d].predecessorTaskIndex", i)] = []string{"Predecessor task index out of bounds."}
+			add(prefix+".predecessorTaskIndex", "Predecessor task index out of bounds.")
+			indicesValid = false
 		}
 		if succ < 0 || succ >= len(tasks) {
-			invalid[fmt.Sprintf("dependencies[%d].successorTaskIndex", i)] = []string{"Successor task index out of bounds."}
+			add(prefix+".successorTaskIndex", "Successor task index out of bounds.")
+			indicesValid = false
 		}
 		if pred == succ {
-			invalid[fmt.Sprintf("dependencies[%d].successorTaskIndex", i)] = []string{"A task cannot depend on itself."}
+			add(prefix+".successorTaskIndex", "A task cannot depend on itself.")
+			indicesValid = false
 		}
+		pair := [2]int32{d.PredecessorTaskIndex, d.SuccessorTaskIndex}
+		if first, ok := seen[pair]; ok {
+			add(prefix+".successorTaskIndex", fmt.Sprintf("This dependency is already listed as dependency %d.", first+1))
+			continue
+		}
+		seen[pair] = i
+	}
+	if indicesValid && templateDependenciesCycle(len(tasks), dependencies) {
+		add("dependencies", "The dependencies form a cycle: a task would have to wait for itself.")
 	}
 
 	if len(invalid) > 0 {
@@ -616,4 +658,36 @@ func validateTemplateData(
 		return &p
 	}
 	return nil
+}
+
+// templateDependenciesCycle reports whether the dependencies, every index of
+// which is already known to be in bounds, form a cycle among the template's
+// tasks. Kahn's algorithm: a graph is acyclic exactly when repeatedly removing
+// the tasks nothing waits on removes every task.
+func templateDependenciesCycle(taskCount int, dependencies []gen.ProjectTemplateDependency) bool {
+	incoming := make([]int, taskCount)
+	successors := make([][]int32, taskCount)
+	for _, d := range dependencies {
+		successors[d.PredecessorTaskIndex] = append(successors[d.PredecessorTaskIndex], d.SuccessorTaskIndex)
+		incoming[d.SuccessorTaskIndex]++
+	}
+	ready := make([]int32, 0, taskCount)
+	for i, n := range incoming {
+		if n == 0 {
+			ready = append(ready, int32(i))
+		}
+	}
+	removed := 0
+	for len(ready) > 0 {
+		next := ready[len(ready)-1]
+		ready = ready[:len(ready)-1]
+		removed++
+		for _, succ := range successors[next] {
+			incoming[succ]--
+			if incoming[succ] == 0 {
+				ready = append(ready, succ)
+			}
+		}
+	}
+	return removed < taskCount
 }
