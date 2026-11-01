@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AcceptInvitationRouteImport } from './routes/accept-invitation'
 import { Route as AdminRouteImport } from './routes/admin'
+import { Route as AssistantRouteImport } from './routes/assistant'
 import { Route as CalendarRouteImport } from './routes/calendar'
 import { Route as CommunicationsRouteImport } from './routes/communications'
 import { Route as CustomersRouteImport } from './routes/customers'
@@ -36,6 +37,8 @@ import { Route as StaffRouteImport } from './routes/staff'
 import { Route as TimeRouteImport } from './routes/time'
 import { Route as WorkspaceRouteImport } from './routes/workspace'
 import { Route as AdminIndexRouteImport } from './routes/admin/index'
+import { Route as AssistantIndexRouteImport } from './routes/assistant/index'
+import { Route as AssistantConversationIdRouteImport } from './routes/assistant/$conversationId'
 import { Route as CalendarIndexRouteImport } from './routes/calendar/index'
 import { Route as CalendarSettingsRouteImport } from './routes/calendar/settings'
 import { Route as CommunicationsIndexRouteImport } from './routes/communications/index'
@@ -92,6 +95,7 @@ import { Route as TimePeopleRouteImport } from './routes/time/people'
 import { Route as TimeSettingsRouteImport } from './routes/time/settings'
 import { Route as WorkspaceIndexRouteImport } from './routes/workspace/index'
 import { Route as WorkspaceAiRouteImport } from './routes/workspace/ai'
+import { Route as WorkspaceAssistantRouteImport } from './routes/workspace/assistant'
 import { Route as WorkspaceEntraRouteImport } from './routes/workspace/entra'
 import { Route as WorkspaceInvitationsRouteImport } from './routes/workspace/invitations'
 import { Route as WorkspaceOverviewRouteImport } from './routes/workspace/overview'
@@ -150,6 +154,11 @@ const AcceptInvitationRoute = AcceptInvitationRouteImport.update({
 const AdminRoute = AdminRouteImport.update({
   id: '/admin',
   path: '/admin',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AssistantRoute = AssistantRouteImport.update({
+  id: '/assistant',
+  path: '/assistant',
   getParentRoute: () => rootRouteImport,
 } as any)
 const CalendarRoute = CalendarRouteImport.update({
@@ -271,6 +280,16 @@ const AdminIndexRoute = AdminIndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => AdminRoute,
+} as any)
+const AssistantIndexRoute = AssistantIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AssistantRoute,
+} as any)
+const AssistantConversationIdRoute = AssistantConversationIdRouteImport.update({
+  id: '/$conversationId',
+  path: '/$conversationId',
+  getParentRoute: () => AssistantRoute,
 } as any)
 const CalendarIndexRoute = CalendarIndexRouteImport.update({
   id: '/',
@@ -553,6 +572,11 @@ const WorkspaceAiRoute = WorkspaceAiRouteImport.update({
   path: '/ai',
   getParentRoute: () => WorkspaceRoute,
 } as any)
+const WorkspaceAssistantRoute = WorkspaceAssistantRouteImport.update({
+  id: '/assistant',
+  path: '/assistant',
+  getParentRoute: () => WorkspaceRoute,
+} as any)
 const WorkspaceEntraRoute = WorkspaceEntraRouteImport.update({
   id: '/entra',
   path: '/entra',
@@ -798,6 +822,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/accept-invitation': typeof AcceptInvitationRoute
   '/admin': typeof AdminRouteWithChildren
+  '/assistant': typeof AssistantRouteWithChildren
   '/calendar': typeof CalendarRouteWithChildren
   '/communications': typeof CommunicationsRouteWithChildren
   '/customers': typeof CustomersRouteWithChildren
@@ -821,6 +846,7 @@ export interface FileRoutesByFullPath {
   '/staff': typeof StaffRouteWithChildren
   '/time': typeof TimeRouteWithChildren
   '/workspace': typeof WorkspaceRouteWithChildren
+  '/assistant/$conversationId': typeof AssistantConversationIdRoute
   '/calendar/settings': typeof CalendarSettingsRoute
   '/communications/channels': typeof CommunicationsChannelsRoute
   '/communications/inbox': typeof CommunicationsInboxRoute
@@ -863,12 +889,14 @@ export interface FileRoutesByFullPath {
   '/time/people': typeof TimePeopleRoute
   '/time/settings': typeof TimeSettingsRoute
   '/workspace/ai': typeof WorkspaceAiRoute
+  '/workspace/assistant': typeof WorkspaceAssistantRoute
   '/workspace/entra': typeof WorkspaceEntraRouteWithChildren
   '/workspace/invitations': typeof WorkspaceInvitationsRoute
   '/workspace/overview': typeof WorkspaceOverviewRoute
   '/workspace/roles': typeof WorkspaceRolesRoute
   '/workspace/users': typeof WorkspaceUsersRoute
   '/admin/': typeof AdminIndexRoute
+  '/assistant/': typeof AssistantIndexRoute
   '/calendar/': typeof CalendarIndexRoute
   '/communications/': typeof CommunicationsIndexRoute
   '/customers/': typeof CustomersIndexRoute
@@ -935,6 +963,7 @@ export interface FileRoutesByTo {
   '/session-expired': typeof SessionExpiredRoute
   '/setup': typeof SetupRoute
   '/sign-in': typeof SignInRoute
+  '/assistant/$conversationId': typeof AssistantConversationIdRoute
   '/calendar/settings': typeof CalendarSettingsRoute
   '/communications/channels': typeof CommunicationsChannelsRoute
   '/communications/inbox': typeof CommunicationsInboxRoute
@@ -975,11 +1004,13 @@ export interface FileRoutesByTo {
   '/time/people': typeof TimePeopleRoute
   '/time/settings': typeof TimeSettingsRoute
   '/workspace/ai': typeof WorkspaceAiRoute
+  '/workspace/assistant': typeof WorkspaceAssistantRoute
   '/workspace/invitations': typeof WorkspaceInvitationsRoute
   '/workspace/overview': typeof WorkspaceOverviewRoute
   '/workspace/roles': typeof WorkspaceRolesRoute
   '/workspace/users': typeof WorkspaceUsersRoute
   '/admin': typeof AdminIndexRoute
+  '/assistant': typeof AssistantIndexRoute
   '/calendar': typeof CalendarIndexRoute
   '/communications': typeof CommunicationsIndexRoute
   '/customers': typeof CustomersIndexRoute
@@ -1039,6 +1070,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/accept-invitation': typeof AcceptInvitationRoute
   '/admin': typeof AdminRouteWithChildren
+  '/assistant': typeof AssistantRouteWithChildren
   '/calendar': typeof CalendarRouteWithChildren
   '/communications': typeof CommunicationsRouteWithChildren
   '/customers': typeof CustomersRouteWithChildren
@@ -1062,6 +1094,7 @@ export interface FileRoutesById {
   '/staff': typeof StaffRouteWithChildren
   '/time': typeof TimeRouteWithChildren
   '/workspace': typeof WorkspaceRouteWithChildren
+  '/assistant/$conversationId': typeof AssistantConversationIdRoute
   '/calendar/settings': typeof CalendarSettingsRoute
   '/communications/channels': typeof CommunicationsChannelsRoute
   '/communications/inbox': typeof CommunicationsInboxRoute
@@ -1104,12 +1137,14 @@ export interface FileRoutesById {
   '/time/people': typeof TimePeopleRoute
   '/time/settings': typeof TimeSettingsRoute
   '/workspace/ai': typeof WorkspaceAiRoute
+  '/workspace/assistant': typeof WorkspaceAssistantRoute
   '/workspace/entra': typeof WorkspaceEntraRouteWithChildren
   '/workspace/invitations': typeof WorkspaceInvitationsRoute
   '/workspace/overview': typeof WorkspaceOverviewRoute
   '/workspace/roles': typeof WorkspaceRolesRoute
   '/workspace/users': typeof WorkspaceUsersRoute
   '/admin/': typeof AdminIndexRoute
+  '/assistant/': typeof AssistantIndexRoute
   '/calendar/': typeof CalendarIndexRoute
   '/communications/': typeof CommunicationsIndexRoute
   '/customers/': typeof CustomersIndexRoute
@@ -1170,6 +1205,7 @@ export interface FileRouteTypes {
     | '/'
     | '/accept-invitation'
     | '/admin'
+    | '/assistant'
     | '/calendar'
     | '/communications'
     | '/customers'
@@ -1193,6 +1229,7 @@ export interface FileRouteTypes {
     | '/staff'
     | '/time'
     | '/workspace'
+    | '/assistant/$conversationId'
     | '/calendar/settings'
     | '/communications/channels'
     | '/communications/inbox'
@@ -1235,12 +1272,14 @@ export interface FileRouteTypes {
     | '/time/people'
     | '/time/settings'
     | '/workspace/ai'
+    | '/workspace/assistant'
     | '/workspace/entra'
     | '/workspace/invitations'
     | '/workspace/overview'
     | '/workspace/roles'
     | '/workspace/users'
     | '/admin/'
+    | '/assistant/'
     | '/calendar/'
     | '/communications/'
     | '/customers/'
@@ -1307,6 +1346,7 @@ export interface FileRouteTypes {
     | '/session-expired'
     | '/setup'
     | '/sign-in'
+    | '/assistant/$conversationId'
     | '/calendar/settings'
     | '/communications/channels'
     | '/communications/inbox'
@@ -1347,11 +1387,13 @@ export interface FileRouteTypes {
     | '/time/people'
     | '/time/settings'
     | '/workspace/ai'
+    | '/workspace/assistant'
     | '/workspace/invitations'
     | '/workspace/overview'
     | '/workspace/roles'
     | '/workspace/users'
     | '/admin'
+    | '/assistant'
     | '/calendar'
     | '/communications'
     | '/customers'
@@ -1410,6 +1452,7 @@ export interface FileRouteTypes {
     | '/'
     | '/accept-invitation'
     | '/admin'
+    | '/assistant'
     | '/calendar'
     | '/communications'
     | '/customers'
@@ -1433,6 +1476,7 @@ export interface FileRouteTypes {
     | '/staff'
     | '/time'
     | '/workspace'
+    | '/assistant/$conversationId'
     | '/calendar/settings'
     | '/communications/channels'
     | '/communications/inbox'
@@ -1475,12 +1519,14 @@ export interface FileRouteTypes {
     | '/time/people'
     | '/time/settings'
     | '/workspace/ai'
+    | '/workspace/assistant'
     | '/workspace/entra'
     | '/workspace/invitations'
     | '/workspace/overview'
     | '/workspace/roles'
     | '/workspace/users'
     | '/admin/'
+    | '/assistant/'
     | '/calendar/'
     | '/communications/'
     | '/customers/'
@@ -1540,6 +1586,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AcceptInvitationRoute: typeof AcceptInvitationRoute
   AdminRoute: typeof AdminRouteWithChildren
+  AssistantRoute: typeof AssistantRouteWithChildren
   CalendarRoute: typeof CalendarRouteWithChildren
   CommunicationsRoute: typeof CommunicationsRouteWithChildren
   CustomersRoute: typeof CustomersRouteWithChildren
@@ -1587,6 +1634,13 @@ declare module '@tanstack/react-router' {
       path: '/admin'
       fullPath: '/admin'
       preLoaderRoute: typeof AdminRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/assistant': {
+      id: '/assistant'
+      path: '/assistant'
+      fullPath: '/assistant'
+      preLoaderRoute: typeof AssistantRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/calendar': {
@@ -1756,6 +1810,20 @@ declare module '@tanstack/react-router' {
       fullPath: '/admin/'
       preLoaderRoute: typeof AdminIndexRouteImport
       parentRoute: typeof AdminRoute
+    }
+    '/assistant/': {
+      id: '/assistant/'
+      path: '/'
+      fullPath: '/assistant/'
+      preLoaderRoute: typeof AssistantIndexRouteImport
+      parentRoute: typeof AssistantRoute
+    }
+    '/assistant/$conversationId': {
+      id: '/assistant/$conversationId'
+      path: '/$conversationId'
+      fullPath: '/assistant/$conversationId'
+      preLoaderRoute: typeof AssistantConversationIdRouteImport
+      parentRoute: typeof AssistantRoute
     }
     '/calendar/': {
       id: '/calendar/'
@@ -2149,6 +2217,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof WorkspaceAiRouteImport
       parentRoute: typeof WorkspaceRoute
     }
+    '/workspace/assistant': {
+      id: '/workspace/assistant'
+      path: '/assistant'
+      fullPath: '/workspace/assistant'
+      preLoaderRoute: typeof WorkspaceAssistantRouteImport
+      parentRoute: typeof WorkspaceRoute
+    }
     '/workspace/entra': {
       id: '/workspace/entra'
       path: '/entra'
@@ -2469,6 +2544,20 @@ const AdminRouteChildren: AdminRouteChildren = {
 }
 
 const AdminRouteWithChildren = AdminRoute._addFileChildren(AdminRouteChildren)
+
+interface AssistantRouteChildren {
+  AssistantConversationIdRoute: typeof AssistantConversationIdRoute
+  AssistantIndexRoute: typeof AssistantIndexRoute
+}
+
+const AssistantRouteChildren: AssistantRouteChildren = {
+  AssistantConversationIdRoute: AssistantConversationIdRoute,
+  AssistantIndexRoute: AssistantIndexRoute,
+}
+
+const AssistantRouteWithChildren = AssistantRoute._addFileChildren(
+  AssistantRouteChildren,
+)
 
 interface CalendarRouteChildren {
   CalendarSettingsRoute: typeof CalendarSettingsRoute
@@ -2809,6 +2898,7 @@ const WorkspaceEntraRouteWithChildren = WorkspaceEntraRoute._addFileChildren(
 
 interface WorkspaceRouteChildren {
   WorkspaceAiRoute: typeof WorkspaceAiRoute
+  WorkspaceAssistantRoute: typeof WorkspaceAssistantRoute
   WorkspaceEntraRoute: typeof WorkspaceEntraRouteWithChildren
   WorkspaceInvitationsRoute: typeof WorkspaceInvitationsRoute
   WorkspaceOverviewRoute: typeof WorkspaceOverviewRoute
@@ -2819,6 +2909,7 @@ interface WorkspaceRouteChildren {
 
 const WorkspaceRouteChildren: WorkspaceRouteChildren = {
   WorkspaceAiRoute: WorkspaceAiRoute,
+  WorkspaceAssistantRoute: WorkspaceAssistantRoute,
   WorkspaceEntraRoute: WorkspaceEntraRouteWithChildren,
   WorkspaceInvitationsRoute: WorkspaceInvitationsRoute,
   WorkspaceOverviewRoute: WorkspaceOverviewRoute,
@@ -2835,6 +2926,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AcceptInvitationRoute: AcceptInvitationRoute,
   AdminRoute: AdminRouteWithChildren,
+  AssistantRoute: AssistantRouteWithChildren,
   CalendarRoute: CalendarRouteWithChildren,
   CommunicationsRoute: CommunicationsRouteWithChildren,
   CustomersRoute: CustomersRouteWithChildren,

@@ -12,6 +12,7 @@ import {
   useRouterState,
 } from "@tanstack/react-router";
 import { TanStackRouterDevtools } from "@tanstack/react-router-devtools";
+import { useAssistantShell } from "@vantigo/assistant-ui";
 import {
   AccountMenu,
   AppShellLayout,
@@ -35,10 +36,20 @@ import { activeAppKey, appNavSections, appTitleLabel, areaForKey, switcherTiles 
 import { AppSpotlight } from "../components/app-spotlight";
 import { MaintenancePage } from "../components/errors";
 import { ModuleAccessGuard } from "../components/module-access-guard";
+import {
+  assistantChipFor,
+  registerAssistantContexts,
+  routeInfoFrom,
+  screenNameKey,
+  useRecordLabel,
+} from "../lib/assistant-context";
 import { enabledModuleKeys } from "../lib/enabled-modules";
 import { mfaEnrolmentRedirect } from "../lib/mfa-enrolment-gate";
+import { useOpenRoute } from "../lib/open-route";
 import { publicPaths, sessionlessPaths } from "../lib/public-paths";
 import { activeNavPath, type NavFeature, type NavSection, visibleNavSections } from "../navigation";
+
+registerAssistantContexts();
 
 const renderNavSections = (
   sections: readonly NavSection[],
@@ -120,6 +131,25 @@ const RootLayout = () => {
     enabled: !isPublic && !!session,
     staleTime: 300_000,
   });
+  // The assistant (design S10): the button, the panel in the layout's aside, Cmd/Ctrl+J and the Spotlight
+  // fallback. It is asked only of a signed-in person who is not held at MFA enrolment, while the module is on.
+  const openRoute = useOpenRoute();
+  const activeKey = activeAppKey(matches);
+  const routeInfo = routeInfoFrom(matches as never);
+  const recordLabel = useRecordLabel(routeInfo);
+  const screenKey = screenNameKey(activeKey, pathname);
+  const assistant = useAssistantShell({
+    enabled:
+      !isPublic &&
+      !!session &&
+      session.mfaEnrollmentRequired !== true &&
+      !sessionlessPaths.has(pathname) &&
+      enabledModuleKeys().includes("assistant"),
+    onAssistantPage: pathname === "/assistant" || pathname.startsWith("/assistant/"),
+    context: assistantChipFor(routeInfo, activeKey, recordLabel, screenKey ? t(screenKey) : undefined),
+    onNavigate: openRoute,
+    onOpenInAssistant: (id) => void navigate({ to: id ? `/assistant/${id}` : "/assistant" } as never),
+  });
   const logout = useMutation({
     mutationFn: signOut,
     onSuccess: () => {
@@ -145,7 +175,10 @@ const RootLayout = () => {
   const permissions = authorization.data?.permissions;
   const canManageAuthorization = authorization.data?.canManageAuthorization === true;
   const enabledModules = enabledModuleKeys();
-  const features: readonly NavFeature[] = aiSettings.isSuccess ? ["ai"] : [];
+  const features: readonly NavFeature[] = [
+    ...(aiSettings.isSuccess ? (["ai"] as const) : []),
+    ...(assistant.available ? (["assistant"] as const) : []),
+  ];
   const visibility = {
     permissions,
     isOwner,
@@ -156,7 +189,6 @@ const RootLayout = () => {
   };
   // The app or area is whatever the deepest matched route declares; public
   // paths declare none and render sidebar-less.
-  const activeKey = activeAppKey(matches);
   const activeArea = activeKey ? areaForKey(activeKey) : undefined;
   const navSections = appNavSections(activeArea, enabledModules, visibility);
   const titleLabel = appTitleLabel(activeArea);
@@ -179,8 +211,9 @@ const RootLayout = () => {
             {!gated && (
               <>
                 <SpotlightSearchButton />
+                {assistant.button}
                 <AppSwitcher
-                  apps={switcherTiles(permissions, enabledModules, activeKey).map((tile) => ({
+                  apps={switcherTiles(permissions, enabledModules, activeKey, features).map((tile) => ({
                     id: tile.app.key,
                     label: t(tile.app.label),
                     icon: tile.app.icon,
@@ -214,6 +247,7 @@ const RootLayout = () => {
         nav={
           !gated && navSections.length > 0 ? (close) => renderNavSections(navSections, pathname, close, t) : undefined
         }
+        aside={gated ? undefined : assistant.aside}
         linkComponent={Link as ShellLinkComponent}
       >
         <Stack gap="md">
@@ -240,6 +274,8 @@ const RootLayout = () => {
           isSystemAdmin={session.isSystemAdmin}
           enabledModules={enabledModules}
           features={features}
+          assistantAvailable={assistant.visible}
+          onAskAssistant={assistant.ask}
         />
       )}
       <TanStackRouterDevtools />

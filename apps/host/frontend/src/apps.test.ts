@@ -13,12 +13,14 @@ import {
   areaForKey,
   areas,
   isAppEnabled,
+  spotlightNavSections,
   switcherTiles,
 } from "./apps";
 import { navigationCatalog } from "./catalogs/navigation";
 import { type NavVisibilityContext, visibleNavSections } from "./navigation";
 
 const allModules = [
+  "assistant",
   "calendar",
   "communications",
   "customers",
@@ -39,6 +41,7 @@ describe("the app registry", () => {
     expect(apps[0]?.module).toBeUndefined();
     expect(apps.map((app) => app.key)).toEqual([
       "home",
+      "assistant",
       "calendar",
       "customers",
       "projects",
@@ -594,7 +597,12 @@ describe("the administration areas", () => {
         expect(item.to === prefix || item.to.startsWith(`${prefix}/`)).toBe(true);
         // An area belongs to no module; only an entry a module provides, Entra's Connections and its
         // Integrations page, names its module.
-        expect(item.module).toBe(["/settings/connections", "/workspace/entra"].includes(item.to) ? "entra" : undefined);
+        const owner: Record<string, string> = {
+          "/settings/connections": "entra",
+          "/workspace/entra": "entra",
+          "/workspace/assistant": "assistant",
+        };
+        expect(item.module).toBe(owner[item.to]);
       }
     }
   });
@@ -657,7 +665,7 @@ describe("the administration areas", () => {
     const integrations = areaForKey("workspace").navSections.find(
       (section) => section.label === "navigation.integrations",
     );
-    expect(integrations?.items).toHaveLength(2);
+    expect(integrations?.items).toHaveLength(3);
     expect(integrations?.items[0]).toMatchObject({
       label: "navigation.entra",
       to: "/workspace/entra",
@@ -680,6 +688,7 @@ describe("the administration areas", () => {
         "/workspace/invitations",
         "/workspace/entra",
         "/workspace/ai",
+        "/workspace/assistant",
       ]);
       const item = areaForKey("workspace")
         .navSections.flatMap((section) => section.items)
@@ -712,6 +721,7 @@ describe("the administration areas", () => {
         "/workspace/users",
         "/workspace/invitations",
         "/workspace/ai",
+        "/workspace/assistant",
       ]);
       expect(sections.map((section) => section.label)).toEqual([undefined, "navigation.integrations"]);
     });
@@ -851,5 +861,85 @@ describe("appNavSections", () => {
       permissions: ["customers:view"],
     });
     expect(sections.flatMap((section) => section.items.map((item) => item.to))).toEqual(["/customers"]);
+  });
+});
+
+// The Assistant (Assistant design S1, S8): an app with no permission of its own and no sidebar entries. The person
+// has it or not, which the root layout learns from GET /assistant/availability and passes as the "assistant" feature.
+describe("the Assistant app", () => {
+  const assistantTiles = (
+    features?: readonly ("ai" | "assistant")[],
+    modules: readonly (typeof allModules)[number][] = allModules,
+  ) => switcherTiles([], modules, "home", features).map((tile) => tile.app.key);
+
+  it("is /assistant, called Assistant, behind its module and with no sidebar", () => {
+    expect(appForKey("assistant")).toMatchObject({
+      module: "assistant",
+      label: "navigation.assistant",
+      home: "/assistant",
+      navSections: [],
+      feature: "assistant",
+    });
+    expect(appForKey("assistant").requiredPermissions).toBeUndefined();
+    expect(navigationCatalog.en["navigation.assistant"]).toBe("Assistant");
+    expect(navigationCatalog.nb["navigation.assistant"]).toBe("Assistent");
+  });
+
+  it("has a tile only for a person who has the assistant", () => {
+    expect(assistantTiles()).not.toContain("assistant");
+    expect(assistantTiles(["ai"])).not.toContain("assistant");
+    expect(assistantTiles(["assistant"])).toContain("assistant");
+  });
+
+  it("is muted, not hidden, when the installation did not mount the module", () => {
+    const tile = switcherTiles(
+      [],
+      allModules.filter((key) => key !== "assistant"),
+      "home",
+      ["assistant"],
+    ).find((one) => one.app.key === "assistant");
+    expect(tile?.enabled).toBe(false);
+  });
+
+  it("is a Spotlight destination only for a person who has the assistant", () => {
+    const spotlight = (features?: readonly ("ai" | "assistant")[]) =>
+      visibleNavSections(spotlightNavSections, {
+        permissions: ["*"],
+        isOwner: true,
+        canManageAuthorization: true,
+        enabledModules: allModules,
+        features,
+      }).flatMap((section) => section.items.map((item) => item.to));
+    expect(spotlight()).not.toContain("/assistant");
+    expect(spotlight(["assistant"])).toContain("/assistant");
+  });
+
+  it("puts its Owner page next to AI models, while the module is on and the instance has an AI provider", () => {
+    const owner: NavVisibilityContext = {
+      permissions: ["*"],
+      isOwner: true,
+      canManageAuthorization: false,
+      features: ["ai"],
+    };
+    const paths = (modules: readonly (typeof allModules)[number][]) =>
+      appNavSections(areaForKey("workspace"), modules, { ...owner, enabledModules: modules }).flatMap((section) =>
+        section.items.map((item) => item.to),
+      );
+    expect(paths(allModules)).toEqual([
+      "/workspace/overview",
+      "/workspace/users",
+      "/workspace/invitations",
+      "/workspace/entra",
+      "/workspace/ai",
+      "/workspace/assistant",
+    ]);
+    expect(paths(allModules.filter((key) => key !== "assistant"))).not.toContain("/workspace/assistant");
+    const withoutAi = appNavSections(areaForKey("workspace"), allModules, {
+      ...owner,
+      features: [],
+      enabledModules: allModules,
+    });
+    expect(withoutAi.flatMap((section) => section.items.map((item) => item.to))).not.toContain("/workspace/assistant");
+    expect(navigationCatalog.nb["navigation.assistantSettings"]).toBe("Assistent");
   });
 });

@@ -12,6 +12,7 @@ import {
   IconClock,
   IconListCheck,
   IconMail,
+  IconMessageChatbot,
   IconPackage,
   IconPlus,
   IconReceipt2,
@@ -47,6 +48,10 @@ interface AppSpotlightProps {
   enabledModules?: readonly ModuleKey[];
   features?: readonly NavFeature[];
   onNavigate?: () => void;
+  /** The person has the assistant and the panel can open here: a query with no good match offers to ask it. */
+  assistantAvailable?: boolean;
+  /** Opens the assistant's panel with this question sent. */
+  onAskAssistant?: (question: string) => void;
 }
 
 /**
@@ -61,6 +66,8 @@ export const AppSpotlight = ({
   enabledModules,
   features,
   onNavigate,
+  assistantAvailable = false,
+  onAskAssistant,
 }: AppSpotlightProps) => {
   const { t } = useI18n("host");
   const navigate = useNavigate();
@@ -230,6 +237,9 @@ export const AppSpotlight = ({
     meteringPointResults.length === 0 &&
     projectResults.length === 0;
 
+  const question = query.trim();
+  const askable = assistantAvailable && onAskAssistant !== undefined && question.length >= MIN_SEARCH_LENGTH;
+
   return (
     <Spotlight.Root shortcut="mod + K" query={query} onQueryChange={setQuery} onSpotlightClose={() => setQuery("")}>
       <Spotlight.Search
@@ -364,7 +374,18 @@ export const AppSpotlight = ({
           </Spotlight.ActionsGroup>
         )}
 
+        {/* No good match: nothing in the navigation or the searches fits. The question goes to the assistant instead. */}
+        {isEmpty && !isSearching && askable && (
+          <Spotlight.ActionsGroup label={t("navigation.assistant")}>
+            <Spotlight.Action
+              label={t("navigation.askAssistant", { query: question })}
+              leftSection={<IconMessageChatbot size={20} stroke={1.5} />}
+              onClick={() => handleNavigate(() => onAskAssistant?.(question))}
+            />
+          </Spotlight.ActionsGroup>
+        )}
         {isEmpty &&
+          !askable &&
           (isSearching ? (
             <Center py="md">
               <Loader size="sm" />
@@ -376,6 +397,11 @@ export const AppSpotlight = ({
               </Text>
             </Spotlight.Empty>
           ))}
+        {isEmpty && askable && isSearching && (
+          <Center py="md">
+            <Loader size="sm" />
+          </Center>
+        )}
       </Spotlight.ActionsList>
     </Spotlight.Root>
   );
