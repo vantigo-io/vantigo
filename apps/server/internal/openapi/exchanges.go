@@ -25,6 +25,16 @@ func init() {
 	// "+json" suffix fallback — the body-decoder lookup is exact. SCIM
 	// bodies are plain JSON on the wire, so reuse the JSON decoder.
 	openapi3filter.RegisterBodyDecoder("application/scim+json", openapi3filter.JSONBodyDecoder)
+	// The Assistant's run is a server-sent event stream, the one response in
+	// the contract that is not a document. Its body is text; the schema says
+	// string, and a test that wants the events parses them itself.
+	openapi3filter.RegisterBodyDecoder("text/event-stream", func(body io.Reader, _ http.Header, _ *openapi3.SchemaRef, _ openapi3filter.EncodingFn) (any, error) {
+		data, err := io.ReadAll(body)
+		if err != nil {
+			return nil, err
+		}
+		return string(data), nil
+	})
 }
 
 // Exchange is one request/response pair recorded from the .NET integration
