@@ -41,9 +41,11 @@ Ingenting kan utstedes før selskapet selv er beskrevet. Inntil da viser listen
 sier siden *Å endre fakturainnstillingene krever invoices:manage*). Under **Selgeren**
 krysser listen **Det som trengs for å utstede** av det som er fylt ut: **Juridisk
 navn**, **Organisasjonsnummer**, **Adresse**, **Postnummer**, **Poststed** og
-**Kontonummer**. En siste, informativ linje sier om e-post er satt opp — *E-post er satt
-opp (SMTP)* eller *E-post er ikke satt opp (SMTP), så dokumenter kan ikke sendes på
-e-post. Utstedelse trenger det ikke.*
+**Kontonummer**. En siste, informativ linje sier om utsending er satt opp — *Utsending er
+satt opp: dokumenter sendes fra kanalen som er valgt under Utsending* eller *Utsending er
+avslått, eller den valgte kanalen kan ikke sende, så dokumenter kan ikke sendes på e-post.
+Utstedelse trenger det ikke.* Hvor dokumentene sendes fra, velges på kortet **Utsending**,
+[lenger ned](#velge-hvor-dokumentene-sendes-fra).
 
 Fyll ut feltene og klikk **Lagre**:
 
@@ -1161,8 +1163,11 @@ bakgrunnen, ett om gangen. Hvert brev vurderes på nytt den dagen det går: dato
 — minst 14 dager fram — gebyret og renten er den dagens, ikke kjøringens, og et brev som
 ville gått etter midnatt, vurderes på nytt den nye dagen; en faktura som er
 betalt, satt på vent eller overlevert i mellomtiden, får ikke brevet, og brevet trekkes
-tilbake med årsaken. Brevet er en PDF, vedlagt en kort e-post på kundens språk, og svar går
-til e-postadressen i fakturainnstillingene. Et brev som mangler satser eller en gjennomgått
+tilbake med årsaken. Brevet er en PDF, vedlagt en kort e-post på kundens språk, sendt fra kanalen
+valgt under **Utsending**, og svar går til e-postadressen i fakturainnstillingene. Er
+utsendingen avslått, eller kan den valgte kanalen ikke sende, feiler forsøket med
+*Utsending er avslått i fakturainnstillingene, eller den valgte kanalen kan ikke sende.*, og
+brevet prøves på nytt når en kanal er valgt — innen de 48 timene etter at et brev som ikke kan gå, feiler. Et brev som mangler satser eller en gjennomgått
 regelordning, venter, og går når de er på plass. Et brev e-postserveren fortsetter å
 avvise, feiler etter 48 timer; det kan da sendes på nytt eller trekkes tilbake fra kortet
 **Purringer** ([brev](/en/reference/invoices/#letters),
@@ -1208,7 +1213,7 @@ en slik fil: **registrer betalingene uten KID for hånd først, og gjør så kj�
 Med `invoices:payments` åpner **Send purringer** forhåndsvisningen av en kjøring, avgrenset
 til kunden og forfallsdatoen listen er filtrert på. Den viser hvert brev slik det ville gått
 i dag: hva slags brev, hvordan det går og til hvem — på papir når kunden vil ha e-post men
-ikke har noen purreadresse, eller når denne installasjonen ikke kan sende e-post, sagt ved
+ikke har noen purreadresse, eller når utsendingen er avslått eller den valgte kanalen ikke kan sende, sagt ved
 siden av — fristen, totalen med gebyr, kompensasjon og renter, og hvorfor det krever mindre
 enn det kunne. Alle brevene er valgt fra start; fjern krysset for dem som ikke skal sendes.
 Under dem står fakturaene som ikke får brev i dag, med årsaken, og over dem advarslene: en
@@ -1395,8 +1400,31 @@ kortet sier det. Når to kunder slås sammen, vinner den strengeste regelen.
 
 ## Sende et dokument på e-post
 
+### Velge hvor dokumentene sendes fra
+
+Dokumenter og purrebrev går til kundene dine fra **en kanal du velger**, aldri fra
+e-postserveren administratoren har satt opp for Vantigos egen e-post. Åpne
+**Fakturainnstillinger** og finn kortet **Utsending**, **Dokumenter og purringer sendes
+fra**: en liste med hver e-postkanal i [Kommunikasjon](/nb/user/communications/#sett-opp-en-kanal)
+— navnet, adressen og et merke med leverandøren, **SMTP** eller **Microsoft 365** — og
+**Avslått**. Velg en og klikk **Lagre** sammen med resten av innstillingene (det krever
+`invoices:manage`, som resten av siden).
+
+- En kanal merket **Kan ikke sende** — en SMTP-kanal uten lagret legitimasjon, eller en
+  Microsoft 365-kanal mens leverandøren er av — vises, men kan ikke velges på nytt. En som
+  allerede er valgt, blir stående valgt, og sender ingenting før den er reparert.
+- En kanal som er deaktivert eller borte, står som **Avslått – kanalen finnes ikke lenger**.
+  Ingenting sendes før du velger en annen; innstillingen endres aldri bak ryggen din.
+- **Avslått**, som en ny installasjon starter med, sender ingenting på e-post: knappen
+  **Send** finnes ikke, og en kunde som vil ha purringer på e-post, får brev på papir i
+  stedet. Å utstede trenger aldri en kanal, og å sende som EHF er en egen innstilling.
+- Finnes det ingen kanaler ennå, sier kortet det og peker til **Kanaler** i Kommunikasjon.
+
+### Sende
+
 Åpne en utstedt faktura eller kreditnota og klikk **Send**. Knappen krever
-`invoices:issue` og en installasjon med e-post satt opp; uten SMTP finnes den ikke.
+`invoices:issue` og en kanal valgt under **Utsending** som kan sende; ellers finnes
+knappen ikke, og innstillingssiden sier det.
 
 Dialogen **Send på e-post** åpnes med **Mottaker** forhåndsutfylt fra kundens
 faktura-e-post i faktureringsprofilen — adressen slik den er i dag, ikke slik den var
@@ -1415,8 +1443,8 @@ eller papir. Ingen av dem stopper sendingen. På en faktura som er delvis betalt
 kreditert, sier en merknad at e-posten bare ber om det utestående beløpet; på en som er
 gjort opp, at den sier det ikke er noe å betale.
 
-Klikk **Send**. E-posten går med en gang, med den lagrede PDF-en vedlagt og en kort,
-ren tekst — *Faktura 1001 fra <selger>* eller *Invoice 1001 from <selger>* på kjøperens
+Klikk **Send**. E-posten går med en gang, fra den valgte kanalens adresse under selgerens
+navn, med den lagrede PDF-en vedlagt og en kort, ren tekst — *Faktura 1001 fra <selger>* eller *Invoice 1001 from <selger>* på kjøperens
 språk — som ber om utestående beløp til selgerens konto, merket med fakturaens KID når den har
 en og med nummeret ellers; svar går til e-posten i
 innstillingene ([tekstene](/en/reference/invoices/#sending-a-document)). En melding
@@ -1426,11 +1454,13 @@ bekrefter *Sendt til …*, og kortet **Leveringer** på dokumentet får en rad m
 
 En sending avvises når kunden er anonymisert (*Kunden er anonymisert, og det sendes ikke
 mer til den*), når det ikke finnes noen adresse, når dokumentlageret er utilgjengelig,
-eller etter mer enn 60 sendinger på ti minutter fra ett sted. Bekrefter e-postserveren
-ikke sendingen, sier dialogen *E-postserveren bekreftet ikke sendingen. Ingenting ble
+eller etter mer enn 60 sendinger på ti minutter fra ett sted. Er utsendingen avslått, eller
+kan den valgte kanalen ikke sende, sier dialogen *Utsending er avslått i
+fakturainnstillingene, eller den valgte kanalen kan ikke sende.* — velg en kanal som over.
+Bekrefter e-postserveren ikke sendingen, sier dialogen *E-postserveren bekreftet ikke sendingen. Ingenting ble
 registrert; den kan likevel ha kommet fram. Sjekk med kunden før du sender på nytt.* En
 rad under **Leveringer** betyr at e-postserveren tok imot e-posten, ikke at den kom
-fram: en retur går til installasjonens avsenderadresse og registreres ikke her. Samme
+fram: en retur går til kanalens egen postboks og registreres ikke her. Samme
 dokument kan sendes på nytt, og loggføres da på nytt.
 
 ## Sende som EHF

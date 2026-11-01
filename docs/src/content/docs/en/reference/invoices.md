@@ -7,6 +7,7 @@ sources:
   - openapi/invoices.yaml
   - apps/server/internal/db/migrations/00078_invoices_energy.sql
   - apps/server/internal/db/migrations/00079_invoices_billing_runs.sql
+  - apps/server/internal/db/migrations/00096_invoices_send_channel.sql
 ---
 The Invoices module issues the sales document of Norwegian bookkeeping: a draft
 becomes a numbered, immutable invoice or credit note, rendered to a PDF that is stored
@@ -123,7 +124,7 @@ registration in the day's CSV — it is told in the business time zone too.
 
 | Table | What it holds |
 | --- | --- |
-| `invoices.settings` | One row: the seller record (legal name, organisation number, VAT registration, Foretaksregisteret, address, bank account, IBAN/BIC, e-mail, footer), the default terms and currency, `series_start`, the seller's Peppol id `peppol_id`, the KID agreement `kid_length` and `kid_algorithm` (a pair or both NULL, `ck_settings_kid`), the VAT code each kind of work is invoiced at — `work_vat_code_hours`, `work_vat_code_expenses`, `work_vat_code_milestones`, each a code that exists, all 1 (`3`, 25 %) by default — the two codes an energy line takes by its hint, `energy_vat_code` (1) and `energy_vat_code_exempt` (10 where 5N was seeded, else 5), foreign keys `ON DELETE RESTRICT` ([VAT codes for energy](#vat-codes-for-energy)) — and the timesheet's default `timesheet_default` (off) and person label `timesheet_person_label` (`initials`, the default, `number` or `name`). |
+| `invoices.settings` | One row: the seller record (legal name, organisation number, VAT registration, Foretaksregisteret, address, bank account, IBAN/BIC, e-mail, footer), the default terms and currency, `series_start`, the seller's Peppol id `peppol_id`, the KID agreement `kid_length` and `kid_algorithm` (a pair or both NULL, `ck_settings_kid`), the VAT code each kind of work is invoiced at — `work_vat_code_hours`, `work_vat_code_expenses`, `work_vat_code_milestones`, each a code that exists, all 1 (`3`, 25 %) by default — the two codes an energy line takes by its hint, `energy_vat_code` (1) and `energy_vat_code_exempt` (10 where 5N was seeded, else 5), foreign keys `ON DELETE RESTRICT` ([VAT codes for energy](#vat-codes-for-energy)) — the timesheet's default `timesheet_default` (off) and person label `timesheet_person_label` (`initials`, the default, `number` or `name`) — and `send_channel` (`uuid`, NULL), the id of the Communications channel documents and reminder letters are [sent from](#the-sending-channel), NULL meaning Disabled, with **no foreign key** across schemas (rule 4). |
 | `invoices.counters` | The one counter row, `documents`; it exists exactly when something has been issued. |
 | `invoices.vat_codes` | The tenant's codes: label, name, SAF-T code, UNCL5305 category, exemption reason, active. |
 | `invoices.vat_code_rates` | Each code's rates as dated periods that never overlap (an exclusion constraint). A rate change is a new period, not a new code. |
@@ -2261,6 +2262,51 @@ golden documents (`apps/server/internal/invoices/ehf/testdata/golden`); hand-tam
 documents under `testdata/invalid`, with a manifest of the rule ids each must trip, hold
 the pre-check to the same ids.
 
+## The sending channel
+
+Documents and reminder letters go to **customers**, in the tenant's name, so they leave
+through a Communications channel an Owner chose and **never on the installation's `SMTP_*`
+credentials** — the system mailbox, which writes to the tenant's own employees
+(integrations design T4–T6; [module boundaries](/en/contributing/module-boundaries/) rule 17).
+The seam is `contracts.OutboundMail` ([Communications](/en/reference/communications/#customer-mail-from-other-modules)),
+`Deps.OutboundMail`, called through the accessors in `contractscalls.go`, outside any lock
+and recorded by the lock-rule tests as `OutboundMail.Channels`, `.Channel` and `.Send`.
+
+`invoices.settings.send_channel` stores the choice (migration
+`00096_invoices_send_channel.sql`, no foreign key). `GET /settings` and `PUT /settings`
+carry it:
+
+- **`sendChannel`** — the stored id, or null (Disabled). On `PUT` it is **optional and
+  nullable**: absent keeps the stored one, so a client that predates it does not disable
+  sending by leaving it out; `null` is Disabled; an id must be a channel that exists
+  (`OutboundMail.Channel` does not answer `ErrChannelUnknown`; the check is made before
+  the settings' transaction opens), else a 400 on `sendChannel` — **unless it is the stored
+  one**, so a setting whose channel has since gone can still be saved. A value that is not
+  a UUID is the same 400. It is judged under the settings' own rule (`invoices:manage`
+  with its revision); the row is read again under the lock and a request that left it
+  out keeps what the lock saw.
+- **`sendChannelState`** (response) — what the stored id is now: `disabled`; `ready` (the
+  channel can send); `unavailable` (it exists but cannot send — its provider is off, or
+  an SMTP channel has no credentials); `gone` (no active channel has the id, or
+  Communications is off).
+- **`sendChannels`** (response) — the choices: the active mail channels as
+  `OutboundMail.Channels` lists them, `{id, address, displayName, provider,
+  providerDisplayName, available}`. Names and addresses, which any module may read; no
+  Communications permission is involved.
+
+**`mailAvailable`** — what `GET /meta` answers, and what `capabilities.canSend` and the
+reminder runs' choice between e-mail and paper key on — is now **a channel is chosen and
+`OutboundMail.Channel` answers it available**. Disabled, `gone`, `unavailable`, an error
+reading either, and a nil slot (Communications off) all answer false: a document is never
+sent on a guess. The words are one sentence everywhere: **"Sending is disabled in Invoice
+settings, or the chosen channel cannot send."** — the send's 503 detail and the reminder
+worker's `last_error` (`reasonMailUnavailable`).
+
+A channel that goes away is not repaired for the Owner: Communications never writes this
+module's settings, so the setting reads `gone` and the module behaves as Disabled until an
+Owner chooses again. EHF is untouched by all of this: it has its own switch and access
+point.
+
 ## Sending a document
 
 `POST /invoices/{id}/send` e-mails an issued document's **stored PDF** — an invoice's or
@@ -2268,10 +2314,10 @@ a credit note's — to the customer, now, and logs it. It is synchronous: no out
 worker, and a failure is the caller's to see. It needs `invoices:issue`
 ([Permissions](#permissions)); the body is `{recipient?}`. In order:
 
-1. **503 `mail_unavailable`** when the installation's mail driver is not `smtp`, judged
-   before anything is read. The `log` driver delivers nothing and is allowed only in
-   development ([email delivery](/en/admin/authentication/#email-delivery)), so this
-   is a development installation's answer.
+1. **503 `mail_unavailable`** when [sending is disabled or the chosen channel cannot
+   send](#the-sending-channel), judged before anything is read. The detail is *Sending is
+   disabled in Invoice settings, or the chosen channel cannot send.* The channel read here
+   is the one the send goes out on.
 2. 404; 409 `invoice_draft` on a draft.
 3. **409 `customer_anonymised`** when this module has anonymised the document's customer
    (the marker, below): a person who has been anonymised is not written to again, at an
@@ -2291,8 +2337,8 @@ worker, and a failure is the caller's to see. It needs `invoices:issue`
    otherwise read and verified against its hash, so a send never attaches bytes the store
    does not hold — 503 `storage_unavailable`, and a 500 for a stored object gone or
    altered or a document that cannot be rendered, as `GET /{id}/pdf` answers.
-6. **The envelope.** From is the installation's `SMTP_FROM` under the display name of
-   the document's **seller snapshot** — the legal name the PDF prints. **Reply-To is the
+6. **The envelope.** From is the **chosen channel's address** (Communications sets it)
+   under the display name of the document's **seller snapshot** — the legal name the PDF prints. **Reply-To is the
    current settings' e-mail** — replies should reach today's mailbox, not the one the
    document was issued under — and there is none when the settings have none (the
    platform's `mail.Outbound.ReplyTo`). To is the recipient, alone. The Message-ID is a
@@ -2300,8 +2346,10 @@ worker, and a failure is the caller's to see. It needs `invoices:issue`
    the download's own name — `faktura-1001.pdf`, `invoice-1001.pdf`,
    `kreditnota-1002.pdf`, `credit-note-1002.pdf`. The body is plain text in the
    document's language, below: no HTML, no logo, no template, no personal message.
-7. **The send**, through the platform's guarded SMTP client with the `SMTP_*`
-   configuration. **A failure is 502 `mail_failed` and records nothing** but a pay link
+7. **The send**, through `OutboundMail.Send` on the chosen channel — an SMTP channel's own
+   credentials or a Microsoft 365 mailbox, both through Communications; never the
+   installation's `SMTP_*`. **A failure is 502 `mail_failed` and records nothing** — an
+   `ErrChannelUnavailable` that appears between step 1 and the send is a failure here too — but a pay link
    step 4 made; its detail says
    the mail may still have been delivered if the server timed out, so check before
    sending again. The error is logged at warn with the document id and never put on the
@@ -2331,14 +2379,13 @@ be a person's being anonymised at that moment: the mail went, and the operator i
 **Re-sending.** Sending twice is allowed and logged twice: a re-send is a legitimate act.
 No suppression list is read — `communications.suppressions` is another module's table
 ([module boundaries](/en/contributing/module-boundaries/), rule 4). **A bounce goes to the envelope
-sender**, the installation's `SMTP_FROM`, not to the seller's Reply-To, and Vantigo
+sender**, the channel's address, not to the seller's Reply-To, and Vantigo
 records none: a delivery row means the mail server accepted the mail, not that it
-arrived. Point `SMTP_FROM` at a mailbox someone reads if bounces matter
-([deploy/compose/README.md](https://github.com/vantigo-io/vantigo/blob/main/deploy/compose/README.md)). There is no bulk send.
+arrived. Point the channel at a mailbox someone reads if bounces matter. There is no bulk send.
 
 **The rate limit.** 60 sends per client per 10 minutes (the policy `invoices-send`):
 with an arbitrary override the endpoint is an authenticated relay through the
-installation's SMTP server, and a limit is cheap. It is counted per client IP address —
+chosen channel, and a limit is cheap. It is counted per client IP address —
 an office behind one NAT shares one budget — before the access check, so every request
 to the endpoint counts, a refused one too. Over it is a 429 in the limiter's shape
 everywhere in Vantigo — `application/json` `{"error": {"code": "rate_limited",
@@ -3550,7 +3597,7 @@ freshness and the list's warnings. It takes the list's `customerId` and `dueBefo
 customer's billing profile, read through the directory once per customer: `paper` when
 `reminderDelivery` says paper; otherwise e-mail to `reminderEmail` — paper with
 **`reminder_email_missing`** when there is no address, paper with **`mail_unavailable`**
-when this installation cannot send e-mail (`MAIL_DRIVER` is not `smtp`).
+when [sending is disabled or the chosen channel cannot send](#the-sending-channel).
 
 **The run** (`dryRun: false`) takes `items` — 1 to 500, each an invoice once with the
 `action` its preview showed — and `acknowledgeStaleImport`. Refused in order:
@@ -3736,8 +3783,14 @@ and its day in the business time zone, read once for the claim and before it, it
    stalled past the lease and another actor moved it — is left as that actor left it,
    and the worker logs it at warn.
 
+**The mail goes through the chosen channel** — `OutboundMail.Send` under the send's
+timeout, never on the installation's `SMTP_*` — and **a letter with sending disabled, or
+a chosen channel that cannot send, fails its attempt** with the sentence *Sending is
+disabled in Invoice settings, or the chosen channel cannot send.* ([the sending
+channel](#the-sending-channel)); it is judged again each time it comes due.
+
 **A failed attempt** — the store (or no store configured), the settings unreadable, the
-send, a lease run short, a render — counts the attempt, records in `last_error` a fixed
+sending disabled, the send, a lease run short, a render — counts the attempt, records in `last_error` a fixed
 sentence naming which step failed (never the mail server's or the store's own words,
 which may quote the address), and **clears the lease and the facts**, so the
 letter is not "being sent" and may be withdrawn again, and is due again after
@@ -4999,8 +5052,7 @@ is owed, and a wrong one is corrected only by a removal that stays on record.
 **Sending is under `invoices:issue`**: whoever may create bookkeeping material may hand
 it over, and a reader with `invoices:access` alone may download it, as before, and sees
 each send's time and subject but not its address. Sending also needs an installation
-that can send — `MAIL_DRIVER=smtp` and the `SMTP_*` configuration
-([email delivery](/en/admin/authentication/#email-delivery)). `GET /meta` answers
+that can send — a channel chosen under [the sending channel](#the-sending-channel) that can send. `GET /meta` answers
 `mailAvailable`, `capabilities.canSend` — `invoices:issue` and `mailAvailable` — and
 `capabilities.canRegisterPayments`, so no client re-derives either rule. It answers
 `remindersEnabled`, the reminder settings' switch, and `capabilities.canRunReminders`,

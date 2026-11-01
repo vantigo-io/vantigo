@@ -1,10 +1,11 @@
 ---
 title: Calendar
-description: Turning Calendar on and giving people its two permissions; what invitations to people outside the company need — the SMTP driver, a sending domain with SPF, DKIM and DMARC, the public host and its routes; the calendar feed on the public host, its rate limit and the proxy's log; the cancellations, subscriptions and mailbox sync workers and their settings, and what Vantigo fetches from the internet; how to check that an invitation went and that the feed answers, and what can go wrong.
+description: Turning Calendar on and giving people its three permissions; what invitations to people outside the company need — a channel chosen in the Calendar settings, a sending domain with SPF, DKIM and DMARC, the public host and its routes; the calendar feed on the public host, its rate limit and the proxy's log; the cancellations, subscriptions and mailbox sync workers and their settings, and what Vantigo fetches from the internet; how to check that an invitation went and that the feed answers, and what can go wrong.
 sidebar:
   order: 45
 sources:
   - apps/server/internal/calendar/invitations.go
+  - apps/server/internal/calendar/settings.go
   - apps/server/internal/calendar/rsvp.go
   - apps/server/internal/calendar/cancellations_worker.go
   - apps/server/internal/calendar/module.go
@@ -33,10 +34,14 @@ a person does on its screens is in [the user guide](/en/user/calendar/).
 - The migrations create the `calendar` schema whether or not the module is enabled, so
   turning it on later needs no migration. A least-privilege application role needs the
   `calendar` schema granted like every other ([Installation](/en/admin/installation/)).
-- Calendar has no workspace settings of its own: each person's calendar addresses and
-  subscriptions are theirs, on their **My calendar** screen. Its two permissions are `calendar:access`, to use
-  it, and `calendar:view-colleagues`, to see colleagues' busy and free times, which a
-  workspace that wants everyone to see each other's grants to the employee role
+- Calendar has **one workspace setting**: the channel invitations to people outside the
+  company are sent from ([below](#invitations-to-people-outside-the-company)). The rest is
+  each person's own — their calendar addresses and subscriptions, on their **My calendar**
+  screen. Its three permissions are `calendar:access`, to use it; `calendar:view-colleagues`,
+  to see colleagues' busy and free times, which a workspace that wants everyone to see each
+  other's grants to the employee role; and `calendar:manage`, to choose the channel —
+  sensitive, because it decides whose address customers' mail comes from, and held by
+  Owners; delegate it to someone who administers the company's mail
   ([Permissions](/en/reference/calendar/#permissions)).
 
 ## Enable the module
@@ -56,32 +61,45 @@ address typed in. Each is sent an invitation by mail, one message per person, in
 layout Gmail, Outlook and Apple Mail show their own **Yes / Maybe / No** buttons for,
 with a link to answer by that lands the answer in Vantigo
 ([invitations](/en/reference/calendar/#invitations)). Colleagues on an appointment are
-mailed a short notice through identity instead. Both go through the installation's own
-mail configuration; nothing here has a setting of its own.
+mailed a short notice through identity instead. The two leave by different routes:
+the colleagues' notice is the system mailbox's — the installation's own `SMTP_*`
+configuration, for your own employees ([Email delivery](/en/admin/authentication/#email-delivery)) —,
+while an invitation to someone outside goes **through a Communications channel an Owner
+chose**, and never on those credentials.
 
 ### Preconditions
 
-1. **The SMTP driver.** `MAIL_DRIVER=smtp` with `SMTP_HOST`, `SMTP_FROM` and the rest of
-   [Email delivery](/en/admin/authentication/#email-delivery). Under any other driver an
-   outside attendee is stored but never mailed: the sheet shows them as **Not sent**,
-   with the note "Invitations by mail are not set up on this installation", the log
-   says `calendar: invitations not sent: the mail driver is not smtp`, `GET /api/v1/calendar/meta` answers
-   `invitationsAvailable: false`, and **Resend** answers 503 `invitations_unavailable`.
-2. **A sending domain with SPF, DKIM and DMARC.** Every invitation is sent **from
-   `SMTP_FROM`**, under the organiser's name, and names `SMTP_FROM` as its organiser
-   (`ORGANIZER`) — the one arrangement no mail client refuses; the organiser's own
-   address is never used. So `SMTP_FROM` must be an address on a domain you control
-   whose SPF record names your SMTP server, whose mail the server signs with DKIM, and
-   which publishes a DMARC policy the two align with. The reason is Google's: since 2022
+1. **A channel, chosen.** Set up a mail channel in Communications that can send — an SMTP
+   channel with its credentials, or a Microsoft 365 shared mailbox
+   ([Set up a channel](/en/user/communications/#set-up-a-channel)) — and, as someone who
+   holds `calendar:manage`, choose it under **Invitations to people outside the company →
+   Sent from** on the Calendar app's **My calendar** screen
+   (`PUT /api/v1/calendar/invitation-settings`). **Off is where an installation starts.**
+   While no channel is chosen, or the chosen one has been deactivated or cannot send (an
+   SMTP channel without credentials, a Microsoft 365 channel while its provider is off), an
+   outside attendee is stored but never mailed: the sheet shows them as **Not sent**, with
+   the note "Invitations by mail are not set up on this installation", the log says
+   `calendar: invitations not sent: invitations are off, or the chosen channel cannot send`,
+   `GET /api/v1/calendar/meta` answers `invitationsAvailable: false`, and **Resend** answers
+   503 `invitations_unavailable`. The mail driver and `SMTP_*` have no part in it.
+2. **A sending domain with SPF, DKIM and DMARC.** Every invitation is sent **from the
+   channel's address**, under the organiser's name, and names that address as its
+   organiser (`ORGANIZER`) — the one arrangement no mail client refuses; the organiser's
+   own address is never used. So the channel's address must be on a domain you control
+   whose SPF record names the channel's server, whose mail is signed with DKIM, and
+   which publishes a DMARC policy the two align with — a Microsoft 365 mailbox on your own
+   domain sends already authenticated. The reason is Google's: since 2022
    Google Calendar by default adds an invitation to the invitee's calendar **only when
    the sender is known**, and an unauthenticated sender is not — the invitation then
    waits in the mail until the person clicks in it, or lands as spam, and the buttons
-   may not show at all. A mail server's own name, or a free-mail address, as `SMTP_FROM`
-   will not pass.
-3. **A mailbox behind `SMTP_FROM`**, or a sink. When an invitee presses a client's own
-   button, the client mails its answer (`METHOD:REPLY`) to the organiser — that is, to
-   `SMTP_FROM`. Vantigo does not read that mailbox: the answer that counts is the one
-   given through the link, which the invitation asks for. Let the mailbox accept and
+   may not show at all. A mail server's own name, or a free-mail address, as the channel's
+   address will not pass.
+3. **A mailbox behind the channel's address**, or a sink. When an invitee presses a
+   client's own button, the client mails its answer (`METHOD:REPLY`) to the organiser —
+   that is, to the channel's address. Vantigo does not read that answer as an answer: the
+   one that counts is the one given through the link, which the invitation asks for. On a
+   Microsoft 365 channel the mail arrives in the shared mailbox and is imported into
+   Communications' inbox like any other; on an SMTP channel let the mailbox accept and
    discard, or let someone glance at it; do not let it bounce.
 4. **`PUBLIC_BASE_URL`, for people outside your network.** The answer link is
    `PUBLIC_BASE_URL/rsvp?token=…` when `PUBLIC_BASE_URL` is set, and
@@ -124,9 +142,9 @@ Outlook sync's [change notifications](#the-mailbox-sync-worker).
    **Attendees → By email**, add an address of yours at Gmail or Outlook.com — outside
    your own domain, so the check is what a customer sees. Save.
 2. **The attendee row.** Open the appointment again: the row shows
-   **Invited** and today's date (**Invited 3 Nov 2026**). **Sending failed** means the SMTP server refused or did not answer; see
+   **Invited** and today's date (**Invited 3 Nov 2026**). **Sending failed** means the channel's server refused or did not answer; see
    below.
-3. **The mail.** It arrives from `SMTP_FROM` under your name, titled
+3. **The mail.** It arrives from the channel's address under your name, titled
    `Invitation: <title> · <day>` (`Invitasjon: …` when your profile's preferred language is Norwegian),
    with the client's own buttons and an `invite.ics`
    attachment. In Gmail, **Show original** should say `SPF: PASS`, `DKIM: PASS` and
@@ -454,16 +472,17 @@ with nothing lost. Appointments keep their identifiers.
   gateway on the way stripped the `text/calendar` part. Ask them to answer by the link,
   which works in any client.
 - **The invitation is not on the invitee's Google calendar until they click in the
-  mail, or it lands as spam.** `SMTP_FROM`'s domain fails SPF, DKIM or DMARC alignment,
+  mail, or it lands as spam.** The channel address's domain fails SPF, DKIM or DMARC alignment,
   or is unknown to the invitee. Check **Show original** in Gmail and fix the domain's
   records.
 - **Outlook drops the invitation without a trace.** The invitee's address is
-  `SMTP_FROM` itself: Outlook discards an invitation whose organiser is the recipient.
+  the channel's own: Outlook discards an invitation whose organiser is the recipient.
   Invite another address.
-- **Every attendee shows Not sent.** `MAIL_DRIVER` is not `smtp`; the sheet says so.
-  Set it, restart, then **Resend** each, or change the appointment's time or place,
-  which mails everyone.
-- **Sending failed** on an attendee. The SMTP server refused or did not answer — the log
+- **Every attendee shows Not sent.** Invitations are off: no channel is chosen under
+  **Invitations to people outside the company**, or the chosen one was deactivated or
+  cannot send; the sheet says so. Choose a channel that can send, then **Resend** each, or
+  change the appointment's time or place, which mails everyone.
+- **Sending failed** on an attendee. The channel's server refused or did not answer — the log
   has the reason — or the attendee is a contact whose address was removed in Customers,
   or who has been anonymised there (the row then shows **A contact**). Fix the cause and
   press **Resend**; a contact with no address must be given one in Customers first.
@@ -478,7 +497,7 @@ with nothing lost. Appointments keep their identifiers.
 - **Invitees are refused with 429.** `TRUSTED_PROXY_HOPS` and `TRUSTED_PROXY_CIDRS` are
   not set, so every invitee shares the proxy's address and its one bucket.
 - **"I answered with the buttons, and the organiser sees no answer."** The buttons mail
-  `SMTP_FROM`, which Vantigo does not read. Answer with the link.
+  the channel's address, which Vantigo does not read as an answer. Answer with the link.
 - **A cancelled appointment is still there.** Its last day has not passed, or the worker
   is off (`CALENDAR_CANCELLATIONS_ENABLED=0`).
 - **`CALENDAR_WORKERS_POLL` refused at start.** It is not a duration, or is under a

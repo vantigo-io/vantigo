@@ -862,24 +862,22 @@ hatch. A destination reached only through DNS64 on the local-use prefix
 an embedded address from); a resolver on the well-known `64:ff9b::/96` prefix
 works as normal.
 
-Invoices sends through the same configuration: a document e-mailed to a customer goes
-out from `SMTP_FROM`, under the seller's name and with the seller's e-mail as Reply-To,
-through this SMTP server and its guard ([Invoices](/en/reference/invoices/#sending-a-document)).
-Under `MAIL_DRIVER=log` nothing can be sent that way: the send answers 503
-`mail_unavailable`, and `GET /invoices/meta` answers `mailAvailable: false`.
+This is the **system mailbox**: identity's invitations and password resets, Staff's notices
+and the notice Calendar mails a colleague on an appointment, through identity, at the
+address identity holds. It writes to the tenant's **own employees** and to nobody else.
+**Mail to customers never takes these settings.** Invoices' documents and reminder
+letters, and Calendar's invitations to people outside the company, go out from a
+Communications channel an Owner chose — in Invoice settings, and in the Calendar
+settings —, and are not sent at all while that setting is Disabled, whatever `MAIL_DRIVER`
+is ([Invoices](/en/reference/invoices/#the-sending-channel),
+[Calendar](/en/admin/calendar/#invitations-to-people-outside-the-company)). An invitation
+that Gmail is to put on the invitee's calendar needs the channel's domain to pass SPF,
+DKIM and DMARC.
 
-Calendar sends through it too. An invitation to someone outside the company goes out
-from `SMTP_FROM` under the organiser's name, with `SMTP_FROM` as the invitation's
-organiser, and a colleague on an appointment is mailed a notice by identity at the
-address identity holds; under any driver but `smtp` no invitation is sent and
-`GET /calendar/meta` answers `invitationsAvailable: false`. An invitation that Gmail is
-to put on the invitee's calendar needs `SMTP_FROM`'s domain to pass SPF, DKIM and DMARC
-([Calendar](/en/admin/calendar/#invitations-to-people-outside-the-company)).
-
-This is identity's application mail, and Invoices' and Calendar's. Communications' per-channel
-mailbox credentials are a different thing entirely — configured through the
-Communications API and sealed at rest, never environment variables. See
-[Communications](/en/reference/communications/).
+Communications' per-channel mailbox credentials are a different thing entirely —
+configured through the Communications API and sealed at rest, never environment
+variables — and a channel without them is **Unavailable**, not a channel that falls back
+on this configuration. See [Communications](/en/reference/communications/).
 
 ## Key material
 
@@ -949,7 +947,7 @@ summary. Booleans are strict `0`/`1` switches — anything else fails startup.
 | `MAIL_DRIVER` | `smtp`, or `log` (development only) | `log` in development, else `smtp` |
 | `SMTP_HOST` | SMTP server | required for `smtp` |
 | `SMTP_PORT` | SMTP port | `587` |
-| `SMTP_FROM` | Sender mailbox | required for `smtp` |
+| `SMTP_FROM` | The system mailbox's sender, for mail to your own employees | required for `smtp` |
 | `SMTP_USERNAME` / `SMTP_PASSWORD` | Optional credentials | unset |
 | `SMTP_TLS` | `starttls`, `implicit` or `none` | `starttls` |
 

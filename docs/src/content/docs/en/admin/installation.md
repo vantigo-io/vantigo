@@ -175,8 +175,8 @@ and the recovery.
 - **`DATABASE_URL`** — built by `compose.yaml` from the values in `.env`, with a
   different role per service, so do not set it in `vantigo.env` too. See
   [Database roles](#database-roles).
-- **`SMTP_HOST`, `SMTP_FROM`** (`vantigo.env`) — required for the server to start at
-  all. `SMTP_FROM` is parsed as a plain address: `no-reply@example.com` is accepted,
+- **`SMTP_HOST`, `SMTP_FROM`** (`vantigo.env`) — the system mailbox, which writes to your
+  own employees; required for the server to start at all. `SMTP_FROM` is parsed as a plain address: `no-reply@example.com` is accepted,
   `Vantigo <no-reply@example.com>` is rejected at startup. `SMTP_PORT` defaults to
   587, `SMTP_USERNAME` and `SMTP_PASSWORD` are optional, and `SMTP_TLS` is `starttls`
   by default (`implicit` also negotiates TLS; `none` is plaintext). Leave
@@ -526,13 +526,24 @@ own content security policy instead of the application's; see
 
 ## Email and observability
 
-Identity invitations and password recovery use the `MAIL_DRIVER` and `SMTP_*`
-settings. Per-mailbox delivery credentials for the Communications module are
-configured through the Communications API, where the host, port and a protected
-password are stored as mailbox credentials — there is no environment variable for
-them. A channel can instead send from a Microsoft 365 shared mailbox, with no credential
-of its own, once the Microsoft Entra ID module's **Mail channels** are set up
-([Mail channels](/en/admin/entra/#mail-channels)); there is no other provider. See
+**Two kinds of mail, two routes.** The installation's own mail — `MAIL_DRIVER` and
+`SMTP_*` — is the **system mailbox**: it writes to the tenant's **own employees**, never
+to its customers. Identity's invitations and password recovery, Staff's notices and the
+notices Calendar sends a colleague go out that way, and nothing else does. **No channel,
+document or invitation ever uses it.**
+
+Mail to **customers** goes through a channel an Owner chose. Invoices' documents and
+reminder letters, and Calendar's invitations to people outside the company, each go out
+from a Communications channel named in that module's own settings — **Sending** in
+Invoice settings, **Invitations to people outside the company** in the Calendar settings —,
+or not at all while the setting is **Disabled**, which is where an installation starts
+([Customer mail from other modules](/en/reference/communications/#customer-mail-from-other-modules)).
+A channel's own credentials are configured through the Communications API, where the host,
+port and a protected password are stored as mailbox credentials — there is no environment
+variable for them — and a channel with none is **Unavailable** and sends nothing: it does
+not fall back on `SMTP_*`. A channel can instead send from a Microsoft 365 shared mailbox,
+with no credential of its own, once the Microsoft Entra ID module's **Mail channels** are
+set up ([Mail channels](/en/admin/entra/#mail-channels)); there is no other provider. See
 [Communications](/en/reference/communications/#providers).
 
 The Projects and Time modules need no environment variable of their own; see
@@ -667,12 +678,11 @@ answers 503. An installation that lists `MODULES` explicitly gets Invoices only 
 `invoices:payments` — registering and removing payments — which no built-in role
 holds; Owner has it through the wildcard, and everyone else needs a role that grants
 it. Sending a document by e-mail is under `invoices:issue`, so every role holding
-`invoices:issue` can send from this release. It goes through the same `SMTP_*`
-configuration as identity's mail ([Email and observability](#email-and-observability)):
-an installation without a working SMTP server cannot send invoices, and one on
-`MAIL_DRIVER=log` (development only) answers every send with 503. A bounce goes to
-the envelope sender, `SMTP_FROM`, not to the seller's Reply-To, and Vantigo records
-none: point `SMTP_FROM` at a mailbox someone reads if bounces matter.
+`invoices:issue` can send from this release. It first went out through the same `SMTP_*`
+configuration as identity's mail; it no longer does — a document goes out from a
+channel an Owner chose ([the release where customer mail takes a channel](#upgrading),
+below). A bounce goes to the channel's address, not to the seller's Reply-To, and
+Vantigo records none: point the channel at a mailbox someone reads if bounces matter.
 
 Documents issued before this release to a Norwegian business carry no organisation
 number in their buyer snapshot — `buyer_foreign_id` reads `no…` instead — because the
@@ -830,6 +840,25 @@ until Vantigo writes one. Rolling back 00071 drops the stamps, so every picture 
 written to the tenant once more after the next upgrade; rolling back 00070 drops the
 managed avatars, so every user's own avatar is their picture again until Staff sets
 HR's photos anew. The photos in Staff's object store are untouched either way.
+
+**The release where customer mail takes a channel.** It brings
+`00096_invoices_send_channel.sql`, one empty column on Invoices' settings, and
+`00097_calendar_settings.sql`, Calendar's first workspace setting, one row with no channel,
+and one new permission, `calendar:manage` ("Manage Calendar settings", sensitive and
+delegable, which Owner holds through the wildcard). **After the upgrade Invoices and
+Calendar send nothing to customers until an Owner chooses a channel**: documents and
+reminder letters were sent from `SMTP_FROM` before, and invitations too; now **Sending**
+in Invoice settings and **Invitations to people outside the company** in the Calendar
+settings start at **Disabled**. Until then the **Send** button is not there, a customer
+who wants reminders by e-mail gets paper letters, and an outside attendee is stored as
+**Not sent**. An Owner sets up a channel in Communications and chooses it on both
+([Invoices](/en/user/invoices/#choosing-where-documents-are-sent-from),
+[Calendar](/en/user/calendar/#where-invitations-are-sent-from)); a reminder letter that
+could not go meanwhile is tried again within its 48 hours. A Communications **SMTP
+channel with no stored credentials** no longer sends on `SMTP_*` as a fall-back: it is
+**Unavailable**, and a message queued on it fails at once. Nothing is deleted by the
+upgrade, `SMTP_*` stays required for the system mailbox, and rolling the migrations back
+drops the two settings (the choices, not any mail).
 
 For a complete backup, one-migrator, token rotation and Owner break-glass runbook, see
 [SSO and SCIM operations](/en/admin/sso-scim/).

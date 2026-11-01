@@ -43,9 +43,10 @@ Open **Invoice settings** in the sidebar (shown only with `invoices:manage`; wit
 the page says *Changing the invoice settings needs invoices:manage*). Under **The
 seller**, the list **What issuing needs** ticks off what is filled in: **Legal name**,
 **Organisation number**, **Address**, **Postal code**, **City** and **Bank account**. A
-last, informative line says whether e-mail is set up — *Mail is configured (SMTP)* or
-*Mail is not configured (SMTP), so documents cannot be sent by e-mail. Issuing does
-not need it.*
+last, informative line says whether sending is set up — *Sending is set up: documents go
+out from the channel chosen under Sending* or *Sending is disabled, or the chosen channel
+cannot send, so documents cannot be sent by e-mail. Issuing does not need it.* Where
+documents are sent from is chosen on the **Sending** card, [below](#choosing-where-documents-are-sent-from).
 
 Fill in the fields and click **Save**:
 
@@ -1145,8 +1146,11 @@ background, one at a time. Each is judged again on the day it goes: its date, it
 — at least 14 days on — its fee and its interest are that day's, not the run's, and a
 letter that would leave after midnight is judged again on the new day; an invoice
 paid, put on hold or handed off meanwhile gets no letter, and the letter is withdrawn with
-the reason. The letter is a PDF, attached to a short e-mail in the customer's language,
-with replies going to your invoicing e-mail. A letter whose rates or regime review are
+the reason. The letter is a PDF, attached to a short e-mail in the customer's language, sent
+from the channel chosen under **Sending**, with replies going to your invoicing e-mail.
+When sending is disabled, or the chosen channel cannot send, the attempt fails with *Sending
+is disabled in Invoice settings, or the chosen channel cannot send.* and is tried again once
+a channel is chosen — within the 48 hours after which a letter that cannot go is failed. A letter whose rates or regime review are
 missing waits, and goes once they are in place. A letter the mail server keeps refusing
 fails after 48 hours; it can then be sent again or withdrawn from the **Reminders** card
 ([letters](/en/reference/invoices/#letters), [the worker](/en/reference/invoices/#the-worker)).
@@ -1190,7 +1194,8 @@ without a KID by hand first, then make the run**.
 With `invoices:payments`, **Send reminders** opens the preview of a run, narrowed to the
 customer and due date the list is filtered by. It shows every letter as it would go today:
 its kind, how it goes and to whom — on paper when the customer wants e-mail but has no
-reminder address, or when this installation cannot send e-mail, each said beside it — its
+reminder address, or when sending is disabled or the chosen channel cannot send, each said
+beside it — its
 deadline, its total with the fee, compensation and interest, and why it claims less than
 it might. Every letter is chosen to begin with; untick those not to send. Below them are
 the invoices that get no letter today, with why, and above them the warnings: a collection
@@ -1372,9 +1377,32 @@ merged the stricter policy wins.
 
 ## Sending a document by e-mail
 
+### Choosing where documents are sent from
+
+Documents and reminder letters go out to your customers from **a channel you choose**,
+never from the mail server the administrator set up for Vantigo's own mail. Open
+**Invoice settings** and find the **Sending** card, **Documents and reminders are sent
+from**: a list with each mail channel of [Communications](/en/user/communications/#set-up-a-channel)
+— its name, its address and a badge with its provider, **SMTP** or **Microsoft 365** — and
+**Disabled**. Choose one and click **Save** with the rest of the settings (it needs
+`invoices:manage`, like the rest of the page).
+
+- A channel marked **Cannot send** — an SMTP channel without stored credentials, or a
+  Microsoft 365 channel while its provider is off — is shown but cannot be chosen anew.
+  One that is already chosen stays selected, and sends nothing until it is mended.
+- A channel that has been deactivated, or is gone, reads **Disabled — the channel no longer
+  exists**. Nothing is sent until you choose another; the setting is never changed behind
+  your back.
+- **Disabled**, which is where a new installation starts, sends nothing by e-mail: the
+  **Send** button is not there, and a customer who wants reminders by e-mail gets paper
+  letters instead. Issuing never needs a channel, and sending as EHF is a separate setting.
+- With no channels yet the card says so and points to **Channels** in Communications.
+
+### Sending
+
 Open an issued invoice or credit note and click **Send**. The button needs
-`invoices:issue` and an installation with e-mail set up; without SMTP the button is not
-there, and the settings page says so.
+`invoices:issue` and a channel chosen under **Sending** that can send; otherwise the button
+is not there, and the settings page says so.
 
 The dialog **Send by e-mail** opens with the **Recipient** prefilled from the
 customer's invoice e-mail in their billing profile — the address as it is today, not as
@@ -1392,8 +1420,8 @@ None of them stops the send. On an invoice that is
 partly paid or credited a note says the e-mail asks only for the outstanding amount; on
 a settled one, that it says nothing is due.
 
-Click **Send**. The mail goes at once, with the stored PDF attached and a short plain
-text — *Faktura 1001 fra <seller>* or *Invoice 1001 from <seller>* in the buyer's
+Click **Send**. The mail goes at once, from the chosen channel's address under the seller's
+name, with the stored PDF attached and a short plain text — *Faktura 1001 fra <seller>* or *Invoice 1001 from <seller>* in the buyer's
 language — asking for the open amount to the seller's account, marked with the invoice's KID when
 it has one and with its number otherwise; replies go to the e-mail
 in the settings ([the texts](/en/reference/invoices/#sending-a-document)). A message
@@ -1403,11 +1431,13 @@ confirms *Sent to …*, and the **Deliveries** card on the document gains a row 
 
 A send is refused when the customer has been anonymised (*The customer has been
 anonymised and is not contacted again*), when there is no address, when the document
-store is unavailable, or after more than 60 sends in ten minutes from one place. If the
+store is unavailable, or after more than 60 sends in ten minutes from one place. When
+sending is disabled or the chosen channel cannot send, the dialog says *Sending is disabled
+in Invoice settings, or the chosen channel cannot send.* — choose a channel as above. If the
 mail server does not confirm the send, the dialog says *The mail server did not confirm
 the e-mail. Nothing was recorded; it may still have arrived. Check with the customer
 before sending again.* A row under **Deliveries** means the mail server accepted the
-mail, not that it arrived: a bounce goes to the installation's sender address and is not
+mail, not that it arrived: a bounce goes to the channel's own mailbox and is not
 recorded here. Sending the same document again is allowed and logged again.
 
 ## Sending as EHF

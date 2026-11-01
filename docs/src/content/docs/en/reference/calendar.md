@@ -1,6 +1,6 @@
 ---
 title: "Calendar module"
-description: "One person's calendar: the appointments the module owns, with recurrence, colleagues, customers' contacts and typed addresses on them and their answers; the invitations mailed to the people outside, the answer by link and the cancellation; the sources contract through which other modules project their rows; the window read in the viewer's zone; a colleague's busy and free; the dashboard's agenda; the calendar feed a phone subscribes to, in a full and a busy variant; the calendars from elsewhere a person subscribes to, fetched by a worker and parsed on read; the Outlook sync — a person's setting, the copies of their appointments and chosen items a worker writes to their Microsoft 365 mailbox through the MailboxCalendar slot, the reconcile, the write-back of their own edits, moves and deletes made in Outlook and of the events they make in the Vantigo calendar, the busy time read back from their Outlook calendar and the clean-up; the CalendarBusy contract the module provides to Planning; the permissions and the lock rules."
+description: "One person's calendar: the appointments the module owns, with recurrence, colleagues, customers' contacts and typed addresses on them and their answers; the invitations mailed to the people outside, the answer by link and the cancellation; the sources contract through which other modules project their rows; the window read in the viewer's zone; a colleague's busy and free; the dashboard's agenda; the calendar feed a phone subscribes to, in a full and a busy variant; the calendars from elsewhere a person subscribes to, fetched by a worker and parsed on read; the Outlook sync — a person's setting, the copies of their appointments and chosen items a worker writes to their Microsoft 365 mailbox through the MailboxCalendar slot, the reconcile, the write-back of their own edits, moves and deletes made in Outlook and of the events they make in the Vantigo calendar, the busy time read back from their Outlook calendar and the clean-up; the CalendarBusy contract the module provides to Planning; its one workspace setting, the channel invitations are sent from; the permissions and the lock rules."
 sources:
   - apps/server/internal/calendar
   - apps/calendar/frontend
@@ -14,6 +14,7 @@ sources:
   - apps/server/internal/db/migrations/00084_calendar_mailbox_writeback.sql
   - apps/server/internal/db/migrations/00086_calendar_mailbox_sync_mailbox.sql
   - apps/server/internal/db/migrations/00087_calendar_mailbox_sync_claim.sql
+  - apps/server/internal/db/migrations/00097_calendar_settings.sql
 ---
 The Calendar module is one view of every time-bound thing Vantigo knows about one
 person — the follow-ups Customers holds for them, their absences in Staff, their tasks in
@@ -30,8 +31,10 @@ business day through `contracts.BusinessCalendar`, which identity always provide
 when they are wired — a customer's name, a contact's name and address and a customer's
 contacts through `contracts.CustomerDirectory`, and a project's code and name through
 `contracts.ProjectDirectory`. It sends the invitations to the people outside the company
-through the installation's own mail configuration (`SMTP_FROM`), the way Staff sends its
-mails. It fetches the calendars a person subscribes to from the internet through
+through `contracts.OutboundMail` — [Communications' channels](/en/reference/communications/#customer-mail-from-other-modules) —
+from the channel an Owner chose ([the invitation channel](#the-invitation-channel)),
+never on the installation's own `SMTP_*` configuration, which is the system mailbox's,
+for the tenant's employees. It fetches the calendars a person subscribes to from the internet through
 `internal/netguard`, the platform's guard on outbound addresses. `MODULES=calendar` alone
 is a valid installation: a calendar of appointments and public holidays, with colleagues
 and typed addresses on them. It provides one single-provider contract,
@@ -84,7 +87,7 @@ module provides.
 
 ## The schema
 
-Eight migrations: `00055_calendar_baseline.sql` creates the `calendar` schema and its three
+Nine migrations: `00055_calendar_baseline.sql` creates the `calendar` schema and its three
 tables, `00056_calendar_invitations.sql` adds the attendees from outside the company
 and the cancelled state, `00057_calendar_feed.sql` adds the feed addresses and the
 subscriptions, `00081_calendar_mailbox_sync.sql` adds the [Outlook
@@ -95,7 +98,8 @@ sync's](#the-two-tables) two tables, `00083_calendar_mailbox_busy.sql` adds the
 `00086_calendar_mailbox_sync_mailbox.sql` indexes `lower(mailbox)` of the rows that are on, for
 the [change notifications'](#change-notifications) marks, and
 `00087_calendar_mailbox_sync_claim.sql` adds the [worker's](#the-mailbox-sync-worker) claim,
-`mailbox_sync.claimed_until`. Every id is a `bigint` identity starting at 1001. Every foreign identifier — the
+`mailbox_sync.claimed_until`, and `00097_calendar_settings.sql` the module's one workspace
+setting, [`settings`](#the-invitation-channel). Every id is a `bigint` identity starting at 1001. Every foreign identifier — the
 owner, an attendee, a customer, a project, the holder of an address — is opaque: users, customers and projects
 live in other schemas and are read through contracts, never through SQL (see [module
 boundaries](/en/contributing/module-boundaries/) rule 4). No table has a CHECK
@@ -155,6 +159,10 @@ constraint: the module's own validation owns the rules and reports them per fiel
 - **`mailbox_busy`** — the events of a person's Outlook calendar that block their
   time, as the sync worker [read them back](#the-busy-read): times and `show_as`
   alone ([the busy rows](#the-busy-rows)).
+- **`settings`** — the one row (`id` 1, a CHECK holds it to one): `invitation_channel`
+  (`uuid`, null), the id of the Communications channel invitations are sent from, with
+  **no foreign key** across schemas (rule 4), and the `revision` (from 1) and `updated_at`
+  of the setting. `00097` seeds it with no channel; its down migration drops the table.
 
 The baseline's down migration drops the schema with everything in it; `00057`'s drops
 the two tables, so every address stops answering and every subscription is forgotten —
@@ -170,21 +178,24 @@ rewrites whole.
 | --- | --- | --- | --- |
 | `calendar:access` | Use Calendar | The calendar, one's own appointments and answers, the dashboard's agenda, one's own calendar addresses, subscriptions and Outlook sync. **Every operation requires it**, but the three anonymous ones: the two of [the answer by link](#the-answer-by-link) and [the feed's](#the-feed) `GET`. | no |
 | `calendar:view-colleagues` | See colleagues' calendars | [A colleague's calendar](#a-colleagues-calendar): their appointments as busy or free, with the title when it is shared. | no |
+| `calendar:manage` | Manage Calendar settings | [The invitation channel](#the-invitation-channel): `GET` and `PUT /api/v1/calendar/invitation-settings`, **together with** `calendar:access` (`permission:calendar:access+calendar:manage`). | yes |
 
-Both are in the category "Calendar" and delegable. The Owner holds them through the
-wildcard; anyone else needs a role that grants them. There is no `manage` key: the module
-has no settings. A colleague's view is the one thing not everyone should have by
+The first two are in the category "Calendar" and `calendar:manage` in "Administration";
+all three are delegable. The Owner holds them through the wildcard; anyone else needs a
+role that grants them. `calendar:manage` is sensitive, because it decides whose address
+customers' mail comes from; its holder reads and writes the one workspace setting, and
+nothing of anyone's calendar. A colleague's view is the one thing not everyone should have by
 default — an installation that wants every employee to see every other's busy blocks
 grants `calendar:view-colleagues` to the employee role. Each operation's rule is in the
 contract's `x-vantigo-access`; a caller without it gets the access layer's uniform 403.
 
-`GET /meta` (`getCalendarMeta`) answers `canViewColleagues`, so the app never re-derives
-the rule, beside the business `timeZone`, `today` in it, the
+`GET /meta` (`getCalendarMeta`) answers `canViewColleagues` and `canManage`, so the app never
+re-derives the rules, beside the business `timeZone`, `today` in it, the
 [sources](#the-kinds) — with `calendar.subscription` among them when the caller has at
 least one [subscription](#subscriptions), and `calendar.outlook` last while the caller's
 [Outlook sync](#outlook-sync) is on, so the legend has their chips — and
-`invitationsAvailable` — whether the installation can mail an
-invitation at all ([without mail](#without-mail)).
+`invitationsAvailable` — whether an invitation can be mailed now: a channel is chosen
+and can send ([without a channel](#without-a-channel)).
 
 Inviting a customer's contact is judged by Customers' own keys, not the calendar's: a
 contact attendee needs `customers:contacts-view`, the sensitive key that guards a
@@ -435,8 +446,8 @@ no `CustomerPersonalData` holder. An **email** attendee is the address as
 `invitation` is the record of what was mailed ([invitations](#invitations)): `sentAt`
 the last successful send, `sequence` the `SEQUENCE` that send carried, and `failedAt`
 the last failed send since `sentAt` — cleared by the next success. An outside attendee
-with none of the three has never been sent anything: the mail driver is not `smtp`
-([without mail](#without-mail)), or nothing has been sent yet. A colleague has no
+with none of the three has never been sent anything: invitations are off
+([without a channel](#without-a-channel)), or nothing has been sent yet. A colleague has no
 `invitation`; they are told through identity
 ([what a colleague receives](#what-a-colleague-receives)).
 
@@ -653,6 +664,37 @@ their own answer buttons, with a [web link](#the-answer-by-link) to answer by th
 the answer in Vantigo. A colleague is never sent one: they are told through identity
 ([what a colleague receives](#what-a-colleague-receives)).
 
+### The invitation channel
+
+Invitations go through `contracts.OutboundMail` ([Communications](/en/reference/communications/#customer-mail-from-other-modules);
+[module boundaries](/en/contributing/module-boundaries/) rule 17) on the channel stored in
+`settings.invitation_channel`; null is **off**. The module never reads
+`communications.*`: whether the id is a channel, and can send, is Communications' answer
+(`Channel`), read outside any transaction.
+
+`GET /api/v1/calendar/invitation-settings` (`getCalendarInvitationSettings`) answers
+`invitationChannel` (the id as stored, or null), its `state`, the `channels` a choice may
+name, the `revision` and `updatedAt`. `state` is `disabled` (none chosen), `ready` (the
+channel can send), `unavailable` (it exists but cannot send now — its provider is off, or an SMTP
+channel has no credentials) or `gone` (no active channel has the id, or Communications is
+off). Each of `channels` is `{id, address, displayName, provider, providerDisplayName, available}`
+— names and addresses only, as `OutboundMail.Channels` answers them.
+
+`PUT` (`putCalendarInvitationSettings`) replaces the setting whole under the row's lock,
+`If-Match` the revision it was read at (a bare or quoted integer; a missing or malformed
+one is a 400 on `If-Match`, a stale one a 409 `revision_mismatch` naming both). The body is
+`{invitationChannel}`, **required**: a body without it is a 400 on `invitationChannel`, so a
+client cannot turn invitations off by leaving it out. `null` turns them off. An id must be
+a channel that exists (`Channel` does not answer `ErrChannelUnknown`) — else a 400 on
+`invitationChannel` — **unless it is the stored one**, so a setting whose channel has
+since gone can still be saved; an id that is not a UUID is the same 400. A channel that
+exists but cannot send is accepted: the state says it. Both operations need
+`calendar:access` and `calendar:manage`; neither is rate limited.
+
+A channel that goes away leaves the id as it was. `state` reads `gone`, the module
+behaves as off, and the setting stays until someone chooses again; Communications never
+writes this module's settings.
+
 ### The message
 
 The ICS is written with `arran4/golang-ical` and the message is sent through
@@ -673,13 +715,13 @@ The part's `method=` is the ICS's `METHOD` (`REQUEST`, or `CANCEL`). The inline
 `text/calendar` alternative is what the clients key on: an invitation sent only as an
 attachment shows in Outlook as a plain mail with no buttons.
 
-**From and `ORGANIZER` are the same address**, the installation's `SMTP_FROM`, with the
+**From and `ORGANIZER` are the same address**, the chosen channel's, with the
 organiser's display name as the mail's display name and as the `ORGANIZER`'s `CN` — the
 one arrangement no client refuses. The owner's own address never crosses from identity,
-and would not be the sender anyway: the installation sends, on the owner's behalf. So
-the native buttons' reply (`METHOD:REPLY`) goes to `SMTP_FROM`'s mailbox, where nobody
-reads it — Vantigo has no inbound mail route — and the mail says so: it asks for the
-answer by the link.
+and would not be the sender anyway: the channel sends, on the owner's behalf. So
+the native buttons' reply (`METHOD:REPLY`) goes to the channel's mailbox, where Vantigo
+does not read it as an answer — on a Microsoft 365 channel it is imported like any
+other mail — and the mail says so: it asks for the answer by the link.
 
 The **subject** is `<prefix>: <title> · <day>`, the day the appointment starts on in its
 zone (`Tue 3 Nov`, `tir. 3. nov.`). The prefix is `Invitation` (`Invitasjon`) on the
@@ -709,7 +751,7 @@ no answer sentence. The texts are the module's own, in `words.go`.
 | `STATUS` | `CONFIRMED`, or `CANCELLED` on a cancellation |
 | `CLASS` | from `visibility`: `PUBLIC` for `shared`, `PRIVATE` for `private` |
 | `TRANSP` | from `transparency`: `OPAQUE` for `busy`, `TRANSPARENT` for `free` |
-| `ORGANIZER` | `ORGANIZER;CN=<the owner's display name>:mailto:<SMTP_FROM>` |
+| `ORGANIZER` | `ORGANIZER;CN=<the owner's display name>:mailto:<the channel's address>` |
 | `ATTENDEE` | `ATTENDEE;CN=<name>;ROLE=REQ-PARTICIPANT;PARTSTAT=<status>;RSVP=TRUE:mailto:<address>`, one per **outside** attendee |
 
 **Every outside attendee is on every copy**, as the clients expect, and **no colleague
@@ -757,8 +799,9 @@ mail in it.
 
 ### When it goes
 
-After the commit, never inside it — through the module's own accessor for the mail seam,
-which refuses a call made inside one of its transactions — one message per outside
+After the commit, never inside it — through the module's own accessor for the
+`OutboundMail` slot (`outboundSend`), which refuses a call made inside one of its
+transactions — one message per outside
 attendee, one after the other, on a context detached from the request, so a caller who
 leaves does not stop the sends. **All the after-commit work of one request** — its
 invitations and its colleague notices together — shares one budget of **thirty
@@ -804,16 +847,21 @@ appointment, the attendee's `invitation` as the send left it: a failed send is
 `failedAt`, not an error of the request. It is judged in this order: a 404 for an
 appointment the caller does not own, an attendee not on it, or a colleague, who is never
 mailed an invitation; then a 409 `appointment_cancelled` on a cancelled appointment;
-then a 503 `invitations_unavailable` when the mail driver is not `smtp`.
+then a 503 `invitations_unavailable` when invitations are off or the chosen channel cannot
+send ([without a channel](#without-a-channel)).
 
-### Without mail
+### Without a channel
 
-When the installation's mail driver is not `smtp`, outside attendees are stored all the
-same, with their links, and nothing is sent and nothing marked: each stays with no
-`invitation.sentAt` and no `failedAt`, the log says `calendar: invitations not sent: the
-mail driver is not smtp` at info, and `GET /meta` answers `invitationsAvailable: false`,
-so the sheet shows every outside attendee as **Not sent** and says why. Switching the driver to `smtp` later sends nothing
-by itself; the next change of when or where, or a **Resend**, does.
+When no channel is chosen, or the chosen one is gone or cannot send, outside attendees are
+stored all the same, with their links, and nothing is sent and nothing marked: each stays
+with no `invitation.sentAt` and no `failedAt`, the log says `calendar: invitations not
+sent: invitations are off, or the chosen channel cannot send` at info, and `GET /meta`
+answers `invitationsAvailable: false`, so the sheet shows every outside attendee as **Not
+sent** and says why. It is exactly how a non-`smtp` mail driver was treated before the
+setting existed. Choosing a channel later sends nothing by itself; the next change of when
+or where, or a **Resend**, does. A send that fails on a channel that can send — the
+provider refused, or `ErrChannelUnavailable` came back — is the ordinary failure above:
+`send_failed_at`, and **Resend** when it is mended.
 
 ### The link's base
 
@@ -2535,7 +2583,7 @@ a date, a missing `If-Match` — is a bare 400 with neither `code` nor `errors`.
 | `revision_mismatch` | 409 | A `PUT /appointments/{id}`, or a `PUT /mailbox-sync`, whose `If-Match` revision has moved on. The detail names both revisions. |
 | `occurrence_not_in_series` | 409 | `PUT /appointments/{id}/occurrences/{date}` for a date the series' rule never produces. |
 | `appointment_cancelled` | 409 | Any write to a [cancelled](#cancellation) appointment — a `PUT`, a `DELETE`, an occurrence's `PUT` or `DELETE`, a colleague's answer, a resend — and an answer by the link (`POST /rsvp`). |
-| `invitations_unavailable` | 503 | `POST /appointments/{id}/attendees/{attendeeId}/resend` when the mail driver is not `smtp`. |
+| `invitations_unavailable` | 503 | `POST /appointments/{id}/attendees/{attendeeId}/resend` when invitations are off — no channel chosen, or the chosen one gone or unable to send ([without a channel](#without-a-channel)). |
 | `subscription_limit` | 409 | `POST /subscriptions` when the caller has ten subscriptions already. |
 | `mailbox_sync_unavailable` | 409 | `PUT /mailbox-sync` turning the sync on, or keeping it on, while it cannot run, and `POST /mailbox-sync/run` while it cannot run. The `detail` is the [availability](#the-persons-setting) — `switch_off`, `no_provider`, `unavailable` or `no_account`. |
 | `mailbox_sync_off` | 409 | `POST /mailbox-sync/run` while the sync is turned off. |

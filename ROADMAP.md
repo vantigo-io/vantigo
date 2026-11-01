@@ -2590,3 +2590,36 @@ mailbox converted to shared and their OneDrive handed over (neither is in Graph)
 hybrid tenants, with users synced from on-premises Active Directory · Lifecycle
 Workflows switches per step · Google Workspace as the second provider · group-based
 licensing as a trait · delegated authorisation.
+
+## Integrations and configuration tiers
+
+Decided in
+[`docs/superpowers/specs/2026-10-31-integrations-and-configuration-tiers-design.md`](docs/superpowers/specs/2026-10-31-integrations-and-configuration-tiers-design.md):
+every setting belongs to one of two tiers by who owns it — the instance's, which Vantigo
+provisions in the environment, and the workspace's, which the tenant edits in the
+database — and customer mail never leaves on the system mailbox.
+
+### B — Customer mail through a channel the Owner chose (built)
+
+([The plan](docs/superpowers/plans/2026-10-31-outbound-mail-slot.md);
+[the reference](docs/src/content/docs/en/reference/communications.md#customer-mail-from-other-modules);
+[Invoices](docs/src/content/docs/en/reference/invoices.md#the-sending-channel);
+[Calendar](docs/src/content/docs/en/reference/calendar.md#the-invitation-channel);
+[the operator's page](docs/src/content/docs/en/admin/installation.md#email-and-observability).)
+`contracts.OutboundMail`, a single-provider slot Communications fills (`Channels`, `Channel`,
+`Send`; module-boundaries rule 17), through which Invoices sends documents and reminder
+letters and Calendar its invitations to outside attendees, from a channel an Owner chose
+or not at all. Migrations `00096_invoices_send_channel.sql` (`invoices.settings.send_channel`)
+and `00097_calendar_settings.sql` (the single-row `calendar.settings`, its first workspace
+setting) and a new permission, `calendar:manage`. The fall-back is gone: a Communications
+SMTP channel with no stored credentials is **Unavailable** and sends nothing, and nothing in
+Communications reads `Config.Mail`. Invoice settings gain **Sending**, Calendar's settings
+**Invitations to people outside the company**, and the channels page shows **Unavailable**.
+The system mailbox keeps one job, writing to the tenant's own employees.
+
+### Later
+
+The Integrations section of Workspace admin and the Entra page in four tabs (A) · Vantigo
+hosted mail as a fourth channel provider, `MAIL_DRIVER=vantigo` and the events webhook (C) ·
+AI as a platform provider with a model per task (D) · a queue for Invoices' and Calendar's
+customer mail.
