@@ -91,8 +91,10 @@ sends the installation's own mail through the SMTP configuration of
 private destinations. `mail.Message` is identity's three-field application mail;
 `mail.Outbound` is a full message — recipients, both bodies, a display name,
 Reply-To (`ReplyTo` and `ReplyToName`), threading headers and attachments — which Communications sends through each
-channel's own SMTP configuration, and Invoices, Staff and Calendar through the
-installation's, by the seam `Deps.SMTPSend` (or `mail.SendOutbound` when it is unset).
+channel's own SMTP configuration — and, through `OutboundMail`, for Invoices' documents
+and Calendar's invitations, from the channel an Owner chose — and Staff through the
+installation's own, the system mailbox's, by the seam `Deps.SMTPSend` (or
+`mail.SendOutbound` when it is unset).
 
 `mail.RenderMIME(from, out, opts...)` renders an `Outbound` as the RFC 5322 message
 `SendOutbound` would send from `from` — the same headers, the `Message-ID`, `In-Reply-To`
