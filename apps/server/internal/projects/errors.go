@@ -74,6 +74,16 @@ func revisionConflict(current, supplied int32) apicommon.ProblemDetails {
 		http.StatusConflict)
 }
 
+// templateRevisionConflictTitle and templateRevisionConflict are that 409 for
+// a template: a template is not a project, so its refusal says so.
+const templateRevisionConflictTitle = "Template revision conflict"
+
+func templateRevisionConflict(current, supplied int32) apicommon.ProblemDetails {
+	return apicommon.ProblemStatus(templateRevisionConflictTitle,
+		fmt.Sprintf("The template has revision %d; the supplied revision was %d.", current, supplied),
+		http.StatusConflict)
+}
+
 // productsDisabledTitle is the title of the other 409, answered by every
 // billing-line operation when this installation has no products module (D10).
 // It is a conflict with the installation's state rather than a 404: the

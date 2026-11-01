@@ -1,7 +1,9 @@
 package projects_test
 
 import (
+	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 )
 
@@ -310,5 +312,48 @@ func TestTaskDependencies_Permissions(t *testing.T) {
 	})
 	if res.Status != http.StatusForbidden {
 		t.Errorf("viewer reschedule status = %d, want 403", res.Status)
+	}
+}
+
+// The longest chain of linked tasks a project may hold is 100 links (spec M7).
+// Two chains of 50 links each are fine on their own; the link that would join
+// them into one of 101 is refused, naming the successor, and a link that
+// keeps the longest chain at 100 is not.
+func TestTaskDependencies_ChainLengthLimit(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, _ := signIn(t, h, "projects:create")
+	p := createProject(t, c, map[string]any{"code": "DEPLONG1"})
+
+	chain := func(prefix string, links int) []taskJSON {
+		tasks := make([]taskJSON, links+1)
+		for i := range tasks {
+			tasks[i] = createTask(t, c, p.Id, map[string]any{"title": fmt.Sprintf("%s%d", prefix, i)})
+			if i > 0 {
+				createTaskDependency(t, c, p.Id, tasks[i-1].Id, tasks[i].Id)
+			}
+		}
+		return tasks
+	}
+	a := chain("A", 50)
+	b := chain("B", 50)
+
+	res := c.Do(http.MethodPost, projectDependenciesPath(p.Id), map[string]any{
+		"predecessorTaskId": a[50].Id, "successorTaskId": b[0].Id,
+	})
+	if res.Status != http.StatusBadRequest {
+		t.Fatalf("joining into 101 links: status %d body %s, want 400", res.Status, res.Body)
+	}
+	var problem validationProblemJSON
+	res.JSON(&problem)
+	if problem.Title != "Dependency chain too long" || len(problem.Errors["successorTaskId"]) == 0 ||
+		!strings.Contains(problem.Errors["successorTaskId"][0], "101") {
+		t.Errorf("problem = %+v, want the chain refusal under successorTaskId naming 101", problem)
+	}
+
+	// A49 -> B0 makes a chain of 49 + 1 + 50 = 100 links: allowed.
+	createTaskDependency(t, c, p.Id, a[49].Id, b[0].Id)
+	if n := len(getTaskDependencies(t, c, p.Id)); n != 101 {
+		t.Errorf("dependencies = %d, want 101", n)
 	}
 }

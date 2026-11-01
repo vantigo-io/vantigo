@@ -1636,9 +1636,12 @@ type templateMilestoneJSON struct {
 }
 
 type templateSubtaskJSON struct {
-	Title          string `json:"title"`
-	StartDayOffset *int32 `json:"startDayOffset,omitempty"`
-	DueDayOffset   *int32 `json:"dueDayOffset,omitempty"`
+	Title          string   `json:"title"`
+	Description    string   `json:"description,omitempty"`
+	StartDayOffset *int32   `json:"startDayOffset,omitempty"`
+	DueDayOffset   *int32   `json:"dueDayOffset,omitempty"`
+	EstimateHours  *float64 `json:"estimateHours,omitempty"`
+	Checklist      []string `json:"checklist,omitempty"`
 }
 
 type templateTaskJSON struct {
@@ -1646,7 +1649,9 @@ type templateTaskJSON struct {
 	Description    string                `json:"description,omitempty"`
 	StartDayOffset *int32                `json:"startDayOffset,omitempty"`
 	DueDayOffset   *int32                `json:"dueDayOffset,omitempty"`
+	EstimateHours  *float64              `json:"estimateHours,omitempty"`
 	MilestoneIndex *int32                `json:"milestoneIndex,omitempty"`
+	Checklist      []string              `json:"checklist,omitempty"`
 	Subtasks       []templateSubtaskJSON `json:"subtasks,omitempty"`
 }
 

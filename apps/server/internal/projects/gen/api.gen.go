@@ -1039,6 +1039,14 @@ type ProjectRoleResponse struct {
 	UserId openapi_types.UUID `json:"userId"`
 }
 
+// ProjectSaveAsTemplateRequest Save a project's plan as a new template. Everything else the template holds is read from the project.
+type ProjectSaveAsTemplateRequest struct {
+	Description *string `json:"description,omitempty"`
+
+	// Name The new template's name, 1–200 characters after trimming.
+	Name string `json:"name"`
+}
+
 // ProjectStatsAttentionItem One thing the dashboard wants a human to look at. The shape is the dashboard's, shared by every module's /stats/attention, and the host translates the sentence from `type` — the title is only the name of the thing.
 //
 // Five types, each with its own recipients: `projectOverdue`, an active project past its end date, for everyone who can see it; `budgetWarning` (80 % ≤ used ≤ 100 %) and `budgetExceeded` (over 100 %), for the managers of an active project and nobody else, so a holder of projects:manage-all is not sent every project's alerts; `milestoneReady`, for everyone with financial rights on a project that is not cancelled or completed; and `milestoneOverdue`, a planned milestone whose day has passed, for the managers of an active project. One project never raises both budget types.
@@ -1147,16 +1155,20 @@ type ProjectTemplateResponse struct {
 
 // ProjectTemplateSubtask A subtask blueprint within a template task.
 type ProjectTemplateSubtask struct {
-	Description    *string  `json:"description,omitempty"`
-	DueDayOffset   *int32   `json:"dueDayOffset,omitempty"`
-	EstimateHours  *float64 `json:"estimateHours,omitempty"`
-	StartDayOffset *int32   `json:"startDayOffset,omitempty"`
-	Title          string   `json:"title"`
+	// Checklist The subtask's checklist as item texts, in order. Each item is created unchecked when the template is applied; at most 100 items, each 1–500 characters after trimming.
+	Checklist      *[]string `json:"checklist,omitempty"`
+	Description    *string   `json:"description,omitempty"`
+	DueDayOffset   *int32    `json:"dueDayOffset,omitempty"`
+	EstimateHours  *float64  `json:"estimateHours,omitempty"`
+	StartDayOffset *int32    `json:"startDayOffset,omitempty"`
+	Title          string    `json:"title"`
 }
 
 // ProjectTemplateTask A top-level task blueprint within a template.
 type ProjectTemplateTask struct {
-	Description *string `json:"description,omitempty"`
+	// Checklist The task's checklist as item texts, in order. Each item is created unchecked when the template is applied; at most 100 items, each 1–500 characters after trimming.
+	Checklist   *[]string `json:"checklist,omitempty"`
+	Description *string   `json:"description,omitempty"`
 
 	// DueDayOffset Relative due date offset in days from kickoff date.
 	DueDayOffset  *int32   `json:"dueDayOffset,omitempty"`
@@ -1585,6 +1597,9 @@ type PostProjectsByIdMilestonesJSONRequestBody = BillingMilestoneRequest
 // PutProjectsByIdRolesByUserIdJSONRequestBody defines body for PutProjectsByIdRolesByUserId for application/json ContentType.
 type PutProjectsByIdRolesByUserIdJSONRequestBody = ProjectRoleAssignmentRequest
 
+// PostProjectsByIdSaveAsTemplateJSONRequestBody defines body for PostProjectsByIdSaveAsTemplate for application/json ContentType.
+type PostProjectsByIdSaveAsTemplateJSONRequestBody = ProjectSaveAsTemplateRequest
+
 // PutProjectsByIdStatusJSONRequestBody defines body for PutProjectsByIdStatus for application/json ContentType.
 type PutProjectsByIdStatusJSONRequestBody = ProjectStatusChangeRequest
 
@@ -1764,6 +1779,9 @@ type ServerInterface interface {
 	// PutProjectsByIdRolesByUserId Add or change a user's role on a project
 	// (PUT /api/v1/projects/{id}/roles/{userId})
 	PutProjectsByIdRolesByUserId(w http.ResponseWriter, r *http.Request, id int32, userId openapi_types.UUID)
+	// PostProjectsByIdSaveAsTemplate Save a project as a template
+	// (POST /api/v1/projects/{id}/save-as-template)
+	PostProjectsByIdSaveAsTemplate(w http.ResponseWriter, r *http.Request, id int32)
 	// PutProjectsByIdStatus Change a project's status
 	// (PUT /api/v1/projects/{id}/status)
 	PutProjectsByIdStatus(w http.ResponseWriter, r *http.Request, id int32)
@@ -3518,6 +3536,32 @@ func (siw *ServerInterfaceWrapper) PutProjectsByIdRolesByUserId(w http.ResponseW
 	handler.ServeHTTP(w, r)
 }
 
+// PostProjectsByIdSaveAsTemplate operation middleware
+func (siw *ServerInterfaceWrapper) PostProjectsByIdSaveAsTemplate(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostProjectsByIdSaveAsTemplate(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // PutProjectsByIdStatus operation middleware
 func (siw *ServerInterfaceWrapper) PutProjectsByIdStatus(w http.ResponseWriter, r *http.Request) {
 
@@ -3920,6 +3964,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/projects/{id}/roles", wrapper.GetProjectsByIdRoles)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/projects/{id}/roles/{userId}", wrapper.DeleteProjectsByIdRolesByUserId)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/projects/{id}/roles/{userId}", wrapper.PutProjectsByIdRolesByUserId)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/projects/{id}/save-as-template", wrapper.PostProjectsByIdSaveAsTemplate)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/projects/{id}/status", wrapper.PutProjectsByIdStatus)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/projects/{id}/tasks", wrapper.GetProjectsByIdTasks)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/projects/{id}/tasks", wrapper.PostProjectsByIdTasks)
@@ -7650,6 +7695,79 @@ func (response PutProjectsByIdRolesByUserId404Response) VisitPutProjectsByIdRole
 	return nil
 }
 
+type PostProjectsByIdSaveAsTemplateRequestObject struct {
+	Id   int32 `json:"id"`
+	Body *PostProjectsByIdSaveAsTemplateJSONRequestBody
+}
+
+type PostProjectsByIdSaveAsTemplateResponseObject interface {
+	VisitPostProjectsByIdSaveAsTemplateResponse(w http.ResponseWriter) error
+}
+
+type PostProjectsByIdSaveAsTemplate201JSONResponse ProjectTemplateResponse
+
+func (response PostProjectsByIdSaveAsTemplate201JSONResponse) VisitPostProjectsByIdSaveAsTemplateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostProjectsByIdSaveAsTemplate400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response PostProjectsByIdSaveAsTemplate400ApplicationProblemPlusJSONResponse) VisitPostProjectsByIdSaveAsTemplateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostProjectsByIdSaveAsTemplate401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostProjectsByIdSaveAsTemplate401JSONResponse) VisitPostProjectsByIdSaveAsTemplateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostProjectsByIdSaveAsTemplate403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostProjectsByIdSaveAsTemplate403JSONResponse) VisitPostProjectsByIdSaveAsTemplateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostProjectsByIdSaveAsTemplate404Response struct {
+}
+
+func (response PostProjectsByIdSaveAsTemplate404Response) VisitPostProjectsByIdSaveAsTemplateResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
 type PutProjectsByIdStatusRequestObject struct {
 	Id   int32 `json:"id"`
 	Body *PutProjectsByIdStatusJSONRequestBody
@@ -8342,6 +8460,9 @@ type StrictServerInterface interface {
 	// PutProjectsByIdRolesByUserId Add or change a user's role on a project
 	// (PUT /api/v1/projects/{id}/roles/{userId})
 	PutProjectsByIdRolesByUserId(ctx context.Context, request PutProjectsByIdRolesByUserIdRequestObject) (PutProjectsByIdRolesByUserIdResponseObject, error)
+	// PostProjectsByIdSaveAsTemplate Save a project as a template
+	// (POST /api/v1/projects/{id}/save-as-template)
+	PostProjectsByIdSaveAsTemplate(ctx context.Context, request PostProjectsByIdSaveAsTemplateRequestObject) (PostProjectsByIdSaveAsTemplateResponseObject, error)
 	// PutProjectsByIdStatus Change a project's status
 	// (PUT /api/v1/projects/{id}/status)
 	PutProjectsByIdStatus(ctx context.Context, request PutProjectsByIdStatusRequestObject) (PutProjectsByIdStatusResponseObject, error)
@@ -9992,6 +10113,39 @@ func (sh *strictHandler) PutProjectsByIdRolesByUserId(w http.ResponseWriter, r *
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PutProjectsByIdRolesByUserIdResponseObject); ok {
 		if err := validResponse.VisitPutProjectsByIdRolesByUserIdResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostProjectsByIdSaveAsTemplate operation middleware
+func (sh *strictHandler) PostProjectsByIdSaveAsTemplate(w http.ResponseWriter, r *http.Request, id int32) {
+	var request PostProjectsByIdSaveAsTemplateRequestObject
+
+	request.Id = id
+
+	var body PostProjectsByIdSaveAsTemplateJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostProjectsByIdSaveAsTemplate(ctx, request.(PostProjectsByIdSaveAsTemplateRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostProjectsByIdSaveAsTemplate")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostProjectsByIdSaveAsTemplateResponseObject); ok {
+		if err := validResponse.VisitPostProjectsByIdSaveAsTemplateResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

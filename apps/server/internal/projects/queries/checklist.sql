@@ -19,6 +19,15 @@ SELECT * FROM projects.task_checklist_items
 WHERE task_id = @task_id
 ORDER BY position, id;
 
+-- name: ListProjectChecklistItems :many
+-- ListProjectChecklistItems is every checklist of a project's tasks in one
+-- query, grouped by task and each group in its reading order, which is what
+-- saving a project as a template snapshots.
+SELECT i.* FROM projects.task_checklist_items i
+JOIN projects.tasks t ON t.id = i.task_id
+WHERE t.project_id = @project_id
+ORDER BY i.task_id, i.position, i.id;
+
 -- name: GetChecklistItem :one
 -- GetChecklistItem is one item of one task, which is how a change reads back
 -- the number a renumbering gave it.
