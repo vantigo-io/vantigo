@@ -5,8 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strings"
-	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -16,6 +14,11 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/projects/gen"
 	"github.com/vantigo-io/vantigo/server/internal/projects/store"
 )
+
+// maxTemplateChecklistItems caps one template task's or subtask's checklist.
+// A task's own checklist has no cap — it grows an item at a time, by hand —
+// but a template is a body somebody can send in one request.
+const maxTemplateChecklistItems = 100
 
 func templateResponseFromRow(r store.ProjectsTemplate) (gen.ProjectTemplateResponse, error) {
 	var milestones []gen.ProjectTemplateMilestone
@@ -92,29 +95,11 @@ func (s *server) PostProjectsTemplates(ctx context.Context, req gen.PostProjects
 	}
 	body := *req.Body
 
-	name := strings.TrimSpace(body.Name)
-	if name == "" {
+	name, desc, errs := validateTemplateHeader(body.Name, body.Description)
+	if errs != nil {
 		return gen.PostProjectsTemplates400ApplicationProblemPlusJSONResponse(
-			apicommon.ValidationProblem("Invalid template", map[string][]string{"name": {"Template name is required."}}),
+			apicommon.ValidationProblem("Invalid template", errs),
 		), nil
-	}
-	if utf8.RuneCountInString(name) > 200 {
-		return gen.PostProjectsTemplates400ApplicationProblemPlusJSONResponse(
-			apicommon.ValidationProblem("Invalid template", map[string][]string{"name": {"Template name is at most 200 characters."}}),
-		), nil
-	}
-
-	var desc *string
-	if body.Description != nil {
-		d := strings.TrimSpace(*body.Description)
-		if utf8.RuneCountInString(d) > 2000 {
-			return gen.PostProjectsTemplates400ApplicationProblemPlusJSONResponse(
-				apicommon.ValidationProblem("Invalid template", map[string][]string{"description": {"Description is at most 2000 characters."}}),
-			), nil
-		}
-		if d != "" {
-			desc = &d
-		}
 	}
 
 	var milestones []gen.ProjectTemplateMilestone
@@ -204,29 +189,11 @@ func (s *server) PutProjectsTemplatesByTemplateId(ctx context.Context, req gen.P
 	}
 	body := *req.Body
 
-	name := strings.TrimSpace(body.Name)
-	if name == "" {
+	name, desc, errs := validateTemplateHeader(body.Name, body.Description)
+	if errs != nil {
 		return gen.PutProjectsTemplatesByTemplateId400ApplicationProblemPlusJSONResponse(
-			apicommon.ValidationProblem("Invalid template", map[string][]string{"name": {"Template name is required."}}),
+			apicommon.ValidationProblem("Invalid template", errs),
 		), nil
-	}
-	if utf8.RuneCountInString(name) > 200 {
-		return gen.PutProjectsTemplatesByTemplateId400ApplicationProblemPlusJSONResponse(
-			apicommon.ValidationProblem("Invalid template", map[string][]string{"name": {"Template name is at most 200 characters."}}),
-		), nil
-	}
-
-	var desc *string
-	if body.Description != nil {
-		d := strings.TrimSpace(*body.Description)
-		if utf8.RuneCountInString(d) > 2000 {
-			return gen.PutProjectsTemplatesByTemplateId400ApplicationProblemPlusJSONResponse(
-				apicommon.ValidationProblem("Invalid template", map[string][]string{"description": {"Description is at most 2000 characters."}}),
-			), nil
-		}
-		if d != "" {
-			desc = &d
-		}
 	}
 
 	var milestones []gen.ProjectTemplateMilestone
@@ -271,7 +238,7 @@ func (s *server) PutProjectsTemplatesByTemplateId(ctx context.Context, req gen.P
 	}
 	if existing.Revision != body.Revision {
 		return gen.PutProjectsTemplatesByTemplateId409ApplicationProblemPlusJSONResponse(
-			revisionConflict(existing.Revision, body.Revision),
+			templateRevisionConflict(existing.Revision, body.Revision),
 		), nil
 	}
 
@@ -467,6 +434,9 @@ func (s *server) PostProjectsByIdApplyTemplate(ctx context.Context, req gen.Post
 			}
 			taskIndexToID[int32(i)] = row.ID
 			tasksCount++
+			if err := insertTemplateChecklist(ctx, txq, row.ID, t.Checklist, now); err != nil {
+				return err
+			}
 
 			// Subtasks
 			if t.Subtasks != nil {
@@ -489,7 +459,7 @@ func (s *server) PostProjectsByIdApplyTemplate(ctx context.Context, req gen.Post
 					}
 
 					parentID := row.ID
-					_, err := txq.InsertTask(ctx, store.InsertTaskParams{
+					subRow, err := txq.InsertTask(ctx, store.InsertTaskParams{
 						ProjectID:           project.ID,
 						ParentTaskID:        &parentID,
 						Title:               sub.Title,
@@ -509,6 +479,9 @@ func (s *server) PostProjectsByIdApplyTemplate(ctx context.Context, req gen.Post
 						return fmt.Errorf("projects: insert subtask from template: %w", err)
 					}
 					tasksCount++
+					if err := insertTemplateChecklist(ctx, txq, subRow.ID, sub.Checklist, now); err != nil {
+						return err
+					}
 				}
 			}
 		}
@@ -551,9 +524,12 @@ func (s *server) PostProjectsByIdApplyTemplate(ctx context.Context, req gen.Post
 // delivery milestone name and description rules, the task title, description
 // and estimate rules, non-negative day offsets, a due offset no earlier than
 // the start offset, and indices that point at a milestone or top-level task
-// of the same template. Dependencies are additionally refused when a pair is
-// listed twice (the project's dependency table holds each pair once) or when
-// they form a cycle, which no project's dependency graph may contain.
+// of the same template, and checklist items held to a hand-added item's rule,
+// at most maxTemplateChecklistItems of them per task. Dependencies are
+// additionally refused when a pair is listed twice (the project's dependency
+// table holds each pair once), when they form a cycle, which no project's
+// dependency graph may contain, or when they chain more than
+// maxDependencyChainLinks links, the limit a hand-made link is held to.
 //
 // It trims the names, titles and descriptions in place, so what is stored —
 // and what apply inserts — is the value the rules were asked of.
@@ -577,6 +553,21 @@ func validateTemplateData(
 		}
 		if start != nil && due != nil && *due < *start {
 			add(prefix+".dueDayOffset", "Due day offset cannot be earlier than start day offset.")
+		}
+	}
+	// A checklist's items are held to the rule a hand-added item is, and a
+	// checklist to a length nobody ticks through by hand.
+	checklist := func(prefix string, items *[]string) {
+		if items == nil {
+			return
+		}
+		if len(*items) > maxTemplateChecklistItems {
+			add(prefix+".checklist", fmt.Sprintf("A checklist holds at most %d items.", maxTemplateChecklistItems))
+		}
+		for k := range *items {
+			var msg string
+			(*items)[k], msg = validateChecklistText((*items)[k])
+			add(fmt.Sprintf("%s.checklist[%d]", prefix, k), msg)
 		}
 	}
 
@@ -603,6 +594,7 @@ func validateTemplateData(
 		add(prefix+".description", msg)
 		add(prefix+".estimateHours", validateEstimateHours(t.EstimateHours))
 		offsets(prefix, t.StartDayOffset, t.DueDayOffset)
+		checklist(prefix, t.Checklist)
 		if t.MilestoneIndex != nil {
 			idx := int(*t.MilestoneIndex)
 			if idx < 0 || idx >= len(milestones) {
@@ -621,6 +613,7 @@ func validateTemplateData(
 			add(subPrefix+".description", msg)
 			add(subPrefix+".estimateHours", validateEstimateHours(sub.EstimateHours))
 			offsets(subPrefix, sub.StartDayOffset, sub.DueDayOffset)
+			checklist(subPrefix, sub.Checklist)
 		}
 	}
 
@@ -649,8 +642,14 @@ func validateTemplateData(
 		}
 		seen[pair] = i
 	}
-	if indicesValid && templateDependenciesCycle(len(tasks), dependencies) {
-		add("dependencies", "The dependencies form a cycle: a task would have to wait for itself.")
+	if indicesValid {
+		cyclic, longest := templateDependencyChains(len(tasks), dependencies)
+		switch {
+		case cyclic:
+			add("dependencies", "The dependencies form a cycle: a task would have to wait for itself.")
+		case longest > maxDependencyChainLinks:
+			add("dependencies", dependencyChainTooLongMessage(longest))
+		}
 	}
 
 	if len(invalid) > 0 {
@@ -660,12 +659,16 @@ func validateTemplateData(
 	return nil
 }
 
-// templateDependenciesCycle reports whether the dependencies, every index of
+// templateDependencyChains reports whether the dependencies, every index of
 // which is already known to be in bounds, form a cycle among the template's
-// tasks. Kahn's algorithm: a graph is acyclic exactly when repeatedly removing
-// the tasks nothing waits on removes every task.
-func templateDependenciesCycle(taskCount int, dependencies []gen.ProjectTemplateDependency) bool {
+// tasks, and otherwise the number of links in the longest chain they make.
+// Kahn's algorithm: a graph is acyclic exactly when repeatedly removing the
+// tasks nothing waits on removes every task, and removing them in that order
+// visits every task after everything it waits on, so the longest chain ending
+// at each one is known by the time it is removed.
+func templateDependencyChains(taskCount int, dependencies []gen.ProjectTemplateDependency) (cyclic bool, longest int) {
 	incoming := make([]int, taskCount)
+	chain := make([]int, taskCount)
 	successors := make([][]int32, taskCount)
 	for _, d := range dependencies {
 		successors[d.PredecessorTaskIndex] = append(successors[d.PredecessorTaskIndex], d.SuccessorTaskIndex)
@@ -682,12 +685,14 @@ func templateDependenciesCycle(taskCount int, dependencies []gen.ProjectTemplate
 		next := ready[len(ready)-1]
 		ready = ready[:len(ready)-1]
 		removed++
+		longest = max(longest, chain[next])
 		for _, succ := range successors[next] {
+			chain[succ] = max(chain[succ], chain[next]+1)
 			incoming[succ]--
 			if incoming[succ] == 0 {
 				ready = append(ready, succ)
 			}
 		}
 	}
-	return removed < taskCount
+	return removed < taskCount, longest
 }

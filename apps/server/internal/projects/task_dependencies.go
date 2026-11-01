@@ -20,6 +20,63 @@ var (
 	errDependencyCycleDetected   = errors.New("projects: adding this dependency creates a cyclic dependency")
 )
 
+// maxDependencyChainLinks bounds the longest chain of linked tasks a project's
+// dependencies may make (spec M7): a hundred links is far past any plan a
+// person reads, and short of what a reschedule or a Gantt walks in one go.
+// Templates are held to the same limit, so applying one never builds a chain
+// a hand-made link would have been refused for.
+const maxDependencyChainLinks = 100
+
+// dependencyChainTooLongTitle is the problem title of that refusal, which is
+// how a client tells it from the other dependency 400s — this module's
+// refusals carry no codes of their own (errors.go).
+const dependencyChainTooLongTitle = "Dependency chain too long"
+
+// dependencyChainTooLongMessage is that refusal's field message, naming the
+// chain's length as it would have been.
+func dependencyChainTooLongMessage(links int) string {
+	return fmt.Sprintf("This would make a chain of %d linked dependencies; a chain may hold at most %d.", links, maxDependencyChainLinks)
+}
+
+// dependencyChainTooLong carries the refusal, and the length that decided it,
+// out of the create's transaction.
+type dependencyChainTooLong struct{ links int }
+
+func (e dependencyChainTooLong) Error() string {
+	return fmt.Sprintf("projects: the dependency would make a chain of %d links", e.links)
+}
+
+// longestChainThrough is the number of links in the longest chain that would
+// run through a new edge predecessorID -> successorID: the longest chain
+// ending at the predecessor, the new link, and the longest chain starting at
+// the successor. It is asked only once createsCycle has said no, so both walks
+// run over an acyclic graph and each task's answer is worked out once.
+func longestChainThrough(existingDeps []store.ProjectsTaskDependency, predecessorID, successorID int32) int {
+	successors := make(map[int32][]int32, len(existingDeps))
+	predecessors := make(map[int32][]int32, len(existingDeps))
+	for _, d := range existingDeps {
+		successors[d.PredecessorTaskID] = append(successors[d.PredecessorTaskID], d.SuccessorTaskID)
+		predecessors[d.SuccessorTaskID] = append(predecessors[d.SuccessorTaskID], d.PredecessorTaskID)
+	}
+	longest := func(edges map[int32][]int32, from int32) int {
+		memo := map[int32]int{}
+		var walk func(int32) int
+		walk = func(id int32) int {
+			if n, ok := memo[id]; ok {
+				return n
+			}
+			n := 0
+			for _, next := range edges[id] {
+				n = max(n, walk(next)+1)
+			}
+			memo[id] = n
+			return n
+		}
+		return walk(from)
+	}
+	return longest(predecessors, predecessorID) + 1 + longest(successors, successorID)
+}
+
 // createsCycle checks if adding an edge predecessorID -> successorID would create a cycle.
 // Since adding predecessorID -> successorID creates a cycle iff predecessorID is reachable
 // from successorID, we do a breadth-first search from successorID following existing edges.
@@ -200,6 +257,9 @@ func (s *server) PostProjectsByIdDependencies(ctx context.Context, req gen.PostP
 		if createsCycle(existingDeps, body.PredecessorTaskId, body.SuccessorTaskId) {
 			return errDependencyCycleDetected
 		}
+		if links := longestChainThrough(existingDeps, body.PredecessorTaskId, body.SuccessorTaskId); links > maxDependencyChainLinks {
+			return dependencyChainTooLong{links: links}
+		}
 
 		created, err = txq.InsertTaskDependency(ctx, store.InsertTaskDependencyParams{
 			ProjectID:         project.ID,
@@ -215,7 +275,12 @@ func (s *server) PostProjectsByIdDependencies(ctx context.Context, req gen.PostP
 		return nil
 	})
 
+	var tooLong dependencyChainTooLong
 	switch {
+	case errors.As(err, &tooLong):
+		return gen.PostProjectsByIdDependencies400ApplicationProblemPlusJSONResponse(
+			apicommon.ValidationProblem(dependencyChainTooLongTitle, map[string][]string{"successorTaskId": {dependencyChainTooLongMessage(tooLong.links)}}),
+		), nil
 	case errors.Is(err, errDependencyPredecessorGone):
 		return gen.PostProjectsByIdDependencies400ApplicationProblemPlusJSONResponse(
 			apicommon.ValidationProblem("Invalid task dependency", map[string][]string{"predecessorTaskId": {"Predecessor task not found in this project."}}),

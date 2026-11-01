@@ -393,6 +393,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{id}/save-as-template": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Save a project as a template
+         * @description Snapshots the project's delivery milestones, top-level tasks with their subtasks and checklists, task-to-milestone links and the dependencies between top-level tasks into a new template. Dates become day offsets from the project's start date (anything before it becomes 0), or, when the project has no start date, from the earliest date among the copied rows. Assignees, statuses, comments and logged time are not copied, and dependencies that touch a subtask are skipped. Nothing is recorded on the project's timeline.
+         */
+        post: operations["postProjectsByIdSaveAsTemplate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{id}/status": {
         parameters: {
             query?: never;
@@ -1890,6 +1910,12 @@ export interface components {
             /** Format: uuid */
             userId: string;
         };
+        /** @description Save a project's plan as a new template. Everything else the template holds is read from the project. */
+        ProjectSaveAsTemplateRequest: {
+            description?: string | null;
+            /** @description The new template's name, 1–200 characters after trimming. */
+            name: string;
+        };
         /**
          * @description One thing the dashboard wants a human to look at. The shape is the dashboard's, shared by every module's /stats/attention, and the host translates the sentence from `type` — the title is only the name of the thing.
          *
@@ -2015,6 +2041,8 @@ export interface components {
         };
         /** @description A subtask blueprint within a template task. */
         ProjectTemplateSubtask: {
+            /** @description The subtask's checklist as item texts, in order. Each item is created unchecked when the template is applied; at most 100 items, each 1–500 characters after trimming. */
+            checklist?: string[];
             description?: string | null;
             /** Format: int32 */
             dueDayOffset?: number | null;
@@ -2026,6 +2054,8 @@ export interface components {
         };
         /** @description A top-level task blueprint within a template. */
         ProjectTemplateTask: {
+            /** @description The task's checklist as item texts, in order. Each item is created unchecked when the template is applied; at most 100 items, each 1–500 characters after trimming. */
+            checklist?: string[];
             description?: string | null;
             /**
              * Format: int32
@@ -4266,6 +4296,66 @@ export interface operations {
                 };
             };
             /** @description Not Found — the project does not exist, the caller holds no role on it and no view-all/manage-all permission, or the user holds no role on it. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    postProjectsByIdSaveAsTemplate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProjectSaveAsTemplateRequest"];
+            };
+        };
+        responses: {
+            /** @description Created — the new template. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectTemplateResponse"];
+                };
+            };
+            /** @description Bad Request — the name or description is invalid, or the project's plan breaks a template rule (the field errors name it). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden — the caller lacks projects:create, which every change to the template catalog needs. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — the project does not exist or the caller cannot see it. */
             404: {
                 headers: {
                     [name: string]: unknown;

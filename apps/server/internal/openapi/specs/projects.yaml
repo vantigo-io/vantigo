@@ -1778,6 +1778,18 @@ components:
                 - role
                 - createdAt
             type: object
+        ProjectSaveAsTemplateRequest:
+            description: Save a project's plan as a new template. Everything else the template holds is read from the project.
+            properties:
+                description:
+                    nullable: true
+                    type: string
+                name:
+                    description: The new template's name, 1–200 characters after trimming.
+                    type: string
+            required:
+                - name
+            type: object
         ProjectStatsAttentionItem:
             description: |-
                 One thing the dashboard wants a human to look at. The shape is the dashboard's, shared by every module's /stats/attention, and the host translates the sentence from `type` — the title is only the name of the thing.
@@ -2033,6 +2045,12 @@ components:
         ProjectTemplateSubtask:
             description: A subtask blueprint within a template task.
             properties:
+                checklist:
+                    description: The subtask's checklist as item texts, in order. Each item is created unchecked when the template is applied; at most 100 items, each 1–500 characters after trimming.
+                    items:
+                        type: string
+                    maxItems: 100
+                    type: array
                 description:
                     nullable: true
                     type: string
@@ -2056,6 +2074,12 @@ components:
         ProjectTemplateTask:
             description: A top-level task blueprint within a template.
             properties:
+                checklist:
+                    description: The task's checklist as item texts, in order. Each item is created unchecked when the template is applied; at most 100 items, each 1–500 characters after trimming.
+                    items:
+                        type: string
+                    maxItems: 100
+                    type: array
                 description:
                     nullable: true
                     type: string
@@ -4069,6 +4093,54 @@ paths:
             tags:
                 - Projects
             x-vantigo-access: permission:projects:access
+    /api/v1/projects/{id}/save-as-template:
+        post:
+            description: Snapshots the project's delivery milestones, top-level tasks with their subtasks and checklists, task-to-milestone links and the dependencies between top-level tasks into a new template. Dates become day offsets from the project's start date (anything before it becomes 0), or, when the project has no start date, from the earliest date among the copied rows. Assignees, statuses, comments and logged time are not copied, and dependencies that touch a subtask are skipped. Nothing is recorded on the project's timeline.
+            operationId: postProjectsByIdSaveAsTemplate
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ProjectSaveAsTemplateRequest'
+                required: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ProjectTemplateResponse'
+                    description: Created — the new template.
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request — the name or description is invalid, or the project's plan breaks a template rule (the field errors name it).
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden — the caller lacks projects:create, which every change to the template catalog needs.
+                "404":
+                    description: Not Found — the project does not exist or the caller cannot see it.
+            summary: Save a project as a template
+            tags:
+                - Projects
+            x-vantigo-access: permission:projects:access+projects:create
     /api/v1/projects/{id}/status:
         put:
             operationId: putProjectsByIdStatus

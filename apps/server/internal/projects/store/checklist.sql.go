@@ -175,6 +175,44 @@ func (q *Queries) ListChecklistItems(ctx context.Context, taskID int32) ([]Proje
 	return items, nil
 }
 
+const listProjectChecklistItems = `-- name: ListProjectChecklistItems :many
+SELECT i.id, i.task_id, i.text, i.done, i.position, i.created_at, i.updated_at FROM projects.task_checklist_items i
+JOIN projects.tasks t ON t.id = i.task_id
+WHERE t.project_id = $1
+ORDER BY i.task_id, i.position, i.id
+`
+
+// ListProjectChecklistItems is every checklist of a project's tasks in one
+// query, grouped by task and each group in its reading order, which is what
+// saving a project as a template snapshots.
+func (q *Queries) ListProjectChecklistItems(ctx context.Context, projectID int32) ([]ProjectsTaskChecklistItem, error) {
+	rows, err := q.db.Query(ctx, listProjectChecklistItems, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ProjectsTaskChecklistItem
+	for rows.Next() {
+		var i ProjectsTaskChecklistItem
+		if err := rows.Scan(
+			&i.ID,
+			&i.TaskID,
+			&i.Text,
+			&i.Done,
+			&i.Position,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const lockChecklistItem = `-- name: LockChecklistItem :one
 SELECT id, task_id, text, done, position, created_at, updated_at FROM projects.task_checklist_items
 WHERE id = $1 AND task_id = $2
