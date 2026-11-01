@@ -5676,7 +5676,7 @@ export interface operations {
                     "application/json": components["schemas"]["AuthErrorResponse"];
                 };
             };
-            /** @description Forbidden */
+            /** @description Forbidden — the caller lacks projects:create, which every change to the template catalog needs. */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -5776,7 +5776,7 @@ export interface operations {
                     "application/json": components["schemas"]["AuthErrorResponse"];
                 };
             };
-            /** @description Forbidden */
+            /** @description Forbidden — the caller lacks projects:create, which every change to the template catalog needs. */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -5830,7 +5830,7 @@ export interface operations {
                     "application/json": components["schemas"]["AuthErrorResponse"];
                 };
             };
-            /** @description Forbidden */
+            /** @description Forbidden — the caller lacks projects:create, which every change to the template catalog needs. */
             403: {
                 headers: {
                     [name: string]: unknown;
