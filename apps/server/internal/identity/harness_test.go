@@ -92,6 +92,10 @@ type harness struct {
 	clock time.Time
 
 	clients atomic.Uint32
+
+	// mods is what Compose was given, so a test can mount the installation a
+	// second time over the same database (a restart, a second replica).
+	mods []module.Module
 }
 
 // harnessSetup is what harness options adjust: the environment the harness
@@ -100,6 +104,7 @@ type harness struct {
 type harnessSetup struct {
 	env         map[string]string
 	permissions []contracts.Permission
+	aiTasks     []contracts.AITask
 	tracer      pgx.QueryTracer
 	oidc        *fakeOIDC
 }
@@ -147,6 +152,14 @@ func withPermissions(perms ...contracts.Permission) harnessOption {
 	return func(s *harnessSetup) { s.permissions = append(s.permissions, perms...) }
 }
 
+// withAITasks adds tasks, each of a module named in its Module field, to the
+// composed AI tasks through a catalogModule per module, for tests of the AI
+// models page's endpoints and the import: the task's module must be one Compose
+// knows a contract for, such as communications.
+func withAITasks(tasks ...contracts.AITask) harnessOption {
+	return func(s *harnessSetup) { s.aiTasks = append(s.aiTasks, tasks...) }
+}
+
 // catalogModule stands in for the module name (customers or staff),
 // contributing only permissions. RBAC tests need catalog keys beyond identity:manage, and a
 // key must belong to a module Compose knows: openapi.Load must find the
@@ -154,10 +167,11 @@ func withPermissions(perms ...contracts.Permission) harnessOption {
 // the module's name. Its Mount serves nothing and builds no module.Router,
 // which would report every operation of the module as never registered; only
 // its Permissions matter, and they reach identity through Deps.Catalog.
-func catalogModule(name string, perms []contracts.Permission) module.Module {
+func catalogModule(name string, perms []contracts.Permission, tasks ...contracts.AITask) module.Module {
 	return module.Module{
 		Name:        name,
 		Permissions: perms,
+		AITasks:     tasks,
 		Mount:       func(module.Deps) (http.Handler, error) { return http.NotFoundHandler(), nil },
 	}
 }
@@ -223,17 +237,24 @@ func newHarness(t *testing.T, opts ...harnessOption) *harness {
 		setup.oidc.attach(h.access, h.now) // before Compose mounts identity
 	}
 	mods := []module.Module{identity.Module(h.access)}
-	for _, name := range []string{"customers", "staff"} {
+	for _, name := range []string{"customers", "staff", "communications"} {
 		var perms []contracts.Permission
 		for _, p := range setup.permissions {
 			if strings.HasPrefix(p.Key, name+":") {
 				perms = append(perms, p)
 			}
 		}
-		if len(perms) > 0 {
-			mods = append(mods, catalogModule(name, perms))
+		var tasks []contracts.AITask
+		for _, task := range setup.aiTasks {
+			if task.Module == name {
+				tasks = append(tasks, task)
+			}
+		}
+		if len(perms) > 0 || len(tasks) > 0 {
+			mods = append(mods, catalogModule(name, perms, tasks...))
 		}
 	}
+	h.mods = mods
 	api, err := module.Compose(h.deps, mods...)
 	if err != nil {
 		t.Fatalf("harness: compose identity: %v", err)

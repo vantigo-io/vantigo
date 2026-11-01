@@ -35,6 +35,13 @@ type IdentityAccessGroupRoleMapping struct {
 	Source  string
 }
 
+type IdentityAiTaskModel struct {
+	TaskKey   string
+	Model     string
+	UpdatedAt time.Time
+	UpdatedBy *uuid.UUID
+}
+
 type IdentityAuthorizationAuditEvent struct {
 	ID               int64
 	ActorUserID      *uuid.UUID

@@ -131,6 +131,7 @@ func Module(a *Access) module.Module {
 		Mount:    func(d module.Deps) (http.Handler, error) { return mount(a, d) },
 		Users:    func(d module.Deps) contracts.UserDirectory { return newUserDirectory(a, d) },
 		Calendar: newBusinessCalendar,
+		AIModels: func(d module.Deps) contracts.AIModels { return a.aiModelsFor(d) },
 		Accounts: func(d module.Deps) contracts.AccountProvisioning { return newProvisioning(a, d) },
 		SSOConnections: func(d module.Deps) contracts.SSOConnections {
 			return newSSOConnections(a, d)
@@ -182,6 +183,12 @@ func mount(a *Access, d module.Deps) (http.Handler, error) {
 	}
 	a.sso.evict()
 	if _, err := a.sso.get(ctx); err != nil {
+		return nil, err
+	}
+	// The one remaining import of the environment into the workspace tier:
+	// COMMUNICATIONS_AI_MODEL becomes Communications' tasks' model while no
+	// task has a choice (ai_models_import.go).
+	if err := importAITaskModelsFromEnvironment(ctx, d, a.aiModelsFor(d)); err != nil {
 		return nil, err
 	}
 	strict := gen.NewStrictHandlerWithOptions(srv, []gen.StrictMiddlewareFunc{accessConflictFilter}, gen.StrictHTTPServerOptions{
