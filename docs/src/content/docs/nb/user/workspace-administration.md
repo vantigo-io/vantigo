@@ -369,7 +369,12 @@ inntaket; og **Planlegge**, også sensitiv, skriver allokeringene og vilkårene 
 oppsigelsestiden, overlappingen og karantenen i en kundekontrakt — og behovene, finner
 kandidatene til et behov og fyller det, leser planleggernes notater og personenes
 ønsker, og holder Bemanningsinnstillinger. En planlegger trenger også **Se
-ansattoversikten** fra Ansatte, siden planen bare viser personene Ansatte viser dem.
+ansattoversikten** fra Ansatte, siden planen bare viser personene Ansatte viser dem. I
+Kalender gir **Bruk Kalender** appen, **Se kollegers kalendere** når en kollega er opptatt
+og ledig, og **Administrere kalenderinnstillinger**, merket sensitiv og i kategorien
+Administrasjon, kanalen invitasjoner til folk utenfor bedriften sendes fra, siden den
+avgjør hvem kundenes e-post kommer fra
+([hvor invitasjonene sendes fra](/nb/user/calendar/#hvor-invitasjonene-sendes-fra)).
 **Administrer
 identitet** (`identity:manage`) er identitetsmodulens egen, eneste tillatelse.
 
