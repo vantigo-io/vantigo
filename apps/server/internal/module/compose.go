@@ -417,6 +417,12 @@ func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.
 		return nil, err
 	}
 
+	// The assistant's grants (contracts.AssistantGrants, the Assistant design
+	// S3) resolve after the AI slot. Workers does not resolve them.
+	if deps, err = withAssistantGrants(deps, mods); err != nil {
+		return nil, err
+	}
+
 	// The calendar's busy time (contracts.CalendarBusy, calendar Outlook sync
 	// design O9.8) resolves last, after the mailbox calendar: its provider,
 	// the calendar's server, reads the rest of Deps while it is built.

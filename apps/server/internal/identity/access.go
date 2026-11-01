@@ -95,7 +95,14 @@ func NewAccess(d module.Deps) *Access {
 // (apps/products/backend/Products.Module/Endpoints/ProductsEndpoints.cs:16-21).
 // ASP.NET Core authorizes such an endpoint only when every one of its
 // policies succeeds.
+//
+// A request whose context carries an assistant grant (contracts.WithAssistantGrant,
+// set only by the operations dispatcher, never from a header or a cookie) is
+// resolved by checkGrant instead, and no cookie is read.
 func (a *Access) Check(r *http.Request, rule contracts.Rule) (contracts.Principal, error) {
+	if grantID, ok := contracts.AssistantGrantFrom(r.Context()); ok {
+		return a.checkGrant(r.Context(), grantID, rule)
+	}
 	if rule.Kind == contracts.RuleSCIM {
 		token, ok := scimBearer(r)
 		if !ok {
@@ -123,13 +130,24 @@ func (a *Access) Check(r *http.Request, rule contracts.Rule) (contracts.Principa
 		}
 		return contracts.Principal{}, contracts.ErrUnauthenticated
 	}
-	p := contracts.Principal{
+	return a.evaluate(ctx, sessionPrincipal(s), s, rule, now)
+}
+
+// sessionPrincipal is the caller a live session is.
+func sessionPrincipal(s store.GetSessionByTokenHashRow) contracts.Principal {
+	return contracts.Principal{
 		UserID:      s.UserID,
 		SessionID:   s.ID,
 		Roles:       orderRoles(s.RoleNames),
 		MFAVerified: s.MfaVerifiedAt != nil,
 	}
+}
 
+// evaluate decides rule for the live session s, whose caller is p, and
+// returns p when it is met. Check evaluates a cookie's session with it, and
+// checkGrant an assistant grant's, so a grant is held to exactly the rule the
+// session itself would be.
+func (a *Access) evaluate(ctx context.Context, p contracts.Principal, s store.GetSessionByTokenHashRow, rule contracts.Rule, now time.Time) (contracts.Principal, error) {
 	switch rule.Kind {
 	case contracts.RuleAnonymous, contracts.RuleSession:
 		return p, nil
@@ -278,16 +296,25 @@ func (a *Access) authenticate(ctx context.Context, r *http.Request, now time.Tim
 		return none, false, fmt.Errorf("identity: resolve session: %w", err)
 	}
 
-	idle := bounds.Idle
+	if err := a.slide(ctx, s, now); err != nil {
+		return none, false, err
+	}
+	return s, true, nil
+}
+
+// slide slides a live session's idle window once the session has been idle for
+// min(idle/4, 5 min), with idle the bound that applies to the user right now.
+func (a *Access) slide(ctx context.Context, s store.GetSessionByTokenHashRow, now time.Time) error {
+	idle := a.cfg.Sessions.Idle
 	if s.Privileged {
-		idle = bounds.PrivilegedIdle
+		idle = a.cfg.Sessions.PrivilegedIdle
 	}
 	if now.Sub(s.LastSeenAt) >= min(idle/4, maxActivityWriteInterval) {
 		if err := a.q.TouchSession(ctx, store.TouchSessionParams{ID: s.ID, Now: now}); err != nil {
-			return none, false, fmt.Errorf("identity: slide session: %w", err)
+			return fmt.Errorf("identity: slide session: %w", err)
 		}
 	}
-	return s, true, nil
+	return nil
 }
 
 func interval(d time.Duration) pgtype.Interval {
