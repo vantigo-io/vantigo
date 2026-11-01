@@ -26,6 +26,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgconn"
 
+	"github.com/vantigo-io/vantigo/server/internal/netguard"
 	"github.com/vantigo-io/vantigo/server/internal/openapi"
 )
 
@@ -525,6 +526,10 @@ type Config struct {
 	// with no query or fragment, for an OpenAI-compatible endpoint. Empty means
 	// the provider's own address.
 	AIBaseURL string
+	// AITimeout is the budget of one AI chat call (AI_TIMEOUT, a Go duration,
+	// default 120s, at most 10m): local models are slow. Complete keeps its own
+	// 30 s.
+	AITimeout time.Duration
 	// AIModels are the models the plan allows (AI_MODELS), in the order the
 	// operator wrote them, the first being the plan's default. At least one
 	// when AIProvider is set, none otherwise.
@@ -1208,7 +1213,29 @@ const aiAPIKeyMax = 400
 
 // aiProviders are the providers srv/ai implements. A second one is one file
 // there and one word here.
-var aiProviders = []string{"openai"}
+//
+// "openai-compatible" is "openai" under a name that reads better beside a base
+// URL that is not OpenAI's (Ollama, vLLM, LM Studio): one implementation, and
+// the name the operator wrote is the one reported.
+var aiProviders = []string{"openai", "openai-compatible"}
+
+const (
+	// aiDefaultTimeout and aiMaxTimeout bound AI_TIMEOUT.
+	aiDefaultTimeout = 120 * time.Second
+	aiMaxTimeout     = 10 * time.Minute
+)
+
+// localAIHost reports whether host may be spoken to over plain http: a loopback
+// or private-network (RFC 1918, unique-local) address, or a single-label name
+// such as "ollama" or "localhost", which only resolves inside the operator's
+// own network. No name is resolved: the boot must not depend on DNS, and a
+// name with a dot is a public one as far as this rule can tell.
+func localAIHost(host string) bool {
+	if addr, err := netip.ParseAddr(host); err == nil {
+		return addr.IsLoopback() || netguard.PrivateNetwork(addr)
+	}
+	return host != "" && !strings.Contains(host, ".") && !strings.Contains(host, ":")
+}
 
 // aiConfig loads the AI platform's instance configuration (AI as a platform
 // provider design T11): AI_PROVIDER, AI_API_KEY, AI_BASE_URL and AI_MODELS,
@@ -1226,6 +1253,8 @@ var aiProviders = []string{"openai"}
 func aiConfig(p *problems, env map[string]string, c *Config) {
 	get := func(name string) string { return strings.TrimSpace(env[name]) }
 	provider, key, baseURL, models := get("AI_PROVIDER"), get("AI_API_KEY"), get("AI_BASE_URL"), get("AI_MODELS")
+	timeout := get("AI_TIMEOUT")
+	c.AITimeout = aiDefaultTimeout
 	c.CommunicationsAIModel = get("COMMUNICATIONS_AI_MODEL")
 
 	legacyEnabled := flag(p, env, "COMMUNICATIONS_AI_ENABLED")
@@ -1254,7 +1283,7 @@ func aiConfig(p *problems, env map[string]string, c *Config) {
 	}
 
 	if provider == "" {
-		for _, v := range []struct{ name, value string }{{"AI_API_KEY", key}, {"AI_BASE_URL", baseURL}, {"AI_MODELS", models}} {
+		for _, v := range []struct{ name, value string }{{"AI_API_KEY", key}, {"AI_BASE_URL", baseURL}, {"AI_MODELS", models}, {"AI_TIMEOUT", timeout}} {
 			if v.value != "" {
 				p.add(v.name, "is set without AI_PROVIDER")
 			}
@@ -1277,8 +1306,10 @@ func aiConfig(p *problems, env map[string]string, c *Config) {
 		return
 	}
 	switch {
+	case key == "" && baseURL == "":
+		p.add("AI_API_KEY", "is required with AI_PROVIDER unless AI_BASE_URL names an endpoint that needs none")
 	case key == "":
-		p.add("AI_API_KEY", "is required with AI_PROVIDER")
+		// A local model (Ollama, vLLM, LM Studio) takes no key.
 	case len(key) > aiAPIKeyMax || strings.ContainsFunc(key, func(r rune) bool { return r <= ' ' || r == 0x7f }):
 		p.add("AI_API_KEY", "must be at most %d bytes of printable characters with no space", aiAPIKeyMax)
 	}
@@ -1286,12 +1317,25 @@ func aiConfig(p *problems, env map[string]string, c *Config) {
 	if baseURL != "" {
 		u, err := url.Parse(baseURL)
 		switch {
-		case err != nil || u.Scheme != "https" || u.Host == "" || u.Opaque != "":
-			p.add("AI_BASE_URL", "must be an absolute https URL")
+		case err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" || u.Opaque != "":
+			p.add("AI_BASE_URL", "must be an absolute https URL, or an http URL for a loopback, private or single-label host such as http://ollama:11434/v1")
+		case u.Scheme == "http" && !localAIHost(u.Hostname()):
+			p.add("AI_BASE_URL", "must be an absolute https URL: http is accepted only for a loopback, private-network or single-label host, and %q is none of them", u.Hostname())
+		case u.Scheme == "http" && key != "":
+			p.add("AI_BASE_URL", "must be an https URL when AI_API_KEY is set: the key is never sent over http")
 		case u.User != nil || u.RawQuery != "" || u.ForceQuery || u.Fragment != "":
 			p.add("AI_BASE_URL", "must have no user, query or fragment")
 		default:
 			c.AIBaseURL = strings.TrimSuffix(baseURL, "/")
+		}
+	}
+
+	if timeout != "" {
+		d, err := time.ParseDuration(timeout)
+		if err != nil || d <= 0 || d > aiMaxTimeout {
+			p.add("AI_TIMEOUT", "must be a duration above zero and at most %s, such as 120s", aiMaxTimeout)
+		} else {
+			c.AITimeout = d
 		}
 	}
 
