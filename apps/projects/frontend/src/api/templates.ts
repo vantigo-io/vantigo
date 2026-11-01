@@ -15,6 +15,7 @@ export type ProjectTemplateCreateInput = Schemas["ProjectTemplateCreateRequest"]
 export type ProjectTemplateUpdateInput = Schemas["ProjectTemplateUpdateRequest"];
 export type ProjectApplyTemplateInput = Schemas["ProjectApplyTemplateRequest"];
 export type ProjectApplyTemplateResult = Schemas["ProjectApplyTemplateResponse"];
+export type ProjectSaveAsTemplateInput = Schemas["ProjectSaveAsTemplateRequest"];
 
 /**
  * List of available reusable project templates.
@@ -59,6 +60,14 @@ export const applyProjectTemplate = (
   input: ProjectApplyTemplateInput,
 ): Promise<ProjectApplyTemplateResult> =>
   request<ProjectApplyTemplateResult>(`/api/v1/projects/${projectId}/apply-template`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+
+/** A new template snapshotted from the project's plan; the API asks projects:create of it. */
+export const saveProjectAsTemplate = (projectId: number, input: ProjectSaveAsTemplateInput): Promise<ProjectTemplate> =>
+  request<ProjectTemplate>(`/api/v1/projects/${projectId}/save-as-template`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),

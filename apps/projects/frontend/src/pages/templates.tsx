@@ -7,24 +7,18 @@ import { ContentSkeleton, EmptyState, PageHeader, useI18n } from "@vantigo/front
 import { useState } from "react";
 import { deleteProjectTemplate, type ProjectTemplate, projectTemplatesQueryOptions } from "../api/templates";
 import "../i18n";
-import { templateSubtaskCount } from "../lib/templates";
+import { templateChecklistCount, templateSubtaskCount } from "../lib/templates";
 import { TemplateFormModal, type TemplateModalState } from "./-template-form-modal";
-
-export interface ProjectTemplatesPageProps {
-  /**
-   * Whether the caller may create, edit and delete templates — the host reads
-   * `projects:create`, the permission the API checks every template write
-   * against. Without it the catalog is read-only.
-   */
-  canManage: boolean;
-}
 
 /**
  * The workspace's project templates: the blueprints "Use template" on a
- * project's Tasks tab applies. Everyone in the app may read the catalog;
- * the people who may start projects own it.
+ * project's Tasks tab applies. Everyone in the app may read the catalog where
+ * it is used, but this page is the people's who own it: the host offers and
+ * guards the route on projects:create, the permission the API checks every
+ * template write against, so whoever sees the page may create, edit and
+ * delete.
  */
-export const ProjectTemplatesPage = ({ canManage }: ProjectTemplatesPageProps) => {
+export const ProjectTemplatesPage = () => {
   const { t } = useI18n("projects");
   const { data, isPending, isError, error } = useQuery(projectTemplatesQueryOptions());
   const [modalState, setModalState] = useState<TemplateModalState | null>(null);
@@ -36,11 +30,9 @@ export const ProjectTemplatesPage = ({ canManage }: ProjectTemplatesPageProps) =
         title={t("projectTemplates")}
         description={t("projectTemplatesDescription")}
         actions={
-          canManage && (
-            <Button leftSection={<IconPlus size={16} />} onClick={() => setModalState({ mode: "create" })}>
-              {t("newTemplate")}
-            </Button>
-          )
+          <Button leftSection={<IconPlus size={16} />} onClick={() => setModalState({ mode: "create" })}>
+            {t("newTemplate")}
+          </Button>
         }
       />
 
@@ -59,7 +51,7 @@ export const ProjectTemplatesPage = ({ canManage }: ProjectTemplatesPageProps) =
             <EmptyState
               icon={IconTemplate}
               title={t("noProjectTemplates")}
-              description={canManage ? t("noProjectTemplatesCanCreate") : t("noProjectTemplatesReadOnly")}
+              description={t("noProjectTemplatesCanCreate")}
             />
           )}
 
@@ -72,8 +64,9 @@ export const ProjectTemplatesPage = ({ canManage }: ProjectTemplatesPageProps) =
                     <Table.Th ta="right">{t("deliveryMilestones")}</Table.Th>
                     <Table.Th ta="right">{t("tasks")}</Table.Th>
                     <Table.Th ta="right">{t("subtasks")}</Table.Th>
+                    <Table.Th ta="right">{t("templateChecklistItems")}</Table.Th>
                     <Table.Th ta="right">{t("dependencies")}</Table.Th>
-                    {canManage && <Table.Th w={48} aria-label={t("actions")} />}
+                    <Table.Th w={48} aria-label={t("actions")} />
                   </Table.Tr>
                 </Table.Thead>
                 <Table.Tbody>
@@ -81,7 +74,6 @@ export const ProjectTemplatesPage = ({ canManage }: ProjectTemplatesPageProps) =
                     <TemplateRow
                       key={template.id}
                       template={template}
-                      canManage={canManage}
                       onEdit={() => setModalState({ mode: "edit", template })}
                     />
                   ))}
@@ -95,15 +87,7 @@ export const ProjectTemplatesPage = ({ canManage }: ProjectTemplatesPageProps) =
   );
 };
 
-const TemplateRow = ({
-  template,
-  canManage,
-  onEdit,
-}: {
-  template: ProjectTemplate;
-  canManage: boolean;
-  onEdit: () => void;
-}) => {
+const TemplateRow = ({ template, onEdit }: { template: ProjectTemplate; onEdit: () => void }) => {
   const { t, formatters } = useI18n("projects");
   const queryClient = useQueryClient();
 
@@ -144,31 +128,30 @@ const TemplateRow = ({
       <Table.Td ta="right">{count(template.milestones.length)}</Table.Td>
       <Table.Td ta="right">{count(template.tasks.length)}</Table.Td>
       <Table.Td ta="right">{count(templateSubtaskCount(template))}</Table.Td>
+      <Table.Td ta="right">{count(templateChecklistCount(template))}</Table.Td>
       <Table.Td ta="right">{count(template.dependencies.length)}</Table.Td>
-      {canManage && (
-        <Table.Td>
-          <Menu position="bottom-end" shadow="md">
-            <Menu.Target>
-              <ActionIcon
-                variant="subtle"
-                aria-label={t("templateActionsFor", { name: template.name })}
-                loading={remove.isPending}
-              >
-                <IconDots size={16} />
-              </ActionIcon>
-            </Menu.Target>
-            <Menu.Dropdown>
-              <Menu.Item leftSection={<IconPencil size={14} />} onClick={onEdit}>
-                {t("edit")}
-              </Menu.Item>
-              <Menu.Divider />
-              <Menu.Item color="red" leftSection={<IconTrash size={14} />} onClick={confirmDelete}>
-                {t("deleteTemplate")}
-              </Menu.Item>
-            </Menu.Dropdown>
-          </Menu>
-        </Table.Td>
-      )}
+      <Table.Td>
+        <Menu position="bottom-end" shadow="md">
+          <Menu.Target>
+            <ActionIcon
+              variant="subtle"
+              aria-label={t("templateActionsFor", { name: template.name })}
+              loading={remove.isPending}
+            >
+              <IconDots size={16} />
+            </ActionIcon>
+          </Menu.Target>
+          <Menu.Dropdown>
+            <Menu.Item leftSection={<IconPencil size={14} />} onClick={onEdit}>
+              {t("edit")}
+            </Menu.Item>
+            <Menu.Divider />
+            <Menu.Item color="red" leftSection={<IconTrash size={14} />} onClick={confirmDelete}>
+              {t("deleteTemplate")}
+            </Menu.Item>
+          </Menu.Dropdown>
+        </Menu>
+      </Table.Td>
     </Table.Tr>
   );
 };

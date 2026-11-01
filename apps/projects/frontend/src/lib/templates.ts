@@ -6,7 +6,7 @@ import type {
   ProjectTemplateTask,
 } from "../api/templates";
 import { DELIVERY_MILESTONE_DESCRIPTION_MAX, DELIVERY_MILESTONE_NAME_MAX } from "./delivery-milestones";
-import { TASK_DESCRIPTION_MAX, TASK_TITLE_MAX } from "./tasks";
+import { CHECKLIST_TEXT_MAX, TASK_DESCRIPTION_MAX, TASK_TITLE_MAX } from "./tasks";
 import { nameLength } from "./work-types";
 
 /**
@@ -20,6 +20,11 @@ import { nameLength } from "./work-types";
  * Numbers are `number | string` because that is what a NumberInput holds: an
  * empty field is "".
  */
+export interface TemplateDraftChecklistItem {
+  key: string;
+  text: string;
+}
+
 export interface TemplateDraftSubtask {
   key: string;
   title: string;
@@ -27,6 +32,8 @@ export interface TemplateDraftSubtask {
   startDayOffset: number | string;
   dueDayOffset: number | string;
   estimateHours: number | string;
+  /** The checklist apply creates on the task, in order and unchecked. */
+  checklist: TemplateDraftChecklistItem[];
 }
 
 export interface TemplateDraftTask extends TemplateDraftSubtask {
@@ -62,6 +69,10 @@ export const TEMPLATE_NAME_MAX = 200;
 export const TEMPLATE_DESCRIPTION_MAX = 2000;
 /** The widest estimate the task column holds, numeric(8,2). */
 export const ESTIMATE_HOURS_MAX = 999999.99;
+/** How many checklist items one template task or subtask may carry. */
+export const TEMPLATE_CHECKLIST_MAX = 100;
+/** The longest chain of linked tasks, in links, a project's dependencies may make. */
+export const DEPENDENCY_CHAIN_MAX = 100;
 
 let nextKey = 0;
 /** A key unique within this page's lifetime, which is all a row key needs. */
@@ -87,7 +98,10 @@ export const emptySubtask = (): TemplateDraftSubtask => ({
   startDayOffset: "",
   dueDayOffset: "",
   estimateHours: "",
+  checklist: [],
 });
+
+export const emptyChecklistItem = (): TemplateDraftChecklistItem => ({ key: newRowKey("checklist"), text: "" });
 
 export const emptyTask = (): TemplateDraftTask => ({
   ...emptySubtask(),
@@ -109,6 +123,7 @@ const subtaskDraft = (subtask: ProjectTemplateSubtask): TemplateDraftSubtask => 
   startDayOffset: offsetField(subtask.startDayOffset),
   dueDayOffset: offsetField(subtask.dueDayOffset),
   estimateHours: offsetField(subtask.estimateHours),
+  checklist: (subtask.checklist ?? []).map((text) => ({ key: newRowKey("checklist"), text })),
 });
 
 /**
@@ -151,6 +166,8 @@ const subtaskInput = (subtask: TemplateDraftSubtask): ProjectTemplateSubtask => 
   startDayOffset: optionalNumber(subtask.startDayOffset),
   dueDayOffset: optionalNumber(subtask.dueDayOffset),
   estimateHours: optionalNumber(subtask.estimateHours),
+  // Absent rather than empty, the way the server answers a task without one.
+  checklist: subtask.checklist.length > 0 ? subtask.checklist.map((item) => item.text.trim()) : undefined,
 });
 
 /**
@@ -212,6 +229,36 @@ export const removeTask = (draft: TemplateDraft, key: string): TemplateDraft => 
 /** How many subtasks a stored template holds, under all its tasks. */
 export const templateSubtaskCount = (template: ProjectTemplate): number =>
   template.tasks.reduce((sum, task) => sum + (task.subtasks?.length ?? 0), 0);
+
+/** How many checklist items a stored template holds, under all its tasks and subtasks. */
+export const templateChecklistCount = (template: ProjectTemplate): number =>
+  template.tasks.reduce(
+    (sum, task) =>
+      sum +
+      (task.checklist?.length ?? 0) +
+      (task.subtasks ?? []).reduce((subSum, subtask) => subSum + (subtask.checklist?.length ?? 0), 0),
+    0,
+  );
+
+/**
+ * The number of links in the longest chain the dependencies, as pairs of task
+ * keys, make. It assumes no cycle (ask `dependenciesHaveCycle` first): the
+ * longest chain ending at a task is one more than the longest ending at any
+ * task it waits on.
+ */
+export const longestDependencyChain = (pairs: readonly (readonly [string, string])[]): number => {
+  const predecessors = new Map<string, string[]>();
+  for (const [from, to] of pairs) predecessors.set(to, [...(predecessors.get(to) ?? []), from]);
+  const memo = new Map<string, number>();
+  const chainTo = (node: string): number => {
+    const known = memo.get(node);
+    if (known !== undefined) return known;
+    const length = Math.max(0, ...(predecessors.get(node) ?? []).map((from) => chainTo(from) + 1));
+    memo.set(node, length);
+    return length;
+  };
+  return Math.max(0, ...pairs.map(([, to]) => chainTo(to)));
+};
 
 /**
  * Whether the dependencies, as pairs of task keys, form a cycle. Kahn's
@@ -314,6 +361,14 @@ export const validateTemplateDraft = (draft: TemplateDraft): TemplateDraftErrors
             : null,
       );
     }
+    if (task.checklist.length > TEMPLATE_CHECKLIST_MAX) set(`${path}.checklist`, "templateChecklistTooLong");
+    task.checklist.forEach((item, k) => {
+      const text = item.text.trim();
+      set(
+        `${path}.checklist.${k}.text`,
+        !text ? "templateChecklistItemRequired" : nameLength(text) > CHECKLIST_TEXT_MAX ? "checklistTextTooLong" : null,
+      );
+    });
   };
 
   draft.tasks.forEach((task, i) => {
@@ -342,6 +397,7 @@ export const validateTemplateDraft = (draft: TemplateDraft): TemplateDraftErrors
     pairs.push([d.predecessorKey, d.successorKey]);
   });
   if (dependenciesHaveCycle(pairs)) set("dependencies", "templateDependencyCycle");
+  else if (longestDependencyChain(pairs) > DEPENDENCY_CHAIN_MAX) set("dependencies", "templateDependencyChainTooLong");
 
   return errors;
 };
@@ -349,11 +405,14 @@ export const validateTemplateDraft = (draft: TemplateDraft): TemplateDraftErrors
 /**
  * A server field name (`tasks[1].subtasks[0].title`) as the editor's form path
  * (`tasks.1.subtasks.0.title`). The editor sends its rows in the order it shows
- * them, so the server's indices are the form's; the one exception is a
- * dependency's two ends, which the server names by index and the form by key.
+ * them, so the server's indices are the form's; the exceptions are a
+ * dependency's two ends, which the server names by index and the form by key,
+ * and a checklist item, which the server names by its text's index and the
+ * form by the row the text is in.
  */
 export const formPathFromServerField = (field: string): string =>
   field
     .replace(/\[(\d+)\]/g, ".$1")
+    .replace(/\.checklist\.(\d+)$/, ".checklist.$1.text")
     .replace(/\.predecessorTaskIndex$/, ".predecessorKey")
     .replace(/\.successorTaskIndex$/, ".successorKey");

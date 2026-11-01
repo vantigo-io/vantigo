@@ -18,6 +18,7 @@ import {
   IconAlertCircle,
   IconChevronDown,
   IconChevronRight,
+  IconCopyPlus,
   IconDots,
   IconPlus,
   IconTemplate,
@@ -35,6 +36,7 @@ import { taskStatuses, taskStatusLabelKey } from "../lib/tasks";
 import { useTaskSave } from "../lib/use-task-save";
 import { ApplyTemplateModal } from "./-apply-template-modal";
 import { DeliveryMilestonesCard } from "./-delivery-milestones-card";
+import { SaveAsTemplateModal } from "./-save-as-template-modal";
 import { TaskDrawer } from "./-task-drawer";
 import { TaskFormModal, type TaskModalState } from "./-task-form-modal";
 import { TaskTimelineView } from "./-task-timeline-view";
@@ -81,7 +83,10 @@ export interface ProjectTasksProps {
   openTaskId?: number;
   /** Told whenever the open task changes, so the host can keep the URL in step; `undefined` = closed. */
   onOpenTaskChange?: (taskId: number | undefined) => void;
-  /** Whether the caller may create templates (`projects:create`), so Use template can point them at the catalog. */
+  /**
+   * Whether the caller may create templates (`projects:create`), so Use
+   * template can point them at the catalog and Save as template is offered.
+   */
   canManageTemplates?: boolean;
 }
 
@@ -106,6 +111,7 @@ export const ProjectTasks = ({
   const [openTaskId, setOpenTaskId] = useState<number | null>(openTaskIdFromHost ?? null);
   const [modalState, setModalState] = useState<TaskModalState | null>(null);
   const [applyTemplateOpen, setApplyTemplateOpen] = useState(false);
+  const [saveAsTemplateOpen, setSaveAsTemplateOpen] = useState(false);
   const [selectedMilestoneId, setSelectedMilestoneId] = useState<number | null>(null);
 
   // The host's task follows the URL, and the URL follows the drawer: each new
@@ -176,23 +182,38 @@ export const ProjectTasks = ({
               value={view}
               onChange={chooseView}
             />
-            {canContribute && (
+            {(canContribute || canManageTemplates) && (
               <Group gap="xs">
-                <Button
-                  size="xs"
-                  variant="default"
-                  leftSection={<IconTemplate size={14} />}
-                  onClick={() => setApplyTemplateOpen(true)}
-                >
-                  {t("useTemplate")}
-                </Button>
-                <Button
-                  size="xs"
-                  leftSection={<IconPlus size={14} />}
-                  onClick={() => setModalState({ mode: "create" })}
-                >
-                  {t("addTask")}
-                </Button>
+                {/* Saving reads the plan, so seeing the project is enough; the catalog's own permission is the gate. */}
+                {canManageTemplates && (
+                  <Button
+                    size="xs"
+                    variant="default"
+                    leftSection={<IconCopyPlus size={14} />}
+                    onClick={() => setSaveAsTemplateOpen(true)}
+                  >
+                    {t("saveAsTemplate")}
+                  </Button>
+                )}
+                {canContribute && (
+                  <>
+                    <Button
+                      size="xs"
+                      variant="default"
+                      leftSection={<IconTemplate size={14} />}
+                      onClick={() => setApplyTemplateOpen(true)}
+                    >
+                      {t("useTemplate")}
+                    </Button>
+                    <Button
+                      size="xs"
+                      leftSection={<IconPlus size={14} />}
+                      onClick={() => setModalState({ mode: "create" })}
+                    >
+                      {t("addTask")}
+                    </Button>
+                  </>
+                )}
               </Group>
             )}
           </Group>
@@ -228,6 +249,12 @@ export const ProjectTasks = ({
         opened={applyTemplateOpen}
         onClose={() => setApplyTemplateOpen(false)}
         canManageTemplates={canManageTemplates}
+      />
+      <SaveAsTemplateModal
+        projectId={projectId}
+        projectName={project.data.name}
+        opened={saveAsTemplateOpen}
+        onClose={() => setSaveAsTemplateOpen(false)}
       />
       <TaskDrawer
         projectId={projectId}
