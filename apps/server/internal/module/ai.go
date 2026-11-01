@@ -22,3 +22,18 @@ func withAI(deps Deps, enabled []Module) (Deps, error) {
 	}
 	return deps, nil
 }
+
+// withAssistantGrants resolves contracts.AssistantGrants from the enabled
+// modules — at most one may declare it — keeping a preset value when none
+// does. Compose calls it after the AI slot; Workers does not: a grant is
+// issued while the person's own message request is being served.
+func withAssistantGrants(deps Deps, enabled []Module) (Deps, error) {
+	provider, err := soleProvider(enabled, "assistant grants", func(m Module) bool { return m.AssistantGrants != nil })
+	if err != nil {
+		return deps, err
+	}
+	if provider != nil {
+		deps.AssistantGrants = provider.AssistantGrants(deps)
+	}
+	return deps, nil
+}

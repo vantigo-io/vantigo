@@ -38,6 +38,48 @@ WHERE s.token_hash = @token_hash
   AND s.last_seen_at > sqlc.arg(now)::timestamptz - CASE WHEN r.privileged THEN sqlc.arg(privileged_idle)::interval ELSE sqlc.arg(idle)::interval END
   AND s.created_at > sqlc.arg(now)::timestamptz - CASE WHEN r.privileged THEN sqlc.arg(privileged_absolute)::interval ELSE sqlc.arg(absolute)::interval END;
 
+-- name: GetSessionByID :one
+-- GetSessionByID is GetSessionByTokenHash for a session named by id rather than
+-- by cookie — the session an assistant grant is bound to (Access.Check). It
+-- rejects every state that ends a session, exactly as that query does, and the
+-- two must agree, so a change to one is a change to the other. A revoked row; an idle or
+-- absolute bound that has elapsed (the privileged pair applies while the
+-- user currently holds Owner or SystemAdmin, decided here per request); a
+-- disabled or pending user (a pending user's only way in is their
+-- invitation); and, while SCIM is configured, a user the directory
+-- deactivated unless they hold Owner (SV/ScimLifecycleService.cs:21-44).
+-- Lockout does not end a session. Every bound is measured against the now
+-- parameter, the caller's clock, never the database's: a session is rejected once
+-- now - last_seen_at >= idle or now - created_at >= absolute
+-- (SV/SessionValidationService.cs:83-93).
+-- UserMayAct repeats this query's user predicates for a read on a user's
+-- behalf with no session (Access.UserHolds); the two must agree, so a change
+-- to one is a change to the other.
+SELECT s.id, s.user_id, s.persistent, s.mfa_verified_at, s.created_at, s.last_seen_at,
+       u.is_disabled, u.lockout_end,
+       r.role_names, r.privileged,
+       m.upstream_active AS scim_upstream_active
+FROM identity.sessions s
+JOIN identity.users u ON u.id = s.user_id
+CROSS JOIN LATERAL (
+    SELECT coalesce(array_agg(ro.name ORDER BY ro.name), '{}')::text[] AS role_names,
+           coalesce(bool_or(ro.name IN ('Owner', 'SystemAdmin')), false)::boolean AS privileged,
+           coalesce(bool_or(ro.name = 'Owner'), false)::boolean AS is_owner
+    FROM identity.user_roles ur
+    JOIN identity.roles ro ON ro.id = ur.role_id
+    WHERE ur.user_id = s.user_id
+) r
+LEFT JOIN identity.scim_user_mappings m ON m.user_id = s.user_id
+WHERE s.id = @id
+  AND s.revoked_at IS NULL
+  AND NOT u.is_disabled
+  AND u.pending_since IS NULL
+  AND (NOT @scim_enabled::boolean OR m.upstream_active IS NOT FALSE OR r.is_owner)
+  -- sqlc.arg, not @: PostgreSQL parses @ as a prefix operator that binds
+  -- looser than -, which would swallow the whole subtraction.
+  AND s.last_seen_at > sqlc.arg(now)::timestamptz - CASE WHEN r.privileged THEN sqlc.arg(privileged_idle)::interval ELSE sqlc.arg(idle)::interval END
+  AND s.created_at > sqlc.arg(now)::timestamptz - CASE WHEN r.privileged THEN sqlc.arg(privileged_absolute)::interval ELSE sqlc.arg(absolute)::interval END;
+
 -- name: UserMayAct :one
 -- UserMayAct reports whether user_id may act at all at now, for a read made on
 -- their behalf with no request behind it (Access.UserHolds, the calendar

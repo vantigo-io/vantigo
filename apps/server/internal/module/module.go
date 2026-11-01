@@ -277,6 +277,12 @@ type Deps struct {
 	// fills). nil when no enabled module provides one: every task then uses
 	// the plan's default.
 	AIModels contracts.AIModels
+	// AssistantGrants issues and ends the assistant's grants
+	// (contracts.AssistantGrants, the Assistant design S3). Compose resolves
+	// it from the enabled modules (identity provides it), after the AI slot;
+	// Workers does not, since a grant is issued while the person's own message
+	// request is being served.
+	AssistantGrants contracts.AssistantGrants
 	// AI is the platform's AI client (srv/ai): the one place the provider's
 	// key lives, called with a task key and never with a model. Compose builds
 	// it from Config (AI_PROVIDER and friends), HTTPTransport and AIModels, last
@@ -535,6 +541,9 @@ type Module struct {
 	// Deps.AITasks set, and gives the result to the AI client it builds. Workers
 	// never calls it.
 	AIModels func(Deps) contracts.AIModels
+	// AssistantGrants provides contracts.AssistantGrants. At most one enabled
+	// module may declare it; identity does.
+	AssistantGrants func(Deps) contracts.AssistantGrants
 	// CalendarBusy builds this module's contracts.CalendarBusy, if it answers
 	// people's busy time to other modules (calendar Outlook sync design
 	// O9.8). At most one enabled module may set it; Compose calls it last of

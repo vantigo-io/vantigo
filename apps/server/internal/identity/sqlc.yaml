@@ -14,6 +14,7 @@ sql:
       - ../db/migrations/00064_identity_expected_links.sql
       - ../db/migrations/00070_identity_managed_avatars.sql
       - ../db/migrations/00098_identity_ai_task_models.sql
+      - ../db/migrations/00102_identity_assistant_grants.sql
     queries: queries
     gen:
       go:

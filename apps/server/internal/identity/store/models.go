@@ -42,6 +42,17 @@ type IdentityAiTaskModel struct {
 	UpdatedBy *uuid.UUID
 }
 
+type IdentityAssistantGrant struct {
+	ID             uuid.UUID
+	UserID         uuid.UUID
+	SessionID      uuid.UUID
+	ConversationID uuid.UUID
+	RunID          uuid.UUID
+	CreatedAt      time.Time
+	ExpiresAt      time.Time
+	RevokedAt      *time.Time
+}
+
 type IdentityAuthorizationAuditEvent struct {
 	ID               int64
 	ActorUserID      *uuid.UUID

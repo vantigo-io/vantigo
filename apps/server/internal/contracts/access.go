@@ -15,7 +15,24 @@ type Principal struct {
 	Roles       []string
 	MFAVerified bool
 	SCIM        bool // authenticated by the SCIM bearer token; no user
+	// Via is set when the principal is the session's own, reached through
+	// something acting for the person rather than by the person's browser:
+	// today the assistant, through an assistant grant. It is nil for every
+	// other principal, and a module's audit can say "on the person's behalf
+	// through the assistant, in this run".
+	Via *Via
 }
+
+// Via says what acted for the principal.
+type Via struct {
+	// Kind names it: "assistant".
+	Kind           string
+	ConversationID uuid.UUID
+	RunID          uuid.UUID
+}
+
+// ViaAssistant is Via.Kind of an assistant grant.
+const ViaAssistant = "assistant"
 
 // principalContextKey is unexported so only this package can set or read the
 // context value.

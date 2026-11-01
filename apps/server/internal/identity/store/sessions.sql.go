@@ -23,6 +23,101 @@ func (q *Queries) DeleteExpiredLoginTickets(ctx context.Context, now time.Time) 
 	return err
 }
 
+const getSessionByID = `-- name: GetSessionByID :one
+SELECT s.id, s.user_id, s.persistent, s.mfa_verified_at, s.created_at, s.last_seen_at,
+       u.is_disabled, u.lockout_end,
+       r.role_names, r.privileged,
+       m.upstream_active AS scim_upstream_active
+FROM identity.sessions s
+JOIN identity.users u ON u.id = s.user_id
+CROSS JOIN LATERAL (
+    SELECT coalesce(array_agg(ro.name ORDER BY ro.name), '{}')::text[] AS role_names,
+           coalesce(bool_or(ro.name IN ('Owner', 'SystemAdmin')), false)::boolean AS privileged,
+           coalesce(bool_or(ro.name = 'Owner'), false)::boolean AS is_owner
+    FROM identity.user_roles ur
+    JOIN identity.roles ro ON ro.id = ur.role_id
+    WHERE ur.user_id = s.user_id
+) r
+LEFT JOIN identity.scim_user_mappings m ON m.user_id = s.user_id
+WHERE s.id = $1
+  AND s.revoked_at IS NULL
+  AND NOT u.is_disabled
+  AND u.pending_since IS NULL
+  AND (NOT $2::boolean OR m.upstream_active IS NOT FALSE OR r.is_owner)
+  -- sqlc.arg, not @: PostgreSQL parses @ as a prefix operator that binds
+  -- looser than -, which would swallow the whole subtraction.
+  AND s.last_seen_at > $3::timestamptz - CASE WHEN r.privileged THEN $4::interval ELSE $5::interval END
+  AND s.created_at > $3::timestamptz - CASE WHEN r.privileged THEN $6::interval ELSE $7::interval END
+`
+
+type GetSessionByIDParams struct {
+	ID                 uuid.UUID
+	ScimEnabled        bool
+	Now                time.Time
+	PrivilegedIdle     pgtype.Interval
+	Idle               pgtype.Interval
+	PrivilegedAbsolute pgtype.Interval
+	Absolute           pgtype.Interval
+}
+
+type GetSessionByIDRow struct {
+	ID                 uuid.UUID
+	UserID             uuid.UUID
+	Persistent         bool
+	MfaVerifiedAt      *time.Time
+	CreatedAt          time.Time
+	LastSeenAt         time.Time
+	IsDisabled         bool
+	LockoutEnd         *time.Time
+	RoleNames          []string
+	Privileged         bool
+	ScimUpstreamActive *bool
+}
+
+// GetSessionByID is GetSessionByTokenHash for a session named by id rather than
+// by cookie — the session an assistant grant is bound to (Access.Check). It
+// rejects every state that ends a session, exactly as that query does, and the
+// two must agree, so a change to one is a change to the other. The query that
+// rejects every state that ends a session: a revoked row; an idle or
+// absolute bound that has elapsed (the privileged pair applies while the
+// user currently holds Owner or SystemAdmin, decided here per request); a
+// disabled or pending user (a pending user's only way in is their
+// invitation); and, while SCIM is configured, a user the directory
+// deactivated unless they hold Owner (SV/ScimLifecycleService.cs:21-44).
+// Lockout does not end a session. Every bound is measured against the now
+// parameter, the caller's clock, never the database's: a session is rejected once
+// now - last_seen_at >= idle or now - created_at >= absolute
+// (SV/SessionValidationService.cs:83-93).
+// UserMayAct repeats this query's user predicates for a read on a user's
+// behalf with no session (Access.UserHolds); the two must agree, so a change
+// to one is a change to the other.
+func (q *Queries) GetSessionByID(ctx context.Context, arg GetSessionByIDParams) (GetSessionByIDRow, error) {
+	row := q.db.QueryRow(ctx, getSessionByID,
+		arg.ID,
+		arg.ScimEnabled,
+		arg.Now,
+		arg.PrivilegedIdle,
+		arg.Idle,
+		arg.PrivilegedAbsolute,
+		arg.Absolute,
+	)
+	var i GetSessionByIDRow
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.Persistent,
+		&i.MfaVerifiedAt,
+		&i.CreatedAt,
+		&i.LastSeenAt,
+		&i.IsDisabled,
+		&i.LockoutEnd,
+		&i.RoleNames,
+		&i.Privileged,
+		&i.ScimUpstreamActive,
+	)
+	return i, err
+}
+
 const getSessionByTokenHash = `-- name: GetSessionByTokenHash :one
 SELECT s.id, s.user_id, s.persistent, s.mfa_verified_at, s.created_at, s.last_seen_at,
        u.is_disabled, u.lockout_end,
