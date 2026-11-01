@@ -1176,14 +1176,23 @@ func TestLoad_AIRefusals(t *testing.T) {
 		env  map[string]string
 		want string
 	}{
-		{"an unknown provider", with(configured, "AI_PROVIDER", "mystery"), "AI_PROVIDER: must be one of: openai"},
-		{"no key", with(configured, "AI_API_KEY", ""), "AI_API_KEY: is required with AI_PROVIDER"},
+		{"an unknown provider", with(configured, "AI_PROVIDER", "mystery"), "AI_PROVIDER: must be one of: openai, openai-compatible"},
+		{"no key and no base URL", with(configured, "AI_API_KEY", ""), "AI_API_KEY: is required with AI_PROVIDER"},
 		{"a key with a space", with(configured, "AI_API_KEY", "sk test"), "AI_API_KEY: must be at most"},
 		{"no models", with(configured, "AI_MODELS", " , "), "AI_MODELS: must name at least one model"},
 		{"a model twice", with(configured, "AI_MODELS", "a,b,a"), `AI_MODELS: names "a" twice`},
 		{"a model with a space", with(configured, "AI_MODELS", "a b"), "AI_MODELS: names a model longer than"},
 		{"a model too long", with(configured, "AI_MODELS", long), "AI_MODELS: names a model longer than"},
-		{"an http base URL", with(configured, "AI_BASE_URL", "http://llm.example.com"), "AI_BASE_URL: must be an absolute https URL"},
+		{"a public http base URL", with(configured, "AI_API_KEY", "", "AI_BASE_URL", "http://llm.example.com"), "AI_BASE_URL: must be an absolute https URL: http is accepted only for a loopback"},
+		{"a key over http", with(configured, "AI_BASE_URL", "http://ollama:11434/v1"), "AI_BASE_URL: must be an https URL when AI_API_KEY is set"},
+		{"a key over http to loopback", with(configured, "AI_BASE_URL", "http://127.0.0.1:11434/v1"), "AI_BASE_URL: must be an https URL when AI_API_KEY is set"},
+		{"an ftp base URL", with(configured, "AI_BASE_URL", "ftp://ollama/v1"), "AI_BASE_URL: must be an absolute https URL, or an http URL"},
+		{"a public IP over http", with(configured, "AI_API_KEY", "", "AI_BASE_URL", "http://8.8.8.8/v1"), "AI_BASE_URL: must be an absolute https URL: http is accepted only"},
+		{"a link-local IP over http", with(configured, "AI_API_KEY", "", "AI_BASE_URL", "http://169.254.169.254/v1"), "AI_BASE_URL: must be an absolute https URL: http is accepted only"},
+		{"a timeout that is not a duration", with(configured, "AI_TIMEOUT", "soon"), "AI_TIMEOUT: must be a duration above zero and at most 10m0s"},
+		{"a timeout of zero", with(configured, "AI_TIMEOUT", "0s"), "AI_TIMEOUT: must be a duration above zero"},
+		{"a timeout above ten minutes", with(configured, "AI_TIMEOUT", "11m"), "AI_TIMEOUT: must be a duration above zero"},
+		{"a timeout without the provider", with(validEnv(), "AI_TIMEOUT", "30s"), "AI_TIMEOUT: is set without AI_PROVIDER"},
 		{"a base URL with a query", with(configured, "AI_BASE_URL", "https://llm.example.com/v1?x=1"), "AI_BASE_URL: must have no user, query or fragment"},
 		{"a key without the provider", with(validEnv(), "AI_API_KEY", "sk-test-key"), "AI_API_KEY: is set without AI_PROVIDER"},
 		{"models without the provider", with(validEnv(), "AI_MODELS", "gpt-4o"), "AI_MODELS: is set without AI_PROVIDER"},
@@ -1198,6 +1207,61 @@ func TestLoad_AIRefusals(t *testing.T) {
 				t.Errorf("error = %q, must never echo the key", msg)
 			}
 		})
+	}
+}
+
+// TestLoad_AIDefaultTimeout pins AI_TIMEOUT's default, which is there whether
+// or not a provider is.
+func TestLoad_AIDefaultTimeout(t *testing.T) {
+	if cfg := mustLoad(t, validEnv()); cfg.AITimeout != 120*time.Second {
+		t.Errorf("AITimeout = %v, want 120s", cfg.AITimeout)
+	}
+	cfg := mustLoad(t, with(validEnv(), "AI_PROVIDER", "openai", "AI_API_KEY", "sk", "AI_MODELS", "m", "AI_TIMEOUT", " 10m "))
+	if cfg.AITimeout != 10*time.Minute {
+		t.Errorf("AITimeout = %v, want 10m, the longest accepted", cfg.AITimeout)
+	}
+}
+
+// TestLoad_AILocalModels pins S7: openai-compatible is a provider, the key is
+// optional beside a base URL, and plain http is accepted for a loopback,
+// private-network or single-label host, without resolving any name.
+func TestLoad_AILocalModels(t *testing.T) {
+	local := with(validEnv(), "AI_PROVIDER", " OpenAI-Compatible ", "AI_MODELS", "qwen3:14b")
+	for _, base := range []string{
+		"http://ollama:11434/v1",
+		"http://localhost:11434/v1/",
+		"http://127.0.0.1:11434/v1",
+		"http://[::1]:11434/v1",
+		"http://10.1.2.3/v1",
+		"http://172.16.0.9:8000/v1",
+		"http://192.168.1.20:1234/v1",
+		"http://[fd12:3456::1]/v1",
+		"https://llm.example.com/v1",
+	} {
+		cfg := mustLoad(t, with(local, "AI_BASE_URL", base))
+		if cfg.AIProvider != "openai-compatible" {
+			t.Errorf("%s: AIProvider = %q, want the name the operator set, lower-cased", base, cfg.AIProvider)
+		}
+		if cfg.AIAPIKey != "" {
+			t.Errorf("%s: AIAPIKey = %q, want none", base, cfg.AIAPIKey)
+		}
+		if want := strings.TrimSuffix(base, "/"); cfg.AIBaseURL != want {
+			t.Errorf("AIBaseURL = %q, want %q", cfg.AIBaseURL, want)
+		}
+	}
+	// An https endpoint may still carry a key.
+	if cfg := mustLoad(t, with(local, "AI_BASE_URL", "https://llm.example.com/v1", "AI_API_KEY", "sk-test-key")); cfg.AIAPIKey != "sk-test-key" {
+		t.Errorf("AIAPIKey = %q, want it kept over https", cfg.AIAPIKey)
+	}
+	// An empty key with no base URL is still a boot error.
+	if msg := loadError(t, local); !strings.Contains(msg, "AI_API_KEY: is required") {
+		t.Errorf("error = %q, want the key required without a base URL", msg)
+	}
+	// A public host named by a dotted name is refused over http, whatever it resolves to.
+	for _, base := range []string{"http://ollama.internal/v1", "http://11.0.0.1/v1", "http://[2001:db8::1]/v1"} {
+		if msg := loadError(t, with(local, "AI_BASE_URL", base)); !strings.Contains(msg, "AI_BASE_URL: must be an absolute https URL: http is accepted only") {
+			t.Errorf("%s: error = %q, want the public http host refused", base, msg)
+		}
 	}
 }
 
