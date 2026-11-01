@@ -46,3 +46,10 @@ ORDER BY a.created_at, a.id;
 
 -- name: GetStopRequested :one
 SELECT stop_requested FROM assistant.runs WHERE id = @id;
+
+-- name: GetLatestRun :one
+-- GetLatestRun is the conversation's most recent run, whatever its state.
+SELECT r.* FROM assistant.runs r
+WHERE r.conversation_id = @conversation_id AND r.user_id = @user_id
+ORDER BY r.started_at DESC, r.id DESC
+LIMIT 1;

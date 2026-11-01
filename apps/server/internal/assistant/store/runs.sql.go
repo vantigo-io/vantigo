@@ -124,6 +124,37 @@ func (q *Queries) GetActiveRun(ctx context.Context, arg GetActiveRunParams) (Ass
 	return i, err
 }
 
+const getLatestRun = `-- name: GetLatestRun :one
+SELECT r.id, r.conversation_id, r.user_id, r.state, r.error_code, r.tool_calls, r.model_turns, r.started_at, r.ended_at, r.stop_requested FROM assistant.runs r
+WHERE r.conversation_id = $1 AND r.user_id = $2
+ORDER BY r.started_at DESC, r.id DESC
+LIMIT 1
+`
+
+type GetLatestRunParams struct {
+	ConversationID uuid.UUID
+	UserID         uuid.UUID
+}
+
+// GetLatestRun is the conversation's most recent run, whatever its state.
+func (q *Queries) GetLatestRun(ctx context.Context, arg GetLatestRunParams) (AssistantRun, error) {
+	row := q.db.QueryRow(ctx, getLatestRun, arg.ConversationID, arg.UserID)
+	var i AssistantRun
+	err := row.Scan(
+		&i.ID,
+		&i.ConversationID,
+		&i.UserID,
+		&i.State,
+		&i.ErrorCode,
+		&i.ToolCalls,
+		&i.ModelTurns,
+		&i.StartedAt,
+		&i.EndedAt,
+		&i.StopRequested,
+	)
+	return i, err
+}
+
 const getRun = `-- name: GetRun :one
 SELECT id, conversation_id, user_id, state, error_code, tool_calls, model_turns, started_at, ended_at, stop_requested FROM assistant.runs WHERE id = $1 AND user_id = $2
 `

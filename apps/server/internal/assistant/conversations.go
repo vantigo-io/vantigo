@@ -167,11 +167,15 @@ func (s *server) GetAssistantConversation(ctx context.Context, req gen.GetAssist
 	for _, m := range rows {
 		out.Messages = append(out.Messages, messageView(m))
 	}
-	if run, err := q.GetActiveRun(ctx, store.GetActiveRunParams{ConversationID: req.Id, UserID: user}); err == nil {
+	if run, err := q.GetLatestRun(ctx, store.GetLatestRunParams{ConversationID: req.Id, UserID: user}); err == nil {
 		v := runView(run)
-		out.ActiveRun = &v
+		if run.State == "running" {
+			out.ActiveRun = &v
+		} else {
+			out.LastRun = &v
+		}
 	} else if !errors.Is(err, pgx.ErrNoRows) {
-		return nil, fmt.Errorf("assistant: read the active run: %w", err)
+		return nil, fmt.Errorf("assistant: read the latest run: %w", err)
 	}
 	actions, err := q.ListActions(ctx, store.ListActionsParams{ConversationID: req.Id, UserID: user})
 	if err != nil {

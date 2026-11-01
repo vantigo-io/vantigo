@@ -285,6 +285,8 @@ export interface components {
             actions: components["schemas"]["AssistantAction"][];
             activeRun?: components["schemas"]["AssistantRun"];
             conversation: components["schemas"]["AssistantConversation"];
+            /** @description The latest run of the conversation when it is over, so a client that polled or reloaded can tell a run that failed or was stopped from one that finished. */
+            lastRun?: components["schemas"]["AssistantRun"];
             messages: components["schemas"]["AssistantMessage"][];
         };
         AssistantConversationList: {
