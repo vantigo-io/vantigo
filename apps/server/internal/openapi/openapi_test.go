@@ -372,46 +372,57 @@ paths:
   /a:
     get:
       operationId: good
+      summary: Good
       x-vantigo-access: permission:customers:view
       responses: {"200": {description: ok, content: {application/json: {schema: {type: object}}}}}
     post:
       operationId: noBody
+      summary: S
       x-vantigo-access: session
       responses: {"200": {description: ok}}
     put:
       operationId: badAccess
+      summary: S
       x-vantigo-access: policy:Owner+Nobody
       responses: {"204": {description: ok}}
     delete:
+      summary: S
       responses: {"204": {description: ok}}
     patch:
       operationId: redirects
+      summary: S
       x-vantigo-access: anonymous
       responses: {"302": {description: found, headers: {Location: {schema: {type: string}}}}}
   /b:
     get:
       operationId: redirectsNowhere
+      summary: S
       x-vantigo-access: anonymous
       responses: {"302": {description: found}}
     post:
       operationId: emptyOk
+      summary: S
       x-vantigo-access: session
       responses: {"200": {description: ok, x-vantigo-empty-body: true}}
   /c:
     get:
       operationId: unsortedPermissions
+      summary: S
       x-vantigo-access: permission:customers:view+customers:edit
       responses: {"204": {description: ok}}
     post:
       operationId: duplicatePolicy
+      summary: S
       x-vantigo-access: policy:Owner+Owner
       responses: {"204": {description: ok}}
     put:
       operationId: sortedPolicies
+      summary: S
       x-vantigo-access: policy:Owner+OwnerManagement
       responses: {"204": {description: ok}}
     patch:
       operationId: sortedPermissions
+      summary: S
       x-vantigo-access: permission:communications:conversations-reply+communications:conversations-view
       responses: {"204": {description: ok}}
 `))
@@ -430,6 +441,147 @@ paths:
 	for _, id := range []string{"noBody", "badAccess", "redirectsNowhere", "", "unsortedPermissions", "duplicatePolicy"} {
 		if _, ok := got[id]; !ok {
 			t.Errorf("operation %q not flagged (got %v)", id, got)
+		}
+	}
+}
+
+func TestLintRequiresASummary(t *testing.T) {
+	doc, err := openapi3.NewLoader().LoadFromData([]byte(`
+openapi: 3.0.3
+info: {title: t, version: "1"}
+paths:
+  /a:
+    get:
+      operationId: summarised
+      summary: List the customer's metering points
+      x-vantigo-access: session
+      responses: {"204": {description: ok}}
+    post:
+      operationId: noSummary
+      x-vantigo-access: session
+      responses: {"204": {description: ok}}
+    put:
+      operationId: blankSummary
+      summary: "   "
+      x-vantigo-access: session
+      responses: {"204": {description: ok}}
+    delete:
+      operationId: descriptionOnly
+      description: A description is not a summary.
+      x-vantigo-access: session
+      responses: {"204": {description: ok}}
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{}
+	for _, p := range Lint(doc) {
+		got[p.OperationID] = p.Message
+	}
+	if msg, bad := got["summarised"]; bad {
+		t.Errorf("summarised flagged: %v", msg)
+	}
+	for _, id := range []string{"noSummary", "blankSummary", "descriptionOnly"} {
+		if msg := got[id]; !strings.Contains(msg, "no summary") {
+			t.Errorf("%s: %q, want it flagged for having no summary", id, msg)
+		}
+	}
+}
+
+func TestLintChecksTheAssistantExtension(t *testing.T) {
+	doc, err := openapi3.NewLoader().LoadFromData([]byte(`
+openapi: 3.0.3
+info: {title: t, version: "1"}
+paths:
+  /a:
+    post:
+      operationId: searchIsAuto
+      summary: S
+      x-vantigo-access: permission:customers:view
+      x-vantigo-assistant: auto
+      responses: {"204": {description: ok}}
+    put:
+      operationId: confirmIsFine
+      summary: S
+      x-vantigo-access: permission:customers:view
+      x-vantigo-assistant: confirm
+      responses: {"204": {description: ok}}
+    delete:
+      operationId: neverIsFine
+      summary: S
+      x-vantigo-access: policy:Owner
+      x-vantigo-assistant: never
+      responses: {"204": {description: ok}}
+    get:
+      operationId: noExtension
+      summary: S
+      x-vantigo-access: session
+      responses: {"204": {description: ok}}
+  /b:
+    post:
+      operationId: unknownMode
+      summary: S
+      x-vantigo-access: session
+      x-vantigo-assistant: sometimes
+      responses: {"204": {description: ok}}
+    put:
+      operationId: notAString
+      summary: S
+      x-vantigo-access: session
+      x-vantigo-assistant: true
+      responses: {"204": {description: ok}}
+    get:
+      operationId: emptyMode
+      summary: S
+      x-vantigo-access: session
+      x-vantigo-assistant: ""
+      responses: {"204": {description: ok}}
+    delete:
+      operationId: autoOnOwner
+      summary: S
+      x-vantigo-access: policy:ActiveAccount+Owner
+      x-vantigo-assistant: auto
+      responses: {"204": {description: ok}}
+  /c:
+    post:
+      operationId: confirmOnSCIM
+      summary: S
+      x-vantigo-access: scim
+      x-vantigo-assistant: confirm
+      responses: {"204": {description: ok}}
+    get:
+      operationId: autoOnSystemAdmin
+      summary: S
+      x-vantigo-access: policy:SystemAdmin
+      x-vantigo-assistant: auto
+      responses: {"204": {description: ok}}
+    put:
+      operationId: autoOnBusiness
+      summary: S
+      x-vantigo-access: policy:Business
+      x-vantigo-assistant: auto
+      responses: {"204": {description: ok}}
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{}
+	for _, p := range Lint(doc) {
+		got[p.OperationID] = p.Message
+	}
+	for _, id := range []string{"searchIsAuto", "confirmIsFine", "neverIsFine", "noExtension", "autoOnBusiness"} {
+		if msg, bad := got[id]; bad {
+			t.Errorf("%s flagged: %v", id, msg)
+		}
+	}
+	for _, id := range []string{"unknownMode", "notAString", "emptyMode"} {
+		if msg := got[id]; !strings.Contains(msg, "must be one of auto, confirm, never") {
+			t.Errorf("%s: %q, want the modes named", id, msg)
+		}
+	}
+	for _, id := range []string{"autoOnOwner", "confirmOnSCIM", "autoOnSystemAdmin"} {
+		if msg := got[id]; !strings.Contains(msg, "an assistant is never admitted") {
+			t.Errorf("%s: %q, want it refused behind a rule an assistant is never admitted to", id, msg)
 		}
 	}
 }

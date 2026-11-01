@@ -600,76 +600,76 @@ type PostCommunicationsTagsJSONRequestBody = PostCommunicationsTagsJSONBody
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
-
+	// GetCommunicationsAttachmentsByIdDownload Download a message attachment
 	// (GET /api/v1/communications/attachments/{id}/download)
 	GetCommunicationsAttachmentsByIdDownload(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
-
+	// GetCommunicationsChannelProviders List the providers a channel can use
 	// (GET /api/v1/communications/channel-providers)
 	GetCommunicationsChannelProviders(w http.ResponseWriter, r *http.Request)
-
+	// GetCommunicationsChannels List the mail channels
 	// (GET /api/v1/communications/channels)
 	GetCommunicationsChannels(w http.ResponseWriter, r *http.Request)
-
+	// PostCommunicationsChannels Create a mail channel
 	// (POST /api/v1/communications/channels)
 	PostCommunicationsChannels(w http.ResponseWriter, r *http.Request)
-
+	// GetCommunicationsChannelsById Get a mail channel by id
 	// (GET /api/v1/communications/channels/{id})
 	GetCommunicationsChannelsById(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
-
+	// PutCommunicationsChannelsById Update a mail channel
 	// (PUT /api/v1/communications/channels/{id})
 	PutCommunicationsChannelsById(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
-
+	// PostCommunicationsChannelsByIdProvider Switch a mail channel to another provider
 	// (POST /api/v1/communications/channels/{id}/provider)
 	PostCommunicationsChannelsByIdProvider(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
-
+	// PostCommunicationsChannelsByIdVerify Verify a mail channel's connection
 	// (POST /api/v1/communications/channels/{id}/verify)
 	PostCommunicationsChannelsByIdVerify(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
-
+	// GetCommunicationsConversations List the conversations in the inbox
 	// (GET /api/v1/communications/conversations)
 	GetCommunicationsConversations(w http.ResponseWriter, r *http.Request, params GetCommunicationsConversationsParams)
-
+	// PostCommunicationsConversations Create a conversation
 	// (POST /api/v1/communications/conversations)
 	PostCommunicationsConversations(w http.ResponseWriter, r *http.Request, params PostCommunicationsConversationsParams)
-
+	// GetCommunicationsConversationsByConversationIdAttachmentsByAttachmentId Download an attachment from a conversation
 	// (GET /api/v1/communications/conversations/{conversationId}/attachments/{attachmentId})
 	GetCommunicationsConversationsByConversationIdAttachmentsByAttachmentId(w http.ResponseWriter, r *http.Request, conversationId openapi_types.UUID, attachmentId openapi_types.UUID)
-
+	// GetCommunicationsConversationsById Get a conversation with its messages
 	// (GET /api/v1/communications/conversations/{id})
 	GetCommunicationsConversationsById(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
-
+	// PatchCommunicationsConversationsById Update a conversation (status, assignee, customer)
 	// (PATCH /api/v1/communications/conversations/{id})
 	PatchCommunicationsConversationsById(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
-
+	// PostCommunicationsConversationsByIdAiCustomerSuggestion Ask the AI which customer a conversation belongs to
 	// (POST /api/v1/communications/conversations/{id}/ai/customer-suggestion)
 	PostCommunicationsConversationsByIdAiCustomerSuggestion(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
-
+	// PostCommunicationsConversationsByIdAiDraft Ask the AI to draft a reply to a conversation
 	// (POST /api/v1/communications/conversations/{id}/ai/draft)
 	PostCommunicationsConversationsByIdAiDraft(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
-
+	// PostCommunicationsConversationsByIdAttachments Attach a file to a reply being composed
 	// (POST /api/v1/communications/conversations/{id}/attachments)
 	PostCommunicationsConversationsByIdAttachments(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, params PostCommunicationsConversationsByIdAttachmentsParams)
-
+	// PostCommunicationsConversationsByIdMessagesByMessageIdRetry Retry sending a failed message
 	// (POST /api/v1/communications/conversations/{id}/messages/{messageId}/retry)
 	PostCommunicationsConversationsByIdMessagesByMessageIdRetry(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, messageId openapi_types.UUID)
-
+	// PostCommunicationsConversationsByIdNotes Add an internal note to a conversation
 	// (POST /api/v1/communications/conversations/{id}/notes)
 	PostCommunicationsConversationsByIdNotes(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
-
+	// PostCommunicationsConversationsByIdRead Mark a conversation as read
 	// (POST /api/v1/communications/conversations/{id}/read)
 	PostCommunicationsConversationsByIdRead(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
-
+	// PostCommunicationsConversationsByIdReply Send a reply in a conversation
 	// (POST /api/v1/communications/conversations/{id}/reply)
 	PostCommunicationsConversationsByIdReply(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, params PostCommunicationsConversationsByIdReplyParams)
-
+	// DeleteCommunicationsConversationsByIdTagsByTagId Remove a tag from a conversation
 	// (DELETE /api/v1/communications/conversations/{id}/tags/{tagId})
 	DeleteCommunicationsConversationsByIdTagsByTagId(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, tagId openapi_types.UUID)
-
+	// PutCommunicationsConversationsByIdTagsByTagId Put a tag on a conversation
 	// (PUT /api/v1/communications/conversations/{id}/tags/{tagId})
 	PutCommunicationsConversationsByIdTagsByTagId(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, tagId openapi_types.UUID)
-
+	// GetCommunicationsMessagesByIdRaw Download a message as it was received
 	// (GET /api/v1/communications/messages/{id}/raw)
 	GetCommunicationsMessagesByIdRaw(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
-
+	// GetCommunicationsPersonalSender Get whether the caller can send from their own mailbox
 	// (GET /api/v1/communications/personal-sender)
 	GetCommunicationsPersonalSender(w http.ResponseWriter, r *http.Request)
 	// GetCommunicationsStatsAttention Get communications dashboard attention items
@@ -681,22 +681,22 @@ type ServerInterface interface {
 	// GetCommunicationsStatsTimeseries Get communications dashboard time series
 	// (GET /api/v1/communications/stats/timeseries)
 	GetCommunicationsStatsTimeseries(w http.ResponseWriter, r *http.Request, params GetCommunicationsStatsTimeseriesParams)
-
+	// GetCommunicationsSuppressions List the suppressed email addresses
 	// (GET /api/v1/communications/suppressions)
 	GetCommunicationsSuppressions(w http.ResponseWriter, r *http.Request)
-
+	// PostCommunicationsSuppressions Suppress an email address
 	// (POST /api/v1/communications/suppressions)
 	PostCommunicationsSuppressions(w http.ResponseWriter, r *http.Request)
-
+	// DeleteCommunicationsSuppressionsById Lift the suppression of an email address
 	// (DELETE /api/v1/communications/suppressions/{id})
 	DeleteCommunicationsSuppressionsById(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
-
+	// GetCommunicationsSuppressionsById Get a suppression by id
 	// (GET /api/v1/communications/suppressions/{id})
 	GetCommunicationsSuppressionsById(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
-
+	// GetCommunicationsTags List the conversation tags
 	// (GET /api/v1/communications/tags)
 	GetCommunicationsTags(w http.ResponseWriter, r *http.Request)
-
+	// PostCommunicationsTags Create a conversation tag
 	// (POST /api/v1/communications/tags)
 	PostCommunicationsTags(w http.ResponseWriter, r *http.Request)
 }
@@ -4379,76 +4379,76 @@ func (response PostCommunicationsTags409JSONResponse) VisitPostCommunicationsTag
 
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
-
+	// GetCommunicationsAttachmentsByIdDownload Download a message attachment
 	// (GET /api/v1/communications/attachments/{id}/download)
 	GetCommunicationsAttachmentsByIdDownload(ctx context.Context, request GetCommunicationsAttachmentsByIdDownloadRequestObject) (GetCommunicationsAttachmentsByIdDownloadResponseObject, error)
-
+	// GetCommunicationsChannelProviders List the providers a channel can use
 	// (GET /api/v1/communications/channel-providers)
 	GetCommunicationsChannelProviders(ctx context.Context, request GetCommunicationsChannelProvidersRequestObject) (GetCommunicationsChannelProvidersResponseObject, error)
-
+	// GetCommunicationsChannels List the mail channels
 	// (GET /api/v1/communications/channels)
 	GetCommunicationsChannels(ctx context.Context, request GetCommunicationsChannelsRequestObject) (GetCommunicationsChannelsResponseObject, error)
-
+	// PostCommunicationsChannels Create a mail channel
 	// (POST /api/v1/communications/channels)
 	PostCommunicationsChannels(ctx context.Context, request PostCommunicationsChannelsRequestObject) (PostCommunicationsChannelsResponseObject, error)
-
+	// GetCommunicationsChannelsById Get a mail channel by id
 	// (GET /api/v1/communications/channels/{id})
 	GetCommunicationsChannelsById(ctx context.Context, request GetCommunicationsChannelsByIdRequestObject) (GetCommunicationsChannelsByIdResponseObject, error)
-
+	// PutCommunicationsChannelsById Update a mail channel
 	// (PUT /api/v1/communications/channels/{id})
 	PutCommunicationsChannelsById(ctx context.Context, request PutCommunicationsChannelsByIdRequestObject) (PutCommunicationsChannelsByIdResponseObject, error)
-
+	// PostCommunicationsChannelsByIdProvider Switch a mail channel to another provider
 	// (POST /api/v1/communications/channels/{id}/provider)
 	PostCommunicationsChannelsByIdProvider(ctx context.Context, request PostCommunicationsChannelsByIdProviderRequestObject) (PostCommunicationsChannelsByIdProviderResponseObject, error)
-
+	// PostCommunicationsChannelsByIdVerify Verify a mail channel's connection
 	// (POST /api/v1/communications/channels/{id}/verify)
 	PostCommunicationsChannelsByIdVerify(ctx context.Context, request PostCommunicationsChannelsByIdVerifyRequestObject) (PostCommunicationsChannelsByIdVerifyResponseObject, error)
-
+	// GetCommunicationsConversations List the conversations in the inbox
 	// (GET /api/v1/communications/conversations)
 	GetCommunicationsConversations(ctx context.Context, request GetCommunicationsConversationsRequestObject) (GetCommunicationsConversationsResponseObject, error)
-
+	// PostCommunicationsConversations Create a conversation
 	// (POST /api/v1/communications/conversations)
 	PostCommunicationsConversations(ctx context.Context, request PostCommunicationsConversationsRequestObject) (PostCommunicationsConversationsResponseObject, error)
-
+	// GetCommunicationsConversationsByConversationIdAttachmentsByAttachmentId Download an attachment from a conversation
 	// (GET /api/v1/communications/conversations/{conversationId}/attachments/{attachmentId})
 	GetCommunicationsConversationsByConversationIdAttachmentsByAttachmentId(ctx context.Context, request GetCommunicationsConversationsByConversationIdAttachmentsByAttachmentIdRequestObject) (GetCommunicationsConversationsByConversationIdAttachmentsByAttachmentIdResponseObject, error)
-
+	// GetCommunicationsConversationsById Get a conversation with its messages
 	// (GET /api/v1/communications/conversations/{id})
 	GetCommunicationsConversationsById(ctx context.Context, request GetCommunicationsConversationsByIdRequestObject) (GetCommunicationsConversationsByIdResponseObject, error)
-
+	// PatchCommunicationsConversationsById Update a conversation (status, assignee, customer)
 	// (PATCH /api/v1/communications/conversations/{id})
 	PatchCommunicationsConversationsById(ctx context.Context, request PatchCommunicationsConversationsByIdRequestObject) (PatchCommunicationsConversationsByIdResponseObject, error)
-
+	// PostCommunicationsConversationsByIdAiCustomerSuggestion Ask the AI which customer a conversation belongs to
 	// (POST /api/v1/communications/conversations/{id}/ai/customer-suggestion)
 	PostCommunicationsConversationsByIdAiCustomerSuggestion(ctx context.Context, request PostCommunicationsConversationsByIdAiCustomerSuggestionRequestObject) (PostCommunicationsConversationsByIdAiCustomerSuggestionResponseObject, error)
-
+	// PostCommunicationsConversationsByIdAiDraft Ask the AI to draft a reply to a conversation
 	// (POST /api/v1/communications/conversations/{id}/ai/draft)
 	PostCommunicationsConversationsByIdAiDraft(ctx context.Context, request PostCommunicationsConversationsByIdAiDraftRequestObject) (PostCommunicationsConversationsByIdAiDraftResponseObject, error)
-
+	// PostCommunicationsConversationsByIdAttachments Attach a file to a reply being composed
 	// (POST /api/v1/communications/conversations/{id}/attachments)
 	PostCommunicationsConversationsByIdAttachments(ctx context.Context, request PostCommunicationsConversationsByIdAttachmentsRequestObject) (PostCommunicationsConversationsByIdAttachmentsResponseObject, error)
-
+	// PostCommunicationsConversationsByIdMessagesByMessageIdRetry Retry sending a failed message
 	// (POST /api/v1/communications/conversations/{id}/messages/{messageId}/retry)
 	PostCommunicationsConversationsByIdMessagesByMessageIdRetry(ctx context.Context, request PostCommunicationsConversationsByIdMessagesByMessageIdRetryRequestObject) (PostCommunicationsConversationsByIdMessagesByMessageIdRetryResponseObject, error)
-
+	// PostCommunicationsConversationsByIdNotes Add an internal note to a conversation
 	// (POST /api/v1/communications/conversations/{id}/notes)
 	PostCommunicationsConversationsByIdNotes(ctx context.Context, request PostCommunicationsConversationsByIdNotesRequestObject) (PostCommunicationsConversationsByIdNotesResponseObject, error)
-
+	// PostCommunicationsConversationsByIdRead Mark a conversation as read
 	// (POST /api/v1/communications/conversations/{id}/read)
 	PostCommunicationsConversationsByIdRead(ctx context.Context, request PostCommunicationsConversationsByIdReadRequestObject) (PostCommunicationsConversationsByIdReadResponseObject, error)
-
+	// PostCommunicationsConversationsByIdReply Send a reply in a conversation
 	// (POST /api/v1/communications/conversations/{id}/reply)
 	PostCommunicationsConversationsByIdReply(ctx context.Context, request PostCommunicationsConversationsByIdReplyRequestObject) (PostCommunicationsConversationsByIdReplyResponseObject, error)
-
+	// DeleteCommunicationsConversationsByIdTagsByTagId Remove a tag from a conversation
 	// (DELETE /api/v1/communications/conversations/{id}/tags/{tagId})
 	DeleteCommunicationsConversationsByIdTagsByTagId(ctx context.Context, request DeleteCommunicationsConversationsByIdTagsByTagIdRequestObject) (DeleteCommunicationsConversationsByIdTagsByTagIdResponseObject, error)
-
+	// PutCommunicationsConversationsByIdTagsByTagId Put a tag on a conversation
 	// (PUT /api/v1/communications/conversations/{id}/tags/{tagId})
 	PutCommunicationsConversationsByIdTagsByTagId(ctx context.Context, request PutCommunicationsConversationsByIdTagsByTagIdRequestObject) (PutCommunicationsConversationsByIdTagsByTagIdResponseObject, error)
-
+	// GetCommunicationsMessagesByIdRaw Download a message as it was received
 	// (GET /api/v1/communications/messages/{id}/raw)
 	GetCommunicationsMessagesByIdRaw(ctx context.Context, request GetCommunicationsMessagesByIdRawRequestObject) (GetCommunicationsMessagesByIdRawResponseObject, error)
-
+	// GetCommunicationsPersonalSender Get whether the caller can send from their own mailbox
 	// (GET /api/v1/communications/personal-sender)
 	GetCommunicationsPersonalSender(ctx context.Context, request GetCommunicationsPersonalSenderRequestObject) (GetCommunicationsPersonalSenderResponseObject, error)
 	// GetCommunicationsStatsAttention Get communications dashboard attention items
@@ -4460,22 +4460,22 @@ type StrictServerInterface interface {
 	// GetCommunicationsStatsTimeseries Get communications dashboard time series
 	// (GET /api/v1/communications/stats/timeseries)
 	GetCommunicationsStatsTimeseries(ctx context.Context, request GetCommunicationsStatsTimeseriesRequestObject) (GetCommunicationsStatsTimeseriesResponseObject, error)
-
+	// GetCommunicationsSuppressions List the suppressed email addresses
 	// (GET /api/v1/communications/suppressions)
 	GetCommunicationsSuppressions(ctx context.Context, request GetCommunicationsSuppressionsRequestObject) (GetCommunicationsSuppressionsResponseObject, error)
-
+	// PostCommunicationsSuppressions Suppress an email address
 	// (POST /api/v1/communications/suppressions)
 	PostCommunicationsSuppressions(ctx context.Context, request PostCommunicationsSuppressionsRequestObject) (PostCommunicationsSuppressionsResponseObject, error)
-
+	// DeleteCommunicationsSuppressionsById Lift the suppression of an email address
 	// (DELETE /api/v1/communications/suppressions/{id})
 	DeleteCommunicationsSuppressionsById(ctx context.Context, request DeleteCommunicationsSuppressionsByIdRequestObject) (DeleteCommunicationsSuppressionsByIdResponseObject, error)
-
+	// GetCommunicationsSuppressionsById Get a suppression by id
 	// (GET /api/v1/communications/suppressions/{id})
 	GetCommunicationsSuppressionsById(ctx context.Context, request GetCommunicationsSuppressionsByIdRequestObject) (GetCommunicationsSuppressionsByIdResponseObject, error)
-
+	// GetCommunicationsTags List the conversation tags
 	// (GET /api/v1/communications/tags)
 	GetCommunicationsTags(ctx context.Context, request GetCommunicationsTagsRequestObject) (GetCommunicationsTagsResponseObject, error)
-
+	// PostCommunicationsTags Create a conversation tag
 	// (POST /api/v1/communications/tags)
 	PostCommunicationsTags(ctx context.Context, request PostCommunicationsTagsRequestObject) (PostCommunicationsTagsResponseObject, error)
 }
