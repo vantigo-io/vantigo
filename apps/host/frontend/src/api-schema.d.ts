@@ -652,6 +652,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/identity/owner/ai/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get the AI plan and the model per task
+         * @description The installation's AI plan and the model each AI task uses: the provider, the models the plan allows and that a key is configured (instance configuration, shown and never edited, the key never sent), and the tasks the enabled modules perform grouped by module, each with the model it uses now, the module's recommendation and where the model comes from. Answered 404 ai_not_configured while the instance has no AI provider, which is how the AI models page knows to be absent. Read from the table, not the cache, so an Owner sees their own save at once.
+         */
+        get: operations["getIdentityOwnerAiSettings"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/identity/owner/ai/tasks/{key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Choose the model of an AI task
+         * @description Chooses the model an AI task uses, under If-Match on the task's version. The model must be one the plan allows (AI_MODELS), else 422 model_not_allowed; a key no enabled module declares is 404 not_found; an instance with no AI provider is 404 ai_not_configured. Audited ai-task-model.changed with the model before and after (the model the task used, and the one it uses now); every process reads the change within 20 seconds, this one at once.
+         */
+        put: operations["putIdentityOwnerAiTasksByKey"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/identity/owner/invitations": {
         parameters: {
             query?: never;
@@ -1463,6 +1503,52 @@ export interface components {
         AdministrationScopeResponse: {
             delegationScopes: components["schemas"]["DelegationScopeResponse"][];
             isOwner: boolean;
+        };
+        /** @description The installation's AI plan as an Owner sees it (AI as a platform provider design T12, T13): the provider, the models the plan allows and whether a key is configured, all instance configuration shown as facts, and the AI tasks the enabled modules perform, grouped by module, each with the model it uses now. The key itself is never answered, in any form. */
+        AiSettings: {
+            /** @description The models the plan allows (AI_MODELS), in the order the operator wrote them; the first is the plan's default. */
+            allowedModels: string[];
+            /** @description Always true while this is answered, since an API key is configured by Vantigo. The key is never sent. */
+            keyConfigured: boolean;
+            /** @description The modules that perform AI tasks and are enabled, by name, each with its tasks by key. A module that is off is not listed. */
+            modules: components["schemas"]["AiSettingsModule"][];
+            /** @description The model a task uses when nobody chose one and the module recommends none the plan allows — the first of allowedModels. */
+            planDefault: string;
+            /**
+             * @description The provider the plan calls (AI_PROVIDER).
+             * @enum {string}
+             */
+            provider: "openai";
+        };
+        /** @description One module's AI tasks. */
+        AiSettingsModule: {
+            /** @description The module's name, such as communications. */
+            module: string;
+            tasks: components["schemas"]["AiSettingsTask"][];
+        };
+        /** @description One AI job a module performs and the model it uses. */
+        AiSettingsTask: {
+            /** @description The model the module recommends for the task, or null when it recommends none. It applies while nobody has chosen, and only when the plan allows it. */
+            default: string | null;
+            /** @description What the model is asked to do, and with what data. */
+            description: string;
+            /** @description What the task is called, in English. */
+            display: string;
+            /** @description The task's key, module.task-name, such as communications.compose-reply. */
+            key: string;
+            /** @description The model the task uses now, always one the plan allows — the choice if there is one and it is still allowed, else the module's recommendation if allowed, else the plan's default. */
+            model: string;
+            /**
+             * @description Where model comes from: chosen (an Owner chose it), default (the module's recommendation) or plan (the plan's default).
+             * @enum {string}
+             */
+            source: "chosen" | "default" | "plan";
+            /** @description The task's version for If-Match, bare — the microseconds of the choice's last change since the epoch, 0 while nobody has chosen. It moves with every save of the task. */
+            version: string;
+        };
+        AiTaskRequest: {
+            /** @description The model the task is to use, one of allowedModels. Anything else is refused 422 model_not_allowed. */
+            model: string;
         };
         AssignRolesResponse: {
             roleIds: string[];
@@ -5297,6 +5383,157 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    getIdentityOwnerAiSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiSettings"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — ai_not_configured, the instance has no AI provider (AI_PROVIDER is unset). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    putIdentityOwnerAiTasksByKey: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description The task's version as the settings answered it, bare (1767268800000000) or quoted. A version that has moved on is a 412 version_mismatch. */
+                "If-Match": string;
+            };
+            path: {
+                /** @description The task's key, such as communications.compose-reply. */
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["AiTaskRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description OK — the task as it is now, carrying its new version. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiSettingsTask"];
+                };
+            };
+            /** @description Bad Request — a body without a model, or an If-Match that is not a version. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — not_found (no enabled module declares the task) or ai_not_configured (the instance has no AI provider). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Precondition Failed — version_mismatch, the task has been changed since the If-Match version. */
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity — model_not_allowed, the model is not one the plan allows. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
             };
         };
     };

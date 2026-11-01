@@ -221,6 +221,98 @@ components:
                 - delegationScopes
             type: object
             x-vantigo-source: Vantigo.Identity
+        AiSettings:
+            description: 'The installation''s AI plan as an Owner sees it (AI as a platform provider design T12, T13): the provider, the models the plan allows and whether a key is configured, all instance configuration shown as facts, and the AI tasks the enabled modules perform, grouped by module, each with the model it uses now. The key itself is never answered, in any form.'
+            properties:
+                allowedModels:
+                    description: The models the plan allows (AI_MODELS), in the order the operator wrote them; the first is the plan's default.
+                    items:
+                        type: string
+                    type: array
+                keyConfigured:
+                    description: Always true while this is answered, since an API key is configured by Vantigo. The key is never sent.
+                    type: boolean
+                modules:
+                    description: The modules that perform AI tasks and are enabled, by name, each with its tasks by key. A module that is off is not listed.
+                    items:
+                        $ref: '#/components/schemas/AiSettingsModule'
+                    type: array
+                planDefault:
+                    description: The model a task uses when nobody chose one and the module recommends none the plan allows — the first of allowedModels.
+                    type: string
+                provider:
+                    description: The provider the plan calls (AI_PROVIDER).
+                    enum:
+                        - openai
+                    type: string
+            required:
+                - provider
+                - allowedModels
+                - planDefault
+                - keyConfigured
+                - modules
+            type: object
+        AiSettingsModule:
+            description: One module's AI tasks.
+            properties:
+                module:
+                    description: The module's name, such as communications.
+                    type: string
+                tasks:
+                    items:
+                        $ref: '#/components/schemas/AiSettingsTask'
+                    type: array
+            required:
+                - module
+                - tasks
+            type: object
+        AiSettingsTask:
+            description: One AI job a module performs and the model it uses.
+            properties:
+                default:
+                    description: The model the module recommends for the task, or null when it recommends none. It applies while nobody has chosen, and only when the plan allows it.
+                    nullable: true
+                    type: string
+                description:
+                    description: What the model is asked to do, and with what data.
+                    type: string
+                display:
+                    description: What the task is called, in English.
+                    type: string
+                key:
+                    description: The task's key, module.task-name, such as communications.compose-reply.
+                    type: string
+                model:
+                    description: The model the task uses now, always one the plan allows — the choice if there is one and it is still allowed, else the module's recommendation if allowed, else the plan's default.
+                    type: string
+                source:
+                    description: 'Where model comes from: chosen (an Owner chose it), default (the module''s recommendation) or plan (the plan''s default).'
+                    enum:
+                        - chosen
+                        - default
+                        - plan
+                    type: string
+                version:
+                    description: The task's version for If-Match, bare — the microseconds of the choice's last change since the epoch, 0 while nobody has chosen. It moves with every save of the task.
+                    type: string
+            required:
+                - key
+                - display
+                - description
+                - model
+                - default
+                - source
+                - version
+            type: object
+        AiTaskRequest:
+            properties:
+                model:
+                    description: The model the task is to use, one of allowedModels. Anything else is refused 422 model_not_allowed.
+                    maxLength: 150
+                    type: string
+            required:
+                - model
+            type: object
         AssignRolesResponse:
             properties:
                 roleIds:
@@ -4439,6 +4531,130 @@ paths:
             tags:
                 - Authentication
             x-vantigo-access: anonymous
+    /api/v1/identity/owner/ai/settings:
+        get:
+            description: 'The installation''s AI plan and the model each AI task uses: the provider, the models the plan allows and that a key is configured (instance configuration, shown and never edited, the key never sent), and the tasks the enabled modules perform grouped by module, each with the model it uses now, the module''s recommendation and where the model comes from. Answered 404 ai_not_configured while the instance has no AI provider, which is how the AI models page knows to be absent. Read from the table, not the cache, so an Owner sees their own save at once.'
+            operationId: getIdentityOwnerAiSettings
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/AiSettings'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Not Found — ai_not_configured, the instance has no AI provider (AI_PROVIDER is unset).
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Too Many Requests
+                    headers:
+                        Retry-After:
+                            schema:
+                                type: string
+            summary: Get the AI plan and the model per task
+            tags:
+                - AI models
+            x-vantigo-access: policy:Owner
+    /api/v1/identity/owner/ai/tasks/{key}:
+        put:
+            description: Chooses the model an AI task uses, under If-Match on the task's version. The model must be one the plan allows (AI_MODELS), else 422 model_not_allowed; a key no enabled module declares is 404 not_found; an instance with no AI provider is 404 ai_not_configured. Audited ai-task-model.changed with the model before and after (the model the task used, and the one it uses now); every process reads the change within 20 seconds, this one at once.
+            operationId: putIdentityOwnerAiTasksByKey
+            parameters:
+                - description: The task's key, such as communications.compose-reply.
+                  in: path
+                  name: key
+                  required: true
+                  schema:
+                    type: string
+                - description: The task's version as the settings answered it, bare (1767268800000000) or quoted. A version that has moved on is a 412 version_mismatch.
+                  in: header
+                  name: If-Match
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            allOf:
+                                - $ref: '#/components/schemas/AiTaskRequest'
+                            nullable: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/AiSettingsTask'
+                    description: OK — the task as it is now, carrying its new version.
+                "400":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Bad Request — a body without a model, or an If-Match that is not a version.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Not Found — not_found (no enabled module declares the task) or ai_not_configured (the instance has no AI provider).
+                "412":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Precondition Failed — version_mismatch, the task has been changed since the If-Match version.
+                "422":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unprocessable Entity — model_not_allowed, the model is not one the plan allows.
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Too Many Requests
+                    headers:
+                        Retry-After:
+                            schema:
+                                type: string
+            summary: Choose the model of an AI task
+            tags:
+                - AI models
+            x-vantigo-access: policy:Owner+OwnerManagement
     /api/v1/identity/owner/invitations:
         get:
             operationId: getIdentityOwnerInvitations
