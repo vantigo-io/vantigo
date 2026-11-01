@@ -2374,6 +2374,7 @@ paths:
             tags:
                 - Expenses
             x-vantigo-access: permission:expenses:access
+            x-vantigo-assistant: auto
     /api/v1/expenses/entries:
         get:
             description: Expenses, the latest day first, and only where the caller may see them — their own, everything on a project they manage, everyone's for expenses:view-all, expenses:approve and expenses:manage, and a supplier invoice to anyone with financial rights on its project. The same rule a single read applies, so the list never holds an entry its own read would answer 404 for and its total counts only what the caller may see.

@@ -1526,6 +1526,7 @@ paths:
             tags:
                 - Calendar
             x-vantigo-access: permission:calendar:access
+            x-vantigo-assistant: never
     /api/v1/calendar/feed/{file}:
         delete:
             description: Turns off the caller's address of one variant (calendar feed design D1); it answers 404 from this moment. The other variant's is untouched.
@@ -1662,6 +1663,7 @@ paths:
             tags:
                 - Calendar
             x-vantigo-access: permission:calendar:access
+            x-vantigo-assistant: never
     /api/v1/calendar/invitation-settings:
         get:
             description: The channel invitations to people outside the company are sent from, what it is now, and the channels a choice may name (integrations design T6). Needs calendar:access and calendar:manage - the setting is the workspace's, not the caller's.

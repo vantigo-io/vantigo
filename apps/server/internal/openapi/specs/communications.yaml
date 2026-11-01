@@ -1348,6 +1348,7 @@ paths:
             tags:
                 - ChannelEndpoints
             x-vantigo-access: permission:communications:channels-manage
+            x-vantigo-assistant: never
     /api/v1/communications/channels/{id}:
         get:
             operationId: getCommunicationsChannelsById
@@ -1430,6 +1431,7 @@ paths:
             tags:
                 - ChannelEndpoints
             x-vantigo-access: permission:communications:channels-manage
+            x-vantigo-assistant: never
     /api/v1/communications/channels/{id}/provider:
         post:
             description: Switches an SMTP channel to Microsoft 365 by its own address, keeping its id, conversations and default flag; the SMTP credentials are deleted in the same transaction.

@@ -3690,6 +3690,7 @@ paths:
             tags:
                 - AuthAccountEndpoints
             x-vantigo-access: policy:ActiveAccount
+            x-vantigo-assistant: never
     /api/v1/identity/account/mfa/enable:
         post:
             operationId: postIdentityAccountMfaEnable
@@ -3745,6 +3746,7 @@ paths:
             tags:
                 - AuthAccountEndpoints
             x-vantigo-access: policy:ActiveAccount
+            x-vantigo-assistant: never
     /api/v1/identity/account/mfa/recovery-codes:
         post:
             operationId: postIdentityAccountMfaRecoveryCodes
@@ -3800,6 +3802,7 @@ paths:
             tags:
                 - AuthAccountEndpoints
             x-vantigo-access: policy:ActiveAccount
+            x-vantigo-assistant: never
     /api/v1/identity/account/mfa/setup:
         get:
             operationId: getIdentityAccountMfaSetup
@@ -3836,6 +3839,7 @@ paths:
             tags:
                 - AuthAccountEndpoints
             x-vantigo-access: policy:ActiveAccount
+            x-vantigo-assistant: never
         post:
             operationId: postIdentityAccountMfaSetup
             requestBody:
@@ -3890,6 +3894,7 @@ paths:
             tags:
                 - AuthAccountEndpoints
             x-vantigo-access: policy:ActiveAccount
+            x-vantigo-assistant: never
     /api/v1/identity/account/passkeys:
         get:
             operationId: getIdentityAccountPasskeys
@@ -3983,6 +3988,7 @@ paths:
             tags:
                 - Personal account settings
             x-vantigo-access: policy:ActiveAccount
+            x-vantigo-assistant: never
     /api/v1/identity/account/passkeys/begin:
         post:
             operationId: postIdentityAccountPasskeysBegin
@@ -4044,6 +4050,7 @@ paths:
             tags:
                 - Personal account settings
             x-vantigo-access: policy:ActiveAccount
+            x-vantigo-assistant: never
     /api/v1/identity/account/passkeys/complete:
         post:
             operationId: postIdentityAccountPasskeysComplete
@@ -4099,6 +4106,7 @@ paths:
             tags:
                 - Personal account settings
             x-vantigo-access: policy:ActiveAccount
+            x-vantigo-assistant: never
     /api/v1/identity/account/password:
         post:
             operationId: postIdentityAccountPassword
@@ -4154,6 +4162,7 @@ paths:
             tags:
                 - Personal account settings
             x-vantigo-access: policy:ActiveAccount
+            x-vantigo-assistant: never
     /api/v1/identity/account/profile:
         patch:
             operationId: patchIdentityAccountProfile
@@ -4257,6 +4266,7 @@ paths:
             tags:
                 - Personal account settings
             x-vantigo-access: policy:ActiveAccount
+            x-vantigo-assistant: never
     /api/v1/identity/bootstrap:
         post:
             operationId: postIdentityBootstrap
@@ -4997,6 +5007,7 @@ paths:
             tags:
                 - AuthAccountEndpoints
             x-vantigo-access: policy:ActiveAccount
+            x-vantigo-assistant: never
     /api/v1/identity/owner/mfa/enable:
         post:
             operationId: postIdentityOwnerMfaEnable
@@ -5052,6 +5063,7 @@ paths:
             tags:
                 - AuthAccountEndpoints
             x-vantigo-access: policy:ActiveAccount
+            x-vantigo-assistant: never
     /api/v1/identity/owner/mfa/recovery-codes:
         post:
             operationId: postIdentityOwnerMfaRecoveryCodes
@@ -5107,6 +5119,7 @@ paths:
             tags:
                 - AuthAccountEndpoints
             x-vantigo-access: policy:ActiveAccount
+            x-vantigo-assistant: never
     /api/v1/identity/owner/mfa/reset/{userId}:
         post:
             operationId: postIdentityOwnerMfaResetByUserId
@@ -5207,6 +5220,7 @@ paths:
             tags:
                 - AuthAccountEndpoints
             x-vantigo-access: policy:ActiveAccount
+            x-vantigo-assistant: never
         post:
             operationId: postIdentityOwnerMfaSetup
             requestBody:
@@ -5261,6 +5275,7 @@ paths:
             tags:
                 - AuthAccountEndpoints
             x-vantigo-access: policy:ActiveAccount
+            x-vantigo-assistant: never
     /api/v1/identity/owner/provisioning-roles:
         get:
             description: The roles Staff may give the users it provisions, by name, each with its permission keys.
