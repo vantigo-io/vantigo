@@ -1337,6 +1337,21 @@ A dependency states that a predecessor task must finish before its successor tas
   displaying task bars across calendar days, delivery milestone markers at their target dates,
   and SVG connector arrows indicating finish-to-start dependencies. Schedule conflicts
   (`predecessor.dueDate > successor.startDate`) are automatically highlighted with visual warning badges.
+- **Rescheduling on the timeline:** the timeline is not read-only. A caller with
+  `capabilities.canContribute` drags a bar's body (both dates), its right edge (`dueDate`) or
+  its left edge (`startDate`) by whole days, or presses Alt+Left/Right on a focused bar to move
+  both by a day. The due date stops at the start date, and a task with one date moves that
+  date. The drop is the ordinary full-replace `PUT /api/v1/projects/tasks/{taskId}` carrying
+  the task's `revision`, so a stale one answers **409 Conflict** as any task edit does; a drop
+  that changes no date sends nothing. Without `canContribute` the bars do not move, and the
+  server refuses the same `PUT` with **403 Forbidden** regardless.
+- **Downstream shift after a move (M8):** when a move changed the `dueDate` of a task with
+  successors, the frontend asks whether to shift them by the same number of days and, only on
+  **Shift dependent tasks**, calls `reschedule-downstream` with that `daysDelta`. A move of the
+  start date alone never asks.
+- **Zoom:** Day, Week and Month scales (40, 16 and 5 pixels a day) label the header with day
+  numbers, ISO 8601 week numbers or month names. The choice is kept per browser under the
+  `projects.tasks.timelineZoom` storage key.
 
 ## Project templates and blueprints
 

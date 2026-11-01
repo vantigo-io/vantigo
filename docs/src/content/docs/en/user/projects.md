@@ -140,6 +140,26 @@ milestone markers and finish-to-start dependency arrows. Tasks linked to a deliv
 in your browser. Members and managers see **Use template** and **Add task**;
 a viewer gets the same views without the actions.
 
+The timeline's scale switch — **Day**, **Week** or **Month** — sets how much of the calendar
+fits on screen; the header numbers the days, the ISO weeks (*W45*) or names the months, and
+your browser remembers the scale. A member or manager reschedules a task on the timeline itself:
+
+- **Drag the bar** to move its start and due date together by whole days.
+- **Drag the right edge** to change only the due date, or **the left edge** to change only the
+  start date. The due date never moves before the start date; a task with only one date moves
+  that date whichever part you hold.
+- While you drag, the new dates show beside the bar. **Escape** puts the bar back and saves
+  nothing; letting go where you started saves nothing either.
+- **From the keyboard**, tab to a bar and press **Alt+Left** or **Alt+Right** to move the task a
+  day. **Enter** opens it, as a click does.
+
+The move saves as any other task edit; if someone changed the task meanwhile, the bar goes
+back and you are told *The task was changed by someone else. Reload it and try again.* When the move changed the due date
+of a task that others depend on, the timeline asks *Shift N dependent tasks D days later?*
+(or *earlier*): **Shift dependent tasks** moves every task downstream of it by the same number
+of days, **Leave them** keeps them where they are. Nothing downstream moves without that
+answer. A viewer sees the timeline, but its bars do not move.
+
 **Use template** opens **Use project template**, allowing you to pick a blueprint (e.g. Client Onboarding)
 and a **Kickoff date (T+0)**, which defaults to the project's start date or else today. Applying the
 template instantiates the blueprint's delivery milestones, tasks, subtasks, and task dependencies with

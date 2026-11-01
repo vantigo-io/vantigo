@@ -171,13 +171,18 @@ departs from the decisions above:
   never re-inherit.
 - **M7:** cycles are refused under the project's task-order lock; there is no depth limit.
   Template dependencies are checked for cycles and duplicates when the template is saved.
-- **M8 / Delivery B:** the timeline is read-only — no drag-to-reschedule and no zoom
-  presets. Dates move through the task form, and the downstream shift is the explicit
-  **Reschedule downstream** action in the task drawer, bounded to ±3650 days and leaving
-  tasks without dates alone.
+- **M8 / Delivery B:** #202 shipped the timeline read-only; dates moved through the task form,
+  and the downstream shift was the explicit **Reschedule downstream** action in the task
+  drawer, bounded to ±3650 days and leaving tasks without dates alone. A follow-up delivered
+  drag-to-reschedule and the Day / Week / Month zoom presets: dragging a bar's body moves both
+  dates, an edge moves one (the due date never before the start), Alt+Left/Right moves a
+  focused bar a day, and the drop saves through the ordinary task update. A move that changed
+  the due date of a task with successors asks *Shift N dependent tasks …?* and calls the same
+  reschedule-downstream endpoint only on **Shift dependent tasks** — M8's opt-in, as a prompt
+  after the move rather than a toggle before it. The drawer's action stays.
 - **Delivery C:** templates carry milestones, tasks, subtasks and dependencies but not
   checklists. Templates are edited on their own screen (Projects → **Project templates**); writing
   one needs `projects:create`.
 
-Later: drag and zoom on the timeline, checklists in templates, and "save this project as
-a template".
+Later: checklists in templates, and "save this project as a template". (Drag and zoom on
+the timeline, once on this list, are delivered.)

@@ -140,6 +140,27 @@ oppgavebånd over kalenderdager ved siden av milepælmarkører og avhengighetspi
 diamantmerket milepæl-tagg. Planleggingskonflikter der en forgjenger slutter etter at etterfølgeren starter markeres med et varselikon. Valget huskes i nettleseren din. Deltakere og
 prosjektledere ser **Bruk mal** og **Ny oppgave**; en leser får de samme visningene uten handlingene.
 
+Tidslinjens skalabryter — **Dag**, **Uke** eller **Måned** — bestemmer hvor mye av kalenderen
+som får plass på skjermen; overskriften nummererer dagene, ISO-ukene (*U45*) eller navngir
+månedene, og nettleseren din husker skalaen. En deltaker eller prosjektleder flytter en oppgave
+rett på tidslinjen:
+
+- **Dra båndet** for å flytte start- og fristdatoen sammen med hele dager.
+- **Dra høyre kant** for å endre bare fristen, eller **venstre kant** for å endre bare
+  startdatoen. Fristen flyttes aldri før startdatoen; en oppgave med bare én dato flytter den
+  datoen uansett hvilken del du holder i.
+- Mens du drar, vises de nye datoene ved siden av båndet. **Escape** setter båndet tilbake og
+  lagrer ingenting; slipper du der du startet, lagres heller ingenting.
+- **Med tastaturet** tabber du til et bånd og trykker **Alt+venstre** eller **Alt+høyre** for å
+  flytte oppgaven en dag. **Enter** åpner den, slik et klikk gjør.
+
+Flyttingen lagres som enhver annen endring av oppgaven; har noen endret oppgaven i mellomtiden,
+går båndet tilbake og du får beskjeden *Oppgaven ble endret av noen andre. Last den inn på nytt
+og prøv igjen.* Når flyttingen endret fristen til en oppgave som andre avhenger av, spør
+tidslinjen *Flytte N avhengige oppgaver D dager senere?* (eller *tidligere*): **Flytt avhengige
+oppgaver** flytter alle oppgavene etter den like mange dager, **La dem stå** lar dem ligge der de
+er. Ingenting etter den flyttes uten det svaret. En leser ser tidslinjen, men båndene står stille.
+
 **Bruk mal** åpner **Bruk prosjektmal**, hvor du kan velge en standardisert prosjektmal (f.eks. oppstart
 for ny kunde) og en **Oppstartsdato (T+0)**, som er prosjektets startdato eller ellers i dag. Når malen tas i
 bruk, opprettes malens leveransemilepæler, oppgaver, deloppgaver og avhengighetskoblinger med kalenderdatoer
