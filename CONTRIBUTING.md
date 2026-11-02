@@ -371,6 +371,21 @@ arithmetic that made the old one-migration-per-test design fail with
 `out of shared memory (SQLSTATE 53200)` on many-core hosts. Pinning to four
 CPUs matches CI and keeps the run's PostgreSQL footprint predictable.
 
+The migration tests in `internal/db` follow the same rule. A test that proves
+its migration applies, rolls back and re-applies starts from
+`testdb.MigratedURL` — a template copy already at head — and only rolls down
+to its own version and back up; starting from an empty database would make
+every such test replay the whole chain first, and the package's run time would
+grow with the square of the number of migrations. Write new ones with
+`t.Parallel()`, as the existing ones are, and migrate only through the package's
+helpers (`applyUpDownUp`, `migrateTo`, `migrateErr`): they share a semaphore of
+four, so the tests that still migrate from empty can never run enough
+`00005_energy_baseline.sql` transactions at once to exhaust the lock table,
+however many CPUs `-parallel` defaults to.
+
+CI runs the suite with `-race` on two runners: `internal/invoices/...` on one,
+every other package (`go list ./...` minus invoices) on the other.
+
 **One production note on the same table:** `EnsureConsumptionPartition`
 (`internal/energy/consumption.go`) runs `CREATE TABLE IF NOT EXISTS … PARTITION
 OF` *inside the request transaction*, so the first consumption write into a
@@ -718,6 +733,11 @@ bun run frontend:build
 
 The Vite dev server proxies `/api` to the Go server on `http://localhost:8080`, which
 is where `mise run server:dev` listens — run both.
+
+`frontend:test` is one Vitest run over every workspace — the root
+`vitest.config.ts` lists them as projects, each keeping its own `vite.config.ts` —
+so extra Vitest flags pass straight through: `bun run frontend:test --shard=1/3` is
+what each of CI's three frontend test runners does.
 
 Module UI packages have their own Vitest suites, run from their directories:
 
