@@ -1176,7 +1176,7 @@ func TestLoad_AIRefusals(t *testing.T) {
 		env  map[string]string
 		want string
 	}{
-		{"an unknown provider", with(configured, "AI_PROVIDER", "mystery"), "AI_PROVIDER: must be one of: openai, openai-compatible"},
+		{"an unknown provider", with(configured, "AI_PROVIDER", "mystery"), "AI_PROVIDER: must be one of: openai, openai-compatible, anthropic"},
 		{"no key and no base URL", with(configured, "AI_API_KEY", ""), "AI_API_KEY: is required with AI_PROVIDER"},
 		{"a key with a space", with(configured, "AI_API_KEY", "sk test"), "AI_API_KEY: must be at most"},
 		{"no models", with(configured, "AI_MODELS", " , "), "AI_MODELS: must name at least one model"},
@@ -1292,7 +1292,7 @@ func TestLoad_AIRenamedVariables(t *testing.T) {
 	}
 
 	// A provider this build does not implement is unavailable, never an error.
-	other := mustLoad(t, with(legacy, "COMMUNICATIONS_AI_PROVIDER", "anthropic"))
+	other := mustLoad(t, with(legacy, "COMMUNICATIONS_AI_PROVIDER", "mystery"))
 	if other.AIProvider != "" || len(other.AIModels) != 0 {
 		t.Errorf("AI = %q/%v, want the old rule's unavailable state for a provider that is not implemented", other.AIProvider, other.AIModels)
 	}
@@ -1953,6 +1953,72 @@ func TestLoad_AIContextTokens(t *testing.T) {
 		if msg := loadError(t, with(validEnv(), "AI_CONTEXT_TOKENS", bad)); !strings.Contains(msg, "AI_CONTEXT_TOKENS: must be an integer from 2000 to 1000000") {
 			t.Errorf("AI_CONTEXT_TOKENS=%s: %q", bad, msg)
 		}
+	}
+}
+
+// TestLoad_AIAnthropic pins S18's configuration: the key is required (a base
+// URL does not excuse it), the base URL is https only, AI_EFFORT and
+// AI_FALLBACKS have their defaults whatever the provider, and the data is
+// never local.
+func TestLoad_AIAnthropic(t *testing.T) {
+	anthropic := with(validEnv(), "AI_PROVIDER", " Anthropic ", "AI_API_KEY", "sk-ant-test-key", "AI_MODELS", "claude-opus-5-5,claude-sonnet-5-5,claude-haiku-5-5")
+	cfg := mustLoad(t, anthropic)
+	if cfg.AIProvider != "anthropic" || cfg.AIAPIKey != "sk-ant-test-key" || len(cfg.AIModels) != 3 || cfg.AIBaseURL != "" {
+		t.Errorf("AI = %q/%q/%v/%q, want anthropic, the key, three models and no base URL", cfg.AIProvider, cfg.AIAPIKey, cfg.AIModels, cfg.AIBaseURL)
+	}
+	if cfg.AIEffort != "medium" || !cfg.AIFallbacks {
+		t.Errorf("AIEffort = %q, AIFallbacks = %v, want medium and on by default", cfg.AIEffort, cfg.AIFallbacks)
+	}
+	if cfg.AILocal() {
+		t.Error("AILocal() = true, want false: Anthropic's data leaves the installation")
+	}
+
+	cfg = mustLoad(t, with(anthropic, "AI_BASE_URL", "https://gateway.example.com/", "AI_EFFORT", " HIGH ", "AI_FALLBACKS", "off"))
+	if cfg.AIBaseURL != "https://gateway.example.com" || cfg.AIEffort != "high" || cfg.AIFallbacks {
+		t.Errorf("AIBaseURL = %q, AIEffort = %q, AIFallbacks = %v, want the gateway, high and off", cfg.AIBaseURL, cfg.AIEffort, cfg.AIFallbacks)
+	}
+	if cfg := mustLoad(t, with(anthropic, "AI_BASE_URL", "https://10.0.0.5/anthropic")); cfg.AILocal() {
+		t.Error("AILocal() = true for an Anthropic gateway, want false")
+	}
+
+	for _, tc := range []struct {
+		name string
+		env  map[string]string
+		want string
+	}{
+		{"no key", with(anthropic, "AI_API_KEY", ""), "AI_API_KEY: is required with AI_PROVIDER=anthropic"},
+		{"no key beside a base URL", with(anthropic, "AI_API_KEY", "", "AI_BASE_URL", "https://gateway.example.com"), "AI_API_KEY: is required with AI_PROVIDER=anthropic"},
+		{"an http base URL", with(anthropic, "AI_API_KEY", "", "AI_BASE_URL", "http://ollama:11434"), "AI_BASE_URL: must be an https URL with AI_PROVIDER=anthropic"},
+		{"an http base URL with a key", with(anthropic, "AI_BASE_URL", "http://127.0.0.1:8080"), "AI_BASE_URL: must be an https URL with AI_PROVIDER=anthropic"},
+		{"an unknown effort", with(anthropic, "AI_EFFORT", "extreme"), "AI_EFFORT: must be one of: low, medium, high, xhigh, max"},
+		{"an unknown fallbacks value", with(anthropic, "AI_FALLBACKS", "maybe"), "AI_FALLBACKS: must be on or off"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			msg := loadError(t, tc.env)
+			if !strings.Contains(msg, tc.want) {
+				t.Errorf("error = %q, want it to contain %q", msg, tc.want)
+			}
+			if strings.Contains(msg, "sk-ant-test-key") {
+				t.Errorf("error = %q, must never echo the key", msg)
+			}
+		})
+	}
+}
+
+// TestLoad_AIEffortAndFallbacksForEveryProvider pins that the two Anthropic
+// settings are read, validated and defaulted for every provider, and need no
+// provider to be set: the OpenAI-compatible providers ignore them.
+func TestLoad_AIEffortAndFallbacksForEveryProvider(t *testing.T) {
+	cfg := mustLoad(t, validEnv())
+	if cfg.AIEffort != "medium" || !cfg.AIFallbacks {
+		t.Errorf("AIEffort = %q, AIFallbacks = %v, want the defaults with no provider", cfg.AIEffort, cfg.AIFallbacks)
+	}
+	cfg = mustLoad(t, with(validEnv(), "AI_PROVIDER", "openai", "AI_API_KEY", "sk", "AI_MODELS", "m", "AI_EFFORT", "max", "AI_FALLBACKS", "off"))
+	if cfg.AIEffort != "max" || cfg.AIFallbacks {
+		t.Errorf("AIEffort = %q, AIFallbacks = %v, want max and off under openai", cfg.AIEffort, cfg.AIFallbacks)
+	}
+	if msg := loadError(t, with(validEnv(), "AI_EFFORT", "nope")); !strings.Contains(msg, "AI_EFFORT: must be one of") {
+		t.Errorf("error = %q, want AI_EFFORT refused with no provider", msg)
 	}
 }
 

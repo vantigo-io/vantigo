@@ -535,6 +535,15 @@ type Config struct {
 	// (AI_CONTEXT_TOKENS, default 16000, from 2000 to 1000000): local models
 	// have small windows. It is an estimate, four characters to a token.
 	AIContextTokens int
+	// AIEffort is how hard a thinking model thinks (AI_EFFORT: low, medium,
+	// high, xhigh or max; default medium). Anthropic uses it as
+	// output_config.effort; the OpenAI-compatible providers ignore it.
+	AIEffort string
+	// AIFallbacks says whether Anthropic's server-side fallbacks are asked for
+	// (AI_FALLBACKS: on or off; default on), so a request its classifiers
+	// decline is re-run on a fallback model. The OpenAI-compatible providers
+	// ignore it.
+	AIFallbacks bool
 	// AIModels are the models the plan allows (AI_MODELS), in the order the
 	// operator wrote them, the first being the plan's default. At least one
 	// when AIProvider is set, none otherwise.
@@ -657,6 +666,7 @@ func Load(env map[string]string) (*Config, error) {
 	communicationsRetention(&p, env, c)
 	aiConfig(&p, env, c)
 	c.AIContextTokens = integer(&p, env, "AI_CONTEXT_TOKENS", 16000, 2000, 1000000)
+	aiThinking(&p, env, c)
 
 	if len(p) > 0 {
 		return nil, fmt.Errorf("invalid configuration:\n  %s", strings.Join(p, "\n  "))
@@ -1223,7 +1233,32 @@ const aiAPIKeyMax = 400
 // "openai-compatible" is "openai" under a name that reads better beside a base
 // URL that is not OpenAI's (Ollama, vLLM, LM Studio): one implementation, and
 // the name the operator wrote is the one reported.
-var aiProviders = []string{"openai", "openai-compatible"}
+var aiProviders = []string{"openai", "openai-compatible", "anthropic"}
+
+// aiEfforts are the values AI_EFFORT accepts, Anthropic's effort levels.
+var aiEfforts = []string{"low", "medium", "high", "xhigh", "max"}
+
+// aiThinking reads AI_EFFORT and AI_FALLBACKS. They are read whatever the
+// provider is, so a typo is refused at boot instead of when the operator
+// switches provider; only Anthropic uses them.
+func aiThinking(p *problems, env map[string]string, c *Config) {
+	c.AIEffort, c.AIFallbacks = "medium", true
+	if v := strings.ToLower(strings.TrimSpace(env["AI_EFFORT"])); v != "" {
+		if slices.Contains(aiEfforts, v) {
+			c.AIEffort = v
+		} else {
+			p.add("AI_EFFORT", "must be one of: %s", strings.Join(aiEfforts, ", "))
+		}
+	}
+	switch v := strings.ToLower(strings.TrimSpace(env["AI_FALLBACKS"])); v {
+	case "":
+	case "on":
+	case "off":
+		c.AIFallbacks = false
+	default:
+		p.add("AI_FALLBACKS", "must be on or off")
+	}
+}
 
 const (
 	// aiDefaultTimeout and aiMaxTimeout bound AI_TIMEOUT.
@@ -1237,7 +1272,7 @@ const (
 // so it is not. The assistant tells the Owner so before data leaves the
 // installation. No name is resolved.
 func (c *Config) AILocal() bool {
-	if c == nil || c.AIBaseURL == "" {
+	if c == nil || c.AIBaseURL == "" || c.AIProvider == "anthropic" {
 		return false
 	}
 	u, err := url.Parse(c.AIBaseURL)
@@ -1310,6 +1345,9 @@ func aiConfig(p *problems, env map[string]string, c *Config) {
 		return
 	}
 	provider = strings.ToLower(provider)
+	// Anthropic has no keyless endpoint: a base URL is a gateway in front of
+	// the same API, which still wants the key.
+	anthropic := provider == "anthropic"
 	if !slices.Contains(aiProviders, provider) {
 		if fromAliases {
 			// The old rule: a provider this build does not implement leaves
@@ -1325,6 +1363,8 @@ func aiConfig(p *problems, env map[string]string, c *Config) {
 		return
 	}
 	switch {
+	case key == "" && anthropic:
+		p.add("AI_API_KEY", "is required with AI_PROVIDER=anthropic")
 	case key == "" && baseURL == "":
 		p.add("AI_API_KEY", "is required with AI_PROVIDER unless AI_BASE_URL names an endpoint that needs none")
 	case key == "":
@@ -1338,6 +1378,8 @@ func aiConfig(p *problems, env map[string]string, c *Config) {
 		switch {
 		case err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" || u.Opaque != "":
 			p.add("AI_BASE_URL", "must be an absolute https URL, or an http URL for a loopback, private or single-label host such as http://ollama:11434/v1")
+		case anthropic && u.Scheme != "https":
+			p.add("AI_BASE_URL", "must be an https URL with AI_PROVIDER=anthropic")
 		case u.Scheme == "http" && !localAIHost(u.Hostname()):
 			p.add("AI_BASE_URL", "must be an absolute https URL: http is accepted only for a loopback, private-network or single-label host, and %q is none of them", u.Hostname())
 		case u.Scheme == "http" && key != "":
@@ -1374,7 +1416,7 @@ func aiConfig(p *problems, env map[string]string, c *Config) {
 		list = []string{legacy}
 	}
 	if len(list) == 0 {
-		p.add("AI_MODELS", "must name at least one model when AI_PROVIDER is set, such as gpt-4o-mini,gpt-4o")
+		p.add("AI_MODELS", "must name at least one model when AI_PROVIDER is set, such as gpt-4o-mini,gpt-4o or, for anthropic, claude-sonnet-5-5")
 	}
 	for i, m := range list {
 		switch {
