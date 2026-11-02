@@ -1,6 +1,6 @@
 ---
 title: "Assistant module"
-description: "Every person's assistant (nb Assistent): the schema; availability — the instance, the mode, the person's switch; the endpoints with their rules, status codes and If-Match; conversations that only their owner can reach; runs that outlive the connection, their caps, the stream and how a client reconnects; context compaction and the system prompt; the six tools, how their results reach the model and the action log; the guided tours (`show_tour`, the target registry, the runner); the changes the model proposes, the pending action behind a confirmation card, its preview, `If-Match`, confirm, cancel and expiry; bulk changes — the selector and its paging, the frozen items, the preview, the canary of five, the job in chunks of 100, its claim and the process it runs in, its grant, its stops, the failed items and their CSV; the daily token budget and the Owner's usage view; the links an answer may carry; the documentation index behind search_docs; the permission levels the Owner sets and the gate that applies them to the dispatcher; the Owner's audit; retention and erasure."
+description: "Every person's assistant (nb Assistent): the schema; availability — the instance, the mode, the person's switch; the endpoints with their rules, status codes and If-Match; conversations that only their owner can reach; runs that outlive the connection, their caps, the stream and how a client reconnects; context compaction (in place, or by a summary) and the frozen system prompt; the history Claude's preserved thinking needs; the six tools, how their results reach the model and the action log; the guided tours (`show_tour`, the target registry, the runner); the changes the model proposes, the pending action behind a confirmation card, its preview, `If-Match`, confirm, cancel and expiry; bulk changes — the selector and its paging, the frozen items, the preview, the canary of five, the job in chunks of 100, its claim and the process it runs in, its grant, its stops, the failed items and their CSV; the daily token budget and the Owner's usage view; the links an answer may carry; the documentation index behind search_docs; the permission levels the Owner sets and the gate that applies them to the dispatcher; the Owner's audit; retention and erasure."
 sources:
   - apps/server/internal/assistant
   - apps/server/internal/operations
@@ -13,6 +13,7 @@ sources:
   - apps/server/internal/db/migrations/00104_assistant_writes.sql
   - apps/server/internal/db/migrations/00105_assistant_bulk.sql
   - apps/server/internal/db/migrations/00106_assistant_bulk_once.sql
+  - apps/server/internal/db/migrations/00107_assistant_anthropic.sql
 ---
 The Assistant module gives every person a conversation partner that answers "how do I…"
 from the documentation, reads the data the person may read and does
@@ -60,7 +61,7 @@ not planned.
 ## The schema
 
 Migration `00103_assistant_baseline.sql` creates the schema `assistant`; `00104_assistant_writes.sql`
-adds the pending actions, the usage counts and the budget, `00105_assistant_bulk.sql` the bulk jobs and `00106_assistant_bulk_once.sql` the states that make an item run at most once. A user is identity's: the
+adds the pending actions, the usage counts and the budget, `00105_assistant_bulk.sql` the bulk jobs, `00106_assistant_bulk_once.sql` the states that make an item run at most once, and `00107_assistant_anthropic.sql` what [Claude](#claude-and-preserved-thinking) needs of a conversation. A user is identity's: the
 module holds an opaque `user_id` with no foreign key to it ([rule 4](/en/contributing/module-boundaries/)),
 and learns that one was erased by [asking identity](#erasure).
 
@@ -71,7 +72,8 @@ and learns that one was erased by [asking identity](#erasure).
 | `permission_levels` | The Owner's overrides: `permission_key` (primary key), `level` — `off`, `read` or `change`. Only overrides are stored, so a permission a later release adds takes its default. |
 | `conversations` | A person's conversation: `title`, where it began (`origin_app` up to 40 characters, `origin_route` up to 300), `pinned`, `archived_at`, `created_at` and `last_activity_at`, which [retention](#retention) reads. Indexed by `(user_id, pinned DESC, last_activity_at DESC)` for the list. |
 | `runs` | One answer to one message: `state` — `running`, `awaiting_confirmation`, `done`, `failed`, `stopped` or `expired`; `error_code`; `tool_calls` and `model_turns`, counted against the [caps](#runs); `started_at`, `ended_at`; `stop_requested`. A **partial unique index on `(conversation_id) WHERE state IN ('running', 'awaiting_confirmation')`** is what allows one active run at a time per conversation, a run that waits for the person included. |
-| `messages` | `seq` (an identity column that orders the conversation), `role` — `user`, `assistant` or `tool`; `content`, the typed [parts](#messages-and-parts) as JSON; `context`, the chip the person sent a message with; `search_text`, the words the list's search reads; `model`, `input_tokens` and `output_tokens` as the provider reported them. |
+| `messages` | `seq` (an identity column that orders the conversation), `role` — `user`, `assistant` or `tool`; `content`, the typed [parts](#messages-and-parts) as JSON; `context`, the chip the person sent a message with; `search_text`, the words the list's search reads; `model`, `input_tokens` and `output_tokens` as the provider reported them; `cache_read_tokens` and `cache_write_tokens`, the part of the prompt Anthropic read from and wrote to its cache; and `provider`, the provider's own record of an assistant turn as `json` (never `jsonb`, which would reorder its keys), null except for Anthropic, never shown by any endpoint. |
+| `conversation_state` | One row a conversation, made at its first run: `system_prompt` and `prompt_version` — the [frozen prompt](#the-system-prompt) — and, once the conversation was summarised, `summary`, `summary_through_seq` and `summarized_at`, the [compaction marker](#context-compaction). Deleted with the conversation. |
 | `actions` | The [action log](#the-action-log): one row per tool call — `operation_id`, `mode`, `http_status`, `duration_ms`, `created_at`, and `confirmed_by` for a change the person confirmed — and never a body. |
 | `pending_actions` | [A change the model proposed](#pending-actions), waiting for the person or decided: the request until it is decided, the card, `status`, `expires_at` and `outcome`; and its `kind`, `change` or `bulk`. |
 | `bulk_jobs`, `bulk_job_items` | [A bulk change](#bulk-changes): the job with its selector, template, state, counters, grant and claim, and the frozen items with how each went. |
@@ -190,7 +192,7 @@ stream.
 - **The model.** Each turn is `Deps.AI.Chat(ctx, "assistant.chat", …)` with the
   [system prompt](#the-system-prompt), the [compacted](#context-compaction) conversation and the
   [tools](#the-tools), up to 2,048 tokens of answer; the text streams as it arrives. A model that
-  fails ends the run `failed` with `error_code` `ai_failed`; a run past its ceiling `failed` with
+  fails ends the run `failed` with `error_code` `ai_failed` (`ai_refused` when the provider's safeguards declined, [Claude](#claude-and-preserved-thinking) only); a run past its ceiling `failed` with
   `timeout`; a store fault `internal`.
 - **Stop.** `POST /runs/{id}/stop` sets `stop_requested` and, when this process is the one executing the run,
   cancels it at once; another replica's run reads the flag between steps. The run ends `stopped`.
@@ -238,7 +240,7 @@ data: {"text":"First, open"}
 | `delta` | `{"text"}` | A piece of the model's text. |
 | `tool` | `{"callId","name","label","state"}` | A tool call began (`state: started`) and finished (`done`); `label` is for display. |
 | `done` | `{"state"}` — `done`, `stopped` or `awaiting_confirmation` | Last, on success, when stopped (or the conversation was deleted), or when the run paused for a proposed change. |
-| `error` | `{"code"}` — `ai_failed`, `timeout`, `budget_exhausted` or `internal` | Last, instead of `done`, when the run failed. |
+| `error` | `{"code"}` — `ai_failed`, `ai_refused`, `timeout`, `budget_exhausted` or `internal` | Last, instead of `done`, when the run failed. |
 
 A line starting with a colon, `: keep-alive`, is written after **15 seconds** of silence, so a proxy that
 closes idle connections does not close a run that is thinking. The module writes the response
@@ -254,24 +256,46 @@ is no longer active; `lastRun` then says whether it finished, failed or was stop
 
 ## Context compaction
 
-The conversation is sent whole until it would pass `AI_CONTEXT_TOKENS` (default 16,000; [Configuration](/en/admin/configuration/#ai)).
-The size is estimated at **four characters to a token**, counting the system prompt, the tools'
-schemas, every message and every tool call's arguments. Past the budget, in order: older tool
+How a conversation is kept within `AI_CONTEXT_TOKENS` (default 16,000; [Configuration](/en/admin/configuration/#ai))
+depends on the provider. The size is estimated at **four characters to a token**, counting the system prompt, the
+tools' schemas, every message and every tool call's arguments. The stored conversation is never changed by
+either way, and the person sees every message.
+
+**OpenAI and OpenAI-compatible: in place, in memory.** Past the budget, in order: older tool
 results — those before the person's latest message — longer than 120 characters become a one-line note
 (`[an earlier result, 4210 characters, left out to save room]`); then the same for the rest; and if
 that is not enough, whole earlier turns are dropped from the front, always keeping the latest
-user message and what follows. The stored conversation is never changed by it; only what the model
-is sent.
+user message and what follows. Only what the model is sent changes.
+
+**Anthropic: simple compaction.** Editing an earlier turn would invalidate every later
+[thinking block](#claude-and-preserved-thinking), so nothing is shortened in place. Instead, when a run
+starts and the size passes the budget, the conversation before the person's new message is
+summarised into one message by the same model (the task `assistant.chat`, no tools, an answer of at most 2,048 tokens),
+and the summary is stored as the marker on `conversation_state`: `summary`, and `summary_through_seq`, the last
+message it stands for. From then on a request is the summary, then the messages after `summary_through_seq` exactly as
+stored, until the next compaction, which summarises the earlier summary and everything since. The summariser is
+told what to keep: what was asked and what is open, every decision and every change made, proposed, refused or
+cancelled with its record, the ids, routes, names and dates, the person's preferences, and what the model found out. What
+it sees is a plain-text transcript, tool calls and results cut to 600 characters and the whole bounded to
+400,000 characters. It costs one extra call, counted in the person's tokens.
+
+- It **never compacts in the middle of a tool round**: a run looks only when its first model turn is about to
+  be asked, and only when the newest stored message is the person's own. A run resumed after a confirmation, or after a bulk
+  job, starts at a tool result and does not.
+- A summary that cannot be made (the provider failed, or answered nothing) leaves the conversation as it was and the run
+  goes on uncompacted.
+- A refusal at this step is not reported to the person; the run asks its own question next.
 
 ## The system prompt
 
-The prompt is built for every run and versioned: `promptVersion` (`2026-11-02.2`) is bumped with any
-change of the rules and logged at debug level with the run, so a conversation's behaviour can be
-traced to the prompt it ran under. It states, in order, who the assistant is; **today's date, the
-person's name, and the language to answer in** (the person's preferred language — Norwegian bokmål or
-English — unless they write in another); the apps this installation has (`MODULES`); and, when
-the message carried a chip, what the person is looking at and that "this" and "here" mean it. Then the
-rules:
+The prompt is built **once, at a conversation's first run, and frozen**: it is stored on `conversation_state`
+with its `prompt_version` (`promptVersion`, `2026-11-03.1`, bumped with any change of the rules) and sent unchanged on every
+later run, whatever the code says by then. A conversation that began under an older version keeps the prompt
+it began with; a new one gets the current. This is what a Claude model's thinking needs
+([below](#claude-and-preserved-thinking)), and it keeps Anthropic's prompt cache warm. The prompt states, in order, who the assistant is; **the
+person's name, and the language to answer in** (their preferred language — Norwegian bokmål or English —
+unless they write in another); the apps this installation has (`MODULES`); and that each message starts with a
+bracketed line the application adds. Then the rules:
 
 - For how-to questions call `search_docs` first and answer from what it returns: numbered steps named as
   the interface names them, the documentation page cited by its path as a Markdown link, and
@@ -299,8 +323,40 @@ rules:
 - If a tool says an operation is not available, or the person is not allowed, say so; do not work
   round it. Be brief, and show no operation ids or JSON unless asked.
 
+What changes from message to message is not in the prompt but in a **header on the person's turn**, as the model reads it:
+`[Context from the application, not the person's words. Today is Monday 2 November 2026. The person is looking at: …]`. It is built
+from what the message stored — when it was sent, in the business time zone, and the chip it carried — and from nothing else, so every request
+that replays the turn carries the same bytes. The person never sees it, and the stored message does not hold it.
+
 The route list the prompt carries is the host's route shapes (`appRoutes` in `prompt.go`): the same
 list `navigate` validates against.
+
+## Claude and preserved thinking
+
+`AI_PROVIDER=anthropic` ([Configuration](/en/admin/configuration/#anthropic)) runs the Assistant on Claude. A current Claude model thinks on
+every turn, and each thinking block is signed to the exact conversation that produced it: the `system` prompt, the `tools` and every earlier
+message. Rebuilding any of them invalidates every later block, and on accounts created from 31 August 2026 such a request is
+refused. The module therefore keeps the history append-only:
+
+- **The system prompt is frozen** per conversation and **the tool set is fixed**: every run of a conversation sends
+  byte-identical `system` and `tools`. The last model turn of a run, which is answered without tools, still
+  sends them, with `tool_choice: none`, because a history that holds tool calls must define tools.
+- **Each assistant turn's provider blocks are stored** — `messages.provider`, the turn's content blocks exactly as received
+  (thinking blocks with their signatures, text, tool use) — and **replayed verbatim**, never rebuilt from the typed parts.
+  A turn that has none (every turn from before Anthropic, or from another provider) is rebuilt from its text and tool calls. The several results of one turn's tool calls go back in one user message.
+- **What changes per message** travels in the [header on the user's turn](#the-system-prompt).
+- **Compaction** is by a [summary](#context-compaction), never by editing a stored turn.
+- Every request sends `thinking.block_binding.prefix_mismatch_behavior: "drop_block"` (beta `thinking-binding-controls-2026-08-01`), so a
+  mismatch degrades instead of failing the run. The response lists what the API changed in `input_transformations`; **each entry is logged at
+  warn** — `ai: the provider changed the request`, with `transformation`, `reason` and `path`, never content — and an empty list is the sign the history
+  is intact.
+- A `refusal` stop reason ends the run `failed` with `error_code` `ai_refused` (the model's safeguards declined; the category is not stored) and the
+  interface says so in one sentence in the person's language. A reply cut off at the token limit is `ai_failed`.
+- Thinking text is never shown, stored by the interface or sent to it, and the provider blocks are in no endpoint's response.
+- Token counts are recorded with the cache counts: `input_tokens` is the whole prompt, the cached part included, and `cache_read_tokens` and
+  `cache_write_tokens` say how much of it came from and went to the cache.
+
+The provider is described in [the AI client](/en/contributing/platform-packages/#the-ai-client).
 
 ## The tools
 
