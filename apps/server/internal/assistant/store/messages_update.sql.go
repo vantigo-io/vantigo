@@ -12,7 +12,7 @@ import (
 )
 
 const getMessageByID = `-- name: GetMessageByID :one
-SELECT id, seq, conversation_id, run_id, role, content, context, search_text, model, input_tokens, output_tokens, created_at FROM assistant.messages WHERE id = $1
+SELECT id, seq, conversation_id, run_id, role, content, context, search_text, model, input_tokens, output_tokens, created_at, provider, cache_read_tokens, cache_write_tokens FROM assistant.messages WHERE id = $1
 `
 
 // GetMessageByID is for the run that owns the message.
@@ -32,6 +32,9 @@ func (q *Queries) GetMessageByID(ctx context.Context, id uuid.UUID) (AssistantMe
 		&i.InputTokens,
 		&i.OutputTokens,
 		&i.CreatedAt,
+		&i.Provider,
+		&i.CacheReadTokens,
+		&i.CacheWriteTokens,
 	)
 	return i, err
 }

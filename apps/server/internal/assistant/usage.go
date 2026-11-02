@@ -47,6 +47,17 @@ func (s *server) businessDay(ctx context.Context, t time.Time) time.Time {
 	return time.Date(y, m, d, 0, 0, 0, 0, time.UTC)
 }
 
+// businessLocation is the workspace's business time zone, UTC when it cannot be
+// read.
+func (s *server) businessLocation(ctx context.Context) *time.Location {
+	if s.deps.Calendar != nil {
+		if zone, err := s.deps.Calendar.Zone(ctx); err == nil && zone != nil {
+			return zone
+		}
+	}
+	return time.UTC
+}
+
 // today is the business day of the module's clock.
 func (s *server) today(ctx context.Context) time.Time { return s.businessDay(ctx, s.deps.Clock()) }
 

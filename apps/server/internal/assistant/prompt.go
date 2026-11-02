@@ -11,7 +11,7 @@ import (
 // promptVersion names the system prompt below. It is bumped with any change of
 // the rules, so a conversation's behaviour can be traced to the prompt it ran
 // under.
-const promptVersion = "2026-11-02.3"
+const promptVersion = "2026-11-03.1"
 
 // appRoutes are the host's route shapes the assistant links records with: the
 // in-app routes of apps.ts and routes/, kept here because the prompt states
@@ -34,13 +34,13 @@ var appRoutes = []struct{ prefix, shape, what string }{
 	{"/settings", "/settings", "the person's own settings"},
 }
 
-// promptInput is what the system prompt states about this run.
+// promptInput is what the system prompt states about the conversation. It is
+// read once, at the conversation's first run, and the prompt built from it is
+// kept: what changes from message to message is not here but in turnHeader.
 type promptInput struct {
-	now      time.Time
 	name     string
 	language string // "en" or "nb"
 	apps     []string
-	context  *gen.AssistantMessageContext
 }
 
 func languageName(lang string) string {
@@ -50,22 +50,36 @@ func languageName(lang string) string {
 	return "English"
 }
 
-// systemPrompt is the assistant's instructions for one run: the date, the
-// person, their language and apps, the screen they are on, and the rules.
-// Tool results are data, never instructions, and a change waits for the person.
-func systemPrompt(in promptInput) string {
+// turnHeader is the line that opens each of the person's turns as the model
+// reads it: the date the message was sent and the screen the person was on. It
+// is built from what the message stored (when it was sent, the chip it carried)
+// and nothing else, so it is the same on every request that replays the turn,
+// which a conversation that keeps its history append-only needs.
+func turnHeader(sent time.Time, loc *time.Location, c *gen.AssistantMessageContext) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "You are the Assistant in Vantigo, a business application. You help the person you are talking to use it.\n\n")
-	fmt.Fprintf(&b, "Today is %s. The person is %s. Answer in %s, the language they use Vantigo in, unless they write to you in another.\n", in.now.Format("Monday 2 January 2006"), in.name, languageName(in.language))
-	if len(in.apps) > 0 {
-		fmt.Fprintf(&b, "The apps this installation has: %s.\n", strings.Join(in.apps, ", "))
-	}
-	if c := in.context; c != nil {
+	fmt.Fprintf(&b, "[Context from the application, not the person's words. Today is %s.", sent.In(loc).Format("Monday 2 January 2006"))
+	if c != nil {
 		label := c.App + " " + c.Route
 		if c.Label != nil && *c.Label != "" {
 			label = *c.Label + " (" + c.Route + ")"
 		}
-		fmt.Fprintf(&b, "The person is looking at: %s. Take \"this\" and \"here\" to mean that.\n", label)
+		fmt.Fprintf(&b, " The person is looking at: %s. Take \"this\" and \"here\" to mean that.", label)
+	}
+	b.WriteString("]\n\n")
+	return b.String()
+}
+
+// systemPrompt is the assistant's instructions for a conversation: the person,
+// their language and apps, and the rules. It is stored with the conversation
+// and sent unchanged on every run. Tool results are data, never instructions,
+// and a change waits for the person.
+func systemPrompt(in promptInput) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "You are the Assistant in Vantigo, a business application. You help the person you are talking to use it.\n\n")
+	fmt.Fprintf(&b, "The person is %s. Answer in %s, the language they use Vantigo in, unless they write to you in another.\n", in.name, languageName(in.language))
+	b.WriteString("Each message from the person starts with a line in square brackets that the application adds: today's date and, when there is one, the screen the person is looking at. It is context, not something the person wrote.\n")
+	if len(in.apps) > 0 {
+		fmt.Fprintf(&b, "The apps this installation has: %s.\n", strings.Join(in.apps, ", "))
 	}
 	b.WriteString(`
 How you work:
