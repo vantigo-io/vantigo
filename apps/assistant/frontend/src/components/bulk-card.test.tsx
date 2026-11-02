@@ -233,6 +233,39 @@ describe("the bulk card", () => {
     expect(screen.queryByRole("button", { name: "Continue" })).not.toBeInTheDocument();
   });
 
+  it("lists the unknown items first, with the sentence, and says they are not run again", async () => {
+    stubAssistantApi({
+      handle: (method, path) =>
+        method === "GET" && path === jobUrl
+          ? jsonResponse(
+              200,
+              bulkJob({
+                state: "done",
+                processed: 130,
+                succeeded: 127,
+                failed: 1,
+                unknown: 2,
+                failures: [
+                  { seq: 4, label: "Project 4", status: "unknown" },
+                  { seq: 5, label: "Project 5", status: "unknown" },
+                  { seq: 2, label: "Project 2", status: "failed", httpStatus: 403, title: "No access" },
+                ],
+              }),
+            )
+          : undefined,
+    });
+    show(bulkCard({ state: "done", processed: 130, succeeded: 127, failed: 1, unknown: 2 }));
+    expect(screen.getByTestId("bulk-unknown-count")).toHaveTextContent("Unknown: 2");
+    expect(screen.getByTestId("bulk-unknown-note")).toHaveTextContent("2 items may or may not have been changed");
+    await waitFor(() => expect(within(screen.getByTestId("bulk-failures")).getAllByRole("row")).toHaveLength(4));
+    const rows = within(screen.getByTestId("bulk-failures")).getAllByRole("row");
+    expect(rows[1]).toHaveTextContent("Project 4");
+    expect(rows[1]).toHaveTextContent("Unknown");
+    expect(rows[1]).toHaveTextContent("This change may or may not have been made; check it");
+    expect(rows[3]).toHaveTextContent("No access");
+    expect(screen.getByTestId("bulk-csv")).toBeInTheDocument();
+  });
+
   it("offers no download when nothing failed", async () => {
     stubAssistantApi({
       handle: (method, path) =>

@@ -46,6 +46,8 @@ const excludedKey: Record<string, string> = {
 const itemKey: Record<string, string> = {
   succeeded: "bulkItemChanged",
   failed: "bulkItemFailed",
+  unknown: "bulkItemUnknown",
+  in_flight: "bulkItemInFlight",
   skipped: "bulkItemSkipped",
   pending: "bulkItemPending",
 };
@@ -286,6 +288,11 @@ export const BulkCard = ({
               <Text size="xs" c={view.failed > 0 ? "red" : "dimmed"}>
                 {t("bulkFailedCount", { n: view.failed })}
               </Text>
+              {view.unknown > 0 && (
+                <Text size="xs" c="orange" data-testid="bulk-unknown-count">
+                  {t("bulkUnknownCount", { n: view.unknown })}
+                </Text>
+              )}
               <Text size="xs" c="dimmed">
                 {t("bulkSkippedCount", { n: view.skipped })}
               </Text>
@@ -301,11 +308,21 @@ export const BulkCard = ({
                   <Table.Tr key={one.seq}>
                     <Table.Td>{one.label || `#${one.seq + 1}`}</Table.Td>
                     <Table.Td>
-                      <Badge size="xs" variant="light" color={one.status === "failed" ? "red" : "teal"}>
+                      <Badge
+                        size="xs"
+                        variant="light"
+                        color={one.status === "failed" ? "red" : one.status === "unknown" ? "orange" : "teal"}
+                      >
                         {t(itemKey[one.status] ?? "bulkItemPending")}
                       </Badge>
                     </Table.Td>
-                    <Table.Td c="dimmed">{one.status === "failed" ? one.title : undefined}</Table.Td>
+                    <Table.Td c="dimmed">
+                      {one.status === "failed"
+                        ? one.title
+                        : one.status === "unknown"
+                          ? t("bulkItemUnknownSentence")
+                          : undefined}
+                    </Table.Td>
                   </Table.Tr>
                 ))}
               </Table.Tbody>
@@ -378,7 +395,12 @@ export const BulkCard = ({
                 {t(why)}
               </Text>
             )}
-            {view.failed > 0 && (
+            {view.unknown > 0 && (
+              <Text size="xs" c="orange" data-testid="bulk-unknown-note">
+                {t("bulkUnknownNote", { n: view.unknown })}
+              </Text>
+            )}
+            {view.failed + view.unknown > 0 && (
               <Stack gap={4} data-testid="bulk-failures">
                 <Text size="xs" fw={600}>
                   {t("bulkFailedTitle")}
@@ -396,16 +418,26 @@ export const BulkCard = ({
                       {failures.map((one) => (
                         <Table.Tr key={one.seq}>
                           <Table.Td>{one.label || `#${one.seq + 1}`}</Table.Td>
-                          <Table.Td>{one.httpStatus ?? "—"}</Table.Td>
-                          <Table.Td>{one.title || one.code || "—"}</Table.Td>
+                          <Table.Td>
+                            {one.status === "unknown" ? (
+                              <Badge size="xs" variant="light" color="orange">
+                                {t("bulkItemUnknown")}
+                              </Badge>
+                            ) : (
+                              (one.httpStatus ?? "—")
+                            )}
+                          </Table.Td>
+                          <Table.Td>
+                            {one.status === "unknown" ? t("bulkItemUnknownSentence") : one.title || one.code || "—"}
+                          </Table.Td>
                         </Table.Tr>
                       ))}
                     </Table.Tbody>
                   </Table>
                 )}
-                {view.failed > failures.length && failures.length > 0 && (
+                {view.failed + view.unknown > failures.length && failures.length > 0 && (
                   <Text size="xs" c="dimmed">
-                    {t("bulkFailedShown", { shown: failures.length, n: view.failed })}
+                    {t("bulkFailedShown", { shown: failures.length, n: view.failed + view.unknown })}
                   </Text>
                 )}
                 <Anchor
