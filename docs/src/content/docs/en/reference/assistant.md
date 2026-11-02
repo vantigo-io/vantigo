@@ -729,7 +729,10 @@ the replica that takes over **never calls them** and continues from the next `pe
 change **may or may not have been made**: the router cannot tell, so nothing retries it, and the person is told to check
 it. An item the dispatcher refused before it went out (a 401, a level the Owner narrowed) is put back to `pending`
 and the job ends as before; a call cut short because the process is going away stays `in_flight` and becomes
-`unknown` at the takeover.
+`unknown` at the takeover. The running replica records an item `unknown` itself, with the code `call_failed`, when
+the operation's handler panicked, and with `timed_out` when the call ran into its own 60-second bound while the job
+was still live: in both the handler stopped part-way, after a write that may already have been committed, whatever
+it answered.
 
 **The idempotency key.** When the per-item operation declares an `Idempotency-Key` header parameter (as
 the communications operations that send do), every call sends `Idempotency-Key: assistant-bulk-<job id>-<seq>`,

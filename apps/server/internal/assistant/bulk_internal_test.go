@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/vantigo-io/vantigo/server/internal/operations"
 )
@@ -274,5 +275,32 @@ func TestBind_FreezesTheValuesAndExcludesWhatCannotBeChanged(t *testing.T) {
 	req := tpl.request(run[1].Bound)
 	if req.PathParams["id"] != json.Number("3") || !strings.Contains(string(req.Body), `"revision":9`) || !strings.Contains(string(req.Body), `"name":"X"`) {
 		t.Errorf("request = %+v %s, want the item's id in the path and its revision in the body beside the values", req.PathParams, req.Body)
+	}
+}
+
+// slowOps is a dispatcher whose call outlives any deadline: like an in-process
+// handler that sees its context end, it answers a 500 once the context is done.
+type slowOps struct{ listOps }
+
+func (s *slowOps) Call(ctx context.Context, _ operations.CallRequest) (operations.CallResult, error) {
+	<-ctx.Done()
+	return operations.CallResult{Status: http.StatusInternalServerError}, nil
+}
+
+// A call cut off by its own deadline says so, whatever the handler answered:
+// its write may have been committed before the cut (S17). One whose caller
+// went away is not a timeout.
+func TestCallWithin_ReportsAnItemsOwnDeadline(t *testing.T) {
+	t.Parallel()
+	ops := &slowOps{}
+	res, timedOut, err := callWithin(context.Background(), ops, operations.CallRequest{OperationID: "putThing"}, 10*time.Millisecond)
+	if err != nil || !timedOut || res.Status != http.StatusInternalServerError {
+		t.Fatalf("callWithin = %d, timedOut %v, %v; want 500 and timed out", res.Status, timedOut, err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, timedOut, _ := callWithin(ctx, ops, operations.CallRequest{OperationID: "putThing"}, time.Minute); timedOut {
+		t.Error("a cancelled caller reads as the item's own timeout")
 	}
 }

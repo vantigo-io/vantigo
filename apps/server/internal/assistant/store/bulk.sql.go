@@ -900,6 +900,7 @@ UPDATE assistant.bulk_jobs j SET
     succeeded = succeeded + CASE WHEN item.status = 'succeeded' THEN 1 ELSE 0 END,
     failed = failed + CASE WHEN item.status = 'failed' THEN 1 ELSE 0 END,
     skipped = skipped + CASE WHEN item.status = 'skipped' THEN 1 ELSE 0 END,
+    unknown = unknown + CASE WHEN item.status = 'unknown' THEN 1 ELSE 0 END,
     claimed_until = $1::timestamptz, updated_at = $2::timestamptz
 FROM item
 WHERE j.id = $3 AND j.claimed_by = $4
