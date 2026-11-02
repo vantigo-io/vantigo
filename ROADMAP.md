@@ -116,8 +116,8 @@ model per task and an Owner's own key stay out of scope.
 Decided in
 [`docs/superpowers/specs/2026-11-01-assistant-design.md`](docs/superpowers/specs/2026-11-01-assistant-design.md).
 Every person gets an **Assistant** (nb **Assistent**) that answers "how do I…" from the
-documentation, reads what they may read and, later, does what they may do — one change at a
-time or in bulk — and never more than they could do in the interface. It acts through the
+documentation, reads what they may read and does what they may do — one change at a
+time, each confirmed by them, and later in bulk — and never more than they could do in the interface. It acts through the
 real API as the person (module boundaries rule 18), so no module writes anything for it and
 no second permission model exists. It runs on a model the installation chooses, including one
 on its own network.
@@ -145,8 +145,19 @@ sweep. Documented in [the user guide](docs/src/content/docs/en/user/assistant.md
 **Delivery T (planned) — tours** — `show_tour` over a registry of targets each module
 exports, tested against the source, with markers on the most-used screens.
 
-**Delivery B (planned) — writes** — `confirm` operations behind a confirmation card, the
-persisted run, a daily token budget and the Owner's count view.
+**Delivery B — changes with confirmation (done, `feat/assistant-writes`)** — a `confirm`
+operation never runs on the model's say-so: `call_operation` turns it into a pending action
+(migration `00104`) with a confirmation card — the fields from current to new where a read of the
+same record can say, *Confirm* and *Cancel* — and the run pauses in `awaiting_confirmation`; the
+person's own `POST` to `pending-actions/{id}/confirm` runs it through the dispatcher as them, with
+the card's `If-Match`, and the conversation goes on streaming; a card can be decided later, from
+another device, and expires after 24 hours; one change at a time, and a decided action keeps no
+request values. The screen the person is on refreshes after a confirmed change, the button's badge
+says *waiting for you*, and links in answers open only the app's routes and the documentation.
+The Owner sets a daily token budget per person and reads a per-person, per-day count of
+conversations, runs, tokens and confirmed changes — never content. Documented in
+[the user guide](docs/src/content/docs/en/user/assistant.md) and the
+[reference](docs/src/content/docs/en/reference/assistant.md#changes-with-confirmation).
 
 **Delivery C (planned) — bulk changes** — `propose_bulk` with preview, canary and a worker
 job, on a job runner shared with the imports.
