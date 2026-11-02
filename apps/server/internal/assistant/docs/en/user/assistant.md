@@ -1,6 +1,6 @@
 ---
 title: Assistant
-description: Ask the assistant how to do something, about your data, or to change something — opening it from the header, with Cmd/Ctrl+J or from search, the docked panel and the context chip, the Assistant app with every conversation, the changes it proposes and you confirm, what is private and kept, what is sent to the AI provider, and why it might not be there.
+description: Ask the assistant how to do something, about your data, or to change something — opening it from the header, with Cmd/Ctrl+J or from search, the docked panel and the context chip, the Assistant app with every conversation, the changes it proposes and you confirm, a change to many records at once (preview, the first five, the rest in the background, the failed items), what is private and kept, what is sent to the AI provider, and why it might not be there.
 sidebar:
   order: 3
 sources:
@@ -159,11 +159,57 @@ line.
 Some operations are never available to the assistant, such as an Owner's settings, signing
 in and passwords, and file uploads, whatever the Owner sets.
 
+## Bulk changes
+
+Ask "give every metering point in price area NO5 the product *Spot Bergen*" or "set the payment
+terms of all customers tagged *Wholesale* to 30 days" and the assistant proposes **the same change to
+all of them at once**. It does not make it. It reads the list you described, as you, and a **Bulk
+change** card appears in the conversation. A bulk change has four steps, and you decide each one.
+
+1. **The preview.** The card says **how many items were found** and shows **the first 10**, each
+   with the value it has now and the new one. It says how many will be **skipped**, and why: an item
+   the list gave without the value the change needs, or one that appears twice. It also says that
+   Vantigo checks each record when its change runs, so some may still be refused. Nothing has been
+   changed. **Start** and **Cancel** are the only buttons.
+2. **Start** changes **the first 5 items**, for real, as you. The card shows how each one went.
+   If there were no more than 5, that is all.
+3. **Continue** changes the rest **in the background, 100 at a time**. The card shows a progress
+   bar and how many have succeeded, failed and been skipped, and a **Stop** button. You can close the
+   panel and do something else; it goes on.
+4. **The end.** The card says how many were changed, and lists **the items that failed**, each with the
+   refusal Vantigo gave (the status and its title). **Download failed items (CSV)** saves the whole list
+   as a file you can open in a spreadsheet. The screen you are on refreshes, and the assistant sums the
+   outcome up in one short message.
+
+- **It is a preview of the change, not a rehearsal.** Vantigo's screens write directly, and some changes
+  also do something outside the database, such as sending a message, so a change cannot be tried and
+  taken back. The card never calls itself a trial: what **Start** changes is changed, and stopping
+  does not undo it. That is why only 5 items come first, and why you decide whether to go on.
+- **Up to 2,000 items.** If more match, the assistant tells you how many and asks you to narrow the
+  filter, for instance by a price area or a tag.
+- **The items are fixed when you see them.** The job changes exactly the items you saw counted. A
+  record that is added or starts to match afterwards is not touched.
+- **Stopping.** **Stop** takes effect **between chunks of 100**, so up to 100 items more may be changed
+  after you press it. The card then says *Stopped after … of …*. Nothing already changed is undone.
+- **Failed items.** A record can be refused on its own rules (you may not change that customer, it was
+  edited by someone else meanwhile). That item fails and the others go on. The card lists the first 50
+  and the CSV has all of them.
+- **Why a long job asks you to Continue.** The assistant acts with your permission, which belongs
+  to your session and lasts an hour at most. A job that would outlive it **pauses**, and the card says *Confirm to
+  go on*: **Continue** gives it a fresh hour. **If you sign out, the job stops** at the next item,
+  because the assistant no longer has your permission.
+- **What the Owner decides applies to every item.** If an Owner narrows what the assistant may do
+  while a job runs, the job stops at the end of the chunk it is in
+  ([What the assistant may use](/en/user/workspace-administration/#what-the-assistant-may-use)).
+- **Waiting.** A plan nobody starts, and a job that waits for **Continue**, expire after 24 hours. While
+  a bulk change waits or runs, the message box is off, as for a single change; **Stop** on the card, or
+  the stop button beside the message box, stops the job.
+
 ## What it cannot do
 
 **It does not fill in the form on your screen.** It creates or changes the record through
 Vantigo's own interface behind the screens, with your confirmation, and then offers to
-open it. It does not yet make a change to many records at once.
+open it.
 
 ## Links in answers
 
