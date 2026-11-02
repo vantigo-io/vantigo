@@ -16,7 +16,11 @@
 // Client.Chat is the second door, for a conversation: a system message, typed
 // messages and JSON Schema tools, streamed, against any OpenAI-compatible
 // endpoint — OpenAI, or a local model served by Ollama, vLLM or LM Studio,
-// which needs no key. It is the same guard under a longer budget (AI_TIMEOUT).
+// which needs no key — or against Anthropic's Messages API (AI_PROVIDER=anthropic,
+// through the official Go SDK). It is the same guard under a longer budget
+// (AI_TIMEOUT). A provider's own state that must come back unchanged to be
+// valid — Claude's signed thinking blocks — travels in Message.Provider, which
+// no caller reads and no other provider fills.
 //
 // A nil *Client is the unavailable state. New answers it for any configuration
 // without a provider, a model, and a key or a base URL, so an installation that has no AI
@@ -37,6 +41,7 @@ package ai
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"slices"
 	"time"
@@ -93,6 +98,14 @@ type Message struct {
 	ToolCalls []ToolCall
 	// ToolCallID names the ToolCall a RoleTool message answers.
 	ToolCallID string
+	// Provider is the provider's own record of an assistant turn, opaque to
+	// every caller: Anthropic fills it with the turn's content blocks exactly
+	// as received (thinking blocks with their signatures, text, tool use), and
+	// Chat replays it verbatim in place of Text and ToolCalls, because a
+	// thinking block is valid only unchanged. A caller stores it with the turn
+	// and hands it back. The OpenAI-compatible providers leave it empty and
+	// ignore it.
+	Provider json.RawMessage
 }
 
 // Tool is a function the model may call, described by a JSON Schema.
@@ -122,6 +135,12 @@ type ChatRequest struct {
 	Tools    []Tool
 	// MaxTokens bounds the answer; zero leaves it to the provider.
 	MaxTokens int
+	// ToolsDisabled asks for an answer without tool calls while Tools stays
+	// the conversation's tool set. Anthropic refuses a history that holds tool
+	// calls when no tools are defined, and a tool set that changes breaks the
+	// binding of its thinking blocks, so it keeps the tools and forbids their
+	// use; the OpenAI-compatible providers send none.
+	ToolsDisabled bool
 }
 
 // ChatResponse is the model's answer, or — with an error — what is known of
@@ -135,8 +154,15 @@ type ChatResponse struct {
 	FinishReason string
 	// InputTokens and OutputTokens are as Response's: nil when the provider
 	// reported none, as Ollama's compatible endpoint may not.
+	// Anthropic counts the whole prompt: its cached part is included, and
+	// CacheReadTokens and CacheWriteTokens say how much of it was read from and
+	// written to the prompt cache.
 	InputTokens  *int32
 	OutputTokens *int32
+	// CacheReadTokens and CacheWriteTokens are nil where the provider has no
+	// prompt cache to report.
+	CacheReadTokens  *int32
+	CacheWriteTokens *int32
 	// Provider and Model name what served the call, set whenever the model
 	// was resolved, also on an error.
 	Provider string
@@ -181,30 +207,56 @@ type Client struct {
 	chat     chatProvider
 }
 
+// Option adjusts what New builds.
+type Option func(*options)
+
+type options struct{ logger *slog.Logger }
+
+// WithLogger gives the client the logger it reports what a provider changed
+// in a request (Anthropic's input transformations) to. Without one it logs to
+// slog's default.
+func WithLogger(l *slog.Logger) Option { return func(o *options) { o.logger = l } }
+
 // New builds the client for cfg over transport (Deps.HTTPTransport: nil in
 // production, meaning http.DefaultTransport; a fake in every test) and
 // resolver, or returns nil when cfg names no provider, no model, or no key
 // where an endpoint that needs one is configured. A key is optional once
 // AI_BASE_URL names an endpoint (config.Load has already refused a key over
-// plain http): Ollama, vLLM and LM Studio take none.
-func New(cfg *config.Config, transport http.RoundTripper, resolver Resolver) *Client {
+// plain http): Ollama, vLLM and LM Studio take none. Anthropic always needs one.
+func New(cfg *config.Config, transport http.RoundTripper, resolver Resolver, opts ...Option) *Client {
 	if cfg == nil || cfg.AIProvider == "" || len(cfg.AIModels) == 0 {
 		return nil
 	}
-	if cfg.AIAPIKey == "" && cfg.AIBaseURL == "" {
+	if cfg.AIAPIKey == "" && (cfg.AIBaseURL == "" || cfg.AIProvider == ProviderAnthropic) {
 		return nil
 	}
 	if transport == nil {
 		transport = http.DefaultTransport
 	}
+	var o options
+	for _, opt := range opts {
+		opt(&o)
+	}
+	if o.logger == nil {
+		o.logger = slog.Default()
+	}
+	timeout := cfg.AITimeout
+	if timeout <= 0 {
+		timeout = DefaultChatTimeout
+	}
 	var chat chatProvider
 	switch cfg.AIProvider {
 	case ProviderOpenAI, ProviderOpenAICompatible:
-		timeout := cfg.AITimeout
-		if timeout <= 0 {
-			timeout = DefaultChatTimeout
-		}
 		chat = newOpenAI(cfg.AIAPIKey, cfg.AIBaseURL, transport, timeout)
+	case ProviderAnthropic:
+		effort := cfg.AIEffort
+		if effort == "" {
+			effort = defaultAnthropicEffort
+		}
+		chat = newAnthropic(anthropicSettings{
+			apiKey: cfg.AIAPIKey, baseURL: cfg.AIBaseURL, effort: effort, fallbacks: cfg.AIFallbacks,
+			chatTimeout: timeout, logger: o.logger,
+		}, transport)
 	default:
 		// config accepts only the providers implemented here, so this is a
 		// configuration this build cannot serve: unavailable, never a panic.
@@ -218,8 +270,8 @@ func New(cfg *config.Config, transport http.RoundTripper, resolver Resolver) *Cl
 	}
 }
 
-// Provider is the provider's name as the operator set it, "openai" or
-// "openai-compatible". It is a fact the AI models page states; the key is not
+// Provider is the provider's name as the operator set it, "openai",
+// "openai-compatible" or "anthropic". It is a fact the AI models page states; the key is not
 // one and has no accessor.
 func (c *Client) Provider() string { return c.provider }
 

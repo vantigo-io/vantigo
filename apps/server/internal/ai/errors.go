@@ -1,6 +1,9 @@
 package ai
 
-import "fmt"
+import (
+	"errors"
+	"fmt"
+)
 
 // The AI call's failure modes, as distinct types. A consumer records the
 // error's type name — never its message, which could carry provider or
@@ -26,6 +29,15 @@ type (
 	// aiEmptyResponseError is a well-formed response carrying no choice, so
 	// there is no completion text to draft or parse from.
 	aiEmptyResponseError struct{}
+	// aiRefusalError is a well-formed answer the provider's safeguards declined
+	// to give (Anthropic's refusal stop reason): nothing usable came back, and
+	// asking again unchanged declines again. It carries the policy category the
+	// provider named, "" when it named none.
+	aiRefusalError struct{ category string }
+	// aiMaxTokensError is an answer the provider cut off at the token limit,
+	// thinking included. Half an answer, and above all half a tool call, is
+	// never handed on as whole.
+	aiMaxTokensError struct{}
 	// aiModelUnavailableError is the Resolver failing to say which model the
 	// task uses (its table could not be read): nothing was sent.
 	aiModelUnavailableError struct{ err error }
@@ -48,6 +60,26 @@ func (e aiStatusError) Error() string {
 func (aiDecodeError) Error() string { return "ai: the AI provider's response could not be decoded" }
 
 func (aiEmptyResponseError) Error() string { return "ai: the AI provider returned no completion" }
+
+func (aiRefusalError) Error() string { return "ai: the AI provider declined to answer" }
+
+func (aiMaxTokensError) Error() string { return "ai: the AI provider's answer reached the token limit" }
+
+// RefusalCategory reports whether err is the provider declining to answer, and
+// the policy category it named ("cyber", "bio", ...), empty when it named none.
+func RefusalCategory(err error) (category string, refused bool) {
+	var r aiRefusalError
+	if errors.As(err, &r) {
+		return r.category, true
+	}
+	return "", false
+}
+
+// IsMaxTokens reports whether err is an answer cut off at the token limit.
+func IsMaxTokens(err error) bool {
+	var m aiMaxTokensError
+	return errors.As(err, &m)
+}
 
 func (aiModelUnavailableError) Error() string {
 	return "ai: the model for the task could not be resolved"

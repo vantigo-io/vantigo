@@ -18,7 +18,7 @@ func withAI(deps Deps, enabled []Module) (Deps, error) {
 	if deps.AI == nil {
 		// ai.New answers nil unless a provider, a key and a model are
 		// configured, which is the unavailable state.
-		deps.AI = ai.New(deps.Config, deps.HTTPTransport, deps.AIModels)
+		deps.AI = ai.New(deps.Config, deps.HTTPTransport, deps.AIModels, ai.WithLogger(deps.Logger))
 	}
 	return deps, nil
 }
