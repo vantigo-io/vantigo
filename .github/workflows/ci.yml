@@ -88,7 +88,7 @@ jobs:
 
   build_and_test_frontend:
     needs: metadata
-    name: 🏗️ Build and test host frontend
+    name: 🏗️ Check and build frontends
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -150,12 +150,42 @@ jobs:
       - name: 🔍 Typecheck frontends
         run: bun run frontend:typecheck
 
-      - name: 🧪 Test frontends
-        run: bun run frontend:test
-
       - name: 🏗 Build host frontend
         working-directory: apps/host/frontend
         run: bun run build
+
+  test_frontend:
+    # The frontend tests on three runners. frontend:test is one Vitest run
+    # over every workspace (vitest.config.ts), so --shard splits test files
+    # across all of them rather than whole workspaces, and the shards come
+    # out even.
+    needs: metadata
+    name: 🧪 Test frontends (${{ matrix.shard }}/3)
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: 🛎️ Checkout codebase
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: 💾 Set up toolchain
+        uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
+        with:
+          install_args: "bun"
+
+      - name: 🧰 Install frontend dependencies
+        run: bun install --frozen-lockfile
+
+      - name: 🧪 Test frontends
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: bun run frontend:test --shard="$SHARD/3"
 
   docs:
     needs: metadata
@@ -212,7 +242,7 @@ jobs:
     # docs/dist as static assets; the token needs the Workers Scripts edit
     # permission on the account. A manual dispatch publishes whatever branch
     # it runs on, which is how the deployment itself is tried out.
-    needs: [docs, build_and_test_frontend, build_and_test_server]
+    needs: [docs, build_and_test_frontend, test_frontend, lint_server, test_server]
     if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
     name: 🌍 Publish documentation
     runs-on: ubuntu-latest
@@ -252,9 +282,90 @@ jobs:
         if: env.CLOUDFLARE_API_TOKEN == ''
         run: echo "::notice::CLOUDFLARE_API_TOKEN is not set; the documentation site was built but not published."
 
-  build_and_test_server:
+  lint_server:
+    # Everything static about the Go server, in its own job so the race
+    # suite below starts at once instead of after ~3 minutes of linting.
     needs: metadata
-    name: 🧪 Go server lint and tests
+    name: 🔍 Go server lint
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: 🛎️ Checkout codebase
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: 💾 Set up toolchain
+        uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
+        with:
+          install_args: "go bun aqua:golangci/golangci-lint aqua:goreleaser/goreleaser aqua:rhysd/actionlint aqua:koalaman/shellcheck aqua:sqlc-dev/sqlc"
+
+      # Keyed on the sources as well as go.sum, with go.sum's newest entry as
+      # the fallback: actions/cache saves only when its key misses, so a key on
+      # go.sum alone froze the build cache at whatever the first run after a
+      # dependency change compiled, and every later run recompiled the rest.
+      # golangci-lint's own cache rides along; it is keyed on the same inputs.
+      - name: 💾 Cache Go modules, builds and lint results
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+            ~/.cache/golangci-lint
+          key: ${{ runner.os }}-go-lint-${{ hashFiles('apps/server/go.sum') }}-${{ hashFiles('apps/server/**/*.go') }}
+          restore-keys: |
+            ${{ runner.os }}-go-lint-${{ hashFiles('apps/server/go.sum') }}-
+            ${{ runner.os }}-go-lint-
+
+      - name: 🧰 Install frontend dependencies
+        run: bun install --frozen-lockfile
+
+      - name: 🔍 Lint workflows and scripts
+        run: |
+          # Bare: actionlint finds every workflow itself. A glob here would
+          # stop covering a .yaml-suffixed workflow the day someone adds one,
+          # and would do it silently.
+          actionlint
+          shellcheck scripts/*.sh tools/ehf/*.sh
+
+      - name: 🔍 golangci-lint
+        working-directory: apps/server
+        run: golangci-lint run
+
+      - name: 🧬 Generated code is up to date
+        working-directory: apps/server
+        run: |
+          go generate ./...
+          git diff --exit-code -- . ../../openapi || {
+            echo "::error::Generated code or embedded contract copies are stale. Run 'go generate ./...' in apps/server and commit the result."
+            exit 1
+          }
+          untracked="$(git status --porcelain -- . ../../openapi)"
+          if [ -n "$untracked" ]; then
+            echo "$untracked"
+            echo "::error::go generate produced files that are not committed. Run 'go generate ./...' in apps/server and commit the result."
+            exit 1
+          fi
+
+      - name: 🛡️ govulncheck
+        working-directory: apps/server
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...
+
+      - name: 🔍 GoReleaser configuration
+        run: goreleaser check
+
+  test_server:
+    needs: metadata
+    # Two runners, each with its own PostgreSQL. invoices is a quarter of the
+    # suite's test time on its own, so it gets one runner and every other
+    # package the other. "rest" is go list minus invoices rather than a list,
+    # so a new package can never fall between the shards.
+    name: 🧪 Go server tests (${{ matrix.shard }})
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [invoices, rest]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -289,46 +400,20 @@ jobs:
       - name: 💾 Set up toolchain
         uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
         with:
-          install_args: "go bun aqua:golangci/golangci-lint aqua:goreleaser/goreleaser aqua:rhysd/actionlint aqua:koalaman/shellcheck aqua:sqlc-dev/sqlc"
+          install_args: "go"
 
+      # See lint_server's cache step for why the sources are in the key. This
+      # job's cache holds -race builds, which share nothing with the others'.
       - name: 💾 Cache Go modules and builds
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/go/pkg/mod
             ~/.cache/go-build
-          key: ${{ runner.os }}-go-${{ hashFiles('apps/server/go.sum') }}
-          restore-keys: ${{ runner.os }}-go-
-
-      - name: 🧰 Install frontend dependencies
-        run: bun install --frozen-lockfile
-
-      - name: 🔍 Lint workflows and scripts
-        run: |
-          # Bare: actionlint finds every workflow itself. A glob here would
-          # stop covering a .yaml-suffixed workflow the day someone adds one,
-          # and would do it silently.
-          actionlint
-          shellcheck scripts/*.sh tools/ehf/*.sh
-
-      - name: 🔍 golangci-lint
-        working-directory: apps/server
-        run: golangci-lint run
-
-      - name: 🧬 Generated code is up to date
-        working-directory: apps/server
-        run: |
-          go generate ./...
-          git diff --exit-code -- . ../../openapi || {
-            echo "::error::Generated code or embedded contract copies are stale. Run 'go generate ./...' in apps/server and commit the result."
-            exit 1
-          }
-          untracked="$(git status --porcelain -- . ../../openapi)"
-          if [ -n "$untracked" ]; then
-            echo "$untracked"
-            echo "::error::go generate produced files that are not committed. Run 'go generate ./...' in apps/server and commit the result."
-            exit 1
-          fi
+          key: ${{ runner.os }}-go-test-${{ matrix.shard }}-${{ hashFiles('apps/server/go.sum') }}-${{ hashFiles('apps/server/**/*.go') }}
+          restore-keys: |
+            ${{ runner.os }}-go-test-${{ matrix.shard }}-${{ hashFiles('apps/server/go.sum') }}-
+            ${{ runner.os }}-go-test-${{ matrix.shard }}-
 
       - name: 🐘 Postgres without durability
         # A service container takes no command line, so the settings the local
@@ -353,7 +438,19 @@ jobs:
         # CPUs and its single Postgres service, and identity timed out at
         # 1202s — 0.4% over 20m — with every other package passing. 40m is
         # headroom, not a mask: a genuinely deadlocked test still fails here.
-        run: go test -race -count=1 -timeout 40m ./...
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: |
+          # Without pipefail a failing go list would hide behind grep and
+          # leave packages out of the rest shard while the step passed.
+          set -o pipefail
+          case "$SHARD" in
+            invoices) packages="./internal/invoices/..." ;;
+            rest) packages="$(go list ./... | grep -Ev '/internal/invoices(/|$)')" ;;
+            *) echo "::error::unknown shard $SHARD"; exit 1 ;;
+          esac
+          # shellcheck disable=SC2086 # one package per word
+          go test -race -count=1 -timeout 40m $packages
 
       - name: 🌍 Energy tests under a non-UTC time zone
         working-directory: apps/server
@@ -362,16 +459,11 @@ jobs:
         # and 400s everywhere else. That bug shipped once and this run is the
         # only thing that would catch it again: every other job here runs UTC.
         # Energy owns the timestamp-sensitive handlers, so it alone is enough.
+        # It rides on the invoices shard, the shorter of the two.
+        if: matrix.shard == 'invoices'
         env:
           TZ: Europe/Oslo
         run: go test -count=1 -timeout 10m ./internal/energy/...
-
-      - name: 🛡️ govulncheck
-        working-directory: apps/server
-        run: go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...
-
-      - name: 🔍 GoReleaser configuration
-        run: goreleaser check
 
   validate_ehf:
     # The EHF oracle (tools/ehf): the official UBL 2.1 XSD and the EN 16931
@@ -473,13 +565,16 @@ jobs:
           category: /language:${{ matrix.language }}
 
   build_images:
-    name: 📦 Image, smoke test and preview
-    needs: [metadata, build_and_test_frontend, build_and_test_server]
+    # Building, smoke-testing and scanning the image depends on nothing the
+    # test jobs prove, so it runs beside them rather than after them; only
+    # the push in preview_image waits for every gate. The binaries it smoked
+    # travel to that job as an artifact, so what is pushed is what ran here.
+    name: 📦 Image and smoke test
+    needs: metadata
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      packages: write
     steps:
       - name: 🛎️ Checkout codebase
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -497,8 +592,10 @@ jobs:
           path: |
             ~/go/pkg/mod
             ~/.cache/go-build
-          key: ${{ runner.os }}-go-${{ hashFiles('apps/server/go.sum') }}
-          restore-keys: ${{ runner.os }}-go-
+          key: ${{ runner.os }}-go-build-${{ hashFiles('apps/server/go.sum') }}-${{ hashFiles('apps/server/**/*.go') }}
+          restore-keys: |
+            ${{ runner.os }}-go-build-${{ hashFiles('apps/server/go.sum') }}-
+            ${{ runner.os }}-go-build-
 
       - name: 🧰 Install frontend dependencies
         run: bun install --frozen-lockfile
@@ -533,25 +630,49 @@ jobs:
           path: ${{ runner.temp }}/vantigo-sbom.cdx.json
           retention-days: 14
 
-      # A fork's PR gets a read-only token; pushing would fail for reasons
-      # unrelated to the change.
-      - name: 🔀 Can this run push?
-        id: gate
-        env:
-          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
-        run: |
-          if [ "$HEAD_REPO" = "$GITHUB_REPOSITORY" ]; then
-            echo "push=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "push=false" >> "$GITHUB_OUTPUT"
-          fi
+      - name: 📤 Upload the binaries
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: server-binaries
+          path: dist/server
+          if-no-files-found: error
+          retention-days: 1
+
+  preview_image:
+    name: 📤 Push the preview image
+    needs: [metadata, build_images, build_and_test_frontend, test_frontend, lint_server, test_server]
+    # A fork's PR gets a read-only token; pushing would fail for reasons
+    # unrelated to the change.
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: 🛎️ Checkout codebase
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: 💾 Set up toolchain
+        uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
+        with:
+          install_args: "trivy"
+
+      - name: 📥 Download the binaries
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: server-binaries
+          path: dist/server
+
+      # Artifacts do not keep file modes, and the image runs the binary as is.
+      - name: 🔧 Restore the executable bit
+        run: chmod +x dist/server/linux/*/vantigo
 
       - name: 🧱 Set up buildx
-        if: steps.gate.outputs.push == 'true'
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       - name: 🔐 Log in to GHCR
-        if: steps.gate.outputs.push == 'true'
         uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
         with:
           registry: ghcr.io
@@ -559,12 +680,11 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: 📤 Push the preview image (linux/amd64 + linux/arm64)
-        if: steps.gate.outputs.push == 'true'
         env:
           MOVING: ${{ needs.metadata.outputs.preview_moving }}
           PINNED: ${{ needs.metadata.outputs.preview_pinned }}
         run: |
-          # The binaries are already in dist/server from the step above.
+          # The binaries build_images smoke-tested, downloaded above.
           SKIP_ARTIFACTS=1 TAG="$IMAGE:$PINNED" PUSH=1 bash scripts/build-image.sh
           docker buildx imagetools create -t "$IMAGE:$MOVING" "$IMAGE:$PINNED"
           platforms="$(docker buildx imagetools inspect --raw "$IMAGE:$PINNED" \
@@ -584,7 +704,6 @@ jobs:
 
       # The smoke test ran the same amd64 binary and base digest built earlier; this step closes the gap for what was actually pushed, including arm64.
       - name: 🛡️ Scan the pushed images
-        if: steps.gate.outputs.push == 'true'
         env:
           PINNED: ${{ needs.metadata.outputs.preview_pinned }}
         run: |
@@ -594,7 +713,7 @@ jobs:
 
   publish_images:
     name: 📦 Publish the image to GHCR
-    needs: [metadata, build_and_test_frontend, build_and_test_server]
+    needs: [metadata, build_and_test_frontend, test_frontend, lint_server, test_server]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
@@ -620,8 +739,10 @@ jobs:
           path: |
             ~/go/pkg/mod
             ~/.cache/go-build
-          key: ${{ runner.os }}-go-${{ hashFiles('apps/server/go.sum') }}
-          restore-keys: ${{ runner.os }}-go-
+          key: ${{ runner.os }}-go-build-${{ hashFiles('apps/server/go.sum') }}-${{ hashFiles('apps/server/**/*.go') }}
+          restore-keys: |
+            ${{ runner.os }}-go-build-${{ hashFiles('apps/server/go.sum') }}-
+            ${{ runner.os }}-go-build-
 
       - name: 🧰 Install frontend dependencies
         run: bun install --frozen-lockfile
@@ -796,7 +917,7 @@ jobs:
 
   goreleaser_snapshot:
     name: 📦 GoReleaser snapshot (dry run)
-    needs: [build_and_test_frontend, build_and_test_server]
+    needs: [build_and_test_frontend, test_frontend, lint_server, test_server]
     # Manual only: it runs the release pipeline end to end — binaries,
     # archives, checksums, SBOMs and the multi-arch images — without tagging,
     # pushing or signing, and proves the cosign invocations on a throwaway
@@ -825,8 +946,10 @@ jobs:
           path: |
             ~/go/pkg/mod
             ~/.cache/go-build
-          key: ${{ runner.os }}-go-${{ hashFiles('apps/server/go.sum') }}
-          restore-keys: ${{ runner.os }}-go-
+          key: ${{ runner.os }}-go-build-${{ hashFiles('apps/server/go.sum') }}-${{ hashFiles('apps/server/**/*.go') }}
+          restore-keys: |
+            ${{ runner.os }}-go-build-${{ hashFiles('apps/server/go.sum') }}-
+            ${{ runner.os }}-go-build-
 
       - name: 🧰 Install frontend dependencies
         run: bun install --frozen-lockfile
