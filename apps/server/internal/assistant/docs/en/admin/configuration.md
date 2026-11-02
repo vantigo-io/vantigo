@@ -132,7 +132,7 @@ poll. All are on by default except the spot-price worker.
 | `INVOICES_EHF_ENABLED`, `INVOICES_STORECOVE_BASE_URL` | `1`, Storecove's API | Sending invoices as EHF ([E-invoicing](/en/admin/e-invoicing/)) |
 | `INVOICES_VIPPS_ENABLED`, `INVOICES_VIPPS_BASE_URL` | `1`, Vipps' API | Vipps MobilePay payments ([Payments](/en/admin/payments/)) |
 | `ENERGY_SPOT_PRICE_SERVICE_URL`, `ENERGY_SPOT_PRICE_SERVICE_KEY`, `ENERGY_SPOT_PRICE_HISTORY_FROM` | unset | The shared spot-price service Vantigo provisions an installation with, its bearer key (a secret, shown nowhere) and the oldest day copied |
-| `AI_PROVIDER`, `AI_API_KEY`, `AI_BASE_URL`, `AI_MODELS`, `AI_TIMEOUT`, `AI_CONTEXT_TOKENS` | unset, unset, unset, unset, `120s`, `16000` | The AI plan: the provider, its key (a secret, shown nowhere; optional for a model on your own network), an optional compatible endpoint, the models the plan allows, how long a chat may take and how much of a conversation the assistant sends the model. Unset, every AI feature is unavailable ([AI](#ai)) |
+| `AI_PROVIDER`, `AI_API_KEY`, `AI_BASE_URL`, `AI_MODELS`, `AI_TIMEOUT`, `AI_CONTEXT_TOKENS`, `AI_EFFORT`, `AI_FALLBACKS` | unset, unset, unset, unset, `120s`, `16000`, `medium`, `on` | The AI plan: the provider, its key (a secret, shown nowhere; optional for a model on your own network), an optional compatible endpoint, the models the plan allows, how long a chat may take, how much of a conversation the assistant sends the model, and, for Anthropic, how hard the model thinks and whether a declined request is retried on a fallback model. Unset, every AI feature is unavailable ([AI](#ai)) |
 
 ### AI
 
@@ -142,16 +142,55 @@ interface. Which of the allowed models each AI job uses is the workspace's choic
 
 | Setting | Default | Meaning |
 | --- | --- | --- |
-| `AI_PROVIDER` | unset | The provider: `openai`, or `openai-compatible` for anything that speaks OpenAI's protocol, such as a model you run yourself ([a local model](#a-local-model)). It is shown as you wrote it. Unset, no AI feature is available: Communications' AI draft and customer suggestion answer that AI is unavailable, and **AI models** does not appear under Integrations |
-| `AI_API_KEY` | required with the provider, unless `AI_BASE_URL` is set | The provider's key, a secret: it is shown nowhere, in no form, and **AI models** says only whether one is configured. It may be empty when `AI_BASE_URL` names an endpoint, since a model on your own network takes none; then no key is ever sent |
-| `AI_BASE_URL` | the provider's own address | An absolute URL for an OpenAI-compatible endpoint, up to and including the version path (`https://api.openai.com/v1`); no user, query or fragment. `https`, or `http` when the host is a loopback address, a private address (`10.x`, `172.16`–`172.31`, `192.168.x`, `fc00::/7`) or a name with no dot such as `ollama`. A public host over `http` is refused, and so is any `http` address while `AI_API_KEY` is set: a key is never sent in the clear |
+| `AI_PROVIDER` | unset | The provider: `openai`, `openai-compatible` for anything that speaks OpenAI's protocol, such as a model you run yourself ([a local model](#a-local-model)), or `anthropic` for Claude ([Anthropic](#anthropic)). It is shown as you wrote it. Unset, no AI feature is available: Communications' AI draft and customer suggestion answer that AI is unavailable, and **AI models** does not appear under Integrations |
+| `AI_API_KEY` | required with the provider, unless `AI_BASE_URL` is set; always required for `anthropic` | The provider's key, a secret: it is shown nowhere, in no form, and **AI models** says only whether one is configured. It may be empty when `AI_BASE_URL` names an endpoint, since a model on your own network takes none; then no key is ever sent |
+| `AI_BASE_URL` | the provider's own address | An absolute URL for an OpenAI-compatible endpoint, up to and including the version path (`https://api.openai.com/v1`); no user, query or fragment. With `anthropic`, the address of a gateway in front of Anthropic's API (the default is `https://api.anthropic.com`), and `https` only. Otherwise `https`, or `http` when the host is a loopback address, a private address (`10.x`, `172.16`–`172.31`, `192.168.x`, `fc00::/7`) or a name with no dot such as `ollama`. A public host over `http` is refused, and so is any `http` address while `AI_API_KEY` is set: a key is never sent in the clear |
 | `AI_MODELS` | required with the provider | The models the plan allows, comma-separated, the first being the plan's default: `gpt-4o-mini,gpt-4o`. At least one, none repeated, each up to 150 characters with no space |
 | `AI_TIMEOUT` | `120s` | How long one chat call may take, as a Go duration above zero and at most `10m`. Local models are slow; a single-prompt call keeps its own 30 seconds |
-| `AI_CONTEXT_TOKENS` | `16000` | How much of a conversation the [Assistant](/en/user/assistant/) sends the model, as a number of tokens from `2000` to `1000000`; a value outside that range is refused at start. Set it to the context window of the model you run, or a little below. It is estimated at about four characters to a token, so it is a guide and not a measure; past it, the assistant first replaces the older results of its tools with a one-line note, and then drops the oldest turns of the conversation, so the latest question is always sent. Local models have small windows; a hosted model may take far more |
+| `AI_CONTEXT_TOKENS` | `16000` | How much of a conversation the [Assistant](/en/user/assistant/) sends the model, as a number of tokens from `2000` to `1000000`; a value outside that range is refused at start. Set it to the context window of the model you run, or a little below. It is estimated at about four characters to a token, so it is a guide and not a measure; past it, the assistant first replaces the older results of its tools with a one-line note, and then drops the oldest turns of the conversation, so the latest question is always sent. Local models have small windows; a hosted model may take far more. For `anthropic` the assistant does not shorten older results in place; past this size it [summarises the conversation](#anthropic) instead, so set it to a good part of the model's window (`150000` is a sensible start) |
+| `AI_EFFORT` | `medium` | How hard a thinking model thinks: `low`, `medium`, `high`, `xhigh` or `max`. Used by `anthropic` as the request's effort; `openai` and `openai-compatible` ignore it. Higher is slower and costs more; lower first, before you ask the model to think less in words |
+| `AI_FALLBACKS` | `on` | `on` or `off`. With `anthropic`, a request Anthropic's safeguards decline is run again on a fallback model on Anthropic's side; `off` turns that off. Models without fallbacks (Haiku) are never sent the request. `openai` and `openai-compatible` ignore it |
 
 `AI_API_KEY`, `AI_BASE_URL`, `AI_MODELS` and `AI_TIMEOUT` without `AI_PROVIDER` are refused at start, as
-is a provider with no model, or with neither a key nor a base URL; an unset provider is the ordinary "no AI" state
+is a provider with no model, or with neither a key nor a base URL (`anthropic`: with no key, or with an `http` base URL); a value of `AI_EFFORT` or `AI_FALLBACKS` that is not one of the listed is refused whatever the provider; an unset provider is the ordinary "no AI" state
 and never an error.
+
+#### Anthropic
+
+`AI_PROVIDER=anthropic` runs every AI task on Claude, through Anthropic's Messages API: Communications'
+reply drafts and customer suggestions, and the [Assistant](/en/user/assistant/) with its
+streaming, tools, confirmations, bulk changes and tours. This is what it looks like in `vantigo.env`:
+
+```
+AI_PROVIDER=anthropic
+AI_API_KEY=sk-ant-...
+AI_MODELS=claude-opus-5-5,claude-sonnet-5-5,claude-haiku-5-5
+AI_EFFORT=medium
+AI_CONTEXT_TOKENS=150000
+```
+
+- **`AI_API_KEY`** is an Anthropic API key and is always required, also beside `AI_BASE_URL`.
+  It is a secret, shown nowhere, and Vantigo reads no `ANTHROPIC_*` variable of the process.
+- **`AI_MODELS`** takes Claude model ids exactly as Anthropic names them. A good plan lists a
+  strong model for the Assistant (`claude-opus-5-5` or `claude-sonnet-5-5`) and a small one for
+  short jobs (`claude-haiku-5-5`); an Owner then picks one per task under **AI models**.
+  The first is the default. Model ids that Anthropic retires stop working: update the list.
+- **`AI_EFFORT`** and **`AI_FALLBACKS`** are described above. Claude models think before they answer,
+  and Vantigo leaves that to the model; the effort is the one control.
+- **Calls are not retried by Vantigo's client.** A rate limit or an overload reaches the person as
+  "the AI service did not answer"; the person asks again.
+- **The Assistant keeps each conversation's start unchanged** so that Claude's thinking stays valid
+  and Anthropic's prompt cache is used: the instructions are fixed when the conversation begins,
+  and when it grows past `AI_CONTEXT_TOKENS` it is summarised once and continues from the summary.
+  The summary costs one extra call to the same model.
+
+**Where the data goes.** Questions asked of the Assistant, the documentation it finds, the data it
+reads through the API and the text of the messages that Communications drafts a reply to are sent
+to Anthropic, outside your installation. The Assistant's settings page says so to the Owner
+(**Workspace admin** › **Assistant**). Before you switch it on, make sure your agreement with
+Anthropic, including its data processing agreement, covers that data, and tell your
+customers in your privacy notice as you would for any processor. Anthropic is never a
+local provider, whatever `AI_BASE_URL` is.
 
 #### A local model
 

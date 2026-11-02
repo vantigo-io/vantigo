@@ -453,7 +453,8 @@ not found".
 to edit: the **Provider**, the **Models the plan allows**, and "An API key is configured by
 Vantigo." — or, for a model that runs on your own network, which needs none, "No API key is
 configured." The key itself is never shown, to anyone, anywhere. The provider reads
-**OpenAI-compatible** for such a model. Below it, one card for each
+**OpenAI-compatible** for such a model, **OpenAI** for OpenAI and **Anthropic** when the models are Claude
+models, whose questions and data are sent to Anthropic (the Assistant's settings say so). Below it, one card for each
 module that uses AI, named as the module is, with a row for each **task** it performs: what
 the model is asked to do and with what data, and a select of the models the plan allows.
 Tasks are named in English. A module that is turned off is not listed.
