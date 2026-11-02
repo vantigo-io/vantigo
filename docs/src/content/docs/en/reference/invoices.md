@@ -5309,3 +5309,16 @@ worker, honouring `communications.suppressions`, bulk sending, a "paid" stamp on
 (the PDF is immutable), timeseries and attention stats (attention came in phase 4), per-currency stats, a public-body
 fact on the directory, user display names on payments and deliveries (ids only), and a
 purge of anything.
+
+## Assistant tour targets
+
+The Assistant can point at these controls in a guided tour ([the registry](/en/reference/assistant/#guided-tours)). The package registers them in `apps/invoices/frontend/src/assist-targets.json`, exports them as `assistTargets` (`@vantigo/invoices-ui/assist-targets`) and marks each control with `data-assist="<key>"`; a test of the package fails when a key has no marker or a marker has no key. A route with `{…}` is a record's screen.
+
+| Key | Route | Control |
+| --- | --- | --- |
+| `invoices.invoices.new` | `/invoices` | New invoice |
+| `invoices.invoices.customer` | `/invoices` | Customer |
+| `invoices.invoices.create-draft` | `/invoices` | Create the draft |
+| `invoices.invoice.add-line` | `/invoices/{invoiceId}` | Add a line |
+| `invoices.invoice.save` | `/invoices/{invoiceId}` | Save |
+| `invoices.invoice.issue` | `/invoices/{invoiceId}` | Issue |

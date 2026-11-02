@@ -1684,3 +1684,19 @@ their own.
 | --- | --- |
 | `energy-import` | Checks, runs and attaches metering-point imports; sweeps old ones ([above](#the-worker-energy-import)) |
 | `energy-spot-prices` | Copies the day-ahead prices and their history from the spot-price service when `ENERGY_SPOT_PRICE_SERVICE_URL` is set ([above](#the-service-sync)), or fetches those of the areas in use from the public feed when `ENERGY_SPOT_PRICE_FEED_ENABLED` is on ([above](#the-feed-worker-energy-spot-prices)) — never both. Each cycle also deletes the draft settlements nobody has touched for thirty days ([above](#drafts-revisions-and-housekeeping)) |
+
+## Assistant tour targets
+
+The Assistant can point at these controls in a guided tour ([the registry](/en/reference/assistant/#guided-tours)). The package registers them in `apps/energy/frontend/src/assist-targets.json`, exports them as `assistTargets` (`@vantigo/energy-ui/assist-targets`) and marks each control with `data-assist="<key>"`; a test of the package fails when a key has no marker or a marker has no key. A route with `{…}` is a record's screen.
+
+| Key | Route | Control |
+| --- | --- | --- |
+| `energy.metering-points.new` | `/energy/metering-points` | New metering point |
+| `energy.metering-points.form-gsrn` | `/energy/metering-points` | GSRN |
+| `energy.metering-points.form-meter-number` | `/energy/metering-points` | Meter number |
+| `energy.metering-points.form-address` | `/energy/metering-points` | Street address |
+| `energy.metering-points.form-save` | `/energy/metering-points` | Create metering point |
+| `energy.metering-point.assign-customer` | `/energy/metering-points/{meteringPointId}` | Assign customer |
+| `energy.metering-point.supply-customer` | `/energy/metering-points/{meteringPointId}` | Customer |
+| `energy.metering-point.supply-start` | `/energy/metering-points/{meteringPointId}` | Switch date |
+| `energy.metering-point.supply-save` | `/energy/metering-points/{meteringPointId}` | Assign customer |

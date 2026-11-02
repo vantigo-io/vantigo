@@ -459,3 +459,7 @@ nothing on it can be changed, and only the export remains. See
 
 The full list, with what each key guards on the server, is
 [Permissions](/en/reference/customers/#permissions).
+
+## Show me how
+
+The [Assistant](/en/user/assistant/#show-me-how) can walk you through two things here. Ask "how do I create a customer?" and press **Show me**: the tour points at **Create new customer**, the customer type, the name and **Create customer**. Ask "how do I add a contact?" while you are on a customer and it points at **Add contact**, the search field of the dialog and the button that adds the contact.

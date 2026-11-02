@@ -805,3 +805,7 @@ The full rules are in [Tariffs](/en/reference/energy/#tariffs).
 | `energy:tariffs-view` | See **Tariffs**, and choose a tariff on a supply period or a metering point |
 | `energy:tariffs-manage` | Create, edit, archive and delete tariffs, with `energy:tariffs-view` |
 | `energy:import` | Import metering points from a file, with `energy:metering-points-manage`; import readings, with `energy:consumption-manage` and `energy:consumption-view`; what an import writes needs the permissions above |
+
+## Show me how
+
+The [Assistant](/en/user/assistant/#show-me-how) can show you how to create a metering point and how to assign a customer to it. Ask "how do I add a metering point?" and press **Show me**: the tour points at **New metering point**, the GSRN, meter number and address fields, and **Create metering point**. Ask "how do I assign a customer?" while you are on a metering point and it points at **Assign customer**, the customer, the switch date and the button that saves the supply period.

@@ -273,3 +273,7 @@ uken og hva som venter på din godkjenning; søket har en hurtighandling **Før 
 
 Hele tabellen, og hvem som får se fakturapriser og kostpriser, står under
 [synlighet og rettigheter](/en/reference/time/#visibility-and-permissions).
+
+## Vis meg hvordan
+
+[Assistent](/nb/user/assistant/#vis-meg-hvordan) kan vise deg hvordan du registrerer timer og sender inn uken. Spør «hvordan registrerer jeg timer?» og trykk **Vis meg**: omvisningen peker på **Legg til føring** på Dag-siden, prosjektet, timene og **Lagre**; på **Min uke** peker den på **Send inn uken**.

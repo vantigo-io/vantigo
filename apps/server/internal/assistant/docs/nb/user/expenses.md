@@ -305,3 +305,7 @@ rates](/en/reference/expenses/#the-rates-and-what-they-deliberately-do-not-model
 opp eller ned i listen, og **Deaktiver …** / **Aktiver … igjen** gjør det samme som
 bryteren. En kategori slettes aldri: en deaktivert blir stående på utleggene som alt er
 ført på den, men kan ikke velges for nye.
+
+## Vis meg hvordan
+
+[Assistent](/nb/user/assistant/#vis-meg-hvordan) kan vise deg hvordan du registrerer et utlegg og sender inn en reiseregning. Spør «hvordan registrerer jeg et utlegg?» og trykk **Vis meg**: omvisningen peker på **Nytt utlegg**, beskrivelsen og **Lagre utkast**. Spør hvordan du sender inn en reiseregning mens du har den åpen, så peker den på **Send inn regningen**. **Ny reiseregning** er også med.

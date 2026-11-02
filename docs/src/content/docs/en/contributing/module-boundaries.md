@@ -246,6 +246,10 @@ Communications' outbox is the working example.
    fills with another package's component, as `@vantigo/staff-ui`'s `PersonPage` does
    with `extraTabs`, through which the host adds Planning's tab to the person page —
    and the host composes it; the package that opens the slot never names what fills it.
+   The Assistant's tour targets are the same kind of composition: each package exports
+   `assistTargets`, the host joins them and hands them to the assistant package, and
+   `tools/assist/gen-targets.ts` (run by `go generate`) merges the same files into the
+   registry the assistant module embeds ([frontend architecture](/en/contributing/frontend-architecture/#tour-targets-for-the-assistant)).
    `@vantigo/calendar-ui`'s `SettingsPage` opens `connectionButton` (the slot
    `connection.button`, called with `{feature: "calendar", returnTo:
    "/calendar/settings"}`) in its Outlook card, which the host fills with

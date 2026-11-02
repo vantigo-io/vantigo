@@ -307,3 +307,7 @@ the pencil renames one and switches **Can be chosen** off or on; the arrows move
 or down the list, and **Deactivate …** / **Reactivate …** does the same as the switch. A
 category is never deleted: a deactivated one stays on the expenses already booked on
 it but cannot be chosen for new ones.
+
+## Show me how
+
+The [Assistant](/en/user/assistant/#show-me-how) can show you how to register an expense and submit a travel claim. Ask "how do I register an expense?" and press **Show me**: the tour points at **New expense**, the description and **Save draft**. Ask how to submit a travel claim while you have it open and it points at **Submit claim**. **New travel claim** is on the tour too.

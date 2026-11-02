@@ -657,3 +657,15 @@ tests — while the user directory is the real one, composed.
 bun run --cwd apps/time/frontend test
 cd apps/server && go test ./internal/time/
 ```
+
+## Assistant tour targets
+
+The Assistant can point at these controls in a guided tour ([the registry](/en/reference/assistant/#guided-tours)). The package registers them in `apps/time/frontend/src/assist-targets.json`, exports them as `assistTargets` (`@vantigo/time-ui/assist-targets`) and marks each control with `data-assist="<key>"`; a test of the package fails when a key has no marker or a marker has no key. A route with `{…}` is a record's screen.
+
+| Key | Route | Control |
+| --- | --- | --- |
+| `time.day.add-entry` | `/time/day` | Add entry |
+| `time.day.entry-project` | `/time/day` | Project |
+| `time.day.entry-hours` | `/time/day` | Hours |
+| `time.day.entry-save` | `/time/day` | Save |
+| `time.week.submit` | `/time` | Submit week |

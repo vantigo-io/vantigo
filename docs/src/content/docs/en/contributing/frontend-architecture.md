@@ -1,6 +1,10 @@
 ---
 title: "Frontend architecture"
-description: "Workspace layout, module manifests, API client generation, i18n, and UI conventions."
+description: "Workspace layout, module manifests, API client generation, i18n, tour targets for the Assistant, and UI conventions."
+sources:
+  - packages/frontend-shell/src/assist-targets.ts
+  - apps/host/frontend/src/lib/assist-targets.ts
+  - tools/assist
 ---
 
 Vantigo's frontend is a Bun workspace monorepo of React 19, TypeScript, Vite, and Mantine
@@ -82,6 +86,33 @@ Every user-facing string is translated in both English (`en`) and Norwegian Bokm
 - Module translations live in `modules/<name>/frontend/src/i18n/en.json` and `nb.json`.
 - Parity between `en` and `nb` keys (including `{{interpolation}}` placeholders) is enforced
   in CI by `bun run translations:check` (`tools/i18n/check-translations.ts`).
+
+## Tour targets for the Assistant
+
+The Assistant can walk a person through a screen with a guided tour ("Show me"). It points only at
+controls a module has **registered**; it never writes a selector. To let it point at a control:
+
+1. **Mark the control** with `data-assist="<module>.<screen>.<control>"` — for example
+   `data-assist="energy.metering-points.new"`. Mantine's `Button`, `TextInput`, `Select` and the like pass a
+   `data-*` prop to their element; wrap a composite picker in a `Box` that carries it. The value must be a plain
+   string literal, never an expression. Mark one element per key per screen.
+2. **Register it** in the package's `src/assist-targets.json`: `{key, route, label: {en, nb}, description:
+   {en, nb}}`. `route` is the route pattern the control is on (`/energy/metering-points`, or
+   `/customers/{customerId}` for a record's screen). `label` is the control's name in the interface, in both
+   languages; `description` is one line saying what it is for — the model reads the English one.
+3. **Export it.** A package with targets has `src/assist-targets.ts` (exporting `assistTargets`, typed
+   `AssistTarget` from `@vantigo/frontend-shell`), re-exports it from its index and lists
+   `"./assist-targets"` in its `package.json` `exports`; the host adds it to `src/lib/assist-targets.ts`. A first
+   registry in a package also needs a copy of `src/assist-targets.test.ts` from another package.
+4. **Regenerate the server's copy** with `go generate ./...` in `apps/server`, and commit
+   `internal/assistant/assist-targets.json`. A Go test and CI fail while it is stale.
+5. **Document it:** the module's reference page lists its keys.
+
+A control inside a dialog exists only once the dialog is open, so a tour step can wait for it for three
+seconds and then shows centred; the Assistant's prompt tells the model to say "press the button, then Next". If a
+step ever has to point into an open `Select` or `Menu` (a portal), raise that dropdown's `zIndex` above the
+tour's 10000 as [Mantine documents](https://mantine.dev/core/tour/). The test in each package
+(`assistTargetProblems`) keeps keys and markers in step; renaming a control means renaming its key everywhere.
 
 ## Verification commands
 

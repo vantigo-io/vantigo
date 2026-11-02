@@ -1938,3 +1938,7 @@ registrere en levering manuelt hører til å overlevere salget, og er derfor
 `invoices:issue` — det samme er en betalingslenke og en betaling tatt imot på stedet, som
 overleverer salget og ikke registrerer penger for hånd: Vantigo registrerer det Vipps
 trakk.
+
+## Vis meg hvordan
+
+[Assistent](/nb/user/assistant/#vis-meg-hvordan) kan vise deg hvordan du lager og utsteder en faktura. Spør «hvordan oppretter jeg en faktura?» og trykk **Vis meg**: omvisningen peker på **Ny faktura**, kunden, **Lag utkastet**, og så, på utkastet, **Legg til en linje**, **Lagre** og **Utsted**.
