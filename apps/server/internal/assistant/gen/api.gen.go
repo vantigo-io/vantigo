@@ -44,9 +44,11 @@ func (e AssistantAvailabilityReason) Valid() bool {
 // Defines values for AssistantBulkItemStatus.
 const (
 	AssistantBulkItemStatusFailed    AssistantBulkItemStatus = "failed"
+	AssistantBulkItemStatusInFlight  AssistantBulkItemStatus = "in_flight"
 	AssistantBulkItemStatusPending   AssistantBulkItemStatus = "pending"
 	AssistantBulkItemStatusSkipped   AssistantBulkItemStatus = "skipped"
 	AssistantBulkItemStatusSucceeded AssistantBulkItemStatus = "succeeded"
+	AssistantBulkItemStatusUnknown   AssistantBulkItemStatus = "unknown"
 )
 
 // Valid indicates whether the value is a known member of the AssistantBulkItemStatus enum.
@@ -54,11 +56,15 @@ func (e AssistantBulkItemStatus) Valid() bool {
 	switch e {
 	case AssistantBulkItemStatusFailed:
 		return true
+	case AssistantBulkItemStatusInFlight:
+		return true
 	case AssistantBulkItemStatusPending:
 		return true
 	case AssistantBulkItemStatusSkipped:
 		return true
 	case AssistantBulkItemStatusSucceeded:
+		return true
+	case AssistantBulkItemStatusUnknown:
 		return true
 	default:
 		return false
@@ -444,7 +450,7 @@ type AssistantBulkExcluded struct {
 	Reasons []AssistantBulkReason `json:"reasons"`
 }
 
-// AssistantBulkItem One frozen item of a bulk plan and how it went. code and title are the problem's own, status the HTTP status; never a response body.
+// AssistantBulkItem One frozen item of a bulk plan and how it went. code and title are the problem's own, httpStatus the HTTP status; never a response body. in_flight is an item whose change is being made now; unknown an item whose change may or may not have been made, because the replica that was making it died: it is never run again, and the person checks it.
 type AssistantBulkItem struct {
 	Code       *string                 `json:"code,omitempty"`
 	HttpStatus *int32                  `json:"httpStatus,omitempty"`
@@ -471,7 +477,7 @@ type AssistantBulkJob struct {
 	Excluded AssistantBulkExcluded `json:"excluded"`
 	Failed   int32                 `json:"failed"`
 
-	// Failures The first 50 items that failed, each with the refusal. All of them are in failures.csv.
+	// Failures The first 50 items that failed or are unknown (the unknown ones first), each with the refusal. All of them are in failures.csv.
 	Failures       []AssistantBulkItem `json:"failures"`
 	GrantExpiresAt *time.Time          `json:"grantExpiresAt,omitempty"`
 	JobId          openapi_types.UUID  `json:"jobId"`
@@ -487,6 +493,9 @@ type AssistantBulkJob struct {
 	State     AssistantBulkJobState `json:"state"`
 	Succeeded int32                 `json:"succeeded"`
 	Total     int32                 `json:"total"`
+
+	// Unknown How many items may or may not have been changed - the replica making the change died and the item is never run again. They count as processed.
+	Unknown int32 `json:"unknown"`
 }
 
 // AssistantBulkJobState defines model for AssistantBulkJob.State.
@@ -519,6 +528,9 @@ type AssistantBulkPlan struct {
 	State     AssistantBulkPlanState `json:"state"`
 	Succeeded int32                  `json:"succeeded"`
 	Total     int32                  `json:"total"`
+
+	// Unknown How many items may or may not have been changed - the replica making the change died and the item is never run again. They count as processed.
+	Unknown int32 `json:"unknown"`
 }
 
 // AssistantBulkPlanState defines model for AssistantBulkPlan.State.

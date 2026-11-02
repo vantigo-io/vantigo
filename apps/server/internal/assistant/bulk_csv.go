@@ -14,8 +14,8 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/assistant/store"
 )
 
-// The failed items of a bulk job as a file (S13): for each, who it is, which
-// values fed the change, what the router answered and the problem's own code and
+// The failed and unknown items of a bulk job as a file (S13, S17): for each, who
+// it is, which values fed the change, its status, what the router answered and the problem's own code and
 // title — never a response body. Semicolon-separated, UTF-8 with a byte order
 // mark and CRLF, as the other exports are, and written with encoding/csv so the
 // quoting is the library's. A cell that would open as a formula in a
@@ -57,6 +57,10 @@ func boundReference(item bulkItem) string {
 	return strings.Join(parts, ", ")
 }
 
+// unknownItemSentence says what an unknown item is, in the file's problem title
+// column, as the card says it.
+const unknownItemSentence = "This change may or may not have been made; check it"
+
 // failuresCSV renders the failed items.
 func failuresCSV(rows []store.AssistantBulkJobItem) ([]byte, error) {
 	var buf bytes.Buffer
@@ -64,24 +68,27 @@ func failuresCSV(rows []store.AssistantBulkJobItem) ([]byte, error) {
 	w := csv.NewWriter(&buf)
 	w.Comma = ';'
 	w.UseCRLF = true
-	if err := w.Write([]string{"item", "reference", "http_status", "problem_code", "problem_title"}); err != nil {
+	if err := w.Write([]string{"item", "reference", "status", "http_status", "problem_code", "problem_title"}); err != nil {
 		return nil, err
 	}
 	for _, row := range rows {
 		var item bulkItem
 		_ = json.Unmarshal(row.Item, &item)
-		status := ""
+		httpStatus := ""
 		if row.HttpStatus != nil {
-			status = strconv.Itoa(int(*row.HttpStatus))
+			httpStatus = strconv.Itoa(int(*row.HttpStatus))
 		}
 		code, title := "", ""
+		if row.Status == "unknown" {
+			title = unknownItemSentence
+		}
 		if row.ProblemCode != nil {
 			code = *row.ProblemCode
 		}
 		if row.ProblemTitle != nil {
 			title = *row.ProblemTitle
 		}
-		if err := w.Write([]string{csvCell(item.Label), csvCell(boundReference(item)), status, csvCell(code), csvCell(title)}); err != nil {
+		if err := w.Write([]string{csvCell(item.Label), csvCell(boundReference(item)), row.Status, httpStatus, csvCell(code), csvCell(title)}); err != nil {
 			return nil, err
 		}
 	}

@@ -8,6 +8,7 @@ import (
 	"math"
 	"net/http"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -33,6 +34,11 @@ import (
 // over by the next replica that sees the job — on the person's own read of it,
 // or from the stale-runs worker when the workers run in the API process — and
 // the job goes on from its next pending item, once.
+//
+// An item runs at most once (S17). Before its call the runner marks it
+// in_flight in a statement that commits on its own; the statement that takes a
+// lapsed job over moves every in_flight item to unknown, counts it processed
+// and never calls it: the dead replica may or may not have made the change.
 //
 // No statement of a job holds a transaction or a connection across a call
 // through the dispatcher: the calls are made between statements, each of which is
@@ -159,7 +165,7 @@ func bulkPlanView(preview []byte, job store.AssistantBulkJob, canary []store.Ass
 	_ = json.Unmarshal(preview, &doc)
 	plan := gen.AssistantBulkPlan{
 		JobId: job.ID, State: gen.AssistantBulkPlanState(job.State), Total: job.Total, Processed: job.Processed,
-		Succeeded: job.Succeeded, Failed: job.Failed, Skipped: job.Skipped, CanarySize: bulkCanarySize,
+		Succeeded: job.Succeeded, Failed: job.Failed, Unknown: job.Unknown, Skipped: job.Skipped, CanarySize: bulkCanarySize,
 		Canary: bulkItemViews(canary), Sample: []gen.AssistantBulkSample{}, Excluded: gen.AssistantBulkExcluded{Reasons: []gen.AssistantBulkReason{}},
 		PauseReason: job.PauseReason, ErrorCode: job.ErrorCode, StartedAt: job.StartedAt, EndedAt: job.EndedAt,
 	}
@@ -182,7 +188,7 @@ func bulkPlanView(preview []byte, job store.AssistantBulkJob, canary []store.Ass
 func bulkJobView(plan gen.AssistantBulkPlan, failures []store.AssistantBulkJobItem) gen.AssistantBulkJob {
 	return gen.AssistantBulkJob{
 		Canary: plan.Canary, CanarySize: plan.CanarySize, EndedAt: plan.EndedAt, ErrorCode: plan.ErrorCode, Excluded: plan.Excluded,
-		Failed: plan.Failed, Failures: bulkItemViews(failures), GrantExpiresAt: plan.GrantExpiresAt, JobId: plan.JobId,
+		Failed: plan.Failed, Unknown: plan.Unknown, Failures: bulkItemViews(failures), GrantExpiresAt: plan.GrantExpiresAt, JobId: plan.JobId,
 		PauseReason: plan.PauseReason, Processed: plan.Processed, Sample: plan.Sample, Skipped: plan.Skipped, StartedAt: plan.StartedAt,
 		State: gen.AssistantBulkJobState(plan.State), Succeeded: plan.Succeeded, Total: plan.Total,
 	}
@@ -251,14 +257,52 @@ func problemFields(status int, body json.RawMessage) (code, title string) {
 	return code, title
 }
 
+// idempotencyKeyHeader is the header an operation declares to make a retry of a
+// change safe.
+const idempotencyKeyHeader = "Idempotency-Key"
+
+// declaresIdempotencyKey says whether the operation declares an Idempotency-Key
+// header parameter, as its description lists it.
+func declaresIdempotencyKey(ops bulkOps, operationID string) bool {
+	raw, err := ops.Describe(operationID)
+	if err != nil {
+		return false
+	}
+	var doc struct {
+		Headers []struct {
+			Name string `json:"name"`
+		} `json:"headerParameters"`
+	}
+	if json.Unmarshal(raw, &doc) != nil {
+		return false
+	}
+	for _, h := range doc.Headers {
+		if strings.EqualFold(h.Name, idempotencyKeyHeader) {
+			return true
+		}
+	}
+	return false
+}
+
+// itemKey is the idempotency key of one item of a job: built from the job's
+// parsed id and the item's position, never from text.
+func itemKey(job uuid.UUID, seq int32) string {
+	return fmt.Sprintf("assistant-bulk-%s-%d", job.String(), seq)
+}
+
 // runItem makes the change for one item through the dispatcher, as the person.
-func (s *server) runItem(ctx context.Context, ops bulkOps, tpl bulkTemplate, it store.AssistantBulkJobItem) itemResult {
+// keyed says the operation declares an Idempotency-Key, which the item then
+// sends.
+func (s *server) runItem(ctx context.Context, ops bulkOps, tpl bulkTemplate, job uuid.UUID, keyed bool, it store.AssistantBulkJobItem) itemResult {
 	var item bulkItem
 	if err := json.Unmarshal(it.Item, &item); err != nil {
 		return itemResult{status: "failed", code: ptr("bad_item"), title: ptr("the item could not be read")}
 	}
 	req := tpl.request(item.Bound)
 	req.Confirmed = true
+	if keyed {
+		req.Headers = map[string]string{idempotencyKeyHeader: itemKey(job, it.Seq)}
+	}
 	res, err := callWithRetry(ctx, ops, req)
 	if err != nil {
 		if ctx.Err() != nil {
@@ -301,6 +345,7 @@ func (s *server) runBulk(ctx context.Context, job store.AssistantBulkJob, emit f
 		s.endBulk(persist, job, jobFailed, reasonInternal)
 		return
 	}
+	keyed := declaresIdempotencyKey(ops, tpl.OperationID)
 	canary := job.State == jobCanary
 	below := int32(math.MaxInt32)
 	if canary {
@@ -362,16 +407,35 @@ func (s *server) runBulk(ctx context.Context, job store.AssistantBulkJob, emit f
 			if ctx.Err() != nil {
 				return
 			}
-			res := s.runItem(ctx, ops, tpl, it)
-			switch res.fate {
-			case fateSession:
-				s.endBulk(persist, cur, jobStopped, reasonSessionEnd)
+			// The item is in flight, in a statement of its own that commits before
+			// the call goes out and holds nothing across it: a replica that dies
+			// from here on leaves the item for the next one to mark unknown, and
+			// nothing calls it twice (S17).
+			now = s.deps.Clock()
+			if _, err := q.MarkBulkItemInFlight(persist, store.MarkBulkItemInFlightParams{JobID: job.ID, Seq: it.Seq, ClaimedBy: s.claimedBy(), Now: now}); err != nil {
+				if !errors.Is(err, pgx.ErrNoRows) { // else another replica holds the job now
+					s.deps.Logger.Error("assistant: mark an item in flight", "job", job.ID, "error", err)
+				}
 				return
-			case fateNarrowed:
-				s.endBulk(persist, cur, jobStopped, reasonNarrowed)
+			}
+			if s.afterInFlight != nil && s.afterInFlight(job.ID, it.Seq) {
+				return // a test's replica dying with the call not yet made
+			}
+			res := s.runItem(ctx, ops, tpl, job.ID, keyed, it)
+			switch res.fate {
+			case fateSession, fateNarrowed:
+				// The call was refused before it could change anything.
+				if err := q.ReleaseBulkItem(persist, store.ReleaseBulkItemParams{JobID: job.ID, Seq: it.Seq, ClaimedBy: s.claimedBy()}); err != nil {
+					s.deps.Logger.Error("assistant: release an item", "job", job.ID, "error", err)
+				}
+				if res.fate == fateSession {
+					s.endBulk(persist, cur, jobStopped, reasonSessionEnd)
+				} else {
+					s.endBulk(persist, cur, jobStopped, reasonNarrowed)
+				}
 				return
 			case fateCancelled:
-				return
+				return // the call may have gone out: the item stays in flight
 			}
 			now = s.deps.Clock()
 			rec, err := q.RecordBulkItem(persist, store.RecordBulkItemParams{
@@ -501,10 +565,10 @@ func bulkSummary(job store.AssistantBulkJob, failures []store.AssistantBulkJobIt
 		first = append(first, fl)
 	}
 	body := map[string]any{
-		"bulk": true, "state": job.State, "total": job.Total, "succeeded": job.Succeeded, "failed": job.Failed, "skipped": job.Skipped,
+		"bulk": true, "state": job.State, "total": job.Total, "succeeded": job.Succeeded, "failed": job.Failed, "unknown": job.Unknown, "skipped": job.Skipped,
 		"notRun":        job.Total - job.Processed,
 		"firstFailures": first,
-		"note":          "The bulk change has ended. Sum it up for the person in one or two short sentences: how many items were changed, how many failed and the commonest reason, and if it stopped before the end, that and why. The card shows the failed items with a download, so do not list them. Never claim more was changed than succeeded says.",
+		"note":          "The bulk change has ended. Sum it up for the person in one or two short sentences: how many items were changed, how many failed and the commonest reason, how many are unknown (the change may or may not have been made, and the person should check them), and if it stopped before the end, that and why. The card shows the failed items with a download, so do not list them. Never claim more was changed than succeeded says; an unknown item is not a success.",
 	}
 	if job.ErrorCode != nil {
 		body["endedBecause"] = *job.ErrorCode
