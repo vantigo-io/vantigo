@@ -312,7 +312,8 @@ func TestAssistantGate_TheOwnersLevelsNarrowWhatTheAssistantMayUse(t *testing.T)
 	// Read and change leaves the contract's mode: the write waits for the
 	// person's confirmation.
 	a.level(t, "projects:create", "change")
-	if got := callIt(c, "postProjects"); !strings.Contains(got.Content, "awaiting_confirmation") {
+	got := a.converse(t, c, call("c", "call_operation", map[string]any{"id": "postProjects", "body": map[string]any{"code": "LEVEL1", "name": "Level", "billingType": "non-billable"}}))["c"]
+	if !strings.Contains(got.Content, "awaiting_confirmation") {
 		t.Errorf("at read and change postProjects = %+v, want a change that waits for the person", got)
 	}
 
