@@ -99,6 +99,13 @@ const modelSelect = (name: string) =>
     .find((element) => element.tagName === "INPUT" && (element as HTMLInputElement).type !== "hidden") as HTMLElement;
 
 describe("the AI models page", () => {
+  it("names Anthropic as the provider", async () => {
+    await renderPage([
+      settings({ provider: "anthropic", allowedModels: ["claude-sonnet-5-5"], planDefault: "claude-sonnet-5-5" }),
+    ]);
+    expect(await screen.findByText("Anthropic")).toBeInTheDocument();
+  });
+
   it("states the plan as facts, never the key, and groups the tasks by module", async () => {
     await renderPage();
 
