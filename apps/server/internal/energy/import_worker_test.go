@@ -296,3 +296,67 @@ func TestEnergyImportWorker_ANudgeStartsACheckWithoutATick(t *testing.T) {
 		t.Errorf("Run = %v, want nil once cancelled", err)
 	}
 }
+
+// The lease is held on a pooled connection, so a cycle that asked the pool for
+// a second one while holding it would wait for ever on a pool of one — and,
+// with as many such workers as connections, deadlock the installation's pool
+// at boot (the API's /health/ready on a four-connection pool). The customer
+// directory is another module's and takes a connection of its own, as the
+// customers module's does, so it is asked before the lease is taken. On a pool
+// of one the check, the run and the attach must each finish.
+func TestEnergyImportWorker_RunsTheCycleOnTheOneConnectionItHolds(t *testing.T) {
+	t.Parallel()
+	h, c, dir := importHarness(t, modtest.WithPoolMaxConns(1))
+	dir.pool = h.Pool()
+	cycle := func(what string) {
+		t.Helper()
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if ran, err := energy.NewImportWorker(h.Deps()).RunCycle(ctx); err != nil || !ran {
+			t.Fatalf("the %s's RunCycle on a pool of one = %v, %v; want true, nil", what, ran, err)
+		}
+	}
+	imp := uploadEnergyImport(t, c, fileOf(pointHeader, pointRow(gsrn1, orgA, "")))
+	energyImportOf(t, putEnergyMapping(c, imp.ID, fullMapping("create")), http.StatusOK)
+	energyImportOf(t, postEnergyCheck(c, imp.ID), http.StatusOK)
+	cycle("check")
+	if checked := getEnergyImport(t, c, imp.ID); checked.State != "checked" || checked.Pending != 1 {
+		t.Fatalf("checked = %+v, want checked with the row pending", checked)
+	}
+	energyImportOf(t, postEnergyRun(c, imp.ID, nil), http.StatusOK)
+	cycle("run")
+	if done := getEnergyImport(t, c, imp.ID); done.State != "done" || done.Created != 1 || done.Pending != 1 {
+		t.Fatalf("done = %+v, want done with the point created and pending", done)
+	}
+	energyImportOf(t, postEnergyAttach(c, imp.ID, time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC), 0), http.StatusOK)
+	cycle("attach")
+	if attached := getEnergyImport(t, c, imp.ID); attached.State != "done" || attached.Attached != 1 || attached.Pending != 0 {
+		t.Errorf("attached = %+v, want done with the row attached", attached)
+	}
+}
+
+// An import asked for again while it was being prepared — stopped, its
+// mapping changed and the check asked for anew, all between the directory's
+// answer and the lease — is a new request in the same state: what was
+// resolved for the old one is not run, and the new one is prepared again.
+// Not parallel: it sets the package's prepared hook.
+func TestEnergyImportWorker_AnImportAskedForAgainWhilePreparedIsPreparedAgain(t *testing.T) {
+	h, c, dir := importHarness(t)
+	imp := uploadEnergyImport(t, c, fileOf(pointHeader, pointRow(gsrn1, orgA, "")))
+	energyImportOf(t, putEnergyMapping(c, imp.ID, fullMapping("create")), http.StatusOK)
+	energyImportOf(t, postEnergyCheck(c, imp.ID), http.StatusOK)
+	prepared := 0
+	defer energy.SetImportPreparedHook(func(context.Context, int32) {
+		prepared++
+		if prepared == 1 {
+			h.Exec(t, `UPDATE energy.imports SET requested_at = requested_at + interval '1 second' WHERE id = $1`, imp.ID)
+		}
+	})()
+	runEnergyImportWorker(t, h)
+	if prepared != 2 || dir.lookups.Load() != 2 {
+		t.Errorf("prepared %d times with %d directory lookups, want each twice", prepared, dir.lookups.Load())
+	}
+	if checked := getEnergyImport(t, c, imp.ID); checked.State != "checked" || checked.Pending != 1 {
+		t.Errorf("checked = %+v, want checked with the row pending", checked)
+	}
+}

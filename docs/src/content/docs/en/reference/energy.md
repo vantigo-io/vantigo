@@ -412,10 +412,19 @@ door.
 ### The worker: `energy-import`
 
 The customers import worker's shape: an advisory lease (key `ENRGIMP1`, one cycle at a
-time per installation), every statement on the lease's connection but the directory
-read. A cycle takes the oldest queued import; for a check or a run it reads every row's
-GSRN and organisation number once (the in-file duplicates and the numbers to resolve),
-resolves the numbers through the directory, then walks the rows with no outcome in
+time per installation), every statement of a run on the lease's connection, and none
+waiting for a second one — as many lease workers doing that as the pool has connections
+deadlock it, and readiness with them. The customer directory is the customers module's,
+on its own connections, so it is never asked under the lease. Each import takes the
+lease twice: once to read the oldest queued import (or, the queue empty, to run the
+sweep), so a replica without the lease reads and resolves nothing; then, the lease
+given back, the worker resolves what the import needs — for a check or a run every
+row's GSRN and organisation number read once (the in-file duplicates and the numbers to
+resolve) and the numbers resolved through the directory, for an attach the customers its
+pending rows name — and takes the lease again to read the queue once more and run the
+import only if it is still the same request: the same import, in the same state, with
+the same `requested_at`, which every check, run and attach asked for stamps anew.
+Otherwise it starts over from the head. A check or a run walks the rows with no outcome in
 **chunks of 500**, writing the counts and reading the stop flag after each; for an
 attach it walks the untried pending rows the same way. Then the next queued import,
 then the sweep. The worker takes an import up only while it is still in the state it

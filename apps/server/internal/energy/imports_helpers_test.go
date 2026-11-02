@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/energy"
 	"github.com/vantigo-io/vantigo/server/internal/modtest"
@@ -60,6 +62,10 @@ type importDirectory struct {
 	customers map[int32]contracts.CustomerEntry
 	legal     map[string][]int32
 	lookups   atomic.Int32
+	// pool, when set, is asked for a connection by every lookup of many, as
+	// the customers module's own directory is: a caller that looks customers
+	// up while it holds the pool's last connection then waits for ever.
+	pool *pgxpool.Pool
 }
 
 var _ contracts.CustomerDirectory = (*importDirectory)(nil)
@@ -92,7 +98,10 @@ func (d *importDirectory) Customer(_ context.Context, id int32) (*contracts.Cust
 	return nil, nil
 }
 
-func (d *importDirectory) Customers(_ context.Context, ids []int32) ([]contracts.CustomerEntry, error) {
+func (d *importDirectory) Customers(ctx context.Context, ids []int32) ([]contracts.CustomerEntry, error) {
+	if err := d.connect(ctx); err != nil {
+		return nil, err
+	}
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	out := []contracts.CustomerEntry{}
@@ -106,8 +115,11 @@ func (d *importDirectory) Customers(_ context.Context, ids []int32) ([]contracts
 	return out, nil
 }
 
-func (d *importDirectory) CustomersByLegalID(_ context.Context, country string, ids []string) (map[string][]contracts.CustomerEntry, error) {
+func (d *importDirectory) CustomersByLegalID(ctx context.Context, country string, ids []string) (map[string][]contracts.CustomerEntry, error) {
 	d.lookups.Add(1)
+	if err := d.connect(ctx); err != nil {
+		return nil, err
+	}
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	out := map[string][]contracts.CustomerEntry{}
@@ -120,6 +132,16 @@ func (d *importDirectory) CustomersByLegalID(_ context.Context, country string, 
 		}
 	}
 	return out, nil
+}
+
+// connect takes one of pool's connections for a statement, when a test set
+// pool.
+func (d *importDirectory) connect(ctx context.Context) error {
+	if d.pool == nil {
+		return nil
+	}
+	_, err := d.pool.Exec(ctx, `SELECT 1`)
+	return err
 }
 
 func (d *importDirectory) archive(id int32) {

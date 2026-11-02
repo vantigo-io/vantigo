@@ -26,6 +26,16 @@ func SetImportRunHook(f func(ctx context.Context, importID int32) error) func() 
 	return func() { importRunHookForTest = previous }
 }
 
+// SetImportPreparedHook makes f run each time the worker has prepared an
+// import, before it takes the lease again to run it (import_worker.go's
+// importPreparedHookForTest); it answers the function that takes the hook
+// away again. Not for parallel tests, as SetImportRunHook.
+func SetImportPreparedHook(f func(ctx context.Context, importID int32)) func() {
+	previous := importPreparedHookForTest
+	importPreparedHookForTest = f
+	return func() { importPreparedHookForTest = previous }
+}
+
 // ImportLeaseKeyForTest is the import worker's advisory-lease key, exported so
 // a test can take the same lock from a second connection and prove a cycle
 // skips (energy import design D6).
