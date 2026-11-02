@@ -463,3 +463,37 @@ func TestPeppolRecheckWorker_RunStopsWithItsContext(t *testing.T) {
 		t.Fatal("Run did not return after its context was cancelled")
 	}
 }
+
+// The lease is held on a pooled connection, so a cycle that asked the pool for
+// a second one while holding it would wait for ever on a pool of one — and,
+// with as many such workers as connections, deadlock the installation's pool
+// at boot (the API's /health/ready on a four-connection pool). On a pool of one
+// the cycle must finish, its re-check and its drop alike.
+func TestPeppolRecheckWorker_RunsTheCycleOnTheOneConnectionItHolds(t *testing.T) {
+	t.Parallel()
+	calls := &peppolLookupCalls{}
+	h := newHarness(t, modtest.WithPoolMaxConns(1), modtest.WithPeppolLookup(stubPeppolLookup(calls,
+		peppol.Result{Registered: true, CanReceiveInvoice: true, CanReceiveCreditNote: true}, nil)))
+	c := authenticatedClient(t, h)
+	aged := createNorwegianBusiness(t, c, "Aged AS", "923609016")
+	moved := createNorwegianBusiness(t, c, "Moved AS", "974760673")
+	for _, id := range []int32{aged.Id, moved.Id} {
+		if r := postPeppolLookup(t, c, id); r.Status != 200 {
+			t.Fatalf("seed the lookup of %d: %d %s", id, r.Status, r.Body)
+		}
+		agePeppolLookup(t, h, id, h.Now().Add(-800*time.Hour))
+	}
+	h.Exec(t, `UPDATE customers.customer_peppol_lookups SET participant_id = '0192:923609016' WHERE customer_id = $1`, moved.Id)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if ran, err := customers.NewPeppolRecheckWorker(h.Deps()).RunCycle(ctx); err != nil || !ran {
+		t.Fatalf("RunCycle on a pool of one = %v, %v; want true, nil", ran, err)
+	}
+	if at := peppolCheckedAt(t, h, aged.Id); at == nil || !at.Equal(h.Now()) {
+		t.Errorf("the aged lookup's checked_at = %v, want the cycle's clock %v", at, h.Now())
+	}
+	if n := peppolLookupRowCount(t, h, moved.Id); n != 0 {
+		t.Errorf("lookups of the customer whose participant changed = %d, want 0", n)
+	}
+}

@@ -2396,6 +2396,14 @@ in `worker` mode — **never** in `server` mode. Each takes its own session-scop
 several replicas are safe: one runs the cycle, the others log at debug level and skip
 it.
 
+A cycle runs on **one connection**, the one its lease holds: every select, every
+hint and cursor write, and every refresh's or answer's transaction. Neither worker
+asks the pool for a second connection while it holds the first — one that did would
+deadlock a small pool with the other lease workers, as the
+[anonymisation worker](#what-the-worker-does) explains — and neither calls another
+module during the cycle. The registry and the Peppol network are asked with the lease
+held.
+
 **The lease keys are per *database*, not per tenant.** Postgres advisory locks share one
 key space per database, and these two keys are fixed constants — so two tenants whose
 deployments point at the *same* database would serialise their feed workers against each
