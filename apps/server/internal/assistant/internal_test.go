@@ -238,25 +238,30 @@ func TestParseVersion(t *testing.T) {
 	}
 }
 
-// A revision read from a body becomes an If-Match entity tag only when it fits
-// between the quotes: a quote, a space or a control character in it would
-// break the tag out of them.
-func TestIsETagValue(t *testing.T) {
+// A revision read from a body becomes an If-Match entity tag only as an
+// integer, rebuilt from the parsed number: a quote, a space or a control
+// character in the body's value would otherwise break the tag out of its
+// quotes.
+func TestRevisionETag(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
-		v    string
-		want bool
+		v    any
+		want string
+		ok   bool
 	}{
-		{"7", true},
-		{"0f2c6a1e-8a1b-4c55-9d1e-3b2a4c5d6e7f", true},
-		{"", false},
-		{`7" , W/"8`, false},
-		{"7 8", false},
-		{"7\r\nX-Injected: 1", false},
-		{"rév", false},
+		{json.Number("7"), `"7"`, true},
+		{float64(12), `"12"`, true},
+		{"42", `"42"`, true},
+		{"", "", false},
+		{`7" , W/"8`, "", false},
+		{"7\r\nX-Injected: 1", "", false},
+		{"0f2c6a1e-8a1b-4c55-9d1e-3b2a4c5d6e7f", "", false},
+		{1.5, "", false},
+		{nil, "", false},
 	} {
-		if got := isETagValue(tc.v); got != tc.want {
-			t.Errorf("isETagValue(%q) = %v, want %v", tc.v, got, tc.want)
+		got, ok := revisionETag(tc.v)
+		if got != tc.want || ok != tc.ok {
+			t.Errorf("revisionETag(%#v) = %q, %v, want %q, %v", tc.v, got, ok, tc.want, tc.ok)
 		}
 	}
 }
