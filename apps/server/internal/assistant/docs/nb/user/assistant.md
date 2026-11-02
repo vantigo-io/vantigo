@@ -193,6 +193,12 @@ alle på én gang**. Den gjør den ikke. Den leser listen du beskrev, som deg, o
 - **Mislykkede elementer.** En oppføring kan avvises etter sine egne regler (du har ikke lov til å endre
   den kunden, noen andre endret den i mellomtiden). Det elementet mislykkes, og de andre fortsetter.
   Kortet lister de første 50, og CSV-filen har alle.
+- **Elementer som kanskje er endret.** Hvis serveren som gjør endringene stopper mens den holder på med et
+  element (en omstart, et krasj), tar en annen server over jobben og går videre med det neste. Den
+  **kjører aldri det elementet på nytt**, for den kan ikke vite om endringen ble gjort. Kortet merker det
+  **Ukjent**, viser slike element først blant dem som ikke gikk gjennom, med setningen *Denne endringen kan
+  være gjort eller ikke; sjekk den*, og CSV-filen har dem med statusen `unknown`. Åpne hvert enkelt og se
+  etter: er endringen der, trengs ikke mer; ellers gjør du den selv eller ber assistenten foreslå den på nytt.
 - **Hvorfor en lang jobb ber deg om å fortsette.** Assistenten handler med din tillatelse, som hører til
   økten din og varer en time som lengst. En jobb som ville vart lenger, **settes på pause**, og kortet
   sier *Bekreft for å fortsette*: **Fortsett** gir den en ny time. **Logger du ut, stopper jobben** ved
