@@ -50,6 +50,235 @@ components:
                 - available
                 - local
             type: object
+        AssistantBulkExcluded:
+            additionalProperties: false
+            description: The items the person may not change, pre-checked before the plan is shown against the operation's access rule, the Owner's permission levels and the items themselves. A refusal that only a record's own rule gives shows when the change runs, as a failed item.
+            properties:
+                count:
+                    format: int32
+                    type: integer
+                reasons:
+                    items:
+                        $ref: "#/components/schemas/AssistantBulkReason"
+                    type: array
+            required:
+                - count
+                - reasons
+            type: object
+        AssistantBulkItem:
+            additionalProperties: false
+            description: One frozen item of a bulk plan and how it went. code and title are the problem's own, status the HTTP status; never a response body.
+            properties:
+                code:
+                    type: string
+                httpStatus:
+                    format: int32
+                    type: integer
+                label:
+                    type: string
+                seq:
+                    format: int32
+                    type: integer
+                status:
+                    enum:
+                        - pending
+                        - succeeded
+                        - failed
+                        - skipped
+                    type: string
+                title:
+                    type: string
+            required:
+                - seq
+                - status
+            type: object
+        AssistantBulkJob:
+            additionalProperties: false
+            description: A bulk job as it stands - the state, the counters and the first failures. The card polls it while the job runs.
+            properties:
+                failures:
+                    description: The first 50 items that failed, each with the refusal. All of them are in failures.csv.
+                    items:
+                        $ref: "#/components/schemas/AssistantBulkItem"
+                    type: array
+                canary:
+                    description: How each of the first items went, once the canary has run. No value of the change.
+                    items:
+                        $ref: "#/components/schemas/AssistantBulkItem"
+                    type: array
+                canarySize:
+                    format: int32
+                    type: integer
+                endedAt:
+                    format: date-time
+                    type: string
+                errorCode:
+                    description: Why the job ended other than done - cancelled, stopped_by_person, narrowed (the Owner narrowed what the assistant may use), session_ended (the person signed out), internal.
+                    type: string
+                excluded:
+                    $ref: "#/components/schemas/AssistantBulkExcluded"
+                failed:
+                    format: int32
+                    type: integer
+                grantExpiresAt:
+                    format: date-time
+                    type: string
+                jobId:
+                    format: uuid
+                    type: string
+                pauseReason:
+                    description: Why a job waits for Continue - grant_expiring (the assistant's permission, which is bound to the person's session, is about to lapse), or canary_done.
+                    type: string
+                processed:
+                    format: int32
+                    type: integer
+                sample:
+                    description: The first items, with the value each has now and would have. A decided plan keeps the labels and the names of the fields.
+                    items:
+                        $ref: "#/components/schemas/AssistantBulkSample"
+                    type: array
+                skipped:
+                    format: int32
+                    type: integer
+                startedAt:
+                    format: date-time
+                    type: string
+                state:
+                    enum:
+                        - previewed
+                        - canary
+                        - awaiting_continue
+                        - running
+                        - stopping
+                        - done
+                        - stopped
+                        - failed
+                        - expired
+                    type: string
+                succeeded:
+                    format: int32
+                    type: integer
+                total:
+                    format: int32
+                    type: integer
+            required:
+                - jobId
+                - state
+                - total
+                - processed
+                - succeeded
+                - failed
+                - skipped
+                - canarySize
+                - sample
+                - excluded
+                - canary
+                - failures
+            type: object
+        AssistantBulkPlan:
+            additionalProperties: false
+            description: A bulk plan as its card shows it - the same as the job without the failed list. total is how many items the selector found when the plan was made; the items are frozen then and the job acts on exactly them.
+            properties:
+                canary:
+                    description: How each of the first items went, once the canary has run. No value of the change.
+                    items:
+                        $ref: "#/components/schemas/AssistantBulkItem"
+                    type: array
+                canarySize:
+                    format: int32
+                    type: integer
+                endedAt:
+                    format: date-time
+                    type: string
+                errorCode:
+                    description: Why the job ended other than done - cancelled, stopped_by_person, narrowed (the Owner narrowed what the assistant may use), session_ended (the person signed out), internal.
+                    type: string
+                excluded:
+                    $ref: "#/components/schemas/AssistantBulkExcluded"
+                failed:
+                    format: int32
+                    type: integer
+                grantExpiresAt:
+                    format: date-time
+                    type: string
+                jobId:
+                    format: uuid
+                    type: string
+                pauseReason:
+                    description: Why a job waits for Continue - grant_expiring (the assistant's permission, which is bound to the person's session, is about to lapse), or canary_done.
+                    type: string
+                processed:
+                    format: int32
+                    type: integer
+                sample:
+                    description: The first items, with the value each has now and would have. A decided plan keeps the labels and the names of the fields.
+                    items:
+                        $ref: "#/components/schemas/AssistantBulkSample"
+                    type: array
+                skipped:
+                    format: int32
+                    type: integer
+                startedAt:
+                    format: date-time
+                    type: string
+                state:
+                    enum:
+                        - previewed
+                        - canary
+                        - awaiting_continue
+                        - running
+                        - stopping
+                        - done
+                        - stopped
+                        - failed
+                        - expired
+                    type: string
+                succeeded:
+                    format: int32
+                    type: integer
+                total:
+                    format: int32
+                    type: integer
+            required:
+                - jobId
+                - state
+                - total
+                - processed
+                - succeeded
+                - failed
+                - skipped
+                - canarySize
+                - sample
+                - excluded
+                - canary
+            type: object
+        AssistantBulkReason:
+            additionalProperties: false
+            properties:
+                code:
+                    description: missing_id (the item carries no value for the parameter it feeds).
+                    type: string
+                count:
+                    format: int32
+                    type: integer
+            required:
+                - code
+                - count
+            type: object
+        AssistantBulkSample:
+            additionalProperties: false
+            properties:
+                fields:
+                    items:
+                        $ref: "#/components/schemas/AssistantPendingField"
+                    type: array
+                label:
+                    type: string
+                route:
+                    type: string
+            required:
+                - fields
+            type: object
         AssistantConversation:
             additionalProperties: false
             properties:
@@ -280,6 +509,8 @@ components:
             additionalProperties: false
             description: "A change the assistant proposed and nothing has written yet, or has now been decided. summary is the operation's summary; explain is the assistant's own one-line description in the person's language, shown beside it and never instead of the fields. A decided action keeps the names of its fields and no values."
             properties:
+                bulk:
+                    $ref: "#/components/schemas/AssistantBulkPlan"
                 conversationId:
                     format: uuid
                     type: string
@@ -300,6 +531,12 @@ components:
                     type: array
                 id:
                     format: uuid
+                    type: string
+                kind:
+                    description: change (one change) or bulk (a bulk plan, whose card is bulk).
+                    enum:
+                        - change
+                        - bulk
                     type: string
                 method:
                     type: string
@@ -746,6 +983,195 @@ paths:
                                 $ref: common.yaml#/components/schemas/AuthErrorResponse
                     description: Unauthorized
             summary: Say whether the assistant is available to the caller
+            tags:
+                - Assistant
+            x-vantigo-access: session
+            x-vantigo-assistant: never
+    /api/v1/assistant/bulk-jobs/{id}:
+        parameters:
+            - in: path
+              name: id
+              required: true
+              schema:
+                  format: uuid
+                  type: string
+        get:
+            description: A bulk job of the caller's - its state, its counters and the first 50 items that failed. A job whose claim lapsed (the server that ran it went away) is taken over by the replica that answers this.
+            operationId: getAssistantBulkJob
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/AssistantBulkJob"
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/AssistantProblem"
+                    description: Forbidden - assistant_unavailable (the assistant is not available to the caller), or the session's own refusal.
+                "404":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/AssistantProblem"
+                    description: "Not Found - not_found. Also what another person's job answers: the assistant never says whether it exists."
+            summary: Get a bulk job
+            tags:
+                - Assistant
+            x-vantigo-access: session
+            x-vantigo-assistant: never
+    /api/v1/assistant/bulk-jobs/{id}/continue:
+        parameters:
+            - in: path
+              name: id
+              required: true
+              schema:
+                  format: uuid
+                  type: string
+        post:
+            description: Runs the rest of a bulk job after the canary, or after it paused because the assistant's permission, which is bound to the person's session, was about to lapse. The job runs in chunks of 100 on the server; the answer is the job as it begins.
+            operationId: continueAssistantBulkJob
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/AssistantBulkJob"
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/AssistantProblem"
+                    description: Forbidden - assistant_unavailable (the assistant is not available to the caller), or the session's own refusal.
+                "404":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/AssistantProblem"
+                    description: "Not Found - not_found. Also what another person's job answers: the assistant never says whether it exists."
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/AssistantProblem"
+                    description: Conflict - job_not_waiting (the job is not waiting for Continue), or action_expired.
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/AssistantProblem"
+                    description: Service Unavailable - ai_unavailable.
+            summary: Continue a bulk job
+            tags:
+                - Assistant
+            x-vantigo-access: session
+            x-vantigo-assistant: never
+    /api/v1/assistant/bulk-jobs/{id}/failures.csv:
+        parameters:
+            - in: path
+              name: id
+              required: true
+              schema:
+                  format: uuid
+                  type: string
+        get:
+            description: "The items that failed, as a file - the item, the HTTP status and the problem's code and title - semicolon-separated, UTF-8 with a byte order mark, CRLF, guarded against formulas. Named assistant-bulk-<id>-failed-items.csv."
+            operationId: getAssistantBulkJobFailures
+            responses:
+                "200":
+                    content:
+                        text/csv:
+                            schema:
+                                format: binary
+                                type: string
+                    description: OK - served as an attachment.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/AssistantProblem"
+                    description: Forbidden - assistant_unavailable (the assistant is not available to the caller), or the session's own refusal.
+                "404":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/AssistantProblem"
+                    description: "Not Found - not_found. Also what another person's job answers: the assistant never says whether it exists."
+            summary: Download the failed items of a bulk job
+            tags:
+                - Assistant
+            x-vantigo-access: session
+            x-vantigo-assistant: never
+    /api/v1/assistant/bulk-jobs/{id}/stop:
+        parameters:
+            - in: path
+              name: id
+              required: true
+              schema:
+                  format: uuid
+                  type: string
+        post:
+            description: Stops a bulk job. A running job stops between chunks, so the answer is the job as stopping; a plan or a job waiting for Continue ends at once. A job already over is answered as it is.
+            operationId: stopAssistantBulkJob
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/AssistantBulkJob"
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/AssistantProblem"
+                    description: Forbidden - assistant_unavailable (the assistant is not available to the caller), or the session's own refusal.
+                "404":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/AssistantProblem"
+                    description: "Not Found - not_found. Also what another person's job answers: the assistant never says whether it exists."
+            summary: Stop a bulk job
             tags:
                 - Assistant
             x-vantigo-access: session
@@ -1296,7 +1722,7 @@ paths:
                   format: uuid
                   type: string
         post:
-            description: "Confirms a proposed change. The change runs through the operation as the person, with the If-Match the card was made at when the record has an ETag; the model reads the result and the run continues, streamed as text/event-stream. A change can be confirmed once, minutes later, after a reload or from another device, for 24 hours."
+            description: "Confirms a proposed change. The change runs through the operation as the person, with the If-Match the card was made at when the record has an ETag; the model reads the result and the run continues, streamed as text/event-stream. A change can be confirmed once, minutes later, after a reload or from another device, for 24 hours. For a bulk plan this is Start: the first 5 items run for real as the person, each announced on the stream as the plan's card, and the stream ends with the job waiting for Continue (done when there were no more than 5)."
             operationId: confirmAssistantPendingAction
             responses:
                 "200":

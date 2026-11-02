@@ -8,6 +8,7 @@ sql:
     schema:
       - ../db/migrations/00103_assistant_baseline.sql
       - ../db/migrations/00104_assistant_writes.sql
+      - ../db/migrations/00105_assistant_bulk.sql
     queries: queries
     gen:
       go:

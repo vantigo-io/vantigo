@@ -21,6 +21,45 @@ type AssistantAction struct {
 	ConfirmedBy *uuid.UUID
 }
 
+type AssistantBulkJob struct {
+	ID              uuid.UUID
+	PendingActionID uuid.UUID
+	RunID           uuid.UUID
+	ConversationID  uuid.UUID
+	UserID          uuid.UUID
+	OperationID     string
+	Selector        []byte
+	Template        []byte
+	State           string
+	Total           int32
+	Processed       int32
+	Succeeded       int32
+	Failed          int32
+	Skipped         int32
+	StopRequested   bool
+	GrantID         *uuid.UUID
+	GrantExpiresAt  *time.Time
+	ClaimedBy       *string
+	ClaimedUntil    *time.Time
+	PauseReason     *string
+	ErrorCode       *string
+	CreatedAt       time.Time
+	StartedAt       *time.Time
+	EndedAt         *time.Time
+	UpdatedAt       time.Time
+}
+
+type AssistantBulkJobItem struct {
+	JobID        uuid.UUID
+	Seq          int32
+	Item         []byte
+	Status       string
+	HttpStatus   *int32
+	ProblemCode  *string
+	ProblemTitle *string
+	DoneAt       *time.Time
+}
+
 type AssistantConversation struct {
 	ID             uuid.UUID
 	UserID         uuid.UUID
@@ -73,6 +112,7 @@ type AssistantPendingAction struct {
 	DecidedAt      *time.Time
 	ExpiresAt      time.Time
 	Outcome        []byte
+	Kind           string
 }
 
 type AssistantPermissionLevel struct {

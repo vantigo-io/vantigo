@@ -189,9 +189,11 @@ func (s *server) GetAssistantConversation(ctx context.Context, req gen.GetAssist
 	if err != nil {
 		return nil, fmt.Errorf("assistant: read the pending actions: %w", err)
 	}
-	now := s.deps.Clock()
+	// A bulk job whose claim lapsed (its replica went away) is taken over by the
+	// replica that serves the person looking at it.
+	s.resumeLapsed(ctx, user)
 	for _, p := range pending {
-		out.PendingActions = append(out.PendingActions, pendingView(p, now))
+		out.PendingActions = append(out.PendingActions, s.cardOf(ctx, p))
 	}
 	return gen.GetAssistantConversation200JSONResponse(out), nil
 }

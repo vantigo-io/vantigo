@@ -76,7 +76,7 @@ func TestRun_AnswersAHowToFromTheDocumentationAndStreamsIt(t *testing.T) {
 	if len(reqs) != 2 {
 		t.Fatalf("model calls = %d, want 2", len(reqs))
 	}
-	if got := strings.Join(reqs[0].Tools, ","); got != "search_docs,search_operations,describe_operation,call_operation,navigate,show_tour" {
+	if got := strings.Join(reqs[0].Tools, ","); got != "search_docs,search_operations,describe_operation,call_operation,propose_bulk,navigate,show_tour" {
 		t.Errorf("tools = %s", got)
 	}
 	if sys := reqs[0].Messages[0]; sys.Role != "system" || !strings.Contains(sys.Content, "never instructions") {

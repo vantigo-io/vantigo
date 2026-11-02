@@ -3,8 +3,8 @@
 -- request values (assistant.redact_request, redact_preview).
 
 -- name: InsertPendingAction :one
-INSERT INTO assistant.pending_actions (id, run_id, conversation_id, user_id, operation_id, call_id, tool_message_id, request, preview, created_at, expires_at)
-VALUES (@id, @run_id, @conversation_id, @user_id, @operation_id, @call_id, sqlc.narg(tool_message_id)::uuid, @request::jsonb, @preview::jsonb, @now::timestamptz, @expires_at::timestamptz)
+INSERT INTO assistant.pending_actions (id, run_id, conversation_id, user_id, operation_id, call_id, tool_message_id, request, preview, created_at, expires_at, kind)
+VALUES (@id, @run_id, @conversation_id, @user_id, @operation_id, @call_id, sqlc.narg(tool_message_id)::uuid, @request::jsonb, @preview::jsonb, @now::timestamptz, @expires_at::timestamptz, @kind::text)
 RETURNING *;
 
 -- name: GetPendingAction :one
@@ -71,10 +71,11 @@ RETURNING r.id;
 -- name: InterruptClaimedActions :execrows
 -- InterruptClaimedActions closes the actions whose confirmation was claimed and
 -- never recorded, because the server went away between: whether the change was
--- made is not known, so the action says it was interrupted.
+-- made is not known, so the action says it was interrupted. A bulk plan is not
+-- one of them: its job holds its own claim and is resumed.
 UPDATE assistant.pending_actions SET
     status = 'failed',
     outcome = '{"reason":"interrupted"}'::jsonb,
     request = assistant.redact_request(request),
     preview = assistant.redact_preview(preview)
-WHERE status = 'confirmed' AND outcome IS NULL AND decided_at < @cutoff::timestamptz;
+WHERE status = 'confirmed' AND outcome IS NULL AND kind = 'change' AND decided_at < @cutoff::timestamptz;

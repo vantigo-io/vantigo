@@ -36,7 +36,7 @@ func (q *Queries) CancelRunPendingActions(ctx context.Context, arg CancelRunPend
 const decidePendingAction = `-- name: DecidePendingAction :one
 UPDATE assistant.pending_actions SET status = $1, decided_at = $2::timestamptz
 WHERE id = $3 AND user_id = $4 AND status = 'pending' AND expires_at > $2::timestamptz
-RETURNING id, run_id, conversation_id, user_id, operation_id, call_id, tool_message_id, request, preview, status, created_at, decided_at, expires_at, outcome
+RETURNING id, run_id, conversation_id, user_id, operation_id, call_id, tool_message_id, request, preview, status, created_at, decided_at, expires_at, outcome, kind
 `
 
 type DecidePendingActionParams struct {
@@ -72,6 +72,7 @@ func (q *Queries) DecidePendingAction(ctx context.Context, arg DecidePendingActi
 		&i.DecidedAt,
 		&i.ExpiresAt,
 		&i.Outcome,
+		&i.Kind,
 	)
 	return i, err
 }
@@ -125,7 +126,7 @@ UPDATE assistant.pending_actions SET
                    ELSE jsonb_set(assistant.redact_preview(preview), '{target}', $3::jsonb) END,
     decided_at = COALESCE(decided_at, $4::timestamptz)
 WHERE id = $5 AND outcome IS NULL
-RETURNING id, run_id, conversation_id, user_id, operation_id, call_id, tool_message_id, request, preview, status, created_at, decided_at, expires_at, outcome
+RETURNING id, run_id, conversation_id, user_id, operation_id, call_id, tool_message_id, request, preview, status, created_at, decided_at, expires_at, outcome, kind
 `
 
 type FinishPendingActionParams struct {
@@ -162,12 +163,13 @@ func (q *Queries) FinishPendingAction(ctx context.Context, arg FinishPendingActi
 		&i.DecidedAt,
 		&i.ExpiresAt,
 		&i.Outcome,
+		&i.Kind,
 	)
 	return i, err
 }
 
 const getPendingAction = `-- name: GetPendingAction :one
-SELECT id, run_id, conversation_id, user_id, operation_id, call_id, tool_message_id, request, preview, status, created_at, decided_at, expires_at, outcome FROM assistant.pending_actions WHERE id = $1 AND user_id = $2
+SELECT id, run_id, conversation_id, user_id, operation_id, call_id, tool_message_id, request, preview, status, created_at, decided_at, expires_at, outcome, kind FROM assistant.pending_actions WHERE id = $1 AND user_id = $2
 `
 
 type GetPendingActionParams struct {
@@ -193,15 +195,16 @@ func (q *Queries) GetPendingAction(ctx context.Context, arg GetPendingActionPara
 		&i.DecidedAt,
 		&i.ExpiresAt,
 		&i.Outcome,
+		&i.Kind,
 	)
 	return i, err
 }
 
 const insertPendingAction = `-- name: InsertPendingAction :one
 
-INSERT INTO assistant.pending_actions (id, run_id, conversation_id, user_id, operation_id, call_id, tool_message_id, request, preview, created_at, expires_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7::uuid, $8::jsonb, $9::jsonb, $10::timestamptz, $11::timestamptz)
-RETURNING id, run_id, conversation_id, user_id, operation_id, call_id, tool_message_id, request, preview, status, created_at, decided_at, expires_at, outcome
+INSERT INTO assistant.pending_actions (id, run_id, conversation_id, user_id, operation_id, call_id, tool_message_id, request, preview, created_at, expires_at, kind)
+VALUES ($1, $2, $3, $4, $5, $6, $7::uuid, $8::jsonb, $9::jsonb, $10::timestamptz, $11::timestamptz, $12::text)
+RETURNING id, run_id, conversation_id, user_id, operation_id, call_id, tool_message_id, request, preview, status, created_at, decided_at, expires_at, outcome, kind
 `
 
 type InsertPendingActionParams struct {
@@ -216,6 +219,7 @@ type InsertPendingActionParams struct {
 	Preview        []byte
 	Now            time.Time
 	ExpiresAt      time.Time
+	Kind           string
 }
 
 // The pending actions (the Assistant design S12): every query filters by
@@ -234,6 +238,7 @@ func (q *Queries) InsertPendingAction(ctx context.Context, arg InsertPendingActi
 		arg.Preview,
 		arg.Now,
 		arg.ExpiresAt,
+		arg.Kind,
 	)
 	var i AssistantPendingAction
 	err := row.Scan(
@@ -251,6 +256,7 @@ func (q *Queries) InsertPendingAction(ctx context.Context, arg InsertPendingActi
 		&i.DecidedAt,
 		&i.ExpiresAt,
 		&i.Outcome,
+		&i.Kind,
 	)
 	return i, err
 }
@@ -261,12 +267,13 @@ UPDATE assistant.pending_actions SET
     outcome = '{"reason":"interrupted"}'::jsonb,
     request = assistant.redact_request(request),
     preview = assistant.redact_preview(preview)
-WHERE status = 'confirmed' AND outcome IS NULL AND decided_at < $1::timestamptz
+WHERE status = 'confirmed' AND outcome IS NULL AND kind = 'change' AND decided_at < $1::timestamptz
 `
 
 // InterruptClaimedActions closes the actions whose confirmation was claimed and
 // never recorded, because the server went away between: whether the change was
-// made is not known, so the action says it was interrupted.
+// made is not known, so the action says it was interrupted. A bulk plan is not
+// one of them: its job holds its own claim and is resumed.
 func (q *Queries) InterruptClaimedActions(ctx context.Context, cutoff time.Time) (int64, error) {
 	result, err := q.db.Exec(ctx, interruptClaimedActions, cutoff)
 	if err != nil {
@@ -276,7 +283,7 @@ func (q *Queries) InterruptClaimedActions(ctx context.Context, cutoff time.Time)
 }
 
 const listPendingActions = `-- name: ListPendingActions :many
-SELECT p.id, p.run_id, p.conversation_id, p.user_id, p.operation_id, p.call_id, p.tool_message_id, p.request, p.preview, p.status, p.created_at, p.decided_at, p.expires_at, p.outcome FROM assistant.pending_actions p
+SELECT p.id, p.run_id, p.conversation_id, p.user_id, p.operation_id, p.call_id, p.tool_message_id, p.request, p.preview, p.status, p.created_at, p.decided_at, p.expires_at, p.outcome, p.kind FROM assistant.pending_actions p
 JOIN assistant.conversations c ON c.id = p.conversation_id
 WHERE p.conversation_id = $1 AND c.user_id = $2
 ORDER BY p.created_at, p.id
@@ -313,6 +320,7 @@ func (q *Queries) ListPendingActions(ctx context.Context, arg ListPendingActions
 			&i.DecidedAt,
 			&i.ExpiresAt,
 			&i.Outcome,
+			&i.Kind,
 		); err != nil {
 			return nil, err
 		}

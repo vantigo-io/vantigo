@@ -22,6 +22,94 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/assistant/bulk-jobs/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Get a bulk job
+         * @description A bulk job of the caller's - its state, its counters and the first 50 items that failed. A job whose claim lapsed (the server that ran it went away) is taken over by the replica that answers this.
+         */
+        get: operations["getAssistantBulkJob"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/assistant/bulk-jobs/{id}/continue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Continue a bulk job
+         * @description Runs the rest of a bulk job after the canary, or after it paused because the assistant's permission, which is bound to the person's session, was about to lapse. The job runs in chunks of 100 on the server; the answer is the job as it begins.
+         */
+        post: operations["continueAssistantBulkJob"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/assistant/bulk-jobs/{id}/failures.csv": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Download the failed items of a bulk job
+         * @description The items that failed, as a file - the item, the HTTP status and the problem's code and title - semicolon-separated, UTF-8 with a byte order mark, CRLF, guarded against formulas. Named assistant-bulk-<id>-failed-items.csv.
+         */
+        get: operations["getAssistantBulkJobFailures"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/assistant/bulk-jobs/{id}/stop": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stop a bulk job
+         * @description Stops a bulk job. A running job stops between chunks, so the answer is the job as stopping; a plan or a job waiting for Continue ends at once. A job already over is answered as it is.
+         */
+        post: operations["stopAssistantBulkJob"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/assistant/conversations": {
         parameters: {
             query?: never;
@@ -183,7 +271,7 @@ export interface paths {
         put?: never;
         /**
          * Confirm a change the assistant proposed
-         * @description Confirms a proposed change. The change runs through the operation as the person, with the If-Match the card was made at when the record has an ETag; the model reads the result and the run continues, streamed as text/event-stream. A change can be confirmed once, minutes later, after a reload or from another device, for 24 hours.
+         * @description Confirms a proposed change. The change runs through the operation as the person, with the If-Match the card was made at when the record has an ETag; the model reads the result and the run continues, streamed as text/event-stream. A change can be confirmed once, minutes later, after a reload or from another device, for 24 hours. For a bulk plan this is Start: the first 5 items run for real as the person, each announced on the stream as the plan's card, and the stream ends with the job waiting for Continue (done when there were no more than 5).
          */
         post: operations["confirmAssistantPendingAction"];
         delete?: never;
@@ -330,6 +418,105 @@ export interface components {
              */
             reason?: "not_configured" | "disabled" | "not_enabled";
         };
+        /** @description The items the person may not change, pre-checked before the plan is shown against the operation's access rule, the Owner's permission levels and the items themselves. A refusal that only a record's own rule gives shows when the change runs, as a failed item. */
+        AssistantBulkExcluded: {
+            /** Format: int32 */
+            count: number;
+            reasons: components["schemas"]["AssistantBulkReason"][];
+        };
+        /** @description One frozen item of a bulk plan and how it went. code and title are the problem's own, status the HTTP status; never a response body. */
+        AssistantBulkItem: {
+            code?: string;
+            /** Format: int32 */
+            httpStatus?: number;
+            label?: string;
+            /** Format: int32 */
+            seq: number;
+            /** @enum {string} */
+            status: "pending" | "succeeded" | "failed" | "skipped";
+            title?: string;
+        };
+        /** @description A bulk job as it stands - the state, the counters and the first failures. The card polls it while the job runs. */
+        AssistantBulkJob: {
+            /** @description The first 50 items that failed, each with the refusal. All of them are in failures.csv. */
+            failures: components["schemas"]["AssistantBulkItem"][];
+            /** @description How each of the first items went, once the canary has run. No value of the change. */
+            canary: components["schemas"]["AssistantBulkItem"][];
+            /** Format: int32 */
+            canarySize: number;
+            /** Format: date-time */
+            endedAt?: string;
+            /** @description Why the job ended other than done - cancelled, stopped_by_person, narrowed (the Owner narrowed what the assistant may use), session_ended (the person signed out), internal. */
+            errorCode?: string;
+            excluded: components["schemas"]["AssistantBulkExcluded"];
+            /** Format: int32 */
+            failed: number;
+            /** Format: date-time */
+            grantExpiresAt?: string;
+            /** Format: uuid */
+            jobId: string;
+            /** @description Why a job waits for Continue - grant_expiring (the assistant's permission, which is bound to the person's session, is about to lapse), or canary_done. */
+            pauseReason?: string;
+            /** Format: int32 */
+            processed: number;
+            /** @description The first items, with the value each has now and would have. A decided plan keeps the labels and the names of the fields. */
+            sample: components["schemas"]["AssistantBulkSample"][];
+            /** Format: int32 */
+            skipped: number;
+            /** Format: date-time */
+            startedAt?: string;
+            /** @enum {string} */
+            state: "previewed" | "canary" | "awaiting_continue" | "running" | "stopping" | "done" | "stopped" | "failed" | "expired";
+            /** Format: int32 */
+            succeeded: number;
+            /** Format: int32 */
+            total: number;
+        };
+        /** @description A bulk plan as its card shows it - the same as the job without the failed list. total is how many items the selector found when the plan was made; the items are frozen then and the job acts on exactly them. */
+        AssistantBulkPlan: {
+            /** @description How each of the first items went, once the canary has run. No value of the change. */
+            canary: components["schemas"]["AssistantBulkItem"][];
+            /** Format: int32 */
+            canarySize: number;
+            /** Format: date-time */
+            endedAt?: string;
+            /** @description Why the job ended other than done - cancelled, stopped_by_person, narrowed (the Owner narrowed what the assistant may use), session_ended (the person signed out), internal. */
+            errorCode?: string;
+            excluded: components["schemas"]["AssistantBulkExcluded"];
+            /** Format: int32 */
+            failed: number;
+            /** Format: date-time */
+            grantExpiresAt?: string;
+            /** Format: uuid */
+            jobId: string;
+            /** @description Why a job waits for Continue - grant_expiring (the assistant's permission, which is bound to the person's session, is about to lapse), or canary_done. */
+            pauseReason?: string;
+            /** Format: int32 */
+            processed: number;
+            /** @description The first items, with the value each has now and would have. A decided plan keeps the labels and the names of the fields. */
+            sample: components["schemas"]["AssistantBulkSample"][];
+            /** Format: int32 */
+            skipped: number;
+            /** Format: date-time */
+            startedAt?: string;
+            /** @enum {string} */
+            state: "previewed" | "canary" | "awaiting_continue" | "running" | "stopping" | "done" | "stopped" | "failed" | "expired";
+            /** Format: int32 */
+            succeeded: number;
+            /** Format: int32 */
+            total: number;
+        };
+        AssistantBulkReason: {
+            /** @description missing_id (the item carries no value for the parameter it feeds). */
+            code: string;
+            /** Format: int32 */
+            count: number;
+        };
+        AssistantBulkSample: {
+            fields: components["schemas"]["AssistantPendingField"][];
+            label?: string;
+            route?: string;
+        };
         AssistantConversation: {
             archived: boolean;
             /** Format: date-time */
@@ -423,6 +610,7 @@ export interface components {
         };
         /** @description A change the assistant proposed and nothing has written yet, or has now been decided. summary is the operation's summary; explain is the assistant's own one-line description in the person's language, shown beside it and never instead of the fields. A decided action keeps the names of its fields and no values. */
         AssistantPendingAction: {
+            bulk?: components["schemas"]["AssistantBulkPlan"];
             /** Format: uuid */
             conversationId: string;
             /** Format: date-time */
@@ -435,6 +623,11 @@ export interface components {
             fields: components["schemas"]["AssistantPendingField"][];
             /** Format: uuid */
             id: string;
+            /**
+             * @description change (one change) or bulk (a bulk plan, whose card is bulk).
+             * @enum {string}
+             */
+            kind?: "change" | "bulk";
             method: string;
             operationId: string;
             outcome?: components["schemas"]["AssistantPendingOutcome"];
@@ -660,6 +853,224 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    getAssistantBulkJob: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssistantBulkJob"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden - assistant_unavailable (the assistant is not available to the caller), or the session's own refusal. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                    "application/problem+json": components["schemas"]["AssistantProblem"];
+                };
+            };
+            /** @description Not Found - not_found. Also what another person's job answers: the assistant never says whether it exists. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AssistantProblem"];
+                };
+            };
+        };
+    };
+    continueAssistantBulkJob: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssistantBulkJob"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden - assistant_unavailable (the assistant is not available to the caller), or the session's own refusal. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                    "application/problem+json": components["schemas"]["AssistantProblem"];
+                };
+            };
+            /** @description Not Found - not_found. Also what another person's job answers: the assistant never says whether it exists. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AssistantProblem"];
+                };
+            };
+            /** @description Conflict - job_not_waiting (the job is not waiting for Continue), or action_expired. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AssistantProblem"];
+                };
+            };
+            /** @description Service Unavailable - ai_unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AssistantProblem"];
+                };
+            };
+        };
+    };
+    getAssistantBulkJobFailures: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK - served as an attachment. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": string;
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden - assistant_unavailable (the assistant is not available to the caller), or the session's own refusal. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                    "application/problem+json": components["schemas"]["AssistantProblem"];
+                };
+            };
+            /** @description Not Found - not_found. Also what another person's job answers: the assistant never says whether it exists. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AssistantProblem"];
+                };
+            };
+        };
+    };
+    stopAssistantBulkJob: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssistantBulkJob"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden - assistant_unavailable (the assistant is not available to the caller), or the session's own refusal. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                    "application/problem+json": components["schemas"]["AssistantProblem"];
+                };
+            };
+            /** @description Not Found - not_found. Also what another person's job answers: the assistant never says whether it exists. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AssistantProblem"];
                 };
             };
         };

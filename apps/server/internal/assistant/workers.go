@@ -14,7 +14,10 @@ import (
 //
 //   - assistant-runs marks the runs still running after staleRunAge failed
 //     (server_restarted), so an API restart never leaves a run running forever,
-//     and expires the proposed changes nobody decided in 24 hours (S12);
+//     expires the proposed changes nobody decided in 24 hours (S12), expires the
+//     bulk plans and the jobs waiting for Continue that nobody went on with in 24
+//     hours (S13), and hands a bulk job whose claim lapsed to the API server in
+//     its own process, if it has one;
 //   - assistant-retention deletes the conversations whose last activity is older
 //     than the workspace's retention, whole, in chunks, and sweeps the
 //     conversations and switches of people identity has erased (erasure.go).
@@ -73,7 +76,17 @@ func (w *staleRunsWorker) RunCycle(ctx context.Context) (int, error) {
 	if _, err := q.InterruptClaimedActions(ctx, now.Add(-staleRunAge)); err != nil {
 		return len(ids) + len(expired), fmt.Errorf("assistant: close the claimed actions: %w", err)
 	}
-	return len(ids) + len(expired), nil
+	// The bulk plans nobody started and the jobs nobody went on with expire too.
+	jobs, err := q.ExpireBulkJobs(ctx, store.ExpireBulkJobsParams{Now: now, Cutoff: now.Add(-bulkWaitTTL)})
+	if err != nil {
+		return len(ids) + len(expired), fmt.Errorf("assistant: expire the bulk jobs: %w", err)
+	}
+	// A job whose claim lapsed needs the dispatcher, which only a process that
+	// serves the API has: when the workers run in it, the API server composed over
+	// the same pool takes the job over. A worker-mode process has none, and the
+	// next read of the job by the person's own replica does it.
+	resumeLapsedFor(ctx, w.deps)
+	return len(ids) + len(expired) + len(jobs), nil
 }
 
 // retentionWorker applies the retention and the erasure sweep.

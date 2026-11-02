@@ -41,6 +41,108 @@ func (e AssistantAvailabilityReason) Valid() bool {
 	}
 }
 
+// Defines values for AssistantBulkItemStatus.
+const (
+	AssistantBulkItemStatusFailed    AssistantBulkItemStatus = "failed"
+	AssistantBulkItemStatusPending   AssistantBulkItemStatus = "pending"
+	AssistantBulkItemStatusSkipped   AssistantBulkItemStatus = "skipped"
+	AssistantBulkItemStatusSucceeded AssistantBulkItemStatus = "succeeded"
+)
+
+// Valid indicates whether the value is a known member of the AssistantBulkItemStatus enum.
+func (e AssistantBulkItemStatus) Valid() bool {
+	switch e {
+	case AssistantBulkItemStatusFailed:
+		return true
+	case AssistantBulkItemStatusPending:
+		return true
+	case AssistantBulkItemStatusSkipped:
+		return true
+	case AssistantBulkItemStatusSucceeded:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AssistantBulkJobState.
+const (
+	AssistantBulkJobStateAwaitingContinue AssistantBulkJobState = "awaiting_continue"
+	AssistantBulkJobStateCanary           AssistantBulkJobState = "canary"
+	AssistantBulkJobStateDone             AssistantBulkJobState = "done"
+	AssistantBulkJobStateExpired          AssistantBulkJobState = "expired"
+	AssistantBulkJobStateFailed           AssistantBulkJobState = "failed"
+	AssistantBulkJobStatePreviewed        AssistantBulkJobState = "previewed"
+	AssistantBulkJobStateRunning          AssistantBulkJobState = "running"
+	AssistantBulkJobStateStopped          AssistantBulkJobState = "stopped"
+	AssistantBulkJobStateStopping         AssistantBulkJobState = "stopping"
+)
+
+// Valid indicates whether the value is a known member of the AssistantBulkJobState enum.
+func (e AssistantBulkJobState) Valid() bool {
+	switch e {
+	case AssistantBulkJobStateAwaitingContinue:
+		return true
+	case AssistantBulkJobStateCanary:
+		return true
+	case AssistantBulkJobStateDone:
+		return true
+	case AssistantBulkJobStateExpired:
+		return true
+	case AssistantBulkJobStateFailed:
+		return true
+	case AssistantBulkJobStatePreviewed:
+		return true
+	case AssistantBulkJobStateRunning:
+		return true
+	case AssistantBulkJobStateStopped:
+		return true
+	case AssistantBulkJobStateStopping:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AssistantBulkPlanState.
+const (
+	AssistantBulkPlanStateAwaitingContinue AssistantBulkPlanState = "awaiting_continue"
+	AssistantBulkPlanStateCanary           AssistantBulkPlanState = "canary"
+	AssistantBulkPlanStateDone             AssistantBulkPlanState = "done"
+	AssistantBulkPlanStateExpired          AssistantBulkPlanState = "expired"
+	AssistantBulkPlanStateFailed           AssistantBulkPlanState = "failed"
+	AssistantBulkPlanStatePreviewed        AssistantBulkPlanState = "previewed"
+	AssistantBulkPlanStateRunning          AssistantBulkPlanState = "running"
+	AssistantBulkPlanStateStopped          AssistantBulkPlanState = "stopped"
+	AssistantBulkPlanStateStopping         AssistantBulkPlanState = "stopping"
+)
+
+// Valid indicates whether the value is a known member of the AssistantBulkPlanState enum.
+func (e AssistantBulkPlanState) Valid() bool {
+	switch e {
+	case AssistantBulkPlanStateAwaitingContinue:
+		return true
+	case AssistantBulkPlanStateCanary:
+		return true
+	case AssistantBulkPlanStateDone:
+		return true
+	case AssistantBulkPlanStateExpired:
+		return true
+	case AssistantBulkPlanStateFailed:
+		return true
+	case AssistantBulkPlanStatePreviewed:
+		return true
+	case AssistantBulkPlanStateRunning:
+		return true
+	case AssistantBulkPlanStateStopped:
+		return true
+	case AssistantBulkPlanStateStopping:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for AssistantMessageRole.
 const (
 	Assistant AssistantMessageRole = "assistant"
@@ -107,6 +209,24 @@ func (e AssistantPartType) Valid() bool {
 	case ToolResult:
 		return true
 	case Tour:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AssistantPendingActionKind.
+const (
+	AssistantPendingActionKindBulk   AssistantPendingActionKind = "bulk"
+	AssistantPendingActionKindChange AssistantPendingActionKind = "change"
+)
+
+// Valid indicates whether the value is a known member of the AssistantPendingActionKind enum.
+func (e AssistantPendingActionKind) Valid() bool {
+	switch e {
+	case AssistantPendingActionKindBulk:
+		return true
+	case AssistantPendingActionKindChange:
 		return true
 	default:
 		return false
@@ -318,6 +438,106 @@ type AssistantAvailability struct {
 // AssistantAvailabilityReason Why not, when not available.
 type AssistantAvailabilityReason string
 
+// AssistantBulkExcluded The items the person may not change, pre-checked before the plan is shown against the operation's access rule, the Owner's permission levels and the items themselves. A refusal that only a record's own rule gives shows when the change runs, as a failed item.
+type AssistantBulkExcluded struct {
+	Count   int32                 `json:"count"`
+	Reasons []AssistantBulkReason `json:"reasons"`
+}
+
+// AssistantBulkItem One frozen item of a bulk plan and how it went. code and title are the problem's own, status the HTTP status; never a response body.
+type AssistantBulkItem struct {
+	Code       *string                 `json:"code,omitempty"`
+	HttpStatus *int32                  `json:"httpStatus,omitempty"`
+	Label      *string                 `json:"label,omitempty"`
+	Seq        int32                   `json:"seq"`
+	Status     AssistantBulkItemStatus `json:"status"`
+	Title      *string                 `json:"title,omitempty"`
+}
+
+// AssistantBulkItemStatus defines model for AssistantBulkItem.Status.
+type AssistantBulkItemStatus string
+
+// AssistantBulkJob A bulk job as it stands - the state, the counters and the first failures. The card polls it while the job runs.
+type AssistantBulkJob struct {
+	// Canary How each of the first items went, once the canary has run. No value of the change.
+	Canary     []AssistantBulkItem `json:"canary"`
+	CanarySize int32               `json:"canarySize"`
+	EndedAt    *time.Time          `json:"endedAt,omitempty"`
+
+	// ErrorCode Why the job ended other than done - cancelled, stopped_by_person, narrowed (the Owner narrowed what the assistant may use), session_ended (the person signed out), internal.
+	ErrorCode *string `json:"errorCode,omitempty"`
+
+	// Excluded The items the person may not change, pre-checked before the plan is shown against the operation's access rule, the Owner's permission levels and the items themselves. A refusal that only a record's own rule gives shows when the change runs, as a failed item.
+	Excluded AssistantBulkExcluded `json:"excluded"`
+	Failed   int32                 `json:"failed"`
+
+	// Failures The first 50 items that failed, each with the refusal. All of them are in failures.csv.
+	Failures       []AssistantBulkItem `json:"failures"`
+	GrantExpiresAt *time.Time          `json:"grantExpiresAt,omitempty"`
+	JobId          openapi_types.UUID  `json:"jobId"`
+
+	// PauseReason Why a job waits for Continue - grant_expiring (the assistant's permission, which is bound to the person's session, is about to lapse), or canary_done.
+	PauseReason *string `json:"pauseReason,omitempty"`
+	Processed   int32   `json:"processed"`
+
+	// Sample The first items, with the value each has now and would have. A decided plan keeps the labels and the names of the fields.
+	Sample    []AssistantBulkSample `json:"sample"`
+	Skipped   int32                 `json:"skipped"`
+	StartedAt *time.Time            `json:"startedAt,omitempty"`
+	State     AssistantBulkJobState `json:"state"`
+	Succeeded int32                 `json:"succeeded"`
+	Total     int32                 `json:"total"`
+}
+
+// AssistantBulkJobState defines model for AssistantBulkJob.State.
+type AssistantBulkJobState string
+
+// AssistantBulkPlan A bulk plan as its card shows it - the same as the job without the failed list. total is how many items the selector found when the plan was made; the items are frozen then and the job acts on exactly them.
+type AssistantBulkPlan struct {
+	// Canary How each of the first items went, once the canary has run. No value of the change.
+	Canary     []AssistantBulkItem `json:"canary"`
+	CanarySize int32               `json:"canarySize"`
+	EndedAt    *time.Time          `json:"endedAt,omitempty"`
+
+	// ErrorCode Why the job ended other than done - cancelled, stopped_by_person, narrowed (the Owner narrowed what the assistant may use), session_ended (the person signed out), internal.
+	ErrorCode *string `json:"errorCode,omitempty"`
+
+	// Excluded The items the person may not change, pre-checked before the plan is shown against the operation's access rule, the Owner's permission levels and the items themselves. A refusal that only a record's own rule gives shows when the change runs, as a failed item.
+	Excluded       AssistantBulkExcluded `json:"excluded"`
+	Failed         int32                 `json:"failed"`
+	GrantExpiresAt *time.Time            `json:"grantExpiresAt,omitempty"`
+	JobId          openapi_types.UUID    `json:"jobId"`
+
+	// PauseReason Why a job waits for Continue - grant_expiring (the assistant's permission, which is bound to the person's session, is about to lapse), or canary_done.
+	PauseReason *string `json:"pauseReason,omitempty"`
+	Processed   int32   `json:"processed"`
+
+	// Sample The first items, with the value each has now and would have. A decided plan keeps the labels and the names of the fields.
+	Sample    []AssistantBulkSample  `json:"sample"`
+	Skipped   int32                  `json:"skipped"`
+	StartedAt *time.Time             `json:"startedAt,omitempty"`
+	State     AssistantBulkPlanState `json:"state"`
+	Succeeded int32                  `json:"succeeded"`
+	Total     int32                  `json:"total"`
+}
+
+// AssistantBulkPlanState defines model for AssistantBulkPlan.State.
+type AssistantBulkPlanState string
+
+// AssistantBulkReason defines model for AssistantBulkReason.
+type AssistantBulkReason struct {
+	// Code missing_id (the item carries no value for the parameter it feeds).
+	Code  string `json:"code"`
+	Count int32  `json:"count"`
+}
+
+// AssistantBulkSample defines model for AssistantBulkSample.
+type AssistantBulkSample struct {
+	Fields []AssistantPendingField `json:"fields"`
+	Label  *string                 `json:"label,omitempty"`
+	Route  *string                 `json:"route,omitempty"`
+}
+
 // AssistantConversation defines model for AssistantConversation.
 type AssistantConversation struct {
 	Archived       bool               `json:"archived"`
@@ -425,6 +645,8 @@ type AssistantPartType string
 
 // AssistantPendingAction A change the assistant proposed and nothing has written yet, or has now been decided. summary is the operation's summary; explain is the assistant's own one-line description in the person's language, shown beside it and never instead of the fields. A decided action keeps the names of its fields and no values.
 type AssistantPendingAction struct {
+	// Bulk A bulk plan as its card shows it - the same as the job without the failed list. total is how many items the selector found when the plan was made; the items are frozen then and the job acts on exactly them.
+	Bulk           *AssistantBulkPlan      `json:"bulk,omitempty"`
 	ConversationId openapi_types.UUID      `json:"conversationId"`
 	CreatedAt      time.Time               `json:"createdAt"`
 	DecidedAt      *time.Time              `json:"decidedAt,omitempty"`
@@ -432,8 +654,11 @@ type AssistantPendingAction struct {
 	Explain        *string                 `json:"explain,omitempty"`
 	Fields         []AssistantPendingField `json:"fields"`
 	Id             openapi_types.UUID      `json:"id"`
-	Method         string                  `json:"method"`
-	OperationId    string                  `json:"operationId"`
+
+	// Kind change (one change) or bulk (a bulk plan, whose card is bulk).
+	Kind        *AssistantPendingActionKind `json:"kind,omitempty"`
+	Method      string                      `json:"method"`
+	OperationId string                      `json:"operationId"`
 
 	// Outcome How a decided action ended. status is the HTTP status the operation answered; reason is cancelled, stopped, expired, changed (the record changed since the card was made), refused, interrupted or failed; message is a short sentence from the operation's own refusal when it gave one.
 	Outcome *AssistantPendingOutcome     `json:"outcome,omitempty"`
@@ -444,6 +669,9 @@ type AssistantPendingAction struct {
 	// Target The record the change is about, when the card could name it. route is an in-app route.
 	Target *AssistantPendingTarget `json:"target,omitempty"`
 }
+
+// AssistantPendingActionKind change (one change) or bulk (a bulk plan, whose card is bulk).
+type AssistantPendingActionKind string
 
 // AssistantPendingActionStatus defines model for AssistantPendingAction.Status.
 type AssistantPendingActionStatus string
@@ -702,6 +930,18 @@ type ServerInterface interface {
 	// GetAssistantAvailability Say whether the assistant is available to the caller
 	// (GET /api/v1/assistant/availability)
 	GetAssistantAvailability(w http.ResponseWriter, r *http.Request)
+	// GetAssistantBulkJob Get a bulk job
+	// (GET /api/v1/assistant/bulk-jobs/{id})
+	GetAssistantBulkJob(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// ContinueAssistantBulkJob Continue a bulk job
+	// (POST /api/v1/assistant/bulk-jobs/{id}/continue)
+	ContinueAssistantBulkJob(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// GetAssistantBulkJobFailures Download the failed items of a bulk job
+	// (GET /api/v1/assistant/bulk-jobs/{id}/failures.csv)
+	GetAssistantBulkJobFailures(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// StopAssistantBulkJob Stop a bulk job
+	// (POST /api/v1/assistant/bulk-jobs/{id}/stop)
+	StopAssistantBulkJob(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
 	// ListAssistantConversations List the caller's conversations
 	// (GET /api/v1/assistant/conversations)
 	ListAssistantConversations(w http.ResponseWriter, r *http.Request, params ListAssistantConversationsParams)
@@ -772,6 +1012,110 @@ func (siw *ServerInterfaceWrapper) GetAssistantAvailability(w http.ResponseWrite
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetAssistantAvailability(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetAssistantBulkJob operation middleware
+func (siw *ServerInterfaceWrapper) GetAssistantBulkJob(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAssistantBulkJob(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ContinueAssistantBulkJob operation middleware
+func (siw *ServerInterfaceWrapper) ContinueAssistantBulkJob(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ContinueAssistantBulkJob(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetAssistantBulkJobFailures operation middleware
+func (siw *ServerInterfaceWrapper) GetAssistantBulkJobFailures(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAssistantBulkJobFailures(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// StopAssistantBulkJob operation middleware
+func (siw *ServerInterfaceWrapper) StopAssistantBulkJob(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.StopAssistantBulkJob(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1451,6 +1795,10 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	}
 
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/assistant/availability", wrapper.GetAssistantAvailability)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/assistant/bulk-jobs/{id}", wrapper.GetAssistantBulkJob)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/assistant/bulk-jobs/{id}/continue", wrapper.ContinueAssistantBulkJob)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/assistant/bulk-jobs/{id}/failures.csv", wrapper.GetAssistantBulkJobFailures)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/assistant/bulk-jobs/{id}/stop", wrapper.StopAssistantBulkJob)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/assistant/conversations", wrapper.ListAssistantConversations)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/assistant/conversations", wrapper.CreateAssistantConversation)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/assistant/conversations/{id}", wrapper.DeleteAssistantConversation)
@@ -1504,6 +1852,352 @@ func (response GetAssistantAvailability401JSONResponse) VisitGetAssistantAvailab
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAssistantBulkJobRequestObject struct {
+	Id openapi_types.UUID `json:"id"`
+}
+
+type GetAssistantBulkJobResponseObject interface {
+	VisitGetAssistantBulkJobResponse(w http.ResponseWriter) error
+}
+
+type GetAssistantBulkJob200JSONResponse AssistantBulkJob
+
+func (response GetAssistantBulkJob200JSONResponse) VisitGetAssistantBulkJobResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAssistantBulkJob401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetAssistantBulkJob401JSONResponse) VisitGetAssistantBulkJobResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAssistantBulkJob403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetAssistantBulkJob403JSONResponse) VisitGetAssistantBulkJobResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAssistantBulkJob403ApplicationProblemPlusJSONResponse AssistantProblem
+
+func (response GetAssistantBulkJob403ApplicationProblemPlusJSONResponse) VisitGetAssistantBulkJobResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAssistantBulkJob404ApplicationProblemPlusJSONResponse AssistantProblem
+
+func (response GetAssistantBulkJob404ApplicationProblemPlusJSONResponse) VisitGetAssistantBulkJobResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ContinueAssistantBulkJobRequestObject struct {
+	Id openapi_types.UUID `json:"id"`
+}
+
+type ContinueAssistantBulkJobResponseObject interface {
+	VisitContinueAssistantBulkJobResponse(w http.ResponseWriter) error
+}
+
+type ContinueAssistantBulkJob200JSONResponse AssistantBulkJob
+
+func (response ContinueAssistantBulkJob200JSONResponse) VisitContinueAssistantBulkJobResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ContinueAssistantBulkJob401JSONResponse externalRef0.AuthErrorResponse
+
+func (response ContinueAssistantBulkJob401JSONResponse) VisitContinueAssistantBulkJobResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ContinueAssistantBulkJob403JSONResponse externalRef0.AuthErrorResponse
+
+func (response ContinueAssistantBulkJob403JSONResponse) VisitContinueAssistantBulkJobResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ContinueAssistantBulkJob403ApplicationProblemPlusJSONResponse AssistantProblem
+
+func (response ContinueAssistantBulkJob403ApplicationProblemPlusJSONResponse) VisitContinueAssistantBulkJobResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ContinueAssistantBulkJob404ApplicationProblemPlusJSONResponse AssistantProblem
+
+func (response ContinueAssistantBulkJob404ApplicationProblemPlusJSONResponse) VisitContinueAssistantBulkJobResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ContinueAssistantBulkJob409ApplicationProblemPlusJSONResponse AssistantProblem
+
+func (response ContinueAssistantBulkJob409ApplicationProblemPlusJSONResponse) VisitContinueAssistantBulkJobResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ContinueAssistantBulkJob503ApplicationProblemPlusJSONResponse AssistantProblem
+
+func (response ContinueAssistantBulkJob503ApplicationProblemPlusJSONResponse) VisitContinueAssistantBulkJobResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAssistantBulkJobFailuresRequestObject struct {
+	Id openapi_types.UUID `json:"id"`
+}
+
+type GetAssistantBulkJobFailuresResponseObject interface {
+	VisitGetAssistantBulkJobFailuresResponse(w http.ResponseWriter) error
+}
+
+type GetAssistantBulkJobFailures200TextcsvResponse struct {
+	Body          io.Reader
+	ContentLength int64
+}
+
+func (response GetAssistantBulkJobFailures200TextcsvResponse) VisitGetAssistantBulkJobFailuresResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", "text/csv")
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type GetAssistantBulkJobFailures401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetAssistantBulkJobFailures401JSONResponse) VisitGetAssistantBulkJobFailuresResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAssistantBulkJobFailures403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetAssistantBulkJobFailures403JSONResponse) VisitGetAssistantBulkJobFailuresResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAssistantBulkJobFailures403ApplicationProblemPlusJSONResponse AssistantProblem
+
+func (response GetAssistantBulkJobFailures403ApplicationProblemPlusJSONResponse) VisitGetAssistantBulkJobFailuresResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAssistantBulkJobFailures404ApplicationProblemPlusJSONResponse AssistantProblem
+
+func (response GetAssistantBulkJobFailures404ApplicationProblemPlusJSONResponse) VisitGetAssistantBulkJobFailuresResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StopAssistantBulkJobRequestObject struct {
+	Id openapi_types.UUID `json:"id"`
+}
+
+type StopAssistantBulkJobResponseObject interface {
+	VisitStopAssistantBulkJobResponse(w http.ResponseWriter) error
+}
+
+type StopAssistantBulkJob200JSONResponse AssistantBulkJob
+
+func (response StopAssistantBulkJob200JSONResponse) VisitStopAssistantBulkJobResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StopAssistantBulkJob401JSONResponse externalRef0.AuthErrorResponse
+
+func (response StopAssistantBulkJob401JSONResponse) VisitStopAssistantBulkJobResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StopAssistantBulkJob403JSONResponse externalRef0.AuthErrorResponse
+
+func (response StopAssistantBulkJob403JSONResponse) VisitStopAssistantBulkJobResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StopAssistantBulkJob403ApplicationProblemPlusJSONResponse AssistantProblem
+
+func (response StopAssistantBulkJob403ApplicationProblemPlusJSONResponse) VisitStopAssistantBulkJobResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StopAssistantBulkJob404ApplicationProblemPlusJSONResponse AssistantProblem
+
+func (response StopAssistantBulkJob404ApplicationProblemPlusJSONResponse) VisitStopAssistantBulkJobResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -3072,6 +3766,18 @@ type StrictServerInterface interface {
 	// GetAssistantAvailability Say whether the assistant is available to the caller
 	// (GET /api/v1/assistant/availability)
 	GetAssistantAvailability(ctx context.Context, request GetAssistantAvailabilityRequestObject) (GetAssistantAvailabilityResponseObject, error)
+	// GetAssistantBulkJob Get a bulk job
+	// (GET /api/v1/assistant/bulk-jobs/{id})
+	GetAssistantBulkJob(ctx context.Context, request GetAssistantBulkJobRequestObject) (GetAssistantBulkJobResponseObject, error)
+	// ContinueAssistantBulkJob Continue a bulk job
+	// (POST /api/v1/assistant/bulk-jobs/{id}/continue)
+	ContinueAssistantBulkJob(ctx context.Context, request ContinueAssistantBulkJobRequestObject) (ContinueAssistantBulkJobResponseObject, error)
+	// GetAssistantBulkJobFailures Download the failed items of a bulk job
+	// (GET /api/v1/assistant/bulk-jobs/{id}/failures.csv)
+	GetAssistantBulkJobFailures(ctx context.Context, request GetAssistantBulkJobFailuresRequestObject) (GetAssistantBulkJobFailuresResponseObject, error)
+	// StopAssistantBulkJob Stop a bulk job
+	// (POST /api/v1/assistant/bulk-jobs/{id}/stop)
+	StopAssistantBulkJob(ctx context.Context, request StopAssistantBulkJobRequestObject) (StopAssistantBulkJobResponseObject, error)
 	// ListAssistantConversations List the caller's conversations
 	// (GET /api/v1/assistant/conversations)
 	ListAssistantConversations(ctx context.Context, request ListAssistantConversationsRequestObject) (ListAssistantConversationsResponseObject, error)
@@ -3184,6 +3890,110 @@ func (sh *strictHandler) GetAssistantAvailability(w http.ResponseWriter, r *http
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetAssistantAvailabilityResponseObject); ok {
 		if err := validResponse.VisitGetAssistantAvailabilityResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetAssistantBulkJob operation middleware
+func (sh *strictHandler) GetAssistantBulkJob(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	var request GetAssistantBulkJobRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetAssistantBulkJob(ctx, request.(GetAssistantBulkJobRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetAssistantBulkJob")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetAssistantBulkJobResponseObject); ok {
+		if err := validResponse.VisitGetAssistantBulkJobResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ContinueAssistantBulkJob operation middleware
+func (sh *strictHandler) ContinueAssistantBulkJob(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	var request ContinueAssistantBulkJobRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ContinueAssistantBulkJob(ctx, request.(ContinueAssistantBulkJobRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ContinueAssistantBulkJob")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ContinueAssistantBulkJobResponseObject); ok {
+		if err := validResponse.VisitContinueAssistantBulkJobResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetAssistantBulkJobFailures operation middleware
+func (sh *strictHandler) GetAssistantBulkJobFailures(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	var request GetAssistantBulkJobFailuresRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetAssistantBulkJobFailures(ctx, request.(GetAssistantBulkJobFailuresRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetAssistantBulkJobFailures")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetAssistantBulkJobFailuresResponseObject); ok {
+		if err := validResponse.VisitGetAssistantBulkJobFailuresResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// StopAssistantBulkJob operation middleware
+func (sh *strictHandler) StopAssistantBulkJob(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	var request StopAssistantBulkJobRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.StopAssistantBulkJob(ctx, request.(StopAssistantBulkJobRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "StopAssistantBulkJob")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(StopAssistantBulkJobResponseObject); ok {
+		if err := validResponse.VisitStopAssistantBulkJobResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

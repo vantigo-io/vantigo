@@ -286,6 +286,9 @@ type runner struct {
 	resume  *decision
 
 	toolCalls, turns int
+	// final has the run answer once without tools: the resumed run after a bulk
+	// job ends tells the person how it went.
+	final bool
 	// proposed is the action this segment of the run created: the run pauses
 	// for it (S12).
 	proposed *store.AssistantPendingAction
@@ -333,6 +336,10 @@ func (r *runner) execute() {
 			// A cancelled change is answered in one short line, without tools.
 			r.turns = maxTurns - 1
 		}
+	}
+
+	if r.final {
+		r.turns = maxTurns - 1
 	}
 
 	q := store.New(r.s.deps.Pool)
@@ -569,7 +576,7 @@ func (r *runner) runTool(call ai.ToolCall) (string, *gen.AssistantPart) {
 	case proposed != nil:
 		id := proposed.ID
 		link = &gen.AssistantPart{Type: gen.AssistantPartType("confirmation"), ActionId: &id}
-		r.queue.emit(eventConfirmation, pendingView(*proposed, r.s.deps.Clock()))
+		r.queue.emit(eventConfirmation, r.s.cardOf(r.persist(), *proposed))
 	case out.link != nil:
 		route, linkLabel := out.link.route, out.link.label
 		link = &gen.AssistantPart{Type: gen.AssistantPartType("link"), Route: &route, Label: &linkLabel}
@@ -680,8 +687,20 @@ func (s *server) StopAssistantRun(ctx context.Context, req gen.StopAssistantRunR
 	}
 	if run.State == stateAwaiting {
 		// A run that waits for the person has no goroutine to stop: stopping it
-		// cancels the change it proposed and ends it.
+		// cancels the change it proposed and ends it. A run that waits for a bulk
+		// job stops the job: a plan not started is cancelled, a job waiting for
+		// Continue ends, a running one stops between chunks, and the run goes on
+		// when the job ends.
 		q := store.New(s.deps.Pool)
+		if job, err := q.GetBulkJobByRun(ctx, store.GetBulkJobByRunParams{RunID: run.ID, UserID: callerID(ctx)}); err == nil && job.State != jobDone && job.State != jobStopped && job.State != jobFailed && job.State != jobExpired {
+			if err := s.stopBulkJob(ctx, job); err != nil {
+				return nil, err
+			}
+			if cur, err := q.GetRun(ctx, store.GetRunParams{ID: run.ID, UserID: callerID(ctx)}); err == nil {
+				run = cur
+			}
+			return gen.StopAssistantRun200JSONResponse(runView(run)), nil
+		}
 		if err := q.CancelRunPendingActions(ctx, store.CancelRunPendingActionsParams{RunID: run.ID, Now: s.deps.Clock()}); err != nil {
 			return nil, fmt.Errorf("assistant: cancel the waiting change: %w", err)
 		}
