@@ -223,7 +223,7 @@ func (s *server) SendAssistantMessage(ctx context.Context, req gen.SendAssistant
 
 	r := &runner{
 		s: s, ctx: runCtx, runID: runID, convID: conv.ID, userID: user, grantID: grantID, queue: queue,
-		lang: lang, name: name, chip: chip,
+		lang: lang, name: name,
 		tools: &toolbox{s: s, ctx: runCtx, userID: user, lang: lang, params: map[string]map[string]string{}},
 	}
 	started = true
@@ -281,7 +281,6 @@ type runner struct {
 	queue   *eventQueue
 	lang    string
 	name    string
-	chip    *gen.AssistantMessageContext
 	tools   *toolbox
 	resume  *decision
 
@@ -355,18 +354,34 @@ func (r *runner) execute() {
 		r.s.deps.Logger.Error("assistant: read the pending actions for a run", "run", r.runID, "error", err)
 		return
 	}
-	history := modelMessages(rows, actions)
-	if r.chip == nil {
-		r.chip = lastContext(rows)
-	}
+	loc := r.s.businessLocation(r.persist())
+	provider := r.s.deps.AI.Provider()
+	preserving := provider == ai.ProviderAnthropic
 
-	system := systemPrompt(promptInput{
-		now: r.s.deps.Clock(), name: r.name, language: r.lang, apps: r.s.deps.Config.Modules, context: r.chip,
+	// The system prompt is frozen at the conversation's first run and sent
+	// unchanged ever after: a Claude model's thinking blocks are bound to it.
+	cstate, err := q.FreezeConversationPrompt(r.persist(), store.FreezeConversationPromptParams{
+		ConversationID: r.convID, PromptVersion: promptVersion,
+		SystemPrompt: systemPrompt(promptInput{name: r.name, language: r.lang, apps: r.s.deps.Config.Modules}),
 	})
-	r.s.deps.Logger.Debug("assistant: a run starts", "run", r.runID, "prompt", promptVersion, "language", r.lang)
+	if err != nil {
+		state, code = "failed", "internal"
+		r.s.deps.Logger.Error("assistant: freeze the system prompt", "run", r.runID, "error", err)
+		return
+	}
+	system := cstate.SystemPrompt
+	r.s.deps.Logger.Debug("assistant: a run starts", "run", r.runID, "prompt", cstate.PromptVersion, "language", r.lang)
 	budget := r.s.deps.Config.AIContextTokens
 	if budget <= 0 {
 		budget = 16000
+	}
+
+	if preserving {
+		cstate = r.compact(q, cstate, rows, actions, system, loc, budget)
+	}
+	history := modelMessages(afterSummary(rows, cstate), actions, loc)
+	if cstate.Summary != nil {
+		history = append([]ai.Message{{Role: ai.RoleUser, Text: summaryMessage(*cstate.Summary)}}, history...)
 	}
 
 	for {
@@ -384,13 +399,21 @@ func (r *runner) execute() {
 		}
 		r.turns++
 		final := r.turns >= maxTurns || r.toolCalls >= maxToolCalls
-		tools := toolDefs
+		req := ai.ChatRequest{System: system, Messages: history, Tools: toolDefs, ToolsDisabled: final, MaxTokens: answerTokens}
 		if final {
-			tools = nil
+			// The last turn is answered without tools. A provider that does not
+			// preserve thinking is simply sent none; Anthropic keeps the tool set
+			// the conversation began with and is told not to use it.
+			if !preserving {
+				req.Tools = nil
+			}
 		}
-		resp, err := r.s.deps.AI.Chat(r.ctx, aiTaskChat, ai.ChatRequest{
-			System: system, Messages: fitContext(system, tools, history, budget), Tools: tools, MaxTokens: answerTokens,
-		}, func(text string) { r.queue.emit(eventDelta, map[string]string{"text": text}) })
+		if !preserving {
+			// S7: older tool results are shortened in place, for the providers
+			// whose history carries no signed thinking.
+			req.Messages = fitContext(system, req.Tools, history, budget)
+		}
+		resp, err := r.s.deps.AI.Chat(r.ctx, aiTaskChat, req, func(text string) { r.queue.emit(eventDelta, map[string]string{"text": text}) })
 		if err != nil {
 			if cause := r.stopped(); cause != "" {
 				state = cause
@@ -400,6 +423,9 @@ func (r *runner) execute() {
 				return
 			}
 			state, code = "failed", "ai_failed"
+			if _, refused := ai.RefusalCategory(err); refused {
+				code = codeAIRefused
+			}
 			r.s.deps.Logger.Warn("assistant: the model call failed", "run", r.runID, "error_type", fmt.Sprintf("%T", err))
 			return
 		}
@@ -416,7 +442,7 @@ func (r *runner) execute() {
 			r.s.deps.Logger.Error("assistant: save the answer", "run", r.runID, "error", err)
 			return
 		}
-		history = append(history, ai.Message{Role: ai.RoleAssistant, Text: resp.Message.Text, ToolCalls: calls})
+		history = append(history, ai.Message{Role: ai.RoleAssistant, Text: resp.Message.Text, ToolCalls: calls, Provider: providerBlocks(resp, calls)})
 		if len(calls) == 0 {
 			return
 		}
@@ -475,7 +501,9 @@ func (r *runner) saveAssistant(resp ai.ChatResponse, calls []ai.ToolCall) (store
 	}
 	msg, err := store.New(r.s.deps.Pool).InsertMessage(r.persist(), store.InsertMessageParams{
 		ID: uuid.New(), ConversationID: r.convID, RunID: &r.runID, Role: "assistant", Content: marshalParts(parts),
-		SearchText: resp.Message.Text, Model: model, InputTokens: resp.InputTokens, OutputTokens: resp.OutputTokens, Now: r.s.deps.Clock(),
+		SearchText: resp.Message.Text, Model: model, InputTokens: resp.InputTokens, OutputTokens: resp.OutputTokens,
+		Provider: providerBlocks(resp, calls), CacheReadTokens: resp.CacheReadTokens, CacheWriteTokens: resp.CacheWriteTokens,
+		Now: r.s.deps.Clock(),
 	})
 	if err != nil {
 		return msg, err
@@ -594,7 +622,7 @@ func (r *runner) runTool(call ai.ToolCall) (string, *gen.AssistantPart) {
 // A tool result that stands for a change the person never decided — the run was
 // stopped, or the card expired — reads as the change not made, whatever it said
 // while it waited.
-func modelMessages(rows []store.AssistantMessage, actions []store.AssistantPendingAction) []ai.Message {
+func modelMessages(rows []store.AssistantMessage, actions []store.AssistantPendingAction, loc *time.Location) []ai.Message {
 	undone := map[uuid.UUID]string{}
 	for _, a := range actions {
 		if a.ToolMessageID == nil {
@@ -615,9 +643,9 @@ func modelMessages(rows []store.AssistantMessage, actions []store.AssistantPendi
 		}
 		switch row.Role {
 		case "user":
-			out = append(out, ai.Message{Role: ai.RoleUser, Text: joinText(parts)})
+			out = append(out, ai.Message{Role: ai.RoleUser, Text: turnHeader(row.CreatedAt, loc, rowContext(row)) + joinText(parts)})
 		case "assistant":
-			m := ai.Message{Role: ai.RoleAssistant, Text: joinText(parts)}
+			m := ai.Message{Role: ai.RoleAssistant, Text: joinText(parts), Provider: row.Provider}
 			for _, p := range parts {
 				if string(p.Type) == "tool_call" && p.CallId != nil && p.Name != nil {
 					args, _ := json.Marshal(p.Arguments)
@@ -646,21 +674,26 @@ func modelMessages(rows []store.AssistantMessage, actions []store.AssistantPendi
 	return out
 }
 
-// lastContext is the screen chip the person's latest message was sent with.
-func lastContext(rows []store.AssistantMessage) *gen.AssistantMessageContext {
-	for i := len(rows) - 1; i >= 0; i-- {
-		if rows[i].Role != "user" {
-			continue
-		}
-		if len(rows[i].Context) > 0 {
-			var c gen.AssistantMessageContext
-			if json.Unmarshal(rows[i].Context, &c) == nil {
-				return &c
-			}
-		}
+// rowContext is the screen chip a message of the person's was sent with.
+func rowContext(row store.AssistantMessage) *gen.AssistantMessageContext {
+	if len(row.Context) == 0 {
 		return nil
 	}
-	return nil
+	var c gen.AssistantMessageContext
+	if json.Unmarshal(row.Context, &c) != nil {
+		return nil
+	}
+	return &c
+}
+
+// providerBlocks is the provider's own record of an answer, kept with the turn
+// to be replayed unchanged. A turn whose tool calls were not all kept (a final
+// turn that was offered none) has none: it would not match its results.
+func providerBlocks(resp ai.ChatResponse, calls []ai.ToolCall) json.RawMessage {
+	if len(calls) != len(resp.Message.ToolCalls) {
+		return nil
+	}
+	return resp.Message.Provider
 }
 
 func joinText(parts []gen.AssistantPart) string {

@@ -1,7 +1,8 @@
 -- name: InsertMessage :one
-INSERT INTO assistant.messages (id, conversation_id, run_id, role, content, context, search_text, model, input_tokens, output_tokens, created_at)
+INSERT INTO assistant.messages (id, conversation_id, run_id, role, content, context, search_text, model, input_tokens, output_tokens, provider, cache_read_tokens, cache_write_tokens, created_at)
 VALUES (@id, @conversation_id, sqlc.narg(run_id)::uuid, @role, @content::jsonb, sqlc.narg(context)::jsonb, @search_text,
-        sqlc.narg(model), sqlc.narg(input_tokens)::integer, sqlc.narg(output_tokens)::integer, @now::timestamptz)
+        sqlc.narg(model), sqlc.narg(input_tokens)::integer, sqlc.narg(output_tokens)::integer,
+        sqlc.narg(provider)::json, sqlc.narg(cache_read_tokens)::integer, sqlc.narg(cache_write_tokens)::integer, @now::timestamptz)
 RETURNING *;
 
 -- name: ListMessages :many
