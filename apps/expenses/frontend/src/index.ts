@@ -1,3 +1,5 @@
+import type { AssistTarget } from "@vantigo/frontend-shell";
+import targets from "./assist-targets.json";
 import "./i18n";
 
 export * from "./api/approvals";
@@ -77,3 +79,6 @@ export { ClaimPage, type ClaimPageProps } from "./pages/claim";
 export { MyExpensesPage, type MyExpensesProps } from "./pages/my-expenses";
 export { ReimbursementsPage } from "./pages/reimbursements";
 export { SettingsPage } from "./pages/settings";
+
+/** The controls the Assistant can point at in a tour; each carries its key as a data-assist attribute. */
+export const assistTargets: AssistTarget[] = targets;

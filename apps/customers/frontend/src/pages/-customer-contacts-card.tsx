@@ -121,6 +121,7 @@ export const CustomerContactsCard = ({
               variant="light"
               size="xs"
               leftSection={<IconPlus size={14} />}
+              data-assist="customers.customer.add-contact"
               onClick={() => setAddModalOpened(true)}
             >
               {t("addContact")}
@@ -431,6 +432,7 @@ const AddContactModal = ({ customerId, attachedContactIds, opened, onClose }: Ad
                   description={t("searchContactDescription")}
                   placeholder={t("contactPlaceholder")}
                   data-autofocus
+                  data-assist="customers.customer.contact-search"
                   value={searchInput}
                   rightSection={lookup.isFetching && <Loader size="xs" />}
                   onChange={(event) => {
@@ -520,7 +522,11 @@ const AddContactModal = ({ customerId, attachedContactIds, opened, onClose }: Ad
                 <Button variant="default" onClick={close}>
                   {t("cancel")}
                 </Button>
-                <Button type="submit" loading={attachExisting.isPending || createAndAttach.isPending}>
+                <Button
+                  type="submit"
+                  loading={attachExisting.isPending || createAndAttach.isPending}
+                  data-assist="customers.customer.contact-save"
+                >
                   {t("addContact")}
                 </Button>
               </Group>

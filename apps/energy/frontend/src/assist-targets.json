@@ -1,0 +1,110 @@
+[
+  {
+    "key": "energy.metering-points.new",
+    "route": "/energy/metering-points",
+    "label": {
+      "en": "New metering point",
+      "nb": "Nytt målepunkt"
+    },
+    "description": {
+      "en": "The button above the metering point list that opens the form for a new metering point.",
+      "nb": "Knappen over målepunktlisten som åpner skjemaet for et nytt målepunkt."
+    }
+  },
+  {
+    "key": "energy.metering-points.form-gsrn",
+    "route": "/energy/metering-points",
+    "label": {
+      "en": "GSRN",
+      "nb": "GSRN"
+    },
+    "description": {
+      "en": "The GSRN field, the metering point's 18-digit number, in the new metering point form.",
+      "nb": "GSRN-feltet, målepunktets 18-sifrede nummer, i skjemaet for nytt målepunkt."
+    }
+  },
+  {
+    "key": "energy.metering-points.form-meter-number",
+    "route": "/energy/metering-points",
+    "label": {
+      "en": "Meter number",
+      "nb": "Målernummer"
+    },
+    "description": {
+      "en": "The meter number field in the new metering point form.",
+      "nb": "Målernummer-feltet i skjemaet for nytt målepunkt."
+    }
+  },
+  {
+    "key": "energy.metering-points.form-address",
+    "route": "/energy/metering-points",
+    "label": {
+      "en": "Street address",
+      "nb": "Gateadresse"
+    },
+    "description": {
+      "en": "The street address field in the new metering point form; the postal code, city and country follow it.",
+      "nb": "Gateadressefeltet i skjemaet for nytt målepunkt; postnummer, sted og land følger etter."
+    }
+  },
+  {
+    "key": "energy.metering-points.form-save",
+    "route": "/energy/metering-points",
+    "label": {
+      "en": "Create metering point",
+      "nb": "Opprett målepunkt"
+    },
+    "description": {
+      "en": "The button that saves the metering point form.",
+      "nb": "Knappen som lagrer målepunktskjemaet."
+    }
+  },
+  {
+    "key": "energy.metering-point.assign-customer",
+    "route": "/energy/metering-points/{meteringPointId}",
+    "label": {
+      "en": "Assign customer",
+      "nb": "Tildel kunde"
+    },
+    "description": {
+      "en": "The button on a metering point's Supply periods card that starts a supply period for a customer.",
+      "nb": "Knappen på målepunktets kort for leveringsperioder som starter en leveringsperiode for en kunde."
+    }
+  },
+  {
+    "key": "energy.metering-point.supply-customer",
+    "route": "/energy/metering-points/{meteringPointId}",
+    "label": {
+      "en": "Customer",
+      "nb": "Kunde"
+    },
+    "description": {
+      "en": "The customer field of the supply period dialog.",
+      "nb": "Kundefeltet i dialogen for leveringsperiode."
+    }
+  },
+  {
+    "key": "energy.metering-point.supply-start",
+    "route": "/energy/metering-points/{meteringPointId}",
+    "label": {
+      "en": "Switch date",
+      "nb": "Byttedato"
+    },
+    "description": {
+      "en": "The date the supply period starts, in the supply period dialog.",
+      "nb": "Datoen leveringsperioden starter, i dialogen for leveringsperiode."
+    }
+  },
+  {
+    "key": "energy.metering-point.supply-save",
+    "route": "/energy/metering-points/{meteringPointId}",
+    "label": {
+      "en": "Assign customer",
+      "nb": "Tildel kunde"
+    },
+    "description": {
+      "en": "The button in the supply period dialog that saves the supply period.",
+      "nb": "Knappen i dialogen for leveringsperiode som lagrer perioden."
+    }
+  }
+]

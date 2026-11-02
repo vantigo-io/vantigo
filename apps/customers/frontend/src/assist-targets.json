@@ -1,0 +1,86 @@
+[
+  {
+    "key": "customers.customers.new",
+    "route": "/customers",
+    "label": {
+      "en": "Create new customer",
+      "nb": "Opprett ny kunde"
+    },
+    "description": {
+      "en": "The button above the customer list that opens the form for a new customer.",
+      "nb": "Knappen over kundelisten som åpner skjemaet for en ny kunde."
+    }
+  },
+  {
+    "key": "customers.customers.form-type",
+    "route": "/customers",
+    "label": {
+      "en": "Customer type",
+      "nb": "Kundetype"
+    },
+    "description": {
+      "en": "The choice between a business and a private person in the new customer form.",
+      "nb": "Valget mellom bedrift og privatperson i skjemaet for ny kunde."
+    }
+  },
+  {
+    "key": "customers.customers.form-name",
+    "route": "/customers",
+    "label": {
+      "en": "Name",
+      "nb": "Navn"
+    },
+    "description": {
+      "en": "The name field of the customer form. For a business it looks the name up in the Brønnøysund register.",
+      "nb": "Navnefeltet i kundeskjemaet. For en bedrift slår det opp navnet i Brønnøysundregistrene."
+    }
+  },
+  {
+    "key": "customers.customers.form-save",
+    "route": "/customers",
+    "label": {
+      "en": "Create customer",
+      "nb": "Opprett kunde"
+    },
+    "description": {
+      "en": "The button that saves the customer form.",
+      "nb": "Knappen som lagrer kundeskjemaet."
+    }
+  },
+  {
+    "key": "customers.customer.add-contact",
+    "route": "/customers/{customerId}",
+    "label": {
+      "en": "Add contact",
+      "nb": "Legg til kontakt"
+    },
+    "description": {
+      "en": "The button on a customer's Contacts card that links a contact to the customer.",
+      "nb": "Knappen på kundens kontaktkort som knytter en kontakt til kunden."
+    }
+  },
+  {
+    "key": "customers.customer.contact-search",
+    "route": "/customers/{customerId}",
+    "label": {
+      "en": "Search for a contact",
+      "nb": "Søk etter en kontakt"
+    },
+    "description": {
+      "en": "The field in the Add contact dialog where you find an existing contact or start a new one.",
+      "nb": "Feltet i dialogen Legg til kontakt der du finner en eksisterende kontakt eller starter en ny."
+    }
+  },
+  {
+    "key": "customers.customer.contact-save",
+    "route": "/customers/{customerId}",
+    "label": {
+      "en": "Add contact",
+      "nb": "Legg til kontakt"
+    },
+    "description": {
+      "en": "The button in the Add contact dialog that links the contact to the customer.",
+      "nb": "Knappen i dialogen Legg til kontakt som knytter kontakten til kunden."
+    }
+  }
+]

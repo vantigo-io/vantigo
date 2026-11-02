@@ -1,0 +1,74 @@
+[
+  {
+    "key": "invoices.invoices.new",
+    "route": "/invoices",
+    "label": {
+      "en": "New invoice",
+      "nb": "Ny faktura"
+    },
+    "description": {
+      "en": "The button above the invoice list that starts a new invoice.",
+      "nb": "Knappen over fakturalisten som starter en ny faktura."
+    }
+  },
+  {
+    "key": "invoices.invoices.customer",
+    "route": "/invoices",
+    "label": {
+      "en": "Customer",
+      "nb": "Kunde"
+    },
+    "description": {
+      "en": "The customer picker of the new invoice dialog.",
+      "nb": "Kundevelgeren i dialogen for ny faktura."
+    }
+  },
+  {
+    "key": "invoices.invoices.create-draft",
+    "route": "/invoices",
+    "label": {
+      "en": "Create the draft",
+      "nb": "Lag utkastet"
+    },
+    "description": {
+      "en": "The button in the new invoice dialog that creates the draft and opens it.",
+      "nb": "Knappen i dialogen for ny faktura som lager utkastet og åpner det."
+    }
+  },
+  {
+    "key": "invoices.invoice.add-line",
+    "route": "/invoices/{invoiceId}",
+    "label": {
+      "en": "Add a line",
+      "nb": "Legg til en linje"
+    },
+    "description": {
+      "en": "The button below a draft invoice's lines that adds an empty line.",
+      "nb": "Knappen under et fakturautkasts linjer som legger til en tom linje."
+    }
+  },
+  {
+    "key": "invoices.invoice.save",
+    "route": "/invoices/{invoiceId}",
+    "label": {
+      "en": "Save",
+      "nb": "Lagre"
+    },
+    "description": {
+      "en": "The button that saves changes to a draft invoice.",
+      "nb": "Knappen som lagrer endringer i et fakturautkast."
+    }
+  },
+  {
+    "key": "invoices.invoice.issue",
+    "route": "/invoices/{invoiceId}",
+    "label": {
+      "en": "Issue",
+      "nb": "Utsted"
+    },
+    "description": {
+      "en": "The button that issues a saved draft invoice and gives it its number.",
+      "nb": "Knappen som utsteder et lagret fakturautkast og gir det nummer."
+    }
+  }
+]

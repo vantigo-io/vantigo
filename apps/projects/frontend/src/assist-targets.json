@@ -1,0 +1,62 @@
+[
+  {
+    "key": "projects.projects.new",
+    "route": "/projects",
+    "label": {
+      "en": "New project",
+      "nb": "Nytt prosjekt"
+    },
+    "description": {
+      "en": "The button above the project list that opens the form for a new project.",
+      "nb": "Knappen over prosjektlisten som åpner skjemaet for et nytt prosjekt."
+    }
+  },
+  {
+    "key": "projects.projects.form-customer",
+    "route": "/projects",
+    "label": {
+      "en": "Customer",
+      "nb": "Kunde"
+    },
+    "description": {
+      "en": "The customer picker of the project form; an internal project has no customer.",
+      "nb": "Kundevelgeren i prosjektskjemaet; et internt prosjekt har ingen kunde."
+    }
+  },
+  {
+    "key": "projects.projects.form-name",
+    "route": "/projects",
+    "label": {
+      "en": "Project name",
+      "nb": "Prosjektnavn"
+    },
+    "description": {
+      "en": "The name field of the project form.",
+      "nb": "Navnefeltet i prosjektskjemaet."
+    }
+  },
+  {
+    "key": "projects.projects.form-code",
+    "route": "/projects",
+    "label": {
+      "en": "Project code",
+      "nb": "Prosjektkode"
+    },
+    "description": {
+      "en": "The project code field; a suggestion is offered for it.",
+      "nb": "Prosjektkode-feltet; det foreslås en kode."
+    }
+  },
+  {
+    "key": "projects.projects.form-save",
+    "route": "/projects",
+    "label": {
+      "en": "Create",
+      "nb": "Opprett"
+    },
+    "description": {
+      "en": "The button that saves the project form.",
+      "nb": "Knappen som lagrer prosjektskjemaet."
+    }
+  }
+]

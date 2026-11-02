@@ -114,7 +114,11 @@ export const ProjectsPage = ({ canCreate }: { canCreate: boolean }) => {
         description={t("projectsDescription")}
         actions={
           canCreate && (
-            <Button leftSection={<IconPlus size={16} />} onClick={() => setModalState({ mode: "create" })}>
+            <Button
+              data-assist="projects.projects.new"
+              leftSection={<IconPlus size={16} />}
+              onClick={() => setModalState({ mode: "create" })}
+            >
               {t("newProject")}
             </Button>
           )

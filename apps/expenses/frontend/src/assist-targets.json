@@ -1,0 +1,62 @@
+[
+  {
+    "key": "expenses.expenses.new",
+    "route": "/expenses",
+    "label": {
+      "en": "New expense",
+      "nb": "Nytt utlegg"
+    },
+    "description": {
+      "en": "The button on My expenses that opens the form for a new expense.",
+      "nb": "Knappen på Mine utlegg som åpner skjemaet for et nytt utlegg."
+    }
+  },
+  {
+    "key": "expenses.expenses.new-claim",
+    "route": "/expenses",
+    "label": {
+      "en": "New travel claim",
+      "nb": "Ny reiseregning"
+    },
+    "description": {
+      "en": "The button on My expenses that opens the form for a new travel claim.",
+      "nb": "Knappen på Mine utlegg som åpner skjemaet for en ny reiseregning."
+    }
+  },
+  {
+    "key": "expenses.expenses.form-description",
+    "route": "/expenses",
+    "label": {
+      "en": "Description",
+      "nb": "Beskrivelse"
+    },
+    "description": {
+      "en": "The description field of the expense form.",
+      "nb": "Beskrivelsesfeltet i utleggsskjemaet."
+    }
+  },
+  {
+    "key": "expenses.expenses.form-save",
+    "route": "/expenses",
+    "label": {
+      "en": "Save draft",
+      "nb": "Lagre utkast"
+    },
+    "description": {
+      "en": "The button that saves the expense as a draft, from where it can be submitted.",
+      "nb": "Knappen som lagrer utlegget som utkast, og som det kan sendes inn fra."
+    }
+  },
+  {
+    "key": "expenses.claim.submit",
+    "route": "/expenses/claims/{claimId}",
+    "label": {
+      "en": "Submit claim",
+      "nb": "Send inn regningen"
+    },
+    "description": {
+      "en": "The button on a travel claim that submits it for approval.",
+      "nb": "Knappen på en reiseregning som sender den til godkjenning."
+    }
+  }
+]

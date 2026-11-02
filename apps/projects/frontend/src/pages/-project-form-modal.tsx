@@ -1,4 +1,5 @@
 import {
+  Box,
   Button,
   Group,
   Input,
@@ -242,24 +243,33 @@ const ProjectForm = ({ state, onClose }: { state: ProjectModalState; onClose: ()
   return (
     <form onSubmit={submit}>
       <Stack>
-        <CustomerPicker
-          value={form.values.customer}
-          onChange={(value) => {
-            form.setFieldValue("customer", value);
-            // An internal project is never billed (design §4.1).
-            if (value === "internal") form.setFieldValue("billingType", "non-billable");
-          }}
-          withInternal
-          selectedLabel={project?.customerName ?? undefined}
-          error={form.errors.customer}
+        <Box data-assist="projects.projects.form-customer">
+          <CustomerPicker
+            value={form.values.customer}
+            onChange={(value) => {
+              form.setFieldValue("customer", value);
+              // An internal project is never billed (design §4.1).
+              if (value === "internal") form.setFieldValue("billingType", "non-billable");
+            }}
+            withInternal
+            selectedLabel={project?.customerName ?? undefined}
+            error={form.errors.customer}
+            withAsterisk
+          />
+        </Box>
+        <TextInput
+          label={t("projectName")}
           withAsterisk
+          data-autofocus
+          data-assist="projects.projects.form-name"
+          {...form.getInputProps("name")}
         />
-        <TextInput label={t("projectName")} withAsterisk data-autofocus {...form.getInputProps("name")} />
         <Stack gap="xs">
           <TextInput
             label={t("projectCode")}
             description={t("projectCodeDescription")}
             withAsterisk
+            data-assist="projects.projects.form-code"
             {...form.getInputProps("code")}
             onChange={(event) => {
               const value = event.currentTarget.value.toUpperCase();
@@ -339,7 +349,7 @@ const ProjectForm = ({ state, onClose }: { state: ProjectModalState; onClose: ()
           <Button variant="default" onClick={onClose}>
             {t("cancel")}
           </Button>
-          <Button type="submit" loading={mutation.isPending}>
+          <Button type="submit" loading={mutation.isPending} data-assist="projects.projects.form-save">
             {isEdit ? t("saveChanges") : t("create")}
           </Button>
         </Group>

@@ -105,7 +105,11 @@ export const DayPage = ({ invoiceHref }: DayPageProps = {}) => {
         description={t("dayDescription")}
         actions={
           !locked && (
-            <Button leftSection={<IconPlus size={16} />} onClick={() => setModal({ mode: "create", date })}>
+            <Button
+              data-assist="time.day.add-entry"
+              leftSection={<IconPlus size={16} />}
+              onClick={() => setModal({ mode: "create", date })}
+            >
               {t("addEntry")}
             </Button>
           )

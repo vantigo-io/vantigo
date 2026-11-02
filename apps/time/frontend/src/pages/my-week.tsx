@@ -95,7 +95,7 @@ export const MyWeekPage = () => {
         title={t("myWeek")}
         description={t("myWeekDescription")}
         actions={
-          <Button onClick={confirmSubmit} loading={submit.isPending} disabled={!data}>
+          <Button data-assist="time.week.submit" onClick={confirmSubmit} loading={submit.isPending} disabled={!data}>
             {t("submitWeek")}
           </Button>
         }
