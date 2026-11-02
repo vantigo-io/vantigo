@@ -1,0 +1,187 @@
+[
+  {
+    "key": "customers.customer.add-contact",
+    "route": "/customers/{customerId}",
+    "description": "The button on a customer's Contacts card that links a contact to the customer."
+  },
+  {
+    "key": "customers.customer.contact-save",
+    "route": "/customers/{customerId}",
+    "description": "The button in the Add contact dialog that links the contact to the customer."
+  },
+  {
+    "key": "customers.customer.contact-search",
+    "route": "/customers/{customerId}",
+    "description": "The field in the Add contact dialog where you find an existing contact or start a new one."
+  },
+  {
+    "key": "customers.customers.form-name",
+    "route": "/customers",
+    "description": "The name field of the customer form. For a business it looks the name up in the Brønnøysund register."
+  },
+  {
+    "key": "customers.customers.form-save",
+    "route": "/customers",
+    "description": "The button that saves the customer form."
+  },
+  {
+    "key": "customers.customers.form-type",
+    "route": "/customers",
+    "description": "The choice between a business and a private person in the new customer form."
+  },
+  {
+    "key": "customers.customers.new",
+    "route": "/customers",
+    "description": "The button above the customer list that opens the form for a new customer."
+  },
+  {
+    "key": "energy.metering-point.assign-customer",
+    "route": "/energy/metering-points/{meteringPointId}",
+    "description": "The button on a metering point's Supply periods card that starts a supply period for a customer."
+  },
+  {
+    "key": "energy.metering-point.supply-customer",
+    "route": "/energy/metering-points/{meteringPointId}",
+    "description": "The customer field of the supply period dialog."
+  },
+  {
+    "key": "energy.metering-point.supply-save",
+    "route": "/energy/metering-points/{meteringPointId}",
+    "description": "The button in the supply period dialog that saves the supply period."
+  },
+  {
+    "key": "energy.metering-point.supply-start",
+    "route": "/energy/metering-points/{meteringPointId}",
+    "description": "The date the supply period starts, in the supply period dialog."
+  },
+  {
+    "key": "energy.metering-points.form-address",
+    "route": "/energy/metering-points",
+    "description": "The street address field in the new metering point form; the postal code, city and country follow it."
+  },
+  {
+    "key": "energy.metering-points.form-gsrn",
+    "route": "/energy/metering-points",
+    "description": "The GSRN field, the metering point's 18-digit number, in the new metering point form."
+  },
+  {
+    "key": "energy.metering-points.form-meter-number",
+    "route": "/energy/metering-points",
+    "description": "The meter number field in the new metering point form."
+  },
+  {
+    "key": "energy.metering-points.form-save",
+    "route": "/energy/metering-points",
+    "description": "The button that saves the metering point form."
+  },
+  {
+    "key": "energy.metering-points.new",
+    "route": "/energy/metering-points",
+    "description": "The button above the metering point list that opens the form for a new metering point."
+  },
+  {
+    "key": "expenses.claim.submit",
+    "route": "/expenses/claims/{claimId}",
+    "description": "The button on a travel claim that submits it for approval."
+  },
+  {
+    "key": "expenses.expenses.form-description",
+    "route": "/expenses",
+    "description": "The description field of the expense form."
+  },
+  {
+    "key": "expenses.expenses.form-save",
+    "route": "/expenses",
+    "description": "The button that saves the expense as a draft, from where it can be submitted."
+  },
+  {
+    "key": "expenses.expenses.new",
+    "route": "/expenses",
+    "description": "The button on My expenses that opens the form for a new expense."
+  },
+  {
+    "key": "expenses.expenses.new-claim",
+    "route": "/expenses",
+    "description": "The button on My expenses that opens the form for a new travel claim."
+  },
+  {
+    "key": "invoices.invoice.add-line",
+    "route": "/invoices/{invoiceId}",
+    "description": "The button below a draft invoice's lines that adds an empty line."
+  },
+  {
+    "key": "invoices.invoice.issue",
+    "route": "/invoices/{invoiceId}",
+    "description": "The button that issues a saved draft invoice and gives it its number."
+  },
+  {
+    "key": "invoices.invoice.save",
+    "route": "/invoices/{invoiceId}",
+    "description": "The button that saves changes to a draft invoice."
+  },
+  {
+    "key": "invoices.invoices.create-draft",
+    "route": "/invoices",
+    "description": "The button in the new invoice dialog that creates the draft and opens it."
+  },
+  {
+    "key": "invoices.invoices.customer",
+    "route": "/invoices",
+    "description": "The customer picker of the new invoice dialog."
+  },
+  {
+    "key": "invoices.invoices.new",
+    "route": "/invoices",
+    "description": "The button above the invoice list that starts a new invoice."
+  },
+  {
+    "key": "projects.projects.form-code",
+    "route": "/projects",
+    "description": "The project code field; a suggestion is offered for it."
+  },
+  {
+    "key": "projects.projects.form-customer",
+    "route": "/projects",
+    "description": "The customer picker of the project form; an internal project has no customer."
+  },
+  {
+    "key": "projects.projects.form-name",
+    "route": "/projects",
+    "description": "The name field of the project form."
+  },
+  {
+    "key": "projects.projects.form-save",
+    "route": "/projects",
+    "description": "The button that saves the project form."
+  },
+  {
+    "key": "projects.projects.new",
+    "route": "/projects",
+    "description": "The button above the project list that opens the form for a new project."
+  },
+  {
+    "key": "time.day.add-entry",
+    "route": "/time/day",
+    "description": "The button on the Day page that opens the form for a new time entry."
+  },
+  {
+    "key": "time.day.entry-hours",
+    "route": "/time/day",
+    "description": "The hours field of the time entry form; it is worked out from the start and end time when both are filled in."
+  },
+  {
+    "key": "time.day.entry-project",
+    "route": "/time/day",
+    "description": "The project field of the time entry form."
+  },
+  {
+    "key": "time.day.entry-save",
+    "route": "/time/day",
+    "description": "The button that saves the time entry."
+  },
+  {
+    "key": "time.week.submit",
+    "route": "/time",
+    "description": "The button on My week that submits the week for approval."
+  }
+]

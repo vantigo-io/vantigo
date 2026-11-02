@@ -90,6 +90,7 @@ const (
 	Text         AssistantPartType = "text"
 	ToolCall     AssistantPartType = "tool_call"
 	ToolResult   AssistantPartType = "tool_result"
+	Tour         AssistantPartType = "tour"
 )
 
 // Valid indicates whether the value is a known member of the AssistantPartType enum.
@@ -104,6 +105,8 @@ func (e AssistantPartType) Valid() bool {
 	case ToolCall:
 		return true
 	case ToolResult:
+		return true
+	case Tour:
 		return true
 	default:
 		return false
@@ -399,7 +402,7 @@ type AssistantOrigin struct {
 	Route string `json:"route"`
 }
 
-// AssistantPart One typed part of a message. text: the words (Markdown); tool_call: the assistant asked for a tool (name, label, the arguments it gave); tool_result: what the tool answered the model, compacted (status ok, refused or error); link: a record or screen in the app (route, label); confirmation: a change the assistant proposed, waiting for the person (actionId; the card is the conversation's pendingActions entry with that id).
+// AssistantPart One typed part of a message. text: the words (Markdown); tool_call: the assistant asked for a tool (name, label, the arguments it gave); tool_result: what the tool answered the model, compacted (status ok, refused or error); link: a record or screen in the app (route, label); confirmation: a change the assistant proposed, waiting for the person (actionId; the card is the conversation's pendingActions entry with that id); tour: a guided tour the person starts with a click (steps, each a registered target with a title and a text in the person's language).
 type AssistantPart struct {
 	ActionId  *openapi_types.UUID     `json:"actionId,omitempty"`
 	Arguments *map[string]interface{} `json:"arguments,omitempty"`
@@ -409,6 +412,7 @@ type AssistantPart struct {
 	Name      *string                 `json:"name,omitempty"`
 	Route     *string                 `json:"route,omitempty"`
 	Status    *AssistantPartStatus    `json:"status,omitempty"`
+	Steps     *[]AssistantTourStep    `json:"steps,omitempty"`
 	Text      *string                 `json:"text,omitempty"`
 	Type      AssistantPartType       `json:"type"`
 }
@@ -593,6 +597,13 @@ type AssistantSettingsRequestMode string
 
 // AssistantSettingsRequestSensitiveDefault defines model for AssistantSettingsRequest.SensitiveDefault.
 type AssistantSettingsRequestSensitiveDefault string
+
+// AssistantTourStep One step of a guided tour. target is a key of the registry the module frontends declare (the server refuses any other); the screen it lives on is the registry's, never the model's.
+type AssistantTourStep struct {
+	Body   string `json:"body"`
+	Target string `json:"target"`
+	Title  string `json:"title"`
+}
 
 // AssistantUpdateConversationRequest defines model for AssistantUpdateConversationRequest.
 type AssistantUpdateConversationRequest struct {

@@ -69,7 +69,7 @@
     "frontend:test": "bun run --cwd apps/host/frontend vitest run --root ../../..",
     "frontend:build": "bun run --cwd apps/host/frontend build",
     "gen:client": "bun run tools/openapi/gen-client.ts",
-    "gen:client:test": "bun test tools/openapi",
+    "gen:client:test": "bun test tools/openapi tools/assist",
     "translations:check": "bun run tools/i18n/check.ts",
     "i18n:test": "bun run --cwd apps/customers/frontend vitest run --root ../../../packages/frontend-shell src/i18n && bun test tools/i18n",
     "prepare": "husky",
