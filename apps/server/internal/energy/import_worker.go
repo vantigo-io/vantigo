@@ -34,10 +34,13 @@ import (
 // the run's rather than a row's is written on the import and retried next
 // cycle.
 //
-// Every statement of a cycle runs on the lease's connection, the customers
-// worker's rule. The one exception is the customer directory, read once per
-// run before the first row and outside every row's transaction: it is the
-// customers module's own read, on its own connection from the pool.
+// Every statement of a run runs on the lease's connection, the customers
+// worker's rule, and none waits for a second connection: a worker that held
+// one while asking the pool for another would deadlock a pool as small as the
+// lease workers are many (four at boot on a four-connection pool), and
+// readiness with it. The customer directory is the customers module's, on its
+// own connections from the pool, so it is read once per run before the lease
+// is taken (RunCycle) and handed to the run.
 
 const (
 	// importWorkerName is what the runner logs this worker as.
@@ -68,6 +71,11 @@ var importNudge = make(chan struct{}, 1)
 // first row, and an error it answers fails the run as a whole. Set only
 // through export_test.go's SetImportRunHook; nil in production.
 var importRunHookForTest func(ctx context.Context, importID int32) error
+
+// importPreparedHookForTest, when set, runs once an import is prepared and
+// before the lease is taken again to run it. Set only through
+// export_test.go's SetImportPreparedHook; nil in production.
+var importPreparedHookForTest func(ctx context.Context, importID int32)
 
 func nudgeImportWorker() {
 	select {
@@ -128,45 +136,154 @@ func (w *ImportWorker) Run(ctx context.Context) error {
 	}
 }
 
-// RunCycle is one cycle under the advisory lease, reporting whether it ran:
-// every queued import in turn, oldest first, then the sweep. One import
-// failing as a whole is written on it and logged, and the cycle ends there.
+// RunCycle is one cycle, reporting whether it ran: every queued import in
+// turn, oldest first, then the sweep. One import failing as a whole is written
+// on it and logged, and the cycle ends there. false means another replica held
+// the lease.
+//
+// Each import takes the lease twice. The first time the queue's head is read
+// (or, the queue empty, the sweep run), so a replica that does not hold the
+// lease prepares nothing. Then, the lease given back, the head is prepared —
+// its customers read through the directory, which may not be asked under a
+// lock (prepare) — and the second time the head is read again and run, on the
+// lease's connection, only if it is still the request that was prepared;
+// otherwise the cycle starts over from the head.
 func (w *ImportWorker) RunCycle(ctx context.Context) (bool, error) {
-	return w.underLease(ctx, func(ctx context.Context, conn *pgxpool.Conn) error {
-		q := store.New(conn)
-		for {
-			if ctx.Err() != nil {
-				return nil
-			}
-			imp, err := q.NextQueuedImport(ctx)
-			if errors.Is(err, pgx.ErrNoRows) {
-				break
-			}
-			if err != nil {
-				return fmt.Errorf("energy: read the import queue: %w", err)
-			}
-			if err := w.runImport(ctx, conn, imp); err != nil {
-				if ctx.Err() != nil {
-					return nil
-				}
-				message := err.Error()
-				if failErr := q.FailImport(ctx, store.FailImportParams{ID: imp.ID, Error: &message, UpdatedAt: w.now()}); failErr != nil {
-					return fmt.Errorf("energy: record an import's failure: %w", failErr)
-				}
-				w.logger().Error("energy: an import failed and is tried again next cycle",
-					"worker", importWorkerName, "importId", imp.ID, "error", message)
-				return nil
-			}
+	ran := false
+	for ctx.Err() == nil {
+		var head *store.EnergyImport
+		acquired, err := w.underLease(ctx, func(ctx context.Context, conn *pgxpool.Conn) error {
+			var err error
+			head, err = w.headOrSweep(ctx, store.New(conn))
+			return err
+		})
+		ran = ran || acquired
+		if err != nil || !acquired || head == nil {
+			return ran, err
 		}
+		prep := w.prepare(ctx, *head)
+		if importPreparedHookForTest != nil {
+			importPreparedHookForTest(ctx, prep.id)
+		}
+		more := false
+		acquired, err = w.underLease(ctx, func(ctx context.Context, conn *pgxpool.Conn) error {
+			var err error
+			more, err = w.takeUp(ctx, conn, prep)
+			return err
+		})
+		if err != nil || !acquired || !more {
+			return ran, err
+		}
+	}
+	return ran, nil
+}
+
+// headOrSweep is the oldest import asked for, or, the queue empty, nil and the
+// sweep of the imports past their retention.
+func (w *ImportWorker) headOrSweep(ctx context.Context, q *store.Queries) (*store.EnergyImport, error) {
+	imp, err := q.NextQueuedImport(ctx)
+	if errors.Is(err, pgx.ErrNoRows) {
 		swept, err := q.SweepImports(ctx, w.now().Add(-w.retention()))
 		if err != nil {
-			return fmt.Errorf("energy: sweep old imports: %w", err)
+			return nil, fmt.Errorf("energy: sweep old imports: %w", err)
 		}
 		if swept > 0 {
 			w.logger().Info("old imports swept", "worker", importWorkerName, "imports", swept)
 		}
-		return nil
-	})
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("energy: read the import queue: %w", err)
+	}
+	return &imp, nil
+}
+
+// importPrep is what one request of an import needs, read before the lease is
+// taken: for a check or a run, the in-file duplicate GSRNs and the customers
+// the file's organisation numbers name; for an attach, the customers its
+// pending rows name. A request is the import's id, state and requested_at —
+// every check, run and attach asked for stamps a new requested_at, so an
+// import stopped and asked for again in the same state is a request of its
+// own. err is a preparation that failed, written on the import as its failure
+// once the lease is held.
+type importPrep struct {
+	id          int32
+	state       string
+	requestedAt *time.Time
+	duplicates  map[int32]int32
+	customers   importCustomers
+	entries     map[int32]contracts.CustomerEntry
+	err         error
+}
+
+// is reports whether imp is the request p was prepared for.
+func (p importPrep) is(imp store.EnergyImport) bool {
+	return imp.ID == p.id && imp.State == p.state && imp.RequestedAt != nil && p.requestedAt != nil &&
+		imp.RequestedAt.Equal(*p.requestedAt)
+}
+
+// prepare asks the customer directory what imp needs. It holds no lease and
+// no connection while the directory answers: the directory is the customers
+// module's, on its own connections from the pool, and a call out of the module
+// never happens under a lock (module boundaries). Only reads happen here; an
+// import's rows do not change once uploaded, so what the run reads under the
+// lease is what was resolved.
+func (w *ImportWorker) prepare(ctx context.Context, imp store.EnergyImport) importPrep {
+	q := store.New(w.deps.Pool)
+	p := importPrep{id: imp.ID, state: imp.State, requestedAt: imp.RequestedAt}
+	if imp.State == string(gen.Attaching) {
+		p.entries, p.err = w.attachCustomers(ctx, q, imp.ID)
+		return p
+	}
+	mapping, err := importMappingFromJSON(imp.Mapping)
+	if err != nil || mapping == nil {
+		// runImport refuses the mapping itself, under the lease.
+		return p
+	}
+	var legalIDs []string
+	if p.duplicates, legalIDs, p.err = importKeyPass(ctx, q, imp.ID, layoutFor(*mapping, len(imp.Header))); p.err != nil {
+		return p
+	}
+	p.customers, p.err = w.resolveCustomers(ctx, legalIDs)
+	return p
+}
+
+// takeUp is the second lease's step, on its connection: the oldest import
+// asked for, run with what prep resolved for it when it is still that request.
+// It answers whether the cycle goes on to the next import: not after an import
+// that failed as a whole.
+func (w *ImportWorker) takeUp(ctx context.Context, conn *pgxpool.Conn, prep importPrep) (bool, error) {
+	q := store.New(conn)
+	imp, err := q.NextQueuedImport(ctx)
+	if errors.Is(err, pgx.ErrNoRows) {
+		// Stopped or deleted since it was read: the next round sweeps.
+		return true, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("energy: read the import queue: %w", err)
+	}
+	if !prep.is(imp) {
+		// Asked for again, stopped or moved on since it was prepared: the
+		// queue's head is read and prepared again.
+		return true, nil
+	}
+	err = prep.err
+	if err == nil {
+		err = w.runImport(ctx, conn, imp, prep)
+	}
+	if err != nil {
+		if ctx.Err() != nil {
+			return false, nil
+		}
+		message := err.Error()
+		if failErr := q.FailImport(ctx, store.FailImportParams{ID: imp.ID, Error: &message, UpdatedAt: w.now()}); failErr != nil {
+			return false, fmt.Errorf("energy: record an import's failure: %w", failErr)
+		}
+		w.logger().Error("energy: an import failed and is tried again next cycle",
+			"worker", importWorkerName, "importId", imp.ID, "error", message)
+		return false, nil
+	}
+	return true, nil
 }
 
 // importCounts are an import's counts as the worker keeps them while it walks.
@@ -192,8 +309,8 @@ func (w *ImportWorker) writeProgress(ctx context.Context, q *store.Queries, id i
 }
 
 // runImport is one import's check, run or attach, from where it stands to its
-// end or its stop.
-func (w *ImportWorker) runImport(ctx context.Context, conn *pgxpool.Conn, imp store.EnergyImport) error {
+// end or its stop, with the duplicates and the customers prep resolved for it.
+func (w *ImportWorker) runImport(ctx context.Context, conn *pgxpool.Conn, imp store.EnergyImport, prep importPrep) error {
 	q := store.New(conn)
 	mapping, err := importMappingFromJSON(imp.Mapping)
 	if err != nil {
@@ -218,18 +335,11 @@ func (w *ImportWorker) runImport(ctx context.Context, conn *pgxpool.Conn, imp st
 		}
 	}
 	if imp.State == string(gen.Attaching) {
-		return w.runAttach(ctx, conn, imp)
+		return w.runAttach(ctx, conn, imp, prep.entries)
 	}
 	dryRun := imp.State == string(gen.Checking)
 
-	duplicates, legalIDs, err := importKeyPass(ctx, q, imp.ID, l)
-	if err != nil {
-		return err
-	}
-	customers, err := w.resolveCustomers(ctx, legalIDs)
-	if err != nil {
-		return err
-	}
+	duplicates, customers := prep.duplicates, prep.customers
 	rowCounts, err := q.ImportRowCounts(ctx, imp.ID)
 	if err != nil {
 		return fmt.Errorf("energy: count import %d's rows: %w", imp.ID, err)
@@ -440,8 +550,8 @@ func importKeyPass(ctx context.Context, q *store.Queries, importID int32, l impo
 }
 
 // resolveCustomers is every organisation number of the file looked up through
-// the customer directory in one round trip, before the first row and outside
-// every row's transaction (design D4). With no directory composed — the
+// the customer directory in one round trip, before the lease is taken and so
+// outside every row's transaction (design D4). With no directory composed — the
 // customers module off — every row naming a number is refused.
 func (w *ImportWorker) resolveCustomers(ctx context.Context, legalIDs []string) (importCustomers, error) {
 	if w.deps.Directory == nil {
@@ -463,18 +573,14 @@ func (w *ImportWorker) resolveCustomers(ctx context.Context, legalIDs []string) 
 // row's customer assigned from the attach's start, or switched to there
 // within the switches the person confirmed, or found to have it already
 // (same). A row that cannot be attached stays pending with its error, so the
-// attach can be asked for again. The customers the rows name are read once,
-// before the first row.
-func (w *ImportWorker) runAttach(ctx context.Context, conn *pgxpool.Conn, imp store.EnergyImport) error {
+// attach can be asked for again. The customers the rows name are entries,
+// read once before the lease was taken (attachCustomers).
+func (w *ImportWorker) runAttach(ctx context.Context, conn *pgxpool.Conn, imp store.EnergyImport, entries map[int32]contracts.CustomerEntry) error {
 	q := store.New(conn)
 	if imp.AttachStart == nil {
 		return errors.New("energy: the import has no attach start")
 	}
 	start := imp.AttachStart.UTC()
-	entries, err := w.attachCustomers(ctx, q, imp.ID)
-	if err != nil {
-		return err
-	}
 	rowCounts, err := q.ImportRowCounts(ctx, imp.ID)
 	if err != nil {
 		return fmt.Errorf("energy: count import %d's rows: %w", imp.ID, err)
@@ -529,7 +635,8 @@ func (w *ImportWorker) runAttach(ctx context.Context, conn *pgxpool.Conn, imp st
 }
 
 // attachCustomers is the customers the attach's untried rows name, read once
-// through the directory before the first row; nil with no directory composed.
+// through the directory before the lease is taken; nil with no directory
+// composed.
 func (w *ImportWorker) attachCustomers(ctx context.Context, q *store.Queries, importID int32) (map[int32]contracts.CustomerEntry, error) {
 	if w.deps.Directory == nil {
 		return nil, nil
