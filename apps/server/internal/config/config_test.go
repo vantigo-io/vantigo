@@ -1292,7 +1292,7 @@ func TestLoad_AIRenamedVariables(t *testing.T) {
 	}
 
 	// A provider this build does not implement is unavailable, never an error.
-	other := mustLoad(t, with(legacy, "COMMUNICATIONS_AI_PROVIDER", "mystery"))
+	other := mustLoad(t, with(legacy, "COMMUNICATIONS_AI_PROVIDER", "anthropic"))
 	if other.AIProvider != "" || len(other.AIModels) != 0 {
 		t.Errorf("AI = %q/%v, want the old rule's unavailable state for a provider that is not implemented", other.AIProvider, other.AIModels)
 	}

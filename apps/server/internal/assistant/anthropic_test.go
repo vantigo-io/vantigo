@@ -33,17 +33,6 @@ func isSummary(req modtest.ClaudeRequest) bool {
 	return strings.Contains(req.System, "memory of a conversation")
 }
 
-// chatRequests are the requests that were conversation turns, not summaries.
-func chatRequests(m *modtest.FakeClaude) []modtest.ClaudeRequest {
-	var out []modtest.ClaudeRequest
-	for _, r := range m.Requests() {
-		if !isSummary(r) {
-			out = append(out, r)
-		}
-	}
-	return out
-}
-
 func TestAnthropic_TheSystemPromptAndTheToolsAreFrozenForTheConversation(t *testing.T) {
 	t.Parallel()
 	model := modtest.NewFakeClaude(func(_ int, req modtest.ClaudeRequest) modtest.ClaudeTurn {
