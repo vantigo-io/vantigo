@@ -168,7 +168,7 @@ its key lives. A module receives it as `Deps.AI` (an `*ai.Client`, nil when no p
 configured) and calls it with a **task key**, never with a model or a key. It has no SQL and
 imports no business module (depguard's `platform` list), and its request and response types
 (`ai.Request`, `ai.Response`, `ai.ChatRequest`, `ai.ChatResponse`) are provider-neutral, so a
-second provider is one file beside `openai.go` and one word in `config`.
+second provider is one file beside `openai.go` and one word in `config`: `anthropic.go` is the second, on the official Go SDK.
 
 - **Configuration** is the instance's: `AI_PROVIDER`, `AI_API_KEY`, `AI_BASE_URL`, `AI_MODELS` and
   `AI_TIMEOUT` ([Configuration](/en/admin/configuration/#ai)). `ai.New(cfg, transport, resolver)`
@@ -201,10 +201,28 @@ second provider is one file beside `openai.go` and one word in `config`.
   (default 120 seconds) for the whole call, because local models are slow; `Complete` keeps its
   30. The token limit is sent as `max_completion_tokens` to OpenAI's own endpoint and as
   `max_tokens` to any other, which every compatible server understands.
+- **Anthropic** (`AI_PROVIDER=anthropic`, `anthropic.go`) is the second provider, over the official Go SDK
+  (`github.com/anthropics/anthropic-sdk-go`), for both `Complete` (one user message, not streamed) and `Chat`
+  (streamed, tools). Its settings are `AI_EFFORT` (sent as `output_config.effort`) and `AI_FALLBACKS`
+  (`fallbacks: "default"` under beta `server-side-fallback-2026-07-01`, not for Haiku), which the other providers
+  ignore. Thinking stays adaptive and is never configured, disabled or budgeted, and no sampling parameter, prefill or forced
+  tool choice is sent. The tools and the system block form the stable prefix, the system block marked for caching.
+  Tools are sent with `eager_input_streaming`, so **every tool input is validated against its schema** before `Chat` returns it; one
+  that is invalid reaches the caller as a JSON string, like text that was no JSON. `max_tokens` and `refusal`
+  are the typed errors `aiMaxTokensError` and `aiRefusalError` (`ai.IsMaxTokens`, `ai.RefusalCategory`).
+  `ChatRequest.ToolsDisabled` asks for an answer without tool calls while keeping the tool set, which Anthropic needs
+  and the others satisfy by sending none. Thinking text is never returned.
+- **`Message.Provider`** is an opaque `json.RawMessage` on the neutral type: for an Anthropic assistant turn,
+  the turn's content blocks exactly as received (thinking blocks with their signatures included), returned in
+  `ChatResponse.Message`. A caller stores it with the turn and hands it back in the next request, and `Chat` replays it verbatim in place of `Text` and
+  `ToolCalls`, because a thinking block is valid only unchanged. The other providers leave it empty and ignore it. Every request sends
+  `thinking.block_binding.prefix_mismatch_behavior: "drop_block"`, and each `input_transformations` entry in a response
+  is logged at warn (type, reason, path) through the logger `ai.WithLogger` gives the client. The history rules that make a block valid are in
+  [the Assistant's reference](/en/reference/assistant/#claude-and-preserved-thinking).
 - **The guard** every outbound client has: redirects are never followed (a redirect would send
   the key to a host nobody named), the transport is `Deps.HTTPTransport` (nil in production,
   meaning `http.DefaultTransport`; a fake in every test, so no test opens a socket), a 30 second
-  budget bounds a `Complete` call, and a response is read up to 4 MiB (a streamed answer up to 8).
+  budget bounds a `Complete` call, and a response is read up to 4 MiB (a streamed answer up to 8). Over the SDK the guard is the same: it is handed the package's own `http.Client` (redirects refused, the body bounded) over `Deps.HTTPTransport`, its retries are off because the caller owns retrying, it reads no `ANTHROPIC_*` environment variable or profile file, and the context carries the budget.
 - **Typed errors**, whose type names are the labels a consumer may record (Communications writes
   them to `ai_interactions.error_summary`) and never a message, which could carry provider or
   customer text: `aiTransportError` (it keeps its cause for `errors.Is`, so a cancelled caller

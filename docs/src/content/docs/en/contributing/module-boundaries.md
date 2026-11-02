@@ -881,7 +881,7 @@ none is a numbered rule above because no module reaches into another.
   and one answer, or `Deps.AI.Chat(ctx, taskKey, ai.ChatRequest{…}, onDelta)` for a conversation
   with tools whose answer streams. It never names a model, holds a key or builds a client of its
   own, and never calls `Deps.AIModels`. The provider may be a model running on the
-  installation's own network (`AI_PROVIDER=openai-compatible`, [Configuration](/en/admin/configuration/#ai)).
+  installation's own network (`AI_PROVIDER=openai-compatible`, [Configuration](/en/admin/configuration/#ai)) or Anthropic's (`AI_PROVIDER=anthropic`); the module is told neither, and passes the provider's own record of an assistant turn (`ai.Message.Provider`) back unread. A module's tests choose the provider's wire with `modtest.FakeChatModel` (OpenAI-compatible) or `modtest.FakeClaude` (Anthropic's Messages stream) through `WithTransport`.
 - **`Module.AITasks`** declares the jobs a module performs with a model, the way
   `Module.Permissions` declares what a person may do: a `contracts.AITask` has a `Key`
   (`<module>.<task-name>`, lower case, always the declaring module's own prefix, and the primary

@@ -108,8 +108,7 @@ more release) read into one client, `srv/ai`, that every module calls as `Deps.A
 key; modules declare their AI tasks (`Module.AITasks`); identity keeps an Owner's model per task
 (`identity.ai_task_models`, imported once from `COMMUNICATIONS_AI_MODEL`) and the Owner chooses
 under **Workspace admin** › **Integrations** › **AI models**. Communications' AI draft and
-customer suggestion are the first two tasks and behave as before. A second provider, a fallback
-model per task and an Owner's own key stay out of scope.
+customer suggestion are the first two tasks and behave as before. A fallback model per task and an Owner's own key stay out of scope; a second provider, Anthropic, came with the Assistant (below).
 
 ### The Assistant (done)
 
@@ -180,7 +179,18 @@ stops if they sign out or the Owner narrows a level, and the model sums the outc
 The assistant keeps its own runner rather than a shared platform helper. Documented in
 [the user guide](docs/src/content/docs/en/user/assistant.md#bulk-changes), the
 [reference](docs/src/content/docs/en/reference/assistant.md#bulk-changes) and
-[module boundaries](docs/src/content/docs/en/contributing/module-boundaries.md). **The Assistant's
+[module boundaries](docs/src/content/docs/en/contributing/module-boundaries.md).
+
+**Delivery E — Anthropic (done, `feat/ai-anthropic`)** — `AI_PROVIDER=anthropic` runs every AI task on Claude through
+the official Go SDK, `Complete` and `Chat` alike, with `AI_EFFORT` and `AI_FALLBACKS`. A Claude model's
+thinking blocks are valid only in the conversation that made them, so the Assistant keeps a conversation append-only:
+the system prompt is frozen at its first run, the date and the screen travel in a header on each turn, each
+assistant turn's provider blocks are stored and replayed verbatim (migration `00107`), the tool set is fixed, a long conversation
+is summarised instead of edited, and the API is asked to drop a block it cannot honour instead of failing, with each
+change it reports logged. OpenAI-compatible providers are unchanged. Documented in
+[Configuration](docs/src/content/docs/en/admin/configuration.md#anthropic), the
+[reference](docs/src/content/docs/en/reference/assistant.md#claude-and-preserved-thinking) and
+[platform packages](docs/src/content/docs/en/contributing/platform-packages.md#the-ai-client). **The Assistant's
 design is complete.**
 
 ## Customers
