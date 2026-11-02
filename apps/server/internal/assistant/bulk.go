@@ -132,7 +132,7 @@ func (tpl bulkTemplate) request(bound map[string]any) operations.CallRequest {
 	for k, v := range tpl.PathParams {
 		req.PathParams[k] = v
 	}
-	body := make(map[string]any, len(tpl.Body)+len(bound))
+	body := make(map[string]any)
 	for k, v := range tpl.Body {
 		body[k] = v
 	}
@@ -353,7 +353,7 @@ func resolveSelector(ctx context.Context, ops bulkOps, info operations.Info, sel
 	pageSize := bulkPageSize
 	cursor, offset := "", 0
 	for page := 1; page <= maxBulkPages; page++ {
-		query := make(map[string]any, len(sel.Query)+2)
+		query := make(map[string]any)
 		for k, v := range sel.Query {
 			query[k] = v
 		}
