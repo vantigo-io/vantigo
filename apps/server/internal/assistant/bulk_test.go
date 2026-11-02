@@ -157,7 +157,7 @@ func seedBulk(t *testing.T, h *modtest.Harness, user uuid.UUID, o bulkOpts) bulk
 type jobRow struct {
 	State, Error                 string
 	Processed, Succeeded, Failed int
-	Skipped                      int
+	Skipped, Unknown             int
 	Claimed                      bool
 }
 
@@ -170,6 +170,7 @@ func jobOf(t *testing.T, h *modtest.Harness, job uuid.UUID) jobRow {
 	r.Succeeded = modtest.One[int](t, h, `SELECT succeeded FROM assistant.bulk_jobs WHERE id = $1`, job)
 	r.Failed = modtest.One[int](t, h, `SELECT failed FROM assistant.bulk_jobs WHERE id = $1`, job)
 	r.Skipped = modtest.One[int](t, h, `SELECT skipped FROM assistant.bulk_jobs WHERE id = $1`, job)
+	r.Unknown = modtest.One[int](t, h, `SELECT unknown FROM assistant.bulk_jobs WHERE id = $1`, job)
 	r.Claimed = modtest.One[bool](t, h, `SELECT claimed_by IS NOT NULL FROM assistant.bulk_jobs WHERE id = $1`, job)
 	return r
 }
@@ -1018,4 +1019,29 @@ func TestBulkRun_TheRunThatWaitedForTheJobIsNotStaleWhenItAnswers(t *testing.T) 
 	waitFor(t, "the run to be done", func() bool {
 		return modtest.One[string](t, h, `SELECT state FROM assistant.runs WHERE id = $1`, seed.run) == "done"
 	})
+}
+
+// A handler that panics part-way may have written before it did: the item is
+// unknown, not failed, and counted as such (S17).
+func TestBulkRun_AnItemWhoseHandlerPanickedIsUnknown(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, summarising())
+	_, user := person(t, h)
+	ops := &fakeOps{respond: func(n int, _ operations.CallRequest) (operations.CallResult, error) {
+		if n == 1 {
+			return operations.CallResult{}, &operations.Error{Code: operations.CodeCallFailed, Message: "the operation failed unexpectedly"}
+		}
+		return operations.CallResult{Status: 200, Body: json.RawMessage(`{"ok":true}`)}, nil
+	}}
+	assistant.UseBulkOps(h.Pool(), ops)
+	seed := seedBulk(t, h, user, bulkOpts{items: 3})
+
+	runHere(t, h, seed.job)
+
+	if st := modtest.One[string](t, h, `SELECT status || ':' || coalesce(problem_code, '') FROM assistant.bulk_job_items WHERE job_id = $1 AND seq = 1`, seed.job); st != "unknown:call_failed" {
+		t.Errorf("item = %s, want unknown:call_failed", st)
+	}
+	if j := jobOf(t, h, seed.job); j.Processed != 3 || j.Succeeded != 2 || j.Failed != 0 || j.Unknown != 1 {
+		t.Errorf("job = %+v, want 2 succeeded and 1 unknown", j)
+	}
 }

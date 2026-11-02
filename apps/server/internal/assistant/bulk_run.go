@@ -229,7 +229,7 @@ const (
 
 type itemResult struct {
 	fate   itemFate
-	status string // succeeded or failed
+	status string // succeeded, failed or unknown
 	http   *int32
 	code   *string
 	title  *string
@@ -290,6 +290,12 @@ func itemKey(job uuid.UUID, seq int32) string {
 	return fmt.Sprintf("assistant-bulk-%s-%d", job.String(), seq)
 }
 
+// unknownItem is an item whose call ended in a way that does not say whether
+// the change was made: a handler that panicked or ran out of time part-way.
+func unknownItem(code string) itemResult {
+	return itemResult{status: "unknown", code: ptr(code), title: ptr(unknownItemSentence)}
+}
+
 // runItem makes the change for one item through the dispatcher, as the person.
 // keyed says the operation declares an Idempotency-Key, which the item then
 // sends.
@@ -303,15 +309,20 @@ func (s *server) runItem(ctx context.Context, ops bulkOps, tpl bulkTemplate, job
 	if keyed {
 		req.Headers = map[string]string{idempotencyKeyHeader: itemKey(job, it.Seq)}
 	}
-	res, err := callWithRetry(ctx, ops, req)
+	res, timedOut, err := callWithRetry(ctx, ops, req)
 	if err != nil {
 		if ctx.Err() != nil {
 			return itemResult{fate: fateCancelled}
 		}
 		var oe *operations.Error
 		if errors.As(err, &oe) {
-			if oe.Code == operations.CodeNever {
+			switch oe.Code {
+			case operations.CodeNever:
 				return itemResult{fate: fateNarrowed}
+			case operations.CodeCallFailed:
+				// The handler panicked part-way: what it wrote before it did may
+				// stand (S17).
+				return unknownItem("call_failed")
 			}
 			return itemResult{status: "failed", code: ptr(clip(oe.Code, 120)), title: ptr(clip(oe.Message, 300))}
 		}
@@ -321,6 +332,10 @@ func (s *server) runItem(ctx context.Context, ops bulkOps, tpl bulkTemplate, job
 	switch {
 	case res.Status >= 200 && res.Status < 300:
 		return itemResult{status: "succeeded", http: &status}
+	case timedOut:
+		// Cut off by the item's own deadline: whatever the handler answered, it
+		// may have committed first (S17).
+		return unknownItem("timed_out")
 	case res.Status == http.StatusUnauthorized:
 		// The grant stands on the person's session: a 401 is the session having
 		// ended (they signed out), and nothing after it can run.

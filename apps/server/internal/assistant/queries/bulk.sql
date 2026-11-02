@@ -127,6 +127,7 @@ UPDATE assistant.bulk_jobs j SET
     succeeded = succeeded + CASE WHEN item.status = 'succeeded' THEN 1 ELSE 0 END,
     failed = failed + CASE WHEN item.status = 'failed' THEN 1 ELSE 0 END,
     skipped = skipped + CASE WHEN item.status = 'skipped' THEN 1 ELSE 0 END,
+    unknown = unknown + CASE WHEN item.status = 'unknown' THEN 1 ELSE 0 END,
     claimed_until = @claimed_until::timestamptz, updated_at = @now::timestamptz
 FROM item
 WHERE j.id = @job_id AND j.claimed_by = @claimed_by

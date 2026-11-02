@@ -232,7 +232,7 @@ type listCaller struct {
 
 func (l listCaller) call(ctx context.Context, req operations.CallRequest) (operations.CallResult, error) {
 	start := time.Now()
-	res, err := callWithRetry(ctx, l.ops, req)
+	res, _, err := callWithRetry(ctx, l.ops, req)
 	if l.logged != nil && err == nil {
 		*l.logged = append(*l.logged, loggedCall{operation: req.OperationID, mode: string(operations.ModeAuto), status: int32(res.Status), elapsed: time.Since(start)})
 	}
@@ -241,18 +241,27 @@ func (l listCaller) call(ctx context.Context, req operations.CallRequest) (opera
 
 // callWithRetry is one call, bounded in time, retried once after the wait a
 // 429 asks for.
-func callWithRetry(ctx context.Context, ops bulkOps, req operations.CallRequest) (operations.CallResult, error) {
+// timedOut reports that the last attempt ran into bulkCallTimeout while ctx
+// itself was still live: the handler was cut off part-way, so whatever it
+// answered, its write may already have been committed.
+func callWithRetry(ctx context.Context, ops bulkOps, req operations.CallRequest) (res operations.CallResult, timedOut bool, err error) {
+	return callWithin(ctx, ops, req, bulkCallTimeout)
+}
+
+// callWithin is callWithRetry with the per-call bound given.
+func callWithin(ctx context.Context, ops bulkOps, req operations.CallRequest, bound time.Duration) (res operations.CallResult, timedOut bool, err error) {
 	for attempt := 0; ; attempt++ {
-		cctx, cancel := context.WithTimeout(ctx, bulkCallTimeout)
-		res, err := ops.Call(cctx, req)
+		cctx, cancel := context.WithTimeout(ctx, bound)
+		res, err = ops.Call(cctx, req)
+		timedOut = errors.Is(cctx.Err(), context.DeadlineExceeded) && ctx.Err() == nil
 		cancel()
-		if err != nil || res.Status != 429 || attempt > 0 {
-			return res, err
+		if err != nil || timedOut || res.Status != 429 || attempt > 0 {
+			return res, timedOut, err
 		}
 		wait := retryAfter(res.Header.Get("Retry-After"))
 		select {
 		case <-ctx.Done():
-			return res, ctx.Err()
+			return res, false, ctx.Err()
 		case <-time.After(wait):
 		}
 	}
