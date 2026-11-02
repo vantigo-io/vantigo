@@ -47,6 +47,7 @@ type AssistantBulkJob struct {
 	StartedAt       *time.Time
 	EndedAt         *time.Time
 	UpdatedAt       time.Time
+	Unknown         int32
 }
 
 type AssistantBulkJobItem struct {
@@ -58,6 +59,7 @@ type AssistantBulkJobItem struct {
 	ProblemCode  *string
 	ProblemTitle *string
 	DoneAt       *time.Time
+	InFlightAt   *time.Time
 }
 
 type AssistantConversation struct {

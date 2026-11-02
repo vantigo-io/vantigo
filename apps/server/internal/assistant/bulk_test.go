@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -31,6 +32,8 @@ type fakeOps struct {
 	calls   []operations.CallRequest
 	respond func(n int, req operations.CallRequest) (operations.CallResult, error)
 	mode    func() operations.Mode
+	// describes is the operation's description, when a test needs one.
+	describes json.RawMessage
 }
 
 func (f *fakeOps) Call(_ context.Context, req operations.CallRequest) (operations.CallResult, error) {
@@ -54,8 +57,13 @@ func (f *fakeOps) Effective(context.Context, string) (operations.Mode, bool) {
 	return operations.ModeConfirm, true
 }
 
-func (f *fakeOps) Describe(string) (json.RawMessage, error) { return nil, errors.New("not scripted") }
-func (f *fakeOps) Info(string) (operations.Info, bool)      { return operations.Info{}, false }
+func (f *fakeOps) Describe(string) (json.RawMessage, error) {
+	if f.describes != nil {
+		return f.describes, nil
+	}
+	return nil, errors.New("not scripted")
+}
+func (f *fakeOps) Info(string) (operations.Info, bool) { return operations.Info{}, false }
 
 func (f *fakeOps) callCount() int {
 	f.mu.Lock()
@@ -519,6 +527,122 @@ func TestBulkRun_ALapsedClaimIsResumedOnceFromTheNextPendingItem(t *testing.T) {
 	}
 }
 
+// The replica dies after it has marked an item in flight and before the outcome
+// is recorded: the one that takes the job over never calls that item again and
+// leaves it unknown, counted as processed, and runs the rest.
+func TestBulkRun_AnItemInFlightWhenTheReplicaDiedIsNeverRunAgain(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, summarising())
+	_, user := person(t, h)
+	ops := &fakeOps{}
+	assistant.UseBulkOps(h.Pool(), ops)
+	seed := seedBulk(t, h, user, bulkOpts{items: 10})
+	assistant.DieAfterInFlight(h.Pool(), func(_ uuid.UUID, seq int32) bool { return seq == 3 })
+
+	runHere(t, h, seed.job) // dies at item 3, with its call not yet made
+	assistant.DieAfterInFlight(h.Pool(), nil)
+	if got := modtest.One[string](t, h, `SELECT status FROM assistant.bulk_job_items WHERE job_id = $1 AND seq = 3`, seed.job); got != "in_flight" {
+		t.Fatalf("item 3 = %s, want in_flight", got)
+	}
+	if !modtest.One[bool](t, h, `SELECT in_flight_at IS NOT NULL FROM assistant.bulk_job_items WHERE job_id = $1 AND seq = 3`, seed.job) {
+		t.Error("an item in flight has no in_flight_at")
+	}
+	h.Exec(t, `UPDATE assistant.bulk_jobs SET claimed_until = $2 WHERE id = $1`, seed.job, h.Now().Add(-time.Minute))
+
+	assistant.ResumeLapsed(context.Background(), h.Pool())
+	waitFor(t, "the job to finish", func() bool {
+		return modtest.One[string](t, h, `SELECT state FROM assistant.bulk_jobs WHERE id = $1`, seed.job) == "done"
+	})
+
+	if got := strings.Join(ops.ids(), ","); got != "0,1,2,4,5,6,7,8,9" {
+		t.Errorf("items called = %s, want every item but the one in flight when the replica died", got)
+	}
+	if st := modtest.One[string](t, h, `SELECT status FROM assistant.bulk_job_items WHERE job_id = $1 AND seq = 3`, seed.job); st != "unknown" {
+		t.Errorf("item 3 = %s, want unknown", st)
+	}
+	unknown := modtest.One[int](t, h, `SELECT unknown FROM assistant.bulk_jobs WHERE id = $1`, seed.job)
+	if j := jobOf(t, h, seed.job); unknown != 1 || j.Processed != 10 || j.Succeeded != 9 || j.Failed != 0 {
+		t.Errorf("job = %+v unknown %d, want 9 succeeded, 1 unknown, 10 processed", j, unknown)
+	}
+	if n := modtest.One[int](t, h, `SELECT count(*) FROM assistant.bulk_job_items WHERE job_id = $1 AND status IN ('pending', 'in_flight')`, seed.job); n != 0 {
+		t.Errorf("%d items left pending or in flight", n)
+	}
+}
+
+// A replica that was only slow, and whose claim was taken over, finds its item
+// already unknown: its outcome is not recorded and not counted.
+func TestBulkRun_ASlowReplicaCannotRecordAnItemTheTakeoverMarkedUnknown(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, summarising())
+	_, user := person(t, h)
+	var once sync.Once
+	var inCall, release = make(chan struct{}), make(chan struct{})
+	ops := &fakeOps{respond: func(n int, _ operations.CallRequest) (operations.CallResult, error) {
+		if n == 0 {
+			once.Do(func() { close(inCall) })
+			<-release
+		}
+		return operations.CallResult{Status: 200}, nil
+	}}
+	assistant.UseBulkOps(h.Pool(), ops)
+	seed := seedBulk(t, h, user, bulkOpts{items: 1})
+	done := make(chan struct{})
+	go func() { defer close(done); runHere(t, h, seed.job) }()
+	<-inCall
+	// Its claim lapses while the call is out, and another replica takes the job over.
+	h.Exec(t, `UPDATE assistant.bulk_jobs SET claimed_until = $2 WHERE id = $1`, seed.job, h.Now().Add(-time.Minute))
+	ctx := context.Background()
+	taken, err := assistant.TakeOver(ctx, h.Pool(), seed.job, "another-replica")
+	if err != nil || taken.Unknown != 1 {
+		t.Fatalf("take over: %v %+v, want the item marked unknown", err, taken)
+	}
+	close(release)
+	<-done
+	if st := modtest.One[string](t, h, `SELECT status FROM assistant.bulk_job_items WHERE job_id = $1 AND seq = 0`, seed.job); st != "unknown" {
+		t.Errorf("item = %s, want it to stay unknown", st)
+	}
+	if j := jobOf(t, h, seed.job); j.Processed != 1 || j.Succeeded != 0 {
+		t.Errorf("job = %+v, want the item counted once, as unknown", j)
+	}
+}
+
+func TestBulkRun_AnIdempotencyKeyIsSentWhereTheOperationDeclaresOne(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, summarising())
+	_, user := person(t, h)
+	ops := &fakeOps{describes: json.RawMessage(`{"id":"putThing","headerParameters":[{"name":"Idempotency-Key","required":true}]}`)}
+	assistant.UseBulkOps(h.Pool(), ops)
+	seed := seedBulk(t, h, user, bulkOpts{items: 3})
+
+	runHere(t, h, seed.job)
+
+	if len(ops.calls) != 3 {
+		t.Fatalf("%d calls, want 3", len(ops.calls))
+	}
+	for i, c := range ops.calls {
+		if want := "assistant-bulk-" + seed.job.String() + "-" + strconv.Itoa(i); c.Headers["Idempotency-Key"] != want || len(c.Headers) != 1 {
+			t.Errorf("call %d headers = %v, want the key %s", i, c.Headers, want)
+		}
+	}
+}
+
+func TestBulkRun_NoKeyIsSentWhereTheOperationDeclaresNone(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, summarising())
+	_, user := person(t, h)
+	ops := &fakeOps{describes: json.RawMessage(`{"id":"putThing","headerParameters":[{"name":"If-Match"}]}`)}
+	assistant.UseBulkOps(h.Pool(), ops)
+	seed := seedBulk(t, h, user, bulkOpts{items: 2})
+
+	runHere(t, h, seed.job)
+
+	for i, c := range ops.calls {
+		if len(c.Headers) != 0 {
+			t.Errorf("call %d sent headers %v, want none", i, c.Headers)
+		}
+	}
+}
+
 func TestBulkRun_AClaimHeldByAnotherReplicaIsNotTaken(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t, summarising())
@@ -723,6 +847,8 @@ func TestBulkJobs_TheFailedItemsDownloadAsACSV(t *testing.T) {
 	h.Exec(t, `UPDATE assistant.bulk_job_items SET status = 'failed', http_status = 403, problem_code = '=cmd|calc', problem_title = 'No; "quotes"', done_at = now() WHERE job_id = $1 AND seq = 1`, seed.job)
 	h.Exec(t, `UPDATE assistant.bulk_job_items SET item = '{"bound":{"id":2},"label":"=HYPERLINK(\"http://evil\")"}', status = 'failed', http_status = 500, problem_code = 'boom', problem_title = '+SUM(1)', done_at = now() WHERE job_id = $1 AND seq = 2`, seed.job)
 	h.Exec(t, `UPDATE assistant.bulk_jobs SET failed = 2 WHERE id = $1`, seed.job)
+	h.Exec(t, `INSERT INTO assistant.bulk_job_items (job_id, seq, item, status, in_flight_at, done_at) VALUES ($1, 3, '{"bound":{"id":3},"label":"Item 3"}', 'unknown', now(), now())`, seed.job)
+	h.Exec(t, `UPDATE assistant.bulk_jobs SET unknown = 1, total = 4 WHERE id = $1`, seed.job)
 
 	r := c.Do(http.MethodGet, "/api/v1/assistant/bulk-jobs/"+seed.job.String()+"/failures.csv", nil)
 	if r.Status != http.StatusOK {
@@ -735,7 +861,7 @@ func TestBulkJobs_TheFailedItemsDownloadAsACSV(t *testing.T) {
 		t.Errorf("content disposition = %s", cd)
 	}
 	body := string(r.Body)
-	if !strings.HasPrefix(body, "\ufeffitem;reference;http_status;problem_code;problem_title\r\n") {
+	if !strings.HasPrefix(body, "\ufeffitem;reference;status;http_status;problem_code;problem_title\r\n") {
 		t.Errorf("csv header = %q", body)
 	}
 	for _, want := range []string{
@@ -745,6 +871,7 @@ func TestBulkJobs_TheFailedItemsDownloadAsACSV(t *testing.T) {
 		"'+SUM(1)",
 		";403;",
 		";500;",
+		`Item 3;id=3;unknown;;;"This change may or may not have been made; check it"`, // an unknown item is in the file, with the sentence
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("csv lacks %q:\n%s", want, body)
@@ -752,6 +879,25 @@ func TestBulkJobs_TheFailedItemsDownloadAsACSV(t *testing.T) {
 	}
 	if strings.Contains(body, ";=") || strings.Contains(body, "\r\n=") {
 		t.Errorf("csv has a cell that starts with =:\n%s", body)
+	}
+
+	// The job's answer carries the unknown item first among the failures, and the counter.
+	var job struct {
+		Unknown  int `json:"unknown"`
+		Failures []struct {
+			Seq    int    `json:"seq"`
+			Status string `json:"status"`
+		} `json:"failures"`
+	}
+	jr := c.Do(http.MethodGet, "/api/v1/assistant/bulk-jobs/"+seed.job.String(), nil)
+	if jr.Status != http.StatusOK {
+		t.Fatalf("job: %d %s", jr.Status, jr.Body)
+	}
+	if err := json.Unmarshal(jr.Body, &job); err != nil {
+		t.Fatal(err)
+	}
+	if job.Unknown != 1 || len(job.Failures) != 3 || job.Failures[0].Seq != 3 || job.Failures[0].Status != "unknown" {
+		t.Errorf("job = %+v, want unknown 1 and the unknown item first of three", job)
 	}
 }
 

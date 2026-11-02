@@ -9,6 +9,7 @@ sql:
       - ../db/migrations/00103_assistant_baseline.sql
       - ../db/migrations/00104_assistant_writes.sql
       - ../db/migrations/00105_assistant_bulk.sql
+      - ../db/migrations/00106_assistant_bulk_once.sql
     queries: queries
     gen:
       go:

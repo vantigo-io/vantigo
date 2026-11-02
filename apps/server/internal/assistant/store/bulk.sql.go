@@ -13,10 +13,24 @@ import (
 )
 
 const claimBulkJob = `-- name: ClaimBulkJob :one
-UPDATE assistant.bulk_jobs SET claimed_by = $1, claimed_until = $2::timestamptz, updated_at = $3::timestamptz
-WHERE id = $4 AND state IN ('canary', 'running', 'stopping')
-  AND (claimed_by IS NULL OR claimed_until < $3::timestamptz)
-RETURNING id, pending_action_id, run_id, conversation_id, user_id, operation_id, selector, template, state, total, processed, succeeded, failed, skipped, stop_requested, grant_id, grant_expires_at, claimed_by, claimed_until, pause_reason, error_code, created_at, started_at, ended_at, updated_at
+WITH c AS (
+    SELECT b.id FROM assistant.bulk_jobs b
+    WHERE b.id = $4 AND b.state IN ('canary', 'running', 'stopping')
+      AND (b.claimed_by IS NULL OR b.claimed_until < $3::timestamptz)
+    FOR UPDATE OF b
+), swept AS (
+    UPDATE assistant.bulk_job_items i SET status = 'unknown', done_at = $3::timestamptz
+    FROM c
+    WHERE i.job_id = c.id AND i.status = 'in_flight'
+    RETURNING i.seq
+)
+UPDATE assistant.bulk_jobs j SET
+    claimed_by = $1, claimed_until = $2::timestamptz, updated_at = $3::timestamptz,
+    processed = j.processed + (SELECT count(*) FROM swept)::int,
+    unknown = j.unknown + (SELECT count(*) FROM swept)::int
+FROM c
+WHERE j.id = c.id
+RETURNING j.id, j.pending_action_id, j.run_id, j.conversation_id, j.user_id, j.operation_id, j.selector, j.template, j.state, j.total, j.processed, j.succeeded, j.failed, j.skipped, j.stop_requested, j.grant_id, j.grant_expires_at, j.claimed_by, j.claimed_until, j.pause_reason, j.error_code, j.created_at, j.started_at, j.ended_at, j.updated_at, j.unknown
 `
 
 type ClaimBulkJobParams struct {
@@ -27,7 +41,9 @@ type ClaimBulkJobParams struct {
 }
 
 // ClaimBulkJob takes a job whose claim lapsed (or never was) for this replica,
-// once: the conditional update lets one replica win.
+// once: the conditional update lets one replica win. In the same statement every
+// item the dead replica had in flight becomes unknown and is counted processed:
+// its call may or may not have been made, and no replica calls it again (S17).
 func (q *Queries) ClaimBulkJob(ctx context.Context, arg ClaimBulkJobParams) (AssistantBulkJob, error) {
 	row := q.db.QueryRow(ctx, claimBulkJob,
 		arg.ClaimedBy,
@@ -62,6 +78,7 @@ func (q *Queries) ClaimBulkJob(ctx context.Context, arg ClaimBulkJobParams) (Ass
 		&i.StartedAt,
 		&i.EndedAt,
 		&i.UpdatedAt,
+		&i.Unknown,
 	)
 	return i, err
 }
@@ -72,7 +89,7 @@ UPDATE assistant.bulk_jobs SET
     claimed_by = $3, claimed_until = $4::timestamptz,
     pause_reason = NULL, stop_requested = false, updated_at = $5::timestamptz
 WHERE id = $6 AND user_id = $7 AND state = 'awaiting_continue'
-RETURNING id, pending_action_id, run_id, conversation_id, user_id, operation_id, selector, template, state, total, processed, succeeded, failed, skipped, stop_requested, grant_id, grant_expires_at, claimed_by, claimed_until, pause_reason, error_code, created_at, started_at, ended_at, updated_at
+RETURNING id, pending_action_id, run_id, conversation_id, user_id, operation_id, selector, template, state, total, processed, succeeded, failed, skipped, stop_requested, grant_id, grant_expires_at, claimed_by, claimed_until, pause_reason, error_code, created_at, started_at, ended_at, updated_at, unknown
 `
 
 type ContinueBulkJobParams struct {
@@ -124,6 +141,7 @@ func (q *Queries) ContinueBulkJob(ctx context.Context, arg ContinueBulkJobParams
 		&i.StartedAt,
 		&i.EndedAt,
 		&i.UpdatedAt,
+		&i.Unknown,
 	)
 	return i, err
 }
@@ -157,7 +175,7 @@ UPDATE assistant.bulk_jobs SET
     selector = assistant.redact_bulk_selector(selector), template = assistant.redact_bulk_template(template)
 WHERE id = $4 AND state IN ('previewed', 'canary', 'awaiting_continue', 'running', 'stopping')
   AND (claimed_by IS NULL OR claimed_by = $5::text)
-RETURNING id, pending_action_id, run_id, conversation_id, user_id, operation_id, selector, template, state, total, processed, succeeded, failed, skipped, stop_requested, grant_id, grant_expires_at, claimed_by, claimed_until, pause_reason, error_code, created_at, started_at, ended_at, updated_at
+RETURNING id, pending_action_id, run_id, conversation_id, user_id, operation_id, selector, template, state, total, processed, succeeded, failed, skipped, stop_requested, grant_id, grant_expires_at, claimed_by, claimed_until, pause_reason, error_code, created_at, started_at, ended_at, updated_at, unknown
 `
 
 type EndBulkJobParams struct {
@@ -207,6 +225,7 @@ func (q *Queries) EndBulkJob(ctx context.Context, arg EndBulkJobParams) (Assista
 		&i.StartedAt,
 		&i.EndedAt,
 		&i.UpdatedAt,
+		&i.Unknown,
 	)
 	return i, err
 }
@@ -263,7 +282,7 @@ func (q *Queries) ExpireBulkJobs(ctx context.Context, arg ExpireBulkJobsParams) 
 }
 
 const getBulkJob = `-- name: GetBulkJob :one
-SELECT id, pending_action_id, run_id, conversation_id, user_id, operation_id, selector, template, state, total, processed, succeeded, failed, skipped, stop_requested, grant_id, grant_expires_at, claimed_by, claimed_until, pause_reason, error_code, created_at, started_at, ended_at, updated_at FROM assistant.bulk_jobs WHERE id = $1 AND user_id = $2
+SELECT id, pending_action_id, run_id, conversation_id, user_id, operation_id, selector, template, state, total, processed, succeeded, failed, skipped, stop_requested, grant_id, grant_expires_at, claimed_by, claimed_until, pause_reason, error_code, created_at, started_at, ended_at, updated_at, unknown FROM assistant.bulk_jobs WHERE id = $1 AND user_id = $2
 `
 
 type GetBulkJobParams struct {
@@ -300,12 +319,13 @@ func (q *Queries) GetBulkJob(ctx context.Context, arg GetBulkJobParams) (Assista
 		&i.StartedAt,
 		&i.EndedAt,
 		&i.UpdatedAt,
+		&i.Unknown,
 	)
 	return i, err
 }
 
 const getBulkJobByAction = `-- name: GetBulkJobByAction :one
-SELECT id, pending_action_id, run_id, conversation_id, user_id, operation_id, selector, template, state, total, processed, succeeded, failed, skipped, stop_requested, grant_id, grant_expires_at, claimed_by, claimed_until, pause_reason, error_code, created_at, started_at, ended_at, updated_at FROM assistant.bulk_jobs WHERE pending_action_id = $1 AND user_id = $2
+SELECT id, pending_action_id, run_id, conversation_id, user_id, operation_id, selector, template, state, total, processed, succeeded, failed, skipped, stop_requested, grant_id, grant_expires_at, claimed_by, claimed_until, pause_reason, error_code, created_at, started_at, ended_at, updated_at, unknown FROM assistant.bulk_jobs WHERE pending_action_id = $1 AND user_id = $2
 `
 
 type GetBulkJobByActionParams struct {
@@ -342,12 +362,13 @@ func (q *Queries) GetBulkJobByAction(ctx context.Context, arg GetBulkJobByAction
 		&i.StartedAt,
 		&i.EndedAt,
 		&i.UpdatedAt,
+		&i.Unknown,
 	)
 	return i, err
 }
 
 const getBulkJobByID = `-- name: GetBulkJobByID :one
-SELECT id, pending_action_id, run_id, conversation_id, user_id, operation_id, selector, template, state, total, processed, succeeded, failed, skipped, stop_requested, grant_id, grant_expires_at, claimed_by, claimed_until, pause_reason, error_code, created_at, started_at, ended_at, updated_at FROM assistant.bulk_jobs WHERE id = $1
+SELECT id, pending_action_id, run_id, conversation_id, user_id, operation_id, selector, template, state, total, processed, succeeded, failed, skipped, stop_requested, grant_id, grant_expires_at, claimed_by, claimed_until, pause_reason, error_code, created_at, started_at, ended_at, updated_at, unknown FROM assistant.bulk_jobs WHERE id = $1
 `
 
 // GetBulkJobByID is for the job's own goroutine, which owns its id.
@@ -380,12 +401,13 @@ func (q *Queries) GetBulkJobByID(ctx context.Context, id uuid.UUID) (AssistantBu
 		&i.StartedAt,
 		&i.EndedAt,
 		&i.UpdatedAt,
+		&i.Unknown,
 	)
 	return i, err
 }
 
 const getBulkJobByRun = `-- name: GetBulkJobByRun :one
-SELECT id, pending_action_id, run_id, conversation_id, user_id, operation_id, selector, template, state, total, processed, succeeded, failed, skipped, stop_requested, grant_id, grant_expires_at, claimed_by, claimed_until, pause_reason, error_code, created_at, started_at, ended_at, updated_at FROM assistant.bulk_jobs WHERE run_id = $1 AND user_id = $2
+SELECT id, pending_action_id, run_id, conversation_id, user_id, operation_id, selector, template, state, total, processed, succeeded, failed, skipped, stop_requested, grant_id, grant_expires_at, claimed_by, claimed_until, pause_reason, error_code, created_at, started_at, ended_at, updated_at, unknown FROM assistant.bulk_jobs WHERE run_id = $1 AND user_id = $2
 `
 
 type GetBulkJobByRunParams struct {
@@ -423,6 +445,7 @@ func (q *Queries) GetBulkJobByRun(ctx context.Context, arg GetBulkJobByRunParams
 		&i.StartedAt,
 		&i.EndedAt,
 		&i.UpdatedAt,
+		&i.Unknown,
 	)
 	return i, err
 }
@@ -458,7 +481,7 @@ const insertBulkJob = `-- name: InsertBulkJob :one
 
 INSERT INTO assistant.bulk_jobs (id, pending_action_id, run_id, conversation_id, user_id, operation_id, selector, template, total, processed, skipped, created_at, updated_at)
 VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8::jsonb, $9, $10, $10, $11::timestamptz, $11::timestamptz)
-RETURNING id, pending_action_id, run_id, conversation_id, user_id, operation_id, selector, template, state, total, processed, succeeded, failed, skipped, stop_requested, grant_id, grant_expires_at, claimed_by, claimed_until, pause_reason, error_code, created_at, started_at, ended_at, updated_at
+RETURNING id, pending_action_id, run_id, conversation_id, user_id, operation_id, selector, template, state, total, processed, succeeded, failed, skipped, stop_requested, grant_id, grant_expires_at, claimed_by, claimed_until, pause_reason, error_code, created_at, started_at, ended_at, updated_at, unknown
 `
 
 type InsertBulkJobParams struct {
@@ -520,12 +543,13 @@ func (q *Queries) InsertBulkJob(ctx context.Context, arg InsertBulkJobParams) (A
 		&i.StartedAt,
 		&i.EndedAt,
 		&i.UpdatedAt,
+		&i.Unknown,
 	)
 	return i, err
 }
 
 const listBulkCanary = `-- name: ListBulkCanary :many
-SELECT job_id, seq, item, status, http_status, problem_code, problem_title, done_at FROM assistant.bulk_job_items WHERE job_id = $1 AND seq < $2 AND status <> 'pending' ORDER BY seq
+SELECT job_id, seq, item, status, http_status, problem_code, problem_title, done_at, in_flight_at FROM assistant.bulk_job_items WHERE job_id = $1 AND seq < $2 AND status <> 'pending' ORDER BY seq
 `
 
 type ListBulkCanaryParams struct {
@@ -552,6 +576,7 @@ func (q *Queries) ListBulkCanary(ctx context.Context, arg ListBulkCanaryParams) 
 			&i.ProblemCode,
 			&i.ProblemTitle,
 			&i.DoneAt,
+			&i.InFlightAt,
 		); err != nil {
 			return nil, err
 		}
@@ -564,7 +589,8 @@ func (q *Queries) ListBulkCanary(ctx context.Context, arg ListBulkCanaryParams) 
 }
 
 const listBulkFailures = `-- name: ListBulkFailures :many
-SELECT job_id, seq, item, status, http_status, problem_code, problem_title, done_at FROM assistant.bulk_job_items WHERE job_id = $1 AND status = 'failed' ORDER BY seq LIMIT $2
+SELECT job_id, seq, item, status, http_status, problem_code, problem_title, done_at, in_flight_at FROM assistant.bulk_job_items WHERE job_id = $1 AND status IN ('failed', 'unknown')
+ORDER BY (status = 'unknown') DESC, seq LIMIT $2
 `
 
 type ListBulkFailuresParams struct {
@@ -572,6 +598,8 @@ type ListBulkFailuresParams struct {
 	BatchSize int32
 }
 
+// ListBulkFailures is the items that went wrong: the unknown ones first, then the
+// failed, each in order.
 func (q *Queries) ListBulkFailures(ctx context.Context, arg ListBulkFailuresParams) ([]AssistantBulkJobItem, error) {
 	rows, err := q.db.Query(ctx, listBulkFailures, arg.JobID, arg.BatchSize)
 	if err != nil {
@@ -590,6 +618,7 @@ func (q *Queries) ListBulkFailures(ctx context.Context, arg ListBulkFailuresPara
 			&i.ProblemCode,
 			&i.ProblemTitle,
 			&i.DoneAt,
+			&i.InFlightAt,
 		); err != nil {
 			return nil, err
 		}
@@ -602,7 +631,7 @@ func (q *Queries) ListBulkFailures(ctx context.Context, arg ListBulkFailuresPara
 }
 
 const listBulkJobs = `-- name: ListBulkJobs :many
-SELECT j.id, j.pending_action_id, j.run_id, j.conversation_id, j.user_id, j.operation_id, j.selector, j.template, j.state, j.total, j.processed, j.succeeded, j.failed, j.skipped, j.stop_requested, j.grant_id, j.grant_expires_at, j.claimed_by, j.claimed_until, j.pause_reason, j.error_code, j.created_at, j.started_at, j.ended_at, j.updated_at FROM assistant.bulk_jobs j
+SELECT j.id, j.pending_action_id, j.run_id, j.conversation_id, j.user_id, j.operation_id, j.selector, j.template, j.state, j.total, j.processed, j.succeeded, j.failed, j.skipped, j.stop_requested, j.grant_id, j.grant_expires_at, j.claimed_by, j.claimed_until, j.pause_reason, j.error_code, j.created_at, j.started_at, j.ended_at, j.updated_at, j.unknown FROM assistant.bulk_jobs j
 JOIN assistant.conversations c ON c.id = j.conversation_id
 WHERE j.conversation_id = $1 AND c.user_id = $2
 ORDER BY j.created_at, j.id
@@ -649,6 +678,7 @@ func (q *Queries) ListBulkJobs(ctx context.Context, arg ListBulkJobsParams) ([]A
 			&i.StartedAt,
 			&i.EndedAt,
 			&i.UpdatedAt,
+			&i.Unknown,
 		); err != nil {
 			return nil, err
 		}
@@ -661,7 +691,7 @@ func (q *Queries) ListBulkJobs(ctx context.Context, arg ListBulkJobsParams) ([]A
 }
 
 const listLapsedBulkJobs = `-- name: ListLapsedBulkJobs :many
-SELECT id, pending_action_id, run_id, conversation_id, user_id, operation_id, selector, template, state, total, processed, succeeded, failed, skipped, stop_requested, grant_id, grant_expires_at, claimed_by, claimed_until, pause_reason, error_code, created_at, started_at, ended_at, updated_at FROM assistant.bulk_jobs
+SELECT id, pending_action_id, run_id, conversation_id, user_id, operation_id, selector, template, state, total, processed, succeeded, failed, skipped, stop_requested, grant_id, grant_expires_at, claimed_by, claimed_until, pause_reason, error_code, created_at, started_at, ended_at, updated_at, unknown FROM assistant.bulk_jobs
 WHERE state IN ('canary', 'running', 'stopping')
   AND (claimed_by IS NULL OR claimed_until < $1::timestamptz)
   AND ($2::uuid IS NULL OR user_id = $2::uuid)
@@ -712,6 +742,7 @@ func (q *Queries) ListLapsedBulkJobs(ctx context.Context, arg ListLapsedBulkJobs
 			&i.StartedAt,
 			&i.EndedAt,
 			&i.UpdatedAt,
+			&i.Unknown,
 		); err != nil {
 			return nil, err
 		}
@@ -724,7 +755,7 @@ func (q *Queries) ListLapsedBulkJobs(ctx context.Context, arg ListLapsedBulkJobs
 }
 
 const listPendingBulkItems = `-- name: ListPendingBulkItems :many
-SELECT job_id, seq, item, status, http_status, problem_code, problem_title, done_at FROM assistant.bulk_job_items
+SELECT job_id, seq, item, status, http_status, problem_code, problem_title, done_at, in_flight_at FROM assistant.bulk_job_items
 WHERE job_id = $1 AND status = 'pending' AND seq < $2
 ORDER BY seq
 LIMIT $3
@@ -756,6 +787,7 @@ func (q *Queries) ListPendingBulkItems(ctx context.Context, arg ListPendingBulkI
 			&i.ProblemCode,
 			&i.ProblemTitle,
 			&i.DoneAt,
+			&i.InFlightAt,
 		); err != nil {
 			return nil, err
 		}
@@ -767,11 +799,43 @@ func (q *Queries) ListPendingBulkItems(ctx context.Context, arg ListPendingBulkI
 	return items, nil
 }
 
+const markBulkItemInFlight = `-- name: MarkBulkItemInFlight :one
+UPDATE assistant.bulk_job_items i SET status = 'in_flight', in_flight_at = $1::timestamptz
+FROM assistant.bulk_jobs j
+WHERE i.job_id = $2 AND i.seq = $3 AND i.status = 'pending'
+  AND j.id = i.job_id AND j.claimed_by = $4 AND j.state IN ('canary', 'running', 'stopping')
+RETURNING i.seq
+`
+
+type MarkBulkItemInFlightParams struct {
+	Now       time.Time
+	JobID     uuid.UUID
+	Seq       int32
+	ClaimedBy *string
+}
+
+// MarkBulkItemInFlight is the statement that commits before an item's call goes
+// out (S17): from then on, a replica that dies leaves the item in_flight, and the
+// one that takes the job over marks it unknown and never calls it. It answers
+// nothing (ErrNoRows) when this replica no longer holds the claim or the item is
+// not pending, and then the item is not called.
+func (q *Queries) MarkBulkItemInFlight(ctx context.Context, arg MarkBulkItemInFlightParams) (int32, error) {
+	row := q.db.QueryRow(ctx, markBulkItemInFlight,
+		arg.Now,
+		arg.JobID,
+		arg.Seq,
+		arg.ClaimedBy,
+	)
+	var seq int32
+	err := row.Scan(&seq)
+	return seq, err
+}
+
 const pauseBulkJob = `-- name: PauseBulkJob :one
 UPDATE assistant.bulk_jobs SET
     state = 'awaiting_continue', pause_reason = $1::text, claimed_by = NULL, claimed_until = NULL, updated_at = $2::timestamptz
 WHERE id = $3 AND claimed_by = $4 AND state IN ('canary', 'running', 'stopping')
-RETURNING id, pending_action_id, run_id, conversation_id, user_id, operation_id, selector, template, state, total, processed, succeeded, failed, skipped, stop_requested, grant_id, grant_expires_at, claimed_by, claimed_until, pause_reason, error_code, created_at, started_at, ended_at, updated_at
+RETURNING id, pending_action_id, run_id, conversation_id, user_id, operation_id, selector, template, state, total, processed, succeeded, failed, skipped, stop_requested, grant_id, grant_expires_at, claimed_by, claimed_until, pause_reason, error_code, created_at, started_at, ended_at, updated_at, unknown
 `
 
 type PauseBulkJobParams struct {
@@ -816,6 +880,7 @@ func (q *Queries) PauseBulkJob(ctx context.Context, arg PauseBulkJobParams) (Ass
 		&i.StartedAt,
 		&i.EndedAt,
 		&i.UpdatedAt,
+		&i.Unknown,
 	)
 	return i, err
 }
@@ -826,7 +891,7 @@ WITH item AS (
         status = $5, http_status = $6::integer, problem_code = $7::text,
         problem_title = $8::text, done_at = $2::timestamptz
     FROM assistant.bulk_jobs j
-    WHERE i.job_id = $3 AND i.seq = $9 AND i.status = 'pending'
+    WHERE i.job_id = $3 AND i.seq = $9 AND i.status = 'in_flight'
       AND j.id = i.job_id AND j.claimed_by = $4
     RETURNING i.status
 )
@@ -838,7 +903,7 @@ UPDATE assistant.bulk_jobs j SET
     claimed_until = $1::timestamptz, updated_at = $2::timestamptz
 FROM item
 WHERE j.id = $3 AND j.claimed_by = $4
-RETURNING j.id, j.pending_action_id, j.run_id, j.conversation_id, j.user_id, j.operation_id, j.selector, j.template, j.state, j.total, j.processed, j.succeeded, j.failed, j.skipped, j.stop_requested, j.grant_id, j.grant_expires_at, j.claimed_by, j.claimed_until, j.pause_reason, j.error_code, j.created_at, j.started_at, j.ended_at, j.updated_at
+RETURNING j.id, j.pending_action_id, j.run_id, j.conversation_id, j.user_id, j.operation_id, j.selector, j.template, j.state, j.total, j.processed, j.succeeded, j.failed, j.skipped, j.stop_requested, j.grant_id, j.grant_expires_at, j.claimed_by, j.claimed_until, j.pause_reason, j.error_code, j.created_at, j.started_at, j.ended_at, j.updated_at, j.unknown
 `
 
 type RecordBulkItemParams struct {
@@ -855,8 +920,9 @@ type RecordBulkItemParams struct {
 
 // RecordBulkItem records how one item went, counts it, and renews the claim, in
 // one statement; it answers nothing (ErrNoRows) when this replica no longer
-// holds the claim or the item was already recorded, so a job is never counted
-// twice and a replica that lost the claim stops at once.
+// holds the claim or the item is not in flight (a replica that took the job over
+// has marked it unknown), so a job is never counted twice and a replica that lost
+// the claim stops at once.
 func (q *Queries) RecordBulkItem(ctx context.Context, arg RecordBulkItemParams) (AssistantBulkJob, error) {
 	row := q.db.QueryRow(ctx, recordBulkItem,
 		arg.ClaimedUntil,
@@ -896,8 +962,30 @@ func (q *Queries) RecordBulkItem(ctx context.Context, arg RecordBulkItemParams) 
 		&i.StartedAt,
 		&i.EndedAt,
 		&i.UpdatedAt,
+		&i.Unknown,
 	)
 	return i, err
+}
+
+const releaseBulkItem = `-- name: ReleaseBulkItem :exec
+UPDATE assistant.bulk_job_items i SET status = 'pending', in_flight_at = NULL
+FROM assistant.bulk_jobs j
+WHERE i.job_id = $1 AND i.seq = $2 AND i.status = 'in_flight'
+  AND j.id = i.job_id AND j.claimed_by = $3
+`
+
+type ReleaseBulkItemParams struct {
+	JobID     uuid.UUID
+	Seq       int32
+	ClaimedBy *string
+}
+
+// ReleaseBulkItem puts an item back to pending when its call was never made (the
+// dispatcher refused it before it went out), so the job that ends leaves it as it
+// was.
+func (q *Queries) ReleaseBulkItem(ctx context.Context, arg ReleaseBulkItemParams) error {
+	_, err := q.db.Exec(ctx, releaseBulkItem, arg.JobID, arg.Seq, arg.ClaimedBy)
+	return err
 }
 
 const requestBulkStop = `-- name: RequestBulkStop :one
@@ -906,7 +994,7 @@ UPDATE assistant.bulk_jobs SET
     state = CASE WHEN state IN ('canary', 'running') THEN 'stopping' ELSE state END,
     updated_at = $1::timestamptz
 WHERE id = $2 AND user_id = $3 AND state IN ('canary', 'running', 'stopping')
-RETURNING id, pending_action_id, run_id, conversation_id, user_id, operation_id, selector, template, state, total, processed, succeeded, failed, skipped, stop_requested, grant_id, grant_expires_at, claimed_by, claimed_until, pause_reason, error_code, created_at, started_at, ended_at, updated_at
+RETURNING id, pending_action_id, run_id, conversation_id, user_id, operation_id, selector, template, state, total, processed, succeeded, failed, skipped, stop_requested, grant_id, grant_expires_at, claimed_by, claimed_until, pause_reason, error_code, created_at, started_at, ended_at, updated_at, unknown
 `
 
 type RequestBulkStopParams struct {
@@ -946,6 +1034,7 @@ func (q *Queries) RequestBulkStop(ctx context.Context, arg RequestBulkStopParams
 		&i.StartedAt,
 		&i.EndedAt,
 		&i.UpdatedAt,
+		&i.Unknown,
 	)
 	return i, err
 }
@@ -956,7 +1045,7 @@ UPDATE assistant.bulk_jobs SET
     claimed_by = $3, claimed_until = $4::timestamptz,
     started_at = $5::timestamptz, updated_at = $5::timestamptz
 WHERE pending_action_id = $6 AND user_id = $7 AND state = 'previewed'
-RETURNING id, pending_action_id, run_id, conversation_id, user_id, operation_id, selector, template, state, total, processed, succeeded, failed, skipped, stop_requested, grant_id, grant_expires_at, claimed_by, claimed_until, pause_reason, error_code, created_at, started_at, ended_at, updated_at
+RETURNING id, pending_action_id, run_id, conversation_id, user_id, operation_id, selector, template, state, total, processed, succeeded, failed, skipped, stop_requested, grant_id, grant_expires_at, claimed_by, claimed_until, pause_reason, error_code, created_at, started_at, ended_at, updated_at, unknown
 `
 
 type StartBulkJobParams struct {
@@ -1008,6 +1097,7 @@ func (q *Queries) StartBulkJob(ctx context.Context, arg StartBulkJobParams) (Ass
 		&i.StartedAt,
 		&i.EndedAt,
 		&i.UpdatedAt,
+		&i.Unknown,
 	)
 	return i, err
 }
@@ -1015,7 +1105,7 @@ func (q *Queries) StartBulkJob(ctx context.Context, arg StartBulkJobParams) (Ass
 const touchBulkClaim = `-- name: TouchBulkClaim :one
 UPDATE assistant.bulk_jobs SET claimed_until = $1::timestamptz, updated_at = $2::timestamptz
 WHERE id = $3 AND claimed_by = $4 AND state IN ('canary', 'running', 'stopping')
-RETURNING id, pending_action_id, run_id, conversation_id, user_id, operation_id, selector, template, state, total, processed, succeeded, failed, skipped, stop_requested, grant_id, grant_expires_at, claimed_by, claimed_until, pause_reason, error_code, created_at, started_at, ended_at, updated_at
+RETURNING id, pending_action_id, run_id, conversation_id, user_id, operation_id, selector, template, state, total, processed, succeeded, failed, skipped, stop_requested, grant_id, grant_expires_at, claimed_by, claimed_until, pause_reason, error_code, created_at, started_at, ended_at, updated_at, unknown
 `
 
 type TouchBulkClaimParams struct {
@@ -1061,6 +1151,7 @@ func (q *Queries) TouchBulkClaim(ctx context.Context, arg TouchBulkClaimParams) 
 		&i.StartedAt,
 		&i.EndedAt,
 		&i.UpdatedAt,
+		&i.Unknown,
 	)
 	return i, err
 }

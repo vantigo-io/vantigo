@@ -38,6 +38,13 @@ func bulkHost(pool *pgxpool.Pool) *server {
 // UseBulkOps has the server composed over pool run bulk jobs through ops.
 func UseBulkOps(pool *pgxpool.Pool, ops BulkOps) { bulkHost(pool).opsOverride = ops }
 
+// DieAfterInFlight has the runner of the server composed over pool stop, as a
+// replica that died would, right after it marks an item in flight and before it
+// calls it, when die answers true.
+func DieAfterInFlight(pool *pgxpool.Pool, die func(job uuid.UUID, seq int32) bool) {
+	bulkHost(pool).afterInFlight = die
+}
+
 // ClaimID is the name the server composed over pool puts on its claims.
 func ClaimID(pool *pgxpool.Pool) string { return bulkHost(pool).claimID }
 
@@ -54,6 +61,13 @@ func RunBulk(ctx context.Context, pool *pgxpool.Pool, jobID uuid.UUID) error {
 	defer release()
 	s.runBulk(runCtx, job, nil)
 	return nil
+}
+
+// TakeOver claims a job whose claim lapsed for the named replica, as a takeover
+// does, and answers the job as it then stands.
+func TakeOver(ctx context.Context, pool *pgxpool.Pool, jobID uuid.UUID, replica string) (store.AssistantBulkJob, error) {
+	now := bulkHost(pool).deps.Clock()
+	return store.New(pool).ClaimBulkJob(ctx, store.ClaimBulkJobParams{ID: jobID, ClaimedBy: &replica, ClaimedUntil: now.Add(bulkClaimTTL), Now: now})
 }
 
 // ResumeLapsed has the server composed over pool take over every lapsed job, as

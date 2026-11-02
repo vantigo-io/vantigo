@@ -54,11 +54,27 @@ RETURNING *;
 
 -- name: ClaimBulkJob :one
 -- ClaimBulkJob takes a job whose claim lapsed (or never was) for this replica,
--- once: the conditional update lets one replica win.
-UPDATE assistant.bulk_jobs SET claimed_by = @claimed_by, claimed_until = @claimed_until::timestamptz, updated_at = @now::timestamptz
-WHERE id = @id AND state IN ('canary', 'running', 'stopping')
-  AND (claimed_by IS NULL OR claimed_until < @now::timestamptz)
-RETURNING *;
+-- once: the conditional update lets one replica win. In the same statement every
+-- item the dead replica had in flight becomes unknown and is counted processed:
+-- its call may or may not have been made, and no replica calls it again (S17).
+WITH c AS (
+    SELECT b.id FROM assistant.bulk_jobs b
+    WHERE b.id = @id AND b.state IN ('canary', 'running', 'stopping')
+      AND (b.claimed_by IS NULL OR b.claimed_until < @now::timestamptz)
+    FOR UPDATE OF b
+), swept AS (
+    UPDATE assistant.bulk_job_items i SET status = 'unknown', done_at = @now::timestamptz
+    FROM c
+    WHERE i.job_id = c.id AND i.status = 'in_flight'
+    RETURNING i.seq
+)
+UPDATE assistant.bulk_jobs j SET
+    claimed_by = @claimed_by, claimed_until = @claimed_until::timestamptz, updated_at = @now::timestamptz,
+    processed = j.processed + (SELECT count(*) FROM swept)::int,
+    unknown = j.unknown + (SELECT count(*) FROM swept)::int
+FROM c
+WHERE j.id = c.id
+RETURNING j.*;
 
 -- name: ListLapsedBulkJobs :many
 -- ListLapsedBulkJobs is the running jobs nobody holds a claim on, for the
@@ -70,17 +86,39 @@ WHERE state IN ('canary', 'running', 'stopping')
 ORDER BY updated_at
 LIMIT @batch_size;
 
+-- name: MarkBulkItemInFlight :one
+-- MarkBulkItemInFlight is the statement that commits before an item's call goes
+-- out (S17): from then on, a replica that dies leaves the item in_flight, and the
+-- one that takes the job over marks it unknown and never calls it. It answers
+-- nothing (ErrNoRows) when this replica no longer holds the claim or the item is
+-- not pending, and then the item is not called.
+UPDATE assistant.bulk_job_items i SET status = 'in_flight', in_flight_at = @now::timestamptz
+FROM assistant.bulk_jobs j
+WHERE i.job_id = @job_id AND i.seq = @seq AND i.status = 'pending'
+  AND j.id = i.job_id AND j.claimed_by = @claimed_by AND j.state IN ('canary', 'running', 'stopping')
+RETURNING i.seq;
+
+-- name: ReleaseBulkItem :exec
+-- ReleaseBulkItem puts an item back to pending when its call was never made (the
+-- dispatcher refused it before it went out), so the job that ends leaves it as it
+-- was.
+UPDATE assistant.bulk_job_items i SET status = 'pending', in_flight_at = NULL
+FROM assistant.bulk_jobs j
+WHERE i.job_id = @job_id AND i.seq = @seq AND i.status = 'in_flight'
+  AND j.id = i.job_id AND j.claimed_by = @claimed_by;
+
 -- name: RecordBulkItem :one
 -- RecordBulkItem records how one item went, counts it, and renews the claim, in
 -- one statement; it answers nothing (ErrNoRows) when this replica no longer
--- holds the claim or the item was already recorded, so a job is never counted
--- twice and a replica that lost the claim stops at once.
+-- holds the claim or the item is not in flight (a replica that took the job over
+-- has marked it unknown), so a job is never counted twice and a replica that lost
+-- the claim stops at once.
 WITH item AS (
     UPDATE assistant.bulk_job_items i SET
         status = @status, http_status = sqlc.narg(http_status)::integer, problem_code = sqlc.narg(problem_code)::text,
         problem_title = sqlc.narg(problem_title)::text, done_at = @now::timestamptz
     FROM assistant.bulk_jobs j
-    WHERE i.job_id = @job_id AND i.seq = @seq AND i.status = 'pending'
+    WHERE i.job_id = @job_id AND i.seq = @seq AND i.status = 'in_flight'
       AND j.id = i.job_id AND j.claimed_by = @claimed_by
     RETURNING i.status
 )
@@ -144,7 +182,10 @@ RETURNING *;
 DELETE FROM assistant.bulk_job_items WHERE job_id = @job_id;
 
 -- name: ListBulkFailures :many
-SELECT * FROM assistant.bulk_job_items WHERE job_id = @job_id AND status = 'failed' ORDER BY seq LIMIT @batch_size;
+-- ListBulkFailures is the items that went wrong: the unknown ones first, then the
+-- failed, each in order.
+SELECT * FROM assistant.bulk_job_items WHERE job_id = @job_id AND status IN ('failed', 'unknown')
+ORDER BY (status = 'unknown') DESC, seq LIMIT @batch_size;
 
 -- name: ListBulkCanary :many
 -- ListBulkCanary is the items the canary ran, in order, with how each went.

@@ -77,7 +77,7 @@ export interface paths {
         };
         /**
          * Download the failed items of a bulk job
-         * @description The items that failed, as a file - the item, the HTTP status and the problem's code and title - semicolon-separated, UTF-8 with a byte order mark, CRLF, guarded against formulas. Named assistant-bulk-<id>-failed-items.csv.
+         * @description The items that failed or are unknown, as a file - the item, its status (failed, or unknown: the change may or may not have been made), the HTTP status and the problem's code and title - semicolon-separated, UTF-8 with a byte order mark, CRLF, guarded against formulas. Named assistant-bulk-<id>-failed-items.csv.
          */
         get: operations["getAssistantBulkJobFailures"];
         put?: never;
@@ -424,7 +424,7 @@ export interface components {
             count: number;
             reasons: components["schemas"]["AssistantBulkReason"][];
         };
-        /** @description One frozen item of a bulk plan and how it went. code and title are the problem's own, status the HTTP status; never a response body. */
+        /** @description One frozen item of a bulk plan and how it went. code and title are the problem's own, httpStatus the HTTP status; never a response body. in_flight is an item whose change is being made now; unknown an item whose change may or may not have been made, because the replica that was making it died: it is never run again, and the person checks it. */
         AssistantBulkItem: {
             code?: string;
             /** Format: int32 */
@@ -433,12 +433,12 @@ export interface components {
             /** Format: int32 */
             seq: number;
             /** @enum {string} */
-            status: "pending" | "succeeded" | "failed" | "skipped";
+            status: "pending" | "in_flight" | "succeeded" | "failed" | "skipped" | "unknown";
             title?: string;
         };
         /** @description A bulk job as it stands - the state, the counters and the first failures. The card polls it while the job runs. */
         AssistantBulkJob: {
-            /** @description The first 50 items that failed, each with the refusal. All of them are in failures.csv. */
+            /** @description The first 50 items that failed or are unknown (the unknown ones first), each with the refusal. All of them are in failures.csv. */
             failures: components["schemas"]["AssistantBulkItem"][];
             /** @description How each of the first items went, once the canary has run. No value of the change. */
             canary: components["schemas"]["AssistantBulkItem"][];
@@ -471,6 +471,11 @@ export interface components {
             succeeded: number;
             /** Format: int32 */
             total: number;
+            /**
+             * Format: int32
+             * @description How many items may or may not have been changed - the replica making the change died and the item is never run again. They count as processed.
+             */
+            unknown: number;
         };
         /** @description A bulk plan as its card shows it - the same as the job without the failed list. total is how many items the selector found when the plan was made; the items are frozen then and the job acts on exactly them. */
         AssistantBulkPlan: {
@@ -505,6 +510,11 @@ export interface components {
             succeeded: number;
             /** Format: int32 */
             total: number;
+            /**
+             * Format: int32
+             * @description How many items may or may not have been changed - the replica making the change died and the item is never run again. They count as processed.
+             */
+            unknown: number;
         };
         AssistantBulkReason: {
             /** @description missing_id (the item carries no value for the parameter it feeds). */

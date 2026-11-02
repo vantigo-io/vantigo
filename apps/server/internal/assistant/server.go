@@ -22,6 +22,10 @@ type server struct {
 	claimID string
 	// opsOverride is a scripted dispatcher, installed by a test only.
 	opsOverride bulkOps
+	// afterInFlight, installed by a test only, is told of each item once it is
+	// marked in flight; it answers true to have the runner stop there, as a
+	// replica that died would.
+	afterInFlight func(job uuid.UUID, seq int32) bool
 }
 
 var _ gen.StrictServerInterface = (*server)(nil)
