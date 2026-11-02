@@ -13,9 +13,10 @@ and what to report. They are written for **Claude Sonnet 5.5** (`model: sonnet`)
 | [B](b-writes.md) | Changes with confirmation cards, the daily budget, the usage view, safe links | `feat/assistant-writes` | **A merged** | Go (assistant), a migration, assistant frontend, docs (en and nb) |
 | [T](t-tours.md) | *Show me*: Mantine Tour over a registry of `data-assist` targets | `feat/assistant-tours` | **A merged**; run after B | module frontends (markers), assistant (Go and frontend), host, docs (en and nb) |
 
-C (bulk) is briefed once B lands, because it reuses B's pending action and card. B and T
-both change the assistant's tools, prompt and panel, so they run one after the other:
-B first.
+| [C](c-bulk.md) | Bulk changes: a frozen selector, preview, a canary of 5, the job in chunks, failed items | `feat/assistant-bulk` | **B and T merged** | Go (assistant, a migration), assistant frontend, docs (en and nb) |
+
+B, T and C all change the assistant's tools, prompt and panel, so they run one after the
+other: B, then T, then C.
 
 **Order.** 0, then A once 0 is on `main`. Anders merges each pull request himself. Open
 each one against `main` once the delivery it depends on has landed. Stacking a delivery
