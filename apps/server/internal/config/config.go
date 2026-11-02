@@ -1348,7 +1348,9 @@ func aiConfig(p *problems, env map[string]string, c *Config) {
 	// Anthropic has no keyless endpoint: a base URL is a gateway in front of
 	// the same API, which still wants the key.
 	anthropic := provider == "anthropic"
-	if !slices.Contains(aiProviders, provider) {
+	// The renamed variables predate Anthropic and name an OpenAI model by
+	// default: through them it stays unavailable, as before. Set AI_PROVIDER.
+	if !slices.Contains(aiProviders, provider) || (fromAliases && anthropic) {
 		if fromAliases {
 			// The old rule: a provider this build does not implement leaves
 			// the feature unavailable instead of refusing to start.
