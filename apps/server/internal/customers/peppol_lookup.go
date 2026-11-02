@@ -199,7 +199,11 @@ type peppolLookupOutcome struct {
 // resolved its actor before calling: an empty participant is a caller's bug,
 // not an outcome, and actorFor is an out-of-process call that must not happen
 // inside this function's transaction.
-func (s *server) lookupAndStorePeppol(ctx context.Context, customerID int32, participant string, act actor) (peppolLookupOutcome, error) {
+//
+// The answer is stored in a transaction opened on on: the pool for the
+// endpoint, and for the worker the connection its lease holds, which must
+// never wait for a second one.
+func (s *server) lookupAndStorePeppol(ctx context.Context, on db.TxBeginner, customerID int32, participant string, act actor) (peppolLookupOutcome, error) {
 	lookupCtx := ctx
 	if s.deps.Config.PeppolTimeout > 0 {
 		var cancel context.CancelFunc
@@ -231,7 +235,7 @@ func (s *server) lookupAndStorePeppol(ctx context.Context, customerID int32, par
 		hadPrevious bool
 		changed     bool
 	)
-	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
+	err = db.WithTx(ctx, on, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		txq := store.New(tx)
 		// The customer's lock before the lookup row's, as every customer-scoped
 		// write takes it: the lookup row's own lock does not fence a merge, which
@@ -347,7 +351,7 @@ func (s *server) PostCustomersByIdPeppolLookup(ctx context.Context, req gen.Post
 		return nil, fmt.Errorf("customers: resolve actor: %w", err)
 	}
 
-	outcome, err := s.lookupAndStorePeppol(ctx, req.Id, participant, act)
+	outcome, err := s.lookupAndStorePeppol(ctx, s.deps.Pool, req.Id, participant, act)
 	if errors.Is(err, errPeppolLookupUnavailable) {
 		// Already logged by kind inside lookupAndStorePeppol.
 		return peppolLookupUnavailableResponse(), nil

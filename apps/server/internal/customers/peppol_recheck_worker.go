@@ -7,7 +7,10 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+
 	"github.com/vantigo-io/vantigo/server/internal/customers/store"
+	"github.com/vantigo-io/vantigo/server/internal/db"
 	"github.com/vantigo-io/vantigo/server/internal/module"
 	"github.com/vantigo-io/vantigo/server/internal/worker"
 )
@@ -135,15 +138,20 @@ func (w *PeppolRecheckWorker) Run(ctx context.Context) error {
 // for the mirror image of that reason — the aged set must not be the one that
 // never fits either — and the aged set then asks for whatever is left, so a
 // cycle with few EHF candidates still spends the whole batch.
+//
+// Every statement of the cycle runs on the lease's own connection: a worker
+// that held it while asking the pool for a second would deadlock a pool as
+// small as the lease workers are many (four at boot on a four-connection
+// pool), and readiness with it. The cycle calls no other module.
 func (w *PeppolRecheckWorker) RunCycle(ctx context.Context) (bool, error) {
-	return w.underLease(ctx, func(ctx context.Context) error {
+	return w.underLease(ctx, func(ctx context.Context, conn *pgxpool.Conn) error {
 		if w.srv.peppolLookup == nil {
 			// Unreachable through module.Workers, which does not register this
 			// worker without the lookup — but a worker constructed directly
 			// answers "nothing to do" rather than panicking on a nil seam.
 			return nil
 		}
-		q := store.New(w.deps.Pool)
+		q := store.New(conn)
 
 		missing, err := q.EhfCustomersWithoutPeppolLookup(ctx, peppolRecheckEhfShare)
 		if err != nil {
@@ -174,7 +182,7 @@ func (w *PeppolRecheckWorker) RunCycle(ctx context.Context) (bool, error) {
 				continue
 			}
 			attempted++
-			if ok, news := w.recheck(ctx, row.ID, participant); ok {
+			if ok, news := w.recheck(ctx, conn, row.ID, participant); ok {
 				checked++
 				if news {
 					changed++
@@ -209,12 +217,12 @@ func (w *PeppolRecheckWorker) RunCycle(ctx context.Context) (bool, error) {
 			// the customer's next lookup is a first one, which is what it is for the
 			// participant it resolves to now.
 			if participant == "" || participant != row.ParticipantID {
-				if w.drop(ctx, row.ID) {
+				if w.drop(ctx, q, row.ID) {
 					dropped++
 				}
 				continue
 			}
-			if ok, news := w.recheck(ctx, row.ID, participant); ok {
+			if ok, news := w.recheck(ctx, conn, row.ID, participant); ok {
 				checked++
 				if news {
 					changed++
@@ -237,7 +245,7 @@ func (w *PeppolRecheckWorker) RunCycle(ctx context.Context) (bool, error) {
 // communications/retention.go's are (see either for why the unlock runs on a
 // context stripped of cancellation and why a failed unlock discards the
 // connection), on this worker's own key.
-func (w *PeppolRecheckWorker) underLease(ctx context.Context, action func(context.Context) error) (bool, error) {
+func (w *PeppolRecheckWorker) underLease(ctx context.Context, action func(context.Context, *pgxpool.Conn) error) (bool, error) {
 	conn, err := w.deps.Pool.Acquire(ctx)
 	if err != nil {
 		return false, fmt.Errorf("customers: acquire a connection for the peppol re-check lease: %w", err)
@@ -261,7 +269,7 @@ func (w *PeppolRecheckWorker) underLease(ctx context.Context, action func(contex
 			_ = conn.Conn().Close(release)
 		}
 	}()
-	return true, action(ctx)
+	return true, action(ctx, conn)
 }
 
 // recheck is one customer asked again through the click's own function, with
@@ -274,8 +282,8 @@ func (w *PeppolRecheckWorker) underLease(ctx context.Context, action func(contex
 // failure is logged here, because a cycle that stopped at the first one would
 // leave the rest of the batch unchecked for a whole poll interval over a
 // problem that may be one row's.
-func (w *PeppolRecheckWorker) recheck(ctx context.Context, customerID int32, participant string) (ok, changed bool) {
-	outcome, err := w.srv.lookupAndStorePeppol(ctx, customerID, participant, generatedFallbackActor)
+func (w *PeppolRecheckWorker) recheck(ctx context.Context, on db.TxBeginner, customerID int32, participant string) (ok, changed bool) {
+	outcome, err := w.srv.lookupAndStorePeppol(ctx, on, customerID, participant, generatedFallbackActor)
 	if err != nil {
 		// Not while the process is shutting down: a cancellation landing inside
 		// db.WithTx is this cycle being told to stop, not a database problem, and
@@ -299,8 +307,8 @@ func (w *PeppolRecheckWorker) recheck(ctx context.Context, customerID int32, par
 // that stopped at the first one would leave the rest of the batch unchecked for
 // a whole poll interval over what may be one row's problem — and the row is
 // simply dropped next cycle instead. A cancellation is not logged, as above.
-func (w *PeppolRecheckWorker) drop(ctx context.Context, customerID int32) bool {
-	if err := store.New(w.deps.Pool).DeleteCustomerPeppolLookup(ctx, customerID); err != nil {
+func (w *PeppolRecheckWorker) drop(ctx context.Context, q *store.Queries, customerID int32) bool {
+	if err := q.DeleteCustomerPeppolLookup(ctx, customerID); err != nil {
 		if ctx.Err() == nil {
 			w.logger().Error("customers: dropping a peppol lookup whose participant changed failed",
 				"worker", peppolRecheckWorkerName, "customerId", customerID, "error", err.Error())

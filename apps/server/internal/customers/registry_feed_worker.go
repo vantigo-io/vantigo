@@ -8,8 +8,10 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/vantigo-io/vantigo/server/internal/customers/store"
+	"github.com/vantigo-io/vantigo/server/internal/db"
 	"github.com/vantigo-io/vantigo/server/internal/module"
 	"github.com/vantigo-io/vantigo/server/internal/worker"
 )
@@ -167,13 +169,19 @@ func (w *RegistryFeedWorker) Run(ctx context.Context) error {
 // I5): a registry that is down is down for the whole cycle, so a sweep that gave
 // up on it must not be followed by a feed that spends the same fifteen seconds
 // per entity discovering the same thing.
+//
+// Every statement of the cycle runs on the lease's own connection, the
+// refreshes' transactions included: a worker that held it while asking the
+// pool for a second would deadlock a pool as small as the lease workers are
+// many (four at boot on a four-connection pool), and readiness with it. The
+// cycle calls no other module.
 func (w *RegistryFeedWorker) RunCycle(ctx context.Context) (bool, error) {
-	return w.underLease(ctx, func(ctx context.Context) error {
-		if err := w.ensureCursor(ctx); err != nil {
+	return w.underLease(ctx, func(ctx context.Context, conn *pgxpool.Conn) error {
+		if err := w.ensureCursor(ctx, store.New(conn)); err != nil {
 			return err
 		}
 		outage := &registryOutage{logger: w.logger()}
-		if _, err := w.Sweep(ctx, outage); err != nil {
+		if _, err := w.Sweep(ctx, conn, outage); err != nil {
 			return err
 		}
 		if outage.abandoned {
@@ -181,7 +189,7 @@ func (w *RegistryFeedWorker) RunCycle(ctx context.Context) (bool, error) {
 			// and the cursor are where they were, and the next poll tries again.
 			return nil
 		}
-		_, err := w.ReadFeed(ctx, outage)
+		_, err := w.ReadFeed(ctx, conn, outage)
 		return err
 	})
 }
@@ -192,7 +200,7 @@ func (w *RegistryFeedWorker) RunCycle(ctx context.Context) (bool, error) {
 // full). Reproduced rather than shared: this worker and the Peppol re-check
 // worker beside it are the only two users in this module, and a shared helper
 // would be a third module boundary to design.
-func (w *RegistryFeedWorker) underLease(ctx context.Context, action func(context.Context) error) (bool, error) {
+func (w *RegistryFeedWorker) underLease(ctx context.Context, action func(context.Context, *pgxpool.Conn) error) (bool, error) {
 	conn, err := w.deps.Pool.Acquire(ctx)
 	if err != nil {
 		return false, fmt.Errorf("customers: acquire a connection for the registry feed lease: %w", err)
@@ -220,14 +228,14 @@ func (w *RegistryFeedWorker) underLease(ctx context.Context, action func(context
 			_ = conn.Conn().Close(release)
 		}
 	}()
-	return true, action(ctx)
+	return true, action(ctx, conn)
 }
 
 // ensureCursor plants the cursor row the first time this installation runs a
 // cycle, stamping the moment it joined the feed (design D1). Idempotent, and
 // deliberately not an upsert: started_at must never move.
-func (w *RegistryFeedWorker) ensureCursor(ctx context.Context) error {
-	if err := store.New(w.deps.Pool).EnsureRegistryFeedCursor(ctx, w.now()); err != nil {
+func (w *RegistryFeedWorker) ensureCursor(ctx context.Context, q *store.Queries) error {
+	if err := q.EnsureRegistryFeedCursor(ctx, w.now()); err != nil {
 		return fmt.Errorf("customers: ensure the registry feed cursor: %w", err)
 	}
 	return nil
@@ -253,8 +261,8 @@ func (w *RegistryFeedWorker) ensureCursor(ctx context.Context) error {
 // cannot resolve pins the backfill to the same 25 rows forever. Reading that
 // position means the cursor row has to exist, which is why RunCycle calls
 // ensureCursor ahead of this and why anything driving Sweep on its own must too.
-func (w *RegistryFeedWorker) Sweep(ctx context.Context, outage *registryOutage) (int, error) {
-	q := store.New(w.deps.Pool)
+func (w *RegistryFeedWorker) Sweep(ctx context.Context, conn *pgxpool.Conn, outage *registryOutage) (int, error) {
+	q := store.New(conn)
 
 	cursor, err := q.GetRegistryFeedCursor(ctx)
 	if err != nil {
@@ -276,7 +284,7 @@ func (w *RegistryFeedWorker) Sweep(ctx context.Context, outage *registryOutage) 
 			return tally.refreshed, nil
 		}
 		staleAttempted++
-		outcome := w.refresh(ctx, row.CustomerID, row.Type, row.LegalCountry, row.LegalID, row.LegalName, row.LegalSource, row.LegalType)
+		outcome := w.refresh(ctx, conn, row.CustomerID, row.Type, row.LegalCountry, row.LegalID, row.LegalName, row.LegalSource, row.LegalType)
 		tally.add(outcome)
 		if outage.record(outcome) {
 			// The registry is not answering (final fix wave I5): stop here with the
@@ -304,7 +312,7 @@ func (w *RegistryFeedWorker) Sweep(ctx context.Context, outage *registryOutage) 
 			return tally.refreshed, nil
 		}
 		backfillAttempted++
-		outcome := w.refresh(ctx, row.ID, row.Type, row.LegalCountry, row.LegalID, row.LegalName, row.LegalSource, row.LegalType)
+		outcome := w.refresh(ctx, conn, row.ID, row.Type, row.LegalCountry, row.LegalID, row.LegalName, row.LegalSource, row.LegalType)
 		tally.add(outcome)
 		if outage.record(outcome) {
 			// An abandoned batch claims no ground either, for the cancelled case's
@@ -362,8 +370,8 @@ func (w *RegistryFeedWorker) logSweep(staleAttempted, backfillAttempted int, tal
 // error returned, so the next cycle re-reads the same page. Everything a page
 // costs — the hint, the refresh — happens before its cursor is written, so a
 // page is either fully accounted for or read again.
-func (w *RegistryFeedWorker) ReadFeed(ctx context.Context, outage *registryOutage) (int, error) {
-	q := store.New(w.deps.Pool)
+func (w *RegistryFeedWorker) ReadFeed(ctx context.Context, conn *pgxpool.Conn, outage *registryOutage) (int, error) {
+	q := store.New(conn)
 	pages := 0
 	for ; pages < registryFeedPageBudget; pages++ {
 		if ctx.Err() != nil {
@@ -389,7 +397,7 @@ func (w *RegistryFeedWorker) ReadFeed(ctx context.Context, outage *registryOutag
 			}
 			return pages, nil
 		}
-		if err := w.handlePage(ctx, q, page, outage); err != nil {
+		if err := w.handlePage(ctx, conn, page, outage); err != nil {
 			return pages, err
 		}
 		if outage.abandoned {
@@ -418,7 +426,8 @@ func (w *RegistryFeedWorker) ReadFeed(ctx context.Context, outage *registryOutag
 // whatever the reason, so three requests would spend three requests to learn
 // one thing, and the oldest of three timestamps would understate how current
 // the record then is.
-func (w *RegistryFeedWorker) handlePage(ctx context.Context, q *store.Queries, page feedPage, outage *registryOutage) error {
+func (w *RegistryFeedWorker) handlePage(ctx context.Context, conn *pgxpool.Conn, page feedPage, outage *registryOutage) error {
+	q := store.New(conn)
 	newest := make(map[string]time.Time, len(page.Entries))
 	numbers := make([]string, 0, len(page.Entries))
 	var highest int64
@@ -470,7 +479,7 @@ func (w *RegistryFeedWorker) handlePage(ctx context.Context, q *store.Queries, p
 		}); err != nil {
 			return fmt.Errorf("customers: write a registry updated hint: %w", err)
 		}
-		outcome := w.refresh(ctx, row.ID, row.Type, row.LegalCountry, row.LegalID, row.LegalName, row.LegalSource, row.LegalType)
+		outcome := w.refresh(ctx, conn, row.ID, row.Type, row.LegalCountry, row.LegalID, row.LegalName, row.LegalSource, row.LegalType)
 		tally.add(outcome)
 		if outage.record(outcome) {
 			// The registry is not answering (final fix wave I5). Return without
@@ -605,13 +614,13 @@ func (o *registryOutage) record(outcome refreshOutcome) bool {
 // A customer whose identity cannot be looked up at all — a legacy legal_id that
 // is not an organisation number — is skipped silently: registryOrganisationNumber
 // is the one rule for that, shared with the refresh endpoint's own 409.
-func (w *RegistryFeedWorker) refresh(ctx context.Context, customerID int32, customerType string, legalCountry, legalID, legalName, legalSource, legalType *string) refreshOutcome {
+func (w *RegistryFeedWorker) refresh(ctx context.Context, on db.TxBeginner, customerID int32, customerType string, legalCountry, legalID, legalName, legalSource, legalType *string) refreshOutcome {
 	identity := identityFromRow(legalCountry, legalID, legalName, legalSource, legalType)
 	orgnr := registryOrganisationNumber(identity, customerType)
 	if orgnr == "" {
 		return refreshSkipped
 	}
-	result, err := w.srv.refreshRegistryRecord(ctx, customerID, orgnr, identity.Name, generatedFallbackActor)
+	result, err := w.srv.refreshRegistryRecord(ctx, on, customerID, orgnr, identity.Name, generatedFallbackActor)
 	if err != nil {
 		if errors.Is(err, errCustomerNotFound) || errors.Is(err, pgx.ErrNoRows) || isReadOnlyCustomer(err) {
 			// Archived, merged away or gone between the select and here: nothing

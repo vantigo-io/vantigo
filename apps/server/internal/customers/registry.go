@@ -582,7 +582,7 @@ var registryHookTimeout = brregAttemptTimeout
 func (s *server) fetchAndStoreRegistryRecord(ctx context.Context, customerID int32, orgnr, legalName string, act actor) error {
 	hookCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), registryHookTimeout)
 	defer cancel()
-	_, err := s.refreshRegistryRecord(hookCtx, customerID, orgnr, legalName, act)
+	_, err := s.refreshRegistryRecord(hookCtx, s.deps.Pool, customerID, orgnr, legalName, act)
 	return err
 }
 
@@ -662,7 +662,11 @@ func invalidateRegistryRecord(ctx context.Context, q *store.Queries, customerID 
 // Each of the four outcomes is a real answer about a real company, never an
 // error — see brreg_entity.go's own doc comment for why the registry has
 // three shapes of "gone" and only one of them is a failure.
-func (s *server) refreshRegistryRecord(ctx context.Context, customerID int32, orgnr, legalName string, act actor) (registryRefreshResult, error) {
+//
+// The answer is stored in a transaction opened on on: the pool for the
+// endpoint and the write hooks, and for the feed worker the connection its
+// lease holds, which must never wait for a second one.
+func (s *server) refreshRegistryRecord(ctx context.Context, on db.TxBeginner, customerID int32, orgnr, legalName string, act actor) (registryRefreshResult, error) {
 	entity, outcome, err := s.brreg.entity(ctx, orgnr)
 	if err != nil {
 		return registryRefreshResult{}, err
@@ -680,7 +684,7 @@ func (s *server) refreshRegistryRecord(ctx context.Context, customerID int32, or
 	}
 
 	var result registryRefreshResult
-	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
+	err = db.WithTx(ctx, on, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		var err error
 		result, err = storeRegistryAnswer(ctx, store.New(tx), customerID, orgnr, legalName, entity, outcome, now, act)
 		return err
@@ -902,7 +906,7 @@ func (s *server) PostCustomersByIdRegistryRefresh(ctx context.Context, req gen.P
 		return nil, fmt.Errorf("customers: resolve actor: %w", err)
 	}
 
-	result, err := s.refreshRegistryRecord(ctx, req.Id, orgnr, identity.Name, act)
+	result, err := s.refreshRegistryRecord(ctx, s.deps.Pool, req.Id, orgnr, identity.Name, act)
 	if errors.Is(err, errBrregUnavailable) {
 		s.deps.Logger.WarnContext(ctx, "customers: registry refresh failed", "customerId", req.Id, "errorKind", registryErrorKind(err))
 		return registryRefreshUnavailableResponse(), nil

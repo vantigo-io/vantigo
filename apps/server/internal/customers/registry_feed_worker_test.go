@@ -1187,3 +1187,39 @@ func TestRegistryFeedWorker_RunStopsWithItsContext(t *testing.T) {
 		t.Fatal("Run did not return after its context was cancelled")
 	}
 }
+
+// The lease is held on a pooled connection, so a cycle that asked the pool for
+// a second one while holding it would wait for ever on a pool of one — and,
+// with as many such workers as connections, deadlock the installation's pool
+// at boot (the API's /health/ready on a four-connection pool). On a pool of one
+// the whole cycle must finish: the cursor, the sweep, the feed and the refresh
+// of the customer it names.
+func TestRegistryFeedWorker_RunsTheCycleOnTheOneConnectionItHolds(t *testing.T) {
+	t.Parallel()
+	transport := newRegistryWorkerTransport(
+		entityBodies(map[string]entityAnswer{
+			"923609016": feedFound(equinorRegistryBody),
+		}),
+		feedPageOf(feedEntryOf(100, feedEntryDateLater, "923609016", "Endring")),
+		feedPageOf(),
+	)
+	h := newHarness(t, modtest.WithPoolMaxConns(1), modtest.WithTransport(transport), modtest.WithBackoff(zeroBackoff))
+	c := authenticatedClient(t, h)
+	created := createBrregPick(t, c, "EQUINOR ASA", "923609016")
+	transport.entity = entityBodies(map[string]entityAnswer{
+		"923609016": feedFound(movedEquinorRegistryBody),
+	})
+	h.Advance(afterTheFeed)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if ran, err := customers.NewRegistryFeedWorker(h.Deps()).RunCycle(ctx); err != nil || !ran {
+		t.Fatalf("RunCycle on a pool of one = %v, %v; want true, nil", ran, err)
+	}
+	if hint := registryHint(t, h, created.Id); hint == nil || !hint.UTC().Equal(mustParseFeedDate(t, feedEntryDateLater)) {
+		t.Errorf("hint = %v, want the feed entry's date %s", hint, feedEntryDateLater)
+	}
+	if len(fetchRegistryEvents(t, c, created.Id)) == 0 {
+		t.Error("no registry.change event: the cycle never refreshed the customer the feed named")
+	}
+}
