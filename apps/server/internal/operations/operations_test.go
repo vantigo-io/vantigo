@@ -943,6 +943,17 @@ func TestCall_TheRoutersAnswerIsAResult(t *testing.T) {
 			t.Errorf("Call = %+v, %v, want the 500 as a result", res, err)
 		}
 	})
+	t.Run("the response headers come back", func(t *testing.T) {
+		answer(func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("ETag", `"7"`)
+			_, _ = w.Write([]byte(`{}`))
+		})
+		res, err := f.d.Call(ctx, CallRequest{OperationID: "listThings"})
+		if err != nil || res.Header.Get("ETag") != `"7"` {
+			t.Errorf("Call = %+v, %v, want the ETag header", res, err)
+		}
+	})
 	t.Run("no body", func(t *testing.T) {
 		answer(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) })
 		res, err := f.d.Call(ctx, CallRequest{OperationID: "deleteThing", PathParams: map[string]any{"id": "1"}, Confirmed: true})
