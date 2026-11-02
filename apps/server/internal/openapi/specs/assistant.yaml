@@ -234,7 +234,7 @@ components:
             type: object
         AssistantPart:
             additionalProperties: false
-            description: "One typed part of a message. text: the words (Markdown); tool_call: the assistant asked for a tool (name, label, the arguments it gave); tool_result: what the tool answered the model, compacted (status ok, refused or error); link: a record or screen in the app (route, label); confirmation: a change the assistant proposed, waiting for the person (actionId; the card is the conversation's pendingActions entry with that id)."
+            description: "One typed part of a message. text: the words (Markdown); tool_call: the assistant asked for a tool (name, label, the arguments it gave); tool_result: what the tool answered the model, compacted (status ok, refused or error); link: a record or screen in the app (route, label); confirmation: a change the assistant proposed, waiting for the person (actionId; the card is the conversation's pendingActions entry with that id); tour: a guided tour the person starts with a click (steps, each a registered target with a title and a text in the person's language)."
             properties:
                 actionId:
                     format: uuid
@@ -258,6 +258,10 @@ components:
                         - refused
                         - error
                     type: string
+                steps:
+                    items:
+                        $ref: "#/components/schemas/AssistantTourStep"
+                    type: array
                 text:
                     type: string
                 type:
@@ -267,6 +271,7 @@ components:
                         - tool_result
                         - link
                         - confirmation
+                        - tour
                     type: string
             required:
                 - type
@@ -631,6 +636,21 @@ components:
                         - off
                         - read
                     type: string
+            type: object
+        AssistantTourStep:
+            additionalProperties: false
+            description: "One step of a guided tour. target is a key of the registry the module frontends declare (the server refuses any other); the screen it lives on is the registry's, never the model's."
+            properties:
+                body:
+                    type: string
+                target:
+                    type: string
+                title:
+                    type: string
+            required:
+                - target
+                - title
+                - body
             type: object
         AssistantUpdateConversationRequest:
             additionalProperties: false

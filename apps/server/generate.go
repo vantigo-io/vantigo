@@ -18,6 +18,12 @@ package server
 // stale.
 //go:generate sh -c "rm -rf internal/assistant/docs && mkdir -p internal/assistant/docs/en/user internal/assistant/docs/en/admin internal/assistant/docs/nb/user internal/assistant/docs/nb/admin && cp ../../docs/src/content/docs/en/user/*.md internal/assistant/docs/en/user/ && cp ../../docs/src/content/docs/en/admin/*.md internal/assistant/docs/en/admin/ && cp ../../docs/src/content/docs/nb/user/*.md internal/assistant/docs/nb/user/ && cp ../../docs/src/content/docs/nb/admin/*.md internal/assistant/docs/nb/admin/"
 
+// The Assistant's tour targets: every module frontend registers the controls the
+// Assistant can point at (apps/*/frontend/src/assist-targets.json), and
+// tools/assist/gen-targets.ts merges them into the small registry the module
+// embeds. internal/assistant/assist_test.go fails if the copy is stale.
+//go:generate bun run ../../tools/assist/gen-targets.ts
+
 // The contract's generated Go code. oapi-codegen is pinned here, in one place,
 // and runs the same way locally and in CI's drift check.
 //go:generate go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.8.0 -config internal/openapi/gen/cfg-common.yaml ../../openapi/common.yaml

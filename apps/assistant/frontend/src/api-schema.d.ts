@@ -402,7 +402,7 @@ export interface components {
             app: string;
             route: string;
         };
-        /** @description One typed part of a message. text: the words (Markdown); tool_call: the assistant asked for a tool (name, label, the arguments it gave); tool_result: what the tool answered the model, compacted (status ok, refused or error); link: a record or screen in the app (route, label); confirmation: a change the assistant proposed, waiting for the person (actionId; the card is the conversation's pendingActions entry with that id). */
+        /** @description One typed part of a message. text: the words (Markdown); tool_call: the assistant asked for a tool (name, label, the arguments it gave); tool_result: what the tool answered the model, compacted (status ok, refused or error); link: a record or screen in the app (route, label); confirmation: a change the assistant proposed, waiting for the person (actionId; the card is the conversation's pendingActions entry with that id); tour: a guided tour the person starts with a click (steps, each a registered target with a title and a text in the person's language). */
         AssistantPart: {
             /** Format: uuid */
             actionId?: string;
@@ -416,9 +416,10 @@ export interface components {
             route?: string;
             /** @enum {string} */
             status?: "ok" | "refused" | "error";
+            steps?: components["schemas"]["AssistantTourStep"][];
             text?: string;
             /** @enum {string} */
-            type: "text" | "tool_call" | "tool_result" | "link" | "confirmation";
+            type: "text" | "tool_call" | "tool_result" | "link" | "confirmation" | "tour";
         };
         /** @description A change the assistant proposed and nothing has written yet, or has now been decided. summary is the operation's summary; explain is the assistant's own one-line description in the person's language, shown beside it and never instead of the fields. A decided action keeps the names of its fields and no values. */
         AssistantPendingAction: {
@@ -576,6 +577,12 @@ export interface components {
             retentionMonths?: number;
             /** @enum {string} */
             sensitiveDefault?: "off" | "read";
+        };
+        /** @description One step of a guided tour. target is a key of the registry the module frontends declare (the server refuses any other); the screen it lives on is the registry's, never the model's. */
+        AssistantTourStep: {
+            body: string;
+            target: string;
+            title: string;
         };
         AssistantUpdateConversationRequest: {
             archived?: boolean;
