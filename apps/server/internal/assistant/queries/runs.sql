@@ -32,8 +32,11 @@ WHERE id = @id AND state = 'running'
 RETURNING *;
 
 -- name: ResumeRun :one
--- ResumeRun is the person deciding: the run that waited runs again.
-UPDATE assistant.runs SET state = 'running', stop_requested = false
+-- ResumeRun is the person deciding: the run that waited runs again. It starts
+-- again now, for a run that waited a day or a bulk job that lasted an hour would
+-- otherwise look stale to the sweep that fails the runs still running after ten
+-- minutes.
+UPDATE assistant.runs SET state = 'running', stop_requested = false, started_at = @now::timestamptz
 WHERE id = @id AND user_id = @user_id AND state = 'awaiting_confirmation'
 RETURNING *;
 

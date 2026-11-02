@@ -213,7 +213,9 @@ The worker **`assistant-runs`** polls every minute and marks every run still `ru
 run running forever and its partial answer stays readable. A live run never reaches it: the ceiling
 is five minutes. It also [expires the changes nobody decided](#expiry) in 24 hours and closes a claimed
 confirmation that was never recorded. Each is one idempotent statement on the pool, with no lease and no
-second connection held, so every replica may run it.
+second connection held, so every replica may run it. A run that waited for a decision, or for a
+[bulk job](#bulk-changes), starts again when it resumes (`started_at` is set to now), so the sweep does
+not take an answer being written after a long wait for a run the server lost.
 
 ## The stream
 

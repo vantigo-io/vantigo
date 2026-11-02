@@ -98,6 +98,7 @@ type bulkOpts struct {
 	pending   string        // the pending action's status
 	done      int           // how many items are already succeeded
 	updated   time.Duration // updated_at relative to now
+	runAge    time.Duration // how long ago the run began
 }
 
 func seedBulk(t *testing.T, h *modtest.Harness, user uuid.UUID, o bulkOpts) bulkSeed {
@@ -115,7 +116,7 @@ func seedBulk(t *testing.T, h *modtest.Harness, user uuid.UUID, o bulkOpts) bulk
 	now := h.Now()
 	h.Exec(t, `INSERT INTO assistant.conversations (id, user_id, title, origin_app, origin_route, created_at, last_activity_at)
 	           VALUES ($1, $2, 'Bulk', 'energy', '/energy', $3, $3)`, s.conv, user, now)
-	h.Exec(t, `INSERT INTO assistant.runs (id, conversation_id, user_id, state, started_at) VALUES ($1, $2, $3, 'awaiting_confirmation', $4)`, s.run, s.conv, user, now)
+	h.Exec(t, `INSERT INTO assistant.runs (id, conversation_id, user_id, state, started_at) VALUES ($1, $2, $3, 'awaiting_confirmation', $4)`, s.run, s.conv, user, now.Add(-o.runAge))
 	h.Exec(t, `INSERT INTO assistant.messages (id, conversation_id, run_id, role, content, created_at)
 	           VALUES ($1, $2, $3, 'tool', '[{"type":"tool_result","callId":"c1","name":"propose_bulk","status":"ok","content":"{}"}]', $4)`, s.toolMessage, s.conv, s.run, now)
 	decided := now
@@ -843,4 +844,32 @@ func TestBulkJobs_DeletingTheConversationTakesTheJobWithIt(t *testing.T) {
 	if n := modtest.One[int](t, h, `SELECT count(*) FROM assistant.bulk_jobs WHERE id = $1`, seed.job); n != 0 {
 		t.Error("the job survived its conversation")
 	}
+}
+
+// A run that waited an hour for its job began an hour ago. When the job ends
+// and the run goes on to tell the person, the sweep that fails the runs still
+// running after ten minutes must not take it for one the server lost.
+func TestBulkRun_TheRunThatWaitedForTheJobIsNotStaleWhenItAnswers(t *testing.T) {
+	t.Parallel()
+	release := make(chan struct{})
+	model := modtest.NewFakeChatModel(modtest.ChatTurn{Text: "Done.", Block: release})
+	h := newHarness(t, model)
+	_, user := person(t, h)
+	assistant.UseBulkOps(h.Pool(), &fakeOps{})
+	seed := seedBulk(t, h, user, bulkOpts{items: 4, runAge: 3 * time.Hour})
+	runHere(t, h, seed.job)
+
+	waitFor(t, "the run to be answering", func() bool {
+		return modtest.One[string](t, h, `SELECT state FROM assistant.runs WHERE id = $1`, seed.run) == "running"
+	})
+	if n, err := assistant.StaleRunsCycle(context.Background(), h.Deps()); err != nil || n != 0 {
+		t.Fatalf("StaleRunsCycle = %d, %v: the sweep took the answering run for a lost one", n, err)
+	}
+	if st := modtest.One[string](t, h, `SELECT state FROM assistant.runs WHERE id = $1`, seed.run); st != "running" {
+		t.Fatalf("run = %s while it answers", st)
+	}
+	close(release)
+	waitFor(t, "the run to be done", func() bool {
+		return modtest.One[string](t, h, `SELECT state FROM assistant.runs WHERE id = $1`, seed.run) == "done"
+	})
 }

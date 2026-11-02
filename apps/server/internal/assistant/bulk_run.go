@@ -569,7 +569,7 @@ func (s *server) endBulk(ctx context.Context, job store.AssistantBulkJob, state,
 	}
 
 	// The run that waited goes on: the model sums the outcome up, without tools.
-	if _, err := q.ResumeRun(ctx, store.ResumeRunParams{ID: ended.RunID, UserID: ended.UserID}); err != nil {
+	if _, err := q.ResumeRun(ctx, store.ResumeRunParams{ID: ended.RunID, UserID: ended.UserID, Now: now}); err != nil {
 		return // the run was stopped or the conversation deleted meanwhile
 	}
 	go s.summariseBulk(ended)
@@ -704,7 +704,7 @@ func (s *server) cancelBulk(ctx context.Context, action store.AssistantPendingAc
 		if claimed, err = tq.DecidePendingAction(ctx, store.DecidePendingActionParams{ID: action.ID, UserID: user, Status: "cancelled", Now: now}); err != nil {
 			return err
 		}
-		if _, err = tq.ResumeRun(ctx, store.ResumeRunParams{ID: action.RunID, UserID: user}); err != nil {
+		if _, err = tq.ResumeRun(ctx, store.ResumeRunParams{ID: action.RunID, UserID: user, Now: now}); err != nil {
 			return err
 		}
 		if job, err := tq.GetBulkJobByAction(ctx, store.GetBulkJobByActionParams{PendingActionID: action.ID, UserID: user}); err == nil {
