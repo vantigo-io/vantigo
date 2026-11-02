@@ -1,5 +1,7 @@
 import type {
   AssistantAvailability,
+  AssistantBulkJob,
+  AssistantBulkPlan,
   AssistantConversation,
   AssistantConversationDetail,
   AssistantMe,
@@ -64,6 +66,58 @@ export const card = (overrides: Partial<AssistantPendingAction> = {}): Assistant
   expiresAt: "2026-11-03T08:00:00Z",
   ...overrides,
 });
+
+/** A bulk plan as its card shows it: ten projects found, nothing started. */
+export const bulkPlan = (overrides: Partial<AssistantBulkPlan> = {}): AssistantBulkPlan => ({
+  jobId: "j1000000-0000-4000-8000-000000000001",
+  state: "previewed",
+  total: 130,
+  processed: 0,
+  succeeded: 0,
+  failed: 0,
+  skipped: 0,
+  canarySize: 5,
+  canary: [],
+  sample: [
+    {
+      label: "Bulk project 000",
+      route: "/projects/1",
+      fields: [{ name: "description", current: "", next: "Reviewed in bulk" }],
+    },
+    {
+      label: "Bulk project 001",
+      route: "/projects/2",
+      fields: [{ name: "description", current: "Old note", next: "Reviewed in bulk" }],
+    },
+  ],
+  excluded: { count: 0, reasons: [] },
+  ...overrides,
+});
+
+/** A bulk job as the polled endpoint answers it. */
+export const bulkJob = (overrides: Partial<AssistantBulkJob> = {}): AssistantBulkJob => ({
+  ...bulkPlan(),
+  failures: [],
+  ...overrides,
+});
+
+/** The card of a bulk plan, with its job where it stands. */
+export const bulkCard = (
+  plan: Partial<AssistantBulkPlan> = {},
+  overrides: Partial<AssistantPendingAction> = {},
+): AssistantPendingAction =>
+  card({
+    id: "p2000000-0000-4000-8000-000000000002",
+    operationId: "putProjectsById",
+    kind: "bulk",
+    explain: "Add the note to every project",
+    summary: "Update a project",
+    fields: [{ name: "description", next: "Reviewed in bulk" }],
+    target: undefined,
+    bulk: bulkPlan(plan),
+    status: plan.state && plan.state !== "previewed" ? "confirmed" : "pending",
+    ...overrides,
+  });
 
 /** A part of an assistant message that stands for a card. */
 export const cardPart = (actionId: string) => ({ type: "confirmation" as const, actionId });

@@ -95,6 +95,8 @@ export const ConversationView = ({
     send,
     confirm,
     cancel,
+    continueJob,
+    stopJob,
     stop,
     clearError,
   } = conversation;
@@ -149,6 +151,8 @@ export const ConversationView = ({
             decisionErrors={Object.fromEntries(Object.entries(decisionErrors).map(([id, key]) => [id, t(key)]))}
             onConfirm={(card) => void confirm(card)}
             onCancel={(card) => void cancel(card)}
+            onContinue={(card) => void continueJob(card)}
+            onStop={(card) => void stopJob(card)}
           />
         )}
         {error && (
