@@ -837,6 +837,20 @@ Communications' outbox is the working example.
       assistant but the optional `x-vantigo-assistant`; a module that grows an operation grows
       the assistant's reach with it, behind the same rule. The contract's `summary` is what the
       assistant searches by, so the OpenAPI lint requires one on every operation.
+    - **It is bound where the API is served, so a job that calls it runs there.** `Compose` builds
+      and binds the dispatcher in a process that serves the API; `module.Workers`, which worker
+      mode and the workers of an API process use, never composes, so the `Deps` a worker's
+      constructor gets carry no dispatcher (a test pins it). A long job that must call operations
+      — the assistant's bulk changes ([the reference](/en/reference/assistant/#bulk-changes)) — is
+      therefore a goroutine of the API replica that the person's own request started, under a
+      claim on its database row that another API replica takes over when it lapses; never a
+      worker. **The assistant keeps its own runner** rather than a platform job helper: the
+      design (S13) expected the imports' runner to become a shared helper, but this job is driven
+      by a dispatcher, claimed and resumed rather than leased, and counts per item with its claim,
+      so a shared helper would carry a parameter for every difference. The imports' and billing
+      runs' own runners are untouched. The one rule the new runner shares with theirs is the lease
+      rule: **it holds no transaction, advisory lock or connection across a dispatcher call**, and a
+      test runs a whole job on a pool of one.
     `modtest.Harness.Operations` and `AssistantContext` bind a dispatcher to a harness and
     issue a grant for a signed-in client.
 

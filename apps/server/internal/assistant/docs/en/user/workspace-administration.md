@@ -552,6 +552,14 @@ sees on a screen.
   in the assistant's own record. The [reference](/en/reference/assistant/#the-owners-audit) says
   where.
 
+**Bulk changes obey the levels for every item.** When the assistant changes many records at once
+([Bulk changes](/en/user/assistant/#bulk-changes)), each item is changed as the person, through the
+same operation, so the level of the permission it names applies to every one of them. **Narrowing a
+level stops a bulk change that is running**: the job checks the levels between its chunks of 100 items,
+ends *Stopped* with the reason *the Owner narrowed what the assistant may change*, and the items it has
+not reached stay unchanged. A bulk change waiting for the person's **Start** or **Continue** can no
+longer be started or continued. What has already been changed stays changed.
+
 A card that is waiting when you narrow a level can no longer be confirmed: pressing **Confirm**
 answers *The assistant may no longer make this change*, and the person can still cancel it.
 

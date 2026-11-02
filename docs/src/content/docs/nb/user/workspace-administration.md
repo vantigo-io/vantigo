@@ -560,6 +560,14 @@ endrer aldri hva personen ser på et skjermbilde.
 - **Hver endring føres** med nivået før og etter, hvem som gjorde den og når, i assistentens
   egen logg. [Referansen](/en/reference/assistant/#the-owners-audit) sier hvor.
 
+**Masseendringer følger nivåene for hvert element.** Når assistenten endrer mange poster på én gang
+([Masseendringer](/nb/user/assistant/#masseendringer)), endres hvert element som personen, gjennom den
+samme operasjonen, så nivået for tillatelsen den nevner, gjelder for hvert eneste. **Å snevre inn et nivå
+stopper en masseendring som kjører**: jobben sjekker nivåene mellom bolkene på 100 elementer, ender som
+*Stoppet* med årsaken *Eieren innskrenket hva assistenten kan endre*, og elementene den ikke har kommet
+til, forblir uendret. En masseendring som venter på at personen skal trykke **Start** eller **Fortsett**,
+kan ikke lenger startes eller fortsettes. Det som allerede er endret, forblir endret.
+
 Et kort som venter når du snevrer inn et nivå, kan ikke lenger bekreftes: **Bekreft** svarer *Assistenten
 har ikke lenger lov til å gjøre denne endringen*, og personen kan fortsatt avbryte det.
 

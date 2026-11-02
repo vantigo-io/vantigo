@@ -1,6 +1,6 @@
 ---
 title: Assistent
-description: Spør assistenten hvordan du gjør noe, om dataene dine, eller be den endre noe — åpne den fra toppfeltet, med Cmd/Ctrl+J eller fra søket, panelet på siden og kontekstbrikken, appen Assistent med alle samtalene, endringene den foreslår og du bekrefter, hva som er privat og hvor lenge det beholdes, hva som sendes til AI-leverandøren, og hvorfor den kanskje ikke er der.
+description: Spør assistenten hvordan du gjør noe, om dataene dine, eller be den endre noe — åpne den fra toppfeltet, med Cmd/Ctrl+J eller fra søket, panelet på siden og kontekstbrikken, appen Assistent med alle samtalene, endringene den foreslår og du bekrefter, en endring i mange poster på én gang (forhåndsvisning, de fem første, resten i bakgrunnen, elementene som mislyktes), hva som er privat og hvor lenge det beholdes, hva som sendes til AI-leverandøren, og hvorfor den kanskje ikke er der.
 sidebar:
   order: 3
 sources:
@@ -158,11 +158,56 @@ endringen. Trykk **Avbryt**, og ingenting endres; assistenten svarer med én lin
 Noen operasjoner er aldri tilgjengelige for assistenten, for eksempel en eiers innstillinger,
 innlogging og passord, og filopplastinger, uansett hva eieren setter.
 
+## Masseendringer
+
+Be om "gi alle målepunkter i prisområde NO5 produktet *Spot Bergen*" eller "sett betalingsvilkårene til
+alle kunder med etiketten *Grossist* til 30 dager", så foreslår assistenten **den samme endringen for
+alle på én gang**. Den gjør den ikke. Den leser listen du beskrev, som deg, og et kort som heter
+**Masseendring** dukker opp i samtalen. En masseendring har fire trinn, og du avgjør hvert av dem.
+
+1. **Forhåndsvisningen.** Kortet sier **hvor mange elementer som ble funnet** og viser **de 10 første**,
+   hver med verdien den har nå og den nye. Det sier hvor mange som **hoppes over**, og hvorfor: et element
+   som listen ga uten verdien endringen trenger, eller som står to ganger. Det sier også at Vantigo sjekker
+   hver oppføring når endringen kjøres, så noen kan likevel bli avvist. Ingenting er endret. **Start** og
+   **Avbryt** er de eneste knappene.
+2. **Start** endrer **de 5 første elementene**, på ekte, som deg. Kortet viser hvordan hvert av dem gikk.
+   Var det ikke flere enn 5, er det alt.
+3. **Fortsett** endrer resten **i bakgrunnen, 100 om gangen**. Kortet viser en fremdriftsstolpe og hvor
+   mange som har lyktes, mislyktes og blitt hoppet over, og en **Stopp**-knapp. Du kan lukke panelet og
+   gjøre noe annet; jobben fortsetter.
+4. **Slutten.** Kortet sier hvor mange som ble endret, og lister **elementene som mislyktes**, hvert med
+   avslaget Vantigo ga (statusen og tittelen). **Last ned mislykkede elementer (CSV)** lagrer hele listen
+   som en fil du kan åpne i et regneark. Skjermen du er på oppdateres, og assistenten oppsummerer
+   resultatet i én kort melding.
+
+- **Det er en forhåndsvisning av endringen, ikke en øvelse.** Vantigos skjermbilder skriver direkte, og
+  noen endringer gjør også noe utenfor databasen, som å sende en melding, så en endring kan ikke prøves og
+  tas tilbake. Kortet kaller seg aldri en prøve: det **Start** endrer, er endret, og å stoppe angrer det
+  ikke. Derfor kommer bare 5 elementer først, og derfor avgjør du om det skal fortsette.
+- **Opptil 2 000 elementer.** Passer flere, sier assistenten hvor mange og ber deg snevre inn filteret,
+  for eksempel med et prisområde eller en etikett.
+- **Elementene er faste når du ser dem.** Jobben endrer nøyaktig de elementene du så telt. En oppføring
+  som legges til eller begynner å passe etterpå, berøres ikke.
+- **Stopp.** **Stopp** virker **mellom bolker på 100**, så opptil 100 elementer til kan bli endret etter at
+  du har trykket. Kortet sier så *Stoppet etter … av …*. Det som allerede er endret, angres ikke.
+- **Mislykkede elementer.** En oppføring kan avvises etter sine egne regler (du har ikke lov til å endre
+  den kunden, noen andre endret den i mellomtiden). Det elementet mislykkes, og de andre fortsetter.
+  Kortet lister de første 50, og CSV-filen har alle.
+- **Hvorfor en lang jobb ber deg om å fortsette.** Assistenten handler med din tillatelse, som hører til
+  økten din og varer en time som lengst. En jobb som ville vart lenger, **settes på pause**, og kortet
+  sier *Bekreft for å fortsette*: **Fortsett** gir den en ny time. **Logger du ut, stopper jobben** ved
+  neste element, fordi assistenten ikke lenger har din tillatelse.
+- **Det Eieren bestemmer, gjelder hvert element.** Innskrenker en Eier hva assistenten kan gjøre mens en
+  jobb kjører, stopper jobben på slutten av bolken den er i
+  ([Hva assistenten kan bruke](/nb/user/workspace-administration/#hva-assistenten-kan-bruke)).
+- **Venting.** En plan ingen starter, og en jobb som venter på **Fortsett**, utløper etter 24 timer. Mens
+  en masseendring venter eller kjører, er meldingsfeltet av, som for en enkelt endring; **Stopp** på
+  kortet, eller stoppknappen ved meldingsfeltet, stopper jobben.
+
 ## Hva den ikke kan
 
 **Den fyller ikke ut skjemaet på skjermen din.** Den oppretter eller endrer posten gjennom
-Vantigos eget grensesnitt bak skjermbildene, med din bekreftelse, og tilbyr så å åpne den. Den
-gjør ennå ikke en endring i mange poster på én gang.
+Vantigos eget grensesnitt bak skjermbildene, med din bekreftelse, og tilbyr så å åpne den.
 
 ## Lenker i svar
 

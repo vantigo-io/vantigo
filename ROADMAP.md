@@ -111,13 +111,13 @@ under **Workspace admin** › **Integrations** › **AI models**. Communications
 customer suggestion are the first two tasks and behave as before. A second provider, a fallback
 model per task and an Owner's own key stay out of scope.
 
-### The Assistant (in progress)
+### The Assistant (done)
 
 Decided in
 [`docs/superpowers/specs/2026-11-01-assistant-design.md`](docs/superpowers/specs/2026-11-01-assistant-design.md).
 Every person gets an **Assistant** (nb **Assistent**) that answers "how do I…" from the
 documentation, reads what they may read and does what they may do — one change at a
-time, each confirmed by them, and later in bulk — and never more than they could do in the interface. It acts through the
+time or in bulk, each confirmed by them — and never more than they could do in the interface. It acts through the
 real API as the person (module boundaries rule 18), so no module writes anything for it and
 no second permission model exists. It runs on a model the installation chooses, including one
 on its own network.
@@ -167,8 +167,21 @@ conversations, runs, tokens and confirmed changes — never content. Documented 
 [the user guide](docs/src/content/docs/en/user/assistant.md) and the
 [reference](docs/src/content/docs/en/reference/assistant.md#changes-with-confirmation).
 
-**Delivery C (planned) — bulk changes** — `propose_bulk` with preview, canary and a worker
-job, on a job runner shared with the imports.
+**Delivery C — bulk changes (done, `feat/assistant-bulk`)** — `propose_bulk`: an `auto` list read
+to its end as the person (page and pageSize, cursor, offset and limit, or one answer; at most 2,000
+items) and **frozen**, the one `confirm` operation to make to each with the item's id bound into it,
+and the values. A **Bulk change** card previews it — the count, a sample of 10 from current to new,
+what will be skipped — and writes nothing; **Start** runs the first 5 items for real, as the person;
+**Continue** runs the rest as a job in chunks of 100 with progress, **Stop** between chunks, the failed
+items with each refusal and a CSV of them. The job runs in the API process, which alone has the
+dispatcher, under a claim on its row that another replica takes over if it lapses (migration `00105`);
+it pauses for **Continue** when its grant, which belongs to the person's session, is nearly spent,
+stops if they sign out or the Owner narrows a level, and the model sums the outcome up when it ends.
+The assistant keeps its own runner rather than a shared platform helper. Documented in
+[the user guide](docs/src/content/docs/en/user/assistant.md#bulk-changes), the
+[reference](docs/src/content/docs/en/reference/assistant.md#bulk-changes) and
+[module boundaries](docs/src/content/docs/en/contributing/module-boundaries.md). **The Assistant's
+design is complete.**
 
 ## Customers
 

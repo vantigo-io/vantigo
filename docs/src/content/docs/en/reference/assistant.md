@@ -1,6 +1,6 @@
 ---
 title: "Assistant module"
-description: "Every person's assistant (nb Assistent): the schema; availability — the instance, the mode, the person's switch; the endpoints with their rules, status codes and If-Match; conversations that only their owner can reach; runs that outlive the connection, their caps, the stream and how a client reconnects; context compaction and the system prompt; the six tools, how their results reach the model and the action log; the guided tours (`show_tour`, the target registry, the runner); the changes the model proposes, the pending action behind a confirmation card, its preview, `If-Match`, confirm, cancel and expiry; the daily token budget and the Owner's usage view; the links an answer may carry; the documentation index behind search_docs; the permission levels the Owner sets and the gate that applies them to the dispatcher; the Owner's audit; retention and erasure."
+description: "Every person's assistant (nb Assistent): the schema; availability — the instance, the mode, the person's switch; the endpoints with their rules, status codes and If-Match; conversations that only their owner can reach; runs that outlive the connection, their caps, the stream and how a client reconnects; context compaction and the system prompt; the six tools, how their results reach the model and the action log; the guided tours (`show_tour`, the target registry, the runner); the changes the model proposes, the pending action behind a confirmation card, its preview, `If-Match`, confirm, cancel and expiry; bulk changes — the selector and its paging, the frozen items, the preview, the canary of five, the job in chunks of 100, its claim and the process it runs in, its grant, its stops, the failed items and their CSV; the daily token budget and the Owner's usage view; the links an answer may carry; the documentation index behind search_docs; the permission levels the Owner sets and the gate that applies them to the dispatcher; the Owner's audit; retention and erasure."
 sources:
   - apps/server/internal/assistant
   - apps/server/internal/operations
@@ -11,6 +11,7 @@ sources:
   - apps/server/internal/openapi/specs/assistant.yaml
   - apps/server/internal/db/migrations/00103_assistant_baseline.sql
   - apps/server/internal/db/migrations/00104_assistant_writes.sql
+  - apps/server/internal/db/migrations/00105_assistant_bulk.sql
 ---
 The Assistant module gives every person a conversation partner that answers "how do I…"
 from the documentation, reads the data the person may read and does
@@ -27,9 +28,9 @@ sees is in [Assistant](/en/user/assistant/); what an Owner sets is in
 [Workspace administration](/en/user/workspace-administration/#assistant); the environment is in
 [Configuration](/en/admin/configuration/#ai).
 
-This page describes deliveries A and B: the assistant that reads, and the changes it proposes and the
-person confirms. Tours and bulk changes come in later deliveries; [what comes next](#what-comes-next)
-lists what to expect of them.
+This page describes the whole design: the assistant that reads (delivery A), guided tours (T), the changes it
+proposes and the person confirms (B) and bulk changes (C); [what comes next](#what-comes-next) lists what is
+not planned.
 
 ## The module
 
@@ -48,7 +49,9 @@ lists what to expect of them.
   grants a run acts under; `Deps.Users` — `contracts.UserDirectory`, for the person's language and
   [erasure](#erasure); and `Deps.Catalog`, the permission catalog of the enabled modules.
   [Module boundaries](/en/contributing/module-boundaries/) says how each is resolved.
-- **Workers.** [`assistant-runs`](#stale-runs) and [`assistant-retention`](#retention).
+- **Workers.** [`assistant-runs`](#stale-runs) and [`assistant-retention`](#retention). Neither calls the
+  contract: a [bulk job](#bulk-changes) needs the dispatcher, which a worker never has, so it runs in the API
+  process.
 - **Registration.** `assistant` is in `businessModules`, `openapi.Modules`, depguard's isolation
   lists, `moduleSchemas` and the host's navigation like any module. The generated API reference
   is under **API** in the reference.
@@ -56,7 +59,7 @@ lists what to expect of them.
 ## The schema
 
 Migration `00103_assistant_baseline.sql` creates the schema `assistant`; `00104_assistant_writes.sql`
-adds the pending actions, the usage counts and the budget. A user is identity's: the
+adds the pending actions, the usage counts and the budget, and `00105_assistant_bulk.sql` the bulk jobs. A user is identity's: the
 module holds an opaque `user_id` with no foreign key to it ([rule 4](/en/contributing/module-boundaries/)),
 and learns that one was erased by [asking identity](#erasure).
 
@@ -69,11 +72,12 @@ and learns that one was erased by [asking identity](#erasure).
 | `runs` | One answer to one message: `state` — `running`, `awaiting_confirmation`, `done`, `failed`, `stopped` or `expired`; `error_code`; `tool_calls` and `model_turns`, counted against the [caps](#runs); `started_at`, `ended_at`; `stop_requested`. A **partial unique index on `(conversation_id) WHERE state IN ('running', 'awaiting_confirmation')`** is what allows one active run at a time per conversation, a run that waits for the person included. |
 | `messages` | `seq` (an identity column that orders the conversation), `role` — `user`, `assistant` or `tool`; `content`, the typed [parts](#messages-and-parts) as JSON; `context`, the chip the person sent a message with; `search_text`, the words the list's search reads; `model`, `input_tokens` and `output_tokens` as the provider reported them. |
 | `actions` | The [action log](#the-action-log): one row per tool call — `operation_id`, `mode`, `http_status`, `duration_ms`, `created_at`, and `confirmed_by` for a change the person confirmed — and never a body. |
-| `pending_actions` | [A change the model proposed](#pending-actions), waiting for the person or decided: the request until it is decided, the card, `status`, `expires_at` and `outcome`. |
+| `pending_actions` | [A change the model proposed](#pending-actions), waiting for the person or decided: the request until it is decided, the card, `status`, `expires_at` and `outcome`; and its `kind`, `change` or `bulk`. |
+| `bulk_jobs`, `bulk_job_items` | [A bulk change](#bulk-changes): the job with its selector, template, state, counters, grant and claim, and the frozen items with how each went. |
 | `usage_days` | What a person used on a business day — conversations, runs, input and output tokens, changes confirmed and failed — for [the budget and the usage view](#daily-budget-and-usage). Counts only. |
 | `events` | [The Owner's audit](#the-owners-audit): `at`, `actor_user_id`, `action`, `target`, `before` and `after` as JSON. |
 
-Messages, runs, actions and pending actions cascade from their conversation, and the conversation is the
+Messages, runs, actions, pending actions, bulk jobs and their items cascade from their conversation, and the conversation is the
 unit every deletion works on.
 
 ## Availability
@@ -103,7 +107,7 @@ All of them are under `/api/v1/assistant`. The access rule is the contract's
 never call its own API. Errors are RFC 9457 problems whose `code` is one of: `assistant_unavailable`
 (403), `not_found` (404), `run_in_progress` (409), `version_conflict` (409), `invalid` (400, with
 the field errors in `errors`), `ai_unavailable` (503), and for changes `action_decided` (409),
-`action_expired` (409), `operation_unavailable` (403) and `budget_exhausted` (429). A router refusal — 401, 403 for an
+`action_expired` (409), `operation_unavailable` (403), `budget_exhausted` (429) and, for bulk jobs, `job_not_waiting` (409). A router refusal — 401, 403 for an
 Owner endpoint, 429 — is the platform's own.
 
 | Method and path | Rule | Does |
@@ -116,6 +120,9 @@ Owner endpoint, 429 — is the platform's own.
 | `DELETE /conversations/{id}` | `session` | 204. **Cancels a run in progress first**, then deletes the conversation with its messages, runs and actions, and clears the caller's last-open conversation if it was this one. |
 | `POST /conversations/{id}/messages` | `session`, [30 a minute](#runs) | Persists the message, starts a run and answers the [event stream](#the-stream); **429 `budget_exhausted`** once the person has used the [day's budget](#daily-budget-and-usage). |
 | `POST /pending-actions/{id}/confirm`, `POST /pending-actions/{id}/cancel` | `session` | [The person's decision](#confirm-and-cancel) on a proposed change; both answer `text/event-stream`. |
+| `GET /bulk-jobs/{id}` | `session` | [A bulk job](#the-endpoints-of-a-job): its `state`, counters, the preview's `sample` and `excluded`, the canary's items and the first 50 failed items. A job whose claim lapsed is taken over by the replica that answers. |
+| `POST /bulk-jobs/{id}/continue`, `POST /bulk-jobs/{id}/stop` | `session` | Runs the rest of a job that waits for the person; stops a job. |
+| `GET /bulk-jobs/{id}/failures.csv` | `session` | The failed items as a CSV attachment. |
 | `GET /usage` | `policy:OwnerManagement` | [The usage view](#daily-budget-and-usage): `from` and `to` dates, at most 92 days, per person and day, counts only. |
 | `POST /runs/{id}/stop` | `session` | Asks the run to stop at its next step. 200 with the run as it is, a run already over included. |
 | `GET /me`, `PUT /me` | `session` | `lastConversationId`, which the panel reopens: null when there is none. `PUT` sets it or clears it with null; a conversation that is not the caller's is 404. |
@@ -294,7 +301,7 @@ list `navigate` validates against.
 
 ## The tools
 
-The model gets six tools, not the contract's hundreds: operations are reached by searching,
+The model gets seven tools, not the contract's hundreds: operations are reached by searching,
 describing and calling. This is also what keeps a small local model's context small. Every tool
 call writes an [action](#the-action-log) and a `tool` message.
 
@@ -306,6 +313,8 @@ call writes an [action](#the-action-log) and a `tool` message.
 | `call_operation` | `id`, `params`, `body` | Calls an operation whose effective mode is **`auto`** through the dispatcher, as the person, and answers `{status, body}`. `params` holds the path, query and header parameters together, by name; each is placed where the operation declares it, an unnamed one going into the query. A `confirm` operation is not called: it becomes a [pending action](#changes-with-confirmation) and the answer is `{status: "awaiting_confirmation", summary, note}`; `explain` is the model's one sentence for the card. |
 | `navigate` | `route`, `label` | Offers a button. The `route` must be a plain in-app path beginning with one of the host's known prefixes (`/customers`, `/invoices`, `/energy` …) at a segment boundary; anything else — an absolute URL, `//`, `..`, a backslash, whitespace — is `invalid_route`. `label` is 1 to 100 characters. The button is added to the assistant message as a `link` part; the tool never moves the screen. |
 | `show_tour` | `steps` | Offers a guided tour: 1 to **8** steps of `{target, title, body}`. `target` must be a key of [the registry](#guided-tours), which is also the tool's `enum` and is listed, with each target's route and English description, in the tool's description. An unknown target refuses the whole call (`unknown_target`), more than 8 steps is `too_many_steps`, and a `title` (up to 80 characters) or `body` (up to 400) that is empty, has control characters other than a line break or is too long is `invalid_arguments`, so the model can try again. The tour is added to the assistant message as a `tour` part; the tool starts nothing. The tool is not offered while the registry is empty. |
+
+| `propose_bulk` | `selector`, `operation`, `bind`, `explain` | Proposes the same change to many items: see [bulk changes](#bulk-changes). Reads the selector to its end, freezes the items and stores a bulk plan; **changes nothing**. |
 
 An unknown tool, bad arguments and a refusal answer the model with an `error` code and a message
 rather than failing the run, so it can say what happened.
@@ -557,6 +566,182 @@ closed `failed` / `interrupted`. Stopping a run that waits (`POST /runs/{id}/sto
 (`outcome.reason` `stopped`) and ends the run `stopped`. A tool result that stands for a change that was
 cancelled, stopped or expired reads to the model as *the change was not made*.
 
+## Bulk changes
+
+A bulk change (S13) is the same `confirm` operation made to many items the model found with a list. The
+model calls `propose_bulk`; **nothing is written**, the run pauses like it does for a single change, and
+the person's *Start* and *Continue* are the only things that run it. It is a **preview, not a dry run**:
+handlers write directly and some have effects outside their transaction, so a change cannot be tried and
+rolled back, and the interface and the documentation say so.
+
+```text
+propose_bulk({
+  selector:  { operationId, query, pathParams?, body? },
+  operation: { operationId, pathParams?, body? },
+  bind:      { "<path parameter or body field of the operation>": "<field of each listed item>" },
+  explain
+})
+```
+
+### The selector
+
+The selector is accepted only when the operation is **`auto` for the person** through the gate, a `GET` or a
+read-only `POST` marked `auto`, and answers an array of objects — the answer itself, or under `data` or
+`items`. The dispatcher calls it as the person, so the list shows exactly what they may read. It is read
+**to the end** and **frozen**: the ids are stored in `bulk_job_items`, in the order the list gave, and the
+job acts on exactly what was counted, never on a second run of the selector.
+
+**Paging.** The selector follows the conventions the contracts use and sets the paging parameters itself
+(any the model passes are replaced):
+
+| The operation declares | Read as | Ends when |
+| --- | --- | --- |
+| `page` (and `pageSize`) | `page` from 1, `pageSize` 100 (the size the answer reports is used) | `pagination.hasNextPage` is false. An answer with no `pagination` and a full page is refused. |
+| `cursor` (and `limit`) | the first page without a cursor, then `cursor=<nextCursor>` | `nextCursor` is null or empty. |
+| `offset` (and `limit`) | `offset` advances by the items returned | a page shorter than the limit. |
+| `limit` alone | one call | it is refused if the limit was reached, for there is no way past it. |
+| none of them | one call | the answer. |
+
+A list that declares any other paging parameter (`after`, `pageToken`, `skip`, `perPage` …) is refused
+with `paging_not_supported`, and the model is told to use another list or change the records one at a time.
+A page too large to read (a response over 1 MiB) is asked again at half the size, to a floor of 10.
+
+**The cap** is `maxBulkItems = 2000` (`apps/server/internal/assistant/bulk.go`). A selector that finds more
+is refused with `selection_too_large` and the count — exactly, when the answer reports a `totalCount`, else
+"more than 2000" — so the model can narrow the filter. A `429` while reading is waited out once, by its
+`Retry-After`.
+
+### The plan and its checks
+
+`propose_bulk` refuses, with a code the model can act on: `selector_unavailable` (not `auto`, not a list),
+`operation_unavailable` and `not_a_change` (the per-item operation must be **`confirm`** for the person, through
+the gate), `bind_not_supported` (a bound query or header parameter), `binding_not_found` (no item carries
+what `bind` names; the answer lists the fields the items have), `no_items`, any of the selector's refusals,
+and `one_change_at_a_time` — **one plan per run, and none beside a single change**. The per-item request is
+checked with `Dispatcher.Validate` for the first item as bound (the access rule has already been applied: the
+operation is only found among those the person may call).
+
+**The binding.** A `bind` key that is a declared path parameter of the operation is bound into the path; any
+other key is a field of the body. The value is the item's field (a dotted path is followed) and must be a
+non-empty string, a number or a boolean. An item without one is **excluded** with the reason `missing_id`; an
+item that repeats an earlier one's values is excluded as `duplicate`. Excluded items are stored `skipped`, after
+the runnable ones, with the reason. The other parameters and body fields are the template, the same for every
+item.
+
+**The pre-check.** The operation is the same for every item, so whether the person may use it, by its access
+rule (`UserHolds`) and the Owner's levels, is decided once, before a card is made; a person who may not gets a
+refusal and no plan. Row-level rules live in each handler and show only when the change runs: the card says so,
+and a refusal fails that one item.
+
+**The preview** is the card's first state: the count (`bulk.total`), a **sample of 10** with each field's
+current value read as the person from the `GET` at the same path template (the rule of the
+[single preview](#the-preview)) and the new one, the excluded count by reason, and the sample's label and
+route. It writes nothing: the reads are the person's own, in the action log, and a test asserts at the database
+that the records are untouched.
+
+### Tables and states
+
+`assistant.bulk_jobs` has `pending_action_id`, `run_id`, `conversation_id`, `user_id`, `operation_id`,
+`selector` and `template` (the person's filters and values until the job ends), `state`, the counters
+`total`, `processed`, `succeeded`, `failed` and `skipped` (excluded items count as processed and skipped from
+the start), `stop_requested`, `grant_id` and `grant_expires_at`, `claimed_by` and `claimed_until`,
+`pause_reason`, `error_code`, and the timestamps. `assistant.bulk_job_items` has `(job_id, seq)` as its key, `item`
+(the bound values and the label), `status` — `pending`, `succeeded`, `failed` or `skipped` — `http_status`,
+`problem_code`, `problem_title` and `done_at`. Both are private like every table of the module: every query
+that serves the person filters by `user_id`, another person's job is **404 `not_found`**, they are deleted
+with the conversation, and so [retention and erasure](#retention) cover them.
+
+| State | Meaning |
+| --- | --- |
+| `previewed` | The card waits for *Start*; the pending action is `pending`. |
+| `canary` | *Start* was pressed; the first 5 items are running. |
+| `awaiting_continue` | The canary is done (`pause_reason` `canary_done`), or the grant was about to lapse (`grant_expiring`): the person decides. |
+| `running`, `stopping` | The rest is running; a stop was asked and takes effect between chunks. |
+| `done`, `stopped`, `failed`, `expired` | Over. `stopped` has an `error_code`: `cancelled`, `stopped_by_person`, `narrowed` (the Owner narrowed a level) or `session_ended`. `expired`: nobody went on within 24 hours. |
+
+The pending action stays `confirmed` with no outcome for as long as the job lasts (the sweep that closes a
+claimed single change leaves a bulk action alone) and ends `confirmed` with `outcome.ok` true for `done`, false
+with the `reason` for `stopped`, `failed` for `failed`. The run stays `awaiting_confirmation` for the whole job,
+which is what keeps the person's next message `409 run_in_progress`.
+
+### Running a job
+
+**Start** (`POST /pending-actions/{id}/confirm` on a bulk action) claims the action once, issues a
+**grant of the longest life identity allows, one hour**, from the request's session, starts the job under this
+replica's claim and runs the **canary — the first 5 runnable items — in the request's stream**: the card is
+announced as a `confirmation` after each item, then `done`. The goroutine is detached, so a client that goes
+away does not stop it. With no more than 5 items the job ends there. *Cancel* is the single change's: the
+model is told, and the plan ends `stopped` / `cancelled` with its items dropped.
+
+**Continue** (`POST /bulk-jobs/{id}/continue`) issues a fresh one-hour grant from *its* session (the old one
+is revoked), refuses with `403 operation_unavailable` if the Owner has narrowed the operation meanwhile and with
+`409 job_not_waiting` unless the job waits, and runs the rest as a job: chunks of **100** items.
+
+**Per item**, the call goes through the dispatcher **as the person with `Confirmed: true`**. A 2xx is
+`succeeded`. A 4xx or 5xx is `failed` with the status and the problem's `code` and `title` — never the body — and
+the job goes on. A `429` waits its `Retry-After` (a second to ten) and retries once. A **401** is the session
+having ended: the router refuses the grant of a signed-out session, so the job ends `stopped` /
+`session_ended` and the item stays `pending`, for the person's next *Continue* from a live session.
+
+**Between chunks** the runner, in this order: renews its claim and reads the job; ends `stopped` / `stopped_by_person`
+when a stop was asked; ends `stopped` / `narrowed` when the gate no longer says `confirm` for the operation (an
+Owner narrowing mid-job); and **pauses in `awaiting_continue` with `grant_expiring`** when the grant has less than 5
+minutes left. So a stop, or a narrowing, takes effect after at most the chunk in progress.
+
+**The end** redacts the plan (the selector keeps its operation and the names of its filters, the template its
+operation, binding and field names, the card the labels and field names — no value), ends the pending action,
+revokes the grant, **replaces the waiting tool result with a compact summary** (the state, the counts and the first 5
+failures) and resumes the run once, with no tools, so the model answers in one short message. That message is
+persisted and the conversation shows it; nothing is streamed to a client that is not attached. A job's
+action log row is one: the *Start*, with `confirmed_by`.
+
+### Where it runs, and why
+
+**In the API process.** The dispatcher is built and bound only by `module.Compose`, after the composed router
+exists, and given to the module named `assistant` alone. The workers (`worker` mode, and the workers of an API
+process) are built by `module.Workers`, which never composes: the `Deps` they get carry **no dispatcher**
+(`internal/module/workers_test.go` asserts it), and `server` mode runs no workers. A job that calls the
+contract's operations therefore cannot run in a worker, and runs on a goroutine of the API replica that served
+*Start* or *Continue*, the way a run does.
+
+**The claim.** `claimed_by` names that replica and `claimed_until` is two minutes ahead; **every item
+renews it in the same statement that records the item and counts it**, so a counter is never counted twice and a
+replica that lost its claim stops at once. No transaction or advisory lock is held across a dispatcher call, and
+no connection is held while another is waited for (a test runs a whole job, its summary and the worker cycle on
+a pool of one connection).
+
+**A lapsed claim** — a crash or a deploy — is taken over by the next API replica that sees the job, with one
+conditional update so exactly one wins, and the job goes on from its next `pending` item. A replica sees it
+when it answers the person's `GET` of the job or of the conversation (a card that is open asks every two
+seconds), and when the workers run in the API process (`WORKERS_IN_PROCESS=1`) the `assistant-runs` worker hands the
+lapsed jobs to the API server composed over the same pool. A worker-mode process only expires; an item that was
+in flight when its replica died may run twice, for the router cannot tell, so use this for changes that are
+safe to repeat.
+
+**The assistant keeps its own runner.** The design (S13) planned the runner to become a shared platform helper
+instead of a fourth copy; it did not, and the imports' and billing runs' were left alone. This job differs from
+them in what a helper would have to be parameterised by: it is driven by a dispatcher that exists in one process,
+it is claimed and resumed rather than leased by a worker, and its counters are written with its claim per item.
+[Module boundaries](/en/contributing/module-boundaries/) says so.
+
+### The endpoints of a job
+
+All are `session` operations and `x-vantigo-assistant: never`. `GET /bulk-jobs/{id}` answers the job —
+`state`, the counters, `sample`, `excluded`, the `canary` items (up to 5), `pauseReason`, `errorCode`, `grantExpiresAt` and
+`failures`, the **first 50** failed items by their position — and is what a card polls every two seconds while the job runs.
+`POST /bulk-jobs/{id}/stop` ends a plan not started (cancelled) or a job waiting for Continue at once, and asks a running
+job to stop (`stopping`); a job already over is answered as it is. `POST /runs/{id}/stop` on a run that waits for a job
+does the same. `GET /bulk-jobs/{id}/failures.csv` is the failed items — `item`, `reference` (the bound values), `http_status`,
+`problem_code`, `problem_title` — semicolon-separated, UTF-8 with a byte order mark and CRLF, written with `encoding/csv`,
+and any cell that would open as a formula (it starts with `=`, `+`, `-`, `@`, a tab or a carriage return) gets an
+apostrophe in front. The file is named `assistant-bulk-<job id>-failed-items.csv`.
+
+### Expiry and stale jobs
+
+The `assistant-runs` worker expires a plan nobody started and a job that has waited for *Continue* for 24 hours in
+one statement (`expired`, the plan redacted, the run ended `expired`). It keeps the lease-connection rule: every
+statement is on the pool and none holds a connection while asking for another.
+
 ## Daily budget and usage
 
 **The budget** (S14) is `assistant.settings.daily_token_budget`, an integer from 1,000 to 1,000,000,000 or
@@ -641,10 +826,8 @@ What follows from it:
 
 ## What comes next
 
-- **Delivery C** adds bulk changes. A bulk plan reuses what a pending action is: a card with a
-  summary, fields and a target, `confirm` and `cancel` as the person's decision, the preview rule, the
-  paused run and the expiry.
-- Not planned yet: a second provider, switching the assistant on for a group, and attachments —
+- The design is complete. Not planned yet: running a bulk job in a worker (it needs the dispatcher),
+  a per-item `If-Match` for operations that need one, a second provider, switching the assistant on for a group, and attachments —
   the design's open questions.
 
 ## The frontend
@@ -670,4 +853,8 @@ confirmed change succeeds the package calls `invalidateAfterAssistantWrites`, wh
 query except the assistant's own stale and refetches the ones on screen: the host's modules do not key their queries
 by one convention (customers uses `customers` and `contacts`, invoices `invoices`, tax categories
 `tax-categories`), and a change in one module shows in another's lists, so a map from an operation to a module's keys would
-be wrong as often as right. **Workspace admin** › **Assistant** also holds the budget field and the usage table.
+be wrong as often as right. A **bulk change** is a **Bulk change** card: the count, the sample, what will be skipped and **Start** and **Cancel**; then the
+canary's outcomes with **Continue** and **Stop**; then a progress bar with the counters and **Stop**, polled every two
+seconds; and the end, with the summary, the first 50 failed items and **Download failed items (CSV)**. The badge says *working* while a
+job runs and *waiting for you* while it waits for **Continue**, and the screen refreshes when the canary is done and when the job ends.
+**Workspace admin** › **Assistant** also holds the budget field and the usage table.
