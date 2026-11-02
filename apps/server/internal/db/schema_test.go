@@ -131,6 +131,7 @@ func referencesSchema(schema, body string) bool {
 // migration or query file owned by one module may reference another
 // module's schema.
 func TestNoModuleReferencesAnotherModulesSchema(t *testing.T) {
+	t.Parallel()
 	files := collectSchemaOwnedFiles(t)
 	if len(files) == 0 {
 		t.Fatal("no schema-owned files found")
@@ -152,6 +153,7 @@ func TestNoModuleReferencesAnotherModulesSchema(t *testing.T) {
 // scan counts as a reference, so tightening it for an English-word schema
 // name never quietly stops it catching a real one.
 func TestSchemaReference_MatchesQualifiedNamesOnly(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		schema, text string
 		want         bool
@@ -208,6 +210,7 @@ func sqlcSchemaFiles(t *testing.T, module string) []string {
 // import check) nor the cross-schema text scan above (SQL files only) would
 // catch, because the foreign type lives in the module's own package.
 func TestSqlcSchemaListsOnlyTheModulesOwnMigrations(t *testing.T) {
+	t.Parallel()
 	entries, err := fs.ReadDir(db.MigrationsFS, "migrations")
 	if err != nil {
 		t.Fatalf("read migrations: %v", err)
@@ -234,6 +237,7 @@ func TestSqlcSchemaListsOnlyTheModulesOwnMigrations(t *testing.T) {
 // 00002_identity_baseline.sql applies cleanly and that the three built-in
 // roles it seeds exist with their fixed ids.
 func TestIdentityBaseline_AppliesAndSeedsBuiltInRoles(t *testing.T) {
+	t.Parallel()
 	pool, _ := testdb.Migrated(t)
 	ctx := context.Background()
 
@@ -277,6 +281,12 @@ func TestIdentityBaseline_AppliesAndSeedsBuiltInRoles(t *testing.T) {
 // version 3 — and applies everything again, proving that migration's down
 // path is a clean inverse of its up path.
 //
+// Callers pass testdb.MigratedURL, a copy of the template that already ran
+// every migration from empty, so the first Up has nothing left to do. Starting
+// from an empty database instead cost every one of these tests a full run of
+// the whole chain, which grew with every migration added and made this the
+// slowest package in the suite.
+//
 // It uses DownTo(version-1) rather than a single Down(), deliberately:
 // Down() only ever rolls back the single most-recently-applied migration,
 // so calling it once genuinely exercises version's own down script only
@@ -290,6 +300,7 @@ func TestIdentityBaseline_AppliesAndSeedsBuiltInRoles(t *testing.T) {
 // regardless of how many migrations that is.
 func applyUpDownUp(t *testing.T, databaseURL string, version int64) {
 	t.Helper()
+	defer holdMigrator()()
 	ctx := context.Background()
 
 	cfg, err := pgx.ParseConfig(databaseURL)
@@ -325,7 +336,8 @@ func applyUpDownUp(t *testing.T, databaseURL string, version int64) {
 // the customers_contacts PK without tenant_id, and no tenant_id column
 // anywhere in the schema.
 func TestCustomersBaseline_AppliesAndIsIdempotent(t *testing.T) {
-	url := testdb.URL(t)
+	t.Parallel()
+	url := testdb.MigratedURL(t)
 	applyUpDownUp(t, url, 3) // 00003_customers_baseline.sql
 
 	ctx := context.Background()
@@ -683,7 +695,8 @@ func TestCustomersBaseline_AppliesAndIsIdempotent(t *testing.T) {
 // and that the tenant drop landed exactly where the inventory says it
 // should: sku unique alone, no tenant_id column anywhere in the schema.
 func TestProductsBaseline_AppliesAndIsIdempotent(t *testing.T) {
-	url := testdb.URL(t)
+	t.Parallel()
+	url := testdb.MigratedURL(t)
 	applyUpDownUp(t, url, 4) // 00004_products_baseline.sql
 
 	ctx := context.Background()
@@ -747,6 +760,7 @@ func TestProductsBaseline_AppliesAndIsIdempotent(t *testing.T) {
 // since Postgres treats every NULL parent_id as distinct from every other —
 // that is exactly the mutation this test exists to catch.
 func TestProductCategories_RootSiblingNamesAreNullsNotDistinct(t *testing.T) {
+	t.Parallel()
 	pool, _ := testdb.Migrated(t)
 	ctx := context.Background()
 
@@ -779,6 +793,7 @@ func TestProductCategories_RootSiblingNamesAreNullsNotDistinct(t *testing.T) {
 // variants may leave barcode unset, but two variants sharing the same
 // non-null barcode collide.
 func TestProductVariants_BarcodeUniqueIsPartial(t *testing.T) {
+	t.Parallel()
 	pool, _ := testdb.Migrated(t)
 	ctx := context.Background()
 
@@ -809,6 +824,7 @@ func TestProductVariants_BarcodeUniqueIsPartial(t *testing.T) {
 // decision that also updates this test, not a change this test lets through
 // by accident.
 func TestProductPrices_HasNoExclusionConstraint(t *testing.T) {
+	t.Parallel()
 	pool, _ := testdb.Migrated(t)
 	ctx := context.Background()
 
@@ -848,6 +864,7 @@ func TestProductPrices_HasNoExclusionConstraint(t *testing.T) {
 // it maps the code Postgres really sends, not the one a EF-Core-shaped
 // mental model predicts.
 func TestProductCategories_ParentIsRestrict(t *testing.T) {
+	t.Parallel()
 	pool, _ := testdb.Migrated(t)
 	ctx := context.Background()
 
@@ -872,6 +889,7 @@ func TestProductCategories_ParentIsRestrict(t *testing.T) {
 // instead. See TestProductCategories_ParentIsRestrict's comment on why the
 // expected SQLSTATE is 23001, not 23503.
 func TestProducts_CategoryAndTaxCategoryAreRestrict(t *testing.T) {
+	t.Parallel()
 	pool, _ := testdb.Migrated(t)
 	ctx := context.Background()
 
@@ -905,6 +923,7 @@ func TestProducts_CategoryAndTaxCategoryAreRestrict(t *testing.T) {
 // ever gained a variant (or price) — the opposite of category/tax-category's
 // Restrict, and a real behavioral difference this test pins.
 func TestProductVariantsAndPrices_CascadeFromTheirParent(t *testing.T) {
+	t.Parallel()
 	pool, _ := testdb.Migrated(t)
 	ctx := context.Background()
 
@@ -947,7 +966,8 @@ func TestProductVariantsAndPrices_CascadeFromTheirParent(t *testing.T) {
 // consumption_intervals' primary key carries start alongside id (energy
 // inventory §3, the partition-key requirement).
 func TestEnergyBaseline_AppliesAndIsIdempotent(t *testing.T) {
-	url := testdb.URL(t)
+	t.Parallel()
+	url := testdb.MigratedURL(t)
 	applyUpDownUp(t, url, 5) // 00005_energy_baseline.sql
 
 	ctx := context.Background()
@@ -1079,6 +1099,7 @@ func insertTestMeteringPoint(t *testing.T, ctx context.Context, pool *pgxpool.Po
 // actually decides concurrent-create races, not the application's own
 // pre-checks, which this schema-level test deliberately bypasses).
 func TestSupplyPeriods_ExclusionConstraintRejectsOverlappingNonCancelledPeriods(t *testing.T) {
+	t.Parallel()
 	pool, _ := testdb.Migrated(t)
 	ctx := context.Background()
 
@@ -1107,6 +1128,7 @@ func TestSupplyPeriods_ExclusionConstraintRejectsOverlappingNonCancelledPeriods(
 // half (dropping the clause entirely, or inverting it) would flip one of
 // these two tests from pass to fail.
 func TestSupplyPeriods_ExclusionConstraintAllowsOverlappingCancelledPeriods(t *testing.T) {
+	t.Parallel()
 	pool, _ := testdb.Migrated(t)
 	ctx := context.Background()
 
@@ -1139,6 +1161,7 @@ func TestSupplyPeriods_ExclusionConstraintAllowsOverlappingCancelledPeriods(t *t
 // period's end and inclusive on the second period's start, only collides
 // under '[]'.
 func TestSupplyPeriods_ExclusionConstraintAdmitsAdjacentNonCancelledPeriods(t *testing.T) {
+	t.Parallel()
 	pool, _ := testdb.Migrated(t)
 	ctx := context.Background()
 
@@ -1163,6 +1186,7 @@ func TestSupplyPeriods_ExclusionConstraintAdmitsAdjacentNonCancelledPeriods(t *t
 // removed ones may — and once the live meter is itself removed, a new live
 // meter may be installed (energy inventory §2.2/§3).
 func TestMeters_ActiveMeterUniqueIsPartial(t *testing.T) {
+	t.Parallel()
 	pool, _ := testdb.Migrated(t)
 	ctx := context.Background()
 
@@ -1213,6 +1237,7 @@ func TestMeters_ActiveMeterUniqueIsPartial(t *testing.T) {
 // real clock (energy inventory §3.3), so this test can only pass if the
 // function itself works, not because the partition already existed.
 func TestConsumptionIntervals_EnsurePartitionCreatesMonthlyPartition(t *testing.T) {
+	t.Parallel()
 	pool, _ := testdb.Migrated(t)
 	ctx := context.Background()
 
@@ -1263,7 +1288,8 @@ func TestConsumptionIntervals_EnsurePartitionCreatesMonthlyPartition(t *testing.
 // schema. The up runs to the head, so the list also holds the two tables
 // 00092_communications_inbound.sql adds back in its own shape.
 func TestCommunicationsBaseline_AppliesAndIsIdempotent(t *testing.T) {
-	url := testdb.URL(t)
+	t.Parallel()
+	url := testdb.MigratedURL(t)
 	applyUpDownUp(t, url, 6) // 00006_communications_baseline.sql
 
 	ctx := context.Background()
@@ -1381,6 +1407,7 @@ func insertTestConversationMessage(t *testing.T, ctx context.Context, pool *pgxp
 // from pg_index (not the migration's DDL text), so it fails if either
 // column's DESC flag is ever dropped or the two columns are reordered.
 func TestCommunicationsBaseline_ConversationsFeedIndexIsFullyDescending(t *testing.T) {
+	t.Parallel()
 	pool, _ := testdb.Migrated(t)
 	ctx := context.Background()
 
@@ -1405,6 +1432,7 @@ func TestCommunicationsBaseline_ConversationsFeedIndexIsFullyDescending(t *testi
 // RESTRICT does (see isRestrictViolation's comment) — either mistake trips
 // this test.
 func TestCommunicationsBaseline_MessageEventsDeliveryIdIsRestrict(t *testing.T) {
+	t.Parallel()
 	pool, _ := testdb.Migrated(t)
 	ctx := context.Background()
 
@@ -1437,6 +1465,7 @@ func TestCommunicationsBaseline_MessageEventsDeliveryIdIsRestrict(t *testing.T) 
 // participant history cannot be deleted — channels are deactivated via
 // is_active = false instead (inventory §10 item 9).
 func TestCommunicationsBaseline_ChannelRestrictsProtectHistory(t *testing.T) {
+	t.Parallel()
 	pool, _ := testdb.Migrated(t)
 	ctx := context.Background()
 
@@ -1483,6 +1512,7 @@ func TestCommunicationsBaseline_ChannelRestrictsProtectHistory(t *testing.T) {
 // now can, which is exactly what conversations_reply_test.go's own fixtures
 // rely on.
 func TestCommunicationsBaseline_MessageDirectionAcceptsDotNetsFullDomain(t *testing.T) {
+	t.Parallel()
 	pool, _ := testdb.Migrated(t)
 	ctx := context.Background()
 
@@ -1512,6 +1542,7 @@ func TestCommunicationsBaseline_MessageDirectionAcceptsDotNetsFullDomain(t *test
 // the value every real write path produces instead of a NOT NULL violation
 // (inventory §10 item 10, §19.1 item 4).
 func TestCommunicationsBaseline_DDLDefaultsMatchDotNetInitialisers(t *testing.T) {
+	t.Parallel()
 	pool, _ := testdb.Migrated(t)
 	ctx := context.Background()
 
@@ -1652,7 +1683,8 @@ func insertTestProduct(t *testing.T, ctx context.Context, pool *pgxpool.Pool) in
 // SQL keyword, so the unquoted `time.` qualifier is itself under test here —
 // and that a person's rate card is unique per (user, valid_from).
 func TestTimeBaseline_AppliesAndIsIdempotent(t *testing.T) {
-	url := testdb.URL(t)
+	t.Parallel()
+	url := testdb.MigratedURL(t)
 	applyUpDownUp(t, url, 10) // 00010_time_baseline.sql
 
 	ctx := context.Background()
@@ -1688,7 +1720,8 @@ func TestTimeBaseline_AppliesAndIsIdempotent(t *testing.T) {
 // manual order and the partial one over the two open statuses), and
 // projects.billing_lines gained its own budget columns (§3.1).
 func TestProjectsMilestones_AppliesAndIsIdempotent(t *testing.T) {
-	url := testdb.URL(t)
+	t.Parallel()
+	url := testdb.MigratedURL(t)
 	applyUpDownUp(t, url, 11) // 00011_projects_milestones.sql
 
 	ctx := context.Background()
@@ -1765,7 +1798,8 @@ func TestProjectsMilestones_AppliesAndIsIdempotent(t *testing.T) {
 // whose 23505 is the duplicate-name 409. A plain (project_id, name) index
 // would let "Overtid" and "overtid" both in.
 func TestProjectsWorkTypes_AppliesAndIsIdempotent(t *testing.T) {
-	url := testdb.URL(t)
+	t.Parallel()
+	url := testdb.MigratedURL(t)
 	applyUpDownUp(t, url, 31) // 00031_projects_work_types.sql
 
 	ctx := context.Background()
@@ -1819,7 +1853,8 @@ func TestProjectsWorkTypes_AppliesAndIsIdempotent(t *testing.T) {
 // them in — all nullable, NULL being "ordinary hours". COLLATE "C": the
 // underscore must sort as a character, not be skipped.
 func TestTimeWorkTypes_AppliesAndIsIdempotent(t *testing.T) {
-	url := testdb.URL(t)
+	t.Parallel()
+	url := testdb.MigratedURL(t)
 	applyUpDownUp(t, url, 32) // 00032_time_work_types.sql
 
 	ctx := context.Background()
@@ -1856,7 +1891,8 @@ func TestTimeWorkTypes_AppliesAndIsIdempotent(t *testing.T) {
 // row. Re-applying after a rollback re-seeds, which is what makes the down
 // migration safe to use on a live database.
 func TestExpensesBaseline_AppliesAndIsIdempotent(t *testing.T) {
-	url := testdb.URL(t)
+	t.Parallel()
+	url := testdb.MigratedURL(t)
 	applyUpDownUp(t, url, 12) // 00012_expenses_baseline.sql
 
 	ctx := context.Background()
@@ -1985,7 +2021,8 @@ func TestExpensesBaseline_AppliesAndIsIdempotent(t *testing.T) {
 // design §3.6, the four indexes it reads through, the cascade that takes a
 // claim's lines with it, and the six per diem rates the state agreement sets.
 func TestExpensesClaims_AppliesAndIsIdempotent(t *testing.T) {
-	url := testdb.URL(t)
+	t.Parallel()
+	url := testdb.MigratedURL(t)
 	applyUpDownUp(t, url, 13) // 00013_expenses_claims.sql
 
 	ctx := context.Background()
@@ -2129,6 +2166,7 @@ func TestExpensesClaims_AppliesAndIsIdempotent(t *testing.T) {
 // purpose, and POST /rates/reset is the door that puts the shipped one back on
 // request.
 func TestExpensesClaims_AppliesOverACompanysOwnPerDiemRate(t *testing.T) {
+	t.Parallel()
 	url := testdb.URL(t)
 	ctx := context.Background()
 
@@ -2194,6 +2232,7 @@ func TestExpensesClaims_AppliesOverACompanysOwnPerDiemRate(t *testing.T) {
 // pinned here: a later change to either the delete or the label would fail with
 // the reason written down beside it.
 func TestExpensesClaims_TheDownMigrationKeepsACompanysOwnRates(t *testing.T) {
+	t.Parallel()
 	url := testdb.URL(t)
 	ctx := context.Background()
 
@@ -2255,7 +2294,8 @@ func TestExpensesClaims_TheDownMigrationKeepsACompanysOwnRates(t *testing.T) {
 // If a later change puts `status` back into this predicate, it is dead weight
 // again and this test is what says so.
 func TestExpensesToInvoiceIndex_ReplacesTheOneNoReadCouldUse(t *testing.T) {
-	url := testdb.URL(t)
+	t.Parallel()
+	url := testdb.MigratedURL(t)
 	applyUpDownUp(t, url, 14) // 00014_expenses_to_invoice_index.sql
 
 	ctx := context.Background()
@@ -2290,7 +2330,8 @@ func TestExpensesToInvoiceIndex_ReplacesTheOneNoReadCouldUse(t *testing.T) {
 // left behind becomes the company-paid outlay the old inline predicate owes
 // nobody for, and the function and the columns are gone.
 func TestExpensesSupplierInvoices_AppliesAndIsIdempotent(t *testing.T) {
-	url := testdb.URL(t)
+	t.Parallel()
+	url := testdb.MigratedURL(t)
 	applyUpDownUp(t, url, 33) // 00033_expenses_supplier_invoices.sql
 
 	ctx := context.Background()
@@ -2395,7 +2436,8 @@ func TestExpensesSupplierInvoices_AppliesAndIsIdempotent(t *testing.T) {
 // the draft/number CHECK and the delivery CHECK (D4), and the three
 // immutability triggers (D9).
 func TestInvoicesBaseline_AppliesAndIsIdempotent(t *testing.T) {
-	url := testdb.URL(t)
+	t.Parallel()
+	url := testdb.MigratedURL(t)
 	applyUpDownUp(t, url, 34) // 00034_invoices_baseline.sql
 
 	ctx := context.Background()
@@ -2638,7 +2680,8 @@ func refusedWith(err error, message string) bool {
 // reads after its lock wait (D6), and invoices.document_state (D3) — which the
 // Down drops with the rest.
 func TestInvoicesPaymentsDelivery_AppliesAndIsIdempotent(t *testing.T) {
-	url := testdb.URL(t)
+	t.Parallel()
+	url := testdb.MigratedURL(t)
 	applyUpDownUp(t, url, 35) // 00035_invoices_payments_delivery.sql
 
 	ctx := context.Background()
@@ -2929,7 +2972,8 @@ func invoicesEhfKidObjects(t *testing.T, ctx context.Context, pool *pgxpool.Pool
 // send and the due index that keeps a delivered row claimable until its
 // evidence is stored (D9).
 func TestInvoicesEhfKid_AppliesAndIsIdempotent(t *testing.T) {
-	url := testdb.URL(t)
+	t.Parallel()
+	url := testdb.MigratedURL(t)
 	applyUpDownUp(t, url, 36) // 00036_invoices_ehf_kid.sql
 
 	ctx := context.Background()
@@ -3256,6 +3300,7 @@ func TestInvoicesEhfKid_AppliesAndIsIdempotent(t *testing.T) {
 // similar …), which no more names a column unquoted — so no query ever has to
 // quote one, and no generated field is named after a keyword.
 func TestInvoicesSchema_NamesNoColumnWithAReservedWord(t *testing.T) {
+	t.Parallel()
 	url := testdb.URL(t)
 	migrateTo(t, url, 46)
 
@@ -3302,7 +3347,8 @@ func TestInvoicesSchema_NamesNoColumnWithAReservedWord(t *testing.T) {
 // writes the design allows. If someone ever "tightens" this to UNIQUE, this
 // test is what says no.
 func TestCustomersRevision_AppliesWithANonUniqueLegalIdentityIndex(t *testing.T) {
-	url := testdb.URL(t)
+	t.Parallel()
+	url := testdb.MigratedURL(t)
 	applyUpDownUp(t, url, 16) // 00016_customers_revision.sql
 
 	ctx := context.Background()
@@ -3344,9 +3390,27 @@ func indexDefinition(t *testing.T, ctx context.Context, pool *pgxpool.Pool, sche
 	return def
 }
 
+// migrators bounds how many of this package's tests run goose at once. The
+// tests are parallel, so without it -parallel (GOMAXPROCS by default) would
+// decide, and a test migrating from empty runs 00005_energy_baseline.sql,
+// which takes ~648 locks in one transaction: on a many-core host enough of
+// those at once, plus the other packages' templates, exhaust PostgreSQL's
+// shared lock table (SQLSTATE 53200; see testdb.Migrated). Four keeps this
+// package within the budget CONTRIBUTING.md's `-p 4` is sized for, whatever
+// the host's CPU count.
+var migrators = make(chan struct{}, 4)
+
+// holdMigrator takes a migrator slot and returns the function that gives it
+// back: `defer holdMigrator()()`.
+func holdMigrator() func() {
+	migrators <- struct{}{}
+	return func() { <-migrators }
+}
+
 // migrateTo moves the database to exactly version, up or down.
 func migrateTo(t *testing.T, databaseURL string, version int64) {
 	t.Helper()
+	defer holdMigrator()()
 	ctx := context.Background()
 
 	cfg, err := pgx.ParseConfig(databaseURL)
@@ -3507,6 +3571,7 @@ type expensesColumn struct {
 // invoicing, rate-override and travel-claim columns that later deliveries
 // depend on and that no later migration may add.
 func TestExpensesBaseline_PinsTheEntryAndAttachmentColumns(t *testing.T) {
+	t.Parallel()
 	pool, _ := testdb.Migrated(t)
 	ctx := context.Background()
 

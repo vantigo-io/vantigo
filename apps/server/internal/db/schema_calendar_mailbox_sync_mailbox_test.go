@@ -18,7 +18,8 @@ const calendarMailboxSyncMailboxVersion = 86
 // MarkMailboxSyncNotified rests on: calendar.mailbox_sync's mailbox in lower
 // case, over the rows that are on. The down drops it.
 func TestCalendarMailboxSyncMailbox_AppliesAndIsIdempotent(t *testing.T) {
-	url := testdb.URL(t)
+	t.Parallel()
+	url := testdb.MigratedURL(t)
 	applyUpDownUp(t, url, calendarMailboxSyncMailboxVersion)
 
 	ctx := context.Background()

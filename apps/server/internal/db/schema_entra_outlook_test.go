@@ -27,7 +27,8 @@ const (
 // outlook_connect, off, beside three null columns, and the down gives
 // calendar_sync back without them.
 func TestEntraOutlookConnect_AppliesAndIsIdempotent(t *testing.T) {
-	url := testdb.URL(t)
+	t.Parallel()
+	url := testdb.MigratedURL(t)
 	applyUpDownUp(t, url, entraOutlookConnectVersion)
 
 	ctx := context.Background()
@@ -65,7 +66,8 @@ func TestEntraOutlookConnect_AppliesAndIsIdempotent(t *testing.T) {
 // default, the object id the key, one live row per person — a closing one
 // admitted beside it — and the index on changed_at. The down drops it.
 func TestEntraOutlookConnections_AppliesAndIsIdempotent(t *testing.T) {
-	url := testdb.URL(t)
+	t.Parallel()
+	url := testdb.MigratedURL(t)
 	applyUpDownUp(t, url, entraOutlookConnectionsVersion)
 
 	ctx := context.Background()

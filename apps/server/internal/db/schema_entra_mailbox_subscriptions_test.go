@@ -31,7 +31,8 @@ const entraMailboxSubscriptionsResourceVersion = 93
 // (mailbox, resource), Graph's id unique, the index on notified_at; the
 // connection's three columns, null. The Down drops them.
 func TestEntraMailboxSubscriptions_AppliesAndIsIdempotent(t *testing.T) {
-	url := testdb.URL(t)
+	t.Parallel()
+	url := testdb.MigratedURL(t)
 	applyUpDownUp(t, url, entraMailboxSubscriptionsVersion)
 
 	ctx := context.Background()
@@ -115,7 +116,8 @@ func TestEntraMailboxSubscriptions_AppliesAndIsIdempotent(t *testing.T) {
 // refusing a duplicate (object_id, resource), and on rollback drops 'messages'
 // rows and restores the (object_id) primary key.
 func TestEntraMailboxSubscriptionsResource_AppliesAndIsIdempotent(t *testing.T) {
-	url := testdb.URL(t)
+	t.Parallel()
+	url := testdb.MigratedURL(t)
 	applyUpDownUp(t, url, entraMailboxSubscriptionsResourceVersion)
 
 	ctx := context.Background()

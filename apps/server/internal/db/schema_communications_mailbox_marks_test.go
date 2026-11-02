@@ -23,7 +23,8 @@ const communicationsMailboxMarksVersion = 94
 // its columns, defaults, operation and status CHECKs, due partial index, and
 // ON DELETE CASCADE from communications.conversations.
 func TestCommunicationsMailboxMarks_AppliesAndIsIdempotent(t *testing.T) {
-	url := testdb.URL(t)
+	t.Parallel()
+	url := testdb.MigratedURL(t)
 	applyUpDownUp(t, url, communicationsMailboxMarksVersion)
 
 	ctx := context.Background()

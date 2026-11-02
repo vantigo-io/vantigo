@@ -26,7 +26,8 @@ const staffCompetenceVersion = 66
 // CHECK, the module's validation owning the closed sets as 00042's house
 // style has it. The Down drops the three tables.
 func TestStaffCompetence_AppliesAndIsIdempotent(t *testing.T) {
-	url := testdb.URL(t)
+	t.Parallel()
+	url := testdb.MigratedURL(t)
 	applyUpDownUp(t, url, staffCompetenceVersion)
 	// What is pinned below is 00066's own schema: the later migrations —
 	// 00067's seen stamp on person_competences among them — are rolled back

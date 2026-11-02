@@ -31,7 +31,8 @@ var staffRecordsTables = []string{"document_categories", "documents", "object_de
 // for class E; every identity starting at 1001. The Down removes the three
 // tables and leaves 00042's schema as it was.
 func TestStaffRecords_AppliesAndIsIdempotent(t *testing.T) {
-	url := testdb.URL(t)
+	t.Parallel()
+	url := testdb.MigratedURL(t)
 	applyUpDownUp(t, url, staffRecordsVersion)
 	// What is pinned below is 00043's own schema: the later migrations — 00047's
 	// columns on employments, documents and settings among them — are rolled

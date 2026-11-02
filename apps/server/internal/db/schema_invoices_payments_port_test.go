@@ -101,7 +101,8 @@ func paymentsPortObjects(t *testing.T, ctx context.Context, pool *pgxpool.Pool) 
 // both CHECKs replaced (D2's third branch); every identity starting at 1001.
 // The Down removes all of it and restores 00041's two CHECKs exactly.
 func TestInvoicesPaymentsPort_AppliesAndIsIdempotent(t *testing.T) {
-	url := testdb.URL(t)
+	t.Parallel()
+	url := testdb.MigratedURL(t)
 	applyUpDownUp(t, url, paymentsPortVersion) // 00046_invoices_payments_port.sql
 
 	ctx := context.Background()

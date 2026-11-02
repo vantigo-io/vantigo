@@ -22,7 +22,8 @@ const calendarInvitationsVersion = 56
 // (one row per user, per contact and per address on an appointment, one
 // attendee per RSVP token), and the appointment's cancelled_at.
 func TestCalendarInvitations_AppliesAndIsIdempotent(t *testing.T) {
-	url := testdb.URL(t)
+	t.Parallel()
+	url := testdb.MigratedURL(t)
 	applyUpDownUp(t, url, calendarInvitationsVersion)
 
 	ctx := context.Background()
@@ -85,6 +86,7 @@ func TestCalendarInvitations_AppliesAndIsIdempotent(t *testing.T) {
 // holds when outside attendees exist: their rows, which have no user_id, are
 // deleted before user_id is NOT NULL again, and a colleague's row survives.
 func TestCalendarInvitations_DownDeletesTheOutsideKinds(t *testing.T) {
+	t.Parallel()
 	url := testdb.URL(t)
 	migrateTo(t, url, calendarInvitationsVersion)
 

@@ -27,7 +27,8 @@ const communicationsInboundVersion = 92
 // admitting a duplicate beside its original, and ON DELETE SET NULL on
 // message_id. The down drops both tables and the expression index.
 func TestCommunicationsInbound_AppliesAndIsIdempotent(t *testing.T) {
-	url := testdb.URL(t)
+	t.Parallel()
+	url := testdb.MigratedURL(t)
 	applyUpDownUp(t, url, communicationsInboundVersion)
 
 	ctx := context.Background()
@@ -159,6 +160,7 @@ func TestCommunicationsInbound_AppliesAndIsIdempotent(t *testing.T) {
 // upgrade, for every entra channel that existed before it — an inactive one
 // too — and none for an SMTP channel; a down and an up again write it anew.
 func TestCommunicationsInbound_BackfillsMicrosoft365Channels(t *testing.T) {
+	t.Parallel()
 	url := testdb.URL(t)
 	migrateTo(t, url, communicationsInboundVersion-1)
 

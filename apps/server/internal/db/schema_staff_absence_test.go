@@ -42,7 +42,8 @@ var staffAbsenceTables = []string{
 // Down removes the six tables and the three columns and leaves 00043's schema
 // as it was.
 func TestStaffAbsence_AppliesAndIsIdempotent(t *testing.T) {
-	url := testdb.URL(t)
+	t.Parallel()
+	url := testdb.MigratedURL(t)
 	applyUpDownUp(t, url, staffAbsenceVersion)
 
 	ctx := context.Background()

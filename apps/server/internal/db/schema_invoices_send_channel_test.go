@@ -19,7 +19,8 @@ const invoicesSendChannelVersion = 96
 // send_channel, null on the existing row (Disabled), holding any id (no foreign
 // key across schemas) and clearing back to null.
 func TestInvoicesSendChannel_AppliesAndIsIdempotent(t *testing.T) {
-	url := testdb.URL(t)
+	t.Parallel()
+	url := testdb.MigratedURL(t)
 	applyUpDownUp(t, url, invoicesSendChannelVersion)
 
 	ctx := context.Background()

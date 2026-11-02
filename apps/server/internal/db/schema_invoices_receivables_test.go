@@ -112,7 +112,8 @@ func receivablesObjects(t *testing.T, ctx context.Context, pool *pgxpool.Pool) m
 // at 1001. The Down removes all of it and restores the payments as 00035 made
 // them.
 func TestInvoicesReceivables_AppliesAndIsIdempotent(t *testing.T) {
-	url := testdb.URL(t)
+	t.Parallel()
+	url := testdb.MigratedURL(t)
 	applyUpDownUp(t, url, receivablesVersion) // 00041_invoices_receivables.sql
 	// 00046 replaces the payments' two CHECKs (D2's third branch); its own
 	// test pins them, so this one reads 00041's at 41.

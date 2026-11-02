@@ -19,7 +19,8 @@ import (
 // the one "ready to invoice" rule, over its whole truth table. The Down removes
 // the function and both columns.
 func TestExpensesInvoicedBy_AppliesAndIsIdempotent(t *testing.T) {
-	url := testdb.URL(t)
+	t.Parallel()
+	url := testdb.MigratedURL(t)
 	applyUpDownUp(t, url, 38) // 00038_expenses_invoiced_by.sql
 
 	ctx := context.Background()

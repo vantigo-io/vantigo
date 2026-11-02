@@ -22,7 +22,8 @@ const staffPhotoPushVersion = 71
 // no CHECK, the worker writing it, as 00042's house style has it. The Down
 // drops the column and leaves the link.
 func TestStaffPhotoPush_AppliesAndIsIdempotent(t *testing.T) {
-	url := testdb.URL(t)
+	t.Parallel()
+	url := testdb.MigratedURL(t)
 	applyUpDownUp(t, url, staffPhotoPushVersion)
 
 	ctx := context.Background()

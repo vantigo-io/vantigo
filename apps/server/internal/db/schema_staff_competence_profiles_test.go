@@ -26,7 +26,8 @@ const staffCompetenceProfilesVersion = 68
 // CHECK, the module's validation owning the rules as 00042's house style has
 // it. The Down drops the column and the three tables.
 func TestStaffCompetenceProfiles_AppliesAndIsIdempotent(t *testing.T) {
-	url := testdb.URL(t)
+	t.Parallel()
+	url := testdb.MigratedURL(t)
 	applyUpDownUp(t, url, staffCompetenceProfilesVersion)
 
 	ctx := context.Background()

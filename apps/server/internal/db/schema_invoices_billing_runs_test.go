@@ -19,7 +19,8 @@ const invoicesBillingRunsVersion = 79
 // failed item, a finished item with its time, and the items going with
 // their run.
 func TestInvoicesBillingRuns_AppliesAndIsIdempotent(t *testing.T) {
-	url := testdb.URL(t)
+	t.Parallel()
+	url := testdb.MigratedURL(t)
 	applyUpDownUp(t, url, invoicesBillingRunsVersion)
 
 	ctx := context.Background()

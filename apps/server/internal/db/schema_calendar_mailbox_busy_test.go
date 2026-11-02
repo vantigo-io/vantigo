@@ -20,7 +20,8 @@ const calendarMailboxBusyVersion = 83
 // about — its key of one row per person per event, the two window indexes,
 // and the delta's state on calendar.mailbox_sync; the down drops them all.
 func TestCalendarMailboxBusy_AppliesAndIsIdempotent(t *testing.T) {
-	url := testdb.URL(t)
+	t.Parallel()
+	url := testdb.MigratedURL(t)
 	applyUpDownUp(t, url, calendarMailboxBusyVersion)
 
 	ctx := context.Background()

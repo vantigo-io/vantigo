@@ -24,7 +24,8 @@ const (
 // nullability and default, the setting's key of one per person, the map's
 // of one per person per item, and the worker's partial due index.
 func TestCalendarMailboxSync_AppliesAndIsIdempotent(t *testing.T) {
-	url := testdb.URL(t)
+	t.Parallel()
+	url := testdb.MigratedURL(t)
 	applyUpDownUp(t, url, calendarMailboxSyncVersion)
 
 	ctx := context.Background()
@@ -107,6 +108,7 @@ func TestCalendarMailboxSync_AppliesAndIsIdempotent(t *testing.T) {
 // the two tables, rows and all, and leaves the rest of the calendar schema
 // as 00057 left it.
 func TestCalendarMailboxSync_DownDropsBothTables(t *testing.T) {
+	t.Parallel()
 	url := testdb.URL(t)
 	migrateTo(t, url, calendarMailboxSyncVersion)
 
@@ -147,7 +149,8 @@ func TestCalendarMailboxSync_DownDropsBothTables(t *testing.T) {
 // outlook_connect (TestEntraOutlookConnect_AppliesAndIsIdempotent), so it is
 // read at this migration's version, not at head.
 func TestEntraCalendarSync_AppliesAndIsIdempotent(t *testing.T) {
-	url := testdb.URL(t)
+	t.Parallel()
+	url := testdb.MigratedURL(t)
 	applyUpDownUp(t, url, entraCalendarSyncVersion)
 	migrateTo(t, url, entraCalendarSyncVersion)
 

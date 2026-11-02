@@ -21,7 +21,8 @@ const calendarSettingsVersion = 97
 // row seeded with no channel, the single-row CHECK refusing a second, any
 // channel id held (no foreign key across schemas) and cleared back to null.
 func TestCalendarSettings_AppliesAndIsIdempotent(t *testing.T) {
-	url := testdb.URL(t)
+	t.Parallel()
+	url := testdb.MigratedURL(t)
 	applyUpDownUp(t, url, calendarSettingsVersion)
 
 	ctx := context.Background()

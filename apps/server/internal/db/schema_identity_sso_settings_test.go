@@ -22,7 +22,8 @@ const identitySsoSettingsVersion = 58
 // fresh row, as EnsureSsoSettings writes it, reading never written, with
 // OIDC and SCIM off and no allowed domains.
 func TestIdentitySsoSettings_AppliesAndIsIdempotent(t *testing.T) {
-	url := testdb.URL(t)
+	t.Parallel()
+	url := testdb.MigratedURL(t)
 	applyUpDownUp(t, url, identitySsoSettingsVersion)
 
 	ctx := context.Background()
@@ -118,6 +119,7 @@ func TestIdentitySsoSettings_AppliesAndIsIdempotent(t *testing.T) {
 // TestIdentitySsoSettings_DownDropsTheTable proves the down path removes the
 // table, its row and the sealed secret with it.
 func TestIdentitySsoSettings_DownDropsTheTable(t *testing.T) {
+	t.Parallel()
 	url := testdb.URL(t)
 	migrateTo(t, url, identitySsoSettingsVersion)
 

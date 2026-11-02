@@ -63,6 +63,7 @@ const identityAccountsColumnsQuery = `
 // (plan reading 14), and nothing else touched. The Down removes all of it
 // and leaves the baseline as it was.
 func TestIdentityAccounts_AppliesBackfillsAndIsIdempotent(t *testing.T) {
+	t.Parallel()
 	url := testdb.URL(t)
 	ctx := context.Background()
 

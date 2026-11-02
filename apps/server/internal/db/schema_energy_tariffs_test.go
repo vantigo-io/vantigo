@@ -22,7 +22,8 @@ const energyTariffsVersion = 76
 // statuses, cadences and tax classes the CHECKs allow, a day window that
 // opens before it closes, and a tariff in use that cannot be deleted.
 func TestEnergyTariffs_AppliesAndIsIdempotent(t *testing.T) {
-	url := testdb.URL(t)
+	t.Parallel()
+	url := testdb.MigratedURL(t)
 	applyUpDownUp(t, url, energyTariffsVersion)
 
 	ctx := context.Background()

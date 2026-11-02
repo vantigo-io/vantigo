@@ -118,7 +118,8 @@ func invoicesWorkObjects(t *testing.T, ctx context.Context, pool *pgxpool.Pool) 
 // relaxed quantity CHECK (D7); the work settings (D6, D5); and the three
 // triggers. The Down removes all of it and restores the old CHECK.
 func TestInvoicesWork_AppliesAndIsIdempotent(t *testing.T) {
-	url := testdb.URL(t)
+	t.Parallel()
+	url := testdb.MigratedURL(t)
 	applyUpDownUp(t, url, invoicesWorkVersion) // 00040_invoices_work.sql
 	// What 00040 wrote, read at 00040: a later migration (00078's line
 	// sources and lines) changes some of it, and pins that itself.
@@ -362,6 +363,7 @@ const (
 // a row is deleted only while held, a draft's invoiced row included; and a
 // cascade from deleting a draft passes, as 00034's children's do.
 func TestInvoicesWork_TheLineSourceTrigger(t *testing.T) {
+	t.Parallel()
 	f := newInvoicesWorkFixture(t)
 	draft := f.draft(0)
 	line := f.line(draft, 1, 0)
@@ -468,6 +470,7 @@ func TestInvoicesWork_TheLineSourceTrigger(t *testing.T) {
 // row at most — held or invoiced — while a released row frees it to be
 // held again; the kind is part of the identity.
 func TestInvoicesWork_TheLiveIndex(t *testing.T) {
+	t.Parallel()
 	f := newInvoicesWorkFixture(t)
 	a := f.draft(0)
 	lineA := f.line(a, 1, 0)
@@ -599,6 +602,7 @@ func invoicesWorkHolds(t *testing.T, invoiceID, lineID int64, sources []invoices
 // otherwise reach meeting in the middle. The store's subkind and the exact
 // amount survive the round trip.
 func TestInvoicesWork_OverlappingHoldsInOppositeOrderFailOnTheIndexNeverDeadlock(t *testing.T) {
+	t.Parallel()
 	f := newInvoicesWorkFixture(t)
 	var given []invoicesWorkSource
 	for id := int64(1); id <= 1000; id++ {
@@ -696,6 +700,7 @@ func TestInvoicesWork_OverlappingHoldsInOppositeOrderFailOnTheIndexNeverDeadlock
 // refused every write once their document is issued, and gone with a
 // deleted draft; a source is released once.
 func TestInvoicesWork_LineReleasesAndTimesheetRowsAreFrozenWithTheirDocument(t *testing.T) {
+	t.Parallel()
 	f := newInvoicesWorkFixture(t)
 
 	// An issued invoice whose two lines' sources are invoiced, and a
@@ -823,6 +828,7 @@ func TestInvoicesWork_LineReleasesAndTimesheetRowsAreFrozenWithTheirDocument(t *
 // natural caller's "no hours held" — deletes every row of the draft, never
 // none, and never another draft's.
 func TestInvoicesWork_ThePruneWithNothingKeptDeletesEveryRow(t *testing.T) {
+	t.Parallel()
 	f := newInvoicesWorkFixture(t)
 	prune, params := invoicesWorkQuery(t, "PruneTimesheetRows")
 	if !slices.Equal(params, []string{"invoice_id", "kept"}) {
@@ -862,6 +868,7 @@ func TestInvoicesWork_ThePruneWithNothingKeptDeletesEveryRow(t *testing.T) {
 // reading 7: a line source's and a release's invoice_id is their line's,
 // through (line_id, invoice_id) referencing uq_lines_id_invoice.
 func TestInvoicesWork_TheCompositeKeysRefuseAMismatchedDocument(t *testing.T) {
+	t.Parallel()
 	f := newInvoicesWorkFixture(t)
 	a := f.draft(0)
 	lineA := f.line(a, 1, 0)
@@ -897,6 +904,7 @@ func TestInvoicesWork_TheCompositeKeysRefuseAMismatchedDocument(t *testing.T) {
 // the deduction's no-discount rule: a negative quantity only on a line that
 // deducts an invoice, never zero, and a deduction carries no discount.
 func TestInvoicesWork_TheQuantityCheck(t *testing.T) {
+	t.Parallel()
 	f := newInvoicesWorkFixture(t)
 	akonto := f.draft(0)
 	f.line(akonto, 1, 0)
@@ -948,6 +956,7 @@ func TestInvoicesWork_TheQuantityCheck(t *testing.T) {
 // exists; the timesheet is off and its person label is initials, one of
 // three.
 func TestInvoicesWork_TheSettingsDefaults(t *testing.T) {
+	t.Parallel()
 	f := newInvoicesWorkFixture(t)
 	var hours, expenses, milestones int32
 	var timesheet bool
@@ -987,6 +996,7 @@ func TestInvoicesWork_TheSettingsDefaults(t *testing.T) {
 // set together or not at all, and both, with the flag, are frozen at issue
 // by 00034's refuse_issued_document_change without touching it.
 func TestInvoicesWork_TheDocumentsProjectAndTimesheetFreezeAtIssue(t *testing.T) {
+	t.Parallel()
 	f := newInvoicesWorkFixture(t)
 	draft := f.draft(0)
 	for _, bad := range []string{

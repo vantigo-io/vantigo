@@ -26,7 +26,8 @@ const (
 // NULL meaning "follow the workspace", and no time_zone column left on
 // staff.settings or expenses.settings.
 func TestWorkspaceTimeZone_AppliesAndIsIdempotent(t *testing.T) {
-	url := testdb.URL(t)
+	t.Parallel()
+	url := testdb.MigratedURL(t)
 	for _, version := range []int64{workspaceTimeZoneVersion, staffTimeZoneVersion, expensesTimeZoneVersion} {
 		applyUpDownUp(t, url, version)
 	}
