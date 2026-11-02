@@ -62,12 +62,16 @@ type previewDoc struct {
 	Method  string                      `json:"method"`
 	Target  *gen.AssistantPendingTarget `json:"target,omitempty"`
 	Fields  []gen.AssistantPendingField `json:"fields"`
+	// Bulk is the preview of a bulk plan: the sample and the excluded.
+	Bulk *bulkPreview `json:"bulk,omitempty"`
 }
 
 // pendingDraft is a proposed change before it is stored.
 type pendingDraft struct {
 	request storedRequest
 	preview previewDoc
+	// bulk is the plan of a bulk change; nil for a single change.
+	bulk *bulkDraft
 }
 
 // pendingView is a stored action as the contract answers it. An action
@@ -82,8 +86,9 @@ func pendingView(row store.AssistantPendingAction, now time.Time) gen.AssistantP
 	if status == "pending" && !row.ExpiresAt.After(now) {
 		status = "expired"
 	}
+	kind := gen.AssistantPendingActionKind(row.Kind)
 	out := gen.AssistantPendingAction{
-		Id: row.ID, RunId: row.RunID, ConversationId: row.ConversationID, OperationId: row.OperationID, Method: doc.Method,
+		Kind: &kind, Id: row.ID, RunId: row.RunID, ConversationId: row.ConversationID, OperationId: row.OperationID, Method: doc.Method,
 		Status: gen.AssistantPendingActionStatus(status), Summary: doc.Summary, Fields: doc.Fields, Target: doc.Target,
 		CreatedAt: row.CreatedAt, ExpiresAt: row.ExpiresAt, DecidedAt: row.DecidedAt,
 	}
@@ -322,27 +327,11 @@ func (t *toolbox) propose(info operations.Info, req operations.CallRequest, expl
 	out.extra = logged
 
 	doc := previewDoc{Summary: info.Summary, Explain: clip(strings.TrimSpace(explain), maxExplainChars), Method: info.Method, Fields: []gen.AssistantPendingField{}}
-	// A record may answer with the fields under "data"; read them from there.
 	var current map[string]any
 	if prior != nil {
-		current = prior.object
-		if inner, ok := prior.object["data"].(map[string]any); ok && len(names) > 0 {
-			if _, top := prior.object[names[0]]; !top {
-				current = inner
-			}
-		}
+		current = recordFields(prior.object, names)
 	}
-	for _, name := range names {
-		next := display(body[name])
-		field := gen.AssistantPendingField{Name: name, Next: &next}
-		if current != nil {
-			if v, ok := current[name]; ok {
-				cur := display(v)
-				field.Current = &cur
-			}
-		}
-		doc.Fields = append(doc.Fields, field)
-	}
+	doc.Fields = cardFields(names, body, current)
 	if body == nil && len(bytes.TrimSpace(req.Body)) > 0 && string(bytes.TrimSpace(req.Body)) != "null" {
 		next := display(json.RawMessage(req.Body))
 		doc.Fields = append(doc.Fields, gen.AssistantPendingField{Name: "body", Next: &next})
@@ -395,6 +384,35 @@ func (t *toolbox) propose(info operations.Info, req operations.CallRequest, expl
 	return out
 }
 
+// recordFields is the record a read answered: its fields are under "data" when
+// the module wraps them, else the object itself.
+func recordFields(object map[string]any, names []string) map[string]any {
+	if inner, ok := object["data"].(map[string]any); ok && len(names) > 0 {
+		if _, top := object[names[0]]; !top {
+			return inner
+		}
+	}
+	return object
+}
+
+// cardFields are the fields of a card: each name with the value the change
+// gives it and, where a read of the same record said, the value it has now.
+func cardFields(names []string, body, current map[string]any) []gen.AssistantPendingField {
+	fields := make([]gen.AssistantPendingField, 0, len(names))
+	for _, name := range names {
+		next := display(body[name])
+		field := gen.AssistantPendingField{Name: name, Next: &next}
+		if current != nil {
+			if v, ok := current[name]; ok {
+				cur := display(v)
+				field.Current = &cur
+			}
+		}
+		fields = append(fields, field)
+	}
+	return fields
+}
+
 // locationsFor is where each parameter of an operation goes, read once.
 func (t *toolbox) locationsFor(id string) map[string]string {
 	if loc, ok := t.params[id]; ok {
@@ -414,6 +432,9 @@ func (t *toolbox) locationsFor(id string) map[string]string {
 // createPending stores the draft and its card, tied to the tool result that
 // stands for it.
 func (r *runner) createPending(d *pendingDraft, callID string, toolMessage uuid.UUID) (store.AssistantPendingAction, error) {
+	if d.bulk != nil {
+		return r.createBulkPending(d, callID, toolMessage)
+	}
 	request, err := json.Marshal(d.request)
 	if err != nil {
 		return store.AssistantPendingAction{}, err
@@ -423,7 +444,7 @@ func (r *runner) createPending(d *pendingDraft, callID string, toolMessage uuid.
 		return store.AssistantPendingAction{}, err
 	}
 	now := r.s.deps.Clock()
-	return store.New(r.s.deps.Pool).InsertPendingAction(r.persist(), store.InsertPendingActionParams{
+	return store.New(r.s.deps.Pool).InsertPendingAction(r.persist(), store.InsertPendingActionParams{Kind: kindChange,
 		ID: uuid.New(), RunID: r.runID, ConversationID: r.convID, UserID: r.userID, OperationID: d.request.OperationID,
 		CallID: callID, ToolMessageID: &toolMessage, Request: request, Preview: preview, Now: now, ExpiresAt: now.Add(pendingTTL),
 	})
@@ -594,7 +615,7 @@ func (r *runner) decide(d decision) {
 		r.s.deps.Logger.Error("assistant: record a decision", "action", d.action.ID, "error", err)
 	}
 	if err == nil {
-		r.queue.emit(eventConfirmation, pendingView(finished, r.s.deps.Clock()))
+		r.queue.emit(eventConfirmation, r.s.cardOf(r.persist(), finished))
 	}
 
 	if d.confirm {
@@ -681,6 +702,9 @@ func (s *server) decideAction(ctx context.Context, id uuid.UUID, confirm bool) (
 		r := refuse(409, codeActionDecided, "This change has already been decided")
 		return nil, &r, nil
 	}
+	if action.Kind == kindBulk {
+		return s.decideBulk(ctx, action, confirm)
+	}
 	if confirm {
 		// The Owner may have narrowed what the assistant may use while the card
 		// waited; a change the gate now refuses is not made.
@@ -730,25 +754,33 @@ func (s *server) decideAction(ctx context.Context, id uuid.UUID, confirm bool) (
 		return nil, nil, fmt.Errorf("assistant: claim the pending action: %w", err)
 	}
 
+	return s.resumeDecided(ctx, conv, claimed, grantID, confirm)
+}
+
+// resumeDecided carries on a run whose action the person has just decided, on a
+// detached runner: the change if they confirmed, then the model's answer,
+// streamed.
+func (s *server) resumeDecided(ctx context.Context, conv store.GetConversationRow, claimed store.AssistantPendingAction, grantID uuid.UUID, confirm bool) (*streamResponse, *refusal, error) {
+	user := callerID(ctx)
 	lang, name := s.person(ctx, user)
 	runCtx, cancel := context.WithCancelCause(context.Background())
 	runCtx, stopTimer := context.WithTimeoutCause(runCtx, runCeiling, errors.New("assistant: the run reached its ceiling"))
-	s.runs.add(action.RunID, conv.ID, func(cause error) { cancel(cause) })
+	s.runs.add(claimed.RunID, conv.ID, func(cause error) { cancel(cause) })
 	runCtx = withGrant(runCtx, user, grantID)
 
 	queue := newEventQueue()
-	queue.emit(eventRun, map[string]any{"runId": action.RunID})
-	queue.emit(eventConfirmation, pendingView(claimed, now))
+	queue.emit(eventRun, map[string]any{"runId": claimed.RunID})
+	queue.emit(eventConfirmation, s.cardOf(context.WithoutCancel(ctx), claimed))
 
 	r := &runner{
-		s: s, ctx: runCtx, runID: action.RunID, convID: conv.ID, userID: user, grantID: grantID, queue: queue, lang: lang, name: name,
+		s: s, ctx: runCtx, runID: claimed.RunID, convID: conv.ID, userID: user, grantID: grantID, queue: queue, lang: lang, name: name,
 		tools:  &toolbox{s: s, ctx: runCtx, userID: user, lang: lang, params: map[string]map[string]string{}},
 		resume: &decision{action: claimed, confirm: confirm},
 	}
 	go func() {
 		defer stopTimer()
 		defer cancel(nil)
-		defer s.runs.remove(action.RunID)
+		defer s.runs.remove(claimed.RunID)
 		r.execute()
 	}()
 	return &streamResponse{ctx: ctx, queue: queue}, nil, nil

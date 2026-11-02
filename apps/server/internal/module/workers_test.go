@@ -542,3 +542,30 @@ func TestWorkers_PanicsOnTwoProvidersOfABillingSlot(t *testing.T) {
 		})
 	}
 }
+
+// The operations dispatcher is built and bound by Compose, for the module named
+// assistant, once the composed router exists. Workers never composes (worker
+// mode, and the workers of an API process), so no module's workers can be handed
+// one: a job that must call the contract's operations cannot run in a worker,
+// and the assistant runs its bulk jobs in the API process (the Assistant design
+// S13, delivery C).
+func TestWorkers_NeverCarryTheOperationsDispatcher(t *testing.T) {
+	var seen []bool
+	probe := func(d Deps) []worker.Worker {
+		seen = append(seen, d.Operations == nil)
+		return nil
+	}
+	deps := Deps{Config: &config.Config{Modules: []string{"assistant", "widgets"}}}
+	Workers(deps,
+		Module{Name: "assistant", Workers: probe},
+		Module{Name: "widgets", Workers: probe},
+	)
+	if len(seen) != 2 {
+		t.Fatalf("%d modules' workers were built, want 2", len(seen))
+	}
+	for i, none := range seen {
+		if !none {
+			t.Errorf("module %d's workers were built with a dispatcher", i)
+		}
+	}
+}

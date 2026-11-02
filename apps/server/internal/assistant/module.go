@@ -70,6 +70,7 @@ func mount(d module.Deps) (http.Handler, error) {
 	}
 	s := newServer(d)
 	d.Operations.SetGate(s.gate)
+	s.registerBulkHost()
 	router := module.NewRouter(module.RouterOptions{
 		Doc:     d.Doc,
 		Access:  d.Access,

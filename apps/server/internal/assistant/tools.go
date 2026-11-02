@@ -67,6 +67,37 @@ var baseToolDefs = []ai.Tool{
 		}),
 	},
 	{
+		Name: toolProposeBulk,
+		Description: "Propose the same change to many items at once, such as every metering point in a price area or every customer with a tag: use it instead of changing items one by one whenever the person says all, every or each and more than a few items match. " +
+			"It reads the selector (a list operation that reads data, with its filters) to its end and freezes the items it finds, at most 2000; it changes nothing. The person is shown a card with the count, a sample of 10 with each item's current and new value, and how many cannot be changed, and must press Start. Start runs only the first 5 items for real; the person then decides whether to go on, and the rest runs as a job they can stop. " +
+			"Give the operation that changes one item (an operation you would otherwise propose with call_operation), the values that are the same for every item, and bind: which field of each listed item feeds which parameter of that operation, such as {\"id\": \"id\"} for a path parameter {id} or {\"revision\": \"revision\"} for a body field. Read the list with call_operation first and say how many items match before you propose. One bulk plan at a time; it ends your turn.",
+		Parameters: objectSchema([]string{"selector", "operation", "bind"}, map[string]any{
+			"selector": map[string]any{
+				"type":        "object",
+				"description": "The list that finds the items. It must be an operation that only reads.",
+				"properties": map[string]any{
+					"operationId": str("The list operation's id from search_operations."),
+					"query":       map[string]any{"type": "object", "description": "The filters, by query parameter name. Do not give page, pageSize, cursor, limit or offset: the server pages to the end.", "additionalProperties": true},
+					"pathParams":  map[string]any{"type": "object", "additionalProperties": true},
+					"body":        map[string]any{"type": "object", "description": "The request body, for a POST that only reads.", "additionalProperties": true},
+				},
+				"required": []string{"operationId"},
+			},
+			"operation": map[string]any{
+				"type":        "object",
+				"description": "The change made to each item.",
+				"properties": map[string]any{
+					"operationId": str("The id of the operation that changes one item."),
+					"pathParams":  map[string]any{"type": "object", "description": "Path parameters that are the same for every item.", "additionalProperties": true},
+					"body":        map[string]any{"type": "object", "description": "The values to set, the same for every item; give every field the operation needs besides the bound ones.", "additionalProperties": true},
+				},
+				"required": []string{"operationId"},
+			},
+			"bind":    map[string]any{"type": "object", "description": "Which item field feeds which parameter: {\"<path parameter or body field of the operation>\": \"<field of each listed item>\"}.", "additionalProperties": map[string]any{"type": "string"}},
+			"explain": str("One sentence, in the person's language, saying what the change does and to which items, for the card."),
+		}),
+	},
+	{
 		Name:        toolNavigate,
 		Description: "Offer the person a button that opens a screen or a record in Vantigo. It does not move the screen by itself. Use a route from the list in your instructions.",
 		Parameters: objectSchema([]string{"route", "label"}, map[string]any{
@@ -117,6 +148,11 @@ func toolLabel(lang, name, detail string) string {
 			return "Forbereder en omvisning"
 		}
 		return "Preparing a tour"
+	case toolProposeBulk:
+		if nb {
+			return "Forbereder en masseendring"
+		}
+		return "Preparing a bulk change"
 	}
 	return name
 }
@@ -185,6 +221,8 @@ func (t *toolbox) run(call ai.ToolCall) outcome {
 		return t.navigate(call.Arguments)
 	case toolShowTour:
 		return t.showTour(call.Arguments)
+	case toolProposeBulk:
+		return t.proposeBulk(call.Arguments)
 	}
 	return refused("unknown_tool", fmt.Sprintf("there is no tool %q", call.Name))
 }

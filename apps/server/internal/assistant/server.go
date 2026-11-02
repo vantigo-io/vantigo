@@ -16,12 +16,18 @@ type server struct {
 	deps   module.Deps
 	levels levelCache  // the workspace's permission levels, by settings version
 	runs   runRegistry // the runs this process is executing
+
+	// claimID names this server on the claims it holds on bulk jobs: unique per
+	// process, so a job is run by one replica at a time.
+	claimID string
+	// opsOverride is a scripted dispatcher, installed by a test only.
+	opsOverride bulkOps
 }
 
 var _ gen.StrictServerInterface = (*server)(nil)
 
 // newServer builds the module's operations over d.
-func newServer(d module.Deps) *server { return &server{deps: d} }
+func newServer(d module.Deps) *server { return &server{deps: d, claimID: uuid.NewString()} }
 
 // callerID is the signed-in caller of one request. The router has already
 // authenticated every operation, so a handler always has one.

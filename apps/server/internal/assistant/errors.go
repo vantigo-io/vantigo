@@ -70,6 +70,18 @@ func (r refusal) VisitConfirmAssistantPendingActionResponse(w http.ResponseWrite
 	return r.write(w)
 }
 func (r refusal) VisitGetAssistantUsageResponse(w http.ResponseWriter) error { return r.write(w) }
+func (r refusal) VisitGetAssistantBulkJobResponse(w http.ResponseWriter) error {
+	return r.write(w)
+}
+func (r refusal) VisitContinueAssistantBulkJobResponse(w http.ResponseWriter) error {
+	return r.write(w)
+}
+func (r refusal) VisitStopAssistantBulkJobResponse(w http.ResponseWriter) error {
+	return r.write(w)
+}
+func (r refusal) VisitGetAssistantBulkJobFailuresResponse(w http.ResponseWriter) error {
+	return r.write(w)
+}
 func (r refusal) VisitCreateAssistantConversationResponse(w http.ResponseWriter) error {
 	return r.write(w)
 }
