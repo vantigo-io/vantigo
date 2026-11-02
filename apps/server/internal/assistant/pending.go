@@ -260,13 +260,30 @@ func (t *toolbox) readBefore(info operations.Info, req operations.CallRequest) (
 		// A module that versions its rows by a revision in the body hands the same
 		// number out as the header (the planning module's rows).
 		for _, k := range []string{"revision", "version"} {
-			if v, ok := scalarString(obj[k]); ok && v != "" {
+			if v, ok := scalarString(obj[k]); ok && isETagValue(v) {
 				b.etag = `"` + v + `"`
 				break
 			}
 		}
 	}
 	return b, logged
+}
+
+// isETagValue reports whether v may stand between the quotes of an entity tag
+// (RFC 9110 §8.8.3: etagc is %x21 / %x23-7E, so no quote, space or control
+// character). A revision taken from a response body is the module's data, not
+// a header the module formatted, so one that does not fit is not used: the
+// change then goes without If-Match, as for a record that has no version.
+func isETagValue(v string) bool {
+	if v == "" {
+		return false
+	}
+	for i := 0; i < len(v); i++ {
+		if c := v[i]; c < 0x21 || c == '"' || c > 0x7e {
+			return false
+		}
+	}
+	return true
 }
 
 // propose turns a change the person has yet to confirm into a pending draft.
