@@ -26,8 +26,10 @@ const (
 	eventDelta   = "delta"
 	eventTool    = "tool"
 	eventMessage = "message"
-	eventDone    = "done"
-	eventError   = "error"
+	// eventConfirmation is a proposed change's card, or the same card decided.
+	eventConfirmation = "confirmation"
+	eventDone         = "done"
+	eventError        = "error"
 )
 
 // keepAlive is how often an idle stream writes a comment frame, so a proxy
@@ -112,7 +114,7 @@ func (q *eventQueue) next(ctx context.Context) (frame []byte, ok bool) {
 	}
 }
 
-// streamResponse is sendAssistantMessage's 200: it satisfies the generated
+// streamResponse is the 200 of sendAssistantMessage, confirm and cancel: it satisfies the generated
 // response interface and writes the stream itself, because the generated
 // event-stream response flushes only through a ResponseWriter that is itself an
 // http.Flusher, and the server's logging and recovery wrappers are not (they
@@ -122,9 +124,25 @@ type streamResponse struct {
 	queue *eventQueue
 }
 
-var _ gen.SendAssistantMessageResponseObject = streamResponse{}
+var (
+	_ gen.SendAssistantMessageResponseObject          = streamResponse{}
+	_ gen.ConfirmAssistantPendingActionResponseObject = streamResponse{}
+	_ gen.CancelAssistantPendingActionResponseObject  = streamResponse{}
+)
 
 func (r streamResponse) VisitSendAssistantMessageResponse(w http.ResponseWriter) error {
+	return r.write(w)
+}
+
+func (r streamResponse) VisitConfirmAssistantPendingActionResponse(w http.ResponseWriter) error {
+	return r.write(w)
+}
+
+func (r streamResponse) VisitCancelAssistantPendingActionResponse(w http.ResponseWriter) error {
+	return r.write(w)
+}
+
+func (r streamResponse) write(w http.ResponseWriter) error {
 	defer r.queue.abandon()
 	h := w.Header()
 	h.Set("Content-Type", "text/event-stream")

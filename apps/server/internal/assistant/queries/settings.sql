@@ -13,6 +13,7 @@ UPDATE assistant.settings SET
     mode = @mode,
     retention_months = @retention_months,
     sensitive_default = @sensitive_default,
+    daily_token_budget = sqlc.narg(daily_token_budget)::integer,
     version = version + 1,
     updated_at = @now::timestamptz,
     updated_by_user_id = @updated_by::uuid

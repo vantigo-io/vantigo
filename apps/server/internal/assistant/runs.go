@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"strings"
 	"sync"
 	"time"
@@ -143,6 +144,13 @@ func (s *server) SendAssistantMessage(ctx context.Context, req gen.SendAssistant
 	if err != nil {
 		return nil, fmt.Errorf("assistant: read the conversation: %w", err)
 	}
+	// The Owner's daily token budget (S14): a person who has used the day's is
+	// told so before anything is stored.
+	if over, err := s.overBudget(ctx, user); err != nil {
+		return nil, err
+	} else if over {
+		return refuse(http.StatusTooManyRequests, codeBudgetExhausted, "You have used the assistant's token budget for today"), nil
+	}
 
 	runID, userMessageID, now := uuid.New(), uuid.New(), s.deps.Clock()
 
@@ -205,15 +213,9 @@ func (s *server) SendAssistantMessage(ctx context.Context, req gen.SendAssistant
 		return nil, fmt.Errorf("assistant: issue the run's grant: %w", err)
 	}
 
-	lang, name := "en", ""
-	if entry, err := s.deps.Users.User(ctx, user); err == nil && entry != nil {
-		name = entry.DisplayName
-		if entry.PreferredLanguage == "nb" {
-			lang = "nb"
-		}
-	}
-
-	runCtx = contracts.WithAssistantGrant(contracts.AsUser(runCtx, user), grantID)
+	s.countRun(ctx, user)
+	lang, name := s.person(ctx, user)
+	runCtx = withGrant(runCtx, user, grantID)
 
 	queue := newEventQueue()
 	queue.emit(eventRun, map[string]any{"runId": runID})
@@ -234,6 +236,24 @@ func (s *server) SendAssistantMessage(ctx context.Context, req gen.SendAssistant
 	return streamResponse{ctx: ctx, queue: queue}, nil
 }
 
+// person is the language and the name the model is told the person has.
+func (s *server) person(ctx context.Context, user uuid.UUID) (lang, name string) {
+	lang = "en"
+	if entry, err := s.deps.Users.User(ctx, user); err == nil && entry != nil {
+		name = entry.DisplayName
+		if entry.PreferredLanguage == "nb" {
+			lang = "nb"
+		}
+	}
+	return lang, name
+}
+
+// withGrant is the context a run's tools and calls carry: the person and the
+// assistant grant that stands on their session.
+func withGrant(ctx context.Context, user, grant uuid.UUID) context.Context {
+	return contracts.WithAssistantGrant(contracts.AsUser(ctx, user), grant)
+}
+
 // finishRun ends the run's row, once.
 func (s *server) finishRun(ctx context.Context, runID uuid.UUID, state, code string) {
 	var c *string
@@ -248,7 +268,9 @@ func (s *server) finishRun(ctx context.Context, runID uuid.UUID, state, code str
 	}
 }
 
-// runner executes one run: the model loop of S5 and S14.
+// runner executes one run: the model loop of S5 and S14. A run that proposed a
+// change and was decided is the same run, resumed: resume carries the person's
+// decision, which is applied before the model is asked again.
 type runner struct {
 	s       *server
 	ctx     context.Context // the person, the grant, the ceiling
@@ -261,8 +283,12 @@ type runner struct {
 	name    string
 	chip    *gen.AssistantMessageContext
 	tools   *toolbox
+	resume  *decision
 
 	toolCalls, turns int
+	// proposed is the action this segment of the run created: the run pauses
+	// for it (S12).
+	proposed *store.AssistantPendingAction
 }
 
 // persist is the context database writes use: the run's own, minus its
@@ -281,7 +307,17 @@ func (r *runner) execute() {
 			r.queue.close()
 			return
 		}
-		r.s.finishRun(r.persist(), r.runID, state, code)
+		if state == stateAwaiting {
+			// The run waits for the person: the change is shown on a card, and the
+			// grant above ended with this segment of the run.
+			if _, err := store.New(r.s.deps.Pool).PauseRun(r.persist(), r.runID); err != nil {
+				r.s.deps.Logger.Error("assistant: pause the run", "run", r.runID, "error", err)
+				state, code = "failed", "internal"
+			}
+		}
+		if state != stateAwaiting {
+			r.s.finishRun(r.persist(), r.runID, state, code)
+		}
 		if state == "failed" {
 			r.queue.emit(eventError, map[string]string{"code": code})
 		} else {
@@ -290,13 +326,32 @@ func (r *runner) execute() {
 		r.queue.close()
 	}()
 
-	rows, err := store.New(r.s.deps.Pool).ListMessages(r.persist(), store.ListMessagesParams{ConversationID: r.convID, UserID: r.userID})
+	// A resumed run first carries out what the person decided.
+	if r.resume != nil {
+		r.decide(*r.resume)
+		if !r.resume.confirm {
+			// A cancelled change is answered in one short line, without tools.
+			r.turns = maxTurns - 1
+		}
+	}
+
+	q := store.New(r.s.deps.Pool)
+	rows, err := q.ListMessages(r.persist(), store.ListMessagesParams{ConversationID: r.convID, UserID: r.userID})
 	if err != nil {
 		state, code = "failed", "internal"
 		r.s.deps.Logger.Error("assistant: read the conversation for a run", "run", r.runID, "error", err)
 		return
 	}
-	history := modelMessages(rows)
+	actions, err := q.ListPendingActions(r.persist(), store.ListPendingActionsParams{ConversationID: r.convID, UserID: r.userID})
+	if err != nil {
+		state, code = "failed", "internal"
+		r.s.deps.Logger.Error("assistant: read the pending actions for a run", "run", r.runID, "error", err)
+		return
+	}
+	history := modelMessages(rows, actions)
+	if r.chip == nil {
+		r.chip = lastContext(rows)
+	}
 
 	system := systemPrompt(promptInput{
 		now: r.s.deps.Clock(), name: r.name, language: r.lang, apps: r.s.deps.Config.Modules, context: r.chip,
@@ -313,6 +368,11 @@ func (r *runner) execute() {
 			if cause == "failed" {
 				code = "timeout"
 			}
+			return
+		}
+		// The Owner's daily token budget (S14), judged before every model turn.
+		if over, err := r.s.overBudget(r.persist(), r.userID); err == nil && over {
+			state, code = "failed", codeBudgetExhausted
 			return
 		}
 		r.turns++
@@ -336,6 +396,7 @@ func (r *runner) execute() {
 			r.s.deps.Logger.Warn("assistant: the model call failed", "run", r.runID, "error_type", fmt.Sprintf("%T", err))
 			return
 		}
+		r.s.countTokens(r.persist(), r.userID, resp.InputTokens, resp.OutputTokens)
 		_ = store.New(r.s.deps.Pool).CountRunProgress(r.persist(), store.CountRunProgressParams{ID: r.runID, ToolCalls: int32(r.toolCalls), ModelTurns: int32(r.turns)})
 
 		calls := resp.Message.ToolCalls
@@ -353,16 +414,21 @@ func (r *runner) execute() {
 			return
 		}
 
-		var links []gen.AssistantPart
+		var parts []gen.AssistantPart
 		for _, call := range calls {
-			result, link := r.runTool(call)
+			result, part := r.runTool(call)
 			history = append(history, ai.Message{Role: ai.RoleTool, ToolCallID: call.ID, Text: result})
-			if link != nil {
-				links = append(links, *link)
+			if part != nil {
+				parts = append(parts, *part)
 			}
 		}
-		if len(links) > 0 {
-			r.addLinks(assistantMsg, links)
+		if len(parts) > 0 {
+			r.addLinks(assistantMsg, parts)
+		}
+		if r.proposed != nil {
+			// A change waits for the person: the turn, the stream and the grant end.
+			state = stateAwaiting
+			return
 		}
 	}
 }
@@ -429,8 +495,8 @@ func (r *runner) addLinks(msg store.AssistantMessage, links []gen.AssistantPart)
 }
 
 // runTool executes one tool call: it announces it, runs it, writes the action
-// and the tool message, and answers the content the model sees and the link a
-// navigate produced.
+// and the tool message, and answers the content the model sees and the part a
+// navigate produced (a link) or a proposed change (its card).
 func (r *runner) runTool(call ai.ToolCall) (string, *gen.AssistantPart) {
 	r.toolCalls++
 	label := toolLabel(r.lang, call.Name, "")
@@ -454,7 +520,31 @@ func (r *runner) runTool(call ai.ToolCall) (string, *gen.AssistantPart) {
 		out.mode = "tool"
 	}
 
+	// A proposed change is stored before its tool result is, with the result's
+	// id, so the decision can replace the waiting result with the real one.
+	toolMessageID := uuid.New()
+	var proposed *store.AssistantPendingAction
+	if out.pending != nil {
+		row, err := r.createPending(out.pending, call.ID, toolMessageID)
+		if err != nil {
+			r.s.deps.Logger.Error("assistant: store a pending action", "run", r.runID, "error", err)
+			out = outcome{content: wrap(map[string]string{"error": "call_failed", "message": "the change could not be prepared"}), status: "error", operation: out.operation, mode: out.mode, detail: out.detail}
+		} else {
+			proposed = &row
+			r.proposed = &row
+		}
+	}
+
 	q := store.New(r.s.deps.Pool)
+	for _, extra := range out.extra {
+		st := extra.status
+		if err := q.InsertAction(r.persist(), store.InsertActionParams{
+			ID: uuid.New(), RunID: r.runID, OperationID: extra.operation, Mode: extra.mode, HttpStatus: &st,
+			DurationMs: int32(extra.elapsed.Milliseconds()), Now: r.s.deps.Clock(),
+		}); err != nil {
+			r.s.deps.Logger.Error("assistant: log an action", "run", r.runID, "error", err)
+		}
+	}
 	if err := q.InsertAction(r.persist(), store.InsertActionParams{
 		ID: uuid.New(), RunID: r.runID, OperationID: out.operation, Mode: out.mode, HttpStatus: out.httpStatus,
 		DurationMs: int32(elapsed.Milliseconds()), Now: r.s.deps.Clock(),
@@ -465,7 +555,7 @@ func (r *runner) runTool(call ai.ToolCall) (string, *gen.AssistantPart) {
 	callID, name, status, content := call.ID, call.Name, gen.AssistantPartStatus(out.status), out.content
 	part := gen.AssistantPart{Type: gen.AssistantPartType("tool_result"), CallId: &callID, Name: &name, Status: &status, Content: &content}
 	msg, err := q.InsertMessage(r.persist(), store.InsertMessageParams{
-		ID: uuid.New(), ConversationID: r.convID, RunID: &r.runID, Role: "tool", Content: marshalParts([]gen.AssistantPart{part}), Now: r.s.deps.Clock(),
+		ID: toolMessageID, ConversationID: r.convID, RunID: &r.runID, Role: "tool", Content: marshalParts([]gen.AssistantPart{part}), Now: r.s.deps.Clock(),
 	})
 	if err != nil {
 		r.s.deps.Logger.Error("assistant: save a tool result", "run", r.runID, "error", err)
@@ -475,7 +565,12 @@ func (r *runner) runTool(call ai.ToolCall) (string, *gen.AssistantPart) {
 	r.queue.emit(eventTool, map[string]any{"callId": call.ID, "name": call.Name, "label": label, "state": "done"})
 
 	var link *gen.AssistantPart
-	if out.link != nil {
+	switch {
+	case proposed != nil:
+		id := proposed.ID
+		link = &gen.AssistantPart{Type: gen.AssistantPartType("confirmation"), ActionId: &id}
+		r.queue.emit(eventConfirmation, pendingView(*proposed, r.s.deps.Clock()))
+	case out.link != nil:
 		route, linkLabel := out.link.route, out.link.label
 		link = &gen.AssistantPart{Type: gen.AssistantPartType("link"), Route: &route, Label: &linkLabel}
 	}
@@ -485,7 +580,23 @@ func (r *runner) runTool(call ai.ToolCall) (string, *gen.AssistantPart) {
 // modelMessages rebuilds the model's transcript from the stored messages: the
 // person's words, the model's text and tool calls, and each tool's result.
 // Link parts are for the interface only.
-func modelMessages(rows []store.AssistantMessage) []ai.Message {
+//
+// A tool result that stands for a change the person never decided — the run was
+// stopped, or the card expired — reads as the change not made, whatever it said
+// while it waited.
+func modelMessages(rows []store.AssistantMessage, actions []store.AssistantPendingAction) []ai.Message {
+	undone := map[uuid.UUID]string{}
+	for _, a := range actions {
+		if a.ToolMessageID == nil {
+			continue
+		}
+		switch {
+		case a.Status == "cancelled" || a.Status == "expired":
+			undone[*a.ToolMessageID] = a.Status
+		case a.Status == "failed" && strings.Contains(string(a.Outcome), `"interrupted"`):
+			undone[*a.ToolMessageID] = "interrupted"
+		}
+	}
 	var out []ai.Message
 	for _, row := range rows {
 		var parts []gen.AssistantPart
@@ -514,12 +625,32 @@ func modelMessages(rows []store.AssistantMessage) []ai.Message {
 					if p.Content != nil {
 						content = *p.Content
 					}
+					if why, ok := undone[row.ID]; ok {
+						content = wrap(map[string]any{"changed": false, "status": why, "note": "the change was not made"})
+					}
 					out = append(out, ai.Message{Role: ai.RoleTool, ToolCallID: *p.CallId, Text: content})
 				}
 			}
 		}
 	}
 	return out
+}
+
+// lastContext is the screen chip the person's latest message was sent with.
+func lastContext(rows []store.AssistantMessage) *gen.AssistantMessageContext {
+	for i := len(rows) - 1; i >= 0; i-- {
+		if rows[i].Role != "user" {
+			continue
+		}
+		if len(rows[i].Context) > 0 {
+			var c gen.AssistantMessageContext
+			if json.Unmarshal(rows[i].Context, &c) == nil {
+				return &c
+			}
+		}
+		return nil
+	}
+	return nil
 }
 
 func joinText(parts []gen.AssistantPart) string {
@@ -543,6 +674,18 @@ func (s *server) StopAssistantRun(ctx context.Context, req gen.StopAssistantRunR
 	}
 	if err != nil {
 		return nil, fmt.Errorf("assistant: stop the run: %w", err)
+	}
+	if run.State == stateAwaiting {
+		// A run that waits for the person has no goroutine to stop: stopping it
+		// cancels the change it proposed and ends it.
+		q := store.New(s.deps.Pool)
+		if err := q.CancelRunPendingActions(ctx, store.CancelRunPendingActionsParams{RunID: run.ID, Now: s.deps.Clock()}); err != nil {
+			return nil, fmt.Errorf("assistant: cancel the waiting change: %w", err)
+		}
+		if ended, err := q.FinishRun(ctx, store.FinishRunParams{ID: run.ID, State: "stopped", Now: s.deps.Clock()}); err == nil {
+			run = ended
+		}
+		return gen.StopAssistantRun200JSONResponse(runView(run)), nil
 	}
 	s.runs.cancelRun(run.ID)
 	return gen.StopAssistantRun200JSONResponse(runView(run)), nil

@@ -22,7 +22,19 @@ UPDATE assistant.runs SET tool_calls = @tool_calls, model_turns = @model_turns W
 
 -- name: FinishRun :one
 UPDATE assistant.runs SET state = @state, error_code = sqlc.narg(error_code), ended_at = @now::timestamptz
+WHERE id = @id AND state IN ('running', 'awaiting_confirmation')
+RETURNING *;
+
+-- name: PauseRun :one
+-- PauseRun is a run that proposed a change: it waits for the person (S12).
+UPDATE assistant.runs SET state = 'awaiting_confirmation', ended_at = NULL
 WHERE id = @id AND state = 'running'
+RETURNING *;
+
+-- name: ResumeRun :one
+-- ResumeRun is the person deciding: the run that waited runs again.
+UPDATE assistant.runs SET state = 'running', stop_requested = false
+WHERE id = @id AND user_id = @user_id AND state = 'awaiting_confirmation'
 RETURNING *;
 
 -- name: FailStaleRuns :many
@@ -33,8 +45,8 @@ WHERE state = 'running' AND started_at < @cutoff::timestamptz
 RETURNING id;
 
 -- name: InsertAction :exec
-INSERT INTO assistant.actions (id, run_id, operation_id, mode, http_status, duration_ms, created_at)
-VALUES (@id, @run_id, @operation_id, @mode, sqlc.narg(http_status)::integer, @duration_ms, @now::timestamptz);
+INSERT INTO assistant.actions (id, run_id, operation_id, mode, http_status, duration_ms, created_at, confirmed_by)
+VALUES (@id, @run_id, @operation_id, @mode, sqlc.narg(http_status)::integer, @duration_ms, @now::timestamptz, sqlc.narg(confirmed_by)::uuid);
 
 -- name: ListActions :many
 -- ListActions is the action log of a conversation, joined through the run to

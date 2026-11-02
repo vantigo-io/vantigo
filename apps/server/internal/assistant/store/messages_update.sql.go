@@ -11,6 +11,31 @@ import (
 	"github.com/google/uuid"
 )
 
+const getMessageByID = `-- name: GetMessageByID :one
+SELECT id, seq, conversation_id, run_id, role, content, context, search_text, model, input_tokens, output_tokens, created_at FROM assistant.messages WHERE id = $1
+`
+
+// GetMessageByID is for the run that owns the message.
+func (q *Queries) GetMessageByID(ctx context.Context, id uuid.UUID) (AssistantMessage, error) {
+	row := q.db.QueryRow(ctx, getMessageByID, id)
+	var i AssistantMessage
+	err := row.Scan(
+		&i.ID,
+		&i.Seq,
+		&i.ConversationID,
+		&i.RunID,
+		&i.Role,
+		&i.Content,
+		&i.Context,
+		&i.SearchText,
+		&i.Model,
+		&i.InputTokens,
+		&i.OutputTokens,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const updateMessageContent = `-- name: UpdateMessageContent :exec
 UPDATE assistant.messages SET content = $1::jsonb WHERE id = $2
 `

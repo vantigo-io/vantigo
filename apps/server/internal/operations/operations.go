@@ -520,6 +520,34 @@ type CallResult struct {
 	Truncated bool `json:"truncated,omitempty"`
 }
 
+// Validate checks that req fits the operation, as Call would, and dispatches
+// nothing: the operation is known, its mode for ctx's workspace is not never
+// (a confirm operation passes, confirmed or not), every path parameter is
+// given, the query and header parameters and the body are ones the operation
+// declares, and a required body is present. It is how a change is checked
+// before the person is asked to confirm it.
+func (d *Dispatcher) Validate(ctx context.Context, req CallRequest) error {
+	st, err := d.bound()
+	if err != nil {
+		return err
+	}
+	e, ok := st.byID[req.OperationID]
+	if !ok {
+		return &Error{Code: CodeUnknownOperation, Message: fmt.Sprintf("there is no operation %q", req.OperationID)}
+	}
+	if d.effective(ctx, e) == ModeNever {
+		return &Error{Code: CodeNever, Message: fmt.Sprintf("the assistant may not call %s", e.ID)}
+	}
+	_, body, err := e.build(req)
+	if err != nil {
+		return err
+	}
+	if body == nil && e.hasBody && e.bodyRequired {
+		return &Error{Code: CodeInvalidRequest, Message: e.ID + " needs a request body"}
+	}
+	return nil
+}
+
 // Call serves req through the composed router as the grant's principal.
 //
 // ctx must carry the assistant grant (contracts.WithAssistantGrant) and the

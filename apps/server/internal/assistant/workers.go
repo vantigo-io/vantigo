@@ -13,7 +13,8 @@ import (
 // The module's two workers (the Assistant design S9):
 //
 //   - assistant-runs marks the runs still running after staleRunAge failed
-//     (server_restarted), so an API restart never leaves a run running forever;
+//     (server_restarted), so an API restart never leaves a run running forever,
+//     and expires the proposed changes nobody decided in 24 hours (S12);
 //   - assistant-retention deletes the conversations whose last activity is older
 //     than the workspace's retention, whole, in chunks, and sweeps the
 //     conversations and switches of people identity has erased (erasure.go).
@@ -53,14 +54,26 @@ func (w *staleRunsWorker) Run(ctx context.Context) error {
 	}
 }
 
-// RunCycle fails the stale runs and answers how many it failed.
+// RunCycle fails the stale runs, expires the changes nobody decided within
+// pendingTTL (and ends the runs that waited for them), and closes the changes
+// whose confirmation was claimed and never recorded. It answers how many runs it
+// ended. Each is one statement on the pool and none holds a connection while
+// asking for another.
 func (w *staleRunsWorker) RunCycle(ctx context.Context) (int, error) {
 	now := w.deps.Clock()
-	ids, err := store.New(w.deps.Pool).FailStaleRuns(ctx, store.FailStaleRunsParams{Now: now, Cutoff: now.Add(-staleRunAge)})
+	q := store.New(w.deps.Pool)
+	ids, err := q.FailStaleRuns(ctx, store.FailStaleRunsParams{Now: now, Cutoff: now.Add(-staleRunAge)})
 	if err != nil {
 		return 0, fmt.Errorf("assistant: fail the stale runs: %w", err)
 	}
-	return len(ids), nil
+	expired, err := q.ExpirePendingActions(ctx, now)
+	if err != nil {
+		return len(ids), fmt.Errorf("assistant: expire the pending actions: %w", err)
+	}
+	if _, err := q.InterruptClaimedActions(ctx, now.Add(-staleRunAge)); err != nil {
+		return len(ids) + len(expired), fmt.Errorf("assistant: close the claimed actions: %w", err)
+	}
+	return len(ids) + len(expired), nil
 }
 
 // retentionWorker applies the retention and the erasure sweep.
@@ -139,6 +152,10 @@ func (w *retentionWorker) expire(ctx context.Context, q *store.Queries) (int, er
 		return 0, fmt.Errorf("assistant: read the retention: %w", err)
 	}
 	cutoff := w.deps.Clock().AddDate(0, -int(settings.RetentionMonths), 0)
+	// The usage counts are kept as long as the conversations are.
+	if err := q.DeleteOldUsage(ctx, cutoff); err != nil {
+		return 0, fmt.Errorf("assistant: delete the old usage: %w", err)
+	}
 	total := 0
 	for {
 		n, err := q.DeleteExpiredConversations(ctx, store.DeleteExpiredConversationsParams{Cutoff: cutoff, BatchSize: retentionChunk})

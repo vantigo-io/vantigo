@@ -18,7 +18,7 @@ UPDATE assistant.settings SET
     updated_at = $1::timestamptz,
     updated_by_user_id = $2::uuid
 WHERE id = 1
-RETURNING id, mode, retention_months, sensitive_default, version, updated_at, updated_by_user_id
+RETURNING id, mode, retention_months, sensitive_default, version, updated_at, updated_by_user_id, daily_token_budget
 `
 
 type BumpSettingsVersionParams struct {
@@ -38,6 +38,7 @@ func (q *Queries) BumpSettingsVersion(ctx context.Context, arg BumpSettingsVersi
 		&i.Version,
 		&i.UpdatedAt,
 		&i.UpdatedByUserID,
+		&i.DailyTokenBudget,
 	)
 	return i, err
 }
@@ -69,7 +70,7 @@ func (q *Queries) GetPermissionLevel(ctx context.Context, permissionKey string) 
 
 const getSettings = `-- name: GetSettings :one
 
-SELECT id, mode, retention_months, sensitive_default, version, updated_at, updated_by_user_id FROM assistant.settings WHERE id = 1
+SELECT id, mode, retention_months, sensitive_default, version, updated_at, updated_by_user_id, daily_token_budget FROM assistant.settings WHERE id = 1
 `
 
 // The workspace's settings: one row, id 1 (the migration writes it).
@@ -84,6 +85,7 @@ func (q *Queries) GetSettings(ctx context.Context) (AssistantSetting, error) {
 		&i.Version,
 		&i.UpdatedAt,
 		&i.UpdatedByUserID,
+		&i.DailyTokenBudget,
 	)
 	return i, err
 }
@@ -144,7 +146,7 @@ func (q *Queries) ListPermissionLevels(ctx context.Context) ([]AssistantPermissi
 }
 
 const lockSettings = `-- name: LockSettings :one
-SELECT id, mode, retention_months, sensitive_default, version, updated_at, updated_by_user_id FROM assistant.settings WHERE id = 1 FOR UPDATE
+SELECT id, mode, retention_months, sensitive_default, version, updated_at, updated_by_user_id, daily_token_budget FROM assistant.settings WHERE id = 1 FOR UPDATE
 `
 
 // LockSettings reads the row and holds it for the transaction, so a change
@@ -160,6 +162,7 @@ func (q *Queries) LockSettings(ctx context.Context) (AssistantSetting, error) {
 		&i.Version,
 		&i.UpdatedAt,
 		&i.UpdatedByUserID,
+		&i.DailyTokenBudget,
 	)
 	return i, err
 }
@@ -169,17 +172,19 @@ UPDATE assistant.settings SET
     mode = $1,
     retention_months = $2,
     sensitive_default = $3,
+    daily_token_budget = $4::integer,
     version = version + 1,
-    updated_at = $4::timestamptz,
-    updated_by_user_id = $5::uuid
+    updated_at = $5::timestamptz,
+    updated_by_user_id = $6::uuid
 WHERE id = 1
-RETURNING id, mode, retention_months, sensitive_default, version, updated_at, updated_by_user_id
+RETURNING id, mode, retention_months, sensitive_default, version, updated_at, updated_by_user_id, daily_token_budget
 `
 
 type UpdateSettingsParams struct {
 	Mode             string
 	RetentionMonths  int16
 	SensitiveDefault string
+	DailyTokenBudget *int32
 	Now              time.Time
 	UpdatedBy        uuid.UUID
 }
@@ -189,6 +194,7 @@ func (q *Queries) UpdateSettings(ctx context.Context, arg UpdateSettingsParams) 
 		arg.Mode,
 		arg.RetentionMonths,
 		arg.SensitiveDefault,
+		arg.DailyTokenBudget,
 		arg.Now,
 		arg.UpdatedBy,
 	)
@@ -201,6 +207,7 @@ func (q *Queries) UpdateSettings(ctx context.Context, arg UpdateSettingsParams) 
 		&i.Version,
 		&i.UpdatedAt,
 		&i.UpdatedByUserID,
+		&i.DailyTokenBudget,
 	)
 	return i, err
 }

@@ -7,6 +7,7 @@ sql:
   - engine: postgresql
     schema:
       - ../db/migrations/00103_assistant_baseline.sql
+      - ../db/migrations/00104_assistant_writes.sql
     queries: queries
     gen:
       go:
@@ -31,3 +32,5 @@ sql:
             go_type:
               type: time.Time
               pointer: true
+          - db_type: date
+            go_type: time.Time

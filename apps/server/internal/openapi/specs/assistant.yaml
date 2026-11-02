@@ -94,7 +94,9 @@ components:
                         $ref: "#/components/schemas/AssistantAction"
                     type: array
                 activeRun:
-                    $ref: "#/components/schemas/AssistantRun"
+                    allOf:
+                        - $ref: "#/components/schemas/AssistantRun"
+                    description: The run that has not ended, running or awaiting_confirmation.
                 conversation:
                     $ref: "#/components/schemas/AssistantConversation"
                 lastRun:
@@ -105,10 +107,16 @@ components:
                     items:
                         $ref: "#/components/schemas/AssistantMessage"
                     type: array
+                pendingActions:
+                    description: Every change the assistant proposed in this conversation, oldest first, with its card and, once decided, its outcome. A decided action keeps no values.
+                    items:
+                        $ref: "#/components/schemas/AssistantPendingAction"
+                    type: array
             required:
                 - conversation
                 - messages
                 - actions
+                - pendingActions
             type: object
         AssistantConversationList:
             additionalProperties: false
@@ -226,8 +234,11 @@ components:
             type: object
         AssistantPart:
             additionalProperties: false
-            description: "One typed part of a message. text: the words (Markdown); tool_call: the assistant asked for a tool (name, label, the arguments it gave); tool_result: what the tool answered the model, compacted (status ok, refused or error); link: a record or screen in the app (route, label)."
+            description: "One typed part of a message. text: the words (Markdown); tool_call: the assistant asked for a tool (name, label, the arguments it gave); tool_result: what the tool answered the model, compacted (status ok, refused or error); link: a record or screen in the app (route, label); confirmation: a change the assistant proposed, waiting for the person (actionId; the card is the conversation's pendingActions entry with that id)."
             properties:
+                actionId:
+                    format: uuid
+                    type: string
                 arguments:
                     additionalProperties: true
                     type: object
@@ -255,9 +266,107 @@ components:
                         - tool_call
                         - tool_result
                         - link
+                        - confirmation
                     type: string
             required:
                 - type
+            type: object
+        AssistantPendingAction:
+            additionalProperties: false
+            description: "A change the assistant proposed and nothing has written yet, or has now been decided. summary is the operation's summary; explain is the assistant's own one-line description in the person's language, shown beside it and never instead of the fields. A decided action keeps the names of its fields and no values."
+            properties:
+                conversationId:
+                    format: uuid
+                    type: string
+                createdAt:
+                    format: date-time
+                    type: string
+                decidedAt:
+                    format: date-time
+                    type: string
+                expiresAt:
+                    format: date-time
+                    type: string
+                explain:
+                    type: string
+                fields:
+                    items:
+                        $ref: "#/components/schemas/AssistantPendingField"
+                    type: array
+                id:
+                    format: uuid
+                    type: string
+                method:
+                    type: string
+                operationId:
+                    type: string
+                outcome:
+                    $ref: "#/components/schemas/AssistantPendingOutcome"
+                runId:
+                    format: uuid
+                    type: string
+                status:
+                    enum:
+                        - pending
+                        - confirmed
+                        - cancelled
+                        - expired
+                        - failed
+                    type: string
+                summary:
+                    type: string
+                target:
+                    $ref: "#/components/schemas/AssistantPendingTarget"
+            required:
+                - id
+                - runId
+                - conversationId
+                - operationId
+                - method
+                - status
+                - summary
+                - fields
+                - createdAt
+                - expiresAt
+            type: object
+        AssistantPendingField:
+            additionalProperties: false
+            properties:
+                current:
+                    description: The value now, when a read of the same record could say. Absent for a new value only, and after the decision.
+                    type: string
+                name:
+                    type: string
+                next:
+                    description: The value the change sets. Absent after the decision.
+                    type: string
+            required:
+                - name
+            type: object
+        AssistantPendingOutcome:
+            additionalProperties: false
+            description: How a decided action ended. status is the HTTP status the operation answered; reason is cancelled, stopped, expired, changed (the record changed since the card was made), refused, interrupted or failed; message is a short sentence from the operation's own refusal when it gave one.
+            properties:
+                message:
+                    type: string
+                ok:
+                    type: boolean
+                reason:
+                    type: string
+                status:
+                    format: int32
+                    type: integer
+            required:
+                - ok
+            type: object
+        AssistantPendingTarget:
+            additionalProperties: false
+            description: The record the change is about, when the card could name it. route is an in-app route.
+            properties:
+                label:
+                    type: string
+                route:
+                    type: string
             type: object
         AssistantPermission:
             additionalProperties: false
@@ -417,9 +526,11 @@ components:
                 state:
                     enum:
                         - running
+                        - awaiting_confirmation
                         - done
                         - failed
                         - stopped
+                        - expired
                     type: string
                 stopRequested:
                     type: boolean
@@ -452,6 +563,11 @@ components:
                 configured:
                     description: The instance has an AI provider.
                     type: boolean
+                dailyTokenBudget:
+                    description: The most tokens one person may use on a business day, input and output; null is no limit.
+                    format: int32
+                    nullable: true
+                    type: integer
                 local:
                     type: boolean
                 mode:
@@ -496,6 +612,11 @@ components:
         AssistantSettingsRequest:
             additionalProperties: false
             properties:
+                dailyTokenBudget:
+                    description: The daily token budget per person, 1000 to 1000000000; 0 removes the limit. Left out, it is kept.
+                    format: int32
+                    minimum: 0
+                    type: integer
                 mode:
                     enum:
                         - all
@@ -521,6 +642,66 @@ components:
                 title:
                     maxLength: 200
                     type: string
+            type: object
+        AssistantUsage:
+            additionalProperties: false
+            description: "What people used, per person and business day. Counts and tokens only: no content, no titles."
+            properties:
+                from:
+                    format: date
+                    type: string
+                rows:
+                    items:
+                        $ref: "#/components/schemas/AssistantUsageRow"
+                    type: array
+                to:
+                    format: date
+                    type: string
+            required:
+                - from
+                - to
+                - rows
+            type: object
+        AssistantUsageRow:
+            additionalProperties: false
+            properties:
+                confirmedChanges:
+                    format: int32
+                    type: integer
+                conversations:
+                    format: int32
+                    type: integer
+                day:
+                    format: date
+                    type: string
+                failedChanges:
+                    format: int32
+                    type: integer
+                inputTokens:
+                    format: int64
+                    type: integer
+                name:
+                    description: The person's display name; empty when they no longer exist.
+                    type: string
+                outputTokens:
+                    format: int64
+                    type: integer
+                runs:
+                    format: int32
+                    type: integer
+                userId:
+                    format: uuid
+                    type: string
+            required:
+                - userId
+                - name
+                - day
+                - conversations
+                - runs
+                - inputTokens
+                - outputTokens
+                - confirmedChanges
+                - failedChanges
             type: object
 info:
     title: Vantigo Assistant API
@@ -790,7 +971,7 @@ paths:
                   format: uuid
                   type: string
         post:
-            description: "Starts a run and answers text/event-stream, flushed per event: run (the run's id), delta (a piece of text), tool (a tool call started or done, with a short label), message (a persisted message), done, and error (a code). The run is detached from the connection: a client that disconnects stops hearing, not the run, which continues on the server and can be followed by polling the conversation. One run per conversation at a time: a second message while one runs is a 409 run_in_progress."
+            description: "Starts a run and answers text/event-stream, flushed per event: run (the run's id), delta (a piece of text), tool (a tool call started or done, with a short label), message (a persisted message), confirmation (a proposed change's card, or the same card decided), done, and error (a code). The run is detached from the connection: a client that disconnects stops hearing, not the run, which continues on the server and can be followed by polling the conversation. One run per conversation at a time: a second message while one runs, or while a change waits for the person, is a 409 run_in_progress. A run that proposes a change ends its stream with a confirmation event (the card) and done with state awaiting_confirmation."
             operationId: sendAssistantMessage
             requestBody:
                 content:
@@ -843,7 +1024,10 @@ paths:
                         application/json:
                             schema:
                                 $ref: common.yaml#/components/schemas/AuthErrorResponse
-                    description: Too Many Requests
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/AssistantProblem"
+                    description: Too Many Requests - the rate limit, or budget_exhausted (the person has used the day's token budget).
                 "503":
                     content:
                         application/problem+json:
@@ -1027,6 +1211,118 @@ paths:
                 - Assistant
             x-vantigo-access: policy:OwnerManagement
             x-vantigo-assistant: never
+    /api/v1/assistant/pending-actions/{id}/cancel:
+        parameters:
+            - in: path
+              name: id
+              required: true
+              schema:
+                  format: uuid
+                  type: string
+        post:
+            description: "Cancels a proposed change: nothing is written, the model is told the person cancelled, and the run continues with one short answer, streamed as text/event-stream."
+            operationId: cancelAssistantPendingAction
+            responses:
+                "200":
+                    content:
+                        text/event-stream:
+                            schema:
+                                type: string
+                    description: OK - an event stream, as sendAssistantMessage's, that begins with run and the decided confirmation.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/AssistantProblem"
+                    description: Forbidden - assistant_unavailable (the assistant is not available to the caller), or operation_unavailable (the Owner has narrowed what the assistant may use since the card was made), or the session's own refusal.
+                "404":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/AssistantProblem"
+                    description: "Not Found - not_found. Also what another person's action answers: the assistant never says whether it exists."
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/AssistantProblem"
+                    description: Conflict - action_decided (already confirmed, cancelled, expired or failed), or action_expired (undecided for 24 hours).
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/AssistantProblem"
+                    description: Service Unavailable - ai_unavailable.
+            summary: Cancel a change the assistant proposed
+            tags:
+                - Assistant
+            x-vantigo-access: session
+            x-vantigo-assistant: never
+    /api/v1/assistant/pending-actions/{id}/confirm:
+        parameters:
+            - in: path
+              name: id
+              required: true
+              schema:
+                  format: uuid
+                  type: string
+        post:
+            description: "Confirms a proposed change. The change runs through the operation as the person, with the If-Match the card was made at when the record has an ETag; the model reads the result and the run continues, streamed as text/event-stream. A change can be confirmed once, minutes later, after a reload or from another device, for 24 hours."
+            operationId: confirmAssistantPendingAction
+            responses:
+                "200":
+                    content:
+                        text/event-stream:
+                            schema:
+                                type: string
+                    description: OK - an event stream, as sendAssistantMessage's, that begins with run and the decided confirmation.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/AssistantProblem"
+                    description: Forbidden - assistant_unavailable (the assistant is not available to the caller), or operation_unavailable (the Owner has narrowed what the assistant may use since the card was made), or the session's own refusal.
+                "404":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/AssistantProblem"
+                    description: "Not Found - not_found. Also what another person's action answers: the assistant never says whether it exists."
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/AssistantProblem"
+                    description: Conflict - action_decided (already confirmed, cancelled, expired or failed), or action_expired (undecided for 24 hours).
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/AssistantProblem"
+                    description: Service Unavailable - ai_unavailable.
+            summary: Confirm a change the assistant proposed
+            tags:
+                - Assistant
+            x-vantigo-access: session
+            x-vantigo-assistant: never
     /api/v1/assistant/runs/{id}/stop:
         parameters:
             - in: path
@@ -1100,7 +1396,7 @@ paths:
             x-vantigo-access: policy:OwnerManagement
             x-vantigo-assistant: never
         put:
-            description: Changes the mode, the retention in months (1 to 60) and the sensitive data switch; a field left out is kept. Guarded by If-Match, audited with before and after. Owner only.
+            description: Changes the mode, the retention in months (1 to 60), the sensitive data switch and the daily token budget per person; a field left out is kept. Guarded by If-Match, audited with before and after. Owner only.
             operationId: putAssistantSettings
             parameters:
                 - description: The version the settings was read at, bare (3) or quoted ("3"). A version that has moved on is a 409 version_conflict.
@@ -1241,6 +1537,55 @@ paths:
                                 $ref: "#/components/schemas/AssistantProblem"
                     description: Conflict - version_conflict.
             summary: Set the level of one permission
+            tags:
+                - Assistant
+            x-vantigo-access: policy:OwnerManagement
+            x-vantigo-assistant: never
+    /api/v1/assistant/usage:
+        get:
+            description: "What people used of the assistant, per person and business day: the conversations they began, the runs, the model tokens (input and output) and the changes that were confirmed and that failed. The business time zone's days, at most 92 of them. Counts only: no content and no titles. Owner only."
+            operationId: getAssistantUsage
+            parameters:
+                - description: The first day, inclusive. Defaults to 30 days before to.
+                  in: query
+                  name: from
+                  required: false
+                  schema:
+                      format: date
+                      type: string
+                - description: The last day, inclusive. Defaults to today, in the business time zone.
+                  in: query
+                  name: to
+                  required: false
+                  schema:
+                      format: date
+                      type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/AssistantUsage"
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: "#/components/schemas/AssistantProblem"
+                    description: Bad Request - a range that is not valid or longer than 92 days
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+            summary: Get the Assistant usage
             tags:
                 - Assistant
             x-vantigo-access: policy:OwnerManagement

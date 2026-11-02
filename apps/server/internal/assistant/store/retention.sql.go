@@ -36,12 +36,14 @@ func (q *Queries) DeleteExpiredConversations(ctx context.Context, arg DeleteExpi
 }
 
 const deleteUserData = `-- name: DeleteUserData :exec
-WITH c AS (DELETE FROM assistant.conversations WHERE user_id = ANY($1::uuid[]))
+WITH c AS (DELETE FROM assistant.conversations WHERE user_id = ANY($1::uuid[])),
+     u AS (DELETE FROM assistant.usage_days WHERE user_id = ANY($1::uuid[]))
 DELETE FROM assistant.person_settings WHERE user_id = ANY($1::uuid[])
 `
 
 // DeleteUserData is everything of an erased user: conversations (messages,
-// runs and actions cascade) and the person's settings.
+// runs, actions and pending actions cascade), the usage counts and the
+// person's settings.
 func (q *Queries) DeleteUserData(ctx context.Context, userIds []uuid.UUID) error {
 	_, err := q.db.Exec(ctx, deleteUserData, userIds)
 	return err
@@ -52,6 +54,7 @@ SELECT user_id FROM (
     SELECT user_id FROM assistant.conversations
     UNION SELECT user_id FROM assistant.person_settings
     UNION SELECT user_id FROM assistant.runs
+    UNION SELECT user_id FROM assistant.usage_days
 ) held
 WHERE user_id > $1::uuid
 ORDER BY user_id

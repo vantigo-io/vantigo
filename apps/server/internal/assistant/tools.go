@@ -57,11 +57,12 @@ var toolDefs = []ai.Tool{
 	},
 	{
 		Name:        toolCall,
-		Description: "Call an operation that reads data, as the person. Pass path, query and header parameters together in params, by name, and a JSON body in body when the operation takes one. Lists come back truncated with their counts and any cursor for the next page. Changes are not available yet.",
+		Description: "Call an operation as the person. Pass path, query and header parameters together in params, by name, and a JSON body in body when the operation takes one. An operation that reads data runs at once; lists come back truncated with their counts and any cursor for the next page. An operation that changes something never runs on your say-so: it is shown to the person on a confirmation card and runs only if they confirm it. Propose one change at a time, with all of its fields, and stop.",
 		Parameters: objectSchema([]string{"id"}, map[string]any{
-			"id":     str("The operation id from search_operations."),
-			"params": map[string]any{"type": "object", "description": "Parameters by name: path parameters, query parameters and header parameters.", "additionalProperties": true},
-			"body":   map[string]any{"type": "object", "description": "The JSON request body, when the operation takes one.", "additionalProperties": true},
+			"id":      str("The operation id from search_operations."),
+			"params":  map[string]any{"type": "object", "description": "Parameters by name: path parameters, query parameters and header parameters.", "additionalProperties": true},
+			"body":    map[string]any{"type": "object", "description": "The JSON request body, when the operation takes one.", "additionalProperties": true},
+			"explain": str("For a change: one sentence, in the person's language, saying what it will do, for the card."),
 		}),
 	},
 	{
@@ -124,6 +125,10 @@ type outcome struct {
 	operation  string // what the action log names
 	link       *linkPart
 	detail     string // the operation's summary, for the label
+	// pending is a change the model proposed: the card to store. The run pauses.
+	pending *pendingDraft
+	// extra are calls the tool made besides its own, for the action log.
+	extra []loggedCall
 }
 
 type linkPart struct{ route, label string }
@@ -155,6 +160,7 @@ type toolbox struct {
 	lang     string
 	callable map[string]operations.Info // the operations the person may call, by id; read once per run
 	params   map[string]map[string]string
+	proposed bool // a change was proposed in this run: one at a time
 }
 
 func (t *toolbox) run(call ai.ToolCall) outcome {
@@ -279,9 +285,10 @@ func paramLocations(doc map[string]any) map[string]string {
 
 func (t *toolbox) callOperation(raw json.RawMessage) outcome {
 	var args struct {
-		ID     string          `json:"id"`
-		Params map[string]any  `json:"params"`
-		Body   json.RawMessage `json:"body"`
+		ID      string          `json:"id"`
+		Params  map[string]any  `json:"params"`
+		Body    json.RawMessage `json:"body"`
+		Explain string          `json:"explain"`
 	}
 	if err := toolArgs(raw, &args); err != nil || args.ID == "" {
 		return refused("invalid_arguments", "id is required")
@@ -298,24 +305,8 @@ func (t *toolbox) callOperation(raw json.RawMessage) outcome {
 		return o
 	}
 	out.mode = string(info.Mode)
-	if info.Mode != operations.ModeAuto {
-		// A change needs the person's confirmation, which arrives in a later
-		// version: the model is told to give the steps instead.
-		o := refused("changes_not_available", "changes are not available yet; do not try again, and give the person the steps to do it themselves")
-		o.operation, o.mode, o.detail = args.ID, out.mode, info.Summary
-		return o
-	}
 
-	locations, known := t.params[args.ID]
-	if !known {
-		if doc, err := ops.Describe(args.ID); err == nil {
-			var m map[string]any
-			if json.Unmarshal(doc, &m) == nil {
-				locations = paramLocations(m)
-				t.params[args.ID] = locations
-			}
-		}
-	}
+	locations := t.locationsFor(args.ID)
 	req := operations.CallRequest{OperationID: args.ID, PathParams: map[string]any{}, Query: map[string]any{}, Headers: map[string]string{}, Body: args.Body}
 	for name, value := range args.Params {
 		switch locations[name] {
@@ -328,6 +319,16 @@ func (t *toolbox) callOperation(raw json.RawMessage) outcome {
 		default:
 			req.Query[name] = value
 		}
+	}
+
+	if info.Mode != operations.ModeAuto {
+		// A change never runs here: it becomes a card the person confirms.
+		if info.Mode == operations.ModeConfirm {
+			return t.propose(info, req, args.Explain)
+		}
+		o := refused("operation_unavailable", "that operation does not exist or you may not use it; search again with search_operations")
+		o.operation, o.mode, o.detail = args.ID, out.mode, info.Summary
+		return o
 	}
 
 	res, err := ops.Call(t.ctx, req)
