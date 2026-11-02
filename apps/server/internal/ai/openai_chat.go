@@ -103,7 +103,7 @@ func (o *openAI) chatPayload(model string, req ChatRequest) ([]byte, error) {
 		"stream":         true,
 		"stream_options": map[string]any{"include_usage": true},
 	}
-	if len(req.Tools) > 0 {
+	if len(req.Tools) > 0 && !req.ToolsDisabled {
 		tools := make([]any, len(req.Tools))
 		for i, t := range req.Tools {
 			params := t.Parameters
