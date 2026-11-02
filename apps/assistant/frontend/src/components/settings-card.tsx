@@ -39,12 +39,17 @@ const modes: readonly { value: AssistantMode; label: string; hint: string }[] = 
  * the sensitive data on: a provider that is not local gets "Questions and the
  * data the assistant reads are sent to <provider>".
  */
+/** The providers' own spelling of their names; any other is shown as the operator wrote it. */
+const providerNames: Record<string, string> = { anthropic: "Anthropic", openai: "OpenAI" };
+
 export const DataNotice = ({ settings }: { settings: Pick<AssistantSettings, "local" | "provider"> }) => {
   const { t } = useI18n("assistant");
   if (!settings.local)
     return (
       <Alert color="yellow" icon={<IconInfoCircle size={16} />} data-testid="data-notice">
-        {t("dataNoticeRemote", { provider: settings.provider || t("assistant") })}
+        {t("dataNoticeRemote", {
+          provider: (settings.provider && (providerNames[settings.provider] ?? settings.provider)) || t("assistant"),
+        })}
       </Alert>
     );
   return (

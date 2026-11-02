@@ -38,6 +38,7 @@ func (e AccountResponseAvatarManagedBy) Valid() bool {
 
 // Defines values for AiSettingsProvider.
 const (
+	Anthropic        AiSettingsProvider = "anthropic"
 	Openai           AiSettingsProvider = "openai"
 	OpenaiCompatible AiSettingsProvider = "openai-compatible"
 )
@@ -45,6 +46,8 @@ const (
 // Valid indicates whether the value is a known member of the AiSettingsProvider enum.
 func (e AiSettingsProvider) Valid() bool {
 	switch e {
+	case Anthropic:
+		return true
 	case Openai:
 		return true
 	case OpenaiCompatible:
@@ -311,11 +314,11 @@ type AiSettings struct {
 	// PlanDefault The model a task uses when nobody chose one and the module recommends none the plan allows — the first of allowedModels.
 	PlanDefault string `json:"planDefault"`
 
-	// Provider The provider the plan calls (AI_PROVIDER), as the operator wrote it. openai-compatible is the OpenAI protocol served by something else, such as a local model.
+	// Provider The provider the plan calls (AI_PROVIDER), as the operator wrote it. openai-compatible is the OpenAI protocol served by something else, such as a local model. anthropic is Anthropic's Messages API.
 	Provider AiSettingsProvider `json:"provider"`
 }
 
-// AiSettingsProvider The provider the plan calls (AI_PROVIDER), as the operator wrote it. openai-compatible is the OpenAI protocol served by something else, such as a local model.
+// AiSettingsProvider The provider the plan calls (AI_PROVIDER), as the operator wrote it. openai-compatible is the OpenAI protocol served by something else, such as a local model. anthropic is Anthropic's Messages API.
 type AiSettingsProvider string
 
 // AiSettingsModule One module's AI tasks.

@@ -7,7 +7,11 @@ import type { ApiError } from "../../api/request";
 import { NotFoundPage } from "../../components/errors";
 import "../../i18n";
 
-const providerNames: Record<string, string> = { openai: "OpenAI", "openai-compatible": "OpenAI-compatible" };
+const providerNames: Record<string, string> = {
+  openai: "OpenAI",
+  "openai-compatible": "OpenAI-compatible",
+  anthropic: "Anthropic",
+};
 
 const isStale = (error: unknown) =>
   (error as ApiError | undefined)?.status === 412 || (error as ApiError | undefined)?.code === "version_mismatch";

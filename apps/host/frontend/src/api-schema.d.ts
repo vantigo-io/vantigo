@@ -1632,10 +1632,10 @@ export interface components {
             /** @description The model a task uses when nobody chose one and the module recommends none the plan allows — the first of allowedModels. */
             planDefault: string;
             /**
-             * @description The provider the plan calls (AI_PROVIDER), as the operator wrote it. openai-compatible is the OpenAI protocol served by something else, such as a local model.
+             * @description The provider the plan calls (AI_PROVIDER), as the operator wrote it. openai-compatible is the OpenAI protocol served by something else, such as a local model. anthropic is Anthropic's Messages API.
              * @enum {string}
              */
-            provider: "openai" | "openai-compatible";
+            provider: "openai" | "openai-compatible" | "anthropic";
         };
         /** @description One module's AI tasks. */
         AiSettingsModule: {

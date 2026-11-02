@@ -241,10 +241,11 @@ components:
                     description: The model a task uses when nobody chose one and the module recommends none the plan allows — the first of allowedModels.
                     type: string
                 provider:
-                    description: The provider the plan calls (AI_PROVIDER), as the operator wrote it. openai-compatible is the OpenAI protocol served by something else, such as a local model.
+                    description: The provider the plan calls (AI_PROVIDER), as the operator wrote it. openai-compatible is the OpenAI protocol served by something else, such as a local model. anthropic is Anthropic's Messages API.
                     enum:
                         - openai
                         - openai-compatible
+                        - anthropic
                     type: string
             required:
                 - provider

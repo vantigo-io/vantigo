@@ -57,6 +57,14 @@ describe("AssistantSettingsCard: who has the assistant", () => {
     expect(notices[0]).toHaveTextContent("Questions and the data the assistant reads are sent to OpenAI.");
     first.unmount();
 
+    stubAssistantApi({ settings: settings({ local: false, provider: "anthropic" }) });
+    const second = renderWithProviders(<AssistantSettingsCard />);
+    await screen.findByRole("radio", { name: /Enabled for all/ });
+    expect(screen.getAllByTestId("data-notice")[0]).toHaveTextContent(
+      "Questions and the data the assistant reads are sent to Anthropic.",
+    );
+    second.unmount();
+
     stubAssistantApi({ settings: settings({ local: true }) });
     renderWithProviders(<AssistantSettingsCard />);
     await screen.findByRole("radio", { name: /Enabled for all/ });

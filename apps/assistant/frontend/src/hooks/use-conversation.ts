@@ -22,6 +22,7 @@ type ErrorKey =
   | "errorUnavailable"
   | "errorRunInProgress"
   | "errorBudget"
+  | "errorRefused"
   | "errorActionDecided"
   | "errorActionExpired"
   | "errorNotAllowed"
@@ -88,7 +89,9 @@ const errorKeyForCode = (code: string): ErrorKey =>
         ? "errorRunInProgress"
         : code === "budget_exhausted"
           ? "errorBudget"
-          : "errorGeneric";
+          : code === "ai_refused"
+            ? "errorRefused"
+            : "errorGeneric";
 
 /**
  * One conversation's data and its run, shared by the panel and the app page.
