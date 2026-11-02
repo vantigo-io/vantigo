@@ -1,7 +1,10 @@
 import { infiniteQueryOptions, keepPreviousData, queryOptions } from "@tanstack/react-query";
+import { appUrl } from "@vantigo/frontend-shell";
 import { ASSISTANT_QUERY_KEY, json, request } from "./request";
 import type {
   AssistantAvailability,
+  AssistantBulkJob,
+  AssistantBulkState,
   AssistantConversation,
   AssistantConversationDetail,
   AssistantConversationList,
@@ -29,6 +32,42 @@ export const isVersionConflict = (error: unknown) => errorCode(error) === "versi
 export const isRunInProgress = (error: unknown) => errorCode(error) === "run_in_progress";
 export const isActionDecided = (error: unknown) => errorCode(error) === "action_decided";
 export const isActionExpired = (error: unknown) => errorCode(error) === "action_expired";
+
+// -- bulk jobs (S13) ---------------------------------------------------------
+
+/** The states in which a bulk job is running on the server: the card polls it. */
+export const bulkRunningStates: readonly AssistantBulkState[] = ["canary", "running", "stopping"];
+
+export const bulkJobQueryKey = (id: string) => [ASSISTANT_QUERY_KEY, "bulk-job", id] as const;
+
+export const BULK_POLL_MS = 2000;
+
+/**
+ * A bulk job's state, counters and first failures. It is polled every two
+ * seconds while the job runs (`running` is what the card last knew) and read
+ * once more when it ends, for the failed list; it stops there.
+ */
+export const bulkJobQueryOptions = (id: string, running: boolean) =>
+  queryOptions({
+    queryKey: bulkJobQueryKey(id),
+    queryFn: ({ signal }) => request<AssistantBulkJob>(`${base}/bulk-jobs/${id}`, { signal }),
+    retry: false,
+    refetchInterval: (query) => {
+      const state = query.state.data?.state;
+      return state ? (bulkRunningStates.includes(state) ? BULK_POLL_MS : false) : running ? BULK_POLL_MS : false;
+    },
+  });
+
+/** Runs the rest of a job that paused after the canary, or because its permission was about to lapse. */
+export const continueBulkJob = (id: string) =>
+  request<AssistantBulkJob>(`${base}/bulk-jobs/${id}/continue`, { method: "POST" });
+
+/** Stops a job: a running one stops between chunks. */
+export const stopBulkJob = (id: string) =>
+  request<AssistantBulkJob>(`${base}/bulk-jobs/${id}/stop`, { method: "POST" });
+
+/** Where the failed items download as a CSV file. */
+export const bulkFailuresUrl = (id: string) => appUrl(`${base}/bulk-jobs/${id}/failures.csv`);
 
 // -- availability and the person's own state ---------------------------------
 

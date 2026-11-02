@@ -1,10 +1,15 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
+  bulkJobQueryKey,
+  bulkRunningStates,
+  continueBulkJob,
   conversationQueryKey,
   conversationQueryOptions,
   conversationsQueryKey,
   createConversation,
+  errorCode,
+  stopBulkJob,
   stopRun,
 } from "../api/assistant";
 import { decideAction, type StreamEvent, StreamRefusedError, sendMessage } from "../api/stream";
@@ -19,7 +24,8 @@ type ErrorKey =
   | "errorBudget"
   | "errorActionDecided"
   | "errorActionExpired"
-  | "errorNotAllowed";
+  | "errorNotAllowed"
+  | "errorBulkNotWaiting";
 
 /** The run this tab is listening to: what the stream has said so far. */
 interface LiveRun {
@@ -126,7 +132,12 @@ export const useConversation = ({
     refetchInterval: (query) => {
       if (liveRef.current?.phase === "working") return false;
       const data = query.state.data;
-      return data?.activeRun?.state === "running" || data?.conversation.running ? POLL_MS : false;
+      // A bulk job runs on the server for as long as it takes: the card, the badge
+      // and the model's closing message follow it by polling.
+      const bulkRunning = data?.pendingActions.some(
+        (card) => card.bulk !== undefined && bulkRunningStates.includes(card.bulk.state),
+      );
+      return data?.activeRun?.state === "running" || data?.conversation.running || bulkRunning ? POLL_MS : false;
     },
   });
 
@@ -152,7 +163,6 @@ export const useConversation = ({
   }, [missing, onMissing]);
 
   const serverRunning = detail.data?.activeRun?.state === "running" || detail.data?.conversation.running === true;
-  const working = live?.phase === "working" || serverRunning;
 
   // The proposed changes: the conversation's, with what the stream has said since laid over them.
   const cards = useMemo(() => {
@@ -161,7 +171,35 @@ export const useConversation = ({
     for (const card of Object.values(live?.cards ?? {})) byId[card.id] = card;
     return byId;
   }, [detail.data?.pendingActions, live?.cards]);
-  const waiting = Object.values(cards).some((card) => card.status === "pending");
+  const bulkStates = Object.values(cards).flatMap((card) => (card.bulk ? [card.bulk.state] : []));
+  // A bulk job running on the server is work in progress; one that waits for Continue is a decision.
+  const bulkRunning = bulkStates.some((state) => bulkRunningStates.includes(state));
+  const waiting =
+    Object.values(cards).some((card) => card.status === "pending") ||
+    bulkStates.some((state) => state === "awaiting_continue");
+  const working = live?.phase === "working" || serverRunning || bulkRunning;
+
+  // A job that ran has changed what the person is looking at: when it pauses or ends, the screen refreshes.
+  // The state each card was last seen in is kept, so the stream and the polling announce a change once.
+  const bulkSeen = useRef<Record<string, string>>({});
+  const noteBulk = useCallback(
+    (card: AssistantPendingAction) => {
+      const state = card.bulk?.state;
+      if (!state) return;
+      const before = bulkSeen.current[card.id];
+      bulkSeen.current[card.id] = state;
+      if (
+        before !== undefined &&
+        bulkRunningStates.includes(before as typeof state) &&
+        !bulkRunningStates.includes(state)
+      )
+        invalidateAfterAssistantWrites(queryClient);
+    },
+    [queryClient],
+  );
+  useEffect(() => {
+    for (const card of Object.values(cards)) noteBulk(card);
+  }, [cards, noteBulk]);
 
   const wasWorking = useRef(false);
   useEffect(() => {
@@ -242,7 +280,9 @@ export const useConversation = ({
               onProposal?.(card);
             }
             // The change was made: the screen the person is on must show it.
-            if (card.status === "confirmed" && card.outcome?.ok === true) invalidateAfterAssistantWrites(queryClient);
+            if (card.status === "confirmed" && card.outcome?.ok === true && !card.bulk)
+              invalidateAfterAssistantWrites(queryClient);
+            noteBulk(card);
             break;
           }
           case "done":
@@ -272,12 +312,12 @@ export const useConversation = ({
       }
       return runId;
     },
-    [finish, onProposal, queryClient],
+    [finish, onProposal, queryClient, noteBulk],
   );
 
   const send = useCallback(
     async (text: string, context?: AssistantMessageContext) => {
-      if (liveRef.current?.phase === "working" || serverRunning || waiting) return;
+      if (liveRef.current?.phase === "working" || serverRunning || waiting || bulkRunning) return;
       const controller = new AbortController();
       abort.current?.abort();
       abort.current = controller;
@@ -313,7 +353,7 @@ export const useConversation = ({
         }
       }
     },
-    [conversationId, serverRunning, waiting, origin, onCreated, queryClient, follow],
+    [conversationId, serverRunning, waiting, bulkRunning, origin, onCreated, queryClient, follow],
   );
 
   /** The person's decision on a proposed change: the run goes on and streams as a message's does. */
@@ -343,17 +383,44 @@ export const useConversation = ({
     [deciding, conversationId, follow, queryClient],
   );
 
+  /** Continues or stops a bulk job: the card's own buttons after the canary and while it runs. */
+  const jobAction = useCallback(
+    async (card: AssistantPendingAction, action: "continue" | "stop") => {
+      const jobId = card.bulk?.jobId;
+      if (!jobId || deciding || !conversationId) return;
+      setDeciding(card.id);
+      setDecisionErrors((current) => Object.fromEntries(Object.entries(current).filter(([id]) => id !== card.id)));
+      try {
+        const job = await (action === "continue" ? continueBulkJob(jobId) : stopBulkJob(jobId));
+        queryClient.setQueryData(bulkJobQueryKey(jobId), job);
+      } catch (error) {
+        const code = errorCode(error);
+        const key: ErrorKey =
+          code === "job_not_waiting"
+            ? "errorBulkNotWaiting"
+            : code === "operation_unavailable"
+              ? "errorNotAllowed"
+              : "errorGeneric";
+        setDecisionErrors((current) => ({ ...current, [card.id]: key }));
+      } finally {
+        await queryClient.invalidateQueries({ queryKey: conversationQueryKey(conversationId) });
+        setDeciding(undefined);
+      }
+    },
+    [deciding, conversationId, queryClient],
+  );
+
   const stop = useCallback(async () => {
     const runId = liveRef.current?.runId ?? detail.data?.activeRun?.id;
     if (!runId) return;
     try {
       await stopRun(runId);
-      if (waiting && conversationId)
+      if ((waiting || bulkRunning) && conversationId)
         await queryClient.invalidateQueries({ queryKey: conversationQueryKey(conversationId) });
     } catch {
       setLive((current) => current && { ...current, error: "errorGeneric" });
     }
-  }, [detail.data?.activeRun?.id, waiting, conversationId, queryClient]);
+  }, [detail.data?.activeRun?.id, waiting, bulkRunning, conversationId, queryClient]);
 
   /** Dismisses an error line once the person has read it. */
   const clearError = useCallback(() => setLive((current) => (current?.error ? null : current)), []);
@@ -375,6 +442,8 @@ export const useConversation = ({
     send,
     confirm: (card: AssistantPendingAction) => decide(card, "confirm"),
     cancel: (card: AssistantPendingAction) => decide(card, "cancel"),
+    continueJob: (card: AssistantPendingAction) => jobAction(card, "continue"),
+    stopJob: (card: AssistantPendingAction) => jobAction(card, "stop"),
     stop,
     clearError,
   };

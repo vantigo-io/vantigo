@@ -4,6 +4,7 @@ import { useI18n } from "@vantigo/frontend-shell";
 import type { AssistantMessage, AssistantMessageContext, AssistantPart, AssistantPendingAction } from "../api/types";
 import { textOf, visibleMessages } from "../lib/messages";
 import { startTour } from "../lib/tour";
+import { BulkCard } from "./bulk-card";
 import { ConfirmationCard } from "./confirmation-card";
 import { Markdown } from "./markdown";
 
@@ -27,6 +28,9 @@ export interface MessageListProps {
   decisionErrors?: Readonly<Record<string, string>>;
   onConfirm?: (card: AssistantPendingAction) => void;
   onCancel?: (card: AssistantPendingAction) => void;
+  /** A bulk change: Continue runs the rest after the canary, Stop stops the job. */
+  onContinue?: (card: AssistantPendingAction) => void;
+  onStop?: (card: AssistantPendingAction) => void;
 }
 
 interface CardProps {
@@ -36,6 +40,8 @@ interface CardProps {
   decisionErrors: Readonly<Record<string, string>>;
   onConfirm?: (card: AssistantPendingAction) => void;
   onCancel?: (card: AssistantPendingAction) => void;
+  onContinue?: (card: AssistantPendingAction) => void;
+  onStop?: (card: AssistantPendingAction) => void;
 }
 
 /** One line saying what the assistant did to answer: "Searching the documentation". */
@@ -91,6 +97,21 @@ const AssistantParts = ({
         }
         if (part.type === "confirmation" && part.actionId) {
           const card = cardProps.cards[part.actionId];
+          if (card?.kind === "bulk")
+            return (
+              <BulkCard
+                key={key}
+                card={card}
+                autoFocus={cardProps.freshCard === card.id}
+                busy={cardProps.decidingCard === card.id}
+                error={cardProps.decisionErrors[card.id]}
+                onStart={(one) => cardProps.onConfirm?.(one)}
+                onCancel={(one) => cardProps.onCancel?.(one)}
+                onContinue={(one) => cardProps.onContinue?.(one)}
+                onStop={(one) => cardProps.onStop?.(one)}
+                onNavigate={onNavigate}
+              />
+            );
           return card ? (
             <ConfirmationCard
               key={key}
@@ -157,9 +178,20 @@ export const MessageList = ({
   decisionErrors = {},
   onConfirm,
   onCancel,
+  onContinue,
+  onStop,
 }: MessageListProps) => {
   const { t } = useI18n("assistant");
-  const cardProps: CardProps = { cards, freshCard, decidingCard, decisionErrors, onConfirm, onCancel };
+  const cardProps: CardProps = {
+    cards,
+    freshCard,
+    decidingCard,
+    decisionErrors,
+    onConfirm,
+    onCancel,
+    onContinue,
+    onStop,
+  };
   return (
     <Stack gap="md" p="md" aria-live="polite" aria-busy={working}>
       {visibleMessages(messages).map((message) =>
