@@ -85,15 +85,18 @@ func (e AssistantPartStatus) Valid() bool {
 
 // Defines values for AssistantPartType.
 const (
-	Link       AssistantPartType = "link"
-	Text       AssistantPartType = "text"
-	ToolCall   AssistantPartType = "tool_call"
-	ToolResult AssistantPartType = "tool_result"
+	Confirmation AssistantPartType = "confirmation"
+	Link         AssistantPartType = "link"
+	Text         AssistantPartType = "text"
+	ToolCall     AssistantPartType = "tool_call"
+	ToolResult   AssistantPartType = "tool_result"
 )
 
 // Valid indicates whether the value is a known member of the AssistantPartType enum.
 func (e AssistantPartType) Valid() bool {
 	switch e {
+	case Confirmation:
+		return true
 	case Link:
 		return true
 	case Text:
@@ -101,6 +104,33 @@ func (e AssistantPartType) Valid() bool {
 	case ToolCall:
 		return true
 	case ToolResult:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AssistantPendingActionStatus.
+const (
+	AssistantPendingActionStatusCancelled AssistantPendingActionStatus = "cancelled"
+	AssistantPendingActionStatusConfirmed AssistantPendingActionStatus = "confirmed"
+	AssistantPendingActionStatusExpired   AssistantPendingActionStatus = "expired"
+	AssistantPendingActionStatusFailed    AssistantPendingActionStatus = "failed"
+	AssistantPendingActionStatusPending   AssistantPendingActionStatus = "pending"
+)
+
+// Valid indicates whether the value is a known member of the AssistantPendingActionStatus enum.
+func (e AssistantPendingActionStatus) Valid() bool {
+	switch e {
+	case AssistantPendingActionStatusCancelled:
+		return true
+	case AssistantPendingActionStatusConfirmed:
+		return true
+	case AssistantPendingActionStatusExpired:
+		return true
+	case AssistantPendingActionStatusFailed:
+		return true
+	case AssistantPendingActionStatusPending:
 		return true
 	default:
 		return false
@@ -154,22 +184,28 @@ func (e AssistantPermissionRequestLevel) Valid() bool {
 
 // Defines values for AssistantRunState.
 const (
-	Done    AssistantRunState = "done"
-	Failed  AssistantRunState = "failed"
-	Running AssistantRunState = "running"
-	Stopped AssistantRunState = "stopped"
+	AssistantRunStateAwaitingConfirmation AssistantRunState = "awaiting_confirmation"
+	AssistantRunStateDone                 AssistantRunState = "done"
+	AssistantRunStateExpired              AssistantRunState = "expired"
+	AssistantRunStateFailed               AssistantRunState = "failed"
+	AssistantRunStateRunning              AssistantRunState = "running"
+	AssistantRunStateStopped              AssistantRunState = "stopped"
 )
 
 // Valid indicates whether the value is a known member of the AssistantRunState enum.
 func (e AssistantRunState) Valid() bool {
 	switch e {
-	case Done:
+	case AssistantRunStateAwaitingConfirmation:
 		return true
-	case Failed:
+	case AssistantRunStateDone:
 		return true
-	case Running:
+	case AssistantRunStateExpired:
 		return true
-	case Stopped:
+	case AssistantRunStateFailed:
+		return true
+	case AssistantRunStateRunning:
+		return true
+	case AssistantRunStateStopped:
 		return true
 	default:
 		return false
@@ -296,13 +332,18 @@ type AssistantConversation struct {
 
 // AssistantConversationDetail defines model for AssistantConversationDetail.
 type AssistantConversationDetail struct {
-	Actions      []AssistantAction     `json:"actions"`
+	Actions []AssistantAction `json:"actions"`
+
+	// ActiveRun The run that has not ended, running or awaiting_confirmation.
 	ActiveRun    *AssistantRun         `json:"activeRun,omitempty"`
 	Conversation AssistantConversation `json:"conversation"`
 
 	// LastRun The latest run of the conversation when it is over, so a client that polled or reloaded can tell a run that failed or was stopped from one that finished.
 	LastRun  *AssistantRun      `json:"lastRun,omitempty"`
 	Messages []AssistantMessage `json:"messages"`
+
+	// PendingActions Every change the assistant proposed in this conversation, oldest first, with its card and, once decided, its outcome. A decided action keeps no values.
+	PendingActions []AssistantPendingAction `json:"pendingActions"`
 }
 
 // AssistantConversationList defines model for AssistantConversationList.
@@ -358,8 +399,9 @@ type AssistantOrigin struct {
 	Route string `json:"route"`
 }
 
-// AssistantPart One typed part of a message. text: the words (Markdown); tool_call: the assistant asked for a tool (name, label, the arguments it gave); tool_result: what the tool answered the model, compacted (status ok, refused or error); link: a record or screen in the app (route, label).
+// AssistantPart One typed part of a message. text: the words (Markdown); tool_call: the assistant asked for a tool (name, label, the arguments it gave); tool_result: what the tool answered the model, compacted (status ok, refused or error); link: a record or screen in the app (route, label); confirmation: a change the assistant proposed, waiting for the person (actionId; the card is the conversation's pendingActions entry with that id).
 type AssistantPart struct {
+	ActionId  *openapi_types.UUID     `json:"actionId,omitempty"`
 	Arguments *map[string]interface{} `json:"arguments,omitempty"`
 	CallId    *string                 `json:"callId,omitempty"`
 	Content   *string                 `json:"content,omitempty"`
@@ -376,6 +418,55 @@ type AssistantPartStatus string
 
 // AssistantPartType defines model for AssistantPart.Type.
 type AssistantPartType string
+
+// AssistantPendingAction A change the assistant proposed and nothing has written yet, or has now been decided. summary is the operation's summary; explain is the assistant's own one-line description in the person's language, shown beside it and never instead of the fields. A decided action keeps the names of its fields and no values.
+type AssistantPendingAction struct {
+	ConversationId openapi_types.UUID      `json:"conversationId"`
+	CreatedAt      time.Time               `json:"createdAt"`
+	DecidedAt      *time.Time              `json:"decidedAt,omitempty"`
+	ExpiresAt      time.Time               `json:"expiresAt"`
+	Explain        *string                 `json:"explain,omitempty"`
+	Fields         []AssistantPendingField `json:"fields"`
+	Id             openapi_types.UUID      `json:"id"`
+	Method         string                  `json:"method"`
+	OperationId    string                  `json:"operationId"`
+
+	// Outcome How a decided action ended. status is the HTTP status the operation answered; reason is cancelled, stopped, expired, changed (the record changed since the card was made), refused, interrupted or failed; message is a short sentence from the operation's own refusal when it gave one.
+	Outcome *AssistantPendingOutcome     `json:"outcome,omitempty"`
+	RunId   openapi_types.UUID           `json:"runId"`
+	Status  AssistantPendingActionStatus `json:"status"`
+	Summary string                       `json:"summary"`
+
+	// Target The record the change is about, when the card could name it. route is an in-app route.
+	Target *AssistantPendingTarget `json:"target,omitempty"`
+}
+
+// AssistantPendingActionStatus defines model for AssistantPendingAction.Status.
+type AssistantPendingActionStatus string
+
+// AssistantPendingField defines model for AssistantPendingField.
+type AssistantPendingField struct {
+	// Current The value now, when a read of the same record could say. Absent for a new value only, and after the decision.
+	Current *string `json:"current,omitempty"`
+	Name    string  `json:"name"`
+
+	// Next The value the change sets. Absent after the decision.
+	Next *string `json:"next,omitempty"`
+}
+
+// AssistantPendingOutcome How a decided action ended. status is the HTTP status the operation answered; reason is cancelled, stopped, expired, changed (the record changed since the card was made), refused, interrupted or failed; message is a short sentence from the operation's own refusal when it gave one.
+type AssistantPendingOutcome struct {
+	Message *string `json:"message,omitempty"`
+	Ok      bool    `json:"ok"`
+	Reason  *string `json:"reason,omitempty"`
+	Status  *int32  `json:"status,omitempty"`
+}
+
+// AssistantPendingTarget The record the change is about, when the card could name it. route is an in-app route.
+type AssistantPendingTarget struct {
+	Label *string `json:"label,omitempty"`
+	Route *string `json:"route,omitempty"`
+}
 
 // AssistantPermission defines model for AssistantPermission.
 type AssistantPermission struct {
@@ -466,12 +557,15 @@ type AssistantSendMessageRequest struct {
 // AssistantSettings defines model for AssistantSettings.
 type AssistantSettings struct {
 	// Configured The instance has an AI provider.
-	Configured      bool                  `json:"configured"`
-	Local           bool                  `json:"local"`
-	Mode            AssistantSettingsMode `json:"mode"`
-	Models          []string              `json:"models"`
-	Provider        *string               `json:"provider,omitempty"`
-	RetentionMonths int32                 `json:"retentionMonths"`
+	Configured bool `json:"configured"`
+
+	// DailyTokenBudget The most tokens one person may use on a business day, input and output; null is no limit.
+	DailyTokenBudget *int32                `json:"dailyTokenBudget,omitempty"`
+	Local            bool                  `json:"local"`
+	Mode             AssistantSettingsMode `json:"mode"`
+	Models           []string              `json:"models"`
+	Provider         *string               `json:"provider,omitempty"`
+	RetentionMonths  int32                 `json:"retentionMonths"`
 
 	// SensitiveDefault The default level of every Sensitive permission: off (not available) or read (can read).
 	SensitiveDefault AssistantSettingsSensitiveDefault `json:"sensitiveDefault"`
@@ -487,6 +581,8 @@ type AssistantSettingsSensitiveDefault string
 
 // AssistantSettingsRequest defines model for AssistantSettingsRequest.
 type AssistantSettingsRequest struct {
+	// DailyTokenBudget The daily token budget per person, 1000 to 1000000000; 0 removes the limit. Left out, it is kept.
+	DailyTokenBudget *int32                                    `json:"dailyTokenBudget,omitempty"`
 	Mode             *AssistantSettingsRequestMode             `json:"mode,omitempty"`
 	RetentionMonths  *int32                                    `json:"retentionMonths,omitempty"`
 	SensitiveDefault *AssistantSettingsRequestSensitiveDefault `json:"sensitiveDefault,omitempty"`
@@ -503,6 +599,28 @@ type AssistantUpdateConversationRequest struct {
 	Archived *bool   `json:"archived,omitempty"`
 	Pinned   *bool   `json:"pinned,omitempty"`
 	Title    *string `json:"title,omitempty"`
+}
+
+// AssistantUsage What people used, per person and business day. Counts and tokens only: no content, no titles.
+type AssistantUsage struct {
+	From openapi_types.Date  `json:"from"`
+	Rows []AssistantUsageRow `json:"rows"`
+	To   openapi_types.Date  `json:"to"`
+}
+
+// AssistantUsageRow defines model for AssistantUsageRow.
+type AssistantUsageRow struct {
+	ConfirmedChanges int32              `json:"confirmedChanges"`
+	Conversations    int32              `json:"conversations"`
+	Day              openapi_types.Date `json:"day"`
+	FailedChanges    int32              `json:"failedChanges"`
+	InputTokens      int64              `json:"inputTokens"`
+
+	// Name The person's display name; empty when they no longer exist.
+	Name         string             `json:"name"`
+	OutputTokens int64              `json:"outputTokens"`
+	Runs         int32              `json:"runs"`
+	UserId       openapi_types.UUID `json:"userId"`
 }
 
 // ListAssistantConversationsParams defines parameters for ListAssistantConversations.
@@ -536,6 +654,15 @@ type PutAssistantSettingsParams struct {
 type PutAssistantPermissionParams struct {
 	// IfMatch The version the settings was read at, bare (3) or quoted ("3"). A version that has moved on is a 409 version_conflict.
 	IfMatch string `json:"If-Match"`
+}
+
+// GetAssistantUsageParams defines parameters for GetAssistantUsage.
+type GetAssistantUsageParams struct {
+	// From The first day, inclusive. Defaults to 30 days before to.
+	From *openapi_types.Date `form:"from,omitempty" json:"from,omitempty"`
+
+	// To The last day, inclusive. Defaults to today, in the business time zone.
+	To *openapi_types.Date `form:"to,omitempty" json:"to,omitempty"`
 }
 
 // CreateAssistantConversationJSONRequestBody defines body for CreateAssistantConversation for application/json ContentType.
@@ -588,6 +715,12 @@ type ServerInterface interface {
 	// PutAssistantMe Remember the conversation the caller has open
 	// (PUT /api/v1/assistant/me)
 	PutAssistantMe(w http.ResponseWriter, r *http.Request)
+	// CancelAssistantPendingAction Cancel a change the assistant proposed
+	// (POST /api/v1/assistant/pending-actions/{id}/cancel)
+	CancelAssistantPendingAction(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// ConfirmAssistantPendingAction Confirm a change the assistant proposed
+	// (POST /api/v1/assistant/pending-actions/{id}/confirm)
+	ConfirmAssistantPendingAction(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
 	// GetAssistantPerson Get a person's assistant switch
 	// (GET /api/v1/assistant/people/{userId})
 	GetAssistantPerson(w http.ResponseWriter, r *http.Request, userId openapi_types.UUID)
@@ -609,6 +742,9 @@ type ServerInterface interface {
 	// PutAssistantPermission Set the level of one permission
 	// (PUT /api/v1/assistant/settings/permissions/{key})
 	PutAssistantPermission(w http.ResponseWriter, r *http.Request, key string, params PutAssistantPermissionParams)
+	// GetAssistantUsage Get the Assistant usage
+	// (GET /api/v1/assistant/usage)
+	GetAssistantUsage(w http.ResponseWriter, r *http.Request, params GetAssistantUsageParams)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -852,6 +988,58 @@ func (siw *ServerInterfaceWrapper) PutAssistantMe(w http.ResponseWriter, r *http
 	handler.ServeHTTP(w, r)
 }
 
+// CancelAssistantPendingAction operation middleware
+func (siw *ServerInterfaceWrapper) CancelAssistantPendingAction(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CancelAssistantPendingAction(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ConfirmAssistantPendingAction operation middleware
+func (siw *ServerInterfaceWrapper) ConfirmAssistantPendingAction(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ConfirmAssistantPendingAction(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetAssistantPerson operation middleware
 func (siw *ServerInterfaceWrapper) GetAssistantPerson(w http.ResponseWriter, r *http.Request) {
 
@@ -1085,6 +1273,52 @@ func (siw *ServerInterfaceWrapper) PutAssistantPermission(w http.ResponseWriter,
 	handler.ServeHTTP(w, r)
 }
 
+// GetAssistantUsage operation middleware
+func (siw *ServerInterfaceWrapper) GetAssistantUsage(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetAssistantUsageParams
+
+	// ------------- Optional query parameter "from" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "from", r.URL.Query(), &params.From, runtime.BindQueryParameterOptions{Type: "string", Format: "date"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "from"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "from", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "to" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "to", r.URL.Query(), &params.To, runtime.BindQueryParameterOptions{Type: "string", Format: "date"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "to"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "to", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAssistantUsage(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 type UnescapedCookieParamError struct {
 	ParamName string
 	Err       error
@@ -1216,11 +1450,14 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/assistant/me", wrapper.PutAssistantMe)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/assistant/people/{userId}", wrapper.GetAssistantPerson)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/assistant/people/{userId}", wrapper.PutAssistantPerson)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/assistant/pending-actions/{id}/cancel", wrapper.CancelAssistantPendingAction)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/assistant/pending-actions/{id}/confirm", wrapper.ConfirmAssistantPendingAction)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/assistant/runs/{id}/stop", wrapper.StopAssistantRun)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/assistant/settings", wrapper.GetAssistantSettings)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/assistant/settings", wrapper.PutAssistantSettings)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/assistant/settings/permissions", wrapper.GetAssistantPermissions)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/assistant/settings/permissions/{key}", wrapper.PutAssistantPermission)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/assistant/usage", wrapper.GetAssistantUsage)
 
 	return m
 }
@@ -1809,6 +2046,20 @@ func (response SendAssistantMessage429JSONResponse) VisitSendAssistantMessageRes
 	return err
 }
 
+type SendAssistantMessage429ApplicationProblemPlusJSONResponse AssistantProblem
+
+func (response SendAssistantMessage429ApplicationProblemPlusJSONResponse) VisitSendAssistantMessageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type SendAssistantMessage503ApplicationProblemPlusJSONResponse AssistantProblem
 
 func (response SendAssistantMessage503ApplicationProblemPlusJSONResponse) VisitSendAssistantMessageResponse(w http.ResponseWriter) error {
@@ -1960,6 +2211,276 @@ func (response PutAssistantMe404ApplicationProblemPlusJSONResponse) VisitPutAssi
 	}
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelAssistantPendingActionRequestObject struct {
+	Id openapi_types.UUID `json:"id"`
+}
+
+type CancelAssistantPendingActionResponseObject interface {
+	VisitCancelAssistantPendingActionResponse(w http.ResponseWriter) error
+}
+
+type CancelAssistantPendingAction200TexteventStreamResponse struct {
+	Body          io.Reader
+	ContentLength int64
+}
+
+func (response CancelAssistantPendingAction200TexteventStreamResponse) VisitCancelAssistantPendingActionResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		// If w doesn't support flushing, fall back to io.Copy.
+		_, err := io.Copy(w, response.Body)
+		return err
+	}
+	// text/event-stream messages are typically small; use a
+	// modest buffer and flush after each chunk so clients see
+	// events immediately instead of waiting on OS buffering.
+	buf := make([]byte, 4096)
+	for {
+		n, err := response.Body.Read(buf)
+		if n > 0 {
+			if _, writeErr := w.Write(buf[:n]); writeErr != nil {
+				return writeErr
+			}
+			flusher.Flush()
+		}
+		if err != nil {
+			if err == io.EOF {
+				return nil
+			}
+			return err
+		}
+	}
+}
+
+type CancelAssistantPendingAction401JSONResponse externalRef0.AuthErrorResponse
+
+func (response CancelAssistantPendingAction401JSONResponse) VisitCancelAssistantPendingActionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelAssistantPendingAction403JSONResponse externalRef0.AuthErrorResponse
+
+func (response CancelAssistantPendingAction403JSONResponse) VisitCancelAssistantPendingActionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelAssistantPendingAction403ApplicationProblemPlusJSONResponse AssistantProblem
+
+func (response CancelAssistantPendingAction403ApplicationProblemPlusJSONResponse) VisitCancelAssistantPendingActionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelAssistantPendingAction404ApplicationProblemPlusJSONResponse AssistantProblem
+
+func (response CancelAssistantPendingAction404ApplicationProblemPlusJSONResponse) VisitCancelAssistantPendingActionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelAssistantPendingAction409ApplicationProblemPlusJSONResponse AssistantProblem
+
+func (response CancelAssistantPendingAction409ApplicationProblemPlusJSONResponse) VisitCancelAssistantPendingActionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelAssistantPendingAction503ApplicationProblemPlusJSONResponse AssistantProblem
+
+func (response CancelAssistantPendingAction503ApplicationProblemPlusJSONResponse) VisitCancelAssistantPendingActionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ConfirmAssistantPendingActionRequestObject struct {
+	Id openapi_types.UUID `json:"id"`
+}
+
+type ConfirmAssistantPendingActionResponseObject interface {
+	VisitConfirmAssistantPendingActionResponse(w http.ResponseWriter) error
+}
+
+type ConfirmAssistantPendingAction200TexteventStreamResponse struct {
+	Body          io.Reader
+	ContentLength int64
+}
+
+func (response ConfirmAssistantPendingAction200TexteventStreamResponse) VisitConfirmAssistantPendingActionResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		// If w doesn't support flushing, fall back to io.Copy.
+		_, err := io.Copy(w, response.Body)
+		return err
+	}
+	// text/event-stream messages are typically small; use a
+	// modest buffer and flush after each chunk so clients see
+	// events immediately instead of waiting on OS buffering.
+	buf := make([]byte, 4096)
+	for {
+		n, err := response.Body.Read(buf)
+		if n > 0 {
+			if _, writeErr := w.Write(buf[:n]); writeErr != nil {
+				return writeErr
+			}
+			flusher.Flush()
+		}
+		if err != nil {
+			if err == io.EOF {
+				return nil
+			}
+			return err
+		}
+	}
+}
+
+type ConfirmAssistantPendingAction401JSONResponse externalRef0.AuthErrorResponse
+
+func (response ConfirmAssistantPendingAction401JSONResponse) VisitConfirmAssistantPendingActionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ConfirmAssistantPendingAction403JSONResponse externalRef0.AuthErrorResponse
+
+func (response ConfirmAssistantPendingAction403JSONResponse) VisitConfirmAssistantPendingActionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ConfirmAssistantPendingAction403ApplicationProblemPlusJSONResponse AssistantProblem
+
+func (response ConfirmAssistantPendingAction403ApplicationProblemPlusJSONResponse) VisitConfirmAssistantPendingActionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ConfirmAssistantPendingAction404ApplicationProblemPlusJSONResponse AssistantProblem
+
+func (response ConfirmAssistantPendingAction404ApplicationProblemPlusJSONResponse) VisitConfirmAssistantPendingActionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ConfirmAssistantPendingAction409ApplicationProblemPlusJSONResponse AssistantProblem
+
+func (response ConfirmAssistantPendingAction409ApplicationProblemPlusJSONResponse) VisitConfirmAssistantPendingActionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ConfirmAssistantPendingAction503ApplicationProblemPlusJSONResponse AssistantProblem
+
+func (response ConfirmAssistantPendingAction503ApplicationProblemPlusJSONResponse) VisitConfirmAssistantPendingActionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -2471,6 +2992,70 @@ func (response PutAssistantPermission409ApplicationProblemPlusJSONResponse) Visi
 	return err
 }
 
+type GetAssistantUsageRequestObject struct {
+	Params GetAssistantUsageParams
+}
+
+type GetAssistantUsageResponseObject interface {
+	VisitGetAssistantUsageResponse(w http.ResponseWriter) error
+}
+
+type GetAssistantUsage200JSONResponse AssistantUsage
+
+func (response GetAssistantUsage200JSONResponse) VisitGetAssistantUsageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAssistantUsage400ApplicationProblemPlusJSONResponse AssistantProblem
+
+func (response GetAssistantUsage400ApplicationProblemPlusJSONResponse) VisitGetAssistantUsageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAssistantUsage401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetAssistantUsage401JSONResponse) VisitGetAssistantUsageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAssistantUsage403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetAssistantUsage403JSONResponse) VisitGetAssistantUsageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
 	// GetAssistantAvailability Say whether the assistant is available to the caller
@@ -2500,6 +3085,12 @@ type StrictServerInterface interface {
 	// PutAssistantMe Remember the conversation the caller has open
 	// (PUT /api/v1/assistant/me)
 	PutAssistantMe(ctx context.Context, request PutAssistantMeRequestObject) (PutAssistantMeResponseObject, error)
+	// CancelAssistantPendingAction Cancel a change the assistant proposed
+	// (POST /api/v1/assistant/pending-actions/{id}/cancel)
+	CancelAssistantPendingAction(ctx context.Context, request CancelAssistantPendingActionRequestObject) (CancelAssistantPendingActionResponseObject, error)
+	// ConfirmAssistantPendingAction Confirm a change the assistant proposed
+	// (POST /api/v1/assistant/pending-actions/{id}/confirm)
+	ConfirmAssistantPendingAction(ctx context.Context, request ConfirmAssistantPendingActionRequestObject) (ConfirmAssistantPendingActionResponseObject, error)
 	// GetAssistantPerson Get a person's assistant switch
 	// (GET /api/v1/assistant/people/{userId})
 	GetAssistantPerson(ctx context.Context, request GetAssistantPersonRequestObject) (GetAssistantPersonResponseObject, error)
@@ -2521,6 +3112,9 @@ type StrictServerInterface interface {
 	// PutAssistantPermission Set the level of one permission
 	// (PUT /api/v1/assistant/settings/permissions/{key})
 	PutAssistantPermission(ctx context.Context, request PutAssistantPermissionRequestObject) (PutAssistantPermissionResponseObject, error)
+	// GetAssistantUsage Get the Assistant usage
+	// (GET /api/v1/assistant/usage)
+	GetAssistantUsage(ctx context.Context, request GetAssistantUsageRequestObject) (GetAssistantUsageResponseObject, error)
 }
 
 type StrictHandlerFunc func(ctx context.Context, w http.ResponseWriter, r *http.Request, request any) (any, error)
@@ -2816,6 +3410,58 @@ func (sh *strictHandler) PutAssistantMe(w http.ResponseWriter, r *http.Request) 
 	}
 }
 
+// CancelAssistantPendingAction operation middleware
+func (sh *strictHandler) CancelAssistantPendingAction(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	var request CancelAssistantPendingActionRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CancelAssistantPendingAction(ctx, request.(CancelAssistantPendingActionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CancelAssistantPendingAction")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CancelAssistantPendingActionResponseObject); ok {
+		if err := validResponse.VisitCancelAssistantPendingActionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ConfirmAssistantPendingAction operation middleware
+func (sh *strictHandler) ConfirmAssistantPendingAction(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	var request ConfirmAssistantPendingActionRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ConfirmAssistantPendingAction(ctx, request.(ConfirmAssistantPendingActionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ConfirmAssistantPendingAction")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ConfirmAssistantPendingActionResponseObject); ok {
+		if err := validResponse.VisitConfirmAssistantPendingActionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetAssistantPerson operation middleware
 func (sh *strictHandler) GetAssistantPerson(w http.ResponseWriter, r *http.Request, userId openapi_types.UUID) {
 	var request GetAssistantPersonRequestObject
@@ -3010,6 +3656,32 @@ func (sh *strictHandler) PutAssistantPermission(w http.ResponseWriter, r *http.R
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PutAssistantPermissionResponseObject); ok {
 		if err := validResponse.VisitPutAssistantPermissionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetAssistantUsage operation middleware
+func (sh *strictHandler) GetAssistantUsage(w http.ResponseWriter, r *http.Request, params GetAssistantUsageParams) {
+	var request GetAssistantUsageRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetAssistantUsage(ctx, request.(GetAssistantUsageRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetAssistantUsage")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetAssistantUsageResponseObject); ok {
+		if err := validResponse.VisitGetAssistantUsageResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

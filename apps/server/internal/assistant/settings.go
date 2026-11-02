@@ -118,6 +118,7 @@ func (s *server) settingsResponse(row store.AssistantSetting) gen.AssistantSetti
 		Configured:       s.deps.AI != nil,
 		Local:            s.deps.Config.AILocal(),
 		Models:           []string{},
+		DailyTokenBudget: row.DailyTokenBudget,
 	}
 	if s.deps.AI != nil {
 		provider := s.deps.AI.Provider()
@@ -138,7 +139,7 @@ func (s *server) GetAssistantSettings(ctx context.Context, _ gen.GetAssistantSet
 
 // settingsSnapshot is what the audit records of the settings.
 func settingsSnapshot(row store.AssistantSetting) map[string]any {
-	return map[string]any{"mode": row.Mode, "retentionMonths": row.RetentionMonths, "sensitiveDefault": row.SensitiveDefault}
+	return map[string]any{"mode": row.Mode, "retentionMonths": row.RetentionMonths, "sensitiveDefault": row.SensitiveDefault, "dailyTokenBudget": row.DailyTokenBudget}
 }
 
 // PutAssistantSettings (PUT /api/v1/assistant/settings)
@@ -164,6 +165,9 @@ func (s *server) PutAssistantSettings(ctx context.Context, req gen.PutAssistantS
 	if body.RetentionMonths != nil && (*body.RetentionMonths < minRetentionMonths || *body.RetentionMonths > maxRetentionMonths) {
 		errs["retentionMonths"] = []string{fmt.Sprintf("retentionMonths must be from %d to %d", minRetentionMonths, maxRetentionMonths)}
 	}
+	if b := body.DailyTokenBudget; b != nil && *b != 0 && (*b < minDailyTokenBudget || *b > maxDailyTokenBudget) {
+		errs["dailyTokenBudget"] = []string{fmt.Sprintf("dailyTokenBudget must be 0 (no limit) or from %d to %d", minDailyTokenBudget, maxDailyTokenBudget)}
+	}
 	if len(errs) > 0 {
 		return invalid("The settings are not valid", errs), nil
 	}
@@ -181,7 +185,14 @@ func (s *server) PutAssistantSettings(ctx context.Context, req gen.PutAssistantS
 		}
 		p := store.UpdateSettingsParams{
 			Mode: current.Mode, RetentionMonths: current.RetentionMonths, SensitiveDefault: current.SensitiveDefault,
-			Now: s.deps.Clock(), UpdatedBy: actor,
+			DailyTokenBudget: current.DailyTokenBudget, Now: s.deps.Clock(), UpdatedBy: actor,
+		}
+		if body.DailyTokenBudget != nil {
+			if *body.DailyTokenBudget == 0 {
+				p.DailyTokenBudget = nil
+			} else {
+				p.DailyTokenBudget = body.DailyTokenBudget
+			}
 		}
 		if body.Mode != nil {
 			p.Mode = string(*body.Mode)

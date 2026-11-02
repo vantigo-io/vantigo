@@ -89,7 +89,7 @@ export interface paths {
         put?: never;
         /**
          * Send a message and stream the assistant's answer
-         * @description Starts a run and answers text/event-stream, flushed per event: run (the run's id), delta (a piece of text), tool (a tool call started or done, with a short label), message (a persisted message), done, and error (a code). The run is detached from the connection: a client that disconnects stops hearing, not the run, which continues on the server and can be followed by polling the conversation. One run per conversation at a time: a second message while one runs is a 409 run_in_progress.
+         * @description Starts a run and answers text/event-stream, flushed per event: run (the run's id), delta (a piece of text), tool (a tool call started or done, with a short label), message (a persisted message), confirmation (a proposed change's card, or the same card decided), done, and error (a code). The run is detached from the connection: a client that disconnects stops hearing, not the run, which continues on the server and can be followed by polling the conversation. One run per conversation at a time: a second message while one runs, or while a change waits for the person, is a 409 run_in_progress. A run that proposes a change ends its stream with a confirmation event (the card) and done with state awaiting_confirmation.
          */
         post: operations["sendAssistantMessage"];
         delete?: never;
@@ -148,6 +148,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/assistant/pending-actions/{id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel a change the assistant proposed
+         * @description Cancels a proposed change: nothing is written, the model is told the person cancelled, and the run continues with one short answer, streamed as text/event-stream.
+         */
+        post: operations["cancelAssistantPendingAction"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/assistant/pending-actions/{id}/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Confirm a change the assistant proposed
+         * @description Confirms a proposed change. The change runs through the operation as the person, with the If-Match the card was made at when the record has an ETag; the model reads the result and the run continues, streamed as text/event-stream. A change can be confirmed once, minutes later, after a reload or from another device, for 24 hours.
+         */
+        post: operations["confirmAssistantPendingAction"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/assistant/runs/{id}/stop": {
         parameters: {
             query?: never;
@@ -184,7 +228,7 @@ export interface paths {
         get: operations["getAssistantSettings"];
         /**
          * Change the Assistant settings
-         * @description Changes the mode, the retention in months (1 to 60) and the sensitive data switch; a field left out is kept. Guarded by If-Match, audited with before and after. Owner only.
+         * @description Changes the mode, the retention in months (1 to 60), the sensitive data switch and the daily token budget per person; a field left out is kept. Guarded by If-Match, audited with before and after. Owner only.
          */
         put: operations["putAssistantSettings"];
         post?: never;
@@ -230,6 +274,26 @@ export interface paths {
          * @description Sets the level the assistant may use the permission at (off, read, change), or resets it to its default with null. Guarded by If-Match on the settings' version, audited with before and after. A key outside the catalog is a 404. Owner only.
          */
         put: operations["putAssistantPermission"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/assistant/usage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get the Assistant usage
+         * @description What people used of the assistant, per person and business day: the conversations they began, the runs, the model tokens (input and output) and the changes that were confirmed and that failed. The business time zone's days, at most 92 of them. Counts only: no content and no titles. Owner only.
+         */
+        get: operations["getAssistantUsage"];
+        put?: never;
         post?: never;
         delete?: never;
         options?: never;
@@ -283,11 +347,14 @@ export interface components {
         };
         AssistantConversationDetail: {
             actions: components["schemas"]["AssistantAction"][];
+            /** @description The run that has not ended, running or awaiting_confirmation. */
             activeRun?: components["schemas"]["AssistantRun"];
             conversation: components["schemas"]["AssistantConversation"];
             /** @description The latest run of the conversation when it is over, so a client that polled or reloaded can tell a run that failed or was stopped from one that finished. */
             lastRun?: components["schemas"]["AssistantRun"];
             messages: components["schemas"]["AssistantMessage"][];
+            /** @description Every change the assistant proposed in this conversation, oldest first, with its card and, once decided, its outcome. A decided action keeps no values. */
+            pendingActions: components["schemas"]["AssistantPendingAction"][];
         };
         AssistantConversationList: {
             items: components["schemas"]["AssistantConversation"][];
@@ -335,8 +402,10 @@ export interface components {
             app: string;
             route: string;
         };
-        /** @description One typed part of a message. text: the words (Markdown); tool_call: the assistant asked for a tool (name, label, the arguments it gave); tool_result: what the tool answered the model, compacted (status ok, refused or error); link: a record or screen in the app (route, label). */
+        /** @description One typed part of a message. text: the words (Markdown); tool_call: the assistant asked for a tool (name, label, the arguments it gave); tool_result: what the tool answered the model, compacted (status ok, refused or error); link: a record or screen in the app (route, label); confirmation: a change the assistant proposed, waiting for the person (actionId; the card is the conversation's pendingActions entry with that id). */
         AssistantPart: {
+            /** Format: uuid */
+            actionId?: string;
             arguments?: {
                 [key: string]: unknown;
             };
@@ -349,7 +418,51 @@ export interface components {
             status?: "ok" | "refused" | "error";
             text?: string;
             /** @enum {string} */
-            type: "text" | "tool_call" | "tool_result" | "link";
+            type: "text" | "tool_call" | "tool_result" | "link" | "confirmation";
+        };
+        /** @description A change the assistant proposed and nothing has written yet, or has now been decided. summary is the operation's summary; explain is the assistant's own one-line description in the person's language, shown beside it and never instead of the fields. A decided action keeps the names of its fields and no values. */
+        AssistantPendingAction: {
+            /** Format: uuid */
+            conversationId: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            decidedAt?: string;
+            /** Format: date-time */
+            expiresAt: string;
+            explain?: string;
+            fields: components["schemas"]["AssistantPendingField"][];
+            /** Format: uuid */
+            id: string;
+            method: string;
+            operationId: string;
+            outcome?: components["schemas"]["AssistantPendingOutcome"];
+            /** Format: uuid */
+            runId: string;
+            /** @enum {string} */
+            status: "pending" | "confirmed" | "cancelled" | "expired" | "failed";
+            summary: string;
+            target?: components["schemas"]["AssistantPendingTarget"];
+        };
+        AssistantPendingField: {
+            /** @description The value now, when a read of the same record could say. Absent for a new value only, and after the decision. */
+            current?: string;
+            name: string;
+            /** @description The value the change sets. Absent after the decision. */
+            next?: string;
+        };
+        /** @description How a decided action ended. status is the HTTP status the operation answered; reason is cancelled, stopped, expired, changed (the record changed since the card was made), refused, interrupted or failed; message is a short sentence from the operation's own refusal when it gave one. */
+        AssistantPendingOutcome: {
+            message?: string;
+            ok: boolean;
+            reason?: string;
+            /** Format: int32 */
+            status?: number;
+        };
+        /** @description The record the change is about, when the card could name it. route is an in-app route. */
+        AssistantPendingTarget: {
+            label?: string;
+            route?: string;
         };
         AssistantPermission: {
             defaultLevel: components["schemas"]["AssistantPermissionLevel"];
@@ -417,7 +530,7 @@ export interface components {
             /** Format: date-time */
             startedAt: string;
             /** @enum {string} */
-            state: "running" | "done" | "failed" | "stopped";
+            state: "running" | "awaiting_confirmation" | "done" | "failed" | "stopped" | "expired";
             stopRequested: boolean;
             /** Format: int32 */
             toolCalls: number;
@@ -429,6 +542,11 @@ export interface components {
         AssistantSettings: {
             /** @description The instance has an AI provider. */
             configured: boolean;
+            /**
+             * Format: int32
+             * @description The most tokens one person may use on a business day, input and output; null is no limit.
+             */
+            dailyTokenBudget?: number | null;
             local: boolean;
             /** @enum {string} */
             mode: "all" | "per_person" | "disabled";
@@ -447,6 +565,11 @@ export interface components {
             version: number;
         };
         AssistantSettingsRequest: {
+            /**
+             * Format: int32
+             * @description The daily token budget per person, 1000 to 1000000000; 0 removes the limit. Left out, it is kept.
+             */
+            dailyTokenBudget?: number;
             /** @enum {string} */
             mode?: "all" | "per_person" | "disabled";
             /** Format: int32 */
@@ -458,6 +581,34 @@ export interface components {
             archived?: boolean;
             pinned?: boolean;
             title?: string;
+        };
+        /** @description What people used, per person and business day. Counts and tokens only: no content, no titles. */
+        AssistantUsage: {
+            /** Format: date */
+            from: string;
+            rows: components["schemas"]["AssistantUsageRow"][];
+            /** Format: date */
+            to: string;
+        };
+        AssistantUsageRow: {
+            /** Format: int32 */
+            confirmedChanges: number;
+            /** Format: int32 */
+            conversations: number;
+            /** Format: date */
+            day: string;
+            /** Format: int32 */
+            failedChanges: number;
+            /** Format: int64 */
+            inputTokens: number;
+            /** @description The person's display name; empty when they no longer exist. */
+            name: string;
+            /** Format: int64 */
+            outputTokens: number;
+            /** Format: int32 */
+            runs: number;
+            /** Format: uuid */
+            userId: string;
         };
         AuthErrorResponse: {
             error: {
@@ -846,13 +997,14 @@ export interface operations {
                     "application/problem+json": components["schemas"]["AssistantProblem"];
                 };
             };
-            /** @description Too Many Requests */
+            /** @description Too Many Requests - the rate limit, or budget_exhausted (the person has used the day's token budget). */
             429: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["AuthErrorResponse"];
+                    "application/problem+json": components["schemas"]["AssistantProblem"];
                 };
             };
             /** @description Service Unavailable - ai_unavailable. */
@@ -1071,6 +1223,142 @@ export interface operations {
             };
             /** @description Conflict - version_conflict. */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AssistantProblem"];
+                };
+            };
+        };
+    };
+    cancelAssistantPendingAction: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK - an event stream, as sendAssistantMessage's, that begins with run and the decided confirmation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/event-stream": string;
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden - assistant_unavailable (the assistant is not available to the caller), or operation_unavailable (the Owner has narrowed what the assistant may use since the card was made), or the session's own refusal. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                    "application/problem+json": components["schemas"]["AssistantProblem"];
+                };
+            };
+            /** @description Not Found - not_found. Also what another person's action answers: the assistant never says whether it exists. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AssistantProblem"];
+                };
+            };
+            /** @description Conflict - action_decided (already confirmed, cancelled, expired or failed), or action_expired (undecided for 24 hours). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AssistantProblem"];
+                };
+            };
+            /** @description Service Unavailable - ai_unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AssistantProblem"];
+                };
+            };
+        };
+    };
+    confirmAssistantPendingAction: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK - an event stream, as sendAssistantMessage's, that begins with run and the decided confirmation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/event-stream": string;
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden - assistant_unavailable (the assistant is not available to the caller), or operation_unavailable (the Owner has narrowed what the assistant may use since the card was made), or the session's own refusal. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                    "application/problem+json": components["schemas"]["AssistantProblem"];
+                };
+            };
+            /** @description Not Found - not_found. Also what another person's action answers: the assistant never says whether it exists. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AssistantProblem"];
+                };
+            };
+            /** @description Conflict - action_decided (already confirmed, cancelled, expired or failed), or action_expired (undecided for 24 hours). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AssistantProblem"];
+                };
+            };
+            /** @description Service Unavailable - ai_unavailable. */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1340,6 +1628,58 @@ export interface operations {
                 };
                 content: {
                     "application/problem+json": components["schemas"]["AssistantProblem"];
+                };
+            };
+        };
+    };
+    getAssistantUsage: {
+        parameters: {
+            query?: {
+                /** @description The first day, inclusive. Defaults to 30 days before to. */
+                from?: string;
+                /** @description The last day, inclusive. Defaults to today, in the business time zone. */
+                to?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssistantUsage"];
+                };
+            };
+            /** @description Bad Request - a range that is not valid or longer than 92 days */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AssistantProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
                 };
             };
         };

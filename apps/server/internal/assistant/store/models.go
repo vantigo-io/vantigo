@@ -18,6 +18,7 @@ type AssistantAction struct {
 	HttpStatus  *int32
 	DurationMs  int32
 	CreatedAt   time.Time
+	ConfirmedBy *uuid.UUID
 }
 
 type AssistantConversation struct {
@@ -57,6 +58,23 @@ type AssistantMessage struct {
 	CreatedAt      time.Time
 }
 
+type AssistantPendingAction struct {
+	ID             uuid.UUID
+	RunID          uuid.UUID
+	ConversationID uuid.UUID
+	UserID         uuid.UUID
+	OperationID    string
+	CallID         string
+	ToolMessageID  *uuid.UUID
+	Request        []byte
+	Preview        []byte
+	Status         string
+	CreatedAt      time.Time
+	DecidedAt      *time.Time
+	ExpiresAt      time.Time
+	Outcome        []byte
+}
+
 type AssistantPermissionLevel struct {
 	PermissionKey string
 	Level         string
@@ -93,4 +111,16 @@ type AssistantSetting struct {
 	Version          int32
 	UpdatedAt        time.Time
 	UpdatedByUserID  *uuid.UUID
+	DailyTokenBudget *int32
+}
+
+type AssistantUsageDay struct {
+	UserID        uuid.UUID
+	Day           time.Time
+	Conversations int32
+	Runs          int32
+	InputTokens   int64
+	OutputTokens  int64
+	Confirmed     int32
+	Failed        int32
 }

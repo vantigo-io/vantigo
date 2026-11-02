@@ -173,11 +173,11 @@ func TestAssistantRun_ReadsThroughTheRealOperationsAsThePerson(t *testing.T) {
 	if got := res["read"]; got.Status != "ok" || !strings.Contains(got.Content, "The Bergen warehouse") || !strings.Contains(got.Content, "not instructions") {
 		t.Errorf("read = %+v, want the project, wrapped as data", got)
 	}
-	if got := res["write"]; got.Status != "refused" || !strings.Contains(got.Content, "changes_not_available") {
-		t.Errorf("write = %+v, want a refusal that changes are not available", got)
+	if got := res["write"]; got.Status != "ok" || !strings.Contains(got.Content, "awaiting_confirmation") {
+		t.Errorf("write = %+v, want a change that waits for the person", got)
 	}
 	if n := a.h.Count(t, `SELECT count(*) FROM projects.projects`); n != 1 {
-		t.Errorf("%d projects, want only the one the person made: a confirm operation must never run", n)
+		t.Errorf("%d projects, want only the one the person made: a confirm operation must never run without the person's confirmation", n)
 	}
 	for _, id := range []string{"beyond", "never"} {
 		if got := res[id]; got.Status != "refused" || !strings.Contains(got.Content, "operation_unavailable") {
@@ -309,11 +309,11 @@ func TestAssistantGate_TheOwnersLevelsNarrowWhatTheAssistantMayUse(t *testing.T)
 	if got := callIt(c, "getProjects"); got.Status != "ok" {
 		t.Errorf("after the reset getProjects = %+v", got)
 	}
-	// Read and change leaves the contract's mode: the write still needs a
-	// confirmation, which comes in a later version.
+	// Read and change leaves the contract's mode: the write waits for the
+	// person's confirmation.
 	a.level(t, "projects:create", "change")
-	if got := callIt(c, "postProjects"); !strings.Contains(got.Content, "changes_not_available") {
-		t.Errorf("at read and change postProjects = %+v, want the confirm refusal", got)
+	if got := callIt(c, "postProjects"); !strings.Contains(got.Content, "awaiting_confirmation") {
+		t.Errorf("at read and change postProjects = %+v, want a change that waits for the person", got)
 	}
 
 	// An operation the person cannot call stays uncallable whatever the level.

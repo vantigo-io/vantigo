@@ -142,6 +142,7 @@ func (s *server) CreateAssistantConversation(ctx context.Context, req gen.Create
 	if err != nil {
 		return nil, fmt.Errorf("assistant: start a conversation: %w", err)
 	}
+	s.countConversation(ctx, user)
 	return gen.CreateAssistantConversation201JSONResponse(conversationView(row.ID, row.Title, row.OriginApp, row.OriginRoute, row.Pinned, row.ArchivedAt, false, row.CreatedAt, row.LastActivityAt)), nil
 }
 
@@ -163,13 +164,13 @@ func (s *server) GetAssistantConversation(ctx context.Context, req gen.GetAssist
 	if err != nil {
 		return nil, fmt.Errorf("assistant: read the messages: %w", err)
 	}
-	out := gen.AssistantConversationDetail{Conversation: fromGetRow(conv), Messages: make([]gen.AssistantMessage, 0, len(rows)), Actions: []gen.AssistantAction{}}
+	out := gen.AssistantConversationDetail{Conversation: fromGetRow(conv), Messages: make([]gen.AssistantMessage, 0, len(rows)), Actions: []gen.AssistantAction{}, PendingActions: []gen.AssistantPendingAction{}}
 	for _, m := range rows {
 		out.Messages = append(out.Messages, messageView(m))
 	}
 	if run, err := q.GetLatestRun(ctx, store.GetLatestRunParams{ConversationID: req.Id, UserID: user}); err == nil {
 		v := runView(run)
-		if run.State == "running" {
+		if run.State == "running" || run.State == stateAwaiting {
 			out.ActiveRun = &v
 		} else {
 			out.LastRun = &v
@@ -183,6 +184,14 @@ func (s *server) GetAssistantConversation(ctx context.Context, req gen.GetAssist
 	}
 	for _, a := range actions {
 		out.Actions = append(out.Actions, actionView(a))
+	}
+	pending, err := q.ListPendingActions(ctx, store.ListPendingActionsParams{ConversationID: req.Id, UserID: user})
+	if err != nil {
+		return nil, fmt.Errorf("assistant: read the pending actions: %w", err)
+	}
+	now := s.deps.Clock()
+	for _, p := range pending {
+		out.PendingActions = append(out.PendingActions, pendingView(p, now))
 	}
 	return gen.GetAssistantConversation200JSONResponse(out), nil
 }

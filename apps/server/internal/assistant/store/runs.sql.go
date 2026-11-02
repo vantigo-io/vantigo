@@ -62,7 +62,7 @@ func (q *Queries) FailStaleRuns(ctx context.Context, arg FailStaleRunsParams) ([
 
 const finishRun = `-- name: FinishRun :one
 UPDATE assistant.runs SET state = $1, error_code = $2, ended_at = $3::timestamptz
-WHERE id = $4 AND state = 'running'
+WHERE id = $4 AND state IN ('running', 'awaiting_confirmation')
 RETURNING id, conversation_id, user_id, state, error_code, tool_calls, model_turns, started_at, ended_at, stop_requested
 `
 
@@ -217,8 +217,8 @@ func (q *Queries) GetStopRequested(ctx context.Context, id uuid.UUID) (bool, err
 }
 
 const insertAction = `-- name: InsertAction :exec
-INSERT INTO assistant.actions (id, run_id, operation_id, mode, http_status, duration_ms, created_at)
-VALUES ($1, $2, $3, $4, $5::integer, $6, $7::timestamptz)
+INSERT INTO assistant.actions (id, run_id, operation_id, mode, http_status, duration_ms, created_at, confirmed_by)
+VALUES ($1, $2, $3, $4, $5::integer, $6, $7::timestamptz, $8::uuid)
 `
 
 type InsertActionParams struct {
@@ -229,6 +229,7 @@ type InsertActionParams struct {
 	HttpStatus  *int32
 	DurationMs  int32
 	Now         time.Time
+	ConfirmedBy *uuid.UUID
 }
 
 func (q *Queries) InsertAction(ctx context.Context, arg InsertActionParams) error {
@@ -240,6 +241,7 @@ func (q *Queries) InsertAction(ctx context.Context, arg InsertActionParams) erro
 		arg.HttpStatus,
 		arg.DurationMs,
 		arg.Now,
+		arg.ConfirmedBy,
 	)
 	return err
 }
@@ -281,7 +283,7 @@ func (q *Queries) InsertRun(ctx context.Context, arg InsertRunParams) (Assistant
 }
 
 const listActions = `-- name: ListActions :many
-SELECT a.id, a.run_id, a.operation_id, a.mode, a.http_status, a.duration_ms, a.created_at FROM assistant.actions a
+SELECT a.id, a.run_id, a.operation_id, a.mode, a.http_status, a.duration_ms, a.created_at, a.confirmed_by FROM assistant.actions a
 JOIN assistant.runs r ON r.id = a.run_id
 WHERE r.conversation_id = $1 AND r.user_id = $2
 ORDER BY a.created_at, a.id
@@ -311,6 +313,7 @@ func (q *Queries) ListActions(ctx context.Context, arg ListActionsParams) ([]Ass
 			&i.HttpStatus,
 			&i.DurationMs,
 			&i.CreatedAt,
+			&i.ConfirmedBy,
 		); err != nil {
 			return nil, err
 		}
@@ -320,6 +323,31 @@ func (q *Queries) ListActions(ctx context.Context, arg ListActionsParams) ([]Ass
 		return nil, err
 	}
 	return items, nil
+}
+
+const pauseRun = `-- name: PauseRun :one
+UPDATE assistant.runs SET state = 'awaiting_confirmation', ended_at = NULL
+WHERE id = $1 AND state = 'running'
+RETURNING id, conversation_id, user_id, state, error_code, tool_calls, model_turns, started_at, ended_at, stop_requested
+`
+
+// PauseRun is a run that proposed a change: it waits for the person (S12).
+func (q *Queries) PauseRun(ctx context.Context, id uuid.UUID) (AssistantRun, error) {
+	row := q.db.QueryRow(ctx, pauseRun, id)
+	var i AssistantRun
+	err := row.Scan(
+		&i.ID,
+		&i.ConversationID,
+		&i.UserID,
+		&i.State,
+		&i.ErrorCode,
+		&i.ToolCalls,
+		&i.ModelTurns,
+		&i.StartedAt,
+		&i.EndedAt,
+		&i.StopRequested,
+	)
+	return i, err
 }
 
 const requestStop = `-- name: RequestStop :one
@@ -333,6 +361,36 @@ type RequestStopParams struct {
 
 func (q *Queries) RequestStop(ctx context.Context, arg RequestStopParams) (AssistantRun, error) {
 	row := q.db.QueryRow(ctx, requestStop, arg.ID, arg.UserID)
+	var i AssistantRun
+	err := row.Scan(
+		&i.ID,
+		&i.ConversationID,
+		&i.UserID,
+		&i.State,
+		&i.ErrorCode,
+		&i.ToolCalls,
+		&i.ModelTurns,
+		&i.StartedAt,
+		&i.EndedAt,
+		&i.StopRequested,
+	)
+	return i, err
+}
+
+const resumeRun = `-- name: ResumeRun :one
+UPDATE assistant.runs SET state = 'running', stop_requested = false
+WHERE id = $1 AND user_id = $2 AND state = 'awaiting_confirmation'
+RETURNING id, conversation_id, user_id, state, error_code, tool_calls, model_turns, started_at, ended_at, stop_requested
+`
+
+type ResumeRunParams struct {
+	ID     uuid.UUID
+	UserID uuid.UUID
+}
+
+// ResumeRun is the person deciding: the run that waited runs again.
+func (q *Queries) ResumeRun(ctx context.Context, arg ResumeRunParams) (AssistantRun, error) {
+	row := q.db.QueryRow(ctx, resumeRun, arg.ID, arg.UserID)
 	var i AssistantRun
 	err := row.Scan(
 		&i.ID,

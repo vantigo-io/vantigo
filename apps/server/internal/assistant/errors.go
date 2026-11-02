@@ -63,6 +63,13 @@ func (r refusal) write(w http.ResponseWriter) error {
 	return json.NewEncoder(w).Encode(problem)
 }
 
+func (r refusal) VisitCancelAssistantPendingActionResponse(w http.ResponseWriter) error {
+	return r.write(w)
+}
+func (r refusal) VisitConfirmAssistantPendingActionResponse(w http.ResponseWriter) error {
+	return r.write(w)
+}
+func (r refusal) VisitGetAssistantUsageResponse(w http.ResponseWriter) error { return r.write(w) }
 func (r refusal) VisitCreateAssistantConversationResponse(w http.ResponseWriter) error {
 	return r.write(w)
 }

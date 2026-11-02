@@ -12,8 +12,12 @@ import (
 // turns it into the coverage gate.
 var recorder = contracttest.NewForModule("assistant")
 
-// pending is the operations not built yet.
-var pending = []string{}
+// pending is the operations this package's tests cannot answer successfully.
+// confirmAssistantPendingAction runs a change of another module, which a test of
+// this package may not compose (module boundaries rule 18; depguard covers
+// tests): its refusals are exercised here, and internal/integration runs the
+// confirmed change through the real modules.
+var pending = []string{"confirmAssistantPendingAction"}
 
 func TestMain(m *testing.M) {
 	os.Exit(contracttest.RequireCoverage(m, recorder, pending...))

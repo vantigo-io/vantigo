@@ -14,6 +14,7 @@ SELECT user_id FROM (
     SELECT user_id FROM assistant.conversations
     UNION SELECT user_id FROM assistant.person_settings
     UNION SELECT user_id FROM assistant.runs
+    UNION SELECT user_id FROM assistant.usage_days
 ) held
 WHERE user_id > @after::uuid
 ORDER BY user_id
@@ -21,6 +22,8 @@ LIMIT @batch_size;
 
 -- name: DeleteUserData :exec
 -- DeleteUserData is everything of an erased user: conversations (messages,
--- runs and actions cascade) and the person's settings.
-WITH c AS (DELETE FROM assistant.conversations WHERE user_id = ANY(@user_ids::uuid[]))
+-- runs, actions and pending actions cascade), the usage counts and the
+-- person's settings.
+WITH c AS (DELETE FROM assistant.conversations WHERE user_id = ANY(@user_ids::uuid[])),
+     u AS (DELETE FROM assistant.usage_days WHERE user_id = ANY(@user_ids::uuid[]))
 DELETE FROM assistant.person_settings WHERE user_id = ANY(@user_ids::uuid[]);
