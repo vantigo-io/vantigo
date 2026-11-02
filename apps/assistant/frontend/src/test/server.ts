@@ -75,6 +75,7 @@ export const bulkPlan = (overrides: Partial<AssistantBulkPlan> = {}): AssistantB
   processed: 0,
   succeeded: 0,
   failed: 0,
+  unknown: 0,
   skipped: 0,
   canarySize: 5,
   canary: [],
