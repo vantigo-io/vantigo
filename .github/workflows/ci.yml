@@ -18,6 +18,11 @@ on:
     branches:
       - main
   pull_request:
+  # The merge queue: every pull request lands through it, and there the full
+  # suite runs over the result. A pull request's own run tests only what its
+  # change can reach (scripts/ci-affected.sh), so this is what keeps main
+  # whole.
+  merge_group:
   workflow_dispatch:
 
 concurrency:
@@ -156,9 +161,10 @@ jobs:
 
   test_frontend:
     # The frontend tests on three runners. frontend:test is one Vitest run
-    # over every workspace (vitest.config.ts), so --shard splits test files
+    # over every workspace (vitest.config.mts), so --shard splits test files
     # across all of them rather than whole workspaces, and the shards come
-    # out even.
+    # out even. On a pull request, Vitest's --changed narrows the run to the
+    # test files whose import graph reaches a changed file.
     needs: metadata
     name: 🧪 Test frontends (${{ matrix.shard }}/3)
     strategy:
@@ -172,6 +178,8 @@ jobs:
       - name: 🛎️ Checkout codebase
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          # HEAD^1 of the merge commit is the base; see test_server.
+          fetch-depth: 2
           persist-credentials: false
 
       - name: 💾 Set up toolchain
@@ -185,7 +193,13 @@ jobs:
       - name: 🧪 Test frontends
         env:
           SHARD: ${{ matrix.shard }}
-        run: bun run frontend:test --shard="$SHARD/3"
+          BASE: ${{ github.event_name == 'pull_request' && 'HEAD^1' || '' }}
+        run: |
+          narrow=()
+          if [ "$(bash scripts/ci-affected.sh frontend "$BASE")" = changed ]; then
+            narrow=(--changed "$BASE" --passWithNoTests)
+          fi
+          bun run frontend:test --shard="$SHARD/3" "${narrow[@]}"
 
   docs:
     needs: metadata
@@ -370,15 +384,16 @@ jobs:
 
   test_server:
     needs: metadata
-    # Two runners, each with its own PostgreSQL. invoices is a quarter of the
-    # suite's test time on its own, so it gets one runner and every other
-    # package the other. "rest" is go list minus invoices rather than a list,
-    # so a new package can never fall between the shards.
+    # Two runners, each with its own PostgreSQL: shard a is internal/invoices
+    # and internal/entra, b every other package, so a new package can never
+    # fall between them. On a pull request each tests only the packages the
+    # change can reach; in the merge queue, everything. scripts/ci-affected.sh
+    # decides both.
     name: 🧪 Go server tests (${{ matrix.shard }})
     strategy:
       fail-fast: false
       matrix:
-        shard: [invoices, rest]
+        shard: [a, b]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -408,6 +423,9 @@ jobs:
       - name: 🛎️ Checkout codebase
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          # A pull request checks out GitHub's merge commit; its first parent
+          # is the base the change is measured against.
+          fetch-depth: 2
           persist-credentials: false
 
       - name: 💾 Set up toolchain
@@ -441,7 +459,23 @@ jobs:
           done
           exit 1
 
+      - name: 🎯 Packages to test
+        id: affected
+        env:
+          SHARD: ${{ matrix.shard }}
+          BASE: ${{ github.event_name == 'pull_request' && 'HEAD^1' || '' }}
+        run: |
+          packages="$(bash scripts/ci-affected.sh go "$SHARD" "$BASE" | tr '\n' ' ')"
+          echo "packages=$packages" >> "$GITHUB_OUTPUT"
+          if [[ " $packages " == *"/internal/energy "* ]]; then echo "energy=true" >> "$GITHUB_OUTPUT"; fi
+          {
+            echo "### Go packages, shard $SHARD${BASE:+ (affected by this pull request)}"
+            echo
+            if [ -n "$packages" ]; then tr ' ' '\n' <<<"$packages" | sed '/^$/d; s/^/- /'; else echo "None."; fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: 🐘 Postgres without durability
+        if: steps.affected.outputs.packages != ''
         # A service container takes no command line, so the settings the local
         # test database gets from docker-compose.test.yml are applied here and
         # reloaded — all three are reloadable. Nothing in this database
@@ -464,19 +498,12 @@ jobs:
         # CPUs and its single Postgres service, and identity timed out at
         # 1202s — 0.4% over 20m — with every other package passing. 40m is
         # headroom, not a mask: a genuinely deadlocked test still fails here.
+        if: steps.affected.outputs.packages != ''
         env:
-          SHARD: ${{ matrix.shard }}
+          PACKAGES: ${{ steps.affected.outputs.packages }}
         run: |
-          # Without pipefail a failing go list would hide behind grep and
-          # leave packages out of the rest shard while the step passed.
-          set -o pipefail
-          case "$SHARD" in
-            invoices) packages="./internal/invoices/..." ;;
-            rest) packages="$(go list ./... | grep -Ev '/internal/invoices(/|$)')" ;;
-            *) echo "::error::unknown shard $SHARD"; exit 1 ;;
-          esac
           # shellcheck disable=SC2086 # one package per word
-          go test -race -count=1 -timeout 40m $packages
+          go test -race -count=1 -timeout 40m $PACKAGES
 
       - name: 🌍 Energy tests under a non-UTC time zone
         working-directory: apps/server
@@ -485,8 +512,7 @@ jobs:
         # and 400s everywhere else. That bug shipped once and this run is the
         # only thing that would catch it again: every other job here runs UTC.
         # Energy owns the timestamp-sensitive handlers, so it alone is enough.
-        # It rides on the invoices shard, the shorter of the two.
-        if: matrix.shard == 'invoices'
+        if: steps.affected.outputs.energy == 'true'
         env:
           TZ: Europe/Oslo
         run: go test -count=1 -timeout 10m ./internal/energy/...
@@ -597,7 +623,7 @@ jobs:
     # travel to that job as an artifact, so what is pushed is what ran here.
     name: 📦 Image and smoke test
     needs: metadata
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -737,6 +763,28 @@ jobs:
           for platform in linux/amd64 linux/arm64; do
             trivy image --platform "$platform" --scanners vuln --severity HIGH,CRITICAL --exit-code 1 --format table "$IMAGE:$PINNED"
           done
+
+  ci_passed:
+    # The one check the ruleset requires, for pull requests and the merge
+    # queue alike: it fails when any gate failed or was cancelled. Skipped is
+    # fine — CodeQL while dormant, the image outside a pull request or the
+    # queue — and a gate that ran and found nothing to test passes.
+    name: ✅ CI passed
+    needs: [metadata, build_and_test_frontend, test_frontend, docs, lint_server, test_server, validate_ehf, validate_compose, codeql, build_images]
+    if: always()
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: ✅ Every gate passed
+        env:
+          FAILED: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          if [ "$FAILED" = true ]; then
+            echo "$RESULTS"
+            echo "::error::A required job failed or was cancelled."
+            exit 1
+          fi
 
   publish_images:
     name: 📦 Publish the image to GHCR
