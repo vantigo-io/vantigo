@@ -932,3 +932,31 @@ func TestRetentionWorker_RunStopsWithItsContext(t *testing.T) {
 		t.Fatal("Run did not return after its context was cancelled")
 	}
 }
+
+// The lease is held on a pooled connection, so a cycle that asked the pool for
+// a second one while holding it would wait for ever on a pool of one — and,
+// with as many such workers as connections, deadlock the installation's pool
+// at boot (the API's /health/ready on a four-connection pool). On a pool of one
+// the whole cycle must finish: the staged-upload expiry, the batches and the
+// receipts' sweep.
+func TestRetention_RunsTheCycleOnTheOneConnectionItHolds(t *testing.T) {
+	t.Parallel()
+	objects := newMemStore()
+	h := newHarness(t, modtest.WithPoolMaxConns(1), modtest.WithObjectStore(objects))
+	c := h.SignIn(t, "communications:conversations-reply", "communications:conversations-view")
+	upload := mustStageAttachment(t, c, stagingConversation(t, h, c), []byte("staged bytes"))
+	old := seedRetentionMessage(t, h, retentionSeed{age: 400 * 24 * time.Hour, outboxStatus: "completed"})
+	h.Advance(25 * time.Hour)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if ran, err := communications.NewRetentionWorker(h.Deps()).RunCycle(ctx); err != nil || !ran {
+		t.Fatalf("RunCycle on a pool of one = %v, %v; want true, nil", ran, err)
+	}
+	if status := modtest.One[string](t, h, `SELECT scan_status FROM communications.attachment_uploads WHERE id = $1`, upload.Id); status != "expired" {
+		t.Errorf("the staged upload's scan_status = %q, want expired", status)
+	}
+	if messageExists(t, h, old.messageID) {
+		t.Error("the old message survived the cycle")
+	}
+}

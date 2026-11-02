@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/vantigo-io/vantigo/server/internal/communications/store"
 	"github.com/vantigo-io/vantigo/server/internal/db"
@@ -134,13 +135,19 @@ func (w *RetentionWorker) Run(ctx context.Context) error {
 // The expiry sweep runs first because it only ever ADDS cleanup-ledger rows
 // and never touches a message: ordering it ahead of the drain means a cycle
 // that fails partway still expired what it could.
+//
+// Every statement of the cycle runs on the lease's own connection, its
+// transactions included: a worker that held it while asking the pool for a
+// second would deadlock a pool as small as the lease workers are many (four at
+// boot on a four-connection pool), and readiness with it. The cycle calls no
+// other module.
 func (w *RetentionWorker) RunCycle(ctx context.Context) (bool, error) {
-	return w.underLease(ctx, func(ctx context.Context) error {
-		if _, err := w.ExpireStagedUploads(ctx); err != nil {
+	return w.underLease(ctx, func(ctx context.Context, conn *pgxpool.Conn) error {
+		if _, err := w.expireStagedUploads(ctx, conn); err != nil {
 			return err
 		}
 		for {
-			deleted, err := w.CleanupBatch(ctx)
+			deleted, err := w.cleanupBatch(ctx, conn)
 			if err != nil {
 				return err
 			}
@@ -148,9 +155,16 @@ func (w *RetentionWorker) RunCycle(ctx context.Context) (bool, error) {
 				break
 			}
 		}
-		_, err := w.SweepInboundReceipts(ctx)
+		_, err := w.sweepInboundReceipts(ctx, conn)
 		return err
 	})
+}
+
+// retentionDB is what a retention step runs on: the lease's connection, in the
+// cycle, or the pool, for a step run on its own (the exported steps below).
+type retentionDB interface {
+	store.DBTX
+	db.TxBeginner
 }
 
 // SweepInboundReceipts is the receipts' retention (M16), once per cycle after
@@ -160,8 +174,12 @@ func (w *RetentionWorker) RunCycle(ctx context.Context) (bool, error) {
 // batch size at a time, each batch its own statement. It answers how many it
 // deleted.
 func (w *RetentionWorker) SweepInboundReceipts(ctx context.Context) (int64, error) {
+	return w.sweepInboundReceipts(ctx, w.deps.Pool)
+}
+
+func (w *RetentionWorker) sweepInboundReceipts(ctx context.Context, on retentionDB) (int64, error) {
 	cutoff := w.now().AddDate(0, 0, -w.retentionDays())
-	q := store.New(w.deps.Pool)
+	q := store.New(on)
 	var total int64
 	for {
 		n, err := q.SweepInboundReceipts(ctx, store.SweepInboundReceiptsParams{Cutoff: cutoff, BatchSize: w.batchSize()})
@@ -185,7 +203,7 @@ func (w *RetentionWorker) SweepInboundReceipts(ctx context.Context) (int64, erro
 // context stripped of cancellation (.NET passes CancellationToken.None for the
 // same reason): a cancelled cycle must still release, or this process's own
 // next cycle would skip forever against a lock nothing will ever drop.
-func (w *RetentionWorker) underLease(ctx context.Context, action func(context.Context) error) (bool, error) {
+func (w *RetentionWorker) underLease(ctx context.Context, action func(context.Context, *pgxpool.Conn) error) (bool, error) {
 	conn, err := w.deps.Pool.Acquire(ctx)
 	if err != nil {
 		return false, fmt.Errorf("communications: acquire a connection for the retention lease: %w", err)
@@ -213,7 +231,7 @@ func (w *RetentionWorker) underLease(ctx context.Context, action func(context.Co
 			_ = conn.Conn().Close(release)
 		}
 	}()
-	return true, action(ctx)
+	return true, action(ctx, conn)
 }
 
 // deleteMessages is steps 1 to 6 of a retention batch, for messageIDs, inside
@@ -302,12 +320,16 @@ func deleteMessages(ctx context.Context, q *store.Queries, messageIDs []uuid.UUI
 // Everything below happens in .NET's order, and the first two statements'
 // order is the load-bearing one this file's header opens with.
 func (w *RetentionWorker) CleanupBatch(ctx context.Context) (int, error) {
+	return w.cleanupBatch(ctx, w.deps.Pool)
+}
+
+func (w *RetentionWorker) cleanupBatch(ctx context.Context, on retentionDB) (int, error) {
 	now := w.now()
 	cutoff := now.AddDate(0, 0, -w.retentionDays())
 	batchSize := w.batchSize()
 
 	var deleted int64
-	err := db.WithTx(ctx, w.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
+	err := db.WithTx(ctx, on, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		q := store.New(tx)
 
 		messageIDs, err := q.SelectRetentionMessageIDs(ctx, store.SelectRetentionMessageIDsParams{
@@ -386,10 +408,14 @@ func (w *RetentionWorker) CleanupBatch(ctx context.Context) (int, error) {
 // the loop terminates, and the two belt-and-braces breaks below bound it even
 // if that ever stopped being true.
 func (w *RetentionWorker) ExpireStagedUploads(ctx context.Context) (int, error) {
+	return w.expireStagedUploads(ctx, w.deps.Pool)
+}
+
+func (w *RetentionWorker) expireStagedUploads(ctx context.Context, on retentionDB) (int, error) {
 	total := 0
 	for {
 		now := w.now()
-		q := store.New(w.deps.Pool)
+		q := store.New(on)
 		candidates, err := q.SelectExpiredAttachmentUploads(ctx, store.SelectExpiredAttachmentUploadsParams{
 			Now: now, BatchSize: retentionUploadExpiryBatch,
 		})
@@ -402,7 +428,7 @@ func (w *RetentionWorker) ExpireStagedUploads(ctx context.Context) (int, error) 
 		}
 
 		expired := 0
-		err = db.WithTx(ctx, w.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
+		err = db.WithTx(ctx, on, pgx.TxOptions{}, func(tx pgx.Tx) error {
 			txq := store.New(tx)
 			for _, candidate := range candidates {
 				// The conditional transition IS the expiry claim: a concurrent
