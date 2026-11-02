@@ -492,7 +492,8 @@ Innstillingene som hører til installasjonen, står i [Konfigurasjon](/nb/admin/
 
 [Assistenten](/nb/user/assistant/) svarer på folks spørsmål fra dokumentasjonen og leser
 dataene de har lov til å lese. **Assistent** (en eiers side under **Integrasjoner**) er der du
-bestemmer hvem som har den, hvor lenge samtaler beholdes og hva den kan bruke. Siden finnes mens
+bestemmer hvem som har den, hvor lenge samtaler beholdes, hva den kan bruke, hvor mange tokens en
+person kan bruke per dag og hvem som har brukt den. Siden finnes mens
 modulen Assistent er på i denne installasjonen og installasjonen har en AI-leverandør; uten en
 tilbys assistenten ikke til noen. Den er bare eierens.
 [Konfigurasjon](/nb/admin/configuration/#ki) sier hva installasjonen setter opp.
@@ -543,7 +544,7 @@ endrer aldri hva personen ser på et skjermbilde.
   | --- | --- |
   | **Av** | Bruke ingen operasjon der tilgangsregelen nevner tillatelsen. |
   | **Lese** | Lese bak tillatelsen. Operasjoner som endrer data er ikke tilgjengelige for den. |
-  | **Lese og endre** | Bruke tillatelsen så langt personen kan. *Endringer kommer i en senere versjon*: til da virker dette nivået nøyaktig som **Lese**, og siden sier det. |
+  | **Lese og endre** | Bruke tillatelsen så langt personen kan. Assistenten kan **foreslå** endringer bak den: hver vises for personen på et bekreftelseskort og utføres, som personen, først når de trykker **Bekreft**. |
 
 - **Standarder og overstyringer.** En tillatelse som ikke er sensitiv, starter på **Lese og
   endre**; en sensitiv tar verdien til bryteren **Sensitive data**, **Av** eller **Lese**. Bare
@@ -559,8 +560,32 @@ endrer aldri hva personen ser på et skjermbilde.
 - **Hver endring føres** med nivået før og etter, hvem som gjorde den og når, i assistentens
   egen logg. [Referansen](/en/reference/assistant/#the-owners-audit) sier hvor.
 
+Et kort som venter når du snevrer inn et nivå, kan ikke lenger bekreftes: **Bekreft** svarer *Assistenten
+har ikke lenger lov til å gjøre denne endringen*, og personen kan fortsatt avbryte det.
+
 Hvis noen andre endret innstillingene mens du hadde siden åpen, får du beskjed om *Noen andre har
 lagret disse innstillingene*, siden lastes på nytt, og du gjør endringen din på nytt.
+
+#### Daglig tokenbudsjett
+
+**Daglig tokenbudsjett per person** begrenser hvor mange modelltokens én person kan bruke i løpet av
+en forretningsdag, både det de sender og det som kommer tilbake. Det er tomt som standard, som betyr ingen
+grense. Skriv et tall fra 1 000 til 1 000 000 000 og velg **Lagre**; tøm feltet og lagre for å fjerne grensen
+igjen. Dagen er forretningstidssonens.
+
+Når en person har brukt budsjettet, avvises neste melding med *Du har brukt opp assistentens tokenbudsjett
+for i dag*, og et svar som når det underveis, stopper og sier fra; en endring personen allerede hadde
+bekreftet, angres ikke. Assistenten er tilgjengelig for dem igjen neste forretningsdag. Å slette en
+samtale gir ikke tokens tilbake: bruken telles mens den skjer. Budsjettet lagres under den samme versjonen
+som de andre innstillingene og føres i assistentens logg med verdien før og etter.
+
+#### Bruk av assistenten
+
+**Bruk av assistenten** lister, per person og forretningsdag, hvor mange samtaler de begynte, hvor mange
+ganger de spurte (kjøringer), modelltokens inn og ut, og hvor mange endringer de bekreftet og hvor mange av
+dem som mislyktes. Velg **Siste 7 dager**, **Siste 30 dager** eller **Siste 90 dager**. Den er for kostnad og
+misbruk. Den viser **ikke noe innhold**: ingen titler, ingen spørsmål og ikke hva en endring var; ingen,
+heller ikke en eier, kan lese en samtale. Tallene beholdes like lenge som samtalene.
 
 ## Sett opp en ny installasjon
 

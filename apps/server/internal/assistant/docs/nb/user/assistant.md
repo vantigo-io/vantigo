@@ -1,6 +1,6 @@
 ---
 title: Assistent
-description: Spør assistenten hvordan du gjør noe, eller om dataene dine — åpne den fra toppfeltet, med Cmd/Ctrl+J eller fra søket, panelet på siden og kontekstbrikken, appen Assistent med alle samtalene, hva den kan og ikke kan ennå, hva som er privat og hvor lenge det beholdes, hva som sendes til AI-leverandøren, og hvorfor den kanskje ikke er der.
+description: Spør assistenten hvordan du gjør noe, om dataene dine, eller be den endre noe — åpne den fra toppfeltet, med Cmd/Ctrl+J eller fra søket, panelet på siden og kontekstbrikken, appen Assistent med alle samtalene, endringene den foreslår og du bekrefter, hva som er privat og hvor lenge det beholdes, hva som sendes til AI-leverandøren, og hvorfor den kanskje ikke er der.
 sidebar:
   order: 3
 sources:
@@ -11,9 +11,9 @@ sources:
 
 **Assistenten** svarer på «hvordan gjør jeg…» fra dokumentasjonen til Vantigo og viser
 deg veien, og den leser dataene du har lov til å lese og svarer med en tabell du kan
-klikke deg videre fra. Den gjør aldri noe du ikke selv kunne gjort i grensesnittet, og i
-denne versjonen gjør den ingen endringer i det hele tatt: ber du den opprette eller endre
-noe, sier den fra om det og gir deg trinnene. De nøyaktige reglene bak — hvem som har
+klikke deg videre fra. Den gjør aldri noe du ikke selv kunne gjort i grensesnittet, og den
+endrer aldri noe på egen hånd: ber du den opprette eller endre noe, viser den deg endringen på
+et kort først, og **ingenting lagres før du trykker Bekreft**. De nøyaktige reglene bak — hvem som har
 den, hva den kan bruke, hva den beholder — står i
 [referansen for Assistent](/en/reference/assistant/) og, for en eier, i
 [Administrasjon av arbeidsområdet](/nb/user/workspace-administration/#assistent).
@@ -23,7 +23,9 @@ den, hva den kan bruke, hva den beholder — står i
 Det er tre måter, og de to første virker på alle skjermbilder:
 
 - **Assistent-knappen** i toppfeltet (den heter *Åpne assistenten*). Et merke på knappen
-  forteller at assistenten jobber med et svar, eller har svart mens panelet var lukket.
+  forteller at assistenten jobber med et svar, **venter på at du bekrefter en endring**, eller
+  har svart mens panelet var lukket. Foreslår den en endring mens panelet er lukket, sier et
+  varsel fra også om det.
 - **Cmd+J** på Mac, **Ctrl+J** ellers. Tasten ignoreres mens du skriver i en editor som
   bruker den selv.
 - **Søk.** Skriv et spørsmål i søkefeltet i toppfeltet. Når ingenting passer godt, slutter
@@ -93,12 +95,55 @@ Får den ikke lov til å lese noe, sier den det; den prøver ikke å komme rundt
 **Ta feil.** Assistenten er en språkmodell, og den kan misforstå et spørsmål eller en
 tabell. Kontroller det som betyr noe mot skjermen: hver post i et svar lenker til den.
 
-## Hva den ikke kan ennå
+## Endringer, med din bekreftelse
 
-**Den gjør ingen endringer.** Ber du den opprette en faktura, godkjenne timer eller endre
-en kunde, sier den tydelig at den ikke kan endre noe ennå, og gir deg trinnene så du kan
-gjøre det selv. Endringer — hver av dem forelagt deg først — kommer i en senere versjon.
-Den fyller ikke ut skjemaet på skjermen din.
+Be om «sett betalingsbetingelsene til Ola Nordmann til 30 dager» eller «opprett et prosjekt som
+heter Utrulling for Acme», så finner assistenten riktig operasjon og **foreslår** endringen. Den
+gjør den ikke. Et **bekreftelseskort** vises i samtalen:
+
+- **Hva som skjer**, i én setning, og posten det gjelder som en lenke.
+- **Feltene** den vil sette, hver med verdien nå og den nye — *14 → 30*. Verdien nå vises når en
+  lesing av den samme posten kan si hva som står der; for en ny post, eller en du ikke har lov til
+  å lese, vises bare de nye verdiene.
+- **Bekreft** og **Avbryt**. Ingenting er lagret ennå. Fokus havner på kortet, ikke på
+  **Bekreft**, så Enter bekrefter ikke ved et uhell.
+
+Trykk **Bekreft**, og endringen gjøres **som deg**, etter de samme reglene som om du hadde gjort
+den selv på skjermbildet sitt: har du ikke lov, blir den avvist. Assistenten leser så resultatet
+og forteller deg hva som skjedde, og **skjermbildet du er på, oppdateres** så det viser
+endringen. Trykk **Avbryt**, og ingenting endres; assistenten svarer med én linje.
+
+- **Bekreftelsen kan vente.** Kortet blir stående i samtalen. Last siden på nytt, kom tilbake
+  fra en annen enhet, eller bekreft en halvtime senere: det er der fortsatt og virker. Knappen
+  til assistenten viser at en endring venter, og meldingsfeltet er av til du har bestemt deg.
+  **Etter 24 timer** utløper kortet: det merkes *Utløpt*, og ingenting endres.
+- **Én endring om gangen.** Ber du om flere, foreslår assistenten den første og tilbyr den neste
+  når du har avgjort den.
+- **Hvis posten ble endret i mellomtiden**, fordi noen andre redigerte den etter at kortet ble
+  laget, gjøres ikke endringen over deres arbeid. Kortet sier *Mislyktes*, assistenten forteller
+  deg at posten ble endret, og du kan be om det på nytt.
+- **Når kortet er avgjort, viser det hvordan det endte** — *Endret*, *Avbrutt*, *Utløpt* eller
+  *Mislyktes*, med årsak — og navnene på feltene. Verdiene du bekreftet, beholdes ikke i
+  samtalen; modulens egen historikk viser endringen som gjort av deg.
+- **En eier kan slå endringer av** for hele arbeidsområdet, eller for deler av det, under
+  **Administrer arbeidsområde** › **Assistent**; et kort som venter når det skjer, kan ikke
+  lenger bekreftes.
+
+Noen operasjoner er aldri tilgjengelige for assistenten, for eksempel en eiers innstillinger,
+innlogging og passord, og filopplastinger, uansett hva eieren setter.
+
+## Hva den ikke kan
+
+**Den fyller ikke ut skjemaet på skjermen din.** Den oppretter eller endrer posten gjennom
+Vantigos eget grensesnitt bak skjermbildene, med din bekreftelse, og tilbyr så å åpne den. Den
+gjør ennå ikke en endring i mange poster på én gang.
+
+## Lenker i svar
+
+En lenke i et svar åpner bare et skjermbilde i Vantigo eller dokumentasjonen til denne
+installasjonen. Enhver annen adresse — en nettside, `mailto:`, `tel:` — er ikke en lenke: den
+vises som tekst med adressen synlig, så du ser hvor den ville ført før du bestemmer deg for å
+kopiere den.
 
 ## Personvern
 
@@ -117,10 +162,13 @@ Den fyller ikke ut skjemaet på skjermen din.
   **Administrer arbeidsområde** › **Assistent**, hvor det går (*Spørsmål og dataene
   assistenten leser, sendes til …*). Spør administratoren din hvilket som gjelder for deg.
 - **Det den gjør for deg, er begrenset til det du selv kan gjøre, og logges.** Hver gang
-  assistenten bruker et verktøy eller leser fra en operasjon på dine vegne, noterer
-  samtalen hvilken, i hvilken modus og hvilken status som kom tilbake. Den oversikten har ingen
-  data. Det assistenten leste, forkortet, ligger i selve samtalen så den kan fortsette derfra,
+  assistenten bruker et verktøy, leser fra en operasjon eller gjør en endring du bekreftet,
+  noterer samtalen hvilken, i hvilken modus (for en endring: at du bekreftet den) og hvilken
+  status som kom tilbake. Den oversikten har ingen data. Det assistenten leste, forkortet, ligger i selve samtalen så den kan fortsette derfra,
   og forsvinner når samtalen gjør det.
+- **Hva eieren ser.** En eier kan se, per person og dag, hvor mange samtaler, kjøringer,
+  modelltokens og bekreftede endringer det var — et tall for kostnad og misbruk. Aldri hva som
+  ble sagt, og aldri hva som ble endret.
 - **En kundes data og assistenten.** Har du spurt den om en kunde, står svaret i samtalen
   din til oppbevaringstiden sletter den. Sletting av en kunde etter GDPR søker ikke i
   samtaler; oppbevaringstiden er svaret.
@@ -142,5 +190,7 @@ av disse grunnen:
   ingenting.
 
 Er assistenten der, men et svar feiler med *AI-tjenesten svarte ikke*, er modellen bak
-travel eller nede; prøv igjen om litt. Et langt svar fra en modell på beskjeden maskinvare
+travel eller nede; prøv igjen om litt. Står det *Du har brukt opp assistentens tokenbudsjett for i
+dag*, har en eier satt en daglig grense per person, og du har nådd den; assistenten er tilgjengelig
+igjen neste forretningsdag. Et langt svar fra en modell på beskjeden maskinvare
 kan ta minutter.

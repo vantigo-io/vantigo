@@ -269,9 +269,14 @@ available to a module. `module.Compose` hands it, as `Deps.Operations`, to the m
   operation is unknown, `never`, or `confirm` without `Confirmed`, when the context carries no
   grant (`contracts.WithAssistantGrant`) or user (`contracts.AsUser`), or when the call does
   not fit the operation. Once dispatched, the router's answer is a `CallResult` — a status and
-  a JSON body, truncated to nothing with `Truncated` above 1 MiB. The request is built on a
+  a JSON body, truncated to nothing with `Truncated` above 1 MiB, and the response's headers
+  (`Header`: an `ETag` a change is guarded with, a `Location`). The request is built on a
   fresh context holding only the grant, with `RemoteAddr` `assistant-<user id>`, so the
   per-client rate limits are per person.
+- **`Validate(ctx, CallRequest)`** checks a request as `Call` would and dispatches nothing: the
+  operation is known and not `never` (a `confirm` one passes, confirmed or not), every path
+  parameter is given, the query, header and body are ones the operation declares, and a required body is
+  present. It is how a change is checked before the person is asked to confirm it.
 - **Tests** run the real router and the real identity: `modtest.Harness.Operations(t)` binds a
   dispatcher to a harness's composed API and `AssistantContext(t, client, ttl)` issues a grant
   for a signed-in client. The package's own tests bind it to a small synthetic contract and

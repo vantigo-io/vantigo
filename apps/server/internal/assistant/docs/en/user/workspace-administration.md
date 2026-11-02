@@ -484,7 +484,8 @@ The settings that belong to the installation are in
 
 The [Assistant](/en/user/assistant/) answers people's questions from the documentation and
 reads the data they may read. **Assistant** (an Owner's page under **Integrations**) is where you
-decide who has it, how long conversations are kept and what it may use. It is there while the
+decide who has it, how long conversations are kept, what it may use, how many tokens a person
+may use a day and who has used it. It is there while the
 Assistant module is on in this installation and the installation has an AI provider; without
 one, the assistant is not offered to anybody. It is the Owner's alone.
 [Configuration](/en/admin/configuration/#ai) says what the installation sets up.
@@ -535,7 +536,7 @@ sees on a screen.
   | --- | --- |
   | **Off** | Use no operation whose access rule names the permission. |
   | **Read** | Read behind the permission. Operations that change data are not available to it. |
-  | **Read and change** | Use the permission as far as the person may. *Changes come in a later version*: until then this level reads exactly as **Read** does, and the page says so. |
+  | **Read and change** | Use the permission as far as the person may. The assistant may **propose** changes behind it: each one is shown to the person on a confirmation card and runs, as them, only when they press **Confirm**. |
 
 - **Defaults and overrides.** A permission that is not sensitive starts at **Read and change**; a
   sensitive one takes the **Sensitive data** switch's value, **Off** or **Read**. Only the levels
@@ -551,8 +552,32 @@ sees on a screen.
   in the assistant's own record. The [reference](/en/reference/assistant/#the-owners-audit) says
   where.
 
+A card that is waiting when you narrow a level can no longer be confirmed: pressing **Confirm**
+answers *The assistant may no longer make this change*, and the person can still cancel it.
+
 If someone else changed the settings while you had the page open, you are told *Somebody else saved
 these settings*, the page reloads, and you make your change again.
+
+#### Daily token budget
+
+**Daily token budget per person** limits how many model tokens one person may use in a business day,
+counting what they send and what comes back. It is empty by default, which is no limit. Enter a number
+from 1,000 to 1,000,000,000 and choose **Save**; empty the box and save to remove the limit again. The day
+is the business time zone's.
+
+When a person has used the budget, their next message is refused with *You have used the assistant's token
+budget for today*, and an answer that reaches it on the way stops and says so; a change the person had
+already confirmed is not undone. The assistant is available to them again the next business day. Deleting
+a conversation does not give tokens back: the use is counted as it happens. The budget is saved under the
+same version as the other settings and is recorded in the assistant's audit with the value before and after.
+
+#### Use of the assistant
+
+**Use of the assistant** lists, per person and business day, how many conversations they began, how many
+times they asked (runs), the model tokens that went in and came out, and how many changes they confirmed and
+how many of those failed. Choose **Last 7 days**, **Last 30 days** or **Last 90 days**. It is for cost and for
+abuse. It shows **no content**: no titles, no questions, and not what a change was; nobody, an Owner
+included, can read a conversation. The counts are kept as long as conversations are.
 
 ## Set up a new installation
 
