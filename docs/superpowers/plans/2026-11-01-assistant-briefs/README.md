@@ -14,6 +14,8 @@ and what to report. They are written for **Claude Sonnet 5.5** (`model: sonnet`)
 | [T](t-tours.md) | *Show me*: Mantine Tour over a registry of `data-assist` targets | `feat/assistant-tours` | **A merged**; run after B | module frontends (markers), assistant (Go and frontend), host, docs (en and nb) |
 
 | [C](c-bulk.md) | Bulk changes: a frozen selector, preview, a canary of 5, the job in chunks, failed items | `feat/assistant-bulk` | **B and T merged** | Go (assistant, a migration), assistant frontend, docs (en and nb) |
+| [D](d-bulk-once.md) | A bulk item runs at most once: `in_flight`, `unknown` on takeover, an idempotency key where declared (S17) | `feat/assistant-bulk-once` | C merged | Go (assistant, a migration), assistant frontend, docs (en and nb) |
+| [E](e-anthropic.md) | Anthropic as an AI provider on the official Go SDK; preserved thinking in the Assistant (S18) | `feat/ai-anthropic` | C merged; merge after D | Go (ai, config, assistant, identity contract, a migration), host frontend, docs (en and nb) |
 
 B, T and C all change the assistant's tools, prompt and panel, so they run one after the
 other: B, then T, then C.

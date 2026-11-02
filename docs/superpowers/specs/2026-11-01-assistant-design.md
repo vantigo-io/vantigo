@@ -402,6 +402,84 @@ permission. Only the contract's mode applies to them.
   turning on *Can read* for a provider that is not local is a decision the Owner makes
   knowingly.
 
+### S17 — A bulk item runs at most once
+
+Added on 2026-11-02, after delivery C.
+
+**The problem.** C hands a job over to another API replica when its claim lapses. An
+item that was in flight when its replica died could then run a second time. That is
+harmless for an update, but it duplicates anything a bulk change creates. Only
+communications' contract accepts an `Idempotency-Key`, so the server cannot be relied
+on to deduplicate.
+
+**The rules:**
+- **An item is marked `in_flight` before its call**, in its own statement, committed
+  before the dispatcher is called.
+- **A takeover never re-runs an `in_flight` item.** It marks it `unknown`: the change
+  may or may not have been applied.
+- **`unknown` items are listed with the failed ones,** in the card and the CSV, with a
+  sentence asking the person to check them.
+- **Where the operation declares an `Idempotency-Key` header,** the item sends one
+  derived from the job and the item's position. The provider can then deduplicate a
+  retry on its own.
+
+Only the replica's own failure produces `unknown`. In normal running, every item ends
+`succeeded`, `failed` or `skipped` as before.
+
+### S18 — Anthropic is a provider
+
+Added on 2026-11-02. This answers Q1.
+
+**Configuration.** `AI_PROVIDER=anthropic` uses Anthropic's Messages API through the
+official Go SDK (`github.com/anthropics/anthropic-sdk-go`), for both `Complete` and
+`Chat`.
+- `AI_API_KEY` is required.
+- `AI_BASE_URL` is optional and must be `https`.
+- `AI_MODELS` lists Claude model ids, for example
+  `claude-opus-5-5,claude-sonnet-5-5,claude-haiku-5-5`. The Owner still picks one per
+  task.
+- The provider is instance-wide (T14 is unchanged): there is no Owner key, and the
+  provider is not chosen per task.
+
+**The guard holds.** The SDK is given the package's own `http.Client`, built over
+`Deps.HTTPTransport` and refusing redirects. Each call runs under the package's budget
+(`AI_TIMEOUT` for chat). The SDK's own retries are turned off, because the caller owns
+retrying. The tests drive the real SDK through a fake transport with canned SSE, as the
+package comment requires.
+
+**Preserved thinking.** Current Claude models think on every turn. Each thinking block
+is bound to the exact conversation that produced it. Editing an earlier turn, or
+rebuilding `system` or `tools`, invalidates every later block, and on accounts created
+from 2026-08-31 such a request is refused. The Assistant therefore:
+- **Freezes the system prompt per conversation.** What changes per message — the
+  context chip, the date — travels in the user turn.
+- **Keeps the tool set stable** for a conversation's life.
+- **Stores each assistant turn's provider blocks** (thinking blocks with their
+  signatures, text, tool use) as an opaque value on the message, and replays them
+  unchanged. `ai.Message` gains a provider-opaque field for this, which other providers
+  ignore.
+- **Compacts by simple compaction,** never by editing in place. When a conversation
+  outgrows the budget, the next request starts from a summary plus the new turn. S7's
+  in-place shortening of older tool results stays for providers without the binding.
+- **Sends `thinking.block_binding.prefix_mismatch_behavior: "drop_block"`** (beta
+  `thinking-binding-controls-2026-08-01`), so a mismatch degrades instead of failing.
+  The `input_transformations` it reports are logged, so a regression is visible.
+
+**Thinking, effort, refusals:**
+- Thinking is left adaptive and never shown to the person.
+- Effort is set explicitly through `AI_EFFORT` (default `medium`).
+- A `refusal` stop reason is a typed error. The Assistant explains it in one sentence,
+  in the person's language.
+- For models that support it, server-side fallbacks are on by default
+  (`fallbacks: "default"`, beta `server-side-fallback-2026-07-01`), so a declined
+  request is re-run on a fallback model. `AI_FALLBACKS=off` turns them off.
+
+**Prompt caching.** `tools`, then the frozen `system`, are a stable prefix marked for
+caching. Cache reads and writes are recorded with the tokens.
+
+**Data.** Anthropic is not a local provider. The Owner's notice (S7) names it, and the
+documentation states where the data goes.
+
 ## Deliveries
 
 | Delivery | Contents | Depends on |
@@ -414,7 +492,7 @@ permission. Only the contract's mode applies to them.
 
 ## Open questions
 
-- **Q1:** a second provider (Anthropic) — when, and whether per task or per instance.
+- **Q1:** a second provider — answered by S18: Anthropic, per instance.
 - **Q2:** switching the assistant on for groups in Per person mode (S8).
 - **Q3:** attachments — "help me import this CSV" — and whether the assistant may drive
   the import pipelines.
