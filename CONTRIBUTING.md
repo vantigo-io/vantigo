@@ -383,8 +383,28 @@ four, so the tests that still migrate from empty can never run enough
 `00005_energy_baseline.sql` transactions at once to exhaust the lock table,
 however many CPUs `-parallel` defaults to.
 
-CI runs the suite with `-race` on two runners: `internal/invoices/...` on one,
-every other package (`go list ./...` minus invoices) on the other.
+CI runs the suite with `-race` on two runners: `internal/invoices` and
+`internal/entra` on one, every other package on the other.
+
+### What a pull request's CI tests
+
+A pull request's run tests only what its change can reach;
+`scripts/ci-affected.sh` decides. A Go package runs when a file in it changed or
+when anything it or its tests import did (`go list -test -deps`); the frontend runs
+Vitest's `--changed`, which follows the import graph across workspaces. Changes
+that reach tests without an import run everything: `go.mod`/`go.sum`, `openapi/`,
+the test database's compose file, `bun.lock`, the root `package.json` and
+`vitest.config.mts`, `mise.toml` and the workflows. Docs pages are read by the
+assistant and staff tests, so a change under `docs/src/content/docs` runs those.
+
+Pull requests land through the merge queue, which runs the full suite on the
+result, so main never depends on that selection being right — a miss only makes a
+pull request's own run too small. To see what a change would run:
+
+```bash
+bash scripts/ci-affected.sh go b origin/main     # shard a: invoices and entra
+bash scripts/ci-affected.sh frontend origin/main # "changed" or "all"
+```
 
 **One production note on the same table:** `EnsureConsumptionPartition`
 (`internal/energy/consumption.go`) runs `CREATE TABLE IF NOT EXISTS … PARTITION
@@ -735,7 +755,7 @@ The Vite dev server proxies `/api` to the Go server on `http://localhost:8080`, 
 is where `mise run server:dev` listens — run both.
 
 `frontend:test` is one Vitest run over every workspace — the root
-`vitest.config.ts` lists them as projects, each keeping its own `vite.config.ts` —
+`vitest.config.mts` lists them as projects, each keeping its own `vite.config.ts` —
 so extra Vitest flags pass straight through: `bun run frontend:test --shard=1/3` is
 what each of CI's three frontend test runners does.
 
