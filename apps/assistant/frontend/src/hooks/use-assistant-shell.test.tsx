@@ -9,6 +9,8 @@ import { sent, sentAll } from "../test/api";
 import { renderWithProviders } from "../test/render";
 import {
   assistantMessage,
+  card,
+  cardPart,
   controlledStream,
   conversation,
   detailOf,
@@ -441,5 +443,107 @@ describe("a run", () => {
     await waitFor(() =>
       expect(screen.getByRole("button", { name: "Close the assistant" })).toHaveAttribute("data-status", "idle"),
     );
+  });
+});
+
+describe("a change that waits for the person", () => {
+  const button = () => screen.getByRole("button", { name: /the assistant/i, pressed: undefined });
+
+  it("shows waiting on the button while the panel is shut, and clears it when the card is decided", async () => {
+    const proposed = card({ conversationId: "c1" });
+    const summary = conversation({ id: "c1", title: "Payment terms" });
+    const details: Record<string, AssistantConversationDetail> = {
+      c1: detailOf(
+        summary,
+        [
+          userMessage("Change it"),
+          assistantMessage("Proposed.", {
+            id: "a1",
+            parts: [{ type: "text", text: "Proposed." }, cardPart(proposed.id)],
+          }),
+        ],
+        { pendingActions: [proposed] },
+      ),
+    };
+    stubAssistantApi({
+      me: { lastConversationId: "c1" },
+      details,
+      decide: () => {
+        details.c1 = detailOf(summary, details.c1.messages, {
+          pendingActions: [
+            {
+              ...proposed,
+              status: "cancelled",
+              fields: [{ name: "paymentTermsDays" }],
+              outcome: { ok: false, reason: "cancelled" },
+            },
+          ],
+        });
+        return sseResponse([
+          ["run", { runId: "run-1" }],
+          ["done", { state: "done" }],
+        ]);
+      },
+    });
+    renderWithProviders(<Harness />);
+    await userEvent.click(await openButton());
+    const group = await within(panel()).findByRole("group", { name: "Proposed change" });
+
+    await userEvent.click(within(panel()).getByRole("button", { name: "Close" }));
+    await waitFor(() => expect(button()).toHaveAttribute("data-status", "waiting"));
+    expect(button()).toHaveAttribute("title", "The assistant is waiting for you to confirm a change");
+
+    // Decided, it is no longer waited for.
+    await userEvent.click(await openButton());
+    await userEvent.click(within(group).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Open the assistant", hidden: true })).toBeNull());
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Close the assistant" })).toHaveAttribute("data-status", "idle"),
+    );
+  });
+
+  it("notifies the person when a card arrives with the panel shut", async () => {
+    const stream = controlledStream();
+    const details: Record<string, AssistantConversationDetail> = {};
+    stubAssistantApi({
+      details,
+      stream: () => {
+        // The server has the card by the time it says the run is waiting.
+        details["c-new"] = detailOf(conversation({ id: "c-new" }), [userMessage("Change the payment terms")], {
+          pendingActions: [card({ conversationId: "c-new" })],
+        });
+        return stream.response;
+      },
+    });
+    renderWithProviders(<Harness />);
+    await userEvent.click(await openButton());
+    const box = await within(panel()).findByRole("textbox", { name: "Message to the assistant" });
+    await userEvent.type(box, "Change the payment terms{Enter}");
+    await waitFor(() => expect(screen.getByRole("button", { name: "Stop" })).toBeInTheDocument());
+
+    await userEvent.click(within(panel()).getByRole("button", { name: "Close" }));
+    stream.push("run", { runId: "run-1" });
+    stream.push("confirmation", card());
+    stream.push("done", { state: "awaiting_confirmation" });
+    stream.close();
+
+    expect(await screen.findByText("The assistant is waiting for you")).toBeInTheDocument();
+    expect(screen.getByText("Set Ola Nordmann's payment terms to 30 days")).toBeInTheDocument();
+    await waitFor(() => expect(button()).toHaveAttribute("data-status", "waiting"));
+  });
+
+  it("does not notify while the panel is open", async () => {
+    const stream = controlledStream();
+    stubAssistantApi({ stream: () => stream.response });
+    renderWithProviders(<Harness />);
+    await userEvent.click(await openButton());
+    const box = await within(panel()).findByRole("textbox", { name: "Message to the assistant" });
+    await userEvent.type(box, "Change the payment terms{Enter}");
+    await waitFor(() => expect(screen.getByRole("button", { name: "Stop" })).toBeInTheDocument());
+    stream.push("confirmation", card());
+    stream.push("done", { state: "awaiting_confirmation" });
+    stream.close();
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Stop" })).not.toBeInTheDocument());
+    expect(screen.queryByText("The assistant is waiting for you")).not.toBeInTheDocument();
   });
 });

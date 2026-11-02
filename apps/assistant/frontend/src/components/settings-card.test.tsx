@@ -119,7 +119,7 @@ describe("AssistantSettingsCard: what the assistant may use", () => {
     expect(within(invoices).getByText("Changed")).toBeInTheDocument();
   });
 
-  it("offers Off, Read and Read and change per permission, marking the last as coming later", async () => {
+  it("offers Off, Read and Read and change per permission, with no note that changes are not available", async () => {
     const fetchMock = stubAssistantApi();
     renderWithProviders(<AssistantSettingsCard />);
     const select = await screen.findByRole("combobox", { name: "Level for View customers" });
@@ -127,8 +127,8 @@ describe("AssistantSettingsCard: what the assistant may use", () => {
     await userEvent.click(select);
     expect(screen.getByRole("option", { name: "Off" })).toBeInTheDocument();
     expect(screen.getByRole("option", { name: "Read" })).toBeInTheDocument();
-    const change = screen.getByRole("option", { name: /Read and change/ });
-    expect(change).toHaveTextContent("Changes come in a later version");
+    const change = screen.getByRole("option", { name: "Read and change" });
+    expect(change).not.toHaveTextContent(/later version/);
 
     await userEvent.click(screen.getByRole("option", { name: "Read" }));
     await waitFor(() =>
@@ -188,5 +188,91 @@ describe("AssistantSettingsCard: what the assistant may use", () => {
     );
     expect(await screen.findByText("Navn customers:view")).toBeInTheDocument();
     expect(screen.getByText(/Modul customers\s*›\s*Kategori Customers/)).toBeInTheDocument();
+  });
+});
+
+describe("AssistantSettingsCard: the daily token budget", () => {
+  it("starts empty (no limit), and saves a budget under the settings' version", async () => {
+    const fetchMock = stubAssistantApi({ settings: settings({ dailyTokenBudget: null, version: 3 }) });
+    renderWithProviders(<AssistantSettingsCard />);
+    const input = await screen.findByRole("textbox", { name: /Daily token budget per person/ });
+    expect(input).toHaveValue("");
+    const save = screen.getAllByRole("button", { name: "Save" })[1];
+    expect(save).toBeDisabled();
+
+    await userEvent.type(input, "250000");
+    await userEvent.click(save);
+    await waitFor(() => expect(puts(fetchMock)[0]?.body).toEqual({ dailyTokenBudget: 250000 }));
+    expect(puts(fetchMock)[0].headers["if-match"]).toBe("3");
+  });
+
+  it("removes the limit by emptying the box, and refuses a number that is too small", async () => {
+    const fetchMock = stubAssistantApi({ settings: settings({ dailyTokenBudget: 50000 }) });
+    renderWithProviders(<AssistantSettingsCard />);
+    const input = await screen.findByRole("textbox", { name: /Daily token budget per person/ });
+    expect(input).toHaveValue("50 000 tokens");
+    const save = screen.getAllByRole("button", { name: "Save" })[1];
+
+    await userEvent.clear(input);
+    await userEvent.type(input, "12");
+    expect(save).toBeDisabled();
+    expect(screen.getByText("From 1,000 to 1,000,000,000 tokens, or empty.")).toBeInTheDocument();
+
+    await userEvent.clear(input);
+    await userEvent.click(save);
+    await waitFor(() => expect(puts(fetchMock)[0]?.body).toEqual({ dailyTokenBudget: 0 }));
+  });
+});
+
+describe("AssistantSettingsCard: the usage view", () => {
+  it("lists per person and day the counts, and says it shows no content", async () => {
+    const fetchMock = stubAssistantApi({
+      usage: {
+        from: "2026-10-04",
+        to: "2026-11-02",
+        rows: [
+          {
+            userId: "u1",
+            name: "Ola Nordmann",
+            day: "2026-11-02",
+            conversations: 2,
+            runs: 5,
+            inputTokens: 12345,
+            outputTokens: 678,
+            confirmedChanges: 3,
+            failedChanges: 1,
+          },
+        ],
+      },
+    });
+    renderWithProviders(<AssistantSettingsCard />);
+    const usage = await screen.findByTestId("usage");
+    expect(within(usage).getByText(/you never see what was said or changed/)).toBeInTheDocument();
+    const row = await within(usage).findByRole("row", { name: /Ola Nordmann/ });
+    expect(
+      within(row)
+        .getAllByRole("cell")
+        .map((cell) => cell.textContent),
+    ).toEqual(["Ola Nordmann", "2026-11-02", "2", "5", "12,345", "678", "3", "1"]);
+    const asked = fetchMock.actualCalls.map(([url]) => String(url)).filter((url) => url.includes("/usage"));
+    expect(asked[0]).toMatch(/\/api\/v1\/assistant\/usage\?from=\d{4}-\d{2}-\d{2}$/);
+
+    await userEvent.click(within(usage).getByText("Last 7 days"));
+    await waitFor(() =>
+      expect(fetchMock.actualCalls.filter(([url]) => String(url).includes("/usage")).length).toBeGreaterThan(1),
+    );
+  });
+
+  it("says when nobody used it", async () => {
+    stubAssistantApi();
+    renderWithProviders(<AssistantSettingsCard />);
+    expect(await screen.findByText("Nobody used the assistant in this period.")).toBeInTheDocument();
+  });
+
+  it("does not say that changes come in a later version any more", async () => {
+    stubAssistantApi({ settings: settings() });
+    renderWithProviders(<AssistantSettingsCard />);
+    await screen.findByRole("radio", { name: /Enabled for all/ });
+    expect(document.body.textContent).not.toMatch(/later version/);
   });
 });

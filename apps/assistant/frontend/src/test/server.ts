@@ -4,9 +4,11 @@ import type {
   AssistantConversationDetail,
   AssistantMe,
   AssistantMessage,
+  AssistantPendingAction,
   AssistantPermissions,
   AssistantPerson,
   AssistantSettings,
+  AssistantUsage,
 } from "../api/types";
 import { jsonResponse, problemResponse } from "./api";
 import { type StubbedFetch, stubFetch } from "./fetch";
@@ -44,7 +46,27 @@ export const detailOf = (
   summary: AssistantConversation,
   messages: AssistantMessage[] = [],
   extra: Partial<AssistantConversationDetail> = {},
-): AssistantConversationDetail => ({ conversation: summary, messages, actions: [], ...extra });
+): AssistantConversationDetail => ({ conversation: summary, messages, actions: [], pendingActions: [], ...extra });
+
+/** A change the assistant proposed and nobody has decided. */
+export const card = (overrides: Partial<AssistantPendingAction> = {}): AssistantPendingAction => ({
+  id: "p1000000-0000-4000-8000-000000000001",
+  runId: "run-1",
+  conversationId: "c1",
+  operationId: "putCustomersById",
+  method: "PUT",
+  status: "pending",
+  summary: "Update a customer",
+  explain: "Set Ola Nordmann's payment terms to 30 days",
+  fields: [{ name: "paymentTermsDays", current: "14", next: "30" }],
+  target: { label: "Ola Nordmann", route: "/customers/42" },
+  createdAt: "2026-11-02T08:00:00Z",
+  expiresAt: "2026-11-03T08:00:00Z",
+  ...overrides,
+});
+
+/** A part of an assistant message that stands for a card. */
+export const cardPart = (actionId: string) => ({ type: "confirmation" as const, actionId });
 
 export const settings = (overrides: Partial<AssistantSettings> = {}): AssistantSettings => ({
   mode: "all",
@@ -56,6 +78,7 @@ export const settings = (overrides: Partial<AssistantSettings> = {}): AssistantS
   local: true,
   provider: "openai-compatible",
   models: ["llama3.1"],
+  dailyTokenBudget: null,
   ...overrides,
 });
 
@@ -109,6 +132,9 @@ export interface AssistantServer {
   settings?: AssistantSettings;
   permissions?: AssistantPermissions;
   person?: AssistantPerson;
+  usage?: AssistantUsage;
+  /** What `POST /pending-actions/{id}/confirm|cancel` answers. */
+  decide?: (decision: "confirm" | "cancel", id: string) => Response;
   /** What `POST /conversations/{id}/messages` answers. */
   stream?: (body: { text: string; context?: unknown }, id: string) => Response;
   /** Answers a request instead of the fake's own; undefined falls through. */
@@ -168,6 +194,11 @@ export const stubAssistantApi = (server: AssistantServer = {}): AssistantStub =>
     if (messages && method === "POST")
       return server.stream?.(body as { text: string }, messages[1]) ?? new Response(null, { status: 500 });
     if (method === "POST" && /\/runs\/[^/]+\/stop$/.test(bare)) return new Response(null, { status: 204 });
+    const decision = bare.match(/^\/api\/v1\/assistant\/pending-actions\/([^/]+)\/(confirm|cancel)$/);
+    if (decision && method === "POST")
+      return server.decide?.(decision[2] as "confirm" | "cancel", decision[1]) ?? new Response(null, { status: 500 });
+    if (method === "GET" && bare === "/api/v1/assistant/usage")
+      return jsonResponse(200, server.usage ?? { from: "2026-10-04", to: "2026-11-02", rows: [] });
     if (one && method === "PATCH")
       return jsonResponse(200, {
         ...(conversations.find((c) => c.id === one[1]) ?? conversation()),

@@ -13,6 +13,7 @@ import type {
   AssistantSettings,
   AssistantSettingsRequest,
   AssistantUpdateConversation,
+  AssistantUsage,
 } from "./types";
 
 const base = "/api/v1/assistant";
@@ -26,6 +27,8 @@ export const errorCode = (error: unknown): string | undefined => (error as { cod
 export const isUnavailable = (error: unknown) => errorCode(error) === "assistant_unavailable";
 export const isVersionConflict = (error: unknown) => errorCode(error) === "version_conflict";
 export const isRunInProgress = (error: unknown) => errorCode(error) === "run_in_progress";
+export const isActionDecided = (error: unknown) => errorCode(error) === "action_decided";
+export const isActionExpired = (error: unknown) => errorCode(error) === "action_expired";
 
 // -- availability and the person's own state ---------------------------------
 
@@ -143,3 +146,15 @@ export const personQueryOptions = (userId: string) =>
 
 export const putPerson = (userId: string, enabled: boolean, version: number) =>
   request<AssistantPerson>(`${base}/people/${userId}`, json("PUT", { enabled }, ifMatch(version)));
+
+// -- the Owner's usage view ----------------------------------------------------
+
+export const usageQueryKey = [ASSISTANT_QUERY_KEY, "usage"] as const;
+
+/** What people used, per person and business day, from `from` (a date, `YYYY-MM-DD`) to today. Counts only: no content. */
+export const usageQueryOptions = (from: string) =>
+  queryOptions({
+    queryKey: [...usageQueryKey, from] as const,
+    queryFn: ({ signal }) => request<AssistantUsage>(`${base}/usage?from=${from}`, { signal }),
+    retry: false,
+  });

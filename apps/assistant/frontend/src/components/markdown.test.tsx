@@ -33,19 +33,35 @@ describe("Markdown", () => {
     expect(onNavigate).toHaveBeenCalledWith("/customers/42");
   });
 
-  it("opens the documentation and the web in a new tab, and blocks script URLs", () => {
-    renderWithProviders(
-      <Markdown>
-        {
-          "[Docs](/docs/en/user/energy/#add) [Web](https://example.com) [Bad](javascript:alert(1)) [Odd](//evil.example/x)"
-        }
-      </Markdown>,
-    );
+  it("opens the documentation in a new tab", () => {
+    renderWithProviders(<Markdown>{"[Docs](/docs/en/user/energy/#add)"}</Markdown>);
     const docs = screen.getByRole("link", { name: "Docs" });
     expect(docs).toHaveAttribute("target", "_blank");
     expect(docs).toHaveAttribute("rel", expect.stringContaining("noopener"));
-    expect(screen.getByRole("link", { name: "Web" })).toHaveAttribute("href", "https://example.com");
-    expect(screen.queryByRole("link", { name: "Bad" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "Odd" })).not.toBeInTheDocument();
+  });
+
+  it("links only the app's own routes and the documentation; every other address is text with the address shown", () => {
+    const { container } = renderWithProviders(
+      <Markdown>
+        {
+          "[Web](https://example.com/x) [Mail](mailto:a@example.com) [Call](tel:+4712345678) [Bad](javascript:alert(1)) [Odd](//evil.example/x) [Unknown](/admin/secrets) [Up](/customers/../admin) [Rel](customers/42) [Ok](/customers/42)"
+        }
+      </Markdown>,
+    );
+    for (const name of ["Web", "Mail", "Call", "Bad", "Odd", "Unknown", "Up", "Rel"])
+      expect(screen.queryByRole("link", { name })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Ok" })).toHaveAttribute("href", "/customers/42");
+    // The person sees where each of them pointed.
+    const shown = [...container.querySelectorAll("[data-blocked-link] code")].map((one) => one.textContent);
+    expect(shown).toEqual([
+      "https://example.com/x",
+      "mailto:a@example.com",
+      "tel:+4712345678",
+      "javascript:alert(1)",
+      "//evil.example/x",
+      "/admin/secrets",
+      "/customers/../admin",
+      "customers/42",
+    ]);
   });
 });

@@ -8,6 +8,8 @@ export interface ComposerProps {
   /** The screen or record the person is on; undefined where there is none (the app page). */
   context?: AssistantChip;
   working: boolean;
+  /** A proposed change waits for the person: the box is off until they decide it. */
+  waiting?: boolean;
   onSend: (text: string, context?: AssistantChip) => void;
   onStop: () => void;
 }
@@ -18,7 +20,7 @@ export interface ComposerProps {
  * only; it follows the person to the next screen. Enter sends, Shift+Enter
  * starts a new line, and while a run is going Send becomes Stop.
  */
-export const Composer = ({ context, working, onSend, onStop }: ComposerProps) => {
+export const Composer = ({ context, working, waiting = false, onSend, onStop }: ComposerProps) => {
   const { t } = useI18n("assistant");
   const [text, setText] = useState("");
   const [dismissedFor, setDismissedFor] = useState<string | undefined>();
@@ -34,7 +36,7 @@ export const Composer = ({ context, working, onSend, onStop }: ComposerProps) =>
 
   const submit = () => {
     const trimmed = text.trim();
-    if (!trimmed || working) return;
+    if (!trimmed || working || waiting) return;
     onSend(trimmed, chip);
     setText("");
     // Removing the chip is for the next message only.
@@ -71,7 +73,8 @@ export const Composer = ({ context, working, onSend, onStop }: ComposerProps) =>
           maxRows={6}
           maxLength={8000}
           aria-label={t("composerLabel")}
-          placeholder={t("composerPlaceholder")}
+          placeholder={waiting ? t("composerWaiting") : t("composerPlaceholder")}
+          disabled={waiting}
           value={text}
           onChange={(event) => setText(event.currentTarget.value)}
           onKeyDown={(event) => {
@@ -89,7 +92,7 @@ export const Composer = ({ context, working, onSend, onStop }: ComposerProps) =>
           </Tooltip>
         ) : (
           <Tooltip label={t("send")}>
-            <ActionIcon size="lg" aria-label={t("send")} disabled={text.trim() === ""} onClick={submit}>
+            <ActionIcon size="lg" aria-label={t("send")} disabled={waiting || text.trim() === ""} onClick={submit}>
               <IconSend size={16} />
             </ActionIcon>
           </Tooltip>

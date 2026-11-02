@@ -97,13 +97,37 @@ describe("assistantContext", () => {
 });
 
 describe("classifyLink", () => {
-  it("tells app routes from docs, the web and nonsense", () => {
+  it("opens the app's own routes and the documentation, and nothing else", () => {
     expect(classifyLink("/customers/42")).toEqual({ kind: "app", route: "/customers/42" });
+    expect(classifyLink("/invoices/overdue?customer=4")).toEqual({
+      kind: "app",
+      route: "/invoices/overdue?customer=4",
+    });
+    expect(classifyLink("/assistant")).toEqual({ kind: "app", route: "/assistant" });
     expect(classifyLink("/docs/nb/user/energy/#add")).toMatchObject({ kind: "docs" });
-    expect(classifyLink("https://example.com")).toMatchObject({ kind: "external" });
-    expect(classifyLink("//evil.example")).toEqual({ kind: "blocked" });
-    expect(classifyLink("javascript:alert(1)")).toEqual({ kind: "blocked" });
+    expect(classifyLink("/docs")).toMatchObject({ kind: "docs" });
+
+    for (const href of [
+      "https://example.com",
+      "http://example.com",
+      "mailto:a@example.com",
+      "tel:+4712345678",
+      "//evil.example",
+      "javascript:alert(1)",
+      "/nothing/here",
+      "/customersx/1",
+      "/customers/../admin",
+      "customers/1",
+    ])
+      expect(classifyLink(href), href).toEqual({ kind: "blocked", address: href });
     expect(classifyLink(undefined)).toEqual({ kind: "blocked" });
+  });
+
+  it("keeps the route prefixes in step with the server's prompt", async () => {
+    const { default: source } = await import("../../../../server/internal/assistant/prompt.go?raw");
+    const server = [...source.matchAll(/\{"(\/[a-z]+)", "/g)].map((match) => match[1]).sort();
+    const { APP_ROUTE_PREFIXES } = await import("./links");
+    expect([...APP_ROUTE_PREFIXES].sort()).toEqual(server);
   });
 });
 

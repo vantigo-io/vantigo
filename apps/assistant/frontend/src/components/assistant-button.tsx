@@ -1,5 +1,5 @@
 import { ActionIcon, Indicator, Loader, Tooltip } from "@mantine/core";
-import { IconCheck, IconMessageChatbot } from "@tabler/icons-react";
+import { IconCheck, IconHandStop, IconMessageChatbot } from "@tabler/icons-react";
 import { useI18n } from "@vantigo/frontend-shell";
 import { useAssistantRunStatus } from "../lib/run-status";
 import "../i18n";
@@ -21,7 +21,8 @@ export interface AssistantButtonProps {
 /**
  * The Assistant button for the shell header. The host shows it only to a
  * person who has the assistant. A badge says what the run is doing while the
- * panel is shut: a spinner while it works, a check once it has answered.
+ * panel is shut: a spinner while it works, a hand when a change waits for the
+ * person to confirm it, a check once it has answered.
  */
 export const AssistantButton = ({ open, onClick }: AssistantButtonProps) => {
   const { t } = useI18n("assistant");
@@ -31,10 +32,18 @@ export const AssistantButton = ({ open, onClick }: AssistantButtonProps) => {
     <Tooltip label={`${label} (${shortcutHint()})`}>
       <Indicator
         disabled={status === "idle"}
-        color={status === "done" ? "teal" : "blue"}
+        color={status === "done" ? "teal" : status === "waiting" ? "orange" : "blue"}
         size={status === "working" ? 14 : 12}
         offset={4}
-        label={status === "working" ? <Loader size={8} color="white" /> : <IconCheck size={9} stroke={3} />}
+        label={
+          status === "working" ? (
+            <Loader size={8} color="white" />
+          ) : status === "waiting" ? (
+            <IconHandStop size={9} stroke={3} />
+          ) : (
+            <IconCheck size={9} stroke={3} />
+          )
+        }
         processing={status === "working"}
       >
         <ActionIcon
@@ -43,7 +52,15 @@ export const AssistantButton = ({ open, onClick }: AssistantButtonProps) => {
           size="lg"
           aria-label={label}
           aria-pressed={open}
-          title={status === "working" ? t("statusWorking") : status === "done" ? t("statusDone") : undefined}
+          title={
+            status === "working"
+              ? t("statusWorking")
+              : status === "waiting"
+                ? t("statusWaiting")
+                : status === "done"
+                  ? t("statusDone")
+                  : undefined
+          }
           data-status={status}
           onClick={onClick}
         >

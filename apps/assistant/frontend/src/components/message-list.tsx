@@ -1,8 +1,9 @@
 import { Box, Button, Group, Loader, Paper, Stack, Text } from "@mantine/core";
 import { IconCheck, IconPlayerStop } from "@tabler/icons-react";
 import { useI18n } from "@vantigo/frontend-shell";
-import type { AssistantMessage, AssistantMessageContext, AssistantPart } from "../api/types";
+import type { AssistantMessage, AssistantMessageContext, AssistantPart, AssistantPendingAction } from "../api/types";
 import { textOf, visibleMessages } from "../lib/messages";
+import { ConfirmationCard } from "./confirmation-card";
 import { Markdown } from "./markdown";
 
 export interface MessageListProps {
@@ -16,6 +17,24 @@ export interface MessageListProps {
   working: boolean;
   stopped: boolean;
   onNavigate?: (route: string) => void;
+  /** The conversation's proposed changes, by id: a `confirmation` part is drawn as the card with its id. */
+  cards?: Readonly<Record<string, AssistantPendingAction>>;
+  /** The card that has just arrived and takes the focus. */
+  freshCard?: string;
+  /** The card being decided now, and what the server said when it refused a decision. */
+  decidingCard?: string;
+  decisionErrors?: Readonly<Record<string, string>>;
+  onConfirm?: (card: AssistantPendingAction) => void;
+  onCancel?: (card: AssistantPendingAction) => void;
+}
+
+interface CardProps {
+  cards: Readonly<Record<string, AssistantPendingAction>>;
+  freshCard?: string;
+  decidingCard?: string;
+  decisionErrors: Readonly<Record<string, string>>;
+  onConfirm?: (card: AssistantPendingAction) => void;
+  onCancel?: (card: AssistantPendingAction) => void;
 }
 
 /** One line saying what the assistant did to answer: "Searching the documentation". */
@@ -49,9 +68,11 @@ const UserBubble = ({ text, label }: { text: string; label?: string }) => {
 const AssistantParts = ({
   parts,
   onNavigate,
+  cardProps,
 }: {
   parts: readonly AssistantPart[];
   onNavigate?: (route: string) => void;
+  cardProps: CardProps;
 }) => {
   const { t } = useI18n("assistant");
   return (
@@ -65,6 +86,21 @@ const AssistantParts = ({
             <Markdown key={key} onNavigate={onNavigate}>
               {text}
             </Markdown>
+          ) : null;
+        }
+        if (part.type === "confirmation" && part.actionId) {
+          const card = cardProps.cards[part.actionId];
+          return card ? (
+            <ConfirmationCard
+              key={key}
+              card={card}
+              autoFocus={cardProps.freshCard === card.id}
+              busy={cardProps.decidingCard === card.id}
+              error={cardProps.decisionErrors[card.id]}
+              onConfirm={(one) => cardProps.onConfirm?.(one)}
+              onCancel={(one) => cardProps.onCancel?.(one)}
+              onNavigate={onNavigate}
+            />
           ) : null;
         }
         if (part.type === "link" && part.route)
@@ -84,8 +120,9 @@ const AssistantParts = ({
 /**
  * The conversation as the person reads it. User and assistant messages only:
  * a tool-role message is the model's own business. An assistant message shows
- * its tool calls as status lines, its text as Markdown (no raw HTML) and a
- * `link` part as a "Take me there" button. While a run is going the streamed
+ * its tool calls as status lines, its text as Markdown (no raw HTML), a
+ * `link` part as a "Take me there" button and a `confirmation` part as the
+ * card of the change it proposed. While a run is going the streamed
  * text and the tool in use follow the last message.
  */
 export const MessageList = ({
@@ -96,15 +133,22 @@ export const MessageList = ({
   working,
   stopped,
   onNavigate,
+  cards = {},
+  freshCard,
+  decidingCard,
+  decisionErrors = {},
+  onConfirm,
+  onCancel,
 }: MessageListProps) => {
   const { t } = useI18n("assistant");
+  const cardProps: CardProps = { cards, freshCard, decidingCard, decisionErrors, onConfirm, onCancel };
   return (
     <Stack gap="md" p="md" aria-live="polite" aria-busy={working}>
       {visibleMessages(messages).map((message) =>
         message.role === "user" ? (
           <UserBubble key={message.id} text={textOf(message)} label={message.context?.label} />
         ) : (
-          <AssistantParts key={message.id} parts={message.parts} onNavigate={onNavigate} />
+          <AssistantParts key={message.id} parts={message.parts} onNavigate={onNavigate} cardProps={cardProps} />
         ),
       )}
       {pendingUser && <UserBubble text={pendingUser.text} label={pendingUser.context?.label} />}

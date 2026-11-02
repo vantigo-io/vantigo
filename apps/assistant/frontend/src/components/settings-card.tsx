@@ -25,6 +25,7 @@ import {
 } from "../api/assistant";
 import type { AssistantMode, AssistantPermissions, AssistantSettings, AssistantSettingsRequest } from "../api/types";
 import { PermissionsTable, type PermissionsTranslation } from "./permissions-table";
+import { UsageTable } from "./usage-table";
 import "../i18n";
 
 const modes: readonly { value: AssistantMode; label: string; hint: string }[] = [
@@ -61,7 +62,8 @@ export interface AssistantSettingsCardProps {
 /**
  * The Owner's Assistant page (Workspace admin › Assistant): who has the
  * assistant, how long conversations are kept, the data notice, and *What the
- * assistant may use* (S16). Every save names the settings' version in
+ * assistant may use* (S16), the daily token budget per person (S14) and the
+ * count view of who used it (S9). Every save names the settings' version in
  * If-Match; a stale one reloads and says so.
  */
 export const AssistantSettingsCard = ({ translate }: AssistantSettingsCardProps) => {
@@ -72,12 +74,16 @@ export const AssistantSettingsCard = ({ translate }: AssistantSettingsCardProps)
   // What the Owner has typed, until it is saved; the saved value shows otherwise.
   const [draft, setDraft] = useState<number | string | undefined>();
   const retention = draft ?? settings?.retentionMonths ?? 12;
+  // The daily token budget as typed: "" is no limit.
+  const [budgetDraft, setBudgetDraft] = useState<number | string | undefined>();
+  const budget = budgetDraft ?? settings?.dailyTokenBudget ?? "";
 
   const save = useMutation({
     mutationFn: (patch: AssistantSettingsRequest) => putSettings(patch, settings?.version ?? 0),
     onSuccess: (saved, patch) => {
       queryClient.setQueryData(settingsQueryKey, saved);
       setDraft(undefined);
+      setBudgetDraft(undefined);
       // The permissions share the settings' version, and the switch moves their defaults.
       queryClient.setQueryData<AssistantPermissions>(
         permissionsQueryKey,
@@ -123,6 +129,11 @@ export const AssistantSettingsCard = ({ translate }: AssistantSettingsCardProps)
 
   const retentionNumber = typeof retention === "number" ? retention : Number.NaN;
   const retentionValid = Number.isInteger(retentionNumber) && retentionNumber >= 1 && retentionNumber <= 60;
+  const noBudget = budget === "";
+  const budgetNumber = typeof budget === "number" ? budget : Number.NaN;
+  const budgetValid =
+    noBudget || (Number.isInteger(budgetNumber) && budgetNumber >= 1000 && budgetNumber <= 1_000_000_000);
+  const budgetChanged = noBudget ? settings.dailyTokenBudget != null : budgetNumber !== settings.dailyTokenBudget;
 
   return (
     <Stack gap="md">
@@ -173,6 +184,29 @@ export const AssistantSettingsCard = ({ translate }: AssistantSettingsCardProps)
               {t("save")}
             </Button>
           </Group>
+          <Group align="flex-end">
+            <NumberInput
+              label={t("budgetLabel")}
+              description={t("budgetDescription")}
+              min={1000}
+              max={1_000_000_000}
+              allowDecimal={false}
+              allowNegative={false}
+              thousandSeparator=" "
+              suffix={` ${t("budgetUnit")}`}
+              value={budget}
+              onChange={setBudgetDraft}
+              error={budgetValid ? undefined : t("budgetInvalid")}
+              w={320}
+            />
+            <Button
+              disabled={!budgetValid || !budgetChanged}
+              loading={save.isPending}
+              onClick={() => save.mutate({ dailyTokenBudget: noBudget ? 0 : budgetNumber })}
+            >
+              {t("save")}
+            </Button>
+          </Group>
         </Stack>
       </Card>
 
@@ -210,6 +244,8 @@ export const AssistantSettingsCard = ({ translate }: AssistantSettingsCardProps)
           <PermissionsTable translate={translate} />
         </Stack>
       </Card>
+
+      <UsageTable />
     </Stack>
   );
 };

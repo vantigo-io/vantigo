@@ -2,6 +2,7 @@ import { Alert, Box, Button, Center, Loader, ScrollArea, Stack, Text, ThemeIcon,
 import { IconMessageChatbot } from "@tabler/icons-react";
 import { useI18n } from "@vantigo/frontend-shell";
 import { useEffect, useRef } from "react";
+import type { AssistantPendingAction } from "../api/types";
 import { useConversation } from "../hooks/use-conversation";
 import type { AssistantChip } from "../lib/context";
 import { visibleMessages } from "../lib/messages";
@@ -24,6 +25,10 @@ export interface ConversationViewProps {
   onMissing?: () => void;
   onNavigate?: (route: string) => void;
   onWorkingChange?: (working: boolean) => void;
+  /** A change waits for the person to confirm it (for the button's badge). */
+  onWaitingChange?: (waiting: boolean) => void;
+  /** A change was proposed while this view listened. */
+  onProposal?: (card: AssistantPendingAction) => void;
   /** Sent once, as soon as the conversation is a draft and idle. */
   question?: InitialQuestion;
   onQuestionSent?: (id: number) => void;
@@ -58,13 +63,41 @@ export const ConversationView = ({
   onMissing,
   onNavigate,
   onWorkingChange,
+  onWaitingChange,
+  onProposal,
   question,
   onQuestionSent,
 }: ConversationViewProps) => {
   const { t } = useI18n("assistant");
-  const conversation = useConversation({ conversationId, origin, onCreated, onMissing, onWorkingChange });
-  const { detail, messages, pendingUser, partial, tool, working, stopped, error, send, stop, clearError } =
-    conversation;
+  const conversation = useConversation({
+    conversationId,
+    origin,
+    onCreated,
+    onMissing,
+    onWorkingChange,
+    onWaitingChange,
+    onProposal,
+  });
+  const {
+    detail,
+    messages,
+    pendingUser,
+    partial,
+    tool,
+    working,
+    waiting,
+    cards,
+    freshCard,
+    deciding,
+    decisionErrors,
+    stopped,
+    error,
+    send,
+    confirm,
+    cancel,
+    stop,
+    clearError,
+  } = conversation;
 
   // A question from outside the panel is sent once, into a fresh conversation.
   const sentQuestion = useRef<number | undefined>(undefined);
@@ -110,6 +143,12 @@ export const ConversationView = ({
             working={working}
             stopped={stopped}
             onNavigate={onNavigate}
+            cards={cards}
+            freshCard={freshCard}
+            decidingCard={deciding}
+            decisionErrors={Object.fromEntries(Object.entries(decisionErrors).map(([id, key]) => [id, t(key)]))}
+            onConfirm={(card) => void confirm(card)}
+            onCancel={(card) => void cancel(card)}
           />
         )}
         {error && (
@@ -122,6 +161,7 @@ export const ConversationView = ({
       <Composer
         context={context}
         working={working}
+        waiting={waiting}
         onSend={(text, chip) => void send(text, chip)}
         onStop={() => void stop()}
       />
