@@ -1,5 +1,3 @@
-import type { AssistTarget } from "@vantigo/frontend-shell";
-import targets from "./assist-targets.json";
 import "./i18n";
 
 export * from "./api/approvals";
@@ -10,6 +8,7 @@ export * from "./api/rates";
 export * from "./api/settings";
 export * from "./api/stats";
 export * from "./api/weeks";
+export { assistTargets } from "./assist-targets";
 export { EntryStatusBadge, type EntryStatusBadgeProps } from "./components/entry-status-badge";
 export { HoursCell, type HoursCellProps } from "./components/hours-cell";
 export { ProjectTimePanel, type ProjectTimePanelProps } from "./components/project-time-panel";
@@ -39,6 +38,3 @@ export { DayPage, type DaySearch } from "./pages/day";
 export { MyWeekPage, type MyWeekSearch } from "./pages/my-week";
 export { PeoplePage, type PeopleSearch } from "./pages/people";
 export { SettingsPage } from "./pages/settings";
-
-/** The controls the Assistant can point at in a tour; each carries its key as a data-assist attribute. */
-export const assistTargets: AssistTarget[] = targets;

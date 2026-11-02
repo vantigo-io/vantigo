@@ -21,4 +21,5 @@ export { invalidateAfterAssistantWrites } from "./lib/invalidate";
 export { type AssistantPanelController, type PendingQuestion, useAssistantPanel } from "./lib/panel";
 export { useAssistantRunStatus } from "./lib/run-status";
 export { isAssistantShortcut, shouldIgnoreAssistantShortcut, useAssistantShortcut } from "./lib/shortcut";
+export { type ActiveTour, endTour, startTour, useActiveTour } from "./lib/tour";
 export { AssistantPage, type AssistantPageProps } from "./pages/assistant";

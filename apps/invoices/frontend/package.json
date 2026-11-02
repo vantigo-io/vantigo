@@ -48,6 +48,7 @@
     "./api/*": "./src/api/*.ts",
     "./lib/*": "./src/lib/*.ts",
     "./pages/*": "./src/pages/*.tsx",
-    "./components/*": "./src/components/*.tsx"
+    "./components/*": "./src/components/*.tsx",
+    "./assist-targets": "./src/assist-targets.ts"
   }
 }

@@ -1,5 +1,3 @@
-import type { AssistTarget } from "@vantigo/frontend-shell";
-import targets from "./assist-targets.json";
 import "./i18n";
 
 export * from "./api/customers";
@@ -11,6 +9,7 @@ export * from "./api/products";
 export * from "./api/projects";
 export * from "./api/tasks";
 export * from "./api/templates";
+export { assistTargets } from "./assist-targets";
 export { AssigneePicker, type AssigneePickerProps } from "./components/assignee-picker";
 export { BudgetBar, type BudgetBarProps } from "./components/budget-bar";
 export { CustomerPicker, type CustomerPickerProps, type CustomerPickerValue } from "./components/customer-picker";
@@ -56,6 +55,3 @@ export { ProjectTasks, type ProjectTasksProps } from "./pages/project-tasks";
 export { ProjectDetailHeader, ProjectOverview } from "./pages/projects.$projectId";
 export { ProjectsPage, type ProjectsSearch } from "./pages/projects.index";
 export { ProjectTemplatesPage } from "./pages/templates";
-
-/** The controls the Assistant can point at in a tour; each carries its key as a data-assist attribute. */
-export const assistTargets: AssistTarget[] = targets;
