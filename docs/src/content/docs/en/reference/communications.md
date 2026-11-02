@@ -475,6 +475,11 @@ update whose `WHERE` re-asserts the predicate its candidate query used, so a cla
 worker already won matches nothing. Every replica runs those three workers every cycle,
 by design. Adding an advisory lock to any of them would be a defect, not a hardening.
 
+A retention cycle runs on **one connection**, the one its lease holds: the staged-upload
+expiry, every batch's transaction and the receipts' sweep. It never asks the pool for a
+second connection while it holds the first — as many lease workers doing that as the pool
+has connections deadlock it, and readiness with them — and it calls no other module.
+
 ### Background workers
 
 The module contributes four background workers: outbox delivery, retention, attachment
