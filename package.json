@@ -66,7 +66,7 @@
     "dev": "bun run --cwd apps/host/frontend dev",
     "frontend:lint": "bun run --filter '*' lint",
     "frontend:typecheck": "bun run --filter '*' typecheck",
-    "frontend:test": "for d in apps/*/frontend packages/*; do bun run --cwd \"$d\" test || exit 1; done",
+    "frontend:test": "bun run --cwd apps/host/frontend vitest run --root ../../..",
     "frontend:build": "bun run --cwd apps/host/frontend build",
     "gen:client": "bun run tools/openapi/gen-client.ts",
     "gen:client:test": "bun test tools/openapi",
