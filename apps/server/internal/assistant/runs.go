@@ -573,6 +573,9 @@ func (r *runner) runTool(call ai.ToolCall) (string, *gen.AssistantPart) {
 	case out.link != nil:
 		route, linkLabel := out.link.route, out.link.label
 		link = &gen.AssistantPart{Type: gen.AssistantPartType("link"), Route: &route, Label: &linkLabel}
+	case len(out.tour) > 0:
+		steps := out.tour
+		link = &gen.AssistantPart{Type: gen.AssistantPartType("tour"), Steps: &steps}
 	}
 	return out.content, link
 }

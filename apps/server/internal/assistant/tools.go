@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/vantigo-io/vantigo/server/internal/ai"
+	"github.com/vantigo-io/vantigo/server/internal/assistant/gen"
 	"github.com/vantigo-io/vantigo/server/internal/operations"
 )
 
@@ -38,8 +39,8 @@ var str = func(description string) map[string]any {
 	return map[string]any{"type": "string", "description": description}
 }
 
-// toolDefs are the tools the model is offered.
-var toolDefs = []ai.Tool{
+// baseToolDefs are the tools of delivery A; toolDefs (tours.go) adds show_tour.
+var baseToolDefs = []ai.Tool{
 	{
 		Name:        toolSearchDocs,
 		Description: "Search Vantigo's documentation for how to do something. Returns up to 4 sections with their page title, heading, the documentation path and an excerpt. Use it first for any how-to question.",
@@ -111,6 +112,11 @@ func toolLabel(lang, name, detail string) string {
 			return "Lager en lenke"
 		}
 		return "Preparing a link"
+	case toolShowTour:
+		if nb {
+			return "Forbereder en omvisning"
+		}
+		return "Preparing a tour"
 	}
 	return name
 }
@@ -124,7 +130,9 @@ type outcome struct {
 	mode       string // the operation's mode, or "tool"
 	operation  string // what the action log names
 	link       *linkPart
-	detail     string // the operation's summary, for the label
+	// tour is the steps of a guided tour the model offered: a "Show me" button.
+	tour   []gen.AssistantTourStep
+	detail string // the operation's summary, for the label
 	// pending is a change the model proposed: the card to store. The run pauses.
 	pending *pendingDraft
 	// extra are calls the tool made besides its own, for the action log.
@@ -175,6 +183,8 @@ func (t *toolbox) run(call ai.ToolCall) outcome {
 		return t.callOperation(call.Arguments)
 	case toolNavigate:
 		return t.navigate(call.Arguments)
+	case toolShowTour:
+		return t.showTour(call.Arguments)
 	}
 	return refused("unknown_tool", fmt.Sprintf("there is no tool %q", call.Name))
 }

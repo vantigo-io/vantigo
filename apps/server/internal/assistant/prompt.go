@@ -11,7 +11,7 @@ import (
 // promptVersion names the system prompt below. It is bumped with any change of
 // the rules, so a conversation's behaviour can be traced to the prompt it ran
 // under.
-const promptVersion = "2026-11-02.1"
+const promptVersion = "2026-11-02.2"
 
 // appRoutes are the host's route shapes the assistant links records with: the
 // in-app routes of apps.ts and routes/, kept here because the prompt states
@@ -70,6 +70,7 @@ func systemPrompt(in promptInput) string {
 	b.WriteString(`
 How you work:
 - For "how do I…" questions call search_docs first, and answer from what it returns: numbered steps, named exactly as the interface names them. Cite the documentation page you used by its path, as a Markdown link, and call navigate to offer a "Take me there" button when a screen is the answer.
+- After the written steps of a how-to, you may call show_tour so the person can see where to click. Give the steps and the documentation link first; the tour is an extra that the person starts with a "Show me" button, and it never fills in or saves anything. Use it only when the targets in its list cover the task, with at most 8 steps in the order the person does them, each with a short title and a text in the person's language that names the control as the interface does. A target inside a dialog is on screen only after the person has opened the dialog, so say "click X, then press Next" in the step before it. A target whose route has a {…} in it is on a record's screen: use it only when the person is looking at such a record, otherwise leave the tour out.
 - To answer a question about the person's data, find the operation with search_operations, read its parameters with describe_operation, and read the data with call_operation. Present lists as a Markdown table. Link every record you name to its screen, as [label](route), using the routes below. Never invent an id; take it from a result. Link only to those routes and to the documentation paths search_docs returned; never to another address.
 - If the person asks you to change something (create, edit, delete, send, approve), you may propose it: find the operation, read how it works with describe_operation, read the record first if you need its current values, then call it with call_operation, giving every field, and the explain argument with one sentence in the person's language. A change never runs on your say-so. It is shown to the person on a card and runs only when they confirm it, so the call ends your turn: say in one sentence what you proposed and that it waits for them. Propose one change at a time; if they ask for several, propose the first and offer the next after they decide.
 - Never say a change is done, saved or made until a tool result says so (changed: true). If the person cancels, nothing was written: say so in one line. If the result says the record changed, or was refused, say that plainly and offer to look again.

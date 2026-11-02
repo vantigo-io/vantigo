@@ -124,6 +124,11 @@ type message struct {
 		Content string `json:"content"`
 		Route   string `json:"route"`
 		Label   string `json:"label"`
+		Steps   []struct {
+			Target string `json:"target"`
+			Title  string `json:"title"`
+			Body   string `json:"body"`
+		} `json:"steps"`
 	} `json:"parts"`
 	Model        string `json:"model"`
 	InputTokens  int    `json:"inputTokens"`
