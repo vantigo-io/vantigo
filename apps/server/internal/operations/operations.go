@@ -508,6 +508,9 @@ type CallRequest struct {
 // CallResult is what the router answered.
 type CallResult struct {
 	Status int `json:"status"`
+	// Header is the response's headers (an ETag, a Location), as the handler
+	// wrote them.
+	Header http.Header `json:"-"`
 	// Body is the response as JSON: the JSON the handler wrote, or its text as
 	// a JSON string when it wrote something else. It is empty for no body and
 	// when Truncated.
@@ -611,7 +614,7 @@ func serve(h http.Handler, w http.ResponseWriter, r *http.Request) (err error) {
 
 // result is the recorded response as a CallResult.
 func (r *recorder) result() CallResult {
-	out := CallResult{Status: r.status}
+	out := CallResult{Status: r.status, Header: r.header.Clone()}
 	if r.truncated() {
 		out.Truncated = true
 		return out
