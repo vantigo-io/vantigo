@@ -337,9 +337,12 @@ func TestRun_TheContextChipIsStoredAndTold(t *testing.T) {
 	if r.Status != http.StatusOK {
 		t.Fatalf("send: %d %s", r.Status, r.Body)
 	}
-	sys := model.Requests()[0].Messages[0].Content
-	if !strings.Contains(sys, "Invoice 42 for Ola Nordmann") || !strings.Contains(sys, "/invoices/42") {
-		t.Errorf("the system prompt does not name the chip:\n%s", sys)
+	reqs := model.Requests()[0].Messages
+	if sys := reqs[0].Content; strings.Contains(sys, "/invoices/42") {
+		t.Errorf("the frozen system prompt names the chip:\n%s", sys)
+	}
+	if turn := reqs[1].Content; !strings.Contains(turn, "Invoice 42 for Ola Nordmann") || !strings.Contains(turn, "/invoices/42") || !strings.HasSuffix(turn, "Is this overdue?") {
+		t.Errorf("the person's turn does not carry the chip:\n%s", turn)
 	}
 	stored := modtest.One[string](t, h, `SELECT context::text FROM assistant.messages WHERE role = 'user'`)
 	if !strings.Contains(stored, "/invoices/42") {

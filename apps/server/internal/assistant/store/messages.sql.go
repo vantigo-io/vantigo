@@ -13,24 +13,28 @@ import (
 )
 
 const insertMessage = `-- name: InsertMessage :one
-INSERT INTO assistant.messages (id, conversation_id, run_id, role, content, context, search_text, model, input_tokens, output_tokens, created_at)
+INSERT INTO assistant.messages (id, conversation_id, run_id, role, content, context, search_text, model, input_tokens, output_tokens, provider, cache_read_tokens, cache_write_tokens, created_at)
 VALUES ($1, $2, $3::uuid, $4, $5::jsonb, $6::jsonb, $7,
-        $8, $9::integer, $10::integer, $11::timestamptz)
-RETURNING id, seq, conversation_id, run_id, role, content, context, search_text, model, input_tokens, output_tokens, created_at
+        $8, $9::integer, $10::integer,
+        $11::json, $12::integer, $13::integer, $14::timestamptz)
+RETURNING id, seq, conversation_id, run_id, role, content, context, search_text, model, input_tokens, output_tokens, created_at, provider, cache_read_tokens, cache_write_tokens
 `
 
 type InsertMessageParams struct {
-	ID             uuid.UUID
-	ConversationID uuid.UUID
-	RunID          *uuid.UUID
-	Role           string
-	Content        []byte
-	Context        []byte
-	SearchText     string
-	Model          *string
-	InputTokens    *int32
-	OutputTokens   *int32
-	Now            time.Time
+	ID               uuid.UUID
+	ConversationID   uuid.UUID
+	RunID            *uuid.UUID
+	Role             string
+	Content          []byte
+	Context          []byte
+	SearchText       string
+	Model            *string
+	InputTokens      *int32
+	OutputTokens     *int32
+	Provider         []byte
+	CacheReadTokens  *int32
+	CacheWriteTokens *int32
+	Now              time.Time
 }
 
 func (q *Queries) InsertMessage(ctx context.Context, arg InsertMessageParams) (AssistantMessage, error) {
@@ -45,6 +49,9 @@ func (q *Queries) InsertMessage(ctx context.Context, arg InsertMessageParams) (A
 		arg.Model,
 		arg.InputTokens,
 		arg.OutputTokens,
+		arg.Provider,
+		arg.CacheReadTokens,
+		arg.CacheWriteTokens,
 		arg.Now,
 	)
 	var i AssistantMessage
@@ -61,12 +68,15 @@ func (q *Queries) InsertMessage(ctx context.Context, arg InsertMessageParams) (A
 		&i.InputTokens,
 		&i.OutputTokens,
 		&i.CreatedAt,
+		&i.Provider,
+		&i.CacheReadTokens,
+		&i.CacheWriteTokens,
 	)
 	return i, err
 }
 
 const listMessages = `-- name: ListMessages :many
-SELECT m.id, m.seq, m.conversation_id, m.run_id, m.role, m.content, m.context, m.search_text, m.model, m.input_tokens, m.output_tokens, m.created_at FROM assistant.messages m
+SELECT m.id, m.seq, m.conversation_id, m.run_id, m.role, m.content, m.context, m.search_text, m.model, m.input_tokens, m.output_tokens, m.created_at, m.provider, m.cache_read_tokens, m.cache_write_tokens FROM assistant.messages m
 JOIN assistant.conversations c ON c.id = m.conversation_id
 WHERE m.conversation_id = $1 AND c.user_id = $2
 ORDER BY m.seq
@@ -102,6 +112,9 @@ func (q *Queries) ListMessages(ctx context.Context, arg ListMessagesParams) ([]A
 			&i.InputTokens,
 			&i.OutputTokens,
 			&i.CreatedAt,
+			&i.Provider,
+			&i.CacheReadTokens,
+			&i.CacheWriteTokens,
 		); err != nil {
 			return nil, err
 		}

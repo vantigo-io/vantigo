@@ -93,25 +93,29 @@ func compactBody(raw json.RawMessage) any {
 // estimateTokens is the rough size of a string in tokens.
 func estimateTokens(s string) int { return (len(s) + charsPerToken - 1) / charsPerToken }
 
+// contextSize is the rough size, in tokens, of a request: the system prompt,
+// the tools' schemas and the messages.
+func contextSize(system string, tools []ai.Tool, ms []ai.Message) int {
+	n := estimateTokens(system)
+	for _, t := range tools {
+		n += estimateTokens(t.Name) + estimateTokens(t.Description) + estimateTokens(string(t.Parameters))
+	}
+	for _, m := range ms {
+		n += estimateTokens(m.Text) + 4
+		for _, c := range m.ToolCalls {
+			n += estimateTokens(string(c.Arguments)) + estimateTokens(c.Name)
+		}
+	}
+	return n
+}
+
 // fitContext makes the conversation fit the context budget (S7). Older tool
 // results are replaced by a one-line summary, oldest first, once the
 // conversation passes the budget; if that is not enough, whole earlier turns
 // are dropped, oldest first, keeping the latest user message and what follows.
 // The system prompt and the tools' schemas count against the budget.
 func fitContext(system string, tools []ai.Tool, messages []ai.Message, budgetTokens int) []ai.Message {
-	size := func(ms []ai.Message) int {
-		n := estimateTokens(system)
-		for _, t := range tools {
-			n += estimateTokens(t.Name) + estimateTokens(t.Description) + estimateTokens(string(t.Parameters))
-		}
-		for _, m := range ms {
-			n += estimateTokens(m.Text) + 4
-			for _, c := range m.ToolCalls {
-				n += estimateTokens(string(c.Arguments)) + estimateTokens(c.Name)
-			}
-		}
-		return n
-	}
+	size := func(ms []ai.Message) int { return contextSize(system, tools, ms) }
 	out := append([]ai.Message(nil), messages...)
 	if size(out) <= budgetTokens {
 		return out

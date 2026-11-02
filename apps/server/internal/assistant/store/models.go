@@ -72,6 +72,15 @@ type AssistantConversation struct {
 	LastActivityAt time.Time
 }
 
+type AssistantConversationState struct {
+	ConversationID    uuid.UUID
+	SystemPrompt      string
+	PromptVersion     string
+	Summary           *string
+	SummaryThroughSeq *int64
+	SummarizedAt      *time.Time
+}
+
 type AssistantEvent struct {
 	ID          int64
 	At          time.Time
@@ -83,18 +92,21 @@ type AssistantEvent struct {
 }
 
 type AssistantMessage struct {
-	ID             uuid.UUID
-	Seq            *int64
-	ConversationID uuid.UUID
-	RunID          *uuid.UUID
-	Role           string
-	Content        []byte
-	Context        []byte
-	SearchText     string
-	Model          *string
-	InputTokens    *int32
-	OutputTokens   *int32
-	CreatedAt      time.Time
+	ID               uuid.UUID
+	Seq              *int64
+	ConversationID   uuid.UUID
+	RunID            *uuid.UUID
+	Role             string
+	Content          []byte
+	Context          []byte
+	SearchText       string
+	Model            *string
+	InputTokens      *int32
+	OutputTokens     *int32
+	CreatedAt        time.Time
+	Provider         []byte
+	CacheReadTokens  *int32
+	CacheWriteTokens *int32
 }
 
 type AssistantPendingAction struct {
