@@ -740,7 +740,7 @@ func (s *server) decideAction(ctx context.Context, id uuid.UUID, confirm bool) (
 		if claimed, err = tq.DecidePendingAction(ctx, store.DecidePendingActionParams{ID: id, UserID: user, Status: status, Now: now}); err != nil {
 			return err
 		}
-		_, err = tq.ResumeRun(ctx, store.ResumeRunParams{ID: action.RunID, UserID: user})
+		_, err = tq.ResumeRun(ctx, store.ResumeRunParams{ID: action.RunID, UserID: user, Now: now})
 		return err
 	})
 	if errors.Is(err, pgx.ErrNoRows) {

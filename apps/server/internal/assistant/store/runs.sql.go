@@ -378,19 +378,23 @@ func (q *Queries) RequestStop(ctx context.Context, arg RequestStopParams) (Assis
 }
 
 const resumeRun = `-- name: ResumeRun :one
-UPDATE assistant.runs SET state = 'running', stop_requested = false
-WHERE id = $1 AND user_id = $2 AND state = 'awaiting_confirmation'
+UPDATE assistant.runs SET state = 'running', stop_requested = false, started_at = $1::timestamptz
+WHERE id = $2 AND user_id = $3 AND state = 'awaiting_confirmation'
 RETURNING id, conversation_id, user_id, state, error_code, tool_calls, model_turns, started_at, ended_at, stop_requested
 `
 
 type ResumeRunParams struct {
+	Now    time.Time
 	ID     uuid.UUID
 	UserID uuid.UUID
 }
 
-// ResumeRun is the person deciding: the run that waited runs again.
+// ResumeRun is the person deciding: the run that waited runs again. It starts
+// again now, for a run that waited a day or a bulk job that lasted an hour would
+// otherwise look stale to the sweep that fails the runs still running after ten
+// minutes.
 func (q *Queries) ResumeRun(ctx context.Context, arg ResumeRunParams) (AssistantRun, error) {
-	row := q.db.QueryRow(ctx, resumeRun, arg.ID, arg.UserID)
+	row := q.db.QueryRow(ctx, resumeRun, arg.Now, arg.ID, arg.UserID)
 	var i AssistantRun
 	err := row.Scan(
 		&i.ID,

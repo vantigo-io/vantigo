@@ -94,25 +94,25 @@ the documentation says otherwise.
 
 ## Tasks
 
-- [ ] **1. The plan.** This file, committed alone, with no `Docs-Impact` trailer.
-- [ ] **2. Migration, queries and contract.** `00105_assistant_bulk.sql`, sqlc queries,
+- [x] **1. The plan.** This file, committed alone, with no `Docs-Impact` trailer.
+- [x] **2. Migration, queries and contract.** `00105_assistant_bulk.sql`, sqlc queries,
   `openapi/assistant.yaml` (`continueAssistantBulkJob`, `stopAssistantBulkJob`,
   `getAssistantBulkJob`, `getAssistantBulkJobFailures`, the `kind` and `bulk` of a pending action,
   the bulk schemas), codegen, the specs copy and the TypeScript client.
-- [ ] **3. The selector, the plan and the preview.** `propose_bulk`, `resolveSelector`, the card,
+- [x] **3. The selector, the plan and the preview.** `propose_bulk`, `resolveSelector`, the card,
   `redact_preview`, the tool definition and the prompt.
-- [ ] **4. The job.** *Start* with the canary, *Continue*, chunks, claim, stop, narrowing, grant,
+- [x] **4. The job.** *Start* with the canary, *Continue*, chunks, claim, stop, narrowing, grant,
   sign-out, the end and the run's continuation; the cancel of a previewed plan.
-- [ ] **5. Endpoints and workers.** `GET`, `stop`, `failures.csv`; expiry of previews and of
+- [x] **5. Endpoints and workers.** `GET`, `stop`, `failures.csv`; expiry of previews and of
   `awaiting_continue` jobs; resuming lapsed claims.
-- [ ] **6. Go tests.** The assistant package (runner, claim, 404s, CSV, retention, erasure,
+- [x] **6. Go tests.** The assistant package (runner, claim, 404s, CSV, retention, erasure,
   pool of one), `internal/module` (the workers carry no dispatcher), `internal/integration` (the
   selector against real lists, freezing, the preview writes nothing, *Start* runs 5, an injection).
-- [ ] **7. The frontend.** The bulk card (en, nb), polling, *Stop*, the CSV link, the badge,
+- [x] **7. The frontend.** The bulk card (en, nb), polling, *Stop*, the CSV link, the badge,
   invalidation, tests, i18n parity.
-- [ ] **8. Documentation.** In one commit: `user/assistant.md` and
+- [x] **8. Documentation.** In one commit: `user/assistant.md` and
   `user/workspace-administration.md` (en, nb), `reference/assistant.md`, `module-boundaries.md`,
   `ROADMAP.md`. No commit in the range carries a `Docs-Impact` trailer.
-- [ ] **9. The gates.** `server:check`, `server:test`, `frontend:check`, `docs:check`,
+- [x] **9. The gates.** `server:check`, `server:test`, `frontend:check`, `docs:check`,
   `gen:client:test`, `gen:client` with no diff, `go generate` with no diff, the host build and
   `go test ./cmd/vantigo/` (the boot test on a pool of four).
