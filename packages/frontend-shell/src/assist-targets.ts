@@ -26,8 +26,22 @@ export const assistKeyPattern = /^[a-z][a-z0-9-]*\.[a-z][a-z0-9-]*\.[a-z][a-z0-9
 /** The CSS selector that finds a registered control. The key is validated first, so it can carry no quote. */
 export const assistSelector = (key: string): string => `[data-assist="${assistKeyPattern.test(key) ? key : ""}"]`;
 
-/** Whether a route pattern names a record (`{id}`) and so cannot be navigated to without one. */
-export const routeHasParams = (route: string): boolean => /\{[^}]+\}/.test(route);
+/**
+ * Whether a route pattern names a record (`{id}`) and so cannot be navigated to without one:
+ * a `{` followed, before the next `}`, by at least one character. A scan rather than a regular
+ * expression, so the time stays linear in the route whatever it holds.
+ */
+export const routeHasParams = (route: string): boolean => {
+  let from = 0;
+  for (;;) {
+    const open = route.indexOf("{", from);
+    if (open === -1) return false;
+    const close = route.indexOf("}", open + 1);
+    if (close === -1) return false;
+    if (close > open + 1) return true;
+    from = close + 1;
+  }
+};
 
 /** Whether the current path is the route pattern. A `{name}` segment matches any one segment. */
 export const routeMatches = (route: string, pathname: string): boolean => {

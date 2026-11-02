@@ -58,6 +58,26 @@ describe("routes", () => {
     expect(routeMatches("/energy/metering-points", "/energy/metering-points")).toBe(true);
   });
 
+  it("finds a parameter only between a brace and the next one, in linear time", () => {
+    const cases: [string, boolean][] = [
+      ["/x/{id}", true],
+      ["/x/{}", false],
+      ["/x/{}/{id}", true],
+      ["/x/{{}", true],
+      ["/x/{", false],
+      ["/x/}{", false],
+      ["/x/{a", false],
+      ["", false],
+    ];
+    for (const [route, want] of cases) {
+      expect(routeHasParams(route)).toBe(want);
+    }
+    // The input the regular expression was slow on answers at once.
+    const started = performance.now();
+    expect(routeHasParams("{".repeat(100_000))).toBe(false);
+    expect(performance.now() - started).toBeLessThan(100);
+  });
+
   it("builds a selector only from a well-formed key", () => {
     expect(assistSelector("m.things.new")).toBe('[data-assist="m.things.new"]');
     expect(assistSelector('x"] , body [a="')).toBe('[data-assist=""]');
