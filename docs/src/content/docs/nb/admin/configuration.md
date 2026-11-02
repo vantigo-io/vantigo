@@ -134,7 +134,7 @@ Alle er på som standard unntatt arbeideren for spotpriser.
 | `INVOICES_EHF_ENABLED`, `INVOICES_STORECOVE_BASE_URL` | `1`, Storecoves API | Å sende fakturaer som EHF ([E-faktura](/nb/admin/e-invoicing/)) |
 | `INVOICES_VIPPS_ENABLED`, `INVOICES_VIPPS_BASE_URL` | `1`, Vipps' API | Betaling med Vipps MobilePay ([Betalinger](/nb/admin/payments/)) |
 | `ENERGY_SPOT_PRICE_SERVICE_URL`, `ENERGY_SPOT_PRICE_SERVICE_KEY`, `ENERGY_SPOT_PRICE_HISTORY_FROM` | ikke satt | Den delte spotpristjenesten Vantigo setter en installasjon opp med, bærernøkkelen til den (en hemmelighet, vist ingen steder) og eldste dag som kopieres |
-| `AI_PROVIDER`, `AI_API_KEY`, `AI_BASE_URL`, `AI_MODELS`, `AI_TIMEOUT`, `AI_CONTEXT_TOKENS` | ikke satt, ikke satt, ikke satt, ikke satt, `120s`, `16000` | KI-abonnementet: leverandøren, nøkkelen (en hemmelighet, vist ingen steder; valgfri for en modell på eget nettverk), et valgfritt kompatibelt endepunkt, modellene abonnementet tillater, hvor lenge en samtale kan ta og hvor mye av en samtale assistenten sender modellen. Ikke satt er alle KI-funksjoner utilgjengelige ([KI](#ki)) |
+| `AI_PROVIDER`, `AI_API_KEY`, `AI_BASE_URL`, `AI_MODELS`, `AI_TIMEOUT`, `AI_CONTEXT_TOKENS`, `AI_EFFORT`, `AI_FALLBACKS` | ikke satt, ikke satt, ikke satt, ikke satt, `120s`, `16000`, `medium`, `on` | KI-abonnementet: leverandøren, nøkkelen (en hemmelighet, vist ingen steder; valgfri for en modell på eget nettverk), et valgfritt kompatibelt endepunkt, modellene abonnementet tillater, hvor lenge en samtale kan ta, hvor mye av en samtale assistenten sender modellen og, for Anthropic, hvor hardt modellen tenker og om en avvist forespørsel prøves på nytt på en reservemodell. Ikke satt er alle KI-funksjoner utilgjengelige ([KI](#ki)) |
 
 ### KI
 
@@ -145,16 +145,56 @@ arbeidsområdets valg.
 
 | Innstilling | Standard | Betydning |
 | --- | --- | --- |
-| `AI_PROVIDER` | ikke satt | Leverandøren: `openai`, eller `openai-compatible` for alt som snakker OpenAIs protokoll, for eksempel en modell du kjører selv ([en lokal modell](#en-lokal-modell)). Den vises slik du skrev den. Ikke satt er ingen KI-funksjon tilgjengelig: KI-utkastet og kundeforslaget i Kommunikasjon svarer at KI ikke er tilgjengelig, og **KI-modeller** vises ikke under Integrasjoner |
-| `AI_API_KEY` | påkrevd sammen med leverandøren, med mindre `AI_BASE_URL` er satt | Leverandørens nøkkel, en hemmelighet: den vises ingen steder, i ingen form, og **KI-modeller** sier bare om en er satt. Den kan være tom når `AI_BASE_URL` peker på et endepunkt, siden en modell på eget nettverk ikke trenger noen; da sendes aldri en nøkkel |
-| `AI_BASE_URL` | leverandørens egen adresse | En absolutt adresse til et OpenAI-kompatibelt endepunkt, med versjonsstien (`https://api.openai.com/v1`); uten bruker, spørring eller fragment. `https`, eller `http` når verten er en loopback-adresse, en privat adresse (`10.x`, `172.16`–`172.31`, `192.168.x`, `fc00::/7`) eller et navn uten punktum som `ollama`. En offentlig vert over `http` avvises, og det samme gjelder enhver `http`-adresse mens `AI_API_KEY` er satt: en nøkkel sendes aldri i klartekst |
+| `AI_PROVIDER` | ikke satt | Leverandøren: `openai`, `openai-compatible` for alt som snakker OpenAIs protokoll, for eksempel en modell du kjører selv ([en lokal modell](#en-lokal-modell)), eller `anthropic` for Claude ([Anthropic](#anthropic)). Den vises slik du skrev den. Ikke satt er ingen KI-funksjon tilgjengelig: KI-utkastet og kundeforslaget i Kommunikasjon svarer at KI ikke er tilgjengelig, og **KI-modeller** vises ikke under Integrasjoner |
+| `AI_API_KEY` | påkrevd sammen med leverandøren, med mindre `AI_BASE_URL` er satt; alltid påkrevd for `anthropic` | Leverandørens nøkkel, en hemmelighet: den vises ingen steder, i ingen form, og **KI-modeller** sier bare om en er satt. Den kan være tom når `AI_BASE_URL` peker på et endepunkt, siden en modell på eget nettverk ikke trenger noen; da sendes aldri en nøkkel |
+| `AI_BASE_URL` | leverandørens egen adresse | En absolutt adresse til et OpenAI-kompatibelt endepunkt, med versjonsstien (`https://api.openai.com/v1`); uten bruker, spørring eller fragment. Med `anthropic` er det adressen til en gateway foran Anthropics API (standarden er `https://api.anthropic.com`), og bare `https`. Ellers `https`, eller `http` når verten er en loopback-adresse, en privat adresse (`10.x`, `172.16`–`172.31`, `192.168.x`, `fc00::/7`) eller et navn uten punktum som `ollama`. En offentlig vert over `http` avvises, og det samme gjelder enhver `http`-adresse mens `AI_API_KEY` er satt: en nøkkel sendes aldri i klartekst |
 | `AI_MODELS` | påkrevd sammen med leverandøren | Modellene abonnementet tillater, kommaseparert, der den første er abonnementets standard: `gpt-4o-mini,gpt-4o`. Minst én, ingen gjentatt, hver på opptil 150 tegn uten mellomrom |
 | `AI_TIMEOUT` | `120s` | Hvor lenge ett samtalekall kan ta, som en Go-varighet over null og høyst `10m`. Lokale modeller er trege; et kall med én enkelt forespørsel beholder sine egne 30 sekunder |
-| `AI_CONTEXT_TOKENS` | `16000` | Hvor mye av en samtale [Assistenten](/nb/user/assistant/) sender modellen, som et antall tokens fra `2000` til `1000000`; en verdi utenfor det området avvises ved oppstart. Sett den til kontekstvinduet til modellen du kjører, eller litt under. Den anslås til omtrent fire tegn per token, så den er en rettesnor og ikke et mål; over den erstatter assistenten først de eldre resultatene fra verktøyene sine med en enlinjes merknad, og dropper så de eldste rundene i samtalen, slik at det siste spørsmålet alltid sendes. Lokale modeller har små vinduer; en hostet modell kan ta langt mer |
+| `AI_CONTEXT_TOKENS` | `16000` | Hvor mye av en samtale [Assistenten](/nb/user/assistant/) sender modellen, som et antall tokens fra `2000` til `1000000`; en verdi utenfor det området avvises ved oppstart. Sett den til kontekstvinduet til modellen du kjører, eller litt under. Den anslås til omtrent fire tegn per token, så den er en rettesnor og ikke et mål; over den erstatter assistenten først de eldre resultatene fra verktøyene sine med en enlinjes merknad, og dropper så de eldste rundene i samtalen, slik at det siste spørsmålet alltid sendes. Lokale modeller har små vinduer; en hostet modell kan ta langt mer. For `anthropic` forkorter ikke assistenten eldre resultater på stedet; over denne størrelsen [oppsummerer den samtalen](#anthropic) i stedet, så sett den til en god del av modellens vindu (`150000` er et fornuftig utgangspunkt) |
+| `AI_EFFORT` | `medium` | Hvor hardt en tenkende modell tenker: `low`, `medium`, `high`, `xhigh` eller `max`. Brukes av `anthropic` som forespørselens innsats; `openai` og `openai-compatible` ignorerer den. Høyere er tregere og dyrere; senk den først, før du ber modellen tenke mindre i ord |
+| `AI_FALLBACKS` | `on` | `on` eller `off`. Med `anthropic` kjøres en forespørsel som Anthropics sikkerhetsfiltre avviser, på nytt på en reservemodell hos Anthropic; `off` slår det av. Modeller uten reservemodell (Haiku) får aldri forespørselen. `openai` og `openai-compatible` ignorerer den |
 
 `AI_API_KEY`, `AI_BASE_URL`, `AI_MODELS` og `AI_TIMEOUT` uten `AI_PROVIDER` avvises ved oppstart, og det
-samme gjelder en leverandør uten modell, eller uten verken nøkkel eller basisadresse; en leverandør som ikke er satt, er den
+samme gjelder en leverandør uten modell, eller uten verken nøkkel eller basisadresse (`anthropic`: uten nøkkel, eller med en `http`-basisadresse); en verdi i `AI_EFFORT` eller `AI_FALLBACKS` som ikke er en av de oppgitte, avvises uansett leverandør; en leverandør som ikke er satt, er den
 vanlige tilstanden «ingen KI» og aldri en feil.
+
+#### Anthropic
+
+`AI_PROVIDER=anthropic` kjører alle KI-oppgaver på Claude, gjennom Anthropics Messages API:
+utkast til svar og kundeforslag i Kommunikasjon, og [Assistenten](/nb/user/assistant/) med
+strømming, verktøy, bekreftelser, masseendringer og omvisninger. Slik ser det ut i `vantigo.env`:
+
+```
+AI_PROVIDER=anthropic
+AI_API_KEY=sk-ant-...
+AI_MODELS=claude-opus-5-5,claude-sonnet-5-5,claude-haiku-5-5
+AI_EFFORT=medium
+AI_CONTEXT_TOKENS=150000
+```
+
+- **`AI_API_KEY`** er en API-nøkkel fra Anthropic og er alltid påkrevd, også ved siden av
+  `AI_BASE_URL`. Den er en hemmelighet, vises ingen steder, og Vantigo leser ingen
+  `ANTHROPIC_*`-variabel i prosessen.
+- **`AI_MODELS`** tar Claude-modell-id-er nøyaktig slik Anthropic navngir dem. Et godt abonnement
+  har en sterk modell til Assistenten (`claude-opus-5-5` eller `claude-sonnet-5-5`) og en liten til
+  korte jobber (`claude-haiku-5-5`); en eier velger så én per oppgave under **KI-modeller**. Den
+  første er standard. Modell-id-er som Anthropic tar ut av drift slutter å virke: oppdater listen.
+- **`AI_EFFORT`** og **`AI_FALLBACKS`** er beskrevet over. Claude-modeller tenker før de svarer, og
+  Vantigo overlater det til modellen; innsatsen er den ene knappen.
+- **Vantigos klient prøver ikke kall på nytt.** En grense for forespørsler eller en overbelastning
+  når personen som «KI-tjenesten svarte ikke»; personen spør på nytt.
+- **Assistenten holder starten av hver samtale uendret**, slik at Claudes tenking forblir gyldig og
+  Anthropics promptbuffer brukes: instruksjonene låses når samtalen begynner, og når den vokser forbi
+  `AI_CONTEXT_TOKENS` oppsummeres den én gang og fortsetter fra oppsummeringen. Oppsummeringen koster
+  ett ekstra kall til samme modell.
+
+**Hvor dataene går.** Spørsmål til Assistenten, dokumentasjonen den finner, dataene den leser
+gjennom API-et og teksten i meldingene Kommunikasjon utarbeider svar på, sendes til Anthropic,
+utenfor installasjonen din. Innstillingssiden til Assistenten sier det til eieren
+(**Administrasjon av arbeidsområdet** › **Assistent**). Før du slår den på, sørg for at avtalen din
+med Anthropic, inkludert databehandleravtalen, dekker disse dataene, og si fra til kundene dine i
+personvernerklæringen som for enhver annen databehandler. Anthropic er aldri en lokal leverandør,
+uansett hva `AI_BASE_URL` er.
 
 #### En lokal modell
 
