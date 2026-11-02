@@ -1,0 +1,62 @@
+[
+  {
+    "key": "time.day.add-entry",
+    "route": "/time/day",
+    "label": {
+      "en": "Add entry",
+      "nb": "Legg til føring"
+    },
+    "description": {
+      "en": "The button on the Day page that opens the form for a new time entry.",
+      "nb": "Knappen på Dag-siden som åpner skjemaet for en ny timeføring."
+    }
+  },
+  {
+    "key": "time.day.entry-project",
+    "route": "/time/day",
+    "label": {
+      "en": "Project",
+      "nb": "Prosjekt"
+    },
+    "description": {
+      "en": "The project field of the time entry form.",
+      "nb": "Prosjektfeltet i skjemaet for timeføring."
+    }
+  },
+  {
+    "key": "time.day.entry-hours",
+    "route": "/time/day",
+    "label": {
+      "en": "Hours",
+      "nb": "Timer"
+    },
+    "description": {
+      "en": "The hours field of the time entry form; it is worked out from the start and end time when both are filled in.",
+      "nb": "Timerfeltet i skjemaet for timeføring; det regnes ut fra start- og sluttid når begge er fylt ut."
+    }
+  },
+  {
+    "key": "time.day.entry-save",
+    "route": "/time/day",
+    "label": {
+      "en": "Save",
+      "nb": "Lagre"
+    },
+    "description": {
+      "en": "The button that saves the time entry.",
+      "nb": "Knappen som lagrer timeføringen."
+    }
+  },
+  {
+    "key": "time.week.submit",
+    "route": "/time",
+    "label": {
+      "en": "Submit week",
+      "nb": "Send inn uken"
+    },
+    "description": {
+      "en": "The button on My week that submits the week for approval.",
+      "nb": "Knappen på Min uke som sender uken til godkjenning."
+    }
+  }
+]

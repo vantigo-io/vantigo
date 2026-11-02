@@ -278,7 +278,11 @@ export const CustomersPage = ({
                 {t("importCustomers")}
               </Button>
             )}
-            <Button leftSection={<IconPlus size={16} />} onClick={() => setModalState({ mode: "create" })}>
+            <Button
+              data-assist="customers.customers.new"
+              leftSection={<IconPlus size={16} />}
+              onClick={() => setModalState({ mode: "create" })}
+            >
               {t("createNewCustomer")}
             </Button>
           </Group>

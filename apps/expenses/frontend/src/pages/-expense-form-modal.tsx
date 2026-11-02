@@ -702,7 +702,13 @@ const ExpenseForm = ({
             description={lockedBefore ? t("lockedBeforeHint", { date: format.date(lockedBefore) }) : undefined}
             {...form.getInputProps("entryDate")}
           />
-          <TextInput label={t("description")} withAsterisk data-autofocus {...form.getInputProps("description")} />
+          <TextInput
+            label={t("description")}
+            withAsterisk
+            data-autofocus
+            data-assist="expenses.expenses.form-description"
+            {...form.getInputProps("description")}
+          />
         </Group>
 
         {entersAnAmount(values.kind) ? (
@@ -1010,7 +1016,7 @@ const ExpenseForm = ({
           <Button type="button" variant="default" onClick={onClose}>
             {t("cancel")}
           </Button>
-          <Button type="submit" loading={save.isPending}>
+          <Button type="submit" loading={save.isPending} data-assist="expenses.expenses.form-save">
             {saved ? t("save") : t("saveDraft")}
           </Button>
           {/* A trip is submitted whole, lines and all, so a line inside one is

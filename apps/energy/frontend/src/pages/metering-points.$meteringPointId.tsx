@@ -210,7 +210,11 @@ export const MeteringPointDetailsPage = ({
         <Stack>
           <Group justify="space-between">
             <Title order={3}>{t("supplyPeriods")}</Title>
-            <Button leftSection={<IconPlus size={16} />} onClick={() => setSupplyPeriodModalOpen(true)}>
+            <Button
+              data-assist="energy.metering-point.assign-customer"
+              leftSection={<IconPlus size={16} />}
+              onClick={() => setSupplyPeriodModalOpen(true)}
+            >
               {hasActivePeriod ? t("switchCustomer") : t("assignCustomer")}
             </Button>
           </Group>

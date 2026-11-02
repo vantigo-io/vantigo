@@ -181,7 +181,12 @@ export const ClaimPage = ({ claimId }: ClaimPageProps) => {
             </Button>
           )}
           {claim.capabilities.canSubmit && (
-            <Button leftSection={<IconSend size={16} />} loading={submit.isPending} onClick={() => submit.mutate()}>
+            <Button
+              data-assist="expenses.claim.submit"
+              leftSection={<IconSend size={16} />}
+              loading={submit.isPending}
+              onClick={() => submit.mutate()}
+            >
               {t("submitClaim")}
             </Button>
           )}

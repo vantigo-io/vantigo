@@ -1,3 +1,6 @@
+import type { AssistTarget } from "@vantigo/frontend-shell";
+import targets from "./assist-targets.json";
+
 export * from "./api/customers";
 export * from "./api/energy";
 export * from "./api/spot-prices";
@@ -8,3 +11,6 @@ export { MeteringPointDetailsPage } from "./pages/metering-points.$meteringPoint
 export { MeteringPointsPage } from "./pages/metering-points.index";
 export { PricesPage } from "./pages/prices";
 export { TariffsPage } from "./pages/tariffs";
+
+/** The controls the Assistant can point at in a tour; each carries its key as a data-assist attribute. */
+export const assistTargets: AssistTarget[] = targets;

@@ -184,10 +184,23 @@ export const MeteringPointFormModal = ({
             description={t("gsrnDescription")}
             withAsterisk
             data-autofocus
+            data-assist="energy.metering-points.form-gsrn"
             {...form.getInputProps("gsrn")}
           />
-          {!isEdit && <TextInput label={t("meterNumber")} withAsterisk {...form.getInputProps("meterNumber")} />}
-          <TextInput label={t("streetAddress")} withAsterisk {...form.getInputProps("streetAddress")} />
+          {!isEdit && (
+            <TextInput
+              label={t("meterNumber")}
+              withAsterisk
+              data-assist="energy.metering-points.form-meter-number"
+              {...form.getInputProps("meterNumber")}
+            />
+          )}
+          <TextInput
+            label={t("streetAddress")}
+            withAsterisk
+            data-assist="energy.metering-points.form-address"
+            {...form.getInputProps("streetAddress")}
+          />
           <Group grow>
             <TextInput label={t("postalCode")} withAsterisk {...form.getInputProps("postalCode")} />
             <TextInput label={t("city")} withAsterisk {...form.getInputProps("city")} />
@@ -251,7 +264,7 @@ export const MeteringPointFormModal = ({
             <Button variant="default" onClick={onClose}>
               {t("cancel")}
             </Button>
-            <Button type="submit" loading={mutation.isPending}>
+            <Button type="submit" loading={mutation.isPending} data-assist="energy.metering-points.form-save">
               {isEdit ? t("saveChanges") : t("createMeteringPoint")}
             </Button>
           </Group>

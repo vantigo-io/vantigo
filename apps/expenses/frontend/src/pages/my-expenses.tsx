@@ -198,12 +198,17 @@ export const MyExpensesPage = ({ userId }: MyExpensesProps) => {
           <Group gap="xs" wrap="wrap">
             <Button
               variant="default"
+              data-assist="expenses.expenses.new-claim"
               leftSection={<IconRoute size={16} />}
               onClick={() => setClaimModal({ mode: "create" })}
             >
               {t("newTravelClaim")}
             </Button>
-            <Button leftSection={<IconPlus size={16} />} onClick={() => setModalState({ mode: "create" })}>
+            <Button
+              data-assist="expenses.expenses.new"
+              leftSection={<IconPlus size={16} />}
+              onClick={() => setModalState({ mode: "create" })}
+            >
               {t("newExpense")}
             </Button>
           </Group>

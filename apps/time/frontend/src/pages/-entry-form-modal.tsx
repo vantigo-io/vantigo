@@ -247,6 +247,7 @@ const EntryForm = ({ state, onClose }: { state: EntryModalState; onClose: () => 
           withAsterisk
           searchable
           data-autofocus
+          data-assist="time.day.entry-project"
           data={projectOptions}
           value={form.values.projectId}
           onChange={pickProject}
@@ -292,6 +293,7 @@ const EntryForm = ({ state, onClose }: { state: EntryModalState; onClose: () => 
             label={t("hours")}
             inputMode="decimal"
             autoComplete="off"
+            data-assist="time.day.entry-hours"
             {...form.getInputProps("hours")}
             value={derived === undefined ? form.values.hours : format.input(derived)}
             disabled={derived !== undefined}
@@ -304,7 +306,7 @@ const EntryForm = ({ state, onClose }: { state: EntryModalState; onClose: () => 
           <Button variant="default" onClick={onClose}>
             {t("cancel")}
           </Button>
-          <Button type="submit" loading={mutation.isPending}>
+          <Button type="submit" loading={mutation.isPending} data-assist="time.day.entry-save">
             {t("save")}
           </Button>
         </Group>

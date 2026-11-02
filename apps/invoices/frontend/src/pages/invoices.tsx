@@ -1,5 +1,6 @@
 import {
   Alert,
+  Box,
   Button,
   CloseButton,
   Group,
@@ -80,7 +81,11 @@ export const InvoicesPage = ({ canViewCustomers, userDisplayName }: InvoicesPage
         description={t("invoicesDescription")}
         actions={
           canCreate && (
-            <Button leftSection={<IconPlus size={16} />} onClick={() => setCreating(true)}>
+            <Button
+              data-assist="invoices.invoices.new"
+              leftSection={<IconPlus size={16} />}
+              onClick={() => setCreating(true)}
+            >
               {t("newInvoice")}
             </Button>
           )
@@ -263,7 +268,9 @@ export const NewInvoiceModal = ({
     <Modal opened onClose={onClose} title={t("newInvoice")}>
       <Stack>
         {fixed === undefined ? (
-          <CustomerPicker value={customerId} onChange={setCustomerId} required />
+          <Box data-assist="invoices.invoices.customer">
+            <CustomerPicker value={customerId} onChange={setCustomerId} required />
+          </Box>
         ) : (
           <Text size="sm">{t("newInvoiceForCustomer")}</Text>
         )}
@@ -271,7 +278,12 @@ export const NewInvoiceModal = ({
           <Button variant="default" onClick={onClose}>
             {t("cancel")}
           </Button>
-          <Button disabled={customerId === null} loading={create.isPending} onClick={() => create.mutate()}>
+          <Button
+            data-assist="invoices.invoices.create-draft"
+            disabled={customerId === null}
+            loading={create.isPending}
+            onClick={() => create.mutate()}
+          >
             {t("createDraft")}
           </Button>
         </Group>

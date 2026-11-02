@@ -578,6 +578,7 @@ const DraftEditor = ({
             {canCreate && (
               <Button
                 variant="default"
+                data-assist="invoices.invoice.save"
                 loading={save.isPending}
                 disabled={!dirty || halfPeriod}
                 onClick={() => save.mutate(false)}
@@ -586,7 +587,11 @@ const DraftEditor = ({
               </Button>
             )}
             {canIssue && (
-              <Button disabled={dirty || !storageAvailable} onClick={() => setIssuing(true)}>
+              <Button
+                data-assist="invoices.invoice.issue"
+                disabled={dirty || !storageAvailable}
+                onClick={() => setIssuing(true)}
+              >
                 {t("issue")}
               </Button>
             )}
@@ -963,6 +968,7 @@ const DraftEditor = ({
             <Group>
               <Button
                 variant="light"
+                data-assist="invoices.invoice.add-line"
                 leftSection={<IconPlus size={16} />}
                 onClick={() => {
                   setLines((c) => [

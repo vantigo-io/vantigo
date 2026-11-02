@@ -319,6 +319,7 @@ export const CustomerFormModal = ({
           )}
           {!isEdit && (
             <SegmentedControl
+              data-assist="customers.customers.form-type"
               aria-label={t("customerTypeLabel")}
               fullWidth
               data={[
@@ -342,6 +343,7 @@ export const CustomerFormModal = ({
               placeholder={t("customerPersonNamePlaceholder")}
               withAsterisk
               data-autofocus
+              data-assist="customers.customers.form-name"
               {...form.getInputProps("name")}
             />
           )}
@@ -371,7 +373,7 @@ export const CustomerFormModal = ({
             <Button variant="default" onClick={onClose}>
               {t("cancel")}
             </Button>
-            <Button type="submit" loading={mutation.isPending}>
+            <Button type="submit" loading={mutation.isPending} data-assist="customers.customers.form-save">
               {isEdit ? t("saveChanges") : t("createCustomer")}
             </Button>
           </Group>
@@ -413,6 +415,7 @@ const CompanyLookupInput = ({ form, t }: { form: CustomerForm; t: (key: string) 
           placeholder={t("customerNamePlaceholder")}
           withAsterisk
           data-autofocus
+          data-assist="customers.customers.form-name"
           rightSection={lookup.isFetching ? <Loader size="xs" /> : undefined}
           {...inputProps}
           onChange={(event) => {

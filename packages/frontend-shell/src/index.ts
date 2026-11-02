@@ -17,6 +17,16 @@ export {
 export { AppShellLayout, type AppShellLayoutProps, SupportContactLine } from "./app-shell-layout";
 export { AppSwitcher, type SwitcherApp } from "./app-switcher";
 export {
+  type AssistTarget,
+  type AssistText,
+  assistKeyPattern,
+  assistMarkers,
+  assistSelector,
+  assistTargetProblems,
+  routeHasParams,
+  routeMatches,
+} from "./assist-targets";
+export {
   browserTimeZone,
   type CatalogLoader,
   type CatalogResources,

@@ -89,7 +89,11 @@ export const MeteringPointsPage = ({
                 {t("importMeteringPoints")}
               </Button>
             )}
-            <Button leftSection={<IconPlus size={16} />} onClick={() => setModalState({ mode: "create" })}>
+            <Button
+              data-assist="energy.metering-points.new"
+              leftSection={<IconPlus size={16} />}
+              onClick={() => setModalState({ mode: "create" })}
+            >
               {t("newMeteringPoint")}
             </Button>
           </Group>

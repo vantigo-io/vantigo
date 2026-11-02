@@ -69,18 +69,25 @@ export const SupplyPeriodModal = ({
             label={t("customer")}
             withAsterisk
             searchable
+            data-assist="energy.metering-point.supply-customer"
             searchValue={search}
             onSearchChange={setSearch}
             data={(customers?.data ?? []).map((customer) => ({ value: String(customer.id), label: customer.name }))}
             {...form.getInputProps("customerId")}
           />
-          <TextInput label={t("switchDate")} type="date" withAsterisk {...form.getInputProps("start")} />
+          <TextInput
+            label={t("switchDate")}
+            type="date"
+            withAsterisk
+            data-assist="energy.metering-point.supply-start"
+            {...form.getInputProps("start")}
+          />
           <SupplyTermsFields form={form} opened={opened} canViewTariffs={canViewTariffs} />
           <Group justify="flex-end">
             <Button variant="default" onClick={onClose}>
               {t("cancel")}
             </Button>
-            <Button type="submit" loading={mutation.isPending}>
+            <Button type="submit" loading={mutation.isPending} data-assist="energy.metering-point.supply-save">
               {action}
             </Button>
           </Group>
