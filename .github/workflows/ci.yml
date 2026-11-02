@@ -317,6 +317,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-go-lint-${{ hashFiles('apps/server/go.sum') }}-
             ${{ runner.os }}-go-lint-
+            ${{ runner.os }}-go-
 
       - name: 🧰 Install frontend dependencies
         run: bun install --frozen-lockfile
@@ -328,6 +329,18 @@ jobs:
           # and would do it silently.
           actionlint
           shellcheck scripts/*.sh tools/ehf/*.sh
+
+      - name: 📥 Download Go modules
+        working-directory: apps/server
+        # proxy.golang.org drops the odd stream; one such drop must not fail
+        # a run, and a cold cache downloads every module.
+        run: |
+          for attempt in 1 2 3; do
+            go mod download && exit 0
+            echo "::warning::go mod download failed (attempt $attempt); retrying"
+            sleep $((attempt * 10))
+          done
+          exit 1
 
       - name: 🔍 golangci-lint
         working-directory: apps/server
@@ -414,6 +427,19 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-go-test-${{ matrix.shard }}-${{ hashFiles('apps/server/go.sum') }}-
             ${{ runner.os }}-go-test-${{ matrix.shard }}-
+            ${{ runner.os }}-go-
+
+      - name: 📥 Download Go modules
+        working-directory: apps/server
+        # proxy.golang.org drops the odd stream; one such drop must not fail
+        # a run, and a cold cache downloads every module.
+        run: |
+          for attempt in 1 2 3; do
+            go mod download && exit 0
+            echo "::warning::go mod download failed (attempt $attempt); retrying"
+            sleep $((attempt * 10))
+          done
+          exit 1
 
       - name: 🐘 Postgres without durability
         # A service container takes no command line, so the settings the local
@@ -596,6 +622,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-go-build-${{ hashFiles('apps/server/go.sum') }}-
             ${{ runner.os }}-go-build-
+            ${{ runner.os }}-go-
 
       - name: 🧰 Install frontend dependencies
         run: bun install --frozen-lockfile
@@ -743,6 +770,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-go-build-${{ hashFiles('apps/server/go.sum') }}-
             ${{ runner.os }}-go-build-
+            ${{ runner.os }}-go-
 
       - name: 🧰 Install frontend dependencies
         run: bun install --frozen-lockfile
@@ -950,6 +978,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-go-build-${{ hashFiles('apps/server/go.sum') }}-
             ${{ runner.os }}-go-build-
+            ${{ runner.os }}-go-
 
       - name: 🧰 Install frontend dependencies
         run: bun install --frozen-lockfile
