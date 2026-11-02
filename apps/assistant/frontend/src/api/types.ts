@@ -9,6 +9,7 @@ export type AssistantConversationList = Schemas["AssistantConversationList"];
 export type AssistantMessage = Schemas["AssistantMessage"];
 export type AssistantMessageContext = Schemas["AssistantMessageContext"];
 export type AssistantPart = Schemas["AssistantPart"];
+export type AssistantTourStep = Schemas["AssistantTourStep"];
 export type AssistantRun = Schemas["AssistantRun"];
 export type AssistantSettings = Schemas["AssistantSettings"];
 export type AssistantMode = AssistantSettings["mode"];

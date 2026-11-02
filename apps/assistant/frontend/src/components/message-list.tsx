@@ -1,8 +1,9 @@
 import { Box, Button, Group, Loader, Paper, Stack, Text } from "@mantine/core";
-import { IconCheck, IconPlayerStop } from "@tabler/icons-react";
+import { IconCheck, IconPlayerStop, IconRoute } from "@tabler/icons-react";
 import { useI18n } from "@vantigo/frontend-shell";
 import type { AssistantMessage, AssistantMessageContext, AssistantPart, AssistantPendingAction } from "../api/types";
 import { textOf, visibleMessages } from "../lib/messages";
+import { startTour } from "../lib/tour";
 import { ConfirmationCard } from "./confirmation-card";
 import { Markdown } from "./markdown";
 
@@ -111,6 +112,23 @@ const AssistantParts = ({
               </Button>
             </Box>
           );
+        if (part.type === "tour" && part.steps && part.steps.length > 0) {
+          const steps = part.steps;
+          // The tour never starts by itself: only this click begins it.
+          return (
+            <Box key={key}>
+              <Button
+                size="xs"
+                variant="light"
+                leftSection={<IconRoute size={14} />}
+                title={t("showMeHint", { steps: steps.length })}
+                onClick={(event) => startTour(steps, event.currentTarget)}
+              >
+                {t("showMe")}
+              </Button>
+            </Box>
+          );
+        }
         return null;
       })}
     </Stack>
@@ -121,7 +139,7 @@ const AssistantParts = ({
  * The conversation as the person reads it. User and assistant messages only:
  * a tool-role message is the model's own business. An assistant message shows
  * its tool calls as status lines, its text as Markdown (no raw HTML), a
- * `link` part as a "Take me there" button and a `confirmation` part as the
+ * `link` part as a "Take me there" button, a `tour` part as a "Show me" button and a `confirmation` part as the
  * card of the change it proposed. While a run is going the streamed
  * text and the tool in use follow the last message.
  */

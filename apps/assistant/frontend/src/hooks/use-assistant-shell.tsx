@@ -1,6 +1,9 @@
+import { useMediaQuery } from "@mantine/hooks";
+import type { AssistTarget } from "@vantigo/frontend-shell";
 import { useEffect } from "react";
 import { AssistantButton } from "../components/assistant-button";
 import { AssistantPanel } from "../components/assistant-panel";
+import { TourRunner } from "../components/tour-runner";
 import type { AssistantChip } from "../lib/context";
 import { useAssistantPanel } from "../lib/panel";
 import { useAssistantShortcut } from "../lib/shortcut";
@@ -15,6 +18,8 @@ export interface UseAssistantShellOptions {
   context?: AssistantChip;
   /** Opens an in-app route through the host's router. */
   onNavigate: (route: string) => void;
+  /** Every module frontend's tour targets (`assistTargets`), collected by the host for the guided tours. */
+  tourTargets?: readonly AssistTarget[];
   /** Opens the Assistant app, on a conversation when there is one. */
   onOpenInAssistant: (conversationId: string | null) => void;
 }
@@ -32,6 +37,7 @@ export const useAssistantShell = ({
   onAssistantPage = false,
   context,
   onNavigate,
+  tourTargets = [],
   onOpenInAssistant,
 }: UseAssistantShellOptions) => {
   const availability = useAssistantAvailability(enabled);
@@ -41,6 +47,8 @@ export const useAssistantShell = ({
   useAssistantShortcut(panel.toggle, visible);
 
   const { open, setOpen } = panel;
+  // Below the shell's "sm" breakpoint the panel is a full-screen sheet and would cover the controls a tour points at.
+  const sheet = useMediaQuery("(max-width: 48em)") === true;
   useEffect(() => {
     if (!visible && open) setOpen(false);
   }, [visible, open, setOpen]);
@@ -53,6 +61,16 @@ export const useAssistantShell = ({
     /** The provider runs on this installation. */
     local: availability.local,
     panel,
+    /** The guided-tour runner (design S11): render it once in the layout, whatever the page. Null when the person does not have the assistant. */
+    tour: available ? (
+      <TourRunner
+        targets={tourTargets}
+        onNavigate={onNavigate}
+        onStart={() => {
+          if (sheet) setOpen(false);
+        }}
+      />
+    ) : null,
     /** For `headerActions`; null when the person does not have the assistant. */
     button: visible ? <AssistantButton open={panel.open} onClick={panel.toggle} /> : null,
     /** For `AppShellLayout`'s `aside`; undefined until the panel is first opened. */

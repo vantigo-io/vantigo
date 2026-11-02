@@ -1,5 +1,3 @@
-import type { AssistTarget } from "@vantigo/frontend-shell";
-import targets from "./assist-targets.json";
 import "./i18n";
 
 export type { OnSitePayment, OnSitePaymentStatus, PaymentAttempt, VippsPaymentsDay } from "./api/attempts";
@@ -17,6 +15,7 @@ export type { InvoiceDelivery, SendDefaults } from "./api/send";
 export * from "./api/settings";
 export * from "./api/vat-codes";
 export * from "./api/work";
+export { assistTargets } from "./assist-targets";
 export { CustomerInvoicesPanel, type CustomerInvoicesPanelProps } from "./components/customer-invoices-panel";
 export { CustomerPicker, type CustomerPickerProps } from "./components/customer-picker";
 export { UninvoicedWorkPanel, type UninvoicedWorkPanelProps } from "./components/uninvoiced-work-panel";
@@ -41,6 +40,3 @@ export { ReminderPrintPage, type ReminderPrintPageProps } from "./pages/reminder
 export { ReminderRunPage, type ReminderRunPageProps } from "./pages/reminder-run";
 export { SettingsPage, type SettingsPageProps } from "./pages/settings";
 export { PaymentsTabs, VippsPaymentsPage } from "./pages/vipps-payments";
-
-/** The controls the Assistant can point at in a tour; each carries its key as a data-assist attribute. */
-export const assistTargets: AssistTarget[] = targets;

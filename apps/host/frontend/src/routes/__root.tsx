@@ -36,6 +36,7 @@ import { activeAppKey, appNavSections, appTitleLabel, areaForKey, switcherTiles 
 import { AppSpotlight } from "../components/app-spotlight";
 import { MaintenancePage } from "../components/errors";
 import { ModuleAccessGuard } from "../components/module-access-guard";
+import { assistTargets } from "../lib/assist-targets";
 import {
   assistantChipFor,
   registerAssistantContexts,
@@ -148,6 +149,7 @@ const RootLayout = () => {
     onAssistantPage: pathname === "/assistant" || pathname.startsWith("/assistant/"),
     context: assistantChipFor(routeInfo, activeKey, recordLabel, screenKey ? t(screenKey) : undefined),
     onNavigate: openRoute,
+    tourTargets: assistTargets,
     onOpenInAssistant: (id) => void navigate({ to: id ? `/assistant/${id}` : "/assistant" } as never),
   });
   const logout = useMutation({
@@ -278,6 +280,7 @@ const RootLayout = () => {
           onAskAssistant={assistant.ask}
         />
       )}
+      {!gated && assistant.tour}
       <TanStackRouterDevtools />
       <ReactQueryDevtools />
     </>
