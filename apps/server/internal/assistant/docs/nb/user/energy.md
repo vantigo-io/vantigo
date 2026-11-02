@@ -813,3 +813,7 @@ De fullstendige reglene står i [Tariffs](/en/reference/energy/#tariffs).
 | `energy:tariffs-view` | Se **Tariffer**, og velge en tariff på en leveranseperiode eller et målepunkt |
 | `energy:tariffs-manage` | Opprette, redigere, arkivere og slette tariffer, sammen med `energy:tariffs-view` |
 | `energy:import` | Importere målepunkter fra en fil, sammen med `energy:metering-points-manage`; importere avlesninger, sammen med `energy:consumption-manage` og `energy:consumption-view`; det en import skriver, krever rettighetene over |
+
+## Vis meg hvordan
+
+[Assistent](/nb/user/assistant/#vis-meg-hvordan) kan vise deg hvordan du oppretter et målepunkt og tildeler en kunde til det. Spør «hvordan legger jeg til et målepunkt?» og trykk **Vis meg**: omvisningen peker på **Nytt målepunkt**, feltene for GSRN, målernummer og adresse, og **Opprett målepunkt**. Spør «hvordan tildeler jeg en kunde?» mens du er på et målepunkt, så peker den på **Tildel kunde**, kunden, byttedatoen og knappen som lagrer leveringsperioden.

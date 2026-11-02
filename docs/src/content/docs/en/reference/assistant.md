@@ -1,10 +1,12 @@
 ---
 title: "Assistant module"
-description: "Every person's assistant (nb Assistent): the schema; availability — the instance, the mode, the person's switch; the endpoints with their rules, status codes and If-Match; conversations that only their owner can reach; runs that outlive the connection, their caps, the stream and how a client reconnects; context compaction and the system prompt; the five tools, how their results reach the model and the action log; the changes the model proposes, the pending action behind a confirmation card, its preview, `If-Match`, confirm, cancel and expiry; the daily token budget and the Owner's usage view; the links an answer may carry; the documentation index behind search_docs; the permission levels the Owner sets and the gate that applies them to the dispatcher; the Owner's audit; retention and erasure."
+description: "Every person's assistant (nb Assistent): the schema; availability — the instance, the mode, the person's switch; the endpoints with their rules, status codes and If-Match; conversations that only their owner can reach; runs that outlive the connection, their caps, the stream and how a client reconnects; context compaction and the system prompt; the six tools, how their results reach the model and the action log; the guided tours (`show_tour`, the target registry, the runner); the changes the model proposes, the pending action behind a confirmation card, its preview, `If-Match`, confirm, cancel and expiry; the daily token budget and the Owner's usage view; the links an answer may carry; the documentation index behind search_docs; the permission levels the Owner sets and the gate that applies them to the dispatcher; the Owner's audit; retention and erasure."
 sources:
   - apps/server/internal/assistant
   - apps/server/internal/operations
   - apps/assistant/frontend
+  - apps/host/frontend/src/lib/assist-targets.ts
+  - packages/frontend-shell/src/assist-targets.ts
   - openapi/assistant.yaml
   - apps/server/internal/openapi/specs/assistant.yaml
   - apps/server/internal/db/migrations/00103_assistant_baseline.sql
@@ -146,10 +148,12 @@ A message's `parts` are typed. `text` carries Markdown; `tool_call` is a tool th
 for (`callId`, `name`, a short `label` in the person's language, the `arguments` it gave);
 `tool_result` is what the tool answered the model (`callId`, `status` — `ok`, `refused` or `error`
 — and `content`, the [compacted](#tool-results) JSON); `link` is a screen or record in the app
-(`route`, `label`), which the interface shows as a button; `confirmation` carries an `actionId`, the
+(`route`, `label`), which the interface shows as a button; `tour` carries `steps`, each a registered
+`target` with a `title` and a `body` in the person's language, which the interface shows as a **Show me**
+button ([guided tours](#guided-tours)); `confirmation` carries an `actionId`, the
 [pending action](#pending-actions) of the same conversation the interface draws as a card. A message carries `role` (`user`,
 `assistant`, `tool`), the `runId` that made it, the chip it was sent with as `context`, and for
-an assistant message the `model` and the tokens the provider reported. Link parts are for the
+an assistant message the `model` and the tokens the provider reported. Link and tour parts are for the
 interface only: they are never sent back to the model.
 
 ## Runs
@@ -251,7 +255,7 @@ is sent.
 
 ## The system prompt
 
-The prompt is built for every run and versioned: `promptVersion` (`2026-11-02.1`) is bumped with any
+The prompt is built for every run and versioned: `promptVersion` (`2026-11-02.2`) is bumped with any
 change of the rules and logged at debug level with the run, so a conversation's behaviour can be
 traced to the prompt it ran under. It states, in order, who the assistant is; **today's date, the
 person's name, and the language to answer in** (the person's preferred language — Norwegian bokmål or
@@ -262,6 +266,12 @@ rules:
 - For how-to questions call `search_docs` first and answer from what it returns: numbered steps named as
   the interface names them, the documentation page cited by its path as a Markdown link, and
   `navigate` for a **Take me there** button when a screen is the answer.
+- After the written steps of a how-to the model may call `show_tour`: only with the targets in the tool's
+  list, at most 8 steps in the order the person does them, each with a title and a text in the person's
+  language. The steps and the documentation link come first; the tour is an extra the person starts with
+  a click. A target inside a dialog is on screen only once the dialog is open, so the step before it says
+  to open it; a target whose route has a `{…}` is on a record's screen and is used only when the person is
+  looking at such a record.
 - For data, find the operation with `search_operations`, read its parameters with
   `describe_operation`, read with `call_operation`, present lists as a Markdown table and link every
   record to its screen with a route from the list in the prompt. Never invent an id.
@@ -284,7 +294,7 @@ list `navigate` validates against.
 
 ## The tools
 
-The model gets five tools, not the contract's hundreds: operations are reached by searching,
+The model gets six tools, not the contract's hundreds: operations are reached by searching,
 describing and calling. This is also what keeps a small local model's context small. Every tool
 call writes an [action](#the-action-log) and a `tool` message.
 
@@ -295,6 +305,7 @@ call writes an [action](#the-action-log) and a `tool` message.
 | `describe_operation` | `id` | The operation compacted by the dispatcher — parameters, request body and success response, `$ref`s resolved, enums inline, at most 8 KB — with its effective `mode`. An operation the person may not call is `operation_unknown`: the existence of one they may not use is not told. |
 | `call_operation` | `id`, `params`, `body` | Calls an operation whose effective mode is **`auto`** through the dispatcher, as the person, and answers `{status, body}`. `params` holds the path, query and header parameters together, by name; each is placed where the operation declares it, an unnamed one going into the query. A `confirm` operation is not called: it becomes a [pending action](#changes-with-confirmation) and the answer is `{status: "awaiting_confirmation", summary, note}`; `explain` is the model's one sentence for the card. |
 | `navigate` | `route`, `label` | Offers a button. The `route` must be a plain in-app path beginning with one of the host's known prefixes (`/customers`, `/invoices`, `/energy` …) at a segment boundary; anything else — an absolute URL, `//`, `..`, a backslash, whitespace — is `invalid_route`. `label` is 1 to 100 characters. The button is added to the assistant message as a `link` part; the tool never moves the screen. |
+| `show_tour` | `steps` | Offers a guided tour: 1 to **8** steps of `{target, title, body}`. `target` must be a key of [the registry](#guided-tours), which is also the tool's `enum` and is listed, with each target's route and English description, in the tool's description. An unknown target refuses the whole call (`unknown_target`), more than 8 steps is `too_many_steps`, and a `title` (up to 80 characters) or `body` (up to 400) that is empty, has control characters other than a line break or is too long is `invalid_arguments`, so the model can try again. The tour is added to the assistant message as a `tour` part; the tool starts nothing. The tool is not offered while the registry is empty. |
 
 An unknown tool, bad arguments and a refusal answer the model with an `error` code and a message
 rather than failing the run, so it can say what happened.
@@ -323,6 +334,50 @@ log with the conversation. It is the person's own: the Owner has no way to read 
 person and day](#daily-budget-and-usage), without content. The read a card is made from is logged as an `auto` action of the
 `GET`; a change the person confirmed is logged with the mode `confirm`, the status the router answered and
 `confirmed_by`.
+
+## Guided tours
+
+A tour points at controls on screen, one step at a time, over **targets** the module frontends declare
+(design S11). **The model never writes a selector**: it chooses keys from a registry, and the page builds
+the selector from a key it has validated.
+
+- **The registry.** A module frontend that has targets keeps `src/assist-targets.json`, a list of `{key,
+  route, label: {en, nb}, description: {en, nb}}`, and exports it as `assistTargets`
+  (`@vantigo/<module>-ui/assist-targets`, and from the package index). The `key` is
+  `<module>.<screen>.<control>`, lower case with hyphens; the `route` is the route pattern the control is on,
+  with `{name}` for a record id. The control carries `data-assist="<key>"`. Each module's reference page
+  lists its keys.
+- **A test per package.** `assistTargetProblems` (`@vantigo/frontend-shell`) runs over the package's own
+  source in its `assist-targets.test.ts`. It fails when a registered key has no `data-assist="<key>"`, when a
+  `data-assist` in the source is not registered, when a marker is not a plain string literal, and when a key is
+  malformed or registered twice. A renamed control fails CI instead of a tour.
+- **The host collects them.** `apps/host/frontend/src/lib/assist-targets.ts` joins every package's targets
+  and hands them to `useAssistantShell` as `tourTargets`; no module package imports another, and the
+  assistant package imports none.
+- **The server's copy.** `tools/assist/gen-targets.ts` merges the packages' files into
+  `apps/server/internal/assistant/assist-targets.json` — key, route and the English description, sorted by
+  key — which the module embeds. `go generate` runs it (`apps/server/generate.go`); CI regenerates and fails on
+  a diff, and `TestEmbeddedTourTargetsAreTheFrontendsRegistries` re-derives the merge from the packages' files
+  and fails when the embedded copy is stale. Adding a target therefore means editing the package's JSON, the
+  control, and running `go generate ./...` in `apps/server`.
+- **The part.** A valid `show_tour` becomes a `tour` part on the assistant message. The route of a step is
+  not in the part: the page looks the key up in the registry, so the model cannot send the person anywhere the
+  registry does not say.
+- **The runner.** The shell hook mounts one controlled Mantine `Tour` (`active`, `step`, `onStepChange`), which
+  lives as long as the layout, so a tour goes on across routes and with the panel shut. A **Show me** click
+  starts it; nothing else does. For each step it navigates through the host's `onNavigate` when the
+  step's route is not the one on screen (never for a route with `{…}`, which needs a record), then waits
+  up to **3 seconds** for `[data-assist="<key>"]` to mount. While it waits nothing is shown; a control that
+  never comes shows the step **centred**, with its text. The overlay lets clicks through the spotlight
+  (`withOverlayInteraction`), so the person can open the dialog a later step points into; the runner itself
+  never clicks, types or submits. Next, Back and the arrow keys are Mantine's; Escape and Close end the tour, and the
+  focus goes back to the **Show me** button, or into the panel if that is gone. Labels are
+  in the person's language (`tourNext`, `tourBack` …). Below the shell's `sm` breakpoint, where the panel is a
+  full-screen sheet, it closes when the tour starts. On wider screens the panel pushes the page, so it does not
+  cover a target.
+- **Dropdowns.** The tour's `zIndex` (10000) is above Mantine's popovers. A step inside an open `Select` or
+  `Menu` would need that dropdown's `zIndex` raised, as Mantine documents; none of the marked steps points into an
+  open dropdown, so nothing does it yet.
 
 ## The documentation index
 
@@ -586,7 +641,6 @@ What follows from it:
 
 ## What comes next
 
-- **Delivery T** adds `show_tour` and a registry of targets each module exports.
 - **Delivery C** adds bulk changes. A bulk plan reuses what a pending action is: a card with a
   summary, fields and a target, `confirm` and `cancel` as the person's decision, the preview rule, the
   paused run and the expiry.
@@ -602,7 +656,8 @@ What follows from it:
 `/workspace/assistant`), mounts the panel in the app layout so it survives navigation, and wires the
 shortcut — Cmd/Ctrl+J, ignored while focus is in an editor that uses it — and Spotlight's *Ask the
 assistant*. The panel's width (320 to 720 pixels) is the only thing kept in the browser; the last
-conversation is kept on the server. A module's frontend describes the record on a route to the panel
+conversation is kept on the server. The tour runner is mounted once, by the same hook, beside the layout; a `tour` part is drawn as a **Show me** button
+([guided tours](#guided-tours)). A module's frontend describes the record on a route to the panel
 through `assistantContext` (customers, metering points, invoices and projects have one; any other
 route falls back to the screen's name) and the host registers the resolvers, so no module package
 imports another ([rule 7](/en/contributing/module-boundaries/)). Answers are rendered as Markdown

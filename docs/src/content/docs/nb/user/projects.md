@@ -447,3 +447,7 @@ klare i en annen valuta sier **Mer klart i en annen valuta**; prosjektets egen
 | Fanen **Utlegg** | `expenses:access`, Utlegg aktivert |
 | Fanen **Fakturagrunnlag**, og **Fakturer arbeidet** i faktureringsplanen | `invoices:access` og `invoices:create`, Fakturaer aktivert |
 | Fanen **Bemanning** | `planning:access` og `planning:view`, Bemanning aktivert |
+
+## Vis meg hvordan
+
+[Assistent](/nb/user/assistant/#vis-meg-hvordan) kan vise deg hvordan du oppretter et prosjekt. Spør «hvordan oppretter jeg et prosjekt?» og trykk **Vis meg**: omvisningen peker på **Nytt prosjekt**, kunden, navnet, prosjektkoden og **Opprett**.

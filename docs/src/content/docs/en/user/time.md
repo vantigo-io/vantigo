@@ -265,3 +265,7 @@ what waits for your approval; Spotlight has a **Log time** quick action.
 
 The full table, and who may see bill and cost rates, is under
 [visibility and permissions](/en/reference/time/#visibility-and-permissions).
+
+## Show me how
+
+The [Assistant](/en/user/assistant/#show-me-how) can show you how to register time and submit your week. Ask "how do I register hours?" and press **Show me**: the tour points at **Add entry** on the Day page, the project, the hours and **Save**; on **My week** it points at **Submit week**.

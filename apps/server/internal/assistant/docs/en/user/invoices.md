@@ -1917,3 +1917,7 @@ sales document but credit control — what the company says it is owed. Recordin
 delivery by hand is part of handing the sale over, so it is `invoices:issue` — and so
 are a pay link and a payment taken on site, which hand the sale over and register no
 money by hand: Vantigo registers what Vipps took.
+
+## Show me how
+
+The [Assistant](/en/user/assistant/#show-me-how) can show you how to make and issue an invoice. Ask "how do I create an invoice?" and press **Show me**: the tour points at **New invoice**, the customer, **Create the draft**, and then, on the draft, **Add a line**, **Save** and **Issue**.

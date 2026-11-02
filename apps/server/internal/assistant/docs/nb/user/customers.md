@@ -465,3 +465,7 @@ på den kan endres, og bare eksporten står igjen. Se
 | Eksportere personopplysninger og planlegge en anonymisering | `customers:personal-data` |
 
 Hele listen, med hva hver nøkkel beskytter, står under [Permissions](/en/reference/customers/#permissions).
+
+## Vis meg hvordan
+
+[Assistent](/nb/user/assistant/#vis-meg-hvordan) kan ta deg gjennom to ting her. Spør «hvordan oppretter jeg en kunde?» og trykk **Vis meg**: omvisningen peker på **Opprett ny kunde**, kundetypen, navnet og **Opprett kunde**. Spør «hvordan legger jeg til en kontakt?» mens du er på en kunde, så peker den på **Legg til kontakt**, søkefeltet i dialogen og knappen som legger til kontakten.

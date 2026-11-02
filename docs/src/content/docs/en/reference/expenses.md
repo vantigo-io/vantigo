@@ -1430,3 +1430,15 @@ while the user directory is the real one, composed.
 bun run --cwd apps/expenses/frontend test
 cd apps/server && go test ./internal/expenses/...
 ```
+
+## Assistant tour targets
+
+The Assistant can point at these controls in a guided tour ([the registry](/en/reference/assistant/#guided-tours)). The package registers them in `apps/expenses/frontend/src/assist-targets.json`, exports them as `assistTargets` (`@vantigo/expenses-ui/assist-targets`) and marks each control with `data-assist="<key>"`; a test of the package fails when a key has no marker or a marker has no key. A route with `{…}` is a record's screen.
+
+| Key | Route | Control |
+| --- | --- | --- |
+| `expenses.expenses.new` | `/expenses` | New expense |
+| `expenses.expenses.new-claim` | `/expenses` | New travel claim |
+| `expenses.expenses.form-description` | `/expenses` | Description |
+| `expenses.expenses.form-save` | `/expenses` | Save draft |
+| `expenses.claim.submit` | `/expenses/claims/{claimId}` | Submit claim |

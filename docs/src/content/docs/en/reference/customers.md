@@ -3684,3 +3684,17 @@ for the installation without that module.
 bun run --cwd apps/customers/frontend test
 cd apps/server && go test ./internal/customers/...
 ```
+
+## Assistant tour targets
+
+The Assistant can point at these controls in a guided tour ([the registry](/en/reference/assistant/#guided-tours)). The package registers them in `apps/customers/frontend/src/assist-targets.json`, exports them as `assistTargets` (`@vantigo/customers-ui/assist-targets`) and marks each control with `data-assist="<key>"`; a test of the package fails when a key has no marker or a marker has no key. A route with `{…}` is a record's screen.
+
+| Key | Route | Control |
+| --- | --- | --- |
+| `customers.customers.new` | `/customers` | Create new customer |
+| `customers.customers.form-type` | `/customers` | Customer type |
+| `customers.customers.form-name` | `/customers` | Name |
+| `customers.customers.form-save` | `/customers` | Create customer |
+| `customers.customer.add-contact` | `/customers/{customerId}` | Add contact |
+| `customers.customer.contact-search` | `/customers/{customerId}` | Search for a contact |
+| `customers.customer.contact-save` | `/customers/{customerId}` | Add contact |

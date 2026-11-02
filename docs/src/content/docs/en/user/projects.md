@@ -444,3 +444,7 @@ can see appear here* (see [The portfolio](/en/reference/projects/#the-portfolio)
 | **Expenses** tab | `expenses:access`, Expenses enabled |
 | **Invoicing** tab, and **Invoice the work** on the invoice plan | `invoices:access` and `invoices:create`, Invoices enabled |
 | **Planning** tab | `planning:access` and `planning:view`, Planning enabled |
+
+## Show me how
+
+The [Assistant](/en/user/assistant/#show-me-how) can show you how to create a project. Ask "how do I create a project?" and press **Show me**: the tour points at **New project**, the customer, the name, the project code and **Create**.

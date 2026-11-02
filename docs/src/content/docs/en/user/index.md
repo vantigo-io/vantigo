@@ -18,7 +18,7 @@ shown.
 Each module is an **app** with its own sidebar: Customers, Projects, Time, Calendar,
 Expenses, Staff, Planning, Invoices, Communications, Products and Energy — and Microsoft Entra ID,
 where an administrator connects the company's tenant. The [Assistant](/en/user/assistant/) is an app
-too, and also a panel that opens beside any screen with the button in the top bar or Cmd/Ctrl+J. The app switcher in the top bar lists
+too, and also a panel that opens beside any screen with the button in the top bar or Cmd/Ctrl+J, and it can [show you where to click](/en/user/assistant/#show-me-how) in the main create flows. The app switcher in the top bar lists
 the apps you can open; **Home** is the dashboard, which opens with Calendar's **Today and
 this week** agenda when you use Calendar ([the dashboard](/en/user/calendar/#the-dashboard)),
 and where every app you use shows its own card with the numbers that need your attention — Staff's, the people employed today

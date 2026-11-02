@@ -1828,3 +1828,15 @@ in tests — and again with no catalog at all, which is the products-off behavio
 bun run --cwd apps/projects/frontend test
 cd apps/server && go test ./internal/projects/
 ```
+
+## Assistant tour targets
+
+The Assistant can point at these controls in a guided tour ([the registry](/en/reference/assistant/#guided-tours)). The package registers them in `apps/projects/frontend/src/assist-targets.json`, exports them as `assistTargets` (`@vantigo/projects-ui/assist-targets`) and marks each control with `data-assist="<key>"`; a test of the package fails when a key has no marker or a marker has no key. A route with `{…}` is a record's screen.
+
+| Key | Route | Control |
+| --- | --- | --- |
+| `projects.projects.new` | `/projects` | New project |
+| `projects.projects.form-customer` | `/projects` | Customer |
+| `projects.projects.form-name` | `/projects` | Project name |
+| `projects.projects.form-code` | `/projects` | Project code |
+| `projects.projects.form-save` | `/projects` | Create |

@@ -82,7 +82,9 @@ En samtale får navn etter det første spørsmålet ditt til du gir den nytt nav
 assistenten søker i dokumentasjonen, på ditt språk, og svarer med nummererte trinn med
 navnene grensesnittet bruker, en lenke til dokumentasjonssiden den brukte og, når et
 skjermbilde er svaret, en knapp **Ta meg dit** som åpner det. Knappen åpner skjermbildet
-når du trykker på den; assistenten flytter aldri skjermen selv.
+når du trykker på den; assistenten flytter aldri skjermen selv. For de viktigste
+opprettelsesflytene legger den også til en knapp **Vis meg** som starter en omvisning
+([nedenfor](#vis-meg-hvordan)).
 
 **Lese dataene dine.** Spør «hvilke fakturaer er forfalt?» eller «vis målepunktene til Ola
 Nordmann», og den leser det du har lov til å lese og svarer med en tabell der hver post er
@@ -94,6 +96,30 @@ Får den ikke lov til å lese noe, sier den det; den prøver ikke å komme rundt
 
 **Ta feil.** Assistenten er en språkmodell, og den kan misforstå et spørsmål eller en
 tabell. Kontroller det som betyr noe mot skjermen: hver post i et svar lenker til den.
+
+## Vis meg hvordan
+
+Under de skrevne trinnene i et hvordan-svar kan assistenten legge til en knapp **Vis meg**. Den
+starter en omvisning: skjermen dimmes, én knapp eller ett felt lyses opp om gangen, og et kort
+notat på ditt språk sier hva du skal gjøre med det. «Hvordan legger jeg til et målepunkt?» lyser
+opp **Nytt målepunkt**, så feltene som betyr noe, så **Opprett målepunkt**.
+
+- **Den starter bare når du trykker på knappen.** Aldri av seg selv, og de skrevne trinnene
+  kommer alltid først.
+- **Den åpner riktig skjermbilde.** Ligger første knapp på et annet skjermbilde, åpner omvisningen
+  det, og panelet blir stående ved siden av. Noe som ligger på én posts skjermbilde (en kunde, et
+  målepunkt, en faktura) kan bare pekes på mens posten er åpen, så spør fra posten.
+- **Neste, Tilbake og Escape.** **Neste** og **Tilbake**, eller piltastene, flytter deg mellom
+  stegene; **Lukk** eller Escape avslutter omvisningen, og fokus går tilbake til knappen **Vis
+  meg**. På en smal skjerm, der panelet dekker siden, lukkes panelet når omvisningen starter.
+- **Skjemaer.** Et felt i et skjema er på skjermen først når skjemaet er åpent. Notatet sier det:
+  trykk selv på den opplyste knappen, og så **Neste**. Det er mulig å klikke på det opplyste
+  elementet gjennom det dimmede laget. Omvisningen klikker, skriver eller lagrer aldri noe for deg.
+- **En knapp som ikke er der.** Mangler du rettigheten til den, eller har den ikke dukket opp
+  innen tre sekunder, vises steget midt på skjermen med samme notat.
+- **Hvor den virker.** De viktigste opprettelsesflytene: kunder og kontakter, målepunkter og
+  leveringsperioder, fakturaer, timeføringer, utlegg og reiseregninger, og prosjekter. Andre steder
+  får du bare de skrevne trinnene.
 
 ## Endringer, med din bekreftelse
 

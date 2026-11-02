@@ -142,8 +142,16 @@ Cmd/Ctrl+J and Spotlight's *Ask the assistant*; retention (12 months by default)
 sweep. Documented in [the user guide](docs/src/content/docs/en/user/assistant.md), the
 [reference](docs/src/content/docs/en/reference/assistant.md) and module boundaries rule 19.
 
-**Delivery T (planned) — tours** — `show_tour` over a registry of targets each module
-exports, tested against the source, with markers on the most-used screens.
+**Delivery T — tours (done, `feat/assistant-tours`)** — `show_tour` over a registry of targets
+each module frontend exports (`assistTargets`), tested against the package's own source and
+embedded in the server so the model chooses a key and never writes a selector. A how-to answer
+gets a **Show me** button; a click starts a Mantine `Tour` that opens the right screen, points at
+the control, and shows a step centred when its control is not there after 3 s. About 37 targets
+mark the create flows of customers and contacts, metering points and supply periods, invoices,
+time, expenses and projects. Documented in
+[the user guide](docs/src/content/docs/en/user/assistant.md#show-me-how), the
+[reference](docs/src/content/docs/en/reference/assistant.md#guided-tours) and
+[frontend architecture](docs/src/content/docs/en/contributing/frontend-architecture.md#tour-targets-for-the-assistant).
 
 **Delivery B — changes with confirmation (done, `feat/assistant-writes`)** — a `confirm`
 operation never runs on the model's say-so: `call_operation` turns it into a pending action

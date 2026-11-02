@@ -82,7 +82,8 @@ A conversation is named after your first question until you rename it.
 searches the documentation, in your language, and answers with numbered steps named as
 the interface names them, a link to the documentation page it used and, when a screen is
 the answer, a **Take me there** button that opens it. The button opens the screen when
-you press it; the assistant never moves the screen by itself.
+you press it; the assistant never moves the screen by itself. For the main create flows it
+also adds a **Show me** button that starts a guided tour ([below](#show-me-how)).
 
 **Read your data.** Ask "which invoices are overdue?" or "show the metering points of
 Ola Nordmann" and it reads what you may read and answers with a table, each record a link
@@ -93,6 +94,31 @@ If it is not allowed to read something it says so; it does not try to work round
 
 **Be wrong.** The assistant is a language model, and it can misread a question or a table.
 Check what matters against the screen: every record in an answer links to it.
+
+## Show me how
+
+Under the written steps of a how-to answer the assistant may add a **Show me** button. It
+starts a guided tour: the screen dims, one control is lit at a time, and a short note in your
+language says what to do with it. "How do I add a metering point?" lights **New metering
+point**, then the fields that matter, then **Create metering point**.
+
+- **It starts only when you press the button.** Never on its own, and the written steps
+  always come first.
+- **It opens the right screen.** If the first control is on another screen, the tour opens
+  that screen and the panel stays beside it. A control on one record's screen (a customer, a
+  metering point, an invoice) can only be pointed at while that record is open, so ask from the
+  record.
+- **Next, Back and Escape.** **Next** and **Back**, or the arrow keys, move between steps;
+  **Close** or Escape ends the tour, and the focus returns to the **Show me** button. On a narrow
+  screen, where the panel covers the page, the panel closes when the tour starts.
+- **Forms.** A field in a form is on screen only once the form is open. The note says so:
+  press the lit button yourself, then **Next**. The lit control can be clicked through the
+  dimmed layer. The tour never clicks, types or saves anything for you.
+- **A control that is not there.** If you lack the permission for it, or it has not appeared
+  within three seconds, its step is shown in the middle of the screen with the same note.
+- **Where it works.** The main create flows: customers and contacts, metering points and
+  supply periods, invoices, time entries, expenses and travel claims, and projects. Elsewhere
+  you get the written steps only.
 
 ## Changes, with your confirmation
 
