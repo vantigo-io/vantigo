@@ -9,7 +9,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/vantigo-io/vantigo/server/internal/ai"
 	"github.com/vantigo-io/vantigo/server/internal/assistant/gen"
 )
 
@@ -111,7 +110,6 @@ func TestShowTourTool_ListsTheRegistryAsItsEnum(t *testing.T) {
 	if !found {
 		t.Error("show_tour is not among the tools the model is offered")
 	}
-	var _ ai.Tool = tool
 }
 
 func runShowTour(args string) outcome {
