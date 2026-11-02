@@ -272,10 +272,14 @@ func startServe(t *testing.T, m mode) (string, func() int) {
 // fixture (WORKERS_IN_PROCESS among them) and extraModules merged into the
 // module list serve resolves workers from (see serve's own doc) —
 // production always passes none; a test passes a module declaring a worker
-// (fakeWorkerModule) to drive it through that real resolution.
+// (fakeWorkerModule) to drive it through that real resolution. A
+// DATABASE_URL in env replaces the fresh migrated database's.
 func startServeEnv(t *testing.T, m mode, env map[string]string, extraModules ...module.Module) (string, func() int) {
 	t.Helper()
-	_, databaseURL := testdb.Migrated(t)
+	databaseURL := env["DATABASE_URL"]
+	if databaseURL == "" {
+		_, databaseURL = testdb.Migrated(t)
+	}
 	envMap := map[string]string{
 		"DATABASE_URL":     databaseURL,
 		"APP_URL":          "http://localhost:8080",
@@ -573,6 +577,61 @@ func TestServe_APIModeRunsWorkersOnlyWhenConfigured(t *testing.T) {
 			t.Errorf("exit %d after a clean shutdown", code)
 		}
 	})
+}
+
+// The api with every worker it runs by default, on a pool of four — pgxpool's
+// floor, and a four-core host's default — must become ready and stay ready.
+// A lease worker holds its lease on a pooled connection; one that then waits
+// for a second connection deadlocks the pool once as many of them start
+// together as it has connections, and readiness, which needs a connection too,
+// times out with them. Each worker's own pool-of-one test pins its rule; this
+// is the boot the image smoke test makes. The registry feed reads a local
+// stand-in for Brønnøysund that answers an empty page, and the fresh database
+// has no customer for the Peppol re-check to ask about, so nothing leaves the
+// machine.
+func TestServe_APIIsReadyOnAPoolOfFourWithEveryWorker(t *testing.T) {
+	brreg := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"_embedded":{"oppdaterteEnheter":[]},"page":{"size":1000,"totalElements":0,"totalPages":0,"number":0}}`)
+	}))
+	defer brreg.Close()
+	_, databaseURL := testdb.Migrated(t)
+	pooled, err := url.Parse(databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	q := pooled.Query()
+	q.Set("pool_max_conns", "4")
+	pooled.RawQuery = q.Encode()
+
+	base, stop := startServeEnv(t, modeAPI, map[string]string{
+		"DATABASE_URL":                     pooled.String(),
+		"WORKERS_IN_PROCESS":               "1",
+		"BRREG_BASE_URL":                   brreg.URL,
+		"CUSTOMERS_REGISTRY_FEED_ENABLED":  "1",
+		"CUSTOMERS_PEPPOL_RECHECK_ENABLED": "1",
+		"CUSTOMERS_ANONYMISATION_ENABLED":  "1",
+		"STAFF_RETENTION_ENABLED":          "1",
+		"STAFF_ACCOUNTS_ENABLED":           "1",
+		"STAFF_COMPETENCE_ENABLED":         "1",
+	})
+	// Ready once is not enough: the workers start with the server, and a
+	// deadlock takes hold as their first cycles run. Readiness must hold
+	// through them.
+	client := &http.Client{Timeout: 5 * time.Second}
+	for deadline := time.Now().Add(3 * time.Second); time.Now().Before(deadline); time.Sleep(100 * time.Millisecond) {
+		resp, err := client.Get(base + "/health/ready")
+		if err != nil {
+			t.Fatalf("/health/ready on a pool of four: %v", err)
+		}
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("/health/ready on a pool of four = %d, want 200", resp.StatusCode)
+		}
+	}
+	if code := stop(); code != 0 {
+		t.Errorf("exit %d after a clean shutdown", code)
+	}
 }
 
 // TestServe_ServerModeNeverRunsWorkersEvenWhenInjected is the strongest
