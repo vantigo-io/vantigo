@@ -25,7 +25,8 @@ const staffGroupsVersion = 62
 // validation owning the closed sets as 00042's house style has it. The Down
 // drops the four tables.
 func TestStaffGroups_AppliesAndIsIdempotent(t *testing.T) {
-	url := testdb.URL(t)
+	t.Parallel()
+	url := testdb.MigratedURL(t)
 	applyUpDownUp(t, url, staffGroupsVersion)
 
 	ctx := context.Background()

@@ -25,7 +25,8 @@ const identityManagedAvatarsVersion = 70
 // cascade from the user; and the user's own avatar untouched beside it. The
 // Down drops the table.
 func TestIdentityManagedAvatars_AppliesAndIsIdempotent(t *testing.T) {
-	url := testdb.URL(t)
+	t.Parallel()
+	url := testdb.MigratedURL(t)
 	applyUpDownUp(t, url, identityManagedAvatarsVersion)
 
 	ctx := context.Background()

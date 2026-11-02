@@ -27,7 +27,8 @@ const identityExpectedAccountsVersion = 59
 // identity.users.provisioning_roles_at, null until Staff's Activate gives the
 // roles.
 func TestIdentityExpectedAccounts_AppliesAndIsIdempotent(t *testing.T) {
-	url := testdb.URL(t)
+	t.Parallel()
+	url := testdb.MigratedURL(t)
 	applyUpDownUp(t, url, identityExpectedAccountsVersion)
 
 	ctx := context.Background()
@@ -146,6 +147,7 @@ func TestIdentityExpectedAccounts_AppliesAndIsIdempotent(t *testing.T) {
 // TestIdentityExpectedAccounts_DownDropsBoth proves the down path removes
 // the table, its announcements with it, and the users' column.
 func TestIdentityExpectedAccounts_DownDropsBoth(t *testing.T) {
+	t.Parallel()
 	url := testdb.URL(t)
 	migrateTo(t, url, identityExpectedAccountsVersion)
 
@@ -186,6 +188,7 @@ func TestIdentityExpectedAccounts_DownDropsBoth(t *testing.T) {
 // gave them — and for no one else: a pending managed user and an unmanaged
 // user keep null, so the once-only grant is still theirs to receive.
 func TestIdentityExpectedAccounts_BackfillsTheRolesGiven(t *testing.T) {
+	t.Parallel()
 	url := testdb.URL(t)
 	migrateTo(t, url, identityExpectedAccountsVersion-1)
 

@@ -23,7 +23,8 @@ const entraMailChannelsVersion = 90
 // entra.channel_mailboxes keyed by the object id, every column required. The
 // down drops both.
 func TestEntraMailChannels_AppliesAndIsIdempotent(t *testing.T) {
-	url := testdb.URL(t)
+	t.Parallel()
+	url := testdb.MigratedURL(t)
 	applyUpDownUp(t, url, entraMailChannelsVersion)
 
 	ctx := context.Background()

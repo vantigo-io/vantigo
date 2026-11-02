@@ -17,7 +17,8 @@ import (
 // or neither, and only on an invoiced milestone. A milestone marked invoiced
 // by hand carries neither and stays allowed; Down removes both columns.
 func TestProjectsInvoicedBy_AppliesAndIsIdempotent(t *testing.T) {
-	url := testdb.URL(t)
+	t.Parallel()
+	url := testdb.MigratedURL(t)
 	applyUpDownUp(t, url, 39) // 00039_projects_invoiced_by.sql
 
 	ctx := context.Background()

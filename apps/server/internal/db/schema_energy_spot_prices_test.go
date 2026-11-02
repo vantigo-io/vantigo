@@ -23,7 +23,8 @@ const energySpotPricesVersion = 65
 // interval that must close after it opens, and the two sources and four
 // fetch states the CHECKs allow.
 func TestEnergySpotPrices_AppliesAndIsIdempotent(t *testing.T) {
-	url := testdb.URL(t)
+	t.Parallel()
+	url := testdb.MigratedURL(t)
 	applyUpDownUp(t, url, energySpotPricesVersion)
 
 	ctx := context.Background()

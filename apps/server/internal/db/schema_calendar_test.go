@@ -21,7 +21,8 @@ const calendarBaselineVersion = 55
 // reads go through, and the cascades that make deleting an appointment take
 // its attendees and exceptions with it.
 func TestCalendarBaseline_AppliesAndIsIdempotent(t *testing.T) {
-	url := testdb.URL(t)
+	t.Parallel()
+	url := testdb.MigratedURL(t)
 	applyUpDownUp(t, url, calendarBaselineVersion)
 
 	ctx := context.Background()

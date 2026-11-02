@@ -27,7 +27,8 @@ const staffOneToOneVersion = 67
 // as 00042's house style has it. The Down drops the four tables and the three
 // columns.
 func TestStaffOneToOne_AppliesAndIsIdempotent(t *testing.T) {
-	url := testdb.URL(t)
+	t.Parallel()
+	url := testdb.MigratedURL(t)
 	applyUpDownUp(t, url, staffOneToOneVersion)
 
 	ctx := context.Background()

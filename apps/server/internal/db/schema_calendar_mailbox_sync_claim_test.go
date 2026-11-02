@@ -18,7 +18,8 @@ const calendarMailboxSyncClaimVersion = 87
 // ClaimDueMailboxSync writes: calendar.mailbox_sync's claimed_until, a
 // nullable timestamptz. The down drops it.
 func TestCalendarMailboxSyncClaim_AppliesAndIsIdempotent(t *testing.T) {
-	url := testdb.URL(t)
+	t.Parallel()
+	url := testdb.MigratedURL(t)
 	applyUpDownUp(t, url, calendarMailboxSyncClaimVersion)
 
 	ctx := context.Background()

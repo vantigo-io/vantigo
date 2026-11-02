@@ -17,7 +17,8 @@ import (
 // while an entry marked invoiced by hand, with no invoice, stays allowed. The
 // Down takes both columns away again.
 func TestTimeInvoicedBy_AppliesAndIsIdempotent(t *testing.T) {
-	url := testdb.URL(t)
+	t.Parallel()
+	url := testdb.MigratedURL(t)
 	applyUpDownUp(t, url, 37) // 00037_time_invoiced_by.sql
 
 	ctx := context.Background()

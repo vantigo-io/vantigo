@@ -48,7 +48,8 @@ func staffCollect(t *testing.T, ctx context.Context, pool *pgxpool.Pool, what, s
 // settings row; no CHECK constraint anywhere; and the settings row's
 // defaults. The Down removes the schema.
 func TestStaffFoundation_AppliesAndIsIdempotent(t *testing.T) {
-	url := testdb.URL(t)
+	t.Parallel()
+	url := testdb.MigratedURL(t)
 	applyUpDownUp(t, url, staffFoundationVersion)
 	// What is pinned below is 00042's own schema: the later migrations — 00047's
 	// columns on employments, documents and settings among them — are rolled

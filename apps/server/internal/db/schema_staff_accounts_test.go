@@ -50,7 +50,8 @@ const (
 // preparing ones — restores NOT NULL and the collation-dependent index, and
 // leaves the links that name a user as they were.
 func TestStaffAccounts_AppliesAndIsIdempotent(t *testing.T) {
-	url := testdb.URL(t)
+	t.Parallel()
+	url := testdb.MigratedURL(t)
 	applyUpDownUp(t, url, staffAccountsVersion)
 
 	ctx := context.Background()
@@ -259,6 +260,7 @@ func TestStaffAccounts_AppliesAndIsIdempotent(t *testing.T) {
 // migrateErr moves the database to version, up or down, and answers the
 // migration's error rather than failing the test.
 func migrateErr(databaseURL string, version int64) error {
+	defer holdMigrator()()
 	ctx := context.Background()
 	cfg, err := pgx.ParseConfig(databaseURL)
 	if err != nil {
@@ -291,6 +293,7 @@ func migrateErr(databaseURL string, version int64) error {
 // would otherwise fail the seed's insert on the unique key with a bare
 // constraint error, or worse be mistaken for the reserved type.
 func TestStaffAccounts_RefusesACompanyTypeHoldingAReservedKey(t *testing.T) {
+	t.Parallel()
 	for _, key := range []string{"absent_hours", "absent_hr_only", "absent_hr_only_hours"} {
 		url := testdb.URL(t)
 		migrateTo(t, url, staffAccountsVersion-1)
@@ -319,6 +322,7 @@ func TestStaffAccounts_RefusesACompanyTypeHoldingAReservedKey(t *testing.T) {
 // number index is rebuilt under "C" with both people in it, ammefri is paid
 // with its revision moved on by one, and each person's account_revision is 1.
 func TestStaffAccounts_UpOverExistingData(t *testing.T) {
+	t.Parallel()
 	url := testdb.URL(t)
 	migrateTo(t, url, staffAccountsVersion-1)
 	ctx := context.Background()

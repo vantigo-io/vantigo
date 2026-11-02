@@ -14,7 +14,8 @@ import (
 // 00101_projects_templates.sql applies, rolls back and re-applies cleanly,
 // creating the templates table.
 func TestProjectsTemplates_AppliesAndIsIdempotent(t *testing.T) {
-	url := testdb.URL(t)
+	t.Parallel()
+	url := testdb.MigratedURL(t)
 	applyUpDownUp(t, url, 101) // 00101_projects_templates.sql
 
 	ctx := context.Background()

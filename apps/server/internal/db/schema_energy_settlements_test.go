@@ -22,7 +22,8 @@ const energySettlementsVersion = 77
 // when invoiced, a correction naming its original, the blockers and units the
 // CHECKs allow, and a supply period with settlements that cannot be deleted.
 func TestEnergySettlements_AppliesAndIsIdempotent(t *testing.T) {
-	url := testdb.URL(t)
+	t.Parallel()
+	url := testdb.MigratedURL(t)
 	applyUpDownUp(t, url, energySettlementsVersion)
 
 	ctx := context.Background()

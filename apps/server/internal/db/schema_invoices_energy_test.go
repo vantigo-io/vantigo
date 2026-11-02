@@ -21,7 +21,8 @@ const invoicesEnergyVersion = 78
 // ordinary one not; a unit price of eight decimals; the settings' two codes
 // and the seeded code 10.
 func TestInvoicesEnergy_AppliesAndIsIdempotent(t *testing.T) {
-	url := testdb.URL(t)
+	t.Parallel()
+	url := testdb.MigratedURL(t)
 	applyUpDownUp(t, url, invoicesEnergyVersion)
 
 	ctx := context.Background()

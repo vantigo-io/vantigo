@@ -18,7 +18,8 @@ import (
 const communicationsPersonalSendingVersion = 95
 
 func TestCommunicationsPersonalSending_AppliesAndIsIdempotent(t *testing.T) {
-	url := testdb.URL(t)
+	t.Parallel()
+	url := testdb.MigratedURL(t)
 	applyUpDownUp(t, url, communicationsPersonalSendingVersion)
 
 	ctx := context.Background()

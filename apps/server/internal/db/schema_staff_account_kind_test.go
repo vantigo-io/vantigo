@@ -31,7 +31,8 @@ const staffDirectoryFieldsDefault = `{"phones": false, "manager": true, "jobTitl
 // codes an empty text array. A person's second link under a provider's key
 // sits beside the identity link, and the Down deletes it.
 func TestStaffAccountKind_AppliesAndIsIdempotent(t *testing.T) {
-	url := testdb.URL(t)
+	t.Parallel()
+	url := testdb.MigratedURL(t)
 	applyUpDownUp(t, url, staffAccountKindVersion)
 
 	ctx := context.Background()

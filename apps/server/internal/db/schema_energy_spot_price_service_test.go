@@ -23,7 +23,8 @@ const energySpotPriceServiceVersion = 75
 // history row per area — active unless told otherwise, with the last live
 // day read.
 func TestEnergySpotPriceService_AppliesAndIsIdempotent(t *testing.T) {
-	url := testdb.URL(t)
+	t.Parallel()
+	url := testdb.MigratedURL(t)
 	applyUpDownUp(t, url, energySpotPriceServiceVersion)
 
 	ctx := context.Background()

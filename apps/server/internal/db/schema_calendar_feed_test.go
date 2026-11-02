@@ -22,7 +22,8 @@ const calendarFeedVersion = 57
 // starting at 1001, and the two indexes a person's list and the worker's due
 // list go through.
 func TestCalendarFeed_AppliesAndIsIdempotent(t *testing.T) {
-	url := testdb.URL(t)
+	t.Parallel()
+	url := testdb.MigratedURL(t)
 	applyUpDownUp(t, url, calendarFeedVersion)
 
 	ctx := context.Background()
@@ -101,6 +102,7 @@ func TestCalendarFeed_AppliesAndIsIdempotent(t *testing.T) {
 // tables, rows and all, and leaves the rest of the calendar schema as 00056
 // left it.
 func TestCalendarFeed_DownDropsBothTables(t *testing.T) {
+	t.Parallel()
 	url := testdb.URL(t)
 	migrateTo(t, url, calendarFeedVersion)
 

@@ -14,7 +14,8 @@ import (
 // 00100_projects_task_dependencies.sql applies, rolls back and re-applies cleanly,
 // creating the task_dependencies table.
 func TestProjectsTaskDependencies_AppliesAndIsIdempotent(t *testing.T) {
-	url := testdb.URL(t)
+	t.Parallel()
+	url := testdb.MigratedURL(t)
 	applyUpDownUp(t, url, 100) // 00100_projects_task_dependencies.sql
 
 	ctx := context.Background()

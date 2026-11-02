@@ -14,7 +14,8 @@ import (
 // 00099_projects_delivery_milestones.sql applies, rolls back and re-applies cleanly,
 // creating the delivery_milestones table and adding delivery_milestone_id to tasks.
 func TestProjectsDeliveryMilestones_AppliesAndIsIdempotent(t *testing.T) {
-	url := testdb.URL(t)
+	t.Parallel()
+	url := testdb.MigratedURL(t)
 	applyUpDownUp(t, url, 99) // 00099_projects_delivery_milestones.sql
 
 	ctx := context.Background()

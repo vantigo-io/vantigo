@@ -23,7 +23,8 @@ const communicationsChannelSettingsVersion = 91
 // second entra channel on one mailbox while two SMTP channels carrying the
 // same settings are admitted. The down drops both.
 func TestCommunicationsChannelSettings_AppliesAndIsIdempotent(t *testing.T) {
-	url := testdb.URL(t)
+	t.Parallel()
+	url := testdb.MigratedURL(t)
 	applyUpDownUp(t, url, communicationsChannelSettingsVersion)
 
 	ctx := context.Background()

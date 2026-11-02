@@ -334,6 +334,16 @@ func processIsAlive(pid int) bool {
 	return !errors.Is(err, os.ErrProcessDone) && !errors.Is(err, syscall.ESRCH)
 }
 
+// MigratedURL creates a fresh database holding the full schema, as Migrated
+// does, and returns only its connection string, for a test that drives the
+// database itself — the db package's migration tests roll it down and up
+// again with goose. The copy carries goose's version table, so it starts at
+// head exactly as a database that ran every migration would.
+func MigratedURL(t testing.TB) string {
+	t.Helper()
+	return create(t, templateName(t))
+}
+
 // Migrated creates a fresh database holding the full schema and returns a
 // pool on it (closed when the test ends) together with its connection string.
 //

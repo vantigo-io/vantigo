@@ -25,7 +25,8 @@ const entraBaselineVersion = 61
 // unique, case-folded employee number of an account; the credentials'
 // identity starting at 1001; and the events' index by time.
 func TestEntraBaseline_AppliesAndIsIdempotent(t *testing.T) {
-	url := testdb.URL(t)
+	t.Parallel()
+	url := testdb.MigratedURL(t)
 	applyUpDownUp(t, url, entraBaselineVersion)
 	// What is pinned below is 00061's own schema: the later migrations —
 	// 00063's groups and the connection's two columns among them — are
@@ -261,6 +262,7 @@ func TestEntraBaseline_AppliesAndIsIdempotent(t *testing.T) {
 // TestEntraBaseline_DownDropsTheSchema proves the down path removes the
 // schema whole, its rows with it.
 func TestEntraBaseline_DownDropsTheSchema(t *testing.T) {
+	t.Parallel()
 	url := testdb.URL(t)
 	migrateTo(t, url, entraBaselineVersion)
 
@@ -304,7 +306,8 @@ const entraGroupsVersion = 63
 // until a test reads them; and the accounts' licences_assigned, empty. The
 // Down drops the table and the three columns.
 func TestEntraGroups_AppliesAndIsIdempotent(t *testing.T) {
-	url := testdb.URL(t)
+	t.Parallel()
+	url := testdb.MigratedURL(t)
 	applyUpDownUp(t, url, entraGroupsVersion)
 
 	ctx := context.Background()

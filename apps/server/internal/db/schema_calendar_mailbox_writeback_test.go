@@ -20,7 +20,8 @@ const calendarMailboxWritebackVersion = 84
 // calendar.mailbox_events, and the put-back on calendar.mailbox_sync, every
 // one nullable and with its width; the down drops them all.
 func TestCalendarMailboxWriteback_AppliesAndIsIdempotent(t *testing.T) {
-	url := testdb.URL(t)
+	t.Parallel()
+	url := testdb.MigratedURL(t)
 	applyUpDownUp(t, url, calendarMailboxWritebackVersion)
 
 	ctx := context.Background()

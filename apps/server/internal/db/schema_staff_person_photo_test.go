@@ -21,7 +21,8 @@ const staffPersonPhotoVersion = 69
 // CHECK, the module's validation owning the type, as 00042's house style has
 // it. The Down drops the three columns.
 func TestStaffPersonPhoto_AppliesAndIsIdempotent(t *testing.T) {
-	url := testdb.URL(t)
+	t.Parallel()
+	url := testdb.MigratedURL(t)
 	applyUpDownUp(t, url, staffPersonPhotoVersion)
 
 	ctx := context.Background()
