@@ -194,6 +194,13 @@ change** card appears in the conversation. A bulk change has four steps, and you
 - **Failed items.** A record can be refused on its own rules (you may not change that customer, it was
   edited by someone else meanwhile). That item fails and the others go on. The card lists the first 50
   and the CSV has all of them.
+- **Items that may or may not have been changed.** If the server that was making the changes stops
+  while it is at an item (a restart, a crash), another server takes the job over and goes on with the
+  next one. It **never runs that item again**, because it cannot know whether the change was made.
+  The card marks it **Unknown**, lists these first among the items that did not go through, with the
+  sentence *This change may or may not have been made; check it*, and the CSV has them with the status
+  `unknown`. Open each one and look: if the change is there, nothing more is needed; if it is not, make it
+  yourself or ask the assistant to propose it again.
 - **Why a long job asks you to Continue.** The assistant acts with your permission, which belongs
   to your session and lasts an hour at most. A job that would outlive it **pauses**, and the card says *Confirm to
   go on*: **Continue** gives it a fresh hour. **If you sign out, the job stops** at the next item,

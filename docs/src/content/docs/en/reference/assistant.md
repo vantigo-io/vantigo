@@ -12,6 +12,7 @@ sources:
   - apps/server/internal/db/migrations/00103_assistant_baseline.sql
   - apps/server/internal/db/migrations/00104_assistant_writes.sql
   - apps/server/internal/db/migrations/00105_assistant_bulk.sql
+  - apps/server/internal/db/migrations/00106_assistant_bulk_once.sql
 ---
 The Assistant module gives every person a conversation partner that answers "how do I…"
 from the documentation, reads the data the person may read and does
@@ -59,7 +60,7 @@ not planned.
 ## The schema
 
 Migration `00103_assistant_baseline.sql` creates the schema `assistant`; `00104_assistant_writes.sql`
-adds the pending actions, the usage counts and the budget, and `00105_assistant_bulk.sql` the bulk jobs. A user is identity's: the
+adds the pending actions, the usage counts and the budget, `00105_assistant_bulk.sql` the bulk jobs and `00106_assistant_bulk_once.sql` the states that make an item run at most once. A user is identity's: the
 module holds an opaque `user_id` with no foreign key to it ([rule 4](/en/contributing/module-boundaries/)),
 and learns that one was erased by [asking identity](#erasure).
 
@@ -645,11 +646,11 @@ that the records are untouched.
 
 `assistant.bulk_jobs` has `pending_action_id`, `run_id`, `conversation_id`, `user_id`, `operation_id`,
 `selector` and `template` (the person's filters and values until the job ends), `state`, the counters
-`total`, `processed`, `succeeded`, `failed` and `skipped` (excluded items count as processed and skipped from
-the start), `stop_requested`, `grant_id` and `grant_expires_at`, `claimed_by` and `claimed_until`,
+`total`, `processed`, `succeeded`, `failed`, `unknown` and `skipped` (excluded items count as processed and skipped from
+the start; `processed` is the sum of the other four), `stop_requested`, `grant_id` and `grant_expires_at`, `claimed_by` and `claimed_until`,
 `pause_reason`, `error_code`, and the timestamps. `assistant.bulk_job_items` has `(job_id, seq)` as its key, `item`
-(the bound values and the label), `status` — `pending`, `succeeded`, `failed` or `skipped` — `http_status`,
-`problem_code`, `problem_title` and `done_at`. Both are private like every table of the module: every query
+(the bound values and the label), `status` — `pending`, `in_flight`, `succeeded`, `failed`, `skipped` or `unknown` — `http_status`,
+`problem_code`, `problem_title`, `in_flight_at` (when the item's call went out) and `done_at`. Both are private like every table of the module: every query
 that serves the person filters by `user_id`, another person's job is **404 `not_found`**, they are deleted
 with the conversation, and so [retention and erasure](#retention) cover them.
 
@@ -716,9 +717,23 @@ a pool of one connection).
 conditional update so exactly one wins, and the job goes on from its next `pending` item. A replica sees it
 when it answers the person's `GET` of the job or of the conversation (a card that is open asks every two
 seconds), and when the workers run in the API process (`WORKERS_IN_PROCESS=1`) the `assistant-runs` worker hands the
-lapsed jobs to the API server composed over the same pool. A worker-mode process only expires; an item that was
-in flight when its replica died may run twice, for the router cannot tell, so use this for changes that are
-safe to repeat.
+lapsed jobs to the API server composed over the same pool. A worker-mode process only expires.
+
+**An item runs at most once** (S17). Before the call for an item the runner writes `in_flight` and `in_flight_at`
+in a statement of its own (`MarkBulkItemInFlight`), which commits before `Operations.Call` and, like every statement
+here, holds no transaction or connection across it. The outcome is recorded after the call, from `in_flight`, in the
+same statement as the counters; a replica that no longer holds the claim, or whose item the takeover has already
+marked `unknown`, records nothing and stops. The statement that takes a lapsed job over (`ClaimBulkJob`) moves
+every `in_flight` item of the job to **`unknown`** and adds them to `processed` and `unknown` in that same statement, so
+the replica that takes over **never calls them** and continues from the next `pending` item. `unknown` means the
+change **may or may not have been made**: the router cannot tell, so nothing retries it, and the person is told to check
+it. An item the dispatcher refused before it went out (a 401, a level the Owner narrowed) is put back to `pending`
+and the job ends as before; a call cut short because the process is going away stays `in_flight` and becomes
+`unknown` at the takeover.
+
+**The idempotency key.** When the per-item operation declares an `Idempotency-Key` header parameter (as
+the communications operations that send do), every call sends `Idempotency-Key: assistant-bulk-<job id>-<seq>`,
+built from the job's UUID and the item's integer position. A retry after a 429, and any replay, carries the same key.
 
 **The assistant keeps its own runner.** The design (S13) planned the runner to become a shared platform helper
 instead of a fourth copy; it did not, and the imports' and billing runs' were left alone. This job differs from
@@ -730,11 +745,13 @@ it is claimed and resumed rather than leased by a worker, and its counters are w
 
 All are `session` operations and `x-vantigo-assistant: never`. `GET /bulk-jobs/{id}` answers the job —
 `state`, the counters, `sample`, `excluded`, the `canary` items (up to 5), `pauseReason`, `errorCode`, `grantExpiresAt` and
-`failures`, the **first 50** failed items by their position — and is what a card polls every two seconds while the job runs.
+`unknown` (the counter) and
+`failures`, the **first 50** failed or unknown items, the `unknown` ones first and then by position — and is what a card polls every two seconds while the job runs.
 `POST /bulk-jobs/{id}/stop` ends a plan not started (cancelled) or a job waiting for Continue at once, and asks a running
 job to stop (`stopping`); a job already over is answered as it is. `POST /runs/{id}/stop` on a run that waits for a job
-does the same. `GET /bulk-jobs/{id}/failures.csv` is the failed items — `item`, `reference` (the bound values), `http_status`,
-`problem_code`, `problem_title` — semicolon-separated, UTF-8 with a byte order mark and CRLF, written with `encoding/csv`,
+does the same. `GET /bulk-jobs/{id}/failures.csv` is the failed and the unknown items, by position — `item`, `reference` (the bound values),
+`status` (`failed` or `unknown`), `http_status`, `problem_code`, `problem_title` (for an unknown item: *This change may or may not
+have been made; check it*) — semicolon-separated, UTF-8 with a byte order mark and CRLF, written with `encoding/csv`,
 and any cell that would open as a formula (it starts with `=`, `+`, `-`, `@`, a tab or a carriage return) gets an
 apostrophe in front. The file is named `assistant-bulk-<job id>-failed-items.csv`.
 
