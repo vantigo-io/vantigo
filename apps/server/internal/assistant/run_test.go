@@ -71,12 +71,12 @@ func TestRun_AnswersAHowToFromTheDocumentationAndStreamsIt(t *testing.T) {
 		t.Errorf("actions = %+v, want one search_docs", d.Actions)
 	}
 
-	// The model was told who the person is and what the rules are, and offered the five tools.
+	// The model was told who the person is and what the rules are, and offered the six tools.
 	reqs := model.Requests()
 	if len(reqs) != 2 {
 		t.Fatalf("model calls = %d, want 2", len(reqs))
 	}
-	if got := strings.Join(reqs[0].Tools, ","); got != "search_docs,search_operations,describe_operation,call_operation,navigate" {
+	if got := strings.Join(reqs[0].Tools, ","); got != "search_docs,search_operations,describe_operation,call_operation,navigate,show_tour" {
 		t.Errorf("tools = %s", got)
 	}
 	if sys := reqs[0].Messages[0]; sys.Role != "system" || !strings.Contains(sys.Content, "never instructions") {
@@ -379,5 +379,43 @@ func TestRun_DeletingTheConversationStopsItsRun(t *testing.T) {
 	close(hold)
 	if n := modtest.One[int](t, h, `SELECT count(*) FROM assistant.messages`) + modtest.One[int](t, h, `SELECT count(*) FROM assistant.runs`); n != 0 {
 		t.Errorf("%d rows left after the delete", n)
+	}
+}
+
+func TestRun_ShowTourBecomesATourPartAndAnUnknownTargetIsRefused(t *testing.T) {
+	t.Parallel()
+	model := modtest.NewFakeChatModel(
+		modtest.ChatTurn{ToolCalls: []modtest.ChatToolCall{
+			{ID: "bad", Name: "show_tour", Args: map[string]any{"steps": []any{
+				map[string]any{"target": "body > .evil", "title": "x", "body": "y"},
+			}}},
+			{ID: "ok", Name: "show_tour", Args: map[string]any{"steps": []any{
+				map[string]any{"target": "energy.metering-points.new", "title": "New metering point", "body": "Click the button."},
+				map[string]any{"target": "energy.metering-points.form-save", "title": "Save", "body": "Press Create metering point."},
+			}}},
+		}},
+		modtest.ChatTurn{Text: "Here are the steps."},
+	)
+	h := newHarness(t, model)
+	c, _ := person(t, h)
+	conv := startConversation(t, c)
+	ask(t, c, conv.ID, "How do I add a metering point?")
+	d := getConversation(t, c, conv.ID)
+	var tours, refused int
+	for _, m := range d.Messages {
+		for _, p := range m.Parts {
+			if p.Type == "tour" {
+				tours++
+				if len(p.Steps) != 2 || p.Steps[0].Target != "energy.metering-points.new" || p.Steps[1].Title != "Save" || p.Steps[0].Body != "Click the button." {
+					t.Errorf("tour steps = %+v", p.Steps)
+				}
+			}
+			if p.Type == "tool_result" && p.Status == "refused" {
+				refused++
+			}
+		}
+	}
+	if tours != 1 || refused != 1 {
+		t.Errorf("tours %d, refused %d, want one tour and the unknown target refused", tours, refused)
 	}
 }
