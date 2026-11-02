@@ -10,8 +10,12 @@ and what to report. They are written for **Claude Sonnet 5.5** (`model: sonnet`)
 | --- | --- | --- | --- | --- |
 | [0](0-platform.md) | `ai.Chat`, local models, the assistant grant, the `Operations` dispatcher, assistant modes, summaries | `feat/assistant-platform` | nothing | Go (ai, config, contracts, module, identity, openapi), one migration, contracts, docs |
 | [A](a-assistant-app.md) | The `assistant` module, the `/assistant` app, the panel, docs search, read tools | `feat/assistant-app` | **0 merged** | Go (new module), migrations, new frontend package, host, docs (en and nb) |
+| [B](b-writes.md) | Changes with confirmation cards, the daily budget, the usage view, safe links | `feat/assistant-writes` | **A merged** | Go (assistant), a migration, assistant frontend, docs (en and nb) |
+| [T](t-tours.md) | *Show me*: Mantine Tour over a registry of `data-assist` targets | `feat/assistant-tours` | **A merged**; run after B | module frontends (markers), assistant (Go and frontend), host, docs (en and nb) |
 
-T (tours), B (writes) and C (bulk) are briefed after A lands.
+C (bulk) is briefed once B lands, because it reuses B's pending action and card. B and T
+both change the assistant's tools, prompt and panel, so they run one after the other:
+B first.
 
 **Order.** 0, then A once 0 is on `main`. Anders merges each pull request himself. Open
 each one against `main` once the delivery it depends on has landed. Stacking a delivery
