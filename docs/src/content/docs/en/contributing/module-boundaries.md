@@ -1012,7 +1012,16 @@ none is a numbered rule above because no module reaches into another.
   and the last must stay free while a sync waits on the provider (the mailbox fake's
   `BeforeStatus` holds it there) or a fetch runs: **no worker holds a pooled connection
   while it asks the pool for another or calls out**, which on pgxpool's default — four,
-  or one a CPU on a larger machine — starved every worker and the readiness probe. Identity is always
+  or one a CPU on a larger machine — starved every worker and the readiness probe. A
+  worker under an advisory lease runs its cycle on the connection the lease holds, and
+  calls another module only before the lease is taken or after it is released. The lease
+  workers that broke that rule once — customers' registry feed, Peppol re-check and
+  anonymisation, communications' retention, energy's import, invoices' EHF events and
+  staff's accounts — each have a test that runs a cycle on a pool of one, where a reach
+  for a second connection waits to the test's deadline, and `cmd/vantigo`'s
+  `TestServe_APIIsReadyOnAPoolOfFourWithEveryWorker` boots the api with every worker it
+  runs by default on a pool of four and asks for readiness while their first cycles
+  run. Identity is always
   composed and always provides `Accounts`, and Compose overwrites a preset
   `Deps.Accounts`, so `WithAccounts(p)` replaces identity's `Module.Accounts` in the
   composition — `p` is what every module's `Deps.Accounts` resolves to — and
