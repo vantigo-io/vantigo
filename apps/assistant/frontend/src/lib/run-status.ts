@@ -2,12 +2,12 @@ import { useSyncExternalStore } from "react";
 
 /**
  * What the Assistant button's badge shows: `working` while a run is going,
- * `done` once it has finished and the person has not looked yet, `idle`
- * otherwise. (From delivery B, `waiting` joins them for a confirmation.) The
- * conversation view reports it; the button, which lives in the header and not
- * under the panel, reads it.
+ * `waiting` while a proposed change needs the person's confirmation, `done`
+ * once it has finished and the person has not looked yet, `idle` otherwise.
+ * The conversation view reports it; the button, which lives in the header and
+ * not under the panel, reads it.
  */
-export type AssistantRunStatus = "idle" | "working" | "done";
+export type AssistantRunStatus = "idle" | "working" | "waiting" | "done";
 
 let status: AssistantRunStatus = "idle";
 const listeners = new Set<() => void>();

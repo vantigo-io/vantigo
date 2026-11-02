@@ -21,3 +21,7 @@ export type AssistantPerson = Schemas["AssistantPerson"];
 export type AssistantMe = Schemas["AssistantMe"];
 export type AssistantUpdateConversation = Schemas["AssistantUpdateConversationRequest"];
 export type AssistantSettingsRequest = Schemas["AssistantSettingsRequest"];
+export type AssistantPendingAction = Schemas["AssistantPendingAction"];
+export type AssistantPendingField = Schemas["AssistantPendingField"];
+export type AssistantUsage = Schemas["AssistantUsage"];
+export type AssistantUsageRow = Schemas["AssistantUsageRow"];

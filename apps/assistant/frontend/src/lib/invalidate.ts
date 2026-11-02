@@ -1,27 +1,16 @@
 import type { QueryClient } from "@tanstack/react-query";
-
-/** What a finished run tells the screen, for the seam below. */
-export interface AssistantRunOutcome {
-  conversationId: string;
-  runId?: string;
-  state: "done" | "stopped" | "failed";
-}
+import { ASSISTANT_QUERY_KEY } from "../api/request";
 
 /**
- * THE SEAM FOR DELIVERY B. After an action succeeds, the panel invalidates
- * that module's TanStack queries so the screen the person is on shows the
- * change (design S12). Delivery A has no writes (the assistant reads only), so
- * this does nothing; it is called, once, when a run finishes and again for
- * each `tool` event that reports `done`, so B has one place to map an
- * operation to the query keys it changes without touching the stream code.
- *
- * `operation` is the tool's `name` as the stream reports it.
+ * After a confirmed change succeeds, the screen the person is on must show it
+ * (design S12). The host's modules do not key their queries by one convention
+ * (customers uses `customers` and `contacts`, invoices `invoices`, the tax
+ * categories `tax-categories`, and a change in one module shows in another's
+ * lists), so a map from an operation to "its module's" keys would be wrong as
+ * often as right. This marks every query stale except the assistant's own and
+ * refetches the ones on screen — `invalidateQueries` refetches only active
+ * queries — which is both simpler and correct.
  */
-export const invalidateAfterAssistantWrites = (
-  _queryClient: QueryClient,
-  _outcome: AssistantRunOutcome,
-  _operation?: string,
-): void => {
-  // Delivery A: the assistant only reads, so nothing changes under the screen.
-  void [_queryClient, _outcome, _operation];
+export const invalidateAfterAssistantWrites = (queryClient: QueryClient): void => {
+  void queryClient.invalidateQueries({ predicate: (query) => query.queryKey[0] !== ASSISTANT_QUERY_KEY });
 };

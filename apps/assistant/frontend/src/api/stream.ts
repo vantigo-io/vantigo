@@ -1,5 +1,5 @@
 import { appUrl } from "@vantigo/frontend-shell";
-import type { AssistantMessage, AssistantMessageContext } from "./types";
+import type { AssistantMessage, AssistantMessageContext, AssistantPendingAction } from "./types";
 
 /**
  * One event of the message stream, as the server writes it: `event: <name>`
@@ -10,10 +10,11 @@ export type StreamEvent =
   | { event: "message"; data: AssistantMessage }
   | { event: "delta"; data: { text: string } }
   | { event: "tool"; data: { callId: string; name: string; label: string; state: "started" | "done" } }
-  | { event: "done"; data: { state: "done" | "stopped" } }
+  | { event: "confirmation"; data: AssistantPendingAction }
+  | { event: "done"; data: { state: "done" | "stopped" | "awaiting_confirmation" } }
   | { event: "error"; data: { code: string } };
 
-const eventNames = new Set(["run", "message", "delta", "tool", "done", "error"]);
+const eventNames = new Set(["run", "message", "delta", "tool", "confirmation", "done", "error"]);
 
 /**
  * Reads a server-sent-event byte stream a chunk at a time. A chunk may end in
@@ -82,21 +83,17 @@ export interface SendMessageBody {
 }
 
 /**
- * Sends a message and yields the run's events as they arrive. This is a
- * `fetch` with a `ReadableStream` reader over the POST, not `EventSource`:
- * the request has a body, and the session cookie must go with it. Aborting
- * the signal stops listening, not the run: the server finishes it either way.
+ * Posts and yields the run's events as they arrive. This is a `fetch` with a
+ * `ReadableStream` reader over the POST, not `EventSource`: the request has a
+ * body, and the session cookie must go with it. Aborting the signal stops
+ * listening, not the run: the server finishes it either way.
  */
-export async function* sendMessage(
-  conversationId: string,
-  body: SendMessageBody,
-  signal?: AbortSignal,
-): AsyncGenerator<StreamEvent, void, void> {
-  const response = await fetch(appUrl(`/api/v1/assistant/conversations/${conversationId}/messages`), {
+async function* readStream(path: string, body: unknown, signal?: AbortSignal): AsyncGenerator<StreamEvent, void, void> {
+  const response = await fetch(appUrl(path), {
     method: "POST",
     headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
     credentials: "include",
-    body: JSON.stringify(body),
+    body: body === undefined ? undefined : JSON.stringify(body),
     signal,
   });
   if (!response.ok) {
@@ -125,3 +122,15 @@ export async function* sendMessage(
     reader.cancel().catch(() => undefined);
   }
 }
+
+/** Sends a message and yields the run's events as they arrive. */
+export const sendMessage = (conversationId: string, body: SendMessageBody, signal?: AbortSignal) =>
+  readStream(`/api/v1/assistant/conversations/${conversationId}/messages`, body, signal);
+
+/**
+ * The person's decision on a proposed change: confirming runs it as them,
+ * cancelling tells the model it was cancelled. Either way the run goes on, and
+ * its events arrive as a message's do.
+ */
+export const decideAction = (actionId: string, decision: "confirm" | "cancel", signal?: AbortSignal) =>
+  readStream(`/api/v1/assistant/pending-actions/${actionId}/${decision}`, undefined, signal);

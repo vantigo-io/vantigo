@@ -34,8 +34,8 @@ const levelKey = { off: "levelOff", read: "levelRead", change: "levelChange" } a
 /**
  * The catalog of the enabled modules, grouped by module and category, with a
  * level per permission (S16): Off, Read, or Read and change. Only overrides
- * are stored, so each row offers Reset to default. Read and change can be
- * chosen but says changes come later. Every write names the settings' version
+ * are stored, so each row offers Reset to default. Read and change lets the assistant propose
+ * changes, each of which waits for the person's confirmation. Every write names the settings' version
  * in If-Match; a stale one reloads the table and says so.
  */
 export const PermissionsTable = ({ translate }: { translate?: PermissionsTranslation }) => {
@@ -172,16 +172,6 @@ export const PermissionsTable = ({ translate }: { translate?: PermissionsTransla
                           aria-label={t("levelFor", { permission: words.display })}
                           value={permission.effectiveLevel}
                           data={levels.map((level) => ({ value: level, label: levelLabel(level) }))}
-                          renderOption={({ option }) => (
-                            <Stack gap={0}>
-                              <Text size="sm">{option.label}</Text>
-                              {option.value === "change" && (
-                                <Text size="xs" c="dimmed">
-                                  {t("changeLater")}
-                                </Text>
-                              )}
-                            </Stack>
-                          )}
                           disabled={save.isPending}
                           onChange={(value) =>
                             value && save.mutate({ key: permission.key, level: value as AssistantPermissionLevel })

@@ -5,6 +5,7 @@ export { AssistantPanel, type AssistantPanelProps } from "./components/assistant
 export type { PermissionsTranslation } from "./components/permissions-table";
 export { AssistantPersonSwitch, type AssistantPersonSwitchProps } from "./components/person-switch";
 export { AssistantSettingsCard, type AssistantSettingsCardProps } from "./components/settings-card";
+export { UsageTable } from "./components/usage-table";
 export { type UseAssistantShellOptions, useAssistantShell } from "./hooks/use-assistant-shell";
 export { useAssistantAvailability } from "./hooks/use-availability";
 export { assistantCatalog } from "./i18n";

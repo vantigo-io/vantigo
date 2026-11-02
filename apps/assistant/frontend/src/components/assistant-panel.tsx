@@ -1,8 +1,9 @@
 import { ActionIcon, Box, Group, Loader, Menu, Text, Tooltip } from "@mantine/core";
+import { notifications } from "@mantine/notifications";
 import { IconExternalLink, IconHistory, IconPlus, IconX } from "@tabler/icons-react";
 import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useI18n } from "@vantigo/frontend-shell";
-import { useCallback, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   conversationQueryOptions,
   conversationsQueryOptions,
@@ -10,7 +11,7 @@ import {
   meQueryOptions,
   putMe,
 } from "../api/assistant";
-import type { AssistantConversation } from "../api/types";
+import type { AssistantConversation, AssistantPendingAction } from "../api/types";
 import type { AssistantChip } from "../lib/context";
 import { clampPanelWidth, type PendingQuestion } from "../lib/panel";
 import { setAssistantRunStatus } from "../lib/run-status";
@@ -172,10 +173,36 @@ export const AssistantPanel = ({
   useLayoutEffect(() => {
     openRef.current = open;
   });
+  const waitingRef = useRef(false);
   const onWorkingChange = useCallback((working: boolean) => {
     if (working) setAssistantRunStatus("working");
+    else if (waitingRef.current) setAssistantRunStatus("waiting");
     else setAssistantRunStatus(openRef.current ? "idle" : "done");
   }, []);
+  // Shut again with a change still waiting: the badge says so.
+  useEffect(() => {
+    if (!open && waitingRef.current) setAssistantRunStatus("waiting");
+  }, [open]);
+  // A change waits for the person: the badge says so until they decide it.
+  const onWaitingChange = useCallback((waiting: boolean) => {
+    waitingRef.current = waiting;
+    if (waiting) setAssistantRunStatus("waiting");
+    else setAssistantRunStatus(openRef.current ? "idle" : "done");
+  }, []);
+  // With the panel shut, a proposed change would wait unseen: a notification says so.
+  const onProposal = useCallback(
+    (card: AssistantPendingAction) => {
+      if (openRef.current) return;
+      notifications.show({
+        id: `assistant-card-${card.id}`,
+        color: "orange",
+        title: t("notifyWaitingTitle"),
+        message: card.explain || card.summary,
+        autoClose: false,
+      });
+    },
+    [t],
+  );
 
   const current = selected ?? null;
   const origin = { app: context?.app ?? "home", route: context?.route ?? "/" };
@@ -242,6 +269,8 @@ export const AssistantPanel = ({
             onMissing={() => setChosen(null)}
             onNavigate={onNavigate}
             onWorkingChange={onWorkingChange}
+            onWaitingChange={onWaitingChange}
+            onProposal={onProposal}
             question={pendingQuestion && current === null ? pendingQuestion : undefined}
             onQuestionSent={onQuestionSent}
           />
