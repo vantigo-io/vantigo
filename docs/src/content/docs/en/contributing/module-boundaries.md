@@ -906,7 +906,10 @@ Communications' outbox is the working example.
     `contracts.ProductCatalog.LockVariants(ctx, tx, ids)` is the one exception (the
     Inventory design I22): it takes `FOR SHARE OF` the variants' rows **and** their
     products' rows — where type and status live — in variant id order, and answers the
-    entries, an id that does not exist simply absent. Its rules:
+    entries, an id that does not exist simply absent. Each entry carries the variant's
+    packagings (I24), read under the same locks: a packaging write locks its variant
+    `FOR UPDATE` first, so the packagings a posting converts what was entered with stand
+    still until it commits. Its rules:
     - **It runs on the caller's `tx`, never on the pool.** It never begins, commits or
       rolls back the transaction, so it takes no second connection under the caller's
       locks. `tx` is a platform type (`pgx.Tx`), as in `contracts.InvoicedWorkHolder`, so

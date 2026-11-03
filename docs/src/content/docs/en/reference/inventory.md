@@ -860,6 +860,23 @@ request 400 and a rule about the state of things 409, as every other module does
 does this one: 400 for the field and line rules, 409 `revision_conflict` for a stale
 revision.
 
+## Assistant tour targets
+
+The Assistant can point at these controls in a guided tour ([the registry](/en/reference/assistant/#guided-tours)). The package registers them in `apps/inventory/frontend/src/assist-targets.json`, exports them as `assistTargets` (`@vantigo/inventory-ui/assist-targets`) and marks each control with `data-assist="<key>"`; a test of the package fails when a key has no marker or a marker has no key. A route with `{…}` is a record's screen.
+
+| Key | Route | Control |
+| --- | --- | --- |
+| `inventory.home.lookup` | `/inventory` | The lookup field (Find location or item) |
+| `inventory.home.new-site` | `/inventory` | New site |
+| `inventory.home.new-receipt` | `/inventory` | New receipt |
+| `inventory.home.new-adjustment` | `/inventory` | New adjustment |
+| `inventory.home.new-move` | `/inventory` | New move |
+| `inventory.site.new-location` | `/inventory/sites/{siteId}` | New location |
+| `inventory.site.bulk-add` | `/inventory/sites/{siteId}` | Bulk add |
+| `inventory.site.print-labels` | `/inventory/sites/{siteId}` | Print labels |
+| `inventory.counts.new` | `/inventory/counts` | Open count |
+| `inventory.import.upload` | `/inventory/import` | The CSV file |
+
 ## Enabling and disabling
 
 `MODULES` is a positive allowlist; the smallest installation with Inventory is
