@@ -118,8 +118,8 @@ Velg **Ny samtale** i verktøylinjen for å starte en ny kundesamtale: skriv inn
 e-postadresse i **Til**, **Emne**, og skriv meldingen din.
 
 Dersom du har koblet til din egen Outlook under **Innstillinger → Tilkoblinger** (med
-tillatelsen E-post innvilget), kan du huke av for **Send fra min adresse (`du@dittfirma.no`)**.
-E-posten sendes gjennom din personlige Microsoft 365-postboks, slik at den vises i dine egne
+tillatelsen E-post innvilget), kan du huke av for **Send fra min Outlook-adresse (`du@dittfirma.no`)**
+— avkrysningsboksen navngir tjenesten din egen adresse sendes gjennom. E-posten sendes gjennom din personlige Microsoft 365-postboks, slik at den vises i dine egne
 sendte elementer. Kundens svar sendes likevel til kanalens delte postkasse (`Reply-To`), slik
 at samtalen holdes samlet i den delte innboksen for teamet ditt.
 
@@ -130,13 +130,13 @@ går til («Svarer til …»): avsenderen av kundens siste e-post. Når den e-po
 sendt til andre i kopi (Cc), tilbyr velgeren **Svarmodus** valgene **Svar**, bare til
 avsenderen, og **Svar alle · N**, som tar dem med i kopi også — uten den delte postboksen
 selv. Som standard sendes svaret fra kanalen samtalen hører til. Dersom du har koblet til
-din egen Outlook med e-posttillatelse, kan du også huke av for **Send fra min adresse (`du@dittfirma.no`)**
+din egen Outlook med e-posttillatelse, kan du også huke av for **Send fra min Outlook-adresse (`du@dittfirma.no`)**
 for å sende fra din egen postboks i stedet, mens kundens svar havner i den delte kanalen. Det sendes
 som et svar på kundens e-post, så det havner i samme tråd i kundens e-postprogram.
 
 ### Personlig sending og ny prøving
 
-Når **Send fra min adresse** er valgt:
+Når **Send fra min …-adresse** er valgt:
 - `From`-adressen er din e-postadresse og visningsnavn fra katalogen, og e-posten havner i
   dine egne sendte elementer i Microsoft 365.
 - `Reply-To`-adressen er kanalens adresse og visningsnavn, slik at svar fra kunden kommer
@@ -146,7 +146,7 @@ Når **Send fra min adresse** er valgt:
   tilbake i den samme samtalen, med filtrene du hadde.
 - Dersom en personlig sending mislykkes ved utsending fordi Microsoft avviste påloggingen din
   eller krevde ny flerfaktorautentisering, viser meldingskortet:
-  *Sendingen mislyktes fordi Outlook-tilkoblingen din må kobles til på nytt.* med en knapp for
+  *Sendingen mislyktes fordi e-posttilkoblingen din må kobles til på nytt.* med en knapp for
   **Koble til Outlook på nytt** og en knapp for **Prøv å sende på nytt**. Når du har koblet
   til Outlook på nytt, trykker du på **Prøv å sende på nytt** for å legge meldingen i kø igjen.
 
@@ -234,7 +234,7 @@ eller byttet; **Feilet: …** med årsaken når Vantigo ikke kan lese postboksen
 kanalen. Bekreft kanalen.* — eller **Siste synkronisering feilet: …** når ett forsøk
 feilet og Vantigo prøver igjen (*E-postkanaler gjennom Microsoft 365 er ikke
 tilgjengelige.* mens **E-postkanaler** er av eller Entra-tilkoblingen feiler; e-posten
-venter i postboksen). En SMTP-kanal viser **Sender bare**.
+venter i postboksen). Hver årsak navngir kanalens egen leverandør. En SMTP-kanal viser **Sender bare**.
 
 En kanal som ikke kan sende, viser et oransje merke **Utilgjengelig** i kolonnen
 **Status**, med årsaken under: *Kanalen har ingen lagret legitimasjon og sender derfor
@@ -245,7 +245,11 @@ ingenting**: Vantigo faller aldri tilbake på e-postserverinnstillingene adminis
 har satt opp for sin egen e-post. En melding i kø på en slik kanal feiler med en gang, og
 en kanal som er utilgjengelig tilbys ikke Fakturering eller Kalender som sted å sende fra.
 
-En kanal sender på en av to måter, sin **Leverandør**:
+En kanal sender gjennom sin **Leverandør**: SMTP, eller en postbokstjeneste Vantigo er
+koblet til. Listen **Leverandør** i dialogen **Legg til e-postkanal** viser **SMTP**
+først, deretter hver postbokstjeneste administratoren har slått på, med navnet sitt — i
+dag **Microsoft 365** — og en tjeneste som er slått på, men ikke kan brukes akkurat nå, er
+nedtonet, med *Ikke tilgjengelig nå* og årsaken ved siden av:
 
 - **SMTP** — gjennom en e-postserver, med en SMTP-konto. Administratoren må ha
   applikasjonshemmeligheten på plass og kjenne SMTP-vert, port og konto; passordet
@@ -257,7 +261,8 @@ En kanal sender på en av to måter, sin **Leverandør**:
 - **Microsoft 365** — fra en **delt postboks** i Exchange Online, gjennom Microsoft 365,
   uten passord å legge inn. Den **mottar** også: e-post som kommer til innboksen i den
   delte postboksen fra den dagen kanalen legges til, kommer inn i Innboks — ikke e-posten
-  som lå der fra før. Det tilbys først når noen har slått på **E-postkanaler** i
+  som lå der fra før. Den står i listen når appen Microsoft Entra ID er på, og kan velges
+  først når noen har slått på **E-postkanaler** i
   appen Microsoft Entra ID og en Exchange-administrator har gitt Vantigo tilgang til
   postboksen ([administrasjonsveiledningen](/nb/admin/entra/#mail-channels)). Når
   applikasjonens tilgang når alle postboksene i selskapet, sier et oransje varsel over
@@ -267,7 +272,7 @@ En kanal sender på en av to måter, sin **Leverandør**:
   administrerer kanaler i Kommunikasjon, sende som hvilken som helst delt postboks i
   leietakeren.* Kanalene virker likevel.
 
-Leverandørlisten i dialogen **Legg til e-postkanal** viser også **Vantigo-driftet
+Leverandørlisten i dialogen **Legg til e-postkanal** slutter med **Vantigo-driftet
 e-post**, nedtonet og med *Ikke tilgjengelig ennå*: den tilbys ikke ennå og kan ikke
 velges.
 
@@ -303,9 +308,10 @@ til.*:
 
 - **Importer historikk** — **Fra nå av** (standard), **Siste 30 dager** eller **Siste 90
   dager**.
-- **Når en samtale lukkes** — **La stå uendret i Outlook** (standard), **Marker som lest i
-  Outlook** eller **Flytt til mappe i Outlook** (som spør etter **Outlook-mappe**, fylt inn
-  med `Handled in Vantigo`, opprettet i den delte postboksen hvis den ikke finnes fra før).
+- **Når en samtale lukkes** — **La stå uendret i postboksen** (standard), **Marker som lest
+  i postboksen** eller **Flytt til en mappe i postboksen** (som spør etter **Mappe i
+  postboksen**, fylt inn med `Handled in Vantigo`, opprettet i den delte postboksen hvis den
+  ikke finnes fra før).
 
 **Opprett
 kanal** sjekker postboksen med Microsoft 365 først; kanalen opprettes aktiv, med
@@ -313,33 +319,38 @@ postboksens egen primære adresse, og kan sende med en gang. Sjekken kan avvise 
 
 | Dialogen sier | Betyr | Hvem retter det |
 | --- | --- | --- |
-| *Dette er en personlig postboks. Bare en delt postboks kan være en kanal.* | Adressen er en persons postboks. | Bruk en delt postboks; en Exchange-administrator kan gjøre om en. |
+| *Dette er en persons egen postboks. Bare en delt postboks kan være en kanal.* | Adressen er en persons postboks. | Bruk en delt postboks; en Exchange-administrator kan gjøre om en. |
+| *Adressen er en gruppe. En gruppe har ingen postboks Vantigo kan lese; bruk en lisensiert postboks.* | Adressen hører til en gruppe, ikke en postboks (en e-posttjeneste med egne gruppeadresser sier fra; Microsoft 365 gjør det ikke). | Bruk adressen til en postboks. |
 | *Postboksen er utenfor det applikasjonen har tilgang til. Gi applikasjonen tilgang til den i Exchange Online.* | Vantigo har ikke fått tilgang til postboksen, eller tilgangen virker ikke ennå — det kan ta opptil 2 timer. | En Exchange-administrator, med [Slik gir du applikasjonen tilgang](/nb/admin/entra/#mail-channels). |
 | *Microsoft 365 har ingen postboks med denne adressen.* | Ingen postboks har adressen — eller den er et alias. | Bruk postboksens primære adresse. |
-| *E-postkanaler gjennom Microsoft 365 er ikke tilgjengelige. En Entra-administrator slår på E-postkanaler i Entra-innstillingene.* | **E-postkanaler** er av, eller Entra-tilkoblingen virker ikke. | Den som administrerer appen Microsoft Entra ID. |
+| *E-postkanaler gjennom Microsoft 365 er ikke tilgjengelige. En administrator slår dem på under Integrasjoner.* | **E-postkanaler** er av, eller Entra-tilkoblingen virker ikke. | Den som administrerer appen Microsoft Entra ID. |
 | *En annen kanal bruker allerede denne postboksen.* | En annen kanal bruker den samme postboksen, kanskje med en annen av adressene. | Bruk den kanalen. |
 | *Det finnes allerede en kanal med denne adressen.* | En annen kanal har adressen. | Bruk den kanalen. |
 | *Microsoft 365 svarte ikke. Prøv igjen om litt.* | Microsoft 365 var opptatt eller utilgjengelig. | Prøv igjen. |
 
-Å legge til, bytte og bekrefte kanaler er begrenset til 30 i minuttet; over det,
+Hver melding navngir leverandøren du valgte. Å legge til, bytte og bekrefte kanaler er begrenset til 30 i minuttet; over det,
 *For mange forsøk. Vent et minutt og prøv igjen.*
 
-### Bytt en SMTP-kanal til Microsoft 365
+### Bytt en SMTP-kanal til en postbokstjeneste
 
 Når postboksen en SMTP-kanal sender fra er en delt postboks i Exchange Online, kan
 kanalen sende gjennom Microsoft 365 i stedet, og beholder samtalene, adressen og merket
-**Standard**. På raden, velg **Bytt til Microsoft 365**; dialogen advarer *SMTP-innstillingene
+**Standard**. På raden, velg **Bytt til Microsoft 365** — det er én **Bytt til …** for hver
+postbokstjeneste som kan brukes nå; dialogen advarer *SMTP-innstillingene
 slettes. For å gå tilbake må du legge dem inn på nytt.*, og tilbyr de samme valgene for
 **Importer historikk** og **Når en samtale lukkes** som når du legger til en Microsoft
 365-kanal — velg **Bytt**. Vantigo sjekker
 postboksen som når du legger til en, med de samme meldingene, og leverandøren på raden
 blir **Microsoft 365**: «Kanalen er byttet — Kanalen sender og mottar nå gjennom
 Microsoft 365.» Fra da av kommer e-posten i postboksen fra det valgte importvinduet inn i
-Innboks. Handlingen vises bare mens Microsoft 365 er tilgjengelig.
+Innboks. Handlingen vises bare mens Microsoft 365 er tilgjengelig. En kanal som allerede
+er på én postbokstjeneste, kan ikke byttes direkte til en annen: *Kanalen bruker en annen
+postboksleverandør. Bytt den tilbake til SMTP først, og deretter til den nye
+leverandøren.*
 
-På raden til en Microsoft 365-kanal åpner **Outlook ved lukking** en dialog der du kan
-endre **Når en samtale lukkes** (*La stå uendret i Outlook*, *Marker som lest i Outlook*
-eller *Flytt til mappe i Outlook* med **Outlook-mappe**).
+På raden til en Microsoft 365-kanal åpner **Postboksen ved lukking** en dialog der du kan
+endre **Når en samtale lukkes** (*La stå uendret i postboksen*, *Marker som lest i
+postboksen* eller *Flytt til en mappe i postboksen* med **Mappe i postboksen**).
 
 Kanalen beholder adressen den hadde. Er adressen et alias for den delte postboksen og
 ikke den primære adressen, sjekk at den første meldingen går ut som forventet: hvordan
