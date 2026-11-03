@@ -357,7 +357,10 @@ most, a user it replaces.
 [enterprise extension's](#scim) `employeeNumber`, by the number's key; then on
 `userName` against the announced principal name; then on `externalId` against the
 announced object id. An OIDC first sign-in is matched on the `oid` claim against the
-object id, under the announced issuer. The number comes first because the provider
+object id, under the announced issuer — for a Google provider (`OIDC_PROVIDER=google`)
+on the `sub` claim instead, whose ID token has no `oid` and whose `sub` is the account's
+Directory user id, 21 digits, announced and matched exactly as they are (the audit's
+`matchedBy` still says `oid`). The number comes first because the provider
 writes it as the account's `employeeId`, which Entra's default SCIM mapping sends as
 `employeeNumber`; the principal name second, since Entra sends `userName` from it by
 default; and the object id last for SCIM, because Entra's default mapping sends the
@@ -491,7 +494,7 @@ ordinary self-service link Staff never acts on.
 When single sign-on is turned on in an installation that already has users, an
 address never links a provider sign-in to an existing account, so their first attempt is
 refused `oidc_email_conflict`. An Owner **announces** that the user holds a directory
-account; the user's next OIDC sign-in (matched on `oid` under the configured issuer, else on the token's principal name, Entra's `preferred_username`, or the verified `email` claim for a provider without one)
+account; the user's next OIDC sign-in (matched on `oid` — Google's `sub` — under the configured issuer, else on the token's principal name, Entra's `preferred_username`, or the verified `email` claim for a provider without one)
 or SCIM push (matched on `userName` against the principal name, then `externalId`
 against the object id) then links or maps to that user. How the arrival is matched is
 described with [the announced link](/en/admin/sso-scim/#the-announced-link).
