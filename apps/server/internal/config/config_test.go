@@ -538,7 +538,7 @@ func TestLoad_MailDriver(t *testing.T) {
 	if cfg := mustLoad(t, with(validEnv(), "APP_ENV", "development", "MAIL_DRIVER", "log")); cfg.Mail.Driver != "log" {
 		t.Errorf("Mail.Driver = %q", cfg.Mail.Driver)
 	}
-	if msg := loadError(t, with(validEnv(), "MAIL_DRIVER", "sendgrid")); !strings.Contains(msg, `MAIL_DRIVER: must be "smtp" or "log"`) {
+	if msg := loadError(t, with(validEnv(), "MAIL_DRIVER", "sendgrid")); !strings.Contains(msg, `MAIL_DRIVER: must be "smtp", "cloudflare" or "log"`) {
 		t.Errorf("error = %q", msg)
 	}
 }
@@ -570,6 +570,42 @@ func TestLoad_SMTP(t *testing.T) {
 		}
 	}
 	if msg := loadError(t, with(validEnv(), "SMTP_TLS", "ssl")); !strings.Contains(msg, `SMTP_TLS: must be "implicit", "starttls" or "none"`) {
+		t.Errorf("error = %q", msg)
+	}
+}
+
+// cloudflareEnv is validEnv switched to the cloudflare mail driver, the
+// SMTP_* settings dropped so nothing of the smtp driver's is left to lean on.
+func cloudflareEnv() map[string]string {
+	env := with(validEnv(), "SMTP_HOST", "", "SMTP_FROM", "")
+	return with(env,
+		"MAIL_DRIVER", "cloudflare",
+		"CLOUDFLARE_EMAIL_ACCOUNT_ID", "0123456789abcdef0123456789abcdef",
+		"CLOUDFLARE_EMAIL_API_TOKEN", "cf-token",
+		"CLOUDFLARE_EMAIL_FROM", "noreply@vantigo.example.com",
+	)
+}
+
+func TestLoad_CloudflareMail(t *testing.T) {
+	cfg := mustLoad(t, cloudflareEnv())
+	if cfg.Mail.Driver != "cloudflare" || cfg.Mail.CloudflareAccountID != "0123456789abcdef0123456789abcdef" ||
+		cfg.Mail.CloudflareAPIToken != "cf-token" || cfg.Mail.From != "noreply@vantigo.example.com" {
+		t.Errorf("Mail = %+v", cfg.Mail)
+	}
+
+	msg := loadError(t, with(cloudflareEnv(), "CLOUDFLARE_EMAIL_ACCOUNT_ID", "", "CLOUDFLARE_EMAIL_API_TOKEN", "", "CLOUDFLARE_EMAIL_FROM", ""))
+	for _, want := range []string{"CLOUDFLARE_EMAIL_ACCOUNT_ID: is required", "CLOUDFLARE_EMAIL_API_TOKEN: is required", "CLOUDFLARE_EMAIL_FROM: is required"} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("error is missing %q:\n%s", want, msg)
+		}
+	}
+	if strings.Contains(msg, "SMTP_") {
+		t.Errorf("the cloudflare driver asked for an SMTP setting:\n%s", msg)
+	}
+	if msg := loadError(t, with(cloudflareEnv(), "CLOUDFLARE_EMAIL_ACCOUNT_ID", "../zones")); !strings.Contains(msg, "CLOUDFLARE_EMAIL_ACCOUNT_ID: must be the 32-character hexadecimal account ID") {
+		t.Errorf("error = %q", msg)
+	}
+	if msg := loadError(t, with(cloudflareEnv(), "CLOUDFLARE_EMAIL_FROM", "Team <team@example.com>")); !strings.Contains(msg, "CLOUDFLARE_EMAIL_FROM: must be a plain email address") {
 		t.Errorf("error = %q", msg)
 	}
 }

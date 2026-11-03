@@ -95,7 +95,8 @@ type Outbound struct {
 // for the same reason. Communications' OutboundMail is its other caller, for
 // Invoices' documents and Calendar's invitations, over the chosen channel's own
 // credentials; Staff's notices to employees take the process's SMTP_* settings
-// (Config.Mail), the system mailbox's.
+// (Config.Mail), the system mailbox's — which, when MAIL_DRIVER is
+// "cloudflare", posts to Cloudflare Email Service instead of dialling SMTP.
 //
 // The caller bounds the send with ctx. Communications derives that deadline
 // from its lease so a send can never outlive the lease that protects it
@@ -104,6 +105,13 @@ type Outbound struct {
 func SendOutbound(ctx context.Context, cfg config.MailConfig, out Outbound) error {
 	if len(out.To)+len(out.Cc)+len(out.Bcc) == 0 {
 		return fmt.Errorf("mail: an outbound message needs at least one recipient")
+	}
+	if cfg.Driver == "cloudflare" {
+		cf, err := newCloudflare(cfg)
+		if err != nil {
+			return err
+		}
+		return cf.send(ctx, out)
 	}
 	s, err := newSMTPClient(cfg)
 	if err != nil {

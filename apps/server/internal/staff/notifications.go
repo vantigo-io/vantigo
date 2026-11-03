@@ -89,7 +89,7 @@ type absenceMailTo struct {
 func (s *server) notifyAbsence(ctx context.Context, caller *callerContext, n absenceNotice) {
 	logger := s.deps.Logger
 	if !s.mailAvailable() {
-		logger.InfoContext(ctx, "staff: absence mail skipped: the mail driver is not smtp", "person_id", n.personID, "notice", n.kind)
+		logger.InfoContext(ctx, "staff: absence mail skipped: the mail driver sends nothing", "person_id", n.personID, "notice", n.kind)
 		return
 	}
 	ctx = context.WithoutCancel(ctx)

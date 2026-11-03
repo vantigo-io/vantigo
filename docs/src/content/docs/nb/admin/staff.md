@@ -1397,8 +1397,8 @@ Alle som avgjør, ser også det som venter på dem i godkjenningsinnboksen. E-po
 typen bare når den verken er sykdom eller en HR-type: en HR-type er «permisjon»,
 sykefravær og sykt barn «fravær»; den har aldri gradering, timer, en merknad eller
 begrunnelsen for et avslag. Som e-posten om endret kontonummer nedenfor trenger den
-`MAIL_DRIVER=smtp`; med en annen driver logger serveren
-`staff: absence mail skipped: the mail driver is not smtp`, og en leder uten e-post
+`MAIL_DRIVER=smtp` eller `cloudflare`; med loggdriveren logger serveren
+`staff: absence mail skipped: the mail driver sends nothing`, og en leder uten e-post
 hoppes over med `staff: absence mail skipped: the recipient has no email`. En bruker med
 rettigheten der identity bare har en plassholderadresse fra en identitetsleverandør eller
 en katalog, hoppes over med `staff: absence mail skipped: the holder has no address a mail
@@ -1413,14 +1413,16 @@ advarsel med personens eller brukerens id, aldri en adresse; fraværet blir stå
 Når et kontonummer settes eller endres, får personen en e-post — til den private
 e-postadressen når de har en, ellers til jobbadressen, på det foretrukne språket — som
 nevner kontoens fire siste sifre og ikke mer, så en endring noen andre har gjort ikke
-går upåaktet hen. E-posten går gjennom installasjonens egen SMTP-server etter at
+går upåaktet hen. E-posten går gjennom installasjonens egen e-postdriver etter at
 endringen er lagret. Å sende kontonummeret som allerede er lagret, på nytt endrer
 ingenting og sender ingen e-post.
 
 - Den krever `MAIL_DRIVER=smtp` og `SMTP_*`-innstillingene
-  ([Installasjon](/nb/admin/installation/#e-post-og-observerbarhet)). Med en hvilken
-  som helst annen driver hoppes e-posten over, og serveren logger
-  `staff: bank-account change mail skipped: the mail driver is not smtp`.
+  ([Installasjon](/nb/admin/installation/#e-post-og-observerbarhet)), eller
+  `MAIL_DRIVER=cloudflare` og `CLOUDFLARE_EMAIL_*`-innstillingene
+  ([Cloudflare Email Service](/nb/admin/authentication/#cloudflare-email-service)). Med
+  loggdriveren hoppes e-posten over, og serveren logger
+  `staff: bank-account change mail skipped: the mail driver sends nothing`.
 - En person uten noen e-postadresse får ingen e-post, og serveren logger
   `staff: bank-account change mail skipped: the person has no email`.
 - En sending som feiler, logges som en advarsel med personens id; selve endringen blir
@@ -1449,7 +1451,8 @@ sertifikater som snart utløper og som er utløpt, uansett hva arbeideren har gj
 ([referansen](/en/reference/staff/#the-competence-worker)).
 
 1. Forutsetning: `MAIL_DRIVER=smtp` og `SMTP_*`-innstillingene
-   ([Installasjon](/nb/admin/installation/#e-post-og-observerbarhet)). E-postene går til
+   ([Installasjon](/nb/admin/installation/#e-post-og-observerbarhet)), eller
+   `MAIL_DRIVER=cloudflare` og `CLOUDFLARE_EMAIL_*`-innstillingene. E-postene går til
    jobbadressen Ansatte har for hver person, ellers den private, på deres språk; en
    leder får dem bare når brukerkoblingen deres viser til en aktiv bruker.
 2. Kontroller: hver runde logger `staff: the competence cycle ran` med hvor mange rader
@@ -1459,7 +1462,7 @@ sertifikater som snart utløper og som er utløpt, uansett hva arbeideren har gj
 
 Hva som kan gå galt:
 
-- **`staff: competence mails skipped: the mail driver is not smtp`.** Radene stemples
+- **`staff: competence mails skipped: the mail driver sends nothing`.** Radene stemples
   likevel: de e-postene sendes ikke senere når SMTP er satt opp.
 - **`staff: competence mail skipped: the recipient has no email`.** Personen eller
   lederen har verken jobbadresse eller privat e-post i Ansatte; linjen nevner

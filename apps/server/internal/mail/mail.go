@@ -3,7 +3,8 @@
 // rather than talking to an SMTP server directly.
 //
 // New picks the driver from config: "smtp" (smtp.go) dials out through
-// go-mail with a DNS-rebinding guard (guard.go); "log" (log.go) is a
+// go-mail with a DNS-rebinding guard (guard.go); "cloudflare"
+// (cloudflare.go) posts to Cloudflare Email Service's REST API; "log" (log.go) is a
 // development-only stand-in that records that a mail was queued without
 // ever logging its contents; Fake (fake.go) is for tests.
 package mail
@@ -25,19 +26,22 @@ type Message struct {
 	TextBody string
 }
 
-// Sender delivers a Message. Its implementations are NewSMTP, NewLog and
-// Fake.
+// Sender delivers a Message. Its implementations are NewSMTP,
+// NewCloudflare, NewLog and Fake.
 type Sender interface {
 	Send(ctx context.Context, m Message) error
 }
 
 // New picks the mail driver named by cfg.Mail.Driver: "smtp" dials out with
-// NewSMTP, "log" writes to logger with NewLog. Config validation already
+// NewSMTP, "cloudflare" posts with NewCloudflare, "log" writes to logger
+// with NewLog. Config validation already
 // guarantees "log" appears only in development.
 func New(cfg *config.Config, logger *slog.Logger) (Sender, error) {
 	switch cfg.Mail.Driver {
 	case "smtp":
 		return NewSMTP(cfg.Mail)
+	case "cloudflare":
+		return NewCloudflare(cfg.Mail)
 	case "log":
 		return NewLog(logger), nil
 	default:

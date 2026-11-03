@@ -69,7 +69,8 @@ func (c Config) MarshalJSON() ([]byte, error) {
 	return json.Marshal(c.redacted())
 }
 
-// Format prints m for every verb with the SMTP password replaced.
+// Format prints m for every verb with the SMTP password and the Cloudflare
+// API token replaced.
 func (m MailConfig) Format(f fmt.State, verb rune) {
 	_, _ = fmt.Fprintf(f, fmt.FormatString(f, verb), m.redacted())
 }
@@ -86,6 +87,7 @@ func (m MailConfig) MarshalJSON() ([]byte, error) {
 func (m MailConfig) redacted() redactedMailConfig {
 	v := redactedMailConfig(m)
 	v.Password = redact(v.Password)
+	v.CloudflareAPIToken = redact(v.CloudflareAPIToken)
 	return v
 }
 

@@ -1386,8 +1386,8 @@ Everyone who decides also sees what waits for them in the approvals inbox. A mai
 the type only when it is neither sickness nor an HR-only type: an HR-only type is
 "leave", a sick or child-sick absence "an absence"; it never carries a degree, hours, a
 note or a rejection's reason. Like the bank-change mail below, it needs
-`MAIL_DRIVER=smtp`; with another driver the server logs
-`staff: absence mail skipped: the mail driver is not smtp`, and a manager without any
+`MAIL_DRIVER=smtp` or `cloudflare`; with the log driver the server logs
+`staff: absence mail skipped: the mail driver sends nothing`, and a manager without any
 email is skipped with `staff: absence mail skipped: the recipient has no email`. A
 holder whose identity address is an identity provider's or a directory's placeholder is
 skipped with `staff: absence mail skipped: the holder has no address a mail reaches`,
@@ -1403,13 +1403,15 @@ saved.
 When a bank account is set or changed, the person is mailed — at their private email
 when they have one, else at their work email, in their preferred language — naming the
 account's last four digits and nothing more, so a change somebody else made does not go
-unnoticed. The mail goes through the installation's own SMTP server after the change is
+unnoticed. The mail goes through the installation's own mail driver after the change is
 saved. Sending the account already on file again changes nothing and mails nobody.
 
 - It needs `MAIL_DRIVER=smtp` and the `SMTP_*` settings
-  ([Installation](/en/admin/installation/#email-and-observability)). With any other
-  driver the mail is skipped, and the server logs
-  `staff: bank-account change mail skipped: the mail driver is not smtp`.
+  ([Installation](/en/admin/installation/#email-and-observability)), or
+  `MAIL_DRIVER=cloudflare` and the `CLOUDFLARE_EMAIL_*` settings
+  ([Cloudflare Email Service](/en/admin/authentication/#cloudflare-email-service)). With
+  the log driver the mail is skipped, and the server logs
+  `staff: bank-account change mail skipped: the mail driver sends nothing`.
 - A person with neither email is not mailed, and the server logs
   `staff: bank-account change mail skipped: the person has no email`.
 - A send that fails is logged as a warning naming the person's id; the change itself
@@ -1437,7 +1439,8 @@ midnight in the business time zone. The dashboard shows expiring and expired
 certificates whatever the worker did ([the reference](/en/reference/staff/#the-competence-worker)).
 
 1. Precondition: `MAIL_DRIVER=smtp` and the `SMTP_*` settings
-   ([Installation](/en/admin/installation/#email-and-observability)). The mails go to
+   ([Installation](/en/admin/installation/#email-and-observability)), or
+   `MAIL_DRIVER=cloudflare` and the `CLOUDFLARE_EMAIL_*` settings. The mails go to
    the work email Staff holds for each person, else their private one, in their
    language; a manager receives them only when their user link names an active user.
 2. Verify: each cycle logs `staff: the competence cycle ran` with how many rows it
@@ -1447,7 +1450,7 @@ certificates whatever the worker did ([the reference](/en/reference/staff/#the-c
 
 What can go wrong:
 
-- **`staff: competence mails skipped: the mail driver is not smtp`.** The rows are
+- **`staff: competence mails skipped: the mail driver sends nothing`.** The rows are
   stamped all the same: those mails are not sent later when SMTP is configured.
 - **`staff: competence mail skipped: the recipient has no email`.** The person or
   manager has neither a work nor a private email in Staff; it names their person id.

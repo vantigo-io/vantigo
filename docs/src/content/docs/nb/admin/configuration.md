@@ -13,7 +13,7 @@ installasjonens innstillinger, og sier hvor hver av arbeidsområdets redigeres.
 
 | Nivå | Eier | Hvor den bor | Redigeres av | Eksempler |
 | --- | --- | --- | --- | --- |
-| **Installasjon** | Vantigo, eller driftsansvarlig som kjører installasjonen | Miljøet (`vantigo.env`), validert når prosessen starter | Ingen i grensesnittet: driftsansvarlig endrer miljøet og starter på nytt | `DATABASE_URL`, `APP_SECRET`, `APP_URL`, `MODULES`, `STORAGE_*`, `MAIL_DRIVER` og `SMTP_*`, `TRUSTED_PROXY_*`, hver arbeiders poll, `ENERGY_SPOT_PRICE_SERVICE_*`, `AI_*` |
+| **Installasjon** | Vantigo, eller driftsansvarlig som kjører installasjonen | Miljøet (`vantigo.env`), validert når prosessen starter | Ingen i grensesnittet: driftsansvarlig endrer miljøet og starter på nytt | `DATABASE_URL`, `APP_SECRET`, `APP_URL`, `MODULES`, `STORAGE_*`, `MAIL_DRIVER`, `SMTP_*` og `CLOUDFLARE_EMAIL_*`, `TRUSTED_PROXY_*`, hver arbeiders poll, `ENERGY_SPOT_PRICE_SERVICE_*`, `AI_*` |
 | **Arbeidsområde** | Leietakeren — selskapet som bruker installasjonen | Databasen | En eier, eller den som har rettigheten, under **Administrer arbeidsområde** eller i modulens egne innstillinger | Single sign-on, tilkoblingen til Microsoft Entra ID og reglene for den, kanalene i Kommunikasjon, modellen hver KI-oppgave bruker, hver moduls innstillinger |
 
 **En innstilling bor på ett nivå**, så det er ingen presedensregel å lære: ingen
@@ -76,11 +76,13 @@ og [administrasjonslytteren](/nb/admin/management-listener/).
 
 | Innstilling | Standard | Betydning |
 | --- | --- | --- |
-| `MAIL_DRIVER` | `log` i utvikling, ellers `smtp` | `smtp`, eller `log` (bare utvikling: ingenting sendes) |
+| `MAIL_DRIVER` | `log` i utvikling, ellers `smtp` | `smtp`, `cloudflare` (Cloudflare Email Service), eller `log` (bare utvikling: ingenting sendes) |
 | `SMTP_HOST`, `SMTP_PORT` | påkrevd for `smtp`, `587` | SMTP-tjeneren |
 | `SMTP_FROM` | påkrevd for `smtp` | Avsenderadressen; returpost går hit |
 | `SMTP_USERNAME`, `SMTP_PASSWORD` | ikke satt | Valgfri legitimasjon |
 | `SMTP_TLS` | `starttls` | `starttls`, `implicit` eller `none` |
+| `CLOUDFLARE_EMAIL_ACCOUNT_ID`, `CLOUDFLARE_EMAIL_API_TOKEN` | påkrevd for `cloudflare` | Cloudflare-kontoen og et API-token som får sende ([Cloudflare Email Service](/nb/admin/authentication/#cloudflare-email-service)) |
+| `CLOUDFLARE_EMAIL_FROM` | påkrevd for `cloudflare` | Avsenderadressen, på et domene tilføyd Email Sending |
 
 Den skriver bare til folkene som arbeider i installasjonen: invitasjoner og gjenoppretting
 av passord, Ansattes varsler og Kalenders varsler til kolleger. Ingenting som skriver til

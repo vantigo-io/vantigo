@@ -88,9 +88,12 @@ data.
 ## The mail package
 
 [`apps/server/internal/mail`](https://github.com/vantigo-io/vantigo/tree/main/apps/server/internal/mail)
-sends the installation's own mail through the SMTP configuration of
-[Email delivery](/en/admin/authentication/#email-delivery), behind its guard against
-private destinations. `mail.Message` is identity's three-field application mail;
+sends the installation's own mail through the configuration of
+[Email delivery](/en/admin/authentication/#email-delivery) — an SMTP server, or
+Cloudflare Email Service's REST API when `MAIL_DRIVER=cloudflare` — behind its guard
+against private destinations. `mail.SendOutbound` takes the driver from the
+`config.MailConfig` it is given: Staff's notices follow the installation's driver, and a
+Communications channel's configuration is always `smtp`. `mail.Message` is identity's three-field application mail;
 `mail.Outbound` is a full message — recipients, both bodies, a display name,
 Reply-To (`ReplyTo` and `ReplyToName`), threading headers and attachments — which Communications sends through each
 channel's own SMTP configuration — and, through `OutboundMail`, for Invoices' documents

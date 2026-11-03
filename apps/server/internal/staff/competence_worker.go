@@ -147,7 +147,7 @@ func (s *server) competenceCycle(ctx context.Context) error {
 	switch {
 	case len(notices) == 0:
 	case !s.mailAvailable():
-		s.logger().InfoContext(ctx, "staff: competence mails skipped: the mail driver is not smtp",
+		s.logger().InfoContext(ctx, "staff: competence mails skipped: the mail driver sends nothing",
 			"worker", competenceWorkerName, "notices", len(notices))
 	default:
 		mailed, failed = s.sendCompetenceMails(ctx, s.competenceMails(ctx, notices, today))

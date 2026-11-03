@@ -2,6 +2,7 @@ package mail
 
 import (
 	"crypto/x509"
+	"net/http"
 
 	gomail "github.com/wneessen/go-mail"
 )
@@ -22,4 +23,14 @@ func AllowLoopbackForTests(rootCAs *x509.CertPool) (restore func()) {
 // that refuses before any connection is made.
 func RenderOutboundForTests(from string, out Outbound) (*gomail.Msg, error) {
 	return out.message(from)
+}
+
+// UseCloudflareForTests points the cloudflare driver at base (an httptest
+// server's URL) over transport, in place of api.cloudflare.com behind the
+// guarded transport. Like AllowLoopbackForTests, only a _test.go file can
+// reach the variables it sets.
+func UseCloudflareForTests(base string, transport http.RoundTripper) (restore func()) {
+	previousBase, previousTransport := testCloudflareBase, testCloudflareTransport
+	testCloudflareBase, testCloudflareTransport = base, transport
+	return func() { testCloudflareBase, testCloudflareTransport = previousBase, previousTransport }
 }

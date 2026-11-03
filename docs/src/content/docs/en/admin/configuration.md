@@ -13,7 +13,7 @@ says where each of the workspace's is edited.
 
 | Tier | Owner | Where it lives | Edited by | Examples |
 | --- | --- | --- | --- | --- |
-| **Instance** | Vantigo, or the operator who runs the installation | The environment (`vantigo.env`), validated when the process starts | Nobody in the interface: the operator changes the environment and restarts | `DATABASE_URL`, `APP_SECRET`, `APP_URL`, `MODULES`, `STORAGE_*`, `MAIL_DRIVER` and `SMTP_*`, `TRUSTED_PROXY_*`, every worker's poll, `ENERGY_SPOT_PRICE_SERVICE_*`, `AI_*` |
+| **Instance** | Vantigo, or the operator who runs the installation | The environment (`vantigo.env`), validated when the process starts | Nobody in the interface: the operator changes the environment and restarts | `DATABASE_URL`, `APP_SECRET`, `APP_URL`, `MODULES`, `STORAGE_*`, `MAIL_DRIVER`, `SMTP_*` and `CLOUDFLARE_EMAIL_*`, `TRUSTED_PROXY_*`, every worker's poll, `ENERGY_SPOT_PRICE_SERVICE_*`, `AI_*` |
 | **Workspace** | The tenant — the company that uses the installation | The database | An Owner, or whoever holds the permission, under **Workspace admin** or in the module's own settings | Single sign-on, the Microsoft Entra ID connection and its rules, Communications' channels, the model each AI task uses, each module's settings |
 
 **A setting lives in exactly one tier**, so there is no precedence rule to learn: no
@@ -74,11 +74,13 @@ The **system mailbox**: the sender Vantigo itself writes from.
 
 | Setting | Default | Meaning |
 | --- | --- | --- |
-| `MAIL_DRIVER` | `log` in development, else `smtp` | `smtp`, or `log` (development only: nothing is sent) |
+| `MAIL_DRIVER` | `log` in development, else `smtp` | `smtp`, `cloudflare` (Cloudflare Email Service), or `log` (development only: nothing is sent) |
 | `SMTP_HOST`, `SMTP_PORT` | required for `smtp`, `587` | The SMTP server |
 | `SMTP_FROM` | required for `smtp` | The sender address; bounces go here |
 | `SMTP_USERNAME`, `SMTP_PASSWORD` | unset | Optional credentials |
 | `SMTP_TLS` | `starttls` | `starttls`, `implicit` or `none` |
+| `CLOUDFLARE_EMAIL_ACCOUNT_ID`, `CLOUDFLARE_EMAIL_API_TOKEN` | required for `cloudflare` | The Cloudflare account and an API token that may send ([Cloudflare Email Service](/en/admin/authentication/#cloudflare-email-service)) |
+| `CLOUDFLARE_EMAIL_FROM` | required for `cloudflare` | The sender address, on a domain onboarded to Email Sending |
 
 It writes only to the people who work in the installation: invitations and password
 recovery, Staff's notices and Calendar's notices to colleagues. Nothing that writes to
