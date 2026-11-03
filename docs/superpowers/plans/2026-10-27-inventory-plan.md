@@ -1,4 +1,4 @@
-# Inventory phase 1 — deliveries A and B: implementation plan (revision 2)
+# Inventory phase 1 — deliveries A and B: implementation plan (revision 3)
 
 The plan for the Inventory module's first phase. It draws on two documents:
 
@@ -16,10 +16,10 @@ There are two deliveries, each **one pull request opened against `main`**:
 `srv/` abbreviates `apps/server/internal/`, `mig/` `srv/db/migrations/`, and `fe/`
 `apps/inventory/frontend/src/`.
 
-| Delivery | Migrations (from `main` at `98617107`, latest `00075`) | Branch |
+| Delivery | Migrations (from `main` at `204553ec`, latest `00107`) | Branch |
 | --- | --- | --- |
-| A | `00076_inventory_baseline.sql` | `claude/inventory-a-…` |
-| B | `00077_products_packagings.sql`, `00078_inventory_counts.sql` | `claude/inventory-b-…` |
+| A | `00108_inventory_baseline.sql` | `claude/inventory-a-…` |
+| B | the next two at B's cut (`00109`, `00110` if free): `products_packagings`, `inventory_counts` | `claude/inventory-b-…` |
 
 ## Task 0 — Land the research and the spec (before A)
 
@@ -31,6 +31,39 @@ There are two deliveries, each **one pull request opened against `main`**:
      it into A's docs commit **without** the trailer.
 2. The spec's §13 questions were answered by the owner on 2026-10-27 and are recorded
    there.
+
+## Revision 3 — what `main` added after the plan (2026-11-03)
+
+The plan was written against `98617107`; delivery A is cut from `204553ec`, 288 commits
+later. Products, its catalog contract and its app are unchanged in between, so the seam
+(A2, A3) stands as written. The platform grew around it:
+
+1. **Migrations.** A claims `00108`; B's two are claimed at B's cut.
+2. **The Assistant** (module boundaries rule 18, `srv/openapi/lint.go`,
+   `srv/operations/mode.go`).
+   - Every operation in `openapi/inventory.yaml`, and Products' new ones, needs a
+     `summary`; the lint fails without one, and the Assistant searches by it.
+   - The mode is derived: reads `auto`, writes `confirm`, uploads and downloads `never`.
+     State `x-vantigo-assistant` only for exceptions. None is expected in A: an adjustment,
+     a move and a receipt each confirmed by the person is the point; a bulk location
+     create is one confirmed call. B's import and labels derive `never` by their media
+     types.
+   - `clientRequestId` is required on postings, so the Assistant's
+     `propose_bulk` sends a fresh one per item; the A5 tests cover a replay, which is
+     what a resumed bulk job does.
+3. **Tour targets.** The app exports `assistTargets`, as Customers, Energy, Expenses,
+   Invoices, Projects and Time do (`contributing/frontend-architecture.md#tour-targets-for-the-assistant`):
+   new site, new location and bulk add, new receipt, new adjustment, new move, the lookup.
+   Added to A6a, with the registry test the other packages carry.
+4. **Erasure** (module boundaries rule 19). Movements and counts keep
+   `posted_by_user_id` and `posted_by_display`, and events an actor. They are records of
+   the stock ledger, so A proposes keeping them after the person is erased, and the
+   reference says so. **Owner to confirm**; the
+   alternative is a sweep that blanks the display name and keeps the id.
+5. **Docs.** The Assistant embeds the user and administration guides: after any docs
+   edit run `go generate` in `apps/server`, or Go lint and tests fail. A7 does it last.
+6. **`Docs-Impact: none`.** Task 0 lands on its own PR before A is cut; no feature branch
+   carries the trailer.
 
 ---
 
@@ -114,7 +147,7 @@ Every lane compiles against this. It is done by the orchestrator, not delegated.
      `CustomerReferences`.
    - `modtest.WithVariantReferenceHolders`.
    - `compose_test.go`'s fakes gain the methods.
-3. **The migration.** `mig/00076_inventory_baseline.sql`, holding the tables of spec
+3. **The migration.** `mig/00108_inventory_baseline.sql`, holding the tables of spec
    §3.1–3.5 and §3.7 and their indexes, in the house style of `00072`. One root per
    site is a partial unique index; there is no FK from the site to its root.
 4. **The contract.**
@@ -421,8 +454,8 @@ built.
 ## Task B2 — The seam, by hand
 
 1. **Migrations.**
-   - `mig/00077_products_packagings.sql` (spec §3.8), which Products' `sqlc.yaml` gains;
-   - `mig/00078_inventory_counts.sql` (§3.6, plus `movement_lines.entered` and
+   - `mig/NNNNN_products_packagings.sql` (spec §3.8), which Products' `sqlc.yaml` gains;
+   - `mig/NNNNN_inventory_counts.sql` (§3.6, plus `movement_lines.entered` and
      `movements.count_id`).
 2. **The contract.**
    - `openapi/products.yaml`: the packaging operations and the `packagings` field on
