@@ -46,12 +46,44 @@ export interface MeteringPoint {
   electricityTaxClass?: ElectricityTaxClass;
   vatTreatment?: VatTreatment;
   /**
+   * The class the rules point to (energy electricity-tax suggestion design):
+   * derived on every read, never stored — the stored class stays what
+   * settlements bill. Sent by the point, its create and update and a
+   * customer's points; the list leaves it out.
+   */
+  electricityTaxSuggestion?: ElectricityTaxSuggestion;
+  /**
    * The customer of the Active supply period covering now. Sent by the list
    * only, to a caller who also holds `energy:supply-periods-view`, and left
    * out when the point has no customer now; `name` is left out when the
    * customers module cannot name the customer.
    */
   currentCustomer?: { id: number; name?: string | null };
+}
+
+/** Why the suggestion is what it is; a plain string on the wire, so read an unknown one as a fallback. */
+export type ElectricityTaxReason =
+  | "not_norway"
+  | "zone_household"
+  | "zone_public_administration"
+  | "zone_business"
+  | "household"
+  | "industry"
+  | "industry_may_qualify"
+  | "ordinary"
+  | "no_industry_code";
+
+export interface ElectricityTaxSuggestion {
+  /** Absent when there is no suggestion (a point outside Norway). */
+  class?: ElectricityTaxClass;
+  reason: ElectricityTaxReason;
+  /** The inputs cannot settle the class: check it against the customer's documentation. */
+  uncertain: boolean;
+  /** No suggestion, or the suggestion equals the stored class. */
+  matches: boolean;
+  /** Whose industry code was read. */
+  customerId?: number | null;
+  industryCode?: string | null;
 }
 
 /** A point's billing facts, a missing one read as none, false, ordinary and standard. */

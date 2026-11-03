@@ -17,7 +17,7 @@ import {
   type SupplyPeriod,
   supplyPeriodsQueryOptions,
 } from "../api/energy";
-import { cadenceKey, taxClassKey } from "../lib/billing";
+import { cadenceKey, taxClassKey, taxReasonKey } from "../lib/billing";
 import { MARKET_TIME_ZONE, marketDayKey } from "../lib/market-time";
 import { ConsumptionChart } from "./-consumption-chart";
 import { ImportReadingsModal } from "./-import-readings-modal";
@@ -77,6 +77,7 @@ export const MeteringPointDetailsPage = ({
   const [replaceMeterOpen, setReplaceMeterOpen] = useState(false);
   const [termsPeriod, setTermsPeriod] = useState<SupplyPeriod | null>(null);
   const facts = billingFacts(point);
+  const suggestion = point.electricityTaxSuggestion;
   const endMutation = useMutation({
     mutationFn: (periodId: number) => endSupplyPeriod(meteringPointId, periodId, new Date().toISOString()),
     onSuccess: () =>
@@ -179,6 +180,33 @@ export const MeteringPointDetailsPage = ({
           <Text size="xs" c="dimmed">
             {t("vatTreatmentHint")}
           </Text>
+          {suggestion && (
+            <Stack gap={4}>
+              <Group gap="xs">
+                <Text size="sm">
+                  <b>
+                    {suggestion.class
+                      ? t("electricityTaxSuggested", { class: t(taxClassKey(suggestion.class)) })
+                      : t("electricityTaxNoSuggestion")}
+                  </b>
+                </Text>
+                {!suggestion.matches && (
+                  <Badge variant="light" color="yellow">
+                    {t("electricityTaxDiffers")}
+                  </Badge>
+                )}
+                {suggestion.uncertain && (
+                  <Badge variant="light" color="gray">
+                    {t("electricityTaxCheck")}
+                  </Badge>
+                )}
+              </Group>
+              <Text size="sm" c="dimmed">
+                {t(taxReasonKey(suggestion.reason))}
+              </Text>
+              {!suggestion.matches && <Text size="sm">{t("electricityTaxDiffersHint")}</Text>}
+            </Stack>
+          )}
         </Stack>
       </Card>
       <Card withBorder>

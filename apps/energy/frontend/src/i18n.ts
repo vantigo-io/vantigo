@@ -575,6 +575,28 @@ export const energyCatalog = {
     vatTreatmentExemptHouseholdNorth: "Exempt — household in Northern Norway (VAT Act § 6-6)",
     vatTreatmentHint:
       "Derived from household use and the address: a household with a Norwegian postal code from 8000 to 9999 is exempt.",
+    electricityTaxSuggested: "Suggested: {{class}}",
+    electricityTaxNoSuggestion: "No suggestion",
+    electricityTaxDiffers: "Differs",
+    electricityTaxCheck: "Check",
+    electricityTaxDiffersHint:
+      "The stored class is what settlements bill. Check it against the customer's documentation.",
+    electricityTaxDiffersTooltip: "Suggested: {{class}}. {{reason}}",
+    electricityTaxReason_not_norway: "The point is outside Norway, where Norwegian electricity tax does not apply.",
+    electricityTaxReason_zone_household:
+      "A household in the northern zone (Finnmark and seven Nord-Troms municipalities) is exempt.",
+    electricityTaxReason_zone_public_administration:
+      "Public administration (industry code 84) in the northern zone is exempt.",
+    electricityTaxReason_zone_business:
+      "Everything but households and public administration in the northern zone (Finnmark and seven Nord-Troms municipalities) pays the reduced rate.",
+    electricityTaxReason_household: "A household outside the northern zone pays the ordinary rate.",
+    electricityTaxReason_industry:
+      "The customer's industry code is mining or manufacturing, which pays the reduced rate on power used in the production process.",
+    electricityTaxReason_industry_may_qualify:
+      "The customer's industry code may qualify for a reduced rate or an exemption the code alone cannot decide.",
+    electricityTaxReason_ordinary: "The customer's industry code does not qualify for a reduced rate.",
+    electricityTaxReason_no_industry_code:
+      "The point has no customer, or the customer has no industry code from the Central Coordinating Register.",
     settlements: "Settlements",
     loadingSettlements: "Loading settlements",
     failedToLoadSettlements: "Failed to load settlements",
@@ -1191,6 +1213,28 @@ export const energyCatalog = {
     vatTreatmentExemptHouseholdNorth: "Fritatt – husholdning i Nord-Norge (mval. § 6-6)",
     vatTreatmentHint:
       "Utledes av husholdning og adressen: en husholdning med norsk postnummer fra 8000 til 9999 er fritatt.",
+    electricityTaxSuggested: "Foreslått: {{class}}",
+    electricityTaxNoSuggestion: "Ingen forslag",
+    electricityTaxDiffers: "Avviker",
+    electricityTaxCheck: "Kontroller",
+    electricityTaxDiffersHint:
+      "Den lagrede klassen er det oppgjørene fakturerer. Kontroller den mot kundens dokumentasjon.",
+    electricityTaxDiffersTooltip: "Foreslått: {{class}}. {{reason}}",
+    electricityTaxReason_not_norway: "Målepunktet ligger utenfor Norge, der norsk elavgift ikke gjelder.",
+    electricityTaxReason_zone_household:
+      "En husholdning i tiltakssonen (Finnmark og sju kommuner i Nord-Troms) er fritatt.",
+    electricityTaxReason_zone_public_administration:
+      "Offentlig forvaltning (næringskode 84) i tiltakssonen er fritatt.",
+    electricityTaxReason_zone_business:
+      "Alt unntatt husholdninger og offentlig forvaltning i tiltakssonen (Finnmark og sju kommuner i Nord-Troms) har redusert sats.",
+    electricityTaxReason_household: "En husholdning utenfor tiltakssonen har ordinær sats.",
+    electricityTaxReason_industry:
+      "Kundens næringskode er bergverk eller industri, som har redusert sats for kraft brukt i selve produksjonsprosessen.",
+    electricityTaxReason_industry_may_qualify:
+      "Kundens næringskode kan gi redusert sats eller fritak, men koden alene avgjør det ikke.",
+    electricityTaxReason_ordinary: "Kundens næringskode gir ikke redusert sats.",
+    electricityTaxReason_no_industry_code:
+      "Målepunktet har ingen kunde, eller kunden har ingen næringskode fra Enhetsregisteret.",
     settlements: "Oppgjør",
     loadingSettlements: "Laster oppgjør",
     failedToLoadSettlements: "Kunne ikke laste oppgjør",

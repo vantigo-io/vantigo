@@ -88,6 +88,37 @@ describe("MeteringPointDetailsPage", () => {
     expect(within(card).getByText("Exempt — household in Northern Norway (VAT Act § 6-6)")).toBeInTheDocument();
   });
 
+  it("shows the suggested electricity-tax class, flagging one that differs from the stored class", async () => {
+    const card = await renderPage({
+      ...basePoint,
+      electricityTaxClass: "ordinary",
+      electricityTaxSuggestion: {
+        class: "reduced",
+        reason: "industry",
+        uncertain: false,
+        matches: false,
+        customerId: 1002,
+        industryCode: "24.420",
+      },
+    });
+    expect(within(card).getByText("Suggested: Reduced rate")).toBeInTheDocument();
+    expect(within(card).getByText("Differs")).toBeInTheDocument();
+    expect(within(card).getByText(/used in the production process/)).toBeInTheDocument();
+    expect(within(card).getByText(/The stored class is what settlements bill/)).toBeInTheDocument();
+    expect(within(card).queryByText("Check")).not.toBeInTheDocument();
+  });
+
+  it("marks an uncertain suggestion that matches with Check, and no warning", async () => {
+    const card = await renderPage({
+      ...basePoint,
+      electricityTaxSuggestion: { class: "ordinary", reason: "no_industry_code", uncertain: true, matches: true },
+    });
+    expect(within(card).getByText("Suggested: Ordinary rate")).toBeInTheDocument();
+    expect(within(card).getByText("Check")).toBeInTheDocument();
+    expect(within(card).queryByText("Differs")).not.toBeInTheDocument();
+    expect(within(card).queryByText(/The stored class is what settlements bill/)).not.toBeInTheDocument();
+  });
+
   it("lists each period's tariff and cadence, and offers Change terms on all but a cancelled one", async () => {
     await renderPage(basePoint);
     const active = (await screen.findByText("Kari Nordmann")).closest("tr") as HTMLElement;
