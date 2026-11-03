@@ -61,22 +61,27 @@ export interface MeteringPoint {
   currentCustomer?: { id: number; name?: string | null };
 }
 
-/** Why the suggestion is what it is; a plain string on the wire, so read an unknown one as a fallback. */
-export type ElectricityTaxReason =
-  | "not_norway"
-  | "zone_household"
-  | "zone_public_administration"
-  | "zone_business"
-  | "household"
-  | "industry"
-  | "industry_may_qualify"
-  | "ordinary"
-  | "no_industry_code";
+/**
+ * Why the suggestion is what it is. A plain string on the wire, so a reason
+ * the client does not know is read as a generic one (`taxReasonKey`).
+ */
+export const ELECTRICITY_TAX_REASONS = [
+  "not_norway",
+  "zone_household",
+  "zone_public_administration",
+  "zone_business",
+  "household",
+  "industry",
+  "industry_may_qualify",
+  "ordinary",
+  "no_industry_code",
+] as const;
+export type ElectricityTaxReason = (typeof ELECTRICITY_TAX_REASONS)[number];
 
 export interface ElectricityTaxSuggestion {
-  /** Absent when there is no suggestion (a point outside Norway). */
-  class?: ElectricityTaxClass;
-  reason: ElectricityTaxReason;
+  /** Absent when there is no suggestion (a point outside Norway); an unknown one reads as a generic label. */
+  class?: ElectricityTaxClass | (string & {});
+  reason: ElectricityTaxReason | (string & {});
   /** The inputs cannot settle the class: check it against the customer's documentation. */
   uncertain: boolean;
   /** No suggestion, or the suggestion equals the stored class. */
