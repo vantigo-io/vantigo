@@ -487,19 +487,19 @@ har sluttet og hvis konto arbeideren ikke fikk deaktivert.
 | `employeeRoleUnsafe` | En rolle navngitt for Ansatte gir administrasjon (ett punkt) | En Owner tar den nøkkelen ut av rollen, eller rollen ut av settet |
 | `accountModeMismatch` | En arbeiders OIDC- eller SCIM-innstillinger er ulike API-ets (ett punkt) | Gjør innstillingene like og start arbeideren på nytt |
 | `accountNotArrived` | Ansatte kunngjorde personens Entra-konto for nitti dager siden, og ingen Vantigo-bruker har kommet for den | Sjekk at brukeren er innenfor omfanget av Entras klargjøring til Vantigo, eller la personen logge inn |
-| `accountAmbiguousInEntra` | To kontoer i Entra har personens ansattnummer | Fjern nummeret fra feil konto i Entra |
-| `accountAddressTakenInEntra` | Personens e-post på jobb er en annen kontos i Entra | Endre personens e-post på jobb, eller rydd i den andre kontoen |
+| `accountAmbiguousInDirectory` | To kontoer i Entra har personens ansattnummer | Fjern nummeret fra feil konto i Entra |
+| `accountAddressTakenInDirectory` | Personens e-post på jobb er en annen kontos i Entra | Endre personens e-post på jobb, eller rydd i den andre kontoen |
 | `accountSyncedOnPremises` | Kontoen synkroniseres fra en lokal katalog | Styr den i den katalogen, eller gi personen en annen type |
-| `accountPrivilegedInEntra` | Kontoen har en administrativ rolle i Entra | En administrator håndterer den for hånd |
-| `accountUnconfirmedInEntra` | Entra har en konto under personens ansattnummer som Vantigo ikke opprettet, og ingen har bekreftet overtakelsen; Ansatte skriver ingenting til den | Sjekk at den er personens, og bekreft den på siden for Microsoft Entra ID ([Kontoer Vantigo ikke opprettet](/nb/admin/entra/#kontoer-vantigo-ikke-opprettet)) |
+| `accountPrivilegedInDirectory` | Kontoen har en administrativ rolle i Entra | En administrator håndterer den for hånd |
+| `accountUnconfirmedInDirectory` | Entra har en konto under personens ansattnummer som Vantigo ikke opprettet, og ingen har bekreftet overtakelsen; Ansatte skriver ingenting til den | Sjekk at den er personens, og bekreft den på siden for Microsoft Entra ID ([Kontoer Vantigo ikke opprettet](/nb/admin/entra/#kontoer-vantigo-ikke-opprettet)) |
 | `hireDateNotWritten` | Entra avviste ansettelsesdatoen | Ingenting trengs for innlogging; slå av **Ansettelsesdato** i katalogprofilen om det fortsetter å feile |
 | `licenceUnavailable` | En lisens kunne ikke tildeles, fordi det ikke er flere igjen | Kjøp eller frigjør en lisens i Microsoft 365 |
 | `passUnrevealed` | Et pass ble utstedt for en dag eller mer siden, og ingen har vist det | Vis det til personen, eller Kjør nå (nytt pass) når de er klare |
-| `managerNotInEntra` | Personens leder har ingen konto i Entra, eller Entra fant den ikke, så kontoen har ingen leder | Gi lederen typen Microsoft Entra ID, eller godta det |
-| `entraNotConnected` | Entra-leverandøren har ingen tilkobling ennå, eller ingen aktivert modul tilbyr den (ett punkt, som teller `entra`-personene med flagget på) | Koble den til i Entra-modulen, eller aktiver modulen |
-| `entraFailing` | Entra-leverandørens siste kontroll feilet — en legitimasjon avvist, et samtykke trukket tilbake — eller Ansatte kunne ikke spørre den (ett punkt) | Rett tilkoblingen i Entra-modulen |
-| `secretExpiring` | Den nyeste gyldige klienthemmeligheten utløper innen tretti dager (ett punkt) | Legg til en ny hemmelighet i Entra-modulen |
-| `secretExpired` | Klienthemmeligheten har utløpt (ett punkt) | Legg til en ny hemmelighet i Entra-modulen |
+| `managerNotInDirectory` | Personens leder har ingen konto i Entra, eller Entra fant den ikke, så kontoen har ingen leder | Gi lederen typen Microsoft Entra ID, eller godta det |
+| `providerNotConnected` | En leverandør — Entra — har ingen tilkobling ennå, eller ingen aktivert modul tilbyr den (ett punkt per leverandør, med leverandørens navn, som teller personene av dens type med flagget på) | Koble den til i Entra-modulen, eller aktiver modulen |
+| `providerFailing` | En leverandørs siste kontroll feilet — en legitimasjon avvist, et samtykke trukket tilbake — eller Ansatte kunne ikke spørre den (ett punkt per leverandør) | Rett tilkoblingen i Entra-modulen |
+| `secretExpiring` | En leverandørs påloggingsnøkkel — for Entra den nyeste gyldige klienthemmeligheten — utløper innen tretti dager (ett punkt per leverandør) | Legg til en ny hemmelighet i Entra-modulen |
+| `secretExpired` | En leverandørs påloggingsnøkkel har utløpt (ett punkt per leverandør) | Legg til en ny hemmelighet i Entra-modulen |
 | `groupSyncFailed` | En gruppe kunne ikke holdes i en leverandørs katalog — en verdi leverandøren avviste, en gruppe med nøkkelen som Vantigo ikke får skrive til, eller tre mislykkede forsøk på rad (ett per gruppe og leverandør, med gruppens navn) | Åpne gruppen under **Grupper** i Ansatte: leverandørkortet sier hvorfor, ved innstillingen det gjelder; endre verdien, eller løs konflikten i katalogen |
 
 ## Rettigheten for personopplysninger
