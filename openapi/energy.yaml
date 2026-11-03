@@ -741,6 +741,8 @@ components:
                 createdAt:
                     format: date-time
                     type: string
+                currentCustomer:
+                    $ref: '#/components/schemas/MeteringPointCustomerResponse'
                 electricityTaxClass:
                     description: ordinary, reduced or exempt (energy consumption billing design D4).
                     type: string
@@ -800,6 +802,18 @@ components:
                 - connectionStatus
                 - createdAt
                 - updatedAt
+            type: object
+        MeteringPointCustomerResponse:
+            description: The point's customer now — the customer of the Active supply period covering the moment of the request. Sent by GET /energy/metering-points only, to a caller who also holds energy:supply-periods-view, and left out when the point has no customer now. name is left out when the customers module cannot name the customer.
+            properties:
+                id:
+                    format: int32
+                    type: integer
+                name:
+                    nullable: true
+                    type: string
+            required:
+                - id
             type: object
         MeteringPointUpdateRequest:
             properties:
@@ -2386,6 +2400,32 @@ paths:
                   name: withoutCustomer
                   schema:
                     type: boolean
+                - description: The points whose customer now (the customer of the Active supply period covering the moment of the request) is this one. Needs energy:supply-periods-view as well; without it the request answers 403.
+                  in: query
+                  name: customerId
+                  schema:
+                    format: int32
+                    type: integer
+                - description: The points in this price area, matched exactly (two uppercase letters and one or two digits, as NO1).
+                  in: query
+                  name: priceArea
+                  schema:
+                    type: string
+                - description: The points with this connection status — New, Connected or Disconnected.
+                  in: query
+                  name: connectionStatus
+                  schema:
+                    type: string
+                - description: "'gsrn', 'meterNumber', 'address', 'priceArea', 'connectionStatus' or 'createdAt'. Defaults to the point's id. 'address' orders by the street address, then the postal code. A point without a meter sorts last ascending. Ties fall back to the id, in the same direction."
+                  in: query
+                  name: sortBy
+                  schema:
+                    type: string
+                - description: "'asc' (the default) or 'desc'."
+                  in: query
+                  name: sortDirection
+                  schema:
+                    type: string
                 - in: query
                   name: page
                   schema:
@@ -2408,7 +2448,7 @@ paths:
                         application/problem+json:
                             schema:
                                 $ref: common.yaml#/components/schemas/ProblemDetails
-                    description: Bad Request
+                    description: Bad Request — page below 1, pageSize outside 1 to 100, or a sortBy, sortDirection, priceArea or connectionStatus it does not know.
                 "401":
                     content:
                         application/json:

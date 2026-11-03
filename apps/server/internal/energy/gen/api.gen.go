@@ -432,6 +432,12 @@ type MeterResponse struct {
 	RemovedAt       *time.Time `json:"removedAt"`
 }
 
+// MeteringPointCustomerResponse The point's customer now — the customer of the Active supply period covering the moment of the request. Sent by GET /energy/metering-points only, to a caller who also holds energy:supply-periods-view, and left out when the point has no customer now. name is left out when the customers module cannot name the customer.
+type MeteringPointCustomerResponse struct {
+	Id   int32   `json:"id"`
+	Name *string `json:"name,omitempty"`
+}
+
 // MeteringPointRequest defines model for MeteringPointRequest.
 type MeteringPointRequest struct {
 	Address          *AddressRequest `json:"address"`
@@ -459,6 +465,9 @@ type MeteringPointResponse struct {
 	Address          AddressResponse `json:"address"`
 	ConnectionStatus string          `json:"connectionStatus"`
 	CreatedAt        time.Time       `json:"createdAt"`
+
+	// CurrentCustomer The point's customer now — the customer of the Active supply period covering the moment of the request. Sent by GET /energy/metering-points only, to a caller who also holds energy:supply-periods-view, and left out when the point has no customer now. name is left out when the customers module cannot name the customer.
+	CurrentCustomer *MeteringPointCustomerResponse `json:"currentCustomer,omitempty"`
 
 	// ElectricityTaxClass ordinary, reduced or exempt (energy consumption billing design D4).
 	ElectricityTaxClass          *string  `json:"electricityTaxClass,omitempty"`
@@ -946,9 +955,24 @@ type GetEnergyMeteringPointsParams struct {
 	Search *string `form:"search,omitempty" json:"search,omitempty"`
 
 	// WithoutCustomer true for the metering points without a customer now (energy import design D9) — those with no Active supply period whose start is at or before the moment of the request and whose end is absent or after it. A point whose only Active period starts later is listed. false, or absent, is every point.
-	WithoutCustomer *bool  `form:"withoutCustomer,omitempty" json:"withoutCustomer,omitempty"`
-	Page            *int32 `form:"page,omitempty" json:"page,omitempty"`
-	PageSize        *int32 `form:"pageSize,omitempty" json:"pageSize,omitempty"`
+	WithoutCustomer *bool `form:"withoutCustomer,omitempty" json:"withoutCustomer,omitempty"`
+
+	// CustomerId The points whose customer now (the customer of the Active supply period covering the moment of the request) is this one. Needs energy:supply-periods-view as well; without it the request answers 403.
+	CustomerId *int32 `form:"customerId,omitempty" json:"customerId,omitempty"`
+
+	// PriceArea The points in this price area, matched exactly (two uppercase letters and one or two digits, as NO1).
+	PriceArea *string `form:"priceArea,omitempty" json:"priceArea,omitempty"`
+
+	// ConnectionStatus The points with this connection status — New, Connected or Disconnected.
+	ConnectionStatus *string `form:"connectionStatus,omitempty" json:"connectionStatus,omitempty"`
+
+	// SortBy 'gsrn', 'meterNumber', 'address', 'priceArea', 'connectionStatus' or 'createdAt'. Defaults to the point's id. 'address' orders by the street address, then the postal code. A point without a meter sorts last ascending. Ties fall back to the id, in the same direction.
+	SortBy *string `form:"sortBy,omitempty" json:"sortBy,omitempty"`
+
+	// SortDirection 'asc' (the default) or 'desc'.
+	SortDirection *string `form:"sortDirection,omitempty" json:"sortDirection,omitempty"`
+	Page          *int32  `form:"page,omitempty" json:"page,omitempty"`
+	PageSize      *int32  `form:"pageSize,omitempty" json:"pageSize,omitempty"`
 }
 
 // GetEnergyMeteringPointsByIdConsumptionParams defines parameters for GetEnergyMeteringPointsByIdConsumption.
@@ -1784,6 +1808,71 @@ func (siw *ServerInterfaceWrapper) GetEnergyMeteringPoints(w http.ResponseWriter
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "withoutCustomer"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "withoutCustomer", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "customerId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "customerId", r.URL.Query(), &params.CustomerId, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "customerId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "customerId", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "priceArea" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "priceArea", r.URL.Query(), &params.PriceArea, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "priceArea"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "priceArea", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "connectionStatus" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "connectionStatus", r.URL.Query(), &params.ConnectionStatus, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "connectionStatus"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "connectionStatus", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "sortBy" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "sortBy", r.URL.Query(), &params.SortBy, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "sortBy"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sortBy", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "sortDirection" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "sortDirection", r.URL.Query(), &params.SortDirection, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "sortDirection"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sortDirection", Err: err})
 		}
 		return
 	}

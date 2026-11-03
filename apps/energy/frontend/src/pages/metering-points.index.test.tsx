@@ -20,9 +20,29 @@ vi.mock("@tanstack/react-router", () => ({
 const json = (body: unknown) =>
   new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
 
-const renderPage = (props: { canImport?: boolean }) => {
-  const fetchMock = stubFetch(async () =>
-    json({ data: [], pagination: { page: 1, pageSize: 25, totalCount: 0, totalPages: 0 } }),
+const point = (id: number, currentCustomer?: { id: number; name?: string | null }) => ({
+  id,
+  gsrn: `70705759900000000${id}`,
+  meterNumber: `M-${id}`,
+  address: { streetAddress: "Testgata 1", postalCode: "0001", city: "Oslo", countryCode: "NO" },
+  priceArea: "NO1",
+  connectionStatus: "Connected",
+  createdAt: "2026-01-01T00:00:00Z",
+  updatedAt: "2026-01-01T00:00:00Z",
+  ...(currentCustomer ? { currentCustomer } : {}),
+});
+
+const renderPage = (
+  props: { canImport?: boolean; canViewCustomers?: boolean; canOpenCustomers?: boolean },
+  points: unknown[] = [],
+) => {
+  const fetchMock = stubFetch(async (input) =>
+    String(input).startsWith("/api/v1/customers")
+      ? json({
+          data: [{ id: 1001, name: "Aurora Kraft AS" }],
+          pagination: { page: 1, pageSize: 50, totalCount: 1, totalPages: 1 },
+        })
+      : json({ data: points, pagination: { page: 1, pageSize: 25, totalCount: points.length, totalPages: 1 } }),
   );
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
@@ -72,5 +92,55 @@ describe("MeteringPointsPage", () => {
     renderPage({});
     await userEvent.click(await screen.findByRole("switch", { name: "Without customer" }));
     expect(router.navigate).toHaveBeenCalledWith({ search: { page: 1, search: "", withoutCustomer: true } });
+  });
+
+  it("sorts by a column from its header: ascending, then descending, then not at all", async () => {
+    renderPage({});
+    await userEvent.click(await screen.findByRole("button", { name: "GSRN" }));
+    expect(router.navigate).toHaveBeenLastCalledWith({
+      search: { page: 1, search: "", sortBy: "gsrn", sortDirection: "asc" },
+    });
+  });
+
+  it("marks the sorted column and asks the server for its order and the filters", async () => {
+    router.search = { page: 1, search: "", sortBy: "meterNumber", sortDirection: "desc", priceArea: "NO4" };
+    const fetchMock = renderPage({});
+    await waitFor(() =>
+      expect(String(fetchMock.mock.calls[0]?.[0])).toBe(
+        "/api/v1/energy/metering-points?page=1&pageSize=25&priceArea=NO4&sortBy=meterNumber&sortDirection=desc",
+      ),
+    );
+    expect(await screen.findByRole("columnheader", { name: "Meter number" })).toHaveAttribute(
+      "aria-sort",
+      "descending",
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Meter number" }));
+    expect(router.navigate).toHaveBeenLastCalledWith({ search: { page: 1, search: "", priceArea: "NO4" } });
+  });
+
+  it("puts the customer now first, linked to the customer, and says when there is none", async () => {
+    renderPage({ canViewCustomers: true, canOpenCustomers: true }, [
+      point(1, { id: 1001, name: "Aurora Kraft AS" }),
+      point(2),
+    ]);
+    expect(await screen.findByRole("link", { name: "Aurora Kraft AS" })).toHaveAttribute("href", "/customers/1001");
+    expect(screen.getAllByRole("columnheader")[0]).toHaveTextContent("Customer");
+    expect(screen.getByText("No customer")).toBeInTheDocument();
+  });
+
+  it("names the customer without a link when the caller cannot open customers", async () => {
+    renderPage({ canViewCustomers: true }, [point(1, { id: 1001, name: "Aurora Kraft AS" })]);
+    expect(await screen.findByRole("cell", { name: "Aurora Kraft AS" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Aurora Kraft AS" })).not.toBeInTheDocument();
+  });
+
+  it("leaves the customer column and filter out without supply-periods-view, and never sends the filter", async () => {
+    router.search = { page: 1, search: "", customerId: 1001 };
+    const fetchMock = renderPage({}, [point(1)]);
+    await waitFor(() =>
+      expect(String(fetchMock.mock.calls[0]?.[0])).toBe("/api/v1/energy/metering-points?page=1&pageSize=25"),
+    );
+    expect(screen.queryByRole("columnheader", { name: "Customer" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "Customer" })).not.toBeInTheDocument();
   });
 });

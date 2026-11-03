@@ -14,10 +14,22 @@ vi.mock("@tanstack/react-query", async (importOriginal) => {
 });
 
 vi.mock("@vantigo/energy-ui/pages/metering-points.index", () => ({
-  MeteringPointsPage: ({ canImport, canViewTariffs }: { canImport?: boolean; canViewTariffs?: boolean }) => (
+  MeteringPointsPage: ({
+    canImport,
+    canViewTariffs,
+    canViewCustomers,
+    canOpenCustomers,
+  }: {
+    canImport?: boolean;
+    canViewTariffs?: boolean;
+    canViewCustomers?: boolean;
+    canOpenCustomers?: boolean;
+  }) => (
     <>
       <span data-testid="can-import">{String(Boolean(canImport))}</span>
       <span data-testid="can-view-tariffs">{String(Boolean(canViewTariffs))}</span>
+      <span data-testid="can-view-customers">{String(Boolean(canViewCustomers))}</span>
+      <span data-testid="can-open-customers">{String(Boolean(canOpenCustomers))}</span>
     </>
   ),
 }));
@@ -70,6 +82,48 @@ describe("the metering-point list route", () => {
     withPermissions(["energy:metering-points-manage"]);
     renderPage();
     expect(screen.getByTestId("can-view-tariffs")).toHaveTextContent("false");
+  });
+
+  it("passes canViewCustomers with energy:supply-periods-view and canOpenCustomers with customers:view", () => {
+    withPermissions(["energy:metering-points-view", "energy:supply-periods-view", "customers:view"]);
+    renderPage();
+    expect(screen.getByTestId("can-view-customers")).toHaveTextContent("true");
+    expect(screen.getByTestId("can-open-customers")).toHaveTextContent("true");
+    cleanup();
+
+    withPermissions(["energy:metering-points-view"]);
+    renderPage();
+    expect(screen.getByTestId("can-view-customers")).toHaveTextContent("false");
+    expect(screen.getByTestId("can-open-customers")).toHaveTextContent("false");
+  });
+
+  it("keeps the filters and the sort it knows, and drops the rest", () => {
+    const validate = Route.options.validateSearch as (search: Record<string, unknown>) => Record<string, unknown>;
+    expect(
+      validate({
+        customerId: "1001",
+        priceArea: "NO4",
+        connectionStatus: "Connected",
+        sortBy: "gsrn",
+        sortDirection: "desc",
+      }),
+    ).toEqual({
+      page: 1,
+      search: "",
+      customerId: 1001,
+      priceArea: "NO4",
+      connectionStatus: "Connected",
+      sortBy: "gsrn",
+      sortDirection: "desc",
+    });
+    const dropped = validate({
+      customerId: "abc",
+      priceArea: "SE3",
+      connectionStatus: "connected",
+      sortBy: "city",
+      sortDirection: "up",
+    });
+    expect(Object.values(dropped).filter((value) => value !== undefined)).toEqual([1, ""]);
   });
 
   it("keeps the Without customer filter only when it is true", () => {

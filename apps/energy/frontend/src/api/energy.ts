@@ -45,6 +45,13 @@ export interface MeteringPoint {
   household?: boolean;
   electricityTaxClass?: ElectricityTaxClass;
   vatTreatment?: VatTreatment;
+  /**
+   * The customer of the Active supply period covering now. Sent by the list
+   * only, to a caller who also holds `energy:supply-periods-view`, and left
+   * out when the point has no customer now; `name` is left out when the
+   * customers module cannot name the customer.
+   */
+  currentCustomer?: { id: number; name?: string | null };
 }
 
 /** A point's billing facts, a missing one read as none, false, ordinary and standard. */
@@ -152,7 +159,26 @@ export interface MeteringPointQueryParams {
   search?: string;
   /** Only the points with no customer now (energy import design D9). */
   withoutCustomer?: boolean;
+  /** Only the points this customer has now; needs `energy:supply-periods-view`. */
+  customerId?: number;
+  priceArea?: PriceArea;
+  connectionStatus?: ConnectionStatus;
+  sortBy?: MeteringPointSortBy;
+  sortDirection?: "asc" | "desc";
 }
+
+/** The list's sortable columns, as `sortBy` names them. */
+export const METERING_POINT_SORTS = [
+  "gsrn",
+  "meterNumber",
+  "address",
+  "priceArea",
+  "connectionStatus",
+  "createdAt",
+] as const;
+export type MeteringPointSortBy = (typeof METERING_POINT_SORTS)[number];
+export const PRICE_AREAS: readonly PriceArea[] = ["NO1", "NO2", "NO3", "NO4", "NO5"];
+export const CONNECTION_STATUSES: readonly ConnectionStatus[] = ["New", "Connected", "Disconnected"];
 
 const queryString = (params: object) => {
   const search = new URLSearchParams();

@@ -55,7 +55,7 @@ func (s *server) GetEnergyCustomersByCustomerIdMeteringPoints(ctx context.Contex
 	data := make([]gen.CustomerMeteringPointResponse, 0, len(points))
 	for _, r := range points {
 		data = append(data, gen.CustomerMeteringPointResponse{
-			MeteringPoint: meteringPointResponseOf(meteringPointOfListRow(store.ListMeteringPointsRow(r)), r.ActiveMeterNumber, names),
+			MeteringPoint: meteringPointResponseOf(meteringPointOfCustomerRow(r), r.ActiveMeterNumber, names),
 			SupplyPeriods: periodsByPoint[r.ID],
 		})
 	}
@@ -144,4 +144,16 @@ func (s *server) GetEnergyCustomersByCustomerIdConsumptionAggregate(ctx context.
 	// OrderBy/ThenBy (:40-43) is redundant with the loop order above, not a
 	// separate sort this port needs to perform.
 	return gen.GetEnergyCustomersByCustomerIdConsumptionAggregate200JSONResponse(data), nil
+}
+
+// meteringPointOfCustomerRow is meteringPointOfListRow for one of a
+// customer's points, whose row carries no customer now.
+func meteringPointOfCustomerRow(r store.ListCustomerMeteringPointsRow) store.EnergyMeteringPoint {
+	return store.EnergyMeteringPoint{
+		ID: r.ID, Gsrn: r.Gsrn, StreetAddress: r.StreetAddress, PostalCode: r.PostalCode, City: r.City,
+		CountryCode: r.CountryCode, PriceArea: r.PriceArea, GridArea: r.GridArea,
+		ExpectedAnnualConsumptionKwh: r.ExpectedAnnualConsumptionKwh, Latitude: r.Latitude, Longitude: r.Longitude,
+		ConnectionStatus: r.ConnectionStatus, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
+		GridTariffID: r.GridTariffID, Household: r.Household, ElectricityTaxClass: r.ElectricityTaxClass,
+	}
 }

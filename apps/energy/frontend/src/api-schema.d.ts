@@ -1011,6 +1011,7 @@ export interface components {
             connectionStatus: string;
             /** Format: date-time */
             createdAt: string;
+            currentCustomer?: components["schemas"]["MeteringPointCustomerResponse"];
             /** @description ordinary, reduced or exempt (energy consumption billing design D4). */
             electricityTaxClass?: string;
             /** Format: double */
@@ -1038,6 +1039,12 @@ export interface components {
             updatedAt: string;
             /** @description Derived, never stored: exempt_household_north when household is set, the country is NO and the postal code is 8000–9999; otherwise standard. A hint Invoices maps to a VAT code. */
             vatTreatment?: string;
+        };
+        /** @description The point's customer now — the customer of the Active supply period covering the moment of the request. Sent by GET /energy/metering-points only, to a caller who also holds energy:supply-periods-view, and left out when the point has no customer now. name is left out when the customers module cannot name the customer. */
+        MeteringPointCustomerResponse: {
+            /** Format: int32 */
+            id: number;
+            name?: string | null;
         };
         MeteringPointUpdateRequest: {
             address: components["schemas"]["AddressRequest"] | null;
@@ -2333,6 +2340,16 @@ export interface operations {
                 search?: string;
                 /** @description true for the metering points without a customer now (energy import design D9) — those with no Active supply period whose start is at or before the moment of the request and whose end is absent or after it. A point whose only Active period starts later is listed. false, or absent, is every point. */
                 withoutCustomer?: boolean;
+                /** @description The points whose customer now (the customer of the Active supply period covering the moment of the request) is this one. Needs energy:supply-periods-view as well; without it the request answers 403. */
+                customerId?: number;
+                /** @description The points in this price area, matched exactly (two uppercase letters and one or two digits, as NO1). */
+                priceArea?: string;
+                /** @description The points with this connection status — New, Connected or Disconnected. */
+                connectionStatus?: string;
+                /** @description 'gsrn', 'meterNumber', 'address', 'priceArea', 'connectionStatus' or 'createdAt'. Defaults to the point's id. 'address' orders by the street address, then the postal code. A point without a meter sorts last ascending. Ties fall back to the id, in the same direction. */
+                sortBy?: string;
+                /** @description 'asc' (the default) or 'desc'. */
+                sortDirection?: string;
                 page?: number;
                 pageSize?: number;
             };
@@ -2351,7 +2368,7 @@ export interface operations {
                     "application/json": components["schemas"]["PaginatedResponseOfMeteringPointResponse"];
                 };
             };
-            /** @description Bad Request */
+            /** @description Bad Request — page below 1, pageSize outside 1 to 100, or a sortBy, sortDirection, priceArea or connectionStatus it does not know. */
             400: {
                 headers: {
                     [name: string]: unknown;

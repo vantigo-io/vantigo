@@ -5,8 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
-	"time"
 
 	"github.com/jackc/pgx/v5"
 
@@ -179,8 +179,8 @@ func meteringPointResponseOf(row store.EnergyMeteringPoint, meterNumber *string,
 	}
 }
 
-// meteringPointOfListRow is a list row's point without its meter's number, so
-// the list and the customer's points build their responses as the item does.
+// meteringPointOfListRow is a list row's point without its meter's number or
+// its customer now, so the list builds its responses as the item does.
 func meteringPointOfListRow(r store.ListMeteringPointsRow) store.EnergyMeteringPoint {
 	return store.EnergyMeteringPoint{
 		ID: r.ID, Gsrn: r.Gsrn, StreetAddress: r.StreetAddress, PostalCode: r.PostalCode, City: r.City,
@@ -244,6 +244,33 @@ func meteringPointResponse(ctx context.Context, q *store.Queries, row store.Ener
 	return meteringPointResponseOf(row, meterNumber, names), nil
 }
 
+// meteringPointSorts are the list's sortBy values, each the ListMeteringPoints
+// CASE pair it picks.
+var meteringPointSorts = []string{"gsrn", "meterNumber", "address", "priceArea", "connectionStatus", "createdAt"}
+
+// supplyPeriodsView is the key that lets the list name and filter by each
+// point's customer now: who a point supplies is a supply period's fact.
+const supplyPeriodsView = "energy:supply-periods-view"
+
+// meteringPointListRefusal is what is wrong with the list's filter and sort
+// parameters, in the plain Problem's detail, or "" when nothing is. The page
+// and pageSize bounds are checked before it, as before.
+func meteringPointListRefusal(p gen.GetEnergyMeteringPointsParams) string {
+	if p.SortBy != nil && !slices.Contains(meteringPointSorts, *p.SortBy) {
+		return fmt.Sprintf("sortBy must be one of 'gsrn', 'meterNumber', 'address', 'priceArea', 'connectionStatus' or 'createdAt', but was '%s'.", *p.SortBy)
+	}
+	if p.SortDirection != nil && *p.SortDirection != "asc" && *p.SortDirection != "desc" {
+		return fmt.Sprintf("sortDirection must be 'asc' or 'desc', but was '%s'.", *p.SortDirection)
+	}
+	if p.PriceArea != nil && !priceAreaValid(*p.PriceArea) {
+		return "priceArea must contain two uppercase letters followed by one or two digits."
+	}
+	if p.ConnectionStatus != nil && !slices.Contains(connectionStatuses, *p.ConnectionStatus) {
+		return "connectionStatus must be New, Connected or Disconnected."
+	}
+	return ""
+}
+
 // GetEnergyMeteringPoints List metering points
 // (GET /api/v1/energy/metering-points)
 //
@@ -251,12 +278,24 @@ func meteringPointResponse(ctx context.Context, q *store.Queries, row store.Ener
 // a plain (not field-keyed) 400 Problem; search matches the GSRN, the city,
 // the street address or the current meter's number, ILIKE, escaped as
 // EscapeLikePattern does (:35). withoutCustomer=true narrows it to the points
-// without a customer now (energy import design D9).
+// without a customer now (energy import design D9); priceArea and
+// connectionStatus match exactly, and an unknown one — or an unknown sortBy
+// or sortDirection — is the same plain 400. Each point carries its customer
+// now, named through the directory, when the caller also holds
+// energy:supply-periods-view; customerId, which narrows to one customer's
+// points, needs that key too and answers 403 without it.
 func (s *server) GetEnergyMeteringPoints(ctx context.Context, req gen.GetEnergyMeteringPointsRequestObject) (gen.GetEnergyMeteringPointsResponseObject, error) {
 	p := req.Params
 	if (p.Page != nil && *p.Page < 1) || (p.PageSize != nil && (*p.PageSize < 1 || *p.PageSize > maxPageSize)) {
 		return gen.GetEnergyMeteringPoints400ApplicationProblemPlusJSONResponse(apicommon.Problem(
 			"Invalid query parameters", "Page must be at least 1 and pageSize must be between 1 and 100.")), nil
+	}
+	if detail := meteringPointListRefusal(p); detail != "" {
+		return gen.GetEnergyMeteringPoints400ApplicationProblemPlusJSONResponse(apicommon.Problem("Invalid query parameters", detail)), nil
+	}
+	showCustomer := s.hasPermission(ctx, supplyPeriodsView)
+	if p.CustomerId != nil && !showCustomer {
+		return gen.GetEnergyMeteringPoints403JSONResponse(apicommon.ForbiddenBody()), nil
 	}
 	page, pageSize := defaultPage, defaultPageSize
 	if p.Page != nil {
@@ -272,21 +311,28 @@ func (s *server) GetEnergyMeteringPoints(ctx context.Context, req gen.GetEnergyM
 		searchPattern = &pattern
 	}
 
-	// withoutCustomer (energy import design D9): the points with no Active
-	// supply period covering this instant.
-	var withoutCustomerAt *time.Time
-	if p.WithoutCustomer != nil && *p.WithoutCustomer {
-		now := s.deps.Clock()
-		withoutCustomerAt = &now
+	// withoutCustomer (energy import design D9) and the customer now are both
+	// read against the Active supply period covering this instant.
+	now := s.deps.Clock()
+	withoutCustomer := p.WithoutCustomer != nil && *p.WithoutCustomer
+	sortBy := ""
+	if p.SortBy != nil {
+		sortBy = *p.SortBy
 	}
+	descending := p.SortDirection != nil && *p.SortDirection == "desc"
 
 	q := store.New(s.deps.Pool)
-	total, err := q.CountMeteringPoints(ctx, store.CountMeteringPointsParams{SearchPattern: searchPattern, WithoutCustomerAt: withoutCustomerAt})
+	total, err := q.CountMeteringPoints(ctx, store.CountMeteringPointsParams{
+		At: now, SearchPattern: searchPattern, WithoutCustomer: withoutCustomer,
+		CustomerID: p.CustomerId, PriceArea: p.PriceArea, ConnectionStatus: p.ConnectionStatus,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("energy: count metering points: %w", err)
 	}
 	rows, err := q.ListMeteringPoints(ctx, store.ListMeteringPointsParams{
-		SearchPattern: searchPattern, WithoutCustomerAt: withoutCustomerAt, RowOffset: (page - 1) * pageSize, PageSize: pageSize,
+		At: now, SearchPattern: searchPattern, WithoutCustomer: withoutCustomer,
+		CustomerID: p.CustomerId, PriceArea: p.PriceArea, ConnectionStatus: p.ConnectionStatus,
+		SortBy: sortBy, Descending: descending, RowOffset: (page - 1) * pageSize, PageSize: pageSize,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("energy: list metering points: %w", err)
@@ -300,9 +346,19 @@ func (s *server) GetEnergyMeteringPoints(ctx context.Context, req gen.GetEnergyM
 	if err != nil {
 		return nil, err
 	}
+	customers := map[int32]string{}
+	if showCustomer {
+		if customers, err = s.currentCustomerNames(ctx, rows); err != nil {
+			return nil, err
+		}
+	}
 	data := make([]gen.MeteringPointResponse, 0, len(rows))
 	for _, r := range rows {
-		data = append(data, meteringPointResponseOf(meteringPointOfListRow(r), r.ActiveMeterNumber, names))
+		item := meteringPointResponseOf(meteringPointOfListRow(r), r.ActiveMeterNumber, names)
+		if showCustomer && r.CurrentCustomerID != nil {
+			item.CurrentCustomer = &gen.MeteringPointCustomerResponse{Id: *r.CurrentCustomerID, Name: nameOf(customers, r.CurrentCustomerID)}
+		}
+		data = append(data, item)
 	}
 	return gen.GetEnergyMeteringPoints200JSONResponse(gen.PaginatedResponseOfMeteringPointResponse{
 		Data: data,
@@ -310,6 +366,33 @@ func (s *server) GetEnergyMeteringPoints(ctx context.Context, req gen.GetEnergyM
 			Page: page, PageSize: pageSize, TotalCount: int32(total), TotalPages: apicommon.TotalPages(int32(total), pageSize),
 		},
 	}), nil
+}
+
+// currentCustomerNames is every customer a page of points supplies now,
+// through the directory in one read; empty with no directory composed, and
+// a customer the directory does not hold is simply absent.
+func (s *server) currentCustomerNames(ctx context.Context, rows []store.ListMeteringPointsRow) (map[int32]string, error) {
+	names := map[int32]string{}
+	if s.deps.Directory == nil {
+		return names, nil
+	}
+	var ids []int32
+	for _, r := range rows {
+		if r.CurrentCustomerID != nil {
+			ids = append(ids, *r.CurrentCustomerID)
+		}
+	}
+	if len(ids) == 0 {
+		return names, nil
+	}
+	entries, err := s.deps.Directory.Customers(ctx, ids)
+	if err != nil {
+		return nil, fmt.Errorf("energy: name the metering points' customers: %w", err)
+	}
+	for _, e := range entries {
+		names[e.ID] = e.Name
+	}
+	return names, nil
 }
 
 // PostEnergyMeteringPoints Create a metering point
