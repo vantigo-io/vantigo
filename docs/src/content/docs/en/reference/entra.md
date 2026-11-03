@@ -63,8 +63,8 @@ team in line.
 And it fills **the mailbox calendar** for the calendar's Outlook sync ([the mailbox
 calendar](#the-mailbox-calendar)): behind the Owner's **Outlook connection** switch and on
 each person's own Outlook connection, it writes the calendar's copies of a person's
-appointments to the mailbox of an account it manages, in the single-provider slot
-`MailboxCalendar` ([module boundaries](/en/contributing/module-boundaries/) rule 14).
+appointments to the mailbox of an account it manages, in the many-provider slot
+`MailboxCalendars` under the key `entra` ([module boundaries](/en/contributing/module-boundaries/) rule 14).
 
 And it keeps **each person's Outlook connection** ([the Outlook
 connection](#the-outlook-connection)): behind the same switch, a person whose Staff
@@ -76,8 +76,8 @@ runs on that connection, with the person's delegated token, and on nothing else.
 And it fills **the channel mailboxes** for Communications ([mail
 channels](#mail-channels)): behind the **Mail channels** switch and on the application's
 own token, scoped in Exchange Online to the channel mailboxes, it checks a shared mailbox
-for a Microsoft 365 channel and sends the channel's mail from it, in the single-provider
-slot `ChannelMailbox` ([module boundaries](/en/contributing/module-boundaries/) rule 15).
+for a Microsoft 365 channel and sends the channel's mail from it, in the many-provider
+slot `ChannelMailboxes` under the key `entra` ([module boundaries](/en/contributing/module-boundaries/) rule 15).
 
 ## The schema
 
@@ -1706,7 +1706,8 @@ after it closed.
 
 ## The mailbox calendar
 
-The module fills the single-provider slot `MailboxCalendar` (`contracts.MailboxCalendar`,
+The module fills the many-provider slot `MailboxCalendars` under the key `entra`, named
+"Outlook" (`contracts.MailboxCalendar`,
 `mailbox.go`) for the calendar's [Outlook sync](/en/reference/calendar/#outlook-sync): it
 writes the calendar's copies of a person's appointments and items to their Exchange
 Online mailbox, [reads the busy time](#the-reads) of their default calendar back, and
@@ -2128,7 +2129,8 @@ there is one, is the last notification, to within a minute.
 
 ## Mail channels
 
-The module fills the single-provider slot `ChannelMailbox` (`contracts.ChannelMailbox`,
+The module fills the many-provider slot `ChannelMailboxes` under the key `entra`, named
+"Microsoft 365" (`contracts.ChannelMailbox`,
 `channel_mailbox.go`) for Communications' [Microsoft 365
 channels](/en/reference/communications/#mailbox-channels): an Exchange Online **shared
 mailbox** a channel sends from, reached through the [Graph client](#the-graph-client)
@@ -2242,7 +2244,10 @@ and `Status` must be available. The MIME is posted **base64-encoded** as `text/p
 through the client's `postRaw` with **`noRetry`**: a 5xx is not retried by the client, so
 a message Exchange may have taken is not sent twice by it — the outbox's retry is the
 only one, at least once as SMTP is. The draft's create answers the message whole, so its
-answer is read through 8 MiB rather than 1 MiB.
+answer is read through 8 MiB rather than 1 MiB. `Send` answers the zero
+`contracts.SentMessage`: Graph keeps the Message-ID the MIME carries and `sendMail`
+answers no body, so there is no other Message-ID or thread id to report
+([Communications](/en/reference/communications/)).
 
 - **No blind copies**: `POST /users/{id}/sendMail`, answered 202. Exchange saves it in
   the mailbox's Sent Items. Graph's MIME `sendMail` is reported not to honour a `Bcc:`
@@ -2381,8 +2386,8 @@ channel.
 
 ## Personal mailbox
 
-The module fills the single-provider slot `PersonalMailbox` (`contracts.PersonalMailbox`,
-`personal_mailbox.go`) for Communications' [personal sending](/en/reference/communications/#sending-from-ones-own-address)
+The module fills the many-provider slot `PersonalMailboxes` under the key `entra`, named
+"Outlook" (`contracts.PersonalMailbox`, `personal_mailbox.go`) for Communications' [personal sending](/en/reference/communications/#sending-from-ones-own-address)
 ([module boundaries](/en/contributing/module-boundaries/) rule 16):
 
 - **`Status(ctx)`**: reads the caller's (`contracts.UserID(ctx)`) Outlook connection from
@@ -2395,7 +2400,8 @@ The module fills the single-provider slot `PersonalMailbox` (`contracts.Personal
   (set by Communications' outbox via `contracts.AsUser(ctx, authorUserID)`). Obtains a
   delegated access token for their mailbox and posts to Graph (`POST /users/{oid}/sendMail`
   when `bcc` is empty, or the MIME draft + `send` dance on `/users/{oid}/messages` when `bcc`
-  is non-empty), ensuring the sent email lands in the person's own **Sent Items**.
+  is non-empty), ensuring the sent email lands in the person's own **Sent Items**. It
+  answers the zero `contracts.SentMessage`, as the channel mailbox's `Send` does.
 - **Refusals**: on an expired refresh token or CAE claims challenge, marks the connection
   `reconnect` and returns `*contracts.ConnectionNeededError` (matching
   `contracts.ErrConnectionNeeded`), prompting immediate outbox failure and user notification.

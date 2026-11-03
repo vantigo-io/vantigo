@@ -92,7 +92,7 @@ Communications' outbox is the working example.
 5. **One module, one mount.** A module exposes one `Module()` returning a
    `module.Module`: its name, its `Mount`, the permissions it contributes, the
    background workers it contributes, and the cross-module contracts it *provides*.
-   There are twenty-two single-provider slots, each filled by at most one enabled module:
+   There are twenty single-provider slots, each filled by at most one enabled module:
    `Directory` (`contracts.CustomerDirectory`, customers), `Users`
    (`contracts.UserDirectory`, identity), `Calendar` (`contracts.BusinessCalendar`,
    identity — the workspace's business time zone and the day an instant falls on in
@@ -117,13 +117,7 @@ Communications' outbox is the working example.
    (`contracts.Workforce`, staff — the competence catalogue, who holds which competence
    valid on a date, the people in employment and their capacity over a window, the
    caller's own person, its own account in an external directory, and how a proposed
-   booking fits what each person wants; rule 12), `MailboxCalendar`
-   (`contracts.MailboxCalendar`, entra — a provider's mailbox calendars, which the
-   calendar's Outlook sync writes people's copies to and reads their busy time from;
-   rule 14), `ChannelMailbox` (`contracts.ChannelMailbox`, entra — a provider's
-   mailboxes as Communications' channels send from; rule 15; optional for its consumer,
-   nil when Entra is off), `PersonalMailbox` (`contracts.PersonalMailbox`, entra — a person's
-   delegated mailbox to send from in Communications; rule 16; optional, nil when Entra is off),
+   booking fits what each person wants; rule 12),
    `OutboundMail` (`contracts.OutboundMail`, communications — its channels as Invoices and
    Calendar send customer mail through them; rule 17; optional for its consumers, nil when
    Communications is off, which they read as "sending is disabled"),
@@ -148,24 +142,27 @@ Communications' outbox is the working example.
    never reads a directory while it serves). `Workforce` is resolved after the business calendar — by Compose
    after the line-level reads, by `module.Workers` after `Users` and `Accounts`
    (`withWorkforce`) — so its provider reads `Deps.Calendar` while it is built, and a
-   worker-mode `Deps` answers who holds what as a composed one does. `MailboxCalendar`
-   is resolved by Compose and by Workers through one helper (`withMailboxCalendar`),
-   after the identity provisioners — its provider reads nothing while it is built — and
-   reaches every module's `Deps`, keeping a preset value (`modtest.WithMailboxCalendar`)
-   when no enabled module provides one: the calendar's `calendar-mailbox-sync` worker
-   writes through it in worker mode as the API does. `ChannelMailbox` follows it, by the
-   same kind of helper (`withChannelMailbox`) in Compose and in Workers, keeping a preset
-   value (`modtest.WithChannelMailbox`) the same way: Communications' outbox sends through
-   it in worker mode. `CalendarBusy` is resolved by
-   Compose last of all, after `ChannelMailbox`, since its provider — the calendar's
+   worker-mode `Deps` answers who holds what as a composed one does. `OutboundMail` is
+   resolved after the three mailbox slots below, since its provider may read
+   `Deps.ChannelMailboxes` while it is built. `CalendarBusy` is resolved by
+   Compose last of all, after the mailbox slots, since its provider — the calendar's
    server — reads the rest of `Deps` while it is built; `module.Workers` leaves it nil,
    as no worker reads it. Two providers are a compose error naming both, and a panic in
    Workers.
-   Seven slots are *many-provider* instead — any number of modules may fill them,
+   Eleven slots are *many-provider* instead — any number of modules may fill them,
    and Compose collects them in module order: `Workers` (background work, from
    the enabled modules), `CalendarSources` (`contracts.CalendarSource`, rule 12,
    from the enabled modules too), `IdentityProvisioners`
-   (`contracts.IdentityProvisioner`, rule 13, from the enabled modules too),
+   (`contracts.IdentityProvisioner`, rule 13, from the enabled modules too), the three
+   mailbox slots — `MailboxCalendars` (`contracts.MailboxCalendar`, entra — a provider's
+   mailbox calendars, which the calendar's mailbox sync writes people's copies to and
+   reads their busy time from; rule 14), `ChannelMailboxes` (`contracts.ChannelMailbox`,
+   entra — a provider's mailboxes as Communications' channels send from; rule 15) and
+   `PersonalMailboxes` (`contracts.PersonalMailbox`, entra — a person's delegated
+   mailbox to send from in Communications; rule 16) —, `DirectorySearches`
+   (`contracts.DirectorySearch`, entra — a directory's accounts as identity offers them
+   to an Owner connecting existing users; rule 22; Compose only, as no worker searches),
+   all four keyed and from the enabled modules too,
    `CustomerReferences`
    (`contracts.CustomerReferenceHolder`, rule 8), `CustomerPersonalData`
    (`contracts.CustomerPersonalData`, rule 9), `InvoicedWork`
@@ -191,7 +188,17 @@ Communications' outbox is the working example.
    provider), naming the module; a nil provider is dropped.
    Providers preset on `Deps` (a test's fake, through
    `modtest.WithIdentityProvisioners`, which `modtest.FakeIdentityProvisioner` fills)
-   come first and keep their place. A provider's gate is asked for a user with no request
+   come first and keep their place. The three mailbox slots and `DirectorySearches` are
+   collected by the same rule — one generic helper, `collectKeyed`, behind
+   `withMailboxCalendars`, `withChannelMailboxes`, `withPersonalMailboxes` (Compose and
+   Workers, after the identity provisioners) and the directory searches (Compose) —:
+   presets first (`modtest.WithMailboxCalendar`, `WithChannelMailbox`,
+   `WithPersonalMailbox`, `WithDirectorySearch` append), a duplicate or reserved key
+   refused. A consumer never iterates them to call out except where its rule says: it
+   picks the provider by a key it already holds — the calendar by the person's
+   `DirectoryAccount.Provider`, Communications by the channel's `provider` and by the
+   `send_provider` it recorded, identity by the configured OIDC provider — through one
+   lookup per slot in its own `contractscalls.go` that makes no network call. A provider's gate is asked for a user with no request
    behind them only through `contracts.AsUser`, and only by a module that has matched a
    token to that user — the calendar feed's, whose address names one person — or that
    acts on a person's own standing setting — the calendar's Outlook sync worker, whose
@@ -609,9 +616,14 @@ Communications' outbox is the working example.
     ([the provider link](/en/reference/staff/#the-provider-link)).
 14. **The calendar writes a provider's mailbox.** The sixth sanctioned cross-module
     direction, the calendar → a provider module, made for the copies of a person's
-    calendar in their mailbox (the calendar's Outlook sync):
-    `contracts.MailboxCalendar`, in the single-provider slot `MailboxCalendar` (rule 5),
-    which a module offering people's mail calendars fills. The first filler is
+    calendar in their mailbox (the calendar's mailbox sync):
+    `contracts.MailboxCalendar`, in the many-provider slot `MailboxCalendars` (rule 5),
+    keyed by `Key`, which each module offering people's mail calendars fills. **The
+    calendar picks a provider by the person's account**: the one whose `Key` is the
+    `Provider` of the person's `Workforce.DirectoryAccount`, never another — a person
+    whose account no filled provider answers is `no_account`; it asks each provider's
+    `Notified` and `Connections` in turn, with a cursor per key. `DisplayName` names the
+    calendar service in the calendar's labels ("Outlook"). The first filler is
     `internal/entra`, under the key `entra`, writing to Exchange Online through Graph
     ([Microsoft Entra ID](/en/reference/entra/#the-mailbox-calendar)); the interface
     names no vendor — a mailbox is an account's external id, a calendar an opaque id, an
@@ -704,16 +716,19 @@ Communications' outbox is the working example.
 15. **Communications writes through, and reads from, a provider's mailbox.** The seventh sanctioned
     cross-module direction, Communications → a provider module, made for a team's shared
     mailbox as a channel (Outlook connection and Microsoft 365 mail design M11):
-    `contracts.ChannelMailbox`, in the single-provider slot `ChannelMailbox` (rule 5),
-    which a module offering mailboxes to send from fills. The first filler is
+    `contracts.ChannelMailbox`, in the many-provider slot `ChannelMailboxes` (rule 5),
+    keyed by `Key`, which each module offering mailboxes to send from fills. The first filler is
     `internal/entra`, under the key `entra`, sending from Exchange Online shared mailboxes
     through Graph on the application's own token ([Microsoft Entra
     ID](/en/reference/entra/#mail-channels)); the interface names no vendor — a mailbox is
     an opaque id, a message whole MIME — so an IMAP or Gmail provider could fill it later.
     **Communications is the authority on which mailboxes are channels**: a channel's
-    `provider` is the slot's `Key`, its `settings` the mailbox id `Check` answered, and
-    a channel whose provider is not the slot's `Key` is unavailable, **never sent through
-    another provider**. **The provider writes to, and reads from, only a mailbox its `Check`
+    `provider` is a provider's `Key`, its `settings` the mailbox id `Check` answered, and
+    a channel whose provider no filled provider answers is unavailable, **never sent
+    through another provider**; a channel moves between two mailbox providers only by way
+    of SMTP. `Send` answers a `SentMessage` — the Message-ID the message left with and the
+    provider's thread id, each empty when unknown — which Communications records so a
+    reply threads either way. **The provider writes to, and reads from, only a mailbox its `Check`
     resolved** and recorded on its own side (`ErrMailboxUnknown` otherwise, with no call) —
     Entra records only a shared one — and `Forget` drops one. **The reads are under the
     same gate as `Send`**: `Delta` reads one page of a folder's changes (`inbox`, a link
@@ -758,8 +773,13 @@ Communications' outbox is the working example.
 16. **Communications sends through a person's delegated mailbox.** The eighth sanctioned
     cross-module direction, Communications → a provider module, made for personal sending
     (Outlook connection and Microsoft 365 mail design M20): `contracts.PersonalMailbox`, in
-    the single-provider slot `PersonalMailbox` (rule 5), which a module offering a person's
-    delegated mailbox to send from fills. The first filler is `internal/entra`, sending through
+    the many-provider slot `PersonalMailboxes` (rule 5), keyed by `Key`, which each module
+    offering a person's delegated mailbox to send from fills. **Communications asks every
+    provider's `Status`** — each answers `no_account` for a caller whose directory account
+    is not its own — and takes the first available answer, else the first whose reason is
+    not `no_account`; it records the provider's key with the message (`send_provider`)
+    and the outbox sends through that provider only, answering `connection_needed` when it
+    is gone. The first filler is `internal/entra`, sending through
     Graph on the caller's or author's delegated token ([Microsoft Entra ID](/en/reference/entra/#personal-mailbox)).
     **Status and Send are guarded by contractscalls.go**: `PersonalMailbox.Status` is checked
     outside transactions before opening one for new conversations or replies; the outbox calls
@@ -934,6 +954,21 @@ Communications' outbox is the working example.
       exempts exactly `Products.LockVariants`. A second locking read needs a design of its
       own and a rule here.
 
+22. **Identity searches a provider's directory.** The eleventh sanctioned cross-module
+    direction, identity → a provider module, made for an Owner connecting existing users
+    to their directory accounts (Google Workspace design G8): `contracts.DirectorySearch`,
+    in the many-provider slot `DirectorySearches` (rule 5), keyed by `Key` — the OIDC
+    provider it serves —, which each directory module fills; Compose collects it, Workers
+    does not, as no worker searches. **Identity serves it** on its own Owner SSO endpoints
+    (`GET /api/v1/identity/owner/sso/directory/users` and `…/matches`, under
+    `policy:Owner+OwnerManagement`), asking only the provider whose `Key` is the configured
+    OIDC provider (`no_directory` otherwise), and the host's picker calls identity, never a
+    provider module. `Key` and `DisplayName` make no network call; `Users` and `Matches`
+    do, on the provider's own pool, and are never called inside a transaction. The
+    provider still reads `SSOConnections` for the candidates and the holders (rule 12), so
+    identity's gatekeeping is unchanged. The first filler is `internal/entra`
+    ([Microsoft Entra ID](/en/reference/entra/)).
+
 ## The AI platform
 
 AI is a platform provider, like mail: the provider, its key and the models the plan allows are
@@ -1070,8 +1105,10 @@ none is a numbered rule above because no module reaches into another.
   `modtest.WithChannelMailbox`; the contract-call hook in `contractscalls.go` records
   whether each slot call was made inside one of the module's transactions, and the tests
   assert none was. Entra's `channel_mailbox_test.go` proves `Send` refuses a mailbox no
-  `Check` recorded without a call, and `TestCompose_ResolvesTheChannelMailboxSlot` that
-  two providers are refused.
+  `Check` recorded without a call, and `TestCompose_CollectsTheMailboxSlots` (with
+  `TestWorkers_CollectTheMailboxSlots`) that two providers under two keys are both kept
+  while a key two claim, or a reserved one, is refused. Communications' tests run two
+  fakes under two keys, so a channel is proven served by its own provider only.
 - **Rule 18**: by depguard and by test. depguard forbids every import of `internal/operations`
   but `internal/assistant`, `internal/module`, `internal/server` and the test harnesses; a
   `module` test composes a module called `alpha` and one called `assistant` and proves which is
@@ -1524,12 +1561,14 @@ matches and the holders the search marks, and of Staff only `Deps.Workforce`'s
 principal, for the person's Outlook connection — both through the accessors in
 `internal/entra/contractscalls.go` and never inside a transaction; the Owner's and
 `entra:manage`'s checks are the router's — and writes nothing outside the `entra`
-schema. It fills three
-slots, `IdentityProvisioner` (rule 13), `MailboxCalendar` (rule 14) and `ChannelMailbox`
-(rule 15): Staff's accounts worker, the calendar's mailbox sync worker and Communications
-— its channel handlers and its outbox — call it, in the API and in worker mode alike,
-never inside a transaction. With `entra` off, `Deps.ChannelMailbox` is nil:
-Communications offers SMTP alone, and a Microsoft 365 channel's mail is held as
+schema. It fills six
+slots under the key `entra`, `IdentityProvisioner` (rule 13), `MailboxCalendar` (rule 14),
+`ChannelMailbox` (rule 15), `PersonalMailbox` (rule 16) and `DirectorySearch` (rule 22):
+Staff's accounts worker, the calendar's mailbox sync worker, Communications — its channel
+handlers and its outbox — and identity's directory search call it, in the API and in
+worker mode alike, never inside a transaction. With `entra` off, no provider answers
+`entra` in `Deps.ChannelMailboxes`:
+Communications offers SMTP and any other provider, and a Microsoft 365 channel's mail is held as
 unavailable, spending no attempt, and failed as `provider_unavailable` 24 hours after it
 was queued. Its one worker, `entra-outlook-sweep`, deletes the
 closed Outlook connections nothing needs and reads the accounts of those waiting to
@@ -1571,7 +1610,14 @@ its own gatekeeper (rule 12), is collected from enabled modules only, and needs 
 gate held and nothing without it; `IdentityProvisioner`, for a module driving an
 external identity provider's directory for Staff, keeps rule 13, is collected from
 enabled modules only, answers a `Key()` no other provider claims, and is tested against
-Staff's expectations through `modtest.FakeIdentityProvisioner`'s rules.
+Staff's expectations through `modtest.FakeIdentityProvisioner`'s rules. The three
+mailbox slots — `MailboxCalendar`, `ChannelMailbox`, `PersonalMailbox` (rules 14–16) —
+and `DirectorySearch` (rule 22) are many-provider slots of the same shape: a module
+offering a second mail or directory service fills the builder field with a provider
+under its own `Key()` — the key a person's directory account, a channel's `provider`
+and an OIDC provider name — and no consumer changes; collected from enabled modules
+only, a key no other provider claims, tested through the consumers' own suites with two
+`modtest` fakes under two keys.
 
 A module contributing no recorded exchanges needs nothing in
 `openapi/testdata/exchanges/`: that corpus is frozen evidence from the retired .NET
