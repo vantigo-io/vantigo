@@ -553,3 +553,28 @@ func TestMeteringPoint_ElectricityTaxSuggestion(t *testing.T) {
 		t.Errorf("list = %+v, want the point without a suggestion", list.Data)
 	}
 }
+
+// TestMeteringPoint_ElectricityTaxSuggestionFollowsAMerge pins that a point
+// still supplied to a customer merged away reads its survivor's industry code,
+// and reports the survivor as the customer read.
+func TestMeteringPoint_ElectricityTaxSuggestionFollowsAMerge(t *testing.T) {
+	t.Parallel()
+	dir := newImportDirectory()
+	survivor := dir.customers[1001]
+	survivor.IndustryCode = "24.420"
+	dir.customers[1001] = survivor
+	merged := dir.customers[1005]
+	merged.IndustryCode = "47.110"
+	dir.customers[1005] = merged
+	h := newHarness(t, modtest.WithDirectory(dir))
+	c := h.SignIn(t, allEnergyPermissions...)
+	point := createMeteringPoint(t, c)
+	insertActiveSupplyPeriod(t, h, point.Id, 1005, h.Now().AddDate(0, -1, 0), h.Now().AddDate(1, 0, 0))
+
+	var got meteringPointJSON
+	c.Do(http.MethodGet, fmt.Sprintf("/api/v1/energy/metering-points/%d", point.Id), nil).JSON(&got)
+	if s := got.ElectricityTaxSuggestion; s == nil || s.Reason != "industry" || s.CustomerId == nil || *s.CustomerId != 1001 ||
+		s.IndustryCode == nil || *s.IndustryCode != "24.420" {
+		t.Errorf("suggestion = %+v, want industry from survivor 1001's 24.420", s)
+	}
+}
