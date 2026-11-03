@@ -18,6 +18,7 @@
     "@tabler/icons-react": "catalog:",
     "@tanstack/react-query": "catalog:",
     "@tanstack/react-router": "catalog:",
+    "@tanstack/react-virtual": "catalog:",
     "@vantigo/frontend-api-client": "workspace:*",
     "@vantigo/frontend-shell": "workspace:*",
     "dayjs": "catalog:",

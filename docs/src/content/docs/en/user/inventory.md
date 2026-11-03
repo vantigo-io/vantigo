@@ -298,6 +298,10 @@ The count's page, **Count …**, opens on the **Count** tab:
    it.*
 3. Without a scanner, type into **Counted** on each line.
 
+A count of a whole site may hold thousands of lines. The page draws only the lines near
+what you see and draws the rest as you scroll, so it stays quick; a scanned item's line
+is scrolled into view wherever it lies, and **Tab** moves on to the next line as before.
+
 Each line shows **Expected**, **Now** — what lies there now —, **Counted** and the
 **Difference**. A line whose stock changed since the count opened is marked **Moved**.
 What you type is **saved by itself** a moment after you stop: the page says **Saving…**,

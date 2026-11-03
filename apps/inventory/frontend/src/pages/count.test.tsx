@@ -1,6 +1,6 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { InventoryCount } from "../api/counts";
 import { choose, retype, scan, sent } from "../test/helpers";
 import { renderRoute } from "../test/route-tree";
@@ -258,6 +258,60 @@ describe("the counting screen", () => {
     expect((await screen.findAllByText("Cancelled")).length).toBeGreaterThan(0);
     expect(screen.getByText("Cancelled by")).toBeInTheDocument();
     expect(screen.queryByRole("textbox", { name: "Scan a location or an item" })).not.toBeInTheDocument();
+  });
+
+  it("draws only the lines near the window of a count of thousands, and scrolls a scanned item's line into view", async () => {
+    // 2999 lines on OSL-A-01 that sort before the T-shirt, the last of 3000.
+    const many = Array.from({ length: 2999 }, (_, i) => ({
+      id: 1000 + i,
+      variant: {
+        id: 1000 + i,
+        productId: 9,
+        sku: `AA-${String(i).padStart(4, "0")}`,
+        productName: "Filler",
+        unit: "pcs",
+      },
+      location: ref(12),
+      expected: 1,
+      current: 1,
+      added: false,
+      moved: false,
+    }));
+    const lines = [
+      ...many,
+      { id: 4000, variant: variant(101), location: ref(12), expected: 5, current: 5, added: false, moved: false },
+    ];
+    stubInventoryApi({ counts: [{ ...openCount(), lineCount: lines.length, lines }], balances: balances() });
+    // jsdom has no layout: the page is as tall as its lines, everything on it sits at its top and moves up as the
+    // window scrolls, and scrolling the window moves its offset and says so, as a browser would.
+    Object.defineProperty(document.documentElement, "scrollHeight", { configurable: true, value: 3000 * 64 + 1000 });
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(() =>
+      DOMRect.fromRect({ x: 0, y: -window.scrollY, width: 0, height: 0 }),
+    );
+    const scrolled = vi.spyOn(window, "scrollTo").mockImplementation(((options: ScrollToOptions) => {
+      Object.defineProperty(window, "scrollY", { configurable: true, writable: true, value: options.top ?? 0 });
+      setTimeout(() => window.dispatchEvent(new Event("scroll")));
+    }) as typeof window.scrollTo);
+    try {
+      renderRoute("/inventory/counts/500");
+      expect(await screen.findByText("0 of 3000 lines counted")).toBeInTheDocument();
+      const drawn = screen.getAllByRole("textbox", { name: /^Counted, / });
+      expect(drawn.length).toBeGreaterThan(0);
+      expect(drawn.length).toBeLessThan(100);
+      expect(screen.queryByRole("textbox", { name: "Counted, OSL-A-01 TS-M" })).not.toBeInTheDocument();
+
+      const field = await scanField();
+      await scan(field, "LOC12");
+      expect(await screen.findByText("Counting at")).toBeInTheDocument();
+      await scan(field, "TS-M");
+      const counted = await screen.findByRole("textbox", { name: "Counted, OSL-A-01 TS-M" });
+      await waitFor(() => expect(counted).toHaveFocus());
+      expect(scrolled).toHaveBeenCalled();
+      expect(screen.getAllByRole("textbox", { name: /^Counted, / }).length).toBeLessThan(100);
+    } finally {
+      Object.defineProperty(window, "scrollY", { configurable: true, writable: true, value: 0 });
+      Reflect.deleteProperty(document.documentElement, "scrollHeight");
+    }
   });
 
   it("counts a scanned box in packagings and saves it as entered, broken down beside the base quantity", async () => {
