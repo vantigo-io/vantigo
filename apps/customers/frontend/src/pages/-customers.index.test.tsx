@@ -61,6 +61,9 @@ const stubFetch = (rows: unknown[] = [defaultRow]) => {
       );
     }
     if (init?.method === "DELETE") return Promise.resolve(new Response(null, { status: 204 }));
+    if (url === "/api/v1/customers" && init?.method === "POST") {
+      return Promise.resolve(new Response(JSON.stringify({ id: 2002 }), { status: 201 }));
+    }
     if (url.startsWith("/api/v1/customers/stats")) {
       return Promise.resolve(
         jsonResponse({
@@ -229,6 +232,32 @@ describe("CustomersPage", () => {
         replace: true,
       }),
     );
+  });
+
+  it("opens the new customer's page once it is created", async () => {
+    stubFetch();
+    renderPage();
+    await screen.findByText("Equinor");
+
+    fireEvent.click(screen.getByRole("button", { name: "Create new customer" }));
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.type(within(dialog).getByRole("textbox", { name: /Name/ }), "Ny Kunde AS");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Create customer" }));
+
+    await waitFor(() => expect(router.navigate).toHaveBeenCalledWith({ href: "/customers/2002", replace: false }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  });
+
+  it("replaces the create intent's URL with the new customer's page", async () => {
+    stubFetch();
+    router.search = { page: 1, search: "", create: true };
+    renderPage();
+
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.type(within(dialog).getByRole("textbox", { name: /Name/ }), "Ny Kunde AS");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Create customer" }));
+
+    await waitFor(() => expect(router.navigate).toHaveBeenCalledWith({ href: "/customers/2002", replace: true }));
   });
 
   it("shows the customer number, not the database id", async () => {

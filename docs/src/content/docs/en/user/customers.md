@@ -61,6 +61,8 @@ spotlight). The form asks for:
 - **Email** and **Phone**, the customer's own; edited afterwards from the customer page.
 - **Status**: **Active**, **Disabled** or **Archived**.
 
+Press **Create customer** and the new customer's page opens.
+
 While you type, **Existing customers with a similar name** lists up to three customers
 whose name contains what you typed — a nudge to look before creating a duplicate,
 never a block.

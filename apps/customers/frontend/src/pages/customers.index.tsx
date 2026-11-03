@@ -220,6 +220,12 @@ export const CustomersPage = ({
     // The intent is consumed: closing the form must not reopen it on refresh or back.
     if (create) navigate({ search: listSearch, replace: true });
   };
+  // A new customer opens on its own page. Arriving through the `create` intent,
+  // the list URL that carried it is replaced, so back does not reopen the form.
+  const openCreated = (id: number) => {
+    setModalState(null);
+    navigate({ href: `/customers/${id}`, replace: Boolean(create) });
+  };
 
   const [exporting, setExporting] = useState(false);
   // The list as it stands — its filters and sort from the URL, never its page —
@@ -289,7 +295,7 @@ export const CustomersPage = ({
         }
       />
 
-      <CustomerFormModal state={modalState} onClose={closeModal} canMerge={canMerge} />
+      <CustomerFormModal state={modalState} onClose={closeModal} onCreated={openCreated} canMerge={canMerge} />
       <ManageTagsModal
         opened={manageTagsOpened}
         onClose={() => setManageTagsOpened(false)}

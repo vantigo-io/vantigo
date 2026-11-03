@@ -94,10 +94,13 @@ const revisionOf = (state: CustomerModalState | null) => (state?.mode === "edit"
 export const CustomerFormModal = ({
   state,
   onClose,
+  onCreated,
   canMerge,
 }: {
   state: CustomerModalState | null;
   onClose: () => void;
+  /** Called with the new customer's id after a create, in place of `onClose` — the caller takes the user to it. */
+  onCreated?: (id: number) => void;
   /** `customers:merge`: a duplicate-identity conflict says a merge may be the fix (merge design D4). */
   canMerge?: boolean;
 }) => {
@@ -174,7 +177,8 @@ export const CustomerFormModal = ({
       if (isEdit) syncCustomerRevision(queryClient, state.customer.id, (saved as CustomerResponse).revision);
       queryClient.invalidateQueries({ queryKey: ["customers"] });
       setConflict(null);
-      onClose();
+      if (!isEdit && onCreated) onCreated(saved.id);
+      else onClose();
       notifications.show({
         color: "teal",
         title: isEdit ? t("customerUpdated") : t("customerCreated"),
