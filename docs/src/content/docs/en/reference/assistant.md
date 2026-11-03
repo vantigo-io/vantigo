@@ -332,7 +332,9 @@ The route list the prompt carries is the host's route shapes (`appRoutes` in `pr
 list `navigate` validates against. It names one prefix per app with the record screens under it — for
 Inventory, `/inventory` with a site, a location, a variant's stock and the movements — so an app the
 list does not name cannot be linked to. Its targets join [the registry](#guided-tours) the same way:
-`@vantigo/inventory-ui` exports its own, and the host's `assist-targets.ts` collects them.
+`@vantigo/inventory-ui` exports its own — the lookup, a new site, location, receipt,
+adjustment and move, bulk adding locations, printing labels, opening a count and the import's file — and
+the host's `assist-targets.ts` collects them.
 
 ## Claude and preserved thinking
 
