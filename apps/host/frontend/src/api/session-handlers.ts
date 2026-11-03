@@ -5,6 +5,7 @@ import * as customers from "@vantigo/customers-ui/api/request";
 import * as energy from "@vantigo/energy-ui/api/request";
 import * as entra from "@vantigo/entra-ui/api/request";
 import * as expenses from "@vantigo/expenses-ui/api/request";
+import * as inventory from "@vantigo/inventory-ui/api/request";
 import * as invoices from "@vantigo/invoices-ui/api/request";
 import * as planning from "@vantigo/planning-ui/api/request";
 import * as products from "@vantigo/products-ui/api/request";
@@ -36,6 +37,7 @@ export const sessionClients: Record<string, SessionClient> = {
   "@vantigo/energy-ui": energy,
   "@vantigo/entra-ui": entra,
   "@vantigo/expenses-ui": expenses,
+  "@vantigo/inventory-ui": inventory,
   "@vantigo/invoices-ui": invoices,
   "@vantigo/planning-ui": planning,
   "@vantigo/products-ui": products,

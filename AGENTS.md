@@ -70,6 +70,30 @@ Design specs, implementation plans and research live under `docs/superpowers/`
 plan for a feature lists, as its own step, the documentation pages it will change, in
 both languages where the section is bilingual.
 
+## Adding a module
+
+Follow the checklist
+[Adding a module](docs/src/content/docs/en/contributing/module-boundaries.md#adding-a-module)
+step by step. A new module has to be named in many registries, and these are the ones
+that have been missed:
+
+- the integration test's `everyModule()` in
+  `apps/server/internal/integration/assistant_test.go`;
+- the Assistant's link prefixes: `APP_ROUTE_PREFIXES` in
+  `apps/assistant/frontend/src/lib/links.ts` and `appRoutes` in
+  `apps/server/internal/assistant/prompt.go`, bumping `promptVersion` there;
+- every depguard set in `apps/server/.golangci.yml`, the hyphenated ones too;
+- `modulesEnv` in `apps/server/internal/modtest/modtest.go`, for a module that
+  `internal/config` makes require another;
+- the host's per-module registrations: `moduleKeys`, `apps.ts`, the layout route,
+  `i18n.ts`, the admin permission labels, the dashboard and the spotlight, and the
+  API client in `sessionClients` (`apps/host/frontend/src/api/session-handlers.ts`).
+
+A pull request's CI runs against the base it branched from. When another pull request
+has touched a module registry since, rebase onto the latest `main` and let CI run again
+right before merging — otherwise the new module and the new registry each pass alone
+and break `main` together.
+
 ## Finishing a change
 
 Before calling a change done: the Go gate (`mise run server:check`, `mise run server:test`),
