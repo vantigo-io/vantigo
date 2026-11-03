@@ -1,8 +1,9 @@
 ---
 title: "Microsoft Entra ID module"
-description: "Microsoft Entra ID as Staff's identity provider: the connection to one tenant, its client secrets in the plural and the connection test; the status and its reasons, read by Staff with no network call; the account rules; the guarded Graph client and its limits; the user lifecycle per step — prepared disabled, enabled on the day with the hire date, the licences and a Temporary Access Pass, kept in step, disabled with the leaver's steps, soft-deleted — with the Graph calls and the codes; the account's photo, converted to Graph's JPEG and written or cleared; the address rule; the pass; the sensitive actions and role_missing; Staff's groups in the tenant — the six traits and the cached licences, the create, or the adoption an entra:manage holder confirms, with the service principal as an owner, the team, the members by $ref, the delete or the retirement; connecting existing users — the directory search and the exact matches, read through contracts.SSOConnections; the Outlook connection — the switch and its status, the redirect URI, the certain account read from Staff, the flow with its two cookies, the states and the revision guard, the delegated token, its refresh and its reconnects, CAE and cp1, closing and entra-outlook-sweep; the permissions the module does not use, a leftover application Calendars.ReadWrite among them; the mailbox calendar the module fills for the calendar's Outlook sync, every call on the person's own delegated token — the status rule, the account check, the removals a closing connection serves, ErrConnectionNeeded and Connections, the Graph calls and $batch, the marker, the all-day zones, the reads of the default calendar's delta and the marker, the write-back's reads of the copies' versions and of events whole, and the refusals; the mail channels Communications sends through and receives into — the switch and its status, tenant_wide, the channel mailboxes the module fills for Communications on the application's token, Check, Send through sendMail or a MIME draft, MaxMessage, Delta over the Inbox's message delta with immutable ids and the link check, Raw through $value under the caller's cap, Watch, Unwatch and Notified for Inbox message subscriptions, Mark and EnsureFolder for on-close changes, and Forget; the events, the permission, the refusals and the endpoints."
+description: "Microsoft Entra ID as Staff's identity provider: the connection to one tenant, its client secrets in the plural and the connection test; the status and its reasons, read by Staff with no network call; the account rules; the guarded Graph client and its limits; the user lifecycle per step — prepared disabled, enabled on the day with the hire date, the licences and a Temporary Access Pass, kept in step, disabled with the leaver's steps, soft-deleted — with the Graph calls and the codes; the account's photo, converted to Graph's JPEG and written or cleared; the address rule; the pass; the sensitive actions and role_missing; Staff's groups in the tenant — the six traits and the cached licences, the create, or the adoption an entra:manage holder confirms, with the service principal as an owner, the team, the members by $ref, the delete or the retirement; connecting existing users — the directory search and the exact matches behind contracts.DirectorySearch, which identity serves, read through contracts.SSOConnections; the Outlook connection — the switch and its status, the redirect URI, the certain account read from Staff, the flow with its two cookies, the states and the revision guard, the delegated token, its refresh and its reconnects, CAE and cp1, closing and entra-outlook-sweep; the permissions the module does not use, a leftover application Calendars.ReadWrite among them; the mailbox calendar the module fills for the calendar's Outlook sync, every call on the person's own delegated token — the status rule, the account check, the removals a closing connection serves, ErrConnectionNeeded and Connections, the Graph calls and $batch, the marker, the all-day zones, the reads of the default calendar's delta and the marker, the write-back's reads of the copies' versions and of events whole, and the refusals; the mail channels Communications sends through and receives into — the switch and its status, tenant_wide, the channel mailboxes the module fills for Communications on the application's token, Check, Send through sendMail or a MIME draft, MaxMessage, Delta over the Inbox's message delta with immutable ids and the link check, Raw through $value under the caller's cap, Watch, Unwatch and Notified for Inbox message subscriptions, Mark and EnsureFolder for on-close changes, and Forget; the events, the permission, the refusals and the endpoints."
 sources:
   - apps/server/internal/entra
+  - apps/server/internal/contracts/directory_search.go
   - apps/entra/frontend
   - apps/host/frontend/src/routes/workspace/entra
   - apps/host/frontend/src/routes/workspace/entra.tsx
@@ -44,7 +45,8 @@ hold a tenant-wide credential that nothing uses. Its one background worker,
 It reads of identity only what
 `contracts.SSOConnections` answers an Owner — the users not yet connected to the
 workforce provider and who already holds a directory account's keys — for
-[connecting existing users](#connecting-existing-users), and of Staff only the caller's
+[connecting existing users](#connecting-existing-users), through the
+`contracts.DirectorySearch` it fills for identity, and of Staff only the caller's
 own directory account, `contracts.Workforce.DirectoryAccount`, for [the Outlook
 connection](#the-outlook-connection); the Owner's check and
 `entra:manage`'s are the router's. It writes nothing
@@ -1240,21 +1242,33 @@ renamed through `EnsureGroup`, not here.
 An installation that turns single sign-on on with users already in it connects each of
 them through identity's announced link
 ([`POST /api/v1/identity/owner/users/{id}/sso-link`](/en/admin/authentication/#connect-an-existing-user-to-the-provider)).
-The module offers two **Owner reads** of the tenant so that the Owner picks an account
-rather than types it: the **directory search**, behind the picker in the connect
-dialog, and the **exact matches**, behind the review that connects a whole workspace.
-Neither writes anything: connecting stays identity's endpoint, which the host calls
+So that the Owner picks an account rather than types it, **identity** serves two Owner
+reads of the configured provider's directory —
+`GET /api/v1/identity/owner/sso/directory/users` (the
+**directory search**, behind the picker in the connect dialog) and
+`GET /api/v1/identity/owner/sso/directory/matches` (the **exact matches**, behind the
+review that connects a whole workspace) — and the module answers them while Entra is the
+configured OIDC provider (Google Workspace design G8,
+[module boundaries](/en/contributing/module-boundaries/) rule 22). The module fills
+**`contracts.DirectorySearch`**, a many-provider slot keyed by `Key()` — `entra`,
+displayed `Microsoft Entra ID` — that Compose collects into `Deps.DirectorySearches`
+(Workers does not: no worker searches a directory); identity asks the one whose key is
+the configured provider, with the request's context, outside any transaction. Until
+delivery 0 of the Google Workspace design the two reads were this module's own
+`GET /api/v1/entra/directory/users` and `/matches`; those are gone from
+`openapi/entra.yaml`.
+
+Neither read writes anything: connecting stays identity's endpoint, which the host calls
 once per chosen pair, and identity's refusals (`sso_link_taken`, `account_linked`,
 `account_pending`) still decide what may be connected — `sso_link_taken` also when
 another user's SCIM mapping names either key. No migration.
 
-Both are under `policy:Owner+OwnerManagement` — an Owner, with a second factor when
-Owners must use one (`OWNERS_REQUIRE_MFA`) — like the connection's writes, since they read the whole
-tenant and identity's addresses; a holder of `entra:manage` alone, or a SystemAdmin who
-is not an Owner, is refused 403 by the router. Each has a rate limit of its own per
-client address: the search `entra-directory`, 60 a minute (a debounced picker asks once
-per pause in typing), the matches `entra-matches`, 6 a minute (a review an Owner opens,
-not a list they refresh); 429 beyond.
+Identity's endpoints carry the access rule, the rate limits and the refusals: both are
+under `policy:Owner+OwnerManagement`, each with a bucket of its own per client address
+(60 searches and 6 matches a minute), and they answer 409 `no_directory` while OIDC is
+off or another provider is configured and 503 `provider_unreachable` when the module
+could not ask the tenant ([the refusals](#the-providers-refusals)). The picker and the
+review are the host's, on the users page.
 
 ### What the module reads of identity
 
@@ -1297,10 +1311,11 @@ of addresses reaches the log either.
 
 ### The directory search
 
-`GET /api/v1/entra/directory/users?q=` searches the tenant's accounts by display name,
-mail and principal name. `q` loses every `"` and `\` (it is quoted into the search) and
-must then be **2 to 100 characters** once trimmed, else 400 `invalid_request` with the
-field `q`. The module asks Graph:
+`DirectorySearch.Users(ctx, search, limit)` searches the tenant's accounts by display
+name, mail and principal name. Identity hands on the search already rid of every `"`
+and `\` and **2 to 100 characters** once trimmed (else it answers 400
+`invalid_request` itself), with a limit of 25; the module strips `"` and `\` again (it
+quotes the search) and asks Graph for at most the limit, never more than 25:
 
 ```http
 GET /users?$search="displayName:<q>" OR "mail:<q>" OR "userPrincipalName:<q>"
@@ -1310,11 +1325,13 @@ ConsistencyLevel: eventual
 ```
 
 — an advanced query, which Graph answers only with the `ConsistencyLevel` header. The
-answer, `EntraDirectoryUsers`, is **at most 25** accounts by display name, each its
-`objectId`, `displayName`, `userPrincipalName`, `mail` and `employeeId` when set,
-`accountEnabled`, `guest: true` for a guest of the tenant (`userType` `Guest`, invited
-from another organisation; absent for a member), and `holder` (`kind` `expected`, `mapped` or `account`, with the
-`userId` for the first two) when `KeyHolders` says somebody holds it. When 25 come back
+answer is **at most 25** accounts by display name, each a `contracts.DirectoryUser`:
+the object id (lower-case dashed) and the principal name, which identity answers as
+`objectId` and `userPrincipalName`, the display name, the `mail` and the `employeeId`
+(identity's `employeeNumber`) when set, whether the account is enabled
+(`accountEnabled`), whether it is a guest of the tenant (`userType` `Guest`, invited
+from another organisation), and its holder (`kind` `expected`, `mapped` or `account`,
+with the user for the first two) when `KeyHolders` says somebody holds it. When 25 come back
 there may be more, and the picker asks the Owner to narrow the search. An account
 another user or Staff holds is shown but cannot be picked; one the user being connected
 holds already can. A pick hands the host both keys as one unit: in the connect dialog,
@@ -1323,7 +1340,7 @@ changing the search after a pick clears both.
 
 ### The exact matches
 
-`GET /api/v1/entra/directory/matches` reads `Unconnected` — **at most 1000** users, in
+`DirectorySearch.Matches(ctx)` reads `Unconnected` — **at most 1000** users, in
 identity's order, asking identity for 1001; `truncated` is true when more were
 waiting — and asks the tenant for
 every account any of their keys could match: `mail in (…)` and
@@ -1335,14 +1352,14 @@ and `employeeId in (…)` by the employee numbers of those who have one, in filt
 - A **guest** account (`userType` `Guest`) matches nobody: it is set aside before
   matching, so it is never proposed and never makes a user ambiguous.
 - A user's key matches an account when the user's address equals the account's
-  `mail` (by `mail`) or its `userPrincipalName` (by `userPrincipalName`), ignoring case
+  `mail` (by `mail`) or its `userPrincipalName` (by `principalName`), ignoring case
   and surrounding space, or the user's employee number equals the account's
-  `employeeId` (by `employeeId`), trimmed and ignoring case. An empty address — one
+  `employeeId` (by `employeeNumber`), trimmed and ignoring case. An empty address — one
   identity made up — and an empty number match nothing.
 - A user whose keys matched no account is neither proposed nor counted.
 - A user is **proposed** when their keys matched **exactly one** account and no other
   user's key matched that account; `matchedBy` lists every key that matched it, in the
-  order `mail`, `userPrincipalName`, `employeeId`.
+  order `mail`, `principalName`, `employeeNumber` (`contracts.DirectoryMatchedBy*`).
 - A user is **ambiguous** — left out and counted — when their keys matched two
   accounts or more, or one account that another user's key matched too (whether or not
   that user matched further accounts). Nobody is proposed by a guess between two, and
@@ -1352,35 +1369,37 @@ and `employeeId in (…)` by the employee numbers of those who have one, in filt
   out, and not counted as ambiguous. The user's own SCIM mapping of the account does not
   block their proposal.
 
-The answer, `EntraDirectoryMatches`, is the `matches` — each `{userId, account,
-matchedBy}`, the account as the search answers it without a holder, in identity's
-order — with `candidates`, how many users were read, `ambiguous`, how many were left
-out as above, and `truncated`.
+The answer, `contracts.DirectoryMatches`, is the matches — each the user, the account
+as the search answers it without a holder, and what matched, in identity's order — with
+how many users were read (`candidates`), how many were left out as above (`ambiguous`),
+and whether more were waiting (`truncated`); identity answers it as
+`SsoDirectoryMatches`.
 
 The whole read — identity's candidates, the tenant's filters and the holders — is
-bounded by **two minutes**, past which it answers 503 `tenant_unreachable`. An Owner's
+bounded by **two minutes**, past which it fails `contracts.ErrDirectoryUnavailable`
+(identity's 503 `provider_unreachable`). An Owner's
 second request while their first is still reading waits for it and shares its answer
 (one read in flight per caller, keyed by the caller, since what identity answers
 depends on who asks); a waiting request whose shared read was cancelled by the other
 client leaving reads again.
 
 The review proposes each with a checkbox, ticked only when the account is enabled,
-the principal name matched (`userPrincipalName` in `matchedBy`) and the user is not an
+the principal name matched (`principalName` in `matchedBy`) and the user is not an
 Owner; any other row starts unticked and is marked *Check this match*, with the reason
-— matched by mail or employee ID only, or the user is an Owner, whose access whoever
+— matched by mail or employee number only, or the user is an Owner, whose access whoever
 holds the account would sign in with. **Connect selected** announces the chosen pairs one at a time
 through identity, and each is fulfilled at the person's next sign-in or the provider's
 next push.
 
-The search's and the matches' refusals:
+### The provider's refusals
 
-| Code | Status | When |
+The module answers no HTTP itself here; what it returns, identity answers:
+
+| The module returns | Identity answers | When |
 | --- | --- | --- |
-| `invalid_request` | 400 | The search: `q` is not 2 to 100 characters once trimmed, under `errors.q`. |
-| `sso_not_configured` | 409 | The matches: single sign-on is off, so there is no issuer to connect anybody under. |
-| `credential_invalid` | 503 | No secret fetched a token, or no tenant or client is saved — as the licences' read answers it. |
-| `tenant_unreachable` | 503 | The tenant did not answer; for the matches, also when the read took more than two minutes. |
-| `throttled` | 503 | Graph throttled the read twice in a row. |
+| `contracts.ErrSSONotConfigured` | 409 `no_directory` | The matches, when single sign-on was turned off between identity's check and the read. |
+| `contracts.ErrDirectoryUnavailable`, wrapped | 503 `provider_unreachable` | No secret fetched a token, or no tenant or client is saved (`credential_invalid`); the tenant did not answer (`tenant_unreachable`); Graph throttled the read twice in a row (`throttled`); for the matches, also the read taking more than two minutes. The cause is in the wrapped error, never on the wire. |
+| any other error | 500 | A fault: identity's own reads through `SSOConnections` failing. |
 
 ## The Outlook connection
 
@@ -2449,11 +2468,8 @@ what a client keys off, never the words:
 | `credential_in_use` | 409 | Revoking the only valid secret while the module keeps accounts. |
 | `adoption_confirmed` | 409 | Confirming an account confirmed already, or one the module created. |
 | `version_mismatch` | 412 | The connection was written since the `If-Match` version. |
-| `credential_invalid` | 503 | `GET /connection/skus`, `GET /directory/users`, `GET /directory/matches`: no secret fetched a token, or no tenant or client is saved. |
-| `tenant_unreachable` | 503 | `GET /connection/skus`, `GET /directory/users`, `GET /directory/matches`: the tenant did not answer. |
-| `throttled` | 503 | `GET /directory/users`, `GET /directory/matches`: Graph throttled the read twice in a row. |
-| `sso_not_configured` | 409 | `GET /directory/matches` while single sign-on is off. |
-| `invalid_request` | 400 | `GET /directory/users`: `q` is not 2 to 100 characters once trimmed, under `errors.q`. |
+| `credential_invalid` | 503 | `GET /connection/skus`: no secret fetched a token, or no tenant or client is saved. |
+| `tenant_unreachable` | 503 | `GET /connection/skus`: the tenant did not answer. |
 | `feature_unknown` | 422 | `POST /outlook/connect` names no feature the module offers. |
 | `switch_off` | 409 | `POST /outlook/connect`, `POST /outlook/complete`: the Outlook connection switch is off, or the tenant or client is not saved. |
 | `no_account` | 409 | `POST /outlook/connect`, `POST /outlook/complete`: the caller has no [certain account](#the-certain-account). |
@@ -2463,7 +2479,7 @@ what a client keys off, never the words:
 
 A request the server could not decode is a bare 400 with neither. The 401 (no session),
 the 403 (the permission, or the Owner policy — an Owner without a second factor
-included) and the 429 (`entra-owner`, `entra-skus`, `entra-directory`, `entra-matches`,
+included) and the 429 (`entra-owner`, `entra-skus`, `entra-mailbox-notifications`,
 `entra-outlook`, `entra-outlook-callback`) are the router's. The callback answers no
 problem: its codes — `expired`, `access_denied`, `tenant_mismatch`, `consent_missing`
 and `failed` — travel in the redirect's query ([the flow](#the-flow)).
@@ -2554,8 +2570,6 @@ All under `/api/v1/entra`.
 | `POST /accounts/{objectId}/confirm` | `entra:manage` |
 | `GET /groups` | `entra:manage` |
 | `POST /groups/{objectId}/confirm` | `entra:manage` |
-| `GET /directory/users?q=` | `policy:Owner+OwnerManagement`; `entra-directory` (60 a minute per client address, its own bucket) |
-| `GET /directory/matches` | `policy:Owner+OwnerManagement`; `entra-matches` (6 a minute per client address, its own bucket) |
 | `POST /mailbox-notifications` | none: anonymous, on the public host's list; the client state decides what counts; `entra-mailbox-notifications` (600 a minute per client address, its own bucket) |
 | `POST /outlook/connect` | `session` (any signed-in user); `entra-outlook` (30 a minute per client address, shared with complete) |
 | `GET /outlook/callback` | none: anonymous, on `APP_URL`; the sealed state decides what counts; `entra-outlook-callback` (60 a minute per client address, its own bucket) |
