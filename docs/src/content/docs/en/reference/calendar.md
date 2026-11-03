@@ -2572,7 +2572,7 @@ next sync until they connect again, then resumes from a reconcile.
 The module provides one single-provider contract, `contracts.CalendarBusy`
 (`Module.CalendarBusy`, `Deps.CalendarBusy`), which Planning's
 [board](/en/reference/planning/#the-board) reads. `Compose` resolves it last of the
-single-provider slots, after the mailbox calendar; `Workers` does not, since no worker
+single-provider slots, after the mailbox calendars; `Workers` does not, since no worker
 reads it. It is nil when the calendar is off.
 
 ```go
