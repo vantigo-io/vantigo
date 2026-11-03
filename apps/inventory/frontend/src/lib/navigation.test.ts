@@ -10,8 +10,17 @@ describe("the sidebar entries", () => {
     expect(keys(["inventory:locations-view", "inventory:stock-view"])).toEqual(["overview", "movements", "receipts"]);
   });
 
+  it("offers Counts to counts-manage and Import to stock-adjust, each with both views", () => {
+    const views = ["inventory:locations-view", "inventory:stock-view"];
+    expect(keys([...views, "inventory:counts-manage"])).toEqual(["overview", "movements", "receipts", "counts"]);
+    expect(keys([...views, "inventory:stock-adjust"])).toEqual(["overview", "movements", "receipts", "import"]);
+    expect(keys(["inventory:locations-view", "inventory:counts-manage", "inventory:stock-adjust"])).toEqual([
+      "overview",
+    ]);
+  });
+
   it("offers everything to a holder of every permission, and nothing to nobody", () => {
-    expect(keys(["*"])).toEqual(["overview", "movements", "receipts"]);
+    expect(keys(["*"])).toEqual(["overview", "movements", "receipts", "counts", "import"]);
     expect(keys(undefined)).toEqual([]);
   });
 });

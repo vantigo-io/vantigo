@@ -1,11 +1,14 @@
 import { ActionIcon, Alert, Badge, Button, Card, Group, Menu, Stack, Switch, Text } from "@mantine/core";
 import {
   IconAlertCircle,
+  IconAlertTriangle,
   IconArchive,
+  IconClipboardList,
   IconDots,
   IconGridDots,
   IconPencil,
   IconPlus,
+  IconPrinter,
   IconRestore,
   IconTrash,
 } from "@tabler/icons-react";
@@ -13,14 +16,17 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import { ContentSkeleton, PageHeader } from "@vantigo/frontend-shell";
 import { useState } from "react";
-import { type InventoryLocation, siteLocationsQueryOptions } from "../api/locations";
+import { type InventoryLocation, siteLocationListQueryOptions } from "../api/locations";
 import { inventoryMetaQueryOptions } from "../api/meta";
 import { type InventorySite, siteQueryOptions } from "../api/sites";
 import { BulkCreateDialog } from "../components/bulk-create-dialog";
 import { LocationFormModal } from "../components/location-form";
-import { LocationTree } from "../components/location-tree";
+import { LIVE_SEARCH_LIMIT, LocationTree } from "../components/location-tree";
+import { OpenCountDialog } from "../components/open-count-dialog";
+import { PrintLabelsDialog } from "../components/print-labels-dialog";
 import { SiteFormModal } from "../components/site-form";
 import { subtreeOf, useStructureActions } from "../lib/actions";
+import { canCount, canPrintLabels } from "../lib/capabilities";
 import { useInventoryFormat } from "../lib/format";
 import { INVENTORY_HOME_ROUTE_PATH, movementsLinkOptions } from "../lib/routes";
 
@@ -28,7 +34,9 @@ type Dialog =
   | { type: "new"; parent: InventoryLocation }
   | { type: "bulk"; parent: InventoryLocation }
   | { type: "edit"; location: InventoryLocation }
-  | { type: "site" };
+  | { type: "site" }
+  | { type: "labels" }
+  | { type: "count" };
 
 /** A site's address on one line. */
 const addressLine = (site: InventorySite) =>
@@ -54,14 +62,15 @@ export const SitePage = () => {
   const navigate = useNavigate() as (options: unknown) => Promise<void>;
   const meta = useQuery(inventoryMetaQueryOptions());
   const site = useQuery(siteQueryOptions(siteId));
-  const locations = useQuery(siteLocationsQueryOptions(siteId));
+  const list = useQuery(siteLocationListQueryOptions(siteId));
+  const locations = list.data?.locations;
   const actions = useStructureActions();
   const [dialog, setDialog] = useState<Dialog>();
   const [showArchived, setShowArchived] = useState(false);
   const canManage = meta.data?.canManageLocations === true;
-  const root = locations.data?.find((location) => location.id === site.data?.rootLocationId);
-  const shown = (locations.data ?? []).filter((location) => showArchived || location.status === "active");
-  const failed = site.error ?? locations.error;
+  const root = locations?.find((location) => location.id === site.data?.rootLocationId);
+  const shown = (locations ?? []).filter((location) => showArchived || location.status === "active");
+  const failed = site.error ?? list.error;
 
   return (
     <Stack gap="lg">
@@ -92,6 +101,25 @@ export const SitePage = () => {
               >
                 {t("navMovements")}
               </Button>
+              {canPrintLabels(meta.data) && (
+                <Button
+                  data-assist="inventory.site.print-labels"
+                  variant="default"
+                  leftSection={<IconPrinter size={16} />}
+                  onClick={() => setDialog({ type: "labels" })}
+                >
+                  {t("printLabels")}
+                </Button>
+              )}
+              {canCount(meta.data) && site.data.status === "active" && (
+                <Button
+                  variant="light"
+                  leftSection={<IconClipboardList size={16} />}
+                  onClick={() => setDialog({ type: "count" })}
+                >
+                  {t("countHere")}
+                </Button>
+              )}
               {canManage && root && site.data.status === "active" && (
                 <Button
                   data-assist="inventory.site.new-location"
@@ -158,7 +186,7 @@ export const SitePage = () => {
         <Alert color="red" icon={<IconAlertCircle size={16} />} title={t("couldNotLoad")}>
           {failed.message}
         </Alert>
-      ) : site.isPending || locations.isPending ? (
+      ) : site.isPending || list.isPending ? (
         <ContentSkeleton rows={6} rowHeight={32} />
       ) : (
         <Card withBorder>
@@ -171,8 +199,18 @@ export const SitePage = () => {
                 onChange={(event) => setShowArchived(event.currentTarget.checked)}
               />
             </Group>
+            {list.data?.truncated && (
+              <Alert color="yellow" icon={<IconAlertTriangle size={16} />}>
+                {t("locationsTruncated")}
+              </Alert>
+            )}
             <LocationTree
               locations={shown}
+              serverSearch={
+                list.data?.truncated || (site.data?.locationCount ?? 0) > LIVE_SEARCH_LIMIT
+                  ? { siteId, status: showArchived ? undefined : "active" }
+                  : undefined
+              }
               actions={
                 canManage
                   ? {
@@ -187,7 +225,7 @@ export const SitePage = () => {
               }
             />
             <Text size="xs" c="dimmed">
-              {t("locationCount", { count: Math.max(0, (locations.data?.length ?? 1) - 1) })}
+              {t("locationCount", { count: site.data?.locationCount ?? 0 })}
             </Text>
           </Stack>
         </Card>
@@ -204,9 +242,22 @@ export const SitePage = () => {
           onClose={() => setDialog(undefined)}
           siteId={siteId}
           location={dialog.location}
-          subtree={subtreeOf(locations.data ?? [], dialog.location.id)}
+          subtree={subtreeOf(locations ?? [], dialog.location.id)}
         />
       )}
+      {dialog?.type === "labels" && site.data && (
+        <PrintLabelsDialog
+          opened
+          onClose={() => setDialog(undefined)}
+          target={{
+            kind: "site",
+            siteId,
+            siteCode: site.data.code,
+            rootLocationId: site.data.rootLocationId,
+          }}
+        />
+      )}
+      {dialog?.type === "count" && <OpenCountDialog opened onClose={() => setDialog(undefined)} siteId={siteId} />}
       {dialog?.type === "site" && site.data && (
         <SiteFormModal opened onClose={() => setDialog(undefined)} site={site.data} />
       )}

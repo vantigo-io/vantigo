@@ -16,8 +16,10 @@ import {
   IconCertificate,
   IconChartLine,
   IconChecklist,
+  IconClipboardCheck,
   IconClock,
   IconClockExclamation,
+  IconFileImport,
   IconFileInvoice,
   IconFilePlus,
   IconFiles,
@@ -185,6 +187,8 @@ const inventoryNavPresentation: Record<InventoryNavItem["key"], Pick<NavItem, "l
   overview: { label: "navigation.inventoryOverview", icon: IconBuildingWarehouse },
   movements: { label: "navigation.inventoryMovements", icon: IconTransfer },
   receipts: { label: "navigation.inventoryReceipts", icon: IconPackageImport },
+  counts: { label: "navigation.inventoryCounts", icon: IconClipboardCheck },
+  import: { label: "navigation.inventoryImport", icon: IconFileImport },
 };
 
 /** Every app, in switcher order. Home has no module and no sidebar. */
@@ -522,21 +526,26 @@ export const apps: readonly AppDefinition[] = [
     },
   ]),
   // The home needs inventory:locations-view or inventory:stock-view (design
-  // §5), which is what Overview declares, so the tile — the union of the
-  // entries' permissions — asks for the same.
-  moduleApp(
-    "inventory",
-    "navigation.inventory",
-    IconBuildingWarehouse,
-    "/inventory",
-    inventoryNavItems.map(({ key, to, search, requiredPermissions, requiredAllPermissions }) => ({
-      ...inventoryNavPresentation[key],
-      to,
-      search,
-      requiredPermissions,
-      requiredAllPermissions,
-    })),
-  ),
+  // §5), which is what Overview declares. Counts and Import are offered by
+  // counts-manage and stock-adjust but need both views as well, so neither
+  // alone shows anything: the tile asks for the views alone, not for the
+  // union of the entries' permissions.
+  {
+    ...moduleApp(
+      "inventory",
+      "navigation.inventory",
+      IconBuildingWarehouse,
+      "/inventory",
+      inventoryNavItems.map(({ key, to, search, requiredPermissions, requiredAllPermissions }) => ({
+        ...inventoryNavPresentation[key],
+        to,
+        search,
+        requiredPermissions,
+        requiredAllPermissions,
+      })),
+    ),
+    requiredPermissions: ["inventory:locations-view", "inventory:stock-view"],
+  },
   moduleApp("energy", "navigation.energy", IconBolt, "/energy", [
     {
       label: "navigation.meteringPoints",

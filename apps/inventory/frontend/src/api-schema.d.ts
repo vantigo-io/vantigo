@@ -2,6 +2,144 @@
 // CI regenerates this file and fails when it is stale.
 
 export interface paths {
+    "/api/v1/inventory/counts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List counts */
+        get: operations["listInventoryCounts"];
+        put?: never;
+        /**
+         * Open a count
+         * @description Opens a count of a site or of a location and its subtree, freezing what is expected on every balance in scope (I17). Movements are not blocked while counting.
+         */
+        post: operations["openInventoryCount"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inventory/counts/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get a count */
+        get: operations["getInventoryCount"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inventory/counts/{id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel a count
+         * @description Cancels a count still counting; nothing is posted.
+         */
+        post: operations["cancelInventoryCount"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inventory/counts/{id}/lines": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Record counted quantities
+         * @description Records counted quantities, changing a line that exists and adding one for a pair that does not (I18). Refused whole when any line fails; every failing line is answered.
+         */
+        put: operations["putInventoryCountLines"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inventory/counts/{id}/post": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Post a count
+         * @description Posts one count movement of the differences between what was counted and the balance now (I19).
+         */
+        post: operations["postInventoryCount"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inventory/imports/opening-balances": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import opening balances
+         * @description Reads a CSV of location (full code), sku and quantity for one site, at most 5000 rows (I32). A dry run answers each row's outcome; a commit posts one adjustment movement, reason opening_balance, of every row — or, when any row fails, posts nothing and answers the rows with ok false. The same file posted twice to the same site is one movement.
+         */
+        post: operations["importInventoryOpeningBalances"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inventory/labels": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Print location labels
+         * @description A PDF of labels for the locations, on Avery L7160 or L7163 sheets (I7), by full code.
+         */
+        post: operations["printInventoryLabels"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/inventory/locations": {
         parameters: {
             query?: never;
@@ -256,7 +394,7 @@ export interface paths {
         };
         /**
          * List sites
-         * @description Every site by code, archived ones only when asked.
+         * @description Every site by code, archived ones only when asked, each with its count of locations and, for a caller holding inventory:stock-view, its stock lines and last receipt.
          */
         get: operations["listInventorySites"];
         put?: never;
@@ -342,9 +480,29 @@ export interface paths {
         };
         /**
          * Inventory attention items
-         * @description The attention items, oldest occurredAt first, as a bare array like every module's. Delivery A raises none.
+         * @description The attention items, oldest occurredAt first, as a bare array like every module's: countOpenLong for counts open more than 7 days, at most 20.
          */
         get: operations["getInventoryStatsAttention"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inventory/stock": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Stock totals of variants
+         * @description Each variant's on hand across every location, for the product list's column (I33).
+         */
+        get: operations["listInventoryStockTotals"];
         put?: never;
         post?: never;
         delete?: never;
@@ -425,8 +583,11 @@ export interface components {
             /** Format: int64 */
             siteId: number;
         };
-        /** @description change adds quantity, signed and not 0, to what lies there; set makes it the new on hand, 0 or more, and is posted as the difference — a line whose difference is 0 is dropped (I15). */
+        /** @description change adds quantity, signed and not 0, to what lies there; set makes it the new on hand, 0 or more, and is posted as the difference — a line whose difference is 0 is dropped (I15). Exactly one of quantity and entered is given. Entered under change adds, or takes away with decrease. */
         InventoryAdjustmentLine: {
+            /** @description With entered under change: the entered quantity is taken away rather than added. */
+            decrease?: boolean;
+            entered?: components["schemas"]["InventoryEntered"];
             /** Format: int64 */
             locationId: number;
             /** @enum {string} */
@@ -435,7 +596,7 @@ export interface components {
              * Format: double
              * @description Signed under change, at most three decimals.
              */
-            quantity: number;
+            quantity?: number;
             /** Format: int32 */
             variantId: number;
         };
@@ -465,6 +626,195 @@ export interface components {
             kind: components["schemas"]["InventoryLocationKind"];
             prefix?: string;
             to?: string;
+        };
+        /** @description A stock count of a site, or of one location and its subtree (I16). */
+        InventoryCount: {
+            /** Format: date-time */
+            cancelledAt?: string;
+            cancelledBy?: components["schemas"]["InventoryActor"];
+            /**
+             * Format: int32
+             * @description Lines with a counted quantity.
+             */
+            countedLines: number;
+            /** Format: int64 */
+            id: number;
+            /** Format: int32 */
+            lineCount: number;
+            /** @description By the location's full code, then SKU; present on GET /counts/{id} and the writes. */
+            lines?: components["schemas"]["InventoryCountLine"][];
+            /**
+             * Format: int32
+             * @description Lines whose balance changed since the count opened.
+             */
+            movedLines: number;
+            /**
+             * Format: int64
+             * @description The count movement a posted count wrote.
+             */
+            movementId?: number;
+            note?: string;
+            /** Format: date-time */
+            openedAt: string;
+            openedBy: components["schemas"]["InventoryActor"];
+            /** Format: date-time */
+            postedAt?: string;
+            postedBy?: components["schemas"]["InventoryActor"];
+            /** Format: int32 */
+            revision: number;
+            scope: components["schemas"]["InventoryLocationRef"];
+            site: components["schemas"]["InventorySiteRef"];
+            status: components["schemas"]["InventoryCountStatus"];
+            uncounted?: components["schemas"]["InventoryUncounted"];
+        };
+        /** @description Opening a count: of a whole site, or of one location and everything below it (I16, I17). */
+        InventoryCountInput: {
+            /**
+             * Format: int64
+             * @description The location the count covers with its subtree; the site's root when absent.
+             */
+            locationId?: number;
+            note?: string;
+            /** Format: int64 */
+            siteId: number;
+        };
+        /** @description One variant on one location in a count: what was expected when it opened, what the balance is now, and what was counted (I17–I19). */
+        InventoryCountLine: {
+            /** @description The line was added while counting: nothing was expected there. */
+            added: boolean;
+            /**
+             * Format: double
+             * @description What was counted; absent until someone counts it.
+             */
+            counted?: number;
+            /** Format: date-time */
+            countedAt?: string;
+            countedBy?: components["schemas"]["InventoryActor"];
+            /**
+             * Format: double
+             * @description The balance now.
+             */
+            current: number;
+            entered?: components["schemas"]["InventoryEnteredSnapshot"];
+            /**
+             * Format: double
+             * @description The balance when the count opened.
+             */
+            expected: number;
+            /** Format: int64 */
+            id: number;
+            location: components["schemas"]["InventoryLocationRef"];
+            /** @description The balance changed since the count opened; posting needs acceptMoved (I19). */
+            moved: boolean;
+            variant: components["schemas"]["InventoryVariantRef"];
+        };
+        /** @description A counted quantity of a variant on a location in the count's scope (I18): a line that exists is changed, a pair with no line is added. Exactly one of quantity and entered is given. 0 is a valid count. */
+        InventoryCountLineInput: {
+            /**
+             * Format: double
+             * @description 0 or more, at most three decimals.
+             */
+            counted?: number;
+            entered?: components["schemas"]["InventoryEntered"];
+            /** Format: int64 */
+            locationId: number;
+            /** Format: int32 */
+            variantId: number;
+        };
+        /** @description Counted lines, at most 500 per request. */
+        InventoryCountLinesInput: {
+            lines: components["schemas"]["InventoryCountLineInput"][];
+        };
+        /** @description Counts, newest first; at most 200. */
+        InventoryCountList: {
+            counts: components["schemas"]["InventoryCount"][];
+        };
+        /** @description Posting a count (I19). */
+        InventoryCountPostInput: {
+            /** @description Post although some lines' balances changed since the count opened; refused with count_lines_moved otherwise. */
+            acceptMoved?: boolean;
+            uncounted: components["schemas"]["InventoryUncounted"];
+        };
+        /** @enum {string} */
+        InventoryCountStatus: "counting" | "posted" | "cancelled";
+        /** @description A quantity entered in packagings (I25) instead of quantity: the server computes the base quantity from the packagings as they are at posting and keeps the entry on the line. */
+        InventoryEntered: {
+            /**
+             * Format: double
+             * @description A rest in the variant's own unit, 0 or more, at most three decimals.
+             */
+            loose?: number;
+            /** @description At most one entry per packaging. */
+            packagings: components["schemas"]["InventoryEnteredPackaging"][];
+        };
+        /** @description A count of one packaging. */
+        InventoryEnteredPackaging: {
+            /**
+             * Format: int32
+             * @description At least 1.
+             */
+            count: number;
+            /** Format: int32 */
+            packagingId: number;
+        };
+        /** @description What a line was entered as, as it was at posting: each packaging's name, count and content then, and the loose rest (I25). */
+        InventoryEnteredSnapshot: {
+            /** Format: double */
+            loose?: number;
+            packagings: {
+                /** Format: int32 */
+                count: number;
+                name: string;
+                /** Format: int32 */
+                packagingId: number;
+                /**
+                 * Format: double
+                 * @description Its content in the variant's unit at posting.
+                 */
+                quantity: number;
+            }[];
+        };
+        /** @enum {string} */
+        InventoryImportOutcome: "ok" | "location_not_found" | "variant_not_found" | "variant_not_stockable" | "quantity_invalid";
+        /** @description The import's answer: every row's outcome, and on a committed import the one movement it posted. */
+        InventoryImportResult: {
+            /**
+             * Format: int64
+             * @description The adjustment movement posted; absent on a dry run or a refused import.
+             */
+            movementId?: number;
+            /** @description Every row is ok. */
+            ok: boolean;
+            rows: components["schemas"]["InventoryImportRow"][];
+        };
+        /** @description One row of the opening-balance file and its outcome (I32). */
+        InventoryImportRow: {
+            detail?: string;
+            /** @description The full code as written. */
+            location: string;
+            outcome: components["schemas"]["InventoryImportOutcome"];
+            /** @description As written. */
+            quantity: string;
+            /**
+             * Format: int32
+             * @description The row in the file, the header being row 1.
+             */
+            row: number;
+            /** @description As written. */
+            sku: string;
+        };
+        /**
+         * @description Avery L7160 (21 labels per A4) or L7163 (14 per A4).
+         * @enum {string}
+         */
+        InventoryLabelLayout: "l7160" | "l7163";
+        /** @description Labels to print (I7): each carries the location's LOC token as a Code 128 barcode, its full code and its name. */
+        InventoryLabelsInput: {
+            layout: components["schemas"]["InventoryLabelLayout"];
+            /** @description At most 1000. */
+            locationIds: number[];
+            /** @description Also every active location below each one. */
+            subtree?: boolean;
         };
         /** @description A node of a site's tree (I2). */
         InventoryLocation: {
@@ -530,9 +880,11 @@ export interface components {
          * @enum {string}
          */
         InventoryLocationKind: "site" | "zone" | "area" | "sales_floor" | "back_room" | "aisle" | "rack" | "shelf" | "bin" | "display" | "dock" | "other";
-        /** @description A site's locations, flat, by full code; at most 10,000. */
+        /** @description A site's locations, flat, by full code; at most 10,000, truncated saying when more matched. */
         InventoryLocationList: {
             locations: components["schemas"]["InventoryLocation"][];
+            /** @description True when more than 10,000 locations matched and the list was cut. */
+            truncated: boolean;
         };
         /** @description A location as other answers name it. */
         InventoryLocationRef: {
@@ -575,7 +927,7 @@ export interface components {
         InventoryMeta: {
             /** @description inventory:stock-adjust — adjustments and moves. */
             canAdjust: boolean;
-            /** @description inventory:counts-manage — counts (delivery B). */
+            /** @description inventory:counts-manage — counts. */
             canCount: boolean;
             /** @description inventory:locations-manage — sites and locations. */
             canManageLocations: boolean;
@@ -598,15 +950,16 @@ export interface components {
             /** Format: int64 */
             siteId: number;
         };
-        /** @description A quantity moved from one location to another of the same site. */
+        /** @description A quantity moved from one location to another of the same site. Exactly one of quantity and entered is given. */
         InventoryMoveLine: {
+            entered?: components["schemas"]["InventoryEntered"];
             /** Format: int64 */
             fromLocationId: number;
             /**
              * Format: double
              * @description A quantity in the variant's own unit: more than 0, at most 99,999,999,999.999, at most three decimals (I11). More decimals are refused with quantity_invalid, never rounded.
              */
-            quantity: number;
+            quantity?: number;
             /** Format: int64 */
             toLocationId: number;
             /** Format: int32 */
@@ -616,6 +969,11 @@ export interface components {
         InventoryMovement: {
             /** Format: uuid */
             clientRequestId: string;
+            /**
+             * Format: int64
+             * @description The count this movement posted, for a count movement.
+             */
+            countId?: number;
             /** Format: int64 */
             id: number;
             kind: components["schemas"]["InventoryMovementKind"];
@@ -631,12 +989,13 @@ export interface components {
             supplierReference?: string;
         };
         /**
-         * @description An open set (design §12): count joins in delivery B, and issue, production and transfer later.
+         * @description An open set (design §12): issue, production and transfer join later.
          * @enum {string}
          */
-        InventoryMovementKind: "adjustment" | "move" | "receipt";
+        InventoryMovementKind: "adjustment" | "move" | "receipt" | "count";
         /** @description A quantity of a variant from a location, to one, or both (I9). */
         InventoryMovementLine: {
+            entered?: components["schemas"]["InventoryEnteredSnapshot"];
             from?: components["schemas"]["InventoryLocationRef"];
             /** Format: int32 */
             lineNo: number;
@@ -656,6 +1015,11 @@ export interface components {
         };
         /** @description A posted movement without its lines. */
         InventoryMovementSummary: {
+            /**
+             * Format: int64
+             * @description The count this movement posted, for a count movement.
+             */
+            countId?: number;
             /** Format: int64 */
             id: number;
             kind: components["schemas"]["InventoryMovementKind"];
@@ -670,7 +1034,18 @@ export interface components {
             supplierName?: string;
             supplierReference?: string;
         };
-        /** @description An RFC 9457 problem with this module's refusal code (inventory design §4). code names the rule that refused and is what a client keys off, never the words: site_code_taken, location_code_taken and full_code_taken (409: the code is in use — a site's in the deployment, a location's among its siblings, or the full code it would make; a bulk create lists every colliding full code in detail), code_invalid (400: not 1–16 characters A–Z and 0–9 after upper-casing, or of the form LOC followed by digits, which labels reserve), depth_exceeded (400: the tree would be more than 8 levels below the root), parent_invalid (400: the parent is in another site, is the location itself or below it, or is archived), bulk_too_large (400: more than 1000 locations), location_has_stock (409: the location or something below it holds stock; detail names the quantity and the number of lines), location_has_history (409: a movement line has named the location or something below it, so it can only be archived), root_location (409: a site's root is archived or deleted with its site, never alone), revision_conflict (409: the If-Match revision has moved on), insufficient_stock (409: a line would take a balance below zero; lines name it), client_request_reused (409: the clientRequestId was posted before with a different body), and a posting's line codes — location_archived, location_not_found, variant_not_found, variant_not_stockable, variant_discontinued, move_crosses_sites, same_location, quantity_invalid — with nothing_to_post and too_many_lines (400). A posting checks every line before it writes any and answers all of them at once in lines; a problem about the request as a whole has none. errors carries the field errors of a 400, keyed by the request's camelCase field. A request the server could not decode answers a bare 400 with neither. */
+        /** @description A packaging of the variant as the catalog answers it (I24): what it holds in the variant's unit. The app breaks quantities down in them (I26). */
+        InventoryPackaging: {
+            barcode?: string;
+            /** Format: int32 */
+            id: number;
+            /** @description inner, case, pallet or other. */
+            kind: string;
+            name: string;
+            /** Format: double */
+            quantity: number;
+        };
+        /** @description An RFC 9457 problem with this module's refusal code (inventory design §4). code names the rule that refused and is what a client keys off, never the words: site_code_taken, location_code_taken and full_code_taken (409: the code is in use — a site's in the deployment, a location's among its siblings, or the full code it would make; a bulk create lists every colliding full code in detail), code_invalid (400: not 1–16 characters A–Z and 0–9 after upper-casing, or of the form LOC followed by digits, which labels reserve), depth_exceeded (400: the tree would be more than 8 levels below the root), parent_invalid (400: the parent is in another site, is the location itself or below it, or is archived), bulk_too_large (400: more than 1000 locations), location_has_stock (409: the location or something below it holds stock; detail names the quantity and the number of lines), location_has_history (409: a movement line has named the location or something below it, so it can only be archived), root_location (409: a site's root is archived or deleted with its site, never alone), revision_conflict (409: the If-Match revision has moved on), insufficient_stock (409: a line would take a balance below zero; lines name it), client_request_reused (409: the clientRequestId was posted before with a different body), count_scope_overlaps (409: another count still counting covers part of the scope), count_not_open (409: a write to a posted or cancelled count), count_lines_moved (409: posting would count lines whose balances changed since the count opened; lines name them), location_has_open_count (409: archiving a location with a count still counting in its subtree), labels_too_many (400: more than 1000 labels), and a posting's line codes — location_archived, location_not_found, variant_not_found, variant_not_stockable, variant_discontinued, move_crosses_sites, same_location, quantity_invalid, packaging_not_found (an entered packaging the variant does not have), entered_invalid (both or neither of quantity and entered, or a packaging named twice) — with nothing_to_post and too_many_lines (400). A posting checks every line before it writes any and answers all of them at once in lines; a problem about the request as a whole has none. errors carries the field errors of a 400, keyed by the request's camelCase field. A request the server could not decode answers a bare 400 with neither. */
         InventoryProblem: {
             code?: string | null;
             detail?: string | null;
@@ -723,8 +1098,9 @@ export interface components {
              */
             toLocationId: number;
         };
-        /** @description A quantity received, to locationId or the receipt's toLocationId. */
+        /** @description A quantity received, to locationId or the receipt's toLocationId. Exactly one of quantity and entered is given. */
         InventoryReceiptLine: {
+            entered?: components["schemas"]["InventoryEntered"];
             /**
              * Format: int64
              * @description Overrides the receipt's toLocationId for this line.
@@ -734,7 +1110,7 @@ export interface components {
              * Format: double
              * @description A quantity in the variant's own unit: more than 0, at most 99,999,999,999.999, at most three decimals (I11). More decimals are refused with quantity_invalid, never rounded.
              */
-            quantity: number;
+            quantity?: number;
             /** Format: int32 */
             variantId: number;
         };
@@ -748,6 +1124,16 @@ export interface components {
             /** Format: int64 */
             id: number;
             kind: components["schemas"]["InventorySiteKind"];
+            /**
+             * Format: date-time
+             * @description When the site last received goods; present to a caller holding inventory:stock-view, absent when it never has.
+             */
+            lastReceiptAt?: string;
+            /**
+             * Format: int32
+             * @description Its active locations, the root excluded.
+             */
+            locationCount: number;
             name: string;
             /**
              * Format: int32
@@ -760,6 +1146,11 @@ export interface components {
              */
             rootLocationId: number;
             status: components["schemas"]["InventoryStatus"];
+            /**
+             * Format: int32
+             * @description Balances in the site; present to a caller holding inventory:stock-view.
+             */
+            stockLines?: number;
             /** Format: date-time */
             updatedAt: string;
         };
@@ -822,7 +1213,7 @@ export interface components {
             locations: number;
             /**
              * Format: int32
-             * @description Counts still counting; 0 until delivery B.
+             * @description Counts still counting.
              */
             openCounts: number;
             /**
@@ -841,7 +1232,7 @@ export interface components {
              */
             stockLines: number;
         };
-        /** @description One thing the dashboard wants a human to look at, in the shape every module's /stats/attention shares. Delivery A raises none; delivery B adds countOpenLong. */
+        /** @description One thing the dashboard wants a human to look at, in the shape every module's /stats/attention shares: countOpenLong, a count still counting more than 7 days after it opened, to a caller holding inventory:counts-manage with both views; entityId is the count's id. */
         InventoryStatsAttentionItem: {
             /**
              * Format: int32
@@ -858,6 +1249,22 @@ export interface components {
         };
         /** @enum {string} */
         InventoryStatus: "active" | "archived";
+        /** @description A variant's on hand across every location. */
+        InventoryStockTotal: {
+            /** Format: double */
+            onHand: number;
+            /** Format: int32 */
+            variantId: number;
+        };
+        /** @description One total per variant asked for that has stock; a variant with none is absent. */
+        InventoryStockTotals: {
+            totals: components["schemas"]["InventoryStockTotal"][];
+        };
+        /**
+         * @description What posting does with a line nobody counted: keep its balance, or count it as zero (I19).
+         * @enum {string}
+         */
+        InventoryUncounted: "keep" | "zero";
         /** @description At most 50 goods variants by SKU. */
         InventoryVariantList: {
             variants: components["schemas"]["InventoryVariantRef"][];
@@ -869,6 +1276,8 @@ export interface components {
             deleted?: boolean;
             /** Format: int32 */
             id: number;
+            /** @description The variant's packagings, by sort order; absent on a deleted variant. */
+            packagings?: components["schemas"]["InventoryPackaging"][];
             /**
              * Format: int32
              * @description Absent on a deleted variant.
@@ -904,6 +1313,525 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    listInventoryCounts: {
+        parameters: {
+            query?: {
+                status?: components["schemas"]["InventoryCountStatus"];
+                siteId?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryCountList"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    openInventoryCount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InventoryCountInput"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryCount"];
+                };
+            };
+            /** @description Bad Request — field errors; the location is not in the site, or archived. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InventoryProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Conflict — count_scope_overlaps. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InventoryProblem"];
+                };
+            };
+            /** @description Service Unavailable — dependency_unavailable: Products is not composed. Nothing was changed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InventoryProblem"];
+                };
+            };
+        };
+    };
+    getInventoryCount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryCount"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such count. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Service Unavailable — dependency_unavailable: Products is not composed. Nothing was changed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InventoryProblem"];
+                };
+            };
+        };
+    };
+    cancelInventoryCount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryCount"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such count. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — count_not_open. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InventoryProblem"];
+                };
+            };
+            /** @description Service Unavailable — dependency_unavailable: Products is not composed. The count was cancelled; only reading it back failed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InventoryProblem"];
+                };
+            };
+        };
+    };
+    putInventoryCountLines: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InventoryCountLinesInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryCount"];
+                };
+            };
+            /** @description Bad Request — field errors, or the lines' codes in lines (a location outside the scope is location_not_found). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InventoryProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such count. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — count_not_open. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InventoryProblem"];
+                };
+            };
+            /** @description Service Unavailable — dependency_unavailable: Products is not composed. Nothing was changed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InventoryProblem"];
+                };
+            };
+        };
+    };
+    postInventoryCount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InventoryCountPostInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryCount"];
+                };
+            };
+            /** @description Bad Request — field errors, or a line's code in lines. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InventoryProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such count. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — count_not_open, count_lines_moved (lines name them), or insufficient_stock. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InventoryProblem"];
+                };
+            };
+            /** @description Service Unavailable — dependency_unavailable: Products is not composed. Nothing was changed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InventoryProblem"];
+                };
+            };
+        };
+    };
+    importInventoryOpeningBalances: {
+        parameters: {
+            query: {
+                siteId: number;
+                dryRun?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "text/csv": string;
+            };
+        };
+        responses: {
+            /** @description OK — a dry run, a commit refused for its rows (ok false, nothing posted), or a replay of a file already posted. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryImportResult"];
+                };
+            };
+            /** @description Created — the movement was posted. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryImportResult"];
+                };
+            };
+            /** @description Bad Request — a file that does not read, a header other than location, sku, quantity, more than 5000 rows, or an unknown site. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InventoryProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Conflict — insufficient_stock: an opening balance cannot be negative. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InventoryProblem"];
+                };
+            };
+            /** @description Service Unavailable — dependency_unavailable: Products is not composed. Nothing was changed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InventoryProblem"];
+                };
+            };
+        };
+    };
+    printInventoryLabels: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InventoryLabelsInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/pdf": string;
+                };
+            };
+            /** @description Bad Request — field errors, a location that does not exist, or labels_too_many. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InventoryProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
     createInventoryLocation: {
         parameters: {
             query?: never;
@@ -2041,6 +2969,8 @@ export interface operations {
             query?: {
                 /** @description Only locations in this status; every location when absent. */
                 status?: components["schemas"]["InventoryStatus"];
+                /** @description Only locations whose full code or name contains this, ignoring case. */
+                q?: string;
             };
             header?: never;
             path: {
@@ -2140,6 +3070,56 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["InventoryStatsAttentionItem"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    listInventoryStockTotals: {
+        parameters: {
+            query: {
+                /** @description Comma-separated, at most 100. */
+                variantIds: number[];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryStockTotals"];
+                };
+            };
+            /** @description Bad Request — no ids or more than 100. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InventoryProblem"];
                 };
             };
             /** @description Unauthorized */

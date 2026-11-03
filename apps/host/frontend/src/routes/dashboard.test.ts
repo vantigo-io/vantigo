@@ -1336,7 +1336,31 @@ describe("the dashboard's inventory card", () => {
     ).toEqual({ value: "1,234", hint: 'dashboard.inventoryReceiptsThisWeekHint:{"count":3}' });
   });
 
-  it("links an attention item to the app's home", () => {
-    expect(attentionHref({ module: "inventory", type: "countOpenLong", entityId: "5" })).toBe("/inventory");
+  // A count open for a long time (B) carries the count's id: the link opens
+  // the count, and the sentence is the catalog's, naming nothing.
+  it("links a count open for a long time to the count, and words it from the catalog", () => {
+    expect(attentionHref({ module: "inventory", type: "countOpenLong", entityId: "5" })).toBe("/inventory/counts/5");
+    for (const entityId of ["", "0", "-1", "abc", "1.5"])
+      expect(attentionHref({ module: "inventory", type: "countOpenLong", entityId })).toBe("/inventory/counts");
+    expect(attentionHref({ module: "inventory", type: "somethingNew", entityId: "5" })).toBe("/inventory");
+    expect(attentionTitleKey({ module: "inventory", type: "countOpenLong" })).toBe("dashboard.inventoryCountOpenLong");
+    expect(attentionTitleKey({ module: "inventory", type: "somethingNew" })).toBeUndefined();
+    const item = { module: "inventory" as const, type: "countOpenLong", entityId: "5", title: "Count 5 at OSL" };
+    expect(
+      attentionTitle(
+        item,
+        (key) => key,
+        () => "unused",
+      ),
+    ).toBe("dashboard.inventoryCountOpenLong");
+    expect(
+      attentionTitle(
+        { ...item, type: "somethingNew" },
+        (key) => key,
+        () => "unused",
+      ),
+    ).toBe("Count 5 at OSL");
+    expect(dashboardCatalog.en["dashboard.inventoryCountOpenLong"]).toBe("A count has been open for a long time");
+    expect(dashboardCatalog.nb["dashboard.inventoryCountOpenLong"]).toBe("En varetelling har vært åpen lenge");
   });
 });

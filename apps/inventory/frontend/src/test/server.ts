@@ -1,3 +1,5 @@
+import type { InventoryCount, InventoryCountLine } from "../api/counts";
+import type { InventoryImportRow } from "../api/imports";
 import type { InventoryLocation, InventoryLocationRef } from "../api/locations";
 import type { InventoryMeta } from "../api/meta";
 import type { InventoryMovement, InventoryMovementKind } from "../api/movements";
@@ -17,6 +19,7 @@ export const sites = (): InventorySite[] => [
     kind: "warehouse",
     status: "active",
     rootLocationId: 10,
+    locationCount: 0,
     revision: 1,
     address: { city: "Oslo", country: "NO" },
     createdAt: STAMP,
@@ -29,6 +32,7 @@ export const sites = (): InventorySite[] => [
     kind: "store",
     status: "active",
     rootLocationId: 20,
+    locationCount: 0,
     revision: 1,
     createdAt: STAMP,
     updatedAt: STAMP,
@@ -90,6 +94,9 @@ export interface InventoryServer {
   movements?: InventoryMovement[];
   /** Answers `GET /products/{id}/stock` instead of working it out: a Service product's empty answer. */
   productStock?: Record<number, InventoryProductStock>;
+  counts?: InventoryCount[];
+  /** How many locations a site's list answers before it says it was truncated; 10,000 as the server's. */
+  locationLimit?: number;
   /** Answers a write instead of the fake's own; undefined falls through to it. */
   write?: (method: string, path: string, body: unknown) => Response | undefined;
 }
@@ -99,9 +106,32 @@ export interface InventoryState {
   locations: InventoryLocation[];
   balances: Balance[];
   movements: InventoryMovement[];
+  counts: InventoryCount[];
 }
 
+/** A Euro pallet of 600 and a box of 15, with their barcodes, for a variant that is stocked in packagings (I24). */
+export const packagings = () => [
+  { id: 71, name: "Euro pallet", kind: "pallet", quantity: 600, barcode: "17070000000201" },
+  { id: 72, name: "Box", kind: "case", quantity: 15, barcode: "27070000000201" },
+];
+
+/** What an entered quantity makes in the base unit, as the server works it out at posting (I25). */
+type Entered = { packagings: { packagingId: number; count: number }[]; loose?: number };
+
 export type InventoryStub = StubbedFetch & { state: InventoryState };
+
+/** A request's body: JSON parsed, anything else — a CSV upload — as its text. */
+export const parseBody = (body: BodyInit | null | undefined): unknown => {
+  if (body === undefined || body === null) return undefined;
+  // A file sent as its bytes (the import) reads back as its text; the fake's files are UTF-8.
+  if (Object.prototype.toString.call(body) === "[object ArrayBuffer]")
+    return new TextDecoder().decode(body as ArrayBuffer);
+  try {
+    return JSON.parse(String(body));
+  } catch {
+    return String(body);
+  }
+};
 
 /** A refusal in the module's problem shape (design §4). */
 export const inventoryProblem = (status: number, code: string | undefined, extra: Record<string, unknown> = {}) =>
@@ -123,6 +153,7 @@ export const stubInventoryApi = (server: InventoryServer = {}): InventoryStub =>
     locations: server.locations ?? locations(),
     balances: server.balances ?? [],
     movements: server.movements ?? [],
+    counts: server.counts ?? [],
   };
   const catalog = server.variants ?? variants();
   let nextId = 900;
@@ -133,7 +164,7 @@ export const stubInventoryApi = (server: InventoryServer = {}): InventoryStub =>
     canViewStock: true,
     canAdjust: true,
     canReceive: true,
-    canCount: false,
+    canCount: true,
     ...server.meta,
   };
   const siteRef = (site: InventorySite): InventorySiteRef => ({
@@ -153,6 +184,62 @@ export const stubInventoryApi = (server: InventoryServer = {}): InventoryStub =>
     ...(one.name ? { name: one.name } : {}),
   });
   const variantOf = (id: number) => catalog.find((one) => one.id === id);
+  const onHandOf = (variantId: number, locationId: number) =>
+    state.balances.find((one) => one.variantId === variantId && one.locationId === locationId)?.onHand ?? 0;
+  /** A line's base quantity: its quantity, or its entered packagings at their content now. */
+  const amount = (line: { variantId: number; quantity?: number; entered?: Entered; decrease?: boolean }) => {
+    if (!line.entered) return line.quantity ?? 0;
+    const known = variantOf(line.variantId)?.packagings ?? [];
+    const total = line.entered.packagings.reduce(
+      (sum, one) => sum + one.count * (known.find((p) => p.id === one.packagingId)?.quantity ?? 0),
+      line.entered.loose ?? 0,
+    );
+    return line.decrease ? -total : total;
+  };
+  const snapshot = (variantId: number, entered?: Entered) =>
+    entered && {
+      packagings: entered.packagings.map((one) => {
+        const known = variantOf(variantId)?.packagings?.find((p) => p.id === one.packagingId);
+        return { ...one, name: known?.name ?? "?", quantity: known?.quantity ?? 0 };
+      }),
+      ...(entered.loose ? { loose: entered.loose } : {}),
+    };
+  const siteFigures = (site: InventorySite): InventorySite => {
+    const inSite = new Set(state.locations.filter((one) => one.siteId === site.id).map((one) => one.id));
+    const lastReceipt = state.movements.find((one) => one.kind === "receipt" && one.site.id === site.id);
+    return {
+      ...site,
+      locationCount: state.locations.filter(
+        (one) => one.siteId === site.id && one.status === "active" && one.kind !== "site",
+      ).length,
+      ...(meta.canViewStock
+        ? {
+            stockLines: state.balances.filter((one) => one.onHand !== 0 && inSite.has(one.locationId)).length,
+            ...(lastReceipt ? { lastReceiptAt: lastReceipt.postedAt } : {}),
+          }
+        : {}),
+    };
+  };
+  /** A count as the server answers it: each line's balance now, moved when it differs from what was expected. */
+  const countAnswer = (count: InventoryCount, withLines = true): InventoryCount => {
+    const lines = (count.lines ?? [])
+      .map((line) => {
+        const current = count.status === "counting" ? onHandOf(line.variant.id, line.location.id) : line.current;
+        return { ...line, current, moved: count.status === "counting" ? current !== line.expected : line.moved };
+      })
+      .sort(
+        (a, b) => a.location.fullCode.localeCompare(b.location.fullCode) || a.variant.sku.localeCompare(b.variant.sku),
+      );
+    const rest = { ...count };
+    delete rest.lines;
+    return {
+      ...rest,
+      lineCount: lines.length,
+      countedLines: lines.filter((line) => line.counted !== undefined).length,
+      movedLines: lines.filter((line) => line.moved).length,
+      ...(withLines ? { lines } : {}),
+    };
+  };
   const below = (id: number) => {
     const ids = new Set([id]);
     for (const one of [...state.locations].sort((a, b) => a.depth - b.depth))
@@ -189,7 +276,8 @@ export const stubInventoryApi = (server: InventoryServer = {}): InventoryStub =>
   const posted = (
     kind: InventoryMovementKind,
     body: Record<string, unknown>,
-    lines: { variantId: number; from?: number; to?: number; quantity: number }[],
+    lines: { variantId: number; from?: number; to?: number; quantity: number; entered?: Entered }[],
+    extra: Partial<InventoryMovement> = {},
   ) => {
     const site = state.sites.find((one) => one.id === body.siteId) ?? state.sites[0];
     const movement: InventoryMovement = {
@@ -202,6 +290,7 @@ export const stubInventoryApi = (server: InventoryServer = {}): InventoryStub =>
       ...(typeof body.reason === "string" ? { reason: body.reason as InventoryMovement["reason"] } : {}),
       ...(typeof body.note === "string" ? { note: body.note } : {}),
       ...(typeof body.supplierName === "string" ? { supplierName: body.supplierName } : {}),
+      ...extra,
       lines: lines.map((line, index) => {
         const from = line.from === undefined ? undefined : locationOf(line.from);
         const to = line.to === undefined ? undefined : locationOf(line.to);
@@ -211,6 +300,7 @@ export const stubInventoryApi = (server: InventoryServer = {}): InventoryStub =>
           lineNo: index + 1,
           variant: variantOf(line.variantId) ?? catalog[0],
           quantity: line.quantity,
+          ...(line.entered ? { entered: snapshot(line.variantId, line.entered) } : {}),
           ...(from ? { from: ref(from) } : {}),
           ...(to ? { to: ref(to) } : {}),
         };
@@ -229,7 +319,7 @@ export const stubInventoryApi = (server: InventoryServer = {}): InventoryStub =>
     if (path === "/meta") return jsonResponse(200, meta);
     if (path === "/sites" && method === "GET") {
       const status = query.get("status") ?? "active";
-      return jsonResponse(200, { sites: state.sites.filter((one) => one.status === status) });
+      return jsonResponse(200, { sites: state.sites.filter((one) => one.status === status).map(siteFigures) });
     }
     if (path === "/sites" && method === "POST") {
       const input = body as InventorySite;
@@ -238,6 +328,7 @@ export const stubInventoryApi = (server: InventoryServer = {}): InventoryStub =>
         id: ++nextId,
         status: "active",
         rootLocationId: ++nextId,
+        locationCount: 0,
         revision: 1,
         createdAt: STAMP,
         updatedAt: STAMP,
@@ -250,16 +341,20 @@ export const stubInventoryApi = (server: InventoryServer = {}): InventoryStub =>
     if (match) {
       const siteId = Number(match[1]);
       const site = state.sites.find((one) => one.id === siteId);
-      return site ? jsonResponse(200, site) : new Response(null, { status: 404 });
+      return site ? jsonResponse(200, siteFigures(site)) : new Response(null, { status: 404 });
     }
     match = /^\/sites\/(\d+)\/locations$/.exec(path);
     if (match) {
       const siteId = Number(match[1]);
       const status = query.get("status");
+      const q = (query.get("q") ?? "").toLowerCase();
+      const found = state.locations
+        .filter((one) => one.siteId === siteId && (!status || one.status === status))
+        .filter((one) => !q || one.fullCode.toLowerCase().includes(q) || (one.name ?? "").toLowerCase().includes(q))
+        .sort((a, b) => a.fullCode.localeCompare(b.fullCode));
       return jsonResponse(200, {
-        locations: state.locations
-          .filter((one) => one.siteId === siteId && (!status || one.status === status))
-          .sort((a, b) => a.fullCode.localeCompare(b.fullCode)),
+        locations: found.slice(0, server.locationLimit ?? 10000),
+        truncated: found.length > (server.locationLimit ?? 10000),
       });
     }
     if (path === "/locations" && method === "POST") {
@@ -308,7 +403,9 @@ export const stubInventoryApi = (server: InventoryServer = {}): InventoryStub =>
           .filter((one) => (token ? one.id === Number(token[1]) : one.fullCode === q))
           .map((one) => ({ kind: "location", location: ref(one) })),
         ...catalog
-          .filter((one) => one.sku.toUpperCase() === q || one.barcode === q)
+          .filter(
+            (one) => one.sku.toUpperCase() === q || one.barcode === q || !!one.packagings?.some((p) => p.barcode === q),
+          )
           .map((one) => ({ kind: "variant", variant: one })),
       ];
       return jsonResponse(200, { matches: found });
@@ -372,15 +469,15 @@ export const stubInventoryApi = (server: InventoryServer = {}): InventoryStub =>
       return one ? jsonResponse(200, one) : new Response(null, { status: 404 });
     }
     if (path === "/movements/adjustments" && method === "POST") {
-      const input = body as { lines: { variantId: number; locationId: number; mode: string; quantity: number }[] };
+      const input = body as {
+        lines: { variantId: number; locationId: number; mode: string; quantity?: number; entered?: Entered }[];
+      };
       return posted(
         "adjustment",
         body as Record<string, unknown>,
         input.lines.map((line) => {
-          const now =
-            state.balances.find((one) => one.variantId === line.variantId && one.locationId === line.locationId)
-              ?.onHand ?? 0;
-          const delta = line.mode === "set" ? line.quantity - now : line.quantity;
+          const now = onHandOf(line.variantId, line.locationId);
+          const delta = line.mode === "set" ? amount(line) - now : amount(line);
           return delta < 0
             ? { variantId: line.variantId, from: line.locationId, quantity: -delta }
             : { variantId: line.variantId, to: line.locationId, quantity: delta };
@@ -389,7 +486,13 @@ export const stubInventoryApi = (server: InventoryServer = {}): InventoryStub =>
     }
     if (path === "/movements/moves" && method === "POST") {
       const input = body as {
-        lines: { variantId: number; fromLocationId: number; toLocationId: number; quantity: number }[];
+        lines: {
+          variantId: number;
+          fromLocationId: number;
+          toLocationId: number;
+          quantity?: number;
+          entered?: Entered;
+        }[];
       };
       return posted(
         "move",
@@ -398,14 +501,15 @@ export const stubInventoryApi = (server: InventoryServer = {}): InventoryStub =>
           variantId: line.variantId,
           from: line.fromLocationId,
           to: line.toLocationId,
-          quantity: line.quantity,
+          quantity: amount(line),
+          entered: line.entered,
         })),
       );
     }
     if (path === "/movements/receipts" && method === "POST") {
       const input = body as {
         toLocationId: number;
-        lines: { variantId: number; locationId?: number; quantity: number }[];
+        lines: { variantId: number; locationId?: number; quantity?: number; entered?: Entered }[];
       };
       return posted(
         "receipt",
@@ -413,9 +517,193 @@ export const stubInventoryApi = (server: InventoryServer = {}): InventoryStub =>
         input.lines.map((line) => ({
           variantId: line.variantId,
           to: line.locationId ?? input.toLocationId,
-          quantity: line.quantity,
+          quantity: amount(line),
+          entered: line.entered,
         })),
       );
+    }
+    if (path === "/stock") {
+      const ids = (query.get("variantIds") ?? "").split(",").map(Number);
+      if (ids.length > 100) return inventoryProblem(400, undefined, { detail: "At most 100 ids." });
+      return jsonResponse(200, {
+        totals: ids
+          .map((variantId) => ({
+            variantId,
+            onHand: state.balances
+              .filter((one) => one.variantId === variantId)
+              .reduce((sum, one) => sum + one.onHand, 0),
+          }))
+          .filter((one) => one.onHand !== 0),
+      });
+    }
+    if (path === "/counts" && method === "GET") {
+      const status = query.get("status");
+      const siteId = query.get("siteId");
+      return jsonResponse(200, {
+        counts: state.counts
+          .filter((one) => (!status || one.status === status) && (!siteId || one.site.id === Number(siteId)))
+          .map((one) => countAnswer(one, false)),
+      });
+    }
+    if (path === "/counts" && method === "POST") {
+      const input = body as { siteId: number; locationId?: number; note?: string };
+      const site = state.sites.find((one) => one.id === input.siteId);
+      if (!site) return inventoryProblem(400, undefined, { errors: { siteId: ["No such site."] } });
+      const scope = locationOf(input.locationId ?? site.rootLocationId);
+      if (!scope) return inventoryProblem(400, "location_not_found");
+      const inScope = below(scope.id);
+      const overlaps = state.counts.some((one) => {
+        if (one.status !== "counting" || one.site.id !== site.id) return false;
+        return inScope.has(one.scope.id) || below(one.scope.id).has(scope.id);
+      });
+      if (overlaps) return inventoryProblem(409, "count_scope_overlaps", { title: "Count scope overlaps" });
+      const count: InventoryCount = {
+        id: ++nextId,
+        site: siteRef(site),
+        scope: ref(scope),
+        status: "counting",
+        openedAt: STAMP,
+        openedBy: { displayName: "Test User" },
+        revision: 1,
+        lineCount: 0,
+        countedLines: 0,
+        movedLines: 0,
+        ...(input.note ? { note: input.note } : {}),
+        lines: state.balances
+          .filter((one) => one.onHand !== 0 && inScope.has(one.locationId))
+          .map((one) => ({
+            id: ++nextId,
+            variant: variantOf(one.variantId) ?? catalog[0],
+            location: ref(locationOf(one.locationId) ?? scope),
+            expected: one.onHand,
+            current: one.onHand,
+            added: false,
+            moved: false,
+          })),
+      };
+      state.counts.unshift(count);
+      return jsonResponse(201, countAnswer(count));
+    }
+    match = /^\/counts\/(\d+)(\/lines|\/post|\/cancel)?$/.exec(path);
+    if (match) {
+      const count = state.counts.find((one) => one.id === Number(match?.[1]));
+      if (!count) return new Response(null, { status: 404 });
+      const action = match[2];
+      if (!action) return jsonResponse(200, countAnswer(count));
+      if (count.status !== "counting") return inventoryProblem(409, "count_not_open", { title: "Count not open" });
+      if (action === "/cancel") {
+        count.status = "cancelled";
+        count.cancelledAt = STAMP;
+        count.cancelledBy = { displayName: "Test User" };
+        return jsonResponse(200, countAnswer(count));
+      }
+      if (action === "/lines") {
+        const input = body as {
+          lines: { variantId: number; locationId: number; counted?: number; entered?: Entered }[];
+        };
+        const scopeIds = below(count.scope.id);
+        const refused = input.lines
+          .map((line, index) => ({ line, index }))
+          .filter(({ line }) => !scopeIds.has(line.locationId))
+          .map(({ line, index }) => ({ index, code: "location_not_found", detail: `Location ${line.locationId}.` }));
+        if (refused.length > 0) return inventoryProblem(400, undefined, { lines: refused });
+        for (const line of input.lines) {
+          const counted = line.entered ? amount({ ...line, quantity: undefined }) : (line.counted ?? 0);
+          let held = count.lines?.find(
+            (one) => one.variant.id === line.variantId && one.location.id === line.locationId,
+          );
+          if (!held) {
+            const where = locationOf(line.locationId);
+            if (!where) continue;
+            held = {
+              id: ++nextId,
+              variant: variantOf(line.variantId) ?? catalog[0],
+              location: ref(where),
+              expected: 0,
+              current: 0,
+              added: true,
+              moved: false,
+            } satisfies InventoryCountLine;
+            count.lines = [...(count.lines ?? []), held];
+          }
+          held.counted = counted;
+          held.countedBy = { displayName: "Test User" };
+          const entered = snapshot(line.variantId, line.entered);
+          if (entered) held.entered = entered;
+          else delete held.entered;
+        }
+        return jsonResponse(200, countAnswer(count));
+      }
+      const input = body as { uncounted: "keep" | "zero"; acceptMoved?: boolean };
+      const answered = countAnswer(count);
+      const moved = (answered.lines ?? []).map((line, index) => ({ line, index })).filter(({ line }) => line.moved);
+      if (moved.length > 0 && !input.acceptMoved)
+        return inventoryProblem(409, "count_lines_moved", {
+          title: "Count lines moved",
+          lines: moved.map(({ line, index }) => ({
+            index,
+            code: "count_lines_moved",
+            detail: `${line.variant.sku} at ${line.location.fullCode}`,
+          })),
+        });
+      const differences = (answered.lines ?? [])
+        .map((line) => {
+          const counted = line.counted ?? (input.uncounted === "zero" ? 0 : undefined);
+          return { line, delta: counted === undefined ? 0 : counted - line.current };
+        })
+        .filter(({ delta }) => delta !== 0);
+      posted(
+        "count",
+        { siteId: count.site.id, clientRequestId: `count-${count.id}` },
+        differences.map(({ line, delta }) =>
+          delta < 0
+            ? { variantId: line.variant.id, from: line.location.id, quantity: -delta }
+            : { variantId: line.variant.id, to: line.location.id, quantity: delta },
+        ),
+        { countId: count.id },
+      );
+      count.lines = answered.lines;
+      count.status = "posted";
+      count.uncounted = input.uncounted;
+      count.postedAt = STAMP;
+      count.postedBy = { displayName: "Test User" };
+      count.movementId = state.movements[0].id;
+      return jsonResponse(200, countAnswer(count));
+    }
+    if (path === "/labels" && method === "POST")
+      return new Response(new Blob(["%PDF-1.7 labels"], { type: "application/pdf" }), {
+        status: 200,
+        headers: { "Content-Type": "application/pdf" },
+      });
+    if (path === "/imports/opening-balances" && method === "POST") {
+      const siteId = Number(query.get("siteId"));
+      const dryRun = query.get("dryRun") !== "false";
+      const [header, ...lines] = String(body).trim().split(/\r?\n/);
+      if (header.trim() !== "location,sku,quantity")
+        return inventoryProblem(400, undefined, { detail: "The header must be location,sku,quantity." });
+      const parsed = lines.map((text, index) => {
+        const [location = "", sku = "", quantity = ""] = text.split(",").map((cell) => cell.trim());
+        const where = state.locations.find((one) => one.siteId === siteId && one.fullCode === location.toUpperCase());
+        const what = catalog.find((one) => one.sku.toUpperCase() === sku.toUpperCase());
+        const n = Number(quantity);
+        const outcome: InventoryImportRow["outcome"] = !where
+          ? "location_not_found"
+          : !what
+            ? "variant_not_found"
+            : quantity === "" || !Number.isFinite(n) || n <= 0
+              ? "quantity_invalid"
+              : "ok";
+        return { row: { row: index + 2, location, sku, quantity, outcome }, where, what, n };
+      });
+      const rows: InventoryImportRow[] = parsed.map((one) => one.row);
+      const ok = rows.every((row) => row.outcome === "ok");
+      if (dryRun || !ok) return jsonResponse(200, { ok, rows });
+      posted(
+        "adjustment",
+        { siteId, clientRequestId: "import", reason: "opening_balance" },
+        parsed.map((one) => ({ variantId: one.what?.id ?? 0, to: one.where?.id, quantity: one.n })),
+      );
+      return jsonResponse(201, { ok, rows, movementId: state.movements[0].id });
     }
     if (path === "/stats")
       return jsonResponse(200, {
@@ -432,7 +720,7 @@ export const stubInventoryApi = (server: InventoryServer = {}): InventoryStub =>
     const url = new URL(String(input), "http://localhost");
     const prefix = "/api/v1/inventory";
     if (!url.pathname.startsWith(prefix)) return Promise.resolve(new Response(null, { status: 404 }));
-    const body = init?.body ? JSON.parse(String(init.body)) : undefined;
+    const body = parseBody(init?.body);
     return Promise.resolve(answer(init?.method ?? "GET", url.pathname.slice(prefix.length), url.searchParams, body));
   }) as InventoryStub;
   fetchMock.state = state;

@@ -18,11 +18,13 @@ import {
   IconAlertCircle,
   IconArchive,
   IconArrowsExchange,
+  IconClipboardList,
   IconDots,
   IconGridDots,
   IconPackageImport,
   IconPencil,
   IconPlus,
+  IconPrinter,
   IconRestore,
   IconTrash,
 } from "@tabler/icons-react";
@@ -35,9 +37,11 @@ import { inventoryMetaQueryOptions } from "../api/meta";
 import { BulkCreateDialog } from "../components/bulk-create-dialog";
 import { LocationFormModal } from "../components/location-form";
 import { MovementList } from "../components/movement-list";
+import { OpenCountDialog } from "../components/open-count-dialog";
+import { PrintLabelsDialog } from "../components/print-labels-dialog";
 import { StockTable } from "../components/stock-table";
 import { subtreeOf, useStructureActions } from "../lib/actions";
-import { canPost } from "../lib/capabilities";
+import { canCount, canPost, canPrintLabels } from "../lib/capabilities";
 import { useInventoryFormat } from "../lib/format";
 import {
   INVENTORY_HOME_ROUTE_PATH,
@@ -47,7 +51,7 @@ import {
   siteLinkOptions,
 } from "../lib/routes";
 
-type Dialog = "edit" | "child" | "bulk";
+type Dialog = "edit" | "child" | "bulk" | "labels" | "count";
 
 const Fact = ({ label, children }: { label: string; children: ReactNode }) => (
   <div>
@@ -62,8 +66,9 @@ const Fact = ({ label, children }: { label: string; children: ReactNode }) => (
  * A location (I29): its path as a breadcrumb; its kind, code, full code and
  * status; its children; what lies on it and below it — or on it alone — and
  * the movements touching it, newest first. Adjust, Move from here and Receive
- * here open the forms prefilled; a manager edits, adds below, archives and
- * deletes.
+ * here open the forms prefilled; Count opens a count of its subtree, and
+ * Print labels downloads its label — and its subtree's — as a PDF (I7). A
+ * manager edits, adds below, archives and deletes.
  */
 export const LocationPage = () => {
   const { t } = useInventoryFormat();
@@ -151,6 +156,16 @@ export const LocationPage = () => {
                 renderRoot={(props) => <Link {...newMovementLinkOptions("receipt", prefill)} {...props} />}
               >
                 {t("receiveHere")}
+              </Button>
+            )}
+            {active && canCount(meta.data) && (
+              <Button variant="light" leftSection={<IconClipboardList size={16} />} onClick={() => setDialog("count")}>
+                {t("countHere")}
+              </Button>
+            )}
+            {canPrintLabels(meta.data) && (
+              <Button variant="default" leftSection={<IconPrinter size={16} />} onClick={() => setDialog("labels")}>
+                {t("printLabels")}
               </Button>
             )}
             {canManage && (
@@ -300,6 +315,12 @@ export const LocationPage = () => {
       )}
       {dialog === "child" && (
         <LocationFormModal opened onClose={() => setDialog(undefined)} siteId={site.id} parentId={location.id} />
+      )}
+      {dialog === "labels" && (
+        <PrintLabelsDialog opened onClose={() => setDialog(undefined)} target={{ kind: "location", location }} />
+      )}
+      {dialog === "count" && (
+        <OpenCountDialog opened onClose={() => setDialog(undefined)} siteId={site.id} locationId={location.id} />
       )}
       {dialog === "bulk" && <BulkCreateDialog opened onClose={() => setDialog(undefined)} parent={location} />}
     </Stack>

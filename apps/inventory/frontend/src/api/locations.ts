@@ -34,15 +34,27 @@ export const locationKinds: readonly InventoryLocationKind[] = [
 /** The kinds a person may give a location: every one but the root's. */
 export const writableLocationKinds = locationKinds.filter((kind) => kind !== "site");
 
+export type InventoryLocationList = Schemas["InventoryLocationList"];
+
+/**
+ * A site's locations as the server answers them: flat, by full code, at most
+ * 10,000 — `truncated` says when more matched. `q` keeps those whose full
+ * code or name contains it, for searching a site too large to hold.
+ */
+export const siteLocationListQueryOptions = (siteId: number, status?: InventoryStatus, q?: string) =>
+  queryOptions({
+    queryKey: [INVENTORY_QUERY_KEY, "site", siteId, "locations", status ?? "all", q ?? ""],
+    queryFn: ({ signal }) =>
+      request<InventoryLocationList>(`/api/v1/inventory/sites/${siteId}/locations${queryString({ status, q })}`, {
+        signal,
+      }),
+  });
+
 /** A site's locations, flat and by full code; every status unless one is asked for. */
 export const siteLocationsQueryOptions = (siteId: number, status?: InventoryStatus) =>
   queryOptions({
-    queryKey: [INVENTORY_QUERY_KEY, "site", siteId, "locations", status ?? "all"],
-    queryFn: ({ signal }) =>
-      request<Schemas["InventoryLocationList"]>(
-        `/api/v1/inventory/sites/${siteId}/locations${queryString({ status })}`,
-        { signal },
-      ).then((answer) => answer.locations),
+    ...siteLocationListQueryOptions(siteId, status),
+    select: (answer: InventoryLocationList) => answer.locations,
   });
 
 /** A location with its site, its path from the root and its children (I29). */

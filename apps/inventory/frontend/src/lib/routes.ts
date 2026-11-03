@@ -47,3 +47,10 @@ export const newMovementLinkOptions = (
     kind === "adjustment" ? NEW_ADJUSTMENT_ROUTE_PATH : kind === "move" ? NEW_MOVE_ROUTE_PATH : NEW_RECEIPT_ROUTE_PATH,
   search,
 });
+
+// Delivery B: counts and the opening-balance import.
+export const COUNTS_ROUTE_PATH = "/inventory/counts";
+export const COUNT_ROUTE_PATH = "/inventory/counts/$countId";
+export const IMPORT_ROUTE_PATH = "/inventory/import";
+
+export const countLinkOptions = (countId: number) => ({ to: COUNT_ROUTE_PATH, params: { countId: String(countId) } });
