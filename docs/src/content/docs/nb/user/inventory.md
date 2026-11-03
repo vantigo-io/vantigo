@@ -308,6 +308,11 @@ Siden for varetellingen, **Varetelling …**, åpner på fanen **Telling**:
    den.*
 3. Uten skanner skriver du i **Telt** på hver linje.
 
+En varetelling av et helt lagersted kan ha tusenvis av linjer. Siden tegner bare linjene
+nær det du ser, og resten etter hvert som du ruller, så den holder seg rask; linjen til en
+skannet vare rulles fram uansett hvor den ligger, og **Tab** går videre til neste linje
+som før.
+
 Hver linje viser **Forventet**, **Nå** — det som ligger der nå —, **Telt** og
 **Differanse**. En linje der beholdningen er endret siden varetellingen ble åpnet, er
 merket **Endret**. Det du skriver, **lagres av seg selv** et øyeblikk etter at du

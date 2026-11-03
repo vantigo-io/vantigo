@@ -21,6 +21,7 @@ import { notifications } from "@mantine/notifications";
 import { IconAlertCircle, IconCircleCheck, IconScan, IconX } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useBlocker, useParams } from "@tanstack/react-router";
+import { useWindowVirtualizer } from "@tanstack/react-virtual";
 import { ContentSkeleton, PageHeader } from "@vantigo/frontend-shell";
 import { type ReactNode, type RefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -58,6 +59,11 @@ import { COUNTS_ROUTE_PATH, INVENTORY_HOME_ROUTE_PATH, movementLinkOptions } fro
 
 /** How long the screen waits after the last keystroke before it saves what was counted. */
 const SAVE_DELAY_MS = 800;
+
+/** A line's height before it is drawn, and in a test's DOM, which has no layout. */
+const LINE_HEIGHT_ESTIMATE = 64;
+/** How many lines are drawn beyond the window's edges, so Tab reaches the next one. */
+const LINES_OVERSCAN = 10;
 
 /** What the person has counted on a line and not yet saved. */
 interface Draft {
@@ -287,17 +293,6 @@ const CountingScreen = ({ count, savesRef }: { count: InventoryCount; savesRef: 
     return () => clearTimeout(timer);
   }, [drafts, saving, saveError, save]);
 
-  // A scanned item's field takes the focus once its row is drawn.
-  useEffect(() => {
-    if (!focusRequest || focused.current === focusRequest) return;
-    const field = document.getElementById(`count-line-${focusRequest.key}`) as HTMLInputElement | null;
-    if (!field) return;
-    focused.current = focusRequest;
-    field.focus();
-    field.select();
-    field.scrollIntoView({ block: "center" });
-  }, [focusRequest, rows]);
-
   const scanned = async (code: string) => {
     if (!code) return;
     setScan("");
@@ -385,7 +380,41 @@ const CountingScreen = ({ count, savesRef }: { count: InventoryCount; savesRef: 
       },
     });
 
-  const shown = current && onlyCurrent ? rows.filter((row) => row.location.id === current.id) : rows;
+  const shown = useMemo(
+    () => (current && onlyCurrent ? rows.filter((row) => row.location.id === current.id) : rows),
+    [rows, current, onlyCurrent],
+  );
+  // Only the lines near the window are drawn: a whole site's count may hold thousands. The table scrolls with the page,
+  // so the lines start where its body does.
+  const [linesBody, setLinesBody] = useState<HTMLTableSectionElement | null>(null);
+  const virtualizer = useWindowVirtualizer({
+    count: shown.length,
+    estimateSize: () => LINE_HEIGHT_ESTIMATE,
+    overscan: LINES_OVERSCAN,
+    scrollMargin: linesBody ? linesBody.getBoundingClientRect().top + window.scrollY : 0,
+    getItemKey: (index) => shown[index]?.key ?? index,
+    measureElement: (element) => element.getBoundingClientRect().height || LINE_HEIGHT_ESTIMATE,
+  });
+  const drawn = virtualizer.getVirtualItems();
+  const margin = virtualizer.options.scrollMargin;
+  const spaceAbove = drawn.length > 0 ? drawn[0].start - margin : 0;
+  const spaceBelow = drawn.length > 0 ? virtualizer.getTotalSize() - (drawn[drawn.length - 1].end - margin) : 0;
+
+  // A scanned item's line is scrolled to when it is not drawn, and its field takes the focus once it is.
+  useEffect(() => {
+    if (!focusRequest || focused.current === focusRequest) return;
+    const field = document.getElementById(`count-line-${focusRequest.key}`) as HTMLInputElement | null;
+    if (!field) {
+      const index = shown.findIndex((row) => row.key === focusRequest.key);
+      if (index >= 0) virtualizer.scrollToIndex(index, { align: "center" });
+      return;
+    }
+    focused.current = focusRequest;
+    field.focus();
+    field.select();
+    field.scrollIntoView({ block: "center" });
+  }, [focusRequest, shown, drawn, virtualizer]);
+
   const unsaved = drafts.size > 0;
   const countedRows = rows.filter((row) => draftTotal(row.variant, draftOf(row)) !== "");
   const moved = lines.filter((line) => line.moved);
@@ -492,8 +521,14 @@ const CountingScreen = ({ count, savesRef }: { count: InventoryCount; savesRef: 
                       <Table.Th ta="right">{t("columnDifference")}</Table.Th>
                     </Table.Tr>
                   </Table.Thead>
-                  <Table.Tbody>
-                    {shown.map((row) => {
+                  <Table.Tbody ref={setLinesBody}>
+                    {spaceAbove > 0 && (
+                      <tr>
+                        <td colSpan={7} style={{ height: spaceAbove, padding: 0, border: 0 }} />
+                      </tr>
+                    )}
+                    {drawn.map((item) => {
+                      const row = shown[item.index];
                       const draft = draftOf(row);
                       const total = draftTotal(row.variant, draft);
                       const now = row.line?.current ?? 0;
@@ -503,6 +538,8 @@ const CountingScreen = ({ count, savesRef }: { count: InventoryCount; savesRef: 
                       return (
                         <Table.Tr
                           key={row.key}
+                          ref={virtualizer.measureElement}
+                          data-index={item.index}
                           data-moved={row.line?.moved ? "true" : undefined}
                           data-refused={problem ? "true" : undefined}
                           bg={
@@ -603,6 +640,11 @@ const CountingScreen = ({ count, savesRef }: { count: InventoryCount; savesRef: 
                         </Table.Tr>
                       );
                     })}
+                    {spaceBelow > 0 && (
+                      <tr>
+                        <td colSpan={7} style={{ height: spaceBelow, padding: 0, border: 0 }} />
+                      </tr>
+                    )}
                   </Table.Tbody>
                 </Table>
               </Table.ScrollContainer>
