@@ -1,7 +1,9 @@
-import { Badge, Card, Group, Table, Text, Tooltip } from "@mantine/core";
+import { Badge, Card, Group, Table, Text, ThemeIcon, Tooltip } from "@mantine/core";
+import { IconAlertTriangle } from "@tabler/icons-react";
 import { useNavigate } from "@tanstack/react-router";
 import { EmptyState, useI18n } from "@vantigo/frontend-shell";
-import type { ConnectionStatus, CustomerMeteringPoint, SupplyPeriod } from "../api/energy";
+import { billingFacts, type ConnectionStatus, type CustomerMeteringPoint, type SupplyPeriod } from "../api/energy";
+import { taxClassKey, taxReasonKey } from "../lib/billing";
 import "../i18n";
 
 const statusColor = (status: ConnectionStatus) => ({ New: "blue", Connected: "teal", Disconnected: "red" })[status];
@@ -43,6 +45,28 @@ const SupplyPeriodCell = ({
   );
 };
 
+/** The stored class, with a warning naming the suggestion when the two differ. */
+const TaxClassCell = ({ point }: { point: CustomerMeteringPoint["meteringPoint"] }) => {
+  const { t } = useI18n("energy");
+  const suggestion = point.electricityTaxSuggestion;
+  const stored = <Text size="sm">{t(taxClassKey(billingFacts(point).electricityTaxClass))}</Text>;
+  if (!suggestion || suggestion.matches || !suggestion.class) return stored;
+  const label = t("electricityTaxDiffersTooltip", {
+    class: t(taxClassKey(suggestion.class)),
+    reason: t(taxReasonKey(suggestion.reason)),
+  });
+  return (
+    <Group gap="xs" wrap="nowrap">
+      {stored}
+      <Tooltip label={label} multiline w={320}>
+        <ThemeIcon variant="light" color="yellow" size="sm" aria-label={label}>
+          <IconAlertTriangle size={14} />
+        </ThemeIcon>
+      </Tooltip>
+    </Group>
+  );
+};
+
 export const CustomerMetersTable = ({ meters }: { meters: CustomerMeteringPoint[] }) => {
   const { t, formatters } = useI18n("energy");
   const navigate = useNavigate();
@@ -59,7 +83,7 @@ export const CustomerMetersTable = ({ meters }: { meters: CustomerMeteringPoint[
       </Card>
     );
   return (
-    <Table.ScrollContainer minWidth={860}>
+    <Table.ScrollContainer minWidth={960}>
       <Table striped highlightOnHover>
         <Table.Thead>
           <Table.Tr>
@@ -68,6 +92,7 @@ export const CustomerMetersTable = ({ meters }: { meters: CustomerMeteringPoint[
             <Table.Th>{t("priceArea")}</Table.Th>
             <Table.Th>{t("expectedAnnualConsumption")}</Table.Th>
             <Table.Th>{t("supplyPeriods")}</Table.Th>
+            <Table.Th>{t("electricityTaxClass")}</Table.Th>
             <Table.Th>{t("status")}</Table.Th>
           </Table.Tr>
         </Table.Thead>
@@ -95,6 +120,9 @@ export const CustomerMetersTable = ({ meters }: { meters: CustomerMeteringPoint[
                   statusLabel={(status) => t(`supplyPeriodStatus${status}`)}
                   notAvailable={t("notAvailable")}
                 />
+              </Table.Td>
+              <Table.Td>
+                <TaxClassCell point={meteringPoint} />
               </Table.Td>
               <Table.Td>
                 <Badge color={statusColor(meteringPoint.connectionStatus)}>

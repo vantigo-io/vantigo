@@ -47,6 +47,31 @@ describe("CustomerMetersTable", () => {
     expect(screen.getByText("Jan 6, 2026 – Jan 7, 2026")).toBeInTheDocument();
   });
 
+  it("shows the stored electricity-tax class, with a warning naming a suggestion that differs", () => {
+    const [meter] = singleMeter;
+    if (!meter) throw new Error("no meter");
+    const differing: CustomerMeteringPoint = {
+      ...meter,
+      meteringPoint: {
+        ...meter.meteringPoint,
+        id: 2,
+        gsrn: "123456789012345679",
+        electricityTaxClass: "ordinary",
+        electricityTaxSuggestion: { class: "reduced", reason: "zone_business", uncertain: false, matches: false },
+      },
+    };
+    render(
+      <MantineProvider>
+        <CustomerMetersTable meters={[...singleMeter, differing]} />
+      </MantineProvider>,
+    );
+
+    expect(screen.getByRole("columnheader", { name: "Electricity tax" })).toBeInTheDocument();
+    expect(screen.getAllByText("Ordinary rate")).toHaveLength(2);
+    const warnings = screen.getAllByLabelText(/^Suggested: Reduced rate\. Everything but households/);
+    expect(warnings).toHaveLength(1);
+  });
+
   it("navigates to the bare metering-point path, not a tenant-prefixed one", () => {
     // Simulate being on a real (single-tenant) module route rather than jsdom's
     // default "/" — this is exactly the case that used to double up the segment

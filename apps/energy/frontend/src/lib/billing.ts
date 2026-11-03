@@ -11,6 +11,9 @@ export const cadenceKey = (cadence: BillingCadence) => `cadence${cadence.charAt(
 export const taxClassKey = (value: ElectricityTaxClass) =>
   `electricityTaxClass${value.charAt(0).toUpperCase()}${value.slice(1)}`;
 
+/** The i18n key of an electricity-tax suggestion's reason: `electricityTaxReason_industry`. */
+export const taxReasonKey = (reason: string) => `electricityTaxReason_${reason}`;
+
 /** `tariffId` as the server takes it. */
 export const tariffIdOf = (value: string | null) => (value ? Number(value) : null);
 
