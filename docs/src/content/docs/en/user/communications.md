@@ -118,7 +118,8 @@ Choose **New conversation** in the toolbar to begin a new customer conversation:
 recipient's email address in **To**, the **Subject**, and write your message.
 
 If you have connected your own Outlook under **Settings → Connections** (with the Mail
-permission granted), you can check **Send from my address (`you@yourcompany.com`)**. The
+permission granted), you can check **Send from my Outlook address (`you@yourcompany.com`)**
+— the checkbox names the service your own address is sent through. The
 email is sent through your personal Microsoft 365 mailbox, so it appears in your own Sent
 Items. Customer replies are still directed to the channel mailbox (`Reply-To`), keeping
 the conversation threaded in the shared inbox for your team.
@@ -131,13 +132,13 @@ email was also sent to others in copy (Cc), a **Reply mode** selector offers **R
 to the sender alone, or **Reply all · N**, which copies them too — the shared mailbox
 itself left out. By default, the reply is sent from the channel the conversation belongs to.
 If you have connected your own Outlook with the Mail permission, you can also check
-**Send from my address (`you@yourcompany.com`)** to send through your personal mailbox
+**Send from my Outlook address (`you@yourcompany.com`)** to send through your personal mailbox
 instead, with customer replies arriving back in the shared channel. It is sent as an answer
 to the customer's email, so it lands in the same thread in their mail program.
 
 ### Personal sending and retrying
 
-When **Send from my address** is checked:
+When **Send from my … address** is checked:
 - The `From` address is your directory email and display name, and the email lands in your
   personal Sent Items in Microsoft 365.
 - The `Reply-To` address is the channel's address and display name, so replies from the
@@ -147,7 +148,7 @@ When **Send from my address** is checked:
   in the same conversation, with the filters you had.
 - If sending fails because your Outlook connection expired or needs multi-factor authentication,
   the message card displays:
-  *Sending failed because your Outlook connection needs reconnecting.* with a **Reconnect Outlook**
+  *Sending failed because your mail connection needs reconnecting.* with a **Reconnect Outlook**
   button and a **Retry send** button. Once you have reconnected Outlook, choose **Retry send**
   to queue the message again.
 
@@ -232,20 +233,25 @@ The **Receive status** column says whether a channel receives mail: **Receiving*
 no longer read the mailbox. Give it access in Exchange Online.*, *The mailbox no longer
 exists in Microsoft 365.* or *The mailbox is not known for this channel. Verify the
 channel.* — or **Last sync failed: …** when one attempt failed and Vantigo tries again
-(*Microsoft 365 mail channels are not available.* while **Mail channels** is off or the
-Entra connection is failing; the mail waits in the mailbox).
+(*Mail channels through Microsoft 365 are not available.* while **Mail channels** is off or the
+Entra connection is failing; the mail waits in the mailbox). Each reason names the
+channel's own provider.
 An SMTP channel shows **Sends only**.
 
 A channel that cannot send shows an orange **Unavailable** badge in the **Status** column,
 with the reason beneath: *This channel has no stored credentials, so it sends nothing.* for
-an SMTP channel whose credentials are missing, or *Microsoft 365 mail channels are not
-available, so this channel sends nothing.* for a Microsoft 365 channel while its provider
-is off. **An SMTP channel without credentials sends nothing**: Vantigo never falls back on
+an SMTP channel whose credentials are missing, or *Mail channels through Microsoft 365
+are not available, so this channel sends nothing.* for a Microsoft 365 channel while its
+provider is off. **An SMTP channel without credentials sends nothing**: Vantigo never falls back on
 the mail server settings the administrator configured for its own mail. A message queued on
 such a channel fails at once, and a channel that is unavailable is not offered to Invoices
 or Calendar as a place to send from.
 
-A channel sends one of two ways, its **Provider**:
+A channel sends through its **Provider**: SMTP, or a mailbox service Vantigo is connected
+to. The **Provider** list in the **Add email channel** dialog shows **SMTP** first, then
+every mailbox service the administrator has turned on, by its name — today
+**Microsoft 365** — and a service that is turned on but cannot be used right now is
+greyed, with *Not available now* and the reason beside it:
 
 - **SMTP** — through a mail server, with an SMTP account. The administrator must have the
   application secret in place and know the SMTP host, port and account; the password is
@@ -257,7 +263,8 @@ A channel sends one of two ways, its **Provider**:
 - **Microsoft 365** — from an Exchange Online **shared mailbox**, through Microsoft 365,
   with no password to enter. It also **receives**: mail arriving in the shared mailbox's
   Inbox from the day the channel is added comes into the Inbox — not the mail that was
-  there before. It is offered only once someone has turned on **Mail
+  there before. It is listed once the Microsoft Entra ID app is on, and can be chosen once
+  someone has turned on **Mail
   channels** in the Microsoft Entra ID app and an Exchange administrator has given
   Vantigo access to the mailbox ([the administration
   guide](/en/admin/entra/#mail-channels)). When the application's access reaches every
@@ -267,7 +274,7 @@ A channel sends one of two ways, its **Provider**:
   manages channels in Communications can send as any shared mailbox in the tenant.* The
   channels still work.
 
-The provider list in the **Add email channel** dialog also shows **Vantigo hosted mail**,
+The provider list in the **Add email channel** dialog ends with **Vantigo hosted mail**,
 greyed, with *Not yet available*: it is not offered yet, and cannot be chosen.
 
 Invoices and Calendar send to your customers **through a channel you choose**: Invoice
@@ -300,10 +307,10 @@ for the mailbox, and says *The mailbox must be a shared mailbox in the applicati
 scope.*:
 
 - **Import history** — **From now on** (the default), **Last 30 days** or **Last 90 days**.
-- **When a conversation is closed** — **Leave as-is in Outlook** (the default), **Mark as
-  read in Outlook**, or **Move to folder in Outlook** (which asks for the **Outlook
-  folder**, filled in as `Handled in Vantigo`, created in the shared mailbox if it does not
-  exist yet).
+- **When a conversation is closed** — **Leave as-is in the mailbox** (the default),
+  **Mark as read in the mailbox**, or **Move to a folder in the mailbox** (which asks for
+  the **Mailbox folder**, filled in as `Handled in Vantigo`, created in the shared mailbox
+  if it does not exist yet).
 
 **Create
 channel** checks the mailbox with Microsoft 365 first; the channel is created active, with
@@ -311,22 +318,24 @@ the mailbox's own primary address, and can send at once. The check can refuse it
 
 | The dialog says | Means | Who fixes it |
 | --- | --- | --- |
-| *This is a personal mailbox. Only a shared mailbox can be a channel.* | The address is a person's mailbox. | Use a shared mailbox; an Exchange administrator can convert one. |
+| *This is a person's own mailbox. Only a shared mailbox can be a channel.* | The address is a person's mailbox. | Use a shared mailbox; an Exchange administrator can convert one. |
+| *The address is a group. A group has no mailbox Vantigo can read; use a licensed mailbox.* | The address belongs to a group, not a mailbox (a mail service that has group addresses says so; Microsoft 365 does not). | Use a mailbox's address. |
 | *The mailbox is outside the application's scope. Give the application access to it in Exchange Online.* | Vantigo has not been given access to this mailbox, or the access has not taken effect yet — it can take up to 2 hours. | An Exchange administrator, by [How to give the application access](/en/admin/entra/#mail-channels). |
 | *Microsoft 365 has no mailbox with this address.* | No mailbox has this address — or it is an alias. | Use the mailbox's primary address. |
-| *Microsoft 365 mail channels are not available. An Entra administrator turns on Mail channels in the Entra settings.* | **Mail channels** is off, or the Entra connection is not working. | Whoever manages the Microsoft Entra ID app. |
+| *Mail channels through Microsoft 365 are not available. An administrator turns them on under Integrations.* | **Mail channels** is off, or the Entra connection is not working. | Whoever manages the Microsoft Entra ID app. |
 | *Another channel already uses this mailbox.* | Another channel uses the same mailbox, perhaps by another of its addresses. | Use that channel. |
 | *A channel with this address already exists.* | Another channel has this address. | Use that channel. |
 | *Microsoft 365 did not answer. Try again in a moment.* | Microsoft 365 was busy or unreachable. | Try again. |
 
-Adding, switching and verifying channels are limited to 30 a minute; past that,
+Each message names the provider you chose. Adding, switching and verifying channels are limited to 30 a minute; past that,
 *Too many attempts. Wait a minute and try again.*
 
-### Switch an SMTP channel to Microsoft 365
+### Switch an SMTP channel to a mailbox service
 
 When the mailbox an SMTP channel sends from is a shared mailbox in Exchange Online, the
 channel can send through Microsoft 365 instead, keeping its conversations, its address
-and its **Default** mark. On its row, choose **Switch to Microsoft 365**; the dialog
+and its **Default** mark. On its row, choose **Switch to Microsoft 365** — there is one
+**Switch to …** for each mailbox service that can be used now; the dialog
 warns *The SMTP settings are deleted. To go back you enter them again.*, and offers the
 same **Import history** and **When a conversation is closed** choices as when adding a
 Microsoft 365 channel — choose
@@ -334,11 +343,13 @@ Microsoft 365 channel — choose
 the row's provider reads **Microsoft 365**: "Channel switched — The channel now sends and
 receives through Microsoft 365." From then on the mailbox's mail from the chosen import
 window comes into the Inbox. The action is shown only while Microsoft 365 is
-available.
+available. A channel already on one mailbox service cannot be switched to another
+directly: *The channel uses another mailbox provider. Switch it back to SMTP first, then
+to the new provider.*
 
-On any Microsoft 365 channel's row, **Outlook on close** opens a dialog to change **When a
-conversation is closed** (*Leave as-is in Outlook*, *Mark as read in Outlook*, or *Move to
-folder in Outlook* with its **Outlook folder**).
+On any Microsoft 365 channel's row, **Mailbox on close** opens a dialog to change **When a
+conversation is closed** (*Leave as-is in the mailbox*, *Mark as read in the mailbox*, or
+*Move to a folder in the mailbox* with its **Mailbox folder**).
 
 The channel keeps the address it had. If that address is an alias of the shared mailbox
 rather than its primary address, check that the first message goes out as expected:

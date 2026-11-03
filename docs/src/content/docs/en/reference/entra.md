@@ -2108,7 +2108,7 @@ there is one, is the last notification, to within a minute.
 
 The module fills the single-provider slot `ChannelMailbox` (`contracts.ChannelMailbox`,
 `channel_mailbox.go`) for Communications' [Microsoft 365
-channels](/en/reference/communications/#microsoft-365): an Exchange Online **shared
+channels](/en/reference/communications/#mailbox-channels): an Exchange Online **shared
 mailbox** a channel sends from, reached through the [Graph client](#the-graph-client)
 with the **application's own token** — never a person's — and scoped to the channel
 mailboxes by **Exchange RBAC for Applications** (`Application Mail Full Access`,

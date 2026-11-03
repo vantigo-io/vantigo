@@ -1,6 +1,6 @@
 ---
 title: "Communications module"
-description: "Business email from shared mailboxes: the channels' providers — SMTP, and Microsoft 365 shared mailboxes through the Microsoft Entra ID module, created by address or switched from SMTP, with an optional import window and Outlook on-close behavior — the outbox and its delivery through either, the size a Microsoft 365 channel takes; the OutboundMail slot, through which Invoices and Calendar send customer mail from a channel an Owner chose, and the end of any fall-back to the installation's SMTP; receiving into a Microsoft 365 channel — the mailbox sync, change notifications, receipts, parsing, sanitising, threading, the customer linker, reply and reply-all, and Outlook state on close —; retention and the operator's configuration."
+description: "Business email from shared mailboxes: the channels' providers — SMTP, and the shared mailboxes of every mailbox provider (Microsoft 365 through the Microsoft Entra ID module today), named by key, created by address or switched from SMTP, with an optional import window and Outlook on-close behavior — the outbox and its delivery through either, the size a mailbox channel takes; the OutboundMail slot, through which Invoices and Calendar send customer mail from a channel an Owner chose, and the end of any fall-back to the installation's SMTP; receiving into a mailbox channel — the mailbox sync, change notifications, receipts, parsing, sanitising, threading, the customer linker, reply and reply-all, and Outlook state on close —; sending from one's own address through the provider that answers for the person; retention and the operator's configuration."
 sources:
   - apps/server/internal/communications
   - apps/communications/frontend
@@ -10,7 +10,10 @@ sources:
   - apps/server/internal/db/migrations/00092_communications_inbound.sql
   - apps/server/internal/db/migrations/00094_communications_mailbox_marks.sql
   - apps/server/internal/db/migrations/00095_communications_personal_sending.sql
+  - apps/server/internal/db/migrations/00109_communications_provider_neutral.sql
   - apps/server/internal/contracts/outbound_mail.go
+  - apps/server/internal/contracts/channel_mailbox.go
+  - apps/server/internal/contracts/personal_mailbox.go
 ---
 Communications is a module inside the single Vantigo binary, not a separately
 deployed service. It runs in the same process as Identity, Customers, Products and
@@ -88,7 +91,7 @@ message's original (its raw payload) is not exported either; the erase deletes i
 message. The suppressions, the opt-out addresses, are neither exported nor erased: honouring an
 opt-out needs the address, so it is kept on purpose.
 
-Mail received into a Microsoft 365 channel ([Receiving](#receiving)) reaches the export and
+Mail received into a mailbox channel ([Receiving](#receiving)) reaches the export and
 the erase **only through a conversation's customer**: the [linker](#the-customer-linker)
 sets it when the sender's address belongs to exactly one customer, so a matched sender's
 mail is covered; a sender who matches no customer, or several, writes into a conversation
@@ -123,33 +126,42 @@ newest receipt stays longer), so an erased message is never imported again; and 
 ## Providers
 
 A channel is an address replies are sent from, and its `provider` says how they leave:
-`smtp`, through the channel's own SMTP server, or `entra`, **Microsoft 365** — an
-Exchange Online shared mailbox, reached through Microsoft Graph by the [Microsoft Entra
-ID module](/en/reference/entra/#mail-channels). There is no other. Mailgun, which this
-port never created, has left the contract; a create or update naming any other provider
-is a 400 under `smtp` (*SMTP credentials require the smtp provider.*).
+`smtp`, through the channel's own SMTP server, or the **key of a mailbox provider** — a
+shared mailbox reached through the `contracts.ChannelMailbox` filled under that key
+(Google Workspace design G4). Communications names no mailbox provider: a channel's
+provider is `smtp` or the `Key()` of a filled `ChannelMailbox`, and validation asks the
+slot which keys are filled. Today one module fills it, the [Microsoft Entra ID
+module](/en/reference/entra/#mail-channels), under `entra` (**Microsoft 365**, an Exchange
+Online shared mailbox reached through Microsoft Graph); a Google Workspace module is
+designed to fill it under `google`. Mailbox providers are called a *mailbox channel*'s
+below. Mailgun, which this port never created, has left the contract; a create or update
+naming a provider that is neither `smtp` nor a filled key is a 400 under `smtp` (*SMTP
+credentials require the smtp provider.*).
 
-**Only a Microsoft 365 channel receives.** Its shared mailbox's Inbox is read by the
+**Only a mailbox channel receives.** Its shared mailbox's Inbox is read by the
 `communications-mailbox-sync` worker ([Receiving](#receiving)), which writes each message
 as an inbound message of a conversation. An SMTP channel only sends: there is no webhook,
 no IMAP and no other inbound path, so a conversation of an SMTP channel holds no inbound
 message and cannot be replied to ([Reply and reply-all](#reply-and-reply-all)).
 
 `GET /api/v1/communications/channel-providers` (`channels-manage`) is what a channel can
-use, so the channels page reads Communications' own API and never Entra's:
+use, so the channels page reads Communications' own API and never a provider's:
 
-- `{key: "smtp", displayName: "SMTP", available: true}`, always;
-- `{key: "entra", displayName, available, reason?, warning?, maxMessageBytes}`, only
-  while an enabled module fills the `ChannelMailbox` slot. `displayName` is the
-  provider's own, *Microsoft 365*; `available` is its status. Not available, `reason`
-  is the provider's — `switch_off`, the connection's reason — or `status_unavailable`
-  when the status did not answer. Available, `warning` is `tenant_wide` while the
-  application's mail grant reaches every mailbox in the tenant. `maxMessageBytes` is the
-  provider's `MaxMessage` ([attachments](#attachments)).
+- `{key: "smtp", displayName: "SMTP", available: true}`, always first;
+- then **every filled `ChannelMailbox`, in slot order** (the enabled modules' order),
+  each `{key, displayName, available, reason?, warning?, maxMessageBytes}`. `key` is the
+  provider's `Key()` (`entra`), `displayName` its `DisplayName()` (*Microsoft 365*);
+  `available` is its status. Not available, `reason` is the provider's — `switch_off`,
+  the connection's reason — or `status_unavailable` when the status did not answer.
+  Available, `warning` is `tenant_wide` while the provider's grant reaches every mailbox
+  in the tenant. `maxMessageBytes` is that provider's `MaxMessage`
+  ([attachments](#attachments)).
 
-The page offers **Microsoft 365** in the provider select, and **Switch to Microsoft 365**
-on an SMTP channel's row, only while the second entry is available, and shows the
-`tenant_wide` warning above the table while it says so.
+The page's provider select lists SMTP, then every listed provider by its `displayName`
+— one not available disabled, with its `reason` — and then *Vantigo hosted mail*,
+greyed. An SMTP channel's row has a **Switch to {provider}** for each listed provider
+that is available. The page shows the `tenant_wide` warning above the table while any
+entry says so.
 
 ### SMTP
 
@@ -187,40 +199,49 @@ spring 2026; according to Message Center MC786329, read through secondary source
 not first-hand, basic SMTP AUTH stays on until the end of December 2026, is then off by
 default for existing tenants — an Exchange administrator may turn it back on — and
 unavailable for new ones, with a final date in the second half of 2027. Such a channel
-needs that exception from January 2027, or a [switch to Microsoft
-365](#switching-provider), which keeps its id, its conversations and its default flag.
+needs that exception from January 2027, or a [switch to a mailbox
+provider](#switching-provider), which keeps its id, its conversations and its default flag.
 
-### Microsoft 365
+### Mailbox channels
 
-A Microsoft 365 channel (Outlook connection and Microsoft 365 mail design M12) is an
-Exchange Online **shared mailbox**, sent from with the application's own token through
-`contracts.ChannelMailbox`, a single-provider slot the Microsoft Entra ID module fills
-under the key `entra` ([module boundaries](/en/contributing/module-boundaries/) rule
-15). Communications is the authority on which mailboxes are channels; the provider sends
-only from a mailbox its `Check` resolved and recorded — a shared one. Someone with
-`entra:manage` turns it on in the Entra module and an Exchange administrator scopes it ([Mail channels](/en/admin/entra/#mail-channels)).
+A mailbox channel (Outlook connection and Microsoft 365 mail design M12, Google Workspace
+design G2–G4) is a **shared mailbox**, sent from with the application's own credential
+through `contracts.ChannelMailbox`, a **many-provider slot keyed by `Key()`**
+(`Deps.ChannelMailboxes`, [module boundaries](/en/contributing/module-boundaries/) rule
+15). A channel is served **only by the provider filled under its own `provider`**, and
+by none when no provider is filled under it: never by a provider under another key.
+Each accessor in `contractscalls.go` takes the channel's provider and reads the slice
+with `channelMailboxFor(provider)`, which calls nobody. Communications is the authority
+on which mailboxes are channels; a provider sends only from a mailbox its `Check`
+resolved and recorded — a shared one. For Microsoft 365, someone with `entra:manage`
+turns it on in the Entra module and an Exchange administrator scopes it ([Mail
+channels](/en/admin/entra/#mail-channels)).
 
-- **The row.** `provider = 'entra'`; `channels.settings` (migration
+- **The row.** `provider` is the provider's key; `channels.settings` (migration
   `00091_communications_channel_settings.sql`, `jsonb`, `{}` by default) is
-  `{"mailbox": "<object id>", "onClose"?: "read"|"move", "folder"?: "<name>"}`, the
-  mailbox's object id in lower case and the optional [Outlook state on close](#outlook-state-on-close);
-  and there is **no `channel_credentials` row** — no secret to seal. **One channel per mailbox**:
-  `ux_channels_entra_mailbox` on `settings->>'mailbox'` `WHERE provider = 'entra'`, so two
-  aliases of one mailbox cannot make two channels; its violation is 409 `mailbox_exists`
-  (*Another channel already uses this mailbox.*), apart from `channel_exists`, an address
-  another channel holds.
+  `{"mailbox": "<mailbox id>", "onClose"?: "read"|"move", "folder"?: "<name>"}`, the
+  provider's id of the mailbox (Entra's object id, in lower case) and the optional
+  [state on close](#outlook-state-on-close); and there is **no `channel_credentials`
+  row** — no secret to seal. **One channel per mailbox, per provider**:
+  `ux_channels_provider_mailbox` on `(provider, settings->>'mailbox')` `WHERE settings ?
+  'mailbox'` (migration `00109_communications_provider_neutral.sql`, replacing 00091's
+  `ux_channels_entra_mailbox`), so two aliases of one mailbox cannot make two channels,
+  while the same id under two providers names two mailboxes; its violation is 409
+  `mailbox_exists` (*Another channel already uses this mailbox.*), apart from
+  `channel_exists`, an address another channel holds.
 - **The answer.** `ChannelResponse.mailbox` is `{id, onClose: "none"|"read"|"move", folder: string|null}`
-  for a Microsoft 365 channel and null otherwise; `settings`, the SMTP shape (`host`,
+  for a mailbox channel and null otherwise; `settings`, the SMTP shape (`host`,
   `port`, `useSsl`, `username`), is null for it, and `hasCredentials` false.
   `available` is whether a channel can send now: an SMTP channel has stored credentials; a
-  Microsoft 365 one has a mailbox and its provider is offered (the slot filled under
-  `entra` and its `Status` available). The list, the read and the update answer it with the
+  mailbox channel has a mailbox and its provider is offered (a provider filled under the
+  channel's key, and its `Status` available — each filled provider's `Status` is read once
+  per list). The list, the read and the update answer it with the
   provider's state read at that moment (outside any transaction); a create or a switch
   answers it from the row alone, the provider having just been asked.
 - **Every call of the slot is made outside a transaction** — before it opens or after it
   commits — through the accessors in `contractscalls.go`, which refuse one made inside
   (a programming error, answered as a 500).
-- **The import window.** Creating a Microsoft 365 channel, and switching an SMTP one,
+- **The import window.** Creating a mailbox channel, and switching an SMTP one,
   writes its `communications.channel_sync` row in the same transaction (migration
   `00092_communications_inbound.sql`): `state = 'pending'`, `next_sync_at` the moment of
   the write, and `import_from` set from the request's optional `importWindow` —
@@ -238,28 +259,34 @@ only from a mailbox its `Check` resolved and recorded — a shared one. Someone 
 
 #### Creating one
 
-`POST /channels` with `{type: "email", provider: "entra", address, displayName?,
+`POST /channels` with `{type: "email", provider: "<a listed key>", address, displayName?,
 isDefault?, importWindow?, onClose?, folder?}` and no `smtp` block (one is a 400 under
 `smtp`; `importWindow`, `onClose` and `folder` on an `smtp` create are a 400 too).
 `importWindow` is `from_now` (default), `last_30_days` or `last_90_days`; `onClose` is
 `none` (default), `read` or `move`, and when `onClose` is `move`, `folder` (1 to 120
 characters, no `/` or `\`, defaulting to `"Handled in Vantigo"`) is ensured in the shared
-mailbox by calling `EnsureFolder` before the transaction. Before the transaction, the
-provider's `Status`, then `Check(address)` (and `EnsureFolder` when `onClose` is `move`):
+mailbox by calling `EnsureFolder` before the transaction. A provider key no module fills
+is a 400 under `smtp`, as any other unknown provider. Before the transaction, the
+named provider's `Status`, then `Check(address)` (and `EnsureFolder` when `onClose` is
+`move`):
 
 | What the provider answers | Result |
 | --- | --- |
-| no provider in the slot, or its `Status` not available | 409 `mail_channels_off` |
+| its `Status` not available | 409 `mail_channels_off` |
 | a shared mailbox it reaches | 201, the channel **active**; its address is the mailbox's primary SMTP address as `Check` read it, in lower case, so an alias typed becomes the mailbox's own |
-| a mailbox it reaches, not shared | 422 `personal_mailbox` — shared mailboxes only; `Check` does not record a personal mailbox, so the provider would refuse to send from it anyway |
+| a mailbox it reaches, not shared | 422 `personal_mailbox` (*The address is a person's own mailbox. Only a shared mailbox can be a channel.*) — `Check` does not record a personal mailbox, so the provider would refuse to send from it anyway |
+| `ErrMailboxGroup` | 422 `group_address` (*The address is a group. A group has no mailbox Vantigo can read; use a licensed mailbox.*) — a provider whose groups have addresses of their own answers it; Entra never does |
 | `ErrMailboxDenied` | 422 `mailbox_denied` — outside the application's RBAC scope, or a role missing |
 | `ErrMailboxUnknown`, `ErrMailboxGone` | 422 `mailbox_unknown` — no such mailbox, or an address that is not a bare address (a display name, white space, one of `/ \ ? # %`, over 320 bytes) |
 | `ErrMailboxUnavailable` | 409 `mail_channels_off` |
-| anything else — throttled, Graph not answering, the status unreadable | 503 `provider_unreachable` (*Microsoft 365 did not answer. Try again.*), logged |
+| anything else — throttled, the provider not answering, the status unreadable | 503 `provider_unreachable` (*{provider} did not answer. Try again.*), logged |
 
-`mail_channels_off` says *Microsoft 365 mail channels are not available. An Entra
-administrator turns on Mail channels in the Entra settings.* The address a person typed is
-never in an error or a log line: Entra names the lookup's path `/v1.0/users/{address}`.
+The sentences name the provider by its `DisplayName()`: `mail_channels_off` says *Mail
+channels through {provider} are not available. An administrator turns them on under
+Integrations.*, `mailbox_unknown` *No mailbox with this address was found in
+{provider}.* A channel whose provider is no longer filled (verify) is named by its key.
+The address a person typed is never in an error or a log line: Entra names the lookup's
+path `/v1.0/users/{address}`.
 
 The insert then runs as an SMTP channel's does — the default slot's lock, the first
 channel made the default — with `settings` and no credential row. An address another
@@ -268,10 +295,15 @@ channel holds is 409 `channel_exists` as for SMTP; a mailbox another channel use
 
 #### Switching provider
 
-`POST /channels/{id}/provider` with `{provider: "entra", importWindow?, onClose?, folder?}` (`channels-manage`) moves an
-SMTP channel to Microsoft 365 and keeps its **id, address, conversations and default
-flag**. Any other provider in the body is a 400; an unknown channel a bare 404; a
-channel already on `entra` 422 `provider_unchanged`. `Status` and `Check` (and
+`POST /channels/{id}/provider` with `{provider: "<a listed key>", importWindow?, onClose?, folder?}` (`channels-manage`) moves an
+SMTP channel to a mailbox provider and keeps its **id, address, conversations and default
+flag**. `smtp`, or a key no module fills, in the body is a 400; an unknown channel a bare
+404; a channel already on that provider 422 `provider_unchanged` (*The channel already
+uses {provider}.*). **A channel on another mailbox provider is refused**, 409
+`provider_switch_unsupported` (*The channel uses another mailbox provider. Switch it back
+to SMTP first, then to the new provider.*): the channel goes back to SMTP first, so its
+old mailbox is forgotten on its own provider before a new one is checked. Both are
+checked again under the lock. `Status` and `Check` (and
 `EnsureFolder` when `onClose` is `move`) run on the
 channel's own address before the transaction, with the create's table; a mailbox another
 channel uses is 409 `mailbox_exists`. The channel **keeps its own address**, which may be
@@ -280,7 +312,7 @@ the alias through the shared mailbox — whether Exchange sends it so, rewrites 
 refuses it is **not verified on a real tenant**. Then, under the
 default slot's lock and a re-read, the provider and `settings` are written and the
 **credential row deleted, in one transaction**: a failure leaves the channel SMTP with its
-credential. Answers 200 with the channel. The mailbox `Check` recorded on Entra's side
+credential. Answers 200 with the channel. The mailbox `Check` recorded on the provider's side
 stays recorded if that transaction fails; it only lets the provider send from a mailbox
 an admin checked, and the next `Check` rewrites it.
 
@@ -288,34 +320,35 @@ an admin checked, and the next `Check` rewrites it.
 **the password included** — there is no stored one to reuse (*A password is required to
 switch a channel to SMTP.*; without a block, *SMTP credentials require a host and valid
 port.*). It writes the credential row, sets the provider to `smtp` and `settings` to
-`{}`, and **after the commit** calls the provider's `Unwatch` and `Forget` for the old mailbox,
+`{}`, and **after the commit** calls the channel's own provider's `Unwatch` and `Forget` for the old mailbox,
 best-effort: a failure is logged and the 200 stands. The channels are read again first,
-and `Unwatch` and `Forget` are skipped when another channel has taken the mailbox in between, so that
+and `Unwatch` and `Forget` are skipped when another channel on that provider has taken the mailbox in between, so that
 channel can still send and receive. The channels page has no control for
 it; it is the API's. A `PUT` without `provider` keeps the channel's own, so `isActive`,
-`isDefault`, `displayName`, `onClose` or `folder` alone on a Microsoft 365 channel need no
+`isDefault`, `displayName`, `onClose` or `folder` alone on a mailbox channel need no
 credential (when `onClose` is set to `move`, `EnsureFolder` runs before the transaction;
 when `isActive` is set to `false`, `Unwatch` runs best-effort after the commit); a `PUT`
-naming `entra` on an SMTP channel is a 400 under `provider` (the switch is the `POST`).
+naming a mailbox provider other than the channel's own is a 400 under `provider` (the switch is the `POST`).
 A `PUT` whose channel changed provider between its read and its transaction is a 400
 under `provider`, to read the channel again.
 
 **There is no delete of a channel** — conversations and participants restrict it — so a
-deactivated Microsoft 365 channel keeps its mailbox, and sends again once activated
+deactivated mailbox channel keeps its mailbox, and sends again once activated
 with no new `Check`.
 
 #### Verifying
 
-`POST /channels/{id}/verify` on a Microsoft 365 channel runs `Status` and `Check` of its
-address again: 200 `{ok: true}` only when it still reaches a shared mailbox **with the
-object id the channel holds**; otherwise 422 with the create's codes —
-`mail_channels_off`, `personal_mailbox`, `mailbox_denied`, `mailbox_unknown`,
+`POST /channels/{id}/verify` on a mailbox channel runs its own provider's `Status` and
+`Check` of its address again: 200 `{ok: true}` only when it still reaches a shared mailbox
+**with the id the channel holds**; otherwise 422 with the create's codes —
+`mail_channels_off` (also when no provider is filled under the channel's key any more),
+`personal_mailbox`, `group_address`, `mailbox_denied`, `mailbox_unknown`,
 `provider_unreachable` — or `mailbox_changed` when the address now names another mailbox.
 
 #### The rate limit
 
-Creating, switching and verifying a channel each reach Graph up to three times for a
-Microsoft 365 one, so the three share one bucket, `communications-channel-check`, **30
+Creating, switching and verifying a channel each reach the provider up to three times for a
+mailbox channel, so the three share one bucket, `communications-channel-check`, **30
 a minute per client address** — SMTP channels included. A refused request is the
 router's 429.
 
@@ -336,19 +369,20 @@ is off, which a consumer reads as *sending is disabled*.
 | `Send(ctx, id, out)` | Sends `out` from the channel, synchronously, under the caller's context. |
 
 `available` is the channel's own state: an SMTP channel has stored credentials; a
-Microsoft 365 channel has a mailbox and its provider is offered. `Send` refuses a channel
+mailbox channel has a mailbox and the provider filled under its key is offered.
+`providerDisplayName` is that provider's `DisplayName()`, its key while none is filled. `Send` refuses a channel
 that cannot send before it builds or dials anything.
 
 - **From and the rest.** The message is sent From the **channel's address**; the caller's
   `DisplayName` is the name beside it, and its `Reply-To`, `Message-ID` and attachments are
   kept. An SMTP channel sends through the same seam the outbox uses (`Deps.SMTPSend`,
-  else `mail.SendOutbound`) over its own sealed credentials; a Microsoft 365 channel
-  renders the message as MIME from the channel's address and hands it to the
-  `ChannelMailbox` slot's `Send`.
+  else `mail.SendOutbound`) over its own sealed credentials; a mailbox channel
+  renders the message as MIME from the channel's address and hands it to the `Send` of
+  the `ChannelMailbox` filled under its provider.
 - **Errors.** `ErrChannelUnknown`; `ErrChannelUnavailable` — the provider is off, the
   mailbox is outside the provider's scope or gone (`ErrMailboxUnavailable`, `Unknown`,
   `Denied`, `Gone`), or an SMTP channel has no credentials (the wrapped sentence is *the
-  channel has no credentials*); `ErrMailTooLarge`, from the Microsoft 365 provider's
+  channel has no credentials*); `ErrMailTooLarge`, from the mailbox provider's
   limit; `ErrRecipientRefused`, defined with the slot for a provider that holds a tenant
   to a list of addresses and answered by none yet; and any other error is a failure to
   retry — at least once, as SMTP.
@@ -394,9 +428,9 @@ the deliveries, and the attachments — and branches on the channel's provider, 
 `GetOutboundMessageForSend` now reads with its `settings`:
 
 - **`smtp`**: as before, over the channel's credential row.
-- **anything else**: through the `ChannelMailbox` slot. A channel whose `settings` name
-  no mailbox fails with `channel_misconfigured`; no provider in the slot, or one whose
-  `Key` is not the channel's provider, is `ErrMailboxUnavailable` and **held** (below) — a
+- **anything else**: through the `ChannelMailbox` filled under the channel's provider. A
+  channel whose `settings` name no mailbox fails with `channel_misconfigured`; no provider
+  filled under the channel's key is `ErrMailboxUnavailable` and **held** (below) — a
   channel is **never sent through another provider**. The same `Outbound` is rendered as MIME
   by [`mail.RenderMIME`](/en/contributing/platform-packages/#the-mail-package) from the
   channel's address — with a `Bcc:` header only when there are blind copies — and handed
@@ -409,6 +443,18 @@ the deliveries, and the attachments — and branches on the channel's provider, 
   metric are unchanged. Exchange saves the sent message in the shared mailbox's **Sent
   Items**.
 
+**What the provider answers of a sent message** (Google Workspace design G5). A
+provider's `Send` — a channel's and a [personal one](#sending-from-ones-own-address) —
+answers `contracts.SentMessage{MessageID, ThreadID}`: the Message-ID the message left
+with as the provider sent it, and the provider's thread id, each empty when the provider
+does not know it. Entra answers the zero value (Graph's `sendMail` answers no body). The
+outbox records a non-empty answer on the message in the completion's own transaction:
+`ThreadID` as `channel_metadata_json->>'providerThreadId'`, and a `MessageID` that differs
+from the message's own (bracketed, as `rfc_message_id` is) as
+`conversation_messages.sent_message_id` (`varchar(998)`, indexed, migration 00109). Both
+are what [threading](#threading) reads, so a reply to a message whose Message-ID the
+provider replaced still threads. SMTP answers nothing beyond its 250.
+
 **Not yet verified on a real tenant**: whether Exchange keeps our `Message-Id` on a MIME
 `sendMail` (no Microsoft page says so; Outlook is reported to stamp its own), and whether
 a draft's `Bcc:` header reaches the blind copies as Graph documents for a MIME draft, nor
@@ -416,7 +462,7 @@ how Exchange treats a channel switched from SMTP whose address is an alias. The
 pull request's real-tenant checklist reads the sent item's `internetMessageId`, the
 recipient's raw headers and a blind copy's arrival. If Exchange rewrites the
 `Message-Id`, a customer's answer names Exchange's own in `In-Reply-To`, which no message
-of Vantigo's has, and [threading](#threading) falls back on Graph's `conversationId` — with
+of Vantigo's has, and [threading](#threading) falls back on the provider's thread — with
 the limit stated there.
 
 **Terminal failures.** A send through the mailbox that fails with one of these codes
@@ -483,7 +529,7 @@ has connections deadlock it, and readiness with them — and it calls no other m
 ### Background workers
 
 The module contributes four background workers: outbox delivery, retention, attachment
-cleanup and `communications-mailbox-sync`, which reads each Microsoft 365 channel's Inbox
+cleanup and `communications-mailbox-sync`, which reads each mailbox channel's Inbox
 ([Receiving](#receiving)). `worker` mode always runs them, `server`
 mode never does, and `api` mode runs them when `WORKERS_IN_PROCESS=1` (the default).
 A deployment that scales the API horizontally should set `WORKERS_IN_PROCESS=0` on
@@ -494,7 +540,7 @@ not multiply the pollers.
 
 Six counters on an OpenTelemetry meter named `Vantigo.Communications`, none with
 attributes. Five are the outbox's: `communications.outbox.possible_duplicate_sends`,
-`.jobs_completed`, `.jobs_retried`, `.jobs_held` (a try of a Microsoft 365 channel's job
+`.jobs_completed`, `.jobs_retried`, `.jobs_held` (a try of a mailbox channel's job
 put back while its provider is unavailable, spending no attempt) and `.jobs_failed`.
 **Alert on the last one: every increment is undelivered customer email.** The sixth is
 the mailbox sync's, `communications.inbound.cycles_failed`: one per cycle whose failure was
@@ -618,11 +664,11 @@ failure is 503 `attachment_storage_unavailable`. The detail answers each message
 
 ## Receiving
 
-A Microsoft 365 channel receives (Outlook connection and Microsoft 365 mail design M14,
+A mailbox channel receives (Outlook connection and Microsoft 365 mail design M14,
 M15, M16, M17): mail arriving in its shared mailbox's **Inbox** becomes an inbound message of a
 conversation, threaded onto the one it answers or starting one, its sender linked to a
 customer when the address belongs to exactly one. Vantigo reads the mailbox with the
-application's token through the `ChannelMailbox` slot's two reads, `Delta` and `Raw`
+application's credential through the two reads of the `ChannelMailbox` filled under its provider, `Delta` and `Raw`
 ([Entra's inbound reads](/en/reference/entra/#delta-and-raw)), subscribes the Inbox to
 change notifications when configured (`Watch`, `Unwatch`, `Notified`), and leaves the
 messages in the Inbox untouched until a conversation is closed on a channel configured to
@@ -635,14 +681,15 @@ it first reads any new mail change notices from the provider, then claims a chan
 runs one cycle on it, and claims the next — or, when no channel sync is due, claims the
 next due [on-close mark job](#outlook-state-on-close) — until none is due.
 
-- **Change notices (`takeNotices`).** Before claiming, the worker asks
-  `ChannelMailbox.Notified(since)` from an in-memory cursor initialised to one minute
-  before the worker started. Each notice's mailbox id marks its active `entra` channel's
-  `channel_sync` row `notified = true` and `next_sync_at = now` when the row is not
+- **Change notices (`takeNotices`).** Before claiming, the worker asks every filled
+  provider's `ChannelMailbox.Notified(since)`, each from **its own** in-memory cursor
+  (kept by the provider's key) initialised to one minute before the worker started. Each
+  notice's mailbox id marks the `channel_sync` row of the active channel on that provider
+  with that mailbox `notified = true` and `next_sync_at = now` when the row is not
   backing off a failure (`attempts = 0` and `state <> 'failed'`), so a notified channel is
   claimed next.
-- **The claim.** A `channel_sync` row is due when its channel is an **active** `entra`
-  channel, its `state` is not `stopped` (nothing in this release sets `stopped`), its
+- **The claim.** A `channel_sync` row is due when its channel is an **active** mailbox
+  channel (any provider but `smtp`), its `state` is not `stopped` (nothing in this release sets `stopped`), its
   `next_sync_at` has come and it holds no lease — or its lease has expired. A row marked
   `notified` comes first (a finished pass clears it), then the
   longest due. The claim is a
@@ -653,7 +700,7 @@ next due [on-close mark job](#outlook-state-on-close) — until none is due.
   changes 0 rows means another worker took the row, and the cycle **stops, writing nothing
   more** (logged at info). The lease is renewed to two minutes from now **before each
   message**.
-- **The provider first.** No provider in the slot, one under a key other than `entra`, a
+- **The provider first.** No provider filled under the channel's own key, a
   `Status` that is not available or does not answer — or a read refused as
   `ErrMailboxUnavailable` — **holds** the channel: `next_sync_at` five minutes ahead,
   `error = 'provider_unavailable'`, `attempts` and `state` unchanged, the lease given back.
@@ -761,7 +808,10 @@ For each item without a receipt, in this order:
    receipt. Either way its objects go to the ledger.
 
 The message's `channel_metadata_json` is `{from, to[], cc[], inReplyTo, references[],
-autoSubmitted, graphConversationId}`, plus `unreadable` and `htmlDropped` when set: the
+autoSubmitted, providerThreadId}`, plus `unreadable` and `htmlDropped` when set: the
+provider's thread id (`MailItem.ConversationID`, Graph's `conversationId`) under a
+neutral key — migration 00109 rewrote `graphConversationId` to `providerThreadId` in
+every existing row —, the
 addresses bare and in lower case, the ids bracketed, references oldest first. Reply and
 reply-all read `cc` and `references` back; the detail reads `autoSubmitted` and
 `unreadable`.
@@ -866,12 +916,17 @@ in the detail, and **does not reopen** a closed conversation.
 A message is threaded within its channel, never across channels, in this order:
 
 1. The conversation of the message its **`In-Reply-To`** names — a message of **any
-   direction**, so a customer's answer to a reply Vantigo sent threads onto its
-   conversation: the outbox's Message-Ids are stored bracketed, as received ones are.
+   direction**, by its own Message-Id (`rfc_message_id`) **or the one its provider sent it
+   with** (`sent_message_id`), so a customer's answer to a reply Vantigo sent threads onto
+   its conversation even when the provider replaced the Message-ID: the outbox's
+   Message-Ids are stored bracketed, as received ones are.
 2. Else the conversation of a message its **`References`** name, the newest reference
-   first.
-3. Else the conversation of the newest **inbound** message of the same Graph
-   **`conversationId`** received in the last **90 days**.
+   first, matched the same way.
+3. Else the conversation of the newest message **of either direction** in the same
+   **provider thread** (`providerThreadId`: Graph's `conversationId` on a received message,
+   the `ThreadID` a provider answered on a sent one) in the last **90 days**, through
+   `ix_conversation_messages_provider_thread` (00109, replacing 00092's inbound-only
+   index).
 4. Else a new conversation.
 
 Several messages with one Message-Id answer the newest's conversation. The match is
@@ -881,9 +936,11 @@ unless the message is automatic).
 **If Exchange rewrites our Message-Id** on sending (not verified, [Delivery
 semantics](#delivery-semantics)), a customer's answer to Vantigo's reply names Exchange's id,
 which no message of Vantigo's has, and step 3 threads it when the conversation already
-holds an inbound message of the same Outlook conversation — the usual case, a reply to a
-customer who wrote first. A customer's first answer to a conversation **Vantigo began**
-(`POST /conversations`) has no such inbound message, and starts a new conversation.
+holds a message of the same provider thread — an inbound one of the same Outlook
+conversation, the usual case, a reply to a customer who wrote first, or a sent one whose
+provider answered its thread. Entra answers none, so a customer's first answer to a
+conversation **Vantigo began** (`POST /conversations`) through Microsoft 365 has no such
+message, and starts a new conversation.
 
 ### The customer linker
 
@@ -944,7 +1001,7 @@ read.
 
 ### Outlook state on close
 
-A Microsoft 365 channel's `settings.onClose` decides what happens in the shared mailbox in
+A mailbox channel's `settings.onClose` decides what happens in the shared mailbox in
 Outlook when a conversation on the channel transitions to `closed`
 (`PATCH /api/v1/communications/conversations/{id}` with `status: "closed"`):
 
@@ -955,7 +1012,7 @@ Outlook when a conversation on the channel transitions to `closed`
   top-level folder (`settings.folder`, `"Handled in Vantigo"` by default), ensured by
   `EnsureFolder`.
 
-In the close's own transaction, when the channel is an `entra` channel whose `onClose` is
+In the close's own transaction, when the channel is a mailbox channel whose `onClose` is
 `read` or `move`, `UpsertMailboxMark` writes or resets the conversation's row in
 `communications.mailbox_marks` (migration `00094_communications_mailbox_marks.sql`,
 `conversation_id` primary key `ON DELETE CASCADE` to `conversations(id)`): `operation`
@@ -992,8 +1049,24 @@ Inbox from another folder arrives as created or updated (the worker imports eith
 
 ## Sending from one's own address
 
-People whose own Microsoft 365 Outlook connection is active with the `mail` feature (`Mail.Send` delegated)
-can choose **Send from my address** on both new conversations and replies (`sendFromPersonal: true`).
+People whose own connection to a personal mailbox provider is active with the `mail`
+feature — today the Microsoft 365 Outlook connection (`Mail.Send` delegated) — can choose
+**Send from my address** on both new conversations and replies (`sendFromPersonal: true`).
+
+- **The provider** (Google Workspace design G3). `contracts.PersonalMailbox` is a
+  many-provider slot keyed by `Key()` (`Deps.PersonalMailboxes`). Communications asks
+  **every** provider's `Status` for the caller — each answers `no_account` for a caller
+  whose directory account is not its own — and uses the **first available** answer; else
+  the first whose reason is not `no_account`; else `no_account`; `unavailable` when no
+  provider is filled. The answer carries the provider's `Key` and `DisplayName`
+  (`PersonalMailStatus.Provider`, `ProviderDisplayName`). `GET /personal-sender`, and a
+  conversation's `personalSender`, answer `providerDisplayName` (*Outlook*), which the
+  composer's **Send from my {provider} address** names. The chosen key is recorded as
+  `conversation_messages.send_provider` (`varchar(20)`, migration 00109, backfilled
+  `'entra'` for every earlier personal message), written with `from_address`; the
+  outbox sends through `personalMailboxFor(send_provider)` and answers
+  `connection_needed` when no provider is filled under it any more — **never through
+  another provider**, even one that could send.
 
 - **Channel continuity**: The conversation always belongs to its channel (`channels.address`), regardless
   of whether an individual message was sent from the channel's shared mailbox or from an author's personal mailbox.
@@ -1004,13 +1077,14 @@ can choose **Send from my address** on both new conversations and replies (`send
   outbox sends; `GetConversation` answers it as `replyToAddress`, read from the channel at the time of the
   read, not stored with the message. Customer replies therefore arrive directly in the shared channel
   mailbox and thread into the conversation without reading anyone's personal Inbox.
-- **Availability check**: Before beginning a transaction, the handler checks
-  `PersonalMailbox.Status(ctx)`. If personal sending is not available (`!Available`), the API returns 409
-  `connection_needed`. It also enforces the 3 MB MIME size budget (`contracts.MaxPersonalMessageBytes`, the
+- **Availability check**: Before beginning a transaction, the handler reads the
+  providers' status as above. If personal sending is not available (`!Available`), the API returns 409
+  `connection_needed`, its sentence naming the provider that answered. It also enforces the 3 MB MIME size budget (`contracts.MaxPersonalMessageBytes`, the
   same figure as a channel mailbox's), returning 422 `too_large` if exceeded. A failure to read the
   author's display name is a 500, never a message sent without one.
-- **Outbox dispatch & immediate failure**: The outbox dispatches personal messages via
-  `PersonalMailbox.Send(contracts.AsUser(ctx, authorUserID), mime, bcc)`. If Microsoft refuses due to an
+- **Outbox dispatch & immediate failure**: The outbox dispatches personal messages via the
+  recorded provider's `PersonalMailbox.Send(contracts.AsUser(ctx, authorUserID), mime, bcc)`, and records
+  what it answers as [a channel's send does](#delivery-semantics). If the provider refuses due to an
   expired session, revoked token, or missing consent (`contracts.ErrConnectionNeeded`), the outbox job fails
   immediately as a terminal failure after 1 attempt (`connection_needed`, never silently falling back to the
   channel's address).
@@ -1018,8 +1092,8 @@ can choose **Send from my address** on both new conversations and replies (`send
   (`communications:conversations-reply` and `communications:conversations-view`) re-queues an outbound
   message whose outbox job is `failed`: 409 `message_not_failed` otherwise, 422 `channel_inactive` when
   the channel is off. A message sent from the author's own address may be retried by its author alone
-  (403 `forbidden`), and only while `PersonalMailbox.Status(ctx).Available` (422
-  `personal_sender_unavailable`); a channel message may be retried by anyone the permissions allow. The
+  (403 `forbidden`), and only while the provider the message was recorded with answers
+  `Status(ctx).Available` (422 `personal_sender_unavailable`); a channel message may be retried by anyone the permissions allow. The
   job is re-queued first, conditionally on its status still being `failed` — a retry that loses that
   race writes nothing and answers `queued` all the same —, then its `submission_failed` deliveries go
   back to `queued` with an event each.
