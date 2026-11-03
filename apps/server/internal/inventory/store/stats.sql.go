@@ -14,7 +14,8 @@ const stats = `-- name: Stats :one
 SELECT (SELECT count(*) FROM inventory.sites WHERE status = 'active')::int AS sites,
        (SELECT count(*) FROM inventory.locations WHERE status = 'active' AND parent_id IS NOT NULL)::int AS locations,
        (SELECT count(*) FROM inventory.balances)::int AS stock_lines,
-       (SELECT count(*) FROM inventory.movements WHERE kind = 'receipt' AND posted_at >= $1::timestamptz)::int AS receipts_this_week
+       (SELECT count(*) FROM inventory.movements WHERE kind = 'receipt' AND posted_at >= $1::timestamptz)::int AS receipts_this_week,
+       (SELECT count(*) FROM inventory.counts WHERE status = 'counting')::int AS open_counts
 `
 
 type StatsRow struct {
@@ -22,10 +23,12 @@ type StatsRow struct {
 	Locations        int32
 	StockLines       int32
 	ReceiptsThisWeek int32
+	OpenCounts       int32
 }
 
 // Stats is the dashboard card's figures: active sites, active locations
-// below the roots, the balances, and the receipts since the week began.
+// below the roots, the balances, the receipts since the week began, and the
+// counts still counting.
 func (q *Queries) Stats(ctx context.Context, weekStart time.Time) (StatsRow, error) {
 	row := q.db.QueryRow(ctx, stats, weekStart)
 	var i StatsRow
@@ -34,6 +37,7 @@ func (q *Queries) Stats(ctx context.Context, weekStart time.Time) (StatsRow, err
 		&i.Locations,
 		&i.StockLines,
 		&i.ReceiptsThisWeek,
+		&i.OpenCounts,
 	)
 	return i, err
 }

@@ -48,7 +48,7 @@ func move(c *modtest.Client, site int64, lines ...gen.InventoryMoveLine) *modtes
 
 // change is an adjustment line in change mode.
 func change(variant int32, location int64, delta float64) gen.InventoryAdjustmentLine {
-	return gen.InventoryAdjustmentLine{VariantId: variant, LocationId: location, Mode: gen.Change, Quantity: delta}
+	return gen.InventoryAdjustmentLine{VariantId: variant, LocationId: location, Mode: gen.Change, Quantity: qty(delta)}
 }
 
 // TestReceipt_Posts is a goods receipt (I15): the default location and a
@@ -65,9 +65,9 @@ func TestReceipt_Posts(t *testing.T) {
 	res := c.Do(http.MethodPost, receiptsPath, gen.InventoryReceiptInput{
 		ClientRequestId: uuid.New(), SiteId: s.site.Id, ToLocationId: s.shelf1.Id, SupplierName: &name, SupplierReference: &ref, Note: &note,
 		Lines: []gen.InventoryReceiptLine{
-			{VariantId: varBolt, Quantity: 0.1},
-			{VariantId: varNut, Quantity: 99999999999.999, LocationId: &s.shelf2.Id},
-			{VariantId: varDraft, Quantity: 3},
+			{VariantId: varBolt, Quantity: qty(0.1)},
+			{VariantId: varNut, Quantity: qty(99999999999.999), LocationId: &s.shelf2.Id},
+			{VariantId: varDraft, Quantity: qty(3)},
 		},
 	})
 	mustStatus(t, res, http.StatusCreated, "POST /movements/receipts")
@@ -128,17 +128,17 @@ func TestPosting_LineRefusals(t *testing.T) {
 	shelf := s.shelf1.Id
 
 	res := c.Do(http.MethodPost, receiptsPath, gen.InventoryReceiptInput{ClientRequestId: uuid.New(), SiteId: s.site.Id, ToLocationId: shelf, Lines: []gen.InventoryReceiptLine{
-		{VariantId: 999, Quantity: 1},
-		{VariantId: varService, Quantity: 1},
-		{VariantId: varOld, Quantity: 1},
-		{VariantId: varBolt, Quantity: 1, LocationId: ptr(int64(999999))},
-		{VariantId: varBolt, Quantity: 1, LocationId: &archived.Id},
-		{VariantId: varBolt, Quantity: 1, LocationId: &elsewhere},
-		{VariantId: varBolt, Quantity: 1.2345},
-		{VariantId: varBolt, Quantity: 0},
-		{VariantId: varBolt, Quantity: -2},
-		{VariantId: varBolt, Quantity: 100000000000},
-		{VariantId: varBolt, Quantity: 1},
+		{VariantId: 999, Quantity: qty(1)},
+		{VariantId: varService, Quantity: qty(1)},
+		{VariantId: varOld, Quantity: qty(1)},
+		{VariantId: varBolt, Quantity: qty(1), LocationId: ptr(int64(999999))},
+		{VariantId: varBolt, Quantity: qty(1), LocationId: &archived.Id},
+		{VariantId: varBolt, Quantity: qty(1), LocationId: &elsewhere},
+		{VariantId: varBolt, Quantity: qty(1.2345)},
+		{VariantId: varBolt, Quantity: qty(0)},
+		{VariantId: varBolt, Quantity: qty(-2)},
+		{VariantId: varBolt, Quantity: qty(100000000000)},
+		{VariantId: varBolt, Quantity: qty(1)},
 	}})
 	p := expectRefusal(t, res, http.StatusBadRequest, "variant_not_found", "a receipt with every line refusal")
 	want := []string{"0:variant_not_found", "1:variant_not_stockable", "2:variant_discontinued", "3:location_not_found", "4:location_archived",
@@ -147,11 +147,11 @@ func TestPosting_LineRefusals(t *testing.T) {
 		t.Errorf("lines = %v, want %v", got, want)
 	}
 
-	res = move(c, s.site.Id, gen.InventoryMoveLine{VariantId: varBolt, FromLocationId: shelf, ToLocationId: shelf, Quantity: 1})
+	res = move(c, s.site.Id, gen.InventoryMoveLine{VariantId: varBolt, FromLocationId: shelf, ToLocationId: shelf, Quantity: qty(1)})
 	if got := lineCodes(expectRefusal(t, res, http.StatusBadRequest, "same_location", "a move to itself")); !slices.Equal(got, []string{"0:same_location"}) {
 		t.Errorf("lines = %v", got)
 	}
-	res = move(c, s.site.Id, gen.InventoryMoveLine{VariantId: varBolt, FromLocationId: shelf, ToLocationId: elsewhere, Quantity: 1})
+	res = move(c, s.site.Id, gen.InventoryMoveLine{VariantId: varBolt, FromLocationId: shelf, ToLocationId: elsewhere, Quantity: qty(1)})
 	expectRefusal(t, res, http.StatusBadRequest, "move_crosses_sites", "a move between sites")
 
 	// Insufficient stock is a 409 naming the line, -5 then +5 fails at the
@@ -169,22 +169,29 @@ func TestPosting_LineRefusals(t *testing.T) {
 	expectRefusal(t, res, http.StatusBadRequest, "quantity_invalid", "a change of 0")
 
 	// The request as a whole.
-	res = adjust(c, s.site.Id, gen.InventoryAdjustmentLine{VariantId: varBolt, LocationId: shelf, Mode: gen.Set, Quantity: 2})
+	res = adjust(c, s.site.Id, gen.InventoryAdjustmentLine{VariantId: varBolt, LocationId: shelf, Mode: gen.Set, Quantity: qty(2)})
 	expectRefusal(t, res, http.StatusBadRequest, "nothing_to_post", "a set to what lies there")
 	lines := make([]gen.InventoryMoveLine, 501)
 	for i := range lines {
-		lines[i] = gen.InventoryMoveLine{VariantId: varBolt, FromLocationId: shelf, ToLocationId: s.shelf2.Id, Quantity: 0.001}
+		lines[i] = gen.InventoryMoveLine{VariantId: varBolt, FromLocationId: shelf, ToLocationId: s.shelf2.Id, Quantity: qty(0.001)}
 	}
 	expectRefusal(t, move(c, s.site.Id, lines...), http.StatusBadRequest, "too_many_lines", "501 lines")
-	res = move(c, 999999, gen.InventoryMoveLine{VariantId: varBolt, FromLocationId: shelf, ToLocationId: s.shelf2.Id, Quantity: 1})
+	res = move(c, 999999, gen.InventoryMoveLine{VariantId: varBolt, FromLocationId: shelf, ToLocationId: s.shelf2.Id, Quantity: qty(1)})
 	mustStatus(t, res, http.StatusBadRequest, "a move in an unknown site")
 	res = c.Do(http.MethodPost, receiptsPath, map[string]any{
 		"clientRequestId": uuid.New(), "siteId": s.site.Id, "toLocationId": shelf,
-		"lines": []map[string]any{{"variantId": varBolt, "quantity": 1, "entered": map[string]any{}}},
+		"lines": []map[string]any{{"variantId": varBolt, "quantity": 1, "entered": map[string]any{"packagings": []any{}}}},
 	})
-	mustStatus(t, res, http.StatusBadRequest, "a line with entered before delivery B")
-	if p := problemOf(t, res); p.Errors == nil || len((*p.Errors)["lines[0].entered"]) == 0 {
-		t.Errorf("errors = %s, want lines[0].entered", res.Body)
+	if got := lineCodes(expectRefusal(t, res, http.StatusBadRequest, "entered_invalid", "a line with a quantity and entered")); !slices.Equal(got, []string{"0:entered_invalid"}) {
+		t.Errorf("lines = %v", got)
+	}
+	res = c.Do(http.MethodPost, receiptsPath, map[string]any{
+		"clientRequestId": uuid.New(), "siteId": s.site.Id, "toLocationId": shelf,
+		"lines": []map[string]any{{"variantId": varBolt, "entered": map[string]any{"packagings": []any{}, "lose": 1}}},
+	})
+	mustStatus(t, res, http.StatusBadRequest, "an entry naming a property the contract does not")
+	if p := problemOf(t, res); p.Errors == nil || len((*p.Errors)["lines[0].entered.lose"]) == 0 {
+		t.Errorf("errors = %s, want lines[0].entered.lose", res.Body)
 	}
 
 	if n := h.Count(t, `SELECT count(*) FROM inventory.movements`); n != 1 {
@@ -211,9 +218,9 @@ func TestAdjustment_Modes(t *testing.T) {
 	res = c.Do(http.MethodPost, adjustmentsPath, gen.InventoryAdjustmentInput{
 		ClientRequestId: uuid.New(), SiteId: s.site.Id, Reason: gen.InventoryAdjustmentReasonCorrection,
 		Lines: []gen.InventoryAdjustmentLine{
-			{VariantId: varBolt, LocationId: shelf, Mode: gen.Set, Quantity: 7.5},
-			{VariantId: varNut, LocationId: shelf, Mode: gen.Set, Quantity: 4},
-			{VariantId: varWasher, LocationId: shelf, Mode: gen.Set, Quantity: 2},
+			{VariantId: varBolt, LocationId: shelf, Mode: gen.Set, Quantity: qty(7.5)},
+			{VariantId: varNut, LocationId: shelf, Mode: gen.Set, Quantity: qty(4)},
+			{VariantId: varWasher, LocationId: shelf, Mode: gen.Set, Quantity: qty(2)},
 			change(varBolt, shelf, -0.5),
 		},
 	})
@@ -233,7 +240,7 @@ func TestAdjustment_Modes(t *testing.T) {
 		t.Errorf("bolts = %q, want 7", got)
 	}
 	// Set to zero deletes the balance.
-	res = adjust(c, s.site.Id, gen.InventoryAdjustmentLine{VariantId: varBolt, LocationId: shelf, Mode: gen.Set, Quantity: 0})
+	res = adjust(c, s.site.Id, gen.InventoryAdjustmentLine{VariantId: varBolt, LocationId: shelf, Mode: gen.Set, Quantity: qty(0)})
 	mustStatus(t, res, http.StatusCreated, "set to zero")
 	if got := onHand(t, h, varBolt, shelf); got != "" {
 		t.Errorf("bolts = %q, want no balance at zero", got)
@@ -256,19 +263,19 @@ func TestPosting_DiscontinuedAndService(t *testing.T) {
 	turned := goods(varNut, 10, "NUT-M8", "Nut M8", "pcs")
 	turned.ProductStatus = "Discontinued"
 	h.catalog.seed(turned)
-	mustStatus(t, move(c, s.site.Id, gen.InventoryMoveLine{VariantId: varNut, FromLocationId: shelf, ToLocationId: other, Quantity: 4}), http.StatusCreated, "move a discontinued variant")
+	mustStatus(t, move(c, s.site.Id, gen.InventoryMoveLine{VariantId: varNut, FromLocationId: shelf, ToLocationId: other, Quantity: qty(4)}), http.StatusCreated, "move a discontinued variant")
 	mustStatus(t, adjust(c, s.site.Id, change(varNut, other, -1)), http.StatusCreated, "write off a discontinued variant")
 	res := c.Do(http.MethodPost, receiptsPath, gen.InventoryReceiptInput{ClientRequestId: uuid.New(), SiteId: s.site.Id, ToLocationId: shelf, Lines: []gen.InventoryReceiptLine{receiptLine(varNut, 1)}})
 	expectRefusal(t, res, http.StatusBadRequest, "variant_discontinued", "receive a discontinued variant")
 
 	turned.ProductStatus, turned.ProductType = "Active", "Service"
 	h.catalog.seed(turned)
-	mustStatus(t, move(c, s.site.Id, gen.InventoryMoveLine{VariantId: varNut, FromLocationId: other, ToLocationId: shelf, Quantity: 3}), http.StatusCreated, "move a service's stock")
+	mustStatus(t, move(c, s.site.Id, gen.InventoryMoveLine{VariantId: varNut, FromLocationId: other, ToLocationId: shelf, Quantity: qty(3)}), http.StatusCreated, "move a service's stock")
 	mustStatus(t, adjust(c, s.site.Id, change(varNut, shelf, -2)), http.StatusCreated, "decrease a service's stock")
 	expectRefusal(t, adjust(c, s.site.Id, change(varNut, shelf, 1)), http.StatusBadRequest, "variant_not_stockable", "increase a service's stock")
-	res = adjust(c, s.site.Id, gen.InventoryAdjustmentLine{VariantId: varNut, LocationId: shelf, Mode: gen.Set, Quantity: 100})
+	res = adjust(c, s.site.Id, gen.InventoryAdjustmentLine{VariantId: varNut, LocationId: shelf, Mode: gen.Set, Quantity: qty(100)})
 	expectRefusal(t, res, http.StatusBadRequest, "variant_not_stockable", "set a service's stock up")
-	mustStatus(t, adjust(c, s.site.Id, gen.InventoryAdjustmentLine{VariantId: varNut, LocationId: shelf, Mode: gen.Set, Quantity: 0}), http.StatusCreated, "set a service's stock to zero")
+	mustStatus(t, adjust(c, s.site.Id, gen.InventoryAdjustmentLine{VariantId: varNut, LocationId: shelf, Mode: gen.Set, Quantity: qty(0)}), http.StatusCreated, "set a service's stock to zero")
 	assertLedgerConsistent(t, h)
 }
 
@@ -300,10 +307,10 @@ func TestPosting_Idempotency(t *testing.T) {
 	if got := onHand(t, h, varBolt, s.shelf1.Id); got != "5.000" {
 		t.Errorf("bolts = %q, want 5: one receipt", got)
 	}
-	body.Lines[0].Quantity = 6
+	body.Lines[0].Quantity = qty(6)
 	expectRefusal(t, c.Do(http.MethodPost, receiptsPath, body), http.StatusConflict, "client_request_reused", "the key with another body")
 	res = c.Do(http.MethodPost, movesPath, gen.InventoryMoveInput{ClientRequestId: key, SiteId: s.site.Id,
-		Lines: []gen.InventoryMoveLine{{VariantId: varBolt, FromLocationId: s.shelf1.Id, ToLocationId: s.shelf2.Id, Quantity: 1}}})
+		Lines: []gen.InventoryMoveLine{{VariantId: varBolt, FromLocationId: s.shelf1.Id, ToLocationId: s.shelf2.Id, Quantity: qty(1)}}})
 	expectRefusal(t, res, http.StatusConflict, "client_request_reused", "the key on a move")
 
 	adj := gen.InventoryAdjustmentInput{ClientRequestId: uuid.New(), SiteId: s.site.Id, Reason: gen.InventoryAdjustmentReasonLost,
@@ -311,7 +318,7 @@ func TestPosting_Idempotency(t *testing.T) {
 	mustStatus(t, c.Do(http.MethodPost, adjustmentsPath, adj), http.StatusCreated, "adjustment")
 	mustStatus(t, c.Do(http.MethodPost, adjustmentsPath, adj), http.StatusOK, "adjustment replay")
 	mv := gen.InventoryMoveInput{ClientRequestId: uuid.New(), SiteId: s.site.Id,
-		Lines: []gen.InventoryMoveLine{{VariantId: varBolt, FromLocationId: s.shelf1.Id, ToLocationId: s.shelf2.Id, Quantity: 1}}}
+		Lines: []gen.InventoryMoveLine{{VariantId: varBolt, FromLocationId: s.shelf1.Id, ToLocationId: s.shelf2.Id, Quantity: qty(1)}}}
 	mustStatus(t, c.Do(http.MethodPost, movesPath, mv), http.StatusCreated, "move")
 	mustStatus(t, c.Do(http.MethodPost, movesPath, mv), http.StatusOK, "move replay")
 	if got := onHand(t, h, varBolt, s.shelf1.Id); got != "3.000" {
@@ -369,11 +376,11 @@ func TestPosting_ConcurrentOnOneLocation(t *testing.T) {
 			var res *modtest.Response
 			switch i % 3 {
 			case 0:
-				res = move(c, s.site.Id, gen.InventoryMoveLine{VariantId: varBolt, FromLocationId: a, ToLocationId: b, Quantity: 1},
-					gen.InventoryMoveLine{VariantId: varNut, FromLocationId: b, ToLocationId: a, Quantity: 1})
+				res = move(c, s.site.Id, gen.InventoryMoveLine{VariantId: varBolt, FromLocationId: a, ToLocationId: b, Quantity: qty(1)},
+					gen.InventoryMoveLine{VariantId: varNut, FromLocationId: b, ToLocationId: a, Quantity: qty(1)})
 			case 1:
-				res = move(c, s.site.Id, gen.InventoryMoveLine{VariantId: varNut, FromLocationId: a, ToLocationId: b, Quantity: 2},
-					gen.InventoryMoveLine{VariantId: varBolt, FromLocationId: b, ToLocationId: a, Quantity: 2})
+				res = move(c, s.site.Id, gen.InventoryMoveLine{VariantId: varNut, FromLocationId: a, ToLocationId: b, Quantity: qty(2)},
+					gen.InventoryMoveLine{VariantId: varBolt, FromLocationId: b, ToLocationId: a, Quantity: qty(2)})
 			default:
 				res = adjust(c, s.site.Id, change(varBolt, b, -1), change(varWasher, a, 1))
 			}
@@ -402,7 +409,7 @@ func TestPosting_ZeroAndBack(t *testing.T) {
 	s := newLedgerSite(t, h, c)
 	a := s.shelf1.Id
 	zero := func(v int32) gen.InventoryAdjustmentLine {
-		return gen.InventoryAdjustmentLine{VariantId: v, LocationId: a, Mode: gen.Set, Quantity: 0}
+		return gen.InventoryAdjustmentLine{VariantId: v, LocationId: a, Mode: gen.Set, Quantity: qty(0)}
 	}
 	const workers, rounds = 8, 20
 	var mu sync.Mutex

@@ -42,6 +42,15 @@ const (
 	codeClientRequestReused = "client_request_reused"
 	codeRevisionConflict    = "revision_conflict"
 	codeDependencyUnavail   = "dependency_unavailable"
+
+	// Delivery B's.
+	codeEnteredInvalid       = "entered_invalid"
+	codePackagingNotFound    = "packaging_not_found"
+	codeCountScopeOverlaps   = "count_scope_overlaps"
+	codeCountNotOpen         = "count_not_open"
+	codeCountLinesMoved      = "count_lines_moved"
+	codeLocationHasOpenCount = "location_has_open_count"
+	codeLabelsTooMany        = "labels_too_many"
 )
 
 // The titles this module's validation problems carry, one per thing a
@@ -52,6 +61,9 @@ const (
 	invalidBulkTitle     = "Invalid bulk create"
 	invalidPostingTitle  = "Invalid movement"
 	invalidQueryTitle    = "Invalid query"
+	invalidCountTitle    = "Invalid count"
+	invalidLabelsTitle   = "Invalid labels"
+	invalidImportTitle   = "Invalid import"
 )
 
 // errDependencyUnavailable is every accessor's answer when the contract it

@@ -12,9 +12,10 @@ SELECT id, request_hash FROM inventory.movements WHERE client_request_id = @clie
 -- A concurrent first attempt holding the key makes this wait for it; one that
 -- committed answers no row, and the caller reads it back.
 INSERT INTO inventory.movements (client_request_id, request_hash, site_id, kind, reason, note, supplier_name, supplier_reference,
-                                 posted_by_user_id, posted_by_display, posted_at)
+                                 posted_by_user_id, posted_by_display, posted_at, count_id)
 VALUES (@client_request_id, @request_hash, @site_id, @kind, sqlc.narg(reason), sqlc.narg(note), sqlc.narg(supplier_name),
-        sqlc.narg(supplier_reference), sqlc.narg(posted_by_user_id), sqlc.narg(posted_by_display), @posted_at::timestamptz)
+        sqlc.narg(supplier_reference), sqlc.narg(posted_by_user_id), sqlc.narg(posted_by_display), @posted_at::timestamptz,
+        sqlc.narg(count_id))
 ON CONFLICT (client_request_id) DO NOTHING
 RETURNING id;
 
@@ -57,13 +58,15 @@ WHERE b.variant_id = u.variant_id AND b.location_id = u.location_id AND b.on_han
 
 -- name: InsertMovementLines :exec
 -- InsertMovementLines writes a movement's lines with the variant snapshots
--- (I9). A from or to of 0 is none.
-INSERT INTO inventory.movement_lines (movement_id, line_no, variant_id, sku, product_name, unit, from_location_id, to_location_id, quantity)
-SELECT @movement_id, u.line_no, u.variant_id, u.sku, u.product_name, u.unit, nullif(u.from_id, 0), nullif(u.to_id, 0), u.quantity
+-- (I9) and, for a line entered in packagings, the entry as it was at posting
+-- (I25). A from or to of 0 is none; an entry of '' is none.
+INSERT INTO inventory.movement_lines (movement_id, line_no, variant_id, sku, product_name, unit, from_location_id, to_location_id, quantity, entered)
+SELECT @movement_id, u.line_no, u.variant_id, u.sku, u.product_name, u.unit, nullif(u.from_id, 0), nullif(u.to_id, 0), u.quantity,
+       nullif(u.entered, '')::jsonb
 FROM (SELECT unnest(@line_nos::int[]) AS line_no, unnest(@variant_ids::int[]) AS variant_id, unnest(@skus::text[]) AS sku,
              unnest(@product_names::text[]) AS product_name, unnest(@units::text[]) AS unit,
              unnest(@from_ids::bigint[]) AS from_id, unnest(@to_ids::bigint[]) AS to_id,
-             unnest(@quantities::numeric[]) AS quantity) AS u;
+             unnest(@quantities::numeric[]) AS quantity, unnest(@entereds::text[]) AS entered) AS u;
 
 -- name: VariantHeld :one
 -- VariantHeld is what a variant holds across every location (I23), on the

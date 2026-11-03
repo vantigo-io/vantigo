@@ -27,14 +27,9 @@ func (s *server) PostInventoryMove(ctx context.Context, req gen.PostInventoryMov
 	for i, l := range in.Lines {
 		from, to := l.FromLocationId, l.ToLocationId
 		line := engineLine{index: i, variantID: l.VariantId, from: &from, to: &to}
-		q, msg := parseQuantity(l.Quantity, positiveQuantity)
-		switch {
-		case from == to:
+		line.quantity, line.entry, line.failCode, line.failText = readEntered(l.Quantity, l.Entered, positiveQuantity)
+		if from == to {
 			line.failCode, line.failText = codeSameLocation, "A move goes from one location to another."
-		case msg != "":
-			line.failCode, line.failText = codeQuantityInvalid, msg
-		default:
-			line.quantity = q
 		}
 		lines = append(lines, line)
 	}

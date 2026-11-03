@@ -61,13 +61,19 @@ func (s *server) ListInventorySites(ctx context.Context, req gen.ListInventorySi
 	if req.Params.Status != nil {
 		status = string(*req.Params.Status)
 	}
-	rows, err := store.New(s.deps.Pool).ListSites(ctx, status)
+	out := gen.InventorySiteList{Sites: []gen.InventorySite{}}
+	err := s.withReadTx(ctx, func(ctx context.Context, q *store.Queries) error {
+		rows, err := q.ListSites(ctx, status)
+		if err != nil {
+			return fmt.Errorf("inventory: list sites: %w", err)
+		}
+		for _, r := range rows {
+			out.Sites = append(out.Sites, siteRowOf(store.GetSiteRow(r)))
+		}
+		return s.withFigures(ctx, q, out.Sites)
+	})
 	if err != nil {
-		return nil, fmt.Errorf("inventory: list sites: %w", err)
-	}
-	out := gen.InventorySiteList{Sites: make([]gen.InventorySite, 0, len(rows))}
-	for _, r := range rows {
-		out.Sites = append(out.Sites, siteRowOf(store.GetSiteRow(r)))
+		return nil, err
 	}
 	return gen.ListInventorySites200JSONResponse(out), nil
 }
@@ -75,14 +81,19 @@ func (s *server) ListInventorySites(ctx context.Context, req gen.ListInventorySi
 // GetInventorySite Get a site
 // (GET /api/v1/inventory/sites/{id})
 func (s *server) GetInventorySite(ctx context.Context, req gen.GetInventorySiteRequestObject) (gen.GetInventorySiteResponseObject, error) {
-	row, err := store.New(s.deps.Pool).GetSite(ctx, req.Id)
+	q := store.New(s.deps.Pool)
+	row, err := q.GetSite(ctx, req.Id)
 	if noRows(err) {
 		return gen.GetInventorySite404Response{}, nil
 	}
 	if err != nil {
 		return nil, fmt.Errorf("inventory: read site %d: %w", req.Id, err)
 	}
-	return gen.GetInventorySite200JSONResponse(siteRowOf(row)), nil
+	out := []gen.InventorySite{siteRowOf(row)}
+	if err := s.withFigures(ctx, q, out); err != nil {
+		return nil, err
+	}
+	return gen.GetInventorySite200JSONResponse(out[0]), nil
 }
 
 // CreateInventorySite Create a site
@@ -135,6 +146,9 @@ func (s *server) CreateInventorySite(ctx context.Context, req gen.CreateInventor
 			return fmt.Errorf("inventory: insert the root of site %d: %w", site.ID, err)
 		}
 		out = siteOf(site, root.ID)
+		if s.has(ctx, permStockView) {
+			out.StockLines = ptr(int32(0))
+		}
 		return s.recordEvent(ctx, txq, who, event{
 			EntityKind: entitySite, EntityID: site.ID, SiteID: &site.ID, Kind: eventSiteCreated,
 			Payload: map[string]any{"code": site.Code, "name": site.Name, "kind": site.Kind, "rootLocationId": root.ID},
@@ -215,6 +229,13 @@ func (s *server) PutInventorySite(ctx context.Context, req gen.PutInventorySiteR
 			}
 		}
 		if statusChange && status == string(gen.Archived) {
+			open, err := txq.SiteHasOpenCount(ctx, cur.ID)
+			if err != nil {
+				return fmt.Errorf("inventory: read the open counts of site %d: %w", cur.ID, err)
+			}
+			if open {
+				return openCountRefusal("The site " + cur.Code)
+			}
 			if err := stockRefusal(ctx, txq, "The site "+cur.Code, ids, seesStock); err != nil {
 				return err
 			}
@@ -254,6 +275,11 @@ func (s *server) PutInventorySite(ctx context.Context, req gen.PutInventorySiteR
 			}
 		}
 		out = siteOf(site, root.ID)
+		sites := []gen.InventorySite{out}
+		if err := s.withFigures(ctx, txq, sites); err != nil {
+			return err
+		}
+		out = sites[0]
 		return s.recordSiteChanges(ctx, txq, who, cur, site)
 	})
 	if status, p, ok := answerOf(err); ok {
@@ -359,8 +385,44 @@ func (s *server) DeleteInventorySite(ctx context.Context, req gen.DeleteInventor
 	return gen.DeleteInventorySite204Response{}, nil
 }
 
+// withFigures fills each site's count of active locations and — for a
+// caller holding inventory:stock-view — its stock lines and last receipt, in
+// one query for all of them.
+func (s *server) withFigures(ctx context.Context, q *store.Queries, sites []gen.InventorySite) error {
+	if len(sites) == 0 {
+		return nil
+	}
+	ids := make([]int64, 0, len(sites))
+	for _, site := range sites {
+		ids = append(ids, site.Id)
+	}
+	rows, err := q.SiteFigures(ctx, ids)
+	if err != nil {
+		return fmt.Errorf("inventory: read the sites' figures: %w", err)
+	}
+	figures := make(map[int64]store.SiteFiguresRow, len(rows))
+	for _, r := range rows {
+		figures[r.ID] = r
+	}
+	seesStock := s.has(ctx, permStockView)
+	for i := range sites {
+		f := figures[sites[i].Id]
+		sites[i].LocationCount = f.LocationCount
+		if seesStock {
+			sites[i].StockLines, sites[i].LastReceiptAt = ptr(f.StockLines), f.LastReceiptAt
+		}
+	}
+	return nil
+}
+
+// maxSiteLocations is the most locations GET /sites/{id}/locations answers.
+const maxSiteLocations = 10000
+
 // ListInventorySiteLocations List a site's locations
 // (GET /api/v1/inventory/sites/{id}/locations)
+//
+// Flat, by full code, filtered by status and by q — text the full code or the
+// name contains, ignoring case — and cut at 10,000, saying so in truncated.
 func (s *server) ListInventorySiteLocations(ctx context.Context, req gen.ListInventorySiteLocationsRequestObject) (gen.ListInventorySiteLocationsResponseObject, error) {
 	var out gen.InventoryLocationList
 	err := s.withReadTx(ctx, func(ctx context.Context, q *store.Queries) error {
@@ -373,9 +435,16 @@ func (s *server) ListInventorySiteLocations(ctx context.Context, req gen.ListInv
 		if req.Params.Status != nil {
 			status = ptr(string(*req.Params.Status))
 		}
-		rows, err := q.ListSiteLocations(ctx, store.ListSiteLocationsParams{SiteID: req.Id, Status: status})
+		var text *string
+		if req.Params.Q != nil && strings.TrimSpace(*req.Params.Q) != "" {
+			text = ptr(strings.TrimSpace(*req.Params.Q))
+		}
+		rows, err := q.ListSiteLocations(ctx, store.ListSiteLocationsParams{SiteID: req.Id, Status: status, Q: text})
 		if err != nil {
 			return fmt.Errorf("inventory: list the locations of site %d: %w", req.Id, err)
+		}
+		if len(rows) > maxSiteLocations {
+			rows, out.Truncated = rows[:maxSiteLocations], true
 		}
 		out.Locations = make([]gen.InventoryLocation, 0, len(rows))
 		for _, r := range rows {

@@ -18,6 +18,40 @@ type InventoryBalance struct {
 	UpdatedAt  time.Time
 }
 
+type InventoryCount struct {
+	ID                 int64
+	SiteID             int64
+	ScopeLocationID    int64
+	Status             string
+	Note               *string
+	OpenedByUserID     *uuid.UUID
+	OpenedByDisplay    *string
+	OpenedAt           time.Time
+	PostedByUserID     *uuid.UUID
+	PostedByDisplay    *string
+	PostedAt           *time.Time
+	CancelledByUserID  *uuid.UUID
+	CancelledByDisplay *string
+	CancelledAt        *time.Time
+	Uncounted          *string
+	MovementID         *int64
+	Revision           int32
+}
+
+type InventoryCountLine struct {
+	ID               int64
+	CountID          int64
+	VariantID        int32
+	LocationID       int64
+	Expected         pgtype.Numeric
+	Counted          pgtype.Numeric
+	Entered          []byte
+	Added            bool
+	CountedByUserID  *uuid.UUID
+	CountedByDisplay *string
+	CountedAt        *time.Time
+}
+
 type InventoryEvent struct {
 	ID           int64
 	EntityKind   string
@@ -65,6 +99,7 @@ type InventoryMovement struct {
 	PostedByUserID    *uuid.UUID
 	PostedByDisplay   *string
 	PostedAt          time.Time
+	CountID           *int64
 }
 
 type InventoryMovementLine struct {
@@ -78,6 +113,7 @@ type InventoryMovementLine struct {
 	FromLocationID *int64
 	ToLocationID   *int64
 	Quantity       pgtype.Numeric
+	Entered        []byte
 }
 
 type InventorySite struct {

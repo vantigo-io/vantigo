@@ -12,8 +12,8 @@ import (
 )
 
 // The record (design I31): every structural write — a site or a location
-// created, changed, re-parented, archived, reactivated or deleted — is one
-// row in inventory.events, with the site it touches and the actor
+// created, changed, re-parented, archived, reactivated or deleted — and every
+// count opened, posted or cancelled is one row in inventory.events, with the site it touches and the actor
 // snapshotted as Planning keeps it. Movements are their own record and are
 // not repeated here.
 
@@ -21,6 +21,7 @@ import (
 const (
 	entitySite     = "site"
 	entityLocation = "location"
+	entityCount    = "count"
 )
 
 const (
@@ -138,4 +139,14 @@ const (
 	eventLocationReactivated = "location_reactivated"
 	eventLocationDeleted     = "location_deleted"
 	eventLocationsBulk       = "locations_bulk_created"
+)
+
+// The kinds of a count's events (I16–I19): opened carries its scope and the
+// lines it froze; posted the movement it wrote (none when nothing differed),
+// how the uncounted lines were treated and whether moved lines were
+// accepted; cancelled its scope.
+const (
+	eventCountOpened    = "count_opened"
+	eventCountPosted    = "count_posted"
+	eventCountCancelled = "count_cancelled"
 )

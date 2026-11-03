@@ -115,7 +115,7 @@ func (s *server) movementOf(ctx context.Context, id int64) (gen.InventoryMovemen
 	out := gen.InventoryMovement{
 		Id: m.ID, ClientRequestId: m.ClientRequestID, Kind: gen.InventoryMovementKind(m.Kind), Site: siteRefOf(site),
 		Reason: reasonOf(m.Reason), Note: m.Note, SupplierName: m.SupplierName, SupplierReference: m.SupplierReference,
-		Source: sourceOf(m), PostedBy: posterOf(m.PostedByUserID, m.PostedByDisplay), PostedAt: m.PostedAt,
+		Source: sourceOf(m), PostedBy: posterOf(m.PostedByUserID, m.PostedByDisplay), PostedAt: m.PostedAt, CountId: m.CountID,
 		Lines: make([]gen.InventoryMovementLine, 0, len(lines)),
 	}
 	for _, l := range lines {
@@ -123,7 +123,7 @@ func (s *server) movementOf(ctx context.Context, id int64) (gen.InventoryMovemen
 		if !ok {
 			ref = deletedVariantRef(l.VariantID, l.Sku, l.ProductName, l.Unit)
 		}
-		line := gen.InventoryMovementLine{LineNo: l.LineNo, Variant: ref, Quantity: wireQuantity(ratFromNumeric(l.Quantity))}
+		line := gen.InventoryMovementLine{LineNo: l.LineNo, Variant: ref, Quantity: wireQuantity(ratFromNumeric(l.Quantity)), Entered: snapshotOf(l.Entered)}
 		if l.FromLocationID != nil {
 			line.From = ptr(locationRefOf(locations[*l.FromLocationID]))
 		}
@@ -164,7 +164,7 @@ func (s *server) ListInventoryMovements(ctx context.Context, req gen.ListInvento
 	params := store.ListMovementsParams{SiteID: p.SiteId, VariantID: p.VariantId, LocationID: p.LocationId, RowLimit: defaultMovementPage + 1}
 	if p.Kind != nil {
 		if !p.Kind.Valid() {
-			f.add("kind", "The kind must be adjustment, move or receipt")
+			f.add("kind", "The kind must be adjustment, move, receipt or count")
 		}
 		params.Kind = ptr(string(*p.Kind))
 	}
@@ -226,7 +226,7 @@ func (s *server) ListInventoryMovements(ctx context.Context, req gen.ListInvento
 		out.Movements = append(out.Movements, gen.InventoryMovementSummary{
 			Id: r.ID, Kind: gen.InventoryMovementKind(r.Kind), Site: siteRefOf(byID[r.SiteID]), LineCount: r.LineCount,
 			Reason: reasonOf(r.Reason), Note: r.Note, SupplierName: r.SupplierName, SupplierReference: r.SupplierReference,
-			PostedBy: posterOf(r.PostedByUserID, r.PostedByDisplay), PostedAt: r.PostedAt,
+			PostedBy: posterOf(r.PostedByUserID, r.PostedByDisplay), PostedAt: r.PostedAt, CountId: r.CountID,
 		})
 	}
 	return gen.ListInventoryMovements200JSONResponse(out), nil

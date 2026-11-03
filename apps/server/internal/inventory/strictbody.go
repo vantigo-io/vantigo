@@ -19,13 +19,14 @@ import (
 // copied because no module imports another. A schema declared with
 // additionalProperties false refuses a property it does not name as a 400
 // naming that property, rather than dropping it on the floor as the
-// generated decoder does: a client that sends entered on a line before
-// delivery B must learn it was not written, not believe it was.
+// generated decoder does: a client that misspells loose in a line's entry
+// must learn it was not written, not believe it was.
 //
 // The generated decoder reads the body once, into the typed request, so the
 // raw bytes are kept for the handler by keepRawBody, which every operation
 // runs through after the router has authenticated, authorised and capped it.
-// This module takes no upload, so every body is kept.
+// Every body is kept: the one upload, the opening-balance import's CSV, is
+// capped at maxImportRequestBytes and read whole by its handler anyway.
 
 // rawBodyKey is the context key keepRawBody stores a request's body under.
 type rawBodyKey struct{}
@@ -60,38 +61,50 @@ func (f *failingReader) Read([]byte) (int, error) { return 0, f.err }
 // body is not a JSON object (the decoder has judged it already) or the
 // schema admits any property. The top level is judged first, then each
 // array property closedItems names for the schema, item by item against its
-// item schema, as lines[i].<name>: a key the generated decoder would
-// drop inside an item is refused as one at the top level is.
+// item schema, as lines[i].<name>, and each object property closedObjects
+// names, as lines[i].entered.<name> — so a key the generated decoder would
+// drop anywhere in the body is refused as one at the top level is.
 func (s *server) unknownProperties(ctx context.Context, schema string) fieldErrors {
 	var f fieldErrors
 	body, _ := ctx.Value(rawBodyKey{}).([]byte)
 	if len(body) == 0 || s.deps.Doc == nil {
 		return f
 	}
-	closed := s.closedSchema(schema)
-	if closed == nil {
-		return f
-	}
 	var properties map[string]json.RawMessage
 	if json.Unmarshal(body, &properties) != nil {
 		return f
 	}
+	s.judgeProperties(&f, schema, properties, "")
+	return f
+}
+
+// judgeProperties adds a field error, under prefix, for every property the
+// closed schema named schema does not name, then judges the closed arrays
+// and objects inside it.
+func (s *server) judgeProperties(f *fieldErrors, schema string, properties map[string]json.RawMessage, prefix string) {
+	closed := s.closedSchema(schema)
+	if closed == nil {
+		return
+	}
 	for _, name := range unknownNames(closed, properties) {
-		f.add(name, unknownPropertyMessage)
+		f.add(prefix+name, unknownPropertyMessage)
 	}
 	for _, array := range slices.Sorted(maps.Keys(closedItems[schema])) {
-		item := s.closedSchema(closedItems[schema][array])
 		var items []map[string]json.RawMessage
-		if item == nil || json.Unmarshal(properties[array], &items) != nil {
+		if json.Unmarshal(properties[array], &items) != nil {
 			continue
 		}
-		for i, properties := range items {
-			for _, name := range unknownNames(item, properties) {
-				f.add(fmt.Sprintf("%s[%d].%s", array, i, name), unknownPropertyMessage)
-			}
+		for i, item := range items {
+			s.judgeProperties(f, closedItems[schema][array], item, fmt.Sprintf("%s%s[%d].", prefix, array, i))
 		}
 	}
-	return f
+	for _, object := range slices.Sorted(maps.Keys(closedObjects[schema])) {
+		var inner map[string]json.RawMessage
+		if json.Unmarshal(properties[object], &inner) != nil {
+			continue
+		}
+		s.judgeProperties(f, closedObjects[schema][object], inner, prefix+object+".")
+	}
 }
 
 // unknownPropertyMessage is the field error of a property a closed schema
@@ -139,14 +152,24 @@ const (
 	moveLineSchema        = "InventoryMoveLine"
 	receiptInputSchema    = "InventoryReceiptInput"
 	receiptLineSchema     = "InventoryReceiptLine"
+
+	enteredSchema          = "InventoryEntered"
+	enteredPackagingSchema = "InventoryEnteredPackaging"
+	countInputSchema       = "InventoryCountInput"
+	countLinesInputSchema  = "InventoryCountLinesInput"
+	countLineInputSchema   = "InventoryCountLineInput"
+	countPostInputSchema   = "InventoryCountPostInput"
+	labelsInputSchema      = "InventoryLabelsInput"
 )
 
 // closedSchemas are the request schemas whose handlers refuse a property the
-// contract does not name, and the item schemas closedItems judges inside
-// them.
+// contract does not name, and the item and object schemas closedItems and
+// closedObjects judge inside them.
 var closedSchemas = []string{
 	siteInputSchema, siteUpdateSchema, locationInputSchema, locationUpdateSchema, bulkInputSchema, bulkLevelSchema,
 	adjustmentInputSchema, adjustmentLineSchema, moveInputSchema, moveLineSchema, receiptInputSchema, receiptLineSchema,
+	enteredSchema, enteredPackagingSchema, countInputSchema, countLinesInputSchema, countLineInputSchema, countPostInputSchema,
+	labelsInputSchema,
 }
 
 // closedItems is, per closed request schema, its array properties whose
@@ -157,6 +180,17 @@ var closedItems = map[string]map[string]string{
 	adjustmentInputSchema: {"lines": adjustmentLineSchema},
 	moveInputSchema:       {"lines": moveLineSchema},
 	receiptInputSchema:    {"lines": receiptLineSchema},
+	countLinesInputSchema: {"lines": countLineInputSchema},
+	enteredSchema:         {"packagings": enteredPackagingSchema},
+}
+
+// closedObjects is, per closed schema, its object properties that are closed
+// schemas of their own: a line's entry (I25).
+var closedObjects = map[string]map[string]string{
+	adjustmentLineSchema: {"entered": enteredSchema},
+	moveLineSchema:       {"entered": enteredSchema},
+	receiptLineSchema:    {"entered": enteredSchema},
+	countLineInputSchema: {"entered": enteredSchema},
 }
 
 // checkClosedSchemas fails the mount unless the contract has every schema of

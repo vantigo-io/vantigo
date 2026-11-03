@@ -15,9 +15,10 @@ import (
 
 const claimMovement = `-- name: ClaimMovement :one
 INSERT INTO inventory.movements (client_request_id, request_hash, site_id, kind, reason, note, supplier_name, supplier_reference,
-                                 posted_by_user_id, posted_by_display, posted_at)
+                                 posted_by_user_id, posted_by_display, posted_at, count_id)
 VALUES ($1, $2, $3, $4, $5, $6, $7,
-        $8, $9, $10, $11::timestamptz)
+        $8, $9, $10, $11::timestamptz,
+        $12)
 ON CONFLICT (client_request_id) DO NOTHING
 RETURNING id
 `
@@ -34,6 +35,7 @@ type ClaimMovementParams struct {
 	PostedByUserID    *uuid.UUID
 	PostedByDisplay   *string
 	PostedAt          time.Time
+	CountID           *int64
 }
 
 // ClaimMovement writes the movement's header and so claims its key (step 3).
@@ -52,6 +54,7 @@ func (q *Queries) ClaimMovement(ctx context.Context, arg ClaimMovementParams) (i
 		arg.PostedByUserID,
 		arg.PostedByDisplay,
 		arg.PostedAt,
+		arg.CountID,
 	)
 	var id int64
 	err := row.Scan(&id)
@@ -77,12 +80,13 @@ func (q *Queries) DeleteZeroBalances(ctx context.Context, arg DeleteZeroBalances
 }
 
 const insertMovementLines = `-- name: InsertMovementLines :exec
-INSERT INTO inventory.movement_lines (movement_id, line_no, variant_id, sku, product_name, unit, from_location_id, to_location_id, quantity)
-SELECT $1, u.line_no, u.variant_id, u.sku, u.product_name, u.unit, nullif(u.from_id, 0), nullif(u.to_id, 0), u.quantity
+INSERT INTO inventory.movement_lines (movement_id, line_no, variant_id, sku, product_name, unit, from_location_id, to_location_id, quantity, entered)
+SELECT $1, u.line_no, u.variant_id, u.sku, u.product_name, u.unit, nullif(u.from_id, 0), nullif(u.to_id, 0), u.quantity,
+       nullif(u.entered, '')::jsonb
 FROM (SELECT unnest($2::int[]) AS line_no, unnest($3::int[]) AS variant_id, unnest($4::text[]) AS sku,
              unnest($5::text[]) AS product_name, unnest($6::text[]) AS unit,
              unnest($7::bigint[]) AS from_id, unnest($8::bigint[]) AS to_id,
-             unnest($9::numeric[]) AS quantity) AS u
+             unnest($9::numeric[]) AS quantity, unnest($10::text[]) AS entered) AS u
 `
 
 type InsertMovementLinesParams struct {
@@ -95,10 +99,12 @@ type InsertMovementLinesParams struct {
 	FromIds      []int64
 	ToIds        []int64
 	Quantities   []pgtype.Numeric
+	Entereds     []string
 }
 
 // InsertMovementLines writes a movement's lines with the variant snapshots
-// (I9). A from or to of 0 is none.
+// (I9) and, for a line entered in packagings, the entry as it was at posting
+// (I25). A from or to of 0 is none; an entry of ” is none.
 func (q *Queries) InsertMovementLines(ctx context.Context, arg InsertMovementLinesParams) error {
 	_, err := q.db.Exec(ctx, insertMovementLines,
 		arg.MovementID,
@@ -110,6 +116,7 @@ func (q *Queries) InsertMovementLines(ctx context.Context, arg InsertMovementLin
 		arg.FromIds,
 		arg.ToIds,
 		arg.Quantities,
+		arg.Entereds,
 	)
 	return err
 }

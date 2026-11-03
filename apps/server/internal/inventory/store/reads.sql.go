@@ -90,7 +90,7 @@ func (q *Queries) BalancesOfVariants(ctx context.Context, variantIds []int32) ([
 }
 
 const getMovement = `-- name: GetMovement :one
-SELECT id, client_request_id, request_hash, site_id, kind, reason, note, supplier_name, supplier_reference, source_module, source_kind, source_id, source_line_id, posted_by_user_id, posted_by_display, posted_at FROM inventory.movements WHERE id = $1
+SELECT id, client_request_id, request_hash, site_id, kind, reason, note, supplier_name, supplier_reference, source_module, source_kind, source_id, source_line_id, posted_by_user_id, posted_by_display, posted_at, count_id FROM inventory.movements WHERE id = $1
 `
 
 func (q *Queries) GetMovement(ctx context.Context, id int64) (InventoryMovement, error) {
@@ -113,6 +113,7 @@ func (q *Queries) GetMovement(ctx context.Context, id int64) (InventoryMovement,
 		&i.PostedByUserID,
 		&i.PostedByDisplay,
 		&i.PostedAt,
+		&i.CountID,
 	)
 	return i, err
 }
@@ -160,7 +161,7 @@ func (q *Queries) LastLineSnapshots(ctx context.Context, variantIds []int32) ([]
 
 const listMovements = `-- name: ListMovements :many
 SELECT m.id, m.client_request_id, m.site_id, m.kind, m.reason, m.note, m.supplier_name, m.supplier_reference,
-       m.posted_by_user_id, m.posted_by_display, m.posted_at,
+       m.posted_by_user_id, m.posted_by_display, m.posted_at, m.count_id,
        (SELECT count(*) FROM inventory.movement_lines c WHERE c.movement_id = m.id)::int AS line_count
 FROM inventory.movements m
 WHERE ($1::bigint IS NULL OR m.site_id = $1::bigint)
@@ -204,6 +205,7 @@ type ListMovementsRow struct {
 	PostedByUserID    *uuid.UUID
 	PostedByDisplay   *string
 	PostedAt          time.Time
+	CountID           *int64
 	LineCount         int32
 }
 
@@ -241,6 +243,7 @@ func (q *Queries) ListMovements(ctx context.Context, arg ListMovementsParams) ([
 			&i.PostedByUserID,
 			&i.PostedByDisplay,
 			&i.PostedAt,
+			&i.CountID,
 			&i.LineCount,
 		); err != nil {
 			return nil, err
@@ -254,7 +257,7 @@ func (q *Queries) ListMovements(ctx context.Context, arg ListMovementsParams) ([
 }
 
 const movementLines = `-- name: MovementLines :many
-SELECT id, movement_id, line_no, variant_id, sku, product_name, unit, from_location_id, to_location_id, quantity FROM inventory.movement_lines WHERE movement_id = $1 ORDER BY line_no
+SELECT id, movement_id, line_no, variant_id, sku, product_name, unit, from_location_id, to_location_id, quantity, entered FROM inventory.movement_lines WHERE movement_id = $1 ORDER BY line_no
 `
 
 func (q *Queries) MovementLines(ctx context.Context, movementID int64) ([]InventoryMovementLine, error) {
@@ -277,7 +280,43 @@ func (q *Queries) MovementLines(ctx context.Context, movementID int64) ([]Invent
 			&i.FromLocationID,
 			&i.ToLocationID,
 			&i.Quantity,
+			&i.Entered,
 		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const stockTotals = `-- name: StockTotals :many
+SELECT variant_id, sum(on_hand)::text AS on_hand
+FROM inventory.balances
+WHERE variant_id = ANY($1::int[])
+GROUP BY variant_id
+ORDER BY variant_id
+`
+
+type StockTotalsRow struct {
+	VariantID int32
+	OnHand    string
+}
+
+// StockTotals is each of the variants' on hand across every location (I33);
+// a variant with no balance is absent.
+func (q *Queries) StockTotals(ctx context.Context, variantIds []int32) ([]StockTotalsRow, error) {
+	rows, err := q.db.Query(ctx, stockTotals, variantIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []StockTotalsRow
+	for rows.Next() {
+		var i StockTotalsRow
+		if err := rows.Scan(&i.VariantID, &i.OnHand); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

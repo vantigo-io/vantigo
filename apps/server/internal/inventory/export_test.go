@@ -15,3 +15,7 @@ const LockVariantsCall = lockVariantsCall
 func SetContractCallHook(hook func(ctx context.Context, method string)) {
 	contractCallHook = hook
 }
+
+// ErrDependencyUnavailable is what an accessor answers when the catalog is not
+// there; a fake catalog answers it to reach the 503s.
+var ErrDependencyUnavailable = errDependencyUnavailable

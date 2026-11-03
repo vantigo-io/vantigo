@@ -18,10 +18,12 @@ import (
 // marked deleted. Stock cannot outlive its variant (I23), so the fallback
 // names history.
 
-// variantRefOf is a catalog entry as the contract names it.
+// variantRefOf is a catalog entry as the contract names it, with its
+// packagings, which the app breaks quantities down in (I26).
 func variantRefOf(v contracts.VariantEntry) gen.InventoryVariantRef {
 	return gen.InventoryVariantRef{
 		Id: v.ID, ProductId: &v.ProductID, Sku: v.SKU, ProductName: v.ProductName, Unit: v.Unit, Barcode: v.Barcode,
+		Packagings: packagingsOf(v),
 	}
 }
 

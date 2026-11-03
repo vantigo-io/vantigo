@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"time"
 
@@ -61,6 +62,72 @@ func (e InventoryAdjustmentReason) Valid() bool {
 	case InventoryAdjustmentReasonOpeningBalance:
 		return true
 	case InventoryAdjustmentReasonOther:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for InventoryCountStatus.
+const (
+	Cancelled InventoryCountStatus = "cancelled"
+	Counting  InventoryCountStatus = "counting"
+	Posted    InventoryCountStatus = "posted"
+)
+
+// Valid indicates whether the value is a known member of the InventoryCountStatus enum.
+func (e InventoryCountStatus) Valid() bool {
+	switch e {
+	case Cancelled:
+		return true
+	case Counting:
+		return true
+	case Posted:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for InventoryImportOutcome.
+const (
+	LocationNotFound    InventoryImportOutcome = "location_not_found"
+	Ok                  InventoryImportOutcome = "ok"
+	QuantityInvalid     InventoryImportOutcome = "quantity_invalid"
+	VariantNotFound     InventoryImportOutcome = "variant_not_found"
+	VariantNotStockable InventoryImportOutcome = "variant_not_stockable"
+)
+
+// Valid indicates whether the value is a known member of the InventoryImportOutcome enum.
+func (e InventoryImportOutcome) Valid() bool {
+	switch e {
+	case LocationNotFound:
+		return true
+	case Ok:
+		return true
+	case QuantityInvalid:
+		return true
+	case VariantNotFound:
+		return true
+	case VariantNotStockable:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for InventoryLabelLayout.
+const (
+	L7160 InventoryLabelLayout = "l7160"
+	L7163 InventoryLabelLayout = "l7163"
+)
+
+// Valid indicates whether the value is a known member of the InventoryLabelLayout enum.
+func (e InventoryLabelLayout) Valid() bool {
+	switch e {
+	case L7160:
+		return true
+	case L7163:
 		return true
 	default:
 		return false
@@ -136,6 +203,7 @@ func (e InventoryLookupMatchKind) Valid() bool {
 // Defines values for InventoryMovementKind.
 const (
 	Adjustment InventoryMovementKind = "adjustment"
+	Count      InventoryMovementKind = "count"
 	Move       InventoryMovementKind = "move"
 	Receipt    InventoryMovementKind = "receipt"
 )
@@ -144,6 +212,8 @@ const (
 func (e InventoryMovementKind) Valid() bool {
 	switch e {
 	case Adjustment:
+		return true
+	case Count:
 		return true
 	case Move:
 		return true
@@ -205,6 +275,24 @@ func (e InventoryStatus) Valid() bool {
 	}
 }
 
+// Defines values for InventoryUncounted.
+const (
+	Keep InventoryUncounted = "keep"
+	Zero InventoryUncounted = "zero"
+)
+
+// Valid indicates whether the value is a known member of the InventoryUncounted enum.
+func (e InventoryUncounted) Valid() bool {
+	switch e {
+	case Keep:
+		return true
+	case Zero:
+		return true
+	default:
+		return false
+	}
+}
+
 // InventoryActor Who posted, as snapshotted when they did.
 type InventoryActor struct {
 	DisplayName string              `json:"displayName"`
@@ -232,14 +320,19 @@ type InventoryAdjustmentInput struct {
 	SiteId          int64                     `json:"siteId"`
 }
 
-// InventoryAdjustmentLine change adds quantity, signed and not 0, to what lies there; set makes it the new on hand, 0 or more, and is posted as the difference — a line whose difference is 0 is dropped (I15).
+// InventoryAdjustmentLine change adds quantity, signed and not 0, to what lies there; set makes it the new on hand, 0 or more, and is posted as the difference — a line whose difference is 0 is dropped (I15). Exactly one of quantity and entered is given. Entered under change adds, or takes away with decrease.
 type InventoryAdjustmentLine struct {
+	// Decrease With entered under change: the entered quantity is taken away rather than added.
+	Decrease *bool `json:"decrease,omitempty"`
+
+	// Entered A quantity entered in packagings (I25) instead of quantity: the server computes the base quantity from the packagings as they are at posting and keeps the entry on the line.
+	Entered    *InventoryEntered           `json:"entered,omitempty"`
 	LocationId int64                       `json:"locationId"`
 	Mode       InventoryAdjustmentLineMode `json:"mode"`
 
 	// Quantity Signed under change, at most three decimals.
-	Quantity  float64 `json:"quantity"`
-	VariantId int32   `json:"variantId"`
+	Quantity  *float64 `json:"quantity,omitempty"`
+	VariantId int32    `json:"variantId"`
 }
 
 // InventoryAdjustmentLineMode defines model for InventoryAdjustmentLine.Mode.
@@ -278,6 +371,196 @@ type InventoryBulkLevel struct {
 	Kind   InventoryLocationKind `json:"kind"`
 	Prefix *string               `json:"prefix,omitempty"`
 	To     *string               `json:"to,omitempty"`
+}
+
+// InventoryCount A stock count of a site, or of one location and its subtree (I16).
+type InventoryCount struct {
+	CancelledAt *time.Time `json:"cancelledAt,omitempty"`
+
+	// CancelledBy Who posted, as snapshotted when they did.
+	CancelledBy *InventoryActor `json:"cancelledBy,omitempty"`
+
+	// CountedLines Lines with a counted quantity.
+	CountedLines int32 `json:"countedLines"`
+	Id           int64 `json:"id"`
+	LineCount    int32 `json:"lineCount"`
+
+	// Lines By the location's full code, then SKU; present on GET /counts/{id} and the writes.
+	Lines *[]InventoryCountLine `json:"lines,omitempty"`
+
+	// MovedLines Lines whose balance changed since the count opened.
+	MovedLines int32 `json:"movedLines"`
+
+	// MovementId The count movement a posted count wrote.
+	MovementId *int64    `json:"movementId,omitempty"`
+	Note       *string   `json:"note,omitempty"`
+	OpenedAt   time.Time `json:"openedAt"`
+
+	// OpenedBy Who posted, as snapshotted when they did.
+	OpenedBy InventoryActor `json:"openedBy"`
+	PostedAt *time.Time     `json:"postedAt,omitempty"`
+
+	// PostedBy Who posted, as snapshotted when they did.
+	PostedBy *InventoryActor `json:"postedBy,omitempty"`
+	Revision int32           `json:"revision"`
+
+	// Scope A location as other answers name it.
+	Scope InventoryLocationRef `json:"scope"`
+
+	// Site A site as other answers name it.
+	Site   InventorySiteRef     `json:"site"`
+	Status InventoryCountStatus `json:"status"`
+
+	// Uncounted What posting does with a line nobody counted: keep its balance, or count it as zero (I19).
+	Uncounted *InventoryUncounted `json:"uncounted,omitempty"`
+}
+
+// InventoryCountInput Opening a count: of a whole site, or of one location and everything below it (I16, I17).
+type InventoryCountInput struct {
+	// LocationId The location the count covers with its subtree; the site's root when absent.
+	LocationId *int64  `json:"locationId,omitempty"`
+	Note       *string `json:"note,omitempty"`
+	SiteId     int64   `json:"siteId"`
+}
+
+// InventoryCountLine One variant on one location in a count: what was expected when it opened, what the balance is now, and what was counted (I17–I19).
+type InventoryCountLine struct {
+	// Added The line was added while counting: nothing was expected there.
+	Added bool `json:"added"`
+
+	// Counted What was counted; absent until someone counts it.
+	Counted   *float64   `json:"counted,omitempty"`
+	CountedAt *time.Time `json:"countedAt,omitempty"`
+
+	// CountedBy Who posted, as snapshotted when they did.
+	CountedBy *InventoryActor `json:"countedBy,omitempty"`
+
+	// Current The balance now.
+	Current float64 `json:"current"`
+
+	// Entered What a line was entered as, as it was at posting: each packaging's name, count and content then, and the loose rest (I25).
+	Entered *InventoryEnteredSnapshot `json:"entered,omitempty"`
+
+	// Expected The balance when the count opened.
+	Expected float64 `json:"expected"`
+	Id       int64   `json:"id"`
+
+	// Location A location as other answers name it.
+	Location InventoryLocationRef `json:"location"`
+
+	// Moved The balance changed since the count opened; posting needs acceptMoved (I19).
+	Moved bool `json:"moved"`
+
+	// Variant A variant as the catalog answers it, or as its last movement line snapshotted it when the catalog no longer knows it (deleted).
+	Variant InventoryVariantRef `json:"variant"`
+}
+
+// InventoryCountLineInput A counted quantity of a variant on a location in the count's scope (I18): a line that exists is changed, a pair with no line is added. Exactly one of quantity and entered is given. 0 is a valid count.
+type InventoryCountLineInput struct {
+	// Counted 0 or more, at most three decimals.
+	Counted *float64 `json:"counted,omitempty"`
+
+	// Entered A quantity entered in packagings (I25) instead of quantity: the server computes the base quantity from the packagings as they are at posting and keeps the entry on the line.
+	Entered    *InventoryEntered `json:"entered,omitempty"`
+	LocationId int64             `json:"locationId"`
+	VariantId  int32             `json:"variantId"`
+}
+
+// InventoryCountLinesInput Counted lines, at most 500 per request.
+type InventoryCountLinesInput struct {
+	Lines []InventoryCountLineInput `json:"lines"`
+}
+
+// InventoryCountList Counts, newest first; at most 200.
+type InventoryCountList struct {
+	Counts []InventoryCount `json:"counts"`
+}
+
+// InventoryCountPostInput Posting a count (I19).
+type InventoryCountPostInput struct {
+	// AcceptMoved Post although some lines' balances changed since the count opened; refused with count_lines_moved otherwise.
+	AcceptMoved *bool `json:"acceptMoved,omitempty"`
+
+	// Uncounted What posting does with a line nobody counted: keep its balance, or count it as zero (I19).
+	Uncounted InventoryUncounted `json:"uncounted"`
+}
+
+// InventoryCountStatus defines model for InventoryCountStatus.
+type InventoryCountStatus string
+
+// InventoryEntered A quantity entered in packagings (I25) instead of quantity: the server computes the base quantity from the packagings as they are at posting and keeps the entry on the line.
+type InventoryEntered struct {
+	// Loose A rest in the variant's own unit, 0 or more, at most three decimals.
+	Loose *float64 `json:"loose,omitempty"`
+
+	// Packagings At most one entry per packaging.
+	Packagings []InventoryEnteredPackaging `json:"packagings"`
+}
+
+// InventoryEnteredPackaging A count of one packaging.
+type InventoryEnteredPackaging struct {
+	// Count At least 1.
+	Count       int32 `json:"count"`
+	PackagingId int32 `json:"packagingId"`
+}
+
+// InventoryEnteredSnapshot What a line was entered as, as it was at posting: each packaging's name, count and content then, and the loose rest (I25).
+type InventoryEnteredSnapshot struct {
+	Loose      *float64 `json:"loose,omitempty"`
+	Packagings []struct {
+		Count       int32  `json:"count"`
+		Name        string `json:"name"`
+		PackagingId int32  `json:"packagingId"`
+
+		// Quantity Its content in the variant's unit at posting.
+		Quantity float64 `json:"quantity"`
+	} `json:"packagings"`
+}
+
+// InventoryImportOutcome defines model for InventoryImportOutcome.
+type InventoryImportOutcome string
+
+// InventoryImportResult The import's answer: every row's outcome, and on a committed import the one movement it posted.
+type InventoryImportResult struct {
+	// MovementId The adjustment movement posted; absent on a dry run or a refused import.
+	MovementId *int64 `json:"movementId,omitempty"`
+
+	// Ok Every row is ok.
+	Ok   bool                 `json:"ok"`
+	Rows []InventoryImportRow `json:"rows"`
+}
+
+// InventoryImportRow One row of the opening-balance file and its outcome (I32).
+type InventoryImportRow struct {
+	Detail *string `json:"detail,omitempty"`
+
+	// Location The full code as written.
+	Location string                 `json:"location"`
+	Outcome  InventoryImportOutcome `json:"outcome"`
+
+	// Quantity As written.
+	Quantity string `json:"quantity"`
+
+	// Row The row in the file, the header being row 1.
+	Row int32 `json:"row"`
+
+	// Sku As written.
+	Sku string `json:"sku"`
+}
+
+// InventoryLabelLayout Avery L7160 (21 labels per A4) or L7163 (14 per A4).
+type InventoryLabelLayout string
+
+// InventoryLabelsInput Labels to print (I7): each carries the location's LOC token as a Code 128 barcode, its full code and its name.
+type InventoryLabelsInput struct {
+	// Layout Avery L7160 (21 labels per A4) or L7163 (14 per A4).
+	Layout InventoryLabelLayout `json:"layout"`
+
+	// LocationIds At most 1000.
+	LocationIds []int64 `json:"locationIds"`
+
+	// Subtree Also every active location below each one.
+	Subtree *bool `json:"subtree,omitempty"`
 }
 
 // InventoryLocation A node of a site's tree (I2).
@@ -343,9 +626,12 @@ type InventoryLocationInput struct {
 // InventoryLocationKind site is the root's alone and is never written (I2).
 type InventoryLocationKind string
 
-// InventoryLocationList A site's locations, flat, by full code; at most 10,000.
+// InventoryLocationList A site's locations, flat, by full code; at most 10,000, truncated saying when more matched.
 type InventoryLocationList struct {
 	Locations []InventoryLocation `json:"locations"`
+
+	// Truncated True when more than 10,000 locations matched and the list was cut.
+	Truncated bool `json:"truncated"`
 }
 
 // InventoryLocationRef A location as other answers name it.
@@ -399,7 +685,7 @@ type InventoryMeta struct {
 	// CanAdjust inventory:stock-adjust — adjustments and moves.
 	CanAdjust bool `json:"canAdjust"`
 
-	// CanCount inventory:counts-manage — counts (delivery B).
+	// CanCount inventory:counts-manage — counts.
 	CanCount bool `json:"canCount"`
 
 	// CanManageLocations inventory:locations-manage — sites and locations.
@@ -424,22 +710,27 @@ type InventoryMoveInput struct {
 	SiteId          int64               `json:"siteId"`
 }
 
-// InventoryMoveLine A quantity moved from one location to another of the same site.
+// InventoryMoveLine A quantity moved from one location to another of the same site. Exactly one of quantity and entered is given.
 type InventoryMoveLine struct {
-	FromLocationId int64 `json:"fromLocationId"`
+	// Entered A quantity entered in packagings (I25) instead of quantity: the server computes the base quantity from the packagings as they are at posting and keeps the entry on the line.
+	Entered        *InventoryEntered `json:"entered,omitempty"`
+	FromLocationId int64             `json:"fromLocationId"`
 
 	// Quantity A quantity in the variant's own unit: more than 0, at most 99,999,999,999.999, at most three decimals (I11). More decimals are refused with quantity_invalid, never rounded.
-	Quantity     float64 `json:"quantity"`
-	ToLocationId int64   `json:"toLocationId"`
-	VariantId    int32   `json:"variantId"`
+	Quantity     *float64 `json:"quantity,omitempty"`
+	ToLocationId int64    `json:"toLocationId"`
+	VariantId    int32    `json:"variantId"`
 }
 
 // InventoryMovement A posted movement (I8): never edited or deleted.
 type InventoryMovement struct {
 	ClientRequestId openapi_types.UUID `json:"clientRequestId"`
-	Id              int64              `json:"id"`
 
-	// Kind An open set (design §12): count joins in delivery B, and issue, production and transfer later.
+	// CountId The count this movement posted, for a count movement.
+	CountId *int64 `json:"countId,omitempty"`
+	Id      int64  `json:"id"`
+
+	// Kind An open set (design §12): issue, production and transfer join later.
 	Kind     InventoryMovementKind   `json:"kind"`
 	Lines    []InventoryMovementLine `json:"lines"`
 	Note     *string                 `json:"note,omitempty"`
@@ -458,11 +749,14 @@ type InventoryMovement struct {
 	SupplierReference *string             `json:"supplierReference,omitempty"`
 }
 
-// InventoryMovementKind An open set (design §12): count joins in delivery B, and issue, production and transfer later.
+// InventoryMovementKind An open set (design §12): issue, production and transfer join later.
 type InventoryMovementKind string
 
 // InventoryMovementLine A quantity of a variant from a location, to one, or both (I9).
 type InventoryMovementLine struct {
+	// Entered What a line was entered as, as it was at posting: each packaging's name, count and content then, and the loose rest (I25).
+	Entered *InventoryEnteredSnapshot `json:"entered,omitempty"`
+
 	// From A location as other answers name it.
 	From   *InventoryLocationRef `json:"from,omitempty"`
 	LineNo int32                 `json:"lineNo"`
@@ -487,9 +781,11 @@ type InventoryMovementPage struct {
 
 // InventoryMovementSummary A posted movement without its lines.
 type InventoryMovementSummary struct {
-	Id int64 `json:"id"`
+	// CountId The count this movement posted, for a count movement.
+	CountId *int64 `json:"countId,omitempty"`
+	Id      int64  `json:"id"`
 
-	// Kind An open set (design §12): count joins in delivery B, and issue, production and transfer later.
+	// Kind An open set (design §12): issue, production and transfer join later.
 	Kind      InventoryMovementKind `json:"kind"`
 	LineCount int32                 `json:"lineCount"`
 	Note      *string               `json:"note,omitempty"`
@@ -505,7 +801,18 @@ type InventoryMovementSummary struct {
 	SupplierReference *string          `json:"supplierReference,omitempty"`
 }
 
-// InventoryProblem An RFC 9457 problem with this module's refusal code (inventory design §4). code names the rule that refused and is what a client keys off, never the words: site_code_taken, location_code_taken and full_code_taken (409: the code is in use — a site's in the deployment, a location's among its siblings, or the full code it would make; a bulk create lists every colliding full code in detail), code_invalid (400: not 1–16 characters A–Z and 0–9 after upper-casing, or of the form LOC followed by digits, which labels reserve), depth_exceeded (400: the tree would be more than 8 levels below the root), parent_invalid (400: the parent is in another site, is the location itself or below it, or is archived), bulk_too_large (400: more than 1000 locations), location_has_stock (409: the location or something below it holds stock; detail names the quantity and the number of lines), location_has_history (409: a movement line has named the location or something below it, so it can only be archived), root_location (409: a site's root is archived or deleted with its site, never alone), revision_conflict (409: the If-Match revision has moved on), insufficient_stock (409: a line would take a balance below zero; lines name it), client_request_reused (409: the clientRequestId was posted before with a different body), and a posting's line codes — location_archived, location_not_found, variant_not_found, variant_not_stockable, variant_discontinued, move_crosses_sites, same_location, quantity_invalid — with nothing_to_post and too_many_lines (400). A posting checks every line before it writes any and answers all of them at once in lines; a problem about the request as a whole has none. errors carries the field errors of a 400, keyed by the request's camelCase field. A request the server could not decode answers a bare 400 with neither.
+// InventoryPackaging A packaging of the variant as the catalog answers it (I24): what it holds in the variant's unit. The app breaks quantities down in them (I26).
+type InventoryPackaging struct {
+	Barcode *string `json:"barcode,omitempty"`
+	Id      int32   `json:"id"`
+
+	// Kind inner, case, pallet or other.
+	Kind     string  `json:"kind"`
+	Name     string  `json:"name"`
+	Quantity float64 `json:"quantity"`
+}
+
+// InventoryProblem An RFC 9457 problem with this module's refusal code (inventory design §4). code names the rule that refused and is what a client keys off, never the words: site_code_taken, location_code_taken and full_code_taken (409: the code is in use — a site's in the deployment, a location's among its siblings, or the full code it would make; a bulk create lists every colliding full code in detail), code_invalid (400: not 1–16 characters A–Z and 0–9 after upper-casing, or of the form LOC followed by digits, which labels reserve), depth_exceeded (400: the tree would be more than 8 levels below the root), parent_invalid (400: the parent is in another site, is the location itself or below it, or is archived), bulk_too_large (400: more than 1000 locations), location_has_stock (409: the location or something below it holds stock; detail names the quantity and the number of lines), location_has_history (409: a movement line has named the location or something below it, so it can only be archived), root_location (409: a site's root is archived or deleted with its site, never alone), revision_conflict (409: the If-Match revision has moved on), insufficient_stock (409: a line would take a balance below zero; lines name it), client_request_reused (409: the clientRequestId was posted before with a different body), count_scope_overlaps (409: another count still counting covers part of the scope), count_not_open (409: a write to a posted or cancelled count), count_lines_moved (409: posting would count lines whose balances changed since the count opened; lines name them), location_has_open_count (409: archiving a location with a count still counting in its subtree), labels_too_many (400: more than 1000 labels), and a posting's line codes — location_archived, location_not_found, variant_not_found, variant_not_stockable, variant_discontinued, move_crosses_sites, same_location, quantity_invalid, packaging_not_found (an entered packaging the variant does not have), entered_invalid (both or neither of quantity and entered, or a packaging named twice) — with nothing_to_post and too_many_lines (400). A posting checks every line before it writes any and answers all of them at once in lines; a problem about the request as a whole has none. errors carries the field errors of a 400, keyed by the request's camelCase field. A request the server could not decode answers a bare 400 with neither.
 type InventoryProblem struct {
 	Code     *string              `json:"code,omitempty"`
 	Detail   *string              `json:"detail,omitempty"`
@@ -553,14 +860,17 @@ type InventoryReceiptInput struct {
 	ToLocationId int64 `json:"toLocationId"`
 }
 
-// InventoryReceiptLine A quantity received, to locationId or the receipt's toLocationId.
+// InventoryReceiptLine A quantity received, to locationId or the receipt's toLocationId. Exactly one of quantity and entered is given.
 type InventoryReceiptLine struct {
+	// Entered A quantity entered in packagings (I25) instead of quantity: the server computes the base quantity from the packagings as they are at posting and keeps the entry on the line.
+	Entered *InventoryEntered `json:"entered,omitempty"`
+
 	// LocationId Overrides the receipt's toLocationId for this line.
 	LocationId *int64 `json:"locationId,omitempty"`
 
 	// Quantity A quantity in the variant's own unit: more than 0, at most 99,999,999,999.999, at most three decimals (I11). More decimals are refused with quantity_invalid, never rounded.
-	Quantity  float64 `json:"quantity"`
-	VariantId int32   `json:"variantId"`
+	Quantity  *float64 `json:"quantity,omitempty"`
+	VariantId int32    `json:"variantId"`
 }
 
 // InventorySite A warehouse or a store, the root of a location tree (I1).
@@ -575,7 +885,13 @@ type InventorySite struct {
 
 	// Kind Changes the suggested location kinds and the words on screen, never a rule (I1).
 	Kind InventorySiteKind `json:"kind"`
-	Name string            `json:"name"`
+
+	// LastReceiptAt When the site last received goods; present to a caller holding inventory:stock-view, absent when it never has.
+	LastReceiptAt *time.Time `json:"lastReceiptAt,omitempty"`
+
+	// LocationCount Its active locations, the root excluded.
+	LocationCount int32  `json:"locationCount"`
+	Name          string `json:"name"`
 
 	// Revision Send it back as If-Match on PUT /sites/{id}.
 	Revision int32 `json:"revision"`
@@ -583,7 +899,10 @@ type InventorySite struct {
 	// RootLocationId The site's root location, where stock may lie when the site has no shelves (I3).
 	RootLocationId int64           `json:"rootLocationId"`
 	Status         InventoryStatus `json:"status"`
-	UpdatedAt      time.Time       `json:"updatedAt"`
+
+	// StockLines Balances in the site; present to a caller holding inventory:stock-view.
+	StockLines *int32    `json:"stockLines,omitempty"`
+	UpdatedAt  time.Time `json:"updatedAt"`
 }
 
 // InventorySiteInput A site's fields on create.
@@ -656,7 +975,7 @@ type InventoryStats struct {
 	// Locations Active locations, roots excluded.
 	Locations int32 `json:"locations"`
 
-	// OpenCounts Counts still counting; 0 until delivery B.
+	// OpenCounts Counts still counting.
 	OpenCounts int32 `json:"openCounts"`
 
 	// ReceiptsThisWeek Receipts posted since Monday of the business week.
@@ -669,7 +988,7 @@ type InventoryStats struct {
 	StockLines int32 `json:"stockLines"`
 }
 
-// InventoryStatsAttentionItem One thing the dashboard wants a human to look at, in the shape every module's /stats/attention shares. Delivery A raises none; delivery B adds countOpenLong.
+// InventoryStatsAttentionItem One thing the dashboard wants a human to look at, in the shape every module's /stats/attention shares: countOpenLong, a count still counting more than 7 days after it opened, to a caller holding inventory:counts-manage with both views; entityId is the count's id.
 type InventoryStatsAttentionItem struct {
 	// Count How many the item stands for, when more than one.
 	Count      *int32                          `json:"count,omitempty"`
@@ -686,6 +1005,20 @@ type InventoryStatsAttentionItemType string
 // InventoryStatus defines model for InventoryStatus.
 type InventoryStatus string
 
+// InventoryStockTotal A variant's on hand across every location.
+type InventoryStockTotal struct {
+	OnHand    float64 `json:"onHand"`
+	VariantId int32   `json:"variantId"`
+}
+
+// InventoryStockTotals One total per variant asked for that has stock; a variant with none is absent.
+type InventoryStockTotals struct {
+	Totals []InventoryStockTotal `json:"totals"`
+}
+
+// InventoryUncounted What posting does with a line nobody counted: keep its balance, or count it as zero (I19).
+type InventoryUncounted string
+
 // InventoryVariantList At most 50 goods variants by SKU.
 type InventoryVariantList struct {
 	Variants []InventoryVariantRef `json:"variants"`
@@ -698,6 +1031,9 @@ type InventoryVariantRef struct {
 	// Deleted True when the catalog no longer has the variant; the fields are its last movement line's snapshot.
 	Deleted *bool `json:"deleted,omitempty"`
 	Id      int32 `json:"id"`
+
+	// Packagings The variant's packagings, by sort order; absent on a deleted variant.
+	Packagings *[]InventoryPackaging `json:"packagings,omitempty"`
 
 	// ProductId Absent on a deleted variant.
 	ProductId   *int32 `json:"productId,omitempty"`
@@ -714,6 +1050,18 @@ type InventoryVariantStock struct {
 
 	// Variant A variant as the catalog answers it, or as its last movement line snapshotted it when the catalog no longer knows it (deleted).
 	Variant InventoryVariantRef `json:"variant"`
+}
+
+// ListInventoryCountsParams defines parameters for ListInventoryCounts.
+type ListInventoryCountsParams struct {
+	Status *InventoryCountStatus `form:"status,omitempty" json:"status,omitempty"`
+	SiteId *int64                `form:"siteId,omitempty" json:"siteId,omitempty"`
+}
+
+// ImportInventoryOpeningBalancesParams defines parameters for ImportInventoryOpeningBalances.
+type ImportInventoryOpeningBalancesParams struct {
+	SiteId int64 `form:"siteId" json:"siteId"`
+	DryRun *bool `form:"dryRun,omitempty" json:"dryRun,omitempty"`
 }
 
 // PutInventoryLocationParams defines parameters for PutInventoryLocation.
@@ -775,6 +1123,15 @@ type PutInventorySiteParams struct {
 type ListInventorySiteLocationsParams struct {
 	// Status Only locations in this status; every location when absent.
 	Status *InventoryStatus `form:"status,omitempty" json:"status,omitempty"`
+
+	// Q Only locations whose full code or name contains this, ignoring case.
+	Q *string `form:"q,omitempty" json:"q,omitempty"`
+}
+
+// ListInventoryStockTotalsParams defines parameters for ListInventoryStockTotals.
+type ListInventoryStockTotalsParams struct {
+	// VariantIds Comma-separated, at most 100.
+	VariantIds []int32 `form:"variantIds" json:"variantIds"`
 }
 
 // SearchInventoryVariantsParams defines parameters for SearchInventoryVariants.
@@ -783,6 +1140,18 @@ type SearchInventoryVariantsParams struct {
 	Q     string `form:"q" json:"q"`
 	Limit *int32 `form:"limit,omitempty" json:"limit,omitempty"`
 }
+
+// OpenInventoryCountJSONRequestBody defines body for OpenInventoryCount for application/json ContentType.
+type OpenInventoryCountJSONRequestBody = InventoryCountInput
+
+// PutInventoryCountLinesJSONRequestBody defines body for PutInventoryCountLines for application/json ContentType.
+type PutInventoryCountLinesJSONRequestBody = InventoryCountLinesInput
+
+// PostInventoryCountJSONRequestBody defines body for PostInventoryCount for application/json ContentType.
+type PostInventoryCountJSONRequestBody = InventoryCountPostInput
+
+// PrintInventoryLabelsJSONRequestBody defines body for PrintInventoryLabels for application/json ContentType.
+type PrintInventoryLabelsJSONRequestBody = InventoryLabelsInput
 
 // CreateInventoryLocationJSONRequestBody defines body for CreateInventoryLocation for application/json ContentType.
 type CreateInventoryLocationJSONRequestBody = InventoryLocationInput
@@ -810,6 +1179,30 @@ type PutInventorySiteJSONRequestBody = InventorySiteUpdate
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// ListInventoryCounts List counts
+	// (GET /api/v1/inventory/counts)
+	ListInventoryCounts(w http.ResponseWriter, r *http.Request, params ListInventoryCountsParams)
+	// OpenInventoryCount Open a count
+	// (POST /api/v1/inventory/counts)
+	OpenInventoryCount(w http.ResponseWriter, r *http.Request)
+	// GetInventoryCount Get a count
+	// (GET /api/v1/inventory/counts/{id})
+	GetInventoryCount(w http.ResponseWriter, r *http.Request, id int64)
+	// CancelInventoryCount Cancel a count
+	// (POST /api/v1/inventory/counts/{id}/cancel)
+	CancelInventoryCount(w http.ResponseWriter, r *http.Request, id int64)
+	// PutInventoryCountLines Record counted quantities
+	// (PUT /api/v1/inventory/counts/{id}/lines)
+	PutInventoryCountLines(w http.ResponseWriter, r *http.Request, id int64)
+	// PostInventoryCount Post a count
+	// (POST /api/v1/inventory/counts/{id}/post)
+	PostInventoryCount(w http.ResponseWriter, r *http.Request, id int64)
+	// ImportInventoryOpeningBalances Import opening balances
+	// (POST /api/v1/inventory/imports/opening-balances)
+	ImportInventoryOpeningBalances(w http.ResponseWriter, r *http.Request, params ImportInventoryOpeningBalancesParams)
+	// PrintInventoryLabels Print location labels
+	// (POST /api/v1/inventory/labels)
+	PrintInventoryLabels(w http.ResponseWriter, r *http.Request)
 	// CreateInventoryLocation Create a location
 	// (POST /api/v1/inventory/locations)
 	CreateInventoryLocation(w http.ResponseWriter, r *http.Request)
@@ -876,6 +1269,9 @@ type ServerInterface interface {
 	// GetInventoryStatsAttention Inventory attention items
 	// (GET /api/v1/inventory/stats/attention)
 	GetInventoryStatsAttention(w http.ResponseWriter, r *http.Request)
+	// ListInventoryStockTotals Stock totals of variants
+	// (GET /api/v1/inventory/stock)
+	ListInventoryStockTotals(w http.ResponseWriter, r *http.Request, params ListInventoryStockTotalsParams)
 	// SearchInventoryVariants Search goods variants
 	// (GET /api/v1/inventory/variants)
 	SearchInventoryVariants(w http.ResponseWriter, r *http.Request, params SearchInventoryVariantsParams)
@@ -892,6 +1288,230 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
+
+// ListInventoryCounts operation middleware
+func (siw *ServerInterfaceWrapper) ListInventoryCounts(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListInventoryCountsParams
+
+	// ------------- Optional query parameter "status" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "status", r.URL.Query(), &params.Status, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "status"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "status", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "siteId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "siteId", r.URL.Query(), &params.SiteId, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "siteId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "siteId", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListInventoryCounts(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// OpenInventoryCount operation middleware
+func (siw *ServerInterfaceWrapper) OpenInventoryCount(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.OpenInventoryCount(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetInventoryCount operation middleware
+func (siw *ServerInterfaceWrapper) GetInventoryCount(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetInventoryCount(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CancelInventoryCount operation middleware
+func (siw *ServerInterfaceWrapper) CancelInventoryCount(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CancelInventoryCount(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutInventoryCountLines operation middleware
+func (siw *ServerInterfaceWrapper) PutInventoryCountLines(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutInventoryCountLines(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostInventoryCount operation middleware
+func (siw *ServerInterfaceWrapper) PostInventoryCount(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostInventoryCount(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ImportInventoryOpeningBalances operation middleware
+func (siw *ServerInterfaceWrapper) ImportInventoryOpeningBalances(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ImportInventoryOpeningBalancesParams
+
+	// ------------- Required query parameter "siteId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "siteId", r.URL.Query(), &params.SiteId, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "siteId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "siteId", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "dryRun" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "dryRun", r.URL.Query(), &params.DryRun, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "dryRun"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "dryRun", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ImportInventoryOpeningBalances(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PrintInventoryLabels operation middleware
+func (siw *ServerInterfaceWrapper) PrintInventoryLabels(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PrintInventoryLabels(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
 
 // CreateInventoryLocation operation middleware
 func (siw *ServerInterfaceWrapper) CreateInventoryLocation(w http.ResponseWriter, r *http.Request) {
@@ -1518,6 +2138,19 @@ func (siw *ServerInterfaceWrapper) ListInventorySiteLocations(w http.ResponseWri
 		return
 	}
 
+	// ------------- Optional query parameter "q" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "q", r.URL.Query(), &params.Q, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "q"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "q", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListInventorySiteLocations(w, r, id, params)
 	}))
@@ -1548,6 +2181,39 @@ func (siw *ServerInterfaceWrapper) GetInventoryStatsAttention(w http.ResponseWri
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetInventoryStatsAttention(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListInventoryStockTotals operation middleware
+func (siw *ServerInterfaceWrapper) ListInventoryStockTotals(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListInventoryStockTotalsParams
+
+	// ------------- Required query parameter "variantIds" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", false, true, "variantIds", r.URL.Query(), &params.VariantIds, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "variantIds"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "variantIds", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListInventoryStockTotals(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1749,6 +2415,14 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 		ErrorHandlerFunc:   options.ErrorHandlerFunc,
 	}
 
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/inventory/counts", wrapper.ListInventoryCounts)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/inventory/counts", wrapper.OpenInventoryCount)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/inventory/counts/{id}", wrapper.GetInventoryCount)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/inventory/counts/{id}/cancel", wrapper.CancelInventoryCount)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/inventory/counts/{id}/lines", wrapper.PutInventoryCountLines)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/inventory/counts/{id}/post", wrapper.PostInventoryCount)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/inventory/imports/opening-balances", wrapper.ImportInventoryOpeningBalances)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/inventory/labels", wrapper.PrintInventoryLabels)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/inventory/locations", wrapper.CreateInventoryLocation)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/inventory/locations/{id}", wrapper.DeleteInventoryLocation)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/inventory/locations/{id}", wrapper.GetInventoryLocation)
@@ -1771,10 +2445,690 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/inventory/sites/{id}/locations", wrapper.ListInventorySiteLocations)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/inventory/stats", wrapper.GetInventoryStats)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/inventory/stats/attention", wrapper.GetInventoryStatsAttention)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/inventory/stock", wrapper.ListInventoryStockTotals)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/inventory/variants", wrapper.SearchInventoryVariants)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/inventory/variants/{variantId}/stock", wrapper.GetInventoryVariantStock)
 
 	return m
+}
+
+type ListInventoryCountsRequestObject struct {
+	Params ListInventoryCountsParams
+}
+
+type ListInventoryCountsResponseObject interface {
+	VisitListInventoryCountsResponse(w http.ResponseWriter) error
+}
+
+type ListInventoryCounts200JSONResponse InventoryCountList
+
+func (response ListInventoryCounts200JSONResponse) VisitListInventoryCountsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListInventoryCounts401JSONResponse externalRef0.AuthErrorResponse
+
+func (response ListInventoryCounts401JSONResponse) VisitListInventoryCountsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListInventoryCounts403JSONResponse externalRef0.AuthErrorResponse
+
+func (response ListInventoryCounts403JSONResponse) VisitListInventoryCountsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type OpenInventoryCountRequestObject struct {
+	Body *OpenInventoryCountJSONRequestBody
+}
+
+type OpenInventoryCountResponseObject interface {
+	VisitOpenInventoryCountResponse(w http.ResponseWriter) error
+}
+
+type OpenInventoryCount201JSONResponse InventoryCount
+
+func (response OpenInventoryCount201JSONResponse) VisitOpenInventoryCountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type OpenInventoryCount400ApplicationProblemPlusJSONResponse InventoryProblem
+
+func (response OpenInventoryCount400ApplicationProblemPlusJSONResponse) VisitOpenInventoryCountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type OpenInventoryCount401JSONResponse externalRef0.AuthErrorResponse
+
+func (response OpenInventoryCount401JSONResponse) VisitOpenInventoryCountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type OpenInventoryCount403JSONResponse externalRef0.AuthErrorResponse
+
+func (response OpenInventoryCount403JSONResponse) VisitOpenInventoryCountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type OpenInventoryCount409ApplicationProblemPlusJSONResponse InventoryProblem
+
+func (response OpenInventoryCount409ApplicationProblemPlusJSONResponse) VisitOpenInventoryCountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type OpenInventoryCount503ApplicationProblemPlusJSONResponse InventoryProblem
+
+func (response OpenInventoryCount503ApplicationProblemPlusJSONResponse) VisitOpenInventoryCountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInventoryCountRequestObject struct {
+	Id int64 `json:"id"`
+}
+
+type GetInventoryCountResponseObject interface {
+	VisitGetInventoryCountResponse(w http.ResponseWriter) error
+}
+
+type GetInventoryCount200JSONResponse InventoryCount
+
+func (response GetInventoryCount200JSONResponse) VisitGetInventoryCountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInventoryCount401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetInventoryCount401JSONResponse) VisitGetInventoryCountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInventoryCount403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetInventoryCount403JSONResponse) VisitGetInventoryCountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInventoryCount404Response struct {
+}
+
+func (response GetInventoryCount404Response) VisitGetInventoryCountResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type GetInventoryCount503ApplicationProblemPlusJSONResponse InventoryProblem
+
+func (response GetInventoryCount503ApplicationProblemPlusJSONResponse) VisitGetInventoryCountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelInventoryCountRequestObject struct {
+	Id int64 `json:"id"`
+}
+
+type CancelInventoryCountResponseObject interface {
+	VisitCancelInventoryCountResponse(w http.ResponseWriter) error
+}
+
+type CancelInventoryCount200JSONResponse InventoryCount
+
+func (response CancelInventoryCount200JSONResponse) VisitCancelInventoryCountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelInventoryCount401JSONResponse externalRef0.AuthErrorResponse
+
+func (response CancelInventoryCount401JSONResponse) VisitCancelInventoryCountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelInventoryCount403JSONResponse externalRef0.AuthErrorResponse
+
+func (response CancelInventoryCount403JSONResponse) VisitCancelInventoryCountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelInventoryCount404Response struct {
+}
+
+func (response CancelInventoryCount404Response) VisitCancelInventoryCountResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type CancelInventoryCount409ApplicationProblemPlusJSONResponse InventoryProblem
+
+func (response CancelInventoryCount409ApplicationProblemPlusJSONResponse) VisitCancelInventoryCountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelInventoryCount503ApplicationProblemPlusJSONResponse InventoryProblem
+
+func (response CancelInventoryCount503ApplicationProblemPlusJSONResponse) VisitCancelInventoryCountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutInventoryCountLinesRequestObject struct {
+	Id   int64 `json:"id"`
+	Body *PutInventoryCountLinesJSONRequestBody
+}
+
+type PutInventoryCountLinesResponseObject interface {
+	VisitPutInventoryCountLinesResponse(w http.ResponseWriter) error
+}
+
+type PutInventoryCountLines200JSONResponse InventoryCount
+
+func (response PutInventoryCountLines200JSONResponse) VisitPutInventoryCountLinesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutInventoryCountLines400ApplicationProblemPlusJSONResponse InventoryProblem
+
+func (response PutInventoryCountLines400ApplicationProblemPlusJSONResponse) VisitPutInventoryCountLinesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutInventoryCountLines401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutInventoryCountLines401JSONResponse) VisitPutInventoryCountLinesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutInventoryCountLines403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutInventoryCountLines403JSONResponse) VisitPutInventoryCountLinesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutInventoryCountLines404Response struct {
+}
+
+func (response PutInventoryCountLines404Response) VisitPutInventoryCountLinesResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PutInventoryCountLines409ApplicationProblemPlusJSONResponse InventoryProblem
+
+func (response PutInventoryCountLines409ApplicationProblemPlusJSONResponse) VisitPutInventoryCountLinesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutInventoryCountLines503ApplicationProblemPlusJSONResponse InventoryProblem
+
+func (response PutInventoryCountLines503ApplicationProblemPlusJSONResponse) VisitPutInventoryCountLinesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInventoryCountRequestObject struct {
+	Id   int64 `json:"id"`
+	Body *PostInventoryCountJSONRequestBody
+}
+
+type PostInventoryCountResponseObject interface {
+	VisitPostInventoryCountResponse(w http.ResponseWriter) error
+}
+
+type PostInventoryCount200JSONResponse InventoryCount
+
+func (response PostInventoryCount200JSONResponse) VisitPostInventoryCountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInventoryCount400ApplicationProblemPlusJSONResponse InventoryProblem
+
+func (response PostInventoryCount400ApplicationProblemPlusJSONResponse) VisitPostInventoryCountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInventoryCount401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostInventoryCount401JSONResponse) VisitPostInventoryCountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInventoryCount403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostInventoryCount403JSONResponse) VisitPostInventoryCountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInventoryCount404Response struct {
+}
+
+func (response PostInventoryCount404Response) VisitPostInventoryCountResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostInventoryCount409ApplicationProblemPlusJSONResponse InventoryProblem
+
+func (response PostInventoryCount409ApplicationProblemPlusJSONResponse) VisitPostInventoryCountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInventoryCount503ApplicationProblemPlusJSONResponse InventoryProblem
+
+func (response PostInventoryCount503ApplicationProblemPlusJSONResponse) VisitPostInventoryCountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ImportInventoryOpeningBalancesRequestObject struct {
+	Params ImportInventoryOpeningBalancesParams
+	Body   io.Reader
+}
+
+type ImportInventoryOpeningBalancesResponseObject interface {
+	VisitImportInventoryOpeningBalancesResponse(w http.ResponseWriter) error
+}
+
+type ImportInventoryOpeningBalances200JSONResponse InventoryImportResult
+
+func (response ImportInventoryOpeningBalances200JSONResponse) VisitImportInventoryOpeningBalancesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ImportInventoryOpeningBalances201JSONResponse InventoryImportResult
+
+func (response ImportInventoryOpeningBalances201JSONResponse) VisitImportInventoryOpeningBalancesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ImportInventoryOpeningBalances400ApplicationProblemPlusJSONResponse InventoryProblem
+
+func (response ImportInventoryOpeningBalances400ApplicationProblemPlusJSONResponse) VisitImportInventoryOpeningBalancesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ImportInventoryOpeningBalances401JSONResponse externalRef0.AuthErrorResponse
+
+func (response ImportInventoryOpeningBalances401JSONResponse) VisitImportInventoryOpeningBalancesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ImportInventoryOpeningBalances403JSONResponse externalRef0.AuthErrorResponse
+
+func (response ImportInventoryOpeningBalances403JSONResponse) VisitImportInventoryOpeningBalancesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ImportInventoryOpeningBalances409ApplicationProblemPlusJSONResponse InventoryProblem
+
+func (response ImportInventoryOpeningBalances409ApplicationProblemPlusJSONResponse) VisitImportInventoryOpeningBalancesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ImportInventoryOpeningBalances503ApplicationProblemPlusJSONResponse InventoryProblem
+
+func (response ImportInventoryOpeningBalances503ApplicationProblemPlusJSONResponse) VisitImportInventoryOpeningBalancesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PrintInventoryLabelsRequestObject struct {
+	Body *PrintInventoryLabelsJSONRequestBody
+}
+
+type PrintInventoryLabelsResponseObject interface {
+	VisitPrintInventoryLabelsResponse(w http.ResponseWriter) error
+}
+
+type PrintInventoryLabels200ApplicationpdfResponse struct {
+	Body          io.Reader
+	ContentLength int64
+}
+
+func (response PrintInventoryLabels200ApplicationpdfResponse) VisitPrintInventoryLabelsResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", "application/pdf")
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type PrintInventoryLabels400ApplicationProblemPlusJSONResponse InventoryProblem
+
+func (response PrintInventoryLabels400ApplicationProblemPlusJSONResponse) VisitPrintInventoryLabelsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PrintInventoryLabels401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PrintInventoryLabels401JSONResponse) VisitPrintInventoryLabelsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PrintInventoryLabels403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PrintInventoryLabels403JSONResponse) VisitPrintInventoryLabelsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
 }
 
 type CreateInventoryLocationRequestObject struct {
@@ -3368,6 +4722,70 @@ func (response GetInventoryStatsAttention403JSONResponse) VisitGetInventoryStats
 	return err
 }
 
+type ListInventoryStockTotalsRequestObject struct {
+	Params ListInventoryStockTotalsParams
+}
+
+type ListInventoryStockTotalsResponseObject interface {
+	VisitListInventoryStockTotalsResponse(w http.ResponseWriter) error
+}
+
+type ListInventoryStockTotals200JSONResponse InventoryStockTotals
+
+func (response ListInventoryStockTotals200JSONResponse) VisitListInventoryStockTotalsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListInventoryStockTotals400ApplicationProblemPlusJSONResponse InventoryProblem
+
+func (response ListInventoryStockTotals400ApplicationProblemPlusJSONResponse) VisitListInventoryStockTotalsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListInventoryStockTotals401JSONResponse externalRef0.AuthErrorResponse
+
+func (response ListInventoryStockTotals401JSONResponse) VisitListInventoryStockTotalsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListInventoryStockTotals403JSONResponse externalRef0.AuthErrorResponse
+
+func (response ListInventoryStockTotals403JSONResponse) VisitListInventoryStockTotalsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type SearchInventoryVariantsRequestObject struct {
 	Params SearchInventoryVariantsParams
 }
@@ -3520,6 +4938,30 @@ func (response GetInventoryVariantStock503ApplicationProblemPlusJSONResponse) Vi
 
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
+	// ListInventoryCounts List counts
+	// (GET /api/v1/inventory/counts)
+	ListInventoryCounts(ctx context.Context, request ListInventoryCountsRequestObject) (ListInventoryCountsResponseObject, error)
+	// OpenInventoryCount Open a count
+	// (POST /api/v1/inventory/counts)
+	OpenInventoryCount(ctx context.Context, request OpenInventoryCountRequestObject) (OpenInventoryCountResponseObject, error)
+	// GetInventoryCount Get a count
+	// (GET /api/v1/inventory/counts/{id})
+	GetInventoryCount(ctx context.Context, request GetInventoryCountRequestObject) (GetInventoryCountResponseObject, error)
+	// CancelInventoryCount Cancel a count
+	// (POST /api/v1/inventory/counts/{id}/cancel)
+	CancelInventoryCount(ctx context.Context, request CancelInventoryCountRequestObject) (CancelInventoryCountResponseObject, error)
+	// PutInventoryCountLines Record counted quantities
+	// (PUT /api/v1/inventory/counts/{id}/lines)
+	PutInventoryCountLines(ctx context.Context, request PutInventoryCountLinesRequestObject) (PutInventoryCountLinesResponseObject, error)
+	// PostInventoryCount Post a count
+	// (POST /api/v1/inventory/counts/{id}/post)
+	PostInventoryCount(ctx context.Context, request PostInventoryCountRequestObject) (PostInventoryCountResponseObject, error)
+	// ImportInventoryOpeningBalances Import opening balances
+	// (POST /api/v1/inventory/imports/opening-balances)
+	ImportInventoryOpeningBalances(ctx context.Context, request ImportInventoryOpeningBalancesRequestObject) (ImportInventoryOpeningBalancesResponseObject, error)
+	// PrintInventoryLabels Print location labels
+	// (POST /api/v1/inventory/labels)
+	PrintInventoryLabels(ctx context.Context, request PrintInventoryLabelsRequestObject) (PrintInventoryLabelsResponseObject, error)
 	// CreateInventoryLocation Create a location
 	// (POST /api/v1/inventory/locations)
 	CreateInventoryLocation(ctx context.Context, request CreateInventoryLocationRequestObject) (CreateInventoryLocationResponseObject, error)
@@ -3586,6 +5028,9 @@ type StrictServerInterface interface {
 	// GetInventoryStatsAttention Inventory attention items
 	// (GET /api/v1/inventory/stats/attention)
 	GetInventoryStatsAttention(ctx context.Context, request GetInventoryStatsAttentionRequestObject) (GetInventoryStatsAttentionResponseObject, error)
+	// ListInventoryStockTotals Stock totals of variants
+	// (GET /api/v1/inventory/stock)
+	ListInventoryStockTotals(ctx context.Context, request ListInventoryStockTotalsRequestObject) (ListInventoryStockTotalsResponseObject, error)
 	// SearchInventoryVariants Search goods variants
 	// (GET /api/v1/inventory/variants)
 	SearchInventoryVariants(ctx context.Context, request SearchInventoryVariantsRequestObject) (SearchInventoryVariantsResponseObject, error)
@@ -3631,6 +5076,240 @@ type strictHandler struct {
 	ssi         StrictServerInterface
 	middlewares []StrictMiddlewareFunc
 	options     StrictHTTPServerOptions
+}
+
+// ListInventoryCounts operation middleware
+func (sh *strictHandler) ListInventoryCounts(w http.ResponseWriter, r *http.Request, params ListInventoryCountsParams) {
+	var request ListInventoryCountsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListInventoryCounts(ctx, request.(ListInventoryCountsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListInventoryCounts")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListInventoryCountsResponseObject); ok {
+		if err := validResponse.VisitListInventoryCountsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// OpenInventoryCount operation middleware
+func (sh *strictHandler) OpenInventoryCount(w http.ResponseWriter, r *http.Request) {
+	var request OpenInventoryCountRequestObject
+
+	var body OpenInventoryCountJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.OpenInventoryCount(ctx, request.(OpenInventoryCountRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "OpenInventoryCount")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(OpenInventoryCountResponseObject); ok {
+		if err := validResponse.VisitOpenInventoryCountResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetInventoryCount operation middleware
+func (sh *strictHandler) GetInventoryCount(w http.ResponseWriter, r *http.Request, id int64) {
+	var request GetInventoryCountRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetInventoryCount(ctx, request.(GetInventoryCountRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetInventoryCount")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetInventoryCountResponseObject); ok {
+		if err := validResponse.VisitGetInventoryCountResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CancelInventoryCount operation middleware
+func (sh *strictHandler) CancelInventoryCount(w http.ResponseWriter, r *http.Request, id int64) {
+	var request CancelInventoryCountRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CancelInventoryCount(ctx, request.(CancelInventoryCountRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CancelInventoryCount")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CancelInventoryCountResponseObject); ok {
+		if err := validResponse.VisitCancelInventoryCountResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutInventoryCountLines operation middleware
+func (sh *strictHandler) PutInventoryCountLines(w http.ResponseWriter, r *http.Request, id int64) {
+	var request PutInventoryCountLinesRequestObject
+
+	request.Id = id
+
+	var body PutInventoryCountLinesJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutInventoryCountLines(ctx, request.(PutInventoryCountLinesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutInventoryCountLines")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutInventoryCountLinesResponseObject); ok {
+		if err := validResponse.VisitPutInventoryCountLinesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostInventoryCount operation middleware
+func (sh *strictHandler) PostInventoryCount(w http.ResponseWriter, r *http.Request, id int64) {
+	var request PostInventoryCountRequestObject
+
+	request.Id = id
+
+	var body PostInventoryCountJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostInventoryCount(ctx, request.(PostInventoryCountRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostInventoryCount")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostInventoryCountResponseObject); ok {
+		if err := validResponse.VisitPostInventoryCountResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ImportInventoryOpeningBalances operation middleware
+func (sh *strictHandler) ImportInventoryOpeningBalances(w http.ResponseWriter, r *http.Request, params ImportInventoryOpeningBalancesParams) {
+	var request ImportInventoryOpeningBalancesRequestObject
+
+	request.Params = params
+
+	request.Body = r.Body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ImportInventoryOpeningBalances(ctx, request.(ImportInventoryOpeningBalancesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ImportInventoryOpeningBalances")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ImportInventoryOpeningBalancesResponseObject); ok {
+		if err := validResponse.VisitImportInventoryOpeningBalancesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PrintInventoryLabels operation middleware
+func (sh *strictHandler) PrintInventoryLabels(w http.ResponseWriter, r *http.Request) {
+	var request PrintInventoryLabelsRequestObject
+
+	var body PrintInventoryLabelsJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PrintInventoryLabels(ctx, request.(PrintInventoryLabelsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PrintInventoryLabels")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PrintInventoryLabelsResponseObject); ok {
+		if err := validResponse.VisitPrintInventoryLabelsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
 }
 
 // CreateInventoryLocation operation middleware
@@ -4240,6 +5919,32 @@ func (sh *strictHandler) GetInventoryStatsAttention(w http.ResponseWriter, r *ht
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetInventoryStatsAttentionResponseObject); ok {
 		if err := validResponse.VisitGetInventoryStatsAttentionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListInventoryStockTotals operation middleware
+func (sh *strictHandler) ListInventoryStockTotals(w http.ResponseWriter, r *http.Request, params ListInventoryStockTotalsParams) {
+	var request ListInventoryStockTotalsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListInventoryStockTotals(ctx, request.(ListInventoryStockTotalsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListInventoryStockTotals")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListInventoryStockTotalsResponseObject); ok {
+		if err := validResponse.VisitListInventoryStockTotalsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
