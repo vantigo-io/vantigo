@@ -482,19 +482,19 @@ account the worker could not disable.
 | `employeeRoleUnsafe` | A role named for Staff grants administration (one item) | An Owner takes that key out of the role, or the role out of the set |
 | `accountModeMismatch` | A worker's OIDC or SCIM settings differ from the API's (one item) | Align the settings and restart the worker |
 | `accountNotArrived` | Staff announced the person's Entra account ninety days ago and no Vantigo user has arrived for it | Check that the user is in the scope of Entra's provisioning to Vantigo, or have the person sign in |
-| `accountAmbiguousInEntra` | Two accounts in Entra hold the person's employee number | Clear the number from the wrong account in Entra |
-| `accountAddressTakenInEntra` | The person's work email is another account's in Entra | Change the person's work email, or resolve the other account |
+| `accountAmbiguousInDirectory` | Two accounts in Entra hold the person's employee number | Clear the number from the wrong account in Entra |
+| `accountAddressTakenInDirectory` | The person's work email is another account's in Entra | Change the person's work email, or resolve the other account |
 | `accountSyncedOnPremises` | The account is synchronised from an on-premises directory | Manage it in that directory, or give the person another kind |
-| `accountPrivilegedInEntra` | The account holds an administrative role in Entra | An administrator handles it by hand |
-| `accountUnconfirmedInEntra` | Entra holds an account under the person's employee number that Vantigo did not create, and nobody has confirmed its adoption; Staff writes nothing to it | Check it is the person's, then confirm it on the Microsoft Entra ID page ([Accounts Vantigo did not create](/en/admin/entra/#accounts-vantigo-did-not-create)) |
+| `accountPrivilegedInDirectory` | The account holds an administrative role in Entra | An administrator handles it by hand |
+| `accountUnconfirmedInDirectory` | Entra holds an account under the person's employee number that Vantigo did not create, and nobody has confirmed its adoption; Staff writes nothing to it | Check it is the person's, then confirm it on the Microsoft Entra ID page ([Accounts Vantigo did not create](/en/admin/entra/#accounts-vantigo-did-not-create)) |
 | `hireDateNotWritten` | Entra refused the hire date | Nothing is needed for sign-in; turn **Hire date** off in the directory profile if it keeps failing |
 | `licenceUnavailable` | A licence could not be assigned, none being left | Buy or free a licence in Microsoft 365 |
 | `passUnrevealed` | A pass was issued a day ago or more and nobody has shown it | Show it to the person, or Run now (new pass) when they are ready |
-| `managerNotInEntra` | The person's manager has no account in Entra, or Entra could not find it, so the account carries no manager | Give the manager the Microsoft Entra ID kind, or accept it |
-| `entraNotConnected` | The Entra provider has no connection yet, or no enabled module offers it (one item, counting the `entra` people whose flag is on) | Connect it in the Entra module, or enable the module |
-| `entraFailing` | The Entra provider's last check failed — a credential refused, consent withdrawn — or Staff could not ask it (one item) | Fix the connection in the Entra module |
-| `secretExpiring` | The newest valid client secret ends within thirty days (one item) | Add a new secret in the Entra module |
-| `secretExpired` | The client secret has ended (one item) | Add a new secret in the Entra module |
+| `managerNotInDirectory` | The person's manager has no account in Entra, or Entra could not find it, so the account carries no manager | Give the manager the Microsoft Entra ID kind, or accept it |
+| `providerNotConnected` | A provider — Entra — has no connection yet, or no enabled module offers it (one item per provider, titled with its name, counting the people of its kind whose flag is on) | Connect it in the Entra module, or enable the module |
+| `providerFailing` | A provider's last check failed — a credential refused, consent withdrawn — or Staff could not ask it (one item per provider) | Fix the connection in the Entra module |
+| `secretExpiring` | A provider's credential — Entra's newest valid client secret — ends within thirty days (one item per provider) | Add a new secret in the Entra module |
+| `secretExpired` | A provider's credential has ended (one item per provider) | Add a new secret in the Entra module |
 | `groupSyncFailed` | A group could not be kept in a provider's directory — a value the provider refused, a group holding its key that Vantigo may not write, or three failed tries in a row (one per group and provider, naming the group) | Open the group in Staff's **Groups**: its provider card says why, beside the setting it names; change the value, or resolve the clash in the directory |
 
 ## The personal-data permission

@@ -13,6 +13,7 @@ sources:
   - apps/server/internal/db/migrations/00068_staff_competence_profiles.sql
   - apps/server/internal/db/migrations/00069_staff_person_photo.sql
   - apps/server/internal/db/migrations/00071_staff_photo_push.sql
+  - apps/server/internal/db/migrations/00111_staff_provider_neutral.sql
 ---
 The Staff module is the company's register of the people who work for it: who they
 are, how to reach them and their next of kin, their employments as Norwegian
@@ -36,7 +37,7 @@ identity providers an enabled module offers, whose directory the
 [accounts worker](#the-provider-link) writes for a person of a provider's
 [account kind](#the-account-kind) — rule 13 of the
 [module boundaries](/en/contributing/module-boundaries/). With none, nothing changes but
-that the `entra` kind cannot be chosen.
+that no provider's kind can be chosen.
 
 This page grows with the module. What is here today: the [contracts it consumes](#contracts-consumed), the [permissions](#permissions),
 the [settings](#settings), the [business time zone](#the-business-time-zone), the
@@ -174,14 +175,16 @@ cannot give such a row another type without widening who reads it. The Up refuse
 naming the key, when a company type already holds one of the keys it reserves.
 
 The Entra phase's delivery B adds `00060_staff_account_kind.sql` (00059 is identity's,
-the same delivery's). It adds `people.account_kind` — `local`, `external` or `entra`,
+the same delivery's). It adds `people.account_kind` — `local`, `external` or a provider's key (`entra`),
 `local` by default ([the account kind](#the-account-kind)) — and four settings
 columns: `default_account_kind` (`local`), `account_kind_seeded` (false until Staff has
 seeded the kinds from identity's recorded mode, which a migration may not read),
 `directory_fields` (the [directory profile's](#the-directory-profile) switches, a JSON
 object seeded with the defaults) and `provider_status` (what the accounts worker last
-saw of each provider, `{"<key>": {status, reason, checkedAt}}`, from which the
-installation's provider items are judged). And it adds a provider link's columns to
+saw of each provider, `{"<key>": {name, status, reason, checkedAt}}`, from which the
+installation's provider items are judged and titled — `name`, the provider's display
+name as it last answered it, kept when it could not be asked, is recorded since the
+Google Workspace design's delivery 0). And it adds a provider link's columns to
 `identity_links`: `external_upn` and `external_email` (the principal name and the
 address the provider answered), `announced_at`, `pass_issued_at` and `reported_codes`
 (`text[]`, empty by default) — [the provider link](#the-provider-link). A provider
@@ -269,6 +272,13 @@ is class C with the rest of the link ([the classes](#the-classes-column-by-colum
 index, no setting, no CHECK constraint: the worker writes it. The Down drops the column,
 so the next claim of each link pushes its picture once more.
 
+The Google Workspace design's delivery 0 adds `00111_staff_provider_neutral.sql`
+(00109 is communications', 00110 the calendar's, the same delivery's): Staff's own code
+for a person whose manager has no account in the directory is renamed
+`manager_not_in_entra` → `manager_not_in_directory`, rewritten in `identity_links`'
+`reported_codes` and `last_error`. No column, index or constraint changes. The Down
+writes the old code back.
+
 ## Permissions
 
 | Key | Name | Grants | Sensitive |
@@ -317,8 +327,8 @@ acknowledged thresholds.
 | `selfCertAfterMonths` | 2 | 0 to 2 months of employment before egenmelding may be used; left out, kept. |
 | `autoCarryOver` | false | Carry holiday left at a year's end into the next as forced, without HR's action; left out, kept. |
 | `createBeforeDays` | 14 | 0 to 90 days before the account's effective date that the accounts worker prepares it, disabled ([accounts](#accounts)); left out, kept. |
-| `deleteExternalAfterDays` | — | 1 to 3650 days after the last employment ended that a person's account in a provider's directory is deleted — soft-deleted there, once it is disabled and no legal hold is on the person ([the provider link](#the-provider-link)) — or `null` for never; left out, kept, and absent on the wire when never. The same days after a group was archived, or a provider turned off for it, the group is deleted in the directory; never renames it `… (archived)` and keeps it ([the sync](#the-sync)). |
-| `defaultAccountKind` | `local`, seeded once from identity's recorded mode | The [account kind](#the-account-kind) a new person takes: `local`, `external` or a provider's key (`entra`), which is `provider_missing` on the field unless an enabled module offers that provider; left out, kept. People already registered keep theirs. While the kinds are [not yet seeded](#the-account-kind), a change of it is 503 `accounts_unavailable` and nothing is saved. |
+| `deleteExternalAfterDays` | — | 1 to 3650 days after the last employment ended that a person's account is deleted in the provider's directory — where the provider may keep it restorable for a while (Entra 30 days, Google 20) — once it is disabled and no legal hold is on the person ([the provider link](#the-provider-link)) — or `null` for never; left out, kept, and absent on the wire when never. The same days after a group was archived, or a provider turned off for it, the group is deleted in the directory; never renames it `… (archived)` and keeps it ([the sync](#the-sync)). |
+| `defaultAccountKind` | `local`, seeded once from identity's recorded mode | The [account kind](#the-account-kind) a new person takes: `local`, `external` or the key of a provider in `GET /meta`'s `providers` (`entra`, say) — a string matching `^[a-z][a-z0-9]{1,9}$` — which is `provider_missing` on the field unless an enabled module offers that provider; left out, kept. People already registered keep theirs. While the kinds are [not yet seeded](#the-account-kind), a change of it is 503 `accounts_unavailable` and nothing is saved. |
 | `directoryFields` | every switchable field on but `workAddress` and `phones` | `{"<key>": boolean}` over the [directory profile's](#the-directory-profile) switchable fields; a key left out keeps its value, a key that is not a switchable field is a field error on `directoryFields.<key>`. |
 | `erasePregnancyHealthTypes` | false | Put the pregnancy and health-appointment rows on the health schedule ([what is due](#what-is-due)); left out, kept; `null` refused on the field (400), never read as false. |
 | `eraseSickCaseDates` | false | Make a closed case's erase remove the case itself ([what an erase does](#what-an-erase-does)); left out, kept; `null` refused on the field (400). |
@@ -1430,7 +1440,7 @@ manager, an Approver, a colleague and anyone else get the person's 404.
     start, unless the stored date falls after the ended employment's end (an early date
     for the later one, honoured); else absent.
   - `accountKind` is the person's [account kind](#the-account-kind) — `local`,
-    `external` or `entra` — always present, read from Staff's own row. It carries the
+    `external` or a provider's key (`entra`) — always present, read from Staff's own row. It carries the
     rule the installation's authority mode did: the previous `mode` field is gone.
   - `link` is the person's row in `staff.identity_links`, absent when there is none:
     `state`, `managed`, `reason` (`blocked_reason`, a code), `attempts`,
@@ -1596,14 +1606,18 @@ links group alone and empty to anyone else — no address.
 
 **Who holds a person's account** is the person's own setting,
 `staff.people.account_kind` (Entra design D5), in place of the installation-wide
-authority mode — `contracts.AccountKindLocal`, `AccountKindExternal`,
-`AccountKindEntra`:
+authority mode — `contracts.AccountKindLocal`, `AccountKindExternal`, or a provider's
+kind: the key of a provider in the `IdentityProvisioner` slot (Google Workspace design
+G6). `contracts.ValidAccountKind` admits `local`, `external` or any string matching
+`^[a-z][a-z0-9]{1,9}$` (the column is `varchar(10)`), the syntax alone;
+`contracts.IsProviderKind` is a valid kind other than the two. The contract and the
+API (`StaffAccountKind`, a patterned string, no enum) name no provider:
 
 | Kind | The identity link (`provider = 'identity'`) | The provider link |
 | --- | --- | --- |
 | `local` | identity holds the credentials: `Prepare` creates, `Activate` enables, invites and gives the provisioning roles, `Deactivate`, `Update` | none |
 | `external` | an identity provider owns the account: `Prepare` finds only, `Activate` re-enables what Staff disabled, `Deactivate`, `Update` of the language and the number; `accountNotFound` until an Owner adopts the user | none |
-| `entra` | link-only as `external`, but the account is announced (`Expect`) after the provider's `Prepare`, so the user that arrives is adopted with no Owner; `Activate` gives the provisioning roles once, on the first activation of the adopted user | [the provider link](#the-provider-link), the provider keyed `entra` |
+| a provider's key (`entra`) | link-only as `external`, but the account is announced (`Expect`) after the provider's `Prepare`, so the user that arrives is adopted with no Owner; `Activate` gives the provisioning roles once, on the first activation of the adopted user — every provider's kind alike | [the provider link](#the-provider-link), under the provider keyed by the kind |
 
 **The kind travels on the call.** Every `Prepare`, `Activate` and `Update` the worker
 makes carries the person's kind (`AccountSpec.Kind`, `ActivateOpts.Kind`), so identity
@@ -1633,7 +1647,7 @@ changes a person's kind** on the Account tab, `accountKind` on
   of the link withdraws it too. A link the person keeps under a provider their kind no
   longer names is still worked, for a deactivate only ([the provider
   link](#the-provider-link));
-- a change **from `local` to `entra`** while the person's user is Staff-managed,
+- a change **from `local` to a provider's kind** while the person's user is Staff-managed,
   pending and holds no credential is carried by the next announcement as
   `ReplaceUserID`: the account's arrival completes that user rather than creating a
   second.
@@ -2059,7 +2073,7 @@ fulfilled ninety days after `announced_at` raises `accountNotArrived`.
 **The result** on `P`, written under the person's lock while the identity link still
 holds the claim's lease: `external_id`, `state`, `external_upn`, `external_email`,
 `blocked_reason`, `last_error`, `attempts`, `next_attempt_at`, `reported_codes` (the
-provider's `Reported` facts, without repeats, and Staff's own `manager_not_in_entra`),
+provider's `Reported` facts, without repeats, and Staff's own `manager_not_in_directory`),
 `pass_issued_at`, `announced_at`, `last_spec_hash`, `last_synced_at`,
 `photo_pushed_stamp` (kept as it was by a claim that pushed nothing), and the
 `account_external_*` events — a report or a refusal recorded once, when the link's
@@ -2072,12 +2086,12 @@ directory's words:
 
 | The provider's answer | `blocked_reason` | `P` | The item |
 | --- | --- | --- | --- |
-| `ErrExternalAmbiguous` — two accounts hold the number | `external_ambiguous` | `blocked` | `accountAmbiguousInEntra` |
-| `ErrExternalAddressTaken` — the work email is another account's | `external_address_taken` | `blocked` | `accountAddressTakenInEntra` |
+| `ErrExternalAmbiguous` — two accounts hold the number | `external_ambiguous` | `blocked` | `accountAmbiguousInDirectory` |
+| `ErrExternalAddressTaken` — the work email is another account's | `external_address_taken` | `blocked` | `accountAddressTakenInDirectory` |
 | `ErrExternalSyncedOnPremises` | `external_synced_on_premises` | `blocked` | `accountSyncedOnPremises` |
-| `ErrExternalPrivileged` — the account holds a directory role | `external_privileged` | `blocked` | `accountPrivilegedInEntra` |
+| `ErrExternalPrivileged` — the account holds a directory role | `external_privileged` | `blocked` | `accountPrivilegedInDirectory` |
 | `ErrExternalEnabled` — a delete of an account still enabled | `external_enabled` | its state kept | `accountFailing` |
-| `ErrExternalUnconfirmed` — the provider found an account it did not create holding the number, and nobody has confirmed its adoption; it wrote nothing | `external_unconfirmed` | `blocked` | `accountUnconfirmedInEntra` |
+| `ErrExternalUnconfirmed` — the provider found an account it did not create holding the number, and nobody has confirmed its adoption; it wrote nothing | `external_unconfirmed` | `blocked` | `accountUnconfirmedInDirectory` |
 | `ErrProviderUnavailable`, or the status not `connected` | `provider_unavailable` | its state kept | the installation's, from the status |
 | `Account` answers none | `user_gone` | `failed` | `accountUserGone` |
 | `ErrInvalidActor` (a bug of Staff's, logged) | `invalid_actor` | `failed` | `accountFailing` |
@@ -2105,7 +2119,8 @@ lower-cased). What is dropped is logged by its field's name alone, never its val
 reported codes are `hire_date_not_written`, `privileged`, `pass_not_allowed`,
 `pass_forbidden`, `licence_unavailable:<SKU part number>`, `manager_not_found`,
 `photo_not_written`, `adoption_unconfirmed` and `leaver_step_failed:<step>`; Staff adds its own
-`manager_not_in_entra` when the person's effective manager has no account in the
+`manager_not_in_directory` (until delivery 0 of the Google Workspace design,
+`manager_not_in_entra`, which 00111 rewrote) when the person's effective manager has no account in the
 directory.
 
 **The address the provider made.** When the account answers an address
@@ -2127,7 +2142,7 @@ provider make the address — `WorkCountry` (the usage location), `PreferredLang
 `Fields`, the profile's switched-on attributes, `ManagerExternalID` — while the
 `manager` row is on, the effective manager's own provider link's `external_id` while
 that link is `enabled` or `disabled`; a person with a manager who has none gets an
-empty one and `manager_not_in_entra` on their link — `Licences`, the union of their
+empty one and `manager_not_in_directory` on their link — `Licences`, the union of their
 groups' [licences](#the-licences), and `Flags.Fresh` on *Run now*. `last_spec_hash` is SHA-256 over the
 spec as JSON, the flags left out, so a mover is one `Update` on the day the record
 changes and nothing on the others.
@@ -5541,31 +5556,35 @@ so the item stands while the condition does.
 [provider link](#the-provider-link) as the worker wrote it — `AccountLinkAttention`
 answers its `provider`, `announced_at`, `pass_issued_at` and `reported_codes` too —
 and from `settings.provider_status`, what the worker last saw of each provider, never
-by asking the provider at read time. They are named for Entra, as the design names
-them, though their codes are the slot's: a second provider would add its own. One per
+by asking the provider at read time. Their names name no provider, as their codes do
+not (Google Workspace design G6; until its delivery 0 they were named for Entra —
+`accountAmbiguousInEntra`, `managerNotInEntra`, `entraNotConnected` and so on). One per
 person, as above, unless said:
 
 | `type` | Source | Trigger |
 | --- | --- | --- |
 | `accountNotArrived` | `announced_at` | Staff announced the account more than ninety days ago and the identity link still names no user; `occurredAt` the announcement. |
-| `accountAmbiguousInEntra` | `external_ambiguous` | Two accounts in the directory hold the person's employee number. |
-| `accountAddressTakenInEntra` | `external_address_taken` | The person's work email is another account's in the directory. |
+| `accountAmbiguousInDirectory` | `external_ambiguous` | Two accounts in the directory hold the person's employee number. |
+| `accountAddressTakenInDirectory` | `external_address_taken` | The person's work email is another account's in the directory. |
 | `accountSyncedOnPremises` | `external_synced_on_premises` | The account is synchronised from an on-premises directory, whose attributes the provider cannot write. |
-| `accountPrivilegedInEntra` | `external_privileged`, or the reported `privileged` | The account holds an administrative role in the directory; an administrator handles it by hand. |
-| `accountUnconfirmedInEntra` | `external_unconfirmed` | The directory holds an account under the person's employee number the provider did not create, and nobody with `entra:manage` has confirmed its adoption; the dashboard's sentence links to the Microsoft Entra ID page (`/entra`), where it is confirmed. |
+| `accountPrivilegedInDirectory` | `external_privileged`, or the reported `privileged` | The account holds an administrative role in the directory; an administrator handles it by hand. |
+| `accountUnconfirmedInDirectory` | `external_unconfirmed` | The directory holds an account under the person's employee number the provider did not create, and nobody with the provider's manage permission (`entra:manage`) has confirmed its adoption; it is confirmed on the provider's page under Integrations, which the dashboard's sentence links to (`/workspace/entra`, the one provider there is today). |
 | `hireDateNotWritten` | the reported `hire_date_not_written` | The directory refused the hire date. |
 | `licenceUnavailable` | the reported `licence_unavailable:<SKU>` | A licence could not be assigned, none being left — one per person whatever the licences; no title names the licence. |
 | `passUnrevealed` | `pass_issued_at` | A pass issued a day ago or more that nobody has shown; `occurredAt` when it was issued. |
-| `managerNotInEntra` | Staff's code `manager_not_in_entra`, or the reported `manager_not_found` | The person's manager has no account in the directory, or the directory could not find it, so the account carries no manager. |
+| `managerNotInDirectory` | Staff's code `manager_not_in_directory`, or the reported `manager_not_found` | The person's manager has no account in the directory, or the directory could not find it, so the account carries no manager. |
 | `photoNotWritten` | the reported `photo_not_written` | The directory refused the photo: the provider could not write the [picture](#the-directorys-photo) it was given, and the account keeps whatever photo it had. |
-| `entraNotConnected` | the status `unconfigured` | Installation item: the provider has no connection yet — or, the reason `provider_missing`, no enabled module offers the provider a person's kind names. |
-| `entraFailing` | the status `failing`, with any reason but `secret_expired` | Installation item: the provider's last check failed — a credential refused (`credential_invalid`), consent withdrawn — or Staff could not ask it (`unreachable`). |
-| `secretExpiring` | the reason `secret_expiring` on a status neither `unconfigured` nor `failing` | Installation item: the newest valid client secret ends within thirty days. |
+| `providerNotConnected` | the status `unconfigured` | Installation item: the provider has no connection yet — or, the reason `provider_missing`, no enabled module offers the provider a person's kind names. |
+| `providerFailing` | the status `failing`, with any reason but `secret_expired` | Installation item: the provider's last check failed — a credential refused (`credential_invalid`), consent withdrawn — or Staff could not ask it (`unreachable`). |
+| `secretExpiring` | the reason `secret_expiring` on a status neither `unconfigured` nor `failing` | Installation item: the provider's credential — Entra's newest valid client secret — ends within thirty days. |
 | `secretExpired` | the status `failing` with the reason `secret_expired` | Installation item: it has ended. |
 
-The four installation items are one each, `id` the type, `entityId` `settings`,
-`count` the people not erased of the provider's kind whose flag is on and `occurredAt`
-when the worker recorded the status — raised only while someone has that kind. A
+The four installation items are one per provider for each type, `id`
+`<type>/<provider key>` (`providerFailing/entra`), `title` the provider's name as the
+worker last recorded it (its key when none is recorded — no enabled module offers it),
+`entityId` `settings`, `count` the people not erased of the provider's kind whose flag
+is on and `occurredAt` when the worker recorded the status — raised only while someone
+has that kind. A
 provider link's `provider_unavailable` raises nothing itself: the provider's state is
 the installation's, judged on the recorded status alone. The person items of a
 provider link — its reasons, its reported codes, `passUnrevealed` and

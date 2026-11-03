@@ -662,8 +662,8 @@ Kortet **Microsoft Entra ID** viser personens konto i katalogen — eller *Ingen
 katalogen ennå: Ansatte har ikke opprettet eller funnet en for denne personen.*:
 
 - **Tilstand** — *Forberedes — Ansatte har bedt katalogen opprette eller finne
-  kontoen*, *Aktivert*, *Deaktivert*, *Slettet — kan gjenopprettes i katalogen i tretti
-  dager*, *Mislyktes* eller *Stoppet*.
+  kontoen*, *Aktivert*, *Deaktivert*, *Slettet — katalogen kan la den kunne
+  gjenopprettes en stund*, *Mislyktes* eller *Stoppet*.
 - **Brukerhovednavn (UPN)** — navnet personen logger inn hos Microsoft med, når Entra
   har laget kontoen — og **Aktivert siden** mens den er aktivert, eller **Sist
   synkronisert** mens den ikke er det.
@@ -1514,6 +1514,17 @@ bare for `staff:personal-data`:
 | Gruppen … er ikke synkronisert med katalogen | En gruppe kunne ikke holdes i katalogen — en innstilling katalogen avviste, en gruppe der med nøkkelen som Vantigo ikke får endre, eller en katalog som ikke kunne nås tre ganger på rad; gruppesiden forteller hvorfor. Én per gruppe og katalog, for HR. | Gruppen |
 | Microsoft Entra ID avviste bildet av … | Entra ID ville ikke ta imot personens bilde — HRs bilde, eller personens eget når HR ikke har lagt inn noe. Ingenting trengs for innloggingen; legg inn et annet bilde for å prøve igjen. For HR. | Personens kontofane |
 
+**Kontoer som står fast i katalogen.** For HR sier oversikten også fra når en persons
+konto i selskapets katalog står fast, med personens navn, og åpner fanen Konto: *To
+kontoer i katalogen har ansattnummeret til …*, *Jobb-e-posten til … tilhører en annen
+konto i katalogen*, *Katalogen har en konto under ansattnummeret til … som Vantigo ikke
+opprettet* — bekreft den på leverandørens side under **Integrasjoner**, som punktet
+åpner — *Kontoen til … har en administratorrolle i katalogen* og *Lederen til … har
+ingen konto i katalogen*. Når selve leverandøren trenger deg, navngir ett punkt per
+leverandør den og åpner Ansatteinnstillinger: *2 personers kontoer venter: Microsoft
+Entra ID er ikke tilkoblet*, *… siste kontroll av Microsoft Entra ID feilet*,
+*Påloggingsnøkkelen til Microsoft Entra ID utløper innen 30 dager* eller *… har utløpt*.
+
 Et punkt forsvinner når det det ber om, er gjort. Punktet for en terskel står til HR
 bekrefter terskelen — én gang, for godt — under [Terskler](#terskler) i
 Ansatteinnstillinger.
@@ -1885,7 +1896,8 @@ tilgang** går til identitets side **Roller og tilgang**, der en eier angir dem 
 **Roller Ansatte kan gi**.
 
 - **Standard kontotype** — kontotypen en ny person får: **Lokal**, **Ekstern
-  identitetsleverandør** eller, når Entra-modulen er installert, **Microsoft Entra ID**.
+  identitetsleverandør** eller en av katalogleverandørene en aktivert modul tilbyr, med
+  navnet sitt — **Microsoft Entra ID** når Entra-modulen er installert.
   Personer som allerede er registrert, beholder sin; endre dem én og én på fanen Konto.
   Ved oppgraderingen som innførte typene, ble den satt ut fra installasjonen: Lokal,
   eller Ekstern identitetsleverandør der single sign-on var på.
@@ -1893,8 +1905,9 @@ tilgang** går til identitets side **Roller og tilgang**, der en eier angir dem 
   oppretter brukeren, deaktivert: 0 til 90, 14 om ikke endret.
 - **Slett en ekstern konto (dager etter slutt)** — hvor mange dager etter at siste
   arbeidsforhold sluttet Ansatte sletter personens konto i Entra, når den er deaktivert
-  og ingen slettesperre er på personen: 1 til 3650, eller tom for aldri. Entra holder en
-  slettet konto gjenopprettbar i tretti dager. Like mange dager etter at en
+  og ingen slettesperre er på personen: 1 til 3650, eller tom for aldri. Leverandøren kan
+  la en slettet konto kunne gjenopprettes en stund — Microsoft Entra ID i 30 dager,
+  Google Workspace i 20. Like mange dager etter at en
   [gruppe](#grupper) er arkivert, eller Microsoft Entra ID er slått av for den, slettes
   gruppen i Entra — en sikkerhetsgruppe tømmes og beholdes i stedet, og en Vantigo ikke
   laget, blir stående, slik [Grupper](#grupper) sier; står feltet tomt, omdøpes den

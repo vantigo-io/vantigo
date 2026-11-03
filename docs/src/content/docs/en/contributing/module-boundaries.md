@@ -389,11 +389,13 @@ Communications' outbox is the working example.
     write direction into identity: the avatar travels on it, not on a contract of its
     own. **The kind travels on the call**: `AccountSpec.Kind` and
     `ActivateOpts.Kind` carry the person's account kind — `contracts.AccountKindLocal`,
-    `AccountKindExternal` or `AccountKindEntra` — and that, never the installation's
+    `AccountKindExternal` or a provider's key (`entra`; `contracts.ValidAccountKind`
+    admits any `^[a-z][a-z0-9]{1,9}$`, `contracts.IsProviderKind` tells it from the
+    two) — and that, never the installation's
     mode alone, decides what identity creates, gives and invites: `Prepare` creates a
     user only for `local` and only finds for the two link-only kinds (`ErrAccountNotFound`
     when none holds the number); `Activate` invites and gives the roles for `local`,
-    only re-enables for `external`, and for `entra` re-enables and gives the roles once,
+    only re-enables for `external`, and for a provider's kind re-enables and gives the roles once,
     on the first activation of the adopted user (`users.provisioning_roles_at`). `Mode`
     says whether identity holds the credentials (`local`) or an identity provider does
     (`federated`), derived by every process from `identity.sso_settings`, the row the
@@ -513,7 +515,10 @@ Communications' outbox is the working example.
     answers an Owner `contracts.ErrSSONotConfigured` while OIDC is off — not
     configured is not "nobody left to connect"; `KeyHolders` answers who holds a
     directory account's object id or principal name (`expected`, `mapped` or
-    `account`). The address is for the match alone and never leaves Entra, its consumer,
+    `account`) — `contracts.DirectoryKey`, whose keys are the configured provider's:
+    the object id is the directory's immutable id (Entra's object id, Google's user id,
+    which identity reads from a Google token's `sub`), the principal name its sign-in
+    name (Entra's UPN, Google's primary email). The address is for the match alone and never leaves Entra, its consumer,
     which calls the port only through the accessors in `internal/entra/contractscalls.go`
     that refuse a call made inside one of its transactions
     ([Microsoft Entra ID](/en/reference/entra/#what-the-module-reads-of-identity)).
