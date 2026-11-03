@@ -27,6 +27,7 @@ import {
   switcherTiles,
 } from "./apps";
 import { navigationCatalog } from "./catalogs/navigation";
+import { connectionProviders } from "./lib/connections";
 import { type NavVisibilityContext, visibleNavSections } from "./navigation";
 
 const allModules = [
@@ -725,10 +726,9 @@ describe("the administration areas", () => {
       const prefix = `/${area.key}`;
       for (const item of area.navSections.flatMap((section) => section.items)) {
         expect(item.to === prefix || item.to.startsWith(`${prefix}/`)).toBe(true);
-        // An area belongs to no module; only an entry a module provides, Entra's Connections and its
-        // Integrations page, names its module.
+        // An area belongs to no module; only an entry a module provides, Entra's Integrations page and
+        // the Assistant's, names its module. Connections names the providers' modules in `modules`.
         const owner: Record<string, string> = {
-          "/settings/connections": "entra",
           "/workspace/entra": "entra",
           "/workspace/assistant": "assistant",
         };
@@ -866,12 +866,15 @@ describe("the administration areas", () => {
     expect(appNavSections(areaForKey("admin"), allModules, visibility)).toEqual([]);
   });
 
-  it("shows Connections beside Profile and Security only while the Entra module is on", () => {
+  it("shows Connections beside Profile and Security only while a connection provider's module is on", () => {
     const settings = areaForKey("settings");
     const item = settings.navSections
       .flatMap((section) => section.items)
       .find((one) => one.to === "/settings/connections");
-    expect(item).toMatchObject({ label: "navigation.connections", module: "entra" });
+    expect(item).toMatchObject({ label: "navigation.connections" });
+    expect(item?.module).toBeUndefined();
+    // The entry names exactly the modules the host's list of providers holds.
+    expect(item?.modules).toEqual(connectionProviders.map((provider) => provider.module));
     const withoutEntra = allModules.filter((key) => key !== "entra");
     expect(
       appNavSections(settings, withoutEntra, { ...visibility, enabledModules: withoutEntra }).flatMap((section) =>

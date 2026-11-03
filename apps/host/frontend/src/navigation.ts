@@ -59,6 +59,12 @@ export interface NavItem {
   guardPermissions?: readonly string[];
   /** The module that must be enabled for this destination. */
   module?: ModuleKey;
+  /**
+   * Modules of which any one enabled shows this destination (Google Workspace
+   * design G9): a host page several providers fill, as Settings › Connections.
+   * Beside `module`, both must hold.
+   */
+  modules?: readonly ModuleKey[];
   /** The instance feature that must be present for this destination. */
   feature?: NavFeature;
   /**
@@ -128,6 +134,7 @@ export const visibleNavSections = <S extends NavSection>(
           (!item.systemAdminOnly || isSystemAdmin) &&
           (!item.capability || canManageAuthorization) &&
           (!item.module || enabledModules?.includes(item.module) === true) &&
+          (!item.modules || item.modules.some((key) => enabledModules?.includes(key) === true)) &&
           (!item.feature || features?.includes(item.feature) === true) &&
           hasPermissions(permissions, item.requiredPermissions) &&
           hasAllPermissions(permissions, item.requiredAllPermissions),

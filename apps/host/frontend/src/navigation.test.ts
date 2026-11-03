@@ -69,6 +69,26 @@ describe("navigation permissions", () => {
     ]);
   });
 
+  it("shows a destination naming several modules while any one of them is on", () => {
+    const sections: readonly NavSection[] = [
+      {
+        items: [
+          { label: "connections", to: "/connections", icon, modules: ["entra", "calendar"] },
+          { label: "both", to: "/both", icon, module: "customers", modules: ["entra"] },
+        ],
+      },
+    ];
+    expect(labels(visibleNavSections(sections, context({ enabledModules: ["entra"] })))).toEqual(["connections"]);
+    expect(labels(visibleNavSections(sections, context({ enabledModules: ["calendar"] })))).toEqual(["connections"]);
+    expect(labels(visibleNavSections(sections, context({ enabledModules: ["customers"] })))).toEqual([]);
+    expect(labels(visibleNavSections(sections, context({ enabledModules: undefined })))).toEqual([]);
+    // Beside `module`, both must hold.
+    expect(labels(visibleNavSections(sections, context({ enabledModules: ["customers", "entra"] })))).toEqual([
+      "connections",
+      "both",
+    ]);
+  });
+
   it("hides module destinations while enabled modules are unknown", () => {
     expect(labels(visibleNavSections(fixture, context({ enabledModules: undefined })))).toEqual(["open"]);
   });

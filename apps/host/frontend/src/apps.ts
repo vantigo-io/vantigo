@@ -71,6 +71,7 @@ import {
  * Workspace admin (Integrations design T2), so it is not here and
  * `appForKey("entra")` is a type error.
  */
+// Google, a module without an app too, joins the exclusion when it joins `moduleKeys` (Google Workspace design G9).
 export type ModuleWithApp = Exclude<ModuleKey, "entra">;
 
 export type AppKey = "home" | ModuleWithApp;
@@ -612,8 +613,9 @@ export const areas: readonly AreaDefinition[] = [
         items: [
           { label: "navigation.profile", to: "/settings/profile", icon: IconUser },
           { label: "navigation.security", to: "/settings/security", icon: IconShieldLock },
-          // The person's own connections, from the Entra package (Outlook connection design M8).
-          { label: "navigation.connections", to: "/settings/connections", icon: IconPlugConnected, module: "entra" },
+          // The person's own connections, one card per provider in lib/connections.tsx (Outlook
+          // connection design M8, Google Workspace design G9): shown while any provider's module is on.
+          { label: "navigation.connections", to: "/settings/connections", icon: IconPlugConnected, modules: ["entra"] },
         ],
       },
     ],
