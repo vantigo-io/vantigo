@@ -105,6 +105,41 @@
     "description": "The button on My expenses that opens the form for a new travel claim."
   },
   {
+    "key": "inventory.home.lookup",
+    "route": "/inventory",
+    "description": "The field at the top of the Inventory home page: scan or type a location code, a label, a SKU or a barcode and press Enter to open it."
+  },
+  {
+    "key": "inventory.home.new-adjustment",
+    "route": "/inventory",
+    "description": "The button on the Inventory home page that opens a new stock adjustment, to correct what lies on a location with a reason."
+  },
+  {
+    "key": "inventory.home.new-move",
+    "route": "/inventory",
+    "description": "The button on the Inventory home page that opens a new move, to move stock between two locations of one site."
+  },
+  {
+    "key": "inventory.home.new-receipt",
+    "route": "/inventory",
+    "description": "The button on the Inventory home page that opens a new goods receipt, to receive items onto a location."
+  },
+  {
+    "key": "inventory.home.new-site",
+    "route": "/inventory",
+    "description": "The button on the Inventory home page that opens the form for a new site, a warehouse or a store."
+  },
+  {
+    "key": "inventory.site.bulk-add",
+    "route": "/inventory/sites/{siteId}",
+    "description": "The button on a site's page that creates a grid of locations at once, such as aisles, racks and shelves."
+  },
+  {
+    "key": "inventory.site.new-location",
+    "route": "/inventory/sites/{siteId}",
+    "description": "The button on a site's page that opens the form for a new location directly under the site."
+  },
+  {
     "key": "invoices.invoice.add-line",
     "route": "/invoices/{invoiceId}",
     "description": "The button below a draft invoice's lines that adds an empty line."

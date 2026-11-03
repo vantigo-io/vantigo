@@ -18,6 +18,7 @@ export const targets = [
   { module: "invoices", output: "apps/invoices/frontend/src/api-schema.d.ts" },
   { module: "staff", output: "apps/staff/frontend/src/api-schema.d.ts" },
   { module: "planning", output: "apps/planning/frontend/src/api-schema.d.ts" },
+  { module: "inventory", output: "apps/inventory/frontend/src/api-schema.d.ts" },
   { module: "calendar", output: "apps/calendar/frontend/src/api-schema.d.ts" },
   { module: "entra", output: "apps/entra/frontend/src/api-schema.d.ts" },
   { module: "assistant", output: "apps/assistant/frontend/src/api-schema.d.ts" },

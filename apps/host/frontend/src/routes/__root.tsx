@@ -48,19 +48,20 @@ import { enabledModuleKeys } from "../lib/enabled-modules";
 import { mfaEnrolmentRedirect } from "../lib/mfa-enrolment-gate";
 import { useOpenRoute } from "../lib/open-route";
 import { publicPaths, sessionlessPaths } from "../lib/public-paths";
-import { activeNavPath, type NavFeature, type NavSection, visibleNavSections } from "../navigation";
+import { activeNavItem, type NavFeature, type NavSection, navItemKey, visibleNavSections } from "../navigation";
 
 registerAssistantContexts();
 
 const renderNavSections = (
   sections: readonly NavSection[],
   pathname: string,
+  search: Readonly<Record<string, unknown>>,
   close: () => void,
   t: (key: string) => string,
 ) =>
   sections.map((section, sectionIndex) => {
     if (section.items.length === 0) return null;
-    const active = activeNavPath(pathname, section.items);
+    const active = activeNavItem(pathname, section.items, search);
     return (
       <div key={section.label ?? sectionIndex}>
         {section.label && (
@@ -70,15 +71,17 @@ const renderNavSections = (
         )}
         {section.items.map((item) => (
           <NavLink
-            key={item.to}
+            key={navItemKey(item)}
             component={Link}
             to={item.to}
+            // Untyped like `to`; an entry without a search opens with none, as before.
+            search={item.search as never}
             // Mantine styles [aria-current="page"] as active; keep TanStack's
-            // own marker exact so only activeNavPath decides the highlight.
+            // own marker exact so only activeNavItem decides the highlight.
             activeOptions={{ exact: true }}
             label={t(item.label)}
             leftSection={<item.icon size={18} stroke={1.5} />}
-            active={item.to === active}
+            active={item === active}
             onClick={close}
           />
         ))}
@@ -247,7 +250,9 @@ const RootLayout = () => {
           </>
         }
         nav={
-          !gated && navSections.length > 0 ? (close) => renderNavSections(navSections, pathname, close, t) : undefined
+          !gated && navSections.length > 0
+            ? (close) => renderNavSections(navSections, pathname, location.search, close, t)
+            : undefined
         }
         aside={gated ? undefined : assistant.aside}
         linkComponent={Link as ShellLinkComponent}

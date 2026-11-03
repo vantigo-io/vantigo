@@ -1,6 +1,15 @@
 import { IconCircle } from "@tabler/icons-react";
 import { describe, expect, it } from "vitest";
-import { activeNavPath, hasPermissions, type NavSection, navSearchFor, visibleNavSections } from "./navigation";
+import {
+  activeNavItem,
+  activeNavPath,
+  hasPermissions,
+  type NavItem,
+  type NavSection,
+  navItemKey,
+  navSearchFor,
+  visibleNavSections,
+} from "./navigation";
 
 const icon = IconCircle;
 const fixture: readonly NavSection[] = [
@@ -125,5 +134,29 @@ describe("active navigation paths", () => {
   it("does not treat a similarly prefixed route as a match", () => {
     expect(activeNavPath("/products-archive", items)).toBeUndefined();
     expect(activeNavPath("/customerships", items)).toBeUndefined();
+  });
+});
+
+// Two entries may share a path when one is the other's page filtered:
+// Inventory's Receipts is its movements list with kind=receipt.
+describe("entries that carry a search", () => {
+  const icon = (() => null) as unknown as NavItem["icon"];
+  const movements: NavItem = { label: "Movements", to: "/inventory/movements", icon };
+  const receipts: NavItem = { label: "Receipts", to: "/inventory/movements", search: { kind: "receipt" }, icon };
+  const overview: NavItem = { label: "Overview", to: "/inventory", icon };
+  const items = [overview, movements, receipts];
+
+  it("are keyed apart from their sibling on the same path", () => {
+    expect(navItemKey(movements)).toBe("/inventory/movements");
+    expect(navItemKey(receipts)).toBe("/inventory/movements?kind=receipt");
+  });
+
+  it("are active only while the URL carries their search, and then beat the sibling", () => {
+    expect(activeNavItem("/inventory/movements", items, { kind: "receipt" })).toBe(receipts);
+    expect(activeNavItem("/inventory/movements", items, { kind: "move" })).toBe(movements);
+    expect(activeNavItem("/inventory/movements", items)).toBe(movements);
+    expect(activeNavItem("/inventory/movements/41", items, {})).toBe(movements);
+    expect(activeNavItem("/inventory/sites/3", items, { kind: "receipt" })).toBe(overview);
+    expect(activeNavPath("/inventory/movements", items)).toBe("/inventory/movements");
   });
 });

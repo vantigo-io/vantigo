@@ -2,6 +2,7 @@ import { assistTargets as customers } from "@vantigo/customers-ui/assist-targets
 import { assistTargets as energy } from "@vantigo/energy-ui/assist-targets";
 import { assistTargets as expenses } from "@vantigo/expenses-ui/assist-targets";
 import type { AssistTarget } from "@vantigo/frontend-shell";
+import { assistTargets as inventory } from "@vantigo/inventory-ui/assist-targets";
 import { assistTargets as invoices } from "@vantigo/invoices-ui/assist-targets";
 import { assistTargets as projects } from "@vantigo/projects-ui/assist-targets";
 import { assistTargets as time } from "@vantigo/time-ui/assist-targets";
@@ -17,6 +18,7 @@ export const assistTargets: readonly AssistTarget[] = [
   ...customers,
   ...energy,
   ...expenses,
+  ...inventory,
   ...invoices,
   ...projects,
   ...time,

@@ -27,6 +27,7 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { AgendaWidget } from "@vantigo/calendar-ui/components/agenda-widget";
 import { PageHeader, useI18n } from "@vantigo/frontend-shell";
 import { KpiCard, WidgetCard } from "@vantigo/frontend-shell/ui";
+import { fetchInventoryStats } from "@vantigo/inventory-ui/api/stats";
 import { fetchSession, sessionQueryKey } from "../api/auth";
 import { getAuthorizationMe } from "../api/authorization";
 import {
@@ -55,10 +56,12 @@ import {
   attentionHref,
   attentionTitle,
   awaitingApprovalHint,
+  canReadInventoryStats,
   canReadPlanningStats,
   canReadStaffStats,
   deltaPercent,
   expensesUnreimbursedValue,
+  inventoryKpi,
   invoicesKpi,
   kpiCards,
   metrics,
@@ -168,6 +171,14 @@ const DashboardPage = () => {
     queryKey: ["dashboard", "planning", "stats"],
     queryFn: ({ signal }) => fetchPlanningStats(signal),
     enabled: allowed("planning") && canReadPlanningStats(permissions),
+    retry: false,
+  });
+
+  // Inventory's figures are now, not the period's (inventory design §7).
+  const inventoryStats = useQuery({
+    queryKey: ["dashboard", "inventory", "stats"],
+    queryFn: ({ signal }) => fetchInventoryStats(signal),
+    enabled: allowed("inventory") && canReadInventoryStats(permissions),
     retry: false,
   });
 
@@ -298,6 +309,13 @@ const DashboardPage = () => {
     retry: false,
   });
 
+  const inventoryAttention = useQuery({
+    queryKey: ["dashboard", "inventory", "attention"],
+    queryFn: ({ signal }) => fetchAttention("inventory", signal),
+    enabled: allowed("inventory"),
+    retry: false,
+  });
+
   const timeseriesByMetric: Record<string, DailyPoint[] | undefined> = {
     "customers:newCustomers": customersTimeseries.data,
     "communications:newConversations": communicationsTimeseries.data,
@@ -339,7 +357,8 @@ const DashboardPage = () => {
     (allowed("expenses") && expensesAttention.isPending) ||
     (allowed("invoices") && invoicesAttention.isPending) ||
     (allowed("staff") && staffAttention.isPending) ||
-    (allowed("planning") && planningAttention.isPending);
+    (allowed("planning") && planningAttention.isPending) ||
+    (allowed("inventory") && inventoryAttention.isPending);
   const activityLoading =
     (allowed("customers") && customersTimeseries.isPending) ||
     (allowed("communications") && communicationsTimeseries.isPending) ||
@@ -360,6 +379,7 @@ const DashboardPage = () => {
     ...(invoicesAttention.data ?? []).map((item) => ({ ...item, module: "invoices" as ModuleKey })),
     ...(staffAttention.data ?? []).map((item) => ({ ...item, module: "staff" as ModuleKey })),
     ...(planningAttention.data ?? []).map((item) => ({ ...item, module: "planning" as ModuleKey })),
+    ...(inventoryAttention.data ?? []).map((item) => ({ ...item, module: "inventory" as ModuleKey })),
   ]
     .sort((a, b) => new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime())
     .slice(0, 8);
@@ -641,6 +661,17 @@ const DashboardPage = () => {
                 {...planningKpi(planningStats.data, formatters.formatNumber, t)}
                 href={href}
                 loading={planningStats.isPending}
+              />
+            );
+          }
+          if (module.module === "inventory") {
+            return (
+              <KpiCard
+                key={module.module}
+                label={t("dashboard.inventoryStockLines")}
+                {...inventoryKpi(inventoryStats.data, formatters.formatNumber, t)}
+                href={href}
+                loading={inventoryStats.isPending}
               />
             );
           }

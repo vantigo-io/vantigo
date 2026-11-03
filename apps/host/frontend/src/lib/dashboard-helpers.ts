@@ -1,6 +1,7 @@
 import {
   IconBolt,
   IconBriefcase,
+  IconBuildingWarehouse,
   IconCalendar,
   IconCalendarStats,
   IconClock,
@@ -11,8 +12,9 @@ import {
   IconUsers,
   IconUsersGroup,
 } from "@tabler/icons-react";
+import type { InventoryStats } from "@vantigo/inventory-ui/api/stats";
 import type { DailyPoint, InvoicesSummary, PlanningStats, StaffStats } from "../api/dashboard";
-import { hasPermissions, type ModuleKey } from "../navigation";
+import { hasAllPermissions, hasPermissions, type ModuleKey } from "../navigation";
 
 export const moduleCards = [
   {
@@ -109,6 +111,15 @@ export const moduleCards = [
     module: "planning" as ModuleKey,
     requiredPermissions: ["planning:access"],
   },
+  {
+    title: "dashboard.inventory",
+    description: "dashboard.manageInventory",
+    path: "/inventory",
+    icon: IconBuildingWarehouse,
+    module: "inventory" as ModuleKey,
+    // The app's home needs either (inventory design §5).
+    requiredPermissions: ["inventory:locations-view", "inventory:stock-view"],
+  },
 ] as const;
 
 /** The module cards the caller may see: module enabled for the tenant and permission granted. */
@@ -137,8 +148,18 @@ export const canReadPlanningStats = (permissions: string[] | undefined) =>
   hasPermissions(permissions, ["planning:view"]);
 
 /**
- * The cards of the KPI row: every visible module card, Staff's and
- * Planning's for those who may read their figures. Calendar has none: it
+ * Whether the caller may read Inventory's figures: `GET /inventory/stats`
+ * asks for `inventory:locations-view`, and the card's figure — the stock
+ * lines — is a quantity, `inventory:stock-view`'s (design §5), so both. A
+ * caller with `locations-view` alone keeps the module card and has no
+ * Inventory card in the KPI row.
+ */
+export const canReadInventoryStats = (permissions: string[] | undefined) =>
+  hasAllPermissions(permissions, ["inventory:locations-view", "inventory:stock-view"]);
+
+/**
+ * The cards of the KPI row: every visible module card, Staff's, Planning's
+ * and Inventory's for those who may read their figures. Calendar has none: it
  * serves no stats endpoints, and its place on the page is the agenda above
  * the row (calendar design D7).
  */
@@ -150,7 +171,8 @@ export const kpiCards = <Card extends { module: ModuleKey }>(
     (card) =>
       card.module !== "calendar" &&
       (card.module !== "staff" || canReadStaffStats(permissions)) &&
-      (card.module !== "planning" || canReadPlanningStats(permissions)),
+      (card.module !== "planning" || canReadPlanningStats(permissions)) &&
+      (card.module !== "inventory" || canReadInventoryStats(permissions)),
   );
 
 /** The activity chart's series. Invoices has none: it serves no timeseries (payments and delivery design D7). */
@@ -375,6 +397,8 @@ export const attentionHref = (item: { module: ModuleKey; type: string; entityId:
       return `/planning/people/${encodeURIComponent(item.entityId)}`;
     return "/planning";
   }
+  // Delivery A raises none; B's open count will open its count.
+  if (item.module === "inventory") return "/inventory";
   return "/communications/inbox";
 };
 
@@ -786,6 +810,19 @@ export const planningKpi = (
     .join(" · ");
   return { value: stats.peoplePlannedThisWeek, hint };
 };
+
+/** Inventory's KPI: the stock lines, with this week's receipts as the hint. */
+export const inventoryKpi = (
+  stats: InventoryStats | undefined,
+  formatNumber: (value: number) => string,
+  t: (key: string, values?: Record<string, unknown>) => string,
+) =>
+  stats
+    ? {
+        value: formatNumber(stats.stockLines),
+        hint: t("dashboard.inventoryReceiptsThisWeekHint", { count: stats.receiptsThisWeek }),
+      }
+    : { value: "—", hint: undefined };
 
 export const sparkline = (points: DailyPoint[] | undefined) => points?.map((point) => point.value);
 
