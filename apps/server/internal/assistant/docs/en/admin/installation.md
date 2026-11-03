@@ -809,6 +809,20 @@ by no custom role until an Owner adds them. A least-privilege role needs the
 needs no setting; there is nothing else to do. Rolling the migration back drops the
 schema with every site, location and movement. See [Inventory](/en/user/inventory/).
 
+**The release with Inventory's counts and Products' packagings.** It brings two
+migrations. `00109_products_packagings.sql` creates `products.variant_packagings`, empty:
+the boxes, cases and pallets a variant is stored and counted in, edited on the product
+page. `00110_inventory_counts.sql` creates `inventory.counts` and
+`inventory.count_lines`, empty, and adds two nullable columns to the ledger —
+`movement_lines.entered` and `movements.count_id` — that existing movements leave null.
+No stock and no movement is changed. No permission is new — `inventory:counts-manage`
+existed and is now used — and there is no setting and no worker; the default
+privileges in [Database roles](#database-roles) cover the new tables. Rolling back drops
+the new tables and columns with every packaging, count and count movement's link to its
+count, and what was entered in packagings; the movements and the stock stay. See
+[Count stock](/en/user/inventory/#count-stock) and
+[Packagings](/en/user/products/#packagings).
+
 **The release with Staff competence.** It brings `00066_staff_competence.sql`: the
 competence catalogue — five categories and fifteen Norwegian certificates seeded — and
 people's competences, empty. No permission is new: `staff:approve` now also verifies

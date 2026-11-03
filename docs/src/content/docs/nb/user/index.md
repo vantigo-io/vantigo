@@ -29,7 +29,8 @@ allokering denne uken, den bekreftede belastningen deres med den tentative ved s
 de åpne behovene og hvor mange som er ubemannet, for `planning:view`
 ([dashbordet](/nb/user/planning/#dashbordet)); Lagers, lagerlinjene med varemottakene
 bokført denne uken ved siden av, for `inventory:locations-view` sammen med
-`inventory:stock-view` — det legger ingenting til listen nedenfor ([Lager](/nb/user/inventory/)).
+`inventory:stock-view`, og, med `inventory:counts-manage` i tillegg, en varetelling som har
+stått åpen i mer enn en uke i listen nedenfor ([Lager](/nb/user/inventory/#dashbordet)).
 Listen **Trenger oppfølging** samler det i
 appene som venter på noen — også fra Fakturaer: forfalte fakturaer, penger som skal
 tilbake på en faktura, og, med `invoices:payments`, banklinjer i avvikskøen, purringer
@@ -82,7 +83,7 @@ kortere enn din:
 | [Fakturaer](/nb/user/invoices/) | Fakturaer, Hurtigfaktura, Fakturajournal, Forfalt, Innbetalinger, Fakturainnstillinger |
 | [Kommunikasjon](/nb/user/communications/) | Innboks, Kanaler, Blokkeringer |
 | [Produkter](/nb/user/products/) | Produkter, Kategorier, Avgiftskategorier |
-| [Lager](/nb/user/inventory/) | Oversikt, Bevegelser, Varemottak |
+| [Lager](/nb/user/inventory/) | Oversikt, Bevegelser, Varemottak, Varetellinger, Importer inngående beholdning |
 | [Energi](/nb/user/energy/) | Målepunkter |
 | [Microsoft Entra ID](/nb/user/entra/) | Microsoft Entra ID (tilkoblingens status og de seks stegene i oppsettet), for `entra:manage` |
 | [Assistent](/nb/user/assistant/) | Samtalene dine med assistenten, fra hvor som helst i Vantigo; vises for alle som har assistenten |

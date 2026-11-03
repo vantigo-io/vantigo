@@ -1,6 +1,6 @@
 ---
 title: Products
-description: The catalog of goods and services, categories, tax categories and prices.
+description: The catalog of goods and services, categories, tax categories, prices and packagings, and the On hand column of the product list.
 sidebar:
   order: 60
 sources:
@@ -20,6 +20,11 @@ Open **Products** in the sidebar. The list shows every product with its name, **
 variants**, **Type**, **Category**, **Status**, **Unit**, **Tax category** (with its
 rate) and the **Current NOK price**; the badge next to the heading is the total count.
 The list is paged, 25 products at a time.
+
+When your organisation uses Inventory and you hold both `inventory:locations-view` and
+`inventory:stock-view`, the list has one more column, **On hand**: the product's stock
+across every site, all its variants together, in its unit. It is blank for a service.
+See [Inventory](/en/user/inventory/).
 
 - **Search by name or SKU...** narrows the list as you type.
 - **Status** keeps only **Draft**, **Active** or **Discontinued** products.
@@ -125,6 +130,51 @@ variant with stock movements in its history but nothing in stock may be deleted.
 The barcode, weight and dimensions on the product page are variant fields too, but the
 app does not edit them; they are set through the API.
 
+## Packagings
+
+A **packaging** is a box, a case or a pallet the item is bought, stored and counted in —
+a box of 15, a Euro pallet of 40 boxes. Inventory uses them: stock can be received,
+moved and counted in boxes and pallets, a packaging's barcode can be scanned, and stock
+is shown broken down in them. See
+[Enter quantities in packagings](/en/user/inventory/#enter-quantities-in-packagings).
+
+Packagings are for **goods** only. On a product with one variant, the **Packagings**
+table sits in the **Product details** card, under **Logistics**; on a product with
+several, there is one table per variant, **Packagings of {SKU}**. The table shows each
+packaging's **Name**, **Kind**, what it **Contains**, its **Barcode (GTIN)** and its
+**Dimensions (L×W×H)**.
+
+Press **Add packaging** and fill in:
+
+- **Name** — up to 40 characters, such as *Box* or *Euro pallet*.
+- **Kind** — **Inner pack**, **Case**, **Pallet** or **Other**.
+- What it holds — one of two:
+  - **A quantity in {unit}** — for a box of 15 pcs, **Quantity** 15;
+  - **Other packagings** — a **Packaging** of the same item and a **Count** of at least
+    2: a Euro pallet of 40 boxes. Its quantity is worked out for you, and **Contains**
+    shows it: *40 × Box (600 pcs)*.
+- **Barcode (GTIN)** — optional; no other item or packaging may have the same one.
+- **Length (cm)**, **Width (cm)**, **Height (cm)** and **Weight (kg)** — optional.
+
+Press **Save**. The pencil opens **Edit packaging**; the bin asks **Delete packaging** —
+*Delete the packaging {name}? Stock is not affected.* An item has at most **ten**
+packagings: **Add packaging** is greyed out at ten.
+
+**Changing a box changes every pallet built from it**: make the box hold 12 instead of
+15 and the pallet of 40 boxes holds 480. A packaging's change **never changes stock**,
+which is always kept in the item's own unit; movements already posted keep the
+packagings as they were when they were posted.
+
+Saving is refused, in the app's words:
+
+- *Another variant or packaging already has this barcode.*
+- *A packaging cannot hold a packaging that is built from it.* — a pallet of boxes
+  cannot become part of a box.
+- *Another packaging is built from this one. Change or delete that packaging first.* —
+  when you delete a box a pallet is built from.
+
+Adding and changing packagings needs `products:variants-manage`.
+
 ## Prices
 
 The **Prices** card lists the price rows of the product's first variant: **Currency**,
@@ -205,7 +255,8 @@ products to another tax category first.
   permission. See
   [billing lines](/en/reference/projects/#billing-lines-and-the-optional-products-dependency).
 - **Inventory** — keeps the stock of the **Goods** variants on the locations of each
-  site, and adds the **Stock** card to the product page. See
+  site, in their unit or in their [packagings](#packagings), adds the **Stock** card to
+  the product page and the **On hand** column to the list. See
   [Inventory](/en/user/inventory/).
 - **Invoices** — invoice lines are written on the invoice itself (description,
   quantity, unit, unit price and VAT code) and do not read the catalog. See the
@@ -218,6 +269,8 @@ products to another tax category first.
 | See the Products area, the list and a product page | `products:products-view`, `products:variants-view`, `products:pricing-view`, `products:categories-view` and `products:tax-categories-view` together |
 | Create, edit and archive products | `products:products-manage` (creating also needs `products:variants-manage`) |
 | Add, edit and remove variants | `products:variants-manage` (editing and removing also need `products:pricing-manage`) |
+| Add, edit and delete packagings | `products:variants-manage` |
+| The **On hand** column | `inventory:locations-view` and `inventory:stock-view` |
 | Add, edit and delete prices | `products:pricing-manage` |
 | See the Categories area | `products:categories-view` |
 | Create, edit and delete categories | `products:categories-manage` |

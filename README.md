@@ -50,7 +50,7 @@ your thing, a managed **SaaS offering** is available where we run the platform f
 | **Invoices**           | Invoices and credit notes, payments, reminders and EHF delivery.      | 🚧 In development |
 | **Staff**              | The company's people, their employments and its structure.            | 🚧 In development |
 | **Planning**           | Who works on what: allocations of people on projects, capacity, the unbooked. | 🚧 In development |
-| **Inventory**          | Stock of the catalog's goods in warehouses and stores: sites, locations, receipts, adjustments and moves. | 🚧 In development |
+| **Inventory**          | Stock of the catalog's goods in warehouses and stores: sites, locations, receipts, adjustments, moves, counts and labels. | 🚧 In development |
 | **Calendar**           | One calendar per person: appointments and what the other apps hold.   | 🚧 In development |
 | **Microsoft Entra ID** | The accounts of Staff's people in your Entra tenant, kept in step.    | 🚧 In development |
 | **Assistant**          | Answers "how do I…" from the documentation and reads the data a person may read. | 🚧 In development |

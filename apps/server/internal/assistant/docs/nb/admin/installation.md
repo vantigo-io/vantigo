@@ -840,6 +840,20 @@ bakgrunnsjobb og trenger ingen innstilling; det er ikke noe mer å gjøre. Å ru
 migreringen tilbake dropper skjemaet med alle lagersteder, lokasjoner og bevegelser. Se
 [Lager](/nb/user/inventory/).
 
+**Utgivelsen med varetelling i Lager og pakninger i Produkter.** Den har to
+migreringer. `00109_products_packagings.sql` oppretter `products.variant_packagings`,
+tom: eskene, kartongene og pallene en variant lagres og telles i, redigert på
+produktsiden. `00110_inventory_counts.sql` oppretter `inventory.counts` og
+`inventory.count_lines`, tomme, og legger to kolonner som kan være null til
+lagerreskontroen — `movement_lines.entered` og `movements.count_id` — som eksisterende
+bevegelser lar stå tomme. Ingen beholdning og ingen bevegelse endres. Ingen rettighet er
+ny — `inventory:counts-manage` fantes og tas nå i bruk — og det er ingen innstilling og
+ingen bakgrunnsjobb; standardrettighetene i [Databaseroller](#databaseroller) dekker de
+nye tabellene. Å rulle tilbake dropper de nye tabellene og kolonnene med alle pakninger,
+varetellinger, tellingsbevegelsenes kobling til varetellingen og det som ble registrert i
+pakninger; bevegelsene og beholdningen blir stående. Se
+[Tell varer](/nb/user/inventory/#tell-varer) og [Pakninger](/nb/user/products/#pakninger).
+
 **Utgivelsen med kompetanse i Ansatte.** Den har `00066_staff_competence.sql`:
 kompetansekatalogen — fem kategorier og femten norske sertifikater forhåndsdefinert — og
 personenes kompetanser, tomme. Ingen rettighet er ny: `staff:approve` bekrefter nå også

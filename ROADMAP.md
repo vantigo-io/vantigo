@@ -779,7 +779,9 @@ the Orders service so order lines resolve prices the same way the catalog does.
 Unit-of-measure conversions (base unit + conversion factor) and supplier records
 per product/variant (vendor SKU, lead time, minimum order quantity), designed with
 Orders. Packagings — a box of 15, a Euro pallet of 40 boxes, each with its own GTIN —
-moved to [Inventory](#inventory)'s phase 1, which needed them first.
+moved to [Inventory](#inventory)'s phase 1, which needed them first, and were
+**delivered by its delivery B**: up to ten per variant, built from one another, edited
+on the product page, their barcodes unique with the variants' (migration `00109`).
 
 *Unblocks:* purchasing in other units than the stock unit, and supplier records on
 Inventory's goods receipts; designed together with Orders.
@@ -811,11 +813,11 @@ there. It **depends on Products**, reading and locking the variants through
 `contracts.ProductCatalog`, and Products refuses to delete a variant, or to make a
 product a service, while it holds stock.
 
-### Phase 1 — Sites, locations and the ledger
+### Phase 1 — Sites, locations and the ledger (done)
 
 Two deliveries, each opened against `main` after the previous one lands.
 
-**A — The ledger, in progress**
+**A — The ledger, done**
 ([the plan](docs/superpowers/plans/2026-10-27-inventory-plan.md);
 [the reference](docs/src/content/docs/en/reference/inventory.md)): the `inventory`
 module and `@vantigo/inventory-ui`, with six permissions, none sensitive; sites and
@@ -827,11 +829,22 @@ the dashboard card; and the Products seam — the catalog's barcode, `VariantsOf
 variant with stock that cannot be deleted and a product with stock that cannot become a
 service. Migration `00108`.
 
-**B — Packagings and counts, planned**: packagings on Products' variants (a box, a
-case, a pallet, each with a GTIN, built from one another), entering and showing stock in
-them; counts, opened over a site or a location's subtree, with the expected quantities
-frozen when opened and the differences posted as one movement; location labels to print; the opening-balance import; and the stock column on
-Products' list.
+**B — Packagings and counts, done**: packagings on Products' variants — up to ten, a
+box, a case or a pallet, each with an optional GTIN unique across variants and
+packagings, a quantity or a count of another packaging, recomputed through the chain —
+and stock entered in them on every form, a packaging's barcode scanned, each entry kept
+as a snapshot on its line, and stock shown broken down in them; counts, opened over a
+site or a location's subtree with the expected quantities frozen, counted by scanning a
+location's label and its items with an auto-saving screen, flagging lines whose stock
+moved meanwhile, and posted as one `count` movement of the differences, or cancelled,
+with an attention item for a count open more than a week and *Start count* in the
+search; location labels as a PDF on Avery L7160 or L7163 sheets, each with its `LOC`
+token in Code 128; the opening-balance import, a CSV dry run then one `opening_balance`
+adjustment, all or nothing, the same file posted once; the *On hand* column on
+Products' list; and the site cards' figures and a server-side search for sites of many
+locations. Migrations `00109` and `00110`.
+
+**Phase 1 is complete.**
 
 *Unblocks:* knowing what lies where before Orders reserves it and Point of sale sells
 it.
