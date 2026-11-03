@@ -546,7 +546,7 @@ func TestOutboxWorker_MailboxChannelWithoutItsProviderIsRetried(t *testing.T) {
 		fx := seedMailboxJob(t, h, fake)
 		m := newMeterHarness(t)
 		deps := h.Deps()
-		deps.ChannelMailbox = nil
+		deps.ChannelMailboxes = nil
 
 		if _, err := communications.NewOutboxWorkerWithMeterForTest(deps, m.provider).ProcessOne(context.Background()); err != nil {
 			t.Fatalf("ProcessOne: %v", err)

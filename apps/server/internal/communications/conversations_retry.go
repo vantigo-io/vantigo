@@ -49,7 +49,7 @@ func (s *server) PostCommunicationsConversationsByIdMessagesByMessageIdRetry(ctx
 			resp.Error.Message = "Only the author of a message sent from their own address can retry it."
 			return resp, nil
 		}
-		status, err := personalMailStatus(ctx, s.deps.PersonalMailbox)
+		status, err := personalMailStatus(ctx, personalMailboxFor(s.deps, providerEntra))
 		if err != nil {
 			return nil, err
 		}

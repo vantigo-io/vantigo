@@ -215,47 +215,50 @@ type Deps struct {
 	// claim. Only Staff calls them, never inside a transaction. nil when no
 	// enabled module provides one.
 	IdentityProvisioners []contracts.IdentityProvisioner
-	// MailboxCalendar is a provider's mailbox calendars, the one sanctioned
-	// way the calendar writes a person's copies to their mailbox (see
-	// contracts.MailboxCalendar, calendar Outlook sync design O4). Compose
-	// sets it, on every module's Deps copy, from whichever enabled module
-	// declares Module.MailboxCalendar, after the identity provisioners;
-	// Workers sets it too, the same way, because the calendar's sync worker
-	// runs in worker mode. Both keep a preset value when no enabled module
-	// provides one (the seam modtest.WithMailboxCalendar fills). Only the
-	// calendar calls it, never inside a transaction. nil when no enabled
-	// module provides one (entra disabled).
-	MailboxCalendar contracts.MailboxCalendar
-	// ChannelMailbox is a provider's mailboxes as Communications' channels
-	// use them, the one sanctioned way Communications sends through a
-	// mailbox provider (see contracts.ChannelMailbox, Outlook connection
-	// design M11, rule 15). Compose sets it, on every module's Deps copy,
-	// from whichever enabled module declares Module.ChannelMailbox, after
-	// the mailbox calendar; Workers sets it too, the same way, because
-	// Communications' outbox runs in worker mode. Both keep a preset value
-	// when no enabled module provides one (the seam
-	// modtest.WithChannelMailbox fills). Only Communications calls it, never
-	// inside a transaction. nil when no enabled module provides one (entra
-	// disabled).
-	ChannelMailbox contracts.ChannelMailbox
-	// PersonalMailbox is a provider's personal mailboxes as Communications
-	// uses them when a person chooses to send from their own address (see
-	// contracts.PersonalMailbox, Outlook connection design M20). Compose
-	// sets it, on every module's Deps copy, from whichever enabled module
-	// declares Module.PersonalMailbox, after the channel mailbox; Workers
-	// sets it too, the same way, because Communications' outbox runs in
-	// worker mode. Both keep a preset value when no enabled module provides
-	// one (the seam modtest.WithPersonalMailbox fills). Only Communications
-	// calls it, never inside a transaction. nil when no enabled module
-	// provides one (entra disabled).
-	PersonalMailbox contracts.PersonalMailbox
+	// MailboxCalendars are every enabled module's contracts.MailboxCalendar
+	// (calendar Outlook sync design O4, Google Workspace design G2), the one
+	// sanctioned way the calendar writes a person's copies to their mailbox —
+	// a many-provider slot keyed by Key, in the order the modules were given.
+	// The calendar picks the one whose Key is the person's
+	// DirectoryAccount.Provider (G3). Compose collects them from the enabled
+	// modules, after the identity provisioners; Workers collects them too,
+	// because the calendar's sync worker runs in worker mode. Both append to
+	// whatever the caller preset here (the seam modtest.WithMailboxCalendar
+	// fills) and refuse a Key two providers claim or a reserved one. Only the
+	// calendar calls them, never inside a transaction. nil when no enabled
+	// module provides one.
+	MailboxCalendars []contracts.MailboxCalendar
+	// ChannelMailboxes are every enabled module's contracts.ChannelMailbox
+	// (Outlook connection design M11, rule 15, Google Workspace design G2),
+	// the one sanctioned way Communications sends through a mailbox provider
+	// — a many-provider slot keyed by Key, which a channel names in its
+	// provider column. Compose collects them from the enabled modules, after
+	// the mailbox calendars; Workers collects them too, because
+	// Communications' outbox runs in worker mode. Both append to whatever the
+	// caller preset here (the seam modtest.WithChannelMailbox fills) and
+	// refuse a Key two providers claim or a reserved one. Only Communications
+	// calls them, never inside a transaction. nil when no enabled module
+	// provides one.
+	ChannelMailboxes []contracts.ChannelMailbox
+	// PersonalMailboxes are every enabled module's contracts.PersonalMailbox
+	// (Outlook connection design M20, Google Workspace design G2), through
+	// which Communications sends from a person's own address — a
+	// many-provider slot keyed by Key; Communications asks each for the
+	// caller's status and records the one it sent through (G3). Compose
+	// collects them from the enabled modules, after the channel mailboxes;
+	// Workers collects them too, because Communications' outbox runs in
+	// worker mode. Both append to whatever the caller preset here (the seam
+	// modtest.WithPersonalMailbox fills) and refuse a Key two providers claim
+	// or a reserved one. Only Communications calls them, never inside a
+	// transaction. nil when no enabled module provides one.
+	PersonalMailboxes []contracts.PersonalMailbox
 	// OutboundMail is Communications' channels as other modules send through
 	// them (see contracts.OutboundMail, integrations design T4, module-boundaries
 	// rule 17): the one way Invoices and Calendar write to a customer, from a
 	// channel an Owner chose. Compose sets it, on every module's Deps copy,
 	// from whichever enabled module declares Module.OutboundMail, after the
-	// channel and the personal mailbox — so its provider may read
-	// deps.ChannelMailbox while it is built; Workers sets it too, the same
+	// channel and the personal mailboxes — so its provider may read
+	// deps.ChannelMailboxes while it is built; Workers sets it too, the same
 	// way, because Invoices' reminder worker sends in worker mode. Both keep a
 	// preset value when no enabled module provides one (the seam
 	// modtest.WithOutboundMail fills). Consumers call it outside any
@@ -530,28 +533,33 @@ type Module struct {
 	IdentityProvisioner func(Deps) contracts.IdentityProvisioner
 	// MailboxCalendar builds this module's contracts.MailboxCalendar, if it
 	// writes people's mailbox calendars for the calendar (calendar Outlook
-	// sync design O4). At most one enabled module may set it; Compose and
-	// Workers call it after the identity provisioners — it reads nothing
-	// while it is built — and put the result on every module's Deps.
+	// sync design O4). Any number of enabled modules may set it, each under
+	// its own Key (Google Workspace design G2); Compose and Workers call it
+	// after the identity provisioners — it reads nothing while it is built —
+	// and put the list on every module's Deps as MailboxCalendars. A nil
+	// result contributes nothing.
 	MailboxCalendar func(Deps) contracts.MailboxCalendar
 	// ChannelMailbox builds this module's contracts.ChannelMailbox, if it
 	// sends Communications' channel mail through a mailbox provider (Outlook
-	// connection design M11). At most one enabled module may set it; Compose
-	// and Workers call it after the mailbox calendar — it reads nothing
-	// while it is built — and put the result on every module's Deps.
+	// connection design M11). Any number of enabled modules may set it, each
+	// under its own Key; Compose and Workers call it after the mailbox
+	// calendars — it reads nothing while it is built — and put the list on
+	// every module's Deps as ChannelMailboxes. A nil result contributes
+	// nothing.
 	ChannelMailbox func(Deps) contracts.ChannelMailbox
 	// PersonalMailbox builds this module's contracts.PersonalMailbox, if it
 	// sends Communications' personal mail through a person's connected
-	// mailbox (Outlook connection design M20). At most one enabled module
-	// may set it; Compose and Workers call it after the channel mailbox — it
-	// reads nothing while it is built — and put the result on every module's
-	// Deps.
+	// mailbox (Outlook connection design M20). Any number of enabled
+	// modules may set it, each under its own Key; Compose and Workers call
+	// it after the channel mailboxes — it reads nothing while it is built —
+	// and put the list on every module's Deps as PersonalMailboxes. A nil
+	// result contributes nothing.
 	PersonalMailbox func(Deps) contracts.PersonalMailbox
 	// OutboundMail builds this module's contracts.OutboundMail, if it sends
 	// other modules' mail through its channels (integrations design T4:
 	// Communications). At most one enabled module may set it; Compose and
 	// Workers call it after the personal mailbox — its provider may read
-	// deps.ChannelMailbox while it is built, never while it serves outside
+	// deps.ChannelMailboxes while it is built, never while it serves outside
 	// the provider's own calls — and put the result on every module's Deps.
 	OutboundMail func(Deps) contracts.OutboundMail
 	// AITasks are the AI jobs this module performs (contracts.AITask), declared

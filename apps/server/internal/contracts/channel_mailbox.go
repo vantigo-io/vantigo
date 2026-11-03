@@ -12,11 +12,15 @@ import (
 // channels; the provider writes to, and reads from, only a mailbox Check
 // resolved. Key, DisplayName, Status and MaxMessage make no network call;
 // Check, Forget, Send, Delta and Raw do, and are never called inside a
-// transaction. A single-provider slot.
+// transaction.
 //
-// A module fills it through module.Module.ChannelMailbox, and Compose and
-// Workers resolve the enabled module's into module.Deps.ChannelMailbox,
-// refusing two. A channel names its provider by Key and its mailbox by the
+// It is a many-provider slot keyed by Key (Google Workspace design G2): a
+// module fills it through module.Module.ChannelMailbox, and Compose and
+// Workers collect every enabled module's into module.Deps.ChannelMailboxes,
+// refusing a Key two claim. A caller picks the provider whose Key the
+// channel's provider names, and none when no provider is filled under it: a
+// channel is never served by a provider under another key (G3). A channel
+// names its provider by Key and its mailbox by the
 // object id Check answered. The errors are MailboxCalendar's —
 // ErrMailboxUnavailable, ErrMailboxUnknown, ErrMailboxDenied, ErrMailboxGone,
 // and ErrMailboxDeltaExpired for Delta —, ErrMailTooLarge, ErrBccUnsupported
@@ -158,7 +162,7 @@ type ChannelMailboxInfo struct {
 	Mailbox     string // the object id, lower case
 	Address     string // the mailbox's primary SMTP address, lower case
 	DisplayName string
-	Shared      bool // userPurpose = shared
+	Shared      bool // may be a channel: not a person's own mailbox (Entra: userPurpose = shared)
 }
 
 // ErrMailTooLarge: the message is larger than MaxMessage, or the provider refused it

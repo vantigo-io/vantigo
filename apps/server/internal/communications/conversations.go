@@ -695,7 +695,7 @@ func (s *server) conversationMessagesOf(ctx context.Context, q *store.Queries, c
 // personalSenderOf reads the caller's personal mail capability and directory
 // information outside any transaction (M20).
 func (s *server) personalSenderOf(ctx context.Context) (*gen.PersonalSenderResponse, error) {
-	status, err := personalMailStatus(ctx, s.deps.PersonalMailbox)
+	status, err := personalMailStatus(ctx, personalMailboxFor(s.deps, providerEntra))
 	if err != nil {
 		return nil, err
 	}

@@ -10,6 +10,7 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/communications/store"
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/db"
+	"github.com/vantigo-io/vantigo/server/internal/module"
 )
 
 // This file is the module's reach into the mail channels provider
@@ -40,6 +41,29 @@ const (
 	providerSMTP  = "smtp"
 	providerEntra = "entra"
 )
+
+// channelMailboxFor is the ChannelMailbox filled under key, nil when none
+// is (Google Workspace design G2): reading the slot calls nobody and makes
+// no network call.
+func channelMailboxFor(deps module.Deps, key string) contracts.ChannelMailbox {
+	for _, m := range deps.ChannelMailboxes {
+		if m != nil && m.Key() == key {
+			return m
+		}
+	}
+	return nil
+}
+
+// personalMailboxFor is the PersonalMailbox filled under key, nil when none
+// is (G2). No network call.
+func personalMailboxFor(deps module.Deps, key string) contracts.PersonalMailbox {
+	for _, m := range deps.PersonalMailboxes {
+		if m != nil && m.Key() == key {
+			return m
+		}
+	}
+	return nil
+}
 
 // errCallInsideTransaction is every accessor's answer to a call made inside
 // one of this module's transactions. Nothing answers it to a client except as
@@ -92,11 +116,10 @@ func (s *server) channelMailbox(ctx context.Context) (contracts.ChannelMailbox, 
 	if err := noteContractCall(ctx, "ChannelMailbox.Key"); err != nil {
 		return nil, err
 	}
-	m := s.deps.ChannelMailbox
-	if m == nil || m.Key() != providerEntra {
-		return nil, nil
+	if m := channelMailboxFor(s.deps, providerEntra); m != nil {
+		return m, nil
 	}
-	return m, nil
+	return nil, nil
 }
 
 // mailboxDisplayName is the provider's name as an admin reads it.
@@ -160,11 +183,10 @@ func (w *OutboxWorker) outboxMailbox(ctx context.Context, provider string) (cont
 	if err := noteContractCall(ctx, "ChannelMailbox.Key"); err != nil {
 		return nil, err
 	}
-	m := w.deps.ChannelMailbox
-	if m == nil || m.Key() != provider {
-		return nil, nil
+	if m := channelMailboxFor(w.deps, provider); m != nil {
+		return m, nil
 	}
-	return m, nil
+	return nil, nil
 }
 
 // mailboxSend hands the provider one message whole, from mailbox, with its
@@ -185,11 +207,10 @@ func (w *MailboxSyncWorker) syncMailbox(ctx context.Context) (contracts.ChannelM
 	if err := noteContractCall(ctx, "ChannelMailbox.Key"); err != nil {
 		return nil, err
 	}
-	m := w.deps.ChannelMailbox
-	if m == nil || m.Key() != providerEntra {
-		return nil, nil
+	if m := channelMailboxFor(w.deps, providerEntra); m != nil {
+		return m, nil
 	}
-	return m, nil
+	return nil, nil
 }
 
 // syncMailboxStatus is whether channels may use the provider now, for the

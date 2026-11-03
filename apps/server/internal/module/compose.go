@@ -394,33 +394,35 @@ func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.
 	}
 
 	// The mailbox calendars (contracts.MailboxCalendar, calendar Outlook
-	// sync design O4) resolve after the identity provisioners, by the
+	// sync design O4), a many-provider slot keyed by Key (Google Workspace
+	// design G2), collected from the enabled modules after the identity provisioners, by the
 	// helper Workers uses too: the calendar's sync worker writes through
 	// them in worker mode as the API does.
-	if deps, err = withMailboxCalendar(deps, mods); err != nil {
+	if deps, err = withMailboxCalendars(deps, mods); err != nil {
 		return nil, err
 	}
 
 	// The channel mailboxes (contracts.ChannelMailbox, Outlook connection
-	// design M11) resolve after the mailbox calendar, by the helper Workers
+	// design M11), keyed as the mailbox calendars, are collected after them, by the helper Workers
 	// uses too: Communications' outbox sends through them in worker mode as
 	// the API does.
-	if deps, err = withChannelMailbox(deps, mods); err != nil {
+	if deps, err = withChannelMailboxes(deps, mods); err != nil {
 		return nil, err
 	}
 
 	// The personal mailboxes (contracts.PersonalMailbox, Outlook connection
-	// design M20) resolve after the channel mailbox, by the helper Workers
+	// design M20), keyed as the mailbox calendars, are collected after the
+	// channel mailboxes, by the helper Workers
 	// uses too: Communications' outbox sends through them in worker mode as
 	// the API does.
-	if deps, err = withPersonalMailbox(deps, mods); err != nil {
+	if deps, err = withPersonalMailboxes(deps, mods); err != nil {
 		return nil, err
 	}
 
 	// The outbound mail (contracts.OutboundMail, integrations design T4)
-	// resolves after the personal mailbox, by the helper Workers uses too:
+	// resolves after the personal mailboxes, by the helper Workers uses too:
 	// Invoices' reminder worker sends through it in worker mode as the API
-	// does, and its provider, Communications, reads deps.ChannelMailbox.
+	// does, and its provider, Communications, reads deps.ChannelMailboxes.
 	if deps, err = withOutboundMail(deps, mods); err != nil {
 		return nil, err
 	}
@@ -916,7 +918,9 @@ func withIdentityProvisioners(deps Deps, mods []Module) (Deps, error) {
 	return deps, nil
 }
 
-// reservedProviderKey is whether key is one no identity provider may answer:
+// reservedProviderKey is whether key is one no identity provider — nor any
+// provider of a keyed many-provider slot (Google Workspace design G2) — may
+// answer:
 // none at all, "identity" — the provider Staff's own identity link names in
 // staff.identity_links — and the two account kinds that name no provider,
 // local and external (Entra design D5). A provider under any of them would

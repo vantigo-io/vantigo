@@ -594,6 +594,16 @@ func (f *FakeMailboxCalendar) Key() string {
 	return f.key
 }
 
+// DisplayName is "Outlook" under the key "entra", else the key itself.
+func (f *FakeMailboxCalendar) DisplayName() string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.key == "entra" {
+		return "Outlook"
+	}
+	return f.key
+}
+
 // Status answers what SetStatus set, or FailWith's error, BeforeStatus's fn
 // called first.
 func (f *FakeMailboxCalendar) Status(context.Context) (contracts.MailboxStatus, error) {

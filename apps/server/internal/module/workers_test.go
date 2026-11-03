@@ -256,8 +256,8 @@ func TestWorkers_PanicsOnTwoProvidersOfASlot(t *testing.T) {
 			{Name: "beta", Workforce: func(Deps) contracts.Workforce { return &fakeWorkforce{} }},
 		}, "a workforce directory"},
 		{"mailbox calendar", []Module{
-			{Name: "alpha", MailboxCalendar: func(Deps) contracts.MailboxCalendar { return &fakeMailboxCalendar{} }},
-			{Name: "beta", MailboxCalendar: func(Deps) contracts.MailboxCalendar { return &fakeMailboxCalendar{} }},
+			{Name: "alpha", MailboxCalendar: func(Deps) contracts.MailboxCalendar { return &fakeMailboxCalendar{key: "entra"} }},
+			{Name: "beta", MailboxCalendar: func(Deps) contracts.MailboxCalendar { return &fakeMailboxCalendar{key: "entra"} }},
 		}, "a mailbox calendar"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -326,46 +326,54 @@ func TestWorkers_ResolveTheWorkforceSlot(t *testing.T) {
 	}
 }
 
-// Worker mode never composes, so Workers resolves the MailboxCalendar slot
-// itself, as Compose does (calendar Outlook sync design O4): from the enabled
-// provider, and the caller's own when no enabled module provides one.
-func TestWorkers_ResolveTheMailboxCalendarSlot(t *testing.T) {
-	built, preset := &fakeMailboxCalendar{key: "owner"}, &fakeMailboxCalendar{key: "preset"}
-	var seen contracts.MailboxCalendar
-	reader := Module{Name: "reader", Workers: func(d Deps) []worker.Worker {
-		seen = d.MailboxCalendar
-		return nil
-	}}
-	owner := Module{Name: "owner", MailboxCalendar: func(Deps) contracts.MailboxCalendar { return built }}
-	Workers(Deps{Config: &config.Config{Modules: []string{"reader", "owner"}}, MailboxCalendar: preset}, reader, owner)
-	if seen != built {
-		t.Errorf("the workers saw Deps.MailboxCalendar = %v, want the enabled owner's", seen)
-	}
-	Workers(Deps{Config: &config.Config{Modules: []string{"reader"}}, MailboxCalendar: preset}, reader, owner)
-	if seen != preset {
-		t.Errorf("the workers saw Deps.MailboxCalendar = %v, want the caller's, the owner being disabled", seen)
-	}
-}
-
-// Worker mode never composes, so Workers resolves the ChannelMailbox slot
-// itself, as Compose does (Outlook connection design M11): Communications'
-// outbox sends through it. From the enabled provider, and the caller's own
-// when no enabled module provides one.
-func TestWorkers_ResolveTheChannelMailboxSlot(t *testing.T) {
-	built, preset := &fakeChannelMailbox{key: "owner"}, &fakeChannelMailbox{key: "preset"}
-	var seen contracts.ChannelMailbox
-	reader := Module{Name: "reader", Workers: func(d Deps) []worker.Worker {
-		seen = d.ChannelMailbox
-		return nil
-	}}
-	owner := Module{Name: "owner", ChannelMailbox: func(Deps) contracts.ChannelMailbox { return built }}
-	Workers(Deps{Config: &config.Config{Modules: []string{"reader", "owner"}}, ChannelMailbox: preset}, reader, owner)
-	if seen != built {
-		t.Errorf("the workers saw Deps.ChannelMailbox = %v, want the enabled owner's", seen)
-	}
-	Workers(Deps{Config: &config.Config{Modules: []string{"reader"}}, ChannelMailbox: preset}, reader, owner)
-	if seen != preset {
-		t.Errorf("the workers saw Deps.ChannelMailbox = %v, want the caller's, the owner being disabled", seen)
+// Worker mode never composes, so Workers collects the three mailbox slots
+// itself, as Compose does (Google Workspace design G2): the caller's preset
+// first, then every enabled provider; a disabled one contributes none, and a
+// key two claim or a reserved key panics.
+func TestWorkers_CollectTheMailboxSlots(t *testing.T) {
+	for _, tc := range keyedSlotCases() {
+		t.Run(tc.name, func(t *testing.T) {
+			var seen []any
+			reader := Module{Name: "reader", Workers: func(d Deps) []worker.Worker {
+				seen = tc.read(d)
+				return nil
+			}}
+			ownerMod, built := tc.provide("entra")
+			ownerMod.Name = "owner"
+			otherMod, other := tc.provide("google")
+			otherMod.Name = "other"
+			deps := Deps{Config: &config.Config{Modules: []string{"reader", "owner", "other"}}}
+			preset := tc.preset(&deps, "preset")
+			Workers(deps, reader, ownerMod, otherMod)
+			if len(seen) != 3 || seen[0] != preset || seen[1] != built || seen[2] != other {
+				t.Errorf("the workers saw %v, want the preset, the owner's and the other's", seen)
+			}
+			deps.Config = &config.Config{Modules: []string{"reader"}}
+			Workers(deps, reader, ownerMod, otherMod)
+			if len(seen) != 1 || seen[0] != preset {
+				t.Errorf("the workers saw %v, want the caller's alone, the owners being disabled", seen)
+			}
+			dupMod, _ := tc.provide("entra")
+			dupMod.Name = "dup"
+			func() {
+				defer func() {
+					if r := fmt.Sprint(recover()); !strings.Contains(r, tc.what) || !strings.Contains(r, "dup") {
+						t.Errorf("recover() = %v, want a panic naming %s and dup", r, tc.what)
+					}
+				}()
+				Workers(Deps{}, ownerMod, dupMod)
+			}()
+			reservedMod, _ := tc.provide("local")
+			reservedMod.Name = "reserved"
+			func() {
+				defer func() {
+					if r := fmt.Sprint(recover()); !strings.Contains(r, "reserved key") {
+						t.Errorf("recover() = %v, want a reserved-key panic", r)
+					}
+				}()
+				Workers(Deps{}, reservedMod)
+			}()
+		})
 	}
 }
 

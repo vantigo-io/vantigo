@@ -133,43 +133,43 @@ type Harness struct {
 // configuration from, the modules it composes beside identity, and the
 // Recorder its clients validate through.
 type setup struct {
-	env             map[string]string
-	modules         []module.Module
-	recorder        *contracttest.Recorder
-	transport       http.RoundTripper
-	backoff         func(int) time.Duration
-	directory       contracts.CustomerDirectory
-	products        contracts.ProductCatalog
-	projects        contracts.ProjectDirectory
-	actuals         contracts.ProjectActuals
-	timesheets      contracts.Timesheets
-	expenses        contracts.ProjectExpenses
-	receivables     contracts.CustomerReceivables
-	holders         []contracts.CustomerReferenceHolder
-	variantHolders  []contracts.VariantReferenceHolder
-	personalData    []contracts.CustomerPersonalDataHolder
-	invoicedWork    []contracts.InvoicedWorkHolder
-	calendarSources []contracts.CalendarSource
-	provisioners    []contracts.IdentityProvisioner
-	workforce       contracts.Workforce
-	mailboxCalendar contracts.MailboxCalendar
-	channelMailbox  contracts.ChannelMailbox
-	personalMailbox contracts.PersonalMailbox
-	outboundMail    contracts.OutboundMail
-	calendarBusy    contracts.CalendarBusy
-	hours           contracts.BillableHours
-	billExpenses    contracts.BillableExpenses
-	milestones      contracts.BillableMilestones
-	consumption     contracts.ConsumptionProvider
-	smtpVerify      func(ctx context.Context, cfg config.MailConfig) error
-	smtpSend        func(ctx context.Context, cfg config.MailConfig, msg mail.Outbound) error
-	objectStore     storage.ObjectStore
-	peppolLookup    func(ctx context.Context, participant string) (peppol.Result, error)
-	poolMaxConns    int32
-	accounts        contracts.AccountProvisioning
-	aiModels        contracts.AIModels
-	noAccounts      bool
-	wrapUsers       func(contracts.UserDirectory) contracts.UserDirectory
+	env               map[string]string
+	modules           []module.Module
+	recorder          *contracttest.Recorder
+	transport         http.RoundTripper
+	backoff           func(int) time.Duration
+	directory         contracts.CustomerDirectory
+	products          contracts.ProductCatalog
+	projects          contracts.ProjectDirectory
+	actuals           contracts.ProjectActuals
+	timesheets        contracts.Timesheets
+	expenses          contracts.ProjectExpenses
+	receivables       contracts.CustomerReceivables
+	holders           []contracts.CustomerReferenceHolder
+	variantHolders    []contracts.VariantReferenceHolder
+	personalData      []contracts.CustomerPersonalDataHolder
+	invoicedWork      []contracts.InvoicedWorkHolder
+	calendarSources   []contracts.CalendarSource
+	provisioners      []contracts.IdentityProvisioner
+	workforce         contracts.Workforce
+	mailboxCalendars  []contracts.MailboxCalendar
+	channelMailboxes  []contracts.ChannelMailbox
+	personalMailboxes []contracts.PersonalMailbox
+	outboundMail      contracts.OutboundMail
+	calendarBusy      contracts.CalendarBusy
+	hours             contracts.BillableHours
+	billExpenses      contracts.BillableExpenses
+	milestones        contracts.BillableMilestones
+	consumption       contracts.ConsumptionProvider
+	smtpVerify        func(ctx context.Context, cfg config.MailConfig) error
+	smtpSend          func(ctx context.Context, cfg config.MailConfig, msg mail.Outbound) error
+	objectStore       storage.ObjectStore
+	peppolLookup      func(ctx context.Context, participant string) (peppol.Result, error)
+	poolMaxConns      int32
+	accounts          contracts.AccountProvisioning
+	aiModels          contracts.AIModels
+	noAccounts        bool
+	wrapUsers         func(contracts.UserDirectory) contracts.UserDirectory
 }
 
 // Option adjusts a harness before it is built.
@@ -386,36 +386,38 @@ func WithWorkforce(w contracts.Workforce) Option {
 	return func(s *setup) { s.workforce = w }
 }
 
-// WithMailboxCalendar sets Deps.MailboxCalendar, for the calendar to be
+// WithMailboxCalendar appends to Deps.MailboxCalendars, for the calendar to be
 // tested against a fake mailbox provider (FakeMailboxCalendar) — its
 // mailboxes, its status and its refusals set by the test — without composing
-// Entra beside it: depguard keeps it out of calendar's tests. module.Compose
-// and module.Workers keep a value set here when no enabled module provides
-// the slot (calendar Outlook sync design O4); a composed Entra's own
-// replaces it.
+// Entra beside it: depguard keeps it out of calendar's tests. Given twice,
+// under two keys (FakeMailboxCalendar.WithKey), it is two providers (Google
+// Workspace design G2). module.Compose and module.Workers keep the values set
+// here before the enabled modules' own and refuse a key both claim.
 func WithMailboxCalendar(m contracts.MailboxCalendar) Option {
-	return func(s *setup) { s.mailboxCalendar = m }
+	return func(s *setup) { s.mailboxCalendars = append(s.mailboxCalendars, m) }
 }
 
-// WithChannelMailbox sets Deps.ChannelMailbox, for Communications to be
+// WithChannelMailbox appends to Deps.ChannelMailboxes, for Communications to be
 // tested against a fake mailbox provider (FakeChannelMailbox) — its
 // mailboxes, its status and its refusals set by the test — without composing
-// Entra beside it: depguard keeps it out of communications' tests.
-// module.Compose and module.Workers keep a value set here when no enabled
-// module provides the slot (Outlook connection design M11); a composed
-// Entra's own replaces it.
+// Entra beside it: depguard keeps it out of communications' tests. Given
+// twice, under two keys (FakeChannelMailbox.WithKey), it is two providers
+// (Google Workspace design G2). module.Compose and module.Workers keep the
+// values set here before the enabled modules' own and refuse a key both
+// claim.
 func WithChannelMailbox(m contracts.ChannelMailbox) Option {
-	return func(s *setup) { s.channelMailbox = m }
+	return func(s *setup) { s.channelMailboxes = append(s.channelMailboxes, m) }
 }
 
-// WithPersonalMailbox sets Deps.PersonalMailbox, for Communications to be
+// WithPersonalMailbox appends to Deps.PersonalMailboxes, for Communications to be
 // tested against a fake personal mailbox provider (FakePersonalMailbox) — its
 // per-user status and refusals set by the test — without composing Entra
-// beside it: depguard keeps it out of communications' tests. module.Compose
-// and module.Workers keep a value set here when no enabled module provides the
-// slot (Outlook connection design M20); a composed Entra's own replaces it.
+// beside it: depguard keeps it out of communications' tests. Given twice,
+// under two keys (FakePersonalMailbox.WithKey), it is two providers (Google
+// Workspace design G2). module.Compose and module.Workers keep the values set
+// here before the enabled modules' own and refuse a key both claim.
 func WithPersonalMailbox(m contracts.PersonalMailbox) Option {
-	return func(s *setup) { s.personalMailbox = m }
+	return func(s *setup) { s.personalMailboxes = append(s.personalMailboxes, m) }
 }
 
 // WithOutboundMail sets Deps.OutboundMail, for Invoices' and Calendar's
@@ -729,9 +731,9 @@ func New(t *testing.T, opts ...Option) *Harness {
 		CalendarSources:          s.calendarSources,
 		IdentityProvisioners:     s.provisioners,
 		Workforce:                s.workforce,
-		MailboxCalendar:          s.mailboxCalendar,
-		ChannelMailbox:           s.channelMailbox,
-		PersonalMailbox:          s.personalMailbox,
+		MailboxCalendars:         s.mailboxCalendars,
+		ChannelMailboxes:         s.channelMailboxes,
+		PersonalMailboxes:        s.personalMailboxes,
 		OutboundMail:             s.outboundMail,
 		CalendarBusy:             s.calendarBusy,
 		BillableHours:            s.hours,

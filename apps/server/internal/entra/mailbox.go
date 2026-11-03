@@ -133,6 +133,10 @@ func newMailboxCalendar(d module.Deps) contracts.MailboxCalendar {
 // Key is "entra", with no context and no network.
 func (m *mailboxCalendar) Key() string { return providerKey }
 
+// DisplayName is "Outlook", the calendar service a person reads in the
+// calendar's labels, with no context and no network.
+func (m *mailboxCalendar) DisplayName() string { return "Outlook" }
+
 // Status is whether the provider may write, from the connection's row and
 // the secrets with no network (plan reading 11).
 func (m *mailboxCalendar) Status(ctx context.Context) (contracts.MailboxStatus, error) {

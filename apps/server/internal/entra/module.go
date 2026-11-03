@@ -138,9 +138,10 @@ var limits = map[string]ratelimit.Policy{
 // /api/v1/entra/, its one permission in the composed catalog, its
 // contracts.IdentityProvisioner, which Compose and Workers collect into
 // Deps.IdentityProvisioners for Staff, its contracts.MailboxCalendar,
-// which they resolve into Deps.MailboxCalendar for the calendar, and its
-// contracts.ChannelMailbox (channel_mailbox.go), which they resolve into
-// Deps.ChannelMailbox for Communications. Its one worker is
+// which they collect into Deps.MailboxCalendars for the calendar, and its
+// contracts.ChannelMailbox (channel_mailbox.go) and
+// contracts.PersonalMailbox (personal_mailbox.go), which they collect into
+// Deps.ChannelMailboxes and Deps.PersonalMailboxes for Communications. Its one worker is
 // entra-outlook-sweep (outlook_sweep.go).
 func Module() module.Module {
 	return module.Module{

@@ -1,6 +1,12 @@
 package module
 
-import "github.com/vantigo-io/vantigo/server/internal/worker"
+import (
+	"fmt"
+	"reflect"
+
+	"github.com/vantigo-io/vantigo/server/internal/contracts"
+	"github.com/vantigo-io/vantigo/server/internal/worker"
+)
 
 // Workers returns every worker.Worker the enabled modules among mods
 // contribute, in mods order, each module's own contribution concatenated in
@@ -15,7 +21,8 @@ import "github.com/vantigo-io/vantigo/server/internal/worker"
 // deps as the caller passes it, plus Deps.CustomerPersonalData,
 // Deps.InvoicedWork, Deps.Directory, Deps.Users, Deps.Accounts,
 // Deps.Workforce, Deps.CalendarSources, Deps.IdentityProvisioners,
-// Deps.MailboxCalendar and Deps.ChannelMailbox, which it resolves from the enabled modules the way
+// Deps.MailboxCalendars, Deps.ChannelMailboxes and Deps.PersonalMailboxes,
+// which it resolves from the enabled modules the way
 // Compose does — the same base Deps Compose resolves Directory from, before
 // any Mount runs, with no per-module Doc or Catalog — since a background worker is a data-layer concern (Pool, Config,
 // Clock, Mail, Secrets, ...), not a contract one.
@@ -85,25 +92,25 @@ func Workers(deps Deps, mods ...Module) []worker.Worker {
 	}
 	// The mailbox calendars, resolved as Compose resolves them (calendar
 	// Outlook sync design O4): the calendar's sync worker writes through
-	// them, and worker mode never composes. Two providers panic, as two
-	// workforce registers do.
-	deps, err = withMailboxCalendar(deps, enabled)
+	// them, and worker mode never composes. A key two providers claim
+	// panics, as one two identity provisioners claim does.
+	deps, err = withMailboxCalendars(deps, enabled)
 	if err != nil {
 		panic(err.Error())
 	}
 	// The channel mailboxes, resolved as Compose resolves them (Outlook
 	// connection design M11): Communications' outbox sends through them, and
-	// worker mode never composes. Two providers panic, as two mailbox
-	// calendars do.
-	deps, err = withChannelMailbox(deps, enabled)
+	// worker mode never composes. A key two providers claim panics, as
+	// for the mailbox calendars.
+	deps, err = withChannelMailboxes(deps, enabled)
 	if err != nil {
 		panic(err.Error())
 	}
 	// The personal mailboxes, resolved as Compose resolves them (Outlook
 	// connection design M20): Communications' outbox sends through them, and
-	// worker mode never composes. Two providers panic, as two channel
-	// mailboxes do.
-	deps, err = withPersonalMailbox(deps, enabled)
+	// worker mode never composes. A key two providers claim panics, as
+	// for the channel mailboxes.
+	deps, err = withPersonalMailboxes(deps, enabled)
 	if err != nil {
 		panic(err.Error())
 	}
@@ -170,55 +177,118 @@ func withWorkforce(deps Deps, enabled []Module) (Deps, error) {
 	return deps, nil
 }
 
-// withMailboxCalendar resolves contracts.MailboxCalendar from the enabled
-// modules — at most one may declare it — keeping a preset value when none
-// does (the seam modtest.WithMailboxCalendar fills). Compose and Workers
-// both call it, after the identity provisioners.
-func withMailboxCalendar(deps Deps, enabled []Module) (Deps, error) {
-	provider, err := soleProvider(enabled, "a mailbox calendar", func(m Module) bool { return m.MailboxCalendar != nil })
+// keyedProvider is a many-provider slot's provider: it answers its key with
+// no context and no network (Google Workspace design G2).
+type keyedProvider interface{ Key() string }
+
+// collectKeyed is the providers of one many-provider slot keyed by Key: the
+// caller's preset ones first, then every enabled module's in mods order, in a
+// new slice so a harness's own slice is never written through. A nil
+// provider, preset or built, is dropped. It refuses a Key two providers
+// claim, naming the key and both — a preset provider as field — and a
+// reserved Key (reservedProviderKey), naming the provider's module: a
+// consumer picks a provider by the key a channel, a message or a person's
+// account names, so two under one key would be one too many. what names the
+// slot for the errors ("a mailbox calendar").
+func collectKeyed[T keyedProvider](preset []T, mods []Module, field, what string, build func(Module) func(Deps) T, deps Deps) ([]T, error) {
+	var providers []T
+	claimedBy := make(map[string]string)
+	claim := func(provider T, by string) error {
+		key := provider.Key()
+		if reservedProviderKey(key) {
+			return fmt.Errorf("module: %s provides %s under the reserved key %q", by, what, key)
+		}
+		if other, ok := claimedBy[key]; ok {
+			return fmt.Errorf("module: two modules both provide %s %q: %s, %s", what, key, other, by)
+		}
+		claimedBy[key] = by
+		providers = append(providers, provider)
+		return nil
+	}
+	for _, p := range preset {
+		if isNilProvider(p) {
+			continue
+		}
+		if err := claim(p, field); err != nil {
+			return nil, err
+		}
+	}
+	for _, mod := range mods {
+		fn := build(mod)
+		if fn == nil {
+			continue
+		}
+		p := fn(deps)
+		if isNilProvider(p) {
+			continue
+		}
+		if err := claim(p, mod.Name); err != nil {
+			return nil, err
+		}
+	}
+	return providers, nil
+}
+
+// isNilProvider is whether p is a nil interface or holds a nil pointer.
+func isNilProvider[T keyedProvider](p T) bool {
+	v := reflect.ValueOf(p)
+	if !v.IsValid() {
+		return true
+	}
+	switch v.Kind() {
+	case reflect.Pointer, reflect.Interface, reflect.Map, reflect.Slice, reflect.Func:
+		return v.IsNil()
+	}
+	return false
+}
+
+// withMailboxCalendars collects contracts.MailboxCalendar from the enabled
+// modules into Deps.MailboxCalendars, after whatever the caller preset (the
+// seam modtest.WithMailboxCalendar fills), refusing a duplicate or reserved
+// Key (Google Workspace design G2). Compose and Workers both call it, after
+// the identity provisioners.
+func withMailboxCalendars(deps Deps, enabled []Module) (Deps, error) {
+	providers, err := collectKeyed(deps.MailboxCalendars, enabled, "Deps.MailboxCalendars", "a mailbox calendar",
+		func(m Module) func(Deps) contracts.MailboxCalendar { return m.MailboxCalendar }, deps)
 	if err != nil {
 		return deps, err
 	}
-	if provider != nil {
-		deps.MailboxCalendar = provider.MailboxCalendar(deps)
-	}
+	deps.MailboxCalendars = providers
 	return deps, nil
 }
 
-// withChannelMailbox resolves contracts.ChannelMailbox from the enabled
-// modules — at most one may declare it — keeping a preset value when none
-// does (the seam modtest.WithChannelMailbox fills). Compose and Workers both
-// call it, after the mailbox calendar.
-func withChannelMailbox(deps Deps, enabled []Module) (Deps, error) {
-	provider, err := soleProvider(enabled, "a channel mailbox", func(m Module) bool { return m.ChannelMailbox != nil })
+// withChannelMailboxes collects contracts.ChannelMailbox from the enabled
+// modules into Deps.ChannelMailboxes, after whatever the caller preset (the
+// seam modtest.WithChannelMailbox fills), refusing a duplicate or reserved
+// Key (G2). Compose and Workers both call it, after the mailbox calendars.
+func withChannelMailboxes(deps Deps, enabled []Module) (Deps, error) {
+	providers, err := collectKeyed(deps.ChannelMailboxes, enabled, "Deps.ChannelMailboxes", "a channel mailbox",
+		func(m Module) func(Deps) contracts.ChannelMailbox { return m.ChannelMailbox }, deps)
 	if err != nil {
 		return deps, err
 	}
-	if provider != nil {
-		deps.ChannelMailbox = provider.ChannelMailbox(deps)
-	}
+	deps.ChannelMailboxes = providers
 	return deps, nil
 }
 
-// withPersonalMailbox resolves contracts.PersonalMailbox from the enabled
-// modules — at most one may declare it — keeping a preset value when none
-// does (the seam modtest.WithPersonalMailbox fills). Compose and Workers
-// both call it, after the channel mailbox.
-func withPersonalMailbox(deps Deps, enabled []Module) (Deps, error) {
-	provider, err := soleProvider(enabled, "a personal mailbox", func(m Module) bool { return m.PersonalMailbox != nil })
+// withPersonalMailboxes collects contracts.PersonalMailbox from the enabled
+// modules into Deps.PersonalMailboxes, after whatever the caller preset (the
+// seam modtest.WithPersonalMailbox fills), refusing a duplicate or reserved
+// Key (G2). Compose and Workers both call it, after the channel mailboxes.
+func withPersonalMailboxes(deps Deps, enabled []Module) (Deps, error) {
+	providers, err := collectKeyed(deps.PersonalMailboxes, enabled, "Deps.PersonalMailboxes", "a personal mailbox",
+		func(m Module) func(Deps) contracts.PersonalMailbox { return m.PersonalMailbox }, deps)
 	if err != nil {
 		return deps, err
 	}
-	if provider != nil {
-		deps.PersonalMailbox = provider.PersonalMailbox(deps)
-	}
+	deps.PersonalMailboxes = providers
 	return deps, nil
 }
 
 // withOutboundMail resolves contracts.OutboundMail from the enabled modules —
 // at most one may declare it — keeping a preset value when none does (the
 // seam modtest.WithOutboundMail fills). Compose and Workers both call it,
-// after the personal mailbox: its provider reads deps.ChannelMailbox.
+// after the personal mailboxes: its provider reads deps.ChannelMailboxes.
 func withOutboundMail(deps Deps, enabled []Module) (Deps, error) {
 	provider, err := soleProvider(enabled, "outbound mail", func(m Module) bool { return m.OutboundMail != nil })
 	if err != nil {
