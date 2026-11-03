@@ -100,7 +100,9 @@ lives there, not in Vantigo.
 A session ends on its own after a period without activity, and in any case some
 hours after you signed in; administrators' sessions are shorter than everyone else's.
 The next thing you do then shows **Your session has expired** with a **Sign in
-again** button. Nothing you had already saved is lost.
+again** button, on every screen — also when you save a form you opened before the
+session ended. Nothing you had already saved is lost, but what you had typed in that
+form is not kept.
 
 You see the same page when an administrator disables your account, changes your
 details or role, or signs you out everywhere, since each of those ends your sessions

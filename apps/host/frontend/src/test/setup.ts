@@ -3,14 +3,13 @@ import "@testing-library/jest-dom/vitest";
 import { cleanup } from "@testing-library/react";
 import { afterEach, vi } from "vitest";
 
-import { setAuthStateClearer, setUnauthorizedHandler } from "../api/request";
+import { setSessionHandlers } from "../api/session-handlers";
 
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
-  setUnauthorizedHandler(undefined);
-  setAuthStateClearer(undefined);
+  setSessionHandlers(undefined);
 });
 
 // Mantine components rely on browser APIs that jsdom does not implement.
