@@ -3,6 +3,7 @@ package communications
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -14,13 +15,13 @@ import (
 )
 
 // This file is the module's reach into the mail channels provider
-// (deps.ChannelMailbox, Outlook connection design M11, module-boundaries rule
+// (deps.ChannelMailboxes, Outlook connection design M11, module-boundaries rule
 // 15): every call of the slot is made through one of the thin accessors below
 // and through nowhere else, so "what does Communications ask of the provider,
 // and when" has one place to read the answer and one place to check it from.
 //
 // What is checked is the lock rule: no call out of the module is made inside
-// one of its transactions. Check, Forget, Send, Delta and Raw reach Microsoft
+// one of its transactions. Check, Forget, Send, Delta and Raw reach mailbox
 // Graph, and a transaction holding the default-channel slot's lock while it
 // waits on the network would hold every channel writer with it. Every accessor reports its
 // call to contractCallHook, which the tests install to record it with whether
@@ -34,18 +35,24 @@ import (
 // mailbox sync's linker reads it through directoryContactsByEmail below, so
 // the worker's one directory call is refused inside its import's transaction.
 
-// providerSMTP and providerEntra are the channels.provider values: an SMTP
-// channel with its credential row, and a Microsoft 365 one on the slot whose
-// Key is "entra".
-const (
-	providerSMTP  = "smtp"
-	providerEntra = "entra"
-)
+// providerSMTP is the channels.provider value of an SMTP channel, with its
+// credential row. Every other value is a mail channels provider's Key — a
+// mailbox channel, served only by the ChannelMailbox filled under that very
+// key (Google Workspace design G4): the module names no provider.
+const providerSMTP = "smtp"
+
+// isMailboxProvider reports whether provider names a mailbox channel's
+// provider: anything but SMTP. Whether one is filled under it is
+// channelMailboxFor's answer.
+func isMailboxProvider(provider string) bool { return provider != providerSMTP }
 
 // channelMailboxFor is the ChannelMailbox filled under key, nil when none
 // is (Google Workspace design G2): reading the slot calls nobody and makes
 // no network call.
 func channelMailboxFor(deps module.Deps, key string) contracts.ChannelMailbox {
+	if key == providerSMTP {
+		return nil
+	}
 	for _, m := range deps.ChannelMailboxes {
 		if m != nil && m.Key() == key {
 			return m
@@ -109,17 +116,44 @@ func noteContractCall(ctx context.Context, method string) error {
 	return nil
 }
 
-// channelMailbox is the mail channels provider when one is filled under the
-// key a Microsoft 365 channel names, else nil: a channel is never served by a
-// provider under another key (M11). Key makes no network call.
-func (s *server) channelMailbox(ctx context.Context) (contracts.ChannelMailbox, error) {
+// channelMailbox is the mail channels provider filled under provider, a
+// mailbox channel's provider, else nil: a channel is never served by a
+// provider under another key (M11, Google Workspace design G3). Key makes no
+// network call.
+func (s *server) channelMailbox(ctx context.Context, provider string) (contracts.ChannelMailbox, error) {
 	if err := noteContractCall(ctx, "ChannelMailbox.Key"); err != nil {
 		return nil, err
 	}
-	if m := channelMailboxFor(s.deps, providerEntra); m != nil {
-		return m, nil
+	return channelMailboxFor(s.deps, provider), nil
+}
+
+// offeredMailboxes is, for every filled mail channels provider by its Key,
+// whether it is available now (its Status), the one fact about a provider
+// that decides whether a mailbox channel on it can send. A status that does
+// not answer is not offered, and logged. It makes a call out of the module
+// per provider, so it is asked outside any transaction.
+func (s *server) offeredMailboxes(ctx context.Context) (map[string]bool, error) {
+	out := make(map[string]bool, len(s.deps.ChannelMailboxes))
+	for _, m := range s.deps.ChannelMailboxes {
+		if m == nil {
+			continue
+		}
+		if err := noteContractCall(ctx, "ChannelMailbox.Key"); err != nil {
+			return nil, err
+		}
+		status, err := s.mailboxStatus(ctx, m)
+		if errors.Is(err, errCallInsideTransaction) {
+			return nil, err
+		}
+		if err != nil {
+			s.deps.Logger.WarnContext(ctx, "communications: the mail channels provider's status did not answer",
+				"provider", m.Key(), "err", err)
+			out[m.Key()] = false
+			continue
+		}
+		out[m.Key()] = status.State == contracts.MailboxAvailable
 	}
-	return nil, nil
+	return out, nil
 }
 
 // mailboxDisplayName is the provider's name as an admin reads it.
@@ -158,13 +192,13 @@ func (s *server) mailboxForget(ctx context.Context, m contracts.ChannelMailbox, 
 
 // mailBudget is the largest message a channel on provider sends, in bytes of
 // MIME (M13): nil for SMTP, which sets no limit of its own, and for a
-// Microsoft 365 channel while no provider is filled (it cannot send then
-// anyway); the provider's MaxMessage otherwise. No network call.
+// mailbox channel while no provider is filled under its key (it cannot send
+// then anyway); that provider's MaxMessage otherwise. No network call.
 func (s *server) mailBudget(ctx context.Context, provider string) (*int64, error) {
-	if provider != providerEntra {
+	if !isMailboxProvider(provider) {
 		return nil, nil
 	}
-	m, err := s.channelMailbox(ctx)
+	m, err := s.channelMailbox(ctx, provider)
 	if err != nil || m == nil {
 		return nil, err
 	}
@@ -183,10 +217,7 @@ func (w *OutboxWorker) outboxMailbox(ctx context.Context, provider string) (cont
 	if err := noteContractCall(ctx, "ChannelMailbox.Key"); err != nil {
 		return nil, err
 	}
-	if m := channelMailboxFor(w.deps, provider); m != nil {
-		return m, nil
-	}
-	return nil, nil
+	return channelMailboxFor(w.deps, provider), nil
 }
 
 // mailboxSend hands the provider one message whole, from mailbox, with its
@@ -200,17 +231,14 @@ func mailboxSend(ctx context.Context, m contracts.ChannelMailbox, mailbox string
 }
 
 // syncMailbox is the mail channels provider the mailbox sync reads a channel
-// through: the slot when it is filled under "entra", else nil — a channel is
-// never read through a provider under another key (M11). Key makes no
-// network call.
-func (w *MailboxSyncWorker) syncMailbox(ctx context.Context) (contracts.ChannelMailbox, error) {
+// on provider through: the one filled under that very key, else nil — a
+// channel is never read through a provider under another key (M11, G3). Key
+// makes no network call.
+func (w *MailboxSyncWorker) syncMailbox(ctx context.Context, provider string) (contracts.ChannelMailbox, error) {
 	if err := noteContractCall(ctx, "ChannelMailbox.Key"); err != nil {
 		return nil, err
 	}
-	if m := channelMailboxFor(w.deps, providerEntra); m != nil {
-		return m, nil
-	}
-	return nil, nil
+	return channelMailboxFor(w.deps, provider), nil
 }
 
 // syncMailboxStatus is whether channels may use the provider now, for the
@@ -289,17 +317,60 @@ func directoryContactsByEmail(ctx context.Context, d contracts.CustomerDirectory
 	return d.ContactsByEmail(ctx, email)
 }
 
-// personalMailStatus reads the caller's personal mail capability from the
-// wired PersonalMailbox provider (M20). When no provider is wired, it reports
-// Available: false with Reason: "unavailable".
-func personalMailStatus(ctx context.Context, m contracts.PersonalMailbox) (contracts.PersonalMailStatus, error) {
+// personalMailStatus is the caller's personal mail capability across every
+// PersonalMailbox (M20, Google Workspace design G3): each is asked for its
+// Status — each answers "no_account" for a caller whose directory account is
+// not its own — and the answer is the first Available one; else the first
+// whose Reason is not "no_account"; else "no_account". With no provider at
+// all it is Available false with Reason "unavailable". The answer carries
+// the Key and DisplayName of the provider that gave it, the one a personal
+// message is recorded with and sent through.
+func personalMailStatus(ctx context.Context, deps module.Deps) (contracts.PersonalMailStatus, error) {
+	var first, notAccount *contracts.PersonalMailStatus
+	for _, m := range deps.PersonalMailboxes {
+		if m == nil {
+			continue
+		}
+		status, err := personalMailStatusOf(ctx, m)
+		if err != nil {
+			return contracts.PersonalMailStatus{}, err
+		}
+		if status.Available {
+			return status, nil
+		}
+		if first == nil {
+			first = &status
+		}
+		if notAccount == nil && status.Reason != "no_account" {
+			notAccount = &status
+		}
+	}
+	switch {
+	case notAccount != nil:
+		return *notAccount, nil
+	case first != nil:
+		return *first, nil
+	default:
+		return contracts.PersonalMailStatus{Available: false, Reason: "unavailable"}, nil
+	}
+}
+
+// personalMailStatusOf is one provider's Status for the caller, marked with
+// the provider's Key and DisplayName; "unavailable" when m is nil — the
+// provider a message was recorded with is no longer filled.
+func personalMailStatusOf(ctx context.Context, m contracts.PersonalMailbox) (contracts.PersonalMailStatus, error) {
 	if err := noteContractCall(ctx, "PersonalMailbox.Status"); err != nil {
 		return contracts.PersonalMailStatus{}, err
 	}
 	if m == nil {
 		return contracts.PersonalMailStatus{Available: false, Reason: "unavailable"}, nil
 	}
-	return m.Status(ctx)
+	status, err := m.Status(ctx)
+	if err != nil {
+		return contracts.PersonalMailStatus{}, err
+	}
+	status.Provider, status.ProviderDisplayName = m.Key(), m.DisplayName()
+	return status, nil
 }
 
 // personalMailboxSend sends mime through the author's delegated mailbox (M20).
@@ -312,4 +383,15 @@ func personalMailboxSend(ctx context.Context, m contracts.PersonalMailbox, mime 
 		return contracts.SentMessage{}, contracts.ErrConnectionNeeded
 	}
 	return m.Send(ctx, mime, bcc)
+}
+
+// personalConnectionNeeded is connection_needed's sentence for status, the
+// answer of personalMailStatus: the provider it came from named by its
+// DisplayName ("Outlook"), and no name when no provider answered at all.
+func personalConnectionNeeded(status contracts.PersonalMailStatus) string {
+	if status.ProviderDisplayName == "" {
+		return "Sending from your own address is not available on this installation."
+	}
+	return fmt.Sprintf("Your personal %[1]s connection is not available. Please connect or reconnect %[1]s before sending from your address.",
+		status.ProviderDisplayName)
 }

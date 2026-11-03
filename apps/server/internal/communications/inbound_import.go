@@ -68,17 +68,19 @@ var ownMessageID = regexp.MustCompile(`^<([0-9a-f]{32})@vantigo\.invalid>$`)
 // inboundMetadata is an inbound message's channel_metadata_json (M14): the
 // addresses bare and lower case, the ids bracketed, references oldest first.
 // Reply and reply-all read cc and references back (conversations_reply.go);
-// the detail reads autoSubmitted and unreadable.
+// the detail reads autoSubmitted and unreadable. ProviderThreadID is the
+// provider's thread id (Google Workspace design G5), the key threading's
+// third step reads.
 type inboundMetadata struct {
-	From                string   `json:"from"`
-	To                  []string `json:"to"`
-	Cc                  []string `json:"cc"`
-	InReplyTo           string   `json:"inReplyTo"`
-	References          []string `json:"references"`
-	AutoSubmitted       bool     `json:"autoSubmitted"`
-	GraphConversationID string   `json:"graphConversationId"`
-	Unreadable          bool     `json:"unreadable,omitempty"`
-	HTMLDropped         bool     `json:"htmlDropped,omitempty"`
+	From             string   `json:"from"`
+	To               []string `json:"to"`
+	Cc               []string `json:"cc"`
+	InReplyTo        string   `json:"inReplyTo"`
+	References       []string `json:"references"`
+	AutoSubmitted    bool     `json:"autoSubmitted"`
+	ProviderThreadID string   `json:"providerThreadId"`
+	Unreadable       bool     `json:"unreadable,omitempty"`
+	HTMLDropped      bool     `json:"htmlDropped,omitempty"`
 }
 
 // inboundObject is one object the import stores before its transaction.
@@ -477,7 +479,7 @@ func (w *MailboxSyncWorker) forgetObjects(ctx context.Context, objects []inbound
 func inboundMetadataOf(in platformmail.Inbound, item contracts.MailItem, unreadable bool) inboundMetadata {
 	m := inboundMetadata{
 		To: []string{}, Cc: []string{}, References: []string{},
-		InReplyTo: in.InReplyTo, AutoSubmitted: in.AutoSubmitted, GraphConversationID: item.ConversationID,
+		InReplyTo: in.InReplyTo, AutoSubmitted: in.AutoSubmitted, ProviderThreadID: item.ConversationID,
 		Unreadable: unreadable,
 	}
 	if in.From != nil {

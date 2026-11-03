@@ -49,13 +49,22 @@ func (s *server) PostCommunicationsConversationsByIdMessagesByMessageIdRetry(ctx
 			resp.Error.Message = "Only the author of a message sent from their own address can retry it."
 			return resp, nil
 		}
-		status, err := personalMailStatus(ctx, personalMailboxFor(s.deps, providerEntra))
+		// The provider the message was recorded with (G3), never another.
+		provider := ""
+		if msg.SendProvider != nil {
+			provider = *msg.SendProvider
+		}
+		status, err := personalMailStatusOf(ctx, personalMailboxFor(s.deps, provider))
 		if err != nil {
 			return nil, err
 		}
 		if !status.Available {
+			name := "your mail service"
+			if status.ProviderDisplayName != "" {
+				name = status.ProviderDisplayName
+			}
 			return gen.PostCommunicationsConversationsByIdMessagesByMessageIdRetry422JSONResponse(flatErrorBody(
-				"personal_sender_unavailable", "Your personal sender connection is unavailable. Please connect or reconnect Outlook before retrying.")), nil
+				"personal_sender_unavailable", fmt.Sprintf("Your personal sender connection is unavailable. Please connect or reconnect %s before retrying.", name))), nil
 		}
 	}
 

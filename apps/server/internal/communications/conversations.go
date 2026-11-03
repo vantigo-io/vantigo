@@ -695,7 +695,7 @@ func (s *server) conversationMessagesOf(ctx context.Context, q *store.Queries, c
 // personalSenderOf reads the caller's personal mail capability and directory
 // information outside any transaction (M20).
 func (s *server) personalSenderOf(ctx context.Context) (*gen.PersonalSenderResponse, error) {
-	status, err := personalMailStatus(ctx, personalMailboxFor(s.deps, providerEntra))
+	status, err := personalMailStatus(ctx, s.deps)
 	if err != nil {
 		return nil, err
 	}
@@ -725,16 +725,21 @@ func (s *server) personalSenderOf(ctx context.Context) (*gen.PersonalSenderRespo
 	if status.ErrorCode != "" {
 		errorCode = apicommon.Ptr(status.ErrorCode)
 	}
+	var providerName *string
+	if status.ProviderDisplayName != "" {
+		providerName = apicommon.Ptr(status.ProviderDisplayName)
+	}
 	return &gen.PersonalSenderResponse{
-		Address:     address,
-		Available:   status.Available,
-		DisplayName: displayName,
-		ErrorCode:   errorCode,
-		Reason:      reason,
+		Address:             address,
+		Available:           status.Available,
+		DisplayName:         displayName,
+		ErrorCode:           errorCode,
+		ProviderDisplayName: providerName,
+		Reason:              reason,
 	}, nil
 }
 
-// GetCommunicationsPersonalSender Whether the signed-in caller can send outbound mail from their own connected Microsoft 365 address
+// GetCommunicationsPersonalSender Whether the signed-in caller can send outbound mail from their own connected address
 // (GET /api/v1/communications/personal-sender)
 func (s *server) GetCommunicationsPersonalSender(ctx context.Context, _ gen.GetCommunicationsPersonalSenderRequestObject) (gen.GetCommunicationsPersonalSenderResponseObject, error) {
 	resp, err := s.personalSenderOf(ctx)

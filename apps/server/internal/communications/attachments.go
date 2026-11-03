@@ -439,7 +439,7 @@ func (s *server) PostCommunicationsConversationsByIdAttachments(ctx context.Cont
 		return gen.PostCommunicationsConversationsByIdAttachments413JSONResponse(flatErrorBody(
 			"attachment_too_large", "The attachment exceeds the configured limit.")), nil
 	}
-	// A Microsoft 365 channel's budget (M13): the file as it would travel —
+	// A mailbox channel's budget (M13): the file as it would travel —
 	// base64 with the margin, plus the headers' headroom — over what the
 	// provider sends is refused now, not when the reply is sent, saying the
 	// attachments the channel takes (attachmentAllowance), not the budget of

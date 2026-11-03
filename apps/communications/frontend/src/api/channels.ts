@@ -1,6 +1,11 @@
 import { queryOptions } from "@tanstack/react-query";
 import { request } from "./request";
-export type ChannelProviderKey = "smtp" | "entra";
+/**
+ * A channel's provider: "smtp", or the key of a mailbox provider GET
+ * /channel-providers lists (Google Workspace design G4). The module names no
+ * mailbox provider: anything but "smtp" is one.
+ */
+export type ChannelProviderKey = "smtp" | (string & {});
 export type ChannelImportWindow = "from_now" | "last_30_days" | "last_90_days";
 export type ChannelOnClose = "none" | "read" | "move";
 export type Channel = {
@@ -22,7 +27,7 @@ export type Channel = {
     useSsl: boolean | null;
     username: string | null;
   } | null;
-  /** A Microsoft 365 channel's receive state; null for SMTP, which only sends. */
+  /** A mailbox channel's receive state; null for SMTP, which only sends. */
   sync?: ChannelSync | null;
 };
 export type ChannelSync = {
@@ -93,9 +98,9 @@ export const updateChannel = (id: string, body: UpdateChannelRequest) =>
   });
 export const verifyChannel = (id: string) =>
   request<{ ok: true }>(`/api/v1/communications/channels/${id}/verify`, { method: "POST" });
-export const switchChannelProvider = (id: string, options?: SwitchChannelProviderOptions) =>
+export const switchChannelProvider = (id: string, provider: string, options?: SwitchChannelProviderOptions) =>
   request<Channel>(`/api/v1/communications/channels/${id}/provider`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ provider: "entra", ...options }),
+    body: JSON.stringify({ provider, ...options }),
   });

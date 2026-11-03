@@ -77,13 +77,13 @@ func (w *MailboxSyncWorker) markCycle(ctx context.Context, conversationID uuid.U
 	if row.LeaseID == nil || *row.LeaseID != leaseID {
 		return row.Attempts, errSyncLeaseLost
 	}
-	if row.ChannelProvider != providerEntra || !row.ChannelIsActive {
+	if !isMailboxProvider(row.ChannelProvider) || !row.ChannelIsActive {
 		return row.Attempts, w.guarded(q.CompleteMailboxMark(ctx, store.CompleteMailboxMarkParams{
 			Now: ptrTime(w.now()), ConversationID: conversationID, LeaseID: &leaseID,
 		}))
 	}
 
-	provider, err := w.syncMailbox(ctx)
+	provider, err := w.syncMailbox(ctx, row.ChannelProvider)
 	if err != nil {
 		return row.Attempts, err
 	}

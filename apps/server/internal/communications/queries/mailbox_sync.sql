@@ -5,13 +5,13 @@
 -- worker that lost its lease writes nothing: 0 rows is the signal.
 
 -- name: SelectDueChannelSync :one
--- The candidate: a row of an active Microsoft 365 channel, not stopped, due,
--- and not leased (or its lease expired). A channel E's notice marked comes
+-- The candidate: a row of an active mailbox channel, not stopped, due, and
+-- not leased (or its lease expired). A channel E's notice marked comes
 -- first, then the longest due.
 SELECT s.channel_id
 FROM communications.channel_sync s
 JOIN communications.channels c ON c.id = s.channel_id
-WHERE c.provider = 'entra' AND c.is_active
+WHERE c.provider <> 'smtp' AND c.is_active
   AND s.state <> 'stopped'
   AND s.next_sync_at <= @now
   AND (s.lease_until IS NULL OR s.lease_until < @now)
@@ -26,18 +26,18 @@ UPDATE communications.channel_sync s
 SET lease_id = @lease_id, lease_until = @lease_until, updated_at = @now
 FROM communications.channels c
 WHERE s.channel_id = @channel_id
-  AND c.id = s.channel_id AND c.provider = 'entra' AND c.is_active
+  AND c.id = s.channel_id AND c.provider <> 'smtp' AND c.is_active
   AND s.state <> 'stopped'
   AND s.next_sync_at <= @now
   AND (s.lease_until IS NULL OR s.lease_until < @now);
 
 -- name: GetChannelSyncForCycle :one
 -- The claimed row with what the cycle reads of its channel: the address (the
--- mailbox's own, left out of the participants) and the settings naming the
--- mailbox.
+-- mailbox's own, left out of the participants), the provider it is read
+-- through and the settings naming the mailbox.
 SELECT s.channel_id, s.folder, s.delta_link, s.import_from, s.state, s.attempts, s.lease_id,
        s.last_synced_at, s.restart_from,
-       c.address AS channel_address, c.settings AS channel_settings
+       c.address AS channel_address, c.provider AS channel_provider, c.settings AS channel_settings
 FROM communications.channel_sync s
 JOIN communications.channels c ON c.id = s.channel_id
 WHERE s.channel_id = @channel_id;
@@ -106,7 +106,7 @@ WHERE channel_id = @channel_id AND lease_id = @lease_id
 RETURNING failing_tries;
 
 -- name: InsertChannelSync :one
--- A Microsoft 365 channel's row, written in the transaction that creates or
+-- A mailbox channel's row, written in the transaction that creates or
 -- switches it: it receives from import_from (from_now, last_30_days or
 -- last_90_days, M14/M17). A row left from an earlier switch is started
 -- afresh.
@@ -133,7 +133,7 @@ WHERE channel_id = ANY(@channel_ids::uuid[]);
 
 -- name: MarkChannelSyncNotified :execrows
 -- MarkChannelSyncNotified sets notified = true and makes due at now the
--- active Microsoft 365 channels whose mailbox a cycle's change notices named
+-- active channels on @provider whose mailbox a cycle's change notices named
 -- (M17): active or pending, not backing off (attempts = 0), and last synced
 -- before the notice.
 UPDATE communications.channel_sync s
@@ -147,7 +147,7 @@ FROM communications.channels c,
     GROUP BY lower(n.mailbox)
 ) AS notice
 WHERE c.id = s.channel_id
-  AND c.provider = 'entra'
+  AND c.provider = @provider::text
   AND c.is_active
   AND lower(c.settings->>'mailbox') = notice.mailbox
   AND s.state IN ('active', 'pending')

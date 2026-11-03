@@ -34,7 +34,7 @@ const entraChannel = {
   id: "channel-2",
   address: "post@example.com",
   displayName: "Post",
-  provider: "entra" as const,
+  provider: "m365" as const,
   isDefault: false,
   hasCredentials: false,
   mailbox: { id: "4f0c1e2a-0000-0000-0000-000000000001" },
@@ -50,7 +50,7 @@ const smtpProvider = {
   maxMessageBytes: null,
 };
 const entraProvider = {
-  key: "entra",
+  key: "m365",
   displayName: "Microsoft 365",
   available: true,
   reason: null,
@@ -106,7 +106,7 @@ beforeEach(() => {
   mocks.fetchProviders.mockReset().mockResolvedValue([smtpProvider]);
   mocks.createChannel.mockReset().mockResolvedValue({ id: "channel-3" });
   mocks.updateChannel.mockReset().mockResolvedValue({});
-  mocks.switchChannelProvider.mockReset().mockResolvedValue({ ...channel, provider: "entra" });
+  mocks.switchChannelProvider.mockReset().mockResolvedValue({ ...channel, provider: "m365" });
   mocks.verifyChannel.mockReset().mockResolvedValue({ ok: true });
   vi.mocked(notifications.show).mockClear();
 });
@@ -142,7 +142,7 @@ describe("admin channels", () => {
     expect(within(smtpRow).getByText("SMTP")).toBeTruthy();
     expect(within(entraRow).getByText("Microsoft 365")).toBeTruthy();
     expect(screen.queryByText("smtp")).toBeNull();
-    expect(screen.queryByText("entra")).toBeNull();
+    expect(screen.queryByText("m365")).toBeNull();
   });
 
   it("marks a channel that cannot send Unavailable, and says why", async () => {
@@ -161,7 +161,7 @@ describe("admin channels", () => {
     ).toBeTruthy();
     expect(within(providerOffRow).getByText("Unavailable")).toBeTruthy();
     expect(
-      within(providerOffRow).getByText("Microsoft 365 mail channels are not available, so this channel sends nothing."),
+      within(providerOffRow).getByText("Mail channels through m365 are not available, so this channel sends nothing."),
     ).toBeTruthy();
   });
 
@@ -173,14 +173,42 @@ describe("admin channels", () => {
     expect(screen.getByText("Kanalen har ingen lagret legitimasjon og sender derfor ingenting.")).toBeTruthy();
   });
 
-  it("names a Microsoft 365 channel so while its provider is not offered", async () => {
+  it("names a mailbox channel by its provider's key while its provider is not listed", async () => {
     mocks.fetchChannels.mockResolvedValue([entraChannel]);
     renderPage();
     const [, row] = await screen.findAllByRole("row");
-    expect(within(row).getByText("Microsoft 365")).toBeTruthy();
+    expect(within(row).getByText("m365")).toBeTruthy();
   });
 
-  it("offers SMTP alone, with no Mailgun, while Microsoft 365 is not available", async () => {
+  it("lists every mailbox provider the server lists, in its order, and switches to the one chosen", async () => {
+    const googleProvider = {
+      ...entraProvider,
+      key: "google",
+      displayName: "Google Workspace",
+      maxMessageBytes: 25_000_000,
+    };
+    mocks.fetchProviders.mockResolvedValue([smtpProvider, entraProvider, googleProvider]);
+    mocks.fetchChannels.mockResolvedValue([channel]);
+    renderPage();
+    await screen.findByText("Support");
+    expect(screen.getByRole("button", { name: "Switch to Microsoft 365" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Switch to Google Workspace" }));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Switch" }));
+    await waitFor(() => expect(mocks.switchChannelProvider).toHaveBeenCalledWith("channel-1", "google"));
+    fireEvent.click(screen.getByRole("button", { name: "Add channel" }));
+    await screen.findByRole("textbox", { name: "SMTP host" });
+    fireEvent.click(screen.getByRole("combobox", { name: /^Provider/ }));
+    const options = await screen.findAllByRole("option");
+    expect(options.map((option) => option.textContent)).toEqual([
+      "SMTP",
+      "Microsoft 365",
+      "Google Workspace",
+      "Vantigo hosted mailNot yet available",
+    ]);
+  });
+
+  it("lists a mailbox provider that is not available disabled, with its reason, and no Mailgun", async () => {
     mocks.fetchProviders.mockResolvedValue([
       smtpProvider,
       { ...entraProvider, available: false, reason: "switch_off" },
@@ -193,7 +221,12 @@ describe("admin channels", () => {
     expect(await screen.findByRole("textbox", { name: "SMTP host" })).toBeTruthy();
     fireEvent.click(screen.getByRole("combobox", { name: /^Provider/ }));
     const options = await screen.findAllByRole("option");
-    expect(options.map((option) => option.textContent)).toEqual(["SMTP", "Vantigo hosted mailNot yet available"]);
+    expect(options.map((option) => option.textContent)).toEqual([
+      "SMTP",
+      "Microsoft 365Not available now (switch_off)",
+      "Vantigo hosted mailNot yet available",
+    ]);
+    expect(options[1].getAttribute("aria-disabled")).toBe("true");
     expect(screen.queryByText(/Mailgun/)).toBeNull();
   });
 
@@ -268,7 +301,7 @@ describe("admin channels", () => {
         type: "email",
         address: "post@example.com",
         displayName: "Post",
-        provider: "entra",
+        provider: "m365",
       }),
     );
   });
@@ -281,8 +314,8 @@ describe("admin channels", () => {
     fireEvent.click(screen.getByRole("combobox", { name: "Import history" }));
     fireEvent.click(await screen.findByRole("option", { name: "Last 30 days" }));
     fireEvent.click(screen.getByRole("combobox", { name: "When a conversation is closed" }));
-    fireEvent.click(await screen.findByRole("option", { name: "Move to folder in Outlook" }));
-    const folderInput = await screen.findByRole("textbox", { name: "Outlook folder" });
+    fireEvent.click(await screen.findByRole("option", { name: "Move to a folder in the mailbox" }));
+    const folderInput = await screen.findByRole("textbox", { name: "Mailbox folder" });
     expect((folderInput as HTMLInputElement).value).toBe("Handled in Vantigo");
     fireEvent.change(folderInput, { target: { value: " Archive / Done " } });
     fireEvent.click(screen.getByRole("button", { name: "Create channel" }));
@@ -291,7 +324,7 @@ describe("admin channels", () => {
         type: "email",
         address: "post@example.com",
         displayName: "Post",
-        provider: "entra",
+        provider: "m365",
         importWindow: "last_30_days",
         onClose: "move",
         folder: "Archive / Done",
@@ -299,7 +332,7 @@ describe("admin channels", () => {
     );
   });
 
-  it("edits Outlook on-close settings on an existing Microsoft 365 channel", async () => {
+  it("edits the on-close settings of an existing mailbox channel", async () => {
     mocks.fetchProviders.mockResolvedValue([smtpProvider, entraProvider]);
     mocks.fetchChannels.mockResolvedValue([
       {
@@ -309,11 +342,11 @@ describe("admin channels", () => {
     ]);
     renderPage();
     expect(await screen.findByText("On close: mark as read")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Outlook on close" }));
+    fireEvent.click(screen.getByRole("button", { name: "Mailbox on close" }));
     const dialog = await screen.findByRole("dialog");
     fireEvent.click(within(dialog).getByRole("combobox", { name: "When a conversation is closed" }));
-    fireEvent.click(await screen.findByRole("option", { name: "Move to folder in Outlook" }));
-    expect(await within(dialog).findByRole("textbox", { name: "Outlook folder" })).toBeTruthy();
+    fireEvent.click(await screen.findByRole("option", { name: "Move to a folder in the mailbox" }));
+    expect(await within(dialog).findByRole("textbox", { name: "Mailbox folder" })).toBeTruthy();
     fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
     await waitFor(() =>
       expect(mocks.updateChannel).toHaveBeenCalledWith("channel-2", {
@@ -327,7 +360,12 @@ describe("admin channels", () => {
     [
       "personal_mailbox",
       apiError(422, "personal_mailbox"),
-      "This is a personal mailbox. Only a shared mailbox can be a channel.",
+      "This is a person's own mailbox. Only a shared mailbox can be a channel.",
+    ],
+    [
+      "group_address",
+      apiError(422, "group_address"),
+      "The address is a group. A group has no mailbox Vantigo can read; use a licensed mailbox.",
     ],
     [
       "mailbox_denied",
@@ -338,7 +376,7 @@ describe("admin channels", () => {
     [
       "mail_channels_off",
       apiError(409, "mail_channels_off"),
-      "Microsoft 365 mail channels are not available. An Entra administrator turns on Mail channels in the Entra settings.",
+      "Mail channels through Microsoft 365 are not available. An administrator turns them on under Integrations.",
     ],
     ["mailbox_exists", apiError(409, "mailbox_exists"), "Another channel already uses this mailbox."],
     ["channel_exists", apiError(409, "channel_exists"), "A channel with this address already exists."],
@@ -398,7 +436,7 @@ describe("admin channels", () => {
     fireEvent.change(screen.getByRole("textbox", { name: "E-postadresse" }), { target: { value: "post@example.com" } });
     fireEvent.click(screen.getByRole("button", { name: "Opprett kanal" }));
     expect(
-      await screen.findByText("Dette er en personlig postboks. Bare en delt postboks kan være en kanal."),
+      await screen.findByText("Dette er en persons egen postboks. Bare en delt postboks kan være en kanal."),
     ).toBeTruthy();
   });
 
@@ -414,7 +452,7 @@ describe("admin channels", () => {
     expect(within(dialog).getByText("The SMTP settings are deleted. To go back you enter them again.")).toBeTruthy();
     expect(mocks.switchChannelProvider).not.toHaveBeenCalled();
     fireEvent.click(within(dialog).getByRole("button", { name: "Switch" }));
-    await waitFor(() => expect(mocks.switchChannelProvider).toHaveBeenCalledWith("channel-1"));
+    await waitFor(() => expect(mocks.switchChannelProvider).toHaveBeenCalledWith("channel-1", "m365"));
     await waitFor(() =>
       expect(notifications.show).toHaveBeenCalledWith(expect.objectContaining({ title: "Channel switched" })),
     );
@@ -429,10 +467,10 @@ describe("admin channels", () => {
     fireEvent.click(within(dialog).getByRole("combobox", { name: "Import history" }));
     fireEvent.click(await screen.findByRole("option", { name: "Last 90 days" }));
     fireEvent.click(within(dialog).getByRole("combobox", { name: "When a conversation is closed" }));
-    fireEvent.click(await screen.findByRole("option", { name: "Mark as read in Outlook" }));
+    fireEvent.click(await screen.findByRole("option", { name: "Mark as read in the mailbox" }));
     fireEvent.click(within(dialog).getByRole("button", { name: "Switch" }));
     await waitFor(() =>
-      expect(mocks.switchChannelProvider).toHaveBeenCalledWith("channel-1", {
+      expect(mocks.switchChannelProvider).toHaveBeenCalledWith("channel-1", "m365", {
         importWindow: "last_90_days",
         onClose: "read",
       }),
@@ -448,7 +486,7 @@ describe("admin channels", () => {
     const dialog = await screen.findByRole("dialog");
     fireEvent.click(within(dialog).getByRole("button", { name: "Switch" }));
     expect(
-      await within(dialog).findByText("This is a personal mailbox. Only a shared mailbox can be a channel."),
+      await within(dialog).findByText("This is a person's own mailbox. Only a shared mailbox can be a channel."),
     ).toBeTruthy();
   });
 
@@ -533,7 +571,8 @@ describe("admin channels", () => {
       sync,
     });
 
-    it("says whether each Microsoft 365 channel receives, and that SMTP sends only", async () => {
+    it("says whether each mailbox channel receives, and that SMTP sends only", async () => {
+      mocks.fetchProviders.mockResolvedValue([smtpProvider, entraProvider]);
       mocks.fetchChannels.mockResolvedValue([
         { ...channel, sync: null },
         withSync("c-2", "post@example.com", { state: "active", error: null, lastSyncedAt: "2026-10-29T08:00:00Z" }),
@@ -564,6 +603,7 @@ describe("admin channels", () => {
 
     it("shows the receive status in Norwegian", async () => {
       setLanguagePreference("nb");
+      mocks.fetchProviders.mockResolvedValue([smtpProvider, entraProvider]);
       mocks.fetchChannels.mockResolvedValue([
         { ...channel, sync: null },
         withSync("c-2", "post@example.com", { state: "active", error: null, lastSyncedAt: "2026-10-29T08:00:00Z" }),

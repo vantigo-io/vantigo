@@ -165,10 +165,12 @@ RETURNING id;
 -- (direction=outbound): ConversationMessage's full column set for each.
 INSERT INTO communications.conversation_messages
  (id, conversation_id, direction, participant_id, author_user_id, subject, text_body, html_body,
-  channel_metadata_json, occurred_at, created_at, rfc_message_id, send_as, from_address, from_display_name)
+  channel_metadata_json, occurred_at, created_at, rfc_message_id, send_as, from_address, from_display_name,
+  send_provider)
 VALUES (@id, @conversation_id, @direction, @participant_id, @author_user_id, @subject, @text_body, @html_body,
   @channel_metadata_json, @occurred_at, @created_at, @rfc_message_id,
-  COALESCE(NULLIF(@send_as::text, ''), 'channel'), @from_address, @from_display_name)
+  COALESCE(NULLIF(@send_as::text, ''), 'channel'), @from_address, @from_display_name,
+  sqlc.narg('send_provider')::text)
 RETURNING id;
 
 -- name: UpdateConversationFields :one
@@ -372,7 +374,7 @@ ORDER BY created_at DESC, id DESC;
 -- Lookup for POST /conversations/{id}/messages/{messageId}/retry (M20):
 -- the message in the conversation, its channel's active flag, and its outbox
 -- job's id and status.
-SELECT m.id, m.conversation_id, m.direction, m.author_user_id, m.send_as,
+SELECT m.id, m.conversation_id, m.direction, m.author_user_id, m.send_as, m.send_provider,
        ch.is_active AS channel_is_active,
        j.id AS job_id, j.status AS job_status
 FROM communications.conversation_messages m

@@ -164,8 +164,10 @@ func TestCreateChannel_EntraRefusals(t *testing.T) {
 }
 
 // TestCreateChannel_EntraWithoutTheProvider: no slot filled, or one under
-// another key, is mail_channels_off — never a channel on a provider that
-// cannot send.
+// another key, leaves "entra" a provider no channel can use: validation asks
+// the slice (Google Workspace design G4), and the request is a 400 before
+// anything reaches a provider — never a channel on a provider that cannot
+// send.
 func TestCreateChannel_EntraWithoutTheProvider(t *testing.T) {
 	t.Parallel()
 	for name, opts := range map[string][]modtest.Option{
@@ -177,7 +179,10 @@ func TestCreateChannel_EntraWithoutTheProvider(t *testing.T) {
 			h := newHarness(t, opts...)
 			c := h.SignIn(t, "communications:channels-manage")
 			wantCode(t, c.Do(http.MethodPost, "/api/v1/communications/channels", entraChannelBody(channelAddress(t))),
-				http.StatusConflict, "mail_channels_off")
+				http.StatusBadRequest, "invalid_request")
+			if n := h.Count(t, `SELECT count(*) FROM communications.channels`); n != 0 {
+				t.Errorf("channels = %d, want none", n)
+			}
 		})
 	}
 }
@@ -204,7 +209,7 @@ func TestCreateChannel_EntraRefusesAnSmtpBlock(t *testing.T) {
 
 // TestCreateChannel_EntraOneChannelPerMailbox: a second channel on the same
 // mailbox is 409 — channel_exists by the same address, mailbox_exists by an
-// alias Check answers with another (ux_channels_entra_mailbox) — and a
+// alias Check answers with another (ux_channels_provider_mailbox) — and a
 // switch of an SMTP channel on another alias is 409 mailbox_exists too.
 func TestCreateChannel_EntraOneChannelPerMailbox(t *testing.T) {
 	t.Parallel()

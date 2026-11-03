@@ -26,6 +26,9 @@ func TestCommunicationsChannelSettings_AppliesAndIsIdempotent(t *testing.T) {
 	t.Parallel()
 	url := testdb.MigratedURL(t)
 	applyUpDownUp(t, url, communicationsChannelSettingsVersion)
+	// 00109 replaces the index this version made (Google Workspace design
+	// G4, G5): its own shape is read at its own version.
+	migrateTo(t, url, communicationsChannelSettingsVersion)
 
 	ctx := context.Background()
 	pool, err := db.Open(ctx, url)

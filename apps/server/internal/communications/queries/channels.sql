@@ -2,10 +2,11 @@
 -- getCommunicationsChannelsById, putCommunicationsChannelsById and
 -- postCommunicationsChannelsByIdVerify (communications inventory §1.1,
 -- §2's CreateChannel/UpdateChannel/VerifyChannel bullets, §15.6's
--- per-channel-credential shape), and delivery C's Microsoft 365 channels
--- (Outlook connection design M12): an SMTP channel has exactly one
--- channel_credentials row and settings '{}'; an entra channel has no
--- credential row and settings {"mailbox": "<object id>"}. The list/get
+-- per-channel-credential shape), and delivery C's mailbox channels
+-- (Outlook connection design M12, Google Workspace design G4): an SMTP
+-- channel has exactly one channel_credentials row and settings '{}'; a
+-- mailbox channel (provider a mail channels provider's Key) has no
+-- credential row and settings {"mailbox": "<mailbox id>"}. The list/get
 -- queries below LEFT JOIN the credential so neither kind is hidden.
 
 -- name: AnyChannelExists :one
@@ -132,9 +133,10 @@ UPDATE communications.channels SET is_default = false WHERE id != @id;
 
 -- name: InsertChannel :one
 -- InsertChannel is CreateChannel's channel-row insert: provider 'smtp' with
--- settings '{}' (its credential row follows), or 'entra' with the mailbox
--- Check resolved and no credential row. ux_channels_entra_mailbox refuses a
--- second channel on one mailbox.
+-- settings '{}' (its credential row follows), or a mail channels provider's
+-- Key with the mailbox Check resolved and no credential row.
+-- ux_channels_provider_mailbox refuses a second channel on one mailbox of
+-- one provider.
 INSERT INTO communications.channels (id, type, address, display_name, provider, is_default, is_active, created_at, settings)
 VALUES (@id, @type, @address, @display_name, @provider, @is_default, @is_active, @created_at, @settings)
 RETURNING id, type, address, display_name, provider, is_default, is_active, created_at, settings;
@@ -151,7 +153,7 @@ VALUES (@id, @channel_id, @settings_json, @secret_ciphertext, @created_at);
 -- ListChannels is GetChannelsEndpoint: a bare array (no pagination),
 -- ordered by CreatedAt ascending (inventory §1.1's `:18`/`:25` note).
 -- credential_settings_json is non-NULL for every SMTP channel this port
--- wrote and NULL for every Microsoft 365 one.
+-- wrote and NULL for every mailbox one.
 SELECT c.id, c.type, c.address, c.display_name, c.provider, c.is_default, c.is_active, c.created_at,
        c.settings, cc.settings_json AS credential_settings_json
 FROM communications.channels c
@@ -210,7 +212,7 @@ ON CONFLICT (channel_id) DO UPDATE
     SET settings_json = excluded.settings_json, secret_ciphertext = excluded.secret_ciphertext;
 
 -- name: SwitchChannelProvider :one
--- SwitchChannelProvider is the switch of an SMTP channel to Microsoft 365
+-- SwitchChannelProvider is the switch of an SMTP channel to a mailbox provider
 -- (POST /channels/{id}/provider, M12): the provider and the mailbox, the id,
 -- address, default flag and conversations untouched. DeleteChannelCredential
 -- runs in the same transaction.
@@ -220,7 +222,7 @@ WHERE id = @id
 RETURNING id, type, address, display_name, provider, is_default, is_active, created_at, settings;
 
 -- name: SetChannelSmtp :exec
--- SetChannelSmtp turns a Microsoft 365 channel back into an SMTP one (a PUT
+-- SetChannelSmtp turns a mailbox channel back into an SMTP one (a PUT
 -- with provider smtp and a full smtp block): provider 'smtp', the mailbox
 -- cleared. The credential row is written by UpsertChannelCredential in the
 -- same transaction.
@@ -230,7 +232,7 @@ WHERE id = @id;
 
 -- name: DeleteChannelCredential :exec
 -- DeleteChannelCredential drops an SMTP channel's credential row as it is
--- switched to Microsoft 365, in SwitchChannelProvider's transaction.
+-- switched to a mailbox provider, in SwitchChannelProvider's transaction.
 DELETE FROM communications.channel_credentials WHERE channel_id = @channel_id;
 
 -- name: GetChannelProviderForConversation :one
@@ -243,10 +245,10 @@ JOIN communications.channels ch ON ch.id = c.channel_id
 WHERE c.id = @id;
 
 -- name: MailboxHasChannel :one
--- MailboxHasChannel is whether a Microsoft 365 channel's settings name the
--- mailbox: read after a channel's switch back to SMTP has committed, so its
--- Forget is skipped when another channel took the mailbox in between.
+-- MailboxHasChannel is whether a channel on provider names the mailbox in
+-- its settings: read after a channel's switch back to SMTP has committed, so
+-- its Forget is skipped when another channel took the mailbox in between.
 SELECT EXISTS (
     SELECT 1 FROM communications.channels
-    WHERE provider = 'entra' AND settings->>'mailbox' = @mailbox::text
+    WHERE provider = @provider::text AND settings->>'mailbox' = @mailbox::text
 );

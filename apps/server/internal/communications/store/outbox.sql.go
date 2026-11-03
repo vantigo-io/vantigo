@@ -148,7 +148,7 @@ func (q *Queries) FinishOutboxJob(ctx context.Context, arg FinishOutboxJobParams
 }
 
 const getOutboundMessageForSend = `-- name: GetOutboundMessageForSend :one
-SELECT m.id, m.author_user_id, m.send_as, m.from_address, m.from_display_name,
+SELECT m.id, m.author_user_id, m.send_as, m.send_provider, m.from_address, m.from_display_name,
        m.subject, m.text_body, m.html_body, m.channel_metadata_json,
        c.subject AS conversation_subject,
        ch.type AS channel_type, ch.address AS channel_address,
@@ -167,6 +167,7 @@ type GetOutboundMessageForSendRow struct {
 	ID                         uuid.UUID
 	AuthorUserID               *uuid.UUID
 	SendAs                     string
+	SendProvider               *string
 	FromAddress                *string
 	FromDisplayName            *string
 	Subject                    *string
@@ -195,8 +196,9 @@ type GetOutboundMessageForSendRow struct {
 // wrong source. conversation_id and channel_id are likewise omitted rather than
 // carried unread. channel_provider and channel_settings choose the path the
 // send takes (Outlook connection design M13): an 'smtp' channel sends over its
-// credential row, an 'entra' one through ChannelMailbox.Send to the mailbox its
-// settings name, and has no credential row.
+// credential row, a mailbox channel through the ChannelMailbox filled under
+// its provider to the mailbox its settings name, and has no credential row;
+// send_provider names the PersonalMailbox a personal message goes through.
 func (q *Queries) GetOutboundMessageForSend(ctx context.Context, id uuid.UUID) (GetOutboundMessageForSendRow, error) {
 	row := q.db.QueryRow(ctx, getOutboundMessageForSend, id)
 	var i GetOutboundMessageForSendRow
@@ -204,6 +206,7 @@ func (q *Queries) GetOutboundMessageForSend(ctx context.Context, id uuid.UUID) (
 		&i.ID,
 		&i.AuthorUserID,
 		&i.SendAs,
+		&i.SendProvider,
 		&i.FromAddress,
 		&i.FromDisplayName,
 		&i.Subject,
@@ -461,6 +464,32 @@ WHERE id = $1
 // LastError explicitly cleared to NULL.
 func (q *Queries) MarkMessageDeliverySuppressed(ctx context.Context, id uuid.UUID) error {
 	_, err := q.db.Exec(ctx, markMessageDeliverySuppressed, id)
+	return err
+}
+
+const recordSentMessage = `-- name: RecordSentMessage :exec
+UPDATE communications.conversation_messages
+SET channel_metadata_json = CASE
+        WHEN $1::text IS NULL THEN channel_metadata_json
+        ELSE COALESCE(channel_metadata_json, '{}'::jsonb)
+             || jsonb_build_object('providerThreadId', $1::text)
+    END,
+    sent_message_id = COALESCE($2::text, sent_message_id)
+WHERE id = $3
+`
+
+type RecordSentMessageParams struct {
+	ProviderThreadID *string
+	SentMessageID    *string
+	ID               uuid.UUID
+}
+
+// What the provider answered of a message it sent (Google Workspace design
+// G5), in the completion's transaction: its thread id as the message's
+// providerThreadId, and the Message-ID it left with when that differs from
+// the message's own as sent_message_id. Each is left as it is when NULL.
+func (q *Queries) RecordSentMessage(ctx context.Context, arg RecordSentMessageParams) error {
+	_, err := q.db.Exec(ctx, recordSentMessage, arg.ProviderThreadID, arg.SentMessageID, arg.ID)
 	return err
 }
 

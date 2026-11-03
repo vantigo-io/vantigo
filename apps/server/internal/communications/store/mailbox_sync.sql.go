@@ -17,7 +17,7 @@ UPDATE communications.channel_sync s
 SET lease_id = $1, lease_until = $2, updated_at = $3
 FROM communications.channels c
 WHERE s.channel_id = $4
-  AND c.id = s.channel_id AND c.provider = 'entra' AND c.is_active
+  AND c.id = s.channel_id AND c.provider <> 'smtp' AND c.is_active
   AND s.state <> 'stopped'
   AND s.next_sync_at <= $3
   AND (s.lease_until IS NULL OR s.lease_until < $3)
@@ -255,7 +255,7 @@ func (q *Queries) GetChannelSyncByChannelIDs(ctx context.Context, channelIds []u
 const getChannelSyncForCycle = `-- name: GetChannelSyncForCycle :one
 SELECT s.channel_id, s.folder, s.delta_link, s.import_from, s.state, s.attempts, s.lease_id,
        s.last_synced_at, s.restart_from,
-       c.address AS channel_address, c.settings AS channel_settings
+       c.address AS channel_address, c.provider AS channel_provider, c.settings AS channel_settings
 FROM communications.channel_sync s
 JOIN communications.channels c ON c.id = s.channel_id
 WHERE s.channel_id = $1
@@ -272,12 +272,13 @@ type GetChannelSyncForCycleRow struct {
 	LastSyncedAt    *time.Time
 	RestartFrom     *time.Time
 	ChannelAddress  string
+	ChannelProvider string
 	ChannelSettings []byte
 }
 
 // The claimed row with what the cycle reads of its channel: the address (the
-// mailbox's own, left out of the participants) and the settings naming the
-// mailbox.
+// mailbox's own, left out of the participants), the provider it is read
+// through and the settings naming the mailbox.
 func (q *Queries) GetChannelSyncForCycle(ctx context.Context, channelID uuid.UUID) (GetChannelSyncForCycleRow, error) {
 	row := q.db.QueryRow(ctx, getChannelSyncForCycle, channelID)
 	var i GetChannelSyncForCycleRow
@@ -292,6 +293,7 @@ func (q *Queries) GetChannelSyncForCycle(ctx context.Context, channelID uuid.UUI
 		&i.LastSyncedAt,
 		&i.RestartFrom,
 		&i.ChannelAddress,
+		&i.ChannelProvider,
 		&i.ChannelSettings,
 	)
 	return i, err
@@ -412,7 +414,7 @@ type InsertChannelSyncParams struct {
 	Now        time.Time
 }
 
-// A Microsoft 365 channel's row, written in the transaction that creates or
+// A mailbox channel's row, written in the transaction that creates or
 // switches it: it receives from import_from (from_now, last_30_days or
 // last_90_days, M14/M17). A row left from an earlier switch is started
 // afresh.
@@ -485,11 +487,11 @@ SET notified = true,
 FROM communications.channels c,
 (
     SELECT lower(n.mailbox) AS mailbox, max(n.at) AS at
-    FROM (SELECT unnest($2::text[]) AS mailbox, unnest($3::timestamptz[]) AS at) AS n
+    FROM (SELECT unnest($3::text[]) AS mailbox, unnest($4::timestamptz[]) AS at) AS n
     GROUP BY lower(n.mailbox)
 ) AS notice
 WHERE c.id = s.channel_id
-  AND c.provider = 'entra'
+  AND c.provider = $2::text
   AND c.is_active
   AND lower(c.settings->>'mailbox') = notice.mailbox
   AND s.state IN ('active', 'pending')
@@ -500,16 +502,22 @@ WHERE c.id = s.channel_id
 
 type MarkChannelSyncNotifiedParams struct {
 	Now       time.Time
+	Provider  string
 	Mailboxes []string
 	Ats       []time.Time
 }
 
 // MarkChannelSyncNotified sets notified = true and makes due at now the
-// active Microsoft 365 channels whose mailbox a cycle's change notices named
+// active channels on @provider whose mailbox a cycle's change notices named
 // (M17): active or pending, not backing off (attempts = 0), and last synced
 // before the notice.
 func (q *Queries) MarkChannelSyncNotified(ctx context.Context, arg MarkChannelSyncNotifiedParams) (int64, error) {
-	result, err := q.db.Exec(ctx, markChannelSyncNotified, arg.Now, arg.Mailboxes, arg.Ats)
+	result, err := q.db.Exec(ctx, markChannelSyncNotified,
+		arg.Now,
+		arg.Provider,
+		arg.Mailboxes,
+		arg.Ats,
+	)
 	if err != nil {
 		return 0, err
 	}
@@ -577,7 +585,7 @@ const selectDueChannelSync = `-- name: SelectDueChannelSync :one
 SELECT s.channel_id
 FROM communications.channel_sync s
 JOIN communications.channels c ON c.id = s.channel_id
-WHERE c.provider = 'entra' AND c.is_active
+WHERE c.provider <> 'smtp' AND c.is_active
   AND s.state <> 'stopped'
   AND s.next_sync_at <= $1
   AND (s.lease_until IS NULL OR s.lease_until < $1)
@@ -590,8 +598,8 @@ LIMIT 1
 // write of a cycle, and the row the channel operations write and read. Every
 // write of a cycle is guarded by the lease (channel_id AND lease_id), so a
 // worker that lost its lease writes nothing: 0 rows is the signal.
-// The candidate: a row of an active Microsoft 365 channel, not stopped, due,
-// and not leased (or its lease expired). A channel E's notice marked comes
+// The candidate: a row of an active mailbox channel, not stopped, due, and
+// not leased (or its lease expired). A channel E's notice marked comes
 // first, then the longest due.
 func (q *Queries) SelectDueChannelSync(ctx context.Context, now time.Time) (uuid.UUID, error) {
 	row := q.db.QueryRow(ctx, selectDueChannelSync, now)

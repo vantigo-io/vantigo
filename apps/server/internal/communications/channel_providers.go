@@ -3,6 +3,7 @@ package communications
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -12,39 +13,58 @@ import (
 )
 
 // This file is the channels' providers (Outlook connection design M12, plan
-// reading 13): GET /channel-providers, which the channels page reads instead
-// of Entra's API; the resolution of a Microsoft 365 channel's mailbox that
-// create, the switch of provider and verify share; and the size budget a
-// Microsoft 365 channel's mail is held to when it is written (M13).
+// reading 13; Google Workspace design G4): GET /channel-providers, which the
+// channels page reads instead of any provider's API; the resolution of a
+// mailbox channel's mailbox that create, the switch of provider and verify
+// share; and the size budget a mailbox channel's mail is held to when it is
+// written (M13). No provider is named here: a mailbox channel's provider is
+// the Key of a filled ChannelMailbox, and every sentence names it by its
+// DisplayName.
 
 // GetCommunicationsChannelProviders List the providers a channel can use
 // (GET /api/v1/communications/channel-providers)
 //
-// SMTP always, available and with no budget of its own; Microsoft 365 only
-// while a mail channels provider fills the slot, with its status — available,
-// or not with the reason — the tenant_wide warning and MaxMessage.
+// SMTP always, available and with no budget of its own; then every filled
+// mail channels provider in slot order, with its status — available, or not
+// with the reason — the tenant_wide warning and MaxMessage.
 func (s *server) GetCommunicationsChannelProviders(ctx context.Context, _ gen.GetCommunicationsChannelProvidersRequestObject) (gen.GetCommunicationsChannelProvidersResponseObject, error) {
 	out := []gen.ChannelProviderResponse{{Key: providerSMTP, DisplayName: "SMTP", Available: true}}
-	m, err := s.channelMailbox(ctx)
-	if err != nil {
-		return nil, err
+	for _, m := range s.deps.ChannelMailboxes {
+		if m == nil {
+			continue
+		}
+		if err := noteContractCall(ctx, "ChannelMailbox.Key"); err != nil {
+			return nil, err
+		}
+		entry, err := s.channelProviderEntry(ctx, m)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, entry)
 	}
-	if m == nil {
-		return gen.GetCommunicationsChannelProviders200JSONResponse(out), nil
-	}
+	return gen.GetCommunicationsChannelProviders200JSONResponse(out), nil
+}
+
+// channelProviderEntry is one filled mail channels provider as
+// /channel-providers lists it.
+func (s *server) channelProviderEntry(ctx context.Context, m contracts.ChannelMailbox) (gen.ChannelProviderResponse, error) {
+	key := m.Key()
 	name, err := s.mailboxDisplayName(ctx, m)
 	if err != nil {
-		return nil, err
+		return gen.ChannelProviderResponse{}, err
 	}
-	budget, err := s.mailBudget(ctx, providerEntra)
+	budget, err := s.mailBudget(ctx, key)
 	if err != nil {
-		return nil, err
+		return gen.ChannelProviderResponse{}, err
 	}
-	entry := gen.ChannelProviderResponse{Key: providerEntra, DisplayName: name, MaxMessageBytes: budget}
+	entry := gen.ChannelProviderResponse{Key: key, DisplayName: name, MaxMessageBytes: budget}
 	status, err := s.mailboxStatus(ctx, m)
 	switch {
+	case errors.Is(err, errCallInsideTransaction):
+		return gen.ChannelProviderResponse{}, err
 	case err != nil:
-		s.deps.Logger.WarnContext(ctx, "communications: the mail channels provider's status did not answer", "err", err)
+		s.deps.Logger.WarnContext(ctx, "communications: the mail channels provider's status did not answer",
+			"provider", key, "err", err)
 		entry.Reason = apicommon.Ptr("status_unavailable")
 	case status.State != contracts.MailboxAvailable:
 		entry.Reason = apicommon.Ptr(status.Reason)
@@ -53,57 +73,75 @@ func (s *server) GetCommunicationsChannelProviders(ctx context.Context, _ gen.Ge
 	default:
 		entry.Available = true
 	}
-	return gen.GetCommunicationsChannelProviders200JSONResponse(append(out, entry)), nil
+	return entry, nil
 }
 
-// mailboxRefusal is why an address cannot be (or no longer is) a Microsoft
-// 365 channel's mailbox: the status create and the switch answer it with,
-// and its code and message. Verify answers every one with 422.
+// mailboxRefusal is why an address cannot be (or no longer is) a mailbox
+// channel's mailbox: the status create and the switch answer it with, and
+// its code and message. Verify answers every one with 422.
 type mailboxRefusal struct {
 	status        int
 	code, message string
 }
 
+// The refusals that name the provider take its DisplayName (G4); a
+// provider no longer filled is named by its key.
+func refusalMailChannelsOff(provider string) *mailboxRefusal {
+	return &mailboxRefusal{http.StatusConflict, "mail_channels_off", fmt.Sprintf(
+		"Mail channels through %s are not available. An administrator turns them on under Integrations.", provider)}
+}
+
+func refusalMailboxUnknown(provider string) *mailboxRefusal {
+	return &mailboxRefusal{http.StatusUnprocessableEntity, "mailbox_unknown",
+		fmt.Sprintf("No mailbox with this address was found in %s.", provider)}
+}
+
+func refusalProviderUnreachable(provider string) *mailboxRefusal {
+	return &mailboxRefusal{http.StatusServiceUnavailable, "provider_unreachable",
+		fmt.Sprintf("%s did not answer. Try again.", provider)}
+}
+
 var (
-	refusalMailChannelsOff = &mailboxRefusal{http.StatusConflict, "mail_channels_off",
-		"Microsoft 365 mail channels are not available. An Entra administrator turns on Mail channels in the Entra settings."}
 	refusalPersonalMailbox = &mailboxRefusal{http.StatusUnprocessableEntity, "personal_mailbox",
-		"The address is a personal mailbox. Only a shared mailbox can be a channel."}
+		"The address is a person's own mailbox. Only a shared mailbox can be a channel."}
+	refusalGroupAddress = &mailboxRefusal{http.StatusUnprocessableEntity, "group_address",
+		"The address is a group. A group has no mailbox Vantigo can read; use a licensed mailbox."}
 	refusalMailboxDenied = &mailboxRefusal{http.StatusUnprocessableEntity, "mailbox_denied",
 		"The application may not use this mailbox. Add it to the mail channels' scope in Exchange Online."}
-	refusalMailboxUnknown = &mailboxRefusal{http.StatusUnprocessableEntity, "mailbox_unknown",
-		"No mailbox with this address was found in Microsoft 365."}
-	refusalProviderUnreachable = &mailboxRefusal{http.StatusServiceUnavailable, "provider_unreachable",
-		"Microsoft 365 did not answer. Try again."}
 	refusalMailboxChanged = &mailboxRefusal{http.StatusUnprocessableEntity, "mailbox_changed",
 		"The address now names another mailbox than the channel's."}
 )
 
 // resolveSharedMailbox is the M12 table, run before any transaction opens:
-// the provider filled under "entra" and available (else mail_channels_off),
+// the provider filled under provider and available (else mail_channels_off),
 // then Check of address — a shared mailbox it reaches is the answer; a
-// personal one, one outside the scope, one unknown or gone, the provider
-// unavailable are refusals; anything else (throttled, Graph not answering) is
-// provider_unreachable, logged. Check records the mailbox on the provider's
-// side, so Send may later write to it.
-func (s *server) resolveSharedMailbox(ctx context.Context, address string) (contracts.ChannelMailboxInfo, *mailboxRefusal, error) {
-	m, err := s.channelMailbox(ctx)
+// personal one, a group, one outside the scope, one unknown or gone, the
+// provider unavailable are refusals; anything else (throttled, the provider
+// not answering) is provider_unreachable, logged. Check records the mailbox
+// on the provider's side, so Send may later write to it.
+func (s *server) resolveSharedMailbox(ctx context.Context, provider, address string) (contracts.ChannelMailboxInfo, *mailboxRefusal, error) {
+	m, err := s.channelMailbox(ctx, provider)
 	if err != nil {
 		return contracts.ChannelMailboxInfo{}, nil, err
 	}
 	if m == nil {
-		return contracts.ChannelMailboxInfo{}, refusalMailChannelsOff, nil
+		return contracts.ChannelMailboxInfo{}, refusalMailChannelsOff(provider), nil
+	}
+	name, err := s.mailboxDisplayName(ctx, m)
+	if err != nil {
+		return contracts.ChannelMailboxInfo{}, nil, err
 	}
 	status, err := s.mailboxStatus(ctx, m)
 	if errors.Is(err, errCallInsideTransaction) {
 		return contracts.ChannelMailboxInfo{}, nil, err
 	}
 	if err != nil {
-		s.deps.Logger.WarnContext(ctx, "communications: the mail channels provider's status did not answer", "err", err)
-		return contracts.ChannelMailboxInfo{}, refusalProviderUnreachable, nil
+		s.deps.Logger.WarnContext(ctx, "communications: the mail channels provider's status did not answer",
+			"provider", provider, "err", err)
+		return contracts.ChannelMailboxInfo{}, refusalProviderUnreachable(name), nil
 	}
 	if status.State != contracts.MailboxAvailable {
-		return contracts.ChannelMailboxInfo{}, refusalMailChannelsOff, nil
+		return contracts.ChannelMailboxInfo{}, refusalMailChannelsOff(name), nil
 	}
 	info, err := s.mailboxCheck(ctx, m, address)
 	switch {
@@ -113,15 +151,18 @@ func (s *server) resolveSharedMailbox(ctx context.Context, address string) (cont
 		return info, nil, nil
 	case errors.Is(err, errCallInsideTransaction):
 		return contracts.ChannelMailboxInfo{}, nil, err
+	case errors.Is(err, contracts.ErrMailboxGroup):
+		return contracts.ChannelMailboxInfo{}, refusalGroupAddress, nil
 	case errors.Is(err, contracts.ErrMailboxDenied):
 		return contracts.ChannelMailboxInfo{}, refusalMailboxDenied, nil
 	case errors.Is(err, contracts.ErrMailboxUnknown), errors.Is(err, contracts.ErrMailboxGone):
-		return contracts.ChannelMailboxInfo{}, refusalMailboxUnknown, nil
+		return contracts.ChannelMailboxInfo{}, refusalMailboxUnknown(name), nil
 	case errors.Is(err, contracts.ErrMailboxUnavailable):
-		return contracts.ChannelMailboxInfo{}, refusalMailChannelsOff, nil
+		return contracts.ChannelMailboxInfo{}, refusalMailChannelsOff(name), nil
 	default:
-		s.deps.Logger.WarnContext(ctx, "communications: the mail channels provider did not answer a mailbox check", "err", err)
-		return contracts.ChannelMailboxInfo{}, refusalProviderUnreachable, nil
+		s.deps.Logger.WarnContext(ctx, "communications: the mail channels provider did not answer a mailbox check",
+			"provider", provider, "err", err)
+		return contracts.ChannelMailboxInfo{}, refusalProviderUnreachable(name), nil
 	}
 }
 

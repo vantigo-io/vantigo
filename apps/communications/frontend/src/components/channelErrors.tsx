@@ -13,6 +13,8 @@ const statusOf = (error: unknown) =>
 
 const messages: Record<string, string> = {
   personal_mailbox: "errorPersonalMailbox",
+  group_address: "errorGroupAddress",
+  provider_switch_unsupported: "errorProviderSwitchUnsupported",
   mailbox_unknown: "errorMailboxUnknown",
   mail_channels_off: "errorMailChannelsOff",
   mailbox_exists: "errorMailboxExists",
@@ -29,13 +31,15 @@ const messages: Record<string, string> = {
  * A channel request's refusal in the reader's language, by the server's code:
  * never the code itself, nor the server's English message. `channel_exists`
  * is an address another channel has, `mailbox_exists` a mailbox another
- * Microsoft 365 channel uses.
+ * channel on the same provider uses. `provider` is the mailbox provider's
+ * name as GET /channel-providers answers it, for the refusals that name it.
  */
 export function channelErrorMessage(
   error: unknown,
   t: Translate,
   locale: string,
   fallback = "errorChannelNotSaved",
+  provider = "",
 ): ReactNode {
   const code = codeOf(error);
   if (statusOf(error) === 429) return t("errorRateLimited");
@@ -49,5 +53,5 @@ export function channelErrorMessage(
       </>
     );
   const key = code ? messages[code] : undefined;
-  return t(key ?? fallback);
+  return t(key ?? fallback, { provider });
 }

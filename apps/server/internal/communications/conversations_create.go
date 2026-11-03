@@ -290,14 +290,17 @@ func (s *server) PostCommunicationsConversations(ctx context.Context, req gen.Po
 	sendAs := "channel"
 	var fromAddress *string
 	var fromDisplayName *string
+	// sendProvider is the PersonalMailbox the message is sent through (G3),
+	// written with fromAddress.
+	var sendProvider *string
 	if sendFromPersonal {
-		status, err := personalMailStatus(ctx, personalMailboxFor(s.deps, providerEntra))
+		status, err := personalMailStatus(ctx, s.deps)
 		if err != nil {
 			return nil, err
 		}
 		if !status.Available {
 			return gen.PostCommunicationsConversations409JSONResponse(flatErrorBody(
-				"connection_needed", "Your personal Outlook connection is not available. Please connect or reconnect Outlook before sending from your address.")), nil
+				"connection_needed", personalConnectionNeeded(status))), nil
 		}
 		if mailEstimate(nil, body.TextBody, body.HtmlBody) > contracts.MaxPersonalMessageBytes {
 			return gen.PostCommunicationsConversations422JSONResponse(flatErrorBody(
@@ -305,6 +308,7 @@ func (s *server) PostCommunicationsConversations(ctx context.Context, req gen.Po
 		}
 		sendAs = "personal"
 		fromAddress = apicommon.Ptr(status.Address)
+		sendProvider = apicommon.Ptr(status.Provider)
 		if s.deps.Users != nil {
 			u, err := s.deps.Users.User(ctx, caller)
 			if err != nil {
@@ -329,7 +333,7 @@ func (s *server) PostCommunicationsConversations(ctx context.Context, req gen.Po
 		if _, err := txq.InsertConversationMessage(ctx, store.InsertConversationMessageParams{
 			ID: messageID, ConversationID: conversationID, Direction: "outbound", AuthorUserID: &caller,
 			Subject: body.Subject, TextBody: body.TextBody, HtmlBody: body.HtmlBody, OccurredAt: now, CreatedAt: now,
-			RfcMessageID: &rfcMessageID, SendAs: sendAs, FromAddress: fromAddress, FromDisplayName: fromDisplayName,
+			RfcMessageID: &rfcMessageID, SendAs: sendAs, FromAddress: fromAddress, FromDisplayName: fromDisplayName, SendProvider: sendProvider,
 		}); err != nil {
 			return err
 		}

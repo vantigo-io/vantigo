@@ -185,7 +185,7 @@ func (s *server) PatchCommunicationsConversationsById(ctx context.Context, req g
 			if cerr != nil && !errors.Is(cerr, pgx.ErrNoRows) {
 				return fmt.Errorf("communications: get conversation channel: %w", cerr)
 			}
-			if cerr == nil && ch.Provider == providerEntra {
+			if cerr == nil && isMailboxProvider(ch.Provider) {
 				ms, serr := channelSettingsOf(ch.Settings)
 				if serr != nil {
 					return serr

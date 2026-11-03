@@ -77,6 +77,8 @@ export type PersonalSender = {
   errorCode: string | null;
   address: string | null;
   displayName: string | null;
+  /** The personal mailbox provider's name ("Outlook"), for "Send from my address". */
+  providerDisplayName?: string | null;
 };
 export type ConversationListItem = {
   id: string;

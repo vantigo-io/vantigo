@@ -21,7 +21,7 @@ import {
 import type { ConnectionButtonProps } from "../components/ConversationComposer";
 import { ConversationList } from "../components/ConversationList";
 import { ConversationThread } from "../components/ConversationThread";
-import { returnHere } from "../components/conversationHelpers";
+import { personalSenderLabel, returnHere } from "../components/conversationHelpers";
 import { InboxFilters, type InboxSearch } from "../components/InboxFilters";
 import "../i18n";
 import "../styles.css";
@@ -183,7 +183,7 @@ export function InboxPage({ connectionButton }: InboxPageProps = {}) {
           {personalSender?.available && (
             <Checkbox
               size="xs"
-              label={t("sendFromPersonal", { address: personalSender.address ?? "" })}
+              label={personalSenderLabel(t, personalSender)}
               checked={sendFromPersonal}
               onChange={(e) => setSendFromPersonal(e.currentTarget.checked)}
             />

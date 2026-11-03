@@ -138,6 +138,8 @@ type CommunicationsConversationMessage struct {
 	SendAs               string
 	FromAddress          *string
 	FromDisplayName      *string
+	SendProvider         *string
+	SentMessageID        *string
 }
 
 type CommunicationsConversationParticipant struct {
