@@ -751,8 +751,11 @@ type SpotPriceSummaryBucket struct {
 // SupplyPeriodResponse A supply period. cadence (energy consumption billing design D4) is always sent; tariffId and tariffName (D3) are sent when the period has a power tariff and left out when it has none. The schema leaves all three optional because the recorded .NET exchanges predate them.
 type SupplyPeriodResponse struct {
 	// Cadence monthly, quarterly or yearly.
-	Cadence         *string    `json:"cadence,omitempty"`
-	CustomerId      int32      `json:"customerId"`
+	Cadence    *string `json:"cadence,omitempty"`
+	CustomerId int32   `json:"customerId"`
+
+	// CustomerName The customer's name, read through the customers module. Sent by GET /energy/metering-points/{id}/supply-periods only, and left out when the customers module cannot name the customer.
+	CustomerName    *string    `json:"customerName,omitempty"`
 	End             *time.Time `json:"end"`
 	Id              int32      `json:"id"`
 	MeteringPointId int32      `json:"meteringPointId"`

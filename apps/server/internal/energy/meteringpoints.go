@@ -369,25 +369,28 @@ func (s *server) GetEnergyMeteringPoints(ctx context.Context, req gen.GetEnergyM
 }
 
 // currentCustomerNames is every customer a page of points supplies now,
-// through the directory in one read; empty with no directory composed, and
-// a customer the directory does not hold is simply absent.
+// named through the directory (directoryCustomerNames).
 func (s *server) currentCustomerNames(ctx context.Context, rows []store.ListMeteringPointsRow) (map[int32]string, error) {
-	names := map[int32]string{}
-	if s.deps.Directory == nil {
-		return names, nil
-	}
 	var ids []int32
 	for _, r := range rows {
 		if r.CurrentCustomerID != nil {
 			ids = append(ids, *r.CurrentCustomerID)
 		}
 	}
-	if len(ids) == 0 {
+	return s.directoryCustomerNames(ctx, ids)
+}
+
+// directoryCustomerNames names the customers ids hold, through the directory
+// in one read; empty with no directory composed or no id, and a customer the
+// directory does not hold is simply absent.
+func (s *server) directoryCustomerNames(ctx context.Context, ids []int32) (map[int32]string, error) {
+	names := map[int32]string{}
+	if s.deps.Directory == nil || len(ids) == 0 {
 		return names, nil
 	}
 	entries, err := s.deps.Directory.Customers(ctx, ids)
 	if err != nil {
-		return nil, fmt.Errorf("energy: name the metering points' customers: %w", err)
+		return nil, fmt.Errorf("energy: name the customers: %w", err)
 	}
 	for _, e := range entries {
 		names[e.ID] = e.Name

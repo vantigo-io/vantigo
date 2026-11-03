@@ -199,7 +199,8 @@ func supplyTermsRefusal(terms supplyTerms, t *store.GetTariffForShareRow, cadenc
 // (GET /api/v1/energy/metering-points/{id}/supply-periods)
 //
 // GetSupplyPeriodsEndpoint.cs:11-18: existence (404) -> every period for
-// the point, ordered by Start.
+// the point, ordered by Start, each naming its customer through the
+// directory, read once for the whole list.
 func (s *server) GetEnergyMeteringPointsByIdSupplyPeriods(ctx context.Context, req gen.GetEnergyMeteringPointsByIdSupplyPeriodsRequestObject) (gen.GetEnergyMeteringPointsByIdSupplyPeriodsResponseObject, error) {
 	q := store.New(s.deps.Pool)
 	exists, err := q.MeteringPointExists(ctx, req.Id)
@@ -221,9 +222,19 @@ func (s *server) GetEnergyMeteringPointsByIdSupplyPeriods(ctx context.Context, r
 	if err != nil {
 		return nil, err
 	}
+	customerIDs := make([]int32, 0, len(rows))
+	for _, r := range rows {
+		customerIDs = append(customerIDs, r.CustomerID)
+	}
+	customers, err := s.directoryCustomerNames(ctx, customerIDs)
+	if err != nil {
+		return nil, err
+	}
 	data := make([]gen.SupplyPeriodResponse, 0, len(rows))
 	for _, r := range rows {
-		data = append(data, supplyPeriodResponseOf(r, names))
+		item := supplyPeriodResponseOf(r, names)
+		item.CustomerName = nameOf(customers, &r.CustomerID)
+		data = append(data, item)
 	}
 	return gen.GetEnergyMeteringPointsByIdSupplyPeriods200JSONResponse(data), nil
 }

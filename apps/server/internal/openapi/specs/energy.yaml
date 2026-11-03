@@ -1332,6 +1332,10 @@ components:
                 customerId:
                     format: int32
                     type: integer
+                customerName:
+                    description: The customer's name, read through the customers module. Sent by GET /energy/metering-points/{id}/supply-periods only, and left out when the customers module cannot name the customer.
+                    nullable: true
+                    type: string
                 end:
                     format: date-time
                     nullable: true

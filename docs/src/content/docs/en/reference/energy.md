@@ -77,6 +77,10 @@ races past the pre-check meets the constraint and is a generic `409`. Every writ
 the metering point, so concurrent writers on one point go through the constraint one
 at a time.
 
+- **List** (`GET …/supply-periods`) — the point's periods by `start`, each with its
+  **`customerName`**, read for the whole list in one `CustomerDirectory.Customers`
+  call; it is left out when no directory is composed or the directory does not hold
+  the customer. The writes below answer the period without it.
 - **Create** (`POST …/supply-periods`) — `customerId` > 0, a UTC `start` (a body
   without one is a `400` on `start`, *"Start is required."* — the router does not
   enforce the contract's required fields), the point

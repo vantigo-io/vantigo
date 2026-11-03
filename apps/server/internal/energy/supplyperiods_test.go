@@ -55,6 +55,19 @@ func TestGetSupplyPeriods_ListsOrderedByStart(t *testing.T) {
 	if periods[0].CustomerId != 1001 || periods[1].CustomerId != 1002 {
 		t.Errorf("periods = %+v, want the earlier-start period (customer 1001) first", periods)
 	}
+	for _, p := range periods {
+		if p.CustomerName == nil || *p.CustomerName != "Test customer" {
+			t.Errorf("period %d customerName = %v, want the directory's name", p.Id, p.CustomerName)
+		}
+	}
+
+	// A customer the directory does not hold (gone since) leaves the name out.
+	h.Exec(t, `UPDATE energy.supply_periods SET customer_id = 9999 WHERE id = $1`, earlyPeriod.Id)
+	periods = nil
+	c.Do(http.MethodGet, fmt.Sprintf("/api/v1/energy/metering-points/%d/supply-periods", point.Id), nil).JSON(&periods)
+	if periods[0].CustomerName != nil {
+		t.Errorf("an unknown customer's name = %q, want it left out", *periods[0].CustomerName)
+	}
 }
 
 func TestGetSupplyPeriods_NotFound(t *testing.T) {
