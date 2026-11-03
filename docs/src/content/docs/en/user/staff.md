@@ -659,8 +659,8 @@ The **Microsoft Entra ID** card shows the person's account in the directory — 
 account in the directory yet: Staff has not created or found one for this person.*:
 
 - **State** — *Being prepared — Staff asked the directory to create or find the
-  account*, *Enabled*, *Disabled*, *Deleted — restorable in the directory for thirty
-  days*, *Failed* or *Blocked*.
+  account*, *Enabled*, *Disabled*, *Deleted — the directory may keep it restorable for
+  a while*, *Failed* or *Blocked*.
 - **User principal name** — the name the person signs in to Microsoft with, once Entra
   has made the account — and **Enabled since** while it is enabled, or **Last brought in
   line** while it is not.
@@ -1510,6 +1510,18 @@ type is counted only for `staff:personal-data`:
 | The group … is not in sync with its directory | A group could not be kept in the directory — a setting the directory refused, a group there holding its key that Vantigo may not change, or a directory that could not be reached three times in a row; the group's page says why. One per group and directory, for HR. | The group |
 | Microsoft Entra ID refused the photo of … | Entra ID would not take the person's picture — HR's photo, or the person's own when HR has set none. Nothing is needed for sign-in; set another photo to try again. For HR. | The person's Account tab |
 
+**Accounts held up in the directory.** For HR, the dashboard also says when a person's
+account in the company's directory is held up, naming the person and opening their
+Account tab: *Two accounts in the directory hold …'s employee number*, *…'s work email
+is another account's in the directory*, *The directory holds an account under …'s
+employee number that Vantigo did not create* — confirm it on the provider's page under
+**Integrations**, which the item opens — *…'s account holds an administrative role in
+the directory*, and *…'s manager has no account in the directory*. When the provider
+itself needs you, one item per provider names it and opens the Staff settings: *2
+people's accounts wait: Microsoft Entra ID is not connected*, *… Microsoft Entra ID's
+last check failed*, *Microsoft Entra ID's credential ends within 30 days* or *… has
+expired*.
+
 An item goes away when what it asks for is done. A threshold's item stays until HR
 acknowledges the threshold — once, for good — under [Thresholds](#thresholds) in the
 Staff settings.
@@ -1883,16 +1895,17 @@ identity's **Roles & access** page, where an Owner names them under **Roles Staf
 may give**.
 
 - **Default account kind** — the account kind a new person gets: **Local**,
-  **External identity provider** or, when the Entra module is installed, **Microsoft
-  Entra ID**. People already registered keep theirs; change them one by one on their
+  **External identity provider** or one of the directory providers an enabled module
+  offers, by its name — **Microsoft Entra ID** when the Entra module is installed. People already registered keep theirs; change them one by one on their
   Account tab. On the upgrade that brought the kinds, it was set from the installation:
   Local, or External identity provider where single sign-on was on.
 - **Prepare the account (days before)** — how many days before the account's day
   Staff creates the user, disabled: 0 to 90, 14 unless changed.
 - **Delete an external account (days after the end)** — how many days after the last
   employment ended Staff deletes the person's account in Entra, once it is disabled and
-  no legal hold is on the person: 1 to 3650, or empty for never. Entra keeps a deleted
-  account restorable for thirty days. The same days after a [group](#groups) is
+  no legal hold is on the person: 1 to 3650, or empty for never. The provider may keep a
+  deleted account restorable for a while — Microsoft Entra ID for 30 days, Google
+  Workspace for 20. The same days after a [group](#groups) is
   archived, or Microsoft Entra ID turned off for it, the group is deleted in Entra — a
   security group is emptied and kept instead, and one Vantigo did not make is left, as
   [Groups](#groups) says; empty, it is renamed “… (archived)” and kept.
