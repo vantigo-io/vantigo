@@ -78,6 +78,21 @@ func (s *server) catalogLookupCode(ctx context.Context, code string) ([]contract
 	return s.deps.Products.LookupCode(ctx, code)
 }
 
+// catalogLookupSKUs is the opening-balance import's SKU resolution, every
+// SKU of the file in one call, before any transaction.
+func (s *server) catalogLookupSKUs(ctx context.Context, skus []string) (map[string][]contracts.VariantEntry, error) {
+	if len(skus) == 0 {
+		return nil, nil
+	}
+	if err := noteContractCall(ctx, "Products.LookupSKUs"); err != nil {
+		return nil, err
+	}
+	if s.deps.Products == nil {
+		return nil, errDependencyUnavailable
+	}
+	return s.deps.Products.LookupSKUs(ctx, skus)
+}
+
 // catalogSearchVariants is the line editor's picker (I22), before any
 // transaction.
 func (s *server) catalogSearchVariants(ctx context.Context, q string, limit int) ([]contracts.VariantEntry, error) {

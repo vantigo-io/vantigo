@@ -23,12 +23,14 @@ type fakeCatalog struct {
 	variants map[int32]contracts.VariantEntry
 	locks    [][]int32
 	err      error
+	// lookups counts the LookupCode and LookupSKUs calls, by method.
+	lookups map[string]int
 }
 
 var _ contracts.ProductCatalog = (*fakeCatalog)(nil)
 
 func newFakeCatalog() *fakeCatalog {
-	return &fakeCatalog{variants: map[int32]contracts.VariantEntry{}}
+	return &fakeCatalog{variants: map[int32]contracts.VariantEntry{}, lookups: map[string]int{}}
 }
 
 // seed adds or replaces variants.
@@ -62,6 +64,14 @@ func (c *fakeCatalog) lockCalls() [][]int32 {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return slices.Clone(c.locks)
+}
+
+// lookupCalls is how many times method — "LookupCode" or "LookupSKUs" —
+// has been called.
+func (c *fakeCatalog) lookupCalls(method string) int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.lookups[method]
 }
 
 // sorted is the seeded variants by id.
@@ -129,6 +139,7 @@ func (c *fakeCatalog) LookupCode(ctx context.Context, code string) ([]contracts.
 	lockedContractCalls.note(ctx, "fake Products.LookupCode")
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	c.lookups["LookupCode"]++
 	if c.err != nil {
 		return nil, c.err
 	}
@@ -140,6 +151,28 @@ func (c *fakeCatalog) LookupCode(ctx context.Context, code string) ([]contracts.
 		for _, p := range v.Packagings {
 			if p.Barcode != nil && *p.Barcode == code {
 				out = append(out, contracts.CodeMatch{Variant: v, Packaging: &p})
+			}
+		}
+	}
+	return out, nil
+}
+
+func (c *fakeCatalog) LookupSKUs(ctx context.Context, skus []string) (map[string][]contracts.VariantEntry, error) {
+	lockedContractCalls.note(ctx, "fake Products.LookupSKUs")
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.lookups["LookupSKUs"]++
+	if c.err != nil {
+		return nil, c.err
+	}
+	out := map[string][]contracts.VariantEntry{}
+	for _, sku := range skus {
+		if _, done := out[sku]; done {
+			continue
+		}
+		for _, v := range c.sorted() {
+			if strings.TrimSpace(sku) != "" && strings.EqualFold(v.SKU, strings.TrimSpace(sku)) {
+				out[sku] = append(out[sku], v)
 			}
 		}
 	}

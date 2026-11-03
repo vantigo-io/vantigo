@@ -143,6 +143,11 @@ func (f *forbiddenCatalog) LookupCode(context.Context, string) ([]contracts.Code
 	return nil, nil
 }
 
+func (f *forbiddenCatalog) LookupSKUs(context.Context, []string) (map[string][]contracts.VariantEntry, error) {
+	f.deny("LookupSKUs")
+	return nil, nil
+}
+
 func (f *forbiddenCatalog) SearchVariants(context.Context, string, int) ([]contracts.VariantEntry, error) {
 	f.deny("SearchVariants")
 	return nil, nil

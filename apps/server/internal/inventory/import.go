@@ -173,7 +173,8 @@ func (s *server) ImportInventoryOpeningBalances(ctx context.Context, req gen.Imp
 
 // resolveImport answers every row's outcome and, for the rows that are ok,
 // the engine's lines, each indexed by its place among the file's rows. It
-// reads the catalog once per distinct SKU, before any transaction.
+// reads the catalog once for every distinct SKU together, before any
+// transaction.
 func (s *server) resolveImport(ctx context.Context, siteID int64, file fileimport.File, column map[string]int) ([]gen.InventoryImportRow, []engineLine, error) {
 	cell := func(r fileimport.Record, name string) string {
 		if i := column[name]; i < len(r.Cells) {
@@ -201,21 +202,20 @@ func (s *server) resolveImport(ctx context.Context, siteID int64, file fileimpor
 		id        int32
 		stockable bool
 	}
-	bySKU := map[string]variant{}
+	var distinctSKUs []string
 	for sku := range skus {
-		if sku == "" {
-			continue
+		if sku != "" {
+			distinctSKUs = append(distinctSKUs, sku)
 		}
-		matches, err := s.catalogLookupCode(ctx, sku)
-		if err != nil {
-			return nil, nil, err
-		}
-		for _, m := range matches {
-			if m.Packaging == nil && strings.EqualFold(m.Variant.SKU, sku) {
-				bySKU[sku] = variant{id: m.Variant.ID, stockable: m.Variant.ProductType == productTypeGoods}
-				break
-			}
-		}
+	}
+	found, err := s.catalogLookupSKUs(ctx, distinctSKUs)
+	if err != nil {
+		return nil, nil, err
+	}
+	bySKU := map[string]variant{}
+	for sku, entries := range found {
+		// The first by id, as the lookup by code answered one SKU before.
+		bySKU[sku] = variant{id: entries[0].ID, stockable: entries[0].ProductType == productTypeGoods}
 	}
 
 	rows := make([]gen.InventoryImportRow, 0, len(file.Rows))

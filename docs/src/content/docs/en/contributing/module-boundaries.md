@@ -1482,7 +1482,7 @@ calendar and nothing would read the source. It has no background worker. With `p
 nothing else changes. See [Planning](/en/reference/planning/#contracts-consumed).
 
 **Inventory depends on Products.** It consumes `contracts.ProductCatalog` (products,
-**required**): `Variants`, `VariantsOfProduct`, `LookupCode` and `SearchVariants` on
+**required**): `Variants`, `VariantsOfProduct`, `LookupCode`, `LookupSKUs` and `SearchVariants` on
 the pool, through its accessors in `internal/inventory/contractscalls.go`, **before** a
 transaction opens, and `LockVariants` on the posting's own transaction, first, through
 an accessor of its own (rule 21). Identity's `Deps.Users` gives it the poster's name and

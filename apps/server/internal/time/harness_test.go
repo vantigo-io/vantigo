@@ -622,6 +622,10 @@ func (c *fakeCatalog) LookupCode(context.Context, string) ([]contracts.CodeMatch
 	return nil, nil
 }
 
+func (c *fakeCatalog) LookupSKUs(context.Context, []string) (map[string][]contracts.VariantEntry, error) {
+	return nil, nil
+}
+
 func (c *fakeCatalog) SearchVariants(context.Context, string, int) ([]contracts.VariantEntry, error) {
 	return nil, nil
 }
