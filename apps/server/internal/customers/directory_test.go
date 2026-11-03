@@ -452,6 +452,76 @@ func TestDirectory_CustomersByLegalID_EmptyOrNilInputQueriesNothing(t *testing.T
 	}
 }
 
+// insertIndustryCode writes a registry record holding industryCode for the
+// customer, under organisationNumber: the directory tests below need only the
+// code, so the row is built straight rather than through a refresh.
+func insertIndustryCode(t *testing.T, h *modtest.Harness, customerID int32, organisationNumber, industryCode string) {
+	t.Helper()
+	h.Exec(t, `
+		INSERT INTO customers.customer_registry_records
+			(customer_id, organisation_number, name, industry_code, vat_registered, bankrupt, under_liquidation, under_forced_liquidation, fetched_at)
+		VALUES ($1, $2, 'REGISTRY NAME', $3, true, false, false, false, $4)`,
+		customerID, organisationNumber, industryCode, h.Now())
+}
+
+// TestDirectory_IndustryCodeComesFromTheRegistryRecord proves all three
+// customer lookups carry the industry code of the customer's registry record
+// (energy electricity-tax suggestion design), and that a customer without a
+// record answers an empty code rather than an error.
+func TestDirectory_IndustryCodeComesFromTheRegistryRecord(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	smelter := insertCustomer(t, h, "Finnfjord Smelteverk AS", "active")
+	setLegalIdentity(t, h, smelter, "no", "923609016", "FINNFJORD SMELTEVERK AS")
+	insertIndustryCode(t, h, smelter, "923609016", "24.420")
+	plain := insertCustomer(t, h, "Uten Register AS", "active")
+	dir := newDirectory(t, h)
+
+	one, err := dir.Customer(context.Background(), smelter)
+	if err != nil {
+		t.Fatalf("Customer: %v", err)
+	}
+	if one == nil || one.IndustryCode != "24.420" {
+		t.Errorf("Customer = %+v, want IndustryCode 24.420", one)
+	}
+
+	batch, err := dir.Customers(context.Background(), []int32{smelter, plain})
+	if err != nil {
+		t.Fatalf("Customers: %v", err)
+	}
+	if len(batch) != 2 || batch[0].IndustryCode != "24.420" || batch[1].IndustryCode != "" {
+		t.Errorf("Customers = %+v, want 24.420 then no code", batch)
+	}
+
+	byLegalID, err := dir.CustomersByLegalID(context.Background(), "no", []string{"923609016"})
+	if err != nil {
+		t.Fatalf("CustomersByLegalID: %v", err)
+	}
+	if got := byLegalID["923609016"]; len(got) != 1 || got[0].IndustryCode != "24.420" {
+		t.Errorf("CustomersByLegalID = %+v, want the smelter with IndustryCode 24.420", byLegalID)
+	}
+}
+
+// TestDirectory_IndustryCodeIgnoresAnotherCompanysRecord proves a registry
+// record left behind under an organisation number the customer no longer
+// holds answers no code: a record counts only while it is still the company
+// the legal identity names.
+func TestDirectory_IndustryCodeIgnoresAnotherCompanysRecord(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	id := insertCustomer(t, h, "Nordvest Kraft AS", "active")
+	setLegalIdentity(t, h, id, "no", "923609016", "NORDVEST KRAFT AS")
+	insertIndustryCode(t, h, id, "987654321", "24.420")
+
+	got, err := newDirectory(t, h).Customer(context.Background(), id)
+	if err != nil {
+		t.Fatalf("Customer: %v", err)
+	}
+	if got == nil || got.IndustryCode != "" {
+		t.Errorf("Customer = %+v, want no industry code", got)
+	}
+}
+
 // --- BillingProfile -----------------------------------------------------
 
 // setCustomerType sets a customer's type column directly, bypassing the

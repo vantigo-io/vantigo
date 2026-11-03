@@ -44,7 +44,8 @@ func (d *directory) Customer(ctx context.Context, id int32) (*contracts.Customer
 		return nil, fmt.Errorf("customers: directory customer: %w", err)
 	}
 	return &contracts.CustomerEntry{ID: row.ID, Name: row.Name, Archived: row.Archived,
-		Group: groupEntry(row.GroupID, row.GroupName), MergedInto: row.MergedIntoCustomerID}, nil
+		Group: groupEntry(row.GroupID, row.GroupName), MergedInto: row.MergedIntoCustomerID,
+		IndustryCode: deref(row.IndustryCode)}, nil
 }
 
 // Customers looks up customers by id in one round trip, archived ones
@@ -64,7 +65,8 @@ func (d *directory) Customers(ctx context.Context, ids []int32) ([]contracts.Cus
 	entries := make([]contracts.CustomerEntry, 0, len(rows))
 	for _, row := range rows {
 		entries = append(entries, contracts.CustomerEntry{ID: row.ID, Name: row.Name, Archived: row.Archived,
-			Group: groupEntry(row.GroupID, row.GroupName), MergedInto: row.MergedIntoCustomerID})
+			Group: groupEntry(row.GroupID, row.GroupName), MergedInto: row.MergedIntoCustomerID,
+			IndustryCode: deref(row.IndustryCode)})
 	}
 	return entries, nil
 }
@@ -105,7 +107,8 @@ func (d *directory) CustomersByLegalID(ctx context.Context, country string, ids 
 	}
 	for _, row := range rows {
 		entry := contracts.CustomerEntry{ID: row.ID, Name: row.Name, Archived: row.Archived,
-			Group: groupEntry(row.GroupID, row.GroupName), MergedInto: row.MergedIntoCustomerID}
+			Group: groupEntry(row.GroupID, row.GroupName), MergedInto: row.MergedIntoCustomerID,
+			IndustryCode: deref(row.IndustryCode)}
 		for _, id := range given[deref(row.LegalID)] {
 			result[id] = append(result[id], entry)
 		}

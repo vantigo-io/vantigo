@@ -707,9 +707,12 @@ func (q *Queries) DirectoryContactsByEmail(ctx context.Context, email string) ([
 }
 
 const directoryCustomer = `-- name: DirectoryCustomer :one
-SELECT c.id, c.name, c.status = 'archived' AS archived, c.group_id, g.name AS group_name, c.merged_into_customer_id
+SELECT c.id, c.name, c.status = 'archived' AS archived, c.group_id, g.name AS group_name, c.merged_into_customer_id,
+       r.industry_code
 FROM customers.customers c
 LEFT JOIN customers.customer_groups g ON g.id = c.group_id
+LEFT JOIN customers.customer_registry_records r
+       ON r.customer_id = c.id AND r.organisation_number = c.legal_id
 WHERE c.id = $1
 `
 
@@ -720,6 +723,7 @@ type DirectoryCustomerRow struct {
 	GroupID              *uuid.UUID
 	GroupName            *string
 	MergedIntoCustomerID *int32
+	IndustryCode         *string
 }
 
 // DirectoryCustomer is contracts.CustomerDirectory.Customer's row
@@ -731,6 +735,12 @@ type DirectoryCustomerRow struct {
 // The merge marker comes along too (customers merge design D3,
 // contracts.CustomerEntry.MergedInto): a consumer holding the id of a
 // customer merged away learns where it went.
+// The industry code of its registry record comes along the same way
+// (contracts.CustomerEntry.IndustryCode, energy electricity-tax suggestion
+// design): NULL when the customer has no record or the record no code. A
+// record counts only while it is still the company the legal identity names
+// (registry fix round 2, C2), so one left behind by a changed organisation
+// number answers no code rather than another company's.
 func (q *Queries) DirectoryCustomer(ctx context.Context, id int32) (DirectoryCustomerRow, error) {
 	row := q.db.QueryRow(ctx, directoryCustomer, id)
 	var i DirectoryCustomerRow
@@ -741,14 +751,18 @@ func (q *Queries) DirectoryCustomer(ctx context.Context, id int32) (DirectoryCus
 		&i.GroupID,
 		&i.GroupName,
 		&i.MergedIntoCustomerID,
+		&i.IndustryCode,
 	)
 	return i, err
 }
 
 const directoryCustomers = `-- name: DirectoryCustomers :many
-SELECT c.id, c.name, c.status = 'archived' AS archived, c.group_id, g.name AS group_name, c.merged_into_customer_id
+SELECT c.id, c.name, c.status = 'archived' AS archived, c.group_id, g.name AS group_name, c.merged_into_customer_id,
+       r.industry_code
 FROM customers.customers c
 LEFT JOIN customers.customer_groups g ON g.id = c.group_id
+LEFT JOIN customers.customer_registry_records r
+       ON r.customer_id = c.id AND r.organisation_number = c.legal_id
 WHERE c.id = ANY($1::int[])
 ORDER BY c.id
 `
@@ -760,6 +774,7 @@ type DirectoryCustomersRow struct {
 	GroupID              *uuid.UUID
 	GroupName            *string
 	MergedIntoCustomerID *int32
+	IndustryCode         *string
 }
 
 // DirectoryCustomers is contracts.CustomerDirectory.Customers' rows: every
@@ -770,7 +785,7 @@ type DirectoryCustomersRow struct {
 // only exists once, so the result never repeats a customer; an id nobody has
 // is simply absent, not an error. Ordered by id, not by @ids' own order, so
 // two callers asking for the same set always see it the same way. The group
-// columns are DirectoryCustomer's own, joined the same way.
+// and industry-code columns are DirectoryCustomer's own, joined the same way.
 func (q *Queries) DirectoryCustomers(ctx context.Context, ids []int32) ([]DirectoryCustomersRow, error) {
 	rows, err := q.db.Query(ctx, directoryCustomers, ids)
 	if err != nil {
@@ -787,6 +802,7 @@ func (q *Queries) DirectoryCustomers(ctx context.Context, ids []int32) ([]Direct
 			&i.GroupID,
 			&i.GroupName,
 			&i.MergedIntoCustomerID,
+			&i.IndustryCode,
 		); err != nil {
 			return nil, err
 		}
@@ -799,9 +815,12 @@ func (q *Queries) DirectoryCustomers(ctx context.Context, ids []int32) ([]Direct
 }
 
 const directoryCustomersByLegalID = `-- name: DirectoryCustomersByLegalID :many
-SELECT c.id, c.legal_id, c.name, c.status = 'archived' AS archived, c.group_id, g.name AS group_name, c.merged_into_customer_id
+SELECT c.id, c.legal_id, c.name, c.status = 'archived' AS archived, c.group_id, g.name AS group_name, c.merged_into_customer_id,
+       r.industry_code
 FROM customers.customers c
 LEFT JOIN customers.customer_groups g ON g.id = c.group_id
+LEFT JOIN customers.customer_registry_records r
+       ON r.customer_id = c.id AND r.organisation_number = c.legal_id
 WHERE c.legal_country = $1::text AND c.legal_id = ANY($2::text[])
 ORDER BY c.id
 `
@@ -819,6 +838,7 @@ type DirectoryCustomersByLegalIDRow struct {
 	GroupID              *uuid.UUID
 	GroupName            *string
 	MergedIntoCustomerID *int32
+	IndustryCode         *string
 }
 
 // DirectoryCustomersByLegalID is contracts.CustomerDirectory.CustomersByLegalID's
@@ -849,6 +869,7 @@ func (q *Queries) DirectoryCustomersByLegalID(ctx context.Context, arg Directory
 			&i.GroupID,
 			&i.GroupName,
 			&i.MergedIntoCustomerID,
+			&i.IndustryCode,
 		); err != nil {
 			return nil, err
 		}
