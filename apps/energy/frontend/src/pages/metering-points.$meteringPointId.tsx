@@ -6,7 +6,6 @@ import { useMutation, useQuery, useQueryClient, useSuspenseQuery } from "@tansta
 import { Link, useParams } from "@tanstack/react-router";
 import { EmptyState, PageHeader, useI18n } from "@vantigo/frontend-shell";
 import { Fragment, useState } from "react";
-import { customersQueryOptions } from "../api/customers";
 import {
   billingFacts,
   type ConsumptionResolution,
@@ -71,7 +70,6 @@ export const MeteringPointDetailsPage = ({
   const [resolution, setResolution] = useState<ConsumptionResolution>("day");
   const { data: consumption } = useQuery(consumptionQueryOptions(meteringPointId, from, to));
   const { data: aggregates } = useQuery(consumptionAggregateQueryOptions(meteringPointId, { from, to, resolution }));
-  const { data: customers } = useQuery(customersQueryOptions());
   const [editState, setEditState] = useState<MeteringPointModalState | null>(null);
   const [supplyPeriodModalOpen, setSupplyPeriodModalOpen] = useState(false);
   const [readingOpen, setReadingOpen] = useState(false);
@@ -85,8 +83,7 @@ export const MeteringPointDetailsPage = ({
       void client.invalidateQueries({ queryKey: ["energy", "metering-points", meteringPointId, "supply-periods"] }),
     onError: (error) => notifications.show({ color: "red", title: t("couldNotEndPeriod"), message: error.message }),
   });
-  const customerName = (id: number) =>
-    customers?.data.find((customer) => customer.id === id)?.name ?? t("customerNumber", { id });
+  const customerName = (period: SupplyPeriod) => period.customerName ?? t("customerNumber", { id: period.customerId });
   const supplyPeriodDate = (value: string | null | undefined) =>
     value ? formatters.formatDate(value, { dateStyle: "medium", timeZone: MARKET_TIME_ZONE }) : t("openEnded");
   const meterTimestamp = (value: string | null | undefined) =>
@@ -263,10 +260,10 @@ export const MeteringPointDetailsPage = ({
                     <Table.Td>
                       {canOpenCustomers ? (
                         <Anchor component={Link} to={`/customers/${period.customerId}`}>
-                          {customerName(period.customerId)}
+                          {customerName(period)}
                         </Anchor>
                       ) : (
-                        customerName(period.customerId)
+                        customerName(period)
                       )}
                     </Table.Td>
                     <Table.Td>{supplyPeriodDate(period.start)}</Table.Td>

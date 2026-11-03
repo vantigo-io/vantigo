@@ -55,6 +55,7 @@ type supplyPeriodJSON struct {
 	Id              int32      `json:"id"`
 	MeteringPointId int32      `json:"meteringPointId"`
 	CustomerId      int32      `json:"customerId"`
+	CustomerName    *string    `json:"customerName"`
 	Start           time.Time  `json:"start"`
 	End             *time.Time `json:"end"`
 	Status          string     `json:"status"`

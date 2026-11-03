@@ -119,6 +119,8 @@ export interface SupplyPeriod {
   id: number;
   meteringPointId: number;
   customerId: number;
+  /** Sent by the point's list of periods only; left out when the customers module cannot name the customer. */
+  customerName?: string | null;
   start: string;
   end?: string | null;
   status: SupplyPeriodStatus;

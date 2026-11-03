@@ -34,6 +34,7 @@ const periods: SupplyPeriod[] = [
     id: 5,
     meteringPointId: 7,
     customerId: 1002,
+    customerName: "Kari Nordmann",
     start: "2026-01-01T00:00:00Z",
     end: null,
     status: "Active",
@@ -49,8 +50,6 @@ const renderPage = async (point: MeteringPoint, canViewSettlements = false, canO
     const url = String(input);
     if (url === "/api/v1/energy/metering-points/7") return json(point);
     if (url.endsWith("/supply-periods")) return json(periods);
-    if (url.startsWith("/api/v1/customers"))
-      return json({ data: [{ id: 1002, name: "Kari Nordmann" }], pagination: {} });
     return json([]);
   });
   render(

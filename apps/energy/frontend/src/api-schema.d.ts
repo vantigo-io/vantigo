@@ -1331,6 +1331,8 @@ export interface components {
             cadence?: string;
             /** Format: int32 */
             customerId: number;
+            /** @description The customer's name, read through the customers module. Sent by GET /energy/metering-points/{id}/supply-periods only, and left out when the customers module cannot name the customer. */
+            customerName?: string | null;
             /** Format: date-time */
             end: string | null;
             /** Format: int32 */
