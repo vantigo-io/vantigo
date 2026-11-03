@@ -38,8 +38,8 @@ import (
 // The person's account kind travels on the call (AccountSpec.Kind,
 // ActivateOpts.Kind; Entra design D5, plan reading 1) and decides what
 // Prepare creates, what Activate gives and invites and what Update writes:
-// local is the local path whole; external and entra are link-only, entra
-// also given the provisioning roles once (users.provisioning_roles_at, plan
+// local is the local path whole; external and a provider's kind (entra,
+// say: contracts.IsProviderKind) are link-only, a provider's kind also given the provisioning roles once (users.provisioning_roles_at, plan
 // reading 3). A call naming no kind reads it from the mode (kindOf), as the
 // previous release's caller expects. The announced account, Expect and
 // Unexpect, is expected_accounts.go's.
@@ -110,7 +110,8 @@ func validSpec(s contracts.AccountSpec, full bool) (cleanSpec, error) {
 
 // kindOf is the account kind a call acts by: kind when it names one, else
 // the mode's — AccountKindLocal in local mode, AccountKindExternal in
-// federated. A kind that is none of the three is errInvalidSpec.
+// federated. A kind that is not valid (contracts.ValidAccountKind: local,
+// external or a provider's key) is errInvalidSpec.
 func kindOf(kind, mode string) (string, error) {
 	switch {
 	case kind == "" && mode == contracts.AccountModeLocal:
@@ -362,9 +363,9 @@ type staffPreparedAudit struct {
 // user holding the number who is not Staff-managed is
 // ErrEmployeeNumberTaken; a managed Owner or SystemAdmin is
 // ErrAccountPrivileged; a found user is answered as they are (Update
-// changes them). For the external and entra kinds nobody holding the number
-// is ErrAccountNotFound — the provider has not created the user yet, or, for
-// entra, the announcement (Expect) has not been fulfilled. For the local
+// changes them). For the external and provider kinds nobody holding the
+// number is ErrAccountNotFound — the provider has not created the user yet,
+// or, for a provider's kind, the announcement (Expect) has not been fulfilled. For the local
 // kind another user holding the address,
 // compared normalized, is ErrAccountEmailTaken; otherwise the user is
 // created Staff-managed, pending, disabled by Staff, without a credential or
@@ -487,7 +488,7 @@ func (p *provisioning) Prepare(ctx context.Context, actor contracts.Actor, spec 
 // For the external kind, a user disabled by Staff is re-enabled; nothing
 // else is given, issued or changed.
 //
-// For the entra kind, a user disabled by Staff is re-enabled, and the first
+// For a provider's kind (contracts.IsProviderKind), a user disabled by Staff is re-enabled, and the first
 // call for the user — provisioning_roles_at still null — gives them the roles
 // Staff may give as the local kind does (ErrEmployeeRoleMissing,
 // ErrEmployeeRoleUnsafe) and records it, whether the user was disabled or
@@ -524,7 +525,7 @@ func (p *provisioning) Activate(ctx context.Context, actor contracts.Actor, user
 			return err
 		}
 		changed := false
-		if local && u.IsDisabled || kind == contracts.AccountKindEntra && u.ProvisioningRolesAt == nil {
+		if local && u.IsDisabled || contracts.IsProviderKind(kind) && u.ProvisioningRolesAt == nil {
 			roles, err := q.LockProvisioningRoleIDs(ctx)
 			if err != nil {
 				return err
@@ -748,7 +749,7 @@ type staffUpdatedAudit struct {
 // address replaced (named in the audit; an open Owner-role one refuses the
 // address, replaceInvitationsTo), and starts a new invitation spell (the next
 // Activate invites at the new address). A managed Owner or SystemAdmin is
-// ErrAccountPrivileged. For the external and entra kinds the language and
+// ErrAccountPrivileged. For the external and provider kinds the language and
 // the employee number only. A number another user holds, by its key, is
 // ErrEmployeeNumberTaken. A change is audited user.staff-updated; the same
 // values again change nothing.

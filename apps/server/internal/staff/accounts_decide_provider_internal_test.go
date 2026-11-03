@@ -162,7 +162,7 @@ func TestDecideProvider(t *testing.T) {
 	} {
 		in := providerDecision{
 			Person: accountPersonFacts{
-				Kind: contracts.AccountKindEntra, Flag: true, EmployeeNumber: "A-1",
+				Kind: "entra", Flag: true, EmployeeNumber: "A-1",
 				Employments: []decideEmployment{span("2026-10-01", "")},
 			},
 			Status: contracts.ProviderConnected, CreateBeforeDays: 14, Today: day(t, "2026-10-18"),

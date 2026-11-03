@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/staff/gen"
@@ -53,18 +54,18 @@ func TestAccountAttention_EveryWorkerReasonIsMapped(t *testing.T) {
 }
 
 // Every code a provider may report on its link (contracts.Reported*) and
-// Staff's own manager_not_in_entra raises its item — a licence's whatever
+// Staff's own manager_not_in_directory raises its item — a licence's whatever
 // its SKU — but pass_not_allowed, which the Account tab says beside the
 // pass; and every status the worker records raises its installation item.
 func TestAccountAttention_EveryProviderCodeIsMapped(t *testing.T) {
 	for code, want := range map[string]gen.StaffStatsAttentionItemType{
 		contracts.ReportedHireDateNotWritten:                 gen.HireDateNotWritten,
-		contracts.ReportedPrivileged:                         gen.AccountPrivilegedInEntra,
+		contracts.ReportedPrivileged:                         gen.AccountPrivilegedInDirectory,
 		contracts.ReportedLicenceUnavailable:                 gen.LicenceUnavailable,
 		contracts.ReportedLicenceUnavailable + ":ENTERPRISE": gen.LicenceUnavailable,
-		contracts.ReportedManagerNotFound:                    gen.ManagerNotInEntra,
+		contracts.ReportedManagerNotFound:                    gen.ManagerNotInDirectory,
 		contracts.ReportedPhotoNotWritten:                    gen.PhotoNotWritten,
-		codeManagerNotInEntra:                                gen.ManagerNotInEntra,
+		codeManagerNotInDirectory:                            gen.ManagerNotInDirectory,
 	} {
 		if got, ok := providerCodeItem(code); !ok || got != want {
 			t.Errorf("code %q raises %q (%v), want %q", code, got, ok, want)
@@ -77,21 +78,55 @@ func TestAccountAttention_EveryProviderCodeIsMapped(t *testing.T) {
 		status, reason string
 		want           gen.StaffStatsAttentionItemType
 	}{
-		{contracts.ProviderUnconfigured, "", gen.EntraNotConnected},
-		{contracts.ProviderUnconfigured, "provider_missing", gen.EntraNotConnected},
-		{contracts.ProviderFailing, "credential_invalid", gen.EntraFailing},
-		{contracts.ProviderFailing, "unreachable", gen.EntraFailing},
+		{contracts.ProviderUnconfigured, "", gen.ProviderNotConnected},
+		{contracts.ProviderUnconfigured, "provider_missing", gen.ProviderNotConnected},
+		{contracts.ProviderFailing, "credential_invalid", gen.ProviderFailing},
+		{contracts.ProviderFailing, "unreachable", gen.ProviderFailing},
 		{contracts.ProviderFailing, "secret_expired", gen.SecretExpired},
 		{contracts.ProviderConnected, "secret_expiring", gen.SecretExpiring},
 	} {
 		if got, ok := providerStatusItem(c.status, c.reason); !ok || got != c.want {
 			t.Errorf("status %s/%s raises %q (%v), want %q", c.status, c.reason, got, ok, c.want)
 		}
-		if _, ok := accountInstallationItems[c.want]; !ok {
-			t.Errorf("%q has no installation sentence", c.want)
-		}
 	}
 	if got, ok := providerStatusItem(contracts.ProviderConnected, ""); ok {
 		t.Errorf("a connected provider raises %q, want none", got)
+	}
+}
+
+// The provider items about the installation are one per provider (Google
+// design G6): id <type>/<provider key>, titled with the provider's recorded
+// name — its key when none is recorded — and raised only while people whose
+// flag is on have the provider's kind, counting them.
+func TestAccountAttention_ProviderItemsArePerProvider(t *testing.T) {
+	checked := time.Date(2026, 11, 3, 8, 0, 0, 0, time.UTC)
+	a := accountAttention{
+		providers: map[string]providerStatusSeen{
+			"entra":  {Name: "Microsoft Entra ID", Status: contracts.ProviderFailing, Reason: "credential_invalid", CheckedAt: checked},
+			"google": {Name: "Google Workspace", Status: contracts.ProviderFailing, Reason: "unreachable", CheckedAt: checked},
+			"okta":   {Status: contracts.ProviderUnconfigured, Reason: "provider_missing", CheckedAt: checked},
+			"quiet":  {Name: "Quiet", Status: contracts.ProviderUnconfigured, CheckedAt: checked},
+		},
+		kinds: map[string]int64{"entra": 2, "google": 1, "okta": 3},
+	}
+	got := a.providerItems()
+	want := []struct {
+		id, title string
+		kind      gen.StaffStatsAttentionItemType
+		count     int32
+	}{
+		{"providerFailing/entra", "Microsoft Entra ID", gen.ProviderFailing, 2},
+		{"providerFailing/google", "Google Workspace", gen.ProviderFailing, 1},
+		{"providerNotConnected/okta", "okta", gen.ProviderNotConnected, 3},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("provider items = %+v, want %d", got, len(want))
+	}
+	for i, w := range want {
+		g := got[i]
+		if g.Id != w.id || g.Title != w.title || g.Type != w.kind || g.Count == nil || *g.Count != w.count ||
+			g.EntityId != settingsEntity || !g.OccurredAt.Equal(checked) {
+			t.Errorf("item %d = %+v (count %v), want %+v", i, g, g.Count, w)
+		}
 	}
 }

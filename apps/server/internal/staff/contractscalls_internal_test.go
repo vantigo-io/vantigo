@@ -87,10 +87,10 @@ func (silentAccounts) SetManagedAvatar(context.Context, contracts.Actor, uuid.UU
 // and refusing nothing, under the key "entra".
 type silentProvisioner struct{ contracts.IdentityProvisioner }
 
-func (silentProvisioner) Key() string { return contracts.AccountKindEntra }
+func (silentProvisioner) Key() string { return "entra" }
 
 func (silentProvisioner) Provider(context.Context) (contracts.ProviderInfo, error) {
-	return contracts.ProviderInfo{Key: contracts.AccountKindEntra, Status: contracts.ProviderConnected}, nil
+	return contracts.ProviderInfo{Key: "entra", Status: contracts.ProviderConnected}, nil
 }
 
 func (silentProvisioner) Prepare(context.Context, contracts.Actor, contracts.ExternalSpec) (contracts.ExternalAccount, error) {
@@ -189,7 +189,7 @@ func TestContractCalls_AreReportedAndRefusedInsideATransaction(t *testing.T) {
 		e12 := s.accountsExpect(ctx, system, contracts.ExpectedAccount{EmployeeNumber: "A-1"})
 		e13 := s.accountsUnexpect(ctx, system, "A-1")
 		e13b := s.accountsErase(ctx, system, user)
-		p, _ := s.provisioner(contracts.AccountKindEntra)
+		p, _ := s.provisioner("entra")
 		_, e14 := s.providerInfo(ctx, p)
 		_, e15 := s.providerAccount(ctx, p, "x")
 		_, e16 := s.providerPrepare(ctx, p, system, contracts.ExternalSpec{})
@@ -302,7 +302,7 @@ func TestContractCalls_TheAccountsAccessors(t *testing.T) {
 	}
 	// A provider no enabled module offers: the slot names none, and every
 	// provider accessor answers errProviderUnavailable.
-	if p, ok := none.provisioner(contracts.AccountKindEntra); ok || p != nil {
+	if p, ok := none.provisioner("entra"); ok || p != nil {
 		t.Errorf("provisioner(entra) with an empty slot = %v, %v, want none", p, ok)
 	}
 	if _, err := none.providerInfo(ctx, nil); !errors.Is(err, errProviderUnavailable) {

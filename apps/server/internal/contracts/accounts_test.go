@@ -86,7 +86,7 @@ func TestActor_Valid(t *testing.T) {
 func TestAccountConstants(t *testing.T) {
 	for _, c := range []struct{ got, want string }{
 		{AccountModeLocal, "local"}, {AccountModeFederated, "federated"},
-		{AccountKindLocal, "local"}, {AccountKindExternal, "external"}, {AccountKindEntra, "entra"},
+		{AccountKindLocal, "local"}, {AccountKindExternal, "external"},
 		{AccountStatePending, "pending"}, {AccountStateActive, "active"}, {AccountStateDisabled, "disabled"},
 		{DisabledByOwner, "owner"}, {DisabledByStaff, "staff"}, {DisabledByDirectory, "directory"},
 		{InvitationNone, "none"}, {InvitationActive, "active"}, {InvitationExpired, "expired"},
@@ -100,18 +100,26 @@ func TestAccountConstants(t *testing.T) {
 	}
 }
 
-// TestValidAccountKind admits the three kinds exactly as spelled, and
-// nothing else: not the modes' federated, not another case, not "".
+// TestValidAccountKind admits local, external and any provider kind by its
+// syntax (^[a-z][a-z0-9]{1,9}$, the column being varchar(10)), exactly as
+// spelled; IsProviderKind is a valid kind other than local and external.
 func TestValidAccountKind(t *testing.T) {
 	for _, tc := range []struct {
-		kind string
-		want bool
+		kind            string
+		valid, provider bool
 	}{
-		{"local", true}, {"external", true}, {"entra", true},
-		{"", false}, {"federated", false}, {"Entra", false}, {" local", false}, {"google", false},
+		{"local", true, false}, {"external", true, false},
+		{"entra", true, true}, {"google", true, true}, {"okta2", true, true},
+		{"ab", true, true}, {"abcdefghij", true, true},
+		{"", false, false}, {"a", false, false}, {"abcdefghijk", false, false},
+		{"Entra", false, false}, {" local", false, false}, {"local ", false, false},
+		{"2fa", false, false}, {"my-idp", false, false}, {"my_idp", false, false}, {"ø", false, false},
 	} {
-		if got := ValidAccountKind(tc.kind); got != tc.want {
-			t.Errorf("ValidAccountKind(%q) = %v, want %v", tc.kind, got, tc.want)
+		if got := ValidAccountKind(tc.kind); got != tc.valid {
+			t.Errorf("ValidAccountKind(%q) = %v, want %v", tc.kind, got, tc.valid)
+		}
+		if got := IsProviderKind(tc.kind); got != tc.provider {
+			t.Errorf("IsProviderKind(%q) = %v, want %v", tc.kind, got, tc.provider)
 		}
 	}
 }

@@ -99,6 +99,10 @@ func readProviderFacts(ctx context.Context, q *store.Queries, set store.StaffSet
 
 // providerStatusSeen is a provider's entry in settings.provider_status.
 type providerStatusSeen struct {
+	// Name is the provider's display name as it last answered it, which
+	// the provider's attention items are titled with; "" when no enabled
+	// module offers the provider.
+	Name      string    `json:"name,omitempty"`
 	Status    string    `json:"status"`
 	Reason    string    `json:"reason,omitempty"`
 	CheckedAt time.Time `json:"checkedAt"`
@@ -173,10 +177,17 @@ func (s *server) recordProviderStatuses(ctx context.Context, infos map[string]co
 	}
 	now := s.deps.Clock()
 	for key, info := range infos {
-		if was, ok := recorded[key]; ok && was.Status == info.Status && was.Reason == info.Reason {
+		// A provider that could not be asked answers no name: the one
+		// recorded before is kept.
+		was, ok := recorded[key]
+		name := info.Name
+		if name == "" {
+			name = was.Name
+		}
+		if ok && was.Status == info.Status && was.Reason == info.Reason && was.Name == name {
 			continue
 		}
-		b, err := json.Marshal(providerStatusSeen{Status: info.Status, Reason: info.Reason, CheckedAt: now})
+		b, err := json.Marshal(providerStatusSeen{Name: name, Status: info.Status, Reason: info.Reason, CheckedAt: now})
 		if err != nil {
 			return err
 		}
@@ -329,7 +340,7 @@ func (r *providerResult) setCodes(reported []string, managerMissing bool) {
 
 // reportedCodes is the link's reported_codes: the provider's facts as it
 // reported them, those of providerCodePattern's form alone (dropped: one
-// was not), and manager_not_in_entra once when the manager has no external
+// was not), and manager_not_in_directory once when the manager has no external
 // account, without repeats.
 func reportedCodes(reported []string, managerMissing bool) (codes []string, dropped bool) {
 	codes = make([]string, 0, len(reported)+1)
@@ -342,8 +353,8 @@ func reportedCodes(reported []string, managerMissing bool) (codes []string, drop
 			codes = append(codes, c)
 		}
 	}
-	if managerMissing && !slices.Contains(codes, codeManagerNotInEntra) {
-		codes = append(codes, codeManagerNotInEntra)
+	if managerMissing && !slices.Contains(codes, codeManagerNotInDirectory) {
+		codes = append(codes, codeManagerNotInDirectory)
 	}
 	return codes, dropped
 }

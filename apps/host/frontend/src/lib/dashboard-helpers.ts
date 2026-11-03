@@ -232,14 +232,14 @@ const staffAccountAttentionTypes = [
   "erasureIncomplete",
   // The provider link's (Entra delivery B), read from the person's provider link.
   "accountNotArrived",
-  "accountAmbiguousInEntra",
-  "accountAddressTakenInEntra",
+  "accountAmbiguousInDirectory",
+  "accountAddressTakenInDirectory",
   "accountSyncedOnPremises",
-  "accountPrivilegedInEntra",
+  "accountPrivilegedInDirectory",
   "hireDateNotWritten",
   "licenceUnavailable",
   "passUnrevealed",
-  "managerNotInEntra",
+  "managerNotInDirectory",
   // The photo the directory refused (photo sync design §4), read from the provider link too.
   "photoNotWritten",
 ];
@@ -252,9 +252,9 @@ const staffSettingsAttentionTypes = [
   "employeeRoleMissing",
   "employeeRoleUnsafe",
   "accountModeMismatch",
-  // The identity provider's (Entra delivery B), counted over the people of its kind.
-  "entraNotConnected",
-  "entraFailing",
+  // The identity providers' (Entra delivery B), one per provider, titled with its name and counted over the people of its kind.
+  "providerNotConnected",
+  "providerFailing",
   "secretExpiring",
   "secretExpired",
 ];
@@ -373,8 +373,10 @@ export const attentionHref = (item: { module: ModuleKey; type: string; entityId:
     // HR-only approval its Absence tab; the requests waiting a decision open
     // the Absence page's approvals; the deletion ledger, the thresholds and
     // the accounts' installation items are dealt with in Settings. An
-    // adoption nobody confirmed is confirmed on the Microsoft Entra ID page (its Status tab lists the accounts).
-    if (item.type === "accountUnconfirmedInEntra") return "/workspace/entra";
+    // adoption nobody confirmed is confirmed on the provider's page under
+    // Integrations; the item names no provider, and Microsoft Entra ID's
+    // (its Status tab lists the accounts) is the one there is today.
+    if (item.type === "accountUnconfirmedInDirectory") return "/workspace/entra";
     const person = `/staff/people/${encodeURIComponent(item.entityId)}`;
     if (staffPersonAttentionTypes.includes(item.type)) return person;
     if (staffAccountAttentionTypes.includes(item.type)) return `${person}?tab=account`;
@@ -508,18 +510,18 @@ const staffAttentionTitleKeys: Record<string, string> = {
   employeeRoleUnsafe: "dashboard.staffEmployeeRoleUnsafe",
   accountModeMismatch: "dashboard.staffAccountModeMismatch",
   accountNotArrived: "dashboard.staffAccountNotArrived",
-  accountAmbiguousInEntra: "dashboard.staffAccountAmbiguousInEntra",
-  accountAddressTakenInEntra: "dashboard.staffAccountAddressTakenInEntra",
-  accountUnconfirmedInEntra: "dashboard.staffAccountUnconfirmedInEntra",
+  accountAmbiguousInDirectory: "dashboard.staffAccountAmbiguousInDirectory",
+  accountAddressTakenInDirectory: "dashboard.staffAccountAddressTakenInDirectory",
+  accountUnconfirmedInDirectory: "dashboard.staffAccountUnconfirmedInDirectory",
   accountSyncedOnPremises: "dashboard.staffAccountSyncedOnPremises",
-  accountPrivilegedInEntra: "dashboard.staffAccountPrivilegedInEntra",
+  accountPrivilegedInDirectory: "dashboard.staffAccountPrivilegedInDirectory",
   hireDateNotWritten: "dashboard.staffHireDateNotWritten",
   licenceUnavailable: "dashboard.staffLicenceUnavailable",
   passUnrevealed: "dashboard.staffPassUnrevealed",
-  managerNotInEntra: "dashboard.staffManagerNotInEntra",
+  managerNotInDirectory: "dashboard.staffManagerNotInDirectory",
   photoNotWritten: "dashboard.staffPhotoNotWritten",
-  entraNotConnected: "dashboard.staffEntraNotConnected",
-  entraFailing: "dashboard.staffEntraFailing",
+  providerNotConnected: "dashboard.staffProviderNotConnected",
+  providerFailing: "dashboard.staffProviderFailing",
   secretExpiring: "dashboard.staffSecretExpiring",
   secretExpired: "dashboard.staffSecretExpired",
   groupSyncFailed: "dashboard.staffGroupSyncFailed",

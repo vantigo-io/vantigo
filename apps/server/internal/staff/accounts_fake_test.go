@@ -339,7 +339,7 @@ func (f *fakeAccounts) Prepare(_ context.Context, actor contracts.Actor, spec co
 		}
 	}
 	// A link-only kind finds only, as identity does (contracts.AccountSpec.Kind).
-	if spec.Kind == contracts.AccountKindExternal || spec.Kind == contracts.AccountKindEntra {
+	if spec.Kind == contracts.AccountKindExternal || spec.Kind == "entra" {
 		return contracts.AccountRef{}, contracts.ErrAccountNotFound
 	}
 	ref := contracts.AccountRef{

@@ -46,7 +46,13 @@ import { ApiConflictError, ApiValidationError } from "../api/request";
 import { FieldGroup, Fields } from "../components/field-group";
 import { staffCatalog } from "../i18n";
 import { refusalText } from "../lib/absence";
-import { accountKindsOffered, isProviderKind, useAccountKindText, WORKSPACE_USERS_PATH } from "../lib/accounts";
+import {
+  accountKindName,
+  accountKindsOffered,
+  isProviderKind,
+  useAccountKindText,
+  WORKSPACE_USERS_PATH,
+} from "../lib/accounts";
 import { isRevisionConflict } from "../lib/errors";
 import { useStaffFormat } from "../lib/format";
 import { groupLinkOptions } from "../lib/routes";
@@ -97,11 +103,6 @@ const accountRefusalText = (error: unknown, t: Translate) => {
     .find((one) => `accountReason_${one}` in staffCatalog.en || `providerReason_${one}` in staffCatalog.en);
   return code ? `${words} ${reasonWords(t, code, true)}` : words;
 };
-
-/** The provider's name as `/meta` answers it, else the kind's own name, else its key. */
-const providerName = (t: Translate, key: string, providers: StaffMeta["providers"]) =>
-  providers?.find((provider) => provider.key === key)?.name ??
-  (`accountKindChoice_${key}` in staffCatalog.en ? t(`accountKindChoice_${key}`) : key);
 
 /**
  * The person's Account tab (delivery C, design S22, S27; Entra B, D5, D7,
@@ -197,7 +198,7 @@ const AccountFlagFields = ({ person, account }: { person: StaffPerson; account: 
           [t("provisionAccount"), account.provisionAccount ? t("yes") : t("no")],
           [t("accountFrom"), from],
           [t("accountAddress"), t(`accountEmailKind_${account.accountEmailKind}`)],
-          [t("accountKindChoice"), kindChoice(t, account.accountKind)],
+          [t("accountKindChoice"), accountKindName(t, account.accountKind, undefined)],
         ]}
       />
       {account.provisionAccount && !account.address.present && (
@@ -206,10 +207,6 @@ const AccountFlagFields = ({ person, account }: { person: StaffPerson; account: 
     </Stack>
   );
 };
-
-/** A kind's short name, as the select offers it. */
-const kindChoice = (t: Translate, kind: StaffAccountKind) =>
-  `accountKindChoice_${kind}` in staffCatalog.en ? t(`accountKindChoice_${kind}`) : kind;
 
 interface FlagValues {
   provisionAccount: boolean;
@@ -318,7 +315,7 @@ const AccountFlagForm = ({
           allowDeselect={false}
           data={accountKindsOffered(providers, account.accountKind).map((kind) => ({
             value: kind,
-            label: kindChoice(t, kind),
+            label: accountKindName(t, kind, providers),
           }))}
           {...form.getInputProps("accountKind")}
         />
@@ -366,7 +363,7 @@ const AccountLinkGroup = ({
   erased: boolean;
 }) => {
   const { t, formatters } = useI18n("staff");
-  const kindText = useAccountKindText();
+  const kindText = useAccountKindText(providers);
   const queryClient = useQueryClient();
   const queryKey = personAccountQueryOptions(person.id).queryKey;
   const [outcome, setOutcome] = useState<{ color: string; text: string } | null>(null);
@@ -504,7 +501,7 @@ const AccountLinkGroup = ({
       {providerKind || providerLink ? (
         <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md">
           <LinkCard title={t("vantigoAccount")}>{vantigo}</LinkCard>
-          <LinkCard title={providerName(t, providerLink?.provider ?? account.accountKind, providers)}>
+          <LinkCard title={accountKindName(t, providerLink?.provider ?? account.accountKind, providers)}>
             <ProviderLinkFields
               person={person}
               link={providerLink}

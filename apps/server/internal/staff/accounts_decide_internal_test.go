@@ -342,7 +342,7 @@ func TestDecide_TheProviderKind(t *testing.T) {
 	external := user.String()
 	base := func() accountDecision {
 		return accountDecision{
-			Person: accountPersonFacts{Kind: contracts.AccountKindEntra, Flag: true, EmployeeNumber: "A-1",
+			Person: accountPersonFacts{Kind: "entra", Flag: true, EmployeeNumber: "A-1",
 				Employments: []decideEmployment{{Start: day(t, "2026-10-01")}}},
 			CreateBeforeDays: 14, Today: day(t, "2026-10-18"),
 		}

@@ -751,7 +751,7 @@ describe("Person page — the two links", () => {
     });
     renderRoute("/staff/people/101?tab=account");
     const group = await region("User account");
-    expect(within(group).getByText(/Microsoft Entra ID — Staff creates the person's account/)).toBeInTheDocument();
+    expect(within(group).getByText(/Entra at Fjord — Staff creates the person's account/)).toBeInTheDocument();
     const vantigo = within(group).getByRole("region", { name: "Vantigo" });
     expect(within(vantigo).getByText(/^Active$/)).toBeInTheDocument();
     expect(within(vantigo).getByText("Ada at Fjord")).toBeInTheDocument();
@@ -818,7 +818,11 @@ describe("Person page — the two links", () => {
     ["licence_unavailable", { reportedCodes: ["licence_unavailable:SPE_E3"] }, /none is left\. \(SPE_E3\)/],
     ["privileged", { reportedCodes: ["privileged"] }, /leaves it to an administrator/],
     ["pass_not_allowed", { reportedCodes: ["pass_not_allowed"] }, /does not allow a Temporary Access Pass/],
-    ["manager_not_in_entra", { reportedCodes: ["manager_not_in_entra"] }, /manager has no account in the directory/],
+    [
+      "manager_not_in_directory",
+      { reportedCodes: ["manager_not_in_directory"] },
+      /manager has no account in the directory/,
+    ],
   ];
   it.each(providerWords)("says the provider's %s in words", async (_, overrides, words) => {
     stubStaffApi({ accounts: { 101: entraAccount({ providerLink: entraLink({ hasPass: false, ...overrides }) }) } });

@@ -480,8 +480,8 @@ export const staffCatalog = {
     accountKind_local: "Local account — Staff creates the user and invites the person to choose a password.",
     accountKind_external:
       "External identity provider — the provider owns the account: Staff finds the user by the employee number, enables what it disabled and disables; it never creates a user or invites.",
-    accountKind_entra:
-      "Microsoft Entra ID — Staff creates the person's account in the directory, enables and disables it, and the user arrives in Vantigo managed by Staff, with no Owner in between.",
+    accountKind_provider:
+      "{{name}} — Staff creates the person's account in the directory, enables and disables it, and the user arrives in Vantigo managed by Staff, with no Owner in between.",
     accountKind_unavailable:
       "Accounts are unavailable — no module provides them, or this server's configuration disagrees with the mode identity recorded. Nothing is run until that is fixed.",
     accountNoUser: "No user yet: Staff has not created or found one for this person.",
@@ -574,7 +574,7 @@ export const staffCatalog = {
     createBeforeDaysInvalid: "0 to 90 days",
     deleteExternalAfterDays: "Delete an external account (days after the end)",
     deleteExternalAfterDaysDescription:
-      "How long after the last employment ended Staff deletes the person's account in an identity provider's directory — restorable there for thirty days — once it is disabled and no legal hold is on the person: 1 to 3650 days; empty for never. It also governs a group archived or switched off for a provider: deleted there that many days after, or with never renamed “… (archived)” and kept.",
+      "How long after the last employment ended Staff deletes the person's account in the provider's directory, where the provider may keep it restorable for a while (Microsoft Entra ID 30 days, Google 20), once it is disabled and no legal hold is on the person: 1 to 3650 days; empty for never. It also governs a group archived or switched off for a provider: deleted there that many days after, or with never renamed “… (archived)” and kept.",
     deleteExternalAfterDaysInvalid: "1 to 3650 days, or empty for never",
     saveAccountSettings: "Save the account settings",
     accountSettingsSaved: "The account settings are saved",
@@ -608,7 +608,7 @@ export const staffCatalog = {
     providerLinkState_preparing: "Being prepared — Staff asked the directory to create or find the account",
     providerLinkState_enabled: "Enabled",
     providerLinkState_disabled: "Disabled",
-    providerLinkState_deleted: "Deleted — restorable in the directory for thirty days",
+    providerLinkState_deleted: "Deleted — the directory may keep it restorable for a while",
     providerLinkState_failed: "Failed",
     providerLinkState_blocked: "Blocked",
     userPrincipalName: "User principal name",
@@ -638,7 +638,7 @@ export const staffCatalog = {
     leaverStep_leave_date: "writing the leave date",
     leaverStep_strip_licences: "removing the licences",
     leaverStep_remove_groups: "removing the person from groups",
-    accountReason_manager_not_in_entra:
+    accountReason_manager_not_in_directory:
       "The person's manager has no account in the directory, so the account carries no manager.",
     accountReason_hire_date_not_written: "The directory refused the hire date.",
     accountReason_licence_unavailable: "A licence of the person's groups could not be assigned: none is left.",
@@ -2568,8 +2568,8 @@ export const staffCatalog = {
     accountKind_local: "Lokal konto — Ansatte oppretter brukeren og inviterer personen til å velge et passord.",
     accountKind_external:
       "Ekstern identitetsleverandør — leverandøren eier kontoen: Ansatte finner brukeren på ansattnummeret, aktiverer brukere den selv har deaktivert, og deaktiverer dem; den oppretter aldri en bruker og inviterer aldri.",
-    accountKind_entra:
-      "Microsoft Entra ID — Ansatte oppretter personens konto i katalogen, aktiverer og deaktiverer den, og brukeren kommer til Vantigo styrt av Ansatte, uten en eier imellom.",
+    accountKind_provider:
+      "{{name}} — Ansatte oppretter personens konto i katalogen, aktiverer og deaktiverer den, og brukeren kommer til Vantigo styrt av Ansatte, uten en eier imellom.",
     accountKind_unavailable:
       "Kontoer er ikke tilgjengelige — ingen modul gir dem, eller denne serverens oppsett er uenig med modusen identitet registrerte. Ingenting kjøres før det er rettet.",
     accountNoUser: "Ingen bruker ennå: Ansatte har ikke opprettet eller funnet en for denne personen.",
@@ -2660,7 +2660,7 @@ export const staffCatalog = {
     createBeforeDaysInvalid: "0 til 90 dager",
     deleteExternalAfterDays: "Slett en ekstern konto (dager etter slutt)",
     deleteExternalAfterDaysDescription:
-      "Hvor lenge etter at siste arbeidsforhold sluttet Ansatte sletter personens konto i en identitetsleverandørs katalog — den kan gjenopprettes der i tretti dager — når den er deaktivert og personen ikke har bevaringspålegg: 1 til 3650 dager; tom for aldri. Den gjelder også en gruppe som er arkivert eller slått av for en leverandør: slettet der så mange dager etter, eller med aldri omdøpt til «… (archived)» og beholdt.",
+      "Hvor lenge etter at siste arbeidsforhold sluttet Ansatte sletter personens konto i leverandørens katalog, der leverandøren kan la den kunne gjenopprettes en stund (Microsoft Entra ID 30 dager, Google 20), når den er deaktivert og personen ikke har bevaringspålegg: 1 til 3650 dager; tom for aldri. Den gjelder også en gruppe som er arkivert eller slått av for en leverandør: slettet der så mange dager etter, eller med aldri omdøpt til «… (archived)» og beholdt.",
     deleteExternalAfterDaysInvalid: "1 til 3650 dager, eller tom for aldri",
     saveAccountSettings: "Lagre kontoinnstillingene",
     accountSettingsSaved: "Kontoinnstillingene er lagret",
@@ -2694,7 +2694,7 @@ export const staffCatalog = {
     providerLinkState_preparing: "Forberedes — Ansatte har bedt katalogen opprette eller finne kontoen",
     providerLinkState_enabled: "Aktivert",
     providerLinkState_disabled: "Deaktivert",
-    providerLinkState_deleted: "Slettet — kan gjenopprettes i katalogen i tretti dager",
+    providerLinkState_deleted: "Slettet — katalogen kan la den kunne gjenopprettes en stund",
     providerLinkState_failed: "Mislyktes",
     providerLinkState_blocked: "Stoppet",
     userPrincipalName: "Brukerhovednavn (UPN)",
@@ -2723,7 +2723,7 @@ export const staffCatalog = {
     leaverStep_leave_date: "å skrive sluttdatoen",
     leaverStep_strip_licences: "å fjerne lisensene",
     leaverStep_remove_groups: "å fjerne personen fra grupper",
-    accountReason_manager_not_in_entra: "Personens leder har ingen konto i katalogen, så kontoen har ingen leder.",
+    accountReason_manager_not_in_directory: "Personens leder har ingen konto i katalogen, så kontoen har ingen leder.",
     accountReason_hire_date_not_written: "Katalogen avviste ansettelsesdatoen.",
     accountReason_licence_unavailable: "En lisens fra personens grupper kunne ikke tildeles: det er ingen igjen.",
     accountReason_privileged:
