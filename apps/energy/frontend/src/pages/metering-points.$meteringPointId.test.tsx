@@ -44,7 +44,7 @@ const periods: SupplyPeriod[] = [
   { id: 4, meteringPointId: 7, customerId: 1001, start: "2025-06-01T00:00:00Z", end: null, status: "Cancelled" },
 ];
 
-const renderPage = async (point: MeteringPoint, canViewSettlements = false) => {
+const renderPage = async (point: MeteringPoint, canViewSettlements = false, canOpenCustomers = false) => {
   stubFetch(async (input) => {
     const url = String(input);
     if (url === "/api/v1/energy/metering-points/7") return json(point);
@@ -56,7 +56,7 @@ const renderPage = async (point: MeteringPoint, canViewSettlements = false) => {
   render(
     <MantineProvider env="test">
       <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-        <MeteringPointDetailsPage canViewSettlements={canViewSettlements} />
+        <MeteringPointDetailsPage canViewSettlements={canViewSettlements} canOpenCustomers={canOpenCustomers} />
       </QueryClientProvider>
     </MantineProvider>,
   );
@@ -101,6 +101,18 @@ describe("MeteringPointDetailsPage", () => {
 
     await userEvent.click(within(active).getByRole("button", { name: "Change terms" }));
     expect(await screen.findByRole("dialog", { name: "Change terms" })).toBeInTheDocument();
+  });
+
+  it("links each supply period's customer to the customer for a caller who may open customers", async () => {
+    await renderPage(basePoint, false, true);
+    expect(await screen.findByRole("link", { name: "Kari Nordmann" })).toHaveAttribute("href", "/customers/1002");
+    expect(screen.getByRole("link", { name: "Customer #1001" })).toHaveAttribute("href", "/customers/1001");
+  });
+
+  it("names the supply periods' customers without links otherwise", async () => {
+    await renderPage(basePoint);
+    expect(await screen.findByText("Kari Nordmann")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Kari Nordmann" })).not.toBeInTheDocument();
   });
 
   it("shows the Settlements card only to a caller who may view settlements", async () => {

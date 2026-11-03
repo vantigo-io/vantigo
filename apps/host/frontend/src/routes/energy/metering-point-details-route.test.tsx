@@ -18,12 +18,15 @@ vi.mock("@vantigo/energy-ui", () => ({
     canImportReadings,
     canViewTariffs,
     canViewSettlements,
+    canOpenCustomers,
   }: {
     canImportReadings?: boolean;
     canViewTariffs?: boolean;
     canViewSettlements?: boolean;
+    canOpenCustomers?: boolean;
   }) => (
     <>
+      <span data-testid="can-open-customers">{String(Boolean(canOpenCustomers))}</span>
       <span data-testid="can-import-readings">{String(Boolean(canImportReadings))}</span>
       <span data-testid="can-view-tariffs">{String(Boolean(canViewTariffs))}</span>
       <span data-testid="can-view-settlements">{String(Boolean(canViewSettlements))}</span>
@@ -54,6 +57,17 @@ const withPermissions = (permissions: string[]) =>
 afterEach(cleanup);
 
 describe("the metering point route", () => {
+  it("passes canOpenCustomers only with customers:view", () => {
+    withPermissions(["energy:supply-periods-view", "customers:view"]);
+    renderPage();
+    expect(screen.getByTestId("can-open-customers")).toHaveTextContent("true");
+    cleanup();
+
+    withPermissions(["energy:supply-periods-view"]);
+    renderPage();
+    expect(screen.getByTestId("can-open-customers")).toHaveTextContent("false");
+  });
+
   it("passes canImportReadings only with energy:import and both consumption keys", () => {
     withPermissions(["energy:import", "energy:consumption-manage", "energy:consumption-view"]);
     renderPage();
