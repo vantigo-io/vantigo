@@ -34,3 +34,20 @@ export const variantStockQueryOptions = (variantId: number) =>
     queryFn: ({ signal }) =>
       request<InventoryVariantStock>(`/api/v1/inventory/variants/${variantId}/stock`, { signal }),
   });
+
+export type InventoryPackaging = Schemas["InventoryPackaging"];
+export type InventoryStockTotal = Schemas["InventoryStockTotal"];
+
+/** `GET /stock` answers at most this many variants at a time (I33). */
+export const MAX_STOCK_TOTAL_IDS = 100;
+
+/** Each variant's on hand across every location; a variant with none is absent from the answer (I33). */
+export const stockTotalsQueryOptions = (variantIds: readonly number[]) =>
+  queryOptions({
+    queryKey: [INVENTORY_QUERY_KEY, "stock-totals", variantIds],
+    queryFn: ({ signal }) =>
+      request<Schemas["InventoryStockTotals"]>(
+        `/api/v1/inventory/stock${queryString({ variantIds: variantIds.join(",") })}`,
+        { signal },
+      ).then((answer) => answer.totals),
+  });

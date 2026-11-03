@@ -105,6 +105,11 @@
     "description": "The button on My expenses that opens the form for a new travel claim."
   },
   {
+    "key": "inventory.counts.new",
+    "route": "/inventory/counts",
+    "description": "The button on the Counts page that opens a stock count of a site, or of a location and everything below it."
+  },
+  {
     "key": "inventory.home.lookup",
     "route": "/inventory",
     "description": "The field at the top of the Inventory home page: scan or type a location code, a label, a SKU or a barcode and press Enter to open it."
@@ -130,6 +135,11 @@
     "description": "The button on the Inventory home page that opens the form for a new site, a warehouse or a store."
   },
   {
+    "key": "inventory.import.upload",
+    "route": "/inventory/import",
+    "description": "The field on the Import page where the CSV of opening balances — location, sku and quantity — is chosen before a dry run."
+  },
+  {
     "key": "inventory.site.bulk-add",
     "route": "/inventory/sites/{siteId}",
     "description": "The button on a site's page that creates a grid of locations at once, such as aisles, racks and shelves."
@@ -138,6 +148,11 @@
     "key": "inventory.site.new-location",
     "route": "/inventory/sites/{siteId}",
     "description": "The button on a site's page that opens the form for a new location directly under the site."
+  },
+  {
+    "key": "inventory.site.print-labels",
+    "route": "/inventory/sites/{siteId}",
+    "description": "The button on a site's page that downloads a PDF of location labels, for every location in the site or the ones chosen, on an Avery L7160 or L7163 sheet."
   },
   {
     "key": "invoices.invoice.add-line",

@@ -4,10 +4,16 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { ContentSkeleton, EmptyState } from "@vantigo/frontend-shell";
 import { inventoryMetaQueryOptions } from "../api/meta";
-import { type InventorySiteStock, type InventoryVariantStock, productStockQueryOptions } from "../api/stock";
+import {
+  type InventoryPackaging,
+  type InventorySiteStock,
+  type InventoryVariantStock,
+  productStockQueryOptions,
+} from "../api/stock";
 import { canPost } from "../lib/capabilities";
 import { useInventoryFormat } from "../lib/format";
 import { newMovementLinkOptions, variantStockLinkOptions } from "../lib/routes";
+import { Quantity } from "./quantity";
 
 /** The product page's Stock card (I27), composed by the host. */
 export interface ProductStockProps {
@@ -22,8 +28,16 @@ const totalsByUnit = (variants: readonly InventoryVariantStock[]) => {
 };
 
 /** A site's line, expanding to its locations by full code and name, sorted by full code. */
-const SiteStock = ({ stock, unit }: { stock: InventorySiteStock; unit: string }) => {
-  const { t, quantity } = useInventoryFormat();
+const SiteStock = ({
+  stock,
+  unit,
+  packagings,
+}: {
+  stock: InventorySiteStock;
+  unit: string;
+  packagings?: readonly InventoryPackaging[];
+}) => {
+  const { t } = useInventoryFormat();
   const rows = [...stock.rows].sort((a, b) => a.location.fullCode.localeCompare(b.location.fullCode));
   return (
     <Accordion.Item value={String(stock.site.id)}>
@@ -32,8 +46,8 @@ const SiteStock = ({ stock, unit }: { stock: InventorySiteStock; unit: string })
           <Text size="sm">
             {stock.site.code} · {stock.site.name}
           </Text>
-          <Text size="sm" fw={500}>
-            {quantity(stock.onHand, unit)}
+          <Text size="sm" fw={500} ta="right" component="div">
+            <Quantity value={stock.onHand} unit={unit} packagings={packagings} />
           </Text>
         </Group>
       </Accordion.Control>
@@ -59,7 +73,9 @@ const SiteStock = ({ stock, unit }: { stock: InventorySiteStock; unit: string })
                     </Text>
                   )}
                 </Table.Td>
-                <Table.Td ta="right">{quantity(row.onHand, unit)}</Table.Td>
+                <Table.Td ta="right">
+                  <Quantity value={row.onHand} unit={unit} packagings={packagings} />
+                </Table.Td>
               </Table.Tr>
             ))}
           </Table.Tbody>
@@ -71,6 +87,7 @@ const SiteStock = ({ stock, unit }: { stock: InventorySiteStock; unit: string })
 
 /**
  * Where a product's stock lies (I27): the total on hand per unit; by site,
+ * broken down in the variant's packagings where they fit (I26),
  * each expanding to its locations; per variant when the product has more
  * than one, each linking to the variant's stock and movements. With no stock
  * it says so and offers Receive or Adjust as the caller may. A Service
@@ -165,7 +182,12 @@ export const ProductStock = ({ productId }: ProductStockProps) => {
               {one.sites.length > 0 && (
                 <Accordion multiple variant="contained" chevronPosition="left">
                   {one.sites.map((site) => (
-                    <SiteStock key={site.site.id} stock={site} unit={one.variant.unit} />
+                    <SiteStock
+                      key={site.site.id}
+                      stock={site}
+                      unit={one.variant.unit}
+                      packagings={one.variant.packagings}
+                    />
                   ))}
                 </Accordion>
               )}

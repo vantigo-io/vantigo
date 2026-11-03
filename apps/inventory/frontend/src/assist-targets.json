@@ -82,5 +82,41 @@
       "en": "The button on a site's page that creates a grid of locations at once, such as aisles, racks and shelves.",
       "nb": "Knappen på siden for et lagersted som oppretter et rutenett av lokasjoner på én gang, som ganger, reoler og hyller."
     }
+  },
+  {
+    "key": "inventory.site.print-labels",
+    "route": "/inventory/sites/{siteId}",
+    "label": {
+      "en": "Print labels",
+      "nb": "Skriv ut etiketter"
+    },
+    "description": {
+      "en": "The button on a site's page that downloads a PDF of location labels, for every location in the site or the ones chosen, on an Avery L7160 or L7163 sheet.",
+      "nb": "Knappen på siden for et lagersted som laster ned en PDF med lokasjonsetiketter, for alle lokasjonene på lagerstedet eller de valgte, på et Avery L7160- eller L7163-ark."
+    }
+  },
+  {
+    "key": "inventory.counts.new",
+    "route": "/inventory/counts",
+    "label": {
+      "en": "Open count",
+      "nb": "Åpne varetelling"
+    },
+    "description": {
+      "en": "The button on the Counts page that opens a stock count of a site, or of a location and everything below it.",
+      "nb": "Knappen på Varetellinger-siden som åpner en varetelling av et lagersted, eller av en lokasjon og alt under den."
+    }
+  },
+  {
+    "key": "inventory.import.upload",
+    "route": "/inventory/import",
+    "label": {
+      "en": "CSV file",
+      "nb": "CSV-fil"
+    },
+    "description": {
+      "en": "The field on the Import page where the CSV of opening balances — location, sku and quantity — is chosen before a dry run.",
+      "nb": "Feltet på Import-siden der CSV-filen med inngående beholdning – location, sku og quantity – velges før prøvekjøringen."
+    }
   }
 ]

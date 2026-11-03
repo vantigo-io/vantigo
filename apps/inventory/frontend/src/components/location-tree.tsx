@@ -1,5 +1,6 @@
-import { ActionIcon, Anchor, Badge, Box, Group, Menu, Stack, Text, TextInput } from "@mantine/core";
+import { ActionIcon, Alert, Anchor, Badge, Box, Group, Loader, Menu, Stack, Text, TextInput } from "@mantine/core";
 import {
+  IconAlertTriangle,
   IconArchive,
   IconChevronDown,
   IconChevronRight,
@@ -11,15 +12,17 @@ import {
   IconSearch,
   IconTrash,
 } from "@tabler/icons-react";
+import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { EmptyState } from "@vantigo/frontend-shell";
 import { Fragment, type ReactNode, useMemo, useState } from "react";
-import type { InventoryLocation } from "../api/locations";
+import { type InventoryLocation, siteLocationListQueryOptions } from "../api/locations";
+import type { InventoryStatus } from "../api/sites";
 import { useInventoryFormat } from "../lib/format";
 import { locationLinkOptions } from "../lib/routes";
 
-/** Below this many nodes the tree filters as the person types; above it, on Enter. */
-const LIVE_SEARCH_LIMIT = 2000;
+/** Below this many nodes the tree filters as the person types; above it, on Enter — and the server searches (design §9). */
+export const LIVE_SEARCH_LIMIT = 2000;
 
 /** What a manager may do to a node, offered from its menu. */
 export interface LocationTreeActions {
@@ -36,15 +39,22 @@ export interface LocationTreeProps {
   locations: readonly InventoryLocation[];
   /** The menu's actions; no menu without them (`locations-manage`). */
   actions?: LocationTreeActions;
+  /**
+   * Searches a large site on the server (`q`) rather than in the list held,
+   * which may not be all of it: the site, and the status the tree shows
+   * (every one when absent).
+   */
+  serverSearch?: { siteId: number; status?: InventoryStatus };
 }
 
 /**
  * A site's location tree (I2), drawn a level at a time: only an expanded
  * node's children are rendered, so a site of thousands of shelves opens as
  * fast as one of ten. The root starts expanded. Searching by code or name
- * lists the matching locations by full code instead.
+ * lists the matching locations by full code instead — on the server for a
+ * site too large to hold whole, on Enter.
  */
-export const LocationTree = ({ locations, actions }: LocationTreeProps) => {
+export const LocationTree = ({ locations, actions, serverSearch }: LocationTreeProps) => {
   const { t } = useInventoryFormat();
   const children = useMemo(() => {
     const map = new Map<number | undefined, InventoryLocation[]>();
@@ -61,14 +71,20 @@ export const LocationTree = ({ locations, actions }: LocationTreeProps) => {
   const [expanded, setExpanded] = useState<ReadonlySet<number>>(() => new Set(roots.map((root) => root.id)));
   const [typed, setTyped] = useState("");
   const [committed, setCommitted] = useState("");
-  const live = locations.length < LIVE_SEARCH_LIMIT;
+  const live = !serverSearch && locations.length < LIVE_SEARCH_LIMIT;
   const query = (live ? typed : committed).trim().toLowerCase();
-  const matches = query
-    ? locations.filter(
-        (location) =>
-          location.fullCode.toLowerCase().includes(query) || (location.name ?? "").toLowerCase().includes(query),
-      )
-    : [];
+  const found = useQuery({
+    ...siteLocationListQueryOptions(serverSearch?.siteId ?? 0, serverSearch?.status, query),
+    enabled: !!serverSearch && query !== "",
+  });
+  const matches = !query
+    ? []
+    : serverSearch
+      ? (found.data?.locations ?? [])
+      : locations.filter(
+          (location) =>
+            location.fullCode.toLowerCase().includes(query) || (location.name ?? "").toLowerCase().includes(query),
+        );
 
   const toggle = (id: number) => {
     const next = new Set(expanded);
@@ -187,7 +203,14 @@ export const LocationTree = ({ locations, actions }: LocationTreeProps) => {
           if (event.key === "Enter") setCommitted(typed);
         }}
       />
-      {query ? (
+      {found.data?.truncated && query && (
+        <Alert color="yellow" icon={<IconAlertTriangle size={16} />}>
+          {t("searchTruncated")}
+        </Alert>
+      )}
+      {query && serverSearch && found.isPending ? (
+        <Loader size="sm" />
+      ) : query ? (
         matches.length === 0 ? (
           <EmptyState size="sm" title={t("noLocationsFound")} />
         ) : (

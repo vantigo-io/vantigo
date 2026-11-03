@@ -13,7 +13,7 @@ export interface MovementsSearch {
   siteId?: number;
   locationId?: number;
   variantId?: number;
-  kind?: "adjustment" | "move" | "receipt";
+  kind?: "adjustment" | "move" | "receipt" | "count";
   from?: string;
   to?: string;
 }
@@ -21,7 +21,7 @@ const positive = (value: unknown): number | undefined => {
   const n = typeof value === "number" ? value : typeof value === "string" ? Number(value) : Number.NaN;
   return Number.isSafeInteger(n) && n > 0 ? n : undefined;
 };
-const kinds = ["adjustment", "move", "receipt"] as const;
+const kinds = ["adjustment", "move", "receipt", "count"] as const;
 export const validateMovementsSearch = (search: Record<string, unknown>): MovementsSearch => ({
   siteId: positive(search.siteId),
   locationId: positive(search.locationId),
@@ -42,3 +42,10 @@ export const validateNewMovementSearch = (search: Record<string, unknown>): NewM
   locationId: positive(search.locationId),
   variantId: positive(search.variantId),
 });
+
+/** The counts list's search: `new` opens the Open count form, as the spotlight's Start count asks. */
+export interface CountsSearch {
+  new?: 1;
+}
+export const validateCountsSearch = (search: Record<string, unknown>): CountsSearch =>
+  search.new === 1 || search.new === "1" || search.new === true || search.new === "true" ? { new: 1 } : {};

@@ -1,6 +1,6 @@
 import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { InventoryStub } from "./server";
+import { type InventoryStub, parseBody } from "./server";
 
 /** The requests the fake received, matching a method and a path, with their bodies and If-Match. */
 export const sent = (fetchMock: InventoryStub, method: string, pattern: RegExp) =>
@@ -8,7 +8,7 @@ export const sent = (fetchMock: InventoryStub, method: string, pattern: RegExp) 
     .filter(([url, init]) => (init?.method ?? "GET") === method && pattern.test(String(url)))
     .map(([url, init]) => ({
       url: String(url),
-      body: init?.body ? JSON.parse(String(init.body)) : undefined,
+      body: parseBody(init?.body) as ReturnType<typeof JSON.parse>,
       ifMatch: new Headers(init?.headers).get("If-Match"),
     }));
 

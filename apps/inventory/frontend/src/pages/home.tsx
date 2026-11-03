@@ -7,13 +7,11 @@ import {
   IconPackageImport,
   IconPlus,
 } from "@tabler/icons-react";
-import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { ContentSkeleton, EmptyState, PageHeader } from "@vantigo/frontend-shell";
 import { useState } from "react";
-import { locationContentsQueryOptions, siteLocationsQueryOptions } from "../api/locations";
 import { inventoryMetaQueryOptions } from "../api/meta";
-import { movementsInfiniteQueryOptions } from "../api/movements";
 import { type InventorySite, sitesQueryOptions } from "../api/sites";
 import { InventoryLookupField } from "../components/lookup-field";
 import { SiteFormModal } from "../components/site-form";
@@ -24,18 +22,10 @@ import { NEW_ADJUSTMENT_ROUTE_PATH, NEW_MOVE_ROUTE_PATH, NEW_RECEIPT_ROUTE_PATH,
 /**
  * A site's card: its kind and address, how many locations it has, and — with
  * `stock-view` — how many stock lines lie in it and when the last receipt
- * came. The contract answers none of these on the site itself, so the card
- * asks the site's locations, its root's contents and its newest receipt.
+ * came, all as `GET /sites` answers them on the site.
  */
 const SiteCard = ({ site, canViewStock }: { site: InventorySite; canViewStock: boolean }) => {
   const { t, stamp } = useInventoryFormat();
-  const locations = useQuery(siteLocationsQueryOptions(site.id, "active"));
-  const contents = useQuery({ ...locationContentsQueryOptions(site.rootLocationId, true), enabled: canViewStock });
-  const receipts = useInfiniteQuery({
-    ...movementsInfiniteQueryOptions({ siteId: site.id, kind: "receipt" }, 1),
-    enabled: canViewStock,
-  });
-  const lastReceipt = receipts.data?.pages[0]?.movements[0];
   const city = site.address?.city;
 
   return (
@@ -54,15 +44,11 @@ const SiteCard = ({ site, canViewStock }: { site: InventorySite; canViewStock: b
             {city}
           </Text>
         )}
-        <Text size="sm">
-          {locations.data ? t("locationCount", { count: Math.max(0, locations.data.length - 1) }) : "…"}
-        </Text>
+        <Text size="sm">{t("locationCount", { count: site.locationCount })}</Text>
+        {canViewStock && <Text size="sm">{t("stockLineCount", { count: site.stockLines ?? 0 })}</Text>}
         {canViewStock && (
-          <Text size="sm">{contents.data ? t("stockLineCount", { count: contents.data.length }) : "…"}</Text>
-        )}
-        {canViewStock && receipts.isSuccess && (
           <Text size="sm" c="dimmed">
-            {lastReceipt ? t("lastReceipt", { when: stamp(lastReceipt.postedAt) }) : t("noReceiptsYet")}
+            {site.lastReceiptAt ? t("lastReceipt", { when: stamp(site.lastReceiptAt) }) : t("noReceiptsYet")}
           </Text>
         )}
       </Stack>

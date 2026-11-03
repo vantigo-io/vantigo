@@ -12,13 +12,13 @@ export const QUANTITY_DECIMALS = 3;
 /** The package's words and its ways of showing quantities and instants, in the viewer's language and zone. */
 export const useInventoryFormat = () => {
   const { t, formatters } = useI18n("inventory");
+  const number = (value: number) => formatters.formatNumber(value, { maximumFractionDigits: QUANTITY_DECIMALS });
   return {
     t,
+    /** A number at the three decimals quantities are kept with, without a unit. */
+    number,
     /** A quantity, with its unit when one is given: `1 830 pcs`. */
-    quantity: (value: number, unit?: string) => {
-      const number = formatters.formatNumber(value, { maximumFractionDigits: QUANTITY_DECIMALS });
-      return unit ? `${number} ${unit}` : number;
-    },
+    quantity: (value: number, unit?: string) => (unit ? `${number(value)} ${unit}` : number(value)),
     /** An instant, day and time. */
     stamp: (instant: string) => formatters.formatDate(instant, { dateStyle: "medium", timeStyle: "short" }),
   };
@@ -58,4 +58,7 @@ export const locationLabel = (location: { fullCode: string; name?: string }) =>
   location.name ? `${location.fullCode} · ${location.name}` : location.fullCode;
 
 /** A movement kind's badge colour. */
-export const movementKindColor = { adjustment: "orange", move: "blue", receipt: "teal" } as const;
+export const movementKindColor = { adjustment: "orange", move: "blue", receipt: "teal", count: "grape" } as const;
+
+/** A count status's badge colour. */
+export const countStatusColor = { counting: "blue", posted: "teal", cancelled: "gray" } as const;

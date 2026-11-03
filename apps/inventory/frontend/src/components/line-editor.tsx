@@ -5,8 +5,17 @@ import { type Dispatch, type SetStateAction, useRef, useState } from "react";
 import { lookupQueryOptions } from "../api/lookup";
 import type { InventoryAdjustmentMode } from "../api/movements";
 import { QUANTITY_DECIMALS, refusalMessage, useInventoryFormat } from "../lib/format";
-import { type EditorLine, type LineEditorKind, newEditorLine, roundQuantity } from "../lib/lines";
+import {
+  type EditorLine,
+  isPacked,
+  type LineEditorKind,
+  lineQuantity,
+  newEditorLine,
+  roundQuantity,
+  usesDecrease,
+} from "../lib/lines";
 import { LocationPicker } from "./location-picker";
+import { PackagingSteppers } from "./packaging-steppers";
 import { VariantPicker } from "./variant-picker";
 
 export interface LineEditorProps {
@@ -30,11 +39,13 @@ export interface LineEditorProps {
  * a code up on Enter — what a keyboard-wedge scanner sends — and adds the
  * variant as a row or adds one to the row that has it; a row per variant with
  * its picker, its location pickers by full code and its quantity, at most
- * three decimals (I11). A refused posting's failing lines are marked on
- * their rows.
+ * three decimals (I11). A variant with packagings gets a stepper per
+ * packaging beside its loose quantity (I25), and a scan of a packaging's
+ * barcode adds one of that packaging. A refused posting's failing lines are
+ * marked on their rows.
  */
 export const LineEditor = ({ kind, siteId, lines, onChange, defaultLocationId, lineErrors }: LineEditorProps) => {
-  const { t } = useInventoryFormat();
+  const { t, quantity } = useInventoryFormat();
   const queryClient = useQueryClient();
   const [scan, setScan] = useState("");
   const [scanError, setScanError] = useState<string>();
@@ -60,13 +71,18 @@ export const LineEditor = ({ kind, siteId, lines, onChange, defaultLocationId, l
         setScanError(t("scanNoVariant", { code }));
         return;
       }
+      // The lookup answers the variant a packaging's barcode belongs to; its packagings say which one it was.
+      const packaging = variant.packagings?.find((one) => one.barcode === code);
       onChange((current) => {
         const existing = current.find((line) => line.variant?.id === variant.id);
-        return existing
-          ? current.map((line) =>
-              line.key === existing.key ? { ...line, quantity: roundQuantity(Number(line.quantity || 0) + 1) } : line,
-            )
-          : [...current, newEditorLine(kind, defaultLocationId, variant)];
+        if (!existing) return [...current, newEditorLine(kind, defaultLocationId, variant, packaging?.id)];
+        return current.map((line) =>
+          line.key !== existing.key
+            ? line
+            : packaging
+              ? { ...line, packs: { ...line.packs, [packaging.id]: (line.packs[packaging.id] ?? 0) + 1 } }
+              : { ...line, quantity: roundQuantity(Number(line.quantity || 0) + 1) },
+        );
       });
     } catch (error) {
       keep();
@@ -119,6 +135,9 @@ export const LineEditor = ({ kind, siteId, lines, onChange, defaultLocationId, l
               {lines.map((line, index) => {
                 const n = index + 1;
                 const problem = lineErrors.get(line.key);
+                const packagings = line.variant?.packagings ?? [];
+                const decreasing = usesDecrease(kind, line);
+                const total = lineQuantity(kind, line);
                 return (
                   <Table.Tr
                     key={line.key}
@@ -130,7 +149,7 @@ export const LineEditor = ({ kind, siteId, lines, onChange, defaultLocationId, l
                         compact
                         label={t("itemOfLine", { n })}
                         value={line.variant}
-                        onChange={(variant) => update(line.key, { variant })}
+                        onChange={(variant) => update(line.key, { variant, packs: {}, decrease: false })}
                       />
                       {problem && (
                         <Stack gap={0} mt={4}>
@@ -182,26 +201,56 @@ export const LineEditor = ({ kind, siteId, lines, onChange, defaultLocationId, l
                         />
                       </Table.Td>
                     )}
-                    <Table.Td w={150}>
-                      <NumberInput
-                        aria-label={t("quantityOfLine", { n })}
-                        decimalScale={QUANTITY_DECIMALS}
-                        // Only a change may be negative: it takes stock away.
-                        allowNegative={kind === "adjustment" && line.mode === "change"}
-                        min={kind === "adjustment" && line.mode === "change" ? undefined : 0}
-                        rightSection={
-                          line.variant ? (
-                            <Text size="xs" c="dimmed" pr="xs">
-                              {line.variant.unit}
-                            </Text>
-                          ) : undefined
-                        }
-                        rightSectionWidth={line.variant ? 48 : undefined}
-                        value={line.quantity}
-                        onChange={(value) =>
-                          update(line.key, { quantity: value === "" ? "" : roundQuantity(Number(value)) })
-                        }
-                      />
+                    <Table.Td w={packagings.length > 0 ? 200 : 150}>
+                      <Stack gap={4}>
+                        {decreasing && (
+                          <SegmentedControl
+                            size="xs"
+                            aria-label={t("directionOfLine", { n })}
+                            value={line.decrease ? "remove" : "add"}
+                            onChange={(value) => update(line.key, { decrease: value === "remove" })}
+                            data={[
+                              { value: "add", label: t("direction_add") },
+                              { value: "remove", label: t("direction_remove") },
+                            ]}
+                          />
+                        )}
+                        {line.variant && packagings.length > 0 && (
+                          <PackagingSteppers
+                            packagings={packagings}
+                            unit={line.variant.unit}
+                            counts={line.packs}
+                            onChange={(packs) => update(line.key, { packs })}
+                            label={(packaging) => t("packagingOfLine", { name: packaging.name, n })}
+                          />
+                        )}
+                        <NumberInput
+                          size={packagings.length > 0 ? "xs" : undefined}
+                          aria-label={t(packagings.length > 0 ? "looseOfLine" : "quantityOfLine", { n })}
+                          decimalScale={QUANTITY_DECIMALS}
+                          // Only a change may be negative: it takes stock away — unless the
+                          // variant has packagings, whose entries say the direction apart.
+                          allowNegative={kind === "adjustment" && line.mode === "change" && !decreasing}
+                          min={kind === "adjustment" && line.mode === "change" && !decreasing ? undefined : 0}
+                          rightSection={
+                            line.variant ? (
+                              <Text size="xs" c="dimmed" pr="xs">
+                                {line.variant.unit}
+                              </Text>
+                            ) : undefined
+                          }
+                          rightSectionWidth={line.variant ? 48 : undefined}
+                          value={line.quantity}
+                          onChange={(value) =>
+                            update(line.key, { quantity: value === "" ? "" : roundQuantity(Number(value)) })
+                          }
+                        />
+                        {line.variant && isPacked(line) && total !== "" && (
+                          <Text size="xs" c="dimmed" aria-label={t("totalOfLine", { n })}>
+                            = {quantity(total, line.variant.unit)}
+                          </Text>
+                        )}
+                      </Stack>
                     </Table.Td>
                     <Table.Td w={40}>
                       <ActionIcon

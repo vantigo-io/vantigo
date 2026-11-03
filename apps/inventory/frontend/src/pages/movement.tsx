@@ -6,8 +6,10 @@ import { ContentSkeleton, PageHeader } from "@vantigo/frontend-shell";
 import type { ReactNode } from "react";
 import type { InventoryLocationRef } from "../api/locations";
 import { movementQueryOptions } from "../api/movements";
+import { enteredText } from "../lib/breakdown";
 import { movementKindColor, useInventoryFormat } from "../lib/format";
 import {
+  countLinkOptions,
   INVENTORY_HOME_ROUTE_PATH,
   locationLinkOptions,
   MOVEMENTS_ROUTE_PATH,
@@ -40,11 +42,13 @@ const LocationCell = ({ location }: { location?: InventoryLocationRef }) =>
 /**
  * One movement (I30): its header — kind, site, when and by whom, the reason
  * or the supplier, the note — the source record when another module caused
- * it, and its lines with the variant as it was snapshotted when posted.
+ * it, and its lines with the variant as it was snapshotted when posted —
+ * and what a line was entered as, in packagings (I25). A count movement
+ * links to its count.
  * Movements are never edited; a mistake is put right by a new adjustment.
  */
 export const MovementPage = () => {
-  const { t, quantity, stamp } = useInventoryFormat();
+  const { t, quantity, number, stamp } = useInventoryFormat();
   const { movementId: rawId } = useParams({ strict: false }) as { movementId: string };
   const movementId = Number(rawId);
   const movement = useQuery(movementQueryOptions(movementId));
@@ -87,6 +91,16 @@ export const MovementPage = () => {
               <Fact label={t("columnPostedAt")}>{stamp(data.postedAt)}</Fact>
               <Fact label={t("columnPostedBy")}>{data.postedBy.displayName}</Fact>
               {data.reason && <Fact label={t("reason")}>{t(`reason_${data.reason}`)}</Fact>}
+              {data.countId !== undefined && (
+                <Fact label={t("kind_count")}>
+                  <Anchor
+                    size="sm"
+                    renderRoot={(props) => <Link {...countLinkOptions(data.countId ?? 0)} {...props} />}
+                  >
+                    {t("countNumber", { id: data.countId })}
+                  </Anchor>
+                </Fact>
+              )}
               {data.supplierName && <Fact label={t("supplierName")}>{data.supplierName}</Fact>}
               {data.supplierReference && <Fact label={t("supplierReference")}>{data.supplierReference}</Fact>}
               {data.source && (
@@ -135,7 +149,14 @@ export const MovementPage = () => {
                       <Table.Td>
                         <LocationCell location={line.to} />
                       </Table.Td>
-                      <Table.Td ta="right">{quantity(line.quantity, line.variant.unit)}</Table.Td>
+                      <Table.Td ta="right">
+                        {quantity(line.quantity, line.variant.unit)}
+                        {line.entered && (
+                          <Text size="xs" c="dimmed" aria-label={t("enteredAs")}>
+                            {enteredText(line.entered, line.variant.unit, number)}
+                          </Text>
+                        )}
+                      </Table.Td>
                     </Table.Tr>
                   ))}
                 </Table.Tbody>

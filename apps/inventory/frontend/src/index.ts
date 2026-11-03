@@ -1,5 +1,8 @@
 import "./i18n";
 
+export * from "./api/counts";
+export * from "./api/imports";
+export * from "./api/labels";
 export * from "./api/locations";
 export * from "./api/lookup";
 export * from "./api/meta";
@@ -15,7 +18,11 @@ export { inventoryCatalog } from "./i18n";
 export { type InventoryNavItem, inventoryNavItems, visibleInventoryNavItems } from "./lib/navigation";
 export * from "./lib/routes";
 export * from "./lib/search";
+export { type StockTotals, type UseStockTotalsOptions, useStockTotals } from "./lib/stock-totals";
+export { CountPage } from "./pages/count";
+export { CountsPage } from "./pages/counts";
 export { InventoryHomePage } from "./pages/home";
+export { ImportPage } from "./pages/import";
 export { LocationPage } from "./pages/location";
 export { LookupPage } from "./pages/lookup";
 export { MovementPage } from "./pages/movement";

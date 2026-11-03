@@ -117,7 +117,7 @@ export const LocationFormModal = ({
         form.setFieldError("code", t(`refusal.${code}`));
         return;
       }
-      if (code === "parent_invalid" || code === "depth_exceeded") {
+      if (code === "parent_invalid" || code === "depth_exceeded" || code === "location_has_open_count") {
         form.setFieldError("parentId", t(`refusal.${code}`));
         return;
       }

@@ -12,6 +12,9 @@ import {
 } from "@tanstack/react-router";
 import { render } from "@testing-library/react";
 import {
+  COUNT_ROUTE_PATH,
+  COUNTS_ROUTE_PATH,
+  IMPORT_ROUTE_PATH,
   INVENTORY_HOME_ROUTE_PATH,
   LOCATION_ROUTE_PATH,
   LOOKUP_ROUTE_PATH,
@@ -23,8 +26,16 @@ import {
   SITE_ROUTE_PATH,
   VARIANT_STOCK_ROUTE_PATH,
 } from "../lib/routes";
-import { validateLookupSearch, validateMovementsSearch, validateNewMovementSearch } from "../lib/search";
+import {
+  validateCountsSearch,
+  validateLookupSearch,
+  validateMovementsSearch,
+  validateNewMovementSearch,
+} from "../lib/search";
+import { CountPage } from "../pages/count";
+import { CountsPage } from "../pages/counts";
 import { InventoryHomePage } from "../pages/home";
+import { ImportPage } from "../pages/import";
 import { LocationPage } from "../pages/location";
 import { LookupPage } from "../pages/lookup";
 import { MovementPage } from "../pages/movement";
@@ -64,6 +75,9 @@ export const makeRouteTree = () => {
     route(NEW_MOVE_ROUTE_PATH, NewMovePage, validateNewMovementSearch),
     route(NEW_RECEIPT_ROUTE_PATH, NewReceiptPage, validateNewMovementSearch),
     route(MOVEMENT_ROUTE_PATH, MovementPage),
+    route(COUNTS_ROUTE_PATH, CountsPage, validateCountsSearch),
+    route(COUNT_ROUTE_PATH, CountPage),
+    route(IMPORT_ROUTE_PATH, ImportPage),
     route(PRODUCT_TEST_PATH, ProductSlot),
   ]);
 };

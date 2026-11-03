@@ -58,6 +58,7 @@ import { Route as ExpensesApprovalsRouteImport } from './routes/expenses/approva
 import { Route as ExpensesReimbursementsRouteImport } from './routes/expenses/reimbursements'
 import { Route as ExpensesSettingsRouteImport } from './routes/expenses/settings'
 import { Route as InventoryIndexRouteImport } from './routes/inventory/index'
+import { Route as InventoryImportRouteImport } from './routes/inventory/import'
 import { Route as InventoryLookupRouteImport } from './routes/inventory/lookup'
 import { Route as InvitationsAcceptRouteImport } from './routes/invitations/accept'
 import { Route as InvoicesIndexRouteImport } from './routes/invoices/index'
@@ -115,6 +116,8 @@ import { Route as CustomersImportImportIdRouteImport } from './routes/customers/
 import { Route as EnergyMeteringPointsIndexRouteImport } from './routes/energy/metering-points/index'
 import { Route as EnergyMeteringPointsMeteringPointIdRouteImport } from './routes/energy/metering-points/$meteringPointId'
 import { Route as ExpensesClaimsClaimIdRouteImport } from './routes/expenses/claims.$claimId'
+import { Route as InventoryCountsIndexRouteImport } from './routes/inventory/counts.index'
+import { Route as InventoryCountsCountIdRouteImport } from './routes/inventory/counts.$countId'
 import { Route as InventoryLocationsLocationIdRouteImport } from './routes/inventory/locations.$locationId'
 import { Route as InventoryMovementsIndexRouteImport } from './routes/inventory/movements.index'
 import { Route as InventoryMovementsMovementIdRouteImport } from './routes/inventory/movements.$movementId'
@@ -396,6 +399,11 @@ const ExpensesSettingsRoute = ExpensesSettingsRouteImport.update({
 const InventoryIndexRoute = InventoryIndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => InventoryRoute,
+} as any)
+const InventoryImportRoute = InventoryImportRouteImport.update({
+  id: '/import',
+  path: '/import',
   getParentRoute: () => InventoryRoute,
 } as any)
 const InventoryLookupRoute = InventoryLookupRouteImport.update({
@@ -690,6 +698,16 @@ const ExpensesClaimsClaimIdRoute = ExpensesClaimsClaimIdRouteImport.update({
   path: '/claims/$claimId',
   getParentRoute: () => ExpensesRoute,
 } as any)
+const InventoryCountsIndexRoute = InventoryCountsIndexRouteImport.update({
+  id: '/counts/',
+  path: '/counts/',
+  getParentRoute: () => InventoryRoute,
+} as any)
+const InventoryCountsCountIdRoute = InventoryCountsCountIdRouteImport.update({
+  id: '/counts/$countId',
+  path: '/counts/$countId',
+  getParentRoute: () => InventoryRoute,
+} as any)
 const InventoryLocationsLocationIdRoute =
   InventoryLocationsLocationIdRouteImport.update({
     id: '/locations/$locationId',
@@ -931,6 +949,7 @@ export interface FileRoutesByFullPath {
   '/expenses/approvals': typeof ExpensesApprovalsRoute
   '/expenses/reimbursements': typeof ExpensesReimbursementsRoute
   '/expenses/settings': typeof ExpensesSettingsRoute
+  '/inventory/import': typeof InventoryImportRoute
   '/inventory/lookup': typeof InventoryLookupRoute
   '/invitations/accept': typeof InvitationsAcceptRoute
   '/invoices/$invoiceId': typeof InvoicesInvoiceIdRoute
@@ -993,6 +1012,7 @@ export interface FileRoutesByFullPath {
   '/customers/import/$importId': typeof CustomersImportImportIdRoute
   '/energy/metering-points/$meteringPointId': typeof EnergyMeteringPointsMeteringPointIdRoute
   '/expenses/claims/$claimId': typeof ExpensesClaimsClaimIdRoute
+  '/inventory/counts/$countId': typeof InventoryCountsCountIdRoute
   '/inventory/locations/$locationId': typeof InventoryLocationsLocationIdRoute
   '/inventory/movements/$movementId': typeof InventoryMovementsMovementIdRoute
   '/inventory/sites/$siteId': typeof InventorySitesSiteIdRoute
@@ -1020,6 +1040,7 @@ export interface FileRoutesByFullPath {
   '/customers/contacts/': typeof CustomersContactsIndexRoute
   '/customers/import/': typeof CustomersImportIndexRoute
   '/energy/metering-points/': typeof EnergyMeteringPointsIndexRoute
+  '/inventory/counts/': typeof InventoryCountsIndexRoute
   '/inventory/movements/': typeof InventoryMovementsIndexRoute
   '/invoices/billing-runs/': typeof InvoicesBillingRunsIndexRoute
   '/invoices/payments/': typeof InvoicesPaymentsIndexRoute
@@ -1057,6 +1078,7 @@ export interface FileRoutesByTo {
   '/expenses/approvals': typeof ExpensesApprovalsRoute
   '/expenses/reimbursements': typeof ExpensesReimbursementsRoute
   '/expenses/settings': typeof ExpensesSettingsRoute
+  '/inventory/import': typeof InventoryImportRoute
   '/inventory/lookup': typeof InventoryLookupRoute
   '/invitations/accept': typeof InvitationsAcceptRoute
   '/invoices/$invoiceId': typeof InvoicesInvoiceIdRoute
@@ -1117,6 +1139,7 @@ export interface FileRoutesByTo {
   '/customers/import/$importId': typeof CustomersImportImportIdRoute
   '/energy/metering-points/$meteringPointId': typeof EnergyMeteringPointsMeteringPointIdRoute
   '/expenses/claims/$claimId': typeof ExpensesClaimsClaimIdRoute
+  '/inventory/counts/$countId': typeof InventoryCountsCountIdRoute
   '/inventory/locations/$locationId': typeof InventoryLocationsLocationIdRoute
   '/inventory/movements/$movementId': typeof InventoryMovementsMovementIdRoute
   '/inventory/sites/$siteId': typeof InventorySitesSiteIdRoute
@@ -1144,6 +1167,7 @@ export interface FileRoutesByTo {
   '/customers/contacts': typeof CustomersContactsIndexRoute
   '/customers/import': typeof CustomersImportIndexRoute
   '/energy/metering-points': typeof EnergyMeteringPointsIndexRoute
+  '/inventory/counts': typeof InventoryCountsIndexRoute
   '/inventory/movements': typeof InventoryMovementsIndexRoute
   '/invoices/billing-runs': typeof InvoicesBillingRunsIndexRoute
   '/invoices/payments': typeof InvoicesPaymentsIndexRoute
@@ -1200,6 +1224,7 @@ export interface FileRoutesById {
   '/expenses/approvals': typeof ExpensesApprovalsRoute
   '/expenses/reimbursements': typeof ExpensesReimbursementsRoute
   '/expenses/settings': typeof ExpensesSettingsRoute
+  '/inventory/import': typeof InventoryImportRoute
   '/inventory/lookup': typeof InventoryLookupRoute
   '/invitations/accept': typeof InvitationsAcceptRoute
   '/invoices/$invoiceId': typeof InvoicesInvoiceIdRoute
@@ -1262,6 +1287,7 @@ export interface FileRoutesById {
   '/customers/import/$importId': typeof CustomersImportImportIdRoute
   '/energy/metering-points/$meteringPointId': typeof EnergyMeteringPointsMeteringPointIdRoute
   '/expenses/claims/$claimId': typeof ExpensesClaimsClaimIdRoute
+  '/inventory/counts/$countId': typeof InventoryCountsCountIdRoute
   '/inventory/locations/$locationId': typeof InventoryLocationsLocationIdRoute
   '/inventory/movements/$movementId': typeof InventoryMovementsMovementIdRoute
   '/inventory/sites/$siteId': typeof InventorySitesSiteIdRoute
@@ -1289,6 +1315,7 @@ export interface FileRoutesById {
   '/customers/contacts/': typeof CustomersContactsIndexRoute
   '/customers/import/': typeof CustomersImportIndexRoute
   '/energy/metering-points/': typeof EnergyMeteringPointsIndexRoute
+  '/inventory/counts/': typeof InventoryCountsIndexRoute
   '/inventory/movements/': typeof InventoryMovementsIndexRoute
   '/invoices/billing-runs/': typeof InvoicesBillingRunsIndexRoute
   '/invoices/payments/': typeof InvoicesPaymentsIndexRoute
@@ -1346,6 +1373,7 @@ export interface FileRouteTypes {
     | '/expenses/approvals'
     | '/expenses/reimbursements'
     | '/expenses/settings'
+    | '/inventory/import'
     | '/inventory/lookup'
     | '/invitations/accept'
     | '/invoices/$invoiceId'
@@ -1408,6 +1436,7 @@ export interface FileRouteTypes {
     | '/customers/import/$importId'
     | '/energy/metering-points/$meteringPointId'
     | '/expenses/claims/$claimId'
+    | '/inventory/counts/$countId'
     | '/inventory/locations/$locationId'
     | '/inventory/movements/$movementId'
     | '/inventory/sites/$siteId'
@@ -1435,6 +1464,7 @@ export interface FileRouteTypes {
     | '/customers/contacts/'
     | '/customers/import/'
     | '/energy/metering-points/'
+    | '/inventory/counts/'
     | '/inventory/movements/'
     | '/invoices/billing-runs/'
     | '/invoices/payments/'
@@ -1472,6 +1502,7 @@ export interface FileRouteTypes {
     | '/expenses/approvals'
     | '/expenses/reimbursements'
     | '/expenses/settings'
+    | '/inventory/import'
     | '/inventory/lookup'
     | '/invitations/accept'
     | '/invoices/$invoiceId'
@@ -1532,6 +1563,7 @@ export interface FileRouteTypes {
     | '/customers/import/$importId'
     | '/energy/metering-points/$meteringPointId'
     | '/expenses/claims/$claimId'
+    | '/inventory/counts/$countId'
     | '/inventory/locations/$locationId'
     | '/inventory/movements/$movementId'
     | '/inventory/sites/$siteId'
@@ -1559,6 +1591,7 @@ export interface FileRouteTypes {
     | '/customers/contacts'
     | '/customers/import'
     | '/energy/metering-points'
+    | '/inventory/counts'
     | '/inventory/movements'
     | '/invoices/billing-runs'
     | '/invoices/payments'
@@ -1614,6 +1647,7 @@ export interface FileRouteTypes {
     | '/expenses/approvals'
     | '/expenses/reimbursements'
     | '/expenses/settings'
+    | '/inventory/import'
     | '/inventory/lookup'
     | '/invitations/accept'
     | '/invoices/$invoiceId'
@@ -1676,6 +1710,7 @@ export interface FileRouteTypes {
     | '/customers/import/$importId'
     | '/energy/metering-points/$meteringPointId'
     | '/expenses/claims/$claimId'
+    | '/inventory/counts/$countId'
     | '/inventory/locations/$locationId'
     | '/inventory/movements/$movementId'
     | '/inventory/sites/$siteId'
@@ -1703,6 +1738,7 @@ export interface FileRouteTypes {
     | '/customers/contacts/'
     | '/customers/import/'
     | '/energy/metering-points/'
+    | '/inventory/counts/'
     | '/inventory/movements/'
     | '/invoices/billing-runs/'
     | '/invoices/payments/'
@@ -2093,6 +2129,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/inventory/'
       preLoaderRoute: typeof InventoryIndexRouteImport
+      parentRoute: typeof InventoryRoute
+    }
+    '/inventory/import': {
+      id: '/inventory/import'
+      path: '/import'
+      fullPath: '/inventory/import'
+      preLoaderRoute: typeof InventoryImportRouteImport
       parentRoute: typeof InventoryRoute
     }
     '/inventory/lookup': {
@@ -2493,6 +2536,20 @@ declare module '@tanstack/react-router' {
       fullPath: '/expenses/claims/$claimId'
       preLoaderRoute: typeof ExpensesClaimsClaimIdRouteImport
       parentRoute: typeof ExpensesRoute
+    }
+    '/inventory/counts/': {
+      id: '/inventory/counts/'
+      path: '/counts'
+      fullPath: '/inventory/counts/'
+      preLoaderRoute: typeof InventoryCountsIndexRouteImport
+      parentRoute: typeof InventoryRoute
+    }
+    '/inventory/counts/$countId': {
+      id: '/inventory/counts/$countId'
+      path: '/counts/$countId'
+      fullPath: '/inventory/counts/$countId'
+      preLoaderRoute: typeof InventoryCountsCountIdRouteImport
+      parentRoute: typeof InventoryRoute
     }
     '/inventory/locations/$locationId': {
       id: '/inventory/locations/$locationId'
@@ -2902,12 +2959,15 @@ const ExpensesRouteWithChildren = ExpensesRoute._addFileChildren(
 )
 
 interface InventoryRouteChildren {
+  InventoryImportRoute: typeof InventoryImportRoute
   InventoryLookupRoute: typeof InventoryLookupRoute
   InventoryIndexRoute: typeof InventoryIndexRoute
+  InventoryCountsCountIdRoute: typeof InventoryCountsCountIdRoute
   InventoryLocationsLocationIdRoute: typeof InventoryLocationsLocationIdRoute
   InventoryMovementsMovementIdRoute: typeof InventoryMovementsMovementIdRoute
   InventorySitesSiteIdRoute: typeof InventorySitesSiteIdRoute
   InventoryVariantsVariantIdRoute: typeof InventoryVariantsVariantIdRoute
+  InventoryCountsIndexRoute: typeof InventoryCountsIndexRoute
   InventoryMovementsIndexRoute: typeof InventoryMovementsIndexRoute
   InventoryMovementsNewAdjustmentRoute: typeof InventoryMovementsNewAdjustmentRoute
   InventoryMovementsNewMoveRoute: typeof InventoryMovementsNewMoveRoute
@@ -2915,12 +2975,15 @@ interface InventoryRouteChildren {
 }
 
 const InventoryRouteChildren: InventoryRouteChildren = {
+  InventoryImportRoute: InventoryImportRoute,
   InventoryLookupRoute: InventoryLookupRoute,
   InventoryIndexRoute: InventoryIndexRoute,
+  InventoryCountsCountIdRoute: InventoryCountsCountIdRoute,
   InventoryLocationsLocationIdRoute: InventoryLocationsLocationIdRoute,
   InventoryMovementsMovementIdRoute: InventoryMovementsMovementIdRoute,
   InventorySitesSiteIdRoute: InventorySitesSiteIdRoute,
   InventoryVariantsVariantIdRoute: InventoryVariantsVariantIdRoute,
+  InventoryCountsIndexRoute: InventoryCountsIndexRoute,
   InventoryMovementsIndexRoute: InventoryMovementsIndexRoute,
   InventoryMovementsNewAdjustmentRoute: InventoryMovementsNewAdjustmentRoute,
   InventoryMovementsNewMoveRoute: InventoryMovementsNewMoveRoute,

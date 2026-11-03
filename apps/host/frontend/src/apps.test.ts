@@ -2,6 +2,8 @@ import {
   IconBuildingWarehouse,
   IconCalendarEvent,
   IconCalendarStats,
+  IconClipboardCheck,
+  IconFileImport,
   IconPackageImport,
   IconTransfer,
   IconUsersGroup,
@@ -127,6 +129,8 @@ describe("the app registry", () => {
       "/inventory",
       "/inventory/movements",
       "/inventory/movements",
+      "/inventory/counts",
+      "/inventory/import",
       "/energy/metering-points",
       "/energy/prices",
       "/energy/tariffs",
@@ -571,8 +575,9 @@ describe("the app registry", () => {
   // Inventory's destinations are the package's (`inventoryNavItems`), the host
   // adding the label and the icon. Receipts is the movements list filtered to
   // receipts (inventory design §13.3), so it shares Movements' path and
-  // carries the search.
-  it("gives Inventory the overview, Movements and Receipts, from the package's destinations", () => {
+  // carries the search. Counts and Import are offered by counts-manage and
+  // stock-adjust, each with both views, as every stock read asks (§5).
+  it("gives Inventory the overview, Movements, Receipts, Counts and Import, from the package's destinations", () => {
     const inventory = appForKey("inventory");
     expect(inventory).toMatchObject({ module: "inventory", label: "navigation.inventory", home: "/inventory" });
     expect(inventory.icon).toBe(IconBuildingWarehouse);
@@ -612,8 +617,30 @@ describe("the app registry", () => {
         ["inventory:locations-view", "inventory:stock-view"],
         undefined,
       ],
+      [
+        "navigation.inventoryCounts",
+        "/inventory/counts",
+        undefined,
+        ["inventory:counts-manage"],
+        ["inventory:locations-view", "inventory:stock-view"],
+        undefined,
+      ],
+      [
+        "navigation.inventoryImport",
+        "/inventory/import",
+        undefined,
+        ["inventory:stock-adjust"],
+        ["inventory:locations-view", "inventory:stock-view"],
+        undefined,
+      ],
     ]);
-    expect(items.map((item) => item.icon)).toEqual([IconBuildingWarehouse, IconTransfer, IconPackageImport]);
+    expect(items.map((item) => item.icon)).toEqual([
+      IconBuildingWarehouse,
+      IconTransfer,
+      IconPackageImport,
+      IconClipboardCheck,
+      IconFileImport,
+    ]);
     expect(items.map((item) => item.to)).toEqual(inventoryNavItems.map((item) => item.to));
     for (const item of items) {
       expect(navigationCatalog.en[item.label as keyof typeof navigationCatalog.en]).toBeTruthy();
@@ -628,7 +655,9 @@ describe("the app registry", () => {
       switcherTiles(permissions, enabled, undefined).map((tile) => [tile.app.key, tile.enabled]);
     expect(keys(["inventory:locations-view"], allModules)).toContainEqual(["inventory", true]);
     expect(keys(["inventory:stock-view"], allModules)).toContainEqual(["inventory", true]);
+    // Counts' and Import's own permissions need both views beside them, so alone they offer nothing.
     expect(keys(["inventory:stock-adjust"], allModules).map(([key]) => key)).not.toContain("inventory");
+    expect(keys(["inventory:counts-manage"], allModules).map(([key]) => key)).not.toContain("inventory");
     expect(keys(["inventory:locations-view"], ["customers"])).toContainEqual(["inventory", false]);
     const paths = (permissions: string[]) =>
       appNavSections(appForKey("inventory"), allModules, {
@@ -643,6 +672,16 @@ describe("the app registry", () => {
       "navigation.inventoryMovements",
       "navigation.inventoryReceipts",
     ]);
+    expect(
+      paths(["inventory:locations-view", "inventory:stock-view", "inventory:counts-manage", "inventory:stock-adjust"]),
+    ).toEqual([
+      "navigation.inventoryOverview",
+      "navigation.inventoryMovements",
+      "navigation.inventoryReceipts",
+      "navigation.inventoryCounts",
+      "navigation.inventoryImport",
+    ]);
+    expect(paths(["inventory:locations-view", "inventory:counts-manage"])).toEqual(["navigation.inventoryOverview"]);
   });
 
   it("treats Home as always enabled and module apps as enabled when their module is", () => {

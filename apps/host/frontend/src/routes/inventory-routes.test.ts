@@ -1,6 +1,10 @@
 import { QueryClient } from "@tanstack/react-query";
 import { createMemoryHistory, createRouter, isNotFound } from "@tanstack/react-router";
 import {
+  COUNT_ROUTE_PATH,
+  COUNTS_ROUTE_PATH,
+  countLinkOptions,
+  IMPORT_ROUTE_PATH,
   INVENTORY_HOME_ROUTE_PATH,
   inventoryNavItems,
   LOCATION_ROUTE_PATH,
@@ -20,6 +24,7 @@ import {
 import { describe, expect, it } from "vitest";
 import { routeTree } from "../routeTree.gen";
 import { Route as InventoryRoute } from "./inventory";
+import { Route as CountRoute } from "./inventory/counts.$countId";
 import { Route as LocationRoute } from "./inventory/locations.$locationId";
 import { Route as LookupRoute } from "./inventory/lookup";
 import { Route as MovementRoute } from "./inventory/movements.$movementId";
@@ -70,6 +75,10 @@ describe("the inventory routes", () => {
     expect(matchedRouteIds(NEW_ADJUSTMENT_ROUTE_PATH)).toContain(NEW_ADJUSTMENT_ROUTE_PATH);
     expect(matchedRouteIds(NEW_MOVE_ROUTE_PATH)).toContain(NEW_MOVE_ROUTE_PATH);
     expect(matchedRouteIds(NEW_RECEIPT_ROUTE_PATH)).toContain(NEW_RECEIPT_ROUTE_PATH);
+    expect(matchedRouteIds(COUNTS_ROUTE_PATH)).toContain(COUNTS_ROUTE_PATH);
+    expect(matchedRouteIds("/inventory/counts/5")).toContain(COUNT_ROUTE_PATH);
+    expect(countLinkOptions(5)).toEqual({ to: COUNT_ROUTE_PATH, params: { countId: "5" } });
+    expect(matchedRouteIds(IMPORT_ROUTE_PATH)).toContain(IMPORT_ROUTE_PATH);
     for (const item of inventoryNavItems) expect(matchedRouteIds(item.to)).toContain(item.to);
   });
 
@@ -77,6 +86,8 @@ describe("the inventory routes", () => {
     expect(matchedRouteIds("/inventory/sites/3")).toContain("/inventory");
     expect(matchedRouteIds("/inventory/movements/41")).toContain("/inventory");
     expect(matchedRouteIds(NEW_RECEIPT_ROUTE_PATH)).toContain("/inventory");
+    expect(matchedRouteIds("/inventory/counts/5")).toContain("/inventory");
+    expect(matchedRouteIds(IMPORT_ROUTE_PATH)).toContain("/inventory");
     expect(InventoryRoute.options.staticData).toEqual({ app: "inventory" });
   });
 
@@ -99,6 +110,7 @@ describe("the inventory routes", () => {
     ["location", LocationRoute, "locationId"],
     ["variant", VariantRoute, "variantId"],
     ["movement", MovementRoute, "movementId"],
+    ["count", CountRoute, "countId"],
   ] as const)("refuses a %s id that is not a positive whole number", (_, route, param) => {
     expect(runBeforeLoad(route, { [param]: "12" })).toBeUndefined();
     for (const id of ["0", "-3", "1e3", "0x10", " 12", "12abc", "1.5", "", "new", "99999999999999999999"]) {

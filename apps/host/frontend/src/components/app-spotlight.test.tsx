@@ -340,6 +340,41 @@ describe("AppSpotlight navigation authorization", () => {
     expect(screen.queryByText("Find location or item", { exact: true })).not.toBeInTheDocument();
   });
 
+  // Start count (inventory design §7, B) opens the counts with the start form
+  // open; it needs counts-manage beside both views.
+  it("opens the counts with the start form from Start count for counts-manage and both views", async () => {
+    const onNavigate = vi.fn();
+    renderSpotlight(
+      ["inventory:counts-manage", "inventory:locations-view", "inventory:stock-view"],
+      false,
+      false,
+      onNavigate,
+    );
+
+    fireEvent.click(await waitFor(() => screen.getByText("Start count", { exact: true })));
+
+    expect(onNavigate).toHaveBeenCalledTimes(1);
+    expect(navigateMock).toHaveBeenCalledWith(expect.objectContaining({ to: "/inventory/counts", search: { new: 1 } }));
+  });
+
+  it("hides Start count without counts-manage, without either view and when the module is off", async () => {
+    for (const permissions of [
+      ["inventory:locations-view", "inventory:stock-view"],
+      ["inventory:counts-manage", "inventory:locations-view"],
+      ["inventory:counts-manage", "inventory:stock-view"],
+    ]) {
+      renderSpotlight(permissions, false, false);
+      await waitFor(() => expect(screen.getByText("Overview", { exact: true })).toBeInTheDocument());
+      expect(screen.queryByText("Start count", { exact: true })).not.toBeInTheDocument();
+      cleanup();
+      spotlight.close();
+    }
+
+    renderSpotlight(["*"], true, true, undefined, ["customers", "products"]);
+    await waitFor(() => expect(screen.getByText("Create customer", { exact: true })).toBeInTheDocument());
+    expect(screen.queryByText("Start count", { exact: true })).not.toBeInTheDocument();
+  });
+
   // Receipts is the movements list filtered to receipts: Spotlight opens it
   // with the entry's own search.
   it("opens Receipts as the movements list with kind=receipt", async () => {

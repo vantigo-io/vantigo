@@ -10,6 +10,7 @@ import {
   IconCalendarPlus,
   IconCalendarStats,
   IconCertificate,
+  IconClipboardCheck,
   IconClock,
   IconListCheck,
   IconMail,
@@ -30,7 +31,7 @@ import { customersQueryOptions } from "@vantigo/customers-ui/api/customers";
 import { formatContactName } from "@vantigo/customers-ui/lib/format-contact-name";
 import { meteringPointsQueryOptions } from "@vantigo/energy-ui";
 import { useI18n } from "@vantigo/frontend-shell";
-import { INVENTORY_HOME_ROUTE_PATH } from "@vantigo/inventory-ui/lib/routes";
+import { COUNTS_ROUTE_PATH, INVENTORY_HOME_ROUTE_PATH } from "@vantigo/inventory-ui/lib/routes";
 import { BOARD_ROUTE_PATH, REQUESTS_ROUTE_PATH } from "@vantigo/planning-ui/lib/routes";
 import { projectSearchQueryOptions } from "@vantigo/projects-ui/api/projects";
 import { MY_PAGE_ROUTE_PATH, PEOPLE_ROUTE_PATH } from "@vantigo/staff-ui/lib/routes";
@@ -217,6 +218,15 @@ export const AppSpotlight = ({
             search: undefined,
           },
         ]
+      : []),
+    // Start count is the counter's: the counts open the start form on arrival
+    // (`new=1`). Starting one needs inventory:counts-manage and, as every
+    // stock read, both views (design §5), so three checks, each any-of on its own.
+    ...(enabledModules?.includes("inventory") &&
+    hasPermissions(permissions, ["inventory:counts-manage"]) &&
+    hasPermissions(permissions, ["inventory:locations-view"]) &&
+    hasPermissions(permissions, ["inventory:stock-view"])
+      ? [{ label: t("dashboard.startCount"), icon: IconClipboardCheck, path: COUNTS_ROUTE_PATH, search: { new: 1 } }]
       : []),
     // New appointment is everyone's in the app, for themselves: the calendar
     // opens the appointment sheet on arrival (the package's `new` seam).

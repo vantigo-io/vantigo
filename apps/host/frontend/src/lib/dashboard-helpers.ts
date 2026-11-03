@@ -13,6 +13,7 @@ import {
   IconUsersGroup,
 } from "@tabler/icons-react";
 import type { InventoryStats } from "@vantigo/inventory-ui/api/stats";
+import { COUNTS_ROUTE_PATH, countLinkOptions } from "@vantigo/inventory-ui/lib/routes";
 import type { DailyPoint, InvoicesSummary, PlanningStats, StaffStats } from "../api/dashboard";
 import { hasAllPermissions, hasPermissions, type ModuleKey } from "../navigation";
 
@@ -397,8 +398,17 @@ export const attentionHref = (item: { module: ModuleKey; type: string; entityId:
       return `/planning/people/${encodeURIComponent(item.entityId)}`;
     return "/planning";
   }
-  // Delivery A raises none; B's open count will open its count.
-  if (item.module === "inventory") return "/inventory";
+  // A count open for a long time carries the count's id and opens the count;
+  // an id that is not one lands on the counts.
+  if (item.module === "inventory") {
+    if (item.type === "countOpenLong") {
+      const countId = Number(item.entityId);
+      if (!/^\d+$/.test(item.entityId) || !Number.isSafeInteger(countId) || countId <= 0) return COUNTS_ROUTE_PATH;
+      const { to, params } = countLinkOptions(countId);
+      return to.replace("$countId", params.countId);
+    }
+    return "/inventory";
+  }
   return "/communications/inbox";
 };
 
@@ -416,6 +426,15 @@ const planningAttentionTitleKeys: Record<string, string> = {
   certificatesExpiring: "dashboard.planningCertificateExpiring",
   requestsOpen: "dashboard.planningRequestOpen",
   wishesUnseen: "dashboard.planningWishesUnseen",
+};
+
+/**
+ * Inventory's sentences (inventory design §7, B): a count open for a long time
+ * is worded here, in the reader's language, and names nothing — the link opens
+ * the count.
+ */
+const inventoryAttentionTitleKeys: Record<string, string> = {
+  countOpenLong: "dashboard.inventoryCountOpenLong",
 };
 
 /**
@@ -597,6 +616,7 @@ export const attentionTitleKey = (item: {
     return staffAttentionTitleKeys[item.type];
   }
   if (item.module === "planning") return planningAttentionTitleKeys[item.type];
+  if (item.module === "inventory") return inventoryAttentionTitleKeys[item.type];
   return undefined;
 };
 
@@ -651,6 +671,8 @@ export const attentionTitle = (
       count: item.count ?? (item.type === "reminderBatchUnposted" ? 0 : 1),
     });
   }
+  // Inventory's sentence names nothing: its entityId is a count's id, not a week.
+  if (item.module === "inventory") return t(key);
   return t(key, { date: formatDate(attentionWeek(item.entityId), { dateStyle: "medium", timeZone: "UTC" }) });
 };
 
