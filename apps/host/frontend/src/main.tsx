@@ -15,7 +15,7 @@ import { createRouter, RouterProvider } from "@tanstack/react-router";
 import { appConfig, I18nProvider, initAppConfig, vantigoTheme } from "@vantigo/frontend-shell";
 import { StrictMode } from "react";
 import ReactDOM from "react-dom/client";
-import { setAuthStateClearer, setUnauthorizedHandler } from "./api/request";
+import { setSessionHandlers } from "./api/session-handlers";
 import { AccountLanguagePreference } from "./components/account-language-preference";
 import { AppErrorBoundary, NotFoundPage, RouterError } from "./components/errors";
 import { LocaleDatesProvider } from "./components/locale-dates-provider";
@@ -33,12 +33,14 @@ const router = createRouter({
   defaultNotFoundComponent: NotFoundPage,
   defaultErrorComponent: RouterError,
 });
-setAuthStateClearer(() => queryClient.removeQueries({ queryKey: ["auth", "session"], exact: true }));
-setUnauthorizedHandler(() => {
-  const pathname = window.location.pathname;
-  if (publicPaths.has(pathname)) return;
-  const returnTo = `${pathname}${window.location.search}${window.location.hash}`;
-  void router.navigate({ to: "/session-expired", search: { returnTo } });
+setSessionHandlers({
+  clearAuthState: () => queryClient.removeQueries({ queryKey: ["auth", "session"], exact: true }),
+  onUnauthorized: () => {
+    const pathname = window.location.pathname;
+    if (publicPaths.has(pathname)) return;
+    const returnTo = `${pathname}${window.location.search}${window.location.hash}`;
+    void router.navigate({ to: "/session-expired", search: { returnTo } });
+  },
 });
 wireNavigationProgress(router);
 declare module "@tanstack/react-router" {

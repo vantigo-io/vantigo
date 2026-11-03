@@ -98,8 +98,9 @@ passordet der, ikke i Vantigo.
 
 En økt avsluttes av seg selv etter en periode uten aktivitet, og uansett noen timer
 etter at du logget inn; administratorers økter er kortere enn alle andres. Det neste
-du gjør, viser da **Økten din har utløpt** med knappen **Logg inn igjen**. Ingenting
-du allerede hadde lagret, går tapt.
+du gjør, viser da **Økten din har utløpt** med knappen **Logg inn igjen**, på alle
+skjermbilder — også når du lagrer et skjema du åpnet før økten ble avsluttet. Ingenting
+du allerede hadde lagret, går tapt, men det du hadde skrevet i skjemaet, beholdes ikke.
 
 Du ser den samme siden når en administrator deaktiverer kontoen din, endrer
 opplysningene eller rollen din, eller logger deg ut overalt, siden hver av disse

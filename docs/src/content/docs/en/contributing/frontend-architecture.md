@@ -4,6 +4,7 @@ description: "Workspace layout, module manifests, API client generation, i18n, t
 sources:
   - packages/frontend-shell/src/assist-targets.ts
   - apps/host/frontend/src/lib/assist-targets.ts
+  - apps/host/frontend/src/api/session-handlers.ts
   - tools/assist
 ---
 
@@ -67,6 +68,23 @@ Frontend packages never hand-write REST URLs or `Response` types. All HTTP calls
    - Optimistic concurrency (`If-Match` / `ETag`) helpers for revision-guarded resources.
    - Problem Details (`application/problem+json`) parsing into `ApiRequestError`, including
      field-level validation errors (`errors: Record<string, string[]>`).
+
+## Session handling across module clients (`@vantigo/frontend-api-client`)
+
+Each frontend package builds its own fetch client with `createApiClient` from
+`@vantigo/frontend-api-client` in `src/api/request.ts`, and exports the client's
+`request`, `setAuthStateClearer` and `setUnauthorizedHandler`. On a 401 a client calls its auth-state
+clearer, then its unauthorized handler — unless the request passed `handleUnauthorized: false`.
+A client whose callbacks were never set does neither, and the page only shows an error.
+
+The host sets them for every client in one place,
+[`apps/host/frontend/src/api/session-handlers.ts`](https://github.com/vantigo-io/vantigo/blob/main/apps/host/frontend/src/api/session-handlers.ts):
+`main.tsx` calls `setSessionHandlers` once, which drops the cached session query and sends the person to
+`/session-expired`. The host imports each client through the package's public
+`./api/request` subpath; module packages never import each other. A new module package with its own client
+is added to `sessionClients` there — the file's test fails while a package under `apps/` with a
+`setUnauthorizedHandler` in `src/api/request.ts` is missing from it, and checks that a 401 from every
+client reaches the host's handlers.
 
 ## Data fetching and state management
 
