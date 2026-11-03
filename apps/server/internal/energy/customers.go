@@ -12,11 +12,13 @@ import (
 // This file is the customer-scoped energy area (EP/CustomerEnergyEndpoints.cs,
 // group /customers): getEnergyCustomersByCustomerIdMeteringPoints,
 // getEnergyCustomersByCustomerIdConsumption and
-// getEnergyCustomersByCustomerIdConsumptionAggregate. None of these three
-// call contracts.CustomerDirectory (energy inventory §1.2): they trust
-// customerId as an opaque foreign key and simply return empty results for
-// an unknown one — unlike supplyperiods.go's Create/Switch, the only two
-// operations in this module that actually resolve a customer.
+// getEnergyCustomersByCustomerIdConsumptionAggregate. They trust customerId
+// as an opaque foreign key and simply return empty results for an unknown one
+// (energy inventory §1.2) — unlike supplyperiods.go's Create/Switch, which
+// refuse a customer the directory does not know. The metering points read
+// contracts.CustomerDirectory only for the customer's industry code, which
+// every point's electricity-tax suggestion reads (electricity_tax.go); an
+// unknown customer is one without a code.
 
 // GetEnergyCustomersByCustomerIdMeteringPoints List a customer's metering points
 // (GET /api/v1/energy/customers/{customerId}/metering-points)
@@ -25,7 +27,9 @@ import (
 // at least one of the customer's non-cancelled supply periods, ordered by
 // point id, each carrying that filtered, Start-ordered period list. No
 // existence check on customerId; an unknown id answers [], always 200
-// (energy inventory §1.2).
+// (energy inventory §1.2). Each point's electricity-tax suggestion reads this
+// customer's industry code — the customer the tab shows, not necessarily the
+// point's current one.
 func (s *server) GetEnergyCustomersByCustomerIdMeteringPoints(ctx context.Context, req gen.GetEnergyCustomersByCustomerIdMeteringPointsRequestObject) (gen.GetEnergyCustomersByCustomerIdMeteringPointsResponseObject, error) {
 	q := store.New(s.deps.Pool)
 	points, err := q.ListCustomerMeteringPoints(ctx, req.CustomerId)
@@ -52,10 +56,20 @@ func (s *server) GetEnergyCustomersByCustomerIdMeteringPoints(ctx context.Contex
 		periodsByPoint[p.MeteringPointID] = append(periodsByPoint[p.MeteringPointID], supplyPeriodResponseOf(p, names))
 	}
 
+	customer := taxCustomer{}
+	if len(points) > 0 {
+		if customer, err = s.taxCustomerOf(ctx, &req.CustomerId); err != nil {
+			return nil, err
+		}
+	}
+
 	data := make([]gen.CustomerMeteringPointResponse, 0, len(points))
 	for _, r := range points {
+		point := meteringPointOfCustomerRow(r)
+		resp := meteringPointResponseOf(point, r.ActiveMeterNumber, names)
+		resp.ElectricityTaxSuggestion = electricityTaxSuggestionOf(point, customer)
 		data = append(data, gen.CustomerMeteringPointResponse{
-			MeteringPoint: meteringPointResponseOf(meteringPointOfCustomerRow(r), r.ActiveMeterNumber, names),
+			MeteringPoint: resp,
 			SupplyPeriods: periodsByPoint[r.ID],
 		})
 	}

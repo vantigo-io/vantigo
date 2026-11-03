@@ -272,6 +272,35 @@ components:
                 - meteringPoint
                 - supplyPeriods
             type: object
+        ElectricityTaxSuggestion:
+            description: "The electricity-tax class the rules point to for a metering point (energy electricity-tax suggestion design): derived on every read from the point's household flag and address and its current customer's industry code, never stored. A hint beside electricityTaxClass, which stays what settlements bill."
+            properties:
+                class:
+                    description: ordinary, reduced or exempt; left out when there is no suggestion (a point outside Norway).
+                    type: string
+                customerId:
+                    description: The customer whose industry code was read — the point's current customer, or the customer whose points are listed; left out when there is none.
+                    format: int32
+                    nullable: true
+                    type: integer
+                industryCode:
+                    description: The industry code (NACE) the rule read from the customer's registry record; left out when there was none.
+                    nullable: true
+                    type: string
+                matches:
+                    description: True when there is no suggestion or it equals the stored electricityTaxClass.
+                    type: boolean
+                reason:
+                    description: "Why: not_norway, zone_household, zone_public_administration, zone_business, household, industry, industry_may_qualify, ordinary or no_industry_code."
+                    type: string
+                uncertain:
+                    description: True when the inputs cannot settle the class — the reader should check it against the customer's documentation.
+                    type: boolean
+            required:
+                - reason
+                - uncertain
+                - matches
+            type: object
         EndSupplyPeriodRequest:
             properties:
                 end:
@@ -732,7 +761,7 @@ components:
                 - priceArea
             type: object
         MeteringPointResponse:
-            description: A metering point. household, electricityTaxClass and vatTreatment (energy consumption billing design D3, D4) are always sent; gridTariffId and gridTariffName are sent when the point has a grid tariff and left out when it has none. The schema leaves all five optional because the recorded .NET exchanges predate them.
+            description: A metering point. household, electricityTaxClass and vatTreatment (energy consumption billing design D3, D4) are always sent; gridTariffId and gridTariffName are sent when the point has a grid tariff and left out when it has none. electricityTaxSuggestion is sent by GET /metering-points/{id}, the create and update responses and the customer's metering points, never by the list. The schema leaves all six optional because the recorded .NET exchanges predate them.
             properties:
                 address:
                     $ref: '#/components/schemas/AddressResponse'
@@ -746,6 +775,8 @@ components:
                 electricityTaxClass:
                     description: ordinary, reduced or exempt (energy consumption billing design D4).
                     type: string
+                electricityTaxSuggestion:
+                    $ref: '#/components/schemas/ElectricityTaxSuggestion'
                 expectedAnnualConsumptionKwh:
                     format: double
                     nullable: true

@@ -155,6 +155,8 @@ func trimmedOrNil(v *string) *string {
 // meteringPointResponseOf builds the response for row; names holds the grid
 // tariff's name (tariffNames), so a page of points reads them with one query.
 // The VAT treatment is derived here, every time, never stored (vat.go).
+// The electricity-tax suggestion is not: it needs a customer's industry code,
+// which the list never reads, so the callers that send it add it.
 func meteringPointResponseOf(row store.EnergyMeteringPoint, meterNumber *string, names map[int32]string) gen.MeteringPointResponse {
 	household, taxClass := row.Household, row.ElectricityTaxClass
 	vat := vatTreatment(row.Household, row.CountryCode, row.PostalCode)
@@ -231,8 +233,10 @@ func activeMeterNumber(ctx context.Context, q *store.Queries, meteringPointID in
 // meteringPointResponse builds a full MeteringPointResponse for row,
 // reading its current meter's number with a follow-up query — there is no
 // in-app tracked entity to read the already-loaded Meters collection from
-// the way EF's SaveChangesAsync leaves one.
-func meteringPointResponse(ctx context.Context, q *store.Queries, row store.EnergyMeteringPoint) (gen.MeteringPointResponse, error) {
+// the way EF's SaveChangesAsync leaves one — and its electricity-tax
+// suggestion, with its current customer's industry code read through the
+// customer directory (electricity_tax.go).
+func (s *server) meteringPointResponse(ctx context.Context, q *store.Queries, row store.EnergyMeteringPoint) (gen.MeteringPointResponse, error) {
 	meterNumber, err := activeMeterNumber(ctx, q, row.ID)
 	if err != nil {
 		return gen.MeteringPointResponse{}, err
@@ -241,7 +245,13 @@ func meteringPointResponse(ctx context.Context, q *store.Queries, row store.Ener
 	if err != nil {
 		return gen.MeteringPointResponse{}, err
 	}
-	return meteringPointResponseOf(row, meterNumber, names), nil
+	customer, err := s.pointTaxCustomer(ctx, q, row.ID)
+	if err != nil {
+		return gen.MeteringPointResponse{}, err
+	}
+	resp := meteringPointResponseOf(row, meterNumber, names)
+	resp.ElectricityTaxSuggestion = electricityTaxSuggestionOf(row, customer)
+	return resp, nil
 }
 
 // meteringPointSorts are the list's sortBy values, each the ListMeteringPoints
@@ -478,7 +488,7 @@ func (s *server) PostEnergyMeteringPoints(ctx context.Context, req gen.PostEnerg
 	}
 
 	q := store.New(s.deps.Pool)
-	resp, err := meteringPointResponse(ctx, q, created)
+	resp, err := s.meteringPointResponse(ctx, q, created)
 	if err != nil {
 		return nil, err
 	}
@@ -513,7 +523,7 @@ func (s *server) GetEnergyMeteringPoint(ctx context.Context, req gen.GetEnergyMe
 	if err != nil {
 		return nil, fmt.Errorf("energy: get metering point: %w", err)
 	}
-	resp, err := meteringPointResponse(ctx, q, row)
+	resp, err := s.meteringPointResponse(ctx, q, row)
 	if err != nil {
 		return nil, err
 	}
@@ -618,7 +628,7 @@ func (s *server) PutEnergyMeteringPointsById(ctx context.Context, req gen.PutEne
 	}
 
 	q := store.New(s.deps.Pool)
-	resp, err := meteringPointResponse(ctx, q, updated)
+	resp, err := s.meteringPointResponse(ctx, q, updated)
 	if err != nil {
 		return nil, err
 	}

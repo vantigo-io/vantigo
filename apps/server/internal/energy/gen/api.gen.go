@@ -256,9 +256,30 @@ type CustomerConsumptionAggregateResponse struct {
 
 // CustomerMeteringPointResponse defines model for CustomerMeteringPointResponse.
 type CustomerMeteringPointResponse struct {
-	// MeteringPoint A metering point. household, electricityTaxClass and vatTreatment (energy consumption billing design D3, D4) are always sent; gridTariffId and gridTariffName are sent when the point has a grid tariff and left out when it has none. The schema leaves all five optional because the recorded .NET exchanges predate them.
+	// MeteringPoint A metering point. household, electricityTaxClass and vatTreatment (energy consumption billing design D3, D4) are always sent; gridTariffId and gridTariffName are sent when the point has a grid tariff and left out when it has none. electricityTaxSuggestion is sent by GET /metering-points/{id}, the create and update responses and the customer's metering points, never by the list. The schema leaves all six optional because the recorded .NET exchanges predate them.
 	MeteringPoint MeteringPointResponse  `json:"meteringPoint"`
 	SupplyPeriods []SupplyPeriodResponse `json:"supplyPeriods"`
+}
+
+// ElectricityTaxSuggestion The electricity-tax class the rules point to for a metering point (energy electricity-tax suggestion design): derived on every read from the point's household flag and address and its current customer's industry code, never stored. A hint beside electricityTaxClass, which stays what settlements bill.
+type ElectricityTaxSuggestion struct {
+	// Class ordinary, reduced or exempt; left out when there is no suggestion (a point outside Norway).
+	Class *string `json:"class,omitempty"`
+
+	// CustomerId The customer whose industry code was read — the point's current customer, or the customer whose points are listed; left out when there is none.
+	CustomerId *int32 `json:"customerId,omitempty"`
+
+	// IndustryCode The industry code (NACE) the rule read from the customer's registry record; left out when there was none.
+	IndustryCode *string `json:"industryCode,omitempty"`
+
+	// Matches True when there is no suggestion or it equals the stored electricityTaxClass.
+	Matches bool `json:"matches"`
+
+	// Reason Why: not_norway, zone_household, zone_public_administration, zone_business, household, industry, industry_may_qualify, ordinary or no_industry_code.
+	Reason string `json:"reason"`
+
+	// Uncertain True when the inputs cannot settle the class — the reader should check it against the customer's documentation.
+	Uncertain bool `json:"uncertain"`
 }
 
 // EndSupplyPeriodRequest defines model for EndSupplyPeriodRequest.
@@ -460,7 +481,7 @@ type MeteringPointRequest struct {
 	PriceArea   *string  `json:"priceArea"`
 }
 
-// MeteringPointResponse A metering point. household, electricityTaxClass and vatTreatment (energy consumption billing design D3, D4) are always sent; gridTariffId and gridTariffName are sent when the point has a grid tariff and left out when it has none. The schema leaves all five optional because the recorded .NET exchanges predate them.
+// MeteringPointResponse A metering point. household, electricityTaxClass and vatTreatment (energy consumption billing design D3, D4) are always sent; gridTariffId and gridTariffName are sent when the point has a grid tariff and left out when it has none. electricityTaxSuggestion is sent by GET /metering-points/{id}, the create and update responses and the customer's metering points, never by the list. The schema leaves all six optional because the recorded .NET exchanges predate them.
 type MeteringPointResponse struct {
 	Address          AddressResponse `json:"address"`
 	ConnectionStatus string          `json:"connectionStatus"`
@@ -470,9 +491,12 @@ type MeteringPointResponse struct {
 	CurrentCustomer *MeteringPointCustomerResponse `json:"currentCustomer,omitempty"`
 
 	// ElectricityTaxClass ordinary, reduced or exempt (energy consumption billing design D4).
-	ElectricityTaxClass          *string  `json:"electricityTaxClass,omitempty"`
-	ExpectedAnnualConsumptionKwh *float64 `json:"expectedAnnualConsumptionKwh"`
-	GridArea                     *string  `json:"gridArea"`
+	ElectricityTaxClass *string `json:"electricityTaxClass,omitempty"`
+
+	// ElectricityTaxSuggestion The electricity-tax class the rules point to for a metering point (energy electricity-tax suggestion design): derived on every read from the point's household flag and address and its current customer's industry code, never stored. A hint beside electricityTaxClass, which stays what settlements bill.
+	ElectricityTaxSuggestion     *ElectricityTaxSuggestion `json:"electricityTaxSuggestion,omitempty"`
+	ExpectedAnnualConsumptionKwh *float64                  `json:"expectedAnnualConsumptionKwh"`
+	GridArea                     *string                   `json:"gridArea"`
 
 	// GridTariffId The installation's own grid tariff for the point; left out when it has none, as when the grid company bills grid services itself.
 	GridTariffId *int32 `json:"gridTariffId,omitempty"`

@@ -5,23 +5,34 @@ import "time"
 // meteringPointJSON decodes MeteringPointResponse
 // (Endpoints/MeteringPoints/Dtos/MeteringPointResponse.cs).
 type meteringPointJSON struct {
-	Id                           int32       `json:"id"`
-	Gsrn                         string      `json:"gsrn"`
-	MeterNumber                  *string     `json:"meterNumber"`
-	Address                      addressJSON `json:"address"`
-	PriceArea                    string      `json:"priceArea"`
-	GridArea                     *string     `json:"gridArea"`
-	ExpectedAnnualConsumptionKwh *float64    `json:"expectedAnnualConsumptionKwh"`
-	Latitude                     *float64    `json:"latitude"`
-	Longitude                    *float64    `json:"longitude"`
-	ConnectionStatus             string      `json:"connectionStatus"`
-	GridTariffId                 *int32      `json:"gridTariffId"`
-	GridTariffName               *string     `json:"gridTariffName"`
-	Household                    bool        `json:"household"`
-	ElectricityTaxClass          string      `json:"electricityTaxClass"`
-	VatTreatment                 string      `json:"vatTreatment"`
-	CreatedAt                    time.Time   `json:"createdAt"`
-	UpdatedAt                    time.Time   `json:"updatedAt"`
+	Id                           int32        `json:"id"`
+	Gsrn                         string       `json:"gsrn"`
+	MeterNumber                  *string      `json:"meterNumber"`
+	Address                      addressJSON  `json:"address"`
+	PriceArea                    string       `json:"priceArea"`
+	GridArea                     *string      `json:"gridArea"`
+	ExpectedAnnualConsumptionKwh *float64     `json:"expectedAnnualConsumptionKwh"`
+	Latitude                     *float64     `json:"latitude"`
+	Longitude                    *float64     `json:"longitude"`
+	ConnectionStatus             string       `json:"connectionStatus"`
+	GridTariffId                 *int32       `json:"gridTariffId"`
+	GridTariffName               *string      `json:"gridTariffName"`
+	Household                    bool         `json:"household"`
+	ElectricityTaxClass          string       `json:"electricityTaxClass"`
+	VatTreatment                 string       `json:"vatTreatment"`
+	ElectricityTaxSuggestion     *taxHintJSON `json:"electricityTaxSuggestion"`
+	CreatedAt                    time.Time    `json:"createdAt"`
+	UpdatedAt                    time.Time    `json:"updatedAt"`
+}
+
+// taxHintJSON decodes ElectricityTaxSuggestion.
+type taxHintJSON struct {
+	Class        *string `json:"class"`
+	Reason       string  `json:"reason"`
+	Uncertain    bool    `json:"uncertain"`
+	Matches      bool    `json:"matches"`
+	CustomerId   *int32  `json:"customerId"`
+	IndustryCode *string `json:"industryCode"`
 }
 
 type addressJSON struct {

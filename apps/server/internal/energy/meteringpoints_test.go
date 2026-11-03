@@ -491,3 +491,65 @@ func TestMeteringPoint_BillingFacts(t *testing.T) {
 	wantFieldError(t, c.Do(http.MethodPut, fmt.Sprintf("/api/v1/energy/metering-points/%d", point.Id), keep),
 		"gridTariffId", fmt.Sprintf("Tariff %d is archived.", grid.Id))
 }
+
+// TestMeteringPoint_ElectricityTaxSuggestion pins the energy electricity-tax
+// suggestion design end to end: derived from the point's address and household
+// flag and its current customer's industry code, compared with the stored
+// class, sent by the item, the create, the PUT and the customer's points, never
+// by the list.
+func TestMeteringPoint_ElectricityTaxSuggestion(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := h.SignIn(t, allEnergyPermissions...)
+
+	// No customer: ordinary, uncertain, matching the default stored class.
+	point := createMeteringPoint(t, c)
+	if s := point.ElectricityTaxSuggestion; s == nil || s.Class == nil || *s.Class != "ordinary" || s.Reason != "no_industry_code" ||
+		!s.Uncertain || !s.Matches || s.CustomerId != nil || s.IndustryCode != nil {
+		t.Errorf("create's suggestion = %+v, want ordinary, no_industry_code, uncertain, matching, no customer", s)
+	}
+
+	// Supplied to 1002, an aluminium producer: reduced, differing from ordinary.
+	if sp := c.Do(http.MethodPost, fmt.Sprintf("/api/v1/energy/metering-points/%d/supply-periods", point.Id),
+		map[string]any{"customerId": 1002, "start": h.Now()}); sp.Status != http.StatusCreated {
+		t.Fatalf("supply: status %d body %s", sp.Status, sp.Body)
+	}
+	var got meteringPointJSON
+	c.Do(http.MethodGet, fmt.Sprintf("/api/v1/energy/metering-points/%d", point.Id), nil).JSON(&got)
+	if s := got.ElectricityTaxSuggestion; s == nil || s.Class == nil || *s.Class != "reduced" || s.Reason != "industry" || s.Uncertain || s.Matches ||
+		s.CustomerId == nil || *s.CustomerId != 1002 || s.IndustryCode == nil || *s.IndustryCode != "24.420" {
+		t.Errorf("item's suggestion = %+v, want reduced, industry, differing, customer 1002 with 24.420", s)
+	}
+
+	// Moved to Alta and stored reduced: the zone's business rate, matching.
+	alta := updateBody(point.Gsrn)
+	alta["address"] = map[string]any{"streetAddress": "Markedsgata 1", "postalCode": "9501", "city": "Alta", "countryCode": "NO"}
+	alta["electricityTaxClass"] = "reduced"
+	put := c.Do(http.MethodPut, fmt.Sprintf("/api/v1/energy/metering-points/%d", point.Id), alta)
+	if put.Status != http.StatusOK {
+		t.Fatalf("put: status %d body %s", put.Status, put.Body)
+	}
+	var updated meteringPointJSON
+	put.JSON(&updated)
+	if s := updated.ElectricityTaxSuggestion; s == nil || s.Class == nil || *s.Class != "reduced" || s.Reason != "zone_business" || !s.Matches {
+		t.Errorf("PUT's suggestion = %+v, want reduced, zone_business, matching", s)
+	}
+
+	// The customer's points read the customer the tab shows.
+	var customerPoints []customerMeteringPointJSON
+	c.Do(http.MethodGet, "/api/v1/energy/customers/1002/metering-points", nil).JSON(&customerPoints)
+	if len(customerPoints) != 1 {
+		t.Fatalf("customer's points = %+v, want one", customerPoints)
+	}
+	if s := customerPoints[0].MeteringPoint.ElectricityTaxSuggestion; s == nil || s.Reason != "zone_business" ||
+		s.CustomerId == nil || *s.CustomerId != 1002 || s.IndustryCode == nil || *s.IndustryCode != "24.420" {
+		t.Errorf("customer's point's suggestion = %+v, want zone_business for customer 1002", s)
+	}
+
+	// The list leaves it out.
+	var list meteringPointListJSON
+	c.Do(http.MethodGet, "/api/v1/energy/metering-points?search="+point.Gsrn, nil).JSON(&list)
+	if len(list.Data) != 1 || list.Data[0].ElectricityTaxSuggestion != nil {
+		t.Errorf("list = %+v, want the point without a suggestion", list.Data)
+	}
+}
