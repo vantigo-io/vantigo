@@ -1591,7 +1591,12 @@ operations are exercised.
     (`import "@vantigo/<name>-ui/i18n";`), and add the host-owned labels in every
     language: navigation and dashboard strings, and **one entry per permission key in
     `apps/host/frontend/src/catalogs/admin.ts`** — without it the admin role editor
-    shows a raw key.
+    shows a raw key. Register the package's API client in `sessionClients` in
+    `apps/host/frontend/src/api/session-handlers.ts`
+    (`import * as <name> from "@vantigo/<name>-ui/api/request";`), so a 401 from the
+    module's endpoints clears the session and signs the person out like every other
+    client's; `session-handlers.test.ts` fails while a package's `api/request.ts`
+    exports `setUnauthorizedHandler` and the map lacks it.
 11. Wire the dashboard (`routes/dashboard.tsx`: the module card, its metric and its
     attention items, all gated on the module and its permissions) and the spotlight
     (`components/app-spotlight.tsx`: navigation comes from the registry, but a result
@@ -1607,3 +1612,9 @@ operations are exercised.
     `GRANT` lines in `deploy/compose/README.md`, the module tables, layout trees and `MODULES` default in
     `README.md` and `CONTRIBUTING.md`, and the [installation
     guide's](/en/admin/installation/#database-roles) `GRANT` lines.
+
+The lists above are enumerated by tests that run against the module's base branch. A
+module's pull request is checked against the `main` it was opened from, so when another
+pull request has touched one of these registries since, rebase onto the latest `main`
+and let CI run again before merging: a registry added after the branch point does not
+know the new module, and its guard only fails once both have landed.
