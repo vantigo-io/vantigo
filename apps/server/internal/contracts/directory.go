@@ -25,6 +25,12 @@ type CustomerEntry struct {
 	// merge ran; one written for this id afterwards (or committed while the
 	// merge ran) is what this field is the backstop for.
 	MergedInto *int32
+	// IndustryCode is the customer's NACE industry code as its registry record
+	// (Brønnøysund) holds it, such as "24.420"; empty when the customer has no
+	// registry record or the record no code. Energy reads it to suggest a
+	// metering point's electricity-tax class (energy electricity-tax suggestion
+	// design) — a hint, never a decision any module stores.
+	IndustryCode string
 }
 
 // CustomerGroupEntry is the group a customer belongs to, as another module may

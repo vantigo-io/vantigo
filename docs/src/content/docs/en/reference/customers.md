@@ -5,6 +5,7 @@ sources:
   - apps/server/internal/customers
   - apps/customers/frontend
   - openapi/customers.yaml
+  - apps/server/internal/contracts/directory.go
 ---
 The Customers module is where every other module finds out who the work is for: a
 customer's name, number, legal identity, contacts and activity history, served under
@@ -2088,6 +2089,16 @@ registry disagrees with the legal identity's own name, the difference is *report
 (a `registry.change` timeline event, below) rather than written over it — the legal
 identity keeps the name it was given at the time of the pick until a person accepts
 the registry's.
+
+**Who else reads it.** The industry code is the one registry field another module
+reads: `contracts.CustomerEntry.IndustryCode`, answered by the directory's
+`Customer`, `Customers` and `CustomersByLegalID`, is the record's `industry_code`
+as stored (such as `"24.420"`), and empty when the customer has no record, the record
+no code, or the record's `organisation_number` is no longer the customer's
+`legal_id` — a record counts only while it is still the company the legal identity
+names, the same rule the attention list applies. Energy reads it to suggest a
+metering point's electricity-tax class
+([Electricity-tax suggestion](/en/reference/energy/#the-electricity-tax-suggestion)).
 
 ### When it is fetched
 

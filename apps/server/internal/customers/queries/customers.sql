@@ -517,9 +517,18 @@ ORDER BY day;
 -- The merge marker comes along too (customers merge design D3,
 -- contracts.CustomerEntry.MergedInto): a consumer holding the id of a
 -- customer merged away learns where it went.
-SELECT c.id, c.name, c.status = 'archived' AS archived, c.group_id, g.name AS group_name, c.merged_into_customer_id
+-- The industry code of its registry record comes along the same way
+-- (contracts.CustomerEntry.IndustryCode, energy electricity-tax suggestion
+-- design): NULL when the customer has no record or the record no code. A
+-- record counts only while it is still the company the legal identity names
+-- (registry fix round 2, C2), so one left behind by a changed organisation
+-- number answers no code rather than another company's.
+SELECT c.id, c.name, c.status = 'archived' AS archived, c.group_id, g.name AS group_name, c.merged_into_customer_id,
+       r.industry_code
 FROM customers.customers c
 LEFT JOIN customers.customer_groups g ON g.id = c.group_id
+LEFT JOIN customers.customer_registry_records r
+       ON r.customer_id = c.id AND r.organisation_number = c.legal_id
 WHERE c.id = @id;
 
 -- name: DirectoryContact :one
@@ -577,10 +586,13 @@ ORDER BY m.id;
 -- only exists once, so the result never repeats a customer; an id nobody has
 -- is simply absent, not an error. Ordered by id, not by @ids' own order, so
 -- two callers asking for the same set always see it the same way. The group
--- columns are DirectoryCustomer's own, joined the same way.
-SELECT c.id, c.name, c.status = 'archived' AS archived, c.group_id, g.name AS group_name, c.merged_into_customer_id
+-- and industry-code columns are DirectoryCustomer's own, joined the same way.
+SELECT c.id, c.name, c.status = 'archived' AS archived, c.group_id, g.name AS group_name, c.merged_into_customer_id,
+       r.industry_code
 FROM customers.customers c
 LEFT JOIN customers.customer_groups g ON g.id = c.group_id
+LEFT JOIN customers.customer_registry_records r
+       ON r.customer_id = c.id AND r.organisation_number = c.legal_id
 WHERE c.id = ANY(@ids::int[])
 ORDER BY c.id;
 
@@ -596,9 +608,12 @@ ORDER BY c.id;
 -- returned, with the columns that say so: the caller decides what a merged-away
 -- holder means. The other columns are DirectoryCustomer's own, joined the same
 -- way, ordered by id.
-SELECT c.id, c.legal_id, c.name, c.status = 'archived' AS archived, c.group_id, g.name AS group_name, c.merged_into_customer_id
+SELECT c.id, c.legal_id, c.name, c.status = 'archived' AS archived, c.group_id, g.name AS group_name, c.merged_into_customer_id,
+       r.industry_code
 FROM customers.customers c
 LEFT JOIN customers.customer_groups g ON g.id = c.group_id
+LEFT JOIN customers.customer_registry_records r
+       ON r.customer_id = c.id AND r.organisation_number = c.legal_id
 WHERE c.legal_country = @country::text AND c.legal_id = ANY(@legal_ids::text[])
 ORDER BY c.id;
 
