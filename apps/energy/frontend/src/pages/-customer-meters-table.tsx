@@ -58,9 +58,17 @@ const TaxClassCell = ({ point }: { point: CustomerMeteringPoint["meteringPoint"]
   return (
     <Group gap="xs" wrap="nowrap">
       {stored}
-      <Tooltip label={label} multiline w={320}>
-        <ThemeIcon variant="light" color="yellow" size="sm" aria-label={label}>
-          <IconAlertTriangle size={14} />
+      <Tooltip label={label} multiline w={320} events={{ hover: true, focus: true, touch: true }}>
+        <ThemeIcon
+          variant="light"
+          color="yellow"
+          size="sm"
+          role="img"
+          tabIndex={0}
+          aria-label={label}
+          onClick={(event) => event.stopPropagation()}
+        >
+          <IconAlertTriangle size={14} aria-hidden />
         </ThemeIcon>
       </Tooltip>
     </Group>

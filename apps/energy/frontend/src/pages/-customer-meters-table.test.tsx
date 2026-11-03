@@ -1,5 +1,6 @@
 import { MantineProvider } from "@mantine/core";
 import { fireEvent, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { CustomerMeteringPoint } from "../api/energy";
 import { CustomerMetersTable } from "./-customer-meters-table";
@@ -68,8 +69,30 @@ describe("CustomerMetersTable", () => {
 
     expect(screen.getByRole("columnheader", { name: "Electricity tax" })).toBeInTheDocument();
     expect(screen.getAllByText("Ordinary rate")).toHaveLength(2);
-    const warnings = screen.getAllByLabelText(/^Suggested: Reduced rate\. Everything but households/);
+    const warnings = screen.getAllByRole("img", { name: /^Suggested: Reduced rate\. Everything but households/ });
     expect(warnings).toHaveLength(1);
+  });
+
+  it("lets a keyboard reach the warning and opens its tooltip on focus", async () => {
+    const [meter] = singleMeter;
+    if (!meter) throw new Error("no meter");
+    const differing: CustomerMeteringPoint = {
+      ...meter,
+      meteringPoint: {
+        ...meter.meteringPoint,
+        electricityTaxSuggestion: { class: "reduced", reason: "zone_business", uncertain: false, matches: false },
+      },
+    };
+    render(
+      <MantineProvider>
+        <CustomerMetersTable meters={[differing]} />
+      </MantineProvider>,
+    );
+
+    await userEvent.tab();
+    const warning = screen.getByRole("img", { name: /^Suggested: Reduced rate/ });
+    expect(warning).toHaveFocus();
+    expect(await screen.findByRole("tooltip")).toHaveTextContent(/^Suggested: Reduced rate/);
   });
 
   it("navigates to the bare metering-point path, not a tenant-prefixed one", () => {
