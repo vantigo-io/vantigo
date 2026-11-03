@@ -217,3 +217,27 @@ func TestManagementTokenIsRedacted(t *testing.T) {
 		t.Error("the port is not a secret and must stay visible")
 	}
 }
+
+func TestCloudflareAPITokenIsRedacted(t *testing.T) {
+	token := "cloudflare-api-token-value"
+	cfg := mustLoad(t, with(cloudflareEnv(), "CLOUDFLARE_EMAIL_API_TOKEN", token))
+	encoded, err := json.Marshal(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	slog.New(slog.NewJSONHandler(&buf, nil)).Info("config", "mail", cfg.Mail)
+	for name, out := range map[string]string{
+		"%+v":  fmt.Sprintf("%+v", cfg),
+		"%#v":  fmt.Sprintf("%#v", cfg.Mail),
+		"json": string(encoded),
+		"slog": buf.String(),
+	} {
+		if strings.Contains(out, token) {
+			t.Errorf("%s leaks the Cloudflare API token: %s", name, out)
+		}
+	}
+	if !strings.Contains(fmt.Sprintf("%+v", cfg.Mail), "0123456789abcdef0123456789abcdef") {
+		t.Error("the account ID is not a secret and must stay visible")
+	}
+}

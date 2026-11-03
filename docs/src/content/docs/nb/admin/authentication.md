@@ -895,7 +895,8 @@ spørring eller legitimasjon; et stiprefiks hører hjemme i `APP_BASE_PATH`. `{e
 
 ## E-postlevering
 
-`MAIL_DRIVER=log` skriver e-post til applikasjonsloggen i stedet for å sende den. Den er
+`MAIL_DRIVER` er `smtp` (en SMTP-tjener), `cloudflare` (REST-API-et til Cloudflare Email
+Service) eller `log`. `MAIL_DRIVER=log` skriver e-post til applikasjonsloggen i stedet for å sende den. Den er
 som standard `log` i utvikling og `smtp` alle andre steder, og **avvises utenfor
 utvikling**: invitasjons- og passordtilbakestillingsmeldinger bærer bærerlenker, så å
 logge dem noe annet sted er en lekkasje, ikke en funksjon.
@@ -944,6 +945,44 @@ Kommunikasjons postkasselegitimasjon per kanal er noe helt annet — den konfigu
 gjennom Kommunikasjons-API-et og forsegles i hvile, aldri via miljøvariabler — og en kanal
 uten den er **Utilgjengelig**, ikke en kanal som faller tilbake på denne konfigurasjonen.
 Se [Kommunikasjon](/en/reference/communications/).
+
+### Cloudflare Email Service
+
+`MAIL_DRIVER=cloudflare` sender systempostboksens e-post gjennom
+[Cloudflare Email Service](https://developers.cloudflare.com/email-service/api/send-emails/rest-api/)
+i stedet for en SMTP-tjener: én HTTPS-`POST` til
+`https://api.cloudflare.com/client/v4/accounts/<konto>/email/sending/send` per e-post.
+Ingen `SMTP_*`-innstilling leses.
+
+```text
+MAIL_DRIVER=cloudflare
+CLOUDFLARE_EMAIL_ACCOUNT_ID=0123456789abcdef0123456789abcdef
+CLOUDFLARE_EMAIL_API_TOKEN=<fra-hemmelighetslageret>
+CLOUDFLARE_EMAIL_FROM=no-reply@vantigo.example.com
+```
+
+Før første sending:
+
+1. I Cloudflare-dashbordet legger du til avsenderdomenet under **Email** › **Email
+   Sending**, og lar det legge inn SPF-, DKIM- og DMARC-postene.
+2. Opprett et API-token med Email Sending-rettigheten til å sende for den kontoen.
+3. Sett de fire variablene og start på nytt. `CLOUDFLARE_EMAIL_ACCOUNT_ID` er
+   konto-ID-en på 32 tegn; `CLOUDFLARE_EMAIL_FROM` er en ren adresse på det tilføyde
+   domenet, og avvises ved oppstart i formen `Navn <adresse>`. Alle de tre
+   `CLOUDFLARE_EMAIL_*`-innstillingene er påkrevd.
+
+For å kontrollere: send deg selv en tilbakestilling av passord fra innloggingssiden. En
+avvist sending logges med HTTP-statusen og Cloudflares feilkode, aldri tokenet eller
+meldingen: `401`/`403` (`email.sending.error.authentication.*`) er tokenet eller
+rettigheten, `403 email.sending.error.email.sending_disabled` domenet, `429
+email.sending.error.throttled` kontoens daglige kvote. En mottaker Cloudflare melder som
+permanent avvist (bounce), gjør også at sendingen feiler; en som settes i kø, lykkes.
+
+Driveren bærer det systempostboksen sender — mottakerne, begge tekstene, et vedlegg,
+trådhodene — og avviser, før noen forespørsel, en e-post med flere enn 50 mottakere, et
+innebygd bilde eller en kalenderdel. Cloudflare setter `Message-ID` selv.
+Omdirigeringer følges ikke, og tilkoblingen går gjennom den samme kontrollen mot private
+mål som SMTP. Tokenet sladdes overalt der konfigurasjonen skrives ut.
 
 ## Nøkkelmateriale
 
@@ -1011,12 +1050,15 @@ oppstarten feiler.
 
 | Variabel | Formål | Standard |
 | --- | --- | --- |
-| `MAIL_DRIVER` | `smtp`, eller `log` (bare utvikling) | `log` i utvikling, ellers `smtp` |
+| `MAIL_DRIVER` | `smtp`, `cloudflare`, eller `log` (bare utvikling) | `log` i utvikling, ellers `smtp` |
 | `SMTP_HOST` | SMTP-server | påkrevd for `smtp` |
 | `SMTP_PORT` | SMTP-port | `587` |
 | `SMTP_FROM` | Avsenderpostkasse | påkrevd for `smtp` |
 | `SMTP_USERNAME` / `SMTP_PASSWORD` | Valgfri legitimasjon | ikke satt |
 | `SMTP_TLS` | `starttls`, `implicit` eller `none` | `starttls` |
+| `CLOUDFLARE_EMAIL_ACCOUNT_ID` | Cloudflare-konto-ID, 32 heksadesimale tegn | påkrevd for `cloudflare` |
+| `CLOUDFLARE_EMAIL_API_TOKEN` | API-token med Email Sending-rettigheten til å sende | påkrevd for `cloudflare` |
+| `CLOUDFLARE_EMAIL_FROM` | Systempostboksens avsender, på et domene tilføyd Email Sending | påkrevd for `cloudflare` |
 
 ### OIDC og SCIM for arbeidsstyrken
 

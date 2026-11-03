@@ -182,6 +182,9 @@ and the recovery.
   by default (`implicit` also negotiates TLS; `none` is plaintext). Leave
   `MAIL_DRIVER` unset: it already defaults to `smtp` here, and `log` is rejected
   outside development because those mails carry bearer links.
+  To send through Cloudflare Email Service instead of an SMTP server, set
+  `MAIL_DRIVER=cloudflare` and the `CLOUDFLARE_EMAIL_*` settings; the `SMTP_*` ones
+  are then not read ([Cloudflare Email Service](/en/admin/authentication/#cloudflare-email-service)).
 - **`MODULES`** (`vantigo.env`) — the comma-separated list of business modules this
   deployment enables. `identity` is always mounted and never listed. Unset enables
   every module the binary can mount: `customers`, `products`, `energy`,

@@ -376,7 +376,7 @@ func (s *server) PostStaffPeopleByIdBankAccountReveal(ctx context.Context, req g
 func (s *server) mailBankAccountChanged(ctx context.Context, person store.GetPersonRow) {
 	logger := s.deps.Logger
 	if !s.mailAvailable() {
-		logger.InfoContext(ctx, "staff: bank-account change mail skipped: the mail driver is not smtp", "person_id", person.ID)
+		logger.InfoContext(ctx, "staff: bank-account change mail skipped: the mail driver sends nothing", "person_id", person.ID)
 		return
 	}
 	to := person.PrivateEmail

@@ -184,6 +184,9 @@ prosedyrene og gjenopprettingen.
   `starttls` som standard (`implicit` forhandler også TLS; `none` er klartekst). La
   `MAIL_DRIVER` stå usatt: den har allerede standardverdien `smtp` her, og `log`
   avvises utenfor utvikling fordi de e-postene bærer bearer-lenker.
+  For å sende gjennom Cloudflare Email Service i stedet for en SMTP-tjener, setter du
+  `MAIL_DRIVER=cloudflare` og `CLOUDFLARE_EMAIL_*`-innstillingene; `SMTP_*` leses da
+  ikke ([Cloudflare Email Service](/nb/admin/authentication/#cloudflare-email-service)).
 - **`MODULES`** (`vantigo.env`) — den kommaseparerte listen over forretningsmoduler
   denne installasjonen aktiverer. `identity` er alltid montert og listes aldri. Usatt
   aktiverer hver modul binæren kan montere: `customers`, `products`, `energy`,

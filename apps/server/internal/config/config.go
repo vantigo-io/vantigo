@@ -59,16 +59,22 @@ type SessionConfig struct {
 }
 
 // MailConfig is where application mail (invitations, password resets) is
-// sent. Driver "log" writes mail to the log instead of sending it, and is
-// rejected outside development because those mails carry bearer links.
+// sent. Driver "smtp" dials Host; driver "cloudflare" posts to Cloudflare
+// Email Service's REST API for CloudflareAccountID with CloudflareAPIToken;
+// driver "log" writes mail to the log instead of sending it, and is rejected
+// outside development because those mails carry bearer links. From is the
+// sender address for either sending driver.
 type MailConfig struct {
-	Driver   string // "smtp" | "log"
+	Driver   string // "smtp" | "cloudflare" | "log"
 	Host     string
 	Port     int
 	Username string
 	Password string
 	From     string
 	TLS      string // "implicit" | "starttls" | "none"
+
+	CloudflareAccountID string
+	CloudflareAPIToken  string
 }
 
 // OIDCConfig is the one startup-bound workforce OpenID Connect provider. A
@@ -1625,6 +1631,8 @@ func templatedURL(p *problems, env map[string]string, field, def string, placeho
 // mailConfig resolves the application mail driver. The "log" driver is a
 // development convenience: invitation and password-reset mails carry bearer
 // links, so writing them to the log anywhere else is a leak, not a feature.
+// "cloudflare" reads only the CLOUDFLARE_EMAIL_* settings, "smtp" only the
+// SMTP_* ones, so each driver's required settings are required only for it.
 func mailConfig(p *problems, env map[string]string, c *Config) MailConfig {
 	var m MailConfig
 	switch env["MAIL_DRIVER"] {
@@ -1634,16 +1642,29 @@ func mailConfig(p *problems, env map[string]string, c *Config) MailConfig {
 		} else {
 			m.Driver = "smtp"
 		}
-	case "smtp":
-		m.Driver = "smtp"
+	case "smtp", "cloudflare":
+		m.Driver = env["MAIL_DRIVER"]
 	case "log":
 		if !c.IsDevelopment() {
 			p.add("MAIL_DRIVER", `must not be "log" outside development`)
 		}
 		m.Driver = "log"
 	default:
-		p.add("MAIL_DRIVER", `must be "smtp" or "log"`)
+		p.add("MAIL_DRIVER", `must be "smtp", "cloudflare" or "log"`)
 		m.Driver = "smtp"
+	}
+
+	if m.Driver == "cloudflare" {
+		if m.CloudflareAccountID = strings.TrimSpace(env["CLOUDFLARE_EMAIL_ACCOUNT_ID"]); m.CloudflareAccountID == "" {
+			p.add("CLOUDFLARE_EMAIL_ACCOUNT_ID", "is required")
+		} else if !cloudflareAccountIDPattern.MatchString(m.CloudflareAccountID) {
+			p.add("CLOUDFLARE_EMAIL_ACCOUNT_ID", "must be the 32-character hexadecimal account ID from the Cloudflare dashboard")
+		}
+		if m.CloudflareAPIToken = strings.TrimSpace(env["CLOUDFLARE_EMAIL_API_TOKEN"]); m.CloudflareAPIToken == "" {
+			p.add("CLOUDFLARE_EMAIL_API_TOKEN", "is required")
+		}
+		m.From = plainFromAddress(p, env, "CLOUDFLARE_EMAIL_FROM")
+		return m
 	}
 
 	m.Username = env["SMTP_USERNAME"]
@@ -1654,13 +1675,7 @@ func mailConfig(p *problems, env map[string]string, c *Config) MailConfig {
 		if m.Host = env["SMTP_HOST"]; m.Host == "" {
 			p.add("SMTP_HOST", "is required")
 		}
-		if v := env["SMTP_FROM"]; v == "" {
-			p.add("SMTP_FROM", "is required")
-		} else if a, err := mail.ParseAddress(v); err != nil || a.Address != v {
-			p.add("SMTP_FROM", "must be a plain email address such as noreply@example.com")
-		} else {
-			m.From = v
-		}
+		m.From = plainFromAddress(p, env, "SMTP_FROM")
 	}
 
 	switch env["SMTP_TLS"] {
@@ -1674,6 +1689,25 @@ func mailConfig(p *problems, env map[string]string, c *Config) MailConfig {
 	}
 
 	return m
+}
+
+// cloudflareAccountIDPattern is the shape of a Cloudflare account ID. It
+// becomes a path segment of the Email Service URL, so nothing else may pass.
+var cloudflareAccountIDPattern = regexp.MustCompile(`^[0-9a-fA-F]{32}$`)
+
+// plainFromAddress is the required sender address under key; the
+// display-name form is refused, the name being the mail's own to set.
+func plainFromAddress(p *problems, env map[string]string, key string) string {
+	v := env[key]
+	if v == "" {
+		p.add(key, "is required")
+		return ""
+	}
+	if a, err := mail.ParseAddress(v); err != nil || a.Address != v {
+		p.add(key, "must be a plain email address such as noreply@example.com")
+		return ""
+	}
+	return v
 }
 
 // entraAuthorityPattern and guidPattern mirror

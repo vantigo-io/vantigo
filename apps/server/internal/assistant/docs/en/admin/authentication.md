@@ -862,8 +862,9 @@ URL-encoded by the server. Do not put tokens in source control.
 
 ## Email delivery
 
-`MAIL_DRIVER=log` writes mail to the application log instead of sending it. It
-defaults to `log` in development and `smtp` everywhere else, and is **rejected
+`MAIL_DRIVER` is `smtp` (an SMTP server), `cloudflare` (Cloudflare Email Service's REST
+API) or `log`. `MAIL_DRIVER=log` writes mail to the application log instead of sending
+it. It defaults to `log` in development and `smtp` everywhere else, and is **rejected
 outside development**: invitation and password-reset mails carry bearer links, so
 logging them anywhere else is a leak, not a feature.
 
@@ -911,6 +912,45 @@ Communications' per-channel mailbox credentials are a different thing entirely �
 configured through the Communications API and sealed at rest, never environment
 variables — and a channel without them is **Unavailable**, not a channel that falls back
 on this configuration. See [Communications](/en/reference/communications/).
+
+### Cloudflare Email Service
+
+`MAIL_DRIVER=cloudflare` sends the system mailbox's mail through
+[Cloudflare Email Service](https://developers.cloudflare.com/email-service/api/send-emails/rest-api/)
+instead of an SMTP server: one HTTPS `POST` to
+`https://api.cloudflare.com/client/v4/accounts/<account>/email/sending/send` per mail.
+No `SMTP_*` setting is read.
+
+```text
+MAIL_DRIVER=cloudflare
+CLOUDFLARE_EMAIL_ACCOUNT_ID=0123456789abcdef0123456789abcdef
+CLOUDFLARE_EMAIL_API_TOKEN=<from-secret-store>
+CLOUDFLARE_EMAIL_FROM=no-reply@vantigo.example.com
+```
+
+Before the first send:
+
+1. In the Cloudflare dashboard, onboard the sending domain under **Email** › **Email
+   Sending**, and let it add the SPF, DKIM and DMARC records.
+2. Create an API token with the Email Sending send permission for that account.
+3. Set the four variables and restart. `CLOUDFLARE_EMAIL_ACCOUNT_ID` is the
+   32-character account ID; `CLOUDFLARE_EMAIL_FROM` is a plain address on the onboarded
+   domain, refused at startup in the `Name <address>` form. The three `CLOUDFLARE_EMAIL_*`
+   settings are all required.
+
+To verify, send yourself a password reset from the sign-in page. A refused send is
+logged with the HTTP status and Cloudflare's error code, never the token or the
+message: `401`/`403` (`email.sending.error.authentication.*`) is the token or its
+permission, `403 email.sending.error.email.sending_disabled` the domain, `429
+email.sending.error.throttled` the account's daily quota. A recipient Cloudflare
+reports as permanently bounced fails the send too; one it queues succeeds.
+
+The driver carries what the system mailbox sends — the recipients, both bodies, an
+attachment, the threading headers — and refuses, before any request, a message with
+more than 50 recipients, an inline image or a calendar part. Cloudflare sets the
+`Message-ID` itself. Redirects are not followed, and the connection goes through the
+same check against private destinations as SMTP. The token is redacted wherever the
+configuration is printed.
 
 ## Key material
 
@@ -977,12 +1017,15 @@ summary. Booleans are strict `0`/`1` switches — anything else fails startup.
 
 | Variable | Purpose | Default |
 | --- | --- | --- |
-| `MAIL_DRIVER` | `smtp`, or `log` (development only) | `log` in development, else `smtp` |
+| `MAIL_DRIVER` | `smtp`, `cloudflare`, or `log` (development only) | `log` in development, else `smtp` |
 | `SMTP_HOST` | SMTP server | required for `smtp` |
 | `SMTP_PORT` | SMTP port | `587` |
 | `SMTP_FROM` | The system mailbox's sender, for mail to your own employees | required for `smtp` |
 | `SMTP_USERNAME` / `SMTP_PASSWORD` | Optional credentials | unset |
 | `SMTP_TLS` | `starttls`, `implicit` or `none` | `starttls` |
+| `CLOUDFLARE_EMAIL_ACCOUNT_ID` | Cloudflare account ID, 32 hexadecimal characters | required for `cloudflare` |
+| `CLOUDFLARE_EMAIL_API_TOKEN` | API token with the Email Sending send permission | required for `cloudflare` |
+| `CLOUDFLARE_EMAIL_FROM` | The system mailbox's sender, on a domain onboarded to Email Sending | required for `cloudflare` |
 
 ### Workforce OIDC and SCIM
 

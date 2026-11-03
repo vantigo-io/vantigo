@@ -475,9 +475,9 @@ func (s *server) smtpSend(ctx context.Context, cfg config.MailConfig, out mail.O
 }
 
 // mailAvailable is whether this installation can send a mail at all: its mail
-// driver is smtp. The log driver delivers nothing, so a mail there is skipped
+// driver is smtp or cloudflare. The log driver delivers nothing, so a mail there is skipped
 // with a log line rather than attempted (design S12, delivery A1's bank-change
 // mail).
 func (s *server) mailAvailable() bool {
-	return s.deps.Config != nil && s.deps.Config.Mail.Driver == "smtp"
+	return s.deps.Config != nil && (s.deps.Config.Mail.Driver == "smtp" || s.deps.Config.Mail.Driver == "cloudflare")
 }
