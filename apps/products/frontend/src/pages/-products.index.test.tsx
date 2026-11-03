@@ -2,7 +2,7 @@ import { MantineProvider } from "@mantine/core";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ProductsPage } from "./products.index";
+import { ProductsPage, type ProductsPageProps } from "./products.index";
 
 const router = vi.hoisted(() => ({
   search: { page: 1, search: "", status: "", categoryId: "" } as Record<string, unknown>,
@@ -63,11 +63,11 @@ const stubFetch = () =>
     }),
   );
 
-const renderPage = () =>
+const renderPage = (props: ProductsPageProps = {}) =>
   render(
     <MantineProvider>
       <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-        <ProductsPage />
+        <ProductsPage {...props} />
       </QueryClientProvider>
     </MantineProvider>,
   );
@@ -78,6 +78,19 @@ describe("ProductsPage", () => {
     vi.unstubAllGlobals();
     router.search = { page: 1, search: "", status: "", categoryId: "" };
     router.navigate.mockReset();
+  });
+
+  it("renders the extra columns after its own, built from the page's rows", async () => {
+    stubFetch();
+    const extraColumns = vi.fn((products: readonly { id: number; name: string }[]) => [
+      { key: "onHand", header: "On hand", cell: (product: { name: string }) => `${product.name} × ${products.length}` },
+    ]);
+    renderPage({ extraColumns });
+
+    expect(await screen.findByText("Widget × 1")).toBeInTheDocument();
+    const headers = screen.getAllByRole("columnheader").map((header) => header.textContent);
+    expect(headers.indexOf("On hand")).toBe(headers.length - 2);
+    expect(extraColumns).toHaveBeenLastCalledWith([expect.objectContaining({ id: 1, name: "Widget" })]);
   });
 
   it("keeps the create form closed on an ordinary list URL", async () => {

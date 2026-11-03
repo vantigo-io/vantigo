@@ -43,8 +43,43 @@ export interface VariantResponse {
   heightCm?: number | null;
   optionValues: Record<string, string>;
   effectivePrices: PriceRow[];
+  /** By sort order then id. Always sent; optional only as the contract declares it. */
+  packagings?: PackagingResponse[];
   createdAt: string;
   updatedAt: string;
+}
+export const PACKAGING_KINDS = ["inner", "case", "pallet", "other"] as const;
+export type PackagingKind = (typeof PACKAGING_KINDS)[number];
+/** A box, case or pallet of a variant. quantity is in the variant's unit, derived when containsPackagingId is set. */
+export interface PackagingResponse {
+  id: number;
+  name: string;
+  kind: PackagingKind;
+  containsPackagingId?: number | null;
+  containsCount?: number | null;
+  quantity: number;
+  barcode?: string | null;
+  weightKg?: number | null;
+  lengthCm?: number | null;
+  widthCm?: number | null;
+  heightCm?: number | null;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+/** Exactly one of quantity, or containsPackagingId with containsCount. */
+export interface PackagingInput {
+  name: string;
+  kind: PackagingKind;
+  quantity?: number;
+  containsPackagingId?: number;
+  containsCount?: number;
+  barcode?: string;
+  weightKg?: number;
+  lengthCm?: number;
+  widthCm?: number;
+  heightCm?: number;
+  sortOrder?: number;
 }
 export interface VariantInput {
   sku: string;
@@ -187,3 +222,19 @@ export const updateProductPrice = (productId: number, variantId: number, priceId
   });
 export const deleteProductPrice = (productId: number, variantId: number, priceId: number) =>
   request<void>(`/api/v1/products/${productId}/variants/${variantId}/prices/${priceId}`, { method: "DELETE" });
+const packagingsPath = (productId: number, variantId: number) =>
+  `/api/v1/products/${productId}/variants/${variantId}/packagings`;
+export const addPackaging = (productId: number, variantId: number, input: PackagingInput) =>
+  request<PackagingResponse>(packagingsPath(productId, variantId), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+export const updatePackaging = (productId: number, variantId: number, packagingId: number, input: PackagingInput) =>
+  request<PackagingResponse>(`${packagingsPath(productId, variantId)}/${packagingId}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+export const deletePackaging = (productId: number, variantId: number, packagingId: number) =>
+  request<void>(`${packagingsPath(productId, variantId)}/${packagingId}`, { method: "DELETE" });

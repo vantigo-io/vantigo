@@ -16,7 +16,7 @@ import { IconAlertCircle, IconPencil, IconPlus, IconSearch } from "@tabler/icons
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { ContentSkeleton, EmptyState, PageHeader, useI18n } from "@vantigo/frontend-shell";
-import { useEffect, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import "../i18n";
 import { buildCategoryTree, categoriesQueryOptions } from "../api/categories";
 import { type ProductResponse, type ProductStatus, productsQueryOptions } from "../api/products";
@@ -40,9 +40,24 @@ type ProductsPageNavigate = (options: {
   replace?: boolean;
 }) => void | Promise<void>;
 
+/** A column another module adds to the product list, rendered after the list's own columns. */
+export interface ProductListColumn {
+  key: string;
+  header: ReactNode;
+  cell: (product: ProductResponse) => ReactNode;
+}
+
+export interface ProductsPageProps {
+  /**
+   * The extra columns for the page of products the table renders — called with every row of
+   * the page, so a column can load what it shows for the whole page in one request.
+   */
+  extraColumns?: (products: readonly ProductResponse[]) => readonly ProductListColumn[];
+}
+
 const statusColor = (status: ProductStatus) => ({ Draft: "gray", Active: "teal", Discontinued: "red" })[status];
 const nokPrice = (product: ProductResponse) => product.effectivePrices.find((price) => price.currency === "NOK");
-export const ProductsPage = () => {
+export const ProductsPage = ({ extraColumns }: ProductsPageProps = {}) => {
   const { t, formatters } = useI18n("products");
   const { page, search, status, categoryId, create } = useSearch({ strict: false }) as ProductsSearch;
   const navigate = useNavigate() as unknown as ProductsPageNavigate;
@@ -74,6 +89,7 @@ export const ProductsPage = () => {
     }),
   );
   const { data: categories } = useQuery(categoriesQueryOptions());
+  const columns = data && extraColumns ? extraColumns(data.data) : [];
   const categoryOptions = [
     { value: UNCATEGORIZED, label: t("products.uncategorised") },
     ...buildCategoryTree(categories ?? []).map(({ category, depth }) => ({
@@ -164,6 +180,9 @@ export const ProductsPage = () => {
                       <Table.Th>{t("common.unit")}</Table.Th>
                       <Table.Th>{t("common.taxCategory")}</Table.Th>
                       <Table.Th>{t("products.currentNokPrice", { currency: "NOK" })}</Table.Th>
+                      {columns.map((column) => (
+                        <Table.Th key={column.key}>{column.header}</Table.Th>
+                      ))}
                       <Table.Th w={48} aria-label={t("common.actions")} />
                     </Table.Tr>
                   </Table.Thead>
@@ -200,6 +219,9 @@ export const ProductsPage = () => {
                           <Table.Td>
                             {price === undefined ? t("common.noValue") : formatters.formatCurrency(price.amount, "NOK")}
                           </Table.Td>
+                          {columns.map((column) => (
+                            <Table.Td key={column.key}>{column.cell(product)}</Table.Td>
+                          ))}
                           <Table.Td onClick={(event) => event.stopPropagation()}>
                             <ActionIcon
                               variant="subtle"

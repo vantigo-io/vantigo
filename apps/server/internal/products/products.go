@@ -154,6 +154,10 @@ func (s *server) buildProductResponses(ctx context.Context, q *store.Queries, ro
 	for _, p := range prices {
 		pricesByVariant[p.VariantID] = append(pricesByVariant[p.VariantID], p)
 	}
+	packagings, err := packagingsByVariant(ctx, q, variantIDs)
+	if err != nil {
+		return nil, err
+	}
 
 	categoryIDs := make([]int32, 0, len(categoryIDSet))
 	for id := range categoryIDSet {
@@ -186,7 +190,7 @@ func (s *server) buildProductResponses(ctx context.Context, q *store.Queries, ro
 		rowVariants := variantsByProduct[p.ID]
 		variantResponses := make([]gen.ProductVariantResponse, 0, len(rowVariants))
 		for _, v := range rowVariants {
-			variantResponses = append(variantResponses, variantResponse(v, pricesByVariant[v.ID], moment))
+			variantResponses = append(variantResponses, variantResponse(v, pricesByVariant[v.ID], packagings[v.ID], moment))
 		}
 		var category *gen.ProductCategoryResponse
 		if p.CategoryID != nil {
@@ -369,9 +373,9 @@ func (s *server) PostProducts(ctx context.Context, req gen.PostProductsRequestOb
 	dbBarcodeConflict := false
 	if !duplicateBarcode && len(barcodes) > 0 {
 		var err error
-		dbBarcodeConflict, err = q.VariantAnyBarcodeExists(ctx, barcodes)
+		dbBarcodeConflict, err = anyBarcodeTaken(ctx, q, barcodes)
 		if err != nil {
-			return nil, fmt.Errorf("products: check barcode conflict: %w", err)
+			return nil, err
 		}
 	}
 	if duplicateBarcode || dbBarcodeConflict {
@@ -414,6 +418,21 @@ func (s *server) PostProducts(ctx context.Context, req gen.PostProductsRequestOb
 	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		txq := store.New(tx)
 		var err error
+		// The check above, again under the products:barcodes advisory lock
+		// (inventory design I24), so a concurrent variant or packaging write
+		// cannot take one of the GTINs between the check and the insert.
+		if len(barcodes) > 0 {
+			if err := txq.LockBarcodes(ctx); err != nil {
+				return fmt.Errorf("lock barcodes: %w", err)
+			}
+			taken, err := anyBarcodeTaken(ctx, txq, barcodes)
+			if err != nil {
+				return err
+			}
+			if taken {
+				return errBarcodeTakenMeanwhile
+			}
+		}
 		created, err = txq.InsertProduct(ctx, store.InsertProductParams{
 			Name: parsed.Name, Description: parsed.Description, CategoryID: parsed.CategoryID,
 			Type: parsed.Type, Status: status, TaxCategoryID: parsed.TaxCategoryID, Now: now,
@@ -455,13 +474,17 @@ func (s *server) PostProducts(ctx context.Context, req gen.PostProductsRequestOb
 		}
 		return nil
 	})
+	if errors.Is(err, errBarcodeTakenMeanwhile) {
+		return gen.PostProducts409ApplicationProblemPlusJSONResponse(apicommon.ProblemStatus(
+			"Duplicate barcode", "A variant with that barcode already exists.", http.StatusConflict)), nil
+	}
 	if err != nil {
 		return nil, fmt.Errorf("products: create product: %w", err)
 	}
 
 	variantResponses := make([]gen.ProductVariantResponse, 0, len(variantRows))
 	for _, v := range variantRows {
-		variantResponses = append(variantResponses, variantResponse(v, priceRows[v.ID], now))
+		variantResponses = append(variantResponses, variantResponse(v, priceRows[v.ID], nil, now))
 	}
 
 	location := fmt.Sprintf("%s/api/v1/products/%d", s.deps.Config.BasePath, created.ID)
@@ -469,6 +492,27 @@ func (s *server) PostProducts(ctx context.Context, req gen.PostProductsRequestOb
 		Body:    productResponse(created, categoryRefResp, taxCategoryRef(taxCat.ID, taxCat.Name, taxCat.Kind, taxCat.Rate), variantResponses),
 		Headers: gen.PostProducts201ResponseHeaders{Location: &location},
 	}, nil
+}
+
+// errBarcodeTakenMeanwhile rolls a product's create back when, under the
+// products:barcodes lock, one of its GTINs turns out taken after all.
+var errBarcodeTakenMeanwhile = errors.New("products: barcode taken meanwhile")
+
+// anyBarcodeTaken is whether any variant or any packaging carries one of
+// barcodes.
+func anyBarcodeTaken(ctx context.Context, q *store.Queries, barcodes []string) (bool, error) {
+	taken, err := q.VariantAnyBarcodeExists(ctx, barcodes)
+	if err != nil {
+		return false, fmt.Errorf("products: check variant barcodes: %w", err)
+	}
+	if taken {
+		return true, nil
+	}
+	taken, err = q.PackagingAnyBarcodeExists(ctx, barcodes)
+	if err != nil {
+		return false, fmt.Errorf("products: check packaging barcodes: %w", err)
+	}
+	return taken, nil
 }
 
 // GetProduct Get a product by id

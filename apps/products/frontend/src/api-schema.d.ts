@@ -78,6 +78,42 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/products/{id}/variants/{variantId}/packagings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List a variant's packagings */
+        get: operations["getProductsByIdVariantsByVariantIdPackagings"];
+        put?: never;
+        /** Add a packaging to a variant */
+        post: operations["postProductsByIdVariantsByVariantIdPackagings"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/products/{id}/variants/{variantId}/packagings/{packagingId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Change a packaging */
+        put: operations["putProductsByIdVariantsByVariantIdPackagingsByPackagingId"];
+        post?: never;
+        /** Remove a packaging */
+        delete: operations["deleteProductsByIdVariantsByVariantIdPackagingsByPackagingId"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/products/{id}/variants/{variantId}/prices": {
         parameters: {
             query?: never;
@@ -278,6 +314,72 @@ export interface components {
             id: number;
             name: string;
         };
+        /** @description A packaging's fields, on create and on a whole replace. Give either quantity, or containsPackagingId with containsCount — not both. A variant has at most 10 packagings. Changing what a packaging holds recomputes every packaging built from it; stock is never touched, it is always in the variant's unit. */
+        ProductPackagingRequest: {
+            /** @description A GTIN with a valid check digit. */
+            barcode?: string | null;
+            /** Format: int32 */
+            containsCount?: number | null;
+            /** Format: int32 */
+            containsPackagingId?: number | null;
+            /** Format: double */
+            heightCm?: number | null;
+            /** @description inner, case, pallet or other. */
+            kind: string;
+            /** Format: double */
+            lengthCm?: number | null;
+            name: string;
+            /**
+             * Format: double
+             * @description More than 0, at most three decimals.
+             */
+            quantity?: number | null;
+            /** Format: int32 */
+            sortOrder?: number;
+            /** Format: double */
+            weightKg?: number | null;
+            /** Format: double */
+            widthCm?: number | null;
+        };
+        /** @description A packaging of a variant (inventory design I24): a box, a case or a pallet the variant is stored and counted in. It holds either a quantity of the variant's unit, or a count of another packaging of the same variant, in which case quantity is derived (a Euro pallet of 40 boxes of 15 holds 600). */
+        ProductPackagingResponse: {
+            /** @description A GTIN-8, -12, -13 or -14, unique across every variant and packaging. */
+            barcode?: string | null;
+            /**
+             * Format: int32
+             * @description How many of containsPackagingId it holds, at least 2.
+             */
+            containsCount?: number | null;
+            /**
+             * Format: int32
+             * @description The packaging it is built from; absent when it holds a quantity directly.
+             */
+            containsPackagingId?: number | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: double */
+            heightCm?: number | null;
+            /** Format: int32 */
+            id: number;
+            /** @description inner, case, pallet or other. */
+            kind: string;
+            /** Format: double */
+            lengthCm?: number | null;
+            name: string;
+            /**
+             * Format: double
+             * @description What it holds in the variant's unit, three decimals; derived when it is built from another packaging.
+             */
+            quantity: number;
+            /** Format: int32 */
+            sortOrder: number;
+            /** Format: date-time */
+            updatedAt: string;
+            /** Format: double */
+            weightKg?: number | null;
+            /** Format: double */
+            widthCm?: number | null;
+        };
         ProductPriceRequest: {
             /** Format: double */
             amount: number;
@@ -394,6 +496,8 @@ export interface components {
             optionValues: {
                 [key: string]: string;
             };
+            /** @description The variant's packagings, by sort order then id; always sent (optional only because the recorded exchanges of the port predate it). */
+            packagings?: components["schemas"]["ProductPackagingResponse"][];
             sku: string;
             /** Format: double */
             standardCost?: number | null;
@@ -999,6 +1103,251 @@ export interface operations {
                 content?: never;
             };
             /** @description Conflict — titled Last variant: a product keeps at least one variant; or titled Variant has stock: a module holding the variant (Inventory) answers that it still lies somewhere, and detail says how much and in how many places. Products' problems carry no code, so a client tells them apart by title. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    getProductsByIdVariantsByVariantIdPackagings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+                variantId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductPackagingResponse"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    postProductsByIdVariantsByVariantIdPackagings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+                variantId: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProductPackagingRequest"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductPackagingResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — titled Barcode taken: another variant or packaging carries the GTIN. Products' problems carry no code. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    putProductsByIdVariantsByVariantIdPackagingsByPackagingId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+                variantId: number;
+                packagingId: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProductPackagingRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductPackagingResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — titled Barcode taken, or Packaging cycle: the packaging would end up holding itself. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    deleteProductsByIdVariantsByVariantIdPackagingsByPackagingId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+                variantId: number;
+                packagingId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — titled Packaging in use: another packaging is built from it. */
             409: {
                 headers: {
                     [name: string]: unknown;

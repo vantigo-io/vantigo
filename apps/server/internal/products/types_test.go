@@ -56,6 +56,7 @@ type variantJSON struct {
 	HeightCm        *float64          `json:"heightCm"`
 	OptionValues    map[string]string `json:"optionValues"`
 	EffectivePrices []priceJSON       `json:"effectivePrices"`
+	Packagings      []packagingJSON   `json:"packagings"`
 	CreatedAt       time.Time         `json:"createdAt"`
 	UpdatedAt       time.Time         `json:"updatedAt"`
 }

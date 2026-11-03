@@ -41,6 +41,7 @@ import {
   type VariantResponse,
 } from "../api/products";
 import { toIsoTimestamp, toPickerValue } from "../lib/dates";
+import { PackagingsEditor } from "./-packagings-editor";
 import { ProductFormModal, type ProductModalState } from "./-product-form-modal";
 
 const statusColor = (status: ProductStatus) => ({ Draft: "gray", Active: "teal", Discontinued: "red" })[status];
@@ -346,6 +347,9 @@ export const ProductDetailsPage = ({ extraPanels, stockHref }: ProductDetailsPag
               )}
             </Stack>
           )}
+          {product.type === "Goods" && product.variants.length === 1 && variant && (
+            <PackagingsEditor productId={product.id} variant={variant} />
+          )}
         </Stack>
       </Card>
       {product.variants.length > 1 && (
@@ -411,6 +415,10 @@ export const ProductDetailsPage = ({ extraPanels, stockHref }: ProductDetailsPag
                 </Table.Tbody>
               </Table>
             </Table.ScrollContainer>
+            {product.type === "Goods" &&
+              product.variants.map((item) => (
+                <PackagingsEditor key={item.id} productId={product.id} variant={item} showVariant />
+              ))}
           </Stack>
         </Card>
       )}

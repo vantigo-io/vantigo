@@ -61,3 +61,21 @@ type ProductsTaxCategory struct {
 	CreatedAt time.Time
 	UpdatedAt time.Time
 }
+
+type ProductsVariantPackaging struct {
+	ID                  int32
+	VariantID           int32
+	Name                string
+	Kind                string
+	ContainsPackagingID *int32
+	ContainsCount       *int32
+	Quantity            pgtype.Numeric
+	Barcode             *string
+	WeightKg            pgtype.Numeric
+	LengthCm            pgtype.Numeric
+	WidthCm             pgtype.Numeric
+	HeightCm            pgtype.Numeric
+	SortOrder           int32
+	CreatedAt           time.Time
+	UpdatedAt           time.Time
+}

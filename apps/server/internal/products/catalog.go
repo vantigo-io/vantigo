@@ -39,8 +39,11 @@ func (c *catalog) Variant(ctx context.Context, id int32) (*contracts.VariantEntr
 	if err != nil {
 		return nil, fmt.Errorf("products: catalog variant: %w", err)
 	}
-	entry := variantEntry(row.ID, row.ProductID, row.ProductName, row.Sku, row.Barcode, row.Unit, row.ProductType, row.ProductStatus)
-	return &entry, nil
+	entries := []contracts.VariantEntry{variantEntry(row.ID, row.ProductID, row.ProductName, row.Sku, row.Barcode, row.Unit, row.ProductType, row.ProductStatus)}
+	if err := withPackagings(ctx, c.q, entries); err != nil {
+		return nil, err
+	}
+	return &entries[0], nil
 }
 
 // Variants looks up variants by id. An id that does not exist is simply
@@ -58,6 +61,9 @@ func (c *catalog) Variants(ctx context.Context, ids []int32) ([]contracts.Varian
 	entries := make([]contracts.VariantEntry, 0, len(rows))
 	for _, row := range rows {
 		entries = append(entries, variantEntry(row.ID, row.ProductID, row.ProductName, row.Sku, row.Barcode, row.Unit, row.ProductType, row.ProductStatus))
+	}
+	if err := withPackagings(ctx, c.q, entries); err != nil {
+		return nil, err
 	}
 	return entries, nil
 }
@@ -94,6 +100,37 @@ func variantEntry(id, productID int32, productName, sku string, barcode *string,
 	}
 }
 
+// withPackagings fills every entry's Packagings, by sort order then id, in
+// one query on q — the pool, or LockVariants' caller's transaction, where
+// the variants are locked FOR SHARE and so their packagings cannot change
+// until it ends (every packaging write takes the variant FOR UPDATE first).
+func withPackagings(ctx context.Context, q *store.Queries, entries []contracts.VariantEntry) error {
+	if len(entries) == 0 {
+		return nil
+	}
+	ids := make([]int32, len(entries))
+	for i, e := range entries {
+		ids[i] = e.ID
+	}
+	rows, err := packagingsByVariant(ctx, q, ids)
+	if err != nil {
+		return err
+	}
+	for i := range entries {
+		// None stays nil: an empty slice either way, and the entry of a
+		// variant without packagings equal to one built without them.
+		var list []contracts.PackagingEntry
+		for _, p := range rows[entries[i].ID] {
+			list = append(list, contracts.PackagingEntry{
+				ID: p.ID, Name: p.Name, Kind: p.Kind, Quantity: quantityText(p.Quantity),
+				Barcode: p.Barcode, SortOrder: p.SortOrder,
+			})
+		}
+		entries[i].Packagings = list
+	}
+	return nil
+}
+
 // VariantsOfProduct is every variant of the product, by id; empty when the
 // product does not exist.
 func (c *catalog) VariantsOfProduct(ctx context.Context, productID int32) ([]contracts.VariantEntry, error) {
@@ -105,11 +142,15 @@ func (c *catalog) VariantsOfProduct(ctx context.Context, productID int32) ([]con
 	for _, row := range rows {
 		entries = append(entries, variantEntry(row.ID, row.ProductID, row.ProductName, row.Sku, row.Barcode, row.Unit, row.ProductType, row.ProductStatus))
 	}
+	if err := withPackagings(ctx, c.q, entries); err != nil {
+		return nil, err
+	}
 	return entries, nil
 }
 
 // LookupCode answers every variant whose SKU equals code, ignoring case, or
-// whose barcode equals it exactly. Packagings join in Inventory's delivery B.
+// whose barcode equals it exactly, then every packaging whose barcode equals
+// it exactly, with the packaging set (inventory design I22, I24).
 func (c *catalog) LookupCode(ctx context.Context, code string) ([]contracts.CodeMatch, error) {
 	code = strings.TrimSpace(code)
 	if code == "" {
@@ -119,11 +160,32 @@ func (c *catalog) LookupCode(ctx context.Context, code string) ([]contracts.Code
 	if err != nil {
 		return nil, fmt.Errorf("products: catalog lookup code: %w", err)
 	}
-	matches := make([]contracts.CodeMatch, 0, len(rows))
+	packagingRows, err := c.q.CatalogLookupPackagingCode(ctx, code)
+	if err != nil {
+		return nil, fmt.Errorf("products: catalog lookup packaging code: %w", err)
+	}
+	entries := make([]contracts.VariantEntry, 0, len(rows)+len(packagingRows))
 	for _, row := range rows {
-		matches = append(matches, contracts.CodeMatch{
-			Variant: variantEntry(row.ID, row.ProductID, row.ProductName, row.Sku, row.Barcode, row.Unit, row.ProductType, row.ProductStatus),
-		})
+		entries = append(entries, variantEntry(row.ID, row.ProductID, row.ProductName, row.Sku, row.Barcode, row.Unit, row.ProductType, row.ProductStatus))
+	}
+	for _, row := range packagingRows {
+		entries = append(entries, variantEntry(row.ID, row.ProductID, row.ProductName, row.Sku, row.Barcode, row.Unit, row.ProductType, row.ProductStatus))
+	}
+	if err := withPackagings(ctx, c.q, entries); err != nil {
+		return nil, err
+	}
+	matches := make([]contracts.CodeMatch, 0, len(entries))
+	for i, entry := range entries {
+		match := contracts.CodeMatch{Variant: entry}
+		if i >= len(rows) {
+			packagingID := packagingRows[i-len(rows)].PackagingID
+			for j := range entry.Packagings {
+				if entry.Packagings[j].ID == packagingID {
+					match.Packaging = &entry.Packagings[j]
+				}
+			}
+		}
+		matches = append(matches, match)
 	}
 	return matches, nil
 }
@@ -148,6 +210,9 @@ func (c *catalog) SearchVariants(ctx context.Context, q string, limit int) ([]co
 	for _, row := range rows {
 		entries = append(entries, variantEntry(row.ID, row.ProductID, row.ProductName, row.Sku, row.Barcode, row.Unit, row.ProductType, row.ProductStatus))
 	}
+	if err := withPackagings(ctx, c.q, entries); err != nil {
+		return nil, err
+	}
 	return entries, nil
 }
 
@@ -158,13 +223,17 @@ func (c *catalog) LockVariants(ctx context.Context, tx pgx.Tx, ids []int32) ([]c
 	if len(ids) == 0 {
 		return nil, nil
 	}
-	rows, err := store.New(tx).CatalogLockVariants(ctx, ids)
+	txq := store.New(tx)
+	rows, err := txq.CatalogLockVariants(ctx, ids)
 	if err != nil {
 		return nil, fmt.Errorf("products: catalog lock variants: %w", err)
 	}
 	entries := make([]contracts.VariantEntry, 0, len(rows))
 	for _, row := range rows {
 		entries = append(entries, variantEntry(row.ID, row.ProductID, row.ProductName, row.Sku, row.Barcode, row.Unit, row.ProductType, row.ProductStatus))
+	}
+	if err := withPackagings(ctx, txq, entries); err != nil {
+		return nil, err
 	}
 	return entries, nil
 }

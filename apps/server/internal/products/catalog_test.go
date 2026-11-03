@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -77,7 +78,7 @@ func TestCatalog_VariantResolvesProductFields(t *testing.T) {
 		ID: variant.Id, ProductID: created.Id, ProductName: "Catalog Widget",
 		SKU: variant.Sku, Unit: variant.Unit, ProductType: "Goods", ProductStatus: "Draft",
 	}
-	if got == nil || *got != want {
+	if got == nil || !reflect.DeepEqual(*got, want) {
 		t.Errorf("Variant = %+v, want %+v", got, want)
 	}
 }

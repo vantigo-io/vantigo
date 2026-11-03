@@ -20,12 +20,18 @@ type VariantEntry struct {
 	ProductStatus string
 	// Barcode is the variant's own GTIN, nil when it has none.
 	Barcode *string
+	// Packagings are the variant's packagings (inventory design I24), by sort
+	// order then id; empty when it has none. Every read of the catalog fills
+	// them, LockVariants included, so a posting converts what was entered in
+	// packagings at the quantities that hold while it is locked.
+	Packagings []PackagingEntry
 }
 
 // PackagingEntry is a packaging of a variant — a box of 15, a Euro pallet of
 // 40 boxes — in which stock may be entered and shown, never kept: stock is
-// always in the variant's own unit. Declared for Inventory's delivery B, which
-// fills CodeMatch.Packaging with it; nothing answers one yet.
+// always in the variant's own unit (inventory design I24). Quantity is the
+// packaging's content in the variant's unit, derived when the packaging is
+// built from another one.
 type PackagingEntry struct {
 	ID        int32
 	Name      string

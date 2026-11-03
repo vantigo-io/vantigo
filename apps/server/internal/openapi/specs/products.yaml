@@ -53,6 +53,120 @@ components:
                 - id
                 - name
             type: object
+        ProductPackagingRequest:
+            description: A packaging's fields, on create and on a whole replace. Give either quantity, or containsPackagingId with containsCount — not both. A variant has at most 10 packagings. Changing what a packaging holds recomputes every packaging built from it; stock is never touched, it is always in the variant's unit.
+            properties:
+                barcode:
+                    description: A GTIN with a valid check digit.
+                    maxLength: 14
+                    nullable: true
+                    type: string
+                containsCount:
+                    format: int32
+                    minimum: 2
+                    nullable: true
+                    type: integer
+                containsPackagingId:
+                    format: int32
+                    nullable: true
+                    type: integer
+                heightCm:
+                    format: double
+                    nullable: true
+                    type: number
+                kind:
+                    description: inner, case, pallet or other.
+                    type: string
+                lengthCm:
+                    format: double
+                    nullable: true
+                    type: number
+                name:
+                    maxLength: 40
+                    type: string
+                quantity:
+                    description: More than 0, at most three decimals.
+                    format: double
+                    nullable: true
+                    type: number
+                sortOrder:
+                    format: int32
+                    type: integer
+                weightKg:
+                    format: double
+                    nullable: true
+                    type: number
+                widthCm:
+                    format: double
+                    nullable: true
+                    type: number
+            required:
+                - name
+                - kind
+            type: object
+        ProductPackagingResponse:
+            description: 'A packaging of a variant (inventory design I24): a box, a case or a pallet the variant is stored and counted in. It holds either a quantity of the variant''s unit, or a count of another packaging of the same variant, in which case quantity is derived (a Euro pallet of 40 boxes of 15 holds 600).'
+            properties:
+                barcode:
+                    description: A GTIN-8, -12, -13 or -14, unique across every variant and packaging.
+                    nullable: true
+                    type: string
+                containsCount:
+                    description: How many of containsPackagingId it holds, at least 2.
+                    format: int32
+                    nullable: true
+                    type: integer
+                containsPackagingId:
+                    description: The packaging it is built from; absent when it holds a quantity directly.
+                    format: int32
+                    nullable: true
+                    type: integer
+                createdAt:
+                    format: date-time
+                    type: string
+                heightCm:
+                    format: double
+                    nullable: true
+                    type: number
+                id:
+                    format: int32
+                    type: integer
+                kind:
+                    description: inner, case, pallet or other.
+                    type: string
+                lengthCm:
+                    format: double
+                    nullable: true
+                    type: number
+                name:
+                    type: string
+                quantity:
+                    description: What it holds in the variant's unit, three decimals; derived when it is built from another packaging.
+                    format: double
+                    type: number
+                sortOrder:
+                    format: int32
+                    type: integer
+                updatedAt:
+                    format: date-time
+                    type: string
+                weightKg:
+                    format: double
+                    nullable: true
+                    type: number
+                widthCm:
+                    format: double
+                    nullable: true
+                    type: number
+            required:
+                - id
+                - name
+                - kind
+                - quantity
+                - sortOrder
+                - createdAt
+                - updatedAt
+            type: object
         ProductPriceRequest:
             properties:
                 amount:
@@ -312,6 +426,11 @@ components:
                     additionalProperties:
                         type: string
                     type: object
+                packagings:
+                    description: The variant's packagings, by sort order then id; always sent (optional only because the recorded exchanges of the port predate it).
+                    items:
+                        $ref: '#/components/schemas/ProductPackagingResponse'
+                    type: array
                 sku:
                     type: string
                 standardCost:
@@ -849,6 +968,220 @@ paths:
             tags:
                 - Products
             x-vantigo-access: permission:products:pricing-manage+products:pricing-view+products:variants-manage+products:variants-view
+    /api/v1/products/{id}/variants/{variantId}/packagings:
+        get:
+            operationId: getProductsByIdVariantsByVariantIdPackagings
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+                - in: path
+                  name: variantId
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/ProductPackagingResponse'
+                                type: array
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+            summary: List a variant's packagings
+            tags:
+                - Products
+            x-vantigo-access: permission:products:variants-view
+        post:
+            operationId: postProductsByIdVariantsByVariantIdPackagings
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+                - in: path
+                  name: variantId
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ProductPackagingRequest'
+                required: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ProductPackagingResponse'
+                    description: Created
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/ProblemDetails
+                    description: 'Conflict — titled Barcode taken: another variant or packaging carries the GTIN. Products'' problems carry no code.'
+            summary: Add a packaging to a variant
+            tags:
+                - Products
+            x-vantigo-access: permission:products:variants-manage+products:variants-view
+    /api/v1/products/{id}/variants/{variantId}/packagings/{packagingId}:
+        delete:
+            operationId: deleteProductsByIdVariantsByVariantIdPackagingsByPackagingId
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+                - in: path
+                  name: variantId
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+                - in: path
+                  name: packagingId
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+            responses:
+                "204":
+                    description: No Content
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/ProblemDetails
+                    description: 'Conflict — titled Packaging in use: another packaging is built from it.'
+            summary: Remove a packaging
+            tags:
+                - Products
+            x-vantigo-access: permission:products:variants-manage+products:variants-view
+        put:
+            operationId: putProductsByIdVariantsByVariantIdPackagingsByPackagingId
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+                - in: path
+                  name: variantId
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+                - in: path
+                  name: packagingId
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ProductPackagingRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ProductPackagingResponse'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/ProblemDetails
+                    description: 'Conflict — titled Barcode taken, or Packaging cycle: the packaging would end up holding itself.'
+            summary: Change a packaging
+            tags:
+                - Products
+            x-vantigo-access: permission:products:variants-manage+products:variants-view
     /api/v1/products/{id}/variants/{variantId}/prices:
         get:
             operationId: getProductsByIdVariantsByVariantIdPrices
