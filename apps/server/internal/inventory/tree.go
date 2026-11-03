@@ -203,3 +203,11 @@ func historyRefusal(ctx context.Context, txq *store.Queries, what string, ids []
 func rootRefusal(detail string) error {
 	return refuse(problem(http.StatusConflict, codeRootLocation, "Site root", detail))
 }
+
+// openCountRefusal is the 409 of an archive while a count is still counting
+// in what it archives (location_has_open_count): the count's lines would name
+// locations that take no stock.
+func openCountRefusal(what string) error {
+	return refuse(problem(http.StatusConflict, codeLocationHasOpenCount, "Location has an open count",
+		what+" is being counted, or something below or above it is. Post or cancel the count before archiving."))
+}

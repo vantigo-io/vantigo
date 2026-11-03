@@ -10,6 +10,55 @@ import (
 	"time"
 )
 
+const activeSubtrees = `-- name: ActiveSubtrees :many
+SELECT id, site_id, parent_id, kind, code, name, sort_order, status, full_code, ancestors, depth, revision, created_at, updated_at FROM inventory.locations
+WHERE id = ANY($1::bigint[]) OR (status = 'active' AND ancestors && $1::bigint[])
+ORDER BY full_code
+LIMIT $2::int
+`
+
+type ActiveSubtreesParams struct {
+	Ids      []int64
+	RowLimit int32
+}
+
+// ActiveSubtrees is the locations and every active location below any of
+// them, by full code: what a sheet of labels prints with subtree (I7).
+func (q *Queries) ActiveSubtrees(ctx context.Context, arg ActiveSubtreesParams) ([]InventoryLocation, error) {
+	rows, err := q.db.Query(ctx, activeSubtrees, arg.Ids, arg.RowLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []InventoryLocation
+	for rows.Next() {
+		var i InventoryLocation
+		if err := rows.Scan(
+			&i.ID,
+			&i.SiteID,
+			&i.ParentID,
+			&i.Kind,
+			&i.Code,
+			&i.Name,
+			&i.SortOrder,
+			&i.Status,
+			&i.FullCode,
+			&i.Ancestors,
+			&i.Depth,
+			&i.Revision,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const archiveSubtree = `-- name: ArchiveSubtree :exec
 UPDATE inventory.locations SET status = 'archived', revision = revision + 1, updated_at = $1::timestamptz
 WHERE (id = $2 OR ancestors @> ARRAY[$2::bigint]) AND status = 'active'
@@ -98,11 +147,15 @@ const historyIn = `-- name: HistoryIn :one
 SELECT EXISTS (
     SELECT 1 FROM inventory.movement_lines
     WHERE from_location_id = ANY($1::bigint[]) OR to_location_id = ANY($1::bigint[])
+    UNION ALL
+    SELECT 1 FROM inventory.counts WHERE scope_location_id = ANY($1::bigint[])
+    UNION ALL
+    SELECT 1 FROM inventory.count_lines WHERE location_id = ANY($1::bigint[])
 )
 `
 
-// HistoryIn reports whether a movement line ever named one of the locations:
-// one that has is archived, never deleted (I6).
+// HistoryIn reports whether a movement line or a count ever named one of the
+// locations: one that has is archived, never deleted (I6).
 func (q *Queries) HistoryIn(ctx context.Context, ids []int64) (bool, error) {
 	row := q.db.QueryRow(ctx, historyIn, ids)
 	var exists bool
@@ -267,18 +320,23 @@ func (q *Queries) ListChildren(ctx context.Context, parentID *int64) ([]Inventor
 const listSiteLocations = `-- name: ListSiteLocations :many
 SELECT id, site_id, parent_id, kind, code, name, sort_order, status, full_code, ancestors, depth, revision, created_at, updated_at FROM inventory.locations
 WHERE site_id = $1 AND ($2::text IS NULL OR status = $2::text)
+  AND ($3::text IS NULL OR strpos(lower(full_code), lower($3::text)) > 0
+       OR strpos(lower(coalesce(name, '')), lower($3::text)) > 0)
 ORDER BY full_code
-LIMIT 10000
+LIMIT 10001
 `
 
 type ListSiteLocationsParams struct {
 	SiteID int64
 	Status *string
+	Q      *string
 }
 
-// ListSiteLocations is a site's tree, flat, by full code, capped at 10,000.
+// ListSiteLocations is a site's tree, flat, by full code, filtered by a text
+// its full code or name contains, ignoring case; one row past the cap of
+// 10,000 is read so the caller can say the list was cut.
 func (q *Queries) ListSiteLocations(ctx context.Context, arg ListSiteLocationsParams) ([]InventoryLocation, error) {
-	rows, err := q.db.Query(ctx, listSiteLocations, arg.SiteID, arg.Status)
+	rows, err := q.db.Query(ctx, listSiteLocations, arg.SiteID, arg.Status, arg.Q)
 	if err != nil {
 		return nil, err
 	}
@@ -596,6 +654,52 @@ func (q *Queries) SiblingCodeTaken(ctx context.Context, arg SiblingCodeTakenPara
 	return exists, err
 }
 
+const siteLocationsByFullCodes = `-- name: SiteLocationsByFullCodes :many
+SELECT id, site_id, parent_id, kind, code, name, sort_order, status, full_code, ancestors, depth, revision, created_at, updated_at FROM inventory.locations WHERE site_id = $1 AND full_code = ANY($2::text[])
+`
+
+type SiteLocationsByFullCodesParams struct {
+	SiteID    int64
+	FullCodes []string
+}
+
+// SiteLocationsByFullCodes is the site's locations holding the full codes, as
+// the opening-balance import resolves its rows (I32).
+func (q *Queries) SiteLocationsByFullCodes(ctx context.Context, arg SiteLocationsByFullCodesParams) ([]InventoryLocation, error) {
+	rows, err := q.db.Query(ctx, siteLocationsByFullCodes, arg.SiteID, arg.FullCodes)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []InventoryLocation
+	for rows.Next() {
+		var i InventoryLocation
+		if err := rows.Scan(
+			&i.ID,
+			&i.SiteID,
+			&i.ParentID,
+			&i.Kind,
+			&i.Code,
+			&i.Name,
+			&i.SortOrder,
+			&i.Status,
+			&i.FullCode,
+			&i.Ancestors,
+			&i.Depth,
+			&i.Revision,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const stockIn = `-- name: StockIn :one
 SELECT coalesce(sum(on_hand), 0)::text AS quantity, count(*)::int AS lines
 FROM inventory.balances WHERE location_id = ANY($1::bigint[])
@@ -613,6 +717,23 @@ func (q *Queries) StockIn(ctx context.Context, ids []int64) (StockInRow, error) 
 	var i StockInRow
 	err := row.Scan(&i.Quantity, &i.Lines)
 	return i, err
+}
+
+const subtreeHasOpenCount = `-- name: SubtreeHasOpenCount :one
+SELECT EXISTS (
+    SELECT 1 FROM inventory.counts
+    WHERE status = 'counting' AND scope_location_id = ANY($1::bigint[])
+)
+`
+
+// SubtreeHasOpenCount reports whether a count still counting covers any of
+// the locations — its scope one of them, or above them (ancestors) — so an
+// archive of them is refused (location_has_open_count).
+func (q *Queries) SubtreeHasOpenCount(ctx context.Context, ids []int64) (bool, error) {
+	row := q.db.QueryRow(ctx, subtreeHasOpenCount, ids)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
 }
 
 const takenFullCodes = `-- name: TakenFullCodes :many

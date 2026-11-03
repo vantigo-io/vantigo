@@ -34,7 +34,7 @@ SELECT * FROM inventory.movement_lines WHERE movement_id = @movement_id ORDER BY
 -- posting time, variant and location subtree (each NULL for any), after the
 -- cursor's (posted_at, id).
 SELECT m.id, m.client_request_id, m.site_id, m.kind, m.reason, m.note, m.supplier_name, m.supplier_reference,
-       m.posted_by_user_id, m.posted_by_display, m.posted_at,
+       m.posted_by_user_id, m.posted_by_display, m.posted_at, m.count_id,
        (SELECT count(*) FROM inventory.movement_lines c WHERE c.movement_id = m.id)::int AS line_count
 FROM inventory.movements m
 WHERE (sqlc.narg(site_id)::bigint IS NULL OR m.site_id = sqlc.narg(site_id)::bigint)
@@ -52,3 +52,12 @@ WHERE (sqlc.narg(site_id)::bigint IS NULL OR m.site_id = sqlc.narg(site_id)::big
        OR (m.posted_at, m.id) < (sqlc.narg(cursor_at)::timestamptz, sqlc.narg(cursor_id)::bigint))
 ORDER BY m.posted_at DESC, m.id DESC
 LIMIT @row_limit::int;
+
+-- name: StockTotals :many
+-- StockTotals is each of the variants' on hand across every location (I33);
+-- a variant with no balance is absent.
+SELECT variant_id, sum(on_hand)::text AS on_hand
+FROM inventory.balances
+WHERE variant_id = ANY(@variant_ids::int[])
+GROUP BY variant_id
+ORDER BY variant_id;

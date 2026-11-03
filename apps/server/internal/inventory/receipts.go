@@ -12,7 +12,8 @@ import (
 // name and reference and a note. Every line is a line to a location. A
 // receipt refuses a service's variant (variant_not_stockable) and a
 // discontinued product's (variant_discontinued); a Draft product's is
-// received, since goods arrive before they go on sale.
+// received, since goods arrive before they go on sale. A line gives its
+// quantity, or what was entered in packagings (entered.go).
 
 // PostInventoryReceipt Receive goods
 // (POST /api/v1/inventory/movements/receipts)
@@ -32,11 +33,7 @@ func (s *server) PostInventoryReceipt(ctx context.Context, req gen.PostInventory
 			to = *l.LocationId
 		}
 		line := engineLine{index: i, variantID: l.VariantId, to: &to}
-		q, msg := parseQuantity(l.Quantity, positiveQuantity)
-		if msg != "" {
-			line.failCode, line.failText = codeQuantityInvalid, msg
-		}
-		line.quantity = q
+		line.quantity, line.entry, line.failCode, line.failText = readEntered(l.Quantity, l.Entered, positiveQuantity)
 		lines = append(lines, line)
 	}
 	if f.failed() {

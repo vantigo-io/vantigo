@@ -134,7 +134,7 @@ func getLocation(t *testing.T, c *modtest.Client, id int64) gen.InventoryLocatio
 // receiptLine is a receipt line of quantity of variant to the receipt's
 // default location.
 func receiptLine(variant int32, quantity float64) gen.InventoryReceiptLine {
-	return gen.InventoryReceiptLine{VariantId: variant, Quantity: quantity}
+	return gen.InventoryReceiptLine{VariantId: variant, Quantity: qty(quantity)}
 }
 
 // receive posts a receipt to site's location to and answers the movement.
@@ -202,3 +202,7 @@ func eventKinds(t *testing.T, h *harness) []string {
 
 // ptr is a pointer to v.
 func ptr[T any](v T) *T { return &v }
+
+// qty is a line's quantity as the generated request types take it: optional,
+// since a line may be entered in packagings instead (I25).
+func qty(v float64) *float64 { return &v }

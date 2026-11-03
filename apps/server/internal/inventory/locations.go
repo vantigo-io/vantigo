@@ -309,6 +309,22 @@ func (s *server) changeLocation(ctx context.Context, txq *store.Queries, who act
 		return store.InventoryLocation{}, err
 	}
 	reparent := parent.ID != *cur.ParentID
+	if reparent {
+		// A move must not carry stock in or out of a count still counting: a
+		// count's scope in the moved subtree, above where it was or above where
+		// it goes would leave two counts over the same balances, or a count's
+		// lines outside its scope.
+		ids := append(slices.Clone(sub.ids), cur.Ancestors...)
+		ids = append(append(ids, parent.Ancestors...), parent.ID)
+		open, err := txq.SubtreeHasOpenCount(ctx, ids)
+		if err != nil {
+			return store.InventoryLocation{}, fmt.Errorf("inventory: read the open counts over the move of location %d: %w", cur.ID, err)
+		}
+		if open {
+			return store.InventoryLocation{}, refuse(problem(http.StatusConflict, codeLocationHasOpenCount, "Location has an open count",
+				"The location "+cur.FullCode+" is being counted, or something below it, above it or above where it would go is. Post or cancel the count before moving it."))
+		}
+	}
 	depth := int(parent.Depth) + 1
 	if deepest := depth + sub.height(); deepest > maxDepth {
 		return store.InventoryLocation{}, depthExceeded("parentId", deepest)
@@ -328,8 +344,13 @@ func (s *server) changeLocation(ctx context.Context, txq *store.Queries, who act
 	archive := in.status == string(gen.Archived) && cur.Status == string(gen.Active)
 	reactivate := in.status == string(gen.Active) && cur.Status == string(gen.Archived)
 	if archive {
-		// TODO(inventory B): refuse location_has_open_count while a count
-		// is open on anything in the subtree.
+		open, err := txq.SubtreeHasOpenCount(ctx, append(slices.Clone(sub.ids), cur.Ancestors...))
+		if err != nil {
+			return store.InventoryLocation{}, fmt.Errorf("inventory: read the open counts over location %d: %w", cur.ID, err)
+		}
+		if open {
+			return store.InventoryLocation{}, openCountRefusal("The location " + cur.FullCode)
+		}
 		if err := stockRefusal(ctx, txq, "The location "+cur.FullCode, sub.ids, in.seesStock); err != nil {
 			return store.InventoryLocation{}, err
 		}

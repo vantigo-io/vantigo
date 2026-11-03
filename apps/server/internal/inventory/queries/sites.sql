@@ -48,9 +48,32 @@ WHERE id = @id
 RETURNING *;
 
 -- name: SiteHasMovements :one
--- SiteHasMovements reports whether any movement was ever posted in the site:
--- a site with history is archived, never deleted (I6).
-SELECT EXISTS (SELECT 1 FROM inventory.movements WHERE site_id = @site_id);
+-- SiteHasMovements reports whether any movement was ever posted, or any
+-- count opened, in the site: a site with history is archived, never deleted
+-- (I6).
+SELECT EXISTS (
+    SELECT 1 FROM inventory.movements m WHERE m.site_id = @site_id::bigint
+    UNION ALL
+    SELECT 1 FROM inventory.counts c WHERE c.site_id = @site_id::bigint
+);
+
+-- name: SiteHasOpenCount :one
+-- SiteHasOpenCount reports whether a count is still counting in the site, so
+-- archiving it is refused (location_has_open_count).
+SELECT EXISTS (SELECT 1 FROM inventory.counts WHERE site_id = @site_id AND status = 'counting');
+
+-- name: SiteFigures :many
+-- SiteFigures is, per site, its active locations below the root, its
+-- balances and its latest receipt (the movement's own time), in one statement
+-- for the whole list.
+SELECT s.id,
+       (SELECT count(*) FROM inventory.locations l WHERE l.site_id = s.id AND l.status = 'active' AND l.parent_id IS NOT NULL)::int AS location_count,
+       (SELECT count(*) FROM inventory.balances b JOIN inventory.locations l ON l.id = b.location_id WHERE l.site_id = s.id)::int AS stock_lines,
+       r.posted_at AS last_receipt_at
+FROM inventory.sites s
+LEFT JOIN inventory.movements r ON r.id = (
+    SELECT m.id FROM inventory.movements m WHERE m.site_id = s.id AND m.kind = 'receipt' ORDER BY m.posted_at DESC, m.id DESC LIMIT 1)
+WHERE s.id = ANY(@ids::bigint[]);
 
 -- name: DeleteSite :exec
 DELETE FROM inventory.sites WHERE id = @id;

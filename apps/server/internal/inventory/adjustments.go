@@ -15,6 +15,9 @@ import (
 // engine has locked; a line whose difference is 0 is dropped, and a movement
 // left with none is refused (nothing_to_post). An adjustment accepts a
 // discontinued product's variant, so the last stock can be cleared (I12).
+// A line may give what was entered in packagings instead of the quantity
+// (I25): under change it is added, or taken away with decrease; under set it
+// is the new on hand.
 
 // PostInventoryAdjustment Adjust stock
 // (POST /api/v1/inventory/movements/adjustments)
@@ -32,23 +35,30 @@ func (s *server) PostInventoryAdjustment(ctx context.Context, req gen.PostInvent
 	for i, l := range in.Lines {
 		line := engineLine{index: i, variantID: l.VariantId}
 		location := l.LocationId
+		decrease := l.Decrease != nil && *l.Decrease
 		switch l.Mode {
 		case gen.Change:
-			q, msg := parseQuantity(l.Quantity, signedQuantity)
+			q, e, code, detail := readEntered(l.Quantity, l.Entered, signedQuantity)
 			switch {
-			case msg != "":
-				line.failCode, line.failText = codeQuantityInvalid, msg
+			case code != "":
+				line.failCode, line.failText = code, detail
+			case decrease && e == nil:
+				line.failCode, line.failText = codeEnteredInvalid, "decrease goes with entered; a quantity under change carries its own sign."
+			case e != nil && decrease:
+				line.from, line.entry = &location, e
+			case e != nil:
+				line.to, line.entry = &location, e
 			case q.Sign() > 0:
 				line.to, line.quantity = &location, q
 			default:
 				line.from, line.quantity = &location, q.Neg(q)
 			}
 		case gen.Set:
-			q, msg := parseQuantity(l.Quantity, nonNegativeQuantity)
-			if msg != "" {
-				line.failCode, line.failText = codeQuantityInvalid, msg
+			line.setAt = &location
+			line.setTo, line.entry, line.failCode, line.failText = readEntered(l.Quantity, l.Entered, nonNegativeQuantity)
+			if decrease {
+				line.failCode, line.failText = codeEnteredInvalid, "decrease goes with change; set makes the entry the new on hand."
 			}
-			line.setAt, line.setTo = &location, q
 		default:
 			f.add(fmt.Sprintf("lines[%d].mode", i), "The mode must be change or set")
 		}

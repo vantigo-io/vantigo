@@ -227,14 +227,78 @@ func (q *Queries) SiteCodeTaken(ctx context.Context, arg SiteCodeTakenParams) (b
 	return exists, err
 }
 
-const siteHasMovements = `-- name: SiteHasMovements :one
-SELECT EXISTS (SELECT 1 FROM inventory.movements WHERE site_id = $1)
+const siteFigures = `-- name: SiteFigures :many
+SELECT s.id,
+       (SELECT count(*) FROM inventory.locations l WHERE l.site_id = s.id AND l.status = 'active' AND l.parent_id IS NOT NULL)::int AS location_count,
+       (SELECT count(*) FROM inventory.balances b JOIN inventory.locations l ON l.id = b.location_id WHERE l.site_id = s.id)::int AS stock_lines,
+       r.posted_at AS last_receipt_at
+FROM inventory.sites s
+LEFT JOIN inventory.movements r ON r.id = (
+    SELECT m.id FROM inventory.movements m WHERE m.site_id = s.id AND m.kind = 'receipt' ORDER BY m.posted_at DESC, m.id DESC LIMIT 1)
+WHERE s.id = ANY($1::bigint[])
 `
 
-// SiteHasMovements reports whether any movement was ever posted in the site:
-// a site with history is archived, never deleted (I6).
+type SiteFiguresRow struct {
+	ID            int64
+	LocationCount int32
+	StockLines    int32
+	LastReceiptAt *time.Time
+}
+
+// SiteFigures is, per site, its active locations below the root, its
+// balances and its latest receipt (the movement's own time), in one statement
+// for the whole list.
+func (q *Queries) SiteFigures(ctx context.Context, ids []int64) ([]SiteFiguresRow, error) {
+	rows, err := q.db.Query(ctx, siteFigures, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []SiteFiguresRow
+	for rows.Next() {
+		var i SiteFiguresRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.LocationCount,
+			&i.StockLines,
+			&i.LastReceiptAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const siteHasMovements = `-- name: SiteHasMovements :one
+SELECT EXISTS (
+    SELECT 1 FROM inventory.movements m WHERE m.site_id = $1::bigint
+    UNION ALL
+    SELECT 1 FROM inventory.counts c WHERE c.site_id = $1::bigint
+)
+`
+
+// SiteHasMovements reports whether any movement was ever posted, or any
+// count opened, in the site: a site with history is archived, never deleted
+// (I6).
 func (q *Queries) SiteHasMovements(ctx context.Context, siteID int64) (bool, error) {
 	row := q.db.QueryRow(ctx, siteHasMovements, siteID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
+const siteHasOpenCount = `-- name: SiteHasOpenCount :one
+SELECT EXISTS (SELECT 1 FROM inventory.counts WHERE site_id = $1 AND status = 'counting')
+`
+
+// SiteHasOpenCount reports whether a count is still counting in the site, so
+// archiving it is refused (location_has_open_count).
+func (q *Queries) SiteHasOpenCount(ctx context.Context, siteID int64) (bool, error) {
+	row := q.db.QueryRow(ctx, siteHasOpenCount, siteID)
 	var exists bool
 	err := row.Scan(&exists)
 	return exists, err

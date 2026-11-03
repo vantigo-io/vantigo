@@ -36,11 +36,15 @@ FOR UPDATE;
 SELECT * FROM inventory.locations WHERE site_id = @site_id ORDER BY id FOR UPDATE;
 
 -- name: ListSiteLocations :many
--- ListSiteLocations is a site's tree, flat, by full code, capped at 10,000.
+-- ListSiteLocations is a site's tree, flat, by full code, filtered by a text
+-- its full code or name contains, ignoring case; one row past the cap of
+-- 10,000 is read so the caller can say the list was cut.
 SELECT * FROM inventory.locations
 WHERE site_id = @site_id AND (sqlc.narg(status)::text IS NULL OR status = sqlc.narg(status)::text)
+  AND (sqlc.narg(q)::text IS NULL OR strpos(lower(full_code), lower(sqlc.narg(q)::text)) > 0
+       OR strpos(lower(coalesce(name, '')), lower(sqlc.narg(q)::text)) > 0)
 ORDER BY full_code
-LIMIT 10000;
+LIMIT 10001;
 
 -- name: ListChildren :many
 SELECT * FROM inventory.locations WHERE parent_id = @parent_id ORDER BY sort_order, code;
@@ -123,12 +127,38 @@ SELECT coalesce(sum(on_hand), 0)::text AS quantity, count(*)::int AS lines
 FROM inventory.balances WHERE location_id = ANY(@ids::bigint[]);
 
 -- name: HistoryIn :one
--- HistoryIn reports whether a movement line ever named one of the locations:
--- one that has is archived, never deleted (I6).
+-- HistoryIn reports whether a movement line or a count ever named one of the
+-- locations: one that has is archived, never deleted (I6).
 SELECT EXISTS (
     SELECT 1 FROM inventory.movement_lines
     WHERE from_location_id = ANY(@ids::bigint[]) OR to_location_id = ANY(@ids::bigint[])
+    UNION ALL
+    SELECT 1 FROM inventory.counts WHERE scope_location_id = ANY(@ids::bigint[])
+    UNION ALL
+    SELECT 1 FROM inventory.count_lines WHERE location_id = ANY(@ids::bigint[])
 );
+
+-- name: SubtreeHasOpenCount :one
+-- SubtreeHasOpenCount reports whether a count still counting covers any of
+-- the locations — its scope one of them, or above them (ancestors) — so an
+-- archive of them is refused (location_has_open_count).
+SELECT EXISTS (
+    SELECT 1 FROM inventory.counts
+    WHERE status = 'counting' AND scope_location_id = ANY(@ids::bigint[])
+);
+
+-- name: ActiveSubtrees :many
+-- ActiveSubtrees is the locations and every active location below any of
+-- them, by full code: what a sheet of labels prints with subtree (I7).
+SELECT * FROM inventory.locations
+WHERE id = ANY(@ids::bigint[]) OR (status = 'active' AND ancestors && @ids::bigint[])
+ORDER BY full_code
+LIMIT @row_limit::int;
+
+-- name: SiteLocationsByFullCodes :many
+-- SiteLocationsByFullCodes is the site's locations holding the full codes, as
+-- the opening-balance import resolves its rows (I32).
+SELECT * FROM inventory.locations WHERE site_id = @site_id AND full_code = ANY(@full_codes::text[]);
 
 -- name: DeleteLocations :exec
 -- DeleteLocations removes locations in one statement, so the tree's own key

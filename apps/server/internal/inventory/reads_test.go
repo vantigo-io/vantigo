@@ -151,7 +151,7 @@ func TestMovements_ListAndGet(t *testing.T) {
 	a1 := createLocation(t, c, a.Id, gen.InventoryLocationKindShelf, "1")
 	r1 := receive(t, c, s.site.Id, a1.Id, receiptLine(varBolt, 3))
 	r2 := receive(t, c, s.elsewhre.Id, s.elsewhre.RootLocationId, receiptLine(varNut, 3))
-	res := move(c, s.site.Id, gen.InventoryMoveLine{VariantId: varBolt, FromLocationId: a1.Id, ToLocationId: s.shelf1.Id, Quantity: 1})
+	res := move(c, s.site.Id, gen.InventoryMoveLine{VariantId: varBolt, FromLocationId: a1.Id, ToLocationId: s.shelf1.Id, Quantity: qty(1)})
 	mustStatus(t, res, http.StatusCreated, "move")
 	var mv gen.InventoryMovement
 	res.JSON(&mv)
@@ -210,9 +210,10 @@ func TestMovements_ListAndGet(t *testing.T) {
 	if m := page.Movements[1]; m.LineCount != 1 || m.Kind != gen.Receipt || m.Site.Code != "OSL" || m.PostedBy.DisplayName == "" {
 		t.Errorf("summary = %+v", m)
 	}
-	for _, bad := range []string{"?cursor=nonsense", "?limit=501", "?from=2026-02-02&to=2026-02-01", "?kind=count"} {
+	for _, bad := range []string{"?cursor=nonsense", "?limit=501", "?from=2026-02-02&to=2026-02-01", "?kind=transfer"} {
 		mustStatus(t, c.Do(http.MethodGet, movementsPath+bad, nil), http.StatusBadRequest, "GET /movements"+bad)
 	}
+	mustStatus(t, c.Do(http.MethodGet, movementsPath+"?kind=count", nil), http.StatusOK, "GET /movements?kind=count")
 
 	res = c.Do(http.MethodGet, movementPath(mv.Id), nil)
 	mustStatus(t, res, http.StatusOK, "GET /movements/{id}")

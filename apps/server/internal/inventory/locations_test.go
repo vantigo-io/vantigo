@@ -240,7 +240,7 @@ func TestLocations_ArchiveReactivateDelete(t *testing.T) {
 	receive(t, c, site.Id, shelf.Id, receiptLine(varBolt, 1))
 	res = c.Do(http.MethodPost, adjustmentsPath, gen.InventoryAdjustmentInput{
 		ClientRequestId: uuid.New(), SiteId: site.Id, Reason: gen.InventoryAdjustmentReasonCorrection,
-		Lines: []gen.InventoryAdjustmentLine{{VariantId: varBolt, LocationId: shelf.Id, Mode: gen.Set, Quantity: 0}},
+		Lines: []gen.InventoryAdjustmentLine{{VariantId: varBolt, LocationId: shelf.Id, Mode: gen.Set, Quantity: qty(0)}},
 	})
 	mustStatus(t, res, http.StatusCreated, "adjust the shelf to zero")
 	expectRefusal(t, c.Do(http.MethodDelete, locationPath(a.Id), nil), http.StatusConflict, "location_has_history", "delete A with history below")

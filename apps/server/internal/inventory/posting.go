@@ -24,8 +24,8 @@ import (
 
 // The posting engine (design I8–I15, §4): the one function every change of
 // stock goes through. The API's three handlers open the transaction and call
-// it; delivery B's count post and opening-balance import call it inside
-// theirs. A movement is never edited or deleted, and the balance per
+// it; the count post (count_post.go) and the opening-balance import
+// (import.go) call it inside theirs, with no line cap. A movement is never edited or deleted, and the balance per
 // (variant, location) is kept by the same transaction that writes it.
 //
 // The lock order, in every posting:
@@ -66,6 +66,10 @@ type postOptions struct {
 	maxLines int
 	// receipt refuses a Discontinued product's variant (I12).
 	receipt bool
+	// check, when set, judges the posting once its variants and balances are
+	// locked and before any line is applied: the count post's moved lines
+	// (I19). A refusal it answers rolls the posting back.
+	check func(variants map[int32]contracts.VariantEntry, balances map[balanceKey]*big.Rat) error
 }
 
 // maxAPILines is the most lines a movement posted through the API has.
@@ -83,13 +87,16 @@ type movementHeader struct {
 	note              *string
 	supplierName      *string
 	supplierReference *string
+	countID           *int64
 	poster            actor
 }
 
 // engineLine is one line as the engine takes it: a variant, from and to (each
 // nil for none), and a quantity more than 0 — or, for an adjustment in set
 // mode, the on-hand to set at a location, posted as the difference. A line
-// its caller already refused carries the refusal and is only reported.
+// entered in packagings carries its entry instead of the quantity (or the
+// on-hand to set), resolved once its variant is locked (I25). A line its
+// caller already refused carries the refusal and is only reported.
 type engineLine struct {
 	index     int
 	variantID int32
@@ -97,6 +104,8 @@ type engineLine struct {
 	quantity  *big.Rat
 	setAt     *int64
 	setTo     *big.Rat
+	entry     *entry
+	entered   []byte
 	failCode  string
 	failText  string
 }
@@ -137,6 +146,9 @@ func (s *server) post(ctx context.Context, tx pgx.Tx, txq *store.Queries, m move
 	if res, done, err := replayOf(ctx, txq, m); done || err != nil {
 		return res, err
 	}
+	// The lines are the caller's; an attempt resolves its entries on its own
+	// copy, so a retry starts from what the caller gave.
+	lines = slices.Clone(lines)
 
 	// The request as a whole.
 	if opts.maxLines > 0 && len(lines) > opts.maxLines {
@@ -193,11 +205,31 @@ func (s *server) post(ctx context.Context, tx pgx.Tx, txq *store.Queries, m move
 		}
 	}
 
+	// The entries, resolved against the packagings as they are locked (I25).
+	for i := range lines {
+		l := &lines[i]
+		v, ok := variants[l.variantID]
+		if l.entry == nil || l.failCode != "" || !ok {
+			continue
+		}
+		q, snap, code, detail := l.entry.resolve(v)
+		switch {
+		case code != "":
+			fail(*l, code, detail)
+		case l.setAt != nil:
+			l.setTo, l.entered = q, snap
+		case q.Sign() == 0:
+			fail(*l, codeQuantityInvalid, "The entry comes to 0; the quantity must be more than 0")
+		default:
+			l.quantity, l.entered = q, snap
+		}
+	}
+
 	// 3. The key, claimed.
 	id, err := txq.ClaimMovement(ctx, store.ClaimMovementParams{
 		ClientRequestID: m.clientRequestID, RequestHash: m.requestHash, SiteID: m.siteID, Kind: m.kind,
 		Reason: m.reason, Note: m.note, SupplierName: m.supplierName, SupplierReference: m.supplierReference,
-		PostedByUserID: m.poster.UserID, PostedByDisplay: &m.poster.Display, PostedAt: s.deps.Clock(),
+		PostedByUserID: m.poster.UserID, PostedByDisplay: &m.poster.Display, PostedAt: s.deps.Clock(), CountID: m.countID,
 	})
 	if noRows(err) {
 		res, _, err := replayOf(ctx, txq, m)
@@ -256,6 +288,11 @@ func (s *server) post(ctx context.Context, tx pgx.Tx, txq *store.Queries, m move
 	balances, err := lockBalances(ctx, txq, keys, s.deps.Clock())
 	if err != nil {
 		return postResult{}, err
+	}
+	if opts.check != nil {
+		if err := opts.check(variants, balances); err != nil {
+			return postResult{}, err
+		}
 	}
 
 	// The lines, applied in order.
@@ -410,7 +447,8 @@ func lockBalances(ctx context.Context, txq *store.Queries, keys []balanceKey, no
 }
 
 // writeLines writes the posted lines, numbered from 1, with the variants'
-// snapshots as LockVariants answered them (I9).
+// snapshots as LockVariants answered them (I9) and each entry as it was
+// resolved (I25).
 func writeLines(ctx context.Context, txq *store.Queries, movementID int64, lines []engineLine, variants map[int32]contracts.VariantEntry) error {
 	p := store.InsertMovementLinesParams{MovementID: movementID}
 	for i, l := range lines {
@@ -427,6 +465,7 @@ func writeLines(ctx context.Context, txq *store.Queries, movementID int64, lines
 		p.FromIds = append(p.FromIds, idOrZero(l.from))
 		p.ToIds = append(p.ToIds, idOrZero(l.to))
 		p.Quantities = append(p.Quantities, q)
+		p.Entereds = append(p.Entereds, string(l.entered))
 	}
 	if err := txq.InsertMovementLines(ctx, p); err != nil {
 		return fmt.Errorf("inventory: write the lines of movement %d: %w", movementID, err)

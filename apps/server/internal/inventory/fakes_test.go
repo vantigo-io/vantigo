@@ -15,7 +15,7 @@ import (
 )
 
 // fakeCatalog is contracts.ProductCatalog over the variants a test seeds,
-// in place of Products, which depguard keeps out of this package. It records
+// with their packagings, in place of Products, which depguard keeps out of this package. It records
 // every LockVariants call — the ids and whether a transaction was given — so
 // a test can prove a posting locks its variants first, in id order.
 type fakeCatalog struct {
@@ -38,6 +38,16 @@ func (c *fakeCatalog) seed(entries ...contracts.VariantEntry) {
 	for _, e := range entries {
 		c.variants[e.ID] = e
 	}
+}
+
+// setPackagings replaces a variant's packagings, as Products' packaging
+// writes would; every read answers them from then on.
+func (c *fakeCatalog) setPackagings(id int32, packagings ...contracts.PackagingEntry) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	v := c.variants[id]
+	v.Packagings = packagings
+	c.variants[id] = v
 }
 
 // remove forgets a variant, as a delete in Products would.
@@ -126,6 +136,11 @@ func (c *fakeCatalog) LookupCode(ctx context.Context, code string) ([]contracts.
 	for _, v := range c.sorted() {
 		if strings.EqualFold(v.SKU, code) || (v.Barcode != nil && *v.Barcode == code) {
 			out = append(out, contracts.CodeMatch{Variant: v})
+		}
+		for _, p := range v.Packagings {
+			if p.Barcode != nil && *p.Barcode == code {
+				out = append(out, contracts.CodeMatch{Variant: v, Packaging: &p})
+			}
 		}
 	}
 	return out, nil

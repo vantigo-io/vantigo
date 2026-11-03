@@ -89,6 +89,7 @@ func mount(d module.Deps) (http.Handler, error) {
 	}
 	router := module.NewRouter(module.RouterOptions{
 		Doc: d.Doc, Access: d.Access, Limiter: d.Limiter, Limits: limits, Catalog: d.Catalog,
+		BodyLimits: map[string]int64{"importInventoryOpeningBalances": maxImportRequestBytes},
 	})
 	strict := gen.NewStrictHandlerWithOptions(newServer(d), nil, gen.StrictHTTPServerOptions{
 		RequestErrorHandlerFunc:  module.DecodeError(apicommon.WriteDecodeError),

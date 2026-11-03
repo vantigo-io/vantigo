@@ -303,6 +303,7 @@ var filesOrRedirects = []string{
 	"getStaffPeopleImportTemplateCsv",
 	"getStaffPeopleByIdPhoto",
 	"getStaffPersonCompetencesByIdEvidence",
+	"importInventoryOpeningBalances",
 	"postCustomersImports",
 	"postEnergyImports",
 	"postEnergyMeteringPointsByIdConsumptionImport",
@@ -317,6 +318,7 @@ var filesOrRedirects = []string{
 	"postStaffPersonCompetencesByIdEvidence",
 	"putStaffPeopleByIdPhoto",
 	"postInvoicesBankFiles",
+	"printInventoryLabels",
 }
 
 func equalMaps(a, b map[string]string) bool {
