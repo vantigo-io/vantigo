@@ -16,6 +16,7 @@ const quote = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 /** Entra on with a stored secret, SCIM on in the middle of a rotation's overlap, as GET /owner/sso answers. */
 const entraWithOverlap = (): SsoSettings => ({
   version: 7,
+  directory: { provider: "entra", displayName: "Microsoft Entra ID" },
   oidc: {
     enabled: true,
     provider: "entra",
@@ -47,6 +48,7 @@ type Handler = (method: string, url: string, init: RequestInit | undefined) => R
 /** Nothing set yet: OIDC off with no authority or client id, SCIM off, as a fresh installation answers. */
 const empty = (): SsoSettings => ({
   version: 0,
+  directory: null,
   oidc: {
     enabled: false,
     allowedDomains: [],

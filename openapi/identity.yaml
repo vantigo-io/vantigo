@@ -1996,6 +1996,123 @@ components:
                 - revoked
             type: object
             x-vantigo-source: Vantigo.Identity
+        SsoDirectory:
+            description: The directory an Owner connects existing users from (Google Workspace design G8) — the module serving the configured workforce provider's directory search.
+            properties:
+                displayName:
+                    description: The directory as a person reads it, such as Microsoft Entra ID.
+                    type: string
+                provider:
+                    description: The OIDC provider whose directory it is, entra or google.
+                    type: string
+            required:
+                - provider
+                - displayName
+            type: object
+        SsoDirectoryHolder:
+            description: 'Who already holds a directory account''s keys under the configured issuer: expected, an Owner announced it for an existing user; mapped, the provider''s SCIM push maps it to a user (its userName the principal name, or its externalId the object id); account, Staff announced it for a person yet to arrive, with no user. A sign-in through the provider is not shown: the link it makes names no key the directory answers.'
+            properties:
+                kind:
+                    enum:
+                        - expected
+                        - mapped
+                        - account
+                    type: string
+                userId:
+                    description: The user holding the account. Absent for account.
+                    format: uuid
+                    type: string
+            required:
+                - kind
+            type: object
+        SsoDirectoryMatch:
+            description: A user not yet connected and the one directory account that matches them exactly, proposed for connecting.
+            properties:
+                account:
+                    $ref: '#/components/schemas/SsoDirectoryUser'
+                matchedBy:
+                    description: 'What matched, in this order: the user''s address equal, ignoring case, to the account''s mail or its principal name; the user''s employee number equal, trimmed and ignoring case, to the account''s. Every key that matched points to this account.'
+                    items:
+                        enum:
+                            - mail
+                            - principalName
+                            - employeeNumber
+                        type: string
+                    type: array
+                userId:
+                    format: uuid
+                    type: string
+            required:
+                - userId
+                - account
+                - matchedBy
+            type: object
+        SsoDirectoryMatches:
+            description: The exact matches between the users not yet connected and the directory's accounts. Only an exact match is proposed — no fuzzy match, no guess between two, never a guest account. The users' addresses are compared by the provider and never answered.
+            properties:
+                ambiguous:
+                    description: How many candidates were left out because more than one account matched them, or because the account that matched them matched another candidate too. A guest account is no match at all — it is neither proposed nor counted here.
+                    format: int32
+                    type: integer
+                candidates:
+                    description: How many users not yet connected were read — every user who is not pending and has neither a link nor an announced link under the configured issuer, the caller excluded.
+                    format: int32
+                    type: integer
+                matches:
+                    description: The proposals, in the order the users are listed.
+                    items:
+                        $ref: '#/components/schemas/SsoDirectoryMatch'
+                    type: array
+                truncated:
+                    description: True when more users were waiting than the provider reads (1000 for Entra), and only the first, in the users' order, were read.
+                    type: boolean
+            required:
+                - matches
+                - candidates
+                - ambiguous
+                - truncated
+            type: object
+        SsoDirectoryUser:
+            description: One account in the directory, by the two keys an announced link names (POST /owner/users/{id}/sso-link), so a pick fills that request unchanged.
+            properties:
+                displayName:
+                    type: string
+                employeeNumber:
+                    description: The account's employee number. Absent when it has none.
+                    type: string
+                enabled:
+                    description: Whether the account may sign in.
+                    type: boolean
+                guest:
+                    description: True when the account is a guest invited from another organisation. Absent for a member. The matches never propose a guest.
+                    type: boolean
+                holder:
+                    $ref: '#/components/schemas/SsoDirectoryHolder'
+                mail:
+                    description: The account's mail. Absent when it has none.
+                    type: string
+                objectId:
+                    description: The account's immutable id in the directory.
+                    type: string
+                userPrincipalName:
+                    description: The account's principal name, the address it signs in with.
+                    type: string
+            required:
+                - objectId
+                - displayName
+                - userPrincipalName
+                - enabled
+            type: object
+        SsoDirectoryUsers:
+            description: The accounts a directory search found, at most 25. When 25 come back there may be more, and the search should be narrowed.
+            properties:
+                users:
+                    items:
+                        $ref: '#/components/schemas/SsoDirectoryUser'
+                    type: array
+            required:
+                - users
+            type: object
         SsoOidcSettings:
             description: The workforce OpenID Connect provider people sign in through (Entra design D1 and D2), one per installation. While enabled is false the sign-in page offers no provider button and every field that may be absent is. The client secret is sealed at rest and never answered; clientSecretSetAt says when it was set.
             properties:
@@ -2130,6 +2247,11 @@ components:
         SsoSettings:
             description: The installation's single sign-on settings (Entra design D1 and D2) — the workforce OpenID Connect provider and the SCIM credential — held in one row that an Owner edits and every process reads within 20 seconds of a save. The client secret and the SCIM tokens are never answered.
             properties:
+                directory:
+                    allOf:
+                        - $ref: '#/components/schemas/SsoDirectory'
+                    description: The directory an Owner may connect existing users from — the module serving the configured provider's directory search, so the users page knows whether to offer the picker and the matches. Null while OIDC is off or no enabled module serves the configured provider's directory.
+                    nullable: true
                 importedFromEnvironment:
                     description: True when the settings were imported from the OIDC_* and SCIM_* environment variables, at the first API start that found them never written. The variables are ignored from then on and should be removed.
                     type: boolean
@@ -2154,6 +2276,7 @@ components:
                 - oidc
                 - scim
                 - importedFromEnvironment
+                - directory
             type: object
         SystemMaintenanceRequest:
             properties:
@@ -5406,6 +5529,117 @@ paths:
             tags:
                 - Single sign-on
             x-vantigo-access: policy:Owner
+    /api/v1/identity/owner/sso/directory/matches:
+        get:
+            description: 'Proposes, for every user not yet connected to the configured workforce provider, the one account in its directory that matches them exactly — the review an Owner connects a whole workspace from (Google Workspace design G8). The directory is the module''s whose directory search serves the configured provider; the candidates are identity''s: every user who is not pending and has neither a link nor an announced link under the configured issuer, the caller excluded, at most as many as the provider reads (1000 for Entra), in the users'' order (truncated says when more wait). The directory is asked by the candidates'' addresses and employee numbers, exact values only. A guest account matches nobody. A candidate is proposed only when every key that matched points to one and the same account, and that account is neither held for another user nor the one match of another candidate; everything else is left out, and counted as ambiguous when more than one account was in play. The addresses are compared by the provider and never answered. Connecting is POST /owner/users/{id}/sso-link, once per chosen pair. 409 no_directory while OIDC is off or no enabled module serves the configured provider''s directory; 503 provider_unreachable when the directory could not be asked. Rate limited to 6 per client address a minute, a bucket of its own.'
+            operationId: getIdentityOwnerSsoDirectoryMatches
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/SsoDirectoryMatches'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "409":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Conflict — no_directory, OIDC is off or no enabled module serves the configured provider's directory.
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Too Many Requests — DirectoryMatches's limit for this client address.
+                    headers:
+                        Retry-After:
+                            schema:
+                                type: string
+                "503":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Service Unavailable — provider_unreachable, the directory could not be asked, or the read took longer than the provider allows.
+            summary: Find the directory's exact matches
+            tags:
+                - Single sign-on
+            x-vantigo-access: policy:Owner+OwnerManagement
+    /api/v1/identity/owner/sso/directory/users:
+        get:
+            description: 'Searches the configured workforce provider''s directory by name and address — the picker an Owner connects one user from (Google Workspace design G8). At most 25 accounts. Each says who already holds it under the configured issuer, as far as identity knows: an announced link, a SCIM mapping or an announced account. An account whose person signed in through the provider already is not marked: the link a sign-in makes names no key the directory answers, and connecting it twice is still refused. 400 invalid_request when search is not 2 to 100 characters once trimmed; 409 no_directory while OIDC is off or no enabled module serves the configured provider''s directory; 503 provider_unreachable when the directory could not be asked. Rate limited to 60 per client address a minute, a bucket of its own.'
+            operationId: getIdentityOwnerSsoDirectoryUsers
+            parameters:
+                - description: What to search for, 2 to 100 characters once trimmed. A double quote or a backslash in it is left out.
+                  in: query
+                  name: search
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/SsoDirectoryUsers'
+                    description: OK
+                "400":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Bad Request — invalid_request, search is not 2 to 100 characters once trimmed; fields names search.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "409":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Conflict — no_directory, OIDC is off or no enabled module serves the configured provider's directory.
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Too Many Requests — DirectorySearch's limit for this client address.
+                    headers:
+                        Retry-After:
+                            schema:
+                                type: string
+                "503":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Service Unavailable — provider_unreachable, the directory could not be asked.
+            summary: Search the directory
+            tags:
+                - Single sign-on
+            x-vantigo-access: policy:Owner+OwnerManagement
     /api/v1/identity/owner/sso/oidc:
         delete:
             description: Turns the workforce OpenID Connect provider off and clears it, the sealed client secret included; every process stops offering it within 20 seconds. While people are linked to the provider, or announced to it and not yet linked, it is refused 409 oidc_links_exist unless confirm is true. Audited sso-settings.changed, without the secret.

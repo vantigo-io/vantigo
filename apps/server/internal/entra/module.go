@@ -10,7 +10,8 @@
 // which is why MODULES refuses entra without staff. It reads of identity
 // only what contracts.SSOConnections answers an Owner — the users left to
 // connect and who holds a directory key — for the directory's exact matches
-// (phase 2, delivery B), and of Staff only the caller's own directory
+// (phase 2, delivery B; behind contracts.DirectorySearch, which identity
+// serves), and of Staff only the caller's own directory
 // account (contracts.Workforce.DirectoryAccount) for the person's Outlook
 // connection (docs/superpowers/specs/2026-10-29-outlook-connection-and-mail-design.md,
 // M3–M8: outlook.go and its neighbours); the Owner's and entra:manage's
@@ -84,17 +85,6 @@ var ownerLimit = ratelimit.Policy{Name: "entra-owner", Limit: 30, Window: time.M
 // the tenant, nor the Owner's clicks the list's.
 var skusLimit = ratelimit.Policy{Name: "entra-skus", Limit: 30, Window: time.Minute}
 
-// directoryLimit is the directory search's, the picker's: 60 per client
-// address a minute, a bucket of its own. Every request reaches the tenant,
-// and a debounced picker asks once per pause in typing; a script walking
-// the tenant through it would ask far more.
-var directoryLimit = ratelimit.Policy{Name: "entra-directory", Limit: 60, Window: time.Minute}
-
-// matchesLimit is the exact matches' read: 6 per client address a minute,
-// a bucket of its own. One read asks the tenant for every user not yet
-// connected, in chunks — a review an Owner opens, not a list they refresh.
-var matchesLimit = ratelimit.Policy{Name: "entra-matches", Limit: 6, Window: time.Minute}
-
 // notificationsLimit is Microsoft Graph's webhook's, anonymous (calendar
 // Outlook sync design O11.5): 600 per client address a minute, a bucket of
 // its own. Graph posts a tenant's notifications from a handful of
@@ -126,8 +116,6 @@ var limits = map[string]ratelimit.Policy{
 	"deleteEntraConnectionCredentialsById": ownerLimit,
 	"postEntraConnectionTest":              ownerLimit,
 	"getEntraConnectionSkus":               skusLimit,
-	"getEntraDirectoryUsers":               directoryLimit,
-	"getEntraDirectoryMatches":             matchesLimit,
 	"postEntraMailboxNotifications":        notificationsLimit,
 	"postEntraOutlookConnect":              outlookLimit,
 	"postEntraOutlookComplete":             outlookLimit,
@@ -141,7 +129,9 @@ var limits = map[string]ratelimit.Policy{
 // which they collect into Deps.MailboxCalendars for the calendar, and its
 // contracts.ChannelMailbox (channel_mailbox.go) and
 // contracts.PersonalMailbox (personal_mailbox.go), which they collect into
-// Deps.ChannelMailboxes and Deps.PersonalMailboxes for Communications. Its one worker is
+// Deps.ChannelMailboxes and Deps.PersonalMailboxes for Communications, and
+// its contracts.DirectorySearch (directory.go), which Compose collects into
+// Deps.DirectorySearches for identity's directory endpoints. Its one worker is
 // entra-outlook-sweep (outlook_sweep.go).
 func Module() module.Module {
 	return module.Module{
@@ -152,6 +142,7 @@ func Module() module.Module {
 		MailboxCalendar:     newMailboxCalendar,
 		ChannelMailbox:      newChannelMailbox,
 		PersonalMailbox:     newPersonalMailbox,
+		DirectorySearch:     newDirectorySearch,
 		Workers:             workers,
 	}
 }

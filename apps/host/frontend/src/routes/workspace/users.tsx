@@ -40,12 +40,13 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, redirect } from "@tanstack/react-router";
 import { AssistantPersonSwitch } from "@vantigo/assistant-ui";
-import { DirectoryMatches, type DirectoryPick, DirectoryPicker } from "@vantigo/entra-ui";
 import { appUrl, ContentSkeleton, EmptyState, PageHeader, useI18n } from "@vantigo/frontend-shell";
 import { useMemo, useState } from "react";
 import { createInvitation, listInvitations } from "../../api/account-lifecycle";
 import { fetchSession, sessionQueryKey } from "../../api/auth";
+import type { DirectoryPick } from "../../api/directory";
 import { ApiValidationError } from "../../api/request";
+import { fetchSsoSettings, ssoSettingsQueryKey } from "../../api/sso";
 import {
   announceSsoLink,
   createUser,
@@ -62,6 +63,8 @@ import {
   unmanageUser,
   updateUser,
 } from "../../api/users";
+import { DirectoryMatches } from "../../components/directory/directory-matches";
+import { DirectoryPicker } from "../../components/directory/directory-picker";
 import { translateHostRole } from "../../i18n";
 import { enabledModuleKeys } from "../../lib/enabled-modules";
 import "../../i18n";
@@ -154,7 +157,10 @@ const UsersPage = () => {
   const [connectPick, setConnectPick] = useState<DirectoryPick | null>(null);
   const [matchesOpen, setMatchesOpen] = useState(false);
   // The Entra module's directory picker and review, while the module is enabled (plan reading 7).
-  const entraOn = enabledModuleKeys().includes("entra");
+  // The configured provider's directory, when a turned-on module serves it (Google Workspace design G8): the picker
+  // and the matches are offered only then. A settings read that fails offers neither; the typed fields stay.
+  const ssoSettings = useQuery({ queryKey: ssoSettingsQueryKey, queryFn: fetchSsoSettings, retry: false });
+  const hasDirectory = ssoSettings.data?.directory != null;
   const assistantOn = enabledModuleKeys().includes("assistant");
   const form = useForm({
     initialValues: { displayName: "", email: "", role: "User" as UserRole, password: "" },
@@ -680,7 +686,7 @@ const UsersPage = () => {
             style={{ flex: "1 1 280px" }}
           />
           <Group gap="md">
-            {ssoOn && entraOn && (
+            {ssoOn && hasDirectory && (
               <Button variant="default" onClick={() => setMatchesOpen(true)}>
                 {t("admin.ssoLinkFindMatches")}
               </Button>
@@ -907,7 +913,7 @@ const UsersPage = () => {
             <Text size="sm" c="dimmed">
               {t("admin.ssoLinkConnectDescription")}
             </Text>
-            {entraOn && connectUser && (
+            {hasDirectory && connectUser && (
               <DirectoryPicker
                 forUserId={connectUser.id}
                 userName={(id) => {

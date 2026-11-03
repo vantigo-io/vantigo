@@ -13,7 +13,7 @@ import (
 // refused before it is made; outside one, a missing port answers as
 // identity absent would.
 func TestContractCalls_RefuseInsideATransaction(t *testing.T) {
-	s := &server{deps: module.Deps{}}
+	s := &directorySearch{deps: module.Deps{}}
 	locked := context.WithValue(context.Background(), lockedTxKey{}, true)
 	if _, err := s.unconnected(locked, 1); !errors.Is(err, errCallInsideTransaction) {
 		t.Errorf("unconnected inside a transaction: %v, want errCallInsideTransaction", err)

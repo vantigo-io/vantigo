@@ -944,6 +944,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/identity/owner/sso/directory/matches": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Find the directory's exact matches
+         * @description Proposes, for every user not yet connected to the configured workforce provider, the one account in its directory that matches them exactly — the review an Owner connects a whole workspace from (Google Workspace design G8). The directory is the module's whose directory search serves the configured provider; the candidates are identity's: every user who is not pending and has neither a link nor an announced link under the configured issuer, the caller excluded, at most as many as the provider reads (1000 for Entra), in the users' order (truncated says when more wait). The directory is asked by the candidates' addresses and employee numbers, exact values only. A guest account matches nobody. A candidate is proposed only when every key that matched points to one and the same account, and that account is neither held for another user nor the one match of another candidate; everything else is left out, and counted as ambiguous when more than one account was in play. The addresses are compared by the provider and never answered. Connecting is POST /owner/users/{id}/sso-link, once per chosen pair. 409 no_directory while OIDC is off or no enabled module serves the configured provider's directory; 503 provider_unreachable when the directory could not be asked. Rate limited to 6 per client address a minute, a bucket of its own.
+         */
+        get: operations["getIdentityOwnerSsoDirectoryMatches"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/identity/owner/sso/directory/users": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Search the directory
+         * @description Searches the configured workforce provider's directory by name and address — the picker an Owner connects one user from (Google Workspace design G8). At most 25 accounts. Each says who already holds it under the configured issuer, as far as identity knows: an announced link, a SCIM mapping or an announced account. An account whose person signed in through the provider already is not marked: the link a sign-in makes names no key the directory answers, and connecting it twice is still refused. 400 invalid_request when search is not 2 to 100 characters once trimmed; 409 no_directory while OIDC is off or no enabled module serves the configured provider's directory; 503 provider_unreachable when the directory could not be asked. Rate limited to 60 per client address a minute, a bucket of its own.
+         */
+        get: operations["getIdentityOwnerSsoDirectoryUsers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/identity/owner/sso/oidc": {
         parameters: {
             query?: never;
@@ -2300,6 +2340,69 @@ export interface components {
             /** Format: uuid */
             userId: string;
         };
+        /** @description The directory an Owner connects existing users from (Google Workspace design G8) — the module serving the configured workforce provider's directory search. */
+        SsoDirectory: {
+            /** @description The directory as a person reads it, such as Microsoft Entra ID. */
+            displayName: string;
+            /** @description The OIDC provider whose directory it is, entra or google. */
+            provider: string;
+        };
+        /** @description Who already holds a directory account's keys under the configured issuer: expected, an Owner announced it for an existing user; mapped, the provider's SCIM push maps it to a user (its userName the principal name, or its externalId the object id); account, Staff announced it for a person yet to arrive, with no user. A sign-in through the provider is not shown: the link it makes names no key the directory answers. */
+        SsoDirectoryHolder: {
+            /** @enum {string} */
+            kind: "expected" | "mapped" | "account";
+            /**
+             * Format: uuid
+             * @description The user holding the account. Absent for account.
+             */
+            userId?: string;
+        };
+        /** @description A user not yet connected and the one directory account that matches them exactly, proposed for connecting. */
+        SsoDirectoryMatch: {
+            account: components["schemas"]["SsoDirectoryUser"];
+            /** @description What matched, in this order: the user's address equal, ignoring case, to the account's mail or its principal name; the user's employee number equal, trimmed and ignoring case, to the account's. Every key that matched points to this account. */
+            matchedBy: ("mail" | "principalName" | "employeeNumber")[];
+            /** Format: uuid */
+            userId: string;
+        };
+        /** @description The exact matches between the users not yet connected and the directory's accounts. Only an exact match is proposed — no fuzzy match, no guess between two, never a guest account. The users' addresses are compared by the provider and never answered. */
+        SsoDirectoryMatches: {
+            /**
+             * Format: int32
+             * @description How many candidates were left out because more than one account matched them, or because the account that matched them matched another candidate too. A guest account is no match at all — it is neither proposed nor counted here.
+             */
+            ambiguous: number;
+            /**
+             * Format: int32
+             * @description How many users not yet connected were read — every user who is not pending and has neither a link nor an announced link under the configured issuer, the caller excluded.
+             */
+            candidates: number;
+            /** @description The proposals, in the order the users are listed. */
+            matches: components["schemas"]["SsoDirectoryMatch"][];
+            /** @description True when more users were waiting than the provider reads (1000 for Entra), and only the first, in the users' order, were read. */
+            truncated: boolean;
+        };
+        /** @description One account in the directory, by the two keys an announced link names (POST /owner/users/{id}/sso-link), so a pick fills that request unchanged. */
+        SsoDirectoryUser: {
+            displayName: string;
+            /** @description The account's employee number. Absent when it has none. */
+            employeeNumber?: string;
+            /** @description Whether the account may sign in. */
+            enabled: boolean;
+            /** @description True when the account is a guest invited from another organisation. Absent for a member. The matches never propose a guest. */
+            guest?: boolean;
+            holder?: components["schemas"]["SsoDirectoryHolder"];
+            /** @description The account's mail. Absent when it has none. */
+            mail?: string;
+            /** @description The account's immutable id in the directory. */
+            objectId: string;
+            /** @description The account's principal name, the address it signs in with. */
+            userPrincipalName: string;
+        };
+        /** @description The accounts a directory search found, at most 25. When 25 come back there may be more, and the search should be narrowed. */
+        SsoDirectoryUsers: {
+            users: components["schemas"]["SsoDirectoryUser"][];
+        };
         /** @description The workforce OpenID Connect provider people sign in through (Entra design D1 and D2), one per installation. While enabled is false the sign-in page offers no provider button and every field that may be absent is. The client secret is sealed at rest and never answered; clientSecretSetAt says when it was set. */
         SsoOidcSettings: {
             /** @description The email domains a Google sign-in is admitted from, as bare DNS names in ordinal order. Always empty for Entra, whose tenant is the boundary. */
@@ -2389,6 +2492,8 @@ export interface components {
         };
         /** @description The installation's single sign-on settings (Entra design D1 and D2) — the workforce OpenID Connect provider and the SCIM credential — held in one row that an Owner edits and every process reads within 20 seconds of a save. The client secret and the SCIM tokens are never answered. */
         SsoSettings: {
+            /** @description The directory an Owner may connect existing users from — the module serving the configured provider's directory search, so the users page knows whether to offer the picker and the matches. Null while OIDC is off or no enabled module serves the configured provider's directory. */
+            directory: components["schemas"]["SsoDirectory"] | null;
             /** @description True when the settings were imported from the OIDC_* and SCIM_* environment variables, at the first API start that found them never written. The variables are ignored from then on and should be removed. */
             importedFromEnvironment: boolean;
             /**
@@ -6523,6 +6628,150 @@ export interface operations {
             429: {
                 headers: {
                     "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    getIdentityOwnerSsoDirectoryMatches: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SsoDirectoryMatches"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Conflict — no_directory, OIDC is off or no enabled module serves the configured provider's directory. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests — DirectoryMatches's limit for this client address. */
+            429: {
+                headers: {
+                    "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable — provider_unreachable, the directory could not be asked, or the read took longer than the provider allows. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    getIdentityOwnerSsoDirectoryUsers: {
+        parameters: {
+            query: {
+                /** @description What to search for, 2 to 100 characters once trimmed. A double quote or a backslash in it is left out. */
+                search: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SsoDirectoryUsers"];
+                };
+            };
+            /** @description Bad Request — invalid_request, search is not 2 to 100 characters once trimmed; fields names search. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Conflict — no_directory, OIDC is off or no enabled module serves the configured provider's directory. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests — DirectorySearch's limit for this client address. */
+            429: {
+                headers: {
+                    "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable — provider_unreachable, the directory could not be asked. */
+            503: {
+                headers: {
                     [name: string]: unknown;
                 };
                 content: {

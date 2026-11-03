@@ -8,13 +8,12 @@ import {
   DIRECTORY_SEARCH_MAX,
   DIRECTORY_SEARCH_MIN,
   type DirectoryPick,
+  type DirectoryUser,
   directoryUsersQueryOptions,
-  type EntraDirectoryUser,
-} from "../api/directory";
-import "../i18n";
-import { refusalText, type Translate } from "../lib/words";
+} from "../../api/directory";
+import { directoryRefusal, type Translate } from "./words";
 
-/** How long the picker waits after the last keystroke before it asks the tenant. */
+/** How long the picker waits after the last keystroke before it asks the directory. */
 export const DIRECTORY_SEARCH_DEBOUNCE_MS = 300;
 
 export interface DirectoryPickerProps {
@@ -32,24 +31,24 @@ export interface DirectoryPickerProps {
 }
 
 /** Who holds an account in words, or nothing when nobody does. */
-const holderText = (account: EntraDirectoryUser, t: Translate, userName?: (userId: string) => string | undefined) => {
+const holderText = (account: DirectoryUser, t: Translate, userName?: (userId: string) => string | undefined) => {
   const holder = account.holder;
   if (!holder) return undefined;
   if (holder.kind === "expected") {
     const name = holder.userId ? userName?.(holder.userId) : undefined;
-    return name ? t("directoryHolderExpectedNamed", { name }) : t("directoryHolderExpected");
+    return name ? t("admin.directoryHolderExpectedNamed", { name }) : t("admin.directoryHolderExpected");
   }
-  if (holder.kind === "mapped") return t("directoryHolderMapped");
-  return t("directoryHolderAccount");
+  if (holder.kind === "mapped") return t("admin.directoryHolderMapped");
+  return t("admin.directoryHolderAccount");
 };
 
 /** An account another user, or Staff, holds already: it cannot be connected to this one. */
-const heldByAnother = (account: EntraDirectoryUser, forUserId?: string) =>
+const heldByAnother = (account: DirectoryUser, forUserId?: string) =>
   account.holder !== undefined && (account.holder.userId === undefined || account.holder.userId !== forUserId);
 
-/** One account as an option shows it: the name, the principal name, the employee id, and its state. */
-export const DirectoryAccount = ({ account, held }: { account: EntraDirectoryUser; held?: string }) => {
-  const { t } = useI18n("entra");
+/** One account as an option shows it: the name, the principal name, the employee number, and its state. */
+export const DirectoryAccount = ({ account, held }: { account: DirectoryUser; held?: string }) => {
+  const { t } = useI18n("host");
   return (
     <Group justify="space-between" wrap="nowrap" gap="xs">
       <Stack gap={0} style={{ minWidth: 0 }}>
@@ -57,20 +56,23 @@ export const DirectoryAccount = ({ account, held }: { account: EntraDirectoryUse
           {account.displayName}
         </Text>
         <Text size="xs" c="dimmed" truncate>
-          {account.employeeId
-            ? t("directoryAccountKeys", { upn: account.userPrincipalName, employeeId: account.employeeId })
+          {account.employeeNumber
+            ? t("admin.directoryAccountKeys", {
+                upn: account.userPrincipalName,
+                employeeNumber: account.employeeNumber,
+              })
             : account.userPrincipalName}
         </Text>
       </Stack>
       <Group gap={4} wrap="nowrap">
         {account.guest && (
           <Badge size="sm" variant="light" color="grape">
-            {t("directoryGuest")}
+            {t("admin.directoryGuest")}
           </Badge>
         )}
-        {!account.accountEnabled && (
+        {!account.enabled && (
           <Badge size="sm" variant="light" color="gray">
-            {t("directoryDisabled")}
+            {t("admin.directoryDisabled")}
           </Badge>
         )}
         {held && (
@@ -84,14 +86,16 @@ export const DirectoryAccount = ({ account, held }: { account: EntraDirectoryUse
 };
 
 /**
- * A searchable select over the tenant's accounts (Entra phase 2, plan reading
- * 7): it asks the directory once the Owner has typed two characters and
- * paused, shows each hit's principal name, employee id, enabled state and who
- * holds it already, and answers the picked account's object id and principal
- * name. An account another user or Staff holds is shown but cannot be picked.
+ * A searchable select over the configured provider's directory (Google
+ * Workspace design G8; Entra phase 2, plan reading 7), through identity's
+ * GET /owner/sso/directory/users: it asks once the Owner has typed two
+ * characters and paused, shows each hit's principal name, employee number,
+ * enabled state and who holds it already, and answers the picked account's
+ * object id and principal name. An account another user or Staff holds is
+ * shown but cannot be picked.
  */
 export const DirectoryPicker = ({ onPick, onClear, forUserId, userName }: DirectoryPickerProps) => {
-  const { t } = useI18n("entra");
+  const { t } = useI18n("host");
   const combobox = useCombobox({ onDropdownClose: () => combobox.resetSelectedOption() });
   const [search, setSearch] = useState("");
   // The search the last pick put in the field: it is the account's name, not something to look for.
@@ -111,19 +115,19 @@ export const DirectoryPicker = ({ onPick, onClear, forUserId, userName }: Direct
   };
 
   const empty = () => {
-    if (search.trim().length < DIRECTORY_SEARCH_MIN) return t("directoryTypeMore");
-    if (users.isError) return refusalText(users.error, t);
-    if (users.isFetching || search.trim() !== debounced) return t("directorySearching");
-    return t("directoryNothingFound");
+    if (search.trim().length < DIRECTORY_SEARCH_MIN) return t("admin.directoryTypeMore");
+    if (users.isError) return directoryRefusal(users.error, t);
+    if (users.isFetching || search.trim() !== debounced) return t("admin.directorySearching");
+    return t("admin.directoryNothingFound");
   };
 
   return (
     <Combobox store={combobox} onOptionSubmit={pick}>
       <Combobox.Target>
         <TextInput
-          label={t("directorySearch")}
-          description={t("directorySearchHelp")}
-          placeholder={t("directorySearchPlaceholder")}
+          label={t("admin.directorySearch")}
+          description={t("admin.directorySearchHelp")}
+          placeholder={t("admin.directorySearchPlaceholder")}
           value={search}
           maxLength={DIRECTORY_SEARCH_MAX}
           rightSection={users.isFetching ? <Loader size={16} /> : null}
@@ -158,7 +162,7 @@ export const DirectoryPicker = ({ onPick, onClear, forUserId, userName }: Direct
             <Combobox.Empty>{empty()}</Combobox.Empty>
           )}
         </Combobox.Options>
-        {hits.length >= DIRECTORY_SEARCH_LIMIT && <Combobox.Footer>{t("directoryNarrow")}</Combobox.Footer>}
+        {hits.length >= DIRECTORY_SEARCH_LIMIT && <Combobox.Footer>{t("admin.directoryNarrow")}</Combobox.Footer>}
       </Combobox.Dropdown>
     </Combobox>
   );

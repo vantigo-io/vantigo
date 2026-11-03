@@ -34,6 +34,14 @@ var (
 	policyPasskeyLogin         = ratelimit.Policy{Name: "PasskeyLogin", Limit: 30, Window: 5 * time.Minute, Message: authRateLimitMessage}
 	policyUserManagement       = ratelimit.Policy{Name: "UserManagement", Limit: 30, Window: time.Minute, Message: authRateLimitMessage}
 	policyOwnerAvatarRead      = ratelimit.Policy{Name: "OwnerAvatarRead", Limit: 300, Window: time.Minute, Message: authRateLimitMessage}
+	// policyDirectorySearch and policyDirectoryMatches are the Owner's
+	// directory reads (Google Workspace design G8), with the figures Entra's
+	// picker and matches had: every search reaches the provider's
+	// directory, and a debounced picker asks once per pause in typing;
+	// one read of the matches asks it for every user not yet connected — a
+	// review an Owner opens, not a list they refresh.
+	policyDirectorySearch  = ratelimit.Policy{Name: "DirectorySearch", Limit: 60, Window: time.Minute, Message: authRateLimitMessage}
+	policyDirectoryMatches = ratelimit.Policy{Name: "DirectoryMatches", Limit: 6, Window: time.Minute, Message: authRateLimitMessage}
 )
 
 // policyLoginAttempts is the per-account sign-in throttle, .NET's
@@ -79,6 +87,8 @@ var limits = map[string]ratelimit.Policy{
 	"postIdentityOwnerSsoScimToken":           policyUserManagement,
 	"deleteIdentityOwnerSsoScimPrevious":      policyUserManagement,
 	"deleteIdentityOwnerSsoScim":              policyUserManagement,
+	"getIdentityOwnerSsoDirectoryUsers":       policyDirectorySearch,
+	"getIdentityOwnerSsoDirectoryMatches":     policyDirectoryMatches,
 	"getIdentityOwnerAiSettings":              policyUserManagement,
 	"putIdentityOwnerAiTasksByKey":            policyUserManagement,
 

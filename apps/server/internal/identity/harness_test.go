@@ -107,6 +107,14 @@ type harnessSetup struct {
 	aiTasks     []contracts.AITask
 	tracer      pgx.QueryTracer
 	oidc        *fakeOIDC
+	directories []contracts.DirectorySearch
+}
+
+// withDirectorySearch presets d on Deps.DirectorySearches, as Compose would
+// collect a module's (Google Workspace design G8): identity's directory
+// endpoints ask the one under the configured provider's key.
+func withDirectorySearch(d contracts.DirectorySearch) harnessOption {
+	return func(s *harnessSetup) { s.directories = append(s.directories, d) }
 }
 
 // withQueryTracer runs every query the installation makes through tracer:
@@ -230,6 +238,8 @@ func newHarness(t *testing.T, opts ...harnessOption) *harness {
 		Mail:    h.mail,
 		Secrets: box,
 		Limiter: ratelimit.NewWithClock(installation, h.now),
+
+		DirectorySearches: setup.directories,
 	}
 	h.access = identity.NewAccess(h.deps)
 	h.deps.Access = h.access

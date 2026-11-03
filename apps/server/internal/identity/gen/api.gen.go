@@ -125,19 +125,19 @@ func (e InvitationResponseRevokedReason) Valid() bool {
 
 // Defines values for OwnerSsoLinkState.
 const (
-	Expected OwnerSsoLinkState = "expected"
-	Linked   OwnerSsoLinkState = "linked"
-	None     OwnerSsoLinkState = "none"
+	OwnerSsoLinkStateExpected OwnerSsoLinkState = "expected"
+	OwnerSsoLinkStateLinked   OwnerSsoLinkState = "linked"
+	OwnerSsoLinkStateNone     OwnerSsoLinkState = "none"
 )
 
 // Valid indicates whether the value is a known member of the OwnerSsoLinkState enum.
 func (e OwnerSsoLinkState) Valid() bool {
 	switch e {
-	case Expected:
+	case OwnerSsoLinkStateExpected:
 		return true
-	case Linked:
+	case OwnerSsoLinkStateLinked:
 		return true
-	case None:
+	case OwnerSsoLinkStateNone:
 		return true
 	default:
 		return false
@@ -171,6 +171,48 @@ const (
 func (e OwnerUserResponseManagedBy) Valid() bool {
 	switch e {
 	case OwnerUserResponseManagedByStaff:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SsoDirectoryHolderKind.
+const (
+	SsoDirectoryHolderKindAccount  SsoDirectoryHolderKind = "account"
+	SsoDirectoryHolderKindExpected SsoDirectoryHolderKind = "expected"
+	SsoDirectoryHolderKindMapped   SsoDirectoryHolderKind = "mapped"
+)
+
+// Valid indicates whether the value is a known member of the SsoDirectoryHolderKind enum.
+func (e SsoDirectoryHolderKind) Valid() bool {
+	switch e {
+	case SsoDirectoryHolderKindAccount:
+		return true
+	case SsoDirectoryHolderKindExpected:
+		return true
+	case SsoDirectoryHolderKindMapped:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SsoDirectoryMatchMatchedBy.
+const (
+	EmployeeNumber SsoDirectoryMatchMatchedBy = "employeeNumber"
+	Mail           SsoDirectoryMatchMatchedBy = "mail"
+	PrincipalName  SsoDirectoryMatchMatchedBy = "principalName"
+)
+
+// Valid indicates whether the value is a known member of the SsoDirectoryMatchMatchedBy enum.
+func (e SsoDirectoryMatchMatchedBy) Valid() bool {
+	switch e {
+	case EmployeeNumber:
+		return true
+	case Mail:
+		return true
+	case PrincipalName:
 		return true
 	default:
 		return false
@@ -1122,6 +1164,85 @@ type SessionRevocationResponse struct {
 	UserId  openapi_types.UUID `json:"userId"`
 }
 
+// SsoDirectory The directory an Owner connects existing users from (Google Workspace design G8) — the module serving the configured workforce provider's directory search.
+type SsoDirectory struct {
+	// DisplayName The directory as a person reads it, such as Microsoft Entra ID.
+	DisplayName string `json:"displayName"`
+
+	// Provider The OIDC provider whose directory it is, entra or google.
+	Provider string `json:"provider"`
+}
+
+// SsoDirectoryHolder Who already holds a directory account's keys under the configured issuer: expected, an Owner announced it for an existing user; mapped, the provider's SCIM push maps it to a user (its userName the principal name, or its externalId the object id); account, Staff announced it for a person yet to arrive, with no user. A sign-in through the provider is not shown: the link it makes names no key the directory answers.
+type SsoDirectoryHolder struct {
+	Kind SsoDirectoryHolderKind `json:"kind"`
+
+	// UserId The user holding the account. Absent for account.
+	UserId *openapi_types.UUID `json:"userId,omitempty"`
+}
+
+// SsoDirectoryHolderKind defines model for SsoDirectoryHolder.Kind.
+type SsoDirectoryHolderKind string
+
+// SsoDirectoryMatch A user not yet connected and the one directory account that matches them exactly, proposed for connecting.
+type SsoDirectoryMatch struct {
+	// Account One account in the directory, by the two keys an announced link names (POST /owner/users/{id}/sso-link), so a pick fills that request unchanged.
+	Account SsoDirectoryUser `json:"account"`
+
+	// MatchedBy What matched, in this order: the user's address equal, ignoring case, to the account's mail or its principal name; the user's employee number equal, trimmed and ignoring case, to the account's. Every key that matched points to this account.
+	MatchedBy []SsoDirectoryMatchMatchedBy `json:"matchedBy"`
+	UserId    openapi_types.UUID           `json:"userId"`
+}
+
+// SsoDirectoryMatchMatchedBy defines model for SsoDirectoryMatch.MatchedBy.
+type SsoDirectoryMatchMatchedBy string
+
+// SsoDirectoryMatches The exact matches between the users not yet connected and the directory's accounts. Only an exact match is proposed — no fuzzy match, no guess between two, never a guest account. The users' addresses are compared by the provider and never answered.
+type SsoDirectoryMatches struct {
+	// Ambiguous How many candidates were left out because more than one account matched them, or because the account that matched them matched another candidate too. A guest account is no match at all — it is neither proposed nor counted here.
+	Ambiguous int32 `json:"ambiguous"`
+
+	// Candidates How many users not yet connected were read — every user who is not pending and has neither a link nor an announced link under the configured issuer, the caller excluded.
+	Candidates int32 `json:"candidates"`
+
+	// Matches The proposals, in the order the users are listed.
+	Matches []SsoDirectoryMatch `json:"matches"`
+
+	// Truncated True when more users were waiting than the provider reads (1000 for Entra), and only the first, in the users' order, were read.
+	Truncated bool `json:"truncated"`
+}
+
+// SsoDirectoryUser One account in the directory, by the two keys an announced link names (POST /owner/users/{id}/sso-link), so a pick fills that request unchanged.
+type SsoDirectoryUser struct {
+	DisplayName string `json:"displayName"`
+
+	// EmployeeNumber The account's employee number. Absent when it has none.
+	EmployeeNumber *string `json:"employeeNumber,omitempty"`
+
+	// Enabled Whether the account may sign in.
+	Enabled bool `json:"enabled"`
+
+	// Guest True when the account is a guest invited from another organisation. Absent for a member. The matches never propose a guest.
+	Guest *bool `json:"guest,omitempty"`
+
+	// Holder Who already holds a directory account's keys under the configured issuer: expected, an Owner announced it for an existing user; mapped, the provider's SCIM push maps it to a user (its userName the principal name, or its externalId the object id); account, Staff announced it for a person yet to arrive, with no user. A sign-in through the provider is not shown: the link it makes names no key the directory answers.
+	Holder *SsoDirectoryHolder `json:"holder,omitempty"`
+
+	// Mail The account's mail. Absent when it has none.
+	Mail *string `json:"mail,omitempty"`
+
+	// ObjectId The account's immutable id in the directory.
+	ObjectId string `json:"objectId"`
+
+	// UserPrincipalName The account's principal name, the address it signs in with.
+	UserPrincipalName string `json:"userPrincipalName"`
+}
+
+// SsoDirectoryUsers The accounts a directory search found, at most 25. When 25 come back there may be more, and the search should be narrowed.
+type SsoDirectoryUsers struct {
+	Users []SsoDirectoryUser `json:"users"`
+}
+
 // SsoOidcSettings The workforce OpenID Connect provider people sign in through (Entra design D1 and D2), one per installation. While enabled is false the sign-in page offers no provider button and every field that may be absent is. The client secret is sealed at rest and never answered; clientSecretSetAt says when it was set.
 type SsoOidcSettings struct {
 	// AllowedDomains The email domains a Google sign-in is admitted from, as bare DNS names in ordinal order. Always empty for Entra, whose tenant is the boundary.
@@ -1223,6 +1344,9 @@ type SsoScimTokenRequest struct {
 
 // SsoSettings The installation's single sign-on settings (Entra design D1 and D2) — the workforce OpenID Connect provider and the SCIM credential — held in one row that an Owner edits and every process reads within 20 seconds of a save. The client secret and the SCIM tokens are never answered.
 type SsoSettings struct {
+	// Directory The directory an Owner may connect existing users from — the module serving the configured provider's directory search, so the users page knows whether to offer the picker and the matches. Null while OIDC is off or no enabled module serves the configured provider's directory.
+	Directory *SsoDirectory `json:"directory"`
+
 	// ImportedFromEnvironment True when the settings were imported from the OIDC_* and SCIM_* environment variables, at the first API start that found them never written. The variables are ignored from then on and should be removed.
 	ImportedFromEnvironment bool `json:"importedFromEnvironment"`
 
@@ -1456,6 +1580,12 @@ type PostIdentityOwnerMfaSetupJSONBody = MfaCodeRequest
 
 // PutIdentityOwnerProvisioningRolesJSONBody defines parameters for PutIdentityOwnerProvisioningRoles.
 type PutIdentityOwnerProvisioningRolesJSONBody = ProvisioningRolesRequest
+
+// GetIdentityOwnerSsoDirectoryUsersParams defines parameters for GetIdentityOwnerSsoDirectoryUsers.
+type GetIdentityOwnerSsoDirectoryUsersParams struct {
+	// Search What to search for, 2 to 100 characters once trimmed. A double quote or a backslash in it is left out.
+	Search string `form:"search" json:"search"`
+}
 
 // DeleteIdentityOwnerSsoOidcParams defines parameters for DeleteIdentityOwnerSsoOidc.
 type DeleteIdentityOwnerSsoOidcParams struct {
@@ -2271,6 +2401,12 @@ type ServerInterface interface {
 	// GetIdentityOwnerSso Get the single sign-on settings
 	// (GET /api/v1/identity/owner/sso)
 	GetIdentityOwnerSso(w http.ResponseWriter, r *http.Request)
+	// GetIdentityOwnerSsoDirectoryMatches Find the directory's exact matches
+	// (GET /api/v1/identity/owner/sso/directory/matches)
+	GetIdentityOwnerSsoDirectoryMatches(w http.ResponseWriter, r *http.Request)
+	// GetIdentityOwnerSsoDirectoryUsers Search the directory
+	// (GET /api/v1/identity/owner/sso/directory/users)
+	GetIdentityOwnerSsoDirectoryUsers(w http.ResponseWriter, r *http.Request, params GetIdentityOwnerSsoDirectoryUsersParams)
 	// DeleteIdentityOwnerSsoOidc Turn the workforce OIDC provider off
 	// (DELETE /api/v1/identity/owner/sso/oidc)
 	DeleteIdentityOwnerSsoOidc(w http.ResponseWriter, r *http.Request, params DeleteIdentityOwnerSsoOidcParams)
@@ -3847,6 +3983,53 @@ func (siw *ServerInterfaceWrapper) GetIdentityOwnerSso(w http.ResponseWriter, r 
 	handler.ServeHTTP(w, r)
 }
 
+// GetIdentityOwnerSsoDirectoryMatches operation middleware
+func (siw *ServerInterfaceWrapper) GetIdentityOwnerSsoDirectoryMatches(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetIdentityOwnerSsoDirectoryMatches(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetIdentityOwnerSsoDirectoryUsers operation middleware
+func (siw *ServerInterfaceWrapper) GetIdentityOwnerSsoDirectoryUsers(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetIdentityOwnerSsoDirectoryUsersParams
+
+	// ------------- Required query parameter "search" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "search", r.URL.Query(), &params.Search, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "search"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "search", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetIdentityOwnerSsoDirectoryUsers(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // DeleteIdentityOwnerSsoOidc operation middleware
 func (siw *ServerInterfaceWrapper) DeleteIdentityOwnerSsoOidc(w http.ResponseWriter, r *http.Request) {
 
@@ -5192,6 +5375,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/identity/owner/provisioning-roles", wrapper.GetIdentityOwnerProvisioningRoles)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/identity/owner/provisioning-roles", wrapper.PutIdentityOwnerProvisioningRoles)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/identity/owner/sso", wrapper.GetIdentityOwnerSso)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/identity/owner/sso/directory/matches", wrapper.GetIdentityOwnerSsoDirectoryMatches)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/identity/owner/sso/directory/users", wrapper.GetIdentityOwnerSsoDirectoryUsers)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/identity/owner/sso/oidc", wrapper.DeleteIdentityOwnerSsoOidc)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/identity/owner/sso/oidc", wrapper.PutIdentityOwnerSsoOidc)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/identity/owner/sso/scim", wrapper.DeleteIdentityOwnerSsoScim)
@@ -10755,6 +10940,223 @@ func (response GetIdentityOwnerSso429JSONResponse) VisitGetIdentityOwnerSsoRespo
 	return err
 }
 
+type GetIdentityOwnerSsoDirectoryMatchesRequestObject struct {
+}
+
+type GetIdentityOwnerSsoDirectoryMatchesResponseObject interface {
+	VisitGetIdentityOwnerSsoDirectoryMatchesResponse(w http.ResponseWriter) error
+}
+
+type GetIdentityOwnerSsoDirectoryMatches200JSONResponse SsoDirectoryMatches
+
+func (response GetIdentityOwnerSsoDirectoryMatches200JSONResponse) VisitGetIdentityOwnerSsoDirectoryMatchesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetIdentityOwnerSsoDirectoryMatches401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetIdentityOwnerSsoDirectoryMatches401JSONResponse) VisitGetIdentityOwnerSsoDirectoryMatchesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetIdentityOwnerSsoDirectoryMatches403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetIdentityOwnerSsoDirectoryMatches403JSONResponse) VisitGetIdentityOwnerSsoDirectoryMatchesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetIdentityOwnerSsoDirectoryMatches409JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetIdentityOwnerSsoDirectoryMatches409JSONResponse) VisitGetIdentityOwnerSsoDirectoryMatchesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetIdentityOwnerSsoDirectoryMatches429ResponseHeaders struct {
+	RetryAfter *string
+}
+
+type GetIdentityOwnerSsoDirectoryMatches429JSONResponse struct {
+	Body    externalRef0.AuthErrorResponse
+	Headers GetIdentityOwnerSsoDirectoryMatches429ResponseHeaders
+}
+
+func (response GetIdentityOwnerSsoDirectoryMatches429JSONResponse) VisitGetIdentityOwnerSsoDirectoryMatchesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetIdentityOwnerSsoDirectoryMatches503JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetIdentityOwnerSsoDirectoryMatches503JSONResponse) VisitGetIdentityOwnerSsoDirectoryMatchesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetIdentityOwnerSsoDirectoryUsersRequestObject struct {
+	Params GetIdentityOwnerSsoDirectoryUsersParams
+}
+
+type GetIdentityOwnerSsoDirectoryUsersResponseObject interface {
+	VisitGetIdentityOwnerSsoDirectoryUsersResponse(w http.ResponseWriter) error
+}
+
+type GetIdentityOwnerSsoDirectoryUsers200JSONResponse SsoDirectoryUsers
+
+func (response GetIdentityOwnerSsoDirectoryUsers200JSONResponse) VisitGetIdentityOwnerSsoDirectoryUsersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetIdentityOwnerSsoDirectoryUsers400JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetIdentityOwnerSsoDirectoryUsers400JSONResponse) VisitGetIdentityOwnerSsoDirectoryUsersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetIdentityOwnerSsoDirectoryUsers401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetIdentityOwnerSsoDirectoryUsers401JSONResponse) VisitGetIdentityOwnerSsoDirectoryUsersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetIdentityOwnerSsoDirectoryUsers403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetIdentityOwnerSsoDirectoryUsers403JSONResponse) VisitGetIdentityOwnerSsoDirectoryUsersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetIdentityOwnerSsoDirectoryUsers409JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetIdentityOwnerSsoDirectoryUsers409JSONResponse) VisitGetIdentityOwnerSsoDirectoryUsersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetIdentityOwnerSsoDirectoryUsers429ResponseHeaders struct {
+	RetryAfter *string
+}
+
+type GetIdentityOwnerSsoDirectoryUsers429JSONResponse struct {
+	Body    externalRef0.AuthErrorResponse
+	Headers GetIdentityOwnerSsoDirectoryUsers429ResponseHeaders
+}
+
+func (response GetIdentityOwnerSsoDirectoryUsers429JSONResponse) VisitGetIdentityOwnerSsoDirectoryUsersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetIdentityOwnerSsoDirectoryUsers503JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetIdentityOwnerSsoDirectoryUsers503JSONResponse) VisitGetIdentityOwnerSsoDirectoryUsersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type DeleteIdentityOwnerSsoOidcRequestObject struct {
 	Params DeleteIdentityOwnerSsoOidcParams
 }
@@ -14737,6 +15139,12 @@ type StrictServerInterface interface {
 	// GetIdentityOwnerSso Get the single sign-on settings
 	// (GET /api/v1/identity/owner/sso)
 	GetIdentityOwnerSso(ctx context.Context, request GetIdentityOwnerSsoRequestObject) (GetIdentityOwnerSsoResponseObject, error)
+	// GetIdentityOwnerSsoDirectoryMatches Find the directory's exact matches
+	// (GET /api/v1/identity/owner/sso/directory/matches)
+	GetIdentityOwnerSsoDirectoryMatches(ctx context.Context, request GetIdentityOwnerSsoDirectoryMatchesRequestObject) (GetIdentityOwnerSsoDirectoryMatchesResponseObject, error)
+	// GetIdentityOwnerSsoDirectoryUsers Search the directory
+	// (GET /api/v1/identity/owner/sso/directory/users)
+	GetIdentityOwnerSsoDirectoryUsers(ctx context.Context, request GetIdentityOwnerSsoDirectoryUsersRequestObject) (GetIdentityOwnerSsoDirectoryUsersResponseObject, error)
 	// DeleteIdentityOwnerSsoOidc Turn the workforce OIDC provider off
 	// (DELETE /api/v1/identity/owner/sso/oidc)
 	DeleteIdentityOwnerSsoOidc(ctx context.Context, request DeleteIdentityOwnerSsoOidcRequestObject) (DeleteIdentityOwnerSsoOidcResponseObject, error)
@@ -17143,6 +17551,56 @@ func (sh *strictHandler) GetIdentityOwnerSso(w http.ResponseWriter, r *http.Requ
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetIdentityOwnerSsoResponseObject); ok {
 		if err := validResponse.VisitGetIdentityOwnerSsoResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetIdentityOwnerSsoDirectoryMatches operation middleware
+func (sh *strictHandler) GetIdentityOwnerSsoDirectoryMatches(w http.ResponseWriter, r *http.Request) {
+	var request GetIdentityOwnerSsoDirectoryMatchesRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetIdentityOwnerSsoDirectoryMatches(ctx, request.(GetIdentityOwnerSsoDirectoryMatchesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetIdentityOwnerSsoDirectoryMatches")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetIdentityOwnerSsoDirectoryMatchesResponseObject); ok {
+		if err := validResponse.VisitGetIdentityOwnerSsoDirectoryMatchesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetIdentityOwnerSsoDirectoryUsers operation middleware
+func (sh *strictHandler) GetIdentityOwnerSsoDirectoryUsers(w http.ResponseWriter, r *http.Request, params GetIdentityOwnerSsoDirectoryUsersParams) {
+	var request GetIdentityOwnerSsoDirectoryUsersRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetIdentityOwnerSsoDirectoryUsers(ctx, request.(GetIdentityOwnerSsoDirectoryUsersRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetIdentityOwnerSsoDirectoryUsers")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetIdentityOwnerSsoDirectoryUsersResponseObject); ok {
+		if err := validResponse.VisitGetIdentityOwnerSsoDirectoryUsersResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

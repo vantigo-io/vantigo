@@ -10,14 +10,66 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/vantigo-io/vantigo/server/internal/entra/gen"
 	"github.com/vantigo-io/vantigo/server/internal/entra/graphtest"
 	"github.com/vantigo-io/vantigo/server/internal/modtest"
 )
 
-// The directory picker and the exact matches (Entra phase 2, delivery B;
-// the plan's readings 3 to 6): an Owner's two reads of the fake tenant,
-// with identity's users and holders read through contracts.SSOConnections.
+// The directory search and the exact matches (Entra phase 2, delivery B;
+// the plan's readings 3 to 6), behind contracts.DirectorySearch since
+// Google Workspace design G8: an Owner's two reads of the fake tenant
+// through identity's endpoints, which ask this module's provider, with
+// identity's users and holders read back through contracts.SSOConnections.
+
+// The wire of identity's directory endpoints, as these tests read it (the
+// module's tests may not import identity's generated types).
+type (
+	dirHolder struct {
+		Kind   string     `json:"kind"`
+		UserID *uuid.UUID `json:"userId"`
+	}
+	dirUser struct {
+		ObjectID          string     `json:"objectId"`
+		DisplayName       string     `json:"displayName"`
+		UserPrincipalName string     `json:"userPrincipalName"`
+		Mail              *string    `json:"mail"`
+		EmployeeNumber    *string    `json:"employeeNumber"`
+		Enabled           bool       `json:"enabled"`
+		Guest             *bool      `json:"guest"`
+		Holder            *dirHolder `json:"holder"`
+	}
+	dirUsers struct {
+		Users []dirUser `json:"users"`
+	}
+	dirMatch struct {
+		UserID    uuid.UUID `json:"userId"`
+		Account   dirUser   `json:"account"`
+		MatchedBy []string  `json:"matchedBy"`
+	}
+	dirMatches struct {
+		Matches    []dirMatch `json:"matches"`
+		Candidates int        `json:"candidates"`
+		Ambiguous  int        `json:"ambiguous"`
+		Truncated  bool       `json:"truncated"`
+	}
+	identityError struct {
+		Error struct {
+			Code   string              `json:"code"`
+			Fields map[string][]string `json:"fields"`
+		} `json:"error"`
+	}
+)
+
+// identityOperation marks an exchange with identity's directory endpoints:
+// this package's recorder validates against Entra's contract alone, and
+// identity's own tests validate those operations against its.
+var identityOperation = modtest.SkipContract("identity's directory operation, validated by identity's own tests")
+
+// identityCode is identity's refusal code, "" without one.
+func identityCode(r *modtest.Response) string {
+	var e identityError
+	r.JSON(&e)
+	return e.Error.Code
+}
 
 // enableOIDC configures the workforce provider in identity's settings row,
 // as an Owner's save would, and moves the clock past the settings' cache so
@@ -93,24 +145,24 @@ func TestDirectory_Search(t *testing.T) {
 	mapAccount(t, h, holder, "K.Hansen@nordlys.no")
 
 	search := func(q string) *modtest.Response {
-		return o.Do(http.MethodGet, directoryPath+"?"+url.Values{"q": {q}}.Encode(), nil)
+		return o.Do(http.MethodGet, directoryPath+"?"+url.Values{"search": {q}}.Encode(), nil, identityOperation)
 	}
 	r := search("kari")
 	if r.Status != http.StatusOK {
 		t.Fatalf("search: %d %s", r.Status, r.Body)
 	}
-	var got gen.EntraDirectoryUsers
+	var got dirUsers
 	r.JSON(&got)
 	if len(got.Users) != 2 {
 		t.Fatalf("search kari: %+v, want the two Karis", got.Users)
 	}
 	first, second := got.Users[0], got.Users[1]
-	if first.ObjectId.String() != hansen || first.AccountEnabled || first.Mail != nil || first.EmployeeId != nil ||
-		first.Holder == nil || first.Holder.Kind != gen.Mapped || first.Holder.UserId == nil || *first.Holder.UserId != holder {
+	if first.ObjectID != hansen || first.Enabled || first.Mail != nil || first.EmployeeNumber != nil ||
+		first.Holder == nil || first.Holder.Kind != "mapped" || first.Holder.UserID == nil || *first.Holder.UserID != holder {
 		t.Errorf("the first hit: %+v (holder %+v), want Kari Hansen, disabled, mapped to the holder", first, first.Holder)
 	}
-	if second.ObjectId.String() != nordmann || !second.AccountEnabled || second.Mail == nil || *second.Mail != "Kari.Nordmann@nordlys.no" ||
-		second.EmployeeId == nil || *second.EmployeeId != "E-1" || second.Holder != nil {
+	if second.ObjectID != nordmann || !second.Enabled || second.Mail == nil || *second.Mail != "Kari.Nordmann@nordlys.no" ||
+		second.EmployeeNumber == nil || *second.EmployeeNumber != "E-1" || second.Holder != nil {
 		t.Errorf("the second hit: %+v, want Kari Nordmann, enabled, unheld", second)
 	}
 
@@ -133,34 +185,37 @@ func TestDirectory_Search(t *testing.T) {
 		t.Errorf("the stripped search asked %q", s)
 	}
 
-	// Too short once trimmed, or once stripped: 400 on q, nothing asked.
+	// Too short once trimmed, or once stripped: 400 on search, nothing
+	// asked.
 	before := len(usersCalls(g))
 	for _, q := range []string{" k ", `"k"`, ""} {
 		r := search(q)
-		p := problemOf(t, r)
-		if r.Status != http.StatusBadRequest || p.Code == nil || *p.Code != "invalid_request" || p.Errors == nil || len((*p.Errors)["q"]) == 0 {
-			t.Errorf("search %q: %d %s, want 400 invalid_request on q", q, r.Status, r.Body)
+		var e identityError
+		r.JSON(&e)
+		if r.Status != http.StatusBadRequest || e.Error.Code != "invalid_request" || len(e.Error.Fields["search"]) == 0 {
+			t.Errorf("search %q: %d %s, want 400 invalid_request on search", q, r.Status, r.Body)
 		}
 	}
 	if len(usersCalls(g)) != before {
 		t.Error("a refused search reached the tenant")
 	}
 
-	// Throttled twice in a row: 503 throttled.
+	// Throttled twice in a row: 503 provider_unreachable.
 	g.Throttle(2)
-	if r := search("kari"); r.Status != http.StatusServiceUnavailable || codeOf(t, r) != "throttled" {
-		t.Errorf("a throttled search: %d %s, want 503 throttled", r.Status, r.Body)
+	if r := search("kari"); r.Status != http.StatusServiceUnavailable || identityCode(r) != "provider_unreachable" {
+		t.Errorf("a throttled search: %d %s, want 503 provider_unreachable", r.Status, r.Body)
 	}
 }
 
 func TestDirectory_SearchWithAnInvalidSecret(t *testing.T) {
 	t.Parallel()
 	h, _ := newTenantHarness(t)
+	enableOIDC(t, h)
 	o, _ := owner(t, h)
 	register(t, o)
 	addSecret(t, o, "not-the-secret", "Wrong", h.Now().AddDate(1, 0, 0))
-	if r := o.Do(http.MethodGet, directoryPath+"?q=kari", nil); r.Status != http.StatusServiceUnavailable || codeOf(t, r) != "credential_invalid" {
-		t.Errorf("a search with a refused secret: %d %s, want 503 credential_invalid", r.Status, r.Body)
+	if r := o.Do(http.MethodGet, directoryPath+"?search=kari", nil, identityOperation); r.Status != http.StatusServiceUnavailable || identityCode(r) != "provider_unreachable" {
+		t.Errorf("a search with a refused secret: %d %s, want 503 provider_unreachable", r.Status, r.Body)
 	}
 }
 
@@ -198,11 +253,11 @@ func TestDirectory_Matches(t *testing.T) {
 	mapAccount(t, h, holder, "gro@nordlys.no")
 	addUser(t, h, "jon@nordlys.no", "")
 
-	r := o.Do(http.MethodGet, matchesPath, nil)
+	r := o.Do(http.MethodGet, matchesPath, nil, identityOperation)
 	if r.Status != http.StatusOK {
 		t.Fatalf("matches: %d %s", r.Status, r.Body)
 	}
-	var got gen.EntraDirectoryMatches
+	var got dirMatches
 	r.JSON(&got)
 	if got.Candidates != 11 || got.Ambiguous != 3 || got.Truncated {
 		t.Errorf("candidates %d ambiguous %d truncated %v, want 11, 3, false", got.Candidates, got.Ambiguous, got.Truncated)
@@ -210,23 +265,23 @@ func TestDirectory_Matches(t *testing.T) {
 	type want struct {
 		user    uuid.UUID
 		account string
-		by      []gen.EntraDirectoryMatchMatchedBy
+		by      []string
 		enabled bool
 	}
 	wants := []want{
-		{anne, anneAccount, []gen.EntraDirectoryMatchMatchedBy{gen.EntraDirectoryMatchMatchedByMail, gen.EntraDirectoryMatchMatchedByUserPrincipalName}, true},
-		{bjorn, bjornAccount, []gen.EntraDirectoryMatchMatchedBy{gen.EntraDirectoryMatchMatchedByUserPrincipalName}, true},
-		{carl, carlAccount, []gen.EntraDirectoryMatchMatchedBy{gen.EntraDirectoryMatchMatchedByEmployeeId}, true},
-		{ivar, ivarAccount, []gen.EntraDirectoryMatchMatchedBy{gen.EntraDirectoryMatchMatchedByMail}, false},
-		{kjell, kjellAccount, []gen.EntraDirectoryMatchMatchedBy{gen.EntraDirectoryMatchMatchedByMail}, true},
+		{anne, anneAccount, []string{"mail", "principalName"}, true},
+		{bjorn, bjornAccount, []string{"principalName"}, true},
+		{carl, carlAccount, []string{"employeeNumber"}, true},
+		{ivar, ivarAccount, []string{"mail"}, false},
+		{kjell, kjellAccount, []string{"mail"}, true},
 	}
 	if len(got.Matches) != len(wants) {
 		t.Fatalf("matches: %+v, want %d", got.Matches, len(wants))
 	}
 	for i, w := range wants {
 		m := got.Matches[i]
-		if m.UserId != w.user || m.Account.ObjectId.String() != w.account || !slices.Equal(m.MatchedBy, w.by) ||
-			m.Account.AccountEnabled != w.enabled || m.Account.Holder != nil {
+		if m.UserID != w.user || m.Account.ObjectID != w.account || !slices.Equal(m.MatchedBy, w.by) ||
+			m.Account.Enabled != w.enabled || m.Account.Holder != nil {
 			t.Errorf("match %d: %+v, want %+v", i, m, w)
 		}
 	}
@@ -271,25 +326,25 @@ func TestDirectory_MatchesLeaveOutGuestsAndOwnMappings(t *testing.T) {
 	nilsAccount := account(g, "Nils", "nils@nordlys.no", "", "")
 	mapAccount(t, h, nils, "Nils@nordlys.no")
 
-	r := o.Do(http.MethodGet, matchesPath, nil)
+	r := o.Do(http.MethodGet, matchesPath, nil, identityOperation)
 	if r.Status != http.StatusOK {
 		t.Fatalf("matches: %d %s", r.Status, r.Body)
 	}
-	var got gen.EntraDirectoryMatches
+	var got dirMatches
 	r.JSON(&got)
 	if got.Candidates != 3 || got.Ambiguous != 0 || len(got.Matches) != 2 {
 		t.Fatalf("matches: %+v, want Mona's and Nils's of 3 candidates, none ambiguous", got)
 	}
-	if m := got.Matches[0]; m.UserId != mona || m.Account.ObjectId.String() != monaAccount || m.Account.Guest != nil ||
-		!slices.Equal(m.MatchedBy, []gen.EntraDirectoryMatchMatchedBy{gen.EntraDirectoryMatchMatchedByUserPrincipalName}) {
+	if m := got.Matches[0]; m.UserID != mona || m.Account.ObjectID != monaAccount || m.Account.Guest != nil ||
+		!slices.Equal(m.MatchedBy, []string{"principalName"}) {
 		t.Errorf("the first match: %+v, want Mona's member account by principal name", m)
 	}
-	if m := got.Matches[1]; m.UserId != nils || m.Account.ObjectId.String() != nilsAccount {
+	if m := got.Matches[1]; m.UserID != nils || m.Account.ObjectID != nilsAccount {
 		t.Errorf("the second match: %+v, want Nils's own mapped account", m)
 	}
 
-	r = o.Do(http.MethodGet, directoryPath+"?"+url.Values{"q": {"mona"}}.Encode(), nil)
-	var found gen.EntraDirectoryUsers
+	r = o.Do(http.MethodGet, directoryPath+"?"+url.Values{"search": {"mona"}}.Encode(), nil, identityOperation)
+	var found dirUsers
 	r.JSON(&found)
 	if len(found.Users) != 2 || found.Users[0].Guest != nil || found.Users[1].Guest == nil || !*found.Users[1].Guest {
 		t.Errorf("search mona: %+v, want the member unmarked, then the guest marked", found.Users)
@@ -306,13 +361,13 @@ func TestDirectory_MatchesChunkTheFilters(t *testing.T) {
 	}
 	obrien := addUser(t, h, "o'brien@nordlys.no", "")
 	obrienAccount := account(g, "Ola O'Brien", "ola.obrien@nordlys.no", "O'Brien@nordlys.no", "")
-	r := o.Do(http.MethodGet, matchesPath, nil)
+	r := o.Do(http.MethodGet, matchesPath, nil, identityOperation)
 	if r.Status != http.StatusOK {
 		t.Fatalf("matches: %d %s", r.Status, r.Body)
 	}
-	var got gen.EntraDirectoryMatches
+	var got dirMatches
 	r.JSON(&got)
-	if got.Candidates != 16 || len(got.Matches) != 1 || got.Matches[0].UserId != obrien || got.Matches[0].Account.ObjectId.String() != obrienAccount {
+	if got.Candidates != 16 || len(got.Matches) != 1 || got.Matches[0].UserID != obrien || got.Matches[0].Account.ObjectID != obrienAccount {
 		t.Errorf("matches: %+v, want O'Brien's alone", got)
 	}
 	var properties []string
@@ -336,11 +391,11 @@ func TestDirectory_MatchesTruncate(t *testing.T) {
 	h.Exec(t, `INSERT INTO identity.users (id, email, normalized_email, display_name, version, created_at, updated_at)
 	           SELECT gen_random_uuid(), 'bulk-' || n || '@nordlys.no', upper('bulk-' || n || '@nordlys.no'), 'bulk-' || n, gen_random_uuid(), $1, $1
 	           FROM generate_series(1, 1001) AS n`, h.Now())
-	r := o.Do(http.MethodGet, matchesPath, nil)
+	r := o.Do(http.MethodGet, matchesPath, nil, identityOperation)
 	if r.Status != http.StatusOK {
 		t.Fatalf("matches: %d %s", r.Status, r.Body)
 	}
-	var got gen.EntraDirectoryMatches
+	var got dirMatches
 	r.JSON(&got)
 	if got.Candidates != 1000 || !got.Truncated || len(got.Matches) != 0 || got.Ambiguous != 0 {
 		t.Errorf("matches: candidates %d truncated %v matches %d ambiguous %d, want 1000, true, 0, 0",
@@ -348,23 +403,27 @@ func TestDirectory_MatchesTruncate(t *testing.T) {
 	}
 }
 
-// While single sign-on is off there is nothing to connect under: 409
-// sso_not_configured, and the tenant is not asked.
+// While single sign-on is off there is no directory to connect from: 409
+// no_directory for both reads, and the tenant is not asked.
 func TestDirectory_MatchesWithoutSSO(t *testing.T) {
 	t.Parallel()
 	h, g := newTenantHarness(t)
 	o := connected(t, h)
 	addUser(t, h, "anne@nordlys.no", "")
 	before := len(usersCalls(g))
-	if r := o.Do(http.MethodGet, matchesPath, nil); r.Status != http.StatusConflict || codeOf(t, r) != "sso_not_configured" {
-		t.Errorf("matches without SSO: %d %s, want 409 sso_not_configured", r.Status, r.Body)
+	if r := o.Do(http.MethodGet, matchesPath, nil, identityOperation); r.Status != http.StatusConflict || identityCode(r) != "no_directory" {
+		t.Errorf("matches without SSO: %d %s, want 409 no_directory", r.Status, r.Body)
+	}
+	if r := o.Do(http.MethodGet, directoryPath+"?search=anne", nil, identityOperation); r.Status != http.StatusConflict || identityCode(r) != "no_directory" {
+		t.Errorf("a search without SSO: %d %s, want 409 no_directory", r.Status, r.Body)
 	}
 	if len(usersCalls(g)) != before {
 		t.Error("the matches asked the tenant without SSO")
 	}
 }
 
-// The tenant refusing the secret, or throttling twice: 503 with the code.
+// The tenant refusing the secret, down, or throttling twice: 503
+// provider_unreachable.
 func TestDirectory_MatchesWhenTheTenantCannotBeAsked(t *testing.T) {
 	t.Parallel()
 	t.Run("a refused secret", func(t *testing.T) {
@@ -375,8 +434,8 @@ func TestDirectory_MatchesWhenTheTenantCannotBeAsked(t *testing.T) {
 		register(t, o)
 		addSecret(t, o, "not-the-secret", "Wrong", h.Now().AddDate(1, 0, 0))
 		addUser(t, h, "anne@nordlys.no", "")
-		if r := o.Do(http.MethodGet, matchesPath, nil); r.Status != http.StatusServiceUnavailable || codeOf(t, r) != "credential_invalid" {
-			t.Errorf("matches with a refused secret: %d %s, want 503 credential_invalid", r.Status, r.Body)
+		if r := o.Do(http.MethodGet, matchesPath, nil, identityOperation); r.Status != http.StatusServiceUnavailable || identityCode(r) != "provider_unreachable" {
+			t.Errorf("matches with a refused secret: %d %s, want 503 provider_unreachable", r.Status, r.Body)
 		}
 	})
 	t.Run("the tenant down", func(t *testing.T) {
@@ -385,8 +444,8 @@ func TestDirectory_MatchesWhenTheTenantCannotBeAsked(t *testing.T) {
 		addUser(t, h, "anne@nordlys.no", "")
 		g.FailNext(http.StatusServiceUnavailable)
 		g.FailNext(http.StatusServiceUnavailable)
-		if r := o.Do(http.MethodGet, matchesPath, nil); r.Status != http.StatusServiceUnavailable || codeOf(t, r) != "tenant_unreachable" {
-			t.Errorf("matches with the tenant down: %d %s, want 503 tenant_unreachable", r.Status, r.Body)
+		if r := o.Do(http.MethodGet, matchesPath, nil, identityOperation); r.Status != http.StatusServiceUnavailable || identityCode(r) != "provider_unreachable" {
+			t.Errorf("matches with the tenant down: %d %s, want 503 provider_unreachable", r.Status, r.Body)
 		}
 	})
 	t.Run("throttled", func(t *testing.T) {
@@ -394,8 +453,39 @@ func TestDirectory_MatchesWhenTheTenantCannotBeAsked(t *testing.T) {
 		h, g, o := directoryHarness(t)
 		addUser(t, h, "anne@nordlys.no", "")
 		g.Throttle(2)
-		if r := o.Do(http.MethodGet, matchesPath, nil); r.Status != http.StatusServiceUnavailable || codeOf(t, r) != "throttled" {
-			t.Errorf("throttled matches: %d %s, want 503 throttled", r.Status, r.Body)
+		if r := o.Do(http.MethodGet, matchesPath, nil, identityOperation); r.Status != http.StatusServiceUnavailable || identityCode(r) != "provider_unreachable" {
+			t.Errorf("throttled matches: %d %s, want 503 provider_unreachable", r.Status, r.Body)
 		}
 	})
+}
+
+// The Owner's single sign-on settings name this module's directory while
+// Entra is the configured provider, and none while single sign-on is off.
+func TestDirectory_SettingsNameTheDirectory(t *testing.T) {
+	t.Parallel()
+	h, _ := newTenantHarness(t)
+	o := ownerWithMFA(t, h)
+	type settings struct {
+		Directory *struct {
+			Provider    string `json:"provider"`
+			DisplayName string `json:"displayName"`
+		} `json:"directory"`
+	}
+	read := func() settings {
+		t.Helper()
+		r := o.Do(http.MethodGet, "/api/v1/identity/owner/sso", nil, identityOperation)
+		if r.Status != http.StatusOK {
+			t.Fatalf("the settings: %d %s", r.Status, r.Body)
+		}
+		var got settings
+		r.JSON(&got)
+		return got
+	}
+	if got := read(); got.Directory != nil {
+		t.Errorf("directory without SSO: %+v, want null", got.Directory)
+	}
+	enableOIDC(t, h)
+	if got := read(); got.Directory == nil || got.Directory.Provider != "entra" || got.Directory.DisplayName != "Microsoft Entra ID" {
+		t.Errorf("directory with Entra configured: %+v, want entra, Microsoft Entra ID", got.Directory)
+	}
 }

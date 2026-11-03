@@ -2511,6 +2511,41 @@ type fakePersonalMailbox struct {
 
 func (f *fakePersonalMailbox) Key() string { return f.key }
 
+// fakeDirectorySearch is a contracts.DirectorySearch that answers nothing
+// but its key. The embedded nil interface panics on any other call, which no
+// test here makes.
+type fakeDirectorySearch struct {
+	contracts.DirectorySearch
+	key string
+}
+
+func (f *fakeDirectorySearch) Key() string { return f.key }
+
+// directorySearchCase is the directory searches' slot (Google Workspace
+// design G8) as the keyed-slot tests drive it: Compose collects it as it
+// does the mailbox slots; Workers does not.
+func directorySearchCase() keyedSlotCase {
+	return keyedSlotCase{
+		name: "directory searches", what: "a directory search",
+		provide: func(key string) (Module, any) {
+			p := &fakeDirectorySearch{key: key}
+			return Module{DirectorySearch: func(Deps) contracts.DirectorySearch { return p }}, p
+		},
+		preset: func(d *Deps, key string) any {
+			p := &fakeDirectorySearch{key: key}
+			d.DirectorySearches = append(d.DirectorySearches, p)
+			return p
+		},
+		read: func(d Deps) []any {
+			var out []any
+			for _, p := range d.DirectorySearches {
+				out = append(out, p)
+			}
+			return out
+		},
+	}
+}
+
 // keyedSlotCase is one many-provider mailbox slot (Google Workspace design
 // G2) as the tests below drive it: a provider builder under a key, the
 // module field it goes in, the preset it goes in, and the slot read back.
@@ -2596,9 +2631,10 @@ func named(m Module, name string) Module {
 // provisioners; they reach every module's Deps. Two providers under two
 // keys are both kept, presets first; a key two claim and a reserved key are
 // compose errors naming the providers; a disabled module contributes none.
+// The directory searches (G8) are collected the same way.
 func TestCompose_CollectsTheMailboxSlots(t *testing.T) {
 	specs := map[string]string{"alpha": alphaContract, "beta": betaContract}
-	for _, tc := range keyedSlotCases() {
+	for _, tc := range append(keyedSlotCases(), directorySearchCase()) {
 		t.Run(tc.name+"/two providers", func(t *testing.T) {
 			deps := Deps{Access: &fakeAccess{}}
 			preset := tc.preset(&deps, "preset")

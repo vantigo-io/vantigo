@@ -50,9 +50,11 @@ const (
 	eventsPath      = "/api/v1/entra/events"
 	accountsPath    = "/api/v1/entra/accounts"
 	groupsPath      = "/api/v1/entra/groups"
-	directoryPath   = "/api/v1/entra/directory/users"
-	matchesPath     = "/api/v1/entra/directory/matches"
-	noticesPath     = "/api/v1/entra/mailbox-notifications"
+	// The directory search, identity's since Google Workspace design G8,
+	// served from this module's contracts.DirectorySearch.
+	directoryPath = "/api/v1/identity/owner/sso/directory/users"
+	matchesPath   = "/api/v1/identity/owner/sso/directory/matches"
+	noticesPath   = "/api/v1/entra/mailbox-notifications"
 )
 
 // manager is a caller holding entra:manage, and nothing else.

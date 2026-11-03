@@ -1,13 +1,6 @@
 import "./i18n";
 
 export { connectionQueryOptions, type EntraConnection } from "./api/connection";
-export type { DirectoryPick } from "./api/directory";
-export {
-  DirectoryMatches,
-  type DirectoryMatchesProps,
-  type DirectoryMatchesUser,
-} from "./components/directory-matches";
-export { DirectoryPicker, type DirectoryPickerProps } from "./components/directory-picker";
 export {
   OutlookConnectButton,
   type OutlookConnectButtonProps,

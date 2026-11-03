@@ -3,8 +3,6 @@ package entra
 import (
 	"sync/atomic"
 
-	"golang.org/x/sync/singleflight"
-
 	"github.com/vantigo-io/vantigo/server/internal/entra/gen"
 	"github.com/vantigo-io/vantigo/server/internal/entra/store"
 	"github.com/vantigo-io/vantigo/server/internal/module"
@@ -17,9 +15,6 @@ type server struct {
 	deps   module.Deps
 	q      *store.Queries
 	client *graphClient
-	// matches is the directory matches' read in flight, by caller
-	// (GetEntraDirectoryMatches).
-	matches singleflight.Group
 	// ignoredWarnedAt is when the webhook last counted ignored notification
 	// items at warning, in Unix nanoseconds (warnIgnored).
 	ignoredWarnedAt atomic.Int64
