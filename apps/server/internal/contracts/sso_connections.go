@@ -78,7 +78,10 @@ type ConnectCandidate struct {
 }
 
 // DirectoryKey is a directory account's two keys, either of which may be
-// "".
+// "". The keys are the configured provider's (Google design G7): ObjectID is
+// the directory's immutable id for the account — Entra's object id, Google's
+// user id (the sub of its ID token) — and UserPrincipalName its sign-in name
+// — Entra's user principal name, Google's primary email.
 type DirectoryKey struct {
 	ObjectID, UserPrincipalName string
 }

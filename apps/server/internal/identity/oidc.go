@@ -600,7 +600,7 @@ func (s *server) GetIdentityOidcComplete(ctx context.Context, _ gen.GetIdentityO
 	if err := checkClaimPolicy(rp.cfg, external.Claims); err != nil {
 		return fail(oidcIdentityInvalid, err.Error())
 	}
-	account, ok := readExternalAccount(external.Claims, rp.issuer)
+	account, ok := readExternalAccount(external.Claims, rp.issuer, rp.cfg.Provider)
 	if !ok {
 		return fail(oidcIdentityInvalid, "the external identity's issuer or subject is invalid")
 	}

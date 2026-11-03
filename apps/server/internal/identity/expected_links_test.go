@@ -319,6 +319,42 @@ func TestExpectedLinks_OIDCFulfilsOnTheObjectID(t *testing.T) {
 	}
 }
 
+// A Google sign-in fulfils an announced link by its sub (Google design G7):
+// Google's ID token carries no oid, and its sub is the Directory user id the
+// Owner announces as the object id — 21 digits, kept exactly. An oid claim
+// in a Google token is not read.
+func TestExpectedLinks_GoogleFulfilsOnTheSub(t *testing.T) {
+	t.Parallel()
+	const googleUserID = "112233445566778899001"
+	f := newFakeGoogleOIDC(t)
+	f.set("sub", googleUserID)
+	f.set("oid", fakeObjectID)
+	h := newHarness(t, f.options()...)
+	owner, _ := h.bootstrapOwner(t)
+	id := h.seedUser(t, "kari@example.test", userPassword, identity.RoleUserID)
+	other := h.seedUser(t, "ola@example.test", userPassword, identity.RoleUserID)
+	mustAnnounce(t, owner, other, map[string]any{"objectId": fakeObjectID})
+	if got := mustAnnounce(t, owner, id, map[string]any{"objectId": googleUserID}); got.SsoLink == nil ||
+		deref(got.SsoLink.ObjectID) != googleUserID {
+		t.Fatalf("announced = %+v, want the Google user id kept exactly", got.SsoLink)
+	}
+
+	c := h.client(t)
+	assertOIDCRedirect(t, h.oidcSignIn(t, c, f), "/")
+	if s := oidcSession(t, c); s.User.ID != id {
+		t.Errorf("signed in as %+v, want the user announced by the sub", s.User)
+	}
+	if n := h.count(t, `SELECT count(*) FROM identity.oidc_links WHERE issuer = $1 AND subject = $2 AND user_id = $3`, fakeGoogleAuthority, googleUserID, id); n != 1 {
+		t.Error("the user is not linked by the sub")
+	}
+	if got := linkedFromProvider(t, h); len(got) != 1 || got[0] != `{"matchedBy":"oid"}` {
+		t.Errorf("account.linked-from-provider = %v", got)
+	}
+	if got := linkState(t, owner, other); got != "expected:"+fakeObjectID {
+		t.Errorf("the user announced by the oid claim's value: %s, want still expected", got)
+	}
+}
+
 // A disabled user is linked but not signed in; an announcement by the
 // principal name alone is fulfilled by the token's preferred_username, or
 // by its verified email when the provider sends no principal name; an
