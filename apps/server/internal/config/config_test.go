@@ -1941,13 +1941,20 @@ func TestConfig_InvoicesVipps(t *testing.T) {
 }
 
 // TestLoad_AIContextTokens pins AI_CONTEXT_TOKENS (the Assistant design S7):
-// 16000 unless set, from 2000 to 1000000.
+// 16000 unless set (150000 for anthropic), from 2000 to 1000000.
 func TestLoad_AIContextTokens(t *testing.T) {
 	if cfg := mustLoad(t, validEnv()); cfg.AIContextTokens != 16000 {
 		t.Errorf("AIContextTokens = %d, want 16000", cfg.AIContextTokens)
 	}
 	if cfg := mustLoad(t, with(validEnv(), "AI_CONTEXT_TOKENS", "8000")); cfg.AIContextTokens != 8000 {
 		t.Errorf("AIContextTokens = %d, want 8000", cfg.AIContextTokens)
+	}
+	anthropic := with(validEnv(), "AI_PROVIDER", "anthropic", "AI_API_KEY", "sk-ant-test-key", "AI_MODELS", "claude-sonnet-5-5")
+	if cfg := mustLoad(t, anthropic); cfg.AIContextTokens != 150000 {
+		t.Errorf("AIContextTokens for anthropic = %d, want 150000 (S18: summarising must not start a few turns in)", cfg.AIContextTokens)
+	}
+	if cfg := mustLoad(t, with(anthropic, "AI_CONTEXT_TOKENS", "60000")); cfg.AIContextTokens != 60000 {
+		t.Errorf("AIContextTokens for anthropic, set = %d, want 60000", cfg.AIContextTokens)
 	}
 	for _, bad := range []string{"1999", "1000001", "lots"} {
 		if msg := loadError(t, with(validEnv(), "AI_CONTEXT_TOKENS", bad)); !strings.Contains(msg, "AI_CONTEXT_TOKENS: must be an integer from 2000 to 1000000") {
