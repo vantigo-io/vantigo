@@ -71,7 +71,7 @@ of it takes you:
 | **Absence** | Your own absence, requested, approved or registered; one you have requested shows **Requested** under its name until it is decided. The name and that word are in the language set under **Language** on your Staff record | opens **My page** on its **Absence** tab |
 | **Bookings** | Your own confirmed bookings in Planning, all day over the booking's period, titled with the project's code and name; hold the pointer over one to read the load. A tentative booking, the planners' draft, is never shown | opens **My planning** in Planning |
 | **Subscriptions** | An event of a calendar you subscribe to from elsewhere, in the colour you gave it ([Calendars from elsewhere](#calendars-from-elsewhere)) | — |
-| **Outlook** | Time you are busy in your main Outlook calendar, drawn hatched with no title: **Busy in Outlook**, **Tentative in Outlook**, **Out of office** or **Working elsewhere**, as the event shows your time in Outlook. Only while [Sync with Outlook](#sync-with-outlook) is on | — |
+| **Outlook** | Time you are busy in your main Outlook calendar, drawn hatched with no title: **Busy in Outlook**, **Tentative in Outlook**, **Out of office** or **Working elsewhere**, as the event shows your time in Outlook. Only while [Sync with Outlook](#sync-with-outlook) is on. The chip and the labels name the calendar your account is in — Outlook with Microsoft 365 | — |
 | **Public holidays** | Norway's public holidays, shaded on their days | — |
 
 Appointments have a look of their own: one that does not block your time (**Free**) is
@@ -473,11 +473,16 @@ Outlook](#change-your-appointments-in-outlook): the change comes back to Vantigo
 Vantigo writes to your mailbox with **your own Outlook connection**, so you connect
 Outlook once first. You can do that from the card itself.
 
+The card, its switch and its messages name the calendar your account is in — **Outlook**
+when your organisation uses Microsoft 365 — and the busy time read back is labelled with
+the same name. While Vantigo knows no account of yours, the card is called **Calendar
+sync**.
+
 1. Open **Calendar → My calendar**. The **Outlook** card is under your calendar
    addresses.
 2. Under the card's description, choose **Connect Outlook** and sign in to Microsoft. You
    come back to this page, the card saying **Connected as** and your account.
-3. Turn on **Sync to my Outlook calendar**.
+3. Turn on **Sync with Outlook**.
 4. Choose:
    - **Where** — **My main calendar**, which shows the time as busy to colleagues, or
      **A separate Vantigo calendar**, which is easy to hide but does not make you busy
@@ -500,7 +505,7 @@ minute or two, or at once with **Sync now**; the card notices by itself, with no
 
 **Reconnect.** Microsoft sometimes asks you to sign in again — your password changed,
 your organisation's sign-in rules asked for it, or a long time passed. The card then says
-**Microsoft wants you to sign in again: choose Reconnect Outlook above.** The sync pauses,
+**Outlook wants you to sign in again: choose Reconnect Outlook above.** The sync pauses,
 and what is in Outlook stays as it was, until you choose **Reconnect Outlook** and sign
 in; then it picks up where it left off. If you turn the sync off while it waits for you
 to reconnect, the card still shows **Reconnect Outlook**: Vantigo needs you to reconnect
@@ -550,21 +555,21 @@ put in Outlook, as when you turn the sync off; the card then asks you to connect
 
 When the switch cannot be turned on, the card says why:
 
-- **Your administrator has not turned on the Outlook connection.** — an Owner turns on the
-  **Outlook connection** on the Microsoft Entra ID page ([Microsoft Entra
+- **Calendar sync needs a module that connects Vantigo to your organisation's
+  mailboxes.** — the installation runs none, such as Microsoft Entra ID.
+- **Your Vantigo user is not connected to an account in your organisation's directory
+  that Vantigo manages.** — HR connects your person in Staff to your Microsoft account;
+  Vantigo never guesses it from your address.
+- **Your administrator has not turned on the Outlook connection for people.** — an Owner
+  turns on the **Outlook connection** on the Microsoft Entra ID page ([Microsoft Entra
   ID](/en/user/entra/#outlook-connection)).
-- **Calendar sync needs the Microsoft Entra ID module.** — the installation does not run
-  it.
-- **The connection to Microsoft 365 is not working right now.**
-- **Your Vantigo user is not connected to a Microsoft 365 account that Vantigo
-  manages.** — HR connects your person in Staff to your Microsoft account; Vantigo never
-  guesses it from your address.
+- **The connection to Outlook is not working right now.**
 
 When the sync has stopped, the card says why instead of when it last synced: **Connect
-Outlook above to start the sync.**, **Microsoft wants you to sign in again: choose
+Outlook above to start the sync.**, **Outlook wants you to sign in again: choose
 Reconnect Outlook above.**, **Your organisation has not allowed Vantigo to reach your
 mailbox.** (Microsoft 365 refused your mailbox — ask your administrator), **Your mailbox
-could not be found.**, **The connection to Microsoft 365 is not working right now.**, or
+could not be found.**, **The connection to Outlook is not working right now.**, or
 **The last sync failed; Vantigo will try again.** Nothing is needed from you for the
 last: Vantigo tries again, less often each time. If Calendar is taken from you, your
 copies are removed. If you leave, they stay in your mailbox, which is disabled with your

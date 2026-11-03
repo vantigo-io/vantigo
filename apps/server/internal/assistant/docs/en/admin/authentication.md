@@ -357,7 +357,10 @@ most, a user it replaces.
 [enterprise extension's](#scim) `employeeNumber`, by the number's key; then on
 `userName` against the announced principal name; then on `externalId` against the
 announced object id. An OIDC first sign-in is matched on the `oid` claim against the
-object id, under the announced issuer. The number comes first because the provider
+object id, under the announced issuer — for a Google provider (`OIDC_PROVIDER=google`)
+on the `sub` claim instead, whose ID token has no `oid` and whose `sub` is the account's
+Directory user id, 21 digits, announced and matched exactly as they are (the audit's
+`matchedBy` still says `oid`). The number comes first because the provider
 writes it as the account's `employeeId`, which Entra's default SCIM mapping sends as
 `employeeNumber`; the principal name second, since Entra sends `userName` from it by
 default; and the object id last for SCIM, because Entra's default mapping sends the
@@ -491,7 +494,7 @@ ordinary self-service link Staff never acts on.
 When single sign-on is turned on in an installation that already has users, an
 address never links a provider sign-in to an existing account, so their first attempt is
 refused `oidc_email_conflict`. An Owner **announces** that the user holds a directory
-account; the user's next OIDC sign-in (matched on `oid` under the configured issuer, else on the token's principal name, Entra's `preferred_username`, or the verified `email` claim for a provider without one)
+account; the user's next OIDC sign-in (matched on `oid` — Google's `sub` — under the configured issuer, else on the token's principal name, Entra's `preferred_username`, or the verified `email` claim for a provider without one)
 or SCIM push (matched on `userName` against the principal name, then `externalId`
 against the object id) then links or maps to that user. How the arrival is matched is
 described with [the announced link](/en/admin/sso-scim/#the-announced-link).
@@ -540,11 +543,19 @@ rules, `account_locked` until they are enabled. An Owner or a SystemAdmin may be
 announced, and the local MFA rule stands. An announced link outranks an announced
 account for the same arrival, and an arrival never fulfils both.
 
-**With the Entra module.** While `entra` is enabled the Users screen picks the
-directory account from the tenant instead of having it typed, and offers a review of
-every user who matches exactly one account (see
+**With a directory to search.** While the configured provider's directory can be
+searched — OIDC is on and an enabled module serves that provider's
+`contracts.DirectorySearch`, today `entra` — the Users screen picks the directory
+account through `GET /api/v1/identity/owner/sso/directory/users` instead of having it
+typed, and offers a review of every user who matches exactly one account through
+`GET /api/v1/identity/owner/sso/directory/matches` (see
+[the announced link](/en/admin/sso-scim/#the-announced-link) and, for Entra,
 [connecting existing users](/en/reference/entra/#connecting-existing-users)); each
-chosen pair is announced through this same endpoint. What the module needs of identity
+chosen pair is announced through this same endpoint. Both are under
+`policy:Owner+OwnerManagement`, at most 60 searches and 6 reviews a minute per client
+address, 409 `no_directory` while there is no directory to search and 503
+`provider_unreachable` when it could not be asked; `GET /owner/sso` names the directory
+as `directory`, null while there is none. What the module needs of identity
 for that — the users not yet connected, with the address and employee number they are
 matched by, and who already holds a directory account's keys — identity answers through
 the port `contracts.SSOConnections`, and only to an Owner under

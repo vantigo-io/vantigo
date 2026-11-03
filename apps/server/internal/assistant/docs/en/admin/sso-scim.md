@@ -380,15 +380,26 @@ was made under, the object id and the user principal name (either may be absent,
 both) and who made it. A directory account can be announced for one user only, and not
 at all while another user's SCIM mapping names it (`sso_link_taken`).
 
-With the Entra module enabled, the Owner need not type the account: the connect
-dialog searches the tenant and fills in both keys from the account picked, and *Find
-matches in the directory…* on the Users screen proposes, for every user not yet
+**Connecting existing users through the configured provider.** The Owner need not type
+the account when the configured provider's directory can be searched: identity asks the
+enabled module whose directory search serves the configured provider (`entra` today,
+the Entra module) — the Owner single sign-on settings name it as `directory`, null
+otherwise. The connect dialog then searches that directory
+(`GET /api/v1/identity/owner/sso/directory/users?search=`) and fills in both keys from
+the account picked, and *Find matches in the directory…* on the Users screen
+(`GET /api/v1/identity/owner/sso/directory/matches`) proposes, for every user not yet
 connected, the one account whose mail or principal name equals their address or whose
-employee ID equals their employee number — exact matches only, never a guest account,
-pre-ticked only when the principal name matched on an enabled account of a user who is
-not an Owner — and **Connect selected** announces each chosen pair through the same endpoint
-([connect existing users](/en/user/entra/#connect-existing-users); the rule in
-[the reference](/en/reference/entra/#the-exact-matches)). Nothing else changes: each
+employee number equals theirs — exact matches only, never a guest account, pre-ticked
+only when the principal name matched on an enabled account of a user who is not an
+Owner — and **Connect selected** announces each chosen pair through the same endpoint
+([look the accounts up in the directory](/en/user/workspace-administration/#look-the-accounts-up-in-the-directory);
+the rule in [the reference](/en/reference/entra/#the-exact-matches)). Both reads are
+an Owner's (`policy:Owner+OwnerManagement`), limited to 60 searches and 6 reviews a
+minute per client address, and answer 409 `no_directory` while OIDC is off or no
+enabled module serves the configured provider's directory, and 503
+`provider_unreachable` when the directory could not be asked. To offer them, enable the
+provider's module and connect it to the directory (for Entra, the
+[Entra page's steps 1 to 3](/en/admin/entra/)). Nothing else changes: each
 announcement is fulfilled, as below, at the person's next arrival.
 
 **The match.** On both arrivals the announced link is read before the announced

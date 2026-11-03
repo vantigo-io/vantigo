@@ -105,8 +105,9 @@ app-velgeren for et skjermbilde du vet navnet på.
 
 Avatar-menyen øverst til høyre fører til **Innstillinger**, med profilen din (navn,
 språk), sikkerheten din (passord, tofaktorautentisering, passnøkler) og, så lenge
-organisasjonen kjører Microsoft Entra ID, **Tilkoblinger** — din egen Outlook, koblet
-til én gang ([Tilkoblinger](/nb/user/connections/)).
+organisasjonen kjører en modul du kan koble en konto av deg gjennom — i dag
+Microsoft Entra ID — **Tilkoblinger**: din egen Outlook, koblet til én gang
+([Tilkoblinger](/nb/user/connections/)).
 **Hjelp** i den samme menyen åpner denne dokumentasjonen, på ditt språk, som kopien
 bygget inn i den Vantigo-en du bruker, så den beskriver alltid versjonen du har.
 

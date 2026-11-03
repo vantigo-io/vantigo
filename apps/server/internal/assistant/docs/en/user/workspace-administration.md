@@ -207,20 +207,17 @@ The column reads one of three things:
 2. In **Connect _name_ to single sign-on**, check **User principal name**. It is filled
    in with the account's address; change it when the person's directory account has
    another name. Under **More**, **Object id** is the directory account's id, for when
-   you have it instead or besides. While the **Microsoft Entra ID** app is enabled, the
+   you have it instead or besides. When the provider's directory can be searched, the
    dialog starts with **Search the directory**: type two characters or more of the
-   person's name or address and pick their account, which fills in both fields (an
-   account another user already holds is shown but cannot be picked). The two go
-   together: changing the principal name clears the object id, and searching again
-   clears both.
+   person's name or address and pick their account, which fills in both fields (see
+   [Pick the account in the directory](#pick-the-account-in-the-directory)).
 3. Choose **Connect**. The row now reads **Awaiting first sign-in**.
 
-**Connect many at once.** While the **Microsoft Entra ID** app is enabled, **Find
+**Connect many at once.** When the provider's directory can be searched, **Find
 matches in the directory…**, next to the search in **Users**, proposes for every user
-not yet connected the one directory account that matches them exactly — ticked only
-when the principal name matched, the account is enabled and the user is not an Owner —
-and **Connect selected** connects the ones you keep checked; see
-[Connect existing users](/en/user/entra/#connect-existing-users).
+not yet connected the one directory account that matches them exactly, and **Connect
+selected** connects the ones you keep checked; see
+[Review the exact matches](#review-the-exact-matches).
 
 At the person's next sign-in through the provider — or when the provider pushes their
 account — Vantigo links the directory account to the account you named, whatever
@@ -253,6 +250,87 @@ A disabled account can be connected: the person signs in only once you enable it
 After the provider's **Authority** is changed, an announced connection is for the old
 provider and fulfils nothing: the row reads as not connected, and connecting the account
 again replaces the old announcement.
+
+### Look the accounts up in the directory
+
+You need not type the accounts when the configured provider's directory can be
+searched: single sign-on is on, and the module that serves the provider's directory is
+enabled — today **Microsoft Entra ID**, connected to the tenant in its steps 1 to 3
+([Microsoft Entra ID](/en/user/entra/#connect-existing-users)). Vantigo then looks the
+accounts up in that directory. Both ways below are an **Owner**'s, signed in with a
+second factor when Owners must use one; while there is no directory to search, they are
+not offered and the typed fields are all there is.
+
+#### Pick the account in the directory
+
+**Connect…** in a user's row opens **Connect _name_ to single sign-on**, which then
+starts with **Search the directory**. Type two characters or more of the person's
+name, address or principal name; after a pause the list shows the matching accounts,
+by display name, each with its principal name, its employee number, *Guest* for a guest
+invited from another organisation, and *Disabled* when the account is. An account
+somebody already holds reads *Awaiting* and the user's name (or *Awaiting another
+user*), *Provisioned to another user* or *Announced by Staff*, and cannot be picked. At
+most 25 accounts are shown; when there are that many, it asks you to narrow the search.
+
+Picking an account fills in **User principal name** and, under **More**, **Object id**.
+The two belong together: change the principal name and the object id is cleared;
+search again after a pick and both are cleared. Check them and choose **Connect**, as
+before. The typed fields stay: you can still type the name yourself, and they are all
+there is while the directory cannot be read.
+
+#### Review the exact matches
+
+1. In **Users**, choose **Find matches in the directory…**, next to the search.
+2. **Users who match an account in the directory** opens. A line at the top counts the
+   *Users not yet connected*, the ones *Matched exactly*, and the ones *Left out because
+   more than one account matched*. Below it each proposal is a row: the **User**, with
+   their address; the **Account in the directory**, with its display name, principal
+   name, employee number when it has one, and *Disabled* when the account is; and
+   **Matched by**: **Mail**, **Principal name**, **Employee number**, or several.
+3. Check the rows. A row starts ticked only when the account is enabled, the
+   principal name matched, and the user is not an Owner. Any other row starts
+   unticked and is marked **Check this match**, with the reason: *Matched by mail or
+   employee number only, not by the principal name the person signs in with. Make sure
+   it is the same person.*, or *This user is an Owner. Whoever holds this account will
+   sign in with the Owner's access.* Tick those you have checked, and clear the ones
+   you do not want.
+4. Choose **Connect selected**, which shows how many are checked. Vantigo connects the
+   pairs one at a time, and each row's **Result** says *Connected*, or why it was
+   refused in words — for instance that another user is already connected to the
+   account. **Users** is refreshed when it is done.
+
+A user is proposed only when the match is **exact**: their address is the account's
+mail or principal name, ignoring upper and lower case, or their employee number is
+the account's — and every one of those that matched points to the same account. There
+is no guessing on names or similar addresses. Left out are:
+
+- a user who matches more than one account, or whose account also matches another
+  user — counted as *Left out because more than one account matched*; connect them one
+  at a time;
+- guest accounts, invited from another organisation: they are never proposed and not
+  counted;
+- an account somebody else already holds: one announced for another user, one the
+  provider's provisioning gave to another user, or one Staff announced for a new
+  person. An account the provider's provisioning already gave to the same user is still
+  proposed;
+- users already connected, or awaiting their first sign-in; **Pending** users; and you
+  — you connect yourself by signing in through the provider.
+
+When no one matches, the window says so and that you connect them one at a time from
+the **Single sign-on** column. When not every user was compared (Microsoft Entra ID
+compares the first 1,000), it says so — connect these, then look again. Finding the
+matches can take a while in a large directory; opening the window again meanwhile waits
+for the same answer.
+
+A connected row reads **Awaiting first sign-in** in **Users** until the person next
+signs in through the provider, or the provider pushes their account; then the
+connection completes and it reads **Connected**. Their name, address and roles stay as
+they were.
+
+A search or a review is refused, in words, when there is no directory to search —
+single sign-on was turned off, or the provider's module is not enabled — and when the
+directory cannot be asked: its connection is refused, it does not answer, or it asks
+Vantigo to wait. Try again in a minute, and check the provider's connection.
 
 ## Follow up invitations
 

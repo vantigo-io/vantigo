@@ -212,19 +212,17 @@ Kolonnen viser én av tre ting:
 2. Kontroller **Brukerprinsipalnavn** i **Koble _navn_ til enkel pålogging**. Feltet er
    fylt ut med kontoens adresse; endre det når personens katalogkonto har et annet
    navn. Under **Mer** er **Objekt-ID** katalogkontoens id, for når du har den i stedet
-   for eller i tillegg. Mens appen **Microsoft Entra ID** er slått på, begynner
-   dialogen med **Søk i katalogen**: skriv to tegn eller mer av personens navn eller
-   adresse og velg kontoen deres, som fyller ut begge feltene (en konto en annen bruker
-   allerede har, vises, men kan ikke velges). De to hører sammen: endrer du
-   brukerprinsipalnavnet, tømmes objekt-ID-en, og søker du på nytt, tømmes begge.
+   for eller i tillegg. Når leverandørens katalog kan søkes i, begynner dialogen med
+   **Søk i katalogen**: skriv to tegn eller mer av personens navn eller adresse og velg
+   kontoen deres, som fyller ut begge feltene (se
+   [Velg kontoen i katalogen](#velg-kontoen-i-katalogen)).
 3. Velg **Koble til**. Raden viser nå **Venter på første pålogging**.
 
-**Koble til mange på en gang.** Mens appen **Microsoft Entra ID** er slått på, foreslår
-**Finn treff i katalogen…**, ved siden av søket under **Brukere**, for hver bruker som
-ikke er koblet til, den ene katalogkontoen som passer nøyaktig — krysset av bare når
-brukerprinsipalnavnet traff, kontoen er aktiv og brukeren ikke er eier — og **Koble til valgte**
-kobler til dem du lar være krysset av; se
-[Koble til eksisterende brukere](/nb/user/entra/#koble-til-eksisterende-brukere).
+**Koble til mange på en gang.** Når leverandørens katalog kan søkes i, foreslår **Finn
+treff i katalogen…**, ved siden av søket under **Brukere**, for hver bruker som ikke er
+koblet til, den ene katalogkontoen som passer nøyaktig, og **Koble til valgte** kobler
+til dem du lar være krysset av; se
+[Gå gjennom de nøyaktige treffene](#gå-gjennom-de-nøyaktige-treffene).
 
 Ved personens neste innlogging gjennom leverandøren — eller når leverandøren sender
 kontoen — kobler Vantigo katalogkontoen til kontoen du pekte ut, uansett hvilken
@@ -258,6 +256,86 @@ En deaktivert konto kan kobles: personen kommer først inn når du aktiverer den
 leverandørens **Autoritet** er endret, gjelder en kunngjort kobling den gamle
 leverandøren og oppfyller ingenting: raden vises som ikke koblet til, og å koble kontoen på nytt
 erstatter den gamle kunngjøringen.
+
+### Slå opp kontoene i katalogen
+
+Du trenger ikke skrive inn kontoene når katalogen til den valgte leverandøren kan søkes
+i: enkel pålogging er på, og modulen som betjener leverandørens katalog, er slått på — i
+dag **Microsoft Entra ID**, koblet til leietakeren i steg 1 til 3
+([Microsoft Entra ID](/nb/user/entra/#koble-til-eksisterende-brukere)). Vantigo slår da
+opp kontoene i den katalogen. Begge måtene nedenfor er for en **eier**, innlogget med en
+andre faktor når eiere må bruke en; mens det ikke finnes noen katalog å søke i, tilbys
+de ikke, og feltene du skriver i, er alt som finnes.
+
+#### Velg kontoen i katalogen
+
+**Koble til…** i en brukers rad åpner **Koble _navn_ til enkel pålogging**, som da
+begynner med **Søk i katalogen**. Skriv to tegn eller mer av personens navn, adresse
+eller brukerprinsipalnavn; etter en pause viser listen kontoene som passer, etter
+visningsnavn, hver med brukerprinsipalnavn, ansattnummer, *Gjest* for en gjest invitert
+fra en annen organisasjon, og *Deaktivert* når kontoen er det. En konto noen allerede
+har, viser *Venter på* og brukerens navn (eller *Venter på en annen bruker*),
+*Klargjort for en annen bruker* eller *Kunngjort av Ansatte*, og kan ikke velges. Høyst
+25 kontoer vises; når det er så mange, ber den deg snevre inn søket.
+
+Å velge en konto fyller ut **Brukerprinsipalnavn** og, under **Mer**, **Objekt-ID**.
+De to hører sammen: endrer du brukerprinsipalnavnet, tømmes objekt-ID-en; søker du på
+nytt etter et valg, tømmes begge. Kontroller dem og velg **Koble til**, som før.
+Feltene du skriver i, blir stående: du kan fortsatt skrive navnet selv, og de er alt som
+finnes mens katalogen ikke kan leses.
+
+#### Gå gjennom de nøyaktige treffene
+
+1. Velg **Finn treff i katalogen…** ved siden av søket under **Brukere**.
+2. **Brukere som passer med en konto i katalogen** åpnes. En linje øverst teller
+   *Brukere som ikke er koblet til*, *Nøyaktige treff* og dem som er *Utelatt fordi mer
+   enn én konto passet*. Under den er hvert forslag en rad: **Bruker**, med adressen;
+   **Konto i katalogen**, med visningsnavn, brukerprinsipalnavn, ansattnummer når den
+   har et, og *Deaktivert* når kontoen er det; og **Treff på**: **E-post**,
+   **Brukerprinsipalnavn**, **Ansattnummer**, eller flere.
+3. Se over radene. En rad er krysset av fra start bare når kontoen er aktiv,
+   brukerprinsipalnavnet traff, og brukeren ikke er eier. Alle andre rader står uten
+   kryss og er merket **Sjekk treffet**, med grunnen: *Treff bare på e-post eller
+   ansattnummer, ikke på brukerprinsipalnavnet personen logger på med. Forsikre deg om
+   at det er samme person.*, eller *Denne brukeren er eier. Den som har denne kontoen,
+   logger på med eierens tilgang.* Kryss av dem du har sjekket, og fjern krysset på dem
+   du ikke vil ha.
+4. Velg **Koble til valgte**, som viser hvor mange som er krysset av. Vantigo kobler
+   parene til ett om gangen, og **Resultat** på hver rad sier *Koblet til*, eller med
+   ord hvorfor det ble avvist — for eksempel at en annen bruker allerede er koblet til
+   kontoen. **Brukere** oppdateres når det er ferdig.
+
+En bruker foreslås bare når treffet er **nøyaktig**: adressen deres er kontoens e-post
+eller brukerprinsipalnavn, uten hensyn til store og små bokstaver, eller
+ansattnummeret deres er kontoens — og alt som traff, peker på den samme kontoen. Det
+gjettes ikke på navn eller lignende adresser. Utelatt blir:
+
+- en bruker som passer med mer enn én konto, eller der kontoen også passer med en annen
+  bruker — telt som *Utelatt fordi mer enn én konto passet*; koble dem til én om
+  gangen;
+- gjestekontoer, invitert fra en annen organisasjon: de foreslås aldri og telles ikke;
+- en konto noen andre allerede har: en kunngjort for en annen bruker, en leverandørens
+  klargjøring har gitt en annen bruker, eller en Ansatte har kunngjort for en ny person.
+  En konto leverandørens klargjøring allerede har gitt den samme brukeren, foreslås
+  likevel;
+- brukere som allerede er koblet til eller venter på første pålogging, brukere som er
+  **Venter**, og deg selv — du kobler deg selv til ved å logge inn gjennom leverandøren.
+
+Når ingen passer, sier vinduet det, og at du kobler dem til én om gangen fra kolonnen
+**Enkel pålogging**. Når ikke alle brukerne ble sammenlignet (Microsoft Entra ID
+sammenligner de 1 000 første), sier det fra — koble til disse, og se så etter igjen. Å
+finne treffene kan ta litt tid i en stor katalog; åpner du vinduet igjen i mellomtiden,
+venter det på det samme svaret.
+
+En rad som er koblet til, viser **Venter på første pålogging** under **Brukere** til
+personen neste gang logger inn gjennom leverandøren, eller leverandøren sender kontoen;
+da fullføres koblingen, og raden viser **Koblet til**. Navn, adresse og roller blir som
+de var.
+
+Et søk eller en gjennomgang avvises, med ord, når det ikke finnes noen katalog å søke
+i — enkel pålogging ble slått av, eller leverandørens modul er ikke slått på — og når
+katalogen ikke kan spørres: tilkoblingen avvises, den svarer ikke, eller den ber Vantigo
+vente. Prøv igjen om et minutt, og sjekk tilkoblingen til leverandøren.
 
 ## Følg opp invitasjoner
 

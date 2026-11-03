@@ -5,11 +5,13 @@ sidebar:
   order: 2
 sources:
   - apps/host/frontend/src/routes/settings/connections.tsx
+  - apps/host/frontend/src/lib/connections.tsx
   - apps/entra/frontend/src/components/outlook-connection.tsx
 ---
 
-**Settings → Connections** lists the accounts elsewhere that you connect to Vantigo.
-Today that is your **Outlook**: you connect it once, signing in to Microsoft, and Vantigo
+**Settings → Connections** lists the accounts elsewhere that you connect to Vantigo, one
+card for each provider your organisation runs. Today that is your **Outlook**, from the
+Microsoft Entra ID module: you connect it once, signing in to Microsoft, and Vantigo
 keeps the connection until you disconnect it, leave, or your administrator turns it
 off. The calendar's [Outlook sync](/en/user/calendar/#sync-with-outlook) uses it: Vantigo
 writes your calendar's copies to your mailbox, and reads your busy time back, with your
@@ -20,9 +22,10 @@ with customer replies directed to the shared channel.
 ## Who sees it
 
 **Connections** is in the avatar menu's **Settings**, beside **Profile** and
-**Security**, while your organisation runs the Microsoft Entra ID module; without it the
-page does not exist. Everyone signed in sees their own connection and nobody else's; no
-permission is needed.
+**Security**, while your organisation runs at least one module that offers a connection —
+today the Microsoft Entra ID module; without one the page does not exist. The page shows
+one card for each such module that is on, in the same order every time. Everyone signed in
+sees their own connections and nobody else's; no permission is needed.
 
 The **Outlook** card offers a connection only when two things hold:
 
@@ -32,8 +35,9 @@ The **Outlook** card offers a connection only when two things hold:
   one it created, or whose adoption someone confirmed. Vantigo never guesses your
   account from your address.
 
-Otherwise the card says *Nothing to connect: the Outlook connection is turned off, or
-Vantigo knows no Microsoft account of yours.*
+Otherwise the **Outlook** card is not shown. When no provider's card has anything to
+offer you, the page says *Nothing to connect: no connection is turned on for you, or
+Vantigo knows no account of yours to connect.*
 
 ## Connect your Outlook
 
@@ -46,8 +50,8 @@ Vantigo knows no Microsoft account of yours.*
    connected**, and returns you to where you started.
 
 You can also connect from the **Outlook** card under **Calendar → My calendar**, or
-directly from the composer in **Communications → Inbox**, which show the same button
-and bring you back there.
+directly from the composer in **Communications → Inbox**, which show the same button —
+one for each provider that offers you a connection — and bring you back there.
 
 Sign in with **the account Vantigo knows you by**: the one HR connected to your person.
 Signing in as anyone else — a second account, a personal Microsoft account, an account
