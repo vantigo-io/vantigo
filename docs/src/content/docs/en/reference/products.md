@@ -1,10 +1,11 @@
 ---
 title: "Products module"
-description: "The catalog of goods and services the company sells, with prices."
+description: "The catalog of goods and services the company sells, with prices, variants and their packagings; the catalog contract other modules read and lock; the variants that hold stock; the API, its permissions and the product list's extra columns."
 sources:
   - apps/server/internal/products
   - apps/products/frontend
   - openapi/products.yaml
+  - apps/server/internal/db/migrations/00109_products_packagings.sql
 ---
 The Products module is the catalog of everything the company sells: physical goods
 and performed services alike. It is a vertical-slice module inside the single Vantigo
@@ -26,6 +27,9 @@ price billing lines with it, and future Orders and Booking modules will read it 
   GTIN-8/12/13/14 values with a valid check digit and are unique when set.
   Single-variant products are additionally flattened in API responses so simple
   products keep an inline UX.
+- **Packaging** — a box, a case or a pallet a variant is bought, stored and counted in:
+  up to ten per variant, each holding a quantity of the variant's unit, directly or as a
+  count of another packaging. See [packagings](#packagings).
 - **ProductCategory** — a named grouping in a multi-level hierarchy. Each product
   belongs to at most one category; cross-cutting grouping is a future tags concern.
 - **TaxCategory** — a centrally configured VAT rate (`Standard`, `Reduced`, `Zero`
@@ -50,8 +54,12 @@ schema or HTTP endpoints — see [module boundaries](/en/contributing/module-bou
 Products provides `contracts.ProductCatalog`
 ([`catalog.go`](https://github.com/vantigo-io/vantigo/blob/main/apps/server/internal/contracts/catalog.go)).
 A `VariantEntry` names a variant — its id, product id and product name, SKU, unit, the
-product's type and status, and its own barcode (nil when it has none) — never enough to
-manage the catalog. A missing row is an absent answer, never an error.
+product's type and status, its own barcode (nil when it has none) and its
+**packagings** (`PackagingEntry`: id, name, kind, quantity as a three-place decimal
+such as `"600.000"`, barcode; by sort order then id, empty when it has none) — never
+enough to manage the catalog. Every read fills the packagings, `LockVariants` included,
+inside the caller's transaction, so what Inventory resolves an entry in packagings
+against holds until it commits. A missing row is an absent answer, never an error.
 
 | Method | Answers |
 | --- | --- |
@@ -59,8 +67,8 @@ manage the catalog. A missing row is an absent answer, never an error.
 | `Variants(ids)` | The variants that exist among `ids`. |
 | `ListPrice(variantID, currency, at)` | The variant's effective price in that currency at that moment, nil when it has none. |
 | `VariantsOfProduct(productID)` | Every variant of the product, by id; empty when the product does not exist. |
-| `LookupCode(code)` | Every variant whose SKU equals the trimmed code, ignoring case, or whose barcode equals it exactly. |
-| `SearchVariants(q, limit)` | At most `limit` (capped at 50) variants of **Goods** products whose SKU, product name or barcode contains `q`, ignoring case, by SKU; `%` and `_` are matched literally. |
+| `LookupCode(code)` | A `CodeMatch` for every variant whose SKU equals the trimmed code, ignoring case, or whose barcode equals it exactly — the variant matches first — then one per **packaging** whose barcode equals it, with `Packaging` set to the packaging that matched. |
+| `SearchVariants(q, limit)` | At most `limit` (capped at 50) variants of **Goods** products whose SKU, product name or barcode contains `q`, ignoring case, by SKU; `%` and `_` are matched literally. Packaging barcodes are not searched. |
 | `LockVariants(tx, ids)` | Takes `FOR SHARE` on the variants' rows and their products' rows, in id order, **on the caller's transaction**, and answers the entries. |
 
 Every method but `LockVariants` runs on the module's pool and is called before the
@@ -116,6 +124,91 @@ These problems carry no `code`, as none of Products' does: the app tells *Varian
 stock* from *Last variant* by its title, and shows its own sentence rather than the
 server's detail.
 
+## Packagings
+
+A **packaging** (Inventory's design I24, pulled forward from [phase 5 of the
+roadmap](https://github.com/vantigo-io/vantigo/blob/main/ROADMAP.md#products)) is a box,
+a case or a pallet a variant is bought, stored and counted in — a box of 15, a Euro
+pallet of 40 boxes. Products keeps it in `products.variant_packagings`
+(`00109_products_packagings.sql`); [Inventory](/en/reference/inventory/#entering-in-packagings)
+enters and shows stock in it. **Stock is never touched** by a packaging's write: stock
+is always kept in the variant's own unit.
+
+### Fields and rules
+
+- **`name`** — 1–40 characters, trimmed.
+- **`kind`** — `inner`, `case`, `pallet` or `other`, in any case, stored lower-case.
+- **What it holds**: exactly one of
+  - **`quantity`** — of the variant's unit, more than 0, at most three decimals
+    (refused, never rounded), at most 99,999,999,999.999; or
+  - **`containsPackagingId`** with **`containsCount`** — a count of at least 2 of
+    another packaging **of the same variant** (another variant's, or an unknown one, is
+    a field error on `containsPackagingId`). Its `quantity` is then **derived**, exact:
+    the contained packaging's quantity × the count — 40 × 15 = 600.
+- **`barcode`** — optional, a GTIN-8, -12, -13 or -14 with a valid check digit, unique
+  across **every variant and every packaging**.
+- **`weightKg`**, **`lengthCm`**, **`widthCm`**, **`heightCm`** — optional, 0 or more.
+- **`sortOrder`** — a create without it goes last; a `PUT` without it keeps the one it
+  had.
+
+**At most ten** per variant: an eleventh is a field error on `packagings`. A change to
+what a packaging holds **recomputes every packaging built from it**, transitively,
+parent before child, in the same transaction — changing a box of 15 to 12 makes the
+pallet of 40 boxes hold 480. A derived quantity, or a dependant's, that would pass the
+maximum refuses the change and rolls it back.
+
+### Endpoints and permissions
+
+All under `/api/v1/products/{id}/variants/{variantId}/packagings`:
+
+| Operation | Permission | |
+| --- | --- | --- |
+| `GET` | `variants-view` | The variant's packagings, by sort order then id. |
+| `POST` | `variants-manage` + `variants-view` | Add one; 201. |
+| `PUT /{packagingId}` | `variants-manage` + `variants-view` | Replace one whole; 200. |
+| `DELETE /{packagingId}` | `variants-manage` + `variants-view` | Remove one; 204. |
+
+A variant that is not the product's, or a packaging that is not the variant's, is a
+404. Every variant response — a product's, the product list's, the variant list's, a
+variant added or changed — carries the variant's **`packagings`**, by sort order then
+id.
+
+### Refusals
+
+Like every Products problem, these carry no `code`; the app tells them apart by title.
+
+| Status | Title | Detail, for example |
+| --- | --- | --- |
+| 400 | *Invalid packaging* | The field errors: `name`, `kind`, `quantity`, `containsPackagingId`, `containsCount`, `barcode`, a dimension, or `packagings` for the eleventh. |
+| 409 | *Barcode taken* | "A variant already carries the barcode '…'." / "A packaging already carries the barcode '…'." |
+| 409 | *Packaging cycle* | "'Inner' cannot hold 'Pallet', which is built from it." / "'Box' cannot hold itself." |
+| 409 | *Packaging in use* | "'Pallet' is built from 'Box'. Change or remove 'Pallet' first." — on a delete. |
+
+A **variant's** write keeps its title *Duplicate barcode* and now also refuses a GTIN a
+packaging carries: "A packaging with barcode '…' already exists." A product's create
+answers its detail unchanged.
+
+### Locks
+
+Every packaging write is one transaction, locking in this order:
+
+1. **the variant's row `FOR UPDATE`** — so one variant's packagings change one writer at
+   a time, and never while a posting holds the variant `FOR SHARE` through
+   `LockVariants`, which therefore reads packagings that hold until it commits;
+2. when the write carries a barcode, the transaction-scoped advisory lock
+   **`products:barcodes`** (`pg_advisory_xact_lock(hashtext('products:barcodes'))`),
+   under which the barcode is checked against every variant and every packaging and then
+   written — the cross-table half of the uniqueness, which no index can state; the
+   partial unique index `ux_variant_packagings_barcode` states the in-table half;
+3. the variant's packaging rows.
+
+The variant writes take the same advisory lock after their own row, never before it: a
+variant's change is now one transaction (its row `FOR UPDATE`, the advisory lock, the
+update), and a variant's add and a product's create take the advisory lock inside
+theirs. So the two orders agree and two writes cannot both claim one barcode.
+
+A packaging is deleted with its variant (`ON DELETE CASCADE`).
+
 ## API
 
 Versioned REST endpoints live under `/api/v1/products`, authenticated with the shared
@@ -134,6 +227,10 @@ rather than an antiforgery token — see
 | `POST /api/v1/products/{id}/variants` | Add a variant |
 | `PUT /api/v1/products/{id}/variants/{variantId}` | Update a variant |
 | `DELETE /api/v1/products/{id}/variants/{variantId}` | Remove a variant (the last one, and one that holds stock, cannot be removed) |
+| `GET /api/v1/products/{id}/variants/{variantId}/packagings` | List a variant's packagings |
+| `POST /api/v1/products/{id}/variants/{variantId}/packagings` | Add a packaging |
+| `PUT /api/v1/products/{id}/variants/{variantId}/packagings/{packagingId}` | Replace a packaging |
+| `DELETE /api/v1/products/{id}/variants/{variantId}/packagings/{packagingId}` | Remove a packaging no other is built from |
 | `GET /api/v1/products/{id}/variants/{variantId}/prices` | List price rows |
 | `POST /api/v1/products/{id}/variants/{variantId}/prices` | Add a price row |
 | `PUT /api/v1/products/{id}/variants/{variantId}/prices/{priceId}` | Update a price row |
@@ -180,6 +277,15 @@ paths answer the `/api` catch-all 404. The `products` schema is migrated regardl
 so enabling it later needs no migration. `inventory` requires `products`: a `MODULES`
 that lists `inventory` without it refuses to start. Projects and Time use the catalog
 when it is there and do without it when it is not.
+
+## The product list's extra columns
+
+The product list takes **`extraColumns`**, a function of the page's rows answering
+extra columns, which the host fills. With Inventory on and both `inventory:locations-view`
+and `inventory:stock-view`, the host adds **On hand**: each product's total across its
+variants, from one `GET /api/v1/inventory/stock` per page — per 100 of the page's
+variants — blank for a Service. Products
+itself reads nothing of Inventory on the server.
 
 ## Development
 

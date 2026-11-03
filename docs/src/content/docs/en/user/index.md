@@ -28,7 +28,8 @@ with a confirmed booking this week, their confirmed load with the tentative besi
 the open requests and the people unbooked, for `planning:view`
 ([the dashboard](/en/user/planning/#the-dashboard)); Inventory's, the stock lines with the
 goods receipts posted this week beside them, for `inventory:locations-view` with
-`inventory:stock-view` — it adds nothing to the list below ([Inventory](/en/user/inventory/)).
+`inventory:stock-view`, and, with `inventory:counts-manage` too, a count left open more
+than a week in the list below ([Inventory](/en/user/inventory/#the-dashboard)).
 Its **Needs attention**
 list gathers the apps' items that wait for someone — Invoices' among them: overdue
 invoices, money owed back on an invoice, and, with `invoices:payments`, bank lines in the
@@ -79,7 +80,7 @@ shorter than yours:
 | [Invoices](/en/user/invoices/) | Invoices, Quick invoice, Invoice journal, Overdue, Payments, Invoice settings |
 | [Communications](/en/user/communications/) | Inbox, Channels, Suppressions |
 | [Products](/en/user/products/) | Products, Categories, Tax categories |
-| [Inventory](/en/user/inventory/) | Overview, Movements, Receipts |
+| [Inventory](/en/user/inventory/) | Overview, Movements, Receipts, Counts, Import opening balances |
 | [Energy](/en/user/energy/) | Metering points |
 | [Microsoft Entra ID](/en/user/entra/) | Microsoft Entra ID (the connection's status and its six setup steps), for `entra:manage` |
 | [Assistant](/en/user/assistant/) | Your conversations with the assistant, from anywhere in Vantigo; shown to everyone who has the assistant |

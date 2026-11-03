@@ -1,6 +1,6 @@
 ---
 title: Produkter
-description: Katalogen over varer og tjenester, kategorier, mva-kategorier og priser.
+description: Katalogen over varer og tjenester, kategorier, mva-kategorier, priser og pakninger, og kolonnen Beholdning i produktlisten.
 sidebar:
   order: 60
 sources:
@@ -20,6 +20,11 @@ som har rettigheten til det, så sidemenyen din kan være kortere enn en kollega
 varianter**, **Type**, **Kategori**, **Status**, **Enhet**, **Mva-kategori** (med sats)
 og **Gjeldende NOK-pris**; merket ved siden av overskriften er totalt antall. Listen er
 delt i sider med 25 produkter om gangen.
+
+Når organisasjonen bruker Lager og du har både `inventory:locations-view` og
+`inventory:stock-view`, har listen én kolonne til, **Beholdning**: produktets
+beholdning på alle lagersteder, alle variantene til sammen, i enheten dens. Den er tom
+for en tjeneste. Se [Lager](/nb/user/inventory/).
 
 - **Søk etter navn eller SKU...** snevrer inn listen mens du skriver.
 - **Status** beholder bare produkter som er **Utkast**, **Aktiv** eller **Utgått**.
@@ -125,6 +130,51 @@ variant med lagerbevegelser i historikken, men ingenting på lager, kan slettes.
 Strekkoden, vekten og dimensjonene på produktsiden er også variantfelter, men appen
 redigerer dem ikke; de settes gjennom API-et.
 
+## Pakninger
+
+En **pakning** er en eske, en kartong eller en pall varen kjøpes, lagres og telles i —
+en eske med 15, en europall med 40 esker. Lager bruker dem: beholdning kan mottas,
+flyttes og telles i esker og paller, strekkoden til en pakning kan skannes, og
+beholdningen vises fordelt i dem. Se
+[Registrer antall i pakninger](/nb/user/inventory/#registrer-antall-i-pakninger).
+
+Pakninger finnes bare for **varer**. På et produkt med én variant ligger tabellen
+**Pakninger** i kortet **Produktdetaljer**, under **Logistikk**; på et produkt med
+flere er det én tabell per variant, **Pakninger for {SKU}**. Tabellen viser hver
+paknings **Navn**, **Type**, hva den **Inneholder**, **Strekkode (GTIN)** og
+**Dimensjoner (L×B×H)**.
+
+Trykk **Legg til pakning** og fyll inn:
+
+- **Navn** — opptil 40 tegn, som *Eske* eller *Europall*.
+- **Type** — **Innerpakning**, **Kartong**, **Pall** eller **Annet**.
+- Hva den inneholder — ett av to:
+  - **Et antall i {enhet}** — for en eske med 15 pcs, **Antall** 15;
+  - **Andre pakninger** — en **Pakning** av samme vare og **Antall pakninger**, minst
+    2: en europall med 40 esker. Antallet regnes ut for deg, og **Inneholder** viser
+    det: *40 × Eske (600 pcs)*.
+- **Strekkode (GTIN)** — valgfri; ingen annen vare eller pakning kan ha den samme.
+- **Lengde (cm)**, **Bredde (cm)**, **Høyde (cm)** og **Vekt (kg)** — valgfrie.
+
+Trykk **Lagre**. Blyanten åpner **Rediger pakning**; søppelbøtten spør **Slett
+pakning** — *Slette pakningen {navn}? Lagerbeholdningen påvirkes ikke.* En vare har
+høyst **ti** pakninger: **Legg til pakning** er grået ut ved ti.
+
+**Endrer du en eske, endres hver pall som er bygd av den**: la esken inneholde 12 i
+stedet for 15, og pallen med 40 esker inneholder 480. En endring av en pakning **endrer
+aldri beholdningen**, som alltid holdes i varens egen enhet; bevegelser som alt er
+bokført, beholder pakningene slik de var da de ble bokført.
+
+Lagringen avvises, med appens ord:
+
+- *En annen variant eller pakning har allerede denne strekkoden.*
+- *En pakning kan ikke inneholde en pakning som er bygd av den.* — en pall med esker
+  kan ikke bli en del av en eske.
+- *En annen pakning er bygd av denne. Endre eller slett den pakningen først.* — når du
+  sletter en eske en pall er bygd av.
+
+Å legge til og endre pakninger krever `products:variants-manage`.
+
 ## Priser
 
 Kortet **Priser** lister prisradene til produktets første variant: **Valuta**,
@@ -210,7 +260,8 @@ slettes.**): flytt de produktene til en annen mva-kategori først.
   prosjektet, også uten en produktrettighet. Se
   [faktureringslinjer](/en/reference/projects/#billing-lines-and-the-optional-products-dependency).
 - **Lager** — holder beholdningen av **Varer**-variantene på lokasjonene på hvert
-  lagersted, og legger kortet **Beholdning** til produktsiden. Se
+  lagersted, i enheten deres eller i [pakningene](#pakninger) deres, legger kortet
+  **Beholdning** til produktsiden og kolonnen **Beholdning** til listen. Se
   [Lager](/nb/user/inventory/).
 - **Fakturaer** — fakturalinjer skrives på selve fakturaen (beskrivelse, antall, enhet,
   enhetspris og mva-kode) og leser ikke katalogen. Se
@@ -223,6 +274,8 @@ slettes.**): flytt de produktene til en annen mva-kategori først.
 | Se området Produkter, listen og en produktside | `products:products-view`, `products:variants-view`, `products:pricing-view`, `products:categories-view` og `products:tax-categories-view` sammen |
 | Opprette, redigere og arkivere produkter | `products:products-manage` (opprettelse krever også `products:variants-manage`) |
 | Legge til, redigere og fjerne varianter | `products:variants-manage` (redigering og fjerning krever også `products:pricing-manage`) |
+| Legge til, redigere og slette pakninger | `products:variants-manage` |
+| Kolonnen **Beholdning** | `inventory:locations-view` og `inventory:stock-view` |
 | Legge til, redigere og slette priser | `products:pricing-manage` |
 | Se området Kategorier | `products:categories-view` |
 | Opprette, redigere og slette kategorier | `products:categories-manage` |
