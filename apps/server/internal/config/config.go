@@ -532,8 +532,10 @@ type Config struct {
 	AITimeout time.Duration
 	// AIContextTokens is the size, in tokens, the assistant keeps a
 	// conversation's context within before it summarises older tool results
-	// (AI_CONTEXT_TOKENS, default 16000, from 2000 to 1000000): local models
-	// have small windows. It is an estimate, four characters to a token.
+	// (AI_CONTEXT_TOKENS, from 2000 to 1000000; default 16000, or 150000 for
+	// anthropic): local models have small windows, and a Claude conversation
+	// past it is summarised, which must not happen a few turns in. It is an
+	// estimate, four characters to a token.
 	AIContextTokens int
 	// AIEffort is how hard a thinking model thinks (AI_EFFORT: low, medium,
 	// high, xhigh or max; default medium). Anthropic uses it as
@@ -665,7 +667,7 @@ func Load(env map[string]string) (*Config, error) {
 	communicationsAttachments(&p, env, c)
 	communicationsRetention(&p, env, c)
 	aiConfig(&p, env, c)
-	c.AIContextTokens = integer(&p, env, "AI_CONTEXT_TOKENS", 16000, 2000, 1000000)
+	c.AIContextTokens = integer(&p, env, "AI_CONTEXT_TOKENS", defaultAIContextTokens(c.AIProvider), 2000, 1000000)
 	aiThinking(&p, env, c)
 
 	if len(p) > 0 {
@@ -1271,6 +1273,17 @@ const (
 // single-label host. An unset AI_BASE_URL is the provider's own public address,
 // so it is not. The assistant tells the Owner so before data leaves the
 // installation. No name is resolved.
+// defaultAIContextTokens is AI_CONTEXT_TOKENS when it is unset: a small
+// window suits the local models the OpenAI-compatible provider mostly serves;
+// Claude's window is far larger, and there the size is when a conversation is
+// summarised (the Assistant design S18).
+func defaultAIContextTokens(provider string) int {
+	if provider == "anthropic" {
+		return 150000
+	}
+	return 16000
+}
+
 func (c *Config) AILocal() bool {
 	if c == nil || c.AIBaseURL == "" || c.AIProvider == "anthropic" {
 		return false
