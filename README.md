@@ -50,6 +50,7 @@ your thing, a managed **SaaS offering** is available where we run the platform f
 | **Invoices**           | Invoices and credit notes, payments, reminders and EHF delivery.      | 🚧 In development |
 | **Staff**              | The company's people, their employments and its structure.            | 🚧 In development |
 | **Planning**           | Who works on what: allocations of people on projects, capacity, the unbooked. | 🚧 In development |
+| **Inventory**          | Stock of the catalog's goods in warehouses and stores: sites, locations, receipts, adjustments and moves. | 🚧 In development |
 | **Calendar**           | One calendar per person: appointments and what the other apps hold.   | 🚧 In development |
 | **Microsoft Entra ID** | The accounts of Staff's people in your Entra tenant, kept in step.    | 🚧 In development |
 | **Assistant**          | Answers "how do I…" from the documentation and reads the data a person may read. | 🚧 In development |
@@ -82,7 +83,7 @@ docker compose up -d
 Compose starts PostgreSQL, applies the database migrations as a one-shot `migrate`
 job, and then brings up the single Vantigo application on <http://localhost:8080>.
 Customers, Communications, Products, Energy, Projects, Time, Expenses, Invoices,
-Staff, Planning, Calendar, Microsoft Entra ID and Assistant are modules in that one application.
+Staff, Planning, Inventory, Calendar, Microsoft Entra ID and Assistant are modules in that one application.
 
 The stack runs outside development, so `vantigo.env` must carry `APP_SECRET` before
 the first start — at least 32 bytes of key material, generated with
@@ -120,6 +121,7 @@ vantigo/
 │   │       ├── invoices/            # Invoices vertical slice (the sales document)
 │   │       ├── staff/               # Staff vertical slice (the workforce register)
 │   │       ├── planning/            # Planning vertical slice (who works on what)
+│   │       ├── inventory/           # Inventory vertical slice (stock in sites and locations)
 │   │       ├── calendar/            # Calendar vertical slice
 │   │       ├── entra/               # Microsoft Entra ID (accounts in the tenant, for Staff)
 │   │       ├── assistant/           # Assistant vertical slice (conversations, runs and tools)
@@ -137,6 +139,7 @@ vantigo/
 │   ├── invoices/frontend/           # @vantigo/invoices-ui
 │   ├── staff/frontend/              # @vantigo/staff-ui
 │   ├── planning/frontend/           # @vantigo/planning-ui
+│   ├── inventory/frontend/          # @vantigo/inventory-ui
 │   ├── calendar/frontend/           # @vantigo/calendar-ui
 │   ├── entra/frontend/              # @vantigo/entra-ui
 │   └── assistant/frontend/          # @vantigo/assistant-ui

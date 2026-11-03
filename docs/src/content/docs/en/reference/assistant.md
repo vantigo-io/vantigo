@@ -329,7 +329,10 @@ from what the message stored — when it was sent, in the business time zone, an
 that replays the turn carries the same bytes. The person never sees it, and the stored message does not hold it.
 
 The route list the prompt carries is the host's route shapes (`appRoutes` in `prompt.go`): the same
-list `navigate` validates against.
+list `navigate` validates against. It names one prefix per app with the record screens under it — for
+Inventory, `/inventory` with a site, a location, a variant's stock and the movements — so an app the
+list does not name cannot be linked to. Its targets join [the registry](#guided-tours) the same way:
+`@vantigo/inventory-ui` exports its own, and the host's `assist-targets.ts` collects them.
 
 ## Claude and preserved thinking
 

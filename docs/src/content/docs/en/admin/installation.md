@@ -84,10 +84,10 @@ job, and then starts Vantigo:
 - **API contract** — `GET http://localhost:8080/api/openapi.json` (requires a session)
 
 The Customers, Products, Energy, Communications, Projects, Time, Expenses, Invoices,
-Staff, Planning, Calendar, Microsoft Entra ID and Assistant modules are enabled by default
+Staff, Planning, Inventory, Calendar, Microsoft Entra ID and Assistant modules are enabled by default
 (`MODULES` in `vantigo.env`). They share one PostgreSQL database named `vantigo`, with
 independent `identity`, `customers`, `products`, `energy`, `communications`,
-`projects`, `time`, `expenses`, `invoices`, `staff`, `planning`, `calendar`, `entra` and `assistant`
+`projects`, `time`, `expenses`, `invoices`, `staff`, `planning`, `inventory`, `calendar`, `entra` and `assistant`
 schemas and migration histories.
 
 ## What the stack contains
@@ -189,9 +189,9 @@ and the recovery.
   deployment enables. `identity` is always mounted and never listed. Unset enables
   every module the binary can mount: `customers`, `products`, `energy`,
   `communications`, `projects`, `time`, `expenses`, `invoices`, `staff`, `planning`,
-  `calendar`, `entra` and `assistant`. `energy`, `communications`, `projects` and `invoices` each
+  `inventory`, `calendar`, `entra` and `assistant`. `energy`, `communications`, `projects` and `invoices` each
   require `customers`, `time` requires `projects`, `planning` requires both `projects`
-  and `staff`, and `entra` requires `staff`; `projects` also
+  and `staff`, `inventory` requires `products`, and `entra` requires `staff`; `projects` also
   uses `products` when it is enabled and answers 409 on its billing-line endpoints when
   it is not; `expenses` requires nothing and reads `projects` only when it happens to be
   enabled; `staff`, `calendar` and `assistant` require nothing (the assistant is of
@@ -268,9 +268,9 @@ ALTER DEFAULT PRIVILEGES FOR ROLE "vantigo" GRANT USAGE, SELECT ON SEQUENCES TO 
 -- Default privileges only cover objects created afterwards; grant on the
 -- schemas the enabled modules already created (add/remove schemas to match
 -- the MODULES enabled in your installation).
-GRANT USAGE ON SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, calendar, entra, assistant TO "vantigo_app";
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, calendar, entra, assistant TO "vantigo_app";
-GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, calendar, entra, assistant TO "vantigo_app";
+GRANT USAGE ON SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, inventory, calendar, entra, assistant TO "vantigo_app";
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, inventory, calendar, entra, assistant TO "vantigo_app";
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, inventory, calendar, entra, assistant TO "vantigo_app";
 ```
 
 ## Background workers and scaling
@@ -490,7 +490,7 @@ registration ([Microsoft Entra ID](/en/admin/entra/#outlook-connection)). The AP
 prefixes remain `/api/v1/identity`, `/api/v1/customers`, `/api/v1/products`,
 `/api/v1/energy`, `/api/v1/communications`, `/api/v1/projects`, `/api/v1/time`,
 `/api/v1/expenses`, `/api/v1/invoices`, `/api/v1/staff`, `/api/v1/planning`,
-`/api/v1/calendar`, `/api/v1/entra` and `/api/v1/assistant`.
+`/api/v1/inventory`, `/api/v1/calendar`, `/api/v1/entra` and `/api/v1/assistant`.
 
 For example, with nginx:
 
@@ -797,6 +797,17 @@ running by a restart, and `assistant-retention`, which deletes conversations pas
 retention and those of people identity has erased. Rolling the migration back drops the
 schema with every conversation. See [Assistant](/en/user/assistant/) and the [Assistant
 reference](/en/reference/assistant/).
+
+**The release with Inventory.** It brings `00108_inventory_baseline.sql`, the `inventory`
+schema with no sites, no locations and no stock. An installation that leaves `MODULES`
+unset gets the module, and its **Inventory** tile for everyone given
+`inventory:locations-view` or `inventory:stock-view`, on upgrade; one that lists
+`MODULES` gets it once `inventory` is added beside `products`, which it requires —
+`inventory` without `products` refuses to start. The six permissions are new and held
+by no custom role until an Owner adds them. A least-privilege role needs the
+`inventory` schema granted ([Database roles](#database-roles)). It starts no worker and
+needs no setting; there is nothing else to do. Rolling the migration back drops the
+schema with every site, location and movement. See [Inventory](/en/user/inventory/).
 
 **The release with Staff competence.** It brings `00066_staff_competence.sql`: the
 competence catalogue — five categories and fifteen Norwegian certificates seeded — and

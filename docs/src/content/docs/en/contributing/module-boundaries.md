@@ -18,6 +18,7 @@ sources:
   - apps/expenses/frontend/eslint.config.js
   - apps/invoices/frontend/eslint.config.js
   - apps/planning/frontend/eslint.config.js
+  - apps/inventory/frontend/eslint.config.js
   - apps/assistant/frontend/eslint.config.js
   - apps/products/frontend/eslint.config.js
   - apps/projects/frontend/eslint.config.js
@@ -27,7 +28,7 @@ sources:
 Vantigo is a modular monolith: one Go binary, one container, one PostgreSQL
 database — with strict module boundaries so any module can later be extracted into
 its own deployable without a rewrite. Customers, Products, Energy, Communications,
-Projects, Time, Expenses, Invoices, Staff, Calendar, Entra, Planning and Assistant are vertical-slice modules composed only
+Projects, Time, Expenses, Invoices, Staff, Calendar, Entra, Planning, Inventory and Assistant are vertical-slice modules composed only
 by `cmd/vantigo`, on the Identity platform.
 
 Modules never reference each other directly. Synchronous cross-module needs go
@@ -160,15 +161,16 @@ Communications' outbox is the working example.
    server — reads the rest of `Deps` while it is built; `module.Workers` leaves it nil,
    as no worker reads it. Two providers are a compose error naming both, and a panic in
    Workers.
-   Six slots are *many-provider* instead — any number of modules may fill them,
+   Seven slots are *many-provider* instead — any number of modules may fill them,
    and Compose collects them in module order: `Workers` (background work, from
    the enabled modules), `CalendarSources` (`contracts.CalendarSource`, rule 12,
    from the enabled modules too), `IdentityProvisioners`
    (`contracts.IdentityProvisioner`, rule 13, from the enabled modules too),
    `CustomerReferences`
    (`contracts.CustomerReferenceHolder`, rule 8), `CustomerPersonalData`
-   (`contracts.CustomerPersonalData`, rule 9) and `InvoicedWork`
-   (`contracts.InvoicedWorkHolder`, rule 10), the last three from every module
+   (`contracts.CustomerPersonalData`, rule 9), `InvoicedWork`
+   (`contracts.InvoicedWorkHolder`, rule 10) and `VariantReferences`
+   (`contracts.VariantReferenceHolder`, rule 20), the last four from every module
    Compose is given, enabled or not — see [Turning a module off](#turning-a-module-off).
    `CalendarSources` is collected from enabled modules only, by Compose and by
    Workers alike, because a source is a read under the module's own permission: a
@@ -276,7 +278,8 @@ Communications' outbox is the working example.
    both customer rows locked. The holder runs its own SQL, on its own schema,
    from its own package — so rules 1, 4 and 6 hold as they do for a read — never
    begins or ends a transaction, never reads a directory (no in-process lookup
-   happens under a lock anywhere in this codebase), and tolerates a reference
+   happens under a lock anywhere in this codebase but the variant's, rules 20 and
+   21), and tolerates a reference
    that already points at the surviving customer. Today's holders are projects,
    energy, communications and invoices ([Merging duplicates](/en/reference/customers/#merging-duplicates)).
    Another write direction needs a design of its own, not a second holder-shaped
@@ -866,6 +869,62 @@ Communications' outbox is the working example.
     user is still known and is kept. A module that is handed the erasure instead — a customer's,
     through `contracts.CustomerPersonalData` (rule 9) — keeps rule 9's discipline. Tested with a user
     identity does not know and the sweep run on the module's own worker.
+    Not every row naming a user is swept: Inventory's movements are immutable records of the
+    stock ledger and keep the poster's user id and display name after the person is erased,
+    which its reference states ([Inventory](/en/reference/inventory/)).
+
+20. **Stock a variant holds is asked for inside Products' transaction.** Rule 8's
+    holders write under the caller's lock; this one only answers, and is made for
+    deleting a variant: `contracts.VariantReferenceHolder`. A module that keeps stock, or
+    another fact, of a product variant in its own schema declares
+    `Module.VariantReferences`, and the products module calls every holder **inside its
+    own transaction** — the one that deletes a variant, and the one that turns a Goods
+    product into a Service — after it has locked the variants `FOR UPDATE` (the one
+    variant; every variant of the product, in id order, for the type change) and before
+    it writes. `VariantHeld(ctx, tx, variantID)` answers nil or a `contracts.VariantHold`,
+    a quantity in the variant's own unit as a decimal and the number of places it lies
+    in; the first hold refuses the write with 409 (*Variant has stock*, *Product has
+    stock*), and the unit in the refusal comes from Products' own row. The holder keeps
+    rule 8's discipline: it runs its own SQL, on its own schema, from its own package —
+    so rules 1, 4 and 6 hold as they do for any read — on the caller's `tx`, never on a
+    pool; never begins, commits or rolls back a transaction; never reads a directory or
+    any other contract, and never calls back into Products; and locks nothing of its own
+    beyond what its read takes, because every writer of its rows holds `FOR SHARE` on the
+    variant (rule 21) and so has committed, or waits, before the answer is read. It is
+    collected from every module Compose is given, enabled or not, as rule 8's holders
+    are: every schema is migrated whatever `MODULES` says, and stock in a disabled
+    module's schema is still stock. Only products calls the slot. Today's one holder is
+    inventory, which sums its balances
+    ([Products](/en/reference/products/#contracts-for-other-modules),
+    [Inventory](/en/reference/inventory/)). A second question a variant's write must
+    ask is a method on this holder, not a second slot — the roadmap already plans one,
+    the lot tracking mode that may change only at zero stock.
+21. **One locking read, on the caller's transaction.** Every other contract call is
+    made on the provider's pool, with the request's context, **before** the caller opens
+    a transaction (rule 8's reason: no in-process lookup under a lock), through an
+    accessor in the caller's `contractscalls.go` that refuses one made inside.
+    `contracts.ProductCatalog.LockVariants(ctx, tx, ids)` is the one exception (the
+    Inventory design I22): it takes `FOR SHARE OF` the variants' rows **and** their
+    products' rows — where type and status live — in variant id order, and answers the
+    entries, an id that does not exist simply absent. Its rules:
+    - **It runs on the caller's `tx`, never on the pool.** It never begins, commits or
+      rolls back the transaction, so it takes no second connection under the caller's
+      locks. `tx` is a platform type (`pgx.Tx`), as in `contracts.InvoicedWorkHolder`, so
+      `internal/contracts` still carries no store type.
+    - **Products' rows are locked before the caller's, everywhere.** A posting calls it
+      first, before it touches a row of its own; Products' variant delete and type change
+      lock the variant rows first too and ask the holders (rule 20) after. A writer of a
+      variant and a writer of its stock can therefore only wait on each other in one
+      direction, and the share lock is what makes rule 20's answer true: a receipt has
+      either committed before the delete reads the holders or waits behind it.
+    - **The provider never calls back.** Products reads no contract and calls no module
+      while it holds the lock it took for the caller.
+    - **It is the one contract call a module may make inside its own transaction.**
+      Inventory routes it through its own accessor, `lockVariants`, apart from every
+      other call, which still goes before the transaction; its test harness, which
+      fails a test on any call out of the module made inside one of its transactions,
+      exempts exactly `Products.LockVariants`. A second locking read needs a design of its
+      own and a rule here.
 
 ## The AI platform
 
@@ -1018,6 +1077,20 @@ none is a numbered rule above because no module reaches into another.
 - **Rule 19**: by test. The Assistant's erasure test seeds conversations, runs and a switch for a
   user identity does not know, runs the module's retention cycle, and proves they are gone while a
   living user's and a disabled user's are not.
+- **Rule 20**: by shape and by test, as rule 8. `VariantHeld` is handed the caller's
+  `pgx.Tx` and its builder sees only `Deps`; its SQL is in the holder's own `queries/`,
+  so rule 4's scan covers it. Products' tests ask a fake holder set by
+  `modtest.WithVariantReferenceHolders` and prove the delete and the Goods→Service change
+  are refused while it holds, and pass once it does not, that the last-variant 409 comes
+  before any holder is asked, and that a type change keeping or gaining Goods never asks
+  (`variant_holds_test.go`).
+- **Rule 21**: by test. Products' `TestCatalog_LockVariants_AnswersAndHoldsOnTheCallersTransaction`
+  proves the share lock is taken on the transaction it is handed and held until that
+  transaction ends; `TestDeleteVariant_WaitsForAPostingHoldingTheVariant` holds it in a
+  transaction of its own and proves a delete waits behind it and then sees what the
+  posting left. Inventory's contract-call hook (`SetContractCallHook`, installed once in
+  `main_test.go`) records every call out of the module made inside one of its
+  transactions, and the harness fails the test on any but `Products.LockVariants`.
 - **The harness**, `apps/server/internal/modtest`, is what these tests mount their
   modules through: an in-process installation on a real, migrated PostgreSQL database,
   the real server stack over `module.Compose` with identity beside the module under
@@ -1064,7 +1137,7 @@ MODULES=customers,products
 ```
 
 Unset enables every module this binary can mount
-(`customers,products,energy,communications,projects,time,expenses,invoices,staff,calendar,entra,planning,assistant`). Identity is always mounted and
+(`customers,products,energy,communications,projects,time,expenses,invoices,staff,planning,inventory,calendar,entra,assistant`). Identity is always mounted and
 is never listed. Entries are trimmed and lower-cased, empty entries are ignored, and a
 name the binary does not know fails startup naming both the value and the known set.
 
@@ -1077,7 +1150,9 @@ end up with endpoints mapped whose permissions were never contributed.
 module later needs no migration. For the same reason a disabled module still
 contributes its `CustomerReferenceHolder` (rule 8): a module that was on once and is
 off now still has rows naming customers, and a merge that skipped them would leave them
-on the absorbed customer for good. A holder needs only the caller's transaction and its
+on the absorbed customer for good. Its `VariantReferenceHolder` (rule 20) is collected
+the same way: stock in a switched-off Inventory's schema is still stock, and a variant
+deleted under it would leave balances naming nothing. A holder needs only the caller's transaction and its
 own schema, both there whatever `MODULES` says. Its `CustomerPersonalData` (rule 9) is
 collected the same way and for the same reason: a switched-off module still holds what
 it held about a person, and an anonymisation must still take it out.
@@ -1093,7 +1168,9 @@ called only by Staff's accounts worker, the slot's one consumer, so `entra` with
 `staff` would hold a tenant's credential nothing uses and is rejected too (`entra
 requires staff`). Planning books Staff's people on Projects' projects, so `planning`
 requires both `projects` and `staff` (`planning requires projects`, `planning requires
-staff`). Assistant requires nobody: it reaches the other modules only through the dispatcher, which
+staff`). Inventory keeps stock of the catalog's variants and reads and locks them
+through `contracts.ProductCatalog`, so `inventory` without `products` is rejected
+(`inventory requires products`), and its `Mount` refuses a nil catalog besides. Assistant requires nobody: it reaches the other modules only through the dispatcher, which
 lists whichever are enabled, and it is of use only while `AI_PROVIDER` is set. A module that starts requiring
 another module's contract adds its own check in `internal/config`.
 
@@ -1401,6 +1478,20 @@ composed — its builder answers nil otherwise, since Planning does not require 
 calendar and nothing would read the source. It has no background worker. With `planning` off
 nothing else changes. See [Planning](/en/reference/planning/#contracts-consumed).
 
+**Inventory depends on Products.** It consumes `contracts.ProductCatalog` (products,
+**required**): `Variants`, `VariantsOfProduct`, `LookupCode` and `SearchVariants` on
+the pool, through its accessors in `internal/inventory/contractscalls.go`, **before** a
+transaction opens, and `LockVariants` on the posting's own transaction, first, through
+an accessor of its own (rule 21). Identity's `Deps.Users` gives it the poster's name and
+`Deps.Calendar` the business time zone its movement filters and its week are judged in,
+both before a transaction. It fills the many-provider `VariantReferences` slot (rule 20)
+with its balances, so Products refuses to delete a variant, or to turn its product into
+a service, while it lies anywhere. It provides no single-provider contract and has no
+background worker. The host composes its Stock card on Products' product page through
+the `extraPanels` slot `@vantigo/products-ui` opens (rule 7). With `inventory` off
+nothing else changes, but its holder still answers for the stock in its schema. See
+[Inventory](/en/reference/inventory/).
+
 **The Assistant reads identity and calls the contract.** It is the one module that receives
 `Deps.Operations`, the platform's dispatcher (rule 18): its tools search, describe and call the
 operations of the enabled modules as the signed-in person, so it imports none of them and none
@@ -1465,7 +1556,8 @@ ID](/en/reference/entra/#the-graph-client).
 A module that fills a many-provider slot sets the field on its `module.Module` and
 keeps that slot's rule: `CustomerReferences`, `CustomerPersonalData` and `InvoicedWork`
 run on the caller's transaction (rules 8–10) and are collected whether or not the
-module is on; `CalendarSource`, for a module with time-bound rows about a person, is
+module is on, and so does `VariantReferences`, for a module keeping stock or another fact
+of a product variant, which only answers what it holds (rule 20); `CalendarSource`, for a module with time-bound rows about a person, is
 its own gatekeeper (rule 12), is collected from enabled modules only, and needs a
 `calendar_source_test.go` in the module proving it answers the caller's rows with its
 gate held and nothing without it; `IdentityProvisioner`, for a module driving an

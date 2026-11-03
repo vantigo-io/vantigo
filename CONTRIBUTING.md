@@ -133,6 +133,7 @@ vantigo/
 │   │       ├── invoices/            # Invoices vertical slice (the sales document)
 │   │       ├── staff/               # Staff vertical slice (the workforce register)
 │   │       ├── planning/            # Planning vertical slice (who works on what)
+│   │       ├── inventory/           # Inventory vertical slice (stock in sites and locations)
 │   │       ├── calendar/            # Calendar vertical slice
 │   │       ├── entra/               # Microsoft Entra ID (accounts in the tenant, for Staff)
 │   │       ├── assistant/           # Assistant vertical slice (conversations, runs and tools)
@@ -158,6 +159,7 @@ vantigo/
 │   ├── invoices/frontend/           # @vantigo/invoices-ui
 │   ├── staff/frontend/              # @vantigo/staff-ui
 │   ├── planning/frontend/           # @vantigo/planning-ui
+│   ├── inventory/frontend/          # @vantigo/inventory-ui
 │   ├── calendar/frontend/           # @vantigo/calendar-ui
 │   ├── entra/frontend/              # @vantigo/entra-ui
 │   └── assistant/frontend/          # @vantigo/assistant-ui
@@ -221,7 +223,7 @@ own deployable without a rewrite.
 
 One PostgreSQL database, one schema per module: `identity`, `customers`, `products`,
 `energy`, `communications`, `projects`, `time`, `expenses`, `invoices`, `staff`,
-`planning`, `calendar`, `entra` and `assistant`. Schemas are hard boundaries:
+`planning`, `inventory`, `calendar`, `entra` and `assistant`. Schemas are hard boundaries:
 
 - **No cross-schema foreign keys or joins.** Reference other modules' data by
   opaque ID only. This is what keeps a future "move this schema to its own
@@ -308,8 +310,8 @@ Navigation — *one pattern per level*, so every page reads the same way:
 - **Versioned APIs** — Identity lives under `/api/v1/identity`; business modules use
   `/api/v1/customers`, `/api/v1/products`, `/api/v1/energy`,
   `/api/v1/communications`, `/api/v1/projects`, `/api/v1/time`, `/api/v1/expenses`,
-  `/api/v1/invoices`, `/api/v1/staff`, `/api/v1/planning`, `/api/v1/calendar`,
-  `/api/v1/entra` and `/api/v1/assistant`.
+  `/api/v1/invoices`, `/api/v1/staff`, `/api/v1/planning`, `/api/v1/inventory`,
+  `/api/v1/calendar`, `/api/v1/entra` and `/api/v1/assistant`.
 - **In-process contracts** — module collaboration uses `internal/contracts`, not
   service-to-service API keys.
 - **Form-friendly errors** — validation errors use camelCase JSON field paths.
@@ -324,8 +326,8 @@ All endpoints are versioned by URL segment. Each module's own contract lives in
 enabled modules at `GET /api/openapi.json` (session required). Module prefixes are
 `/api/v1/identity`, `/api/v1/customers`, `/api/v1/products`, `/api/v1/energy`,
 `/api/v1/communications`, `/api/v1/projects`, `/api/v1/time`, `/api/v1/expenses`,
-`/api/v1/invoices`, `/api/v1/staff`, `/api/v1/planning`, `/api/v1/calendar`,
-`/api/v1/entra` and `/api/v1/assistant`. Every other
+`/api/v1/invoices`, `/api/v1/staff`, `/api/v1/planning`, `/api/v1/inventory`,
+`/api/v1/calendar`, `/api/v1/entra` and `/api/v1/assistant`. Every other
 `/api` path answers the catch-all 404 problem.
 
 Errors are RFC 7807 problem responses written by `internal/httpx`; validation errors
@@ -532,9 +534,9 @@ that does not match `identity.yaml` fails the test that produced it. `go test
 must have been exercised by at least one successful exchange, with no allow-list, so a newly
 added operation without a passing test fails the whole package.
 
-### Customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, calendar, entra and assistant
+### Customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, inventory, calendar, entra and assistant
 
-Thirteen business modules mount on that platform, each serving its own contract and
+Fourteen business modules mount on that platform, each serving its own contract and
 owning its own schema:
 
 - `internal/customers` → `/api/v1/customers/*` from `openapi/customers.yaml`:
@@ -596,6 +598,16 @@ owning its own schema:
   (staff, **required**) and `contracts.UserDirectory`, so `planning` **requires both
   `projects` and `staff`**. See
   [`docs/src/content/docs/en/reference/planning.md`](docs/src/content/docs/en/reference/planning.md).
+- `internal/inventory` → `/api/v1/inventory/*` from `openapi/inventory.yaml`: the
+  stock of the catalog's goods in warehouses and stores — sites, each a tree of
+  locations, and the ledger of immutable movements (adjustments, moves and goods
+  receipts) that changes the balances, the product's stock, a location's contents, the
+  lookup by code and the stats. It consumes `contracts.ProductCatalog` (products,
+  **required**), reading and locking variants through it, and `contracts.UserDirectory`,
+  and fills the `VariantReferences` slot, so Products refuses to delete a variant that
+  holds stock. `inventory` **requires `products`**, and the module refuses to mount
+  without a catalog. See
+  [`docs/src/content/docs/en/reference/inventory.md`](docs/src/content/docs/en/reference/inventory.md).
 - `internal/calendar` → `/api/v1/calendar/*` from `openapi/calendar.yaml`: one
   calendar per person — the appointments it owns beside what every enabled module
   projects onto it through `contracts.CalendarSource`, invitations, the feed and the
@@ -609,7 +621,7 @@ owning its own schema:
 
 `MODULES` chooses which of them a deployment serves: a comma-separated list,
 parsed once at startup, defaulting to
-`customers,products,energy,communications,projects,time,expenses,invoices,staff,planning,calendar,entra,assistant` — every module
+`customers,products,energy,communications,projects,time,expenses,invoices,staff,planning,inventory,calendar,entra,assistant` — every module
 this binary can mount. Identity is always mounted and is never
 listed. A name the binary does not know fails
 startup, naming the name and the known set. `energy`, `communications` and
@@ -619,8 +631,9 @@ them without `customers` fails startup naming both; `time` reads projects throug
 `invoices` reads its buyer through `contracts.CustomerDirectory`, so `invoices`
 without `customers` fails too, `planning` reads projects through
 `contracts.ProjectDirectory` and people through `contracts.Workforce`, so `planning`
-without `projects` or without `staff` fails startup, and `entra` without `staff` fails
-the same way.
+without `projects` or without `staff` fails startup, `inventory` reads and locks
+variants through `contracts.ProductCatalog`, so `inventory` without `products` fails
+startup, and `entra` without `staff` fails the same way.
 `expenses`, `staff`, `calendar` and `assistant` have no such dependency check — each starts with or
 without any other module. A disabled module
 contributes no route, no permission and no contract path, and its paths answer

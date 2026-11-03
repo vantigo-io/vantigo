@@ -71,6 +71,12 @@ dialog is the same as when creating, with two additions: **Type** can be switche
 Editing a product changes only its shared details; SKU, unit, cost, logistics and prices
 belong to the variant and are changed on the product page instead.
 
+While Inventory is in use, a **Goods** product whose variants still lie in stock cannot
+become a **Service**: saving says **The product has stock** — *A variant of this product
+still has stock. Move the stock or adjust it to zero before you make the product a
+service.* Move the stock or adjust it to zero in [Inventory](/en/user/inventory/) first.
+Changing a service into goods is always allowed.
+
 ## The product page
 
 Clicking a product opens its page, with the status badge next to the name. The
@@ -80,6 +86,12 @@ category** with its rate, **Current price** in every currency that has one, and 
 description. For goods, a **Logistics** section shows **Weight** and **Dimensions
 (L×W×H)**, or says that none are recorded. Below are the **Prices** card and, when the
 product has more than one variant, the **Variants** card.
+
+When your organisation uses Inventory and you hold `inventory:locations-view` and
+`inventory:stock-view`, a **Stock** card sits above **Prices**: the total on hand, and
+the stock per site, each opening to the locations where the item lies — per variant
+when the product has several. A service has no Stock card. See
+[Inventory](/en/user/inventory/).
 
 ## Variants and units
 
@@ -102,6 +114,13 @@ dialogs ask for:
 Click **Save variant**. Vantigo refuses to change a SKU once the product is no longer a
 draft, refuses a SKU or barcode that another variant already uses, and refuses to remove
 the last variant (**A product must keep at least one variant.**).
+
+The bin asks first: **Delete variant** — *Delete the variant {SKU}? Its prices are
+deleted with it.* — and **Delete** removes the variant with its prices. A variant that
+still lies in stock cannot be deleted: the app says **This variant still has stock** —
+*Move the stock or adjust it to zero before you delete the variant.* When you can see
+stock, the message links **See where it lies** to the variant's stock in Inventory. A
+variant with stock movements in its history but nothing in stock may be deleted.
 
 The barcode, weight and dimensions on the product page are variant fields too, but the
 app does not edit them; they are set through the API.
@@ -185,6 +204,9 @@ products to another tax category first.
   product's name, SKU and unit to everyone on the project, even without a products
   permission. See
   [billing lines](/en/reference/projects/#billing-lines-and-the-optional-products-dependency).
+- **Inventory** — keeps the stock of the **Goods** variants on the locations of each
+  site, and adds the **Stock** card to the product page. See
+  [Inventory](/en/user/inventory/).
 - **Invoices** — invoice lines are written on the invoice itself (description,
   quantity, unit, unit price and VAT code) and do not read the catalog. See the
   [Invoices reference](/en/reference/invoices/).
