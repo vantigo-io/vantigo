@@ -96,6 +96,8 @@ export const SupplyTermsModal = ({
     },
     onSuccess: () => {
       void client.invalidateQueries({ queryKey: ["energy", "metering-points", meteringPointId, "supply-periods"] });
+      // The point itself: its electricity-tax suggestion reads the current customer.
+      void client.invalidateQueries({ queryKey: ["energy", "metering-points", meteringPointId], exact: true });
       void client.invalidateQueries({ queryKey: ["energy", "customers"] });
       void client.invalidateQueries({ queryKey: ["energy", "tariffs"] });
       onClose();

@@ -80,8 +80,11 @@ export const MeteringPointDetailsPage = ({
   const suggestion = point.electricityTaxSuggestion;
   const endMutation = useMutation({
     mutationFn: (periodId: number) => endSupplyPeriod(meteringPointId, periodId, new Date().toISOString()),
-    onSuccess: () =>
-      void client.invalidateQueries({ queryKey: ["energy", "metering-points", meteringPointId, "supply-periods"] }),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: ["energy", "metering-points", meteringPointId, "supply-periods"] });
+      // The point itself: its electricity-tax suggestion reads the current customer.
+      void client.invalidateQueries({ queryKey: ["energy", "metering-points", meteringPointId], exact: true });
+    },
     onError: (error) => notifications.show({ color: "red", title: t("couldNotEndPeriod"), message: error.message }),
   });
   const customerName = (period: SupplyPeriod) => period.customerName ?? t("customerNumber", { id: period.customerId });
