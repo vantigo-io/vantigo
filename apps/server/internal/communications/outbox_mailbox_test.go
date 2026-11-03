@@ -31,7 +31,7 @@ type stampingMailbox struct {
 	during func()
 }
 
-func (m *stampingMailbox) Send(ctx context.Context, mailbox string, mime []byte, bcc []string) error {
+func (m *stampingMailbox) Send(ctx context.Context, mailbox string, mime []byte, bcc []string) (contracts.SentMessage, error) {
 	if m.during != nil {
 		m.during()
 	}

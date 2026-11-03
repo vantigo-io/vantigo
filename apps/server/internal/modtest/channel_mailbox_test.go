@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 )
 
@@ -40,7 +42,7 @@ func TestFakeChannelMailbox(t *testing.T) {
 	}
 
 	mime := []byte("Message-Id: <1@vantigo.invalid>\r\n\r\nHello")
-	if err := f.Send(ctx, post.Mailbox, mime, []string{"hidden@example.com"}); err != nil {
+	if _, err := f.Send(ctx, post.Mailbox, mime, []string{"hidden@example.com"}); err != nil {
 		t.Fatalf("Send: %v", err)
 	}
 	mime[0] = 'X' // the fake keeps its own copy
@@ -49,11 +51,11 @@ func TestFakeChannelMailbox(t *testing.T) {
 		!slices.Equal(sent[0].Bcc, []string{"hidden@example.com"}) {
 		t.Errorf("Sent = %+v", sent)
 	}
-	if err := f.Send(ctx, "another", mime, nil); !errors.Is(err, contracts.ErrMailboxUnknown) {
+	if _, err := f.Send(ctx, "another", mime, nil); !errors.Is(err, contracts.ErrMailboxUnknown) {
 		t.Errorf("Send to a mailbox not held = %v, want ErrMailboxUnknown", err)
 	}
 	f.SetMaxMessage(int64(len(mime) - 1))
-	if err := f.Send(ctx, post.Mailbox, mime, nil); !errors.Is(err, contracts.ErrMailTooLarge) {
+	if _, err := f.Send(ctx, post.Mailbox, mime, nil); !errors.Is(err, contracts.ErrMailTooLarge) {
 		t.Errorf("Send over MaxMessage = %v, want ErrMailTooLarge", err)
 	}
 	f.SetMaxMessage(FakeChannelMailboxMaxMessage)
@@ -65,7 +67,7 @@ func TestFakeChannelMailbox(t *testing.T) {
 	if _, err := f.Check(ctx, post.Address); !errors.Is(err, contracts.ErrMailboxUnavailable) {
 		t.Errorf("Check while unavailable = %v, want ErrMailboxUnavailable", err)
 	}
-	if err := f.Send(ctx, post.Mailbox, mime, nil); !errors.Is(err, contracts.ErrMailboxUnavailable) {
+	if _, err := f.Send(ctx, post.Mailbox, mime, nil); !errors.Is(err, contracts.ErrMailboxUnavailable) {
 		t.Errorf("Send while unavailable = %v, want ErrMailboxUnavailable", err)
 	}
 	f.SetStatus(contracts.MailboxAvailable, contracts.MailboxTenantWide)
@@ -78,19 +80,19 @@ func TestFakeChannelMailbox(t *testing.T) {
 	if got := f.Forgotten(); !slices.Equal(got, []string{post.Mailbox, post.Mailbox}) {
 		t.Errorf("Forgotten = %v", got)
 	}
-	if err := f.Send(ctx, post.Mailbox, mime, nil); !errors.Is(err, contracts.ErrMailboxUnknown) {
+	if _, err := f.Send(ctx, post.Mailbox, mime, nil); !errors.Is(err, contracts.ErrMailboxUnknown) {
 		t.Errorf("Send after Forget = %v, want ErrMailboxUnknown", err)
 	}
 	if _, err := f.Check(ctx, post.Address); err != nil {
 		t.Fatalf("Check again: %v", err)
 	}
-	if err := f.Send(ctx, post.Mailbox, mime, nil); err != nil {
+	if _, err := f.Send(ctx, post.Mailbox, mime, nil); err != nil {
 		t.Errorf("Send after a new Check: %v", err)
 	}
 
 	boom := errors.New("boom")
 	f.FailWith("Send", boom)
-	if err := f.Send(ctx, post.Mailbox, mime, nil); !errors.Is(err, boom) {
+	if _, err := f.Send(ctx, post.Mailbox, mime, nil); !errors.Is(err, boom) {
 		t.Errorf("Send under FailWith = %v", err)
 	}
 	f.FailWith("Send", nil)
@@ -120,7 +122,7 @@ func TestFakeChannelMailbox_APersonalMailboxIsNotSentThrough(t *testing.T) {
 	if got, err := f.Check(ctx, "kari@example.com"); err != nil || got.Shared {
 		t.Errorf("Check of a personal mailbox = %+v, %v; want it answered, Shared false", got, err)
 	}
-	if err := f.Send(ctx, kari.Mailbox, []byte("x"), nil); !errors.Is(err, contracts.ErrMailboxUnknown) {
+	if _, err := f.Send(ctx, kari.Mailbox, []byte("x"), nil); !errors.Is(err, contracts.ErrMailboxUnknown) {
 		t.Errorf("Send from a personal mailbox = %v, want ErrMailboxUnknown", err)
 	}
 }
@@ -326,5 +328,45 @@ func TestFakeChannelMailbox_NotificationsAndMarks(t *testing.T) {
 	}
 	if err := f.Mark(ctx, post.Mailbox, "missing", contracts.MailMark{Kind: contracts.MailMarkRead}); !errors.Is(err, contracts.ErrMailItemGone) {
 		t.Errorf("Mark missing = %v, want ErrMailItemGone", err)
+	}
+}
+
+// Send answers the zero SentMessage, as Entra does, until SetSentMessage
+// tells the fake another (Google Workspace design G5); a refusal answers the
+// zero value whatever was set.
+func TestFakeChannelMailbox_SentMessage(t *testing.T) {
+	ctx := context.Background()
+	f := NewFakeChannelMailbox().WithKey("google")
+	post := contracts.ChannelMailboxInfo{Mailbox: "m1", Address: "post@example.com", Shared: true}
+	f.SetMailbox("post@example.com", post)
+	if _, err := f.Check(ctx, "post@example.com"); err != nil {
+		t.Fatalf("Check: %v", err)
+	}
+	if got, err := f.Send(ctx, post.Mailbox, []byte("x"), nil); err != nil || got != (contracts.SentMessage{}) {
+		t.Errorf("Send = %+v, %v; want the zero value", got, err)
+	}
+	want := contracts.SentMessage{MessageID: "<gmail@mail.gmail.com>", ThreadID: "t1"}
+	f.SetSentMessage(want)
+	if got, err := f.Send(ctx, post.Mailbox, []byte("x"), nil); err != nil || got != want {
+		t.Errorf("Send = %+v, %v; want %+v", got, err, want)
+	}
+	if got, err := f.Send(ctx, "unknown", []byte("x"), nil); err == nil || got != (contracts.SentMessage{}) {
+		t.Errorf("Send to an unknown mailbox = %+v, %v; want the zero value and a refusal", got, err)
+	}
+}
+
+// The personal fake answers what SetSentMessage set on a successful Send,
+// under the key WithKey gave it.
+func TestFakePersonalMailbox_SentMessage(t *testing.T) {
+	f := NewFakePersonalMailbox().WithKey("google")
+	if f.Key() != "google" || NewFakePersonalMailbox().Key() != "entra" || NewFakePersonalMailbox().DisplayName() != "Outlook" {
+		t.Errorf("Key = %q; default Key, DisplayName = %q, %q", f.Key(), NewFakePersonalMailbox().Key(), NewFakePersonalMailbox().DisplayName())
+	}
+	uid := uuid.New()
+	f.SetUser(uid, contracts.PersonalMailStatus{Available: true, Mailbox: "m", Address: "kari@example.com"})
+	want := contracts.SentMessage{MessageID: "<g@mail.gmail.com>", ThreadID: "t"}
+	f.SetSentMessage(want)
+	if got, err := f.Send(contracts.AsUser(context.Background(), uid), []byte("x"), nil); err != nil || got != want {
+		t.Errorf("Send = %+v, %v; want %+v", got, err, want)
 	}
 }

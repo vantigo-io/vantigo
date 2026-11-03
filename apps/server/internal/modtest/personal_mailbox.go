@@ -24,14 +24,15 @@ import (
 // It is safe for concurrent use: the outbox calls it from its own goroutine
 // while a test reads it.
 type FakePersonalMailbox struct {
-	mu         sync.Mutex
-	key        string
-	maxMessage int64
-	users      map[uuid.UUID]contracts.PersonalMailStatus
-	userErr    map[uuid.UUID]error
-	fail       map[string]error
-	sent       []FakePersonalSend
-	calls      []PersonalMailboxCall
+	mu          sync.Mutex
+	key         string
+	sentMessage contracts.SentMessage
+	maxMessage  int64
+	users       map[uuid.UUID]contracts.PersonalMailStatus
+	userErr     map[uuid.UUID]error
+	fail        map[string]error
+	sent        []FakePersonalSend
+	calls       []PersonalMailboxCall
 }
 
 // FakePersonalSend is one message a FakePersonalMailbox sent on a person's
@@ -164,9 +165,27 @@ func (f *FakePersonalMailbox) Status(ctx context.Context) (contracts.PersonalMai
 	return st, nil
 }
 
+// SetSentMessage makes every later successful Send answer m (Google
+// Workspace design G5); the zero value, as Entra answers, until it is called.
+func (f *FakePersonalMailbox) SetSentMessage(m contracts.SentMessage) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.sentMessage = m
+}
+
 // Send records the message for the caller in contracts.UserID(ctx), or refuses
-// it as the contract says.
-func (f *FakePersonalMailbox) Send(ctx context.Context, mime []byte, bcc []string) error {
+// it as the contract says, and answers what SetSentMessage set.
+func (f *FakePersonalMailbox) Send(ctx context.Context, mime []byte, bcc []string) (contracts.SentMessage, error) {
+	if err := f.send(ctx, mime, bcc); err != nil {
+		return contracts.SentMessage{}, err
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.sentMessage, nil
+}
+
+// send is Send's record or refusal.
+func (f *FakePersonalMailbox) send(ctx context.Context, mime []byte, bcc []string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	uid, ok := contracts.UserID(ctx)

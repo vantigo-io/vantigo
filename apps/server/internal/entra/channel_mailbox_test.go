@@ -187,7 +187,7 @@ func TestChannelMailbox_CheckAPersonalMailbox(t *testing.T) {
 		t.Errorf("%d rows for a personal mailbox, want none", n)
 	}
 	from := len(g.Calls())
-	if err := p.Send(context.Background(), info.Mailbox, channelMIME(""), nil); !errors.Is(err, contracts.ErrMailboxUnknown) {
+	if _, err := p.Send(context.Background(), info.Mailbox, channelMIME(""), nil); !errors.Is(err, contracts.ErrMailboxUnknown) {
 		t.Errorf("Send from a personal mailbox: %v, want ErrMailboxUnknown", err)
 	}
 	if calls := graphCalls(g, from); len(calls) != 0 || len(g.Sent()) != 0 {
@@ -252,7 +252,7 @@ func TestChannelMailbox_Send(t *testing.T) {
 	p := channelProvider(h)
 	info := checked(t, p, "post@nordlys.no")
 	from := len(g.Calls())
-	if err := p.Send(context.Background(), info.Mailbox, channelMIME(""), nil); err != nil {
+	if _, err := p.Send(context.Background(), info.Mailbox, channelMIME(""), nil); err != nil {
 		t.Fatalf("Send: %v", err)
 	}
 	sent := g.Sent()
@@ -274,17 +274,17 @@ func TestChannelMailbox_SendRefusedBeforeAnyCall(t *testing.T) {
 	info := checked(t, p, "post@nordlys.no")
 	ctx := context.Background()
 	from := len(g.Calls())
-	if err := p.Send(ctx, uuid.NewString(), channelMIME(""), nil); !errors.Is(err, contracts.ErrMailboxUnknown) {
+	if _, err := p.Send(ctx, uuid.NewString(), channelMIME(""), nil); !errors.Is(err, contracts.ErrMailboxUnknown) {
 		t.Errorf("a mailbox never checked: %v", err)
 	}
-	if err := p.Send(ctx, "not-an-id", channelMIME(""), nil); !errors.Is(err, contracts.ErrMailboxUnknown) {
+	if _, err := p.Send(ctx, "not-an-id", channelMIME(""), nil); !errors.Is(err, contracts.ErrMailboxUnknown) {
 		t.Errorf("not an id: %v", err)
 	}
-	if err := p.Send(ctx, info.Mailbox, bytes.Repeat([]byte("a"), 3_000_001), nil); !errors.Is(err, contracts.ErrMailTooLarge) {
+	if _, err := p.Send(ctx, info.Mailbox, bytes.Repeat([]byte("a"), 3_000_001), nil); !errors.Is(err, contracts.ErrMailTooLarge) {
 		t.Errorf("over MaxMessage: %v", err)
 	}
 	setMailChannels(t, o, false)
-	if err := p.Send(ctx, info.Mailbox, channelMIME(""), nil); !errors.Is(err, contracts.ErrMailboxUnavailable) {
+	if _, err := p.Send(ctx, info.Mailbox, channelMIME(""), nil); !errors.Is(err, contracts.ErrMailboxUnavailable) {
 		t.Errorf("the switch off: %v", err)
 	}
 	if calls := graphCalls(g, from); len(calls) != 0 || len(g.Sent()) != 0 {
@@ -305,7 +305,7 @@ func TestChannelMailbox_SendRefusedByGraph(t *testing.T) {
 	ctx := context.Background()
 	send := func() ([]graphtest.Call, error) {
 		from := len(g.Calls())
-		err := p.Send(ctx, info.Mailbox, channelMIME(""), nil)
+		_, err := p.Send(ctx, info.Mailbox, channelMIME(""), nil)
 		return graphCalls(g, from), err
 	}
 
@@ -356,7 +356,7 @@ func TestChannelMailbox_SendWithBccThroughADraft(t *testing.T) {
 	bcc := []string{"skjult@example.com", "arkiv@example.com"}
 
 	from := len(g.Calls())
-	if err := p.Send(ctx, info.Mailbox, mime, bcc); err != nil {
+	if _, err := p.Send(ctx, info.Mailbox, mime, bcc); err != nil {
 		t.Fatalf("Send with Bcc: %v", err)
 	}
 	sent := g.Sent()
@@ -372,7 +372,7 @@ func TestChannelMailbox_SendWithBccThroughADraft(t *testing.T) {
 	}
 
 	g.DropDraftBcc(true)
-	if err := p.Send(ctx, info.Mailbox, mime, bcc); !errors.Is(err, contracts.ErrBccUnsupported) {
+	if _, err := p.Send(ctx, info.Mailbox, mime, bcc); !errors.Is(err, contracts.ErrBccUnsupported) {
 		t.Errorf("a draft without its Bcc: %v, want ErrBccUnsupported", err)
 	}
 	g.DropDraftBcc(false)
@@ -381,7 +381,7 @@ func TestChannelMailbox_SendWithBccThroughADraft(t *testing.T) {
 	}
 
 	g.FailNextDraftSend(http.StatusForbidden)
-	if err := p.Send(ctx, info.Mailbox, mime, bcc); !errors.Is(err, contracts.ErrMailboxDenied) {
+	if _, err := p.Send(ctx, info.Mailbox, mime, bcc); !errors.Is(err, contracts.ErrMailboxDenied) {
 		t.Errorf("the draft's send refused: %v, want ErrMailboxDenied", err)
 	}
 	if len(g.Sent()) != 1 || len(g.Drafts()) != 0 {
@@ -408,7 +408,7 @@ func TestChannelMailbox_Forget(t *testing.T) {
 	if n := h.Count(t, `SELECT count(*) FROM entra.channel_mailboxes`); n != 0 {
 		t.Errorf("%d rows after Forget", n)
 	}
-	if err := p.Send(ctx, info.Mailbox, channelMIME(""), nil); !errors.Is(err, contracts.ErrMailboxUnknown) {
+	if _, err := p.Send(ctx, info.Mailbox, channelMIME(""), nil); !errors.Is(err, contracts.ErrMailboxUnknown) {
 		t.Errorf("Send after Forget: %v", err)
 	}
 }
@@ -426,7 +426,7 @@ func TestChannelMailbox_SendALargeMessageWithBcc(t *testing.T) {
 	if len(mime) < 2<<20 || int64(len(mime)) > p.MaxMessage() {
 		t.Fatalf("the MIME is %d bytes, want over 2 MiB and within MaxMessage", len(mime))
 	}
-	if err := p.Send(context.Background(), info.Mailbox, mime, []string{"skjult@example.com"}); err != nil {
+	if _, err := p.Send(context.Background(), info.Mailbox, mime, []string{"skjult@example.com"}); err != nil {
 		t.Fatalf("Send of a large message with Bcc: %v", err)
 	}
 	if sent := g.Sent(); len(sent) != 1 || !bytes.Equal(sent[0].MIME, mime) || len(g.Drafts()) != 0 {

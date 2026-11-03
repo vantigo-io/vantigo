@@ -526,7 +526,7 @@ func (w *OutboxWorker) sendThroughMailbox(ctx context.Context, message store.Get
 	}
 	sendCtx, cancel := context.WithTimeout(ctx, outboxSendTimeout)
 	defer cancel()
-	if err := mailboxSend(sendCtx, provider, mailbox, mime, envelope.Bcc); err != nil {
+	if _, err := mailboxSend(sendCtx, provider, mailbox, mime, envelope.Bcc); err != nil {
 		return fmt.Errorf("communications: send outbound message through the mailbox: %w", err)
 	}
 	return nil
@@ -559,7 +559,7 @@ func (w *OutboxWorker) sendThroughPersonalMailbox(ctx context.Context, message s
 	sendCtx, cancel := context.WithTimeout(ctx, outboxSendTimeout)
 	defer cancel()
 	authorCtx := contracts.AsUser(sendCtx, *message.AuthorUserID)
-	if err := personalMailboxSend(authorCtx, provider, mime, envelope.Bcc); err != nil {
+	if _, err := personalMailboxSend(authorCtx, provider, mime, envelope.Bcc); err != nil {
 		return fmt.Errorf("communications: send outbound message through personal mailbox: %w", err)
 	}
 	return nil

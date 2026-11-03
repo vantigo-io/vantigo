@@ -246,7 +246,7 @@ func (o *outboundMail) sendMailbox(ctx context.Context, row store.GetChannelByID
 	if err != nil {
 		return err
 	}
-	err = mailboxSend(ctx, m, mailbox, mime, out.Bcc)
+	_, err = mailboxSend(ctx, m, mailbox, mime, out.Bcc)
 	switch {
 	case err == nil:
 		return nil

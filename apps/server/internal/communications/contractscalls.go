@@ -192,9 +192,9 @@ func (w *OutboxWorker) outboxMailbox(ctx context.Context, provider string) (cont
 // mailboxSend hands the provider one message whole, from mailbox, with its
 // blind copies beside it (M13). Never retried here: the outbox retries on its
 // backoff.
-func mailboxSend(ctx context.Context, m contracts.ChannelMailbox, mailbox string, mime []byte, bcc []string) error {
+func mailboxSend(ctx context.Context, m contracts.ChannelMailbox, mailbox string, mime []byte, bcc []string) (contracts.SentMessage, error) {
 	if err := noteContractCall(ctx, "ChannelMailbox.Send"); err != nil {
-		return err
+		return contracts.SentMessage{}, err
 	}
 	return m.Send(ctx, mailbox, mime, bcc)
 }
@@ -304,12 +304,12 @@ func personalMailStatus(ctx context.Context, m contracts.PersonalMailbox) (contr
 
 // personalMailboxSend sends mime through the author's delegated mailbox (M20).
 // The context must carry the author's user ID via contracts.AsUser(ctx, authorUserID).
-func personalMailboxSend(ctx context.Context, m contracts.PersonalMailbox, mime []byte, bcc []string) error {
+func personalMailboxSend(ctx context.Context, m contracts.PersonalMailbox, mime []byte, bcc []string) (contracts.SentMessage, error) {
 	if err := noteContractCall(ctx, "PersonalMailbox.Send"); err != nil {
-		return err
+		return contracts.SentMessage{}, err
 	}
 	if m == nil {
-		return contracts.ErrConnectionNeeded
+		return contracts.SentMessage{}, contracts.ErrConnectionNeeded
 	}
 	return m.Send(ctx, mime, bcc)
 }

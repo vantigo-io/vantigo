@@ -431,7 +431,7 @@ func TestUpdateChannel_EntraBackToSmtpLeavesAMailboxAnotherChannelTook(t *testin
 	if f := fake.Forgotten(); len(f) != 0 {
 		t.Errorf("forgotten = %v, want none: another channel uses the mailbox", f)
 	}
-	if err := fake.Send(context.Background(), info.Mailbox, []byte("x"), nil); err != nil {
+	if _, err := fake.Send(context.Background(), info.Mailbox, []byte("x"), nil); err != nil {
 		t.Errorf("Send through the mailbox the new channel uses: %v", err)
 	}
 }

@@ -44,16 +44,17 @@ import (
 // It is safe for concurrent use: the outbox calls it from its own goroutine
 // while a test reads it.
 type FakeChannelMailbox struct {
-	mu         sync.Mutex
-	key        string
-	status     contracts.MailboxStatus
-	maxMessage int64
-	byAddress  map[string]contracts.ChannelMailboxInfo // SetMailbox's, by lower-cased address
-	known      map[string]bool                         // the mailboxes Send may write to
-	fail       map[string]error                        // by method: FailWith
-	sent       []FakeSend
-	forgotten  []string
-	calls      []ChannelMailboxCall
+	mu          sync.Mutex
+	key         string
+	status      contracts.MailboxStatus
+	maxMessage  int64
+	byAddress   map[string]contracts.ChannelMailboxInfo // SetMailbox's, by lower-cased address
+	known       map[string]bool                         // the mailboxes Send may write to
+	fail        map[string]error                        // by method: FailWith
+	sent        []FakeSend
+	forgotten   []string
+	calls       []ChannelMailboxCall
+	sentMessage contracts.SentMessage
 
 	inbox     map[string]*fakeInbox // by mailbox
 	links     map[string]fakeMailDeltaLink
@@ -292,8 +293,27 @@ func (f *FakeChannelMailbox) Forget(_ context.Context, mailbox string) error {
 	return nil
 }
 
-// Send records the message, or refuses it as the contract says.
-func (f *FakeChannelMailbox) Send(_ context.Context, mailbox string, mime []byte, bcc []string) error {
+// SetSentMessage makes every later successful Send answer m (Google
+// Workspace design G5); the zero value, as Entra answers, until it is called.
+func (f *FakeChannelMailbox) SetSentMessage(m contracts.SentMessage) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.sentMessage = m
+}
+
+// Send records the message, or refuses it as the contract says, and answers
+// what SetSentMessage set.
+func (f *FakeChannelMailbox) Send(ctx context.Context, mailbox string, mime []byte, bcc []string) (contracts.SentMessage, error) {
+	if err := f.send(ctx, mailbox, mime, bcc); err != nil {
+		return contracts.SentMessage{}, err
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.sentMessage, nil
+}
+
+// send is Send's record or refusal.
+func (f *FakeChannelMailbox) send(_ context.Context, mailbox string, mime []byte, bcc []string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.calls = append(f.calls, ChannelMailboxCall{Method: "Send", Mailbox: mailbox})

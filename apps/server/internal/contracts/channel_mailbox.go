@@ -68,8 +68,9 @@ type ChannelMailbox interface {
 	// provider would not keep every blind copy, nothing sent. Acceptance is
 	// not delivery, and
 	// a failure after the provider took the message may send it again on a
-	// retry: at least once, as SMTP.
-	Send(ctx context.Context, mailbox string, mime []byte, bcc []string) error
+	// retry: at least once, as SMTP. It answers what the provider knows of
+	// the message it sent (SentMessage), the zero value when nothing.
+	Send(ctx context.Context, mailbox string, mime []byte, bcc []string) (SentMessage, error)
 
 	// Delta reads one page of the changes to folder ("inbox") of mailbox, a
 	// mailbox Check recorded: link "" starts afresh with the messages
@@ -113,6 +114,19 @@ type ChannelMailbox interface {
 	// that finds the folder already created re-reads and answers its id. The
 	// errors of Send otherwise.
 	EnsureFolder(ctx context.Context, mailbox, name string) (string, error)
+}
+
+// SentMessage is what a provider knows of a message it sent (Google
+// Workspace design G5): the Message-ID it left with as the provider sent it
+// — a provider may replace the one the MIME carried — and the provider's
+// thread id, each "" when the provider does not know it. Entra answers the
+// zero value: Graph keeps the Message-ID and its send answers no body. The
+// outbox records a ThreadID as the message's provider thread, and a
+// MessageID that differs from the message's own as its sent Message-ID, so
+// a reply to either threads.
+type SentMessage struct {
+	MessageID string
+	ThreadID  string
 }
 
 // MailMarkKind is the operation Mark performs on a message in the mailbox.
