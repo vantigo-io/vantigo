@@ -13,8 +13,18 @@ import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { setLanguagePreference } from "@vantigo/frontend-shell";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  type ConnectionButtonProps,
+  type ConnectionCardProps,
+  ConnectionCards,
+  type ConnectionProvider,
+  connectionButtonFor,
+  enabledConnectionProviders,
+  outcomeFor,
+  validateConnectionsSearch,
+} from "../../lib/connections";
 import { renderRoute } from "../../test/render-route";
-import { Route as ConnectionsRoute, validateConnectionsSearch } from "./connections";
+import { Route as ConnectionsRoute } from "./connections";
 import "../../i18n";
 
 // The card is the Entra package's own, tested there; here it only shows what the host hands it.
@@ -29,6 +39,7 @@ vi.mock("@vantigo/entra-ui", () => ({
       </section>
     );
   },
+  OutlookConnectButton: () => <p>Outlook button</p>,
 }));
 
 const renderConnections = (path: string) =>
@@ -56,6 +67,48 @@ describe("the Connections route's search", () => {
     expect(validateConnectionsSearch({ outlook: "failed", code: "<script>" })).toEqual({ outlook: "failed" });
     expect(validateConnectionsSearch({ outlook: "failed", code: "x".repeat(41) })).toEqual({ outlook: "failed" });
     expect(validateConnectionsSearch({ outlook: "failed", code: 7 })).toEqual({ outlook: "failed" });
+  });
+
+  it("keeps the neutral connection=<module> with its outcome, and a failure's code", () => {
+    expect(validateConnectionsSearch({ connection: "google", outcome: "complete" })).toEqual({
+      connection: "google",
+      outcome: "complete",
+    });
+    expect(validateConnectionsSearch({ connection: "google", outcome: "failed", code: "access_denied" })).toEqual({
+      connection: "google",
+      outcome: "failed",
+      code: "access_denied",
+    });
+  });
+
+  it("drops a neutral connection without its outcome, or one that is not a short word", () => {
+    expect(validateConnectionsSearch({ connection: "google" })).toEqual({});
+    expect(validateConnectionsSearch({ outcome: "complete" })).toEqual({});
+    expect(validateConnectionsSearch({ connection: "google", outcome: "maybe" })).toEqual({});
+    expect(validateConnectionsSearch({ connection: "Google!", outcome: "complete" })).toEqual({});
+    expect(validateConnectionsSearch({ connection: "g".repeat(41), outcome: "complete" })).toEqual({});
+    expect(validateConnectionsSearch({ connection: "google", outcome: "complete", code: "expired" })).toEqual({
+      connection: "google",
+      outcome: "complete",
+    });
+    expect(validateConnectionsSearch({ connection: "google", outcome: "failed", code: "<b>" })).toEqual({
+      connection: "google",
+      outcome: "failed",
+    });
+  });
+
+  it("hands each card only its own outcome: Entra's outlook=, any module's connection=", () => {
+    expect(outcomeFor("entra", { outlook: "failed", code: "tenant_mismatch" })).toEqual({
+      outcome: "failed",
+      code: "tenant_mismatch",
+    });
+    expect(outcomeFor("google", { outlook: "complete" })).toBeUndefined();
+    expect(outcomeFor("google", { connection: "google", outcome: "complete" })).toEqual({ outcome: "complete" });
+    expect(outcomeFor("entra", { connection: "google", outcome: "complete" })).toBeUndefined();
+    expect(outcomeFor("entra", { connection: "entra", outcome: "failed", code: "x" })).toEqual({
+      outcome: "failed",
+      code: "x",
+    });
   });
 
   it("is the route's", () => {
@@ -103,10 +156,76 @@ describe("the Connections route", () => {
     expect(history.length).toBe(1);
   });
 
-  it("is not found while the Entra module is off", () => {
+  it("is not found while no connection provider's module is on", () => {
     window.__VANTIGO_APP__ = { basePath: "/", title: "Vantigo", support: {}, modules: ["calendar"] };
     expect(() => (ConnectionsRoute.options.beforeLoad as () => void)()).toThrow();
     window.__VANTIGO_APP__ = { basePath: "/", title: "Vantigo", support: {}, modules: ["entra"] };
     expect(() => (ConnectionsRoute.options.beforeLoad as () => void)()).not.toThrow();
+  });
+});
+
+// Two stand-in providers: the list's composition is the host's; each provider's own rendering is its package's.
+const fakeCard =
+  (name: string) =>
+  ({ outcome }: ConnectionCardProps) => (
+    <p>
+      {name} card{outcome ? ` ${outcome.outcome}${outcome.code ? ` ${outcome.code}` : ""}` : ""}
+    </p>
+  );
+const fakeButton =
+  (name: string) =>
+  ({ feature, returnTo }: ConnectionButtonProps) => (
+    <p>
+      {name} button for {feature}, back to {returnTo}
+    </p>
+  );
+const twoProviders: ConnectionProvider[] = [
+  { module: "entra", Card: fakeCard("Entra"), Button: fakeButton("Entra") },
+  { module: "calendar", Card: fakeCard("Other"), Button: fakeButton("Other") },
+];
+
+describe("the host's list of connection providers", () => {
+  it("keeps the providers whose module is on, in the list's order", () => {
+    expect(enabledConnectionProviders(twoProviders, ["calendar", "entra"]).map((p) => p.module)).toEqual([
+      "entra",
+      "calendar",
+    ]);
+    expect(enabledConnectionProviders(twoProviders, ["calendar"]).map((p) => p.module)).toEqual(["calendar"]);
+    expect(enabledConnectionProviders(twoProviders, [])).toEqual([]);
+  });
+
+  it("renders every enabled provider's card, each with only its own outcome, and a disabled one's not", () => {
+    render(
+      <ConnectionCards
+        providers={enabledConnectionProviders(twoProviders, ["entra", "calendar"])}
+        search={{ connection: "calendar", outcome: "failed", code: "access_denied" }}
+        onReturn={() => {}}
+      />,
+    );
+    expect(screen.getByText("Entra card")).toBeInTheDocument();
+    expect(screen.getByText("Other card failed access_denied")).toBeInTheDocument();
+    cleanup();
+    render(
+      <ConnectionCards
+        providers={enabledConnectionProviders(twoProviders, ["calendar"])}
+        search={{}}
+        onReturn={() => {}}
+      />,
+    );
+    expect(screen.queryByText(/Entra card/)).not.toBeInTheDocument();
+    expect(screen.getByText("Other card")).toBeInTheDocument();
+  });
+
+  it("composes every enabled provider's button into the connection.button slot, and none when none is on", () => {
+    const both = connectionButtonFor(enabledConnectionProviders(twoProviders, ["entra", "calendar"]));
+    render(<div>{both?.({ feature: "mail", returnTo: "/communications/inbox" })}</div>);
+    expect(screen.getByText("Entra button for mail, back to /communications/inbox")).toBeInTheDocument();
+    expect(screen.getByText("Other button for mail, back to /communications/inbox")).toBeInTheDocument();
+    cleanup();
+    const one = connectionButtonFor(enabledConnectionProviders(twoProviders, ["calendar"]));
+    render(<div>{one?.({ feature: "calendar", returnTo: "/calendar/settings" })}</div>);
+    expect(screen.queryByText(/Entra button/)).not.toBeInTheDocument();
+    expect(screen.getByText("Other button for calendar, back to /calendar/settings")).toBeInTheDocument();
+    expect(connectionButtonFor(enabledConnectionProviders(twoProviders, ["customers"]))).toBeUndefined();
   });
 });
