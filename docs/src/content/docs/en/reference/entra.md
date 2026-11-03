@@ -1807,8 +1807,10 @@ installation's marker is never the module's: never adopted, deleted or answered 
 
 **The event** as Graph takes it: `subject`; `body` as `text`; `location.displayName`
 when there is one — on an update always, so a location dropped is cleared; `isAllDay`;
-`start` and `end`; `showAs` (`busy` when none was given; anything outside the five
-values refuses the op); `sensitivity` `private` or `normal`; `isReminderOn: false`; and
+`start` and `end`; `showAs` — the contract's value mapped to Graph's (Google Workspace
+design G10): `free`, `tentative`, `busy`, `out_of_office` as `oof` and
+`working_elsewhere` as `workingElsewhere`; `busy` when none was given, and anything
+outside the five refuses the op; `sensitivity` `private` or `normal`; `isReminderOn: false`; and
 the event marker carrying `vantigo:<client id>:` and the calendar's key — on a create
 always, and on an update when the op names a `Key`, the same value a copy already
 carries, so an event the calendar [took in](/en/reference/calendar/#new-events-in-the-vantigo-calendar)
@@ -1873,8 +1875,9 @@ person's mailbox. Neither decodes, logs or answers anything of what an event is 
 - Of each event it decodes `id`, `@removed`, `type`, `isAllDay`, `isCancelled`, `showAs`,
   `start` and `end` — **nothing else**; the subject, body, location, organizer and
   attendees Graph answers are read past. An event with `@removed` is its id alone,
-  `Removed`. `type` `occurrence` or `exception` is `Series`. `showAs` is matched to the
-  five values whatever its case, `""` for another. An event whose id breaks the id
+  `Removed`. `type` `occurrence` or `exception` is `Series`. `showAs` is matched to
+  Graph's five values whatever its case and answered as the contract's (`oof` as
+  `out_of_office`, `workingElsewhere` as `working_elsewhere`), `""` for another. An event whose id breaks the id
   rule above is left out before anything else, so neither the calendar's rows nor
   `Marked` ever see one. A timed event's `start` and `end`
   are instants (UTC as asked; a zone that is not is read as an IANA name, and one that
@@ -1956,7 +1959,7 @@ refused unsent — the events of the calendar, in the order asked:
   zone it was laid in, `originalStartTimeZone` — a Windows name mapped through CLDR's
   table, whatever its case, or an IANA name — the end inclusive, and, when that zone
   maps to no location, rounded to the nearest midnight as `Delta`'s are), `showAs`
-  matched to the five values, and `Private` for a `private` or `confidential`
+  matched to Graph's five values and answered as the contract's as `Delta`'s is, and `Private` for a `private` or `confidential`
   sensitivity. A 200 for another id than the one asked, whose body is not the JSON
   expected, or whose times do not read, is **skipped**, counted at debug level.
 - **404** for the item — not a mailbox gone — is answered in `Gone`: the event is not

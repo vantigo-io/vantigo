@@ -72,7 +72,7 @@ klikk på et element av den tar deg:
 | **Fravær** | Ditt eget fravær, søkt, godkjent eller registrert; et fravær du har søkt om, viser **Søkt om** under navnet til det er avgjort. Navnet og det ordet står på språket som er satt under **Språk** på personen din i Ansatte | åpner **Min side** på fanen **Fravær** |
 | **Allokeringer** | Dine egne bekreftede allokeringer i Bemanning, hele dagen gjennom allokeringens periode, med prosjektets kode og navn som tittel; hold pekeren over en for å lese belastningen. En tentativ allokering, planleggernes utkast, vises aldri | åpner **Min bemanning** i Bemanning |
 | **Abonnementer** | En hendelse i en kalender du abonnerer på fra et annet sted, i fargen du ga den ([Kalendere fra andre steder](#kalendere-fra-andre-steder)) | — |
-| **Outlook** | Tid du er opptatt i hovedkalenderen din i Outlook, tegnet skravert uten tittel: **Opptatt i Outlook**, **Foreløpig i Outlook**, **Ikke til stede** eller **Arbeider et annet sted**, etter hvordan hendelsen viser tiden din i Outlook. Bare mens [Synkroniser med Outlook](#synkroniser-med-outlook) er slått på | — |
+| **Outlook** | Tid du er opptatt i hovedkalenderen din i Outlook, tegnet skravert uten tittel: **Opptatt i Outlook**, **Foreløpig i Outlook**, **Ikke til stede** eller **Arbeider et annet sted**, etter hvordan hendelsen viser tiden din i Outlook. Bare mens [Synkroniser med Outlook](#synkroniser-med-outlook) er slått på. Brikken og merkene har navnet på kalenderen kontoen din er i — Outlook med Microsoft 365 | — |
 | **Helligdager** | Norges helligdager, skyggelagt på dagene sine | — |
 
 Avtaler har sitt eget utseende: en som ikke gjør deg opptatt (**Ledig**), tegnes med
@@ -479,11 +479,16 @@ Outlook](#endre-avtalene-dine-i-outlook): endringen kommer tilbake til Vantigo.
 Vantigo skriver til postboksen din med **din egen Outlook-tilkobling**, så du kobler til
 Outlook én gang først. Det kan du gjøre fra selve kortet.
 
+Kortet, bryteren og meldingene har navnet på kalenderen kontoen din er i — **Outlook**
+når organisasjonen din bruker Microsoft 365 — og opptatt-tiden som leses tilbake, merkes
+med det samme navnet. Så lenge Vantigo ikke kjenner noen konto for deg, heter kortet
+**Kalendersynkronisering**.
+
 1. Åpne **Kalender → Min kalender**. Kortet **Outlook** står under kalenderadressene
    dine.
 2. Under beskrivelsen på kortet velger du **Koble til Outlook** og logger på Microsoft. Du
    kommer tilbake til denne siden, og kortet sier **Tilkoblet som** og kontoen din.
-3. Slå på **Synkroniser til Outlook-kalenderen min**.
+3. Slå på **Synkroniser med Outlook**.
 4. Velg:
    - **Hvor** — **Hovedkalenderen min**, som viser tiden som opptatt for kolleger, eller
      **En egen Vantigo-kalender**, som er lett å skjule, men ikke gjør deg opptatt for
@@ -507,7 +512,7 @@ gjort det, synkroniserer Vantigo innen et par minutter, eller med en gang med
 
 **Koble til på nytt.** Microsoft ber deg av og til logge på igjen — passordet ditt er
 endret, organisasjonens påloggingsregler krevde det, eller det har gått lang tid. Kortet
-sier da **Microsoft vil at du logger på igjen: velg Koble til Outlook på nytt ovenfor.**
+sier da **Outlook vil at du logger på igjen: velg Koble til Outlook på nytt ovenfor.**
 Synkroniseringen tar en pause, og det som ligger i Outlook, blir som det var, til du
 velger **Koble til Outlook på nytt** og logger på; så fortsetter den der den slapp. Slår
 du av synkroniseringen mens den venter på at du kobler til på nytt, viser kortet fortsatt
@@ -560,22 +565,22 @@ la inn i Outlook, som når du slår av synkroniseringen; kortet ber deg så kobl
 
 Når bryteren ikke kan slås på, sier kortet hvorfor:
 
-- **Administratoren din har ikke slått på Outlook-tilkoblingen.** — en eier slår på
-  **Outlook-tilkobling** på Microsoft Entra ID-siden ([Microsoft Entra
-  ID](/nb/user/entra/#outlook-tilkobling)).
-- **Kalendersynkronisering krever modulen Microsoft Entra ID.** — installasjonen kjører
-  den ikke.
-- **Tilkoblingen til Microsoft 365 virker ikke akkurat nå.**
-- **Vantigo-brukeren din er ikke koblet til en Microsoft 365-konto som Vantigo
-  styrer.** — HR kobler personen din i Ansatte til Microsoft-kontoen din; Vantigo
+- **Kalendersynkronisering krever en modul som kobler Vantigo til organisasjonens
+  postbokser.** — installasjonen kjører ingen, for eksempel Microsoft Entra ID.
+- **Vantigo-brukeren din er ikke koblet til en konto i organisasjonens katalog som
+  Vantigo styrer.** — HR kobler personen din i Ansatte til Microsoft-kontoen din; Vantigo
   gjetter den aldri ut fra adressen din.
+- **Administratoren din har ikke slått på Outlook-tilkoblingen for ansatte.** — en eier
+  slår på **Outlook-tilkobling** på Microsoft Entra ID-siden ([Microsoft Entra
+  ID](/nb/user/entra/#outlook-tilkobling)).
+- **Tilkoblingen til Outlook virker ikke akkurat nå.**
 
 Når synkroniseringen har stoppet, sier kortet hvorfor i stedet for når den sist kjørte:
-**Koble til Outlook ovenfor for å starte synkroniseringen.**, **Microsoft vil at du
+**Koble til Outlook ovenfor for å starte synkroniseringen.**, **Outlook vil at du
 logger på igjen: velg Koble til Outlook på nytt ovenfor.**, **Organisasjonen din har ikke
 gitt Vantigo tilgang til postboksen din.** (Microsoft 365 avviste postboksen din — spør
-administratoren din), **Postboksen din ble ikke funnet.**, **Tilkoblingen til Microsoft
-365 virker ikke akkurat nå.** eller **Den siste synkroniseringen mislyktes; Vantigo
+administratoren din), **Postboksen din ble ikke funnet.**, **Tilkoblingen til Outlook
+virker ikke akkurat nå.** eller **Den siste synkroniseringen mislyktes; Vantigo
 prøver igjen.** Det siste trenger du ikke gjøre noe med: Vantigo prøver igjen, sjeldnere
 for hver gang. Mister du tilgangen til Kalender, fjernes kopiene dine. Slutter du, blir
 de liggende i postboksen din, som deaktiveres sammen med kontoen din.
