@@ -60,6 +60,8 @@ Skjemaet spør om:
 - **E-post** og **Telefon**, kundens egne; redigeres etterpå fra kundesiden.
 - **Status**: **Aktiv**, **Deaktivert** eller **Arkivert**.
 
+Trykk **Opprett kunde**, så åpnes siden til den nye kunden.
+
 Mens du skriver, viser **Eksisterende kunder med lignende navn** opptil tre kunder med
 navn som inneholder det du skrev — et hint om å se etter før du oppretter et duplikat.
 
