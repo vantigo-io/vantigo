@@ -710,6 +710,15 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description Conflict — titled Product has stock: the type changes from Goods to Service while a module holding one of its variants (Inventory) answers that it still lies somewhere. Products' problems carry no code. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
         };
     };
     deleteProductsById: {
@@ -989,7 +998,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict */
+            /** @description Conflict — titled Last variant: a product keeps at least one variant; or titled Variant has stock: a module holding the variant (Inventory) answers that it still lies somewhere, and detail says how much and in how many places. Products' problems carry no code, so a client tells them apart by title. */
             409: {
                 headers: {
                     [name: string]: unknown;

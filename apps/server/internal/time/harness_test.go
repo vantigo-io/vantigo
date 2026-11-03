@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"context"
 	"fmt"
+	"github.com/jackc/pgx/v5"
 	"maps"
 	"net/http"
 	"slices"
@@ -610,6 +611,23 @@ func (c *fakeCatalog) ListPrice(ctx context.Context, variantID int32, currency s
 		return nil, nil
 	}
 	return &contracts.Money{Amount: price, Currency: currency}, nil
+}
+
+// The catalog methods Inventory reads; Time asks none.
+func (c *fakeCatalog) VariantsOfProduct(context.Context, int32) ([]contracts.VariantEntry, error) {
+	return nil, nil
+}
+
+func (c *fakeCatalog) LookupCode(context.Context, string) ([]contracts.CodeMatch, error) {
+	return nil, nil
+}
+
+func (c *fakeCatalog) SearchVariants(context.Context, string, int) ([]contracts.VariantEntry, error) {
+	return nil, nil
+}
+
+func (c *fakeCatalog) LockVariants(context.Context, pgx.Tx, []int32) ([]contracts.VariantEntry, error) {
+	return nil, nil
 }
 
 // signIn seeds a caller holding time:access plus whatever else the test

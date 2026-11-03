@@ -135,6 +135,16 @@ type Deps struct {
 	// customers calls them, and only inside its merge transaction. nil when no
 	// module given holds customer ids.
 	CustomerReferenceHolders []contracts.CustomerReferenceHolder
+	// VariantReferenceHolders are every given module's
+	// contracts.VariantReferenceHolder (inventory design I23), enabled or not,
+	// in the order the modules were given — collected as
+	// CustomerReferenceHolders is, for its reason: stock in a disabled
+	// module's schema is still stock. Compose appends them to whatever the
+	// caller preset here (modtest.WithVariantReferenceHolders). Only products
+	// calls them, inside the transaction that deletes a variant or turns a
+	// product into a service, after it has locked the variants. nil when no
+	// module given holds variants.
+	VariantReferenceHolders []contracts.VariantReferenceHolder
 	// CustomerPersonalData is every given module's
 	// contracts.CustomerPersonalData (customers GDPR design D2), enabled or
 	// not, each under its module's name, in the order the modules were given —
@@ -453,6 +463,13 @@ type Module struct {
 	// would lack. A module holding no customer ids leaves it nil — time and
 	// expenses reach a customer only through a project.
 	CustomerReferences func(Deps) contracts.CustomerReferenceHolder
+	// VariantReferences builds this module's
+	// contracts.VariantReferenceHolder, if it keeps stock or another fact of a
+	// product variant that the variant's delete must not outrun (inventory
+	// design I23). Like CustomerReferences, any number of modules may set it,
+	// and it is called for a module MODULES leaves out too, so it must need
+	// nothing of Deps a disabled module would lack.
+	VariantReferences func(Deps) contracts.VariantReferenceHolder
 	// CustomerPersonalData builds this module's contracts.CustomerPersonalData,
 	// if it holds anything about a customer as a person (customers GDPR design
 	// D2). Like CustomerReferences, any number of modules may set it, and it is

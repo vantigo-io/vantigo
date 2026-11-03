@@ -1,7 +1,7 @@
 import { keepPreviousData, queryOptions } from "@tanstack/react-query";
 import { NotFoundError, request } from "./request";
 
-export { ApiValidationError, NotFoundError } from "./request";
+export { ApiConflictError, ApiValidationError, NotFoundError } from "./request";
 export const PRODUCT_TYPES = ["Goods", "Service"] as const;
 export type ProductType = (typeof PRODUCT_TYPES)[number];
 export type ProductStatus = "Draft" | "Active" | "Discontinued";

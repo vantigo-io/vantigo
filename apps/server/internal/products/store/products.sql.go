@@ -44,9 +44,168 @@ func (q *Queries) ArchiveProduct(ctx context.Context, arg ArchiveProductParams) 
 	return i, err
 }
 
+const catalogLockVariants = `-- name: CatalogLockVariants :many
+SELECT v.id, v.product_id, p.name AS product_name, v.sku, v.barcode, v.unit, p.type AS product_type, p.status AS product_status
+FROM products.product_variants v
+JOIN products.products p ON p.id = v.product_id
+WHERE v.id = ANY($1::int[])
+ORDER BY v.id
+FOR SHARE OF v, p
+`
+
+type CatalogLockVariantsRow struct {
+	ID            int32
+	ProductID     int32
+	ProductName   string
+	Sku           string
+	Barcode       *string
+	Unit          string
+	ProductType   string
+	ProductStatus string
+}
+
+// CatalogLockVariants is contracts.ProductCatalog.LockVariants: FOR SHARE on
+// the variants and their products, in variant id order, on the caller's
+// transaction (inventory design I22).
+func (q *Queries) CatalogLockVariants(ctx context.Context, ids []int32) ([]CatalogLockVariantsRow, error) {
+	rows, err := q.db.Query(ctx, catalogLockVariants, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []CatalogLockVariantsRow
+	for rows.Next() {
+		var i CatalogLockVariantsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.ProductID,
+			&i.ProductName,
+			&i.Sku,
+			&i.Barcode,
+			&i.Unit,
+			&i.ProductType,
+			&i.ProductStatus,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const catalogLookupCode = `-- name: CatalogLookupCode :many
+SELECT v.id, v.product_id, p.name AS product_name, v.sku, v.barcode, v.unit, p.type AS product_type, p.status AS product_status
+FROM products.product_variants v
+JOIN products.products p ON p.id = v.product_id
+WHERE lower(v.sku) = lower($1::text) OR v.barcode = $1::text
+ORDER BY v.id
+`
+
+type CatalogLookupCodeRow struct {
+	ID            int32
+	ProductID     int32
+	ProductName   string
+	Sku           string
+	Barcode       *string
+	Unit          string
+	ProductType   string
+	ProductStatus string
+}
+
+// CatalogLookupCode is contracts.ProductCatalog.LookupCode's variant half: a
+// SKU equal to the code ignoring case, or a barcode equal to it exactly.
+func (q *Queries) CatalogLookupCode(ctx context.Context, code string) ([]CatalogLookupCodeRow, error) {
+	rows, err := q.db.Query(ctx, catalogLookupCode, code)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []CatalogLookupCodeRow
+	for rows.Next() {
+		var i CatalogLookupCodeRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.ProductID,
+			&i.ProductName,
+			&i.Sku,
+			&i.Barcode,
+			&i.Unit,
+			&i.ProductType,
+			&i.ProductStatus,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const catalogSearchVariants = `-- name: CatalogSearchVariants :many
+SELECT v.id, v.product_id, p.name AS product_name, v.sku, v.barcode, v.unit, p.type AS product_type, p.status AS product_status
+FROM products.product_variants v
+JOIN products.products p ON p.id = v.product_id
+WHERE p.type = 'Goods'
+  AND (v.sku ILIKE $1::text OR p.name ILIKE $1::text OR v.barcode ILIKE $1::text)
+ORDER BY v.sku
+LIMIT $2::int
+`
+
+type CatalogSearchVariantsParams struct {
+	Pattern string
+	MaxRows int32
+}
+
+type CatalogSearchVariantsRow struct {
+	ID            int32
+	ProductID     int32
+	ProductName   string
+	Sku           string
+	Barcode       *string
+	Unit          string
+	ProductType   string
+	ProductStatus string
+}
+
+// CatalogSearchVariants is contracts.ProductCatalog.SearchVariants: goods
+// variants whose SKU, product name or barcode matches the pattern, by SKU.
+func (q *Queries) CatalogSearchVariants(ctx context.Context, arg CatalogSearchVariantsParams) ([]CatalogSearchVariantsRow, error) {
+	rows, err := q.db.Query(ctx, catalogSearchVariants, arg.Pattern, arg.MaxRows)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []CatalogSearchVariantsRow
+	for rows.Next() {
+		var i CatalogSearchVariantsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.ProductID,
+			&i.ProductName,
+			&i.Sku,
+			&i.Barcode,
+			&i.Unit,
+			&i.ProductType,
+			&i.ProductStatus,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const catalogVariant = `-- name: CatalogVariant :one
 
-SELECT v.id, v.product_id, p.name AS product_name, v.sku, v.unit, p.type AS product_type, p.status AS product_status
+SELECT v.id, v.product_id, p.name AS product_name, v.sku, v.barcode, v.unit, p.type AS product_type, p.status AS product_status
 FROM products.product_variants v
 JOIN products.products p ON p.id = v.product_id
 WHERE v.id = $1
@@ -57,6 +216,7 @@ type CatalogVariantRow struct {
 	ProductID     int32
 	ProductName   string
 	Sku           string
+	Barcode       *string
 	Unit          string
 	ProductType   string
 	ProductStatus string
@@ -75,6 +235,7 @@ func (q *Queries) CatalogVariant(ctx context.Context, id int32) (CatalogVariantR
 		&i.ProductID,
 		&i.ProductName,
 		&i.Sku,
+		&i.Barcode,
 		&i.Unit,
 		&i.ProductType,
 		&i.ProductStatus,
@@ -83,7 +244,7 @@ func (q *Queries) CatalogVariant(ctx context.Context, id int32) (CatalogVariantR
 }
 
 const catalogVariants = `-- name: CatalogVariants :many
-SELECT v.id, v.product_id, p.name AS product_name, v.sku, v.unit, p.type AS product_type, p.status AS product_status
+SELECT v.id, v.product_id, p.name AS product_name, v.sku, v.barcode, v.unit, p.type AS product_type, p.status AS product_status
 FROM products.product_variants v
 JOIN products.products p ON p.id = v.product_id
 WHERE v.id = ANY($1::int[])
@@ -94,6 +255,7 @@ type CatalogVariantsRow struct {
 	ProductID     int32
 	ProductName   string
 	Sku           string
+	Barcode       *string
 	Unit          string
 	ProductType   string
 	ProductStatus string
@@ -115,6 +277,57 @@ func (q *Queries) CatalogVariants(ctx context.Context, ids []int32) ([]CatalogVa
 			&i.ProductID,
 			&i.ProductName,
 			&i.Sku,
+			&i.Barcode,
+			&i.Unit,
+			&i.ProductType,
+			&i.ProductStatus,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const catalogVariantsOfProduct = `-- name: CatalogVariantsOfProduct :many
+SELECT v.id, v.product_id, p.name AS product_name, v.sku, v.barcode, v.unit, p.type AS product_type, p.status AS product_status
+FROM products.product_variants v
+JOIN products.products p ON p.id = v.product_id
+WHERE v.product_id = $1
+ORDER BY v.id
+`
+
+type CatalogVariantsOfProductRow struct {
+	ID            int32
+	ProductID     int32
+	ProductName   string
+	Sku           string
+	Barcode       *string
+	Unit          string
+	ProductType   string
+	ProductStatus string
+}
+
+// CatalogVariantsOfProduct is contracts.ProductCatalog.VariantsOfProduct:
+// every variant of a product in the order the product page lists them.
+func (q *Queries) CatalogVariantsOfProduct(ctx context.Context, productID int32) ([]CatalogVariantsOfProductRow, error) {
+	rows, err := q.db.Query(ctx, catalogVariantsOfProduct, productID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []CatalogVariantsOfProductRow
+	for rows.Next() {
+		var i CatalogVariantsOfProductRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.ProductID,
+			&i.ProductName,
+			&i.Sku,
+			&i.Barcode,
 			&i.Unit,
 			&i.ProductType,
 			&i.ProductStatus,
@@ -1262,6 +1475,69 @@ func (q *Queries) ListVariantsByProductIDs(ctx context.Context, productIds []int
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const lockVariantForDelete = `-- name: LockVariantForDelete :one
+SELECT id, unit FROM products.product_variants
+WHERE id = $1 AND product_id = $2
+FOR UPDATE
+`
+
+type LockVariantForDeleteParams struct {
+	ID        int32
+	ProductID int32
+}
+
+type LockVariantForDeleteRow struct {
+	ID   int32
+	Unit string
+}
+
+// LockVariantForDelete takes the variant's row FOR UPDATE before its delete
+// asks the variant's holders, so a posting holding FOR SHARE on it has
+// committed first, or waits (inventory design I23). The unit names the
+// quantity a holder answers.
+func (q *Queries) LockVariantForDelete(ctx context.Context, arg LockVariantForDeleteParams) (LockVariantForDeleteRow, error) {
+	row := q.db.QueryRow(ctx, lockVariantForDelete, arg.ID, arg.ProductID)
+	var i LockVariantForDeleteRow
+	err := row.Scan(&i.ID, &i.Unit)
+	return i, err
+}
+
+const lockVariantsOfProductForUpdate = `-- name: LockVariantsOfProductForUpdate :many
+SELECT id, sku, unit FROM products.product_variants
+WHERE product_id = $1
+ORDER BY id
+FOR UPDATE
+`
+
+type LockVariantsOfProductForUpdateRow struct {
+	ID   int32
+	Sku  string
+	Unit string
+}
+
+// LockVariantsOfProductForUpdate takes every variant of a product FOR UPDATE,
+// in id order, before a change from Goods to Service asks their holders;
+// the SKU and unit name the first one held.
+func (q *Queries) LockVariantsOfProductForUpdate(ctx context.Context, productID int32) ([]LockVariantsOfProductForUpdateRow, error) {
+	rows, err := q.db.Query(ctx, lockVariantsOfProductForUpdate, productID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []LockVariantsOfProductForUpdateRow
+	for rows.Next() {
+		var i LockVariantsOfProductForUpdateRow
+		if err := rows.Scan(&i.ID, &i.Sku, &i.Unit); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

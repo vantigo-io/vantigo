@@ -55,3 +55,32 @@ type RepointedReferences struct {
 	Kind  string
 	Count int64
 }
+
+// VariantReferenceHolder is a module that keeps stock, or another fact, of a
+// product variant in its own schema, which the variant's delete — and a
+// product's change from Goods to Service — must not outrun (inventory design
+// I23). Products asks every holder INSIDE its own transaction, after it has
+// locked the variant FOR UPDATE and before it deletes or changes it; a holder
+// that answers a hold refuses the write. The rules are rule 8's:
+//
+//   - It never begins, commits or rolls back a transaction, and never touches
+//     a pool: tx is the caller's. Its SQL is its own, on its own schema.
+//   - It never reads a directory or any other contract, and never calls back
+//     into Products.
+//   - It locks nothing of its own beyond what its read takes: a writer of its
+//     rows holds FOR SHARE on the variant (ProductCatalog.LockVariants) and
+//     so has committed, or waits, before the answer is read.
+//   - It runs whether or not its module is enabled: every schema is migrated
+//     whatever MODULES says, and stock in the schema is still stock.
+type VariantReferenceHolder interface {
+	// VariantHeld answers what the holder keeps of the variant, nil when it
+	// keeps nothing that should stop the write.
+	VariantHeld(ctx context.Context, tx pgx.Tx, variantID int32) (*VariantHold, error)
+}
+
+// VariantHold is what a holder keeps of a variant: a quantity in the
+// variant's own unit, as a decimal, and the number of places it lies in.
+type VariantHold struct {
+	Quantity  string
+	Locations int
+}

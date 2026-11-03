@@ -5,10 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/jackc/pgx/v5"
 
 	"github.com/vantigo-io/vantigo/server/internal/apicommon"
+	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/db"
 	"github.com/vantigo-io/vantigo/server/internal/products/gen"
 	"github.com/vantigo-io/vantigo/server/internal/products/store"
@@ -251,27 +253,91 @@ func (s *server) PutProductsByIdVariantsByVariantId(ctx context.Context, req gen
 // variant") -> delete, cascading the variant's prices (which is why this
 // operation's x-vantigo-access requires pricing-manage as well as
 // variants-manage — products inventory §1.1 line 52).
+//
+// Inventory design I23 makes it one transaction and adds a step: the
+// variant's row is locked FOR UPDATE first, and after the last-variant check
+// every Deps.VariantReferenceHolders is asked; the first hold refuses with 409
+// "Variant has stock". A posting holds FOR SHARE on the same row
+// (ProductCatalog.LockVariants), so it has committed before the holders are
+// read, or waits for the delete — stock cannot land between the check and
+// the delete.
 func (s *server) DeleteProductsByIdVariantsByVariantId(ctx context.Context, req gen.DeleteProductsByIdVariantsByVariantIdRequestObject) (gen.DeleteProductsByIdVariantsByVariantIdResponseObject, error) {
-	q := store.New(s.deps.Pool)
-	_, err := q.GetVariantByProductAndID(ctx, store.GetVariantByProductAndIDParams{ID: req.VariantId, ProductID: req.Id})
-	if errors.Is(err, pgx.ErrNoRows) {
-		return gen.DeleteProductsByIdVariantsByVariantId404Response{}, nil
-	}
-	if err != nil {
-		return nil, fmt.Errorf("products: get variant: %w", err)
-	}
+	var refused gen.DeleteProductsByIdVariantsByVariantIdResponseObject
+	err := db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
+		q := store.New(tx)
+		variant, err := q.LockVariantForDelete(ctx, store.LockVariantForDeleteParams{ID: req.VariantId, ProductID: req.Id})
+		if errors.Is(err, pgx.ErrNoRows) {
+			refused = gen.DeleteProductsByIdVariantsByVariantId404Response{}
+			return nil
+		}
+		if err != nil {
+			return fmt.Errorf("lock variant: %w", err)
+		}
 
-	remaining, err := q.CountOtherVariantsOfProduct(ctx, store.CountOtherVariantsOfProductParams{ProductID: req.Id, ID: req.VariantId})
-	if err != nil {
-		return nil, fmt.Errorf("products: count variants: %w", err)
-	}
-	if remaining == 0 {
-		return gen.DeleteProductsByIdVariantsByVariantId409ApplicationProblemPlusJSONResponse(apicommon.ProblemStatus(
-			"Last variant", "A product must have at least one variant.", http.StatusConflict)), nil
-	}
+		remaining, err := q.CountOtherVariantsOfProduct(ctx, store.CountOtherVariantsOfProductParams{ProductID: req.Id, ID: req.VariantId})
+		if err != nil {
+			return fmt.Errorf("count variants: %w", err)
+		}
+		if remaining == 0 {
+			refused = gen.DeleteProductsByIdVariantsByVariantId409ApplicationProblemPlusJSONResponse(apicommon.ProblemStatus(
+				"Last variant", "A product must have at least one variant.", http.StatusConflict))
+			return nil
+		}
 
-	if err := q.DeleteProductVariant(ctx, req.VariantId); err != nil {
+		hold, err := s.variantHeld(ctx, tx, variant.ID)
+		if err != nil {
+			return err
+		}
+		if hold != nil {
+			refused = gen.DeleteProductsByIdVariantsByVariantId409ApplicationProblemPlusJSONResponse(apicommon.ProblemStatus(
+				"Variant has stock",
+				fmt.Sprintf("This variant still has %s. Move the stock or adjust it to zero before you delete the variant.", holdText(hold, variant.Unit)),
+				http.StatusConflict))
+			return nil
+		}
+
+		if err := q.DeleteProductVariant(ctx, req.VariantId); err != nil {
+			return fmt.Errorf("delete variant: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
 		return nil, fmt.Errorf("products: delete variant: %w", err)
 	}
+	if refused != nil {
+		return refused, nil
+	}
 	return gen.DeleteProductsByIdVariantsByVariantId204Response{}, nil
+}
+
+// variantHeld asks every Deps.VariantReferenceHolders, in order, what it
+// keeps of the variant, inside the caller's transaction (inventory design
+// I23), and answers the first hold, nil when none holds it. The caller has
+// locked the variant FOR UPDATE.
+func (s *server) variantHeld(ctx context.Context, tx pgx.Tx, variantID int32) (*contracts.VariantHold, error) {
+	for _, holder := range s.deps.VariantReferenceHolders {
+		hold, err := holder.VariantHeld(ctx, tx, variantID)
+		if err != nil {
+			return nil, fmt.Errorf("ask variant holder: %w", err)
+		}
+		if hold != nil {
+			return hold, nil
+		}
+	}
+	return nil, nil
+}
+
+// holdText is a hold as a refusal's detail says it: "34 pcs in stock at 3
+// locations". The holder's decimal loses its trailing zeros, so 34.000
+// reads 34 and 2.500 reads 2.5.
+func holdText(hold *contracts.VariantHold, unit string) string {
+	quantity := hold.Quantity
+	if strings.Contains(quantity, ".") {
+		quantity = strings.TrimRight(strings.TrimRight(quantity, "0"), ".")
+	}
+	places := "locations"
+	if hold.Locations == 1 {
+		places = "location"
+	}
+	return fmt.Sprintf("%s %s in stock at %d %s", quantity, unit, hold.Locations, places)
 }

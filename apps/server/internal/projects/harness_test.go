@@ -3,6 +3,7 @@ package projects_test
 import (
 	"context"
 	"fmt"
+	"github.com/jackc/pgx/v5"
 	"maps"
 	"math"
 	"math/big"
@@ -372,6 +373,23 @@ func (c *fakeCatalog) ListPrice(_ context.Context, variantID int32, currency str
 		return nil, nil
 	}
 	return &contracts.Money{Amount: price, Currency: currency}, nil
+}
+
+// The catalog methods Inventory reads; Projects asks none.
+func (*fakeCatalog) VariantsOfProduct(context.Context, int32) ([]contracts.VariantEntry, error) {
+	return nil, nil
+}
+
+func (*fakeCatalog) LookupCode(context.Context, string) ([]contracts.CodeMatch, error) {
+	return nil, nil
+}
+
+func (*fakeCatalog) SearchVariants(context.Context, string, int) ([]contracts.VariantEntry, error) {
+	return nil, nil
+}
+
+func (*fakeCatalog) LockVariants(context.Context, pgx.Tx, []int32) ([]contracts.VariantEntry, error) {
+	return nil, nil
 }
 
 // fakeActuals is contracts.ProjectActuals over whatever a test says has been

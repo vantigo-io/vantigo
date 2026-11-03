@@ -3,6 +3,7 @@ package timetracking
 import (
 	"context"
 	"errors"
+	"github.com/jackc/pgx/v5"
 	"sync"
 	"testing"
 	"time"
@@ -41,6 +42,23 @@ func (p *priceList) ListPrice(_ context.Context, _ int32, currency string, at ti
 		return nil, nil
 	}
 	return &contracts.Money{Amount: amount, Currency: currency}, nil
+}
+
+// The catalog methods Inventory reads; the rate chain asks none.
+func (*priceList) VariantsOfProduct(context.Context, int32) ([]contracts.VariantEntry, error) {
+	return nil, nil
+}
+
+func (*priceList) LookupCode(context.Context, string) ([]contracts.CodeMatch, error) {
+	return nil, nil
+}
+
+func (*priceList) SearchVariants(context.Context, string, int) ([]contracts.VariantEntry, error) {
+	return nil, nil
+}
+
+func (*priceList) LockVariants(context.Context, pgx.Tx, []int32) ([]contracts.VariantEntry, error) {
+	return nil, nil
 }
 
 // customerRates is a contracts.CustomerDirectory answering one billing
