@@ -18,7 +18,7 @@ import {
 import { FieldGroup } from "../components/field-group";
 import { staffCatalog } from "../i18n";
 import { refusalText } from "../lib/absence";
-import { accountKindsOffered, providerStatusText, WORKSPACE_ROLES_PATH } from "../lib/accounts";
+import { accountKindName, accountKindsOffered, providerStatusText, WORKSPACE_ROLES_PATH } from "../lib/accounts";
 import { fieldRefusals, isRevisionConflict } from "../lib/errors";
 
 interface AccountValues {
@@ -171,7 +171,7 @@ const AccountsCard = ({ settings, meta }: { settings: StaffSettings; meta: Staff
             allowDeselect={false}
             data={accountKindsOffered(meta.providers, settings.defaultAccountKind).map((kind) => ({
               value: kind,
-              label: `accountKindChoice_${kind}` in staffCatalog.en ? t(`accountKindChoice_${kind}`) : kind,
+              label: accountKindName(t, kind, meta.providers),
             }))}
             {...form.getInputProps("defaultAccountKind")}
           />

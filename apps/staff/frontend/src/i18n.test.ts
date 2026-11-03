@@ -204,8 +204,11 @@ describe("the staff catalog", () => {
         expect((catalog as Record<string, string>)[`accountLinkState_${state}`], `${language} ${state}`).toBeDefined();
       for (const state of invitations)
         expect((catalog as Record<string, string>)[`accountInvitation_${state}`], `${language} ${state}`).toBeDefined();
-      for (const kind of ["local", "external", "entra", "unavailable"])
+      for (const kind of ["local", "external", "provider", "unavailable"])
         expect((catalog as Record<string, string>)[`accountKind_${kind}`], `${language} ${kind}`).toBeDefined();
+      expect((catalog as Record<string, string>).accountKind_provider, `${language} the provider named`).toContain(
+        "{{name}}",
+      );
       for (const kind of ["local", "external", "entra"])
         expect((catalog as Record<string, string>)[`accountKindChoice_${kind}`], `${language} ${kind}`).toBeDefined();
     }
@@ -233,7 +236,7 @@ describe("the staff catalog", () => {
     const staffCodes = [...accountsProviderGo.matchAll(/^\s*(?:const\s+)?codeManager\w+\s*=\s*"(\w+)"/gm)].map(
       (m) => m[1],
     );
-    expect(staffCodes).toEqual(["manager_not_in_entra"]);
+    expect(staffCodes).toEqual(["manager_not_in_directory"]);
     const steps = [
       "none",
       "prepare",

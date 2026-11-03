@@ -43,10 +43,10 @@ const (
 	reasonExternalUnconfirmed = "external_unconfirmed"
 )
 
-// codeManagerNotInEntra is the code Staff itself records on a provider link's
+// codeManagerNotInDirectory is the code Staff itself records on a provider link's
 // reported_codes, beside the provider's own: the person's effective manager
 // has no external account to name as theirs.
-const codeManagerNotInEntra = "manager_not_in_entra"
+const codeManagerNotInDirectory = "manager_not_in_directory"
 
 // The provider link's events, and the two person events it makes. Each
 // carries codes only, never an address or a pass.

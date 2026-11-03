@@ -32,7 +32,7 @@ type providerWorld struct {
 
 func newProviderWorld(t *testing.T, opts ...modtest.Option) providerWorld {
 	t.Helper()
-	prov := modtest.NewFakeIdentityProvisioner(contracts.AccountKindEntra, "Microsoft Entra ID")
+	prov := modtest.NewFakeIdentityProvisioner("entra", "Microsoft Entra ID")
 	w := newAccountsWorld(t, append([]modtest.Option{modtest.WithIdentityProvisioners(prov)}, opts...)...)
 	prov.WithClock(w.h.Now)
 	return providerWorld{accountsWorld: w, prov: prov}
@@ -226,7 +226,7 @@ func TestAccountsWorker_TheAnnouncementReplacesAPendingLocalUser(t *testing.T) {
 
 // The provider unconfigured: nothing is prepared, made or announced, the
 // identity link waits too, the status is recorded and raises
-// entraNotConnected counting the people of the kind; a leaver's accounts are
+// providerNotConnected counting the people of the kind; a leaver's accounts are
 // still deactivated on both links.
 func TestAccountsWorker_AProviderNotConnectedReportsAndDeactivatesOnly(t *testing.T) {
 	t.Parallel()
@@ -262,9 +262,9 @@ func TestAccountsWorker_AProviderNotConnectedReportsAndDeactivatesOnly(t *testin
 		t.Errorf("the recorded status = %q, want unconfigured", status)
 	}
 	items := attentionItems(t, w.hr)
-	i := slices.IndexFunc(items, func(i gen.StaffStatsAttentionItem) bool { return i.Type == gen.EntraNotConnected })
+	i := slices.IndexFunc(items, func(i gen.StaffStatsAttentionItem) bool { return i.Type == gen.ProviderNotConnected })
 	if i < 0 || items[i].Count == nil || *items[i].Count != 2 || items[i].EntityId != "settings" {
-		t.Errorf("attention = %+v, want entraNotConnected counting the two people of the kind", items)
+		t.Errorf("attention = %+v, want providerNotConnected counting the two people of the kind", items)
 	}
 
 	// The employee leaves: both links deactivated whatever the status.
@@ -399,7 +399,7 @@ func TestAccountAttention_TheProviderItems(t *testing.T) {
 	w.cycle(t)
 	w.h.Advance(91 * 24 * time.Hour)
 	items := attentionItems(t, w.hr)
-	want := []gen.StaffStatsAttentionItemType{gen.HireDateNotWritten, gen.AccountPrivilegedInEntra, gen.LicenceUnavailable,
+	want := []gen.StaffStatsAttentionItemType{gen.HireDateNotWritten, gen.AccountPrivilegedInDirectory, gen.LicenceUnavailable,
 		gen.PassUnrevealed, gen.AccountNotArrived}
 	for _, kind := range want {
 		n := 0
@@ -534,8 +534,8 @@ func TestAccountsRun_RunNowAsksAFreshPassOnlyWhenItEnables(t *testing.T) {
 }
 
 // The manager travels as their own external account's id; a manager with
-// none is no manager in the directory, recorded manager_not_in_entra once
-// and raised as managerNotInEntra.
+// none is no manager in the directory, recorded manager_not_in_directory once
+// and raised as managerNotInDirectory.
 func TestAccountsWorker_TheManagerIsTheirExternalAccount(t *testing.T) {
 	t.Parallel()
 	w := newProviderWorld(t)
@@ -546,17 +546,17 @@ func TestAccountsWorker_TheManagerIsTheirExternalAccount(t *testing.T) {
 	flagOn(t, w.hr, p.Id)
 	w.h.Exec(t, `UPDATE staff.people SET account_kind = 'entra' WHERE id = $1`, p.Id)
 	w.cycle(t)
-	if l := mustExtLink(t, w, p.Id); !slices.Equal(l.Codes, []string{"manager_not_in_entra"}) {
-		t.Errorf("the provider link's codes = %v, want [manager_not_in_entra]", l.Codes)
+	if l := mustExtLink(t, w, p.Id); !slices.Equal(l.Codes, []string{"manager_not_in_directory"}) {
+		t.Errorf("the provider link's codes = %v, want [manager_not_in_directory]", l.Codes)
 	}
 	if spec, _ := w.prov.LastSpec(p.EmployeeNumber); spec.ManagerExternalID != "" {
 		t.Errorf("the spec's manager = %q, want none", spec.ManagerExternalID)
 	}
 	items := attentionItems(t, w.hr)
 	if !slices.ContainsFunc(items, func(i gen.StaffStatsAttentionItem) bool {
-		return i.Type == gen.ManagerNotInEntra && i.EntityId != "settings"
+		return i.Type == gen.ManagerNotInDirectory && i.EntityId != "settings"
 	}) {
-		t.Errorf("attention = %+v, want managerNotInEntra", items)
+		t.Errorf("attention = %+v, want managerNotInDirectory", items)
 	}
 
 	bossAccount := uuid.NewString()
@@ -787,7 +787,7 @@ func hasItemOfType(items []gen.StaffStatsAttentionItem, kind gen.StaffStatsAtten
 // An account the directory holds under the person's number that the
 // provider did not create, its adoption unconfirmed: the Prepare is refused
 // ErrExternalUnconfirmed, the link blocked external_unconfirmed naming no
-// account and raising accountUnconfirmedInEntra, nothing activated; once
+// account and raising accountUnconfirmedInDirectory, nothing activated; once
 // confirmed, Run now prepares it at once.
 func TestAccountsWorker_AnUnconfirmedAdoptionBlocksThePrepare(t *testing.T) {
 	t.Parallel()
@@ -807,8 +807,8 @@ func TestAccountsWorker_AnUnconfirmedAdoptionBlocksThePrepare(t *testing.T) {
 	if !slices.Contains(eventKinds(t, w, p.Id), "account_external_blocked") {
 		t.Errorf("events = %v, want account_external_blocked", eventKinds(t, w, p.Id))
 	}
-	if !hasItemOfType(attentionItems(t, w.hr), gen.AccountUnconfirmedInEntra) {
-		t.Errorf("attention = %+v, want accountUnconfirmedInEntra", attentionItems(t, w.hr))
+	if !hasItemOfType(attentionItems(t, w.hr), gen.AccountUnconfirmedInDirectory) {
+		t.Errorf("attention = %+v, want accountUnconfirmedInDirectory", attentionItems(t, w.hr))
 	}
 
 	w.prov.SetUnconfirmed(p.EmployeeNumber, false)
@@ -817,15 +817,15 @@ func TestAccountsWorker_AnUnconfirmedAdoptionBlocksThePrepare(t *testing.T) {
 	if l := mustExtLink(t, w, p.Id); l.State != "enabled" || l.Reason != "" || l.ExternalID != held.ExternalID {
 		t.Errorf("the provider link after the confirmation = %+v, want enabled, the account found", l)
 	}
-	if hasItemOfType(attentionItems(t, w.hr), gen.AccountUnconfirmedInEntra) {
-		t.Error("accountUnconfirmedInEntra stands after the confirmation")
+	if hasItemOfType(attentionItems(t, w.hr), gen.AccountUnconfirmedInDirectory) {
+		t.Error("accountUnconfirmedInDirectory stands after the confirmation")
 	}
 }
 
 // A leaver whose account's adoption is unconfirmed: the Deactivate is
 // refused ErrExternalUnconfirmed, the account left enabled and the link
 // blocked external_unconfirmed — not disabled, no deactivation recorded as
-// done — raising accountUnconfirmedInEntra; once confirmed, the next run
+// done — raising accountUnconfirmedInDirectory; once confirmed, the next run
 // deactivates it.
 func TestAccountsWorker_AnUnconfirmedAdoptionIsNotDeactivatedUntilConfirmed(t *testing.T) {
 	t.Parallel()
@@ -848,8 +848,8 @@ func TestAccountsWorker_AnUnconfirmedAdoptionIsNotDeactivatedUntilConfirmed(t *t
 	if slices.Contains(eventKinds(t, w, p.Id), "account_external_deactivated") {
 		t.Errorf("events = %v, want no deactivation recorded", eventKinds(t, w, p.Id))
 	}
-	if !hasItemOfType(attentionItems(t, w.hr), gen.AccountUnconfirmedInEntra) {
-		t.Errorf("attention = %+v, want accountUnconfirmedInEntra", attentionItems(t, w.hr))
+	if !hasItemOfType(attentionItems(t, w.hr), gen.AccountUnconfirmedInDirectory) {
+		t.Errorf("attention = %+v, want accountUnconfirmedInDirectory", attentionItems(t, w.hr))
 	}
 
 	w.prov.SetUnconfirmed(p.EmployeeNumber, false)
@@ -861,7 +861,7 @@ func TestAccountsWorker_AnUnconfirmedAdoptionIsNotDeactivatedUntilConfirmed(t *t
 	if l := mustExtLink(t, w, p.Id); l.State != "disabled" || l.Reason != "" {
 		t.Errorf("the provider link once confirmed = %+v, want disabled", l)
 	}
-	if hasItemOfType(attentionItems(t, w.hr), gen.AccountUnconfirmedInEntra) {
-		t.Error("accountUnconfirmedInEntra stands after the confirmation")
+	if hasItemOfType(attentionItems(t, w.hr), gen.AccountUnconfirmedInDirectory) {
+		t.Error("accountUnconfirmedInDirectory stands after the confirmation")
 	}
 }

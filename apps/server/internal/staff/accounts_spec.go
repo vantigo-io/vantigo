@@ -24,7 +24,7 @@ import (
 
 // externalSpecFacts is the external spec the worker hands a provider, and
 // whether the person's effective manager has no external account under the
-// provider (the code manager_not_in_entra on the link, once).
+// provider (the code manager_not_in_directory on the link, once).
 type externalSpecFacts struct {
 	spec           contracts.ExternalSpec
 	managerMissing bool

@@ -120,7 +120,7 @@ func TestExpectedAccounts_SCIMFulfilsOnEachKey(t *testing.T) {
 			if !ref.Managed || ref.State != contracts.AccountStateActive || ref.EmployeeNumber != "A-1" {
 				t.Errorf("the provider reports %+v, want a managed active user numbered A-1", ref)
 			}
-			found := mustPrepare(t, p, contracts.AccountSpec{EmployeeNumber: "A-1", Kind: contracts.AccountKindEntra})
+			found := mustPrepare(t, p, contracts.AccountSpec{EmployeeNumber: "A-1", Kind: "entra"})
 			if found.UserID != id || found.Created {
 				t.Errorf("Prepare for the entra kind = %+v, want the arrival found", found)
 			}
@@ -441,14 +441,14 @@ func TestExpectedAccounts_TheKindOnTheCall(t *testing.T) {
 	p := h.accounts(t)
 	ctx := context.Background()
 
-	for _, kind := range []string{contracts.AccountKindEntra, contracts.AccountKindExternal} {
+	for _, kind := range []string{"entra", contracts.AccountKindExternal} {
 		s := spec("nobody@example.test", "Z-1")
 		s.Kind = kind
 		_, err := p.Prepare(ctx, systemActor, s)
 		wantErr(t, kind+" Prepare of a number nobody holds", err, contracts.ErrAccountNotFound)
 	}
 	bad := spec("nobody@example.test", "Z-1")
-	bad.Kind = "magic"
+	bad.Kind = "Not-a-kind"
 	_, err := p.Prepare(ctx, systemActor, bad)
 	wantErr(t, "an unknown kind", err, identity.ErrInvalidSpec)
 
@@ -461,7 +461,7 @@ func TestExpectedAccounts_TheKindOnTheCall(t *testing.T) {
 	if _, err := p.Activate(ctx, systemActor, id, contracts.ActivateOpts{Kind: contracts.AccountKindExternal}); err != nil || roles() != 0 {
 		t.Fatalf("external Activate: %v, %d roles, want none given", err, roles())
 	}
-	if _, err := p.Activate(ctx, systemActor, id, contracts.ActivateOpts{Kind: contracts.AccountKindEntra}); err != nil || roles() != 1 {
+	if _, err := p.Activate(ctx, systemActor, id, contracts.ActivateOpts{Kind: "entra"}); err != nil || roles() != 1 {
 		t.Fatalf("entra Activate: %v, %d roles, want the set given", err, roles())
 	}
 	if n := h.count(t, `SELECT count(*) FROM identity.users WHERE id = $1 AND provisioning_roles_at IS NOT NULL AND NOT is_disabled`, id); n != 1 {
@@ -471,7 +471,7 @@ func TestExpectedAccounts_TheKindOnTheCall(t *testing.T) {
 		t.Errorf("%d user.staff-activated rows, want 1", n)
 	}
 	h.exec(t, `DELETE FROM identity.user_roles WHERE user_id = $1 AND role_id = $2`, id, role)
-	if _, err := p.Activate(ctx, systemActor, id, contracts.ActivateOpts{Kind: contracts.AccountKindEntra}); err != nil || roles() != 0 {
+	if _, err := p.Activate(ctx, systemActor, id, contracts.ActivateOpts{Kind: "entra"}); err != nil || roles() != 0 {
 		t.Errorf("a second entra Activate: %v, %d roles, want the Owner's removal kept", err, roles())
 	}
 	if n := h.count(t, `SELECT count(*) FROM identity.invitations WHERE user_id = $1`, id); n != 0 {
@@ -479,7 +479,7 @@ func TestExpectedAccounts_TheKindOnTheCall(t *testing.T) {
 	}
 
 	if _, err := p.Update(ctx, systemActor, id, contracts.AccountSpec{
-		Email: "new@example.test", DisplayName: "New Name", PreferredLanguage: "en", EmployeeNumber: "E-2", Kind: contracts.AccountKindEntra,
+		Email: "new@example.test", DisplayName: "New Name", PreferredLanguage: "en", EmployeeNumber: "E-2", Kind: "entra",
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -507,6 +507,39 @@ func TestExpectedAccounts_TheKindOnTheCall(t *testing.T) {
 	}
 }
 
+// Any provider's kind, not entra's alone, is link-only and gets the
+// provisioning roles once, on the first activation of the adopted user
+// (contracts.IsProviderKind; Google design G6).
+func TestExpectedAccounts_AnyProviderKindGetsTheRolesOnce(t *testing.T) {
+	t.Parallel()
+	h := newScimHarness(t)
+	role := employeeRole(t, h)
+	p := h.accounts(t)
+	ctx := context.Background()
+
+	nobody := spec("nobody@example.test", "Z-1")
+	nobody.Kind = "google"
+	_, err := p.Prepare(ctx, systemActor, nobody)
+	wantErr(t, "google Prepare of a number nobody holds", err, contracts.ErrAccountNotFound)
+
+	mustExpect(t, p, announced("G-1", "gina@example.test", uuid.NewString()))
+	user := scimOf[scimUser](t, "the arrival", h.scim(t, scimToken).do(http.MethodPost, "/Users", scimArrival("gina@example.test", "gina", nil)), http.StatusCreated)
+	id := h.userOf(t, user.ID)
+	roles := func() int {
+		return h.count(t, `SELECT count(*) FROM identity.user_roles WHERE user_id = $1 AND role_id = $2`, id, role)
+	}
+	if _, err := p.Activate(ctx, systemActor, id, contracts.ActivateOpts{Kind: "google"}); err != nil || roles() != 1 {
+		t.Fatalf("google Activate: %v, %d roles, want the set given", err, roles())
+	}
+	h.exec(t, `DELETE FROM identity.user_roles WHERE user_id = $1 AND role_id = $2`, id, role)
+	if _, err := p.Activate(ctx, systemActor, id, contracts.ActivateOpts{Kind: "google"}); err != nil || roles() != 0 {
+		t.Errorf("a second google Activate: %v, %d roles, want the Owner's removal kept", err, roles())
+	}
+	if n := h.count(t, `SELECT count(*) FROM identity.invitations WHERE user_id = $1`, id); n != 0 {
+		t.Error("a google Activate invited")
+	}
+}
+
 // An entra Activate with no provisioning roles named is
 // ErrEmployeeRoleMissing, and gives nothing, so the next call tries again.
 func TestExpectedAccounts_AnEntraActivateNeedsTheRoles(t *testing.T) {
@@ -516,13 +549,13 @@ func TestExpectedAccounts_AnEntraActivateNeedsTheRoles(t *testing.T) {
 	mustExpect(t, p, announced("M-1", "mia@example.test", uuid.NewString()))
 	user := scimOf[scimUser](t, "the arrival", h.scim(t, scimToken).do(http.MethodPost, "/Users", scimArrival("mia@example.test", "mia", nil)), http.StatusCreated)
 	id := h.userOf(t, user.ID)
-	_, err := p.Activate(context.Background(), systemActor, id, contracts.ActivateOpts{Kind: contracts.AccountKindEntra})
+	_, err := p.Activate(context.Background(), systemActor, id, contracts.ActivateOpts{Kind: "entra"})
 	wantErr(t, "no roles named", err, contracts.ErrEmployeeRoleMissing)
 	if n := h.count(t, `SELECT count(*) FROM identity.users WHERE id = $1 AND provisioning_roles_at IS NULL`, id); n != 1 {
 		t.Error("a refused Activate recorded the roles' giving")
 	}
 	employeeRole(t, h)
-	if _, err := p.Activate(context.Background(), systemActor, id, contracts.ActivateOpts{Kind: contracts.AccountKindEntra}); err != nil {
+	if _, err := p.Activate(context.Background(), systemActor, id, contracts.ActivateOpts{Kind: "entra"}); err != nil {
 		t.Errorf("once named: %v", err)
 	}
 }

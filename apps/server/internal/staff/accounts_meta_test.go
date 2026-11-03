@@ -86,7 +86,7 @@ func TestMeta_TheAccountFields(t *testing.T) {
 // A provider that cannot be asked reads failing, unreachable, by its key.
 func TestMeta_TheProviders(t *testing.T) {
 	t.Parallel()
-	fake := modtest.NewFakeIdentityProvisioner(contracts.AccountKindEntra, "Microsoft Entra ID")
+	fake := modtest.NewFakeIdentityProvisioner("entra", "Microsoft Entra ID")
 	h := newHarness(t, modtest.WithIdentityProvisioners(fake))
 	hr, hrID := signIn(t, h, "staff:manage")
 	viewer, _ := signIn(t, h, "staff:view")

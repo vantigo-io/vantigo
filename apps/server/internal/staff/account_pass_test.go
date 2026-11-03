@@ -17,7 +17,7 @@ func passPath(id int64) string { return accountPath(id) + "/pass" }
 
 // entraProvider is the fake provider in the slot under the entra key.
 func entraProvider() *modtest.FakeIdentityProvisioner {
-	return modtest.NewFakeIdentityProvisioner(contracts.AccountKindEntra, "Microsoft Entra ID")
+	return modtest.NewFakeIdentityProvisioner("entra", "Microsoft Entra ID")
 }
 
 // providerLink writes the person's link under provider directly, in state,

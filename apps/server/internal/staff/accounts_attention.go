@@ -28,10 +28,11 @@ import (
 // title), a pass not shown within passUnrevealedAfter, and an announcement
 // nothing fulfilled within accountNotArrivedAfter. The provider's own state
 // is the installation's: the status the worker last recorded on
-// settings.provider_status (providerStatusItem), counted over the people of
-// that kind whose flag is on and raised only while someone has the kind.
-// The item types are the design's, named for Entra, though the codes and
-// the slot are generic (plan reading 10). A group section the worker left
+// settings.provider_status (providerStatusItem), one item of each type per
+// provider (id <type>/<provider key>, titled with the provider's name),
+// counted over the people of that kind whose flag is on and raised only
+// while someone has the kind. The item types name no provider, as the codes
+// and the slot do not (Google design G6). A group section the worker left
 // failed raises groupSyncFailed, one per section, naming the group
 // (delivery D).
 
@@ -82,12 +83,12 @@ var accountReasonItems = map[string]gen.StaffStatsAttentionItemType{
 	// (accountStatusReasons); external_enabled — a delete the provider
 	// refused for an account found enabled, which a deactivate settles
 	// next — is a fault to look at, accountFailing.
-	reasonProviderUnavailable:      gen.EntraNotConnected,
-	reasonExternalAmbiguous:        gen.AccountAmbiguousInEntra,
-	reasonExternalAddressTaken:     gen.AccountAddressTakenInEntra,
+	reasonProviderUnavailable:      gen.ProviderNotConnected,
+	reasonExternalAmbiguous:        gen.AccountAmbiguousInDirectory,
+	reasonExternalAddressTaken:     gen.AccountAddressTakenInDirectory,
 	reasonExternalSyncedOnPremises: gen.AccountSyncedOnPremises,
-	reasonExternalPrivileged:       gen.AccountPrivilegedInEntra,
-	reasonExternalUnconfirmed:      gen.AccountUnconfirmedInEntra,
+	reasonExternalPrivileged:       gen.AccountPrivilegedInDirectory,
+	reasonExternalUnconfirmed:      gen.AccountUnconfirmedInDirectory,
 	reasonExternalEnabled:          gen.AccountFailing,
 }
 
@@ -97,16 +98,16 @@ var accountStatusReasons = map[string]bool{reasonProviderUnavailable: true}
 
 // providerCodeItems is the item each code a provider link's reported_codes
 // may carry raises: the provider's (contracts.Reported*, a licence's with
-// ":" and the SKU after it) and Staff's own manager_not_in_entra.
+// ":" and the SKU after it) and Staff's own manager_not_in_directory.
 // pass_not_allowed raises none: the Account tab says it beside the pass,
 // and nothing on the dashboard would let HR act on it.
 var providerCodeItems = map[string]gen.StaffStatsAttentionItemType{
 	contracts.ReportedHireDateNotWritten: gen.HireDateNotWritten,
-	contracts.ReportedPrivileged:         gen.AccountPrivilegedInEntra,
+	contracts.ReportedPrivileged:         gen.AccountPrivilegedInDirectory,
 	contracts.ReportedLicenceUnavailable: gen.LicenceUnavailable,
-	contracts.ReportedManagerNotFound:    gen.ManagerNotInEntra,
+	contracts.ReportedManagerNotFound:    gen.ManagerNotInDirectory,
 	contracts.ReportedPhotoNotWritten:    gen.PhotoNotWritten,
-	codeManagerNotInEntra:                gen.ManagerNotInEntra,
+	codeManagerNotInDirectory:            gen.ManagerNotInDirectory,
 }
 
 // providerCodeItem is the item code raises, false for none: a licence's
@@ -128,29 +129,27 @@ var accountDisableRefusals = map[string]bool{reasonNotManaged: true, reasonPrivi
 var accountPersonReasons = map[string]bool{reasonNoEmployment: true, reasonEmailMissing: true}
 
 // accountInstallationItems are the items about the installation, not a
-// person, with their sentences (the host words its own from the type).
+// person, with their sentences (the host words its own from the type). The
+// provider items about the installation are providerItems', one per
+// provider, titled with its name.
 var accountInstallationItems = map[gen.StaffStatsAttentionItemType]string{
 	gen.EmployeeRoleMissing: "No Owner has named the roles Staff may give, so no account is enabled",
 	gen.EmployeeRoleUnsafe:  "A role named for Staff grants administration, so no account is given roles",
 	gen.AccountModeMismatch: "A worker's authority mode differs from the API's, so only deactivations run",
-	gen.EntraNotConnected:   "The identity provider is not connected, so no external account is made or changed",
-	gen.EntraFailing:        "The identity provider's connection is failing, so no external account is made or changed",
-	gen.SecretExpiring:      "The identity provider's credential expires soon",
-	gen.SecretExpired:       "The identity provider's credential has expired, so no external account is made or changed",
 }
 
 // providerStatusItem is the installation item a provider's recorded status
-// raises, false for none: unconfigured → entraNotConnected; failing →
-// secretExpired when its credential expired, else entraFailing; connected
+// raises, false for none: unconfigured → providerNotConnected; failing →
+// secretExpired when its credential expired, else providerFailing; connected
 // with a credential about to expire → secretExpiring.
 func providerStatusItem(status, reason string) (gen.StaffStatsAttentionItemType, bool) {
 	switch {
 	case status == contracts.ProviderUnconfigured:
-		return gen.EntraNotConnected, true
+		return gen.ProviderNotConnected, true
 	case status == contracts.ProviderFailing && reason == "secret_expired":
 		return gen.SecretExpired, true
 	case status == contracts.ProviderFailing:
-		return gen.EntraFailing, true
+		return gen.ProviderFailing, true
 	case reason == "secret_expiring":
 		return gen.SecretExpiring, true
 	}
@@ -324,7 +323,10 @@ func (a accountAttention) providerLinkItems(l store.AccountLinkAttentionRow) []g
 
 // providerItems is the installation's items from each provider's recorded
 // status, raised only while people whose flag is on have its kind, and
-// counting them.
+// counting them: one per provider, id <type>/<provider key>, titled with the
+// name the worker last recorded for it — its key when it recorded none (no
+// enabled module offers the provider, or a status recorded before names
+// were).
 func (a accountAttention) providerItems() []gen.StaffStatsAttentionItem {
 	var out []gen.StaffStatsAttentionItem
 	keys := make([]string, 0, len(a.providers))
@@ -340,8 +342,12 @@ func (a accountAttention) providerItems() []gen.StaffStatsAttentionItem {
 			continue
 		}
 		count := int32(people)
+		title := seen.Name
+		if title == "" {
+			title = key
+		}
 		out = append(out, gen.StaffStatsAttentionItem{
-			Id: string(kind), Type: kind, Title: accountInstallationItems[kind], OccurredAt: seen.CheckedAt,
+			Id: string(kind) + "/" + key, Type: kind, Title: title, OccurredAt: seen.CheckedAt,
 			EntityId: settingsEntity, Count: &count,
 		})
 	}

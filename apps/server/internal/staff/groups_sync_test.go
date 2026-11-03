@@ -98,7 +98,7 @@ type groupWorld struct {
 
 func newGroupWorld(t *testing.T) groupWorld {
 	t.Helper()
-	prov := modtest.NewFakeIdentityProvisioner(contracts.AccountKindEntra, "Microsoft Entra ID")
+	prov := modtest.NewFakeIdentityProvisioner("entra", "Microsoft Entra ID")
 	rec := &recordingProvisioner{FakeIdentityProvisioner: prov}
 	w := newAccountsWorld(t, modtest.WithIdentityProvisioners(rec))
 	prov.WithClock(w.h.Now)

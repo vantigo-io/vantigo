@@ -785,14 +785,14 @@ describe("the dashboard's staff account attention items", () => {
     "invitationRevoked",
     // The provider link's (Entra delivery B).
     "accountNotArrived",
-    "accountAmbiguousInEntra",
-    "accountAddressTakenInEntra",
+    "accountAmbiguousInDirectory",
+    "accountAddressTakenInDirectory",
     "accountSyncedOnPremises",
-    "accountPrivilegedInEntra",
+    "accountPrivilegedInDirectory",
     "hireDateNotWritten",
     "licenceUnavailable",
     "passUnrevealed",
-    "managerNotInEntra",
+    "managerNotInDirectory",
     // The photo the directory refused (photo sync design §4).
     "photoNotWritten",
   ];
@@ -800,8 +800,8 @@ describe("the dashboard's staff account attention items", () => {
     "employeeRoleMissing",
     "employeeRoleUnsafe",
     "accountModeMismatch",
-    "entraNotConnected",
-    "entraFailing",
+    "providerNotConnected",
+    "providerFailing",
     "secretExpiring",
     "secretExpired",
   ];
@@ -818,16 +818,43 @@ describe("the dashboard's staff account attention items", () => {
     );
   });
 
-  it("opens the Microsoft Entra ID page for an adoption nobody confirmed, and words it with the name", () => {
-    expect(attentionHref({ module: "staff", type: "accountUnconfirmedInEntra", entityId: "1042" })).toBe(
+  it("opens the provider's page for an adoption nobody confirmed, and words it with the name", () => {
+    expect(attentionHref({ module: "staff", type: "accountUnconfirmedInDirectory", entityId: "1042" })).toBe(
       "/workspace/entra",
     );
-    const key = attentionTitleKey({ module: "staff", type: "accountUnconfirmedInEntra" }) as string;
+    const key = attentionTitleKey({ module: "staff", type: "accountUnconfirmedInDirectory" }) as string;
     for (const lng of ["en", "nb"]) {
       const sentence = i18n.t(key, { ns: "host", lng, name: "Kari Nordmann" });
       expect(sentence, lng).not.toBe(key);
       expect(sentence, lng).toContain("Kari Nordmann");
     }
+  });
+
+  // The provider items about the installation are one per provider (Google
+  // design G6): the title is the provider's name, which the sentence names.
+  it("names the provider, from the title, in its installation items", () => {
+    for (const type of ["providerNotConnected", "providerFailing", "secretExpiring", "secretExpired"]) {
+      expect(attentionHref({ module: "staff", type, entityId: "settings" }), type).toBe("/staff/settings");
+      const key = attentionTitleKey({ module: "staff", type }) as string;
+      for (const lng of ["en", "nb"]) {
+        const sentence = i18n.t(key, { ns: "host", lng, name: "Google Workspace", count: 2 });
+        expect(sentence, `${type} ${lng}`).toContain("Google Workspace");
+        expect(sentence, `${type} ${lng}`).not.toContain("Entra");
+      }
+    }
+    expect(
+      attentionTitle(
+        {
+          module: "staff",
+          type: "providerFailing",
+          entityId: "settings",
+          title: "Microsoft Entra ID",
+          count: 1,
+        },
+        (key, values) => i18n.t(key, { ns: "host", lng: "en", ...values }),
+        () => "",
+      ),
+    ).toBe("1 person's account waits: Microsoft Entra ID's last check failed");
   });
 
   it("names Microsoft Entra ID and the person for a photo the directory refused, as its siblings do", () => {
@@ -926,7 +953,8 @@ describe("the dashboard's staff account attention items", () => {
       expect(key, type).toBeDefined();
       for (const lng of ["en", "nb"]) {
         for (const count of [1, 3]) {
-          const sentence = i18n.t(key as string, { ns: "host", lng, count });
+          // The title — an English sentence, or a provider's name for a provider's item — is passed as the name.
+          const sentence = i18n.t(key as string, { ns: "host", lng, count, name: "Google Workspace" });
           expect(sentence, `${type} ${lng}`).not.toBe(key);
           expect(sentence, `${type} ${lng}`).toContain(String(count));
         }

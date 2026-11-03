@@ -68,7 +68,7 @@ func parseAccountSettings(body gen.StaffSettingsRequest, hasDeleteExternal bool,
 // accountKindOffered reports whether kind may be chosen for a person or as
 // the default: local and external always, any other kind only when an
 // enabled module offers the provider keyed by it (the IdentityProvisioner
-// slot) — entra, in delivery B, the one other kind the column allows.
+// slot) — any provider's key, by contracts.ValidAccountKind's syntax.
 func (s *server) accountKindOffered(kind string) bool {
 	switch kind {
 	case contracts.AccountKindLocal, contracts.AccountKindExternal:

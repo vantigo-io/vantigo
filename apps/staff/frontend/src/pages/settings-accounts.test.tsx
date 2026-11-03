@@ -16,9 +16,7 @@ describe("Settings — accounts", () => {
     renderRoute("/staff/settings");
 
     const card = await region("Accounts");
-    expect(
-      within(card).getByText(/deletes the person's account in an identity provider's directory/),
-    ).toBeInTheDocument();
+    expect(within(card).getByText(/deletes the person's account in the provider's directory/)).toBeInTheDocument();
     await retype(within(card).getByRole("textbox", { name: /Prepare the account/ }), "21");
     await retype(within(card).getByRole("textbox", { name: /Delete an external account/ }), "365");
     await userEvent.click(within(card).getByRole("button", { name: "Save the account settings" }));

@@ -18,6 +18,7 @@ sql:
       - ../db/migrations/00068_staff_competence_profiles.sql
       - ../db/migrations/00069_staff_person_photo.sql
       - ../db/migrations/00071_staff_photo_push.sql
+      - ../db/migrations/00111_staff_provider_neutral.sql
     queries: queries
     gen:
       go:

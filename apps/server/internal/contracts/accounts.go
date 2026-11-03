@@ -3,6 +3,7 @@ package contracts
 import (
 	"context"
 	"errors"
+	"regexp"
 	"strings"
 
 	"github.com/google/uuid"
@@ -34,23 +35,32 @@ const (
 	// re-enables a user Staff disabled, Update writes the language and the
 	// number alone — the federated mode's rules, for one person.
 	AccountKindExternal = "external"
-	// AccountKindEntra: an external provider in the IdentityProvisioner slot
-	// (keyed "entra") holds the account, which Staff has it create and
-	// announces (Expect), so no Owner adopts it. Link-only as
-	// AccountKindExternal, except that Activate gives the provisioning
-	// roles once, on the first activation of the adopted user.
-	AccountKindEntra = "entra"
+	// A provider kind is any other valid kind (IsProviderKind): the Key of
+	// an external provider in the IdentityProvisioner slot ("entra", say),
+	// which holds the account, which Staff has it create and announces
+	// (Expect), so no Owner adopts it. Link-only as AccountKindExternal,
+	// except that Activate gives the provisioning roles once, on the first
+	// activation of the adopted user (Google design G6).
 )
 
-// ValidAccountKind reports whether s is one of the three account kinds,
-// exactly as spelled.
+// providerKindPattern is the syntax of a provider kind: a lower-case letter
+// and one to nine lower-case letters or digits, the column being
+// varchar(10).
+var providerKindPattern = regexp.MustCompile(`^[a-z][a-z0-9]{1,9}$`)
+
+// ValidAccountKind reports whether s is an account kind, exactly as spelled:
+// AccountKindLocal, AccountKindExternal, or a provider kind matching
+// ^[a-z][a-z0-9]{1,9}$. It checks the syntax only; whether a provider offers
+// the kind is the caller's question to the IdentityProvisioner slot.
 func ValidAccountKind(s string) bool {
-	switch s {
-	case AccountKindLocal, AccountKindExternal, AccountKindEntra:
-		return true
-	default:
-		return false
-	}
+	return s == AccountKindLocal || s == AccountKindExternal || providerKindPattern.MatchString(s)
+}
+
+// IsProviderKind reports whether s is a valid account kind other than
+// AccountKindLocal and AccountKindExternal: the key of a provider that holds
+// the person's account.
+func IsProviderKind(s string) bool {
+	return s != AccountKindLocal && s != AccountKindExternal && ValidAccountKind(s)
 }
 
 // The states of AccountRef.State.
@@ -155,7 +165,7 @@ type AccountSpec struct {
 	// on the user. See SameEmployeeNumber for how two numbers compare.
 	EmployeeNumber string
 	// Kind is the person's account kind (AccountKindLocal,
-	// AccountKindExternal or AccountKindEntra), which decides whether
+	// AccountKindExternal or a provider kind, see ValidAccountKind), which decides whether
 	// Prepare may create the user and what Update writes. "" reads the mode
 	// — AccountKindLocal when Mode answers AccountModeLocal, else
 	// AccountKindExternal — as a caller of the previous release, which
@@ -296,7 +306,7 @@ var (
 	// Activate gives none of the set until an Owner takes it out.
 	ErrEmployeeRoleUnsafe = errors.New("contracts: a role named for Staff grants administration")
 	// ErrAccountNotFound: in link-only kinds (AccountKindExternal,
-	// AccountKindEntra, or federated mode when the call names no kind), no
+	// a provider kind, or federated mode when the call names no kind), no
 	// managed user holds the employee number — the identity provider has
 	// not created one yet.
 	ErrAccountNotFound = errors.New("contracts: no account holds the employee number")
@@ -344,13 +354,13 @@ var (
 //   - The roles are identity's. AccountSpec carries none; Activate assigns
 //     the set an Owner named (ProvisioningRoles), only on the call that
 //     enables a user Staff disabled (AccountKindLocal) or once, on the first
-//     activation of an adopted user (AccountKindEntra), so an Owner's later
+//     activation of an adopted user (a provider kind), so an Owner's later
 //     removal of a role is not undone.
 //   - The kind travels on the call. The person's account kind
 //     (AccountSpec.Kind, ActivateOpts.Kind) decides what identity creates,
 //     gives and invites, never the installation's mode alone: a local person
 //     in an installation whose single sign-on is on is still created and
-//     invited, and an entra person still given the roles. A call naming no
+//     invited, and a provider's person still given the roles. A call naming no
 //     kind reads the mode, as the previous release did.
 //   - The employee number decides whose account it is. Prepare finds a
 //     managed user by number; a caller acts on a user only when the number
@@ -386,8 +396,8 @@ type AccountProvisioning interface {
 	// when there are none), and it invites a pending user who has no
 	// credential and no acceptable invitation — never within ten minutes of
 	// the last invitation naming them — delivering after its commit; for
-	// AccountKindExternal it only re-enables a user Staff disabled; for
-	// AccountKindEntra it re-enables a user Staff disabled and, the first
+	// AccountKindExternal it only re-enables a user Staff disabled; for a
+	// provider kind (IsProviderKind) it re-enables a user Staff disabled and, the first
 	// time it is called for the user, assigns the provisioning roles — once,
 	// enabled or not, never again. ErrAccountNotManaged,
 	// ErrAccountPrivileged, ErrBlockedByOwner, ErrEmployeeRoleMissing,
