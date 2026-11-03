@@ -5,11 +5,13 @@ sidebar:
   order: 2
 sources:
   - apps/host/frontend/src/routes/settings/connections.tsx
+  - apps/host/frontend/src/lib/connections.tsx
   - apps/entra/frontend/src/components/outlook-connection.tsx
 ---
 
-**Innstillinger → Tilkoblinger** viser kontoene andre steder som du kobler til Vantigo.
-I dag er det **Outlook**-en din: du kobler den til én gang ved å logge på Microsoft, og
+**Innstillinger → Tilkoblinger** viser kontoene andre steder som du kobler til Vantigo,
+ett kort for hver leverandør organisasjonen din kjører. I dag er det **Outlook**-en din,
+fra Microsoft Entra ID-modulen: du kobler den til én gang ved å logge på Microsoft, og
 Vantigo beholder tilkoblingen til du kobler den fra, slutter, eller administratoren din
 slår den av. Kalenderens
 [Outlook-synkronisering](/nb/user/calendar/#synkroniser-med-outlook) bruker den: Vantigo
@@ -21,9 +23,10 @@ mens kundens svar havner i den delte kanalen.
 ## Hvem som ser den
 
 **Tilkoblinger** står under **Innstillinger** i avatar-menyen, ved siden av **Profil**
-og **Sikkerhet**, så lenge organisasjonen kjører Microsoft Entra ID-modulen; uten den
-finnes ikke siden. Alle som er pålogget, ser sin egen tilkobling og ingen andres; ingen
-tillatelse trengs.
+og **Sikkerhet**, så lenge organisasjonen kjører minst én modul som tilbyr en tilkobling —
+i dag Microsoft Entra ID-modulen; uten en slik finnes ikke siden. Siden viser ett kort for
+hver slik modul som er slått på, i samme rekkefølge hver gang. Alle som er pålogget, ser
+sine egne tilkoblinger og ingen andres; ingen tillatelse trengs.
 
 Kortet **Outlook** tilbyr en tilkobling bare når to ting stemmer:
 
@@ -47,8 +50,8 @@ Vantigo kjenner ingen Microsoft-konto av deg.*
    koblet til**, og sender deg tilbake dit du startet.
 
 Du kan også koble til fra kortet **Outlook** under **Kalender → Min kalender**, eller
-direkte fra skrivefeltet i **Kommunikasjon → Innboks**, som viser den samme knappen
-og sender deg tilbake dit.
+direkte fra skrivefeltet i **Kommunikasjon → Innboks**, som viser den samme knappen —
+én for hver leverandør som tilbyr deg en tilkobling — og sender deg tilbake dit.
 
 Logg på med **kontoen Vantigo kjenner deg ved**: den HR har koblet til personen din.
 Logger du på som noen annen — en annen konto, en personlig Microsoft-konto, en konto fra
