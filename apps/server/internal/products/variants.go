@@ -49,11 +49,15 @@ func (s *server) GetProductsByIdVariants(ctx context.Context, req gen.GetProduct
 	for _, p := range prices {
 		pricesByVariant[p.VariantID] = append(pricesByVariant[p.VariantID], p)
 	}
+	packagings, err := packagingsByVariant(ctx, q, variantIDs)
+	if err != nil {
+		return nil, err
+	}
 
 	moment := s.deps.Clock()
 	data := make([]gen.ProductVariantResponse, 0, len(rows))
 	for _, v := range rows {
-		data = append(data, variantResponse(v, pricesByVariant[v.ID], moment))
+		data = append(data, variantResponse(v, pricesByVariant[v.ID], packagings[v.ID], moment))
 	}
 	return gen.GetProductsByIdVariants200JSONResponse(data), nil
 }
@@ -102,22 +106,17 @@ func (s *server) PostProductsByIdVariants(ctx context.Context, req gen.PostProdu
 			"Duplicate SKU", fmt.Sprintf("A variant with SKU '%s' already exists.", parsed.Sku), http.StatusConflict)), nil
 	}
 
-	if parsed.Barcode != nil {
-		barcodeExists, err := q.VariantBarcodeExists(ctx, parsed.Barcode)
-		if err != nil {
-			return nil, fmt.Errorf("products: check barcode: %w", err)
-		}
-		if barcodeExists {
-			return gen.PostProductsByIdVariants409ApplicationProblemPlusJSONResponse(apicommon.ProblemStatus(
-				"Duplicate barcode", fmt.Sprintf("A variant with barcode '%s' already exists.", *parsed.Barcode), http.StatusConflict)), nil
-		}
-	}
-
 	now := s.deps.Clock()
 	var variant store.ProductsProductVariant
 	var priceRows []store.ProductsProductPrice
+	var refused *apicommon.ProblemDetails
 	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		txq := store.New(tx)
+		if parsed.Barcode != nil {
+			if refused, err = duplicateVariantBarcode(ctx, txq, *parsed.Barcode, 0); err != nil || refused != nil {
+				return err
+			}
+		}
 		nums, err := numericsFromVariant(parsed)
 		if err != nil {
 			return err
@@ -150,10 +149,13 @@ func (s *server) PostProductsByIdVariants(ctx context.Context, req gen.PostProdu
 	if err != nil {
 		return nil, fmt.Errorf("products: add variant: %w", err)
 	}
+	if refused != nil {
+		return gen.PostProductsByIdVariants409ApplicationProblemPlusJSONResponse(*refused), nil
+	}
 
 	location := fmt.Sprintf("%s/api/v1/products/%d/variants/%d", s.deps.Config.BasePath, req.Id, variant.ID)
 	return gen.PostProductsByIdVariants201JSONResponse{
-		Body:    variantResponse(variant, priceRows, now),
+		Body:    variantResponse(variant, priceRows, nil, now),
 		Headers: gen.PostProductsByIdVariants201ResponseHeaders{Location: &location},
 	}, nil
 }
@@ -210,39 +212,56 @@ func (s *server) PutProductsByIdVariantsByVariantId(ctx context.Context, req gen
 		}
 	}
 
-	if parsed.Barcode != nil {
-		barcodeExists, err := q.VariantBarcodeExistsExcluding(ctx, store.VariantBarcodeExistsExcludingParams{Barcode: parsed.Barcode, ID: req.VariantId})
-		if err != nil {
-			return nil, fmt.Errorf("products: check barcode: %w", err)
-		}
-		if barcodeExists {
-			return gen.PutProductsByIdVariantsByVariantId409ApplicationProblemPlusJSONResponse(apicommon.ProblemStatus(
-				"Duplicate barcode", fmt.Sprintf("A variant with barcode '%s' already exists.", *parsed.Barcode), http.StatusConflict)), nil
-		}
-	}
-
 	nums, err := numericsFromVariant(parsed)
 	if err != nil {
 		return nil, err
 	}
-	updated, err := q.UpdateProductVariant(ctx, store.UpdateProductVariantParams{
-		Sku: parsed.Sku, Barcode: parsed.Barcode, Unit: parsed.Unit,
-		StandardCost: nums.StandardCost, WeightKg: nums.WeightKg,
-		LengthCm: nums.LengthCm, WidthCm: nums.WidthCm, HeightCm: nums.HeightCm,
-		OptionValues: marshalOptionValues(parsed.OptionValues), UpdatedAt: s.deps.Clock(), ID: req.VariantId,
+	// The write is one transaction in the packagings' lock order
+	// (packagings.go): the variant's row FOR UPDATE, then, for a barcode,
+	// the products:barcodes advisory lock its check runs under.
+	var updated store.ProductsProductVariant
+	var refused *apicommon.ProblemDetails
+	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
+		txq := store.New(tx)
+		if _, err := txq.LockVariantOfProduct(ctx, store.LockVariantOfProductParams{ID: req.VariantId, ProductID: req.Id}); err != nil {
+			return fmt.Errorf("lock variant: %w", err)
+		}
+		if parsed.Barcode != nil {
+			if refused, err = duplicateVariantBarcode(ctx, txq, *parsed.Barcode, req.VariantId); err != nil || refused != nil {
+				return err
+			}
+		}
+		updated, err = txq.UpdateProductVariant(ctx, store.UpdateProductVariantParams{
+			Sku: parsed.Sku, Barcode: parsed.Barcode, Unit: parsed.Unit,
+			StandardCost: nums.StandardCost, WeightKg: nums.WeightKg,
+			LengthCm: nums.LengthCm, WidthCm: nums.WidthCm, HeightCm: nums.HeightCm,
+			OptionValues: marshalOptionValues(parsed.OptionValues), UpdatedAt: s.deps.Clock(), ID: req.VariantId,
+		})
+		return err
 	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		// Deleted between the lookup above and the lock.
+		return gen.PutProductsByIdVariantsByVariantId404Response{}, nil
+	}
 	if err != nil {
 		return nil, fmt.Errorf("products: update variant: %w", err)
+	}
+	if refused != nil {
+		return gen.PutProductsByIdVariantsByVariantId409ApplicationProblemPlusJSONResponse(*refused), nil
 	}
 
 	// Prices are untouched by this endpoint — managed only through the price
 	// sub-resource (prices.go) — so the response reads back whatever the
-	// variant already had.
+	// variant already had, and its packagings likewise.
 	prices, err := q.ListPricesByVariant(ctx, req.VariantId)
 	if err != nil {
 		return nil, fmt.Errorf("products: list prices: %w", err)
 	}
-	return gen.PutProductsByIdVariantsByVariantId200JSONResponse(variantResponse(updated, prices, s.deps.Clock())), nil
+	packagings, err := q.ListPackagingsByVariant(ctx, req.VariantId)
+	if err != nil {
+		return nil, fmt.Errorf("products: list packagings: %w", err)
+	}
+	return gen.PutProductsByIdVariantsByVariantId200JSONResponse(variantResponse(updated, prices, packagings, s.deps.Clock())), nil
 }
 
 // DeleteProductsByIdVariantsByVariantId Remove a product variant
@@ -308,6 +327,20 @@ func (s *server) DeleteProductsByIdVariantsByVariantId(ctx context.Context, req 
 		return refused, nil
 	}
 	return gen.DeleteProductsByIdVariantsByVariantId204Response{}, nil
+}
+
+// duplicateVariantBarcode is a variant write's barcode check, run inside its
+// transaction under the products:barcodes advisory lock (inventory design
+// I24): the "Duplicate barcode" 409 a variant write has always answered,
+// now also when a packaging carries the GTIN. exceptVariant is the variant
+// being updated, 0 on a create.
+func duplicateVariantBarcode(ctx context.Context, txq *store.Queries, barcode string, exceptVariant int32) (*apicommon.ProblemDetails, error) {
+	holder, err := barcodeHolder(ctx, txq, barcode, exceptVariant, 0)
+	if err != nil || holder == "" {
+		return nil, err
+	}
+	p := apicommon.ProblemStatus("Duplicate barcode", fmt.Sprintf("A %s with barcode '%s' already exists.", holder, barcode), http.StatusConflict)
+	return &p, nil
 }
 
 // variantHeld asks every Deps.VariantReferenceHolders, in order, what it

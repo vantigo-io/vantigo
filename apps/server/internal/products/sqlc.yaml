@@ -7,6 +7,7 @@ sql:
   - engine: postgresql
     schema:
       - ../db/migrations/00004_products_baseline.sql
+      - ../db/migrations/00109_products_packagings.sql
     queries: queries
     gen:
       go:

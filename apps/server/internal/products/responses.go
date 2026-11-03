@@ -64,8 +64,10 @@ func priceResponseFromDomain(p productPrice) gen.ProductPriceResponse {
 // variantResponse is ProductVariantResponse.FromDomain (:84-101): the
 // variant's own fields, its option values camelCased on the way out
 // (products inventory §7 oddity 5), and its effective prices resolved at
-// moment (ProductPricing.GetEffectivePrices).
-func variantResponse(v store.ProductsProductVariant, prices []store.ProductsProductPrice, moment time.Time) gen.ProductVariantResponse {
+// moment (ProductPricing.GetEffectivePrices), and its packagings (inventory
+// design I24) in the order given — by sort order then id, as every
+// packaging query answers them.
+func variantResponse(v store.ProductsProductVariant, prices []store.ProductsProductPrice, packagings []store.ProductsVariantPackaging, moment time.Time) gen.ProductVariantResponse {
 	domainPrices := make([]productPrice, len(prices))
 	for i, p := range prices {
 		domainPrices[i] = domainPriceFromRow(p)
@@ -74,6 +76,11 @@ func variantResponse(v store.ProductsProductVariant, prices []store.ProductsProd
 	effectiveResponses := make([]gen.ProductPriceResponse, 0, len(effective))
 	for _, p := range effective {
 		effectiveResponses = append(effectiveResponses, priceResponseFromDomain(p))
+	}
+
+	packagingResponses := make([]gen.ProductPackagingResponse, 0, len(packagings))
+	for _, p := range packagings {
+		packagingResponses = append(packagingResponses, packagingResponse(p))
 	}
 
 	return gen.ProductVariantResponse{
@@ -88,6 +95,7 @@ func variantResponse(v store.ProductsProductVariant, prices []store.ProductsProd
 		HeightCm:        floatPtrFromNumeric(v.HeightCm),
 		OptionValues:    camelizeOptionValueKeys(unmarshalOptionValues(v.OptionValues)),
 		EffectivePrices: effectiveResponses,
+		Packagings:      &packagingResponses,
 		CreatedAt:       v.CreatedAt,
 		UpdatedAt:       v.UpdatedAt,
 	}

@@ -712,6 +712,7 @@ func TestProductsBaseline_AppliesAndIsIdempotent(t *testing.T) {
 		"product_variants",
 		"products",
 		"tax_categories",
+		"variant_packagings", // 00109_products_packagings.sql, Inventory's delivery B
 	}
 	rows, err := pool.Query(ctx, `SELECT table_name FROM information_schema.tables WHERE table_schema = 'products' ORDER BY table_name`)
 	if err != nil {

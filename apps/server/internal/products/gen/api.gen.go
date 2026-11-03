@@ -45,6 +45,53 @@ type ProductCategoryResponse struct {
 	Name string `json:"name"`
 }
 
+// ProductPackagingRequest A packaging's fields, on create and on a whole replace. Give either quantity, or containsPackagingId with containsCount — not both. A variant has at most 10 packagings. Changing what a packaging holds recomputes every packaging built from it; stock is never touched, it is always in the variant's unit.
+type ProductPackagingRequest struct {
+	// Barcode A GTIN with a valid check digit.
+	Barcode             *string  `json:"barcode,omitempty"`
+	ContainsCount       *int32   `json:"containsCount,omitempty"`
+	ContainsPackagingId *int32   `json:"containsPackagingId,omitempty"`
+	HeightCm            *float64 `json:"heightCm,omitempty"`
+
+	// Kind inner, case, pallet or other.
+	Kind     string   `json:"kind"`
+	LengthCm *float64 `json:"lengthCm,omitempty"`
+	Name     string   `json:"name"`
+
+	// Quantity More than 0, at most three decimals.
+	Quantity  *float64 `json:"quantity,omitempty"`
+	SortOrder *int32   `json:"sortOrder,omitempty"`
+	WeightKg  *float64 `json:"weightKg,omitempty"`
+	WidthCm   *float64 `json:"widthCm,omitempty"`
+}
+
+// ProductPackagingResponse A packaging of a variant (inventory design I24): a box, a case or a pallet the variant is stored and counted in. It holds either a quantity of the variant's unit, or a count of another packaging of the same variant, in which case quantity is derived (a Euro pallet of 40 boxes of 15 holds 600).
+type ProductPackagingResponse struct {
+	// Barcode A GTIN-8, -12, -13 or -14, unique across every variant and packaging.
+	Barcode *string `json:"barcode,omitempty"`
+
+	// ContainsCount How many of containsPackagingId it holds, at least 2.
+	ContainsCount *int32 `json:"containsCount,omitempty"`
+
+	// ContainsPackagingId The packaging it is built from; absent when it holds a quantity directly.
+	ContainsPackagingId *int32    `json:"containsPackagingId,omitempty"`
+	CreatedAt           time.Time `json:"createdAt"`
+	HeightCm            *float64  `json:"heightCm,omitempty"`
+	Id                  int32     `json:"id"`
+
+	// Kind inner, case, pallet or other.
+	Kind     string   `json:"kind"`
+	LengthCm *float64 `json:"lengthCm,omitempty"`
+	Name     string   `json:"name"`
+
+	// Quantity What it holds in the variant's unit, three decimals; derived when it is built from another packaging.
+	Quantity  float64   `json:"quantity"`
+	SortOrder int32     `json:"sortOrder"`
+	UpdatedAt time.Time `json:"updatedAt"`
+	WeightKg  *float64  `json:"weightKg,omitempty"`
+	WidthCm   *float64  `json:"widthCm,omitempty"`
+}
+
 // ProductPriceRequest defines model for ProductPriceRequest.
 type ProductPriceRequest struct {
 	Amount    float64    `json:"amount"`
@@ -140,12 +187,15 @@ type ProductVariantResponse struct {
 	Id              int32                  `json:"id"`
 	LengthCm        *float64               `json:"lengthCm,omitempty"`
 	OptionValues    map[string]string      `json:"optionValues"`
-	Sku             string                 `json:"sku"`
-	StandardCost    *float64               `json:"standardCost,omitempty"`
-	Unit            string                 `json:"unit"`
-	UpdatedAt       time.Time              `json:"updatedAt"`
-	WeightKg        *float64               `json:"weightKg,omitempty"`
-	WidthCm         *float64               `json:"widthCm,omitempty"`
+
+	// Packagings The variant's packagings, by sort order then id; always sent (optional only because the recorded exchanges of the port predate it).
+	Packagings   *[]ProductPackagingResponse `json:"packagings,omitempty"`
+	Sku          string                      `json:"sku"`
+	StandardCost *float64                    `json:"standardCost,omitempty"`
+	Unit         string                      `json:"unit"`
+	UpdatedAt    time.Time                   `json:"updatedAt"`
+	WeightKg     *float64                    `json:"weightKg,omitempty"`
+	WidthCm      *float64                    `json:"widthCm,omitempty"`
 }
 
 // TaxCategoryRequest defines model for TaxCategoryRequest.
@@ -226,6 +276,12 @@ type PostProductsByIdVariantsJSONRequestBody = VariantRequest
 // PutProductsByIdVariantsByVariantIdJSONRequestBody defines body for PutProductsByIdVariantsByVariantId for application/json ContentType.
 type PutProductsByIdVariantsByVariantIdJSONRequestBody = VariantRequest
 
+// PostProductsByIdVariantsByVariantIdPackagingsJSONRequestBody defines body for PostProductsByIdVariantsByVariantIdPackagings for application/json ContentType.
+type PostProductsByIdVariantsByVariantIdPackagingsJSONRequestBody = ProductPackagingRequest
+
+// PutProductsByIdVariantsByVariantIdPackagingsByPackagingIdJSONRequestBody defines body for PutProductsByIdVariantsByVariantIdPackagingsByPackagingId for application/json ContentType.
+type PutProductsByIdVariantsByVariantIdPackagingsByPackagingIdJSONRequestBody = ProductPackagingRequest
+
 // PostProductsByIdVariantsByVariantIdPricesJSONRequestBody defines body for PostProductsByIdVariantsByVariantIdPrices for application/json ContentType.
 type PostProductsByIdVariantsByVariantIdPricesJSONRequestBody = ProductPriceRequest
 
@@ -300,6 +356,18 @@ type ServerInterface interface {
 	// PutProductsByIdVariantsByVariantId Update a product variant
 	// (PUT /api/v1/products/{id}/variants/{variantId})
 	PutProductsByIdVariantsByVariantId(w http.ResponseWriter, r *http.Request, id int32, variantId int32)
+	// GetProductsByIdVariantsByVariantIdPackagings List a variant's packagings
+	// (GET /api/v1/products/{id}/variants/{variantId}/packagings)
+	GetProductsByIdVariantsByVariantIdPackagings(w http.ResponseWriter, r *http.Request, id int32, variantId int32)
+	// PostProductsByIdVariantsByVariantIdPackagings Add a packaging to a variant
+	// (POST /api/v1/products/{id}/variants/{variantId}/packagings)
+	PostProductsByIdVariantsByVariantIdPackagings(w http.ResponseWriter, r *http.Request, id int32, variantId int32)
+	// DeleteProductsByIdVariantsByVariantIdPackagingsByPackagingId Remove a packaging
+	// (DELETE /api/v1/products/{id}/variants/{variantId}/packagings/{packagingId})
+	DeleteProductsByIdVariantsByVariantIdPackagingsByPackagingId(w http.ResponseWriter, r *http.Request, id int32, variantId int32, packagingId int32)
+	// PutProductsByIdVariantsByVariantIdPackagingsByPackagingId Change a packaging
+	// (PUT /api/v1/products/{id}/variants/{variantId}/packagings/{packagingId})
+	PutProductsByIdVariantsByVariantIdPackagingsByPackagingId(w http.ResponseWriter, r *http.Request, id int32, variantId int32, packagingId int32)
 	// GetProductsByIdVariantsByVariantIdPrices List prices of a variant
 	// (GET /api/v1/products/{id}/variants/{variantId}/prices)
 	GetProductsByIdVariantsByVariantIdPrices(w http.ResponseWriter, r *http.Request, id int32, variantId int32)
@@ -992,6 +1060,164 @@ func (siw *ServerInterfaceWrapper) PutProductsByIdVariantsByVariantId(w http.Res
 	handler.ServeHTTP(w, r)
 }
 
+// GetProductsByIdVariantsByVariantIdPackagings operation middleware
+func (siw *ServerInterfaceWrapper) GetProductsByIdVariantsByVariantIdPackagings(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "variantId" -------------
+	var variantId int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "variantId", r.PathValue("variantId"), &variantId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "variantId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetProductsByIdVariantsByVariantIdPackagings(w, r, id, variantId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostProductsByIdVariantsByVariantIdPackagings operation middleware
+func (siw *ServerInterfaceWrapper) PostProductsByIdVariantsByVariantIdPackagings(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "variantId" -------------
+	var variantId int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "variantId", r.PathValue("variantId"), &variantId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "variantId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostProductsByIdVariantsByVariantIdPackagings(w, r, id, variantId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteProductsByIdVariantsByVariantIdPackagingsByPackagingId operation middleware
+func (siw *ServerInterfaceWrapper) DeleteProductsByIdVariantsByVariantIdPackagingsByPackagingId(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "variantId" -------------
+	var variantId int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "variantId", r.PathValue("variantId"), &variantId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "variantId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "packagingId" -------------
+	var packagingId int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "packagingId", r.PathValue("packagingId"), &packagingId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "packagingId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteProductsByIdVariantsByVariantIdPackagingsByPackagingId(w, r, id, variantId, packagingId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutProductsByIdVariantsByVariantIdPackagingsByPackagingId operation middleware
+func (siw *ServerInterfaceWrapper) PutProductsByIdVariantsByVariantIdPackagingsByPackagingId(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "variantId" -------------
+	var variantId int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "variantId", r.PathValue("variantId"), &variantId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "variantId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "packagingId" -------------
+	var packagingId int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "packagingId", r.PathValue("packagingId"), &packagingId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "packagingId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutProductsByIdVariantsByVariantIdPackagingsByPackagingId(w, r, id, variantId, packagingId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetProductsByIdVariantsByVariantIdPrices operation middleware
 func (siw *ServerInterfaceWrapper) GetProductsByIdVariantsByVariantIdPrices(w http.ResponseWriter, r *http.Request) {
 
@@ -1279,6 +1505,10 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/products/{id}/variants", wrapper.PostProductsByIdVariants)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/products/{id}/variants/{variantId}", wrapper.DeleteProductsByIdVariantsByVariantId)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/products/{id}/variants/{variantId}", wrapper.PutProductsByIdVariantsByVariantId)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/products/{id}/variants/{variantId}/packagings", wrapper.GetProductsByIdVariantsByVariantIdPackagings)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/products/{id}/variants/{variantId}/packagings", wrapper.PostProductsByIdVariantsByVariantIdPackagings)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/products/{id}/variants/{variantId}/packagings/{packagingId}", wrapper.DeleteProductsByIdVariantsByVariantIdPackagingsByPackagingId)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/products/{id}/variants/{variantId}/packagings/{packagingId}", wrapper.PutProductsByIdVariantsByVariantIdPackagingsByPackagingId)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/products/{id}/variants/{variantId}/prices", wrapper.GetProductsByIdVariantsByVariantIdPrices)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/products/{id}/variants/{variantId}/prices", wrapper.PostProductsByIdVariantsByVariantIdPrices)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/products/{id}/variants/{variantId}/prices/{priceId}", wrapper.DeleteProductsByIdVariantsByVariantIdPricesByPriceId)
@@ -2832,6 +3062,310 @@ func (response PutProductsByIdVariantsByVariantId409ApplicationProblemPlusJSONRe
 	return err
 }
 
+type GetProductsByIdVariantsByVariantIdPackagingsRequestObject struct {
+	Id        int32 `json:"id"`
+	VariantId int32 `json:"variantId"`
+}
+
+type GetProductsByIdVariantsByVariantIdPackagingsResponseObject interface {
+	VisitGetProductsByIdVariantsByVariantIdPackagingsResponse(w http.ResponseWriter) error
+}
+
+type GetProductsByIdVariantsByVariantIdPackagings200JSONResponse []ProductPackagingResponse
+
+func (response GetProductsByIdVariantsByVariantIdPackagings200JSONResponse) VisitGetProductsByIdVariantsByVariantIdPackagingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProductsByIdVariantsByVariantIdPackagings401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetProductsByIdVariantsByVariantIdPackagings401JSONResponse) VisitGetProductsByIdVariantsByVariantIdPackagingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProductsByIdVariantsByVariantIdPackagings403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetProductsByIdVariantsByVariantIdPackagings403JSONResponse) VisitGetProductsByIdVariantsByVariantIdPackagingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProductsByIdVariantsByVariantIdPackagings404Response struct {
+}
+
+func (response GetProductsByIdVariantsByVariantIdPackagings404Response) VisitGetProductsByIdVariantsByVariantIdPackagingsResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostProductsByIdVariantsByVariantIdPackagingsRequestObject struct {
+	Id        int32 `json:"id"`
+	VariantId int32 `json:"variantId"`
+	Body      *PostProductsByIdVariantsByVariantIdPackagingsJSONRequestBody
+}
+
+type PostProductsByIdVariantsByVariantIdPackagingsResponseObject interface {
+	VisitPostProductsByIdVariantsByVariantIdPackagingsResponse(w http.ResponseWriter) error
+}
+
+type PostProductsByIdVariantsByVariantIdPackagings201JSONResponse ProductPackagingResponse
+
+func (response PostProductsByIdVariantsByVariantIdPackagings201JSONResponse) VisitPostProductsByIdVariantsByVariantIdPackagingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostProductsByIdVariantsByVariantIdPackagings400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response PostProductsByIdVariantsByVariantIdPackagings400ApplicationProblemPlusJSONResponse) VisitPostProductsByIdVariantsByVariantIdPackagingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostProductsByIdVariantsByVariantIdPackagings401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostProductsByIdVariantsByVariantIdPackagings401JSONResponse) VisitPostProductsByIdVariantsByVariantIdPackagingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostProductsByIdVariantsByVariantIdPackagings403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostProductsByIdVariantsByVariantIdPackagings403JSONResponse) VisitPostProductsByIdVariantsByVariantIdPackagingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostProductsByIdVariantsByVariantIdPackagings404Response struct {
+}
+
+func (response PostProductsByIdVariantsByVariantIdPackagings404Response) VisitPostProductsByIdVariantsByVariantIdPackagingsResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostProductsByIdVariantsByVariantIdPackagings409ApplicationProblemPlusJSONResponse externalRef0.ProblemDetails
+
+func (response PostProductsByIdVariantsByVariantIdPackagings409ApplicationProblemPlusJSONResponse) VisitPostProductsByIdVariantsByVariantIdPackagingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteProductsByIdVariantsByVariantIdPackagingsByPackagingIdRequestObject struct {
+	Id          int32 `json:"id"`
+	VariantId   int32 `json:"variantId"`
+	PackagingId int32 `json:"packagingId"`
+}
+
+type DeleteProductsByIdVariantsByVariantIdPackagingsByPackagingIdResponseObject interface {
+	VisitDeleteProductsByIdVariantsByVariantIdPackagingsByPackagingIdResponse(w http.ResponseWriter) error
+}
+
+type DeleteProductsByIdVariantsByVariantIdPackagingsByPackagingId204Response struct {
+}
+
+func (response DeleteProductsByIdVariantsByVariantIdPackagingsByPackagingId204Response) VisitDeleteProductsByIdVariantsByVariantIdPackagingsByPackagingIdResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteProductsByIdVariantsByVariantIdPackagingsByPackagingId401JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteProductsByIdVariantsByVariantIdPackagingsByPackagingId401JSONResponse) VisitDeleteProductsByIdVariantsByVariantIdPackagingsByPackagingIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteProductsByIdVariantsByVariantIdPackagingsByPackagingId403JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteProductsByIdVariantsByVariantIdPackagingsByPackagingId403JSONResponse) VisitDeleteProductsByIdVariantsByVariantIdPackagingsByPackagingIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteProductsByIdVariantsByVariantIdPackagingsByPackagingId404Response struct {
+}
+
+func (response DeleteProductsByIdVariantsByVariantIdPackagingsByPackagingId404Response) VisitDeleteProductsByIdVariantsByVariantIdPackagingsByPackagingIdResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type DeleteProductsByIdVariantsByVariantIdPackagingsByPackagingId409ApplicationProblemPlusJSONResponse externalRef0.ProblemDetails
+
+func (response DeleteProductsByIdVariantsByVariantIdPackagingsByPackagingId409ApplicationProblemPlusJSONResponse) VisitDeleteProductsByIdVariantsByVariantIdPackagingsByPackagingIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutProductsByIdVariantsByVariantIdPackagingsByPackagingIdRequestObject struct {
+	Id          int32 `json:"id"`
+	VariantId   int32 `json:"variantId"`
+	PackagingId int32 `json:"packagingId"`
+	Body        *PutProductsByIdVariantsByVariantIdPackagingsByPackagingIdJSONRequestBody
+}
+
+type PutProductsByIdVariantsByVariantIdPackagingsByPackagingIdResponseObject interface {
+	VisitPutProductsByIdVariantsByVariantIdPackagingsByPackagingIdResponse(w http.ResponseWriter) error
+}
+
+type PutProductsByIdVariantsByVariantIdPackagingsByPackagingId200JSONResponse ProductPackagingResponse
+
+func (response PutProductsByIdVariantsByVariantIdPackagingsByPackagingId200JSONResponse) VisitPutProductsByIdVariantsByVariantIdPackagingsByPackagingIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutProductsByIdVariantsByVariantIdPackagingsByPackagingId400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response PutProductsByIdVariantsByVariantIdPackagingsByPackagingId400ApplicationProblemPlusJSONResponse) VisitPutProductsByIdVariantsByVariantIdPackagingsByPackagingIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutProductsByIdVariantsByVariantIdPackagingsByPackagingId401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutProductsByIdVariantsByVariantIdPackagingsByPackagingId401JSONResponse) VisitPutProductsByIdVariantsByVariantIdPackagingsByPackagingIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutProductsByIdVariantsByVariantIdPackagingsByPackagingId403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutProductsByIdVariantsByVariantIdPackagingsByPackagingId403JSONResponse) VisitPutProductsByIdVariantsByVariantIdPackagingsByPackagingIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutProductsByIdVariantsByVariantIdPackagingsByPackagingId404Response struct {
+}
+
+func (response PutProductsByIdVariantsByVariantIdPackagingsByPackagingId404Response) VisitPutProductsByIdVariantsByVariantIdPackagingsByPackagingIdResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PutProductsByIdVariantsByVariantIdPackagingsByPackagingId409ApplicationProblemPlusJSONResponse externalRef0.ProblemDetails
+
+func (response PutProductsByIdVariantsByVariantIdPackagingsByPackagingId409ApplicationProblemPlusJSONResponse) VisitPutProductsByIdVariantsByVariantIdPackagingsByPackagingIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetProductsByIdVariantsByVariantIdPricesRequestObject struct {
 	Id        int32 `json:"id"`
 	VariantId int32 `json:"variantId"`
@@ -3200,6 +3734,18 @@ type StrictServerInterface interface {
 	// PutProductsByIdVariantsByVariantId Update a product variant
 	// (PUT /api/v1/products/{id}/variants/{variantId})
 	PutProductsByIdVariantsByVariantId(ctx context.Context, request PutProductsByIdVariantsByVariantIdRequestObject) (PutProductsByIdVariantsByVariantIdResponseObject, error)
+	// GetProductsByIdVariantsByVariantIdPackagings List a variant's packagings
+	// (GET /api/v1/products/{id}/variants/{variantId}/packagings)
+	GetProductsByIdVariantsByVariantIdPackagings(ctx context.Context, request GetProductsByIdVariantsByVariantIdPackagingsRequestObject) (GetProductsByIdVariantsByVariantIdPackagingsResponseObject, error)
+	// PostProductsByIdVariantsByVariantIdPackagings Add a packaging to a variant
+	// (POST /api/v1/products/{id}/variants/{variantId}/packagings)
+	PostProductsByIdVariantsByVariantIdPackagings(ctx context.Context, request PostProductsByIdVariantsByVariantIdPackagingsRequestObject) (PostProductsByIdVariantsByVariantIdPackagingsResponseObject, error)
+	// DeleteProductsByIdVariantsByVariantIdPackagingsByPackagingId Remove a packaging
+	// (DELETE /api/v1/products/{id}/variants/{variantId}/packagings/{packagingId})
+	DeleteProductsByIdVariantsByVariantIdPackagingsByPackagingId(ctx context.Context, request DeleteProductsByIdVariantsByVariantIdPackagingsByPackagingIdRequestObject) (DeleteProductsByIdVariantsByVariantIdPackagingsByPackagingIdResponseObject, error)
+	// PutProductsByIdVariantsByVariantIdPackagingsByPackagingId Change a packaging
+	// (PUT /api/v1/products/{id}/variants/{variantId}/packagings/{packagingId})
+	PutProductsByIdVariantsByVariantIdPackagingsByPackagingId(ctx context.Context, request PutProductsByIdVariantsByVariantIdPackagingsByPackagingIdRequestObject) (PutProductsByIdVariantsByVariantIdPackagingsByPackagingIdResponseObject, error)
 	// GetProductsByIdVariantsByVariantIdPrices List prices of a variant
 	// (GET /api/v1/products/{id}/variants/{variantId}/prices)
 	GetProductsByIdVariantsByVariantIdPrices(ctx context.Context, request GetProductsByIdVariantsByVariantIdPricesRequestObject) (GetProductsByIdVariantsByVariantIdPricesResponseObject, error)
@@ -3864,6 +4410,130 @@ func (sh *strictHandler) PutProductsByIdVariantsByVariantId(w http.ResponseWrite
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PutProductsByIdVariantsByVariantIdResponseObject); ok {
 		if err := validResponse.VisitPutProductsByIdVariantsByVariantIdResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetProductsByIdVariantsByVariantIdPackagings operation middleware
+func (sh *strictHandler) GetProductsByIdVariantsByVariantIdPackagings(w http.ResponseWriter, r *http.Request, id int32, variantId int32) {
+	var request GetProductsByIdVariantsByVariantIdPackagingsRequestObject
+
+	request.Id = id
+	request.VariantId = variantId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetProductsByIdVariantsByVariantIdPackagings(ctx, request.(GetProductsByIdVariantsByVariantIdPackagingsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetProductsByIdVariantsByVariantIdPackagings")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetProductsByIdVariantsByVariantIdPackagingsResponseObject); ok {
+		if err := validResponse.VisitGetProductsByIdVariantsByVariantIdPackagingsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostProductsByIdVariantsByVariantIdPackagings operation middleware
+func (sh *strictHandler) PostProductsByIdVariantsByVariantIdPackagings(w http.ResponseWriter, r *http.Request, id int32, variantId int32) {
+	var request PostProductsByIdVariantsByVariantIdPackagingsRequestObject
+
+	request.Id = id
+	request.VariantId = variantId
+
+	var body PostProductsByIdVariantsByVariantIdPackagingsJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostProductsByIdVariantsByVariantIdPackagings(ctx, request.(PostProductsByIdVariantsByVariantIdPackagingsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostProductsByIdVariantsByVariantIdPackagings")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostProductsByIdVariantsByVariantIdPackagingsResponseObject); ok {
+		if err := validResponse.VisitPostProductsByIdVariantsByVariantIdPackagingsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteProductsByIdVariantsByVariantIdPackagingsByPackagingId operation middleware
+func (sh *strictHandler) DeleteProductsByIdVariantsByVariantIdPackagingsByPackagingId(w http.ResponseWriter, r *http.Request, id int32, variantId int32, packagingId int32) {
+	var request DeleteProductsByIdVariantsByVariantIdPackagingsByPackagingIdRequestObject
+
+	request.Id = id
+	request.VariantId = variantId
+	request.PackagingId = packagingId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteProductsByIdVariantsByVariantIdPackagingsByPackagingId(ctx, request.(DeleteProductsByIdVariantsByVariantIdPackagingsByPackagingIdRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteProductsByIdVariantsByVariantIdPackagingsByPackagingId")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteProductsByIdVariantsByVariantIdPackagingsByPackagingIdResponseObject); ok {
+		if err := validResponse.VisitDeleteProductsByIdVariantsByVariantIdPackagingsByPackagingIdResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutProductsByIdVariantsByVariantIdPackagingsByPackagingId operation middleware
+func (sh *strictHandler) PutProductsByIdVariantsByVariantIdPackagingsByPackagingId(w http.ResponseWriter, r *http.Request, id int32, variantId int32, packagingId int32) {
+	var request PutProductsByIdVariantsByVariantIdPackagingsByPackagingIdRequestObject
+
+	request.Id = id
+	request.VariantId = variantId
+	request.PackagingId = packagingId
+
+	var body PutProductsByIdVariantsByVariantIdPackagingsByPackagingIdJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutProductsByIdVariantsByVariantIdPackagingsByPackagingId(ctx, request.(PutProductsByIdVariantsByVariantIdPackagingsByPackagingIdRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutProductsByIdVariantsByVariantIdPackagingsByPackagingId")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutProductsByIdVariantsByVariantIdPackagingsByPackagingIdResponseObject); ok {
+		if err := validResponse.VisitPutProductsByIdVariantsByVariantIdPackagingsByPackagingIdResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
