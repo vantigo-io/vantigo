@@ -243,9 +243,12 @@ type externalAccount struct {
 	email         string // "" when the provider sent no usable one
 	emailVerified bool
 	displayName   string
-	// objectID is the oid claim normalised as SCIM's externalId is
-	// (normalizeExternalID), what an announced account is matched on
-	// (Entra design D4); "" when the token carries none.
+	// objectID is the directory's immutable id for the account — Entra's
+	// oid claim, Google's sub (Google design G7: Google's ID token has no
+	// oid, and its sub is the Directory user id) — normalised as SCIM's
+	// externalId is (normalizeExternalID), what an announced account and an
+	// announced link are matched on (Entra design D4); "" when the token
+	// carries none.
 	objectID string
 	// principalName is the directory's sign-in name (readPrincipalName),
 	// what an announced link is matched on after the object id (Entra
@@ -262,16 +265,22 @@ const maxSubjectLength = 512
 // subject must be non-empty, without whitespace and at most 512
 // characters; it is kept exactly, case included. The email and display
 // name are read leniently: a claim that does not qualify is dropped, not
-// fatal. The object id is kept normalised, when there is one.
-func readExternalAccount(c oidcClaims, configuredIssuer string) (externalAccount, bool) {
+// fatal. The object id is kept normalised, when there is one: the sub claim
+// when the configured provider is google, the oid claim otherwise (Google
+// design G7).
+func readExternalAccount(c oidcClaims, configuredIssuer, provider string) (externalAccount, bool) {
 	issuer, ok := normalizeIssuer(c.Issuer)
 	if !ok || issuer != configuredIssuer || c.Subject == "" || hasWhitespace(c.Subject) ||
 		utf16Length(c.Subject) > maxSubjectLength {
 		return externalAccount{}, false
 	}
+	source := c.ObjectID
+	if provider == "google" {
+		source = c.Subject
+	}
 	objectID := ""
-	if strings.TrimSpace(c.ObjectID) != "" {
-		objectID = *normalizeExternalID(&c.ObjectID)
+	if strings.TrimSpace(source) != "" {
+		objectID = *normalizeExternalID(&source)
 	}
 	a := externalAccount{
 		issuer:        issuer,

@@ -23,8 +23,8 @@ import (
 // returns, and a SCIM mapping is the provider's push. An Owner therefore
 // announces the directory account the user holds — its object id, its user
 // principal name, or both, under the configured issuer — and the user's
-// next arrival fulfils it: the OIDC completion on the token's oid under its
-// issuer, the SCIM create on userName against the principal name, then
+// next arrival fulfils it: the OIDC completion on the token's object id —
+// its oid, Google's sub (readExternalAccount) — under its issuer, the SCIM create on userName against the principal name, then
 // externalId against the object id. The arrival then links or maps the
 // named user as a regular provisioning would, and the email claim is not
 // consulted: an address never links an identity to an existing account (the
@@ -347,7 +347,8 @@ func firstExpectedLink(row store.IdentityExpectedLink, err error, by string) (*e
 const matchedByPrincipalName = "principalName"
 
 // oidcExpectedLink is the announced link a fulfils under a's issuer, read
-// on q, by the first key that names one: the object id (the oid claim),
+// on q, by the first key that names one: the object id (the oid claim, or
+// Google's sub: readExternalAccount),
 // then the principal name (readPrincipalName) normalised as emails are
 // against the announced one; nil for none.
 func oidcExpectedLink(ctx context.Context, q *store.Queries, a externalAccount) (*expectedLinkMatch, error) {

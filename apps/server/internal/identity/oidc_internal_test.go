@@ -153,7 +153,7 @@ func TestOIDCNormalizeIssuer(t *testing.T) {
 func TestOIDCReadExternalAccount(t *testing.T) {
 	const issuer = "https://login.microsoftonline.com/" + policyTenantID + "/v2.0"
 	base := oidcClaims{Issuer: issuer, Subject: "Subject-1", Email: "person@example.com", EmailVerified: true, Name: "Ada Lovelace"}
-	a, ok := readExternalAccount(base, issuer)
+	a, ok := readExternalAccount(base, issuer, "entra")
 	// The principal name is the verified email when the token carries no
 	// preferred_username (Entra phase 2 design L3).
 	if !ok || a != (externalAccount{issuer: issuer, subject: "Subject-1", email: "person@example.com", emailVerified: true, displayName: "Ada Lovelace", principalName: "person@example.com"}) {
@@ -163,28 +163,43 @@ func TestOIDCReadExternalAccount(t *testing.T) {
 	// without one is no principal name.
 	withUPN := base
 	withUPN.PreferredUsername = "ada@tenant.example"
-	if a, _ := readExternalAccount(withUPN, issuer); a.principalName != "ada@tenant.example" {
+	if a, _ := readExternalAccount(withUPN, issuer, "entra"); a.principalName != "ada@tenant.example" {
 		t.Errorf("principal name with preferred_username = %q, want the UPN", a.principalName)
 	}
 	withUPN.PreferredUsername = "ada"
 	withUPN.EmailVerified = false
-	if a, _ := readExternalAccount(withUPN, issuer); a.principalName != "" {
+	if a, _ := readExternalAccount(withUPN, issuer, "entra"); a.principalName != "" {
 		t.Errorf("principal name without an address-shaped UPN or a verified email = %q, want none", a.principalName)
 	}
-	if a, ok := readExternalAccount(base, issuer+"x"); ok {
+	if a, ok := readExternalAccount(base, issuer+"x", "entra"); ok {
 		t.Errorf("another issuer = %+v", a)
 	}
 	for _, subject := range []string{"", "a b", "tab\tbed", strings.Repeat("s", 513)} {
 		c := base
 		c.Subject = subject
-		if _, ok := readExternalAccount(c, issuer); ok {
+		if _, ok := readExternalAccount(c, issuer, "entra"); ok {
 			t.Errorf("subject %q accepted", subject)
 		}
 	}
 	long := base
 	long.Subject = strings.Repeat("s", 512)
-	if _, ok := readExternalAccount(long, issuer); !ok {
+	if _, ok := readExternalAccount(long, issuer, "entra"); !ok {
 		t.Error("a 512-character subject was refused")
+	}
+
+	// The object id is the oid claim for Entra, the sub for Google (Google
+	// design G7), whose 21-digit user id normalizeExternalID keeps exactly.
+	const googleUserID = "112233445566778899001"
+	both := base
+	both.Subject, both.ObjectID = googleUserID, "22222222-2222-2222-2222-222222222222"
+	if a, _ := readExternalAccount(both, issuer, "entra"); a.objectID != both.ObjectID {
+		t.Errorf("entra object id = %q, want the oid claim", a.objectID)
+	}
+	if a, _ := readExternalAccount(both, issuer, "google"); a.objectID != googleUserID {
+		t.Errorf("google object id = %q, want the sub kept exactly", a.objectID)
+	}
+	if got := *normalizeExternalID(new(string(" " + googleUserID + " "))); got != googleUserID {
+		t.Errorf("normalizeExternalID(a Google user id) = %q, want it trimmed and kept", got)
 	}
 
 	for in, want := range map[string]string{
