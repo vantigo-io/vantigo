@@ -441,3 +441,55 @@ func TestCatalog_LockVariants_AnswersAndHoldsOnTheCallersTransaction(t *testing.
 		t.Errorf("LockVariants(no ids) = %+v, %v, want empty without touching tx", empty, err)
 	}
 }
+
+// TestCatalog_LookupSKUs_KeyedAsWrittenIgnoringCaseWithPackagings pins
+// LookupSKUs: each SKU keyed exactly as the caller wrote it, matched ignoring
+// case; a missing or blank SKU absent; packagings filled like every read; and
+// more SKUs than one query carries answered across the chunks.
+func TestCatalog_LookupSKUs_KeyedAsWrittenIgnoringCaseWithPackagings(t *testing.T) {
+	t.Parallel()
+	h, c, product := packagingFixture(t)
+	variant := product.Variants[0]
+	box := addPackaging(t, c, product.Id, variant.Id, map[string]any{"name": "Box", "kind": "case", "quantity": 15})
+	taxCategoryID := insertTaxCategory(t, h, "Reduced rate", 0.15)
+	other := createProduct(t, c, newProductBody(taxCategoryID, "Nails", sku(t, "nail"))).Variants[0]
+	catalog := products.Module().Products(h.Deps())
+
+	lower, missing := strings.ToLower(variant.Sku), sku(t, "missing")
+	upper := " " + strings.ToUpper(other.Sku) + " "
+	// Over a thousand unknown SKUs between the known ones put them in
+	// different chunks.
+	skus := []string{lower, variant.Sku, missing, "", "  "}
+	for i := range 1500 {
+		skus = append(skus, fmt.Sprintf("%s-%d", missing, i))
+	}
+	skus = append(skus, upper)
+	got, err := catalog.LookupSKUs(context.Background(), skus)
+	if err != nil {
+		t.Fatalf("LookupSKUs: %v", err)
+	}
+	if len(got) != 3 {
+		t.Errorf("LookupSKUs answered %d keys, want 3: %+v", len(got), got)
+	}
+	for _, key := range []string{lower, variant.Sku} {
+		entries := got[key]
+		if len(entries) != 1 || entries[0].ID != variant.Id || entries[0].SKU != variant.Sku {
+			t.Errorf("LookupSKUs[%q] = %+v, want the variant", key, entries)
+			continue
+		}
+		if p := entries[0].Packagings; len(p) != 1 || p[0].ID != box.Id || p[0].Quantity != "15.000" {
+			t.Errorf("LookupSKUs[%q].Packagings = %+v, want the box", key, p)
+		}
+	}
+	if entries := got[upper]; len(entries) != 1 || entries[0].ID != other.Id {
+		t.Errorf("LookupSKUs[the last chunk's SKU] = %+v, want the nails", entries)
+	}
+	for _, key := range []string{missing, "", "  "} {
+		if entries, ok := got[key]; ok {
+			t.Errorf("LookupSKUs[%q] = %+v, want absent", key, entries)
+		}
+	}
+	if none, err := catalog.LookupSKUs(context.Background(), nil); err != nil || len(none) != 0 {
+		t.Errorf("LookupSKUs(nil) = %+v, %v, want empty without an error", none, err)
+	}
+}

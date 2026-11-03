@@ -98,6 +98,11 @@ type ProductCatalog interface {
 	// every packaging whose barcode does. None is an empty slice, not an
 	// error.
 	LookupCode(ctx context.Context, code string) ([]CodeMatch, error)
+	// LookupSKUs is LookupCode's SKU half for many codes at once: for each
+	// sku, keyed exactly as the caller wrote it, every variant whose SKU
+	// equals it ignoring case, by id. An sku no variant has — or a blank
+	// one — is absent from the map, not an error. Barcodes are not matched.
+	LookupSKUs(ctx context.Context, skus []string) (map[string][]VariantEntry, error)
 	// SearchVariants answers at most limit variants of Goods products whose
 	// SKU, product name or barcode contains q, ignoring case, by SKU.
 	SearchVariants(ctx context.Context, q string, limit int) ([]VariantEntry, error)

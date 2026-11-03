@@ -917,6 +917,10 @@ func (*fakeProductCatalog) LookupCode(context.Context, string) ([]contracts.Code
 	return nil, nil
 }
 
+func (*fakeProductCatalog) LookupSKUs(context.Context, []string) (map[string][]contracts.VariantEntry, error) {
+	return nil, nil
+}
+
 func (*fakeProductCatalog) SearchVariants(context.Context, string, int) ([]contracts.VariantEntry, error) {
 	return nil, nil
 }

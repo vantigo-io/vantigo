@@ -145,6 +145,33 @@ func TestImport_Refusals(t *testing.T) {
 	mustStatus(t, importCSV(viewer, s.site.Id, false, "location;sku;quantity\n"), http.StatusForbidden, "import without stock-adjust")
 }
 
+// TestImport_OneCatalogCallPerImport is the import's SKU resolution: every
+// distinct SKU of the file in one batch read of the catalog, on the dry run
+// and on the commit alike, never a lookup per SKU.
+func TestImport_OneCatalogCallPerImport(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, _ := signIn(t, h, stockAdjuster...)
+	admin, _ := signIn(t, h, locationsManager...)
+	s := newLedgerSite(t, h, admin)
+	file := "location;sku;quantity\nOSL-1;BOLT-M8;1\nOSL-2;nut-m8;2\nOSL-1;Bolt-M8;3\nOSL-1;NOPE;1\nOSL-1;INSTALL;1\n"
+	r := importResult(t, importCSV(c, s.site.Id, false, file), http.StatusOK, "dry run")
+	if got := outcomes(r); !slices.Equal(got, []string{"2:ok", "3:ok", "4:ok", "5:variant_not_found", "6:variant_not_stockable"}) {
+		t.Errorf("dry run = %v", got)
+	}
+	if n, codes := h.catalog.lookupCalls("LookupSKUs"), h.catalog.lookupCalls("LookupCode"); n != 1 || codes != 0 {
+		t.Errorf("the dry run made %d LookupSKUs and %d LookupCode calls, want one and none", n, codes)
+	}
+	good := "location;sku;quantity\nOSL-1;BOLT-M8;1\nOSL-2;nut-m8;2\nOSL-1;Bolt-M8;3\n"
+	importResult(t, importCSV(c, s.site.Id, true, good), http.StatusCreated, "commit")
+	if n, codes := h.catalog.lookupCalls("LookupSKUs"), h.catalog.lookupCalls("LookupCode"); n != 2 || codes != 0 {
+		t.Errorf("after the commit, %d LookupSKUs and %d LookupCode calls, want two and none", n, codes)
+	}
+	if got := onHand(t, h, varBolt, s.shelf1.Id); got != "4.000" {
+		t.Errorf("bolts = %q, want 4", got)
+	}
+}
+
 // TestImport_FiveThousandRows is the cap's other side: 5000 rows post as one
 // movement, beyond the API's 500 lines.
 func TestImport_FiveThousandRows(t *testing.T) {

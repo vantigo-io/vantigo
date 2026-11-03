@@ -53,7 +53,7 @@ posting's transaction (rule 21 of the
 
 **`contracts.ProductCatalog`** (`Deps.Products`), Products' catalog
 ([contracts for other modules](/en/reference/products/#contracts-for-other-modules)).
-The module reads five of its methods:
+The module reads six of its methods:
 
 - **`LockVariants(ctx, tx, ids)`** — takes `FOR SHARE` on the variants **and their
   products' rows**, in variant id order, **on the posting's own transaction**, and
@@ -73,8 +73,10 @@ The module reads five of its methods:
 - **`LookupCode(ctx, code)`** — the [lookup](#the-lookup)'s variant half: a SKU,
   trimmed and matched case-insensitively and exactly, a variant barcode matched
   exactly, or — since delivery B — a **packaging's barcode**, answered as the variant
-  with the packaging that matched. The [import](#the-opening-balance-import) uses it
-  too, and takes only a SKU match.
+  with the packaging that matched.
+- **`LookupSKUs(ctx, skus)`** — the [import](#the-opening-balance-import)'s SKU
+  resolution: every distinct SKU of the file in one call, each matched
+  case-insensitively against variant SKUs only.
 - **`SearchVariants(ctx, q, limit)`** — the line editor's picker: goods variants by SKU,
   product name or barcode, case-insensitive, by SKU, at most 50, wildcards taken
   literally. It goes through the catalog so that a warehouse worker needs no Products
@@ -625,7 +627,7 @@ places a site's first stock (I32). It needs `stock-adjust` and both views.
   splits an unquoted `2,5` in two. Blank trailing cells are ignored.
   - `location` — a **full code**, upper-cased, among the site's locations; one that is
     not there, or is archived, is `location_not_found`;
-  - `sku` — through the catalog's `LookupCode`, a **SKU match only** (a barcode, the
+  - `sku` — through the catalog's `LookupSKUs`, a **SKU match only** (a barcode, the
     variant's or a packaging's, does not count): `variant_not_found`;
   - a Service product's variant: `variant_not_stockable`;
   - `quantity` — a decimal more than 0, at most three decimals, `.` or `,` as the
@@ -645,7 +647,9 @@ places a site's first stock (I32). It needs `stock-adjust` and both views.
   with the same `movementId` and posts nothing. A different file — even one row changed
   — is a new movement.
 
-The import reads the catalog once per distinct SKU.
+The import resolves its SKUs in **one batch**: a single `LookupSKUs` call for every
+distinct SKU of the file, before any transaction, on the dry run and the commit alike.
+A SKU two variants match ignoring case resolves to the first by id.
 
 ## Locks
 

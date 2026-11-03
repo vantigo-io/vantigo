@@ -68,6 +68,7 @@ against holds until it commits. A missing row is an absent answer, never an erro
 | `ListPrice(variantID, currency, at)` | The variant's effective price in that currency at that moment, nil when it has none. |
 | `VariantsOfProduct(productID)` | Every variant of the product, by id; empty when the product does not exist. |
 | `LookupCode(code)` | A `CodeMatch` for every variant whose SKU equals the trimmed code, ignoring case, or whose barcode equals it exactly — the variant matches first — then one per **packaging** whose barcode equals it, with `Packaging` set to the packaging that matched. |
+| `LookupSKUs(skus)` | For each SKU, keyed exactly as the caller wrote it, every variant whose SKU equals it trimmed and ignoring case, by id — `LookupCode`'s SKU half for many codes at once, barcodes not matched. A SKU no variant has, or a blank one, is absent. One query per 1,000 distinct SKUs and one load of their packagings. |
 | `SearchVariants(q, limit)` | At most `limit` (capped at 50) variants of **Goods** products whose SKU, product name or barcode contains `q`, ignoring case, by SKU; `%` and `_` are matched literally. Packaging barcodes are not searched. |
 | `LockVariants(tx, ids)` | Takes `FOR SHARE` on the variants' rows and their products' rows, in id order, **on the caller's transaction**, and answers the entries. |
 

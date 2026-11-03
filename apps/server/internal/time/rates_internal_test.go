@@ -53,6 +53,10 @@ func (*priceList) LookupCode(context.Context, string) ([]contracts.CodeMatch, er
 	return nil, nil
 }
 
+func (*priceList) LookupSKUs(context.Context, []string) (map[string][]contracts.VariantEntry, error) {
+	return nil, nil
+}
+
 func (*priceList) SearchVariants(context.Context, string, int) ([]contracts.VariantEntry, error) {
 	return nil, nil
 }
