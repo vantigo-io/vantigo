@@ -216,10 +216,84 @@ fourth is derived:
 absent `gridTariffId` is none, an absent `household` `false` and an absent
 `electricityTaxClass` `ordinary`, so a client that edits the address sends the three
 back. Every `MeteringPointResponse` — the list, the point, a customer's points —
-carries `household`, `electricityTaxClass` and `vatTreatment`, and `gridTariffId` and
+carries `household`, `electricityTaxClass` and `vatTreatment` (and all but the list
+`electricityTaxSuggestion`, [below](#the-electricity-tax-suggestion)), and `gridTariffId` and
 `gridTariffName` when the point has a grid tariff; without one they are left out of
 the JSON, not sent as `null`. A metering-point import never changes them: a point it creates has
 none, `false` and `ordinary`, and a point it updates keeps its own.
+
+## The electricity-tax suggestion
+
+A wrong `electricityTaxClass` misbills every settlement silently, so the point
+carries the class the rules point to beside it
+([design](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-11-03-energy-electricity-tax-suggestion-design.md),
+[research](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/research/2026-11-03-energy-electricity-tax-class.md)).
+Like `vatTreatment` it is derived on every read and never stored, and it is a hint:
+the stored class stays what settlements bill.
+
+`electricityTaxSuggestion` (`ElectricityTaxSuggestion`, `electricity_tax.go`) is
+`{class?, reason, uncertain, matches, customerId?, industryCode?}`. `class` is left
+out when there is no suggestion; `matches` is true when there is none or it equals the
+stored class; `customerId` and `industryCode` say whose code was read, and are left out
+when there was none. It is sent by `GET /metering-points/{id}`, the create and update
+responses and every row of `GET /customers/{customerId}/metering-points`; the list
+`GET /metering-points` leaves it out. `reason` is a plain string, not an enum, so a
+client reads an unknown one as a fallback.
+
+**Whose industry code.** On the point and its create and update, the point's current
+customer: the customer of its `Active` supply period covering now; failing that, of
+its latest non-cancelled period by start; none without one. On a customer's points,
+that customer, the one the tab shows. The code is
+`contracts.CustomerEntry.IndustryCode` read through `contracts.CustomerDirectory`
+(the Customers module's registry record, from Brønnøysund —
+[Registry record](/en/reference/customers/#registry-record)); an unknown customer, a
+customer without a record and a nil directory all read as no code. Codes are compared
+as their digits, dots and whitespace dropped (`"24.420"` → `24420`), by prefix.
+
+**The rule**, in order:
+
+| Inputs | `class` | `reason` | `uncertain` |
+| --- | --- | --- | --- |
+| `countryCode`, trimmed, is not `NO` in any case | — | `not_norway` | no |
+| In tiltakssonen, `household` | `exempt` | `zone_household` | 9140 only |
+| In tiltakssonen, industry division 84 (public administration — a heuristic for "offentlig forvaltning") | `exempt` | `zone_public_administration` | 9140 only |
+| In tiltakssonen, anything else, with or without a customer | `reduced` | `zone_business` | 9140 only |
+| Outside, `household` | `ordinary` | `household` | no |
+| Outside, no customer or no industry code | `ordinary` | `no_industry_code` | yes |
+| Outside, section B (divisions 05–09) or C (10–33), or `38.21` (SN2025 materialgjenvinning) or `38.32` (its SN2007 code) | `reduced` | `industry` | no |
+| Outside, `35.11`, `35.2`, `35.30`, `01.13`, `01.19`, `01.30`, `49.1`, `49.2`, `49.31`, `52.21` or `88.99` | `ordinary` | `industry_may_qualify` | yes |
+| Outside, any other industry code | `ordinary` | `ordinary` | no |
+
+**Tiltakssonen** is Finnmark and the Troms municipalities Karlsøy, Kvænangen, Kåfjord,
+Lyngen, Nordreisa, Skjervøy and Storfjord (Stortingets vedtak om avgift på elektrisk
+kraft 2026 § 1 annet ledd b: reduced rate; § 3 a: households and public
+administration exempt). The module reads it from the point's `postalCode`, trimmed and
+exactly four digits, against an explicit table of ranges (`taxZoneRanges`): the
+Nord-Troms codes Bring's postal register maps to those municipalities — `9046`, `9060`,
+`9062`, `9064`, `9068–9069`, `9130`, `9132`, `9134–9138`, `9140`, `9142–9149`,
+`9151–9159`, `9161–9163`, `9169`, `9180–9182`, `9184–9187`, `9189–9190`, `9192–9195`,
+`9197` — and every code from `9501` to `9999` for Finnmark, codes Bring has not
+assigned included, since all of 95xx–99xx is Finnmark. It is not a prefix rule:
+`9049–9059` (Balsfjord, Tromsø), `9100–9128`, `9131` and `9141` (Tromsø) and
+`9170–9178` (Svalbard) sit between zone codes and are outside it. `9140` Rebbenes is
+Karlsøy's but about four in ten of its addresses are in Tromsø, so its suggestion is
+`uncertain`.
+
+**Outside the zone**, the reduced rate for industry and mining follows the
+registered industry code (forskrift om særavgifter § 3-12-4, on SN2025 from
+1 January 2026), but covers only the power used in the production process itself,
+which the interface says. The `industry_may_qualify` codes may qualify for a reduced
+rate or an exemption the code alone cannot decide — district heating (§ 3-12-5),
+energy products (§ 3-12-8), greenhouses with electric heating (§ 3-12-14), traction
+power (§ 3-12-16), power production's own use (§ 3-12-1) and work training (§ 3-12-4
+d). The process exemptions of § 3-12-13 (chemical reduction, electrolysis,
+metallurgical and mineralogical processes) are never suggested: they hang on the
+process, not the code, so an `exempt` stored for an aluminium works (division 24)
+shows as differing from `reduced`, and the reader may well be right.
+
+**Not covered:** rates as dated data, splitting a point's consumption across classes,
+own production and batteries, administrative buildings (§ 3-12-9), and Enhetsregisteret
+sector codes for public administration.
 
 ## Importing metering points
 

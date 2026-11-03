@@ -239,6 +239,22 @@ Siden har GSRN, merket **GSRN**, og adressen som overskrift, og seks kort:
   Nordland, Troms og Finnmark er fritatt for merverdiavgift – og *Ordinær* ellers.
   Den vises slik at et feil postnummer eller en glemt **Husholdning** blir sett her,
   før en faktura lages.
+
+  Under dem står klassen reglene peker på: for eksempel *Foreslått: Redusert sats*,
+  med én setning om hvorfor. Den utledes av adressen, **Husholdning** og næringskoden
+  til punktets nåværende kunde (fra Enhetsregisteret, på kundens registeroppføring):
+  i Finnmark og Nord-Troms-kommunene Karlsøy, Kvænangen, Kåfjord, Lyngen, Nordreisa,
+  Skjervøy og Storfjord er en husholdning eller offentlig forvaltning **Fritatt** og
+  alt annet **Redusert sats**; ellers får bergverk og industri **Redusert sats** – bare
+  for kraft brukt i selve produksjonsprosessen – og resten **Ordinær sats**. Et gult
+  merke **Avviker** og *Den lagrede klassen er det oppgjørene fakturerer. Kontroller
+  den mot kundens dokumentasjon.* vises når den ikke er **Elavgift** som er satt på
+  punktet; et grått merke **Kontroller** når opplysningene ikke kan avgjøre den –
+  ingen kunde eller ingen næringskode, en næring som kan gi redusert sats eller
+  fritak, eller postnummer 9140, som krysser sonens grense. Forslaget endrer ingenting:
+  for å følge det, rediger punktet og sett **Elavgift**. Et punkt utenfor Norge viser
+  *Ingen forslag*. Regelen står i
+  [referansen](/en/reference/energy/#the-electricity-tax-suggestion).
 - **Målerhistorikk**: hver måler som har sittet på punktet, med tidspunkt for
   **Installert** og **Fjernet**. Den nåværende måleren har ikke noe fjernet-tidspunkt.
 - **Leveranseperioder**: hvilken kunde punktet har levert til, fra når til når, etter
@@ -479,7 +495,10 @@ selve kundesiden.
 leveranseperioder**. Under står en tabell med én rad per målepunkt kunden har en
 ikke-kansellert leveranseperiode på: **Målepunkt-ID**, **Installasjonsadresse**,
 **Prisområde**, **Forventet årsforbruk**, **Leveranseperioder** (den siste perioden og
-statusen dens; hold pekeren over for å se alle) og **Status**. Klikk på en rad for å
+statusen dens; hold pekeren over for å se alle), **Elavgift** og **Status**.
+**Elavgift** er klassen som er lagret på punktet, med et gult varseltegn når den
+foreslåtte klassen, lest med denne kundens næringskode, avviker; hold pekeren over
+tegnet for å se forslaget og hvorfor. Klikk på en rad for å
 åpne målepunktet. En kunde uten noen får beskjeden *Ingen målepunkter* – *Knytt til et
 målepunkt for å begynne å følge forbruket.*
 
