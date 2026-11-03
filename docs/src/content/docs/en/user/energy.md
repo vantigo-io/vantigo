@@ -242,7 +242,8 @@ The page is headed by the GSRN, marked **GSRN**, and the address, and has six ca
   **Removed** times. The current meter has no removed time.
 - **Supply periods**: which customer the point has been supplied to, from when to
   when, on which **Power tariff** and **Billing**, with the status **Active**,
-  **Ended** or **Cancelled**. An end that is not set reads **Open-ended**.
+  **Ended** or **Cancelled**. An end that is not set reads **Open-ended**. With
+  `customers:view`, the customer's name is a link that opens the customer.
 - **Settlements**: what each closed billing period comes to, see
   [below](#read-a-metering-points-settlements).
 - **Consumption**: the readings for a date range, as a chart and a table.

@@ -19,7 +19,8 @@ export const SETTLEMENTS_PERMISSIONS = ["energy:supply-periods-view", "energy:co
  * `canViewTariffs` (`energy:tariffs-view`) lets the edit form and the
  * supply-period dialogs list the tariffs to choose from, and `canViewSettlements`
  * (`energy:supply-periods-view` and `energy:consumption-view` together) shows the
- * Settlements card.
+ * Settlements card, and `canOpenCustomers` (`customers:view`) links each supply
+ * period's customer to the customer.
  *
  * Lives beside the route file rather than inside it: a route file may export
  * nothing but its `Route` without costing the bundle a code split.
@@ -31,6 +32,7 @@ export const MeteringPointDetailsRoutePage = () => {
       canImportReadings={hasAllPermissions(permissions, IMPORT_READINGS_PERMISSIONS)}
       canViewTariffs={hasPermissions(permissions, ["energy:tariffs-view"])}
       canViewSettlements={hasAllPermissions(permissions, SETTLEMENTS_PERMISSIONS)}
+      canOpenCustomers={hasPermissions(permissions, ["customers:view"])}
     />
   );
 };

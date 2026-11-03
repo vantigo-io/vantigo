@@ -244,7 +244,7 @@ Siden har GSRN, merket **GSRN**, og adressen som overskrift, og seks kort:
 - **Leveranseperioder**: hvilken kunde punktet har levert til, fra når til når, etter
   hvilken **Kraftavtale** og hvilken **Fakturering**, med statusen
   **Aktiv**, **Avsluttet** eller **Kansellert**. En slutt som ikke er satt, vises som
-  **Åpen slutt**.
+  **Åpen slutt**. Har du `customers:view`, er kundenavnet en lenke som åpner kunden.
 - **Oppgjør**: hva hver avsluttet faktureringsperiode kommer på, se
   [under](#les-oppgjørene-for-et-målepunkt).
 - **Forbruk**: avlesningene for et datointervall, som diagram og tabell.

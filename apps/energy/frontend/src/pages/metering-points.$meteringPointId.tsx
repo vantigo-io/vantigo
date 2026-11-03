@@ -1,9 +1,9 @@
-import { Badge, Button, Card, Group, SegmentedControl, Stack, Table, Text, Title } from "@mantine/core";
+import { Anchor, Badge, Button, Card, Group, SegmentedControl, Stack, Table, Text, Title } from "@mantine/core";
 import { DateInput } from "@mantine/dates";
 import { notifications } from "@mantine/notifications";
 import { IconCalendar, IconFileImport, IconPencil, IconPlus } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
-import { useParams } from "@tanstack/react-router";
+import { Link, useParams } from "@tanstack/react-router";
 import { EmptyState, PageHeader, useI18n } from "@vantigo/frontend-shell";
 import { Fragment, useState } from "react";
 import { customersQueryOptions } from "../api/customers";
@@ -46,16 +46,19 @@ const defaultTo = () => new Date().toISOString().slice(0, 10);
  * supply-period dialogs list the tariffs to choose from; without it they show
  * the tariff held, read-only. `canViewSettlements` —
  * `energy:supply-periods-view` and `energy:consumption-view` together — shows
- * the Settlements card.
+ * the Settlements card. `canOpenCustomers` — `customers:view` — makes each
+ * supply period's customer a link to the customer.
  */
 export const MeteringPointDetailsPage = ({
   canImportReadings = false,
   canViewTariffs = false,
   canViewSettlements = false,
+  canOpenCustomers = false,
 }: {
   canImportReadings?: boolean;
   canViewTariffs?: boolean;
   canViewSettlements?: boolean;
+  canOpenCustomers?: boolean;
 }) => {
   const { t, formatters } = useI18n("energy");
   const { meteringPointId } = useParams({ strict: false }) as { meteringPointId: number };
@@ -257,7 +260,15 @@ export const MeteringPointDetailsPage = ({
               <Table.Tbody>
                 {periods.map((period) => (
                   <Table.Tr key={period.id}>
-                    <Table.Td>{customerName(period.customerId)}</Table.Td>
+                    <Table.Td>
+                      {canOpenCustomers ? (
+                        <Anchor component={Link} to={`/customers/${period.customerId}`}>
+                          {customerName(period.customerId)}
+                        </Anchor>
+                      ) : (
+                        customerName(period.customerId)
+                      )}
+                    </Table.Td>
                     <Table.Td>{supplyPeriodDate(period.start)}</Table.Td>
                     <Table.Td>{supplyPeriodDate(period.end)}</Table.Td>
                     <Table.Td>{period.tariffName ?? t("noPowerTariff")}</Table.Td>
