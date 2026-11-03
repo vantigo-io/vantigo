@@ -1,6 +1,6 @@
 ---
 title: "Calendar module"
-description: "One person's calendar: the appointments the module owns, with recurrence, colleagues, customers' contacts and typed addresses on them and their answers; the invitations mailed to the people outside, the answer by link and the cancellation; the sources contract through which other modules project their rows; the window read in the viewer's zone; a colleague's busy and free; the dashboard's agenda; the calendar feed a phone subscribes to, in a full and a busy variant; the calendars from elsewhere a person subscribes to, fetched by a worker and parsed on read; the Outlook sync — a person's setting, the copies of their appointments and chosen items a worker writes to their Microsoft 365 mailbox through the MailboxCalendar slot, the reconcile, the write-back of their own edits, moves and deletes made in Outlook and of the events they make in the Vantigo calendar, the busy time read back from their Outlook calendar and the clean-up; the CalendarBusy contract the module provides to Planning; its one workspace setting, the channel invitations are sent from; the permissions and the lock rules."
+description: "One person's calendar: the appointments the module owns, with recurrence, colleagues, customers' contacts and typed addresses on them and their answers; the invitations mailed to the people outside, the answer by link and the cancellation; the sources contract through which other modules project their rows; the window read in the viewer's zone; a colleague's busy and free; the dashboard's agenda; the calendar feed a phone subscribes to, in a full and a busy variant; the calendars from elsewhere a person subscribes to, fetched by a worker and parsed on read; the mailbox (Outlook) sync — a person's setting, the copies of their appointments and chosen items a worker writes to their mailbox through the provider of the MailboxCalendar slot their directory account belongs to, the reconcile, the write-back of their own edits, moves and deletes made in Outlook and of the events they make in the Vantigo calendar, the busy time read back from their Outlook calendar and the clean-up; the CalendarBusy contract the module provides to Planning; its one workspace setting, the channel invitations are sent from; the permissions and the lock rules."
 sources:
   - apps/server/internal/calendar
   - apps/calendar/frontend
@@ -15,6 +15,7 @@ sources:
   - apps/server/internal/db/migrations/00086_calendar_mailbox_sync_mailbox.sql
   - apps/server/internal/db/migrations/00087_calendar_mailbox_sync_claim.sql
   - apps/server/internal/db/migrations/00097_calendar_settings.sql
+  - apps/server/internal/db/migrations/00110_calendar_mailbox_neutral.sql
 ---
 The Calendar module is one view of every time-bound thing Vantigo knows about one
 person — the follow-ups Customers holds for them, their absences in Staff, their tasks in
@@ -87,7 +88,7 @@ module provides.
 
 ## The schema
 
-Nine migrations: `00055_calendar_baseline.sql` creates the `calendar` schema and its three
+Ten migrations: `00055_calendar_baseline.sql` creates the `calendar` schema and its three
 tables, `00056_calendar_invitations.sql` adds the attendees from outside the company
 and the cancelled state, `00057_calendar_feed.sql` adds the feed addresses and the
 subscriptions, `00081_calendar_mailbox_sync.sql` adds the [Outlook
@@ -98,8 +99,10 @@ sync's](#the-two-tables) two tables, `00083_calendar_mailbox_busy.sql` adds the
 `00086_calendar_mailbox_sync_mailbox.sql` indexes `lower(mailbox)` of the rows that are on, for
 the [change notifications'](#change-notifications) marks, and
 `00087_calendar_mailbox_sync_claim.sql` adds the [worker's](#the-mailbox-sync-worker) claim,
-`mailbox_sync.claimed_until`, and `00097_calendar_settings.sql` the module's one workspace
-setting, [`settings`](#the-invitation-channel). Every id is a `bigint` identity starting at 1001. Every foreign identifier — the
+`mailbox_sync.claimed_until`, `00097_calendar_settings.sql` the module's one workspace
+setting, [`settings`](#the-invitation-channel), and `00110_calendar_mailbox_neutral.sql`
+the [mailbox sync's](#the-two-tables) provider, the marks' index by provider and the
+busy rows' neutral `show_as` values (Google Workspace design G3, G10). Every id is a `bigint` identity starting at 1001. Every foreign identifier — the
 owner, an attendee, a customer, a project, the holder of an address — is opaque: users, customers and projects
 live in other schemas and are read through contracts, never through SQL (see [module
 boundaries](/en/contributing/module-boundaries/) rule 4). No table has a CHECK
@@ -192,7 +195,7 @@ contract's `x-vantigo-access`; a caller without it gets the access layer's unifo
 `GET /meta` (`getCalendarMeta`) answers `canViewColleagues` and `canManage`, so the app never
 re-derives the rules, beside the business `timeZone`, `today` in it, the
 [sources](#the-kinds) — with `calendar.subscription` among them when the caller has at
-least one [subscription](#subscriptions), and `calendar.outlook` last while the caller's
+least one [subscription](#subscriptions), and `calendar.mailbox` last while the caller's
 [Outlook sync](#outlook-sync) is on, so the legend has their chips — and
 `invitationsAvailable` — whether an invitation can be mailed now: a channel is chosen
 and can send ([without a channel](#without-a-channel)).
@@ -280,14 +283,22 @@ the order their items are added to the window. The calendar's own kind,
 `GET /meta` nor on `GET /items`. Its other kind, `calendar.subscription` — the events of a
 [calendar subscribed to](#parsed-on-read) — is listed in `GET /meta`'s `sources`, with
 module `calendar`, when the caller has at least one subscription, and never in
-`GET /items`'. Its third, `calendar.outlook` — the [busy time read back from the
-caller's Outlook calendar](#the-busy-read) — is listed in `GET /meta`'s `sources`, with
-module `calendar`, last, while the caller's Outlook sync is on (`enabled`), and never in
-`GET /items`'. Its items have no title and carry `outlook: {showAs}` — `busy`,
-`tentative`, `oof` or `workingElsewhere` — which the app labels **Busy in Outlook**,
+`GET /items`'. Its third, `calendar.mailbox` — the [busy time read back from the
+caller's mailbox calendar](#the-busy-read), whatever the provider (Google Workspace
+design G10) — is listed in `GET /meta`'s `sources`, with
+module `calendar`, last, while the caller's sync is on (`enabled`), and never in
+`GET /items`'. Its items have no title and carry `mailbox: {showAs}` — `busy`,
+`tentative`, `out_of_office` or `working_elsewhere`, the calendar's own words whatever
+the provider calls them — which the app labels **Busy in Outlook**,
 **Tentative in Outlook**, **Out of office** or **Working elsewhere** (**Opptatt i
-Outlook**, **Foreløpig i Outlook**, **Ikke til stede**, **Arbeider et annet sted**) and
-draws hatched, in a colour of its own; their id is the first 16 hex digits of the
+Outlook**, **Foreløpig i Outlook**, **Ikke til stede**, **Arbeider et annet sted**) — the
+provider's name being `provider.displayName` of [`GET
+/mailbox-sync`](#the-persons-setting), read while the kind is shown; while it answers no
+provider, **Busy** and **Tentative** (**Opptatt**, **Foreløpig**) — and draws hatched, in
+a colour of its own; the legend's chip is the provider's name, or **Mailbox calendar**
+(**Postbokskalender**) without one. A filter saved in a browser that names the kind's
+old name, `calendar.outlook`, has that entry dropped when it is read, so the busy time
+shows; their id is the first 16 hex digits of the
 SHA-256 of the event's id in the mailbox, which never reaches the browser. The person's
 own Outlook titles are not shown ([why](#the-persons-own-outlook-titles)).
 
@@ -1071,7 +1082,7 @@ window:
   asks nothing, so a list of only such names answers no items. The caller's
   [subscriptions](#parsed-on-read) are read only when `calendar.subscription` is named,
   or `kinds` is absent, and their [Outlook busy time](#the-busy-read) only when
-  `calendar.outlook` is, or `kinds` is absent. `kinds` narrows `items`
+  `calendar.mailbox` is, or `kinds` is absent. `kinds` narrows `items`
   alone: `sources` still lists every kind and `publicHolidays` is always answered. The
   filter in the app is the client's own and does not use it.
 
@@ -1089,7 +1100,7 @@ CalendarItem {
   path?,                               // a provider's record; absent on an appointment and a subscription's item
   appointment?: { id, occurrenceDate?, isOwner, myStatus?, visibility, transparency, recurring },
   subscription?: { id, name, colour, busyOnly }   // kind calendar.subscription only
-  outlook?: { showAs }                            // kind calendar.outlook only; title empty
+  mailbox?: { showAs }                            // kind calendar.mailbox only; title empty
 }
 ```
 
@@ -1102,9 +1113,9 @@ applied (a cancelled occurrence left out, a moved one at its new time). An appoi
 item has no `path` — the app opens the sheet by `appointment.id` — and `done` is always
 false. Then each provider's `CalendarItems`, asked with the window and the zone, in
 module order. Then the events of the caller's [subscriptions](#parsed-on-read), as last
-fetched. Then, while the caller's Outlook sync is on, their [Outlook busy
+fetched. Then, while the caller's mailbox sync is on, their [busy
 rows](#the-busy-rows) overlapping the window — a timed one by its instants, an all-day
-one by its dates — as `calendar.outlook` items, whatever their `show_as`. Then the
+one by its dates — as `calendar.mailbox` items, whatever their `show_as`. Then the
 public holidays.
 
 **The edges are judged in `timeZone`.** A timed item is in the window when its instants
@@ -1124,7 +1135,7 @@ is shown rather than a calendar with something missing.
 
 `GET /colleagues/{userId}/items?from&to&timeZone` (`getCalendarColleaguesByUserIdItems`)
 needs `calendar:view-colleagues` beside `calendar:access`, and answers the same window
-shape with only `calendar.appointment` and `calendar.outlook` items and empty `sources`:
+shape with only `calendar.appointment` and `calendar.mailbox` items and empty `sources`:
 
 - the colleague's appointments — owned, or attended and **accepted**, and not
   cancelled — with transparency `busy`, expanded as `GET /items` expands them, each with `isOwner` false and no
@@ -1135,8 +1146,8 @@ shape with only `calendar.appointment` and `calendar.outlook` items and empty `s
   viewer's language and draws it hatched;
 - `free` ones not at all: the point of the view is "when can I book them";
 - while the colleague's [Outlook sync](#outlook-sync) is on, the [busy
-  rows](#the-busy-rows) it read back from their Outlook calendar whose `show_as` is
-  `busy` or `oof`, as `calendar.outlook` items with no title — tentative and working
+  rows](#the-busy-rows) it read back from their mailbox calendar whose `show_as` is
+  `busy` or `out_of_office`, as `calendar.mailbox` items with no title — tentative and working
   elsewhere are not busy, as a tentative answer to an appointment is not shown here.
   The app labels them as on one's own calendar, and gives them a chip of their own in
   the legend when there are any.
@@ -1663,10 +1674,14 @@ the person's Outlook calendar back — the times of the events that block it, an
 else of them — which their own calendar, a colleague's and Planning's board show.
 The person's own Outlook titles are [not shown](#the-persons-own-outlook-titles).
 
-The provider is the single-provider slot `MailboxCalendar` (`contracts.MailboxCalendar`),
-which the [Microsoft Entra ID module](/en/reference/entra/#the-mailbox-calendar) fills;
-the person's mailbox is their own account in that directory as Staff names it
-(`contracts.Workforce.DirectoryAccount`, [Staff](/en/reference/staff/#the-workforce-contract)).
+The providers are the many-provider slot `MailboxCalendar` (`contracts.MailboxCalendar`),
+keyed by `Key()` — the [Microsoft Entra ID module](/en/reference/entra/#the-mailbox-calendar)
+fills it as `entra` — and **a person's provider is the one their directory account belongs
+to** (Google Workspace design G3): `contracts.Workforce.DirectoryAccount`
+([Staff](/en/reference/staff/#the-workforce-contract)) answers the account and its
+`Provider`, and `mailboxCalendarFor(Provider)` — the slot's provider under that key, no
+network — serves every call of that person's sync. The person's mailbox is that account's
+external id. An account of a provider no enabled module fills is no account.
 Nothing of a person's mailbox is guessed: a user with no Staff person, a person of another
 account kind or an account the provider does not manage is not available, never matched
 by address. It is the sixth sanctioned cross-module write ([module
@@ -1686,6 +1701,7 @@ A person who has not connected, or whose connection Microsoft refused, is
 ```go
 type MailboxCalendar interface {
     Key() string                                        // "entra", no context, no network
+    DisplayName() string                                // "Outlook": the screens' name, no context, no network
     Status(ctx context.Context) (MailboxStatus, error)  // no network
     EnsureCalendar(ctx context.Context, mailbox, known, name string) (string, error)
     DeleteCalendar(ctx context.Context, mailbox, calendarID string) error
@@ -1772,7 +1788,10 @@ type MailboxEventState struct {
 - `MailboxEvent{Subject, Body, Location; AllDay; StartDate, EndDate; StartsAt, EndsAt;
   TimeZone; ShowAs; Private}`: the all-day pair civil dates with the end inclusive, the
   timed pair instants, `TimeZone` an IANA zone, `ShowAs` one of `free`, `tentative`,
-  `busy`, `oof` and `workingElsewhere`.
+  `busy`, `out_of_office` and `working_elsewhere` (`ShowAsOutOfOffice`,
+  `ShowAsWorkingElsewhere`) — the calendar's own words, which each provider maps to its
+  directory's: Entra sends and reads Graph's `oof` and `workingElsewhere` as before
+  ([the Entra reference](/en/reference/entra/#the-mailbox-calendar)).
 - `Apply` answers one `MailboxResult{EventID, Gone, ChangeKey, Err}` per op, in order;
   an update or delete of an event that no longer exists is `Gone` — a delete is then
   done, an update the caller's to re-create. A returned error is the whole call failing,
@@ -1850,7 +1869,11 @@ on an id; `00084_calendar_mailbox_writeback.sql` adds the [write-back's](#the-wr
 five columns; `00086_calendar_mailbox_sync_mailbox.sql` adds the index on `lower(mailbox)`
 where the sync is on (the [change notifications'](#change-notifications) marks);
 `00087_calendar_mailbox_sync_claim.sql` adds `claimed_until` (the
-[worker's](#the-mailbox-sync-worker) claim). No CHECK holds a value to its set, the
+[worker's](#the-mailbox-sync-worker) claim); `00110_calendar_mailbox_neutral.sql` adds
+`provider`, backfilled `entra` on every row with a mailbox, replaces 00086's index with one
+on `(provider, lower(mailbox))` where the sync is on, and rewrites the busy rows'
+`show_as` `oof` and `workingElsewhere` to `out_of_office` and `working_elsewhere` (its down
+migration puts them back). No CHECK holds a value to its set, the
 module's validation does.
 
 - **`mailbox_sync`** — a person's setting and the worker's record of it, one row per
@@ -1858,7 +1881,9 @@ module's validation does.
   `target` (`default`, their main calendar, or `own`, a calendar named *Vantigo*),
   `detail` (`full` or `busy`), `kinds` (`text[]`, the kinds chosen), `mailbox` (200, the
   account's external id last confirmed through Staff — kept for the clean-up, since a
-  mailbox that changed or was lost still has copies to remove), `calendar_id` (500, the
+  mailbox that changed or was lost still has copies to remove), `provider` (20, the key of
+  the provider that mailbox is of, set with it whenever a sync confirms the account; the
+  provider the clean-up runs on), `calendar_id` (500, the
   *Vantigo* calendar's id once made), `state` (`pending`, `active`, `stopping` — a
   clean-up owed —, `off`, `unavailable` or `failed`), `error` (40, the last refusal's
   code, null after a sync that worked), `next_sync_at` (null is now), `last_synced_at`,
@@ -1897,7 +1922,10 @@ Three operations, each under `calendar:access` and on the caller's own row alone
 - **`GET /mailbox-sync`** answers `MailboxSync`: `enabled`, `target`, `detail`, `kinds`,
   `state`, `error` (when set), `lastSyncedAt` (when set), `busySyncedAt` (when the
   [busy read](#the-busy-read) last reached its end; absent before the first and once
-  the sync is turned off), `revision`, `availability` and
+  the sync is turned off), `revision`, `availability`, **`provider`** — the provider
+  that serves the caller, `{key, displayName}` (`{"entra", "Outlook"}`): the one their
+  directory account belongs to, `DisplayName()` its name on the screens; `null` when the
+  availability is `no_provider` or `no_account` — and
   `availableKinds` — the kinds the caller may choose, `{key, module}`: the appointment
   kind `calendar.appointment` first, then every kind the [sources](#the-kinds) declare,
   in module order, never `calendar.subscription`. A caller who never saved it is answered
@@ -1945,10 +1973,10 @@ Three operations, each under `calendar:access` and on the caller's own row alone
 
 | `availability` | When |
 | --- | --- |
-| `no_provider` | No enabled module fills the `MailboxCalendar` slot (Entra is off). |
-| `switch_off` | The provider's reason is `switch_off`, whatever its state: the Owner's *Outlook connection* switch in the Entra module is off. |
-| `unavailable` | The provider's status is anything else but `available`: its connection is not working. |
-| `no_account` | `Workforce.DirectoryAccount` answers nothing for the caller, a disabled account (a leaver's), an account of another provider than the slot's `Key`, or one with no external id. |
+| `no_provider` | No enabled module fills the `MailboxCalendar` slot at all (Entra is off). |
+| `no_account` | `Workforce.DirectoryAccount` answers nothing for the caller, a disabled account (a leaver's), one with no external id, or an account of a provider no enabled module fills under its key. |
+| `switch_off` | The caller's provider's reason is `switch_off`, whatever its state: an administrator has not turned on the connection for people in the provider's settings (Entra's *Outlook connection* switch). |
+| `unavailable` | The caller's provider's status is anything else but `available`: its connection is not working. |
 | `not_connected` | The caller's row is on, `unavailable`, with the error `not_connected`: the worker last found that they have not connected Outlook, or their connection closed. |
 | `reconnect` | The caller's row is on, `unavailable`, with the error `reconnect`: the worker last found that Microsoft refused their connection, until they reconnect. |
 | `available` | None of the above. |
@@ -1956,7 +1984,8 @@ Three operations, each under `calendar:access` and on the caller's own row alone
 `not_connected` and `reconnect` are **the worker's last finding**, not a read of the
 connection: no request can ask a person's connection, so a person who turns the sync on
 before connecting is `available` until the first cycle parks them. `no_account` — a fresh
-read of Staff — comes first, since a connection needs a certain account. The reason
+read of Staff — comes before any provider's status, since the account picks the provider
+and a connection needs a certain account. The reason
 Microsoft gave is not stored by the calendar: the card's [connection
 button](/en/user/connections/), Entra's, shows it.
 
@@ -1992,7 +2021,7 @@ info with the person's id and its counts.
 | Body (text) | The appointment's description, or the item's subtitle, then a blank line and "Kept by Vantigo — change it there:" / "Holdes av Vantigo — endre det der:" with the record's link on the next line. Under `busy`, and for that private appointment, the link alone. |
 | Location | The appointment's, under `full` only. |
 | Time | An all-day item's days, the last inclusive; a timed one's instants. A point item — no end, or an end not after its start — lasts 30 minutes. `TimeZone` is the business zone's name. |
-| Show as | An appointment `tentative` when the person's answer is tentative, else its transparency, `busy` or `free`. `staff.absence` `oof`; `time.entry` and `expenses.claim` `busy`; any other all-day item `free` and any other timed item `busy`. |
+| Show as | An appointment `tentative` when the person's answer is tentative, else its transparency, `busy` or `free`. `staff.absence` `out_of_office`; `time.entry` and `expenses.claim` `busy`; any other all-day item `free` and any other timed item `busy`. |
 | Private | A private appointment, whoever's copy it is. |
 
 There are no attendees, no reminder and no category. The link is the app's — `APP_URL`
@@ -2033,19 +2062,28 @@ person has **three minutes** for everything their sync asks of the neighbours, s
 slow mailbox cannot hold the cycle; the person's own rows are written past it. For each
 person:
 
-1. **The provider's status.** `unavailable` calls nothing: the row is `unavailable`
-   (error `unavailable`) — a clean-up owed stays `stopping` — and tried again in an hour.
+0. **The account picks the provider.** `Workforce.DirectoryAccount` under `AsUser`:
+   the person's provider is the one filled under the account's `Provider`, when the
+   account is usable (Google Workspace design G3). Every call of the sync goes to it; a
+   clean-up goes to the provider the row's mailbox is of (`provider`).
+1. **The provider's status** — the account's provider's, or with none the row's. `unavailable`
+   calls nothing more: the row is `unavailable`
+   (error `unavailable`) — a clean-up owed stays `stopping` — and tried again in an hour. A
+   person with neither, while some provider is on, asks no status: step 3 answers
+   `no_account`.
 2. **The person's access.** `Access.UserHolds(calendar:access)`. A person who may no
    longer use Calendar, a provider in `cleanup` (the Owner's switch off) or a clean-up owed is
    [cleaned up](#the-clean-up). Then the row is `off` when the toggle is off;
    `unavailable` (error `unavailable`, tried in an hour) when the person or the provider
    cannot go on; and otherwise — a target change — the sync goes on to the new target at
    once.
-3. **The account.** `Workforce.DirectoryAccount` under `AsUser`. None, a disabled one
-   (a leaver's), another provider's, or one with no external id cleans up what was written to the mailbox
+3. **The account** read at step 0. None, a disabled one
+   (a leaver's), one of a provider no enabled module fills, or one with no external id
+   cleans up what was written to the mailbox
    stored and is `unavailable` with error `no_account`, tried in an hour. A different
-   external id than the one stored cleans the old mailbox up first, then starts over on
-   the new one. The mailbox is recorded as soon as it is known, whatever the revision.
+   external id than the one stored — or the same id under another provider — cleans the
+   old mailbox up first, on the row's provider, then starts over on the new one. The
+   mailbox is recorded with its provider as soon as it is known, whatever the revision.
 4. **The *Vantigo* calendar**, for target `own`: `EnsureCalendar` with the stored id; a
    changed id empties the map and makes the sync a reconcile.
 5. **The desired set** ([above](#what-is-pushed)).
@@ -2156,11 +2194,12 @@ id and the code. It never backs off, and it is not the six-hour retry of
   **Reconnect Outlook** with the toggle off, and the person can let the clean-up run.
 
 **Waking.** In the same step as the [notices](#change-notifications), each cycle and
-before anyone is claimed, the worker asks `Connections` for the connections that moved,
-with its own cursor held in memory — initially now minus the poll interval, advanced to
+before anyone is claimed, the worker asks each provider's `Connections` in turn for the
+connections that moved, with a cursor of its own per provider key held in memory — initially now minus the poll interval, advanced to
 the latest `At` it marked, asked from 30 seconds before it, and from it exactly after a
 full page of 5000 — and marks them in one statement (`MarkMailboxSyncConnected`): per
-mailbox, compared case-insensitively, the latest change makes due at now the rows that
+mailbox of that provider (`provider` the provider's key), compared case-insensitively,
+the latest change makes due at now the rows that
 are on or owe a clean-up, **last written before the change plus the 30-second overlap**,
 and not due already. The overlap makes a change committed while that person's own sync was
 running — or stamped by a replica whose clock is a little behind — still wake them; a
@@ -2363,8 +2402,8 @@ at info with the person's id and its counts; nothing an event says is ever logge
 Not shown. The write-back reads whole only the copies and the *Vantigo* calendar's
 events, never the person's own events: showing their titles would mean storing the
 subjects of a private calendar or reading Graph on the request path, and a colleague's
-view must never see them. The `calendar.outlook` item stays titleless; its shape —
-no title, `outlook.showAs` — leaves room for it.
+view must never see them. The `calendar.mailbox` item stays titleless; its shape —
+no title, `mailbox.showAs` — leaves room for it.
 
 ### The busy read
 
@@ -2420,7 +2459,8 @@ the delta answers them, and the provider decodes none of them.
 - An event is stored unless it is ours, `free` or cancelled; a change to any of those
   deletes its row, and so does a removal — whatever its reason: an event moved out of
   the window is answered removed.
-- `show_as` is `busy`, `tentative`, `oof` or `workingElsewhere`; a value the contract
+- `show_as` is `busy`, `tentative`, `out_of_office` or `working_elsewhere` (before
+  00110, `oof` and `workingElsewhere`, which it rewrote); a value the contract
   does not name is stored `busy`.
 - An all-day event's dates are its start's and end's calendar dates, the end made
   inclusive, each rounded to the nearest midnight should Graph answer it off one. An
@@ -2430,9 +2470,9 @@ the delta answers them, and the provider decodes none of them.
   stored is still rewritten or deleted — and the fact is logged at warning once a sync,
   with the person's id and the cap.
 
-**What reads them.** The person's own window ([`calendar.outlook`](#the-kinds), every
-`show_as`), [a colleague's calendar](#a-colleagues-calendar) (`busy` and `oof`) and the
-[busy time contract](#the-busy-time-contract) (`busy` and `oof`) — each only while the
+**What reads them.** The person's own window ([`calendar.mailbox`](#the-kinds), every
+`show_as`), [a colleague's calendar](#a-colleagues-calendar) (`busy` and `out_of_office`) and the
+[busy time contract](#the-busy-time-contract) (`busy` and `out_of_office`) — each only while the
 person's sync is `enabled`. Nothing of an event, not even its id, is ever logged.
 
 **The person's own titles are not shown** ([why](#the-persons-own-outlook-titles)).
@@ -2452,15 +2492,18 @@ unchanged either way.
 - **`Watch`** is the sync's last step (step 11 [above](#the-mailbox-sync-worker)).
 - **`Unwatch`** is a [clean-up](#the-clean-up)'s step, for every reason but a target
   change: the subscription is the mailbox's, not the calendar's.
-- **`Notified`** is asked **each cycle**, **before anyone is claimed** — no connection
-  is held across the read; every replica asks, a mark being idempotent — with `since` — held in memory by the worker, per process, **initially now
+- **`Notified`** is asked **each cycle** of **each provider in turn** (Google Workspace
+  design G3), **before anyone is claimed** — no connection
+  is held across the read; every replica asks, a mark being idempotent — with `since` — held in memory by the worker, per process and **per provider key**, **initially now
   minus the poll interval** and advanced to the latest `At` it marked — **less 30
   seconds**: the overlap covers a notice whose write committed after a later one was read,
   and replicas whose clocks differ a little. Taking a notice twice is harmless, since the
   person has synced since. After a **full page** of 5000 the next asks from `since`
-  exactly, so the next page follows. The cycle's notices are marked **in one statement**
-  (`MarkMailboxSyncNotified`, through the index on `lower(mailbox)`, no transaction held
-  across the call): per mailbox, compared case-insensitively, the latest notice makes
+  exactly, so the next page follows. A provider's notices are marked **in one statement**
+  (`MarkMailboxSyncNotified`, through the index on `(provider, lower(mailbox))`, no
+  transaction held across the call): per mailbox **of that provider** — a row whose
+  `provider` is another's is never marked, whatever its mailbox — compared
+  case-insensitively, the latest notice makes
   due, at now, the rows that are on, `active` or `pending`, **with `attempts` 0** — **a
   notice never overrides the backoff** of a failing sync — whose last sync **started
   before the notice** and that are not due already. The revision is left alone, as the
@@ -2482,7 +2525,9 @@ another), when the provider is in `cleanup` — the Owner's switch turned off �
 their Outlook connection is gone (a disconnect, a leaver, an account closed: [parked
 `not_connected`](#parking-and-waking)). Every removal runs on the person's own
 connection, which a close keeps for removals while it holds its token. The
-clean-up works on the mailbox stored on the row, and is decided by its `calendar_id`:
+clean-up works on the mailbox stored on the row, through the provider stored with it
+(`provider`) — a person whose account moved to another provider is cleaned up on the old
+one before the new one is written — and is decided by its `calendar_id`:
 
 - with one, it deletes the *Vantigo* calendar (`DeleteCalendar`, with everything in it)
   — only a calendar the provider made, and only while it holds **no meeting**: no event
@@ -2557,8 +2602,8 @@ type TimeSpan struct { StartsAt, EndsAt time.Time } // the end exclusive
 - **What counts.** What a [colleague's calendar](#a-colleagues-calendar) shows as busy:
   the appointments the user owns or accepted, transparency `busy`, not cancelled, each
   occurrence in the window (a cancelled occurrence dropped, a moved one at its new
-  time), expanded in the business zone; and, while the user's Outlook sync is on, their
-  [busy rows](#the-busy-rows) of `show_as` `busy` or `oof`.
+  time), expanded in the business zone; and, while the user's mailbox sync is on, their
+  [busy rows](#the-busy-rows) of `show_as` `busy` or `out_of_office`.
 - **The merge.** Timed spans are clipped to the window's instants (midnight to midnight
   in the business zone) and all-day spans to its dates, then each sorted and merged
   where they overlap or touch — all-day runs a day apart are one run. A user busy at no
@@ -2587,7 +2632,7 @@ a date, a missing `If-Match` — is a bare 400 with neither `code` nor `errors`.
 | `appointment_cancelled` | 409 | Any write to a [cancelled](#cancellation) appointment — a `PUT`, a `DELETE`, an occurrence's `PUT` or `DELETE`, a colleague's answer, a resend — and an answer by the link (`POST /rsvp`). |
 | `invitations_unavailable` | 503 | `POST /appointments/{id}/attendees/{attendeeId}/resend` when invitations are off — no channel chosen, or the chosen one gone or unable to send ([without a channel](#without-a-channel)). |
 | `subscription_limit` | 409 | `POST /subscriptions` when the caller has ten subscriptions already. |
-| `mailbox_sync_unavailable` | 409 | `PUT /mailbox-sync` turning the sync on, or keeping it on, while it cannot run, and `POST /mailbox-sync/run` while it cannot run. The `detail` is the [availability](#the-persons-setting) — `switch_off`, `no_provider`, `unavailable` or `no_account`. |
+| `mailbox_sync_unavailable` | 409 | `PUT /mailbox-sync` turning the sync on, or keeping it on, while it cannot run, and `POST /mailbox-sync/run` while it cannot run. The `detail` is the [availability](#the-persons-setting) — `no_provider`, `no_account`, `switch_off` or `unavailable`. |
 | `mailbox_sync_off` | 409 | `POST /mailbox-sync/run` while the sync is turned off. |
 | — | 403 | `GET /contacts` without `customers:contacts-view` and `customers:associations-view`. |
 | — | 429 | `POST /rsvp/read` over 60, `POST /rsvp` over 30, the feed's `GET /feed/{file}` over 120, or `POST /subscriptions`, `PUT /subscriptions/{id}` and `POST /subscriptions/{id}/refresh` together over 30 (`calendar-subscription-fetch`), per client address in 10 minutes; `PUT /mailbox-sync` over 10 per client address in 10 minutes (`calendar-mailbox-sync-write`) and `POST /mailbox-sync/run` over 6 per client address in a minute (`calendar-mailbox-run`): the limiter's `rate_limited`, with `Retry-After`. |
